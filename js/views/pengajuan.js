@@ -1,7 +1,7 @@
 import { db, COL, collection, query, where, getDocs, orderBy, limit, doc, getDoc } from "../firebase-config.js";
 import {
   fsGetAll, fsAdd, openModal, closeModal, toast, genId, escapeHtml,
-  fmtDateShort, evalFormula, toNumber, sendEmailNotif, getEmailsForRole
+  fmtDateShort, evalFormula, toNumber, sendEmailNotif, getTargetsForRole, createLoginToken
 } from "../utils.js";
 import { canAccessForm } from "../auth.js";
 import { icon, badge, emptyState, skeletonRows } from "../components.js";
@@ -229,22 +229,22 @@ async function submitPengajuan(formCfg, detail, session) {
     // Memicu Notifikasi Email ke APPROVER PERTAMA
     if (approvalFlow.length > 0 && typeof sendEmailNotif === 'function') {
       const nextRole = approvalFlow[0];
-      const targetEmails = await getEmailsForRole(nextRole, payload.nama_pemohon);
+      const targets = await getTargetsForRole(nextRole, payload.nama_pemohon);
       
-      if (targetEmails.length > 0) {
+      for (const target of targets) {
+        const token = await createLoginToken(target.username); // Buat Token Personal
+        const magicLink = `https://andela-hris.vercel.app/#approval?token=${token}`; // Sisipkan token di URL
+
         const htmlEmail = `
           <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
             <h2 style="color: #7a1f2b;">Pengajuan Baru: ${payload.nama_form}</h2>
             <p><strong>Diajukan Oleh:</strong> ${payload.nama_pemohon}</p>
-            <p><strong>Tanggal:</strong> ${new Date().toLocaleDateString('id-ID')}</p>
             <p>Pengajuan ini membutuhkan persetujuan Anda sebagai <strong>${nextRole}</strong>.</p>
-            <a href="https://andela-hris.vercel.app/#approval" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Masuk ke Antrean Persetujuan</a>
+            <a href="${magicLink}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Akses Langsung & Setujui</a>
+            <p style="margin-top:15px; font-size:11px; color:#94a3b8;">Tombol di atas adalah tautan masuk aman (hanya berlaku 1 kali).</p>
           </div>
         `;
-        // Blast email ke semua orang yang menjabat role tersebut (misal jika ada 2 orang Finance, keduanya dapat)
-        targetEmails.forEach(email => {
-           sendEmailNotif(email, `Persetujuan Dibutuhkan: ${payload.nama_form}`, htmlEmail).catch(e => console.warn(e));
-        });
+        sendEmailNotif(target.email, `Persetujuan Dibutuhkan: ${payload.nama_form}`, htmlEmail).catch(e => console.warn(e));
       }
     }
   } catch (e) {
