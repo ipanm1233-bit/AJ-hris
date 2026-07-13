@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, orderBy, limit, getDoc, doc } from "../firebase-config.js";
-import { fmtDate, fmtDateShort, escapeHtml, openModal, toNumber, sendEmailNotif, getTargetsForRole, toast } from "../utils.js";
+import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, getTargetsForRole, toast, fsUpdate, fsAdd, genId } from "../utils.js";
 import { avatar, badge, icon, emptyState, skeletonRows } from "../components.js";
 import { MANAJEMEN_ROLES } from "../auth.js";
 
@@ -96,26 +96,158 @@ async function loadLeaveBalances(container, session) {
   }).join("");
 }
 
-/* ------------------------ c. KPI 360 TASKS ------------------------ */
+/* ------------------------ c. KPI 360 TASKS (DENGAN POPUP AUTO) ------------------------ */
 async function loadKpiTasks(container, session) {
   const wrap = container.querySelector("#dash-kpi-tasks");
   try {
     const q = query(collection(db, COL.TUGAS_KPI_360), where("nama_penilai", "==", session.nama));
     const snap = await getDocs(q);
+    
+    // Saring hanya tugas yang belum selesai
     const pending = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => (r.status || "").toUpperCase() !== "DONE");
+    
+    // POPUP OTOMATIS: Muncul ketika login/buka sistem
+    if (pending.length > 0 && !window.hasShownKpiPopup) {
+      window.hasShownKpiPopup = true; // Mencegah popup muncul berkali-kali di sesi yang sama
+      
+      let listHtml = pending.map(p => `
+        <li class="flex justify-between items-center py-2.5 border-b border-slate-100 last:border-0">
+          <span class="font-medium text-slate-700">${escapeHtml(p.nama_dinilai)}</span>
+          <span class="text-xs text-amber-700 font-medium bg-amber-50 border border-amber-200 px-2 py-1 rounded">Batas: ${p.deadline ? fmtDateShort(p.deadline) : '-'}</span>
+        </li>
+      `).join("");
+
+      openModal({
+        title: "Tugas Penilaian Menunggu",
+        bodyHtml: `
+          <div class="p-4 bg-slate-50 rounded-xl mb-4 border border-slate-100">
+             <p class="text-sm text-slate-600">Anda memiliki <strong>${pending.length}</strong> karyawan yang harus segera dievaluasi.</p>
+          </div>
+          <ul class="text-sm">${listHtml}</ul>
+          <p class="mt-5 text-[11px] text-slate-400 text-center uppercase tracking-wide">Silakan klik nama karyawan di kotak "Penilaian 360" pada Dashboard untuk mulai menilai.</p>
+        `,
+        footerHtml: `<button id="btn-tutup-kpi-popup" class="w-full py-2.5 bg-maroon-700 text-white font-medium rounded-lg text-sm hover:bg-maroon-800 transition">Mengerti & Lanjutkan</button>`,
+        onMount: m => m.querySelector("#btn-tutup-kpi-popup").onclick = closeModal
+      });
+    }
+
     if (!pending.length) { wrap.innerHTML = emptyState("Tidak ada tugas penilaian tertunda"); return; }
+    
     wrap.innerHTML = pending.map(t => `
-      <div class="flex items-center justify-between p-3 rounded-xl border border-slate-100 hover:bg-slate-50 transition">
+      <div data-kpi-id="${t.id}" class="flex items-center justify-between p-3 rounded-xl border border-slate-100 hover:border-maroon-300 hover:shadow-md transition cursor-pointer bg-white">
         <div class="flex items-center gap-3">
           ${avatar(t.nama_dinilai || "?", "w-9 h-9 text-xs")}
           <div>
-            <p class="text-sm font-medium text-slate-700">Menilai ${escapeHtml(t.nama_dinilai || "-")}</p>
-            <p class="text-xs text-slate-400">${escapeHtml(t.periode || "-")}</p>
+            <p class="text-sm font-medium text-slate-700">Evaluasi ${escapeHtml(t.nama_dinilai || "-")}</p>
+            <p class="text-[11px] text-slate-400">Deadline: <span class="text-amber-600 font-medium">${t.deadline ? fmtDateShort(t.deadline) : '-'}</span></p>
           </div>
         </div>
-        ${badge("Menunggu Dinilai", "amber")}
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-maroon-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
       </div>`).join("");
+
+    // Klik untuk buka formulir pengisian nilai
+    wrap.querySelectorAll("[data-kpi-id]").forEach(el => {
+       el.onclick = () => {
+          const task = pending.find(x => x.id === el.dataset.kpiId);
+          openPenilaianForm(task, container, session);
+       };
+    });
+
   } catch (e) { wrap.innerHTML = emptyState("Belum ada data penilaian"); }
+}
+
+// FORMULIR PENGISIAN PENILAIAN OLEH ASSESSOR
+function openPenilaianForm(task, container, session) {
+  const soalHtml = (task.soal_json || []).map((s, i) => `
+     <div class="border-b border-slate-100 pb-4 mb-4">
+        <div class="flex items-center gap-2 mb-1.5">
+           <span class="bg-maroon-50 text-maroon-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">${escapeHtml(s.aspek)}</span>
+           <span class="text-[10px] text-slate-400 font-medium">Bobot: ${s.bobot}%</span>
+        </div>
+        <p class="text-sm text-slate-800 mb-3">${escapeHtml(s.indikator)}</p>
+        <div class="relative">
+           <input type="number" data-idx="${i}" class="kpi-nilai-input w-full pl-3 pr-10 py-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100 transition" placeholder="Berikan Skor Penilaian (Contoh: 85)" required min="0" max="100">
+           <span class="absolute right-3 top-2.5 text-slate-300 font-medium text-sm">/ 100</span>
+        </div>
+     </div>
+  `).join("");
+
+  openModal({
+     title: `Form Evaluasi: ${escapeHtml(task.nama_dinilai)}`,
+     size: "md",
+     bodyHtml: `
+        <form id="form-isi-kpi">
+           <div class="mb-5 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-amber-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <p class="text-xs text-amber-800 leading-relaxed">Penilaian ini dihitung otomatis berdasarkan bobot tiap indikator. Batas waktu pengumpulan: <strong>${task.deadline ? fmtDateShort(task.deadline) : '-'}</strong>.</p>
+           </div>
+           ${soalHtml}
+        </form>
+     `,
+     footerHtml: `
+        <button id="btn-cancel-kpi" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
+        <button id="btn-submit-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2 rounded-lg text-sm font-medium transition shadow-md">Simpan & Selesaikan</button>
+     `,
+     onMount: (m) => {
+        m.querySelector("#btn-cancel-kpi").onclick = closeModal;
+        m.querySelector("#btn-submit-kpi").onclick = async () => {
+           const form = m.querySelector("#form-isi-kpi");
+           if(!form.reportValidity()) return;
+
+           let totalBobot = 0;
+           let totalSkorBobot = 0;
+           const answeredSoal = [...task.soal_json];
+
+           // Ekstrak kalkulasi
+           m.querySelectorAll(".kpi-nilai-input").forEach(input => {
+              const idx = parseInt(input.dataset.idx);
+              const nilai = parseFloat(input.value) || 0;
+              const bobot = parseFloat(answeredSoal[idx].bobot) || 0;
+              
+              answeredSoal[idx].nilai_diberikan = nilai;
+              totalBobot += bobot;
+              totalSkorBobot += (nilai * (bobot / 100)); // Rumus Weighted Average
+           });
+
+           // Jika total bobot HRD tidak genap 100, kita lakukan normalisasi kalkulasi
+           let finalScore = totalBobot > 0 ? (totalSkorBobot / (totalBobot / 100)) : 0;
+           finalScore = Math.round(finalScore * 100) / 100;
+
+           let keputusan = finalScore >= 80 ? "Sangat Baik" : finalScore >= 60 ? "Baik" : "Kurang";
+
+           const btn = m.querySelector("#btn-submit-kpi");
+           btn.disabled = true; btn.textContent = "Merekap Nilai...";
+
+           try {
+              // 1. Update Tugas Individu Karyawan menjadi Selesai
+              await fsUpdate(COL.TUGAS_KPI_360, task.id, {
+                 status: "DONE",
+                 skor_akhir: finalScore,
+                 soal_json: answeredSoal,
+                 tanggal_diselesaikan: new Date().toISOString()
+              });
+
+              // 2. Tembuskan Arsip Permanen ke Rekap Master Hasil
+              await fsAdd(COL.LOG_PENILAIAN_KPI, {
+                 tanggal: new Date().toISOString(),
+                 nama_dinilai: task.nama_dinilai,
+                 penilai: task.nama_penilai,
+                 total_skor: finalScore,
+                 keputusan: keputusan,
+                 periode: task.periode,
+                 detail_json: answeredSoal
+              }, genId("KPI-LOG"));
+
+              toast("Evaluasi berhasil disimpan secara permanen!", "success");
+              closeModal();
+              loadKpiTasks(container, session); // Segarkan list di dashboard
+           } catch(e) {
+              toast("Gagal menyimpan evaluasi: " + e.message, "error");
+              btn.disabled = false; btn.textContent = "Simpan & Selesaikan";
+           }
+        };
+     }
+  });
 }
 
 /* ------------------------ d. CUTI HARI INI ------------------------ */
@@ -144,7 +276,7 @@ async function loadCutiHariIni(container) {
   } catch (e) { wrap.innerHTML = emptyState("Gagal memuat data cuti"); }
 }
 
-/* ------------------------ e. ANNOUNCEMENTS (DENGAN FILTER DEADLINE) ------------------------ */
+/* ------------------------ e. ANNOUNCEMENTS ------------------------ */
 async function loadAnnouncements(container) {
   const wrap = container.querySelector("#dash-announcements");
   try {
@@ -152,13 +284,12 @@ async function loadAnnouncements(container) {
     const snap = await getDocs(q);
     
     const now = new Date();
-    // Filter memo yang tanggal berakhirnya belum terlewat
     const validMemos = snap.docs.map(d => d.data()).filter(r => {
-      if (!r.tanggal_berakhir) return true; // Memo tanpa batas waktu
+      if (!r.tanggal_berakhir) return true; 
       const tglBatas = new Date(r.tanggal_berakhir);
       tglBatas.setHours(23, 59, 59, 999);
       return tglBatas >= now;
-    }).slice(0, 6); // Ambil 6 teratas
+    }).slice(0, 6);
 
     if (!validMemos.length) { wrap.innerHTML = emptyState("Belum ada pengumuman aktif"); return; }
     
@@ -177,7 +308,7 @@ async function loadAnnouncements(container) {
   } catch (e) { wrap.innerHTML = emptyState("Belum ada pengumuman"); }
 }
 
-/* ------------------------ f. CONTRACT EXPIRY (DENGAN TOMBOL AKSI) ------------------------ */
+/* ------------------------ f. CONTRACT EXPIRY ------------------------ */
 async function loadContractExpiry(container) {
   const wrapOuter = container.querySelector("#dash-contract-widget-wrap");
   wrapOuter.classList.remove("hidden");
@@ -213,7 +344,6 @@ async function loadContractExpiry(container) {
         </div>
       </div>`).join("");
 
-    // Tombol Notif ke Atasan
     wrap.querySelectorAll('button[data-action="atasan"]').forEach(btn => {
       btn.addEventListener('click', async (e) => {
          const btnEl = e.currentTarget;
@@ -223,7 +353,7 @@ async function loadContractExpiry(container) {
             const targets = await getTargetsForRole("ATASAN", k.nama_karyawan);
             if(targets.length === 0) throw new Error("Email atasan tidak ditemukan");
             for(const t of targets) {
-               const html = `<div style="font-family: Arial; padding: 20px;"><h2>Reminder Evaluasi Kontrak</h2><p>Mengingatkan bahwa kontrak kerja <b>${k.nama_karyawan}</b> akan berakhir dalam ${k._days} hari. Mohon segera berikan penilaian untuk proses perpanjangan/pemutusan kontrak.</p></div>`;
+               const html = `<div style="font-family: Arial; padding: 20px;"><h2>Reminder Evaluasi Kontrak</h2><p>Mengingatkan bahwa kontrak kerja <b>${k.nama_karyawan}</b> akan berakhir dalam ${k._days} hari. Mohon segera berikan penilaian.</p></div>`;
                await sendEmailNotif(t.email, "Reminder Evaluasi Kontrak: " + k.nama_karyawan, html);
             }
             toast("Notifikasi ke atasan terkirim", "success");
@@ -232,15 +362,14 @@ async function loadContractExpiry(container) {
       });
     });
 
-    // Tombol Notif Konseling ke Karyawan
     wrap.querySelectorAll('button[data-action="karyawan"]').forEach(btn => {
       btn.addEventListener('click', async (e) => {
          const btnEl = e.currentTarget;
          const k = soon.find(x => x.nik_karyawan === btnEl.dataset.id);
          btnEl.disabled = true; btnEl.textContent = "Mengirim...";
          try {
-            if(!k.email) throw new Error("Email karyawan tidak terdata di Master Karyawan");
-            const html = `<div style="font-family: Arial; padding: 20px;"><h2>Undangan Konseling Kontrak Kerja</h2><p>Halo <b>${k.nama_karyawan}</b>,</p><p>Mengingatkan bahwa kontrak kerja Anda akan segera berakhir. Mohon temui HRD untuk melakukan proses konseling terkait status kontrak Anda selanjutnya.</p></div>`;
+            if(!k.email) throw new Error("Email karyawan tidak terdata");
+            const html = `<div style="font-family: Arial; padding: 20px;"><h2>Undangan Konseling</h2><p>Halo <b>${k.nama_karyawan}</b>,</p><p>Mengingatkan bahwa kontrak Anda akan segera berakhir. Mohon temui HRD untuk proses konseling.</p></div>`;
             await sendEmailNotif(k.email, "Undangan Konseling HRD", html);
             toast("Undangan konseling terkirim", "success");
          } catch (err) { toast(err.message, "error"); }
