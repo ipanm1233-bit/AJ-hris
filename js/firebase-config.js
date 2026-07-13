@@ -1,76 +1,37 @@
-/**
- * =====================================================================
- * FIREBASE CONFIGURATION — Portal HRIS & Operasional CV Andela Jaya
- * =====================================================================
- * GANTI seluruh nilai di bawah ini dengan kredensial proyek Firebase
- * Anda sendiri. Dapatkan dari: Firebase Console > Project Settings >
- * General > Your apps > SDK setup and configuration.
- *
- * File ini di-load sebagai <script type="module"> dan mengekspor
- * instance `db` (Firestore) serta `auth` (jika suatu saat migrasi ke
- * Firebase Authentication) agar bisa dipakai ulang oleh seluruh modul
- * lain cukup dengan:
- *   import { db } from '../firebase-config.js';
- * =====================================================================
- */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
 import {
-  getFirestore,
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  addDoc,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  orderBy,
-  limit,
-  onSnapshot,
-  writeBatch,
-  serverTimestamp,
-  Timestamp,
-  increment,
-  enableIndexedDbPersistence
+  initializeFirestore, // Menggunakan inisialisasi modern
+  persistentLocalCache, 
+  persistentMultipleTabManager,
+  collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc,
+  query, where, orderBy, limit, onSnapshot, writeBatch, serverTimestamp,
+  Timestamp, increment
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
-// -----------------------------------------------------------------
-// GANTI DENGAN KONFIGURASI PROYEK FIREBASE ANDA
-// -----------------------------------------------------------------
 const firebaseConfig = {
-  apiKey: "AIzaSyBAAUHaqYrzTp6wi1PDYkrKY0IWI2XQoVw",
-  authDomain: "andela-hris-bc9ed.firebaseapp.com",
-  projectId: "andela-hris-bc9ed",
-  storageBucket: "andela-hris-bc9ed.firebasestorage.app",
-  messagingSenderId: "718041616100",
-  appId: "1:718041616100:web:cde303edb932b25ae826f1"
+    apiKey: "AIzaSyBAAUHaqYrzTp6wi1PDYkrKY0IWI2XQoVw",
+    authDomain: "andela-hris-bc9ed.firebaseapp.com",
+    projectId: "andela-hris-bc9ed",
+    storageBucket: "andela-hris-bc9ed.firebasestorage.app",
+    messagingSenderId: "718041616100",
+    appId: "1:718041616100:web:cde303edb932b25ae826f1"
 };
 
 export const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
 
-// Aktifkan cache offline agar navigasi antar-menu tetap instan walau
-// koneksi terputus sesaat (opsional tapi direkomendasikan untuk SPA).
-try {
-  enableIndexedDbPersistence(db).catch(() => {
-    /* multi-tab / unsupported browser — abaikan, aplikasi tetap jalan online */
-  });
-} catch (e) { /* no-op */ }
+// SOLUSI MULTI-TAB FIREBASE ERROR
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()})
+});
 
-// Re-export helper Firestore yang sering dipakai supaya modul lain
-// tinggal import dari satu file ini saja.
+// Helper exports
 export {
   collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc,
   query, where, orderBy, limit, onSnapshot, writeBatch, serverTimestamp,
   Timestamp, increment
 };
 
-// -----------------------------------------------------------------
-// Daftar nama koleksi Firestore — SATU SUMBER KEBENARAN.
-// Jangan hardcode string nama koleksi di file lain, selalu import COL.
-// -----------------------------------------------------------------
+// Daftar Koleksi
 export const COL = {
   USERS: "users",
   USER_PERMISSIONS: "user_permissions",
