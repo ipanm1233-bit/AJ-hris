@@ -43,8 +43,10 @@ function isEligible(row, session) {
   if (idx === -1) return false;
   const stepLabel = (row.approval_flow || [])[idx];
   if (!stepLabel) return false;
+  
   if (stepLabel.toUpperCase() === "ATASAN") {
     const pemohon = karyawanByNama[row.nama_pemohon];
+    // Jika Atasan dari pemohon sesuai dengan nama session user ini
     return pemohon && pemohon.atasan === session.nama;
   }
   return stepLabel.toUpperCase() === session.role.toUpperCase();
@@ -102,17 +104,75 @@ function renderList(container, session, tab) {
   listEl.querySelectorAll("[data-reject]").forEach(btn => btn.addEventListener("click", () => actionModal(rows.find(r => r.id === btn.dataset.reject), "REJECT", session, container, tab)));
 }
 
+// PERBAIKAN: Fungsi merender detail yang cerdas mendeteksi Array / Tabel
 function showDetail(row) {
   const detail = row.detail || {};
+
+  const renderValue = (key, val) => {
+    // Menangani Tabel (Array of Objects)
+    if (Array.isArray(val)) {
+      if (val.length > 0 && typeof val[0] === 'object') {
+        const headers = Object.keys(val[0]);
+        let tableHtml = `<div class="overflow-x-auto mt-2 border border-slate-200 rounded-lg">
+          <table class="w-full text-xs text-left whitespace-nowrap">
+            <thead class="bg-slate-50 border-b border-slate-200">
+              <tr>`;
+        headers.forEach(h => {
+          tableHtml += `<th class="p-2 font-medium text-slate-500 capitalize">${escapeHtml(h.replace(/_/g, " "))}</th>`;
+        });
+        tableHtml += `</tr></thead><tbody class="divide-y divide-slate-100">`;
+        
+        val.forEach(item => {
+          tableHtml += `<tr>`;
+          headers.forEach(h => {
+            let cellVal = item[h];
+            // Format angka menjadi rupiah jika header berkaitan dengan nominal/uang
+            if (typeof cellVal === 'number' && (h.includes('total') || h.includes('parkir') || h.includes('denda') || h.includes('biaya'))) {
+              cellVal = "Rp " + cellVal.toLocaleString('id-ID');
+            }
+            tableHtml += `<td class="p-2 text-slate-700">${escapeHtml(String(cellVal))}</td>`;
+          });
+          tableHtml += `</tr>`;
+        });
+        tableHtml += `</tbody></table></div>`;
+        return tableHtml;
+      }
+      // Jika hanya Array biasa
+      return `<span class="text-slate-800 font-medium text-right">${escapeHtml(val.join(", "))}</span>`;
+    }
+
+    // Format Rupiah untuk field angka satuan (Bukan array)
+    if (typeof val === 'number' && (key.includes('total') || key.includes('biaya') || key.includes('harga') || key.includes('kasbon'))) {
+       return `<span class="text-slate-800 font-medium text-right font-mono text-sm">Rp ${val.toLocaleString('id-ID')}</span>`;
+    }
+
+    // Nilai teks biasa
+    return `<span class="text-slate-800 font-medium text-right">${escapeHtml(String(val))}</span>`;
+  };
+
   const body = `
-    <div class="space-y-3">
-      ${Object.entries(detail).map(([k, v]) => `
-        <div class="flex justify-between gap-4 text-sm border-b border-slate-50 pb-2">
-          <span class="text-slate-500 capitalize">${escapeHtml(k.replace(/_/g, " "))}</span>
-          <span class="text-slate-800 font-medium text-right">${escapeHtml(String(v))}</span>
-        </div>`).join("")}
+    <div class="space-y-4">
+      ${Object.entries(detail).map(([k, v]) => {
+        // Jika nilai adalah array of object (Tabel Data)
+        if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'object') {
+          return `
+            <div class="text-sm border-b border-slate-50 pb-3">
+              <span class="text-slate-500 capitalize block mb-1 font-medium">${escapeHtml(k.replace(/_/g, " "))}</span>
+              ${renderValue(k, v)}
+            </div>`;
+        }
+        
+        // Tampilan Baris Normal (Teks, Angka, Tanggal)
+        return `
+          <div class="flex justify-between items-center gap-4 text-sm border-b border-slate-50 pb-2">
+            <span class="text-slate-500 capitalize">${escapeHtml(k.replace(/_/g, " "))}</span>
+            ${renderValue(k, v)}
+          </div>`;
+      }).join("")}
     </div>`;
-  openModal({ title: `Detail — ${row.nama_form}`, bodyHtml: body, size: "md" });
+
+  // Ubah size modal menjadi 'lg' agar tabel klaim tidak terjepit sempit
+  openModal({ title: `Detail — ${row.nama_form}`, bodyHtml: body, size: "lg" });
 }
 
 function actionModal(row, action, session, container, tab) {
