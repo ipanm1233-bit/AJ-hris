@@ -42,7 +42,7 @@ export async function mount(container, { session }) {
   }
 
   // ==========================================
-  // MODUL MANAJEMEN TEMPLATE KPI
+  // MODUL MANAJEMEN TEMPLATE KPI (DENGAN FITUR IMPORT EXCEL)
   // ==========================================
   async function loadTemplateKpi() {
     const wrap = panels.template;
@@ -51,20 +51,32 @@ export async function mount(container, { session }) {
     const templates = await fsGetAll(COL.MASTER_SOAL_KPI);
 
     let html = `
-        <div class="mb-4 flex justify-between items-center">
+        <div class="mb-4 flex justify-between items-end flex-wrap gap-4">
           <div>
              <h2 class="text-xl font-semibold text-slate-800">Master Template KPI</h2>
              <p class="text-sm text-slate-500">Buat set indikator penilaian (Contoh: Template Sales, Admin) untuk digunakan berulang kali.</p>
           </div>
-          <button id="btn-add-template" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition shadow-sm flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-            Buat Template Baru
-          </button>
+          <div class="flex gap-2">
+             <!-- Input File Tersembunyi -->
+             <input type="file" id="kpi-excel-upload" accept=".xlsx, .xls" class="hidden">
+             
+             <!-- Tombol Import Excel -->
+             <button id="btn-import-template" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition shadow-sm flex items-center gap-2">
+               <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+               Import Excel
+             </button>
+             
+             <!-- Tombol Buat Manual -->
+             <button id="btn-add-template" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition shadow-sm flex items-center gap-2">
+               <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+               Buat Manual
+             </button>
+          </div>
         </div>
     `;
 
     if (!templates.length) {
-        html += emptyState("Belum ada Template Soal KPI", "Klik tombol di atas untuk membuat template pertama.");
+        html += emptyState("Belum ada Template Soal KPI", "Klik tombol Import Excel atau Buat Manual di atas.");
     } else {
         html += `
         <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
@@ -74,11 +86,9 @@ export async function mount(container, { session }) {
             </thead>
             <tbody>
               ${templates.map(t => {
-                // PENDETEKSI DATA MIGRASI LAMA VS DATA TEMPLATE BARU
                 const isLegacy = !t.nama_template || !t.soal_json;
                 const nama = t.nama_template || "Data Migrasi Lama (Tanpa Nama)";
                 const count = isLegacy ? "-" : (t.soal_json || []).length;
-                
                 return `
                 <tr class="border-t border-slate-50 hover:bg-slate-50 transition">
                   <td class="px-4 py-3 font-medium ${isLegacy ? 'text-red-500' : 'text-slate-700'}">
@@ -98,6 +108,15 @@ export async function mount(container, { session }) {
     }
     wrap.innerHTML = html;
 
+    // EVENT LISTENER IMPORT EXCEL
+    const btnImport = wrap.querySelector("#btn-import-template");
+    const inputExcel = wrap.querySelector("#kpi-excel-upload");
+    
+    if (btnImport && inputExcel) {
+       btnImport.onclick = () => inputExcel.click();
+       inputExcel.onchange = (e) => handleExcelImport(e.target.files[0]);
+    }
+
     const btnAdd = wrap.querySelector("#btn-add-template");
     if(btnAdd) btnAdd.onclick = () => openTemplateModal();
 
@@ -111,11 +130,101 @@ export async function mount(container, { session }) {
         btn.onclick = async () => {
             if(confirm("Apakah Anda yakin ingin menghapus data ini?")) {
                 await fsDelete(COL.MASTER_SOAL_KPI, btn.dataset.delTpl);
-                toast("Template / Data Lama berhasil dihapus", "success");
+                toast("Template berhasil dihapus", "success");
                 loadTemplateKpi();
             }
         }
     });
+  }
+
+  // LOGIKA PEMBACAAN EXCEL KE JSON
+  async function handleExcelImport(file) {
+    if (!file) return;
+    
+    // Pastikan library SheetJS sudah ter-load dari app.html
+    if (typeof window.XLSX === "undefined") {
+        toast("Sistem sedang memuat library Excel. Silakan tunggu beberapa detik dan coba lagi.", "warning");
+        return;
+    }
+
+    const btn = panels.template.querySelector("#btn-import-template");
+    btn.innerHTML = `Membaca File...`;
+    btn.disabled = true;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = window.XLSX.read(data, {type: 'array'});
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            
+            // Konversi Excel ke Array of Objects
+            const rows = window.XLSX.utils.sheet_to_json(worksheet, {raw: false});
+            const groupedTemplates = {};
+
+            rows.forEach(row => {
+                // Pencari nama kolom yang fleksibel (mengatasi huruf besar/kecil/spasi)
+                const getVal = (keys) => {
+                    for(let k of Object.keys(row)) {
+                        if(keys.some(x => k.toUpperCase().includes(x))) return row[k];
+                    }
+                    return "";
+                };
+
+                const jabatan = getVal(["JABATAN", "POSISI"]);
+                const aspek = getVal(["ASPEK"]);
+                const indikator = getVal(["INDIKATOR", "PERTANYAAN"]);
+                // Tangkap kolom bobot (bisa bernama BOBOT, BOB, dll)
+                const bobot = parseFloat(getVal(["BOBOT", "BOB"])) || 0;
+
+                if (!jabatan || !indikator) return; // Abaikan baris kosong
+
+                // Buat grup baru berdasarkan JABATAN
+                if (!groupedTemplates[jabatan]) {
+                    groupedTemplates[jabatan] = {
+                        nama_template: jabatan,
+                        soal_json: []
+                    };
+                }
+
+                // Masukkan indikator ke dalam grup jabatan tersebut
+                groupedTemplates[jabatan].soal_json.push({
+                    aspek: aspek || "Umum",
+                    indikator: indikator,
+                    bobot: bobot,
+                    nilai_diberikan: 0
+                });
+            });
+
+            const templateNames = Object.keys(groupedTemplates);
+            if (templateNames.length === 0) {
+                throw new Error("Format Excel tidak sesuai. Pastikan ada kolom JABATAN, ASPEK, INDIKATOR, dan BOBOT.");
+            }
+
+            btn.innerHTML = `Menyimpan ke Database...`;
+
+            // Simpan setiap Template (Jabatan) ke Firestore
+            for (const name of templateNames) {
+                let totalB = groupedTemplates[name].soal_json.reduce((acc, curr) => acc + curr.bobot, 0);
+                if(totalB !== 100) {
+                    console.warn(`Peringatan: Template ${name} total bobotnya ${totalB}% (Bukan 100%)`);
+                }
+                await fsAdd(COL.MASTER_SOAL_KPI, groupedTemplates[name], genId("TPL-KPI"));
+            }
+
+            toast(`Berhasil meng-import ${templateNames.length} Template Jabatan dari Excel!`, "success");
+            
+            // Segarkan UI
+            loadTemplateKpi();
+
+        } catch(err) {
+            toast("Gagal memproses Excel: " + err.message, "error");
+            btn.innerHTML = `Import Excel`;
+            btn.disabled = false;
+        }
+    };
+    reader.readAsArrayBuffer(file);
   }
 
   function openTemplateModal(existingData = null) {
@@ -179,7 +288,7 @@ export async function mount(container, { session }) {
             if (existingData && existingData.soal_json) {
                 existingData.soal_json.forEach(s => addSoalUI(s));
             } else {
-                addSoalUI(); // 1 Baris Kosong Default
+                addSoalUI(); 
             }
 
             m.querySelector("#btn-tpl-add").onclick = () => addSoalUI();
@@ -360,14 +469,14 @@ export async function mount(container, { session }) {
             calcTotalBobot();
          }
          
-         addSoalUI();
+         addSoalUI(); // Default 1 row
          m.querySelector("#btn-add-soal").onclick = () => addSoalUI();
 
          m.querySelector("#kpi-template-picker").addEventListener("change", (e) => {
             const tplId = e.target.value;
             const tplData = templates.find(t => t.id === tplId);
             if (tplData && tplData.soal_json) {
-                soalList.innerHTML = "";
+                soalList.innerHTML = ""; 
                 tplData.soal_json.forEach(s => addSoalUI(s));
             }
          });
@@ -658,7 +767,7 @@ export async function mount(container, { session }) {
         if (tab === "kpi360") await loadKpi360();
         if (tab === "hasil") await loadHasil();
         if (tab === "evaluasi") await loadEvaluasi();
-        if (tab === "template") await loadTemplateKpi();
+        if (tab === "template") await loadTemplateKpi(); // Load tab baru
       }
     });
   });
