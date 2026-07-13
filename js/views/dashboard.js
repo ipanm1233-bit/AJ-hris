@@ -28,9 +28,14 @@ export async function mount(container, { session }) {
 /* ------------------------ a. PROFILE CARD ------------------------ */
 async function loadProfileCard(container, session) {
   let karyawan = null;
-  if (session.nik) {
+  if (session.nik && session.nik !== "null" && session.nik !== "undefined") {
     const snap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(session.nik)));
     if (snap.exists()) karyawan = snap.data();
+  } else {
+    // Fallback: cari berdasarkan nama jika NIK tidak ter-set dengan baik di session
+    const q = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", session.nama), limit(1));
+    const snap = await getDocs(q);
+    if (!snap.empty) karyawan = snap.docs[0].data();
   }
   container.querySelector("#dash-profile-avatar").innerHTML = avatar(session.nama, "w-14 h-14 text-base");
   container.querySelector("#dash-profile-nama").textContent = session.nama;
