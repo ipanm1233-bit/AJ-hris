@@ -8,7 +8,7 @@ export async function mount(container, { session }) {
     kpi360: container.querySelector("#pk-panel-kpi360"),
     hasil: container.querySelector("#pk-panel-hasil"),
     evaluasi: container.querySelector("#pk-panel-evaluasi"),
-    template: container.querySelector("#pk-panel-template"), // Tambahan Panel Template
+    template: container.querySelector("#pk-panel-template"),
   };
   const loaded = {};
 
@@ -42,7 +42,7 @@ export async function mount(container, { session }) {
   }
 
   // ==========================================
-  // MODUL MANAJEMEN TEMPLATE KPI (BARU)
+  // MODUL MANAJEMEN TEMPLATE KPI
   // ==========================================
   async function loadTemplateKpi() {
     const wrap = panels.template;
@@ -73,16 +73,25 @@ export async function mount(container, { session }) {
               <tr><th class="px-4 py-3 text-left">Nama Template / Jabatan</th><th class="px-4 py-3 text-center">Jml Indikator</th><th class="px-4 py-3 text-right">Aksi</th></tr>
             </thead>
             <tbody>
-              ${templates.map(t => `
+              ${templates.map(t => {
+                // PENDETEKSI DATA MIGRASI LAMA VS DATA TEMPLATE BARU
+                const isLegacy = !t.nama_template || !t.soal_json;
+                const nama = t.nama_template || "Data Migrasi Lama (Tanpa Nama)";
+                const count = isLegacy ? "-" : (t.soal_json || []).length;
+                
+                return `
                 <tr class="border-t border-slate-50 hover:bg-slate-50 transition">
-                  <td class="px-4 py-3 font-medium text-slate-700">${escapeHtml(t.nama_template)}</td>
-                  <td class="px-4 py-3 text-center">${(t.soal_json || []).length} Indikator</td>
+                  <td class="px-4 py-3 font-medium ${isLegacy ? 'text-red-500' : 'text-slate-700'}">
+                     ${escapeHtml(nama)}
+                     ${isLegacy ? '<span class="ml-2 text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Format Lama (Hapus)</span>' : ''}
+                  </td>
+                  <td class="px-4 py-3 text-center">${count} Indikator</td>
                   <td class="px-4 py-3 text-right">
-                    <button data-edit-tpl="${t.id}" class="text-maroon-700 hover:underline mr-3 font-medium text-xs">Edit</button>
+                    ${!isLegacy ? `<button data-edit-tpl="${t.id}" class="text-maroon-700 hover:underline mr-3 font-medium text-xs">Edit</button>` : ''}
                     <button data-del-tpl="${t.id}" class="text-red-500 hover:underline font-medium text-xs">Hapus</button>
                   </td>
                 </tr>
-              `).join("")}
+              `}).join("")}
             </tbody>
           </table>
         </div>`;
@@ -100,9 +109,9 @@ export async function mount(container, { session }) {
     });
     wrap.querySelectorAll("[data-del-tpl]").forEach(btn => {
         btn.onclick = async () => {
-            if(confirm("Apakah Anda yakin ingin menghapus template ini?")) {
+            if(confirm("Apakah Anda yakin ingin menghapus data ini?")) {
                 await fsDelete(COL.MASTER_SOAL_KPI, btn.dataset.delTpl);
-                toast("Template berhasil dihapus", "success");
+                toast("Template / Data Lama berhasil dihapus", "success");
                 loadTemplateKpi();
             }
         }
@@ -209,7 +218,7 @@ export async function mount(container, { session }) {
   }
 
   // ==========================================
-  // DISTRIBUSI KPI (MODIFIKASI: BISA PILIH TEMPLATE)
+  // DISTRIBUSI KPI 
   // ==========================================
   async function loadKpi360() {
     const wrap = panels.kpi360;
@@ -267,7 +276,8 @@ export async function mount(container, { session }) {
     const optKaryawan = active.map(k => `<option value="${escapeHtml(k.nama_karyawan)}">${escapeHtml(k.nama_karyawan)} — ${escapeHtml(k.jabatan || "")}</option>`).join("");
 
     const templates = await fsGetAll(COL.MASTER_SOAL_KPI);
-    const optTemplates = templates.map(t => `<option value="${t.id}">${escapeHtml(t.nama_template)}</option>`).join("");
+    const validTemplates = templates.filter(t => t.nama_template && t.soal_json && t.soal_json.length > 0);
+    const optTemplates = validTemplates.map(t => `<option value="${t.id}">${escapeHtml(t.nama_template)}</option>`).join("");
 
     openModal({
       title: "Distribusi Penilaian KPI 360",
@@ -350,15 +360,14 @@ export async function mount(container, { session }) {
             calcTotalBobot();
          }
          
-         addSoalUI(); // Default 1 row
+         addSoalUI();
          m.querySelector("#btn-add-soal").onclick = () => addSoalUI();
 
-         // OTOMATIS MENGISI SOAL KETIKA TEMPLATE DIPILIH
          m.querySelector("#kpi-template-picker").addEventListener("change", (e) => {
             const tplId = e.target.value;
             const tplData = templates.find(t => t.id === tplId);
             if (tplData && tplData.soal_json) {
-                soalList.innerHTML = ""; // Bersihkan list yang ada
+                soalList.innerHTML = "";
                 tplData.soal_json.forEach(s => addSoalUI(s));
             }
          });
@@ -649,7 +658,7 @@ export async function mount(container, { session }) {
         if (tab === "kpi360") await loadKpi360();
         if (tab === "hasil") await loadHasil();
         if (tab === "evaluasi") await loadEvaluasi();
-        if (tab === "template") await loadTemplateKpi(); // Load tab baru
+        if (tab === "template") await loadTemplateKpi();
       }
     });
   });
