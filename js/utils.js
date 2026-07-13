@@ -303,3 +303,39 @@ export function escapeHtml(str = "") {
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
+
+// Tambahkan di js/utils.js
+
+export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
+  // Menggunakan URL deployment App Script yang Anda berikan
+  const APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbwdm_3Eapo0VUjt1QmQvGHaxXCU95_ycaapJy1wNmFcUINe2ZHSFghoIQY9jN4dqld16w/exec";
+  
+  try {
+    const response = await fetch(APPSCRIPT_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8", 
+        // Wajib text/plain agar tidak memicu pre-flight yang kompleks pada fetch di beberapa browser
+      },
+      body: JSON.stringify({
+        to: to,
+        subject: subject,
+        htmlBody: htmlBody,
+        cc: cc, // Bisa diisi dengan email atasan/HRD sebagai tembusan
+        name: "HRIS System - Andela"
+      })
+    });
+    
+    const result = await response.json();
+    if (result.status === "success") {
+      console.log("Notifikasi Email Terkirim:", result.message);
+      return true;
+    } else {
+      console.error("Gagal kirim email (Script Error):", result.message);
+      return false;
+    }
+  } catch (error) {
+    console.error("Gagal menghubungi server Apps Script:", error);
+    return false;
+  }
+}
