@@ -1,10 +1,13 @@
-import { db, COL, collection, query, where, getDocs, orderBy, limit } from "../firebase-config.js";
+import { db, COL, collection, query, where, getDocs, orderBy, limit, doc, getDoc } from "../firebase-config.js";
 import {
   fsGetAll, fsAdd, openModal, closeModal, toast, genId, escapeHtml,
   fmtDateShort, evalFormula, toNumber
 } from "../utils.js";
 import { canAccessForm } from "../auth.js";
 import { icon, badge, emptyState, skeletonRows } from "../components.js";
+import { sendApprovalNotification, getUserRecordByName, resolveApprovers } from "../email.js";
+import { checkKasbonEligibility } from "../kasbon-rules.js";
+import { createTableFieldController, getRateConfig } from "../table-field.js";
 
 const FORM_ICONS = ["doc-plus", "clock", "wallet", "truck", "sun", "star", "box", "book"];
 
@@ -72,32 +75,89 @@ function normalizeForm(f) {
  * select, formula (read-only terhitung otomatis), dan show_if (logika
  * kondisional sederhana: tampil hanya jika field lain bernilai tertentu)
  * ------------------------------------------------------------------- */
-function openFormModal(formCfg, session) {
+async function openFormModal(formCfg, session) {
   if (!formCfg) return;
   const fields = normalizeFields(formCfg.fields_json);
 
+  // Gerbang kelayakan khusus formulir Kasbon (masa kerja & jeda 3 bulan pasca-pelunasan)
+  if ((formCfg.nama_form || "").toLowerCase().includes("kasbon")) {
+    const karyawan = await getUserRecordByName(session.nama).then(u => u?.nik ? fetchKaryawanByNik(u.nik) : null) || await fetchKaryawanByNama(session.nama);
+    const elig = await checkKasbonEligibility(session.nama, karyawan);
+    if (!elig.eligible) {
+      openModal({
+        title: "Pengajuan Kasbon Belum Dapat Diproses",
+        bodyHtml: `<div class="flex gap-3"><div class="text-amber-500 shrink-0">${icon("alert", "w-6 h-6")}</div><p class="text-sm text-slate-600">${escapeHtml(elig.reason)}</p></div>`,
+        footerHtml: `<button id="elig-close" class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-maroon-700 hover:bg-maroon-800 transition">Mengerti</button>`,
+        onMount: (m) => { m.querySelector("#elig-close").onclick = closeModal; }
+      });
+      return;
+    }
+  }
+
+  const normalFields = fields.filter(f => f.type !== "table");
+  const tableFields = fields.filter(f => f.type === "table");
+  const rateVars = { rate_num: (await getRateConfig("fuel_claim_config", { numerator: 10000 })).numerator || 10000, rate_den: (await getRateConfig("fuel_claim_config", { denominator: 25 })).denominator || 25 };
+  const tableControllers = {};
+  tableFields.forEach(f => { tableControllers[f.name] = createTableFieldController({ field: f, role: session.role, rateVars }); });
+
   const bodyHtml = `
     <form id="dyn-form" class="space-y-4">
-      ${fields.map(f => fieldWrapper(f)).join("")}
+      ${normalFields.map(f => fieldWrapper(f)).join("")}
+      ${tableFields.map(f => `
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1.5">${escapeHtml(f.label)}</label>
+          ${tableControllers[f.name].html}
+        </div>`).join("")}
     </form>`;
 
-  const modal = openModal({
+  openModal({
     title: formCfg.nama_form,
-    size: "md",
+    size: tableFields.length ? "xl" : "md",
     bodyHtml,
     footerHtml: `
       <button id="dyn-cancel" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
       <button id="dyn-submit" class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-maroon-700 hover:bg-maroon-800 transition">Ajukan Sekarang</button>`,
-    onMount: (m) => {
+    onMount: async (m) => {
       const form = m.querySelector("#dyn-form");
-      wireConditionalAndFormula(form, fields);
+      await wireEmployeeDropdowns(m, normalFields);
+      wireConditionalAndFormula(form, normalFields);
+      tableFields.forEach(f => tableControllers[f.name].mount(m));
       m.querySelector("#dyn-cancel").onclick = closeModal;
       m.querySelector("#dyn-submit").onclick = async () => {
         if (!form.reportValidity()) return;
-        const detail = collectValues(form, fields);
+        const detail = collectValues(form, normalFields);
+        tableFields.forEach(f => { detail[f.name] = tableControllers[f.name].getValue(); });
         await submitPengajuan(formCfg, detail, session);
       };
     }
+  });
+}
+
+async function fetchKaryawanByNik(nik) {
+  const snap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(nik)));
+  return snap.exists() ? snap.data() : null;
+}
+async function fetchKaryawanByNama(nama) {
+  const q = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", nama));
+  const snap = await getDocs(q);
+  return snap.empty ? null : snap.docs[0].data();
+}
+
+/** Field bertipe teks bernama mengandung "nama_karyawan"/"nama_driver"/dst otomatis dijadikan dropdown karyawan aktif */
+async function wireEmployeeDropdowns(modalEl, fields) {
+  const needsDropdown = fields.filter(f => !f.formula && /nama_karyawan|nama_driver|nama_helper|nama_pekerja/.test(f.name));
+  if (!needsDropdown.length) return;
+  const karyawan = await fsGetAll(COL.MASTER_KARYAWAN);
+  const active = karyawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF");
+  needsDropdown.forEach(f => {
+    const input = modalEl.querySelector(`[name="${f.name}"]`);
+    if (!input) return;
+    const select = document.createElement("select");
+    select.name = f.name;
+    select.required = !!f.required;
+    select.className = input.className;
+    select.innerHTML = `<option value="">Pilih ${escapeHtml(f.label || "Karyawan")}</option>${active.map(k => `<option value="${escapeHtml(k.nama_karyawan)}">${escapeHtml(k.nama_karyawan)} — ${escapeHtml(k.jabatan || "")}</option>`).join("")}`;
+    input.replaceWith(select);
   });
 }
 
@@ -188,10 +248,20 @@ async function submitPengajuan(formCfg, detail, session) {
     closeModal();
     const container = document.getElementById("view-container");
     if (container) await loadRecent(container, session);
+    notifyFirstApprover(payload, session).catch(e => console.warn("Gagal mengirim notifikasi email:", e));
   } catch (e) {
     console.error(e);
     toast("Gagal mengirim pengajuan: " + e.message, "error");
   }
+}
+
+/** Kirim email ke penyetuju tahap pertama sesuai alur persetujuan formulir */
+async function notifyFirstApprover(payload, session) {
+  const approvers = await resolveApprovers(payload.approval_flow[0], session.nama);
+  await Promise.all(approvers.map(u => sendApprovalNotification({
+    approverUsername: u.id || u.username, approverEmail: u.email, approverNama: u.nama,
+    formNama: payload.nama_form, pemohon: payload.nama_pemohon, tanggal: payload.tgl
+  })));
 }
 
 /* ---------------------------------------------------------------------
