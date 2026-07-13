@@ -1,5 +1,5 @@
 import { COL } from "../firebase-config.js";
-import { fsAdd, genId, toast, sendEmailNotif, getEmailsForRole } from "../utils.js";
+import { fsAdd, genId, toast, sendEmailNotif, getTargetsForRole, createLoginToken } from "../utils.js";
 
 export async function mount(container, { session }) {
   const tbody = container.querySelector("#kb-tbody");
@@ -144,29 +144,30 @@ export async function mount(container, { session }) {
       await fsAdd(COL.DATA_PENGAJUAN, payload, payload.id);
       toast("Klaim bensin berhasil diajukan", "success");
 
-      // 2. Kirim Notifikasi Email ke Approver Pertama (ATASAN)
+      // 2. Kirim Notifikasi Email ke Approver Pertama (ATASAN) + MAGIC LINK
       if (typeof sendEmailNotif === 'function') {
         try {
-          const targetEmails = await getEmailsForRole("ATASAN", payload.nama_pemohon);
+          const targets = await getTargetsForRole("ATASAN", payload.nama_pemohon);
           
-          if (targetEmails.length > 0) {
-              const htmlEmail = `
-                <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-                  <h2 style="color: #7a1f2b;">Pengajuan Baru: ${payload.nama_form}</h2>
-                  <p><strong>Diajukan Oleh:</strong> ${payload.nama_pemohon}</p>
-                  <p><strong>Total Klaim:</strong> Rp ${Math.round(totalKlaim).toLocaleString("id-ID")}</p>
-                  <p>Pengajuan ini membutuhkan persetujuan Anda sebagai <strong>ATASAN</strong>.</p>
-                  <a href="https://andela-hris.vercel.app/#approval" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Masuk ke Antrean Persetujuan</a>
-                </div>
-              `;
-              
-              // Jika atasan memiliki beberapa email atau sistem menemukan lebih dari satu email atasan, kirim ke semuanya
-              targetEmails.forEach(email => {
-                 sendEmailNotif(email, `Persetujuan Dibutuhkan: ${payload.nama_form}`, htmlEmail).catch(e => console.warn("Email warning:", e));
-              });
+          for (const target of targets) {
+             const token = await createLoginToken(target.username); // Buat Token Personal
+             const magicLink = `https://andela-hris.vercel.app/#approval?token=${token}`; // Sisipkan token di URL Vercel
+
+             const htmlEmail = `
+               <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+                 <h2 style="color: #7a1f2b;">Pengajuan Baru: ${payload.nama_form}</h2>
+                 <p><strong>Diajukan Oleh:</strong> ${payload.nama_pemohon}</p>
+                 <p><strong>Total Klaim:</strong> Rp ${Math.round(totalKlaim).toLocaleString("id-ID")}</p>
+                 <p>Pengajuan ini membutuhkan persetujuan Anda sebagai <strong>ATASAN</strong>.</p>
+                 <a href="${magicLink}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Akses Langsung & Setujui</a>
+                 <p style="margin-top:15px; font-size:11px; color:#94a3b8;">Tombol di atas adalah tautan masuk aman (hanya berlaku 1 kali).</p>
+               </div>
+             `;
+             
+             sendEmailNotif(target.email, `Persetujuan Dibutuhkan: ${payload.nama_form}`, htmlEmail).catch(e => console.warn("Email warning:", e));
           }
         } catch (emailErr) {
-          console.warn("Gagal meresolve email atasan:", emailErr);
+          console.warn("Gagal mengirim/meresolve email atasan:", emailErr);
         }
       }
       
