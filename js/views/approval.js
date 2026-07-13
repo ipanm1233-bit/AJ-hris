@@ -387,7 +387,7 @@ async function processAction(row, action, note, session) {
                 <h2 style="color: #15803d;">Pengajuan Selesai: ${row.nama_form}</h2>
                 <p>Pengajuan dari <strong>${row.nama_pemohon}</strong> telah <strong>disetujui sepenuhnya</strong> oleh seluruh pihak terkait.</p>
                 <p>Silakan proses lebih lanjut atau cek arsip pengajuan pada Portal HRIS.</p>
-                <a href="https://andela-hris.netlify.app/#dashboard" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Buka Sistem HRIS</a>
+                <a href="https://andela-hris.vercel.app/#dashboard" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Buka Sistem HRIS</a>
               </div>
             `;
             finalEmails.forEach(email => sendEmailNotif(email, `[APPROVED] ${row.nama_form}`, htmlFinal));
@@ -402,7 +402,7 @@ async function processAction(row, action, note, session) {
                 <h2 style="color: #7a1f2b;">Persetujuan Lanjutan: ${row.nama_form}</h2>
                 <p><strong>Diajukan Oleh:</strong> ${row.nama_pemohon}</p>
                 <p>Pengajuan ini telah disetujui oleh tahap sebelumnya dan kini membutuhkan persetujuan Anda sebagai <strong>${nextRole}</strong>.</p>
-                <a href="https://andela-hris.netlify.app/#approval" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Masuk ke Antrean Persetujuan</a>
+                <a href="https://andela-hris.vercel.app/#approval" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Masuk ke Antrean Persetujuan</a>
               </div>
             `;
             nextEmails.forEach(email => sendEmailNotif(email, `Menunggu Persetujuan Anda: ${row.nama_form}`, htmlNext));
