@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, limit } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, openModal, closeModal, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, createLoginToken } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, createLoginToken } from "../utils.js";
 import { renderCrudModule, badge, emptyState, skeletonRows } from "../components.js";
 
 export async function mount(container, { session }) {
@@ -8,6 +8,7 @@ export async function mount(container, { session }) {
     kpi360: container.querySelector("#pk-panel-kpi360"),
     hasil: container.querySelector("#pk-panel-hasil"),
     evaluasi: container.querySelector("#pk-panel-evaluasi"),
+    template: container.querySelector("#pk-panel-template"), // Tambahan Panel Template
   };
   const loaded = {};
 
@@ -40,6 +41,176 @@ export async function mount(container, { session }) {
     });
   }
 
+  // ==========================================
+  // MODUL MANAJEMEN TEMPLATE KPI (BARU)
+  // ==========================================
+  async function loadTemplateKpi() {
+    const wrap = panels.template;
+    wrap.innerHTML = `<div class="space-y-2">${skeletonRows(4)}</div>`;
+
+    const templates = await fsGetAll(COL.MASTER_SOAL_KPI);
+
+    let html = `
+        <div class="mb-4 flex justify-between items-center">
+          <div>
+             <h2 class="text-xl font-semibold text-slate-800">Master Template KPI</h2>
+             <p class="text-sm text-slate-500">Buat set indikator penilaian (Contoh: Template Sales, Admin) untuk digunakan berulang kali.</p>
+          </div>
+          <button id="btn-add-template" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition shadow-sm flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+            Buat Template Baru
+          </button>
+        </div>
+    `;
+
+    if (!templates.length) {
+        html += emptyState("Belum ada Template Soal KPI", "Klik tombol di atas untuk membuat template pertama.");
+    } else {
+        html += `
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 text-slate-500 text-xs uppercase">
+              <tr><th class="px-4 py-3 text-left">Nama Template / Jabatan</th><th class="px-4 py-3 text-center">Jml Indikator</th><th class="px-4 py-3 text-right">Aksi</th></tr>
+            </thead>
+            <tbody>
+              ${templates.map(t => `
+                <tr class="border-t border-slate-50 hover:bg-slate-50 transition">
+                  <td class="px-4 py-3 font-medium text-slate-700">${escapeHtml(t.nama_template)}</td>
+                  <td class="px-4 py-3 text-center">${(t.soal_json || []).length} Indikator</td>
+                  <td class="px-4 py-3 text-right">
+                    <button data-edit-tpl="${t.id}" class="text-maroon-700 hover:underline mr-3 font-medium text-xs">Edit</button>
+                    <button data-del-tpl="${t.id}" class="text-red-500 hover:underline font-medium text-xs">Hapus</button>
+                  </td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>`;
+    }
+    wrap.innerHTML = html;
+
+    const btnAdd = wrap.querySelector("#btn-add-template");
+    if(btnAdd) btnAdd.onclick = () => openTemplateModal();
+
+    wrap.querySelectorAll("[data-edit-tpl]").forEach(btn => {
+        btn.onclick = () => {
+            const t = templates.find(x => x.id === btn.dataset.editTpl);
+            openTemplateModal(t);
+        }
+    });
+    wrap.querySelectorAll("[data-del-tpl]").forEach(btn => {
+        btn.onclick = async () => {
+            if(confirm("Apakah Anda yakin ingin menghapus template ini?")) {
+                await fsDelete(COL.MASTER_SOAL_KPI, btn.dataset.delTpl);
+                toast("Template berhasil dihapus", "success");
+                loadTemplateKpi();
+            }
+        }
+    });
+  }
+
+  function openTemplateModal(existingData = null) {
+    openModal({
+        title: existingData ? "Edit Template KPI" : "Buat Template KPI Baru",
+        size: "lg",
+        bodyHtml: `
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1.5">Nama Template (Cth: Template KPI Sales Staff)</label>
+                    <input type="text" id="tpl-nama" value="${existingData ? escapeHtml(existingData.nama_template) : ''}" required class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none">
+                </div>
+                <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                    <div class="flex justify-between items-center mb-3 border-b border-slate-200 pb-2">
+                       <label class="text-xs font-bold text-slate-700 uppercase tracking-wide">Rancang Indikator & Bobot (Wajib Total 100%)</label>
+                       <span id="tpl-bobot-total" class="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded">Total Bobot: 0%</span>
+                    </div>
+                    <div id="tpl-soal-list" class="space-y-3 mb-3"></div>
+                    <button type="button" id="btn-tpl-add" class="text-xs text-maroon-700 font-medium hover:underline flex items-center gap-1">
+                       <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg> Tambah Indikator Baru
+                    </button>
+                </div>
+            </div>
+        `,
+        footerHtml: `
+            <button id="btn-tpl-batal" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
+            <button id="btn-tpl-simpan" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-md">Simpan Template</button>
+        `,
+        onMount: (m) => {
+            const soalList = m.querySelector("#tpl-soal-list");
+            const badgeBobot = m.querySelector("#tpl-bobot-total");
+
+            function calcTotalBobot() {
+                let total = 0;
+                m.querySelectorAll(".soal-bobot").forEach(input => total += parseFloat(input.value) || 0);
+                badgeBobot.textContent = `Total Bobot: ${total}%`;
+                if (total === 100) badgeBobot.className = "text-xs font-bold bg-green-100 text-green-700 px-2 py-1 rounded";
+                else badgeBobot.className = "text-xs font-bold bg-red-100 text-red-700 px-2 py-1 rounded";
+                return total;
+            }
+
+            function addSoalUI(data = { aspek: "", indikator: "", bobot: "" }) {
+                const div = document.createElement("div");
+                div.className = "flex gap-2 items-start bg-white p-2 rounded-lg border border-slate-200 shadow-sm";
+                div.innerHTML = `
+                  <div class="flex-1 space-y-2">
+                     <input type="text" placeholder="Aspek (Cth: Perilaku Kerja)" value="${escapeHtml(data.aspek)}" class="soal-aspek w-full px-2 py-1.5 text-xs border border-slate-200 rounded outline-none focus:border-maroon-400" required>
+                     <input type="text" placeholder="Indikator (Cth: Kedisiplinan waktu)" value="${escapeHtml(data.indikator)}" class="soal-indikator w-full px-2 py-1.5 text-xs border border-slate-200 rounded outline-none focus:border-maroon-400" required>
+                  </div>
+                  <div class="w-20">
+                     <input type="number" placeholder="Bobot %" value="${data.bobot}" class="soal-bobot w-full px-2 py-1.5 text-xs border border-slate-200 rounded outline-none focus:border-maroon-400 text-center" required min="1" max="100">
+                  </div>
+                  <button type="button" class="text-slate-300 hover:text-red-500 mt-1.5 p-1" title="Hapus">✖</button>
+                `;
+                div.querySelector(".soal-bobot").addEventListener("input", calcTotalBobot);
+                div.querySelector("button").addEventListener("click", () => { div.remove(); calcTotalBobot(); });
+                soalList.appendChild(div);
+                calcTotalBobot();
+            }
+
+            if (existingData && existingData.soal_json) {
+                existingData.soal_json.forEach(s => addSoalUI(s));
+            } else {
+                addSoalUI(); // 1 Baris Kosong Default
+            }
+
+            m.querySelector("#btn-tpl-add").onclick = () => addSoalUI();
+            m.querySelector("#btn-tpl-batal").onclick = closeModal;
+            
+            m.querySelector("#btn-tpl-simpan").onclick = async () => {
+                const nama = m.querySelector("#tpl-nama").value.trim();
+                if (!nama) return toast("Nama Template wajib diisi", "warning");
+
+                const totalSkor = calcTotalBobot();
+                if (totalSkor !== 100) return toast("Total bobot harus tepat 100% untuk menghindari error skoring!", "warning");
+
+                const soalArray = [];
+                soalList.querySelectorAll(".flex.gap-2").forEach(row => {
+                   soalArray.push({
+                      aspek: row.querySelector(".soal-aspek").value.trim(),
+                      indikator: row.querySelector(".soal-indikator").value.trim(),
+                      bobot: parseFloat(row.querySelector(".soal-bobot").value) || 0,
+                      nilai_diberikan: 0
+                   });
+                });
+
+                try {
+                    if (existingData) {
+                        await fsUpdate(COL.MASTER_SOAL_KPI, existingData.id, { nama_template: nama, soal_json: soalArray });
+                    } else {
+                        await fsAdd(COL.MASTER_SOAL_KPI, { nama_template: nama, soal_json: soalArray }, genId("TPL-KPI"));
+                    }
+                    toast("Template berhasil disimpan", "success");
+                    closeModal();
+                    loadTemplateKpi();
+                } catch(e) { toast("Gagal menyimpan: " + e.message, "error"); }
+            }
+        }
+    });
+  }
+
+  // ==========================================
+  // DISTRIBUSI KPI (MODIFIKASI: BISA PILIH TEMPLATE)
+  // ==========================================
   async function loadKpi360() {
     const wrap = panels.kpi360;
     wrap.innerHTML = `<div class="space-y-2">${skeletonRows(4)}</div>`;
@@ -95,8 +266,11 @@ export async function mount(container, { session }) {
     const active = allKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF");
     const optKaryawan = active.map(k => `<option value="${escapeHtml(k.nama_karyawan)}">${escapeHtml(k.nama_karyawan)} — ${escapeHtml(k.jabatan || "")}</option>`).join("");
 
+    const templates = await fsGetAll(COL.MASTER_SOAL_KPI);
+    const optTemplates = templates.map(t => `<option value="${t.id}">${escapeHtml(t.nama_template)}</option>`).join("");
+
     openModal({
-      title: "Distribusi Penilaian KPI & Indikator",
+      title: "Distribusi Penilaian KPI 360",
       size: "lg",
       bodyHtml: `
         <form id="form-distribusi" class="space-y-4">
@@ -121,14 +295,22 @@ export async function mount(container, { session }) {
           </div>
           
           <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 mt-2">
-            <div class="flex justify-between items-center mb-3 border-b border-slate-200 pb-2">
-               <label class="text-xs font-bold text-slate-700 uppercase tracking-wide">Rancang Indikator & Bobot</label>
-               <span id="indikator-bobot-total" class="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded">Total Bobot: 0%</span>
+            <div class="flex justify-between items-center mb-3 border-b border-slate-200 pb-3">
+               <label class="text-xs font-bold text-slate-700 uppercase tracking-wide mt-2">Rancang Indikator & Bobot</label>
+               
+               <select id="kpi-template-picker" class="w-48 px-2 py-1.5 text-xs rounded border border-maroon-300 bg-maroon-50 text-maroon-700 focus:border-maroon-500 outline-none cursor-pointer font-medium">
+                  <option value="">-- Muat Dari Template --</option>
+                  ${optTemplates}
+               </select>
             </div>
+            
             <div id="soal-list" class="space-y-3 mb-3"></div>
             <button type="button" id="btn-add-soal" class="text-xs text-maroon-700 font-medium hover:underline flex items-center gap-1">
-               <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg> Tambah Indikator Baru
+               <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg> Tambah Indikator Manual
             </button>
+            <div class="mt-3 text-right">
+              <span id="indikator-bobot-total" class="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded">Total Bobot: 0%</span>
+            </div>
           </div>
         </form>
       `,
@@ -149,28 +331,38 @@ export async function mount(container, { session }) {
             return total;
          }
 
-         function addSoal() {
+         function addSoalUI(data = { aspek: "", indikator: "", bobot: "" }) {
             const div = document.createElement("div");
             div.className = "flex gap-2 items-start bg-white p-2 rounded-lg border border-slate-200 shadow-sm";
             div.innerHTML = `
               <div class="flex-1 space-y-2">
-                 <input type="text" placeholder="Aspek (Cth: Perilaku Kerja)" class="soal-aspek w-full px-2 py-1.5 text-xs border border-slate-200 rounded outline-none focus:border-maroon-400" required>
-                 <input type="text" placeholder="Indikator (Cth: Kedisiplinan waktu)" class="soal-indikator w-full px-2 py-1.5 text-xs border border-slate-200 rounded outline-none focus:border-maroon-400" required>
+                 <input type="text" placeholder="Aspek" value="${escapeHtml(data.aspek)}" class="soal-aspek w-full px-2 py-1.5 text-xs border border-slate-200 rounded outline-none focus:border-maroon-400" required>
+                 <input type="text" placeholder="Indikator Kinerja" value="${escapeHtml(data.indikator)}" class="soal-indikator w-full px-2 py-1.5 text-xs border border-slate-200 rounded outline-none focus:border-maroon-400" required>
               </div>
               <div class="w-20">
-                 <input type="number" placeholder="Bobot %" class="soal-bobot w-full px-2 py-1.5 text-xs border border-slate-200 rounded outline-none focus:border-maroon-400 text-center" required min="1" max="100">
+                 <input type="number" placeholder="Bobot %" value="${data.bobot}" class="soal-bobot w-full px-2 py-1.5 text-xs border border-slate-200 rounded outline-none focus:border-maroon-400 text-center" required min="1" max="100">
               </div>
               <button type="button" class="text-slate-300 hover:text-red-500 mt-1.5 p-1" title="Hapus">✖</button>
             `;
-            
             div.querySelector(".soal-bobot").addEventListener("input", calcTotalBobot);
             div.querySelector("button").addEventListener("click", () => { div.remove(); calcTotalBobot(); });
             soalList.appendChild(div);
             calcTotalBobot();
          }
          
-         addSoal();
-         m.querySelector("#btn-add-soal").onclick = addSoal;
+         addSoalUI(); // Default 1 row
+         m.querySelector("#btn-add-soal").onclick = () => addSoalUI();
+
+         // OTOMATIS MENGISI SOAL KETIKA TEMPLATE DIPILIH
+         m.querySelector("#kpi-template-picker").addEventListener("change", (e) => {
+            const tplId = e.target.value;
+            const tplData = templates.find(t => t.id === tplId);
+            if (tplData && tplData.soal_json) {
+                soalList.innerHTML = ""; // Bersihkan list yang ada
+                tplData.soal_json.forEach(s => addSoalUI(s));
+            }
+         });
+
          m.querySelector("#btn-batal-kpi").onclick = closeModal;
          
          m.querySelector("#btn-save-kpi").onclick = async () => {
@@ -254,7 +446,9 @@ export async function mount(container, { session }) {
     });
   }
 
+  // ==========================================
   // CETAK HASIL PENILAIAN KE PDF
+  // ==========================================
   async function loadHasil() {
     const wrap = panels.hasil;
     wrap.innerHTML = `<div class="space-y-2">${skeletonRows(4)}</div>`;
@@ -455,6 +649,7 @@ export async function mount(container, { session }) {
         if (tab === "kpi360") await loadKpi360();
         if (tab === "hasil") await loadHasil();
         if (tab === "evaluasi") await loadEvaluasi();
+        if (tab === "template") await loadTemplateKpi(); // Load tab baru
       }
     });
   });
