@@ -5,9 +5,9 @@ import { renderCrudModule, badge, skeletonRows } from "../components.js";
 export async function mount(container, { session }) {
   const tbody = container.querySelector("#cuti-jatah-tbody");
   tbody.innerHTML = `<tr><td colspan="6" class="p-4"><div class="space-y-2">${skeletonRows(3)}</div></td></tr>`;
-
+  
   const [karyawan, cutiLog] = await Promise.all([fsGetAll(COL.MASTER_KARYAWAN), fsGetAll(COL.MASTER_CUTI)]);
-
+  
   const terpakaiMap = {};
   cutiLog.forEach(r => {
     const key = r.nama_karyawan;
@@ -38,32 +38,35 @@ export async function mount(container, { session }) {
           </td>
         </tr>`;
     }).join("");
-
+    
     tbody.querySelectorAll("[data-edit-jatah]").forEach(btn => {
       btn.addEventListener("click", () => openJatahModal(karyawan.find(k => k.id === btn.dataset.editJatah), tbody, renderTable, karyawan));
     });
   }
+  
   renderTable(karyawan);
-
+  
   container.querySelector("#cuti-search").addEventListener("input", (e) => {
     const term = e.target.value.trim().toLowerCase();
     renderTable(karyawan.filter(k => (k.nama_karyawan || "").toLowerCase().includes(term)));
   });
 
-  // Tabs
   const panelJatah = container.querySelector("#cuti-panel-jatah");
   const panelLog = container.querySelector("#cuti-panel-log");
+  
   container.querySelectorAll(".cuti-tab").forEach(btn => {
     btn.addEventListener("click", async () => {
       const active = btn.dataset.ctab === "jatah";
       panelJatah.classList.toggle("hidden", !active);
       panelLog.classList.toggle("hidden", active);
+      
       container.querySelectorAll(".cuti-tab").forEach(b => {
         b.classList.toggle("border-maroon-700", b === btn);
         b.classList.toggle("text-maroon-700", b === btn);
         b.classList.toggle("border-transparent", b !== btn);
         b.classList.toggle("text-slate-500", b !== btn);
       });
+      
       if (!active && !panelLog.dataset.loaded) {
         panelLog.dataset.loaded = "1";
         await renderCrudModule(panelLog, {
@@ -95,7 +98,6 @@ export async function mount(container, { session }) {
       }
     });
   });
-
   return { unmount() {} };
 }
 
@@ -131,7 +133,8 @@ function openJatahModal(karyawan, tbody, renderTable, allKaryawan) {
           jatah_akumulasi: toNumber(fd.get("jatah_akumulasi")),
         };
         try {
-          await fsUpdate(COL.MASTER_KARYAWAN, karyawan.id, data);
+          // PERBAIKAN: Gunakan ID dokumen asli (bukan sekedar NIK yang mungkin undefined)
+          await fsUpdate(COL.MASTER_KARYAWAN, String(karyawan.id), data);
           Object.assign(karyawan, data);
           toast("Jatah cuti berhasil diperbarui", "success");
           closeModal();
