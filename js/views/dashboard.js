@@ -23,7 +23,6 @@ export async function mount(container, { session }) {
   return { unmount() {} };
 }
 
-/* ------------------------ a. PROFILE CARD ------------------------ */
 async function loadProfileCard(container, session) {
   let karyawan = null;
   if (session.nik && session.nik !== "null" && session.nik !== "undefined") {
@@ -45,7 +44,6 @@ async function loadProfileCard(container, session) {
   `;
 }
 
-/* ------------------------ b. LEAVE BALANCE ------------------------ */
 async function loadLeaveBalances(container, session) {
   const wrap = container.querySelector("#dash-cuti-cards");
   wrap.innerHTML = `<div class="col-span-3">${skeletonRows(1)}</div>`;
@@ -96,20 +94,16 @@ async function loadLeaveBalances(container, session) {
   }).join("");
 }
 
-/* ------------------------ c. KPI 360 TASKS (DENGAN POPUP AUTO) ------------------------ */
 async function loadKpiTasks(container, session) {
   const wrap = container.querySelector("#dash-kpi-tasks");
   try {
     const q = query(collection(db, COL.TUGAS_KPI_360), where("nama_penilai", "==", session.nama));
     const snap = await getDocs(q);
     
-    // Saring hanya tugas yang belum selesai
     const pending = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => (r.status || "").toUpperCase() !== "DONE");
     
-    // POPUP OTOMATIS: Muncul ketika login/buka sistem
     if (pending.length > 0 && !window.hasShownKpiPopup) {
-      window.hasShownKpiPopup = true; // Mencegah popup muncul berkali-kali di sesi yang sama
-      
+      window.hasShownKpiPopup = true;
       let listHtml = pending.map(p => `
         <li class="flex justify-between items-center py-2.5 border-b border-slate-100 last:border-0">
           <span class="font-medium text-slate-700">${escapeHtml(p.nama_dinilai)}</span>
@@ -145,7 +139,6 @@ async function loadKpiTasks(container, session) {
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-maroon-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
       </div>`).join("");
 
-    // Klik untuk buka formulir pengisian nilai
     wrap.querySelectorAll("[data-kpi-id]").forEach(el => {
        el.onclick = () => {
           const task = pending.find(x => x.id === el.dataset.kpiId);
@@ -156,7 +149,6 @@ async function loadKpiTasks(container, session) {
   } catch (e) { wrap.innerHTML = emptyState("Belum ada data penilaian"); }
 }
 
-// FORMULIR PENGISIAN PENILAIAN OLEH ASSESSOR
 function openPenilaianForm(task, container, session) {
   const soalHtml = (task.soal_json || []).map((s, i) => `
      <div class="border-b border-slate-100 pb-4 mb-4">
@@ -172,6 +164,12 @@ function openPenilaianForm(task, container, session) {
      </div>
   `).join("");
 
+  const catatanHrdHtml = task.catatan_hrd ? `
+    <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+       <span class="font-bold block mb-1">Catatan HRD untuk Karyawan ini:</span>
+       ${escapeHtml(task.catatan_hrd)}
+    </div>` : '';
+
   openModal({
      title: `Evaluasi: ${escapeHtml(task.nama_dinilai)}`,
      size: "md",
@@ -182,6 +180,7 @@ function openPenilaianForm(task, container, session) {
               <p class="text-xs text-amber-800 leading-relaxed">Penilaian ini dihitung otomatis berdasarkan bobot tiap indikator. Batas waktu pengumpulan form ini: <strong>${task.deadline ? fmtDateShort(task.deadline) : '-'}</strong>.</p>
            </div>
            
+           ${catatanHrdHtml}
            ${soalHtml}
 
            <div class="mt-5">
@@ -201,7 +200,6 @@ function openPenilaianForm(task, container, session) {
         </div>
      `,
      onMount: (m) => {
-        // Kalkulator Skor Real-Time untuk Penilai
         const liveScore = m.querySelector("#kpi-live-score");
         m.querySelector("#form-isi-kpi").addEventListener("input", () => {
            let calcTotal = 0;
@@ -238,7 +236,6 @@ function openPenilaianForm(task, container, session) {
            btn.disabled = true; btn.textContent = "Merekap Nilai...";
 
            try {
-              // 1. Update Tugas Individu Karyawan menjadi Selesai (Termasuk menyimpan catatan)
               await fsUpdate(COL.TUGAS_KPI_360, task.id, {
                  status: "DONE",
                  skor_akhir: finalScore,
@@ -247,7 +244,6 @@ function openPenilaianForm(task, container, session) {
                  tanggal_diselesaikan: new Date().toISOString()
               });
 
-              // 2. Tembuskan Arsip Permanen ke Rekap Master Hasil
               await fsAdd(COL.LOG_PENILAIAN_KPI, {
                  tanggal: new Date().toISOString(),
                  nama_dinilai: task.nama_dinilai,
@@ -256,12 +252,12 @@ function openPenilaianForm(task, container, session) {
                  keputusan: keputusan,
                  periode: task.periode,
                  detail_json: answeredSoal,
-                 catatan_penilai: catatanPenilai // Simpan juga ke Log untuk di-print PDF
+                 catatan_penilai: catatanPenilai 
               }, genId("KPI-LOG"));
 
               toast("Evaluasi berhasil diselesaikan!", "success");
               closeModal();
-              loadKpiTasks(container, session); // Segarkan list di dashboard
+              loadKpiTasks(container, session);
            } catch(e) {
               toast("Gagal menyimpan evaluasi: " + e.message, "error");
               btn.disabled = false; btn.textContent = "Kirim Penilaian";
@@ -270,7 +266,7 @@ function openPenilaianForm(task, container, session) {
      }
   });
 }
-/* ------------------------ d. CUTI HARI INI ------------------------ */
+
 async function loadCutiHariIni(container) {
   const wrap = container.querySelector("#dash-cuti-hari-ini");
   const now = new Date();
@@ -296,7 +292,6 @@ async function loadCutiHariIni(container) {
   } catch (e) { wrap.innerHTML = emptyState("Gagal memuat data cuti"); }
 }
 
-/* ------------------------ e. ANNOUNCEMENTS ------------------------ */
 async function loadAnnouncements(container) {
   const wrap = container.querySelector("#dash-announcements");
   try {
@@ -328,7 +323,6 @@ async function loadAnnouncements(container) {
   } catch (e) { wrap.innerHTML = emptyState("Belum ada pengumuman"); }
 }
 
-/* ------------------------ f. CONTRACT EXPIRY ------------------------ */
 async function loadContractExpiry(container) {
   const wrapOuter = container.querySelector("#dash-contract-widget-wrap");
   wrapOuter.classList.remove("hidden");
@@ -338,7 +332,7 @@ async function loadContractExpiry(container) {
     const snap = await getDocs(collection(db, COL.MASTER_KARYAWAN));
     const now = new Date();
     const soon = snap.docs
-      .map(d => d.data())
+      .map(d => ({ id: d.id, ...d.data() })) // Pastikan id dokumen ikut diambil
       .filter(k => k.kontrak_habis)
       .map(k => {
         const t = k.kontrak_habis?.toDate ? k.kontrak_habis.toDate() : new Date(k.kontrak_habis);
@@ -359,21 +353,26 @@ async function loadContractExpiry(container) {
           ${badge(`${k._days} hari lagi`, k._days <= 14 ? "red" : "amber")}
         </div>
         <div class="flex items-center gap-2 pt-2 border-t border-amber-200/60">
-           <button data-id="${k.nik_karyawan}" data-action="atasan" class="flex-1 bg-maroon-700 hover:bg-maroon-800 text-white text-[11px] py-1.5 rounded transition">Notif Penilaian (Atasan)</button>
-           <button data-id="${k.nik_karyawan}" data-action="karyawan" class="flex-1 border border-slate-300 hover:bg-slate-100 text-slate-700 text-[11px] py-1.5 rounded transition">Panggil Konseling</button>
+           <!-- PERBAIKAN: Gunakan k.id (Firestore Doc ID) yang 100% selalu ada, bukan nik_karyawan -->
+           <button data-id="${k.id}" data-action="atasan" class="flex-1 bg-maroon-700 hover:bg-maroon-800 text-white text-[11px] py-1.5 rounded transition">Notif Penilaian (Atasan)</button>
+           <button data-id="${k.id}" data-action="karyawan" class="flex-1 border border-slate-300 hover:bg-slate-100 text-slate-700 text-[11px] py-1.5 rounded transition">Panggil Konseling</button>
         </div>
       </div>`).join("");
 
     wrap.querySelectorAll('button[data-action="atasan"]').forEach(btn => {
       btn.addEventListener('click', async (e) => {
          const btnEl = e.currentTarget;
-         const k = soon.find(x => x.nik_karyawan === btnEl.dataset.id);
+         const k = soon.find(x => x.id === btnEl.dataset.id);
+         
+         if (!k) { toast("Data karyawan tidak ditemukan.", "error"); return; }
+         
          btnEl.disabled = true; btnEl.textContent = "Mengirim...";
          try {
             const targets = await getTargetsForRole("ATASAN", k.nama_karyawan);
-            if(targets.length === 0) throw new Error("Email atasan tidak ditemukan");
+            if(targets.length === 0) throw new Error("Email atasan tidak ditemukan di database.");
+            
             for(const t of targets) {
-               const html = `<div style="font-family: Arial; padding: 20px;"><h2>Reminder Evaluasi Kontrak</h2><p>Mengingatkan bahwa kontrak kerja <b>${k.nama_karyawan}</b> akan berakhir dalam ${k._days} hari. Mohon segera berikan penilaian.</p></div>`;
+               const html = `<div style="font-family: Arial; padding: 20px;"><h2>Reminder Evaluasi Kontrak</h2><p>Mengingatkan bahwa kontrak kerja <b>${escapeHtml(k.nama_karyawan)}</b> akan berakhir dalam ${k._days} hari. Mohon segera jadwalkan penilaian untuk proses perpanjangan/pemutusan kontrak.</p><a href="https://andela-hris.vercel.app/#dashboard" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Masuk ke Portal HRIS</a></div>`;
                await sendEmailNotif(t.email, "Reminder Evaluasi Kontrak: " + k.nama_karyawan, html);
             }
             toast("Notifikasi ke atasan terkirim", "success");
@@ -385,11 +384,14 @@ async function loadContractExpiry(container) {
     wrap.querySelectorAll('button[data-action="karyawan"]').forEach(btn => {
       btn.addEventListener('click', async (e) => {
          const btnEl = e.currentTarget;
-         const k = soon.find(x => x.nik_karyawan === btnEl.dataset.id);
+         const k = soon.find(x => x.id === btnEl.dataset.id);
+         
+         if (!k) return;
+         
          btnEl.disabled = true; btnEl.textContent = "Mengirim...";
          try {
-            if(!k.email) throw new Error("Email karyawan tidak terdata");
-            const html = `<div style="font-family: Arial; padding: 20px;"><h2>Undangan Konseling</h2><p>Halo <b>${k.nama_karyawan}</b>,</p><p>Mengingatkan bahwa kontrak Anda akan segera berakhir. Mohon temui HRD untuk proses konseling.</p></div>`;
+            if(!k.email) throw new Error("Email karyawan bersangkutan belum terdata di sistem.");
+            const html = `<div style="font-family: Arial; padding: 20px;"><h2>Undangan Konseling</h2><p>Halo <b>${escapeHtml(k.nama_karyawan)}</b>,</p><p>Mengingatkan bahwa kontrak Anda akan segera berakhir. Mohon temui Tim HRD untuk proses konseling lebih lanjut.</p></div>`;
             await sendEmailNotif(k.email, "Undangan Konseling HRD", html);
             toast("Undangan konseling terkirim", "success");
          } catch (err) { toast(err.message, "error"); }
