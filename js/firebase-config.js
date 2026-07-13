@@ -40,12 +40,12 @@ import {
 // GANTI DENGAN KONFIGURASI PROYEK FIREBASE ANDA
 // -----------------------------------------------------------------
 const firebaseConfig = {
-  apiKey: "GANTI_DENGAN_API_KEY_ANDA",
-  authDomain: "GANTI-PROJECT-ID.firebaseapp.com",
-  projectId: "GANTI-PROJECT-ID",
-  storageBucket: "GANTI-PROJECT-ID.appspot.com",
-  messagingSenderId: "GANTI_SENDER_ID",
-  appId: "GANTI_APP_ID"
+  apiKey: "AIzaSyBAAUHaqYrzTp6wi1PDYkrKY0IWI2XQoVw",
+  authDomain: "andela-hris-bc9ed.firebaseapp.com",
+  projectId: "andela-hris-bc9ed",
+  storageBucket: "andela-hris-bc9ed.firebasestorage.app",
+  messagingSenderId: "718041616100",
+  appId: "1:718041616100:web:cde303edb932b25ae826f1"
 };
 
 export const app = initializeApp(firebaseConfig);
