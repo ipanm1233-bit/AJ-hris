@@ -1,0 +1,58 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =====================================================================
+    // CATATAN PENTING
+    // Sistem login pada Portal HRIS ini TIDAK memakai Firebase Authentication
+    // bawaan (memakai koleksi `users` sendiri + hash SHA-256 di sisi klien),
+    // sehingga request.auth TIDAK tersedia secara default di rules ini.
+    //
+    // Ada 2 opsi produksi yang direkomendasikan:
+    //  A) MODE SEDERHANA (dipakai contoh di bawah): buka baca/tulis untuk
+    //     klien yang sudah lolos tahap awal, lalu batasi lewat App Check +
+    //     jaringan (Firebase App Check, domain allowlist) — cocok untuk
+    //     portal internal di jaringan kantor/VPN.
+    //  B) MODE PRODUKSI PENUH (disarankan jangka panjang): migrasikan login
+    //     ke Firebase Authentication (Custom Token / Email-Password), lalu
+    //     ganti seluruh kondisi di bawah dengan pengecekan request.auth.uid
+    //     dan custom claims (role, username) yang divalidasi Cloud Functions.
+    // =====================================================================
+
+    // Selama proses SETUP AWAL / MIGRASI: izinkan baca-tulis penuh sementara.
+    // GANTI/HAPUS blok ini setelah migrasi selesai dan sebelum go-live!
+    match /{document=**} {
+      allow read, write: if true;
+    }
+
+    // -----------------------------------------------------------------
+    // CONTOH RULES PRODUKSI (aktifkan & hapus blok "allow all" di atas
+    // setelah Anda memigrasikan sistem login ke Firebase Authentication
+    // dengan custom claims { role, username }):
+    // -----------------------------------------------------------------
+    // function isSignedIn() { return request.auth != null; }
+    // function role() { return request.auth.token.role; }
+    // function isHrd() { return isSignedIn() && role() == 'HRD'; }
+    // function isManagement() { return isSignedIn() && role() in ['HRD','GM','FINANCE','SPV','MANAGER']; }
+    //
+    // match /master_karyawan/{id} {
+    //   allow read: if isSignedIn();
+    //   allow write: if isHrd();
+    // }
+    // match /data_pengajuan/{id} {
+    //   allow read: if isSignedIn();
+    //   allow create: if isSignedIn();
+    //   allow update: if isManagement() || resource.data.nama_pemohon == request.auth.token.nama;
+    //   allow delete: if isHrd();
+    // }
+    // match /users/{id} {
+    //   allow read: if isHrd();
+    //   allow write: if isHrd();
+    // }
+    // match /user_permissions/{id} {
+    //   allow read: if isSignedIn();
+    //   allow write: if isHrd() || isManagement();
+    // }
+    // ... dst. sesuaikan per-koleksi mengikuti daftar di js/firebase-config.js (objek COL)
+  }
+}

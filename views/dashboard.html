@@ -1,0 +1,67 @@
+<div class="space-y-6">
+
+  <!-- GREETING -->
+  <div>
+    <h1 id="dash-greeting" class="text-2xl font-bold text-slate-800">Selamat Datang</h1>
+    <p class="text-sm text-slate-500 mt-1">Berikut ringkasan aktivitas dan status kepegawaian Anda hari ini.</p>
+  </div>
+
+  <!-- PROFILE CARD -->
+  <div id="dash-profile-card" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex items-center gap-4 cursor-pointer card-hover">
+    <div id="dash-profile-avatar"></div>
+    <div class="flex-1 min-w-0">
+      <p id="dash-profile-nama" class="font-semibold text-slate-800 truncate">-</p>
+      <p id="dash-profile-jabatan" class="text-sm text-slate-500 truncate">-</p>
+      <div class="flex flex-wrap gap-1.5 mt-2" id="dash-profile-badges"></div>
+    </div>
+    <div class="text-slate-300">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+    </div>
+  </div>
+
+  <!-- 3 LEAVE BALANCE CARDS -->
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4" id="dash-cuti-cards">
+    <!-- filled by JS -->
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2 space-y-6">
+
+      <!-- KPI 360 TASKS -->
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-semibold text-slate-800">Daftar Tugas Penilaian 360° Saya</h3>
+          <a href="#penilaian-kontrak" class="text-xs text-maroon-700 font-medium hover:underline">Lihat semua</a>
+        </div>
+        <div id="dash-kpi-tasks" class="space-y-2"></div>
+      </div>
+
+      <!-- CUTI HARI INI -->
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+        <h3 class="font-semibold text-slate-800 mb-4">Karyawan Cuti / Izin Hari Ini</h3>
+        <div id="dash-cuti-hari-ini" class="space-y-2"></div>
+      </div>
+
+    </div>
+
+    <div class="space-y-6">
+      <!-- ANNOUNCEMENTS -->
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+        <h3 class="font-semibold text-slate-800 mb-4">Pengumuman & Aktivitas Terakhir</h3>
+        <div id="dash-announcements" class="space-y-3"></div>
+      </div>
+
+      <!-- CONTRACT EXPIRY (HRD/Manajemen only) -->
+      <div id="dash-contract-widget-wrap" class="hidden bg-white rounded-2xl border border-amber-100 shadow-sm p-5">
+        <div class="flex items-center gap-2 mb-4">
+          <div class="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
+          </div>
+          <h3 class="font-semibold text-slate-800">Karyawan Segera Habis Kontrak</h3>
+        </div>
+        <div id="dash-contract-list" class="space-y-2"></div>
+      </div>
+    </div>
+  </div>
+</div>

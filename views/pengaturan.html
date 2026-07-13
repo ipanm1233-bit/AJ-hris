@@ -1,0 +1,34 @@
+<div class="space-y-6">
+  <div>
+    <h1 class="text-2xl font-bold text-slate-800">Pengaturan Sistem</h1>
+    <p class="text-sm text-slate-500 mt-1">Panel kontrol konfigurasi aplikasi & hak akses pengguna.</p>
+  </div>
+
+  <div class="flex items-center gap-2 border-b border-slate-100 overflow-x-auto">
+    <button data-stab="users" id="tab-btn-users" class="st-tab px-4 py-2.5 text-sm font-medium border-b-2 border-maroon-700 text-maroon-700 whitespace-nowrap">Manajemen Pengguna</button>
+    <button data-stab="menu" class="st-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">Akses Menu (RBAC)</button>
+    <button data-stab="forms" class="st-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">Akses Formulir Pengajuan</button>
+  </div>
+
+  <div id="st-panel-users"></div>
+
+  <div id="st-panel-menu" class="hidden">
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+      <label class="block text-xs font-medium text-slate-500 mb-1.5">Pilih Karyawan / Pengguna</label>
+      <select id="rbac-user-select" class="w-full sm:w-80 px-3 py-2.5 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none mb-5"></select>
+      <p class="text-xs text-slate-400 mb-3">Kosongkan seluruh centang untuk mengikuti hak akses bawaan sesuai Role. Centang manual untuk menimpa (override) menu spesifik bagi pengguna ini.</p>
+      <div id="rbac-menu-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"></div>
+      <button id="rbac-menu-save" class="mt-5 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-maroon-700 hover:bg-maroon-800 transition">Simpan Hak Akses Menu</button>
+    </div>
+  </div>
+
+  <div id="st-panel-forms" class="hidden">
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+      <label class="block text-xs font-medium text-slate-500 mb-1.5">Pilih Karyawan / Pengguna</label>
+      <select id="rbac-form-user-select" class="w-full sm:w-80 px-3 py-2.5 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none mb-5"></select>
+      <p class="text-xs text-slate-400 mb-3">Kosongkan seluruh centang agar akses formulir mengikuti aturan bawaan (Allowed_Rules / Allowed_Users) pada Form Builder. Centang manual untuk override per-personil.</p>
+      <div id="rbac-form-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+      <button id="rbac-form-save" class="mt-5 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-maroon-700 hover:bg-maroon-800 transition">Simpan Hak Akses Formulir</button>
+    </div>
+  </div>
+</div>
