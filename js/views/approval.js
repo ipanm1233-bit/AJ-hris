@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs } from "../firebase-config.js";
-import { fsGetAll, fsUpdate, openModal, closeModal, toast, fmtDateTime, escapeHtml, sendEmailNotif, getTargetsForRole, createLoginToken } from "../utils.js";
+import { fsGetAll, fsUpdate, fsAdd, genId, openModal, closeModal, toast, fmtDateTime, escapeHtml, sendEmailNotif, getTargetsForRole, createLoginToken } from "../utils.js";
 import { icon, badge, emptyState, skeletonRows } from "../components.js";
 
 let allPengajuan = [], karyawanByNama = {};
@@ -333,6 +333,25 @@ function actionModal(row, action, session, container, tab) {
   });
 }
 
+// ==========================================
+// KAMUS ATURAN PEMOTONGAN CUTI
+// ==========================================
+const CUTI_RULES = {
+  "C - Cuti Tahunan": { jenis: "Tahunan", count: 1 },
+  "C1/2 - Cuti Setengah Hari": { jenis: "Tahunan", count: 0.5 },
+  "C+ - Cuti Khusus": { jenis: "Khusus", count: 1 },
+  "S - Sakit dgn Surat Dokter": { jenis: "Khusus", count: 0 }, 
+  "S- - Sakit tanpa Surat Dokter": { jenis: "Tahunan", count: 1 },
+  "CB - Cuti Bersama": { jenis: "Tahunan", count: 1 },
+  "C- - Potong Gaji": { jenis: "Potong Gaji", count: 1 },
+  "CS - Cuti Sisa": { jenis: "Tahunan", count: 1 },
+  "C+1/2 - Cuti Khusus Setengah Hari": { jenis: "Khusus", count: 0.5 },
+  "D - Dinas Luar Kota": { jenis: "Dinas", count: 0 },
+  "C-BESAR - Cuti Besar": { jenis: "Cuti Besar", count: 0 }
+};
+
+const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+
 async function processAction(row, action, note, session) {
   const idx = currentStepIndex(row);
   const steps = [...(row.approval_steps || [])];
@@ -355,17 +374,56 @@ async function processAction(row, action, note, session) {
     toast(action === "APPROVE" ? "Pengajuan disetujui" : "Pengajuan ditolak", action === "APPROVE" ? "success" : "warning");
 
     // ====================================================
-    // LOGIKA EMAIL BERANTAI & FINAL BROADCAST
+    // LOGIKA PEMOTONGAN JATAH CUTI OTOMATIS
+    // ====================================================
+    const isCuti = (row.form_id === "F-ISO-CUTI" || (row.nama_form || "").toLowerCase().includes("cuti"));
+    
+    if (statusFinal === "APPROVED FINAL" && isCuti) {
+        // Deteksi jenis cuti dari isian form
+        let jenisVal = row.detail.jenis_cuti || row.detail.jenis || Object.values(row.detail).find(v => typeof v === 'string' && v.includes("Cuti"));
+        
+        let rule = CUTI_RULES[jenisVal];
+        if (rule) {
+            let multiplier = 1;
+            // Deteksi Jumlah Hari
+            if (row.detail.jumlah_hari) {
+                 multiplier = parseFloat(row.detail.jumlah_hari);
+            } else if (row.detail.tanggal_mulai && row.detail.tanggal_akhir) {
+                 const t1 = new Date(row.detail.tanggal_mulai);
+                 const t2 = new Date(row.detail.tanggal_akhir);
+                 const diff = Math.round((t2 - t1) / 86400000) + 1;
+                 if (diff > 0) multiplier = diff;
+            }
+
+            const totalDeduction = rule.count * multiplier;
+
+            // Catat log agar saldo di Dashboard otomatis berkurang
+            await fsAdd(COL.MASTER_CUTI, {
+                tanggal: row.detail.tanggal_mulai || row.tgl,
+                nama_karyawan: row.nama_pemohon,
+                cabang: row.detail.cabang || "-", 
+                type_cuti: jenisVal,
+                potong_jatah: rule.jenis, 
+                keterangan_cuti: row.detail.alasan || row.detail.keterangan || "Disetujui by System",
+                count: totalDeduction,
+                tahun: new Date(row.tgl).getFullYear(),
+                bulan: BULAN_ID[new Date(row.tgl).getMonth()]
+            }, genId("CUTI"));
+        }
+    }
+
+    // ====================================================
+    // LOGIKA EMAIL BERANTAI & FINAL BROADCAST + MAGIC LINK
     // ====================================================
     if (typeof sendEmailNotif === 'function') {
       try {
         if (action === "APPROVE") {
           
           if (idx === steps.length - 1) {
-            // [A] APPROVE FINAL -> SEBAR KE PARTISIPAN & PEMOHON
+            // [A] APPROVE FINAL
             let rolesToNotify = ["PEMOHON"];
             if (row.form_id === "F-KLAIM-BENSIN" || (row.nama_form||"").toLowerCase().includes("klaim")) { rolesToNotify.push("FINANCE", "ACCOUNTING"); }
-            else if ((row.nama_form||"").toLowerCase().includes("cuti")) { rolesToNotify.push("HRD", "ATASAN"); } 
+            else if (isCuti) { rolesToNotify.push("HRD", "ATASAN"); } 
             else { rolesToNotify.push("HRD"); }
 
             let finalTargets = [];
@@ -377,13 +435,87 @@ async function processAction(row, action, note, session) {
 
             for (const target of finalTargets) {
                const token = await createLoginToken(target.username);
-               const htmlFinal = `
+               let htmlFinal = "";
+
+               // JIKA FINAL APPROVAL ADALAH CUTI: KIRIMKAN FORMAT DOKUMEN CETAK FULL HTML
+               if (isCuti) {
+                  let jenisVal = row.detail.jenis_cuti || row.detail.jenis || "-";
+                  const isHalfDay = jenisVal.includes("1/2");
+                  const formatTglMulai = new Date(row.detail.tanggal_mulai || row.tgl).toLocaleDateString('id-ID');
+                  const formatTglSelesai = new Date(row.detail.tanggal_akhir || row.tgl).toLocaleDateString('id-ID');
+
+                  if (isHalfDay) {
+                      htmlFinal = `
+                      <div style="font-family: 'Times New Roman', Times, serif; padding: 30px; border: 2px solid #000; max-width: 650px; margin: auto; background: white; color: black;">
+                          <h3 style="text-align: center; text-decoration: underline; margin-bottom: 30px; letter-spacing: 1px;">FORM IJIN MENINGGALKAN JAM KERJA</h3>
+                          <table style="width: 100%; margin-top: 20px; font-size: 14px; line-height: 1.8;">
+                              <tr><td width="30%">Nama</td><td width="2%">:</td><td><strong>${row.nama_pemohon}</strong></td></tr>
+                              <tr><td>Departemen</td><td>:</td><td>${row.detail.departemen || row.detail.divisi || "-"}</td></tr>
+                              <tr><td>Hari/Tanggal</td><td>:</td><td>${formatTglMulai}</td></tr>
+                              <tr><td>Jam Keluar</td><td>:</td><td>${row.detail.jam_keluar || "-"}</td></tr>
+                              <tr><td>Jam Kembali</td><td>:</td><td>${row.detail.jam_kembali || "-"}</td></tr>
+                              <tr><td>Alasan/Keperluan</td><td>:</td><td>${row.detail.alasan || row.detail.keterangan || "-"}</td></tr>
+                          </table>
+                          <br/><br/>
+                          <table style="width: 100%; text-align: center; margin-top: 40px; font-size: 14px;">
+                              <tr>
+                                  <td width="33%">Pemohon</td>
+                                  <td width="33%">Menyetujui (Atasan)</td>
+                                  <td width="33%">Mengetahui (HRD)</td>
+                              </tr>
+                              <tr>
+                                  <td style="padding-top: 50px;"><strong>${row.nama_pemohon}</strong></td>
+                                  <td style="padding-top: 50px; color: #166534; font-style: italic; font-weight: bold;">(Approved by System)</td>
+                                  <td style="padding-top: 50px; color: #166534; font-style: italic; font-weight: bold;">(Approved by System)</td>
+                              </tr>
+                          </table>
+                          <div style="margin-top: 40px; font-size: 11px; color: #64748b; text-align: center; border-top: 1px dashed #ccc; padding-top: 10px;">
+                             Dokumen ini sah dan diterbitkan secara digital oleh Portal HRIS CV Andela Jaya.
+                          </div>
+                      </div>
+                      `;
+                  } else {
+                      htmlFinal = `
+                      <div style="font-family: 'Times New Roman', Times, serif; padding: 30px; border: 2px solid #000; max-width: 650px; margin: auto; background: white; color: black;">
+                          <h3 style="text-align: center; text-decoration: underline; margin-bottom: 30px; letter-spacing: 1px;">FORM CUTI KARYAWAN</h3>
+                          <table style="width: 100%; margin-top: 20px; font-size: 14px; line-height: 1.8;">
+                              <tr><td width="30%">Nama</td><td width="2%">:</td><td><strong>${row.nama_pemohon}</strong></td></tr>
+                              <tr><td>Jabatan / Divisi</td><td>:</td><td>${row.detail.jabatan || "-"} / ${row.detail.divisi || "-"}</td></tr>
+                              <tr><td>Jenis Cuti</td><td>:</td><td><strong>${jenisVal}</strong></td></tr>
+                              <tr><td>Mulai Tanggal</td><td>:</td><td>${formatTglMulai}</td></tr>
+                              <tr><td>S/d Tanggal</td><td>:</td><td>${formatTglSelesai}</td></tr>
+                              <tr><td valign="top">Alasan/Keperluan</td><td valign="top">:</td><td>${row.detail.alasan || row.detail.keterangan || "-"}</td></tr>
+                          </table>
+                          <br/><br/>
+                          <table style="width: 100%; text-align: center; margin-top: 40px; font-size: 14px;">
+                              <tr>
+                                  <td width="33%">Pemohon</td>
+                                  <td width="33%">Menyetujui (Atasan)</td>
+                                  <td width="33%">Mengetahui (HRD)</td>
+                              </tr>
+                              <tr>
+                                  <td style="padding-top: 50px;"><strong>${row.nama_pemohon}</strong></td>
+                                  <td style="padding-top: 50px; color: #166534; font-style: italic; font-weight: bold;">(Approved by System)</td>
+                                  <td style="padding-top: 50px; color: #166534; font-style: italic; font-weight: bold;">(Approved by System)</td>
+                              </tr>
+                          </table>
+                          <div style="margin-top: 40px; font-size: 11px; color: #64748b; text-align: center; border-top: 1px dashed #ccc; padding-top: 10px;">
+                             Dokumen ini sah dan diterbitkan secara digital oleh Portal HRIS CV Andela Jaya.
+                          </div>
+                      </div>
+                      `;
+                  }
+               } else {
+                 // Template Email Bawaan untuk form lain
+                 htmlFinal = `
                  <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
                    <h2 style="color: #15803d;">Pengajuan Selesai: ${row.nama_form}</h2>
                    <p>Pengajuan dari <strong>${row.nama_pemohon}</strong> telah <strong>disetujui sepenuhnya</strong>.</p>
                    <a href="https://andela-hris.vercel.app/#dashboard?token=${token}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Buka Sistem HRIS</a>
                  </div>
-               `;
+                 `;
+               }
+
                sendEmailNotif(target.email, `[APPROVED] ${row.nama_form}`, htmlFinal);
             }
 
