@@ -119,10 +119,6 @@ export async function mount(container, { session }) {
                ${optKaryawan}
             </select>
           </div>
-          <div>
-             <label class="block text-xs font-medium text-slate-500 mb-1.5">Catatan Khusus dari HRD (Untuk Karyawan yang Dinilai)</label>
-             <textarea id="kpi-catatan" rows="2" placeholder="Catatan tambahan..." class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none"></textarea>
-          </div>
           
           <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 mt-2">
             <div class="flex justify-between items-center mb-3 border-b border-slate-200 pb-2">
@@ -144,7 +140,6 @@ export async function mount(container, { session }) {
          const soalList = m.querySelector("#soal-list");
          const badgeBobot = m.querySelector("#indikator-bobot-total");
 
-         // Kalkulator Bobot
          function calcTotalBobot() {
             let total = 0;
             m.querySelectorAll(".soal-bobot").forEach(input => total += parseFloat(input.value) || 0);
@@ -187,7 +182,6 @@ export async function mount(container, { session }) {
 
             const periode = m.querySelector("#kpi-periode").value.trim();
             const penilai = m.querySelector("#kpi-penilai").value;
-            const catatan = m.querySelector("#kpi-catatan").value.trim();
             const dinilaiList = Array.from(m.querySelector("#kpi-dinilai").selectedOptions).map(opt => opt.value);
 
             if(dinilaiList.includes(penilai)) return toast("Penilai tidak boleh mengevaluasi dirinya sendiri!", "warning");
@@ -225,7 +219,6 @@ export async function mount(container, { session }) {
                      periode: periode,
                      nama_penilai: penilai,
                      nama_dinilai: dinilai,
-                     catatan_hrd: catatan,
                      soal_json: soalArray,
                      status: "PENDING",
                      skor_akhir: 0,
@@ -345,9 +338,12 @@ export async function mount(container, { session }) {
                 .info-table { width: 100%; margin-bottom: 30px; font-size: 13px; }
                 .info-table td { padding: 6px 8px; vertical-align: top; }
                 .info-table .label { font-weight: bold; width: 140px; color: #475569; }
-                .data-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 13px; }
+                .data-table { width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 13px; }
                 .data-table th, .data-table td { border: 1px solid #cbd5e1; padding: 12px 10px; }
                 .data-table th { background-color: #f8fafc; text-align: left; color: #334155; font-weight: bold; }
+                .catatan-box { border: 1px solid #cbd5e1; border-radius: 6px; padding: 15px; margin-bottom: 30px; background: #f8fafc; }
+                .catatan-box h4 { margin: 0 0 8px 0; color: #334155; font-size: 13px; }
+                .catatan-box p { margin: 0; font-size: 13px; color: #475569; white-space: pre-wrap; }
                 .summary { width: 320px; float: right; border: 2px solid #e2e8f0; border-radius: 6px; padding: 20px; background: #f8fafc; }
                 .summary h3 { margin: 0 0 15px 0; border-bottom: 1px solid #cbd5e1; padding-bottom: 8px; color: #334155; }
                 .summary-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 15px; }
@@ -389,6 +385,11 @@ export async function mount(container, { session }) {
                 </tbody>
             </table>
 
+            <div class="catatan-box">
+                <h4>Catatan / Ulasan Penilai:</h4>
+                <p>${escapeHtml(row.catatan_penilai || 'Tidak ada catatan tambahan yang diberikan.')}</p>
+            </div>
+
             <div class="summary">
                 <h3>Hasil Evaluasi Akhir</h3>
                 <div class="summary-row">
@@ -412,7 +413,6 @@ export async function mount(container, { session }) {
     printWindow.document.close();
   }
 
-  // Sisa loadEvaluasi tetap sama
   async function loadEvaluasi() {
     await renderCrudModule(panels.evaluasi, {
       title: "Evaluasi Kontrak",
