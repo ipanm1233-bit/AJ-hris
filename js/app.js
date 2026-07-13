@@ -30,13 +30,13 @@ async function boot() {
       // Proses login menggunakan token
       await loginWithToken(token);
       
-      // Bersihkan URL dari token agar tidak bisa di-copy orang lain, lalu muat ulang halaman
-      window.location.replace(window.location.pathname + "#" + (path || "approval"));
-      return; 
+      // Hapus parameter ?token=... dari URL secara halus tanpa me-reload halaman
+      history.replaceState(null, "", window.location.pathname + "#" + (path || "approval"));
+      
+      // Biarkan proses berlanjut ke bawah (jangan gunakan return di sini)
     } catch (e) {
       alert("Akses otomatis gagal: " + e.message + "\nSilakan login secara manual.");
-      window.location.replace(window.location.pathname + "#login");
-      return;
+      history.replaceState(null, "", window.location.pathname + "#login");
     }
   }
 
@@ -56,7 +56,11 @@ async function boot() {
   startClock();
 
   window.addEventListener("hashchange", () => router(session));
-  if (!location.hash || location.hash === "#login") location.hash = "#dashboard";
+  
+  // Memastikan route default
+  if (!location.hash || location.hash === "#login") {
+     location.hash = "#dashboard";
+  }
   
   await router(session);
   bootLoader.classList.add("hidden");
@@ -128,7 +132,6 @@ async function router(session) {
 
   if (path === currentRoute && path !== "pengajuan") {
     // re-render tetap diizinkan untuk pengajuan (deep link form)
-    // selain itu abaikan jika route sama
   }
 
   const allowed = await canAccessRoute(path, session);
