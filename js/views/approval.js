@@ -46,7 +46,6 @@ function isEligible(row, session) {
   
   if (stepLabel.toUpperCase() === "ATASAN") {
     const pemohon = karyawanByNama[row.nama_pemohon];
-    // Jika Atasan dari pemohon sesuai dengan nama session user ini
     return pemohon && pemohon.atasan === session.nama;
   }
   return stepLabel.toUpperCase() === session.role.toUpperCase();
@@ -89,6 +88,7 @@ function renderList(container, session, tab) {
       </div>
 
       <div class="mt-4 flex items-center justify-between">
+        <!-- PERBAIKAN: Melemparkan variabel session ke fungsi showDetail agar bisa mendeteksi role HRD -->
         <button data-detail="${r.id}" class="text-xs text-maroon-700 font-medium hover:underline">Lihat Detail Pengajuan</button>
         ${tab === "pending" ? `
         <div class="flex gap-2">
@@ -99,17 +99,58 @@ function renderList(container, session, tab) {
     </div>`;
   }).join("");
 
-  listEl.querySelectorAll("[data-detail]").forEach(btn => btn.addEventListener("click", () => showDetail(rows.find(r => r.id === btn.dataset.detail))));
+  // Binding Event Listener dengan Session
+  listEl.querySelectorAll("[data-detail]").forEach(btn => btn.addEventListener("click", () => showDetail(rows.find(r => r.id === btn.dataset.detail), session)));
   listEl.querySelectorAll("[data-approve]").forEach(btn => btn.addEventListener("click", () => actionModal(rows.find(r => r.id === btn.dataset.approve), "APPROVE", session, container, tab)));
   listEl.querySelectorAll("[data-reject]").forEach(btn => btn.addEventListener("click", () => actionModal(rows.find(r => r.id === btn.dataset.reject), "REJECT", session, container, tab)));
 }
 
-// PERBAIKAN: Fungsi merender detail yang cerdas mendeteksi Array / Tabel
-function showDetail(row) {
+// PERBAIKAN: Fungsi Show Detail yang mendeteksi Role HRD untuk Edit Klaim Bensin
+function showDetail(row, session) {
   const detail = row.detail || {};
+  
+  // Deteksi kelayakan Edit: Jika yang login adalah HRD, formnya adalah Klaim Bensin, dan statusnya masih menunggu
+  const isHrd = session.role === "HRD";
+  const isKlaimBensin = row.form_id === "F-KLAIM-BENSIN" || (row.nama_form || "").toLowerCase().includes("bensin");
+  const isPending = row.status_final === "MENUNGGU";
+  const canEdit = isHrd && isKlaimBensin && isPending;
 
   const renderValue = (key, val) => {
-    // Menangani Tabel (Array of Objects)
+    // KONDISI 1: JIKA HRD MENGEDIT TABEL KLAIM BENSIN
+    if (key === "rincian_tabel" && canEdit) {
+       let tableHtml = `<div class="overflow-x-auto mt-2 border border-slate-200 rounded-lg">
+          <table class="w-full text-xs text-left whitespace-nowrap" id="edit-klaim-table">
+            <thead class="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th class="p-2 font-medium text-slate-500">Tanggal</th>
+                <th class="p-2 font-medium text-slate-500">KM Awal</th>
+                <th class="p-2 font-medium text-slate-500">KM Akhir</th>
+                <th class="p-2 font-medium text-slate-500">Parkir (Rp)</th>
+                <th class="p-2 font-medium text-slate-500">Denda (Rp)</th>
+                <th class="p-2 font-medium text-slate-500">Total Petrol (Rp)</th>
+                <th class="p-2 font-medium text-amber-600 bg-amber-50">Catatan Revisi HRD</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">`;
+        
+        val.forEach((item, index) => {
+           tableHtml += `
+             <tr data-index="${index}">
+                <td class="p-2"><input type="date" class="klaim-input border border-slate-200 rounded p-1.5 w-full outline-none focus:border-maroon-400" data-field="tanggal" value="${item.tanggal}"></td>
+                <td class="p-2"><input type="number" class="klaim-input border border-slate-200 rounded p-1.5 w-20 outline-none focus:border-maroon-400" data-field="km_awal" value="${item.km_awal}"></td>
+                <td class="p-2"><input type="number" class="klaim-input border border-slate-200 rounded p-1.5 w-20 outline-none focus:border-maroon-400" data-field="km_akhir" value="${item.km_akhir}"></td>
+                <td class="p-2"><input type="number" class="klaim-input border border-slate-200 rounded p-1.5 w-20 outline-none focus:border-maroon-400" data-field="parkir" value="${item.parkir}"></td>
+                <td class="p-2"><input type="number" class="klaim-input border border-slate-200 rounded p-1.5 w-20 outline-none focus:border-maroon-400" data-field="denda" value="${item.denda}"></td>
+                <td class="p-2 text-right"><span class="klaim-row-total font-semibold text-slate-700">${item.total_baris.toLocaleString('id-ID')}</span></td>
+                <td class="p-2 bg-amber-50/30"><input type="text" class="klaim-input border border-amber-200 rounded p-1.5 w-32 outline-none focus:border-amber-400 bg-white" data-field="catatan_hrd" value="${item.catatan_hrd || ''}" placeholder="Cth: KM Akhir direvisi"></td>
+             </tr>
+           `;
+        });
+        tableHtml += `</tbody></table></div>`;
+        return tableHtml;
+    }
+
+    // KONDISI 2: RENDER TABEL ARRAY BIASA (READ-ONLY)
     if (Array.isArray(val)) {
       if (val.length > 0 && typeof val[0] === 'object') {
         const headers = Object.keys(val[0]);
@@ -126,34 +167,36 @@ function showDetail(row) {
           tableHtml += `<tr>`;
           headers.forEach(h => {
             let cellVal = item[h];
-            // Format angka menjadi rupiah jika header berkaitan dengan nominal/uang
             if (typeof cellVal === 'number' && (h.includes('total') || h.includes('parkir') || h.includes('denda') || h.includes('biaya'))) {
               cellVal = "Rp " + cellVal.toLocaleString('id-ID');
             }
-            tableHtml += `<td class="p-2 text-slate-700">${escapeHtml(String(cellVal))}</td>`;
+            // Highlight khusus jika ada catatan revisi dari HRD
+            if (h === 'catatan_hrd' && cellVal) {
+               tableHtml += `<td class="p-2 text-amber-700 font-medium bg-amber-50">${escapeHtml(String(cellVal))}</td>`;
+            } else {
+               tableHtml += `<td class="p-2 text-slate-700">${escapeHtml(String(cellVal || '-'))}</td>`;
+            }
           });
           tableHtml += `</tr>`;
         });
         tableHtml += `</tbody></table></div>`;
         return tableHtml;
       }
-      // Jika hanya Array biasa
       return `<span class="text-slate-800 font-medium text-right">${escapeHtml(val.join(", "))}</span>`;
     }
 
-    // Format Rupiah untuk field angka satuan (Bukan array)
+    // KONDISI 3: Format Rupiah untuk angka total tunggal
     if (typeof val === 'number' && (key.includes('total') || key.includes('biaya') || key.includes('harga') || key.includes('kasbon'))) {
-       return `<span class="text-slate-800 font-medium text-right font-mono text-sm">Rp ${val.toLocaleString('id-ID')}</span>`;
+       return `<span class="text-slate-800 font-medium text-right font-mono text-sm" ${key==='total_klaim' && canEdit ? 'id="edit-klaim-grandtotal"' : ''}>Rp ${val.toLocaleString('id-ID')}</span>`;
     }
 
-    // Nilai teks biasa
+    // Default Teks
     return `<span class="text-slate-800 font-medium text-right">${escapeHtml(String(val))}</span>`;
   };
 
   const body = `
     <div class="space-y-4">
       ${Object.entries(detail).map(([k, v]) => {
-        // Jika nilai adalah array of object (Tabel Data)
         if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'object') {
           return `
             <div class="text-sm border-b border-slate-50 pb-3">
@@ -161,8 +204,6 @@ function showDetail(row) {
               ${renderValue(k, v)}
             </div>`;
         }
-        
-        // Tampilan Baris Normal (Teks, Angka, Tanggal)
         return `
           <div class="flex justify-between items-center gap-4 text-sm border-b border-slate-50 pb-2">
             <span class="text-slate-500 capitalize">${escapeHtml(k.replace(/_/g, " "))}</span>
@@ -171,8 +212,103 @@ function showDetail(row) {
       }).join("")}
     </div>`;
 
-  // Ubah size modal menjadi 'lg' agar tabel klaim tidak terjepit sempit
-  openModal({ title: `Detail — ${row.nama_form}`, bodyHtml: body, size: "lg" });
+  // TOMBOL FOOTER DINAMIS (Jika Mode Edit, tambahkan tombol Simpan Revisi)
+  let footerHtml = `<button id="detail-close" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Tutup</button>`;
+  if (canEdit) {
+     footerHtml += `<button id="detail-save" class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 transition shadow-md">Simpan Revisi HRD</button>`;
+  }
+
+  openModal({ 
+    title: `Detail — ${row.nama_form}`, 
+    bodyHtml: body, 
+    size: canEdit ? "xl" : "lg", 
+    footerHtml: footerHtml,
+    onMount: (m) => {
+      m.querySelector("#detail-close").onclick = closeModal;
+      
+      // LOGIKA PENYIMPANAN REVISI OLEH HRD
+      if (canEdit) {
+        const table = m.querySelector("#edit-klaim-table");
+        const grandTotalEl = m.querySelector("#edit-klaim-grandtotal");
+        const HARGA_BENSIN = 10000;
+        const RASIO_KM = 25;
+
+        // Fungsi Hitung Real-time saat HRD mengetik koreksi
+        function calc() {
+            let grandTotal = 0;
+            table.querySelectorAll("tbody tr").forEach(tr => {
+                const getValue = (f) => parseFloat(tr.querySelector(`[data-field="${f}"]`).value) || 0;
+                const kmAwal = Math.max(0, getValue("km_awal"));
+                const kmAkhir = Math.max(0, getValue("km_akhir"));
+                const parkir = Math.max(0, getValue("parkir"));
+                const denda = Math.max(0, getValue("denda"));
+
+                let trip = kmAkhir - kmAwal;
+                if (trip < 0) trip = 0;
+                const rowTotal = (trip * (HARGA_BENSIN/RASIO_KM)) + parkir + denda;
+
+                tr.querySelector(".klaim-row-total").textContent = Math.round(rowTotal).toLocaleString("id-ID");
+                grandTotal += rowTotal;
+            });
+            if (grandTotalEl) grandTotalEl.textContent = `Rp ${Math.round(grandTotal).toLocaleString("id-ID")}`;
+        }
+
+        table.querySelectorAll(".klaim-input").forEach(input => {
+            input.addEventListener("input", calc);
+        });
+
+        // Eksekusi Penyimpanan Revisi
+        m.querySelector("#detail-save").onclick = async () => {
+            const detailKlaim = [];
+            let totalKlaim = 0;
+            
+            table.querySelectorAll("tbody tr").forEach(tr => {
+                const getValue = (f) => parseFloat(tr.querySelector(`[data-field="${f}"]`).value) || 0;
+                const tgl = tr.querySelector(`[data-field="tanggal"]`).value;
+                const catatan = tr.querySelector(`[data-field="catatan_hrd"]`).value;
+
+                const kmAwal = Math.max(0, getValue("km_awal"));
+                const kmAkhir = Math.max(0, getValue("km_akhir"));
+                const parkir = Math.max(0, getValue("parkir"));
+                const denda = Math.max(0, getValue("denda"));
+
+                let trip = kmAkhir - kmAwal;
+                if (trip < 0) trip = 0;
+                const rowTotal = Math.round((trip * (HARGA_BENSIN/RASIO_KM)) + parkir + denda);
+
+                detailKlaim.push({
+                    tanggal: tgl,
+                    km_awal: kmAwal,
+                    km_akhir: kmAkhir,
+                    parkir: parkir,
+                    denda: denda,
+                    total_baris: rowTotal,
+                    catatan_hrd: catatan // Menyimpan catatan spesifik dari HRD
+                });
+                totalKlaim += rowTotal;
+            });
+
+            // Timpa rincian tabel lama dengan rincian tabel hasil revisi HRD
+            const newDetail = { ...row.detail, total_klaim: totalKlaim, rincian_tabel: detailKlaim };
+
+            const btnSave = m.querySelector("#detail-save");
+            btnSave.disabled = true;
+            btnSave.textContent = "Menyimpan Revisi...";
+
+            try {
+                await fsUpdate(COL.DATA_PENGAJUAN, row.id, { detail: newDetail });
+                row.detail = newDetail; // update memory cache agar tak perlu reload halaman
+                toast("Data revisi klaim berhasil disimpan", "success");
+                closeModal();
+            } catch(e) {
+                toast("Gagal menyimpan revisi: " + e.message, "error");
+                btnSave.disabled = false;
+                btnSave.textContent = "Simpan Revisi HRD";
+            }
+        };
+      }
+    }
+  });
 }
 
 function actionModal(row, action, session, container, tab) {
@@ -215,7 +351,6 @@ async function processAction(row, action, note, session) {
 
   try {
     await fsUpdate(COL.DATA_PENGAJUAN, row.id, { approval_steps: steps, status_final: statusFinal, catatan_penolakan: catatan });
-    // update local cache
     Object.assign(row, { approval_steps: steps, status_final: statusFinal, catatan_penolakan: catatan });
     toast(action === "APPROVE" ? "Pengajuan disetujui" : "Pengajuan ditolak", action === "APPROVE" ? "success" : "warning");
   } catch (e) {
