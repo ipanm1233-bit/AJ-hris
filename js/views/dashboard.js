@@ -172,13 +172,6 @@ function openPenilaianForm(task, container, session) {
      </div>
   `).join("");
 
-  // Menampilkan catatan HRD jika ada
-  const catatanHrdHtml = task.catatan_hrd ? `
-    <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-       <span class="font-bold block mb-1">Catatan HRD untuk Karyawan ini:</span>
-       ${escapeHtml(task.catatan_hrd)}
-    </div>` : '';
-
   openModal({
      title: `Evaluasi: ${escapeHtml(task.nama_dinilai)}`,
      size: "md",
@@ -186,10 +179,15 @@ function openPenilaianForm(task, container, session) {
         <form id="form-isi-kpi">
            <div class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-amber-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-              <p class="text-xs text-amber-800 leading-relaxed">Batas waktu pengumpulan form ini: <strong>${task.deadline ? fmtDateShort(task.deadline) : '-'}</strong>.</p>
+              <p class="text-xs text-amber-800 leading-relaxed">Penilaian ini dihitung otomatis berdasarkan bobot tiap indikator. Batas waktu pengumpulan form ini: <strong>${task.deadline ? fmtDateShort(task.deadline) : '-'}</strong>.</p>
            </div>
-           ${catatanHrdHtml}
+           
            ${soalHtml}
+
+           <div class="mt-5">
+             <label class="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">Catatan / Ulasan untuk Karyawan (Opsional)</label>
+             <textarea id="kpi-catatan-penilai" rows="3" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100 transition" placeholder="Berikan ulasan, kelebihan, atau area yang perlu ditingkatkan oleh karyawan yang Anda nilai..."></textarea>
+           </div>
         </form>
      `,
      footerHtml: `
@@ -222,6 +220,7 @@ function openPenilaianForm(task, container, session) {
 
            let totalSkorBobot = 0;
            const answeredSoal = [...task.soal_json];
+           const catatanPenilai = m.querySelector("#kpi-catatan-penilai").value.trim();
 
            m.querySelectorAll(".kpi-nilai-input").forEach(input => {
               const idx = parseInt(input.dataset.idx);
@@ -239,13 +238,16 @@ function openPenilaianForm(task, container, session) {
            btn.disabled = true; btn.textContent = "Merekap Nilai...";
 
            try {
+              // 1. Update Tugas Individu Karyawan menjadi Selesai (Termasuk menyimpan catatan)
               await fsUpdate(COL.TUGAS_KPI_360, task.id, {
                  status: "DONE",
                  skor_akhir: finalScore,
                  soal_json: answeredSoal,
+                 catatan_penilai: catatanPenilai,
                  tanggal_diselesaikan: new Date().toISOString()
               });
 
+              // 2. Tembuskan Arsip Permanen ke Rekap Master Hasil
               await fsAdd(COL.LOG_PENILAIAN_KPI, {
                  tanggal: new Date().toISOString(),
                  nama_dinilai: task.nama_dinilai,
@@ -253,12 +255,13 @@ function openPenilaianForm(task, container, session) {
                  total_skor: finalScore,
                  keputusan: keputusan,
                  periode: task.periode,
-                 detail_json: answeredSoal
+                 detail_json: answeredSoal,
+                 catatan_penilai: catatanPenilai // Simpan juga ke Log untuk di-print PDF
               }, genId("KPI-LOG"));
 
               toast("Evaluasi berhasil diselesaikan!", "success");
               closeModal();
-              loadKpiTasks(container, session);
+              loadKpiTasks(container, session); // Segarkan list di dashboard
            } catch(e) {
               toast("Gagal menyimpan evaluasi: " + e.message, "error");
               btn.disabled = false; btn.textContent = "Kirim Penilaian";
@@ -267,7 +270,6 @@ function openPenilaianForm(task, container, session) {
      }
   });
 }
-
 /* ------------------------ d. CUTI HARI INI ------------------------ */
 async function loadCutiHariIni(container) {
   const wrap = container.querySelector("#dash-cuti-hari-ini");
