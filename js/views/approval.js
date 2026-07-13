@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs } from "../firebase-config.js";
-import { fsGetAll, fsUpdate, openModal, closeModal, toast, fmtDateTime, escapeHtml } from "../utils.js";
+import { fsGetAll, fsUpdate, openModal, closeModal, toast, fmtDateTime, escapeHtml, sendEmailNotif, getEmailsForRole } from "../utils.js";
 import { icon, badge, emptyState, skeletonRows } from "../components.js";
 
 let allPengajuan = [], karyawanByNama = {};
@@ -353,6 +353,79 @@ async function processAction(row, action, note, session) {
     await fsUpdate(COL.DATA_PENGAJUAN, row.id, { approval_steps: steps, status_final: statusFinal, catatan_penolakan: catatan });
     Object.assign(row, { approval_steps: steps, status_final: statusFinal, catatan_penolakan: catatan });
     toast(action === "APPROVE" ? "Pengajuan disetujui" : "Pengajuan ditolak", action === "APPROVE" ? "success" : "warning");
+
+    // ====================================================
+    // LOGIKA EMAIL BERANTAI & FINAL BROADCAST
+    // ====================================================
+    if (typeof sendEmailNotif === 'function') {
+      try {
+        if (action === "APPROVE") {
+          
+          if (idx === steps.length - 1) {
+            // [A] APPROVE FINAL -> SEBAR KE PARTISIPAN & PEMOHON
+            let rolesToNotify = [];
+            // Logika Pembagian Partisipan (Dapat dimodifikasi HRD/Sistem)
+            if (row.form_id === "F-KLAIM-BENSIN" || (row.nama_form||"").toLowerCase().includes("klaim")) {
+                rolesToNotify = ["FINANCE", "ACCOUNTING"]; // Klaim uang cair oleh Finance
+            } else if ((row.nama_form||"").toLowerCase().includes("cuti")) {
+                rolesToNotify = ["HRD", "ATASAN"]; // Cuti di-record oleh HRD dan Atasan
+            } else {
+                rolesToNotify = ["HRD"]; // Bawaan default
+            }
+            rolesToNotify.push("PEMOHON"); // Pemohon harus tahu pengajuannya sudah selesai
+
+            // Kumpulkan semua email unik
+            let finalEmails = [];
+            for (const role of rolesToNotify) {
+                const e = await getEmailsForRole(role, row.nama_pemohon);
+                finalEmails.push(...e);
+            }
+            finalEmails = [...new Set(finalEmails)];
+
+            const htmlFinal = `
+              <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <h2 style="color: #15803d;">Pengajuan Selesai: ${row.nama_form}</h2>
+                <p>Pengajuan dari <strong>${row.nama_pemohon}</strong> telah <strong>disetujui sepenuhnya</strong> oleh seluruh pihak terkait.</p>
+                <p>Silakan proses lebih lanjut atau cek arsip pengajuan pada Portal HRIS.</p>
+                <a href="https://andela-hris.netlify.app/#dashboard" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Buka Sistem HRIS</a>
+              </div>
+            `;
+            finalEmails.forEach(email => sendEmailNotif(email, `[APPROVED] ${row.nama_form}`, htmlFinal));
+
+          } else {
+            // [B] NEXT APPROVER -> LEMPAR KE PENYETUJU SELANJUTNYA
+            const nextRole = row.approval_flow[idx + 1];
+            const nextEmails = await getEmailsForRole(nextRole, row.nama_pemohon);
+            
+            const htmlNext = `
+              <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <h2 style="color: #7a1f2b;">Persetujuan Lanjutan: ${row.nama_form}</h2>
+                <p><strong>Diajukan Oleh:</strong> ${row.nama_pemohon}</p>
+                <p>Pengajuan ini telah disetujui oleh tahap sebelumnya dan kini membutuhkan persetujuan Anda sebagai <strong>${nextRole}</strong>.</p>
+                <a href="https://andela-hris.netlify.app/#approval" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Masuk ke Antrean Persetujuan</a>
+              </div>
+            `;
+            nextEmails.forEach(email => sendEmailNotif(email, `Menunggu Persetujuan Anda: ${row.nama_form}`, htmlNext));
+          }
+
+        } else if (action === "REJECT") {
+          // [C] DITOLAK -> KABARI PEMOHON
+          const pemohonEmails = await getEmailsForRole("PEMOHON", row.nama_pemohon);
+          const htmlReject = `
+            <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #fecaca; border-radius: 8px; background-color: #fef2f2;">
+              <h2 style="color: #b91c1c;">Pengajuan Ditolak: ${row.nama_form}</h2>
+              <p>Mohon maaf, pengajuan Anda telah <strong>ditolak</strong> oleh <strong>${session.nama}</strong> pada tahap ini.</p>
+              <p><strong>Alasan / Catatan:</strong> ${note || "Tidak ada catatan."}</p>
+              <p>Silakan buat pengajuan baru jika diperlukan.</p>
+            </div>
+          `;
+          pemohonEmails.forEach(email => sendEmailNotif(email, `[REJECTED] ${row.nama_form}`, htmlReject));
+        }
+      } catch (errEmail) {
+        console.warn("Gagal mengirim email rantai persetujuan:", errEmail);
+      }
+    }
+
   } catch (e) {
     console.error(e);
     toast("Gagal memproses persetujuan: " + e.message, "error");
