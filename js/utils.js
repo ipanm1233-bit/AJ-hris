@@ -342,42 +342,60 @@ export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
 
 // Tambahkan di baris paling bawah pada js/utils.js
 
-export async function getEmailsForRole(targetRole, pemohonName) {
-  let emails = [];
+// Tambahkan di paling bawah js/utils.js
+
+export async function createLoginToken(username) {
+  // Buat token unik (Kombinasi ID + String Acak)
+  const token = genId("TKN") + "-" + Math.random().toString(36).slice(2, 10);
+  
+  // Simpan token ke database (Berlaku 24 jam, belum dipakai)
+  await fsAdd("login_tokens", {
+     username: username,
+     used: false,
+     createdAt: Date.now()
+  }, token);
+  
+  return token;
+}
+
+export async function getTargetsForRole(targetRole, pemohonName) {
+  let targets = [];
   try {
     if (targetRole === "ATASAN") {
-      // 1. Cari siapa nama atasan dari si pemohon
       const qK = query(collection(db, "master_karyawan"), where("nama_karyawan", "==", pemohonName), limit(1));
       const snapK = await getDocs(qK);
       if (!snapK.empty) {
         const atasanName = snapK.docs[0].data().atasan;
         if (atasanName) {
-          // 2. Cari email atasan tersebut di tabel users
           const qU = query(collection(db, "users"), where("nama", "==", atasanName), limit(1));
           const snapU = await getDocs(qU);
-          if (!snapU.empty) emails.push(snapU.docs[0].data().email);
+          if (!snapU.empty) targets.push({ email: snapU.docs[0].data().email, username: snapU.docs[0].id });
         }
       }
     } else if (targetRole === "PEMOHON") {
-       // Cari email si pembuat pengajuan
        const qU = query(collection(db, "users"), where("nama", "==", pemohonName), limit(1));
        const snapU = await getDocs(qU);
-       if (!snapU.empty) emails.push(snapU.docs[0].data().email);
+       if (!snapU.empty) targets.push({ email: snapU.docs[0].data().email, username: snapU.docs[0].id });
     } else {
-      // Cari semua akun yang memiliki Role tertentu (contoh: HRD, FINANCE, KASIR)
       const qU = query(collection(db, "users"), where("role", "==", targetRole.toUpperCase()));
       const snapU = await getDocs(qU);
-      snapU.forEach(d => { if (d.data().email) emails.push(d.data().email); });
+      snapU.forEach(d => { if (d.data().email) targets.push({ email: d.data().email, username: d.id }); });
       
-      // Fallback: Jika Role tidak ditemukan, cari berdasarkan Nama Spesifik
-      if (emails.length === 0) {
+      // Fallback Nama
+      if (targets.length === 0) {
         const qN = query(collection(db, "users"), where("nama", "==", targetRole), limit(1));
         const snapN = await getDocs(qN);
-        if (!snapN.empty) emails.push(snapN.docs[0].data().email);
+        if (!snapN.empty) targets.push({ email: snapN.docs[0].data().email, username: snapN.docs[0].id });
       }
     }
-  } catch(e) { console.warn("Error resolving emails:", e); }
+  } catch(e) { console.warn("Error resolving targets:", e); }
   
-  // Kembalikan array email yang unik dan tidak kosong
-  return [...new Set(emails.filter(Boolean))]; 
+  // Filter duplikat
+  const unique = []; const seen = new Set();
+  for (const t of targets) {
+    if (t.email && t.username && !seen.has(t.username)) {
+       seen.add(t.username); unique.push(t);
+    }
+  }
+  return unique;
 }
