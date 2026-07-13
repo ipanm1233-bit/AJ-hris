@@ -26,6 +26,7 @@ export const MENU_CONFIG = [
   // ---- ALL (akses umum semua karyawan) ----
   { id: "dashboard", label: "Home & Dashboard", route: "dashboard", group: "all", icon: "home" },
   { id: "pengajuan", label: "Buat Pengajuan", route: "pengajuan", group: "all", icon: "doc-plus" },
+  { id: "klaim-bensin", label: "Klaim Bensin", route: "klaim-bensin", group: "all", icon: "car" },
   { id: "riwayat", label: "Riwayat Karyawan", route: "riwayat", group: "all", icon: "clock" },
 
   // ---- HRD (hanya role HRD) ----
