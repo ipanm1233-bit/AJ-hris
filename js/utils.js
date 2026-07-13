@@ -307,54 +307,33 @@ export function escapeHtml(str = "") {
 // Tambahkan di js/utils.js
 
 export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
-  // Menggunakan URL deployment App Script yang Anda berikan
   const APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbwdm_3Eapo0VUjt1QmQvGHaxXCU95_ycaapJy1wNmFcUINe2ZHSFghoIQY9jN4dqld16w/exec";
   
   try {
-    const response = await fetch(APPSCRIPT_URL, {
+    // PERBAIKAN CORS: Tambahkan mode: "no-cors"
+    await fetch(APPSCRIPT_URL, {
       method: "POST",
+      mode: "no-cors", // Mengizinkan request lintas domain tanpa diblokir browser
       headers: {
         "Content-Type": "text/plain;charset=utf-8", 
-        // Wajib text/plain agar tidak memicu pre-flight yang kompleks pada fetch di beberapa browser
       },
       body: JSON.stringify({
-        to: to,
-        subject: subject,
-        htmlBody: htmlBody,
-        cc: cc, // Bisa diisi dengan email atasan/HRD sebagai tembusan
-        name: "HRIS System - Andela"
+        to: to, subject: subject, htmlBody: htmlBody, cc: cc, name: "HRIS System - Andela"
       })
     });
-    
-    const result = await response.json();
-    if (result.status === "success") {
-      console.log("Notifikasi Email Terkirim:", result.message);
-      return true;
-    } else {
-      console.error("Gagal kirim email (Script Error):", result.message);
-      return false;
-    }
+    console.log("Permintaan notifikasi email telah dikirim ke server.");
+    return true;
   } catch (error) {
     console.error("Gagal menghubungi server Apps Script:", error);
     return false;
   }
 }
 
-// Tambahkan di baris paling bawah pada js/utils.js
-
-// Tambahkan di paling bawah js/utils.js
-
 export async function createLoginToken(username) {
-  // Buat token unik (Kombinasi ID + String Acak)
   const token = genId("TKN") + "-" + Math.random().toString(36).slice(2, 10);
-  
-  // Simpan token ke database (Berlaku 24 jam, belum dipakai)
   await fsAdd("login_tokens", {
-     username: username,
-     used: false,
-     createdAt: Date.now()
+     username: username, used: false, createdAt: Date.now()
   }, token);
-  
   return token;
 }
 
@@ -380,17 +359,9 @@ export async function getTargetsForRole(targetRole, pemohonName) {
       const qU = query(collection(db, "users"), where("role", "==", targetRole.toUpperCase()));
       const snapU = await getDocs(qU);
       snapU.forEach(d => { if (d.data().email) targets.push({ email: d.data().email, username: d.id }); });
-      
-      // Fallback Nama
-      if (targets.length === 0) {
-        const qN = query(collection(db, "users"), where("nama", "==", targetRole), limit(1));
-        const snapN = await getDocs(qN);
-        if (!snapN.empty) targets.push({ email: snapN.docs[0].data().email, username: snapN.docs[0].id });
-      }
     }
   } catch(e) { console.warn("Error resolving targets:", e); }
   
-  // Filter duplikat
   const unique = []; const seen = new Set();
   for (const t of targets) {
     if (t.email && t.username && !seen.has(t.username)) {
