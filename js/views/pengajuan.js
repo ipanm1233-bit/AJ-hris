@@ -82,7 +82,65 @@ async function openFormModal(formCfg, session) {
   if (!formCfg) return;
   const fields = normalizeFields(formCfg.fields_json);
 
+  const isFormCuti = (formCfg.nama_form || "").toLowerCase().includes("cuti");
+  let headerBannerHtml = "";
+
+  // JIKA FORM ADALAH CUTI: Hitung dan tampilkan Sisa Saldo
+  if (isFormCuti) {
+    let jatah = { tahunan: 0, khusus: 0, akumulasi: 0 };
+    if (session.nik && session.nik !== "null") {
+      const snap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(session.nik)));
+      if (snap.exists()) {
+        const k = snap.data();
+        jatah = { tahunan: toNumber(k.jatah_tahunan), khusus: toNumber(k.jatah_khusus), akumulasi: toNumber(k.jatah_akumulasi) };
+      }
+    }
+
+    let terpakai = { Tahunan: 0, Khusus: 0, Akumulasi: 0 };
+    const qC = query(collection(db, COL.MASTER_CUTI), where("nama_karyawan", "==", session.nama));
+    const snapC = await getDocs(qC);
+    snapC.docs.forEach(d => {
+       const r = d.data();
+       if (r.potong_jatah && terpakai[r.potong_jatah] !== undefined) terpakai[r.potong_jatah] += toNumber(r.count) || 1;
+    });
+
+    headerBannerHtml = `
+      <div class="mb-5 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+          <h3 class="text-sm font-bold text-blue-800 mb-2">Informasi Saldo Cuti Anda</h3>
+          <div class="grid grid-cols-3 gap-2">
+              <div class="bg-white p-2 rounded border border-blue-100 text-center">
+                  <p class="text-[10px] text-slate-500 uppercase">Tahunan</p>
+                  <p class="text-lg font-bold text-blue-700">${Math.max(jatah.tahunan - terpakai.Tahunan, 0)} <span class="text-xs font-normal">hari</span></p>
+              </div>
+              <div class="bg-white p-2 rounded border border-blue-100 text-center">
+                  <p class="text-[10px] text-slate-500 uppercase">Khusus</p>
+                  <p class="text-lg font-bold text-blue-700">${Math.max(jatah.khusus - terpakai.Khusus, 0)} <span class="text-xs font-normal">hari</span></p>
+              </div>
+              <div class="bg-white p-2 rounded border border-blue-100 text-center">
+                  <p class="text-[10px] text-slate-500 uppercase">Akumulasi</p>
+                  <p class="text-lg font-bold text-blue-700">${Math.max(jatah.akumulasi - terpakai.Akumulasi, 0)} <span class="text-xs font-normal">hari</span></p>
+              </div>
+          </div>
+          <p class="text-[11px] text-blue-600 mt-2">*Jatah akan otomatis terpotong ketika pengajuan disetujui sepenuhnya (Approved Final).</p>
+      </div>
+    `;
+
+    // Modifikasi Field Dropdown "Jenis Cuti" secara otomatis dari sistem
+    fields.forEach(f => {
+       if (f.name.toLowerCase().includes("jenis")) {
+          f.type = "select";
+          f.options = [
+             "C - Cuti Tahunan", "C1/2 - Cuti Setengah Hari", "C+ - Cuti Khusus",
+             "S - Sakit dgn Surat Dokter", "S- - Sakit tanpa Surat Dokter", "CB - Cuti Bersama",
+             "C- - Potong Gaji", "CS - Cuti Sisa", "C+1/2 - Cuti Khusus Setengah Hari", 
+             "D - Dinas Luar Kota", "C-BESAR - Cuti Besar"
+          ];
+       }
+    });
+  }
+
   const bodyHtml = `
+    ${headerBannerHtml}
     <form id="dyn-form" class="space-y-4">
       ${fields.map(f => fieldWrapper(f)).join("")}
     </form>`;
@@ -103,7 +161,6 @@ async function openFormModal(formCfg, session) {
       m.querySelector("#dyn-submit").onclick = async () => {
         if (!form.reportValidity()) return;
         
-        // Kunci tombol saat memproses
         const submitBtn = m.querySelector("#dyn-submit");
         submitBtn.disabled = true;
         submitBtn.textContent = "Memproses...";
