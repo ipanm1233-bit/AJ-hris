@@ -4,7 +4,7 @@
  * Portal HRIS & Operasional CV Andela Jaya
  * =====================================================================
  */
-import { getSession, logout, computeVisibleMenus, canAccessRoute, MENU_CONFIG } from "./auth.js";
+import { getSession, logout, computeVisibleMenus, canAccessRoute, MENU_CONFIG, loginWithToken } from "./auth.js";
 import { parseHash, toast, fmtDateTime } from "./utils.js";
 import { icon, avatar } from "./components.js";
 import { db, COL, collection, query, where, getDocs } from "./firebase-config.js";
@@ -17,8 +17,29 @@ let currentRoute = null;
  * BOOTSTRAP
  * ------------------------------------------------------------------- */
 async function boot() {
-  const session = getSession();
   const bootLoader = document.getElementById("boot-loader");
+  const { path, params } = parseHash();
+  const token = params.get("token");
+
+  // INTERSEP: Jika ada token Magic Link
+  if (token) {
+    try {
+      const pText = bootLoader.querySelector("p");
+      if (pText) pText.textContent = "Memverifikasi login aman sekali pakai...";
+      
+      await loginWithToken(token);
+      
+      // Bersihkan URL dari token agar tidak bisa di-copy orang lain, lalu muat ulang halaman
+      window.location.replace(window.location.pathname + "#" + (path || "approval"));
+      return; 
+    } catch (e) {
+      alert("Akses otomatis gagal: " + e.message + "\nSilakan login secara manual.");
+      window.location.replace(window.location.pathname + "#login");
+      return;
+    }
+  }
+
+  const session = getSession();
 
   if (!session) {
     await showLogin();
