@@ -166,60 +166,79 @@ function openPenilaianForm(task, container, session) {
         </div>
         <p class="text-sm text-slate-800 mb-3">${escapeHtml(s.indikator)}</p>
         <div class="relative">
-           <input type="number" data-idx="${i}" class="kpi-nilai-input w-full pl-3 pr-10 py-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100 transition" placeholder="Berikan Skor Penilaian (Contoh: 85)" required min="0" max="100">
+           <input type="number" data-idx="${i}" data-bobot="${s.bobot}" class="kpi-nilai-input w-full pl-3 pr-10 py-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100 transition" placeholder="Berikan Skor (0-100)" required min="0" max="100">
            <span class="absolute right-3 top-2.5 text-slate-300 font-medium text-sm">/ 100</span>
         </div>
      </div>
   `).join("");
 
+  // Menampilkan catatan HRD jika ada
+  const catatanHrdHtml = task.catatan_hrd ? `
+    <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+       <span class="font-bold block mb-1">Catatan HRD untuk Karyawan ini:</span>
+       ${escapeHtml(task.catatan_hrd)}
+    </div>` : '';
+
   openModal({
-     title: `Form Evaluasi: ${escapeHtml(task.nama_dinilai)}`,
+     title: `Evaluasi: ${escapeHtml(task.nama_dinilai)}`,
      size: "md",
      bodyHtml: `
         <form id="form-isi-kpi">
-           <div class="mb-5 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
+           <div class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-amber-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-              <p class="text-xs text-amber-800 leading-relaxed">Penilaian ini dihitung otomatis berdasarkan bobot tiap indikator. Batas waktu pengumpulan: <strong>${task.deadline ? fmtDateShort(task.deadline) : '-'}</strong>.</p>
+              <p class="text-xs text-amber-800 leading-relaxed">Batas waktu pengumpulan form ini: <strong>${task.deadline ? fmtDateShort(task.deadline) : '-'}</strong>.</p>
            </div>
+           ${catatanHrdHtml}
            ${soalHtml}
         </form>
      `,
      footerHtml: `
-        <button id="btn-cancel-kpi" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
-        <button id="btn-submit-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2 rounded-lg text-sm font-medium transition shadow-md">Simpan & Selesaikan</button>
+        <div class="w-full flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-200 mb-3">
+           <span class="text-sm font-bold text-slate-600">Skor Akhir Sementara:</span>
+           <span id="kpi-live-score" class="text-lg font-black text-maroon-700">0.00</span>
+        </div>
+        <div class="flex gap-2 justify-end">
+           <button id="btn-cancel-kpi" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
+           <button id="btn-submit-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2 rounded-lg text-sm font-medium transition shadow-md">Kirim Penilaian</button>
+        </div>
      `,
      onMount: (m) => {
+        // Kalkulator Skor Real-Time untuk Penilai
+        const liveScore = m.querySelector("#kpi-live-score");
+        m.querySelector("#form-isi-kpi").addEventListener("input", () => {
+           let calcTotal = 0;
+           m.querySelectorAll(".kpi-nilai-input").forEach(input => {
+               const bbt = parseFloat(input.dataset.bobot) || 0;
+               const val = parseFloat(input.value) || 0;
+               calcTotal += val * (bbt / 100);
+           });
+           liveScore.textContent = calcTotal.toFixed(2);
+        });
+
         m.querySelector("#btn-cancel-kpi").onclick = closeModal;
         m.querySelector("#btn-submit-kpi").onclick = async () => {
            const form = m.querySelector("#form-isi-kpi");
            if(!form.reportValidity()) return;
 
-           let totalBobot = 0;
            let totalSkorBobot = 0;
            const answeredSoal = [...task.soal_json];
 
-           // Ekstrak kalkulasi
            m.querySelectorAll(".kpi-nilai-input").forEach(input => {
               const idx = parseInt(input.dataset.idx);
               const nilai = parseFloat(input.value) || 0;
               const bobot = parseFloat(answeredSoal[idx].bobot) || 0;
               
               answeredSoal[idx].nilai_diberikan = nilai;
-              totalBobot += bobot;
-              totalSkorBobot += (nilai * (bobot / 100)); // Rumus Weighted Average
+              totalSkorBobot += (nilai * (bobot / 100));
            });
 
-           // Jika total bobot HRD tidak genap 100, kita lakukan normalisasi kalkulasi
-           let finalScore = totalBobot > 0 ? (totalSkorBobot / (totalBobot / 100)) : 0;
-           finalScore = Math.round(finalScore * 100) / 100;
-
+           let finalScore = Math.round(totalSkorBobot * 100) / 100;
            let keputusan = finalScore >= 80 ? "Sangat Baik" : finalScore >= 60 ? "Baik" : "Kurang";
 
            const btn = m.querySelector("#btn-submit-kpi");
            btn.disabled = true; btn.textContent = "Merekap Nilai...";
 
            try {
-              // 1. Update Tugas Individu Karyawan menjadi Selesai
               await fsUpdate(COL.TUGAS_KPI_360, task.id, {
                  status: "DONE",
                  skor_akhir: finalScore,
@@ -227,7 +246,6 @@ function openPenilaianForm(task, container, session) {
                  tanggal_diselesaikan: new Date().toISOString()
               });
 
-              // 2. Tembuskan Arsip Permanen ke Rekap Master Hasil
               await fsAdd(COL.LOG_PENILAIAN_KPI, {
                  tanggal: new Date().toISOString(),
                  nama_dinilai: task.nama_dinilai,
@@ -238,12 +256,12 @@ function openPenilaianForm(task, container, session) {
                  detail_json: answeredSoal
               }, genId("KPI-LOG"));
 
-              toast("Evaluasi berhasil disimpan secara permanen!", "success");
+              toast("Evaluasi berhasil diselesaikan!", "success");
               closeModal();
-              loadKpiTasks(container, session); // Segarkan list di dashboard
+              loadKpiTasks(container, session);
            } catch(e) {
               toast("Gagal menyimpan evaluasi: " + e.message, "error");
-              btn.disabled = false; btn.textContent = "Simpan & Selesaikan";
+              btn.disabled = false; btn.textContent = "Kirim Penilaian";
            }
         };
      }
