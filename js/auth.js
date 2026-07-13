@@ -12,7 +12,7 @@
  *  5. canAccessForm(formConfig) untuk kontrol akses Katalog Pengajuan ISO
  * =====================================================================
  */
-import { db, COL, doc, getDoc, collection, getDocs, query, where } from "./firebase-config.js";
+import { db, COL, doc, getDoc, collection, getDocs, query, where, updateDoc } from "./firebase-config.js";
 import { sha256, fsGetAll } from "./utils.js";
 
 const SESSION_KEY = "andela_hris_session";
@@ -108,6 +108,42 @@ export async function login(username, password, remember = false) {
     loginAt: Date.now()
   };
   setSession(session, remember);
+  return session;
+}
+export async function loginWithToken(tokenStr) {
+  const tokenSnap = await getDoc(doc(db, "login_tokens", tokenStr));
+  if (!tokenSnap.exists()) throw new Error("Token tidak valid.");
+  
+  const tokenData = tokenSnap.data();
+  if (tokenData.used) throw new Error("Token sudah pernah digunakan demi keamanan.");
+
+  // Cek kedaluwarsa (Maksimal 24 Jam)
+  const now = Date.now();
+  if (now - tokenData.createdAt > 24 * 60 * 60 * 1000) throw new Error("Token telah kedaluwarsa.");
+
+  // Ambil Data Pengguna
+  const uname = tokenData.username;
+  const snap = await getDoc(doc(db, COL.USERS, uname));
+  if (!snap.exists()) throw new Error("Pengguna tidak ditemukan.");
+  const user = snap.data();
+
+  // HANGUSKAN TOKEN (Tandai sudah terpakai)
+  await updateDoc(doc(db, "login_tokens", tokenStr), { used: true, usedAt: now });
+
+  let karyawan = null;
+  if (user.nik) {
+    const kSnap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(user.nik)));
+    if (kSnap.exists()) karyawan = kSnap.data();
+  }
+
+  // Buat Sesi Login Otomatis
+  const session = {
+    username: uname, role: (user.role || "STAFF").toUpperCase(), nama: user.nama || uname,
+    email: user.email || "", posisi: user.posisi || karyawan?.jabatan || "-",
+    nik: user.nik || karyawan?.nik_karyawan || null, cabang: karyawan?.cabang || user.cabang || "-",
+    foto_url: karyawan?.foto_url || null, loginAt: Date.now()
+  };
+  setSession(session, true); // Paksa login
   return session;
 }
 export function logout() {
