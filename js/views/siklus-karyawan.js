@@ -30,3 +30,35 @@ export async function mount(container, { session }) {
   });
   return { unmount() {} };
 }
+
+import { sendEmailNotif } from "../utils.js";
+
+// ... di dalam fungsi simpan Onboarding ...
+
+const emailKaryawanBaru = data.email_pribadi; // didapat dari form
+const namaKaryawan = data.nama_karyawan;
+
+const htmlWelcome = `
+  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+    <div style="background-color: #7a1f2b; padding: 20px; text-align: center;">
+      <h2 style="color: white; margin: 0;">Welcome to The Team!</h2>
+    </div>
+    <div style="padding: 20px; background-color: #f9fafb; color: #333;">
+      <p>Halo <strong>${namaKaryawan}</strong>,</p>
+      <p>Selamat bergabung dengan perusahaan kami. Berikut adalah beberapa hal yang perlu Anda persiapkan untuk hari pertama (Onboarding):</p>
+      <ul>
+        <li>Fotokopi KTP & Kartu Keluarga (2 Lembar)</li>
+        <li>Fotokopi Buku Rekening Bank</li>
+        <li>NPWP & BPJS (Jika ada)</li>
+      </ul>
+      <p>Anda sudah bisa mengakses sistem HRIS kami melalui tautan di bawah ini:</p>
+      <div style="text-align: center; margin-top: 30px; margin-bottom: 20px;">
+        <a href="https://domain-hris-anda.com" style="background-color: #7a1f2b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Masuk ke Sistem HRIS</a>
+      </div>
+      <p style="font-size: 12px; color: #666;">Jika Anda memiliki pertanyaan, silakan hubungi tim HR kami.</p>
+    </div>
+  </div>
+`;
+
+// Panggil fungsi kirim email
+await sendEmailNotif(emailKaryawanBaru, "Welcoming Letter - HRIS", htmlWelcome);
