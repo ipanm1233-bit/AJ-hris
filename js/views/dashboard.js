@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, orderBy, limit, getDoc, doc } from "../firebase-config.js";
-import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, toast, fsUpdate, fsAdd, genId, fsGetAll, createLoginToken } from "../utils.js";
+import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, getTargetsForRole, toast, fsUpdate, fsAdd, genId, fsGetAll, createLoginToken } from "../utils.js";
 import { avatar, badge, icon, emptyState, skeletonRows } from "../components.js";
 import { MANAJEMEN_ROLES } from "../auth.js";
 
@@ -45,7 +45,6 @@ async function loadProfileCard(container, session) {
     ${karyawan?.aktif_tdk_aktif ? badge(karyawan.aktif_tdk_aktif, karyawan.aktif_tdk_aktif === "AKTIF" ? "green" : "red") : ""}
   `;
 
-  // Memicu modal profil saat kartu diklik
   if (profileCard) {
      profileCard.onclick = () => openProfileModal(session, karyawan);
   }
@@ -145,19 +144,17 @@ async function loadLeaveBalances(container, session) {
   }).join("");
 }
 
-/* ------------------------ c. KPI 360 TASKS (POPUP AUTO & FORMULIR) ------------------------ */
+/* ------------------------ c. KPI 360 TASKS ------------------------ */
 async function loadKpiTasks(container, session) {
   const wrap = container.querySelector("#dash-kpi-tasks");
   try {
     const q = query(collection(db, COL.TUGAS_KPI_360), where("nama_penilai", "==", session.nama));
     const snap = await getDocs(q);
     
-    // Saring hanya tugas yang belum selesai
     const pending = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => (r.status || "").toUpperCase() !== "DONE");
     
-    // POPUP OTOMATIS: Muncul ketika login/buka sistem via Magic Link
     if (pending.length > 0 && !window.hasShownKpiPopup) {
-      window.hasShownKpiPopup = true; // Mencegah popup muncul berkali-kali di sesi yang sama
+      window.hasShownKpiPopup = true; 
       
       let listHtml = pending.map(p => `
         <li class="flex justify-between items-center py-2.5 border-b border-slate-100 last:border-0">
@@ -194,7 +191,6 @@ async function loadKpiTasks(container, session) {
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-maroon-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
       </div>`).join("");
 
-    // Klik untuk buka formulir pengisian nilai
     wrap.querySelectorAll("[data-kpi-id]").forEach(el => {
        el.onclick = () => {
           const task = pending.find(x => x.id === el.dataset.kpiId);
@@ -381,7 +377,7 @@ async function loadAnnouncements(container) {
   } catch (e) { wrap.innerHTML = emptyState("Belum ada pengumuman"); }
 }
 
-/* ------------------------ f. CONTRACT EXPIRY (DENGAN TUGAS KPI & TEMPLATE) ------------------------ */
+/* ------------------------ f. CONTRACT EXPIRY ------------------------ */
 async function loadContractExpiry(container) {
   const wrapOuter = container.querySelector("#dash-contract-widget-wrap");
   wrapOuter.classList.remove("hidden");
@@ -417,7 +413,6 @@ async function loadContractExpiry(container) {
         </div>
       </div>`).join("");
 
-    // AKSI: MENGIRIMKAN TUGAS PENILAIAN DARI TEMPLATE KEPADA ATASAN
     wrap.querySelectorAll('button[data-action="atasan"]').forEach(btn => {
       btn.addEventListener('click', async (e) => {
          const btnEl = e.currentTarget;
@@ -425,7 +420,16 @@ async function loadContractExpiry(container) {
          if (!k) { toast("Data karyawan tidak ditemukan.", "error"); return; }
          
          const templates = await fsGetAll(COL.MASTER_SOAL_KPI);
-         const optTemplates = templates.map(t => `<option value="${t.id}">${escapeHtml(t.nama_template)}</option>`).join("");
+         
+         // PERBAIKAN: Saring template lama yang rusak (yang tidak punya soal_json atau nama_template)
+         const validTemplates = templates.filter(t => t.nama_template && t.soal_json && t.soal_json.length > 0);
+
+         if (validTemplates.length === 0) {
+            toast("Anda belum memiliki Template Penilaian yang valid. Silakan buat terlebih dahulu di menu Penilaian & Kontrak > Template Soal KPI.", "warning");
+            return;
+         }
+
+         const optTemplates = validTemplates.map(t => `<option value="${t.id}">${escapeHtml(t.nama_template)}</option>`).join("");
 
          openModal({
             title: "Tugaskan Penilaian Evaluasi Kontrak",
@@ -468,12 +472,10 @@ async function loadContractExpiry(container) {
 
                      if(!atasanEmail) throw new Error("Atasan tidak memiliki email untuk dikirimkan notifikasi.");
 
-                     // Deadline 3 Hari
                      const deadlineDate = new Date();
                      deadlineDate.setDate(deadlineDate.getDate() + 3);
                      const deadlineISO = deadlineDate.toISOString();
 
-                     // Buat Tugas KPI
                      await fsAdd(COL.TUGAS_KPI_360, {
                         periode: "Evaluasi Kontrak " + (new Date().getFullYear()),
                         nama_penilai: atasanName,
@@ -486,7 +488,6 @@ async function loadContractExpiry(container) {
                         deadline: deadlineISO
                      }, genId("KPI"));
 
-                     // Kirim Email Magic Link ke Atasan
                      if (typeof sendEmailNotif === 'function') {
                         const token = await createLoginToken(atasanUsername);
                         const magicLink = `https://andela-hris.vercel.app/#dashboard?token=${token}`;
@@ -507,14 +508,13 @@ async function loadContractExpiry(container) {
                      toast("Tugas penilaian berhasil dibuat dan dikirim ke Atasan", "success");
                      closeModal();
                      
-                     // Memperbarui badge tombol agar HRD tahu bahwa email sudah dikirim
                      btnEl.className = "flex-1 bg-green-600 text-white text-[11px] py-1.5 rounded transition";
                      btnEl.textContent = "Tugas Terkirim ✓";
                      btnEl.disabled = true;
 
                   } catch (err) {
                      toast(err.message, "error");
-                     submitBtn.disabled = false; submitBtn.textContent = "Kirim Tugas Penilaian";
+                     submitBtn.disabled = false; submitBtn.textContent = "Kirim Tugas ke Atasan";
                   }
                };
             }
