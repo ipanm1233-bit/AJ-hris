@@ -238,7 +238,7 @@ async function submitPengajuan(formCfg, detail, session) {
             <p><strong>Diajukan Oleh:</strong> ${payload.nama_pemohon}</p>
             <p><strong>Tanggal:</strong> ${new Date().toLocaleDateString('id-ID')}</p>
             <p>Pengajuan ini membutuhkan persetujuan Anda sebagai <strong>${nextRole}</strong>.</p>
-            <a href="https://andela-hris.netlify.app/#approval" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Masuk ke Antrean Persetujuan</a>
+            <a href="https://andela-hris.vercel.app/#approval" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Masuk ke Antrean Persetujuan</a>
           </div>
         `;
         // Blast email ke semua orang yang menjabat role tersebut (misal jika ada 2 orang Finance, keduanya dapat)
