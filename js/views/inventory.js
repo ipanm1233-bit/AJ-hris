@@ -40,6 +40,7 @@ export async function mount(container) {
 
   async function loadAmbil() {
     const items = await fsGetAll(COL.MASTER_INVENTORY);
+    
     await renderCrudModule(panels.ambil, {
       title: "Log Pengambilan Barang",
       subtitle: "Setiap pengambilan otomatis mengurangi stok barang terkait.",
@@ -57,21 +58,42 @@ export async function mount(container) {
       formFields: [
         { name: "tanggal", label: "Tanggal", type: "date", required: true },
         {
-          name: "id_barang", label: "Pilih Barang", type: "select", required: true,
-          options: items.map(i => i.id_item)
+          // PERUBAHAN 1: Buat field sementara untuk dropdown nama barang
+          name: "nama_barang_pilihan", 
+          label: "Pilih Barang", 
+          type: "select", 
+          required: true,
+          // Menampilkan daftar nama barang (hanya yang stoknya lebih dari 0)
+          options: items.filter(i => toNumber(i.stok_saat_ini) > 0).map(i => i.nama_barang)
         },
         { name: "nama_karyawan", label: "Diambil Oleh", type: "text", required: true },
         { name: "jumlah_ambil", label: "Jumlah Diambil", type: "number", required: true, default: 1 },
         { name: "keperluan", label: "Keperluan", type: "textarea", full: true },
       ],
       beforeSave: async (data) => {
-        const item = items.find(i => i.id_item === data.id_barang);
+        // PERUBAHAN 2: Cari objek barang aslinya berdasarkan NAMA BARANG yang dipilih
+        const item = items.find(i => i.nama_barang === data.nama_barang_pilihan);
+        
         if (item) {
+          // Kalkulasi pengurangan stok
           const newStok = Math.max(toNumber(item.stok_saat_ini) - toNumber(data.jumlah_ambil), 0);
+          
+          // Update stok di database MASTER_INVENTORY
           await fsUpdate(COL.MASTER_INVENTORY, item.id, { stok_saat_ini: newStok });
+          
+          // Update state lokal agar tidak perlu refresh halaman
           item.stok_saat_ini = newStok;
+          
+          // Simpan nama barang dan id aslinya ke data Log yang akan di-save
+          data.id_barang = item.id_item;
           data.nama_barang = item.nama_barang;
+        } else {
+           throw new Error("Barang tidak ditemukan. Silakan refresh halaman.");
         }
+
+        // Hapus field pilihan temporary agar tidak ikut masuk ke database
+        delete data.nama_barang_pilihan;
+        
         return data;
       }
     });
