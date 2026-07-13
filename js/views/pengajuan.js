@@ -1,7 +1,7 @@
 import { db, COL, collection, query, where, getDocs, orderBy, limit, doc, getDoc } from "../firebase-config.js";
 import {
   fsGetAll, fsAdd, openModal, closeModal, toast, genId, escapeHtml,
-  fmtDateShort, evalFormula, toNumber, sendEmailNotif
+  fmtDateShort, evalFormula, toNumber, sendEmailNotif, getEmailsForRole
 } from "../utils.js";
 import { canAccessForm } from "../auth.js";
 import { icon, badge, emptyState, skeletonRows } from "../components.js";
@@ -226,33 +226,34 @@ async function submitPengajuan(formCfg, detail, session) {
     const container = document.getElementById("view-container");
     if (container) await loadRecent(container, session);
     
-    // Memicu notifikasi email via Apps Script jika ada alur persetujuan
-    if (approvalFlow.length > 0) {
-      const htmlEmail = `
-        <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-          <h2 style="color: #7a1f2b;">Pengajuan Baru: ${payload.nama_form}</h2>
-          <p><strong>Diajukan Oleh:</strong> ${payload.nama_pemohon}</p>
-          <p><strong>Tanggal:</strong> ${new Date().toLocaleDateString('id-ID')}</p>
-          <p>Pengajuan ini membutuhkan persetujuan Anda sebagai <strong>${approvalFlow[0]}</strong>.</p>
-          <a href="https://andela-hris.netlify.app/#approval" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Masuk ke Antrean Persetujuan</a>
-        </div>
-      `;
-      // Catatan: Ganti parameter "hrd@perusahaan.com" di bawah ini dengan email riil penerima (Atasan/HRD) jika data tersedia
-      await sendEmailNotif("hrd@perusahaan.com", `Persetujuan Dibutuhkan: ${payload.nama_form}`, htmlEmail).catch(e => console.warn("Gagal mengirim notifikasi email:", e));
+    // Memicu Notifikasi Email ke APPROVER PERTAMA
+    if (approvalFlow.length > 0 && typeof sendEmailNotif === 'function') {
+      const nextRole = approvalFlow[0];
+      const targetEmails = await getEmailsForRole(nextRole, payload.nama_pemohon);
+      
+      if (targetEmails.length > 0) {
+        const htmlEmail = `
+          <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <h2 style="color: #7a1f2b;">Pengajuan Baru: ${payload.nama_form}</h2>
+            <p><strong>Diajukan Oleh:</strong> ${payload.nama_pemohon}</p>
+            <p><strong>Tanggal:</strong> ${new Date().toLocaleDateString('id-ID')}</p>
+            <p>Pengajuan ini membutuhkan persetujuan Anda sebagai <strong>${nextRole}</strong>.</p>
+            <a href="https://andela-hris.netlify.app/#approval" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Masuk ke Antrean Persetujuan</a>
+          </div>
+        `;
+        // Blast email ke semua orang yang menjabat role tersebut (misal jika ada 2 orang Finance, keduanya dapat)
+        targetEmails.forEach(email => {
+           sendEmailNotif(email, `Persetujuan Dibutuhkan: ${payload.nama_form}`, htmlEmail).catch(e => console.warn(e));
+        });
+      }
     }
   } catch (e) {
     console.error(e);
     toast("Gagal mengirim pengajuan: " + e.message, "error");
-    
-    // Buka kunci tombol jika gagal
     const submitBtn = document.querySelector("#dyn-submit");
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.textContent = "Ajukan Sekarang";
-    }
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Ajukan Sekarang"; }
   }
 }
-
 /* ---------------------------------------------------------------------
  * RECENT SUBMISSIONS LIST
  * ------------------------------------------------------------------- */
