@@ -339,3 +339,45 @@ export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
     return false;
   }
 }
+
+// Tambahkan di baris paling bawah pada js/utils.js
+
+export async function getEmailsForRole(targetRole, pemohonName) {
+  let emails = [];
+  try {
+    if (targetRole === "ATASAN") {
+      // 1. Cari siapa nama atasan dari si pemohon
+      const qK = query(collection(db, "master_karyawan"), where("nama_karyawan", "==", pemohonName), limit(1));
+      const snapK = await getDocs(qK);
+      if (!snapK.empty) {
+        const atasanName = snapK.docs[0].data().atasan;
+        if (atasanName) {
+          // 2. Cari email atasan tersebut di tabel users
+          const qU = query(collection(db, "users"), where("nama", "==", atasanName), limit(1));
+          const snapU = await getDocs(qU);
+          if (!snapU.empty) emails.push(snapU.docs[0].data().email);
+        }
+      }
+    } else if (targetRole === "PEMOHON") {
+       // Cari email si pembuat pengajuan
+       const qU = query(collection(db, "users"), where("nama", "==", pemohonName), limit(1));
+       const snapU = await getDocs(qU);
+       if (!snapU.empty) emails.push(snapU.docs[0].data().email);
+    } else {
+      // Cari semua akun yang memiliki Role tertentu (contoh: HRD, FINANCE, KASIR)
+      const qU = query(collection(db, "users"), where("role", "==", targetRole.toUpperCase()));
+      const snapU = await getDocs(qU);
+      snapU.forEach(d => { if (d.data().email) emails.push(d.data().email); });
+      
+      // Fallback: Jika Role tidak ditemukan, cari berdasarkan Nama Spesifik
+      if (emails.length === 0) {
+        const qN = query(collection(db, "users"), where("nama", "==", targetRole), limit(1));
+        const snapN = await getDocs(qN);
+        if (!snapN.empty) emails.push(snapN.docs[0].data().email);
+      }
+    }
+  } catch(e) { console.warn("Error resolving emails:", e); }
+  
+  // Kembalikan array email yang unik dan tidak kosong
+  return [...new Set(emails.filter(Boolean))]; 
+}
