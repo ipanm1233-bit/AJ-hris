@@ -31,7 +31,7 @@ export const MENU_CONFIG = [
   // MODUL HRD
   { route: "absensi", label: "Manajemen Absensi", icon: "calendar", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
   { route: "cuti", label: "Manajemen Cuti", icon: "calendar", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
-  { route: "kalender-hr", label: "Kalender HR", icon: "calendar", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
+  { route: "kalender-hr", label: "Kalender HR", icon: "calendar", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] }, // <-- PERBAIKAN DI SINI
   { route: "penilaian-kontrak", label: "Penilaian & Kontrak", icon: "star", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
   { route: "rekrutmen", label: "Rekrutmen (ATS)", icon: "user-group", group: "hrd", roles: ["HRD", "SUPERADMIN"] },
   { route: "siklus-karyawan", label: "Siklus Karyawan", icon: "refresh", group: "hrd", roles: ["HRD", "SUPERADMIN"] },
@@ -39,7 +39,7 @@ export const MENU_CONFIG = [
   // MODUL MANAJEMEN
   { route: "approval", label: "Antrean Persetujuan", icon: "check-circle", group: "manajemen", roles: ["MANAGER", "HRD", "DIREKTUR", "FINANCE", "ACCOUNTING"] },
   { route: "broadcast", label: "Broadcast Memo", icon: "speakerphone", group: "manajemen", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
-  { route: "manajemen-data", label: "Manajemen Data", icon: "database", group: "manajemen", roles: ["HRD", "SUPERADMIN", "DIREKTUR", "FINANCE"] }, // <-- PERBAIKAN DI SINI
+  { route: "manajemen-data", label: "Manajemen Data", icon: "database", group: "manajemen", roles: ["HRD", "SUPERADMIN", "DIREKTUR", "FINANCE"] }, 
   { route: "pengaturan", label: "Akses & Pengguna", icon: "shield-check", group: "manajemen", roles: ["SUPERADMIN", "DIREKTUR"] },
   { route: "konfigurasi", label: "Konfigurasi Sistem", icon: "cog", group: "manajemen", roles: ["SUPERADMIN", "DIREKTUR"] }
 ];
