@@ -85,15 +85,22 @@ async function openFormModal(formCfg, session) {
   const isFormCuti = (formCfg.nama_form || "").toLowerCase().includes("cuti");
   let headerBannerHtml = "";
 
-  // JIKA FORM ADALAH CUTI: Hitung dan tampilkan Sisa Saldo
+  // JIKA FORM ADALAH CUTI: Hitung dan tampilkan Sisa Saldo dengan Pencarian Ganda
   if (isFormCuti) {
     let jatah = { tahunan: 0, khusus: 0, akumulasi: 0 };
-    if (session.nik && session.nik !== "null") {
+    
+    let kData = null;
+    if (session.nik && session.nik !== "null" && session.nik !== "undefined") {
       const snap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(session.nik)));
-      if (snap.exists()) {
-        const k = snap.data();
-        jatah = { tahunan: toNumber(k.jatah_tahunan), khusus: toNumber(k.jatah_khusus), akumulasi: toNumber(k.jatah_akumulasi) };
-      }
+      if (snap.exists()) kData = snap.data();
+    }
+    if (!kData) {
+      const qK = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", session.nama), limit(1));
+      const snapK = await getDocs(qK);
+      if (!snapK.empty) kData = snapK.docs[0].data();
+    }
+    if (kData) {
+      jatah = { tahunan: toNumber(kData.jatah_tahunan), khusus: toNumber(kData.jatah_khusus), akumulasi: toNumber(kData.jatah_akumulasi) };
     }
 
     let terpakai = { Tahunan: 0, Khusus: 0, Akumulasi: 0 };
@@ -101,7 +108,11 @@ async function openFormModal(formCfg, session) {
     const snapC = await getDocs(qC);
     snapC.docs.forEach(d => {
        const r = d.data();
-       if (r.potong_jatah && terpakai[r.potong_jatah] !== undefined) terpakai[r.potong_jatah] += toNumber(r.count) || 1;
+       if (r.potong_jatah && terpakai[r.potong_jatah] !== undefined) {
+           let hitung = parseFloat(r.count);
+           if (isNaN(hitung)) hitung = 1;
+           terpakai[r.potong_jatah] += hitung;
+       }
     });
 
     headerBannerHtml = `
@@ -125,7 +136,7 @@ async function openFormModal(formCfg, session) {
       </div>
     `;
 
-    // Modifikasi Field Dropdown "Jenis Cuti" secara otomatis dari sistem
+    // Modifikasi Field Dropdown "Jenis Cuti" secara otomatis
     fields.forEach(f => {
        if (f.name.toLowerCase().includes("jenis")) {
           f.type = "select";
@@ -151,7 +162,7 @@ async function openFormModal(formCfg, session) {
     bodyHtml,
     footerHtml: `
       <button id="dyn-cancel" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
-      <button id="dyn-submit" class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-maroon-700 hover:bg-maroon-800 transition">Ajukan Sekarang</button>`,
+      <button id="dyn-submit" class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-maroon-700 hover:bg-maroon-800 transition shadow-md">Ajukan Sekarang</button>`,
     onMount: async (m) => {
       const form = m.querySelector("#dyn-form");
       await wireEmployeeDropdowns(m, fields);
