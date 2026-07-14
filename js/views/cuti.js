@@ -2,7 +2,6 @@ import { db, COL, collection, getDocs, doc, setDoc, getDoc } from "../firebase-c
 import { fsGetAll, fsAdd, fsUpdate, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort } from "../utils.js";
 import { avatar, emptyState, skeletonRows, badge } from "../components.js";
 
-// Template Default Jenis Cuti (Jika DB masih kosong)
 const DEFAULT_LEAVE_TYPES = [
   { id: "C", name: "Cuti Tahunan", potong: "Tahunan", count: 1 },
   { id: "C1/2", name: "Cuti Setengah Hari", potong: "Tahunan", count: 0.5 },
@@ -57,7 +56,8 @@ export async function mount(container, { session }) {
          getDoc(doc(db, COL.APP_SETTINGS, "leave_types"))
       ]);
       
-      allKaryawan = snapK.filter(k => (k.aktif_tdk_aktif||"AKTIF").toUpperCase() === "AKTIF");
+      // PERBAIKAN PENTING: Mencegah error trim() dengan menyaring data karyawan yang memiliki 'nama_karyawan' valid
+      allKaryawan = snapK.filter(k => (k.aktif_tdk_aktif||"AKTIF").toUpperCase() === "AKTIF" && k.nama_karyawan && k.nama_karyawan.trim() !== "");
       allCuti = snapC;
       
       if (snapCfg.exists() && snapCfg.data().types) {
@@ -75,6 +75,7 @@ export async function mount(container, { session }) {
     terpakaiMap = {};
     allCuti.forEach(r => {
       const key = r.nama_karyawan;
+      if(!key) return; 
       if (!terpakaiMap[key]) terpakaiMap[key] = { Tahunan: 0, Khusus: 0, Akumulasi: 0 };
       if (r.potong_jatah && terpakaiMap[key][r.potong_jatah] !== undefined) {
          terpakaiMap[key][r.potong_jatah] += parseFloat(r.count) || 0;
@@ -131,12 +132,9 @@ export async function mount(container, { session }) {
 
   searchInput.oninput = (e) => {
      const term = e.target.value.toLowerCase();
-     renderCards(allKaryawan.filter(k => k.nama_karyawan.toLowerCase().includes(term) || (k.jabatan||"").toLowerCase().includes(term)));
+     renderCards(allKaryawan.filter(k => (k.nama_karyawan||"").toLowerCase().includes(term) || (k.jabatan||"").toLowerCase().includes(term)));
   };
 
-  // ==========================================
-  // MODAL KARYAWAN (RIWAYAT & INPUT CUTI)
-  // ==========================================
   function openEmployeeModal(k) {
      const sisa = getSisa(k);
      const myLeaves = allCuti.filter(c => c.nama_karyawan === k.nama_karyawan).sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
@@ -160,13 +158,11 @@ export async function mount(container, { session }) {
             </div>
           </div>
 
-          <!-- TABS -->
           <div class="flex border-b border-slate-200 mb-4">
              <button id="tab-input-cuti" class="px-4 py-2 text-sm font-bold text-maroon-700 border-b-2 border-maroon-700">Input Cuti Baru</button>
              <button id="tab-riwayat-cuti" class="px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700">Riwayat Cuti</button>
           </div>
 
-          <!-- PANEL INPUT CUTI -->
           <div id="panel-input-cuti">
              <form id="form-input-cuti" class="space-y-4">
                 <div class="bg-blue-50 p-3 rounded-lg border border-blue-100 mb-2">
@@ -223,7 +219,6 @@ export async function mount(container, { session }) {
              </form>
           </div>
 
-          <!-- PANEL RIWAYAT -->
           <div id="panel-riwayat-cuti" class="hidden">
              <div class="max-h-80 overflow-y-auto border border-slate-100 rounded-lg">
                 <table class="w-full text-xs text-left">
@@ -268,7 +263,6 @@ export async function mount(container, { session }) {
               btnSimpan.classList.add("hidden");
            };
 
-           // AUTO FILL LOGIC
            const selJenis = m.querySelector("#inp-jenis");
            const wrapTglAkhir = m.querySelector("#wrap-tgl-akhir");
            const wrapJam = m.querySelector("#wrap-jam");
@@ -285,11 +279,11 @@ export async function mount(container, { session }) {
 
               lblPotong.textContent = potongTipe;
 
-              if (baseCount === 0.5) { // Setengah Hari Mode
+              if (baseCount === 0.5) { 
                  wrapTglAkhir.classList.add("hidden");
                  wrapJam.classList.remove("hidden");
                  inHari.value = 0.5;
-              } else { // Full Day / Multi Day Mode
+              } else { 
                  wrapTglAkhir.classList.remove("hidden");
                  wrapJam.classList.add("hidden");
                  
@@ -297,7 +291,7 @@ export async function mount(container, { session }) {
                     const d1 = new Date(inMulai.value); const d2 = new Date(inAkhir.value);
                     let diff = Math.round((d2-d1)/86400000) + 1;
                     if(diff < 1) diff = 1;
-                    inHari.value = diff * baseCount; // Base count bisa 0 (Izin) atau 1 (Cuti)
+                    inHari.value = diff * baseCount; 
                  } else {
                     inHari.value = baseCount;
                  }
@@ -325,7 +319,7 @@ export async function mount(container, { session }) {
                  tanggal: tglMulai,
                  nama_karyawan: k.nama_karyawan,
                  cabang: k.cabang || "-",
-                 type_cuti: jenisVal,
+                 type_cuti: jenisVal + " - " + opt.text.split(" - ")[1],
                  potong_jatah: tipePotong,
                  count: parseFloat(inHari.value) || 0,
                  keterangan_cuti: m.querySelector("#inp-alasan").value.trim(),
@@ -337,13 +331,11 @@ export async function mount(container, { session }) {
                  await fsAdd(COL.MASTER_CUTI, payload, genId("CUTI"));
                  toast("Cuti berhasil diinput", "success");
                  
-                 // Update data lokal
                  allCuti.push(payload);
                  calculateBalances();
                  renderCards(allKaryawan);
                  closeModal();
 
-                 // Kumpulkan Data Untuk PDF
                  const pdfData = {
                     ...payload,
                     isHalfDay,
@@ -365,9 +357,6 @@ export async function mount(container, { session }) {
      });
   }
 
-  // ==========================================
-  // LOGIKA CETAK PDF 
-  // ==========================================
   function printCutiPdf(k, data, sisa) {
     const printWindow = window.open('', '_blank');
     const todayStr = new Date().toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' });
@@ -465,9 +454,6 @@ export async function mount(container, { session }) {
     printWindow.document.write(html); printWindow.document.close();
   }
 
-  // ==========================================
-  // MODAL PENGATURAN JENIS CUTI HRD
-  // ==========================================
   container.querySelector("#btn-setting-cuti").onclick = () => {
      openModal({
         title: "Pengaturan Jenis Cuti",
@@ -527,7 +513,7 @@ export async function mount(container, { session }) {
               renderCfgTable();
            };
 
-           m.querySelector("#btn-cfg-batal").onclick = () => { loadData(); closeModal(); }; // revert changes
+           m.querySelector("#btn-cfg-batal").onclick = () => { loadData(); closeModal(); };
            
            m.querySelector("#btn-cfg-simpan").onclick = async () => {
               const newCfg = [];
