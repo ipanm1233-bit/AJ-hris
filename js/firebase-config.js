@@ -62,5 +62,6 @@ export const COL = {
   SIKLUS_KARYAWAN: "siklus_karyawan",
   UANG_MAKAN_EXPEDISI: "uang_makan_expedisi",
   NOTIFICATIONS: "notifications",
-  APP_SETTINGS: "app_settings"
+  APP_SETTINGS: "app_settings",
+  DATA_ABSENSI: "data_absensi"
 };
