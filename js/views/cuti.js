@@ -1,146 +1,567 @@
-import { COL } from "../firebase-config.js";
-import { fsGetAll, fsUpdate, openModal, closeModal, toast, toNumber, escapeHtml } from "../utils.js";
-import { renderCrudModule, badge, skeletonRows } from "../components.js";
+import { db, COL, collection, getDocs, doc, setDoc, getDoc } from "../firebase-config.js";
+import { fsGetAll, fsAdd, fsUpdate, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort } from "../utils.js";
+import { avatar, emptyState, skeletonRows, badge } from "../components.js";
+
+// Template Default Jenis Cuti (Jika DB masih kosong)
+const DEFAULT_LEAVE_TYPES = [
+  { id: "C", name: "Cuti Tahunan", potong: "Tahunan", count: 1 },
+  { id: "C1/2", name: "Cuti Setengah Hari", potong: "Tahunan", count: 0.5 },
+  { id: "C+", name: "Cuti Khusus", potong: "Khusus", count: 1 },
+  { id: "C+I", name: "Izin (Cuti Khusus)", potong: "Tidak Dipotong", count: 0 },
+  { id: "S", name: "Sakit dgn Surat Dokter", potong: "Tidak Dipotong", count: 0 },
+  { id: "S-", name: "Sakit tanpa Surat Dokter", potong: "Tahunan", count: 1 },
+  { id: "CB", name: "Cuti Bersama", potong: "Tahunan", count: 1 },
+  { id: "C-", name: "Cuti Potong Gaji", potong: "Potong Gaji", count: 1 },
+  { id: "CS", name: "Cuti Sisa", potong: "Tahunan", count: 1 },
+  { id: "C+1/2", name: "Cuti Khusus Setengah Hari", potong: "Khusus", count: 0.5 },
+  { id: "D", name: "Dinas Luar Kota", potong: "Tidak Dipotong", count: 0 },
+  { id: "C-BESAR", name: "Cuti Besar", potong: "Tidak Dipotong", count: 0 }
+];
 
 export async function mount(container, { session }) {
-  const tbody = container.querySelector("#cuti-jatah-tbody");
-  tbody.innerHTML = `<tr><td colspan="6" class="p-4"><div class="space-y-2">${skeletonRows(3)}</div></td></tr>`;
-  
-  const [karyawan, cutiLog] = await Promise.all([fsGetAll(COL.MASTER_KARYAWAN), fsGetAll(COL.MASTER_CUTI)]);
-  
-  const terpakaiMap = {};
-  cutiLog.forEach(r => {
-    const key = r.nama_karyawan;
-    if (!terpakaiMap[key]) terpakaiMap[key] = { Tahunan: 0, Khusus: 0, Akumulasi: 0 };
-    if (r.potong_jatah && terpakaiMap[key][r.potong_jatah] !== undefined) terpakaiMap[key][r.potong_jatah] += toNumber(r.count) || 1;
-  });
+  container.innerHTML = `
+    <div class="max-w-7xl mx-auto space-y-6 pb-10">
+       <div class="flex justify-between items-end flex-wrap gap-4 border-b border-slate-200 pb-4">
+          <div>
+             <h1 class="text-2xl font-bold text-slate-800">Manajemen Cuti & Izin</h1>
+             <p class="text-sm text-slate-500 mt-1">Kelola jatah cuti, input izin manual, dan cetak form persetujuan resmi.</p>
+          </div>
+          <div class="flex gap-2">
+             <div class="relative w-64">
+                <input type="text" id="cuti-search" placeholder="Cari nama karyawan..." class="w-full pl-9 pr-3 py-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-400">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-400 absolute left-3 top-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+             </div>
+             <button id="btn-setting-cuti" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition shadow-sm flex items-center gap-2">
+               <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+               Atur Jenis Cuti
+             </button>
+          </div>
+       </div>
+       <div id="cuti-cards-wrap" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+          <div class="col-span-full">${skeletonRows(3)}</div>
+       </div>
+    </div>
+  `;
 
-  function renderTable(list) {
-    if (!list.length) { tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">Tidak ada data karyawan.</td></tr>`; return; }
-    tbody.innerHTML = list.map(k => {
-      const used = terpakaiMap[k.nama_karyawan] || { Tahunan: 0, Khusus: 0, Akumulasi: 0 };
-      const cell = (jatah, used_, tone) => {
-        const sisa = Math.max(toNumber(jatah) - used_, 0);
-        return `<div class="text-center"><span class="font-semibold text-slate-700">${sisa}</span><span class="text-slate-400 text-xs"> / ${toNumber(jatah)}</span></div>`;
-      };
-      return `
-        <tr class="border-t border-slate-50 hover:bg-slate-50/60 transition">
-          <td class="px-4 py-3">
-            <p class="font-medium text-slate-700">${escapeHtml(k.nama_karyawan)}</p>
-            <p class="text-xs text-slate-400">${escapeHtml(k.jabatan || "-")}</p>
-          </td>
-          <td class="px-4 py-3 text-slate-500">${escapeHtml(k.cabang || "-")}</td>
-          <td class="px-4 py-3">${cell(k.jatah_tahunan, used.Tahunan)}</td>
-          <td class="px-4 py-3">${cell(k.jatah_khusus, used.Khusus)}</td>
-          <td class="px-4 py-3">${cell(k.jatah_akumulasi, used.Akumulasi)}</td>
-          <td class="px-4 py-3 text-right">
-            <button data-edit-jatah="${k.id}" class="text-xs font-medium text-maroon-700 hover:underline">Atur Jatah</button>
-          </td>
-        </tr>`;
-    }).join("");
-    
-    tbody.querySelectorAll("[data-edit-jatah]").forEach(btn => {
-      btn.addEventListener("click", () => openJatahModal(karyawan.find(k => k.id === btn.dataset.editJatah), tbody, renderTable, karyawan));
-    });
+  const wrap = container.querySelector("#cuti-cards-wrap");
+  const searchInput = container.querySelector("#cuti-search");
+  
+  let allKaryawan = [], allCuti = [], leaveConfig = [];
+  let terpakaiMap = {};
+
+  async function loadData() {
+    try {
+      const [snapK, snapC, snapCfg] = await Promise.all([
+         fsGetAll(COL.MASTER_KARYAWAN),
+         fsGetAll(COL.MASTER_CUTI),
+         getDoc(doc(db, COL.APP_SETTINGS, "leave_types"))
+      ]);
+      
+      allKaryawan = snapK.filter(k => (k.aktif_tdk_aktif||"AKTIF").toUpperCase() === "AKTIF");
+      allCuti = snapC;
+      
+      if (snapCfg.exists() && snapCfg.data().types) {
+         leaveConfig = snapCfg.data().types;
+      } else {
+         leaveConfig = [...DEFAULT_LEAVE_TYPES];
+      }
+
+      calculateBalances();
+      renderCards(allKaryawan);
+    } catch(e) { wrap.innerHTML = `<div class="col-span-full text-red-500">Error: ${e.message}</div>`; }
   }
-  
-  renderTable(karyawan);
-  
-  container.querySelector("#cuti-search").addEventListener("input", (e) => {
-    const term = e.target.value.trim().toLowerCase();
-    renderTable(karyawan.filter(k => (k.nama_karyawan || "").toLowerCase().includes(term)));
-  });
 
-  const panelJatah = container.querySelector("#cuti-panel-jatah");
-  const panelLog = container.querySelector("#cuti-panel-log");
-  
-  container.querySelectorAll(".cuti-tab").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const active = btn.dataset.ctab === "jatah";
-      panelJatah.classList.toggle("hidden", !active);
-      panelLog.classList.toggle("hidden", active);
-      
-      container.querySelectorAll(".cuti-tab").forEach(b => {
-        b.classList.toggle("border-maroon-700", b === btn);
-        b.classList.toggle("text-maroon-700", b === btn);
-        b.classList.toggle("border-transparent", b !== btn);
-        b.classList.toggle("text-slate-500", b !== btn);
-      });
-      
-      if (!active && !panelLog.dataset.loaded) {
-        panelLog.dataset.loaded = "1";
-        await renderCrudModule(panelLog, {
-          title: "Log Pengambilan Cuti",
-          subtitle: "Seluruh histori cuti/izin karyawan hasil migrasi & input manual.",
-          collectionName: COL.MASTER_CUTI,
-          idPrefix: "CUTI",
-          searchFields: ["nama_karyawan", "cabang", "keterangan_cuti"],
-          columns: [
-            { key: "tanggal", label: "Tanggal", type: "date" },
-            { key: "nama_karyawan", label: "Karyawan" },
-            { key: "cabang", label: "Cabang" },
-            { key: "type_cuti", label: "Tipe", type: "badge" },
-            { key: "potong_jatah", label: "Potong Jatah", type: "badge" },
-            { key: "keterangan_cuti", label: "Keterangan" },
-            { key: "count", label: "Jml Hari", type: "number" },
-          ],
-          formFields: [
-            { name: "nama_karyawan", label: "Nama Karyawan", type: "text", required: true, full: true },
-            { name: "cabang", label: "Cabang", type: "text" },
-            { name: "jabatan", label: "Jabatan", type: "text" },
-            { name: "tanggal", label: "Tanggal", type: "date", required: true },
-            { name: "type_cuti", label: "Tipe Cuti", type: "text" },
-            { name: "potong_jatah", label: "Potong Jatah", type: "select", options: ["Tahunan", "Khusus", "Akumulasi"], required: true },
-            { name: "count", label: "Jumlah Hari", type: "number", default: 1, required: true },
-            { name: "keterangan_cuti", label: "Keterangan", type: "textarea", full: true },
-          ]
-        });
+  function calculateBalances() {
+    terpakaiMap = {};
+    allCuti.forEach(r => {
+      const key = r.nama_karyawan;
+      if (!terpakaiMap[key]) terpakaiMap[key] = { Tahunan: 0, Khusus: 0, Akumulasi: 0 };
+      if (r.potong_jatah && terpakaiMap[key][r.potong_jatah] !== undefined) {
+         terpakaiMap[key][r.potong_jatah] += parseFloat(r.count) || 0;
       }
     });
-  });
-  return { unmount() {} };
-}
+  }
 
-function openJatahModal(karyawan, tbody, renderTable, allKaryawan) {
-  if (!karyawan) return;
-  openModal({
-    title: `Atur Jatah Cuti — ${karyawan.nama_karyawan}`,
-    bodyHtml: `
-      <form id="jatah-form" class="space-y-4">
-        <div>
-          <label class="block text-xs font-medium text-slate-500 mb-1.5">Jatah Cuti Tahunan (hari)</label>
-          <input type="number" name="jatah_tahunan" value="${toNumber(karyawan.jatah_tahunan)}" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none">
+  function getSisa(k) {
+     const used = terpakaiMap[k.nama_karyawan] || { Tahunan: 0, Khusus: 0, Akumulasi: 0 };
+     return {
+        Tahunan: Math.max(toNumber(k.jatah_tahunan) - used.Tahunan, 0),
+        Khusus: Math.max(toNumber(k.jatah_khusus) - used.Khusus, 0),
+        Akumulasi: Math.max(toNumber(k.jatah_akumulasi) - used.Akumulasi, 0),
+        used
+     };
+  }
+
+  function renderCards(list) {
+    if (!list.length) { wrap.innerHTML = `<div class="col-span-full">${emptyState("Karyawan tidak ditemukan")}</div>`; return; }
+    
+    wrap.innerHTML = list.map(k => {
+      const sisa = getSisa(k);
+      return `
+        <div data-karyawan-id="${k.id}" class="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-maroon-300 transition cursor-pointer overflow-hidden flex flex-col">
+           <div class="p-4 flex items-center gap-3 border-b border-slate-50 bg-slate-50/50">
+              ${avatar(k.nama_karyawan, "w-12 h-12 text-sm")}
+              <div class="flex-1 min-w-0">
+                 <p class="font-bold text-slate-800 truncate">${escapeHtml(k.nama_karyawan)}</p>
+                 <p class="text-[11px] text-slate-500 truncate">${escapeHtml(k.jabatan || "-")} • ${escapeHtml(k.cabang || "-")}</p>
+              </div>
+           </div>
+           <div class="p-4 bg-white grid grid-cols-3 gap-2 text-center flex-1">
+              <div class="p-2 bg-blue-50 rounded-lg border border-blue-100">
+                 <p class="text-[10px] text-slate-400 uppercase font-semibold mb-1">Tahunan</p>
+                 <p class="text-lg font-black text-blue-700">${sisa.Tahunan}</p>
+              </div>
+              <div class="p-2 bg-emerald-50 rounded-lg border border-emerald-100">
+                 <p class="text-[10px] text-slate-400 uppercase font-semibold mb-1">Khusus</p>
+                 <p class="text-lg font-black text-emerald-700">${sisa.Khusus}</p>
+              </div>
+              <div class="p-2 bg-amber-50 rounded-lg border border-amber-100">
+                 <p class="text-[10px] text-slate-400 uppercase font-semibold mb-1">Akumulasi</p>
+                 <p class="text-lg font-black text-amber-700">${sisa.Akumulasi}</p>
+              </div>
+           </div>
         </div>
-        <div>
-          <label class="block text-xs font-medium text-slate-500 mb-1.5">Jatah Cuti Khusus (hari)</label>
-          <input type="number" name="jatah_khusus" value="${toNumber(karyawan.jatah_khusus)}" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none">
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-slate-500 mb-1.5">Jatah Cuti Akumulasi (hari)</label>
-          <input type="number" name="jatah_akumulasi" value="${toNumber(karyawan.jatah_akumulasi)}" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none">
-        </div>
-      </form>`,
-    footerHtml: `
-      <button id="jatah-cancel" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
-      <button id="jatah-save" class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-maroon-700 hover:bg-maroon-800 transition">Simpan Perubahan</button>`,
-    onMount: (m) => {
-      m.querySelector("#jatah-cancel").onclick = closeModal;
-      m.querySelector("#jatah-save").onclick = async () => {
-        const fd = new FormData(m.querySelector("#jatah-form"));
-        const data = {
-          jatah_tahunan: toNumber(fd.get("jatah_tahunan")),
-          jatah_khusus: toNumber(fd.get("jatah_khusus")),
-          jatah_akumulasi: toNumber(fd.get("jatah_akumulasi")),
-        };
-        try {
-          // PERBAIKAN: Gunakan ID dokumen asli (bukan sekedar NIK yang mungkin undefined)
-          await fsUpdate(COL.MASTER_KARYAWAN, String(karyawan.id), data);
-          Object.assign(karyawan, data);
-          toast("Jatah cuti berhasil diperbarui", "success");
-          closeModal();
-          renderTable(allKaryawan);
-        } catch (e) { toast("Gagal menyimpan: " + e.message, "error"); }
-      };
-    }
-  });
+      `;
+    }).join("");
+
+    wrap.querySelectorAll("[data-karyawan-id]").forEach(card => {
+       card.onclick = () => openEmployeeModal(allKaryawan.find(x => x.id === card.dataset.karyawanId));
+    });
+  }
+
+  searchInput.oninput = (e) => {
+     const term = e.target.value.toLowerCase();
+     renderCards(allKaryawan.filter(k => k.nama_karyawan.toLowerCase().includes(term) || (k.jabatan||"").toLowerCase().includes(term)));
+  };
+
+  // ==========================================
+  // MODAL KARYAWAN (RIWAYAT & INPUT CUTI)
+  // ==========================================
+  function openEmployeeModal(k) {
+     const sisa = getSisa(k);
+     const myLeaves = allCuti.filter(c => c.nama_karyawan === k.nama_karyawan).sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
+
+     const optLeaveTypes = leaveConfig.map(c => `<option value="${c.id}" data-potong="${c.potong}" data-count="${c.count}">${c.id} - ${c.name}</option>`).join("");
+
+     openModal({
+        title: "Manajemen Cuti Karyawan",
+        size: "lg",
+        bodyHtml: `
+          <div class="flex items-center gap-4 mb-5 pb-4 border-b border-slate-100">
+            ${avatar(k.nama_karyawan, "w-14 h-14 text-base")}
+            <div class="flex-1">
+               <h3 class="font-bold text-lg text-slate-800">${escapeHtml(k.nama_karyawan)}</h3>
+               <p class="text-sm text-slate-500">${escapeHtml(k.jabatan || "-")} • ${escapeHtml(k.cabang || "-")}</p>
+            </div>
+            <div class="flex gap-3 text-center">
+               <div><p class="text-[10px] font-bold text-slate-400 uppercase">Tahunan</p><p class="text-xl font-black text-blue-600">${sisa.Tahunan}</p></div>
+               <div><p class="text-[10px] font-bold text-slate-400 uppercase">Khusus</p><p class="text-xl font-black text-emerald-600">${sisa.Khusus}</p></div>
+               <div><p class="text-[10px] font-bold text-slate-400 uppercase">Akumulasi</p><p class="text-xl font-black text-amber-600">${sisa.Akumulasi}</p></div>
+            </div>
+          </div>
+
+          <!-- TABS -->
+          <div class="flex border-b border-slate-200 mb-4">
+             <button id="tab-input-cuti" class="px-4 py-2 text-sm font-bold text-maroon-700 border-b-2 border-maroon-700">Input Cuti Baru</button>
+             <button id="tab-riwayat-cuti" class="px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700">Riwayat Cuti</button>
+          </div>
+
+          <!-- PANEL INPUT CUTI -->
+          <div id="panel-input-cuti">
+             <form id="form-input-cuti" class="space-y-4">
+                <div class="bg-blue-50 p-3 rounded-lg border border-blue-100 mb-2">
+                   <p class="text-xs text-blue-800 font-medium">*Formulir pengajuan ini akan otomatis dicetak ke PDF untuk ditandatangani setelah disimpan.</p>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                   <div class="col-span-2 sm:col-span-1">
+                      <label class="block text-xs font-bold text-slate-600 mb-1">Jenis Cuti</label>
+                      <select id="inp-jenis" required class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400 bg-white">
+                         <option value="">Pilih Jenis Cuti...</option>
+                         ${optLeaveTypes}
+                      </select>
+                   </div>
+                   <div class="col-span-2 sm:col-span-1">
+                      <label class="block text-xs font-bold text-slate-600 mb-1">Alamat / No HP Saat Cuti</label>
+                      <input type="text" id="inp-kontak" value="${escapeHtml(k.alamat || '')} / ${escapeHtml(k.no_hp_aktif || '')}" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+                   </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4" id="wrap-tgl">
+                   <div>
+                      <label class="block text-xs font-bold text-slate-600 mb-1">Mulai Tanggal</label>
+                      <input type="date" id="inp-tgl-mulai" required class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+                   </div>
+                   <div id="wrap-tgl-akhir">
+                      <label class="block text-xs font-bold text-slate-600 mb-1">Sampai Tanggal</label>
+                      <input type="date" id="inp-tgl-akhir" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+                   </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 hidden" id="wrap-jam">
+                   <div>
+                      <label class="block text-xs font-bold text-slate-600 mb-1">Jam Keluar</label>
+                      <input type="time" id="inp-jam-keluar" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+                   </div>
+                   <div>
+                      <label class="block text-xs font-bold text-slate-600 mb-1">Jam Kembali</label>
+                      <input type="time" id="inp-jam-kembali" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+                   </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                   <div class="col-span-2">
+                      <label class="block text-xs font-bold text-slate-600 mb-1">Keterangan / Alasan</label>
+                      <input type="text" id="inp-alasan" required class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400" placeholder="Keperluan keluarga, sakit, dll...">
+                   </div>
+                   <div>
+                      <label class="block text-xs font-bold text-slate-600 mb-1">Potong Saldo (Hari)</label>
+                      <input type="number" id="inp-hari" required step="0.5" class="w-full px-3 py-2 text-sm border rounded-lg outline-none bg-slate-50 font-bold text-maroon-700 text-center">
+                      <p id="lbl-potong-tipe" class="text-[10px] text-center text-slate-400 mt-1 uppercase">-</p>
+                   </div>
+                </div>
+             </form>
+          </div>
+
+          <!-- PANEL RIWAYAT -->
+          <div id="panel-riwayat-cuti" class="hidden">
+             <div class="max-h-80 overflow-y-auto border border-slate-100 rounded-lg">
+                <table class="w-full text-xs text-left">
+                   <thead class="bg-slate-50 text-slate-500 border-b border-slate-100">
+                      <tr><th class="p-3">Tanggal</th><th class="p-3">Jenis</th><th class="p-3">Keterangan</th><th class="p-3 text-center">Potongan</th></tr>
+                   </thead>
+                   <tbody class="divide-y divide-slate-100">
+                      ${myLeaves.length ? myLeaves.map(c => `
+                         <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-medium">${fmtDateShort(c.tanggal)}</td>
+                            <td class="p-3">${escapeHtml(c.type_cuti)}</td>
+                            <td class="p-3">${escapeHtml(c.keterangan_cuti || "-")}</td>
+                            <td class="p-3 text-center"><span class="bg-red-50 text-red-600 px-2 py-0.5 rounded font-bold">${c.count} ${c.potong_jatah !== 'Tidak Dipotong' ? c.potong_jatah : ''}</span></td>
+                         </tr>
+                      `).join("") : `<tr><td colspan="4" class="p-6 text-center text-slate-400">Belum ada riwayat cuti.</td></tr>`}
+                   </tbody>
+                </table>
+             </div>
+          </div>
+        `,
+        footerHtml: `
+           <button id="btn-modal-batal" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
+           <button id="btn-modal-simpan" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2 rounded-lg text-sm font-bold shadow transition">Simpan & Cetak PDF</button>
+        `,
+        onMount: (m) => {
+           const tabInput = m.querySelector("#tab-input-cuti");
+           const tabRiwayat = m.querySelector("#tab-riwayat-cuti");
+           const pnlInput = m.querySelector("#panel-input-cuti");
+           const pnlRiwayat = m.querySelector("#panel-riwayat-cuti");
+           const btnSimpan = m.querySelector("#btn-modal-simpan");
+
+           tabInput.onclick = () => {
+              tabInput.className = "px-4 py-2 text-sm font-bold text-maroon-700 border-b-2 border-maroon-700";
+              tabRiwayat.className = "px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700";
+              pnlInput.classList.remove("hidden"); pnlRiwayat.classList.add("hidden");
+              btnSimpan.classList.remove("hidden");
+           };
+           tabRiwayat.onclick = () => {
+              tabRiwayat.className = "px-4 py-2 text-sm font-bold text-maroon-700 border-b-2 border-maroon-700";
+              tabInput.className = "px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700";
+              pnlRiwayat.classList.remove("hidden"); pnlInput.classList.add("hidden");
+              btnSimpan.classList.add("hidden");
+           };
+
+           // AUTO FILL LOGIC
+           const selJenis = m.querySelector("#inp-jenis");
+           const wrapTglAkhir = m.querySelector("#wrap-tgl-akhir");
+           const wrapJam = m.querySelector("#wrap-jam");
+           const inMulai = m.querySelector("#inp-tgl-mulai");
+           const inAkhir = m.querySelector("#inp-tgl-akhir");
+           const inHari = m.querySelector("#inp-hari");
+           const lblPotong = m.querySelector("#lbl-potong-tipe");
+
+           function calcDays() {
+              const opt = selJenis.options[selJenis.selectedIndex];
+              if(!opt || !opt.value) return;
+              const baseCount = parseFloat(opt.dataset.count);
+              const potongTipe = opt.dataset.potong;
+
+              lblPotong.textContent = potongTipe;
+
+              if (baseCount === 0.5) { // Setengah Hari Mode
+                 wrapTglAkhir.classList.add("hidden");
+                 wrapJam.classList.remove("hidden");
+                 inHari.value = 0.5;
+              } else { // Full Day / Multi Day Mode
+                 wrapTglAkhir.classList.remove("hidden");
+                 wrapJam.classList.add("hidden");
+                 
+                 if (inMulai.value && inAkhir.value) {
+                    const d1 = new Date(inMulai.value); const d2 = new Date(inAkhir.value);
+                    let diff = Math.round((d2-d1)/86400000) + 1;
+                    if(diff < 1) diff = 1;
+                    inHari.value = diff * baseCount; // Base count bisa 0 (Izin) atau 1 (Cuti)
+                 } else {
+                    inHari.value = baseCount;
+                 }
+              }
+           }
+
+           selJenis.onchange = calcDays;
+           inMulai.onchange = () => { if(!inAkhir.value) inAkhir.value = inMulai.value; calcDays(); };
+           inAkhir.onchange = calcDays;
+
+           m.querySelector("#btn-modal-batal").onclick = closeModal;
+           btnSimpan.onclick = async () => {
+              const form = m.querySelector("#form-input-cuti");
+              if (!form.reportValidity()) return;
+              
+              const jenisVal = selJenis.value;
+              const opt = selJenis.options[selJenis.selectedIndex];
+              const tipePotong = opt.dataset.potong;
+              const isHalfDay = parseFloat(opt.dataset.count) === 0.5;
+
+              btnSimpan.disabled = true; btnSimpan.textContent = "Menyimpan & Mencetak...";
+
+              const tglMulai = inMulai.value;
+              const payload = {
+                 tanggal: tglMulai,
+                 nama_karyawan: k.nama_karyawan,
+                 cabang: k.cabang || "-",
+                 type_cuti: jenisVal,
+                 potong_jatah: tipePotong,
+                 count: parseFloat(inHari.value) || 0,
+                 keterangan_cuti: m.querySelector("#inp-alasan").value.trim(),
+                 tahun: new Date(tglMulai).getFullYear(),
+                 bulan: new Date(tglMulai).toLocaleString('id-ID', { month: 'long' })
+              };
+
+              try {
+                 await fsAdd(COL.MASTER_CUTI, payload, genId("CUTI"));
+                 toast("Cuti berhasil diinput", "success");
+                 
+                 // Update data lokal
+                 allCuti.push(payload);
+                 calculateBalances();
+                 renderCards(allKaryawan);
+                 closeModal();
+
+                 // Kumpulkan Data Untuk PDF
+                 const pdfData = {
+                    ...payload,
+                    isHalfDay,
+                    tgl_akhir: isHalfDay ? tglMulai : inAkhir.value,
+                    jam_keluar: m.querySelector("#inp-jam-keluar").value,
+                    jam_kembali: m.querySelector("#inp-jam-kembali").value,
+                    kontak: m.querySelector("#inp-kontak").value
+                 };
+                 const currentSisa = getSisa(k);
+
+                 printCutiPdf(k, pdfData, currentSisa);
+
+              } catch (e) {
+                 toast("Gagal menyimpan: " + e.message, "error");
+                 btnSimpan.disabled = false; btnSimpan.textContent = "Simpan & Cetak PDF";
+              }
+           };
+        }
+     });
+  }
+
+  // ==========================================
+  // LOGIKA CETAK PDF 
+  // ==========================================
+  function printCutiPdf(k, data, sisa) {
+    const printWindow = window.open('', '_blank');
+    const todayStr = new Date().toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' });
+    
+    let html = `
+    <html><head>
+      <title>Form Cuti - ${k.nama_karyawan}</title>
+      <style>
+        body { font-family: 'Times New Roman', Times, serif; font-size: 14px; padding: 40px; line-height: 1.6; color: #000; }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-weight: bold; }
+        .header-table td { border: 1px solid #000; padding: 10px; text-align: center; }
+        .info-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        .info-table td { border: 1px solid #000; padding: 8px 12px; vertical-align: top; }
+        .info-table .col-label { width: 35%; font-weight: bold; background-color: #f9fafb; }
+        .ttd-table { width: 100%; margin-top: 40px; text-align: center; }
+        .ttd-table td { padding-top: 10px; }
+        .ttd-space { height: 80px; }
+        .notes { margin-top: 30px; font-size: 12px; border: 1px solid #000; padding: 10px; }
+        .notes ul { margin: 0; padding-left: 20px; }
+      </style>
+    </head><body onload="setTimeout(() => { window.print(); window.close(); }, 500);">
+      
+      <table class="header-table">
+        <tr>
+          <td rowspan="2" width="20%" style="font-size: 20px;">CV ANDELA JAYA</td>
+          <td rowspan="2" style="font-size: 18px; text-transform: uppercase;">
+             FORMULIR PENGAJUAN ${data.isHalfDay ? "CUTI SETENGAH HARI" : "CUTI KARYAWAN"}
+          </td>
+          <td width="25%" style="text-align: left; font-size: 11px;">
+             Hal: 1 dari 1<br/>No Dok: HR4
+          </td>
+        </tr>
+        <tr>
+          <td style="text-align: left; font-size: 11px;">Terbit/Revisi: 1/1<br/>Tgl terbit: 1 Sep 2025</td>
+        </tr>
+      </table>
+
+      <table class="info-table">
+        <tr><td colspan="2" style="text-align: center; background: #e2e8f0; font-weight: bold;">DATA KARYAWAN</td></tr>
+        <tr><td class="col-label">Nama Lengkap</td><td>${escapeHtml(k.nama_karyawan)}</td></tr>
+        <tr><td class="col-label">Divisi / Bagian / Unit Kerja</td><td>${escapeHtml(k.divisi || k.jabatan || "-")}</td></tr>
+        
+        <tr><td colspan="2" style="text-align: center; background: #e2e8f0; font-weight: bold;">KETERANGAN CUTI</td></tr>
+        <tr><td class="col-label">Tanggal Cuti</td><td>${fmtDateShort(data.tanggal)}</td></tr>
+        
+        ${data.isHalfDay ? `
+          <tr><td class="col-label">Jenis Cuti Setengah Hari</td><td>${escapeHtml(data.type_cuti)}</td></tr>
+          <tr><td class="col-label">Jam Keluar</td><td>${data.jam_keluar || "-"}</td></tr>
+          <tr><td class="col-label">Jam Kembali</td><td>${data.jam_kembali || "-"}</td></tr>
+        ` : `
+          <tr><td class="col-label">Tanggal Selesai Cuti</td><td>${fmtDateShort(data.tgl_akhir)}</td></tr>
+          <tr><td class="col-label">Jenis Cuti</td><td>${escapeHtml(data.type_cuti)}</td></tr>
+        `}
+        
+        <tr><td class="col-label">Alamat & No HP Selama Cuti</td><td>${escapeHtml(data.kontak)}</td></tr>
+        <tr><td class="col-label">Keterangan / Alasan</td><td>${escapeHtml(data.keterangan_cuti)}</td></tr>
+        
+        <tr><td class="col-label">Sisa Cuti Tahunan</td><td>${sisa.Tahunan} Hari</td></tr>
+        <tr><td class="col-label">Sisa Cuti Khusus</td><td>${sisa.Khusus} Hari</td></tr>
+        <tr><td class="col-label">Sisa Cuti Akumulasi</td><td>${sisa.Akumulasi} Hari</td></tr>
+      </table>
+
+      <div style="text-align: right; margin-top: 20px; font-size: 12px; color: #666;">
+         Dicetak pada: ${todayStr} WIB
+      </div>
+
+      <table class="ttd-table">
+        <tr>
+           <td width="33%">Pemohon Cuti,</td>
+           <td width="33%">Menyetujui,<br/>Atasan</td>
+           <td width="33%">Mengetahui,<br/>HRD</td>
+        </tr>
+        <tr>
+           <td class="ttd-space"></td><td class="ttd-space"></td><td class="ttd-space"></td>
+        </tr>
+        <tr>
+           <td>( <strong>${escapeHtml(k.nama_karyawan)}</strong> )</td>
+           <td>( ......................................... )</td>
+           <td>( ......................................... )</td>
+        </tr>
+      </table>
+
+      <div class="notes">
+         <strong>Catatan dari Atasan:</strong><br/><br/><br/>
+         <hr style="border-top: 1px dashed #000;"/><br/>
+         <strong>Perhatikan:</strong>
+         <ul>
+            <li>Surat permohonan cuti ini harus diajukan minimal 1 minggu sebelum cuti dijalankan.</li>
+            <li>Sebelum ada persetujuan dari atasan, tidak diperkenankan untuk meninggalkan/mendahului cuti, kecuali sakit dengan dibuktikan dengan surat keterangan dokter atau karena keperluan yang mendesak.</li>
+         </ul>
+      </div>
+
+    </body></html>
+    `;
+    printWindow.document.write(html); printWindow.document.close();
+  }
+
+  // ==========================================
+  // MODAL PENGATURAN JENIS CUTI HRD
+  // ==========================================
+  container.querySelector("#btn-setting-cuti").onclick = () => {
+     openModal({
+        title: "Pengaturan Jenis Cuti",
+        size: "lg",
+        bodyHtml: `
+          <div class="mb-4 bg-slate-50 p-3 rounded-lg border border-slate-200">
+             <p class="text-xs text-slate-600">Tambah atau ubah jenis cuti yang tersedia di formulir pengajuan. Nilai <strong>Multiplier</strong> adalah pengali jumlah pemotongan per hari (Contoh: Setengah Hari = 0.5, Izin Bebas = 0).</p>
+          </div>
+          <div class="border border-slate-200 rounded-lg overflow-hidden">
+             <table class="w-full text-xs text-left" id="table-cfg-cuti">
+                <thead class="bg-slate-100 text-slate-600 border-b border-slate-200">
+                   <tr><th class="p-2 w-16">Kode</th><th class="p-2">Nama Jenis Cuti</th><th class="p-2">Target Saldo</th><th class="p-2 w-20 text-center">Multiplier</th><th class="p-2 w-12 text-center">Del</th></tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 bg-white">
+                   <!-- Dirender via JS -->
+                </tbody>
+             </table>
+             <div class="bg-slate-50 p-2 text-center border-t border-slate-200">
+                <button type="button" id="btn-add-cfg-cuti" class="text-xs font-bold text-maroon-700 hover:underline">+ Tambah Jenis Cuti Baru</button>
+             </div>
+          </div>
+        `,
+        footerHtml: `
+           <button id="btn-cfg-batal" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
+           <button id="btn-cfg-simpan" class="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2 rounded-lg text-sm font-bold shadow transition">Simpan Konfigurasi</button>
+        `,
+        onMount: (m) => {
+           const tbody = m.querySelector("#table-cfg-cuti tbody");
+           
+           function renderCfgTable() {
+              tbody.innerHTML = leaveConfig.map((c, i) => `
+                 <tr>
+                    <td class="p-1.5"><input type="text" class="cfg-id w-full border rounded px-1.5 py-1 outline-none uppercase font-bold" value="${c.id}"></td>
+                    <td class="p-1.5"><input type="text" class="cfg-name w-full border rounded px-1.5 py-1 outline-none" value="${c.name}"></td>
+                    <td class="p-1.5">
+                       <select class="cfg-potong w-full border rounded px-1.5 py-1 outline-none bg-white">
+                          <option value="Tahunan" ${c.potong === 'Tahunan'?'selected':''}>Tahunan</option>
+                          <option value="Khusus" ${c.potong === 'Khusus'?'selected':''}>Khusus</option>
+                          <option value="Akumulasi" ${c.potong === 'Akumulasi'?'selected':''}>Akumulasi</option>
+                          <option value="Potong Gaji" ${c.potong === 'Potong Gaji'?'selected':''}>Potong Gaji</option>
+                          <option value="Tidak Dipotong" ${c.potong === 'Tidak Dipotong'?'selected':''}>Tidak Dipotong (0)</option>
+                       </select>
+                    </td>
+                    <td class="p-1.5"><input type="number" step="0.5" class="cfg-count w-full border rounded px-1.5 py-1 outline-none text-center" value="${c.count}"></td>
+                    <td class="p-1.5 text-center"><button type="button" data-cfg-del="${i}" class="text-red-500 hover:text-red-700 font-bold">✖</button></td>
+                 </tr>
+              `).join("");
+
+              tbody.querySelectorAll("[data-cfg-del]").forEach(btn => {
+                 btn.onclick = () => { leaveConfig.splice(btn.dataset.cfgDel, 1); renderCfgTable(); };
+              });
+           }
+           renderCfgTable();
+
+           m.querySelector("#btn-add-cfg-cuti").onclick = () => {
+              leaveConfig.push({ id: "", name: "", potong: "Tahunan", count: 1 });
+              renderCfgTable();
+           };
+
+           m.querySelector("#btn-cfg-batal").onclick = () => { loadData(); closeModal(); }; // revert changes
+           
+           m.querySelector("#btn-cfg-simpan").onclick = async () => {
+              const newCfg = [];
+              let isValid = true;
+              tbody.querySelectorAll("tr").forEach(tr => {
+                 const id = tr.querySelector(".cfg-id").value.trim().toUpperCase();
+                 const name = tr.querySelector(".cfg-name").value.trim();
+                 if(!id || !name) isValid = false;
+                 newCfg.push({
+                    id, name,
+                    potong: tr.querySelector(".cfg-potong").value,
+                    count: parseFloat(tr.querySelector(".cfg-count").value) || 0
+                 });
+              });
+
+              if(!isValid) return toast("Kode dan Nama Cuti tidak boleh kosong!", "warning");
+
+              const btnSave = m.querySelector("#btn-cfg-simpan");
+              btnSave.disabled = true; btnSave.textContent = "Menyimpan...";
+
+              try {
+                 await setDoc(doc(db, COL.APP_SETTINGS, "leave_types"), { types: newCfg }, { merge: true });
+                 leaveConfig = newCfg;
+                 toast("Konfigurasi Jenis Cuti berhasil disimpan", "success");
+                 closeModal();
+              } catch(e) {
+                 toast("Gagal menyimpan: " + e.message, "error");
+                 btnSave.disabled = false; btnSave.textContent = "Simpan Konfigurasi";
+              }
+           };
+        }
+     });
+  };
+
+  loadData();
+  return { unmount() {} };
 }
