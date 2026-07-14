@@ -99,12 +99,29 @@ async function loadLeaveBalances(container, session) {
   wrap.innerHTML = `<div class="col-span-3">${skeletonRows(1)}</div>`;
   let jatah = { tahunan: 0, khusus: 0, akumulasi: 0 };
   
-  if (session.nik && session.nik !== "null") {
-    const snap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(session.nik)));
-    if (snap.exists()) {
-      const k = snap.data();
-      jatah = { tahunan: toNumber(k.jatah_tahunan), khusus: toNumber(k.jatah_khusus), akumulasi: toNumber(k.jatah_akumulasi) };
+  // Mengambil jatah cuti yang paling update dari Master Karyawan (Pencarian Ganda)
+  try {
+    let kData = null;
+    if (session.nik && session.nik !== "null" && session.nik !== "undefined") {
+      const snap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(session.nik)));
+      if (snap.exists()) kData = snap.data();
     }
+    // Fallback pencarian berdasarkan nama (paling aman untuk data migrasi)
+    if (!kData) {
+      const q = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", session.nama), limit(1));
+      const snap = await getDocs(q);
+      if (!snap.empty) kData = snap.docs[0].data();
+    }
+
+    if (kData) {
+      jatah = { 
+        tahunan: toNumber(kData.jatah_tahunan), 
+        khusus: toNumber(kData.jatah_khusus), 
+        akumulasi: toNumber(kData.jatah_akumulasi) 
+      };
+    }
+  } catch (e) {
+    console.warn("Gagal memuat jatah cuti karyawan:", e);
   }
 
   let terpakai = { Tahunan: 0, Khusus: 0, Akumulasi: 0 };
@@ -113,7 +130,12 @@ async function loadLeaveBalances(container, session) {
     const snap = await getDocs(q);
     snap.docs.forEach(d => {
       const row = d.data();
-      if (row.potong_jatah && terpakai[row.potong_jatah] !== undefined) terpakai[row.potong_jatah] += toNumber(row.count) || 1;
+      if (row.potong_jatah && terpakai[row.potong_jatah] !== undefined) {
+         // Menggunakan parseFloat untuk mengakomodasi nilai desimal (setengah hari = 0.5)
+         let hitung = parseFloat(row.count);
+         if (isNaN(hitung)) hitung = 1; 
+         terpakai[row.potong_jatah] += hitung;
+      }
     });
   } catch (e) {}
 
