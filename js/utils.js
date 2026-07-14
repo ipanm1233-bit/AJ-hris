@@ -310,18 +310,23 @@ export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
   const APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbwdm_3Eapo0VUjt1QmQvGHaxXCU95_ycaapJy1wNmFcUINe2ZHSFghoIQY9jN4dqld16w/exec";
   
   try {
-    // PERBAIKAN CORS: Tambahkan mode: "no-cors"
     await fetch(APPSCRIPT_URL, {
       method: "POST",
-      mode: "no-cors", // Mengizinkan request lintas domain tanpa diblokir browser
+      mode: "no-cors", 
       headers: {
         "Content-Type": "text/plain;charset=utf-8", 
       },
       body: JSON.stringify({
-        to: to, subject: subject, htmlBody: htmlBody, cc: cc, name: "HRIS System - Andela"
+        to: to,
+        subject: subject,
+        htmlBody: htmlBody, // Untuk Google Script yang membaca properti htmlBody
+        body: htmlBody,     // Untuk Google Script yang membaca properti body biasa
+        html: htmlBody,     // Sebagai cadangan kompatibilitas
+        cc: cc,
+        name: "HRIS System - Andela"
       })
     });
-    console.log("Permintaan notifikasi email telah dikirim ke server.");
+    console.log("Permintaan email telah dikirimkan ke Apps Script.");
     return true;
   } catch (error) {
     console.error("Gagal menghubungi server Apps Script:", error);
