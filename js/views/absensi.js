@@ -14,7 +14,6 @@ export async function mount(container) {
 
    let listAbsensiGlobal = [];
 
-   // TAB CONSOLE CONTROLLER
    container.querySelectorAll(".absen-tab").forEach(btn => {
       btn.onclick = () => {
          const isProses = btn.dataset.atab === "proses";
@@ -32,9 +31,6 @@ export async function mount(container) {
       };
    });
 
-   // ==========================================
-   // FUNGSI LOAD & EDIT TABEL DATA MENTAH ABSENSI
-   // ==========================================
    async function loadRawAbsensiTable() {
       rawTbody.innerHTML = `<tr><td colspan="6" class="p-4">${skeletonRows(4)}</td></tr>`;
       listAbsensiGlobal = await fsGetAll(COL.DATA_ABSENSI);
@@ -76,11 +72,13 @@ export async function mount(container) {
       });
    }
 
-   searchRaw.oninput = (e) => {
-      const term = e.target.value.toLowerCase().trim();
-      const filtered = listAbsensiGlobal.filter(x => x.nama.toLowerCase().includes(term) || (x.nik || "").includes(term));
-      renderRawTable(filtered);
-   };
+   if(searchRaw) {
+      searchRaw.oninput = (e) => {
+         const term = e.target.value.toLowerCase().trim();
+         const filtered = listAbsensiGlobal.filter(x => x.nama.toLowerCase().includes(term) || (x.nik || "").includes(term));
+         renderRawTable(filtered);
+      };
+   }
 
    function openEditAbsenModal(item) {
       if(!item) return;
@@ -101,6 +99,7 @@ export async function mount(container) {
             m.querySelector("#btn-k-simpan").onclick = async () => {
                const dataUpdate = {
                   scan_masuk: m.querySelector("#k-masuk").value.trim() || null,
+                  scan_masuk: m.querySelector("#k-masuk").value.trim() || null,
                   scan_keluar: m.querySelector("#k-keluar").value.trim() || null
                };
                await updateDoc(doc(db, COL.DATA_ABSENSI, item.id), dataUpdate);
@@ -112,9 +111,6 @@ export async function mount(container) {
       });
    }
 
-   // ==========================================
-   // LOGIKA IMPORT RAW EXCEL
-   // ==========================================
    btnImport.onclick = () => inputUpload.click();
    inputUpload.onchange = async (e) => {
       const file = e.target.files[0];
@@ -171,15 +167,12 @@ export async function mount(container) {
       inputUpload.value = "";
    };
 
-   // ==========================================
-   // EXPORT TERPADU MULTI-SHEET (ALAMAT LAMPIRAN 2)
-   // ==========================================
    btnExport.onclick = async () => {
        const start = container.querySelector("#ex-start").value;
        const end = container.querySelector("#ex-end").value;
        if (!start || !end) return toast("Tentukan range tanggal cutoff!", "warning");
 
-       btnExport.disabled = true; btnExport.textContent = "Menyusun 4 Sheet Report...";
+       btnExport.disabled = true; btnExport.textContent = "Menyusun Laporan Terstruktur...";
 
        try {
            const [allKaryawan, snapAbsen, snapCuti, snapUme] = await Promise.all([
@@ -193,7 +186,6 @@ export async function mount(container) {
            const listCuti = snapCuti.docs.map(d => d.data()).filter(c => c.tanggal && c.tanggal.substring(0,10) >= start && c.tanggal.substring(0,10) <= end);
            const listUme = snapUme.docs.map(d => d.data()).filter(u => u.tanggal && u.tanggal >= start && u.tanggal <= end);
 
-           // 1. BUAT DERETAN TANGGAL MATRIX COLUMNS
            const datesArr = [];
            let currLoop = new Date(start);
            const endLoop = new Date(end);
@@ -202,7 +194,6 @@ export async function mount(container) {
                currLoop.setDate(currLoop.getDate() + 1);
            }
 
-           // SHEET 1: MATRIX REKAP ABSENSI
            const sheet1Rows = [];
            let noIndex = 1;
 
@@ -212,7 +203,7 @@ export async function mount(container) {
                let totalJam = 0; let hariMasuk = 0;
                let c_tahunan = 0; let c_setengah = 0; let c_khusus = 0; let c_sakit = 0;
                let c_sakit_tanpa = 0; let c_bersama = 0; let c_potong_gaji = 0; let c_sisa = 0;
-               let c_khusus_setengah = 0; let c_dinas = 0; let c_besar = 0; let alpa_count = 0;
+               let c_khusus_setengah = 0; let alpa_count = 0;
 
                datesArr.forEach(dStr => {
                    const tDate = new Date(dStr);
@@ -228,7 +219,6 @@ export async function mount(container) {
                        const code = matchCuti.type_cuti || "";
                        if (code.includes("C1/2")) { cellCode = "C1/2"; c_setengah++; }
                        else if (code.includes("C+1/2")) { cellCode = "C+1/2"; c_khusus_setengah++; }
-                       else if (code.includes("C-BESAR")) { cellCode = "C-BESAR"; c_besar++; }
                        else if (code.includes("C+")) { cellCode = "C+"; c_khusus++; }
                        else if (code.includes("S-")) { cellCode = "S-"; c_sakit_tanpa++; }
                        else if (code.includes("S")) { cellCode = "S"; c_sakit++; }
@@ -240,16 +230,16 @@ export async function mount(container) {
                        if (matchAbsen.scan_masuk && matchAbsen.scan_keluar) {
                            cellCode = "8"; hariMasuk++; totalJam += 8;
                        } else if (matchAbsen.scan_masuk || matchAbsen.scan_keluar) {
-                           cellCode = "5"; hariMasuk++; totalJam += 4;
+                           cellCode = "4"; hariMasuk++; totalJam += 4;
                        } else if (!isSunday) {
                            cellCode = "A"; alpa_count++;
                        }
                    } else if (!isSunday) {
                        cellCode = "A"; alpa_count++;
-                    }
+                   }
 
-                   // Ambil tanggal (DD) sebagai header kolom matriks
-                   rowObj[tDate.getDate().toString()] = cellCode;
+                   // Membuat header tanggal berurutan horizontal (Matrix)
+                   rowObj[`${tDate.getDate().toString()}`] = cellCode;
                });
 
                rowObj["Total Jam"] = totalJam;
@@ -268,18 +258,13 @@ export async function mount(container) {
                sheet1Rows.push(rowObj);
            });
 
-           // SHEET 2: DATA LEMBUR (JAM KERJA EKSTRA)
-           const sheet2Rows = listAbsen.filter(x => x.scan_masuk && x.scan_keluar).map(x => {
-               return { "Nama Karyawan": x.nama, "Tanggal": x.tanggal, "Jam Masuk": x.scan_masuk, "Jam Keluar": x.scan_keluar, "Keterangan": "Terhitung Lembur Otomatis" };
-           });
+           const sheet2Rows = listAbsen.filter(x => x.scan_masuk && x.scan_keluar).map(x => ({
+               "Nama Karyawan": x.nama, "Tanggal": x.tanggal, "Jam Masuk": x.scan_masuk, "Jam Keluar": x.scan_keluar, "Keterangan": "Lembur Terdata"
+           }));
 
-           // SHEET 3: DATA RECORD CUTI
            const sheet3Rows = listCuti.map(c => ({ "Nama Karyawan": c.nama_karyawan, "Tanggal": c.tanggal.substring(0,10), "Jenis Cuti": c.type_cuti, "Keterangan": c.keterangan_cuti || "-" }));
-
-           // SHEET 4: DATA UANG MAKAN EXPEDISI
            const sheet4Rows = listUme.map(u => ({ "Tanggal": u.tanggal, "Driver": u.driver || "-", "Helper": u.helper || "-", "Tujuan": u.tujuan || "-", "Uang Makan": u.uang_makan || 0 }));
 
-           // APPEND SEMUA SHEET KE WORKBOOK
            const wb = window.XLSX.utils.book_new();
            window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(sheet1Rows), "Rekap Matriks Absensi");
            window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(sheet2Rows), "Data Lembur");
@@ -287,9 +272,8 @@ export async function mount(container) {
            window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(sheet4Rows), "Uang Makan Expedisi");
 
            window.XLSX.writeFile(wb, `PAYROLL_REPORT_ANDELA_${start}_TO_${end}.xlsx`);
-           toast("Berhasil memproses & mengunduh berkas laporan payroll!", "success");
-
-       } catch (err) { toast("Gagal generate paket laporan: " + err.message, "error"); }
+           toast("Berhasil mendownload laporan terstruktur!", "success");
+       } catch (err) { toast("Gagal: " + err.message, "error"); }
        btnExport.disabled = false; btnExport.textContent = "Generate & Download Paket Report Payroll (.xlsx)";
    };
 
