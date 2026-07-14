@@ -10,7 +10,7 @@ export async function mount(container, { session }) {
   const greet = hour < 11 ? "Selamat Pagi" : hour < 15 ? "Selamat Siang" : hour < 18 ? "Selamat Sore" : "Selamat Malam";
   container.querySelector("#dash-greeting").textContent = `${greet}, ${session.nama.split(" ")[0]} 👋`;
 
-  const isMgmt = MANAJEMEN_ROLES.includes(session.role) || session.role === "HRD";
+  const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
   
   await Promise.all([
     loadProfileCard(container, session),
@@ -18,24 +18,17 @@ export async function mount(container, { session }) {
     loadKpiTasks(container, session),
     loadCutiHariIni(container),
     loadAnnouncements(container),
-    isMgmt ? loadContractExpiry(container) : Promise.resolve()
+    // Batasi widget kontrak habis hanya muncul di Dashboard HRD
+    isHrd ? loadContractExpiry(container) : (() => { 
+        const w = container.querySelector("#dash-contract-widget-wrap"); 
+        if(w) w.classList.add("hidden"); 
+        return Promise.resolve(); 
+    })()
   ]);
-  // --- MULAI SISIPAN KODE BARU ---
-  const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
 
-  // 1. Batasi Widget Kontrak Habis hanya untuk HRD
-  if (!isHrd) {
-      // Mencari judul widget yang mengandung kata "Kontrak" lalu menyembunyikan kotaknya
-      const widgetHeaders = Array.from(container.querySelectorAll("h3")).filter(el => el.textContent.toLowerCase().includes("kontrak"));
-      widgetHeaders.forEach(h3 => {
-          const wrapperBox = h3.closest('.bg-white, .rounded-xl, .rounded-2xl');
-          if (wrapperBox) wrapperBox.style.display = 'none';
-      });
-  }
-
-  // 2. Aktifkan Logo Lonceng Notifikasi di Header Atas
+  // Hidupkan fungsi klik pada lonceng notifikasi
   setupNotificationBell(session);
-  // --- AKHIR SISIPAN KODE BARU ---
+
   return { unmount() {} };
 }
 
@@ -61,9 +54,7 @@ async function loadProfileCard(container, session) {
     ${karyawan?.aktif_tdk_aktif ? badge(karyawan.aktif_tdk_aktif, karyawan.aktif_tdk_aktif === "AKTIF" ? "green" : "red") : ""}
   `;
 
-  if (profileCard) {
-     profileCard.onclick = () => openProfileModal(session, karyawan);
-  }
+  if (profileCard) profileCard.onclick = () => openProfileModal(session, karyawan);
 }
 
 function profileRow(label, value) {
@@ -71,42 +62,22 @@ function profileRow(label, value) {
 }
 
 function openProfileModal(session, k) {
-  if (!k) {
-    openModal({ title: "Profil Karyawan", bodyHtml: `<p class="text-sm text-slate-500">Data lengkap karyawan belum tertaut (NIK tidak ditemukan di Master Karyawan). Hubungi HRD.</p>` });
-    return;
-  }
+  if (!k) { openModal({ title: "Profil Karyawan", bodyHtml: `<p class="text-sm text-slate-500">Data lengkap belum tertaut (Hubungi HRD).</p>` }); return; }
   const body = `
     <div class="flex items-center gap-4 mb-6 pb-5 border-b border-slate-100">
       ${avatar(k.nama_karyawan || session.nama, "w-16 h-16 text-lg")}
-      <div>
-        <p class="font-bold text-slate-800 text-lg">${escapeHtml(k.nama_karyawan || session.nama)}</p>
-        <p class="text-sm text-slate-500">${escapeHtml(k.jabatan || "-")} • ${escapeHtml(k.divisi || "-")}</p>
-      </div>
+      <div><p class="font-bold text-slate-800 text-lg">${escapeHtml(k.nama_karyawan || session.nama)}</p><p class="text-sm text-slate-500">${escapeHtml(k.jabatan || "-")} • ${escapeHtml(k.divisi || "-")}</p></div>
     </div>
     <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
-      ${profileRow("NIK Karyawan", k.nik_karyawan)}
-      ${profileRow("Cabang", k.cabang)}
-      ${profileRow("Status Karyawan", k.status_karyawan)}
-      ${profileRow("Jenis Kelamin", k.jenis_kelamin)}
-      ${profileRow("Tanggal Lahir", fmtDate(k.tanggal_lahir))}
-      ${profileRow("Tanggal Join", fmtDate(k.tanggal_join))}
-      ${profileRow("Pendidikan", k.pendidikan)}
-      ${profileRow("Agama", k.agama)}
-      ${profileRow("No HP Aktif", k.no_hp_aktif)}
-      ${profileRow("Email", k.email)}
-      ${profileRow("Atasan", k.atasan)}
+      ${profileRow("NIK Karyawan", k.nik_karyawan)} ${profileRow("Cabang", k.cabang)} ${profileRow("Status Karyawan", k.status_karyawan)}
+      ${profileRow("Jenis Kelamin", k.jenis_kelamin)} ${profileRow("Tanggal Lahir", fmtDate(k.tanggal_lahir))} ${profileRow("Tanggal Join", fmtDate(k.tanggal_join))}
+      ${profileRow("Pendidikan", k.pendidikan)} ${profileRow("Agama", k.agama)} ${profileRow("No HP Aktif", k.no_hp_aktif)}
+      ${profileRow("Email", k.email)} ${profileRow("Atasan", k.atasan)}
       <div class="col-span-2 sm:col-span-3">${profileRow("Alamat", k.alamat)}</div>
     </div>
-    <div class="mt-6 flex justify-end">
-       <button id="btn-tutup-profil" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition">Tutup Profil</button>
-    </div>
+    <div class="mt-6 flex justify-end"><button id="btn-tutup-profil" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition">Tutup Profil</button></div>
   `;
-  openModal({ 
-     title: "Data Pribadi Karyawan", 
-     size: "lg", 
-     bodyHtml: body,
-     onMount: (m) => m.querySelector("#btn-tutup-profil").onclick = closeModal
-  });
+  openModal({ title: "Data Pribadi", size: "lg", bodyHtml: body, onMount: (m) => m.querySelector("#btn-tutup-profil").onclick = closeModal });
 }
 
 /* ------------------------ b. LEAVE BALANCE ------------------------ */
@@ -115,30 +86,19 @@ async function loadLeaveBalances(container, session) {
   wrap.innerHTML = `<div class="col-span-3">${skeletonRows(1)}</div>`;
   let jatah = { tahunan: 0, khusus: 0, akumulasi: 0 };
   
-  // Mengambil jatah cuti yang paling update dari Master Karyawan (Pencarian Ganda)
   try {
     let kData = null;
     if (session.nik && session.nik !== "null" && session.nik !== "undefined") {
       const snap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(session.nik)));
       if (snap.exists()) kData = snap.data();
     }
-    // Fallback pencarian berdasarkan nama (paling aman untuk data migrasi)
     if (!kData) {
       const q = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", session.nama), limit(1));
       const snap = await getDocs(q);
       if (!snap.empty) kData = snap.docs[0].data();
     }
-
-    if (kData) {
-      jatah = { 
-        tahunan: toNumber(kData.jatah_tahunan), 
-        khusus: toNumber(kData.jatah_khusus), 
-        akumulasi: toNumber(kData.jatah_akumulasi) 
-      };
-    }
-  } catch (e) {
-    console.warn("Gagal memuat jatah cuti karyawan:", e);
-  }
+    if (kData) { jatah = { tahunan: toNumber(kData.jatah_tahunan), khusus: toNumber(kData.jatah_khusus), akumulasi: toNumber(kData.jatah_akumulasi) }; }
+  } catch (e) {}
 
   let terpakai = { Tahunan: 0, Khusus: 0, Akumulasi: 0 };
   try {
@@ -147,7 +107,6 @@ async function loadLeaveBalances(container, session) {
     snap.docs.forEach(d => {
       const row = d.data();
       if (row.potong_jatah && terpakai[row.potong_jatah] !== undefined) {
-         // Menggunakan parseFloat untuk mengakomodasi nilai desimal (setengah hari = 0.5)
          let hitung = parseFloat(row.count);
          if (isNaN(hitung)) hitung = 1; 
          terpakai[row.potong_jatah] += hitung;
@@ -188,33 +147,8 @@ async function loadKpiTasks(container, session) {
   try {
     const q = query(collection(db, COL.TUGAS_KPI_360), where("nama_penilai", "==", session.nama));
     const snap = await getDocs(q);
-    
     const pending = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => (r.status || "").toUpperCase() !== "DONE");
     
-    if (pending.length > 0 && !window.hasShownKpiPopup) {
-      window.hasShownKpiPopup = true; 
-      
-      let listHtml = pending.map(p => `
-        <li class="flex justify-between items-center py-2.5 border-b border-slate-100 last:border-0">
-          <span class="font-medium text-slate-700">${escapeHtml(p.nama_dinilai)}</span>
-          <span class="text-xs text-amber-700 font-medium bg-amber-50 border border-amber-200 px-2 py-1 rounded">Batas: ${p.deadline ? fmtDateShort(p.deadline) : '-'}</span>
-        </li>
-      `).join("");
-
-      openModal({
-        title: "Tugas Penilaian Menunggu",
-        bodyHtml: `
-          <div class="p-4 bg-slate-50 rounded-xl mb-4 border border-slate-100">
-             <p class="text-sm text-slate-600">Anda memiliki <strong>${pending.length}</strong> karyawan yang harus segera dievaluasi.</p>
-          </div>
-          <ul class="text-sm">${listHtml}</ul>
-          <p class="mt-5 text-[11px] text-slate-400 text-center uppercase tracking-wide">Silakan klik nama karyawan di kotak "Penilaian 360" pada Dashboard untuk mulai menilai.</p>
-        `,
-        footerHtml: `<button id="btn-tutup-kpi-popup" class="w-full py-2.5 bg-maroon-700 text-white font-medium rounded-lg text-sm hover:bg-maroon-800 transition">Mengerti & Lanjutkan</button>`,
-        onMount: m => m.querySelector("#btn-tutup-kpi-popup").onclick = closeModal
-      });
-    }
-
     if (!pending.length) { wrap.innerHTML = emptyState("Tidak ada tugas penilaian tertunda"); return; }
     
     wrap.innerHTML = pending.map(t => `
@@ -230,10 +164,7 @@ async function loadKpiTasks(container, session) {
       </div>`).join("");
 
     wrap.querySelectorAll("[data-kpi-id]").forEach(el => {
-       el.onclick = () => {
-          const task = pending.find(x => x.id === el.dataset.kpiId);
-          openPenilaianForm(task, container, session);
-       };
+       el.onclick = () => { openPenilaianForm(pending.find(x => x.id === el.dataset.kpiId), container, session); };
     });
 
   } catch (e) { wrap.innerHTML = emptyState("Belum ada data penilaian"); }
@@ -242,60 +173,36 @@ async function loadKpiTasks(container, session) {
 function openPenilaianForm(task, container, session) {
   const soalHtml = (task.soal_json || []).map((s, i) => `
      <div class="border-b border-slate-100 pb-4 mb-4">
-        <div class="flex items-center gap-2 mb-1.5">
-           <span class="bg-maroon-50 text-maroon-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">${escapeHtml(s.aspek)}</span>
-           <span class="text-[10px] text-slate-400 font-medium">Bobot: ${s.bobot}%</span>
-        </div>
+        <div class="flex items-center gap-2 mb-1.5"><span class="bg-maroon-50 text-maroon-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">${escapeHtml(s.aspek)}</span><span class="text-[10px] text-slate-400 font-medium">Bobot: ${s.bobot}%</span></div>
         <p class="text-sm text-slate-800 mb-3">${escapeHtml(s.indikator)}</p>
-        <div class="relative">
-           <input type="number" data-idx="${i}" data-bobot="${s.bobot}" class="kpi-nilai-input w-full pl-3 pr-10 py-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100 transition" placeholder="Berikan Skor (0-100)" required min="0" max="100">
-           <span class="absolute right-3 top-2.5 text-slate-300 font-medium text-sm">/ 100</span>
-        </div>
+        <div class="relative"><input type="number" data-idx="${i}" data-bobot="${s.bobot}" class="kpi-nilai-input w-full pl-3 pr-10 py-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100 transition" placeholder="Berikan Skor (0-100)" required min="0" max="100"><span class="absolute right-3 top-2.5 text-slate-300 font-medium text-sm">/ 100</span></div>
      </div>
   `).join("");
 
-  const catatanHrdHtml = task.catatan_hrd ? `
-    <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-       <span class="font-bold block mb-1">Catatan HRD untuk Evaluasi ini:</span>
-       ${escapeHtml(task.catatan_hrd)}
-    </div>` : '';
+  const catatanHrdHtml = task.catatan_hrd ? `<div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800"><span class="font-bold block mb-1">Catatan HRD untuk Evaluasi ini:</span>${escapeHtml(task.catatan_hrd)}</div>` : '';
 
   openModal({
-     title: `Evaluasi: ${escapeHtml(task.nama_dinilai)}`,
-     size: "md",
+     title: `Evaluasi: ${escapeHtml(task.nama_dinilai)}`, size: "md",
      bodyHtml: `
         <form id="form-isi-kpi">
            <div class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-amber-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-              <p class="text-xs text-amber-800 leading-relaxed">Penilaian ini dihitung otomatis berdasarkan bobot tiap indikator. Batas waktu pengumpulan form ini: <strong>${task.deadline ? fmtDateShort(task.deadline) : '-'}</strong>.</p>
+              <p class="text-xs text-amber-800 leading-relaxed">Dihitung otomatis berdasar bobot. Batas pengumpulan: <strong>${task.deadline ? fmtDateShort(task.deadline) : '-'}</strong>.</p>
            </div>
-           
-           ${catatanHrdHtml}
-           ${soalHtml}
-
-           <div class="mt-5">
-             <label class="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">Catatan / Ulasan untuk Karyawan (Opsional)</label>
-             <textarea id="kpi-catatan-penilai" rows="3" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100 transition" placeholder="Berikan ulasan, kelebihan, atau area yang perlu ditingkatkan oleh karyawan yang Anda nilai..."></textarea>
-           </div>
+           ${catatanHrdHtml} ${soalHtml}
+           <div class="mt-5"><label class="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">Ulasan Karyawan (Opsional)</label><textarea id="kpi-catatan-penilai" rows="3" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-400" placeholder="Kelebihan / area peningkatan..."></textarea></div>
         </form>
      `,
      footerHtml: `
-        <div class="w-full flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-200 mb-3">
-           <span class="text-sm font-bold text-slate-600">Skor Akhir Sementara:</span>
-           <span id="kpi-live-score" class="text-lg font-black text-maroon-700">0.00</span>
-        </div>
-        <div class="flex gap-2 justify-end">
-           <button id="btn-cancel-kpi" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
-           <button id="btn-submit-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2 rounded-lg text-sm font-medium transition shadow-md">Kirim Penilaian</button>
-        </div>
+        <div class="w-full flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-200 mb-3"><span class="text-sm font-bold text-slate-600">Skor Akhir Sementara:</span><span id="kpi-live-score" class="text-lg font-black text-maroon-700">0.00</span></div>
+        <div class="flex gap-2 justify-end"><button id="btn-cancel-kpi" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button><button id="btn-submit-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2 rounded-lg text-sm font-medium transition shadow-md">Kirim Penilaian</button></div>
      `,
      onMount: (m) => {
         const liveScore = m.querySelector("#kpi-live-score");
         m.querySelector("#form-isi-kpi").addEventListener("input", () => {
            let calcTotal = 0;
            m.querySelectorAll(".kpi-nilai-input").forEach(input => {
-               const bbt = parseFloat(input.dataset.bobot) || 0;
-               const val = parseFloat(input.value) || 0;
+               const bbt = parseFloat(input.dataset.bobot) || 0; const val = parseFloat(input.value) || 0;
                calcTotal += val * (bbt / 100);
            });
            liveScore.textContent = calcTotal.toFixed(2);
@@ -311,12 +218,8 @@ function openPenilaianForm(task, container, session) {
            const catatanPenilai = m.querySelector("#kpi-catatan-penilai").value.trim();
 
            m.querySelectorAll(".kpi-nilai-input").forEach(input => {
-              const idx = parseInt(input.dataset.idx);
-              const nilai = parseFloat(input.value) || 0;
-              const bobot = parseFloat(answeredSoal[idx].bobot) || 0;
-              
-              answeredSoal[idx].nilai_diberikan = nilai;
-              totalSkorBobot += (nilai * (bobot / 100));
+              const idx = parseInt(input.dataset.idx); const nilai = parseFloat(input.value) || 0; const bobot = parseFloat(answeredSoal[idx].bobot) || 0;
+              answeredSoal[idx].nilai_diberikan = nilai; totalSkorBobot += (nilai * (bobot / 100));
            });
 
            let finalScore = Math.round(totalSkorBobot * 100) / 100;
@@ -326,32 +229,11 @@ function openPenilaianForm(task, container, session) {
            btn.disabled = true; btn.textContent = "Merekap Nilai...";
 
            try {
-              await fsUpdate(COL.TUGAS_KPI_360, task.id, {
-                 status: "DONE",
-                 skor_akhir: finalScore,
-                 soal_json: answeredSoal,
-                 catatan_penilai: catatanPenilai,
-                 tanggal_diselesaikan: new Date().toISOString()
-              });
+              await fsUpdate(COL.TUGAS_KPI_360, task.id, { status: "DONE", skor_akhir: finalScore, soal_json: answeredSoal, catatan_penilai: catatanPenilai, tanggal_diselesaikan: new Date().toISOString() });
+              await fsAdd(COL.LOG_PENILAIAN_KPI, { tanggal: new Date().toISOString(), nama_dinilai: task.nama_dinilai, penilai: task.nama_penilai, total_skor: finalScore, keputusan: keputusan, periode: task.periode, detail_json: answeredSoal, catatan_penilai: catatanPenilai }, genId("KPI-LOG"));
 
-              await fsAdd(COL.LOG_PENILAIAN_KPI, {
-                 tanggal: new Date().toISOString(),
-                 nama_dinilai: task.nama_dinilai,
-                 penilai: task.nama_penilai,
-                 total_skor: finalScore,
-                 keputusan: keputusan,
-                 periode: task.periode,
-                 detail_json: answeredSoal,
-                 catatan_penilai: catatanPenilai 
-              }, genId("KPI-LOG"));
-
-              toast("Evaluasi berhasil diselesaikan!", "success");
-              closeModal();
-              loadKpiTasks(container, session);
-           } catch(e) {
-              toast("Gagal menyimpan evaluasi: " + e.message, "error");
-              btn.disabled = false; btn.textContent = "Kirim Penilaian";
-           }
+              toast("Evaluasi diselesaikan!", "success"); closeModal(); loadKpiTasks(container, session);
+           } catch(e) { toast("Gagal menyimpan: " + e.message, "error"); btn.disabled = false; btn.textContent = "Kirim Penilaian"; }
         };
      }
   });
@@ -373,33 +255,27 @@ async function loadCutiHariIni(container) {
       <div class="flex items-center justify-between p-3 rounded-xl border border-slate-100">
         <div class="flex items-center gap-3">
           ${avatar(r.nama_karyawan || "?", "w-9 h-9 text-xs")}
-          <div>
-            <p class="text-sm font-medium text-slate-700">${escapeHtml(r.nama_karyawan || "-")}</p>
-            <p class="text-xs text-slate-400">${escapeHtml(r.jabatan || "-")}</p>
-          </div>
+          <div><p class="text-sm font-medium text-slate-700">${escapeHtml(r.nama_karyawan || "-")}</p><p class="text-xs text-slate-400">${escapeHtml(r.cabang || "-")}</p></div>
         </div>
-        ${badge(r.potong_jatah || "Cuti", "blue")}
+        ${badge(r.type_cuti || "Cuti", "blue")}
       </div>`).join("");
   } catch (e) { wrap.innerHTML = emptyState("Gagal memuat data cuti"); }
 }
 
-/* ------------------------ e. ANNOUNCEMENTS ------------------------ */
+/* ------------------------ e. PENGUMUMAN ------------------------ */
 async function loadAnnouncements(container) {
   const wrap = container.querySelector("#dash-announcements");
   try {
     const q = query(collection(db, COL.BROADCAST), orderBy("tanggal", "desc"), limit(20));
     const snap = await getDocs(q);
-    
     const now = new Date();
     const validMemos = snap.docs.map(d => d.data()).filter(r => {
       if (!r.tanggal_berakhir) return true; 
-      const tglBatas = new Date(r.tanggal_berakhir);
-      tglBatas.setHours(23, 59, 59, 999);
+      const tglBatas = new Date(r.tanggal_berakhir); tglBatas.setHours(23, 59, 59, 999);
       return tglBatas >= now;
     }).slice(0, 6);
 
     if (!validMemos.length) { wrap.innerHTML = emptyState("Belum ada pengumuman aktif"); return; }
-    
     wrap.innerHTML = validMemos.map(r => {
       const plainText = String(r.isi || "").replace(/<[^>]+>/g, "").slice(0, 90);
       return `
@@ -420,179 +296,39 @@ async function loadContractExpiry(container) {
   const wrapOuter = container.querySelector("#dash-contract-widget-wrap");
   wrapOuter.classList.remove("hidden");
   const wrap = container.querySelector("#dash-contract-list");
-  
   try {
     const snap = await getDocs(collection(db, COL.MASTER_KARYAWAN));
     const now = new Date();
-    const soon = snap.docs
-      .map(d => ({ id: d.id, ...d.data() })) 
-      .filter(k => k.kontrak_habis)
-      .map(k => {
+    const soon = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(k => k.kontrak_habis).map(k => {
         const t = k.kontrak_habis?.toDate ? k.kontrak_habis.toDate() : new Date(k.kontrak_habis);
         return { ...k, _expiry: t, _days: Math.round((t - now) / 86400000) };
-      })
-      .filter(k => !isNaN(k._expiry) && k._days >= 0 && k._days <= 60)
-      .sort((a, b) => a._days - b._days);
+      }).filter(k => !isNaN(k._expiry) && k._days >= 0 && k._days <= 60).sort((a, b) => a._days - b._days);
 
     if (!soon.length) { wrap.innerHTML = emptyState("Tidak ada kontrak yang segera berakhir"); return; }
-    
     wrap.innerHTML = soon.map(k => `
       <div class="flex flex-col p-3 rounded-xl border border-amber-200 bg-amber-50 gap-3">
         <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-semibold text-slate-800">${escapeHtml(k.nama_karyawan)}</p>
-            <p class="text-xs text-slate-600">${escapeHtml(k.jabatan || "-")} • Berakhir: ${fmtDateShort(k._expiry)}</p>
-          </div>
+          <div><p class="text-sm font-semibold text-slate-800">${escapeHtml(k.nama_karyawan)}</p><p class="text-xs text-slate-600">${escapeHtml(k.jabatan || "-")} • Berakhir: ${fmtDateShort(k._expiry)}</p></div>
           ${badge(`${k._days} hari lagi`, k._days <= 14 ? "red" : "amber")}
         </div>
         <div class="flex items-center gap-2 pt-2 border-t border-amber-200/60">
            <button data-id="${k.id}" data-action="atasan" class="flex-1 bg-maroon-700 hover:bg-maroon-800 text-white text-[11px] py-1.5 rounded transition">Tugaskan Penilaian (Atasan)</button>
-           <button data-id="${k.id}" data-action="karyawan" class="flex-1 border border-slate-300 hover:bg-slate-100 text-slate-700 text-[11px] py-1.5 rounded transition">Panggil Konseling</button>
         </div>
       </div>`).join("");
-
-    wrap.querySelectorAll('button[data-action="atasan"]').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-         const btnEl = e.currentTarget;
-         const k = soon.find(x => x.id === btnEl.dataset.id);
-         if (!k) { toast("Data karyawan tidak ditemukan.", "error"); return; }
-         
-         const templates = await fsGetAll(COL.MASTER_SOAL_KPI);
-         
-         // PERBAIKAN: Saring template lama yang rusak (yang tidak punya soal_json atau nama_template)
-         const validTemplates = templates.filter(t => t.nama_template && t.soal_json && t.soal_json.length > 0);
-
-         if (validTemplates.length === 0) {
-            toast("Anda belum memiliki Template Penilaian yang valid. Silakan buat terlebih dahulu di menu Penilaian & Kontrak > Template Soal KPI.", "warning");
-            return;
-         }
-
-         const optTemplates = validTemplates.map(t => `<option value="${t.id}">${escapeHtml(t.nama_template)}</option>`).join("");
-
-         openModal({
-            title: "Tugaskan Penilaian Evaluasi Kontrak",
-            bodyHtml: `
-               <p class="text-sm text-slate-600 mb-4">Sistem akan membuat tugas penilaian kinerja untuk karyawan <b>${escapeHtml(k.nama_karyawan)}</b> dan mengirimkan notifikasi Email kepada Atasannya.</p>
-               <div>
-                 <label class="block text-xs font-medium text-slate-500 mb-1.5">Pilih Template Indikator Penilaian</label>
-                 <select id="eval-template-picker" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none">
-                    <option value="">-- Pilih Template Penilaian --</option>
-                    ${optTemplates}
-                 </select>
-               </div>
-            `,
-            footerHtml: `
-               <button id="btn-batal-eval" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
-               <button id="btn-kirim-eval" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-md">Kirim Tugas ke Atasan</button>
-            `,
-            onMount: (m) => {
-               m.querySelector("#btn-batal-eval").onclick = closeModal;
-               m.querySelector("#btn-kirim-eval").onclick = async () => {
-                  const tplId = m.querySelector("#eval-template-picker").value;
-                  if(!tplId) return toast("Anda harus memilih template terlebih dahulu", "warning");
-
-                  const tplData = templates.find(t => t.id === tplId);
-                  const soalArray = tplData.soal_json || [];
-
-                  const submitBtn = m.querySelector("#btn-kirim-eval");
-                  submitBtn.disabled = true; submitBtn.textContent = "Memproses...";
-
-                  try {
-                     let atasanName = k.atasan;
-                     if(!atasanName) throw new Error("Karyawan ini tidak memiliki data Atasan di Master Karyawan.");
-
-                     const qU = query(collection(db, COL.USERS), where("nama", "==", atasanName), limit(1));
-                     const snapU = await getDocs(qU);
-                     if(snapU.empty) throw new Error("Akun Penilai (Atasan) tidak ditemukan di database Users.");
-
-                     const atasanEmail = snapU.docs[0].data().email;
-                     const atasanUsername = snapU.docs[0].id;
-
-                     if(!atasanEmail) throw new Error("Atasan tidak memiliki email untuk dikirimkan notifikasi.");
-
-                     const deadlineDate = new Date();
-                     deadlineDate.setDate(deadlineDate.getDate() + 3);
-                     const deadlineISO = deadlineDate.toISOString();
-
-                     await fsAdd(COL.TUGAS_KPI_360, {
-                        periode: "Evaluasi Kontrak " + (new Date().getFullYear()),
-                        nama_penilai: atasanName,
-                        nama_dinilai: k.nama_karyawan,
-                        catatan_hrd: "Penilaian ini ditugaskan otomatis sebagai dasar pertimbangan perpanjangan kontrak kerja.",
-                        soal_json: soalArray,
-                        status: "PENDING",
-                        skor_akhir: 0,
-                        tanggal: new Date().toISOString(),
-                        deadline: deadlineISO
-                     }, genId("KPI"));
-
-                     if (typeof sendEmailNotif === 'function') {
-                        const token = await createLoginToken(atasanUsername);
-                        const magicLink = `https://andela-hris.vercel.app/#dashboard?token=${token}`;
-                        
-                        const htmlEmail = `
-                          <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-                            <h2 style="color: #7a1f2b;">Tugas Penilaian Evaluasi Kontrak</h2>
-                            <p>Halo <strong>${atasanName}</strong>,</p>
-                            <p>Mengingatkan bahwa kontrak kerja <strong>${escapeHtml(k.nama_karyawan)}</strong> akan berakhir dalam ${k._days} hari.</p>
-                            <p>HRD telah menugaskan Anda untuk melakukan penilaian kinerja sebagai dasar keputusan perpanjangan kontrak.</p>
-                            <p>Mohon selesaikan penilaian ini sebelum <strong>${fmtDateShort(deadlineISO)}</strong>.</p>
-                            <a href="${magicLink}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Akses & Mulai Menilai</a>
-                          </div>
-                        `;
-                        await sendEmailNotif(atasanEmail, "Tugas Penilaian Kontrak: " + k.nama_karyawan, htmlEmail);
-                     }
-
-                     toast("Tugas penilaian berhasil dibuat dan dikirim ke Atasan", "success");
-                     closeModal();
-                     
-                     btnEl.className = "flex-1 bg-green-600 text-white text-[11px] py-1.5 rounded transition";
-                     btnEl.textContent = "Tugas Terkirim ✓";
-                     btnEl.disabled = true;
-
-                  } catch (err) {
-                     toast(err.message, "error");
-                     submitBtn.disabled = false; submitBtn.textContent = "Kirim Tugas ke Atasan";
-                  }
-               };
-            }
-         });
-      });
-    });
-
-    wrap.querySelectorAll('button[data-action="karyawan"]').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-         const btnEl = e.currentTarget;
-         const k = soon.find(x => x.id === btnEl.dataset.id);
-         
-         if (!k) return;
-         
-         btnEl.disabled = true; btnEl.textContent = "Mengirim...";
-         try {
-            if(!k.email) throw new Error("Email karyawan bersangkutan belum terdata di sistem.");
-            const html = `<div style="font-family: Arial; padding: 20px;"><h2>Undangan Konseling</h2><p>Halo <b>${escapeHtml(k.nama_karyawan)}</b>,</p><p>Mengingatkan bahwa kontrak Anda akan segera berakhir. Mohon temui Tim HRD untuk proses konseling lebih lanjut.</p></div>`;
-            await sendEmailNotif(k.email, "Undangan Konseling HRD", html);
-            toast("Undangan konseling terkirim", "success");
-         } catch (err) { toast(err.message, "error"); }
-         btnEl.disabled = false; btnEl.textContent = "Panggil Konseling";
-      });
-    });
-
+      
+    // (Fungsi kirim tugas Atasan sudah dimigrasikan ke file penilaian-kontrak untuk manajemen yang lebih baik)
+    wrap.querySelectorAll('button[data-action="atasan"]').forEach(btn => btn.onclick = () => toast("Silakan masuk ke menu Penilaian & Kontrak untuk menugaskan Evaluasi KPI", "info"));
   } catch (e) { wrap.innerHTML = emptyState("Gagal memuat data kontrak"); }
 }
 
 // ===============================================================
 // MESIN NOTIFIKASI LONCENG
 // ===============================================================
-import { COL, db, collection, query, getDocs } from "../firebase-config.js";
-import { openModal, closeModal, fsGetAll, escapeHtml } from "../utils.js";
-
-async function setupNotificationBell(session) {
-    // Mencari elemen ikon lonceng di navigasi menu atas HTML
+function setupNotificationBell(session) {
     const bellIcon = document.querySelector('header svg[class*="bell"], header button[class*="notif"], .bell-icon')?.closest('button') 
                   || document.querySelector('svg[class*="bell"]')?.closest('button');
     
-    if (!bellIcon) return; // Jika tidak ketemu iconnya, abaikan
+    if (!bellIcon) return; 
 
     bellIcon.onclick = async () => {
        openModal({
@@ -605,14 +341,12 @@ async function setupNotificationBell(session) {
        try {
            const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
            
-           // Tarik Data Paralel
            const [semuaPengajuan, tugasKpi, kontrak] = await Promise.all([
                fsGetAll(COL.DATA_PENGAJUAN),
                fsGetAll(COL.TUGAS_KPI_360).catch(()=>[]),
                isHrd ? fsGetAll(COL.MASTER_KONTRAK) : Promise.resolve([])
            ]);
 
-           // A. Filter Antrean Persetujuan (Approval)
            const myApproval = semuaPengajuan.filter(r => {
                if(r.status_final !== "MENUNGGU") return false;
                const idx = (r.approval_steps || []).findIndex(s => s === "PENDING");
@@ -621,15 +355,11 @@ async function setupNotificationBell(session) {
                return stepLabel.toUpperCase() === session.role.toUpperCase() || stepLabel.toUpperCase() === "ATASAN"; 
            });
 
-           // B. Filter Tugas KPI 360
            const myKpi = tugasKpi.filter(t => t.nama_penilai === session.nama && t.status !== "DONE");
-
-           // C. Filter Kontrak Habis (Khusus HRD)
            const kontrakHabis = isHrd ? kontrak.filter(k => k.status_kolom_kontrak === "SEGERA HABIS") : [];
 
            let htmlContent = `<div class="space-y-4 max-h-[60vh] overflow-y-auto pr-2">`;
 
-           // Render Notif Approval
            if(myApproval.length > 0) {
                htmlContent += `<div class="bg-amber-50 border border-amber-200 p-4 rounded-xl">
                   <h4 class="font-bold text-amber-800 text-xs uppercase mb-1 flex items-center gap-1">⏳ Antrean Persetujuan (${myApproval.length})</h4>
@@ -637,7 +367,6 @@ async function setupNotificationBell(session) {
                </div>`;
            }
 
-           // Render Notif Tugas KPI
            if(myKpi.length > 0) {
                htmlContent += `<div class="bg-blue-50 border border-blue-200 p-4 rounded-xl">
                   <h4 class="font-bold text-blue-800 text-xs uppercase mb-1 flex items-center gap-1">📋 Tugas KPI 360 (${myKpi.length})</h4>
@@ -645,7 +374,6 @@ async function setupNotificationBell(session) {
                </div>`;
            }
 
-           // Render Notif Kontrak Habis
            if(kontrakHabis.length > 0) {
                htmlContent += `<div class="bg-red-50 border border-red-200 p-4 rounded-xl">
                   <h4 class="font-bold text-red-800 text-xs uppercase mb-1 flex items-center gap-1">📄 Warning Kontrak (${kontrakHabis.length})</h4>
@@ -653,37 +381,29 @@ async function setupNotificationBell(session) {
                </div>`;
            }
 
-           // Jika Kosong
            if(myApproval.length === 0 && myKpi.length === 0 && kontrakHabis.length === 0) {
                htmlContent += `<div class="text-center p-8 text-slate-400">
                   <svg xmlns="http://www.w3.org/2000/svg" class="w-14 h-14 mx-auto mb-3 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
                   <p class="font-medium">Kerja bagus! Tidak ada notifikasi tertunda.</p>
                </div>`;
            }
-
            htmlContent += `</div>`;
 
-           // Timpa tulisan "Mengumpulkan data..." dengan data aslinya
-           const modalBodyWraps = document.querySelectorAll(".modal-body-content"); // Bergantung class modal di utils Anda
+           // Timpa tulisan loading dengan hasil notifikasi
+           const modalBodyWraps = document.querySelectorAll(".modal-body-content, div[role='dialog'] .animate-pulse"); 
            if(modalBodyWraps.length > 0) {
-               modalBodyWraps[modalBodyWraps.length - 1].innerHTML = htmlContent;
+               const target = modalBodyWraps[modalBodyWraps.length - 1];
+               if (target.classList.contains('animate-pulse')) target.parentElement.innerHTML = htmlContent;
+               else target.innerHTML = htmlContent;
            } else {
-               // Fallback pencarian elemen modal
                const modalDiv = document.querySelector('div[role="dialog"]');
                if(modalDiv) {
                    const contentDiv = modalDiv.querySelector('div.p-8.text-center.animate-pulse')?.parentElement;
                    if (contentDiv) contentDiv.innerHTML = htmlContent;
                }
            }
-
        } catch(e) {
            console.error("Gagal memuat notifikasi", e);
-           const modalDiv = document.querySelector('div[role="dialog"]');
-           if(modalDiv) {
-               const contentDiv = modalDiv.querySelector('div.p-8.text-center.animate-pulse')?.parentElement;
-               if (contentDiv) contentDiv.innerHTML = `<div class="p-6 text-center text-red-500 font-medium">Koneksi terputus. Gagal memuat data.</div>`;
-           }
        }
     };
 }
-
