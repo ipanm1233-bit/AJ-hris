@@ -25,19 +25,26 @@ const SESSION_KEY = "andela_hris_session";
 export const MENU_CONFIG = [
   { route: "dashboard", label: "Home & Dashboard", icon: "home", group: "all", roles: [] },
   { route: "pengajuan", label: "Buat Pengajuan", icon: "document-add", group: "all", roles: [] },
-  { route: "klaim-bensin", label: "Klaim Bensin", icon: "truck", group: "all", roles: ["SALES", "DRIVER", "HELPER", "MANAGER", "DIREKTUR"] },
+  { route: "klaim-bensin", label: "Klaim Bensin", icon: "truck", group: "all", roles: ["SALES", "DRIVER", "HELPER", "MANAGER", "DIREKTUR", "SPV", "KOORDINATOR"] },
   { route: "riwayat", label: "Riwayat Pengajuan", icon: "clock", group: "all", roles: [] },
   
-  // MODUL HRD
+  // MODUL HRD (Akses Diperluas agar Atasan bisa masuk tapi View-Only)
   { route: "absensi", label: "Manajemen Absensi", icon: "calendar", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
-  { route: "cuti", label: "Manajemen Cuti", icon: "calendar", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
-  { route: "kalender-hr", label: "Kalender HR", icon: "calendar", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] }, // <-- PERBAIKAN DI SINI
-  { route: "penilaian-kontrak", label: "Penilaian & Kontrak", icon: "star", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
+  { route: "cuti", label: "Manajemen Cuti", icon: "calendar", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR", "MANAGER", "SPV", "KOORDINATOR"] },
+  { route: "kalender-hr", label: "Kalender HR", icon: "calendar", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
+  { route: "penilaian-kontrak", label: "Penilaian & Kontrak", icon: "star", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR", "MANAGER", "SPV", "KOORDINATOR"] },
   { route: "rekrutmen", label: "Rekrutmen (ATS)", icon: "user-group", group: "hrd", roles: ["HRD", "SUPERADMIN"] },
   { route: "siklus-karyawan", label: "Siklus Karyawan", icon: "refresh", group: "hrd", roles: ["HRD", "SUPERADMIN"] },
 
-  // MODUL MANAJEMEN
-  { route: "approval", label: "Antrean Persetujuan", icon: "check-circle", group: "manajemen", roles: ["MANAGER", "HRD", "DIREKTUR", "FINANCE", "ACCOUNTING"] },
+  // MODUL MANAJEMEN (Menu yang dikembalikan)
+  { route: "uang-makan", label: "Uang Makan Expedisi", icon: "currency-dollar", group: "manajemen", roles: ["HRD", "SUPERADMIN", "FINANCE", "ACCOUNTING"] },
+  { route: "lembur", label: "Lembur & Kasbon", icon: "cash", group: "manajemen", roles: ["HRD", "SUPERADMIN", "FINANCE", "ACCOUNTING"] },
+  { route: "kedisiplinan", label: "Kedisiplinan & SP", icon: "shield-exclamation", group: "manajemen", roles: ["HRD", "SUPERADMIN", "DIREKTUR", "MANAGER"] },
+  { route: "inventory", label: "Manajemen Inventory & ATK", icon: "archive", group: "manajemen", roles: ["HRD", "SUPERADMIN", "ADMIN"] },
+  { route: "gimmick", label: "Manajemen Gimmick", icon: "gift", group: "manajemen", roles: ["HRD", "SUPERADMIN", "MARKETING"] },
+  { route: "kendaraan", label: "Manajemen Kendaraan", icon: "truck", group: "manajemen", roles: ["HRD", "SUPERADMIN", "GA"] },
+  { route: "sop", label: "Manajemen SOP", icon: "document-text", group: "manajemen", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
+  { route: "approval", label: "Antrean Persetujuan", icon: "check-circle", group: "manajemen", roles: ["MANAGER", "HRD", "DIREKTUR", "FINANCE", "ACCOUNTING", "SPV", "KOORDINATOR"] },
   { route: "broadcast", label: "Broadcast Memo", icon: "speakerphone", group: "manajemen", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
   { route: "manajemen-data", label: "Manajemen Data", icon: "database", group: "manajemen", roles: ["HRD", "SUPERADMIN", "DIREKTUR", "FINANCE"] }, 
   { route: "pengaturan", label: "Akses & Pengguna", icon: "shield-check", group: "manajemen", roles: ["SUPERADMIN", "DIREKTUR"] },
