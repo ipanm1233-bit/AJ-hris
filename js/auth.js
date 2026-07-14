@@ -39,7 +39,7 @@ export const MENU_CONFIG = [
   // MODUL MANAJEMEN
   { route: "approval", label: "Antrean Persetujuan", icon: "check-circle", group: "manajemen", roles: ["MANAGER", "HRD", "DIREKTUR", "FINANCE", "ACCOUNTING"] },
   { route: "broadcast", label: "Broadcast Memo", icon: "speakerphone", group: "manajemen", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
-  { route: "master", label: "Manajemen Data", icon: "database", group: "manajemen", roles: ["HRD", "SUPERADMIN", "DIREKTUR", "FINANCE"] },
+  { route: "manajemen-data", label: "Manajemen Data", icon: "database", group: "manajemen", roles: ["HRD", "SUPERADMIN", "DIREKTUR", "FINANCE"] }, // <-- PERBAIKAN DI SINI
   { route: "pengaturan", label: "Akses & Pengguna", icon: "shield-check", group: "manajemen", roles: ["SUPERADMIN", "DIREKTUR"] },
   { route: "konfigurasi", label: "Konfigurasi Sistem", icon: "cog", group: "manajemen", roles: ["SUPERADMIN", "DIREKTUR"] }
 ];
