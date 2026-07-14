@@ -5,11 +5,10 @@
  * =====================================================================
  */
 import {
-  db, collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc,
+  db, COL, collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc,
   deleteDoc, query, where, orderBy, limit, onSnapshot, serverTimestamp,
   Timestamp
 } from "./firebase-config.js";
-
 /* ---------------------------------------------------------------------
  * 1. SMART DATE PARSER
  * Menangani 3 kemungkinan bentuk tanggal yang lazim ditemui saat migrasi
@@ -342,36 +341,60 @@ export async function createLoginToken(username) {
   return token;
 }
 
-export async function getTargetsForRole(targetRole, pemohonName) {
-  let targets = [];
+export async function getTargetsForRole(role, namaKaryawan = "") {
   try {
-    if (targetRole === "ATASAN") {
-      const qK = query(collection(db, "master_karyawan"), where("nama_karyawan", "==", pemohonName), limit(1));
-      const snapK = await getDocs(qK);
-      if (!snapK.empty) {
-        const atasanName = snapK.docs[0].data().atasan;
-        if (atasanName) {
-          const qU = query(collection(db, "users"), where("nama", "==", atasanName), limit(1));
-          const snapU = await getDocs(qU);
-          if (!snapU.empty) targets.push({ email: snapU.docs[0].data().email, username: snapU.docs[0].id });
+    // 1. Jika targetnya adalah PEMOHON itu sendiri
+    if (role === "PEMOHON" && namaKaryawan) {
+      const q = query(collection(db, COL.USERS), where("nama", "==", namaKaryawan), limit(1));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        return [{ username: snap.docs[0].id, email: snap.docs[0].data().email }];
+      }
+      return [];
+    }
+
+    // 2. Jika targetnya adalah ATASAN (Melacak dinamis dari Master Karyawan)
+    if (role === "ATASAN" && namaKaryawan) {
+      // Langkah A: Cari data si pemohon di Master Karyawan
+      const qKaryawan = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", namaKaryawan), limit(1));
+      const snapKaryawan = await getDocs(qKaryawan);
+      
+      if (!snapKaryawan.empty) {
+        const namaAtasan = snapKaryawan.docs[0].data().atasan; // Ambil nama atasannya
+
+        if (namaAtasan) {
+          // Langkah B: Cari email atasan di daftar Akun Users
+          const qAtasan = query(collection(db, COL.USERS), where("nama", "==", namaAtasan), limit(1));
+          const snapAtasan = await getDocs(qAtasan);
+          
+          if (!snapAtasan.empty && snapAtasan.docs[0].data().email) {
+             return [{ username: snapAtasan.docs[0].id, email: snapAtasan.docs[0].data().email }];
+          }
+          
+          // Langkah C: Fallback (Cadangan), cari email atasan di Master Karyawan jika ia belum punya akun User
+          const qAtasanMaster = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", namaAtasan), limit(1));
+          const snapAtasanMaster = await getDocs(qAtasanMaster);
+          
+          if(!snapAtasanMaster.empty && snapAtasanMaster.docs[0].data().email) {
+             return [{ username: snapAtasanMaster.docs[0].id, email: snapAtasanMaster.docs[0].data().email }];
+          }
         }
       }
-    } else if (targetRole === "PEMOHON") {
-       const qU = query(collection(db, "users"), where("nama", "==", pemohonName), limit(1));
-       const snapU = await getDocs(qU);
-       if (!snapU.empty) targets.push({ email: snapU.docs[0].data().email, username: snapU.docs[0].id });
-    } else {
-      const qU = query(collection(db, "users"), where("role", "==", targetRole.toUpperCase()));
-      const snapU = await getDocs(qU);
-      snapU.forEach(d => { if (d.data().email) targets.push({ email: d.data().email, username: d.id }); });
+      // Jika atasan tidak ditemukan, kembalikan array kosong (mencegah terkirim ke email dummy)
+      console.warn(`Atasan untuk ${namaKaryawan} tidak ditemukan atau tidak memiliki email.`);
+      return []; 
     }
-  } catch(e) { console.warn("Error resolving targets:", e); }
-  
-  const unique = []; const seen = new Set();
-  for (const t of targets) {
-    if (t.email && t.username && !seen.has(t.username)) {
-       seen.add(t.username); unique.push(t);
-    }
+
+    // 3. Jika targetnya adalah Role Departemen Spesifik (HRD, FINANCE, MANAGER, dll)
+    const qRole = query(collection(db, COL.USERS), where("role", "==", role));
+    const snapRole = await getDocs(qRole);
+    
+    return snapRole.docs
+        .map(d => ({ username: d.id, email: d.data().email }))
+        .filter(x => x.email); // Hanya kembalikan yang email-nya terisi
+
+  } catch (error) {
+    console.error("Error getTargetsForRole:", error);
+    return [];
   }
-  return unique;
 }
