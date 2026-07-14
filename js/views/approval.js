@@ -1,6 +1,23 @@
 import { db, COL, collection, query, where, getDocs } from "../firebase-config.js";
 import { fsGetAll, fsUpdate, fsAdd, genId, openModal, closeModal, toast, fmtDateTime, escapeHtml, sendEmailNotif, getTargetsForRole, createLoginToken } from "../utils.js";
-import { icon, badge, emptyState, skeletonRows } from "../components.js";
+import { badge, emptyState, skeletonRows } from "../components.js";
+
+// Hanya dideklarasikan SATU KALI di paling atas untuk menghindari error duplikasi
+const CUTI_RULES = {
+  "C - Cuti Tahunan": { jenis: "Tahunan", count: 1 },
+  "C1/2 - Cuti Setengah Hari": { jenis: "Tahunan", count: 0.5 },
+  "C+ - Cuti Khusus": { jenis: "Khusus", count: 1 },
+  "S - Sakit dgn Surat Dokter": { jenis: "Khusus", count: 0 }, 
+  "S- - Sakit tanpa Surat Dokter": { jenis: "Tahunan", count: 1 },
+  "CB - Cuti Bersama": { jenis: "Tahunan", count: 1 },
+  "C- - Potong Gaji": { jenis: "Potong Gaji", count: 1 },
+  "CS - Cuti Sisa": { jenis: "Tahunan", count: 1 },
+  "C+1/2 - Cuti Khusus Setengah Hari": { jenis: "Khusus", count: 0.5 },
+  "D - Dinas Luar Kota": { jenis: "Dinas", count: 0 },
+  "C-BESAR - Cuti Besar": { jenis: "Cuti Besar", count: 0 }
+};
+
+const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
 
 let allPengajuan = [], karyawanByNama = {};
 
@@ -83,12 +100,11 @@ function renderList(container, session, tab) {
         ${(r.approval_flow || []).map((step, i) => {
           const st = (r.approval_steps || [])[i];
           const cls = st === "APPROVE" ? "bg-emerald-100 text-emerald-700" : st === "REJECT" ? "bg-red-100 text-red-700" : i === idx ? "bg-amber-100 text-amber-700 ring-2 ring-amber-300" : "bg-slate-100 text-slate-400";
-          return `<span class="px-2.5 py-1 rounded-full text-xs font-medium ${cls}">${i + 1}. ${escapeHtml(step)}</span>`;
+          return \`<span class="px-2.5 py-1 rounded-full text-xs font-medium \${cls}">\${i + 1}. \${escapeHtml(step)}</span>\`;
         }).join('<span class="text-slate-300">→</span>')}
       </div>
 
       <div class="mt-4 flex items-center justify-between">
-        <!-- PERBAIKAN: Melemparkan variabel session ke fungsi showDetail agar bisa mendeteksi role HRD -->
         <button data-detail="${r.id}" class="text-xs text-maroon-700 font-medium hover:underline">Lihat Detail Pengajuan</button>
         ${tab === "pending" ? `
         <div class="flex gap-2">
@@ -99,24 +115,19 @@ function renderList(container, session, tab) {
     </div>`;
   }).join("");
 
-  // Binding Event Listener dengan Session
   listEl.querySelectorAll("[data-detail]").forEach(btn => btn.addEventListener("click", () => showDetail(rows.find(r => r.id === btn.dataset.detail), session)));
   listEl.querySelectorAll("[data-approve]").forEach(btn => btn.addEventListener("click", () => actionModal(rows.find(r => r.id === btn.dataset.approve), "APPROVE", session, container, tab)));
   listEl.querySelectorAll("[data-reject]").forEach(btn => btn.addEventListener("click", () => actionModal(rows.find(r => r.id === btn.dataset.reject), "REJECT", session, container, tab)));
 }
 
-// PERBAIKAN: Fungsi Show Detail yang mendeteksi Role HRD untuk Edit Klaim Bensin
 function showDetail(row, session) {
   const detail = row.detail || {};
-  
-  // Deteksi kelayakan Edit: Jika yang login adalah HRD, formnya adalah Klaim Bensin, dan statusnya masih menunggu
   const isHrd = session.role === "HRD";
   const isKlaimBensin = row.form_id === "F-KLAIM-BENSIN" || (row.nama_form || "").toLowerCase().includes("bensin");
   const isPending = row.status_final === "MENUNGGU";
   const canEdit = isHrd && isKlaimBensin && isPending;
 
   const renderValue = (key, val) => {
-    // KONDISI 1: JIKA HRD MENGEDIT TABEL KLAIM BENSIN
     if (key === "rincian_tabel" && canEdit) {
        let tableHtml = `<div class="overflow-x-auto mt-2 border border-slate-200 rounded-lg">
           <table class="w-full text-xs text-left whitespace-nowrap" id="edit-klaim-table">
@@ -150,7 +161,6 @@ function showDetail(row, session) {
         return tableHtml;
     }
 
-    // KONDISI 2: RENDER TABEL ARRAY BIASA (READ-ONLY)
     if (Array.isArray(val)) {
       if (val.length > 0 && typeof val[0] === 'object') {
         const headers = Object.keys(val[0]);
@@ -158,24 +168,16 @@ function showDetail(row, session) {
           <table class="w-full text-xs text-left whitespace-nowrap">
             <thead class="bg-slate-50 border-b border-slate-200">
               <tr>`;
-        headers.forEach(h => {
-          tableHtml += `<th class="p-2 font-medium text-slate-500 capitalize">${escapeHtml(h.replace(/_/g, " "))}</th>`;
-        });
+        headers.forEach(h => { tableHtml += `<th class="p-2 font-medium text-slate-500 capitalize">${escapeHtml(h.replace(/_/g, " "))}</th>`; });
         tableHtml += `</tr></thead><tbody class="divide-y divide-slate-100">`;
         
         val.forEach(item => {
           tableHtml += `<tr>`;
           headers.forEach(h => {
             let cellVal = item[h];
-            if (typeof cellVal === 'number' && (h.includes('total') || h.includes('parkir') || h.includes('denda') || h.includes('biaya'))) {
-              cellVal = "Rp " + cellVal.toLocaleString('id-ID');
-            }
-            // Highlight khusus jika ada catatan revisi dari HRD
-            if (h === 'catatan_hrd' && cellVal) {
-               tableHtml += `<td class="p-2 text-amber-700 font-medium bg-amber-50">${escapeHtml(String(cellVal))}</td>`;
-            } else {
-               tableHtml += `<td class="p-2 text-slate-700">${escapeHtml(String(cellVal || '-'))}</td>`;
-            }
+            if (typeof cellVal === 'number' && (h.includes('total') || h.includes('parkir') || h.includes('denda') || h.includes('biaya'))) cellVal = "Rp " + cellVal.toLocaleString('id-ID');
+            if (h === 'catatan_hrd' && cellVal) tableHtml += `<td class="p-2 text-amber-700 font-medium bg-amber-50">${escapeHtml(String(cellVal))}</td>`;
+            else tableHtml += `<td class="p-2 text-slate-700">${escapeHtml(String(cellVal || '-'))}</td>`;
           });
           tableHtml += `</tr>`;
         });
@@ -185,12 +187,9 @@ function showDetail(row, session) {
       return `<span class="text-slate-800 font-medium text-right">${escapeHtml(val.join(", "))}</span>`;
     }
 
-    // KONDISI 3: Format Rupiah untuk angka total tunggal
     if (typeof val === 'number' && (key.includes('total') || key.includes('biaya') || key.includes('harga') || key.includes('kasbon'))) {
        return `<span class="text-slate-800 font-medium text-right font-mono text-sm" ${key==='total_klaim' && canEdit ? 'id="edit-klaim-grandtotal"' : ''}>Rp ${val.toLocaleString('id-ID')}</span>`;
     }
-
-    // Default Teks
     return `<span class="text-slate-800 font-medium text-right">${escapeHtml(String(val))}</span>`;
   };
 
@@ -198,25 +197,14 @@ function showDetail(row, session) {
     <div class="space-y-4">
       ${Object.entries(detail).map(([k, v]) => {
         if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'object') {
-          return `
-            <div class="text-sm border-b border-slate-50 pb-3">
-              <span class="text-slate-500 capitalize block mb-1 font-medium">${escapeHtml(k.replace(/_/g, " "))}</span>
-              ${renderValue(k, v)}
-            </div>`;
+          return `<div class="text-sm border-b border-slate-50 pb-3"><span class="text-slate-500 capitalize block mb-1 font-medium">${escapeHtml(k.replace(/_/g, " "))}</span>${renderValue(k, v)}</div>`;
         }
-        return `
-          <div class="flex justify-between items-center gap-4 text-sm border-b border-slate-50 pb-2">
-            <span class="text-slate-500 capitalize">${escapeHtml(k.replace(/_/g, " "))}</span>
-            ${renderValue(k, v)}
-          </div>`;
+        return `<div class="flex justify-between items-center gap-4 text-sm border-b border-slate-50 pb-2"><span class="text-slate-500 capitalize">${escapeHtml(k.replace(/_/g, " "))}</span>${renderValue(k, v)}</div>`;
       }).join("")}
     </div>`;
 
-  // TOMBOL FOOTER DINAMIS (Jika Mode Edit, tambahkan tombol Simpan Revisi)
   let footerHtml = `<button id="detail-close" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Tutup</button>`;
-  if (canEdit) {
-     footerHtml += `<button id="detail-save" class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 transition shadow-md">Simpan Revisi HRD</button>`;
-  }
+  if (canEdit) footerHtml += `<button id="detail-save" class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 transition shadow-md">Simpan Revisi HRD</button>`;
 
   openModal({ 
     title: `Detail — ${row.nama_form}`, 
@@ -225,15 +213,12 @@ function showDetail(row, session) {
     footerHtml: footerHtml,
     onMount: (m) => {
       m.querySelector("#detail-close").onclick = closeModal;
-      
-      // LOGIKA PENYIMPANAN REVISI OLEH HRD
       if (canEdit) {
         const table = m.querySelector("#edit-klaim-table");
         const grandTotalEl = m.querySelector("#edit-klaim-grandtotal");
         const HARGA_BENSIN = 10000;
         const RASIO_KM = 25;
 
-        // Fungsi Hitung Real-time saat HRD mengetik koreksi
         function calc() {
             let grandTotal = 0;
             table.querySelectorAll("tbody tr").forEach(tr => {
@@ -253,11 +238,8 @@ function showDetail(row, session) {
             if (grandTotalEl) grandTotalEl.textContent = `Rp ${Math.round(grandTotal).toLocaleString("id-ID")}`;
         }
 
-        table.querySelectorAll(".klaim-input").forEach(input => {
-            input.addEventListener("input", calc);
-        });
+        table.querySelectorAll(".klaim-input").forEach(input => input.addEventListener("input", calc));
 
-        // Eksekusi Penyimpanan Revisi
         m.querySelector("#detail-save").onclick = async () => {
             const detailKlaim = [];
             let totalKlaim = 0;
@@ -283,27 +265,23 @@ function showDetail(row, session) {
                     parkir: parkir,
                     denda: denda,
                     total_baris: rowTotal,
-                    catatan_hrd: catatan // Menyimpan catatan spesifik dari HRD
+                    catatan_hrd: catatan 
                 });
                 totalKlaim += rowTotal;
             });
 
-            // Timpa rincian tabel lama dengan rincian tabel hasil revisi HRD
             const newDetail = { ...row.detail, total_klaim: totalKlaim, rincian_tabel: detailKlaim };
-
             const btnSave = m.querySelector("#detail-save");
-            btnSave.disabled = true;
-            btnSave.textContent = "Menyimpan Revisi...";
+            btnSave.disabled = true; btnSave.textContent = "Menyimpan Revisi...";
 
             try {
                 await fsUpdate(COL.DATA_PENGAJUAN, row.id, { detail: newDetail });
-                row.detail = newDetail; // update memory cache agar tak perlu reload halaman
+                row.detail = newDetail; 
                 toast("Data revisi klaim berhasil disimpan", "success");
                 closeModal();
             } catch(e) {
                 toast("Gagal menyimpan revisi: " + e.message, "error");
-                btnSave.disabled = false;
-                btnSave.textContent = "Simpan Revisi HRD";
+                btnSave.disabled = false; btnSave.textContent = "Simpan Revisi HRD";
             }
         };
       }
@@ -316,8 +294,8 @@ function actionModal(row, action, session, container, tab) {
   openModal({
     title: isApprove ? "Setujui Pengajuan" : "Tolak Pengajuan",
     bodyHtml: `
-      <p class="text-sm text-slate-600 mb-3">Anda akan <b>${isApprove ? "menyetujui" : "menolak"}</b> pengajuan <b>${escapeHtml(row.nama_form)}</b> dari <b>${escapeHtml(row.nama_pemohon)}</b>. Ini bertindak sebagai tanda tangan digital Anda.</p>
-      <textarea id="action-note" rows="3" placeholder="Catatan (opsional)" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100 outline-none transition"></textarea>`,
+      <p class="text-sm text-slate-600 mb-3">Anda akan <b>${isApprove ? "menyetujui" : "menolak"}</b> pengajuan <b>${escapeHtml(row.nama_form)}</b> dari <b>${escapeHtml(row.nama_pemohon)}</b>.</p>
+      <textarea id="action-note" rows="3" placeholder="Catatan (opsional)" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none transition"></textarea>`,
     footerHtml: `
       <button id="action-cancel" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
       <button id="action-confirm" class="px-4 py-2 rounded-lg text-sm font-medium text-white ${isApprove ? "bg-maroon-700 hover:bg-maroon-800" : "bg-red-700 hover:bg-red-800"} transition">${isApprove ? "Ya, Setujui" : "Ya, Tolak"}</button>`,
@@ -332,44 +310,6 @@ function actionModal(row, action, session, container, tab) {
     }
   });
 }
-
-// ==========================================
-// KAMUS ATURAN PEMOTONGAN CUTI
-// ==========================================
-const CUTI_RULES = {
-  "C - Cuti Tahunan": { jenis: "Tahunan", count: 1 },
-  "C1/2 - Cuti Setengah Hari": { jenis: "Tahunan", count: 0.5 },
-  "C+ - Cuti Khusus": { jenis: "Khusus", count: 1 },
-  "S - Sakit dgn Surat Dokter": { jenis: "Khusus", count: 0 }, 
-  "S- - Sakit tanpa Surat Dokter": { jenis: "Tahunan", count: 1 },
-  "CB - Cuti Bersama": { jenis: "Tahunan", count: 1 },
-  "C- - Potong Gaji": { jenis: "Potong Gaji", count: 1 },
-  "CS - Cuti Sisa": { jenis: "Tahunan", count: 1 },
-  "C+1/2 - Cuti Khusus Setengah Hari": { jenis: "Khusus", count: 0.5 },
-  "D - Dinas Luar Kota": { jenis: "Dinas", count: 0 },
-  "C-BESAR - Cuti Besar": { jenis: "Cuti Besar", count: 0 }
-};
-
-const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
-
-// ==========================================
-// KAMUS ATURAN PEMOTONGAN CUTI
-// ==========================================
-const CUTI_RULES = {
-  "C - Cuti Tahunan": { jenis: "Tahunan", count: 1 },
-  "C1/2 - Cuti Setengah Hari": { jenis: "Tahunan", count: 0.5 },
-  "C+ - Cuti Khusus": { jenis: "Khusus", count: 1 },
-  "S - Sakit dgn Surat Dokter": { jenis: "Khusus", count: 0 }, 
-  "S- - Sakit tanpa Surat Dokter": { jenis: "Tahunan", count: 1 },
-  "CB - Cuti Bersama": { jenis: "Tahunan", count: 1 },
-  "C- - Potong Gaji": { jenis: "Potong Gaji", count: 1 },
-  "CS - Cuti Sisa": { jenis: "Tahunan", count: 1 },
-  "C+1/2 - Cuti Khusus Setengah Hari": { jenis: "Khusus", count: 0.5 },
-  "D - Dinas Luar Kota": { jenis: "Dinas", count: 0 },
-  "C-BESAR - Cuti Besar": { jenis: "Cuti Besar", count: 0 }
-};
-
-const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
 
 async function processAction(row, action, note, session) {
   const idx = currentStepIndex(row);
@@ -392,19 +332,13 @@ async function processAction(row, action, note, session) {
     Object.assign(row, { approval_steps: steps, status_final: statusFinal, catatan_penolakan: catatan });
     toast(action === "APPROVE" ? "Pengajuan disetujui" : "Pengajuan ditolak", action === "APPROVE" ? "success" : "warning");
 
-    // ====================================================
-    // LOGIKA PEMOTONGAN JATAH CUTI OTOMATIS
-    // ====================================================
     const isCuti = (row.form_id === "F-ISO-CUTI" || (row.nama_form || "").toLowerCase().includes("cuti"));
     
     if (statusFinal === "APPROVED FINAL" && isCuti) {
-        // Deteksi jenis cuti dari isian form
         let jenisVal = row.detail.jenis_cuti || row.detail.jenis || Object.values(row.detail).find(v => typeof v === 'string' && v.includes("Cuti"));
-        
         let rule = CUTI_RULES[jenisVal];
         if (rule) {
             let multiplier = 1;
-            // Deteksi Jumlah Hari
             if (row.detail.jumlah_hari) {
                  multiplier = parseFloat(row.detail.jumlah_hari);
             } else if (row.detail.tanggal_mulai && row.detail.tanggal_akhir) {
@@ -413,10 +347,8 @@ async function processAction(row, action, note, session) {
                  const diff = Math.round((t2 - t1) / 86400000) + 1;
                  if (diff > 0) multiplier = diff;
             }
-
             const totalDeduction = rule.count * multiplier;
 
-            // Catat log agar saldo di Dashboard otomatis berkurang
             await fsAdd(COL.MASTER_CUTI, {
                 tanggal: row.detail.tanggal_mulai || row.tgl,
                 nama_karyawan: row.nama_pemohon,
@@ -431,15 +363,11 @@ async function processAction(row, action, note, session) {
         }
     }
 
-    // ====================================================
-    // LOGIKA EMAIL BERANTAI & FINAL BROADCAST + MAGIC LINK
-    // ====================================================
     if (typeof sendEmailNotif === 'function') {
       try {
         if (action === "APPROVE") {
           
           if (idx === steps.length - 1) {
-            // [A] APPROVE FINAL
             let rolesToNotify = ["PEMOHON"];
             if (row.form_id === "F-KLAIM-BENSIN" || (row.nama_form||"").toLowerCase().includes("klaim")) { rolesToNotify.push("FINANCE", "ACCOUNTING"); }
             else if (isCuti) { rolesToNotify.push("HRD", "ATASAN"); } 
@@ -456,7 +384,6 @@ async function processAction(row, action, note, session) {
                const token = await createLoginToken(target.username);
                let htmlFinal = "";
 
-               // JIKA FINAL APPROVAL ADALAH CUTI: KIRIMKAN FORMAT DOKUMEN CETAK FULL HTML
                if (isCuti) {
                   let jenisVal = row.detail.jenis_cuti || row.detail.jenis || "-";
                   const isHalfDay = jenisVal.includes("1/2");
@@ -488,9 +415,6 @@ async function processAction(row, action, note, session) {
                                   <td style="padding-top: 50px; color: #166534; font-style: italic; font-weight: bold;">(Approved by System)</td>
                               </tr>
                           </table>
-                          <div style="margin-top: 40px; font-size: 11px; color: #64748b; text-align: center; border-top: 1px dashed #ccc; padding-top: 10px;">
-                             Dokumen ini sah dan diterbitkan secara digital oleh Portal HRIS CV Andela Jaya.
-                          </div>
                       </div>
                       `;
                   } else {
@@ -518,14 +442,10 @@ async function processAction(row, action, note, session) {
                                   <td style="padding-top: 50px; color: #166534; font-style: italic; font-weight: bold;">(Approved by System)</td>
                               </tr>
                           </table>
-                          <div style="margin-top: 40px; font-size: 11px; color: #64748b; text-align: center; border-top: 1px dashed #ccc; padding-top: 10px;">
-                             Dokumen ini sah dan diterbitkan secara digital oleh Portal HRIS CV Andela Jaya.
-                          </div>
                       </div>
                       `;
                   }
                } else {
-                 // Template Email Bawaan untuk form lain
                  htmlFinal = `
                  <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
                    <h2 style="color: #15803d;">Pengajuan Selesai: ${row.nama_form}</h2>
@@ -539,7 +459,6 @@ async function processAction(row, action, note, session) {
             }
 
           } else {
-            // [B] NEXT APPROVER -> LEMPAR KE PENYETUJU SELANJUTNYA
             const nextRole = row.approval_flow[idx + 1];
             const nextTargets = await getTargetsForRole(nextRole, row.nama_pemohon);
             
@@ -557,7 +476,6 @@ async function processAction(row, action, note, session) {
           }
 
         } else if (action === "REJECT") {
-          // [C] DITOLAK -> KABARI PEMOHON
           const pemohonTargets = await getTargetsForRole("PEMOHON", row.nama_pemohon);
           for (const target of pemohonTargets) {
              const token = await createLoginToken(target.username);
