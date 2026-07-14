@@ -352,6 +352,25 @@ const CUTI_RULES = {
 
 const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
 
+// ==========================================
+// KAMUS ATURAN PEMOTONGAN CUTI
+// ==========================================
+const CUTI_RULES = {
+  "C - Cuti Tahunan": { jenis: "Tahunan", count: 1 },
+  "C1/2 - Cuti Setengah Hari": { jenis: "Tahunan", count: 0.5 },
+  "C+ - Cuti Khusus": { jenis: "Khusus", count: 1 },
+  "S - Sakit dgn Surat Dokter": { jenis: "Khusus", count: 0 }, 
+  "S- - Sakit tanpa Surat Dokter": { jenis: "Tahunan", count: 1 },
+  "CB - Cuti Bersama": { jenis: "Tahunan", count: 1 },
+  "C- - Potong Gaji": { jenis: "Potong Gaji", count: 1 },
+  "CS - Cuti Sisa": { jenis: "Tahunan", count: 1 },
+  "C+1/2 - Cuti Khusus Setengah Hari": { jenis: "Khusus", count: 0.5 },
+  "D - Dinas Luar Kota": { jenis: "Dinas", count: 0 },
+  "C-BESAR - Cuti Besar": { jenis: "Cuti Besar", count: 0 }
+};
+
+const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+
 async function processAction(row, action, note, session) {
   const idx = currentStepIndex(row);
   const steps = [...(row.approval_steps || [])];
