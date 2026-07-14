@@ -1,0 +1,42 @@
+<div class="space-y-6 max-w-7xl mx-auto pb-10">
+  <div class="border-b border-slate-200 pb-4">
+    <h1 class="text-2xl font-bold text-slate-800">Manajemen Absensi</h1>
+    <p class="text-sm text-slate-500 mt-1">Import data sidik jari bulanan dan export laporan kehadiran (termasuk cuti/izin).</p>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- KOTAK IMPORT -->
+    <div class="bg-blue-50 border border-blue-200 p-6 rounded-xl relative overflow-hidden">
+       <h2 class="font-bold text-blue-900 text-lg mb-2">1. Import Raw Data Absensi</h2>
+       <p class="text-sm text-blue-700 mb-5 leading-relaxed">Unggah file Excel mentah (.xlsx) dari mesin sidik jari Anda. Pastikan kolom sesuai dengan format: NIK Karyawan, Nama Karyawan, Tanggal, Jam Kerja Masuk, dsb.</p>
+       
+       <input type="file" id="absen-upload" accept=".xlsx, .xls" class="hidden">
+       <button id="btn-import-absen" class="bg-blue-700 hover:bg-blue-800 text-white font-medium px-6 py-2.5 rounded shadow flex items-center gap-2 transition">
+         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+         Pilih & Unggah File Excel
+       </button>
+    </div>
+
+    <!-- KOTAK EXPORT -->
+    <div class="bg-emerald-50 border border-emerald-200 p-6 rounded-xl">
+       <h2 class="font-bold text-emerald-900 text-lg mb-2">2. Export Laporan Kehadiran</h2>
+       <p class="text-sm text-emerald-700 mb-4 leading-relaxed">Tarik laporan absensi yang sudah terkalibrasi dengan database pengajuan cuti/izin/sakit dari sistem HRIS.</p>
+       
+       <div class="flex gap-3 mb-4">
+          <div class="flex-1">
+             <label class="block text-xs font-bold text-emerald-800 mb-1">Tanggal Mulai (Cutoff)</label>
+             <input type="date" id="ex-start" class="w-full px-3 py-2 text-sm border border-emerald-300 rounded outline-none focus:border-emerald-600">
+          </div>
+          <div class="flex-1">
+             <label class="block text-xs font-bold text-emerald-800 mb-1">Tanggal Akhir (Cutoff)</label>
+             <input type="date" id="ex-end" class="w-full px-3 py-2 text-sm border border-emerald-300 rounded outline-none focus:border-emerald-600">
+          </div>
+       </div>
+
+       <button id="btn-export-absen" class="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-medium px-6 py-2.5 rounded shadow flex justify-center items-center gap-2 transition">
+         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+         Tarik & Download Excel Rekap
+       </button>
+    </div>
+  </div>
+</div>
