@@ -23,33 +23,25 @@ const SESSION_KEY = "andela_hris_session";
  * roles: daftar role tambahan yang berhak (di luar aturan group bawaan)
  * ------------------------------------------------------------------- */
 export const MENU_CONFIG = [
-  // ---- ALL (akses umum semua karyawan) ----
-  { id: "dashboard", label: "Home & Dashboard", route: "dashboard", group: "all", icon: "home" },
-  { id: "pengajuan", label: "Buat Pengajuan", route: "pengajuan", group: "all", icon: "doc-plus" },
-  { id: "klaim-bensin", label: "Klaim Bensin", route: "klaim-bensin", group: "all", icon: "car" },
-  { id: "riwayat", label: "Riwayat Karyawan", route: "riwayat", group: "all", icon: "clock" },
+  { route: "dashboard", label: "Home & Dashboard", icon: "home", group: "all", roles: [] },
+  { route: "pengajuan", label: "Buat Pengajuan", icon: "document-add", group: "all", roles: [] },
+  { route: "klaim-bensin", label: "Klaim Bensin", icon: "truck", group: "all", roles: ["SALES", "DRIVER", "HELPER", "MANAGER", "DIREKTUR"] },
+  { route: "riwayat", label: "Riwayat Pengajuan", icon: "clock", group: "all", roles: [] },
+  
+  // MODUL HRD
+  { route: "absensi", label: "Manajemen Absensi", icon: "calendar", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
+  { route: "cuti", label: "Manajemen Cuti", icon: "calendar", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
+  { route: "kalender", label: "Kalender HR", icon: "calendar", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
+  { route: "penilaian-kontrak", label: "Penilaian & Kontrak", icon: "star", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
+  { route: "rekrutmen", label: "Rekrutmen (ATS)", icon: "user-group", group: "hrd", roles: ["HRD", "SUPERADMIN"] },
+  { route: "siklus-karyawan", label: "Siklus Karyawan", icon: "refresh", group: "hrd", roles: ["HRD", "SUPERADMIN"] },
 
-  // ---- HRD (hanya role HRD) ----
-  { id: "kalender-hr", label: "Kalender HR", route: "kalender-hr", group: "hrd", icon: "calendar" },
-  { id: "manajemen-data", label: "Manajemen Data", route: "manajemen-data", group: "hrd", icon: "database" },
-  { id: "rekrutmen", label: "Rekrutmen (ATS)", route: "rekrutmen", group: "hrd", icon: "user-plus" },
-  { id: "uang-makan", label: "Uang Makan Expedisi", route: "uang-makan", group: "hrd", icon: "utensils" },
-  { id: "lembur-kasbon", label: "Lembur & Kasbon", route: "lembur-kasbon", group: "hrd", icon: "wallet" },
-  { id: "inventory", label: "Inventory & ATK", route: "inventory", group: "hrd", icon: "box" },
-  { id: "kendaraan", label: "Manajemen Kendaraan", route: "kendaraan", group: "hrd", icon: "truck" },
-  { id: "gimmick-sop", label: "Gimmick & SOP", route: "gimmick-sop", group: "hrd", icon: "book" },
-  { id: "form-builder", label: "Form Builder", route: "form-builder", group: "hrd", icon: "layers" },
-  { id: "pemanggilan", label: "Pemanggilan / SP", route: "pemanggilan", group: "hrd", icon: "alert" },
-  { id: "export-data", label: "Export Data", route: "export-data", group: "hrd", icon: "download" },
-  { id: "siklus-karyawan", label: "Siklus Karyawan", route: "siklus-karyawan", group: "hrd", icon: "refresh" },
-  { id: "pengaturan-hrd", label: "Pengaturan Sistem", route: "pengaturan", group: "hrd", icon: "settings" },
-
-  // ---- MANAJEMEN (SPV, HRD, GM, Finance, Atasan berbawahan) ----
-  { id: "pengaturan-mgmt", label: "Pengaturan Sistem", route: "pengaturan", group: "manajemen", icon: "settings" },
-  { id: "approval", label: "Antrean Persetujuan", route: "approval", group: "manajemen", icon: "check-circle" },
-  { id: "penilaian-kontrak", label: "Penilaian & Kontrak", route: "penilaian-kontrak", group: "manajemen", icon: "star" },
-  { id: "cuti", label: "Manajemen Cuti", route: "cuti", group: "manajemen", icon: "sun" },
-  { id: "broadcast", label: "Broadcast Memo", route: "broadcast", group: "manajemen", icon: "megaphone" },
+  // MODUL MANAJEMEN
+  { route: "approval", label: "Antrean Persetujuan", icon: "check-circle", group: "manajemen", roles: ["MANAGER", "HRD", "DIREKTUR", "FINANCE", "ACCOUNTING"] },
+  { route: "broadcast", label: "Broadcast Memo", icon: "speakerphone", group: "manajemen", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
+  { route: "master", label: "Manajemen Data", icon: "database", group: "manajemen", roles: ["HRD", "SUPERADMIN", "DIREKTUR", "FINANCE"] },
+  { route: "pengaturan", label: "Akses & Pengguna", icon: "shield-check", group: "manajemen", roles: ["SUPERADMIN", "DIREKTUR"] },
+  { route: "konfigurasi", label: "Konfigurasi Sistem", icon: "cog", group: "manajemen", roles: ["SUPERADMIN", "DIREKTUR"] }
 ];
 
 const MANAJEMEN_ROLES = ["SPV", "HRD", "GM", "FINANCE", "MANAGER", "BRANCH MANAGER"];
