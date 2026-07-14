@@ -20,6 +20,22 @@ export async function mount(container, { session }) {
     loadAnnouncements(container),
     isMgmt ? loadContractExpiry(container) : Promise.resolve()
   ]);
+  // --- MULAI SISIPAN KODE BARU ---
+  const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
+
+  // 1. Batasi Widget Kontrak Habis hanya untuk HRD
+  if (!isHrd) {
+      // Mencari judul widget yang mengandung kata "Kontrak" lalu menyembunyikan kotaknya
+      const widgetHeaders = Array.from(container.querySelectorAll("h3")).filter(el => el.textContent.toLowerCase().includes("kontrak"));
+      widgetHeaders.forEach(h3 => {
+          const wrapperBox = h3.closest('.bg-white, .rounded-xl, .rounded-2xl');
+          if (wrapperBox) wrapperBox.style.display = 'none';
+      });
+  }
+
+  // 2. Aktifkan Logo Lonceng Notifikasi di Header Atas
+  setupNotificationBell(session);
+  // --- AKHIR SISIPAN KODE BARU ---
   return { unmount() {} };
 }
 
@@ -564,3 +580,110 @@ async function loadContractExpiry(container) {
 
   } catch (e) { wrap.innerHTML = emptyState("Gagal memuat data kontrak"); }
 }
+
+// ===============================================================
+// MESIN NOTIFIKASI LONCENG
+// ===============================================================
+import { COL, db, collection, query, getDocs } from "../firebase-config.js";
+import { openModal, closeModal, fsGetAll, escapeHtml } from "../utils.js";
+
+async function setupNotificationBell(session) {
+    // Mencari elemen ikon lonceng di navigasi menu atas HTML
+    const bellIcon = document.querySelector('header svg[class*="bell"], header button[class*="notif"], .bell-icon')?.closest('button') 
+                  || document.querySelector('svg[class*="bell"]')?.closest('button');
+    
+    if (!bellIcon) return; // Jika tidak ketemu iconnya, abaikan
+
+    bellIcon.onclick = async () => {
+       openModal({
+          title: "🔔 Pusat Notifikasi",
+          bodyHtml: `<div class="p-8 text-center text-slate-500 font-medium animate-pulse">Mengumpulkan data notifikasi...</div>`,
+          footerHtml: `<button id="btn-tutup-notif" class="w-full py-2.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm text-slate-700 font-bold transition">Tutup</button>`,
+          onMount: m => m.querySelector("#btn-tutup-notif").onclick = closeModal
+       });
+
+       try {
+           const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
+           
+           // Tarik Data Paralel
+           const [semuaPengajuan, tugasKpi, kontrak] = await Promise.all([
+               fsGetAll(COL.DATA_PENGAJUAN),
+               fsGetAll(COL.TUGAS_KPI_360).catch(()=>[]),
+               isHrd ? fsGetAll(COL.MASTER_KONTRAK) : Promise.resolve([])
+           ]);
+
+           // A. Filter Antrean Persetujuan (Approval)
+           const myApproval = semuaPengajuan.filter(r => {
+               if(r.status_final !== "MENUNGGU") return false;
+               const idx = (r.approval_steps || []).findIndex(s => s === "PENDING");
+               if(idx === -1) return false;
+               const stepLabel = (r.approval_flow || [])[idx] || "";
+               return stepLabel.toUpperCase() === session.role.toUpperCase() || stepLabel.toUpperCase() === "ATASAN"; 
+           });
+
+           // B. Filter Tugas KPI 360
+           const myKpi = tugasKpi.filter(t => t.nama_penilai === session.nama && t.status !== "DONE");
+
+           // C. Filter Kontrak Habis (Khusus HRD)
+           const kontrakHabis = isHrd ? kontrak.filter(k => k.status_kolom_kontrak === "SEGERA HABIS") : [];
+
+           let htmlContent = `<div class="space-y-4 max-h-[60vh] overflow-y-auto pr-2">`;
+
+           // Render Notif Approval
+           if(myApproval.length > 0) {
+               htmlContent += `<div class="bg-amber-50 border border-amber-200 p-4 rounded-xl">
+                  <h4 class="font-bold text-amber-800 text-xs uppercase mb-1 flex items-center gap-1">⏳ Antrean Persetujuan (${myApproval.length})</h4>
+                  <p class="text-sm text-amber-700">Ada <b>${myApproval.length} pengajuan</b> dari rekan tim yang membutuhkan persetujuan Anda saat ini.</p>
+               </div>`;
+           }
+
+           // Render Notif Tugas KPI
+           if(myKpi.length > 0) {
+               htmlContent += `<div class="bg-blue-50 border border-blue-200 p-4 rounded-xl">
+                  <h4 class="font-bold text-blue-800 text-xs uppercase mb-1 flex items-center gap-1">📋 Tugas KPI 360 (${myKpi.length})</h4>
+                  <p class="text-sm text-blue-700">Anda memiliki <b>${myKpi.length} formulir penilaian rekan kerja</b> yang harus segera diselesaikan.</p>
+               </div>`;
+           }
+
+           // Render Notif Kontrak Habis
+           if(kontrakHabis.length > 0) {
+               htmlContent += `<div class="bg-red-50 border border-red-200 p-4 rounded-xl">
+                  <h4 class="font-bold text-red-800 text-xs uppercase mb-1 flex items-center gap-1">📄 Warning Kontrak (${kontrakHabis.length})</h4>
+                  <p class="text-sm text-red-700">Ada <b>${kontrakHabis.length} karyawan</b> yang masa ikatan dinas / kontraknya akan berakhir bulan ini.</p>
+               </div>`;
+           }
+
+           // Jika Kosong
+           if(myApproval.length === 0 && myKpi.length === 0 && kontrakHabis.length === 0) {
+               htmlContent += `<div class="text-center p-8 text-slate-400">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-14 h-14 mx-auto mb-3 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                  <p class="font-medium">Kerja bagus! Tidak ada notifikasi tertunda.</p>
+               </div>`;
+           }
+
+           htmlContent += `</div>`;
+
+           // Timpa tulisan "Mengumpulkan data..." dengan data aslinya
+           const modalBodyWraps = document.querySelectorAll(".modal-body-content"); // Bergantung class modal di utils Anda
+           if(modalBodyWraps.length > 0) {
+               modalBodyWraps[modalBodyWraps.length - 1].innerHTML = htmlContent;
+           } else {
+               // Fallback pencarian elemen modal
+               const modalDiv = document.querySelector('div[role="dialog"]');
+               if(modalDiv) {
+                   const contentDiv = modalDiv.querySelector('div.p-8.text-center.animate-pulse')?.parentElement;
+                   if (contentDiv) contentDiv.innerHTML = htmlContent;
+               }
+           }
+
+       } catch(e) {
+           console.error("Gagal memuat notifikasi", e);
+           const modalDiv = document.querySelector('div[role="dialog"]');
+           if(modalDiv) {
+               const contentDiv = modalDiv.querySelector('div.p-8.text-center.animate-pulse')?.parentElement;
+               if (contentDiv) contentDiv.innerHTML = `<div class="p-6 text-center text-red-500 font-medium">Koneksi terputus. Gagal memuat data.</div>`;
+           }
+       }
+    };
+}
+
