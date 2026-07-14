@@ -31,7 +31,7 @@ export const MENU_CONFIG = [
   // MODUL HRD
   { route: "absensi", label: "Manajemen Absensi", icon: "calendar", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
   { route: "cuti", label: "Manajemen Cuti", icon: "calendar", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
-  { route: "kalender", label: "Kalender HR", icon: "calendar", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
+  { route: "kalender-hr", label: "Kalender HR", icon: "calendar", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
   { route: "penilaian-kontrak", label: "Penilaian & Kontrak", icon: "star", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
   { route: "rekrutmen", label: "Rekrutmen (ATS)", icon: "user-group", group: "hrd", roles: ["HRD", "SUPERADMIN"] },
   { route: "siklus-karyawan", label: "Siklus Karyawan", icon: "refresh", group: "hrd", roles: ["HRD", "SUPERADMIN"] },
