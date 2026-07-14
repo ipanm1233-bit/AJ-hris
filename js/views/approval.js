@@ -2,7 +2,6 @@ import { db, COL, collection, query, where, getDocs } from "../firebase-config.j
 import { fsGetAll, fsUpdate, fsAdd, genId, openModal, closeModal, toast, fmtDateTime, escapeHtml, sendEmailNotif, getTargetsForRole, createLoginToken } from "../utils.js";
 import { badge, emptyState, skeletonRows } from "../components.js";
 
-// Hanya dideklarasikan SATU KALI di paling atas untuk menghindari error duplikasi
 const CUTI_RULES = {
   "C - Cuti Tahunan": { jenis: "Tahunan", count: 1 },
   "C1/2 - Cuti Setengah Hari": { jenis: "Tahunan", count: 0.5 },
@@ -86,6 +85,14 @@ function renderList(container, session, tab) {
   listEl.innerHTML = rows.map(r => {
     const idx = currentStepIndex(r);
     const tone = r.status_final?.includes("APPROVED") ? "green" : r.status_final?.includes("REJECT") ? "red" : "amber";
+    
+    // Perbaikan syntax error pada string rendering steps
+    const stepsHtml = (r.approval_flow || []).map((step, i) => {
+      const st = (r.approval_steps || [])[i];
+      const cls = st === "APPROVE" ? "bg-emerald-100 text-emerald-700" : st === "REJECT" ? "bg-red-100 text-red-700" : i === idx ? "bg-amber-100 text-amber-700 ring-2 ring-amber-300" : "bg-slate-100 text-slate-400";
+      return "<span class=\"px-2.5 py-1 rounded-full text-xs font-medium " + cls + "\">" + (i + 1) + ". " + escapeHtml(step) + "</span>";
+    }).join('<span class="text-slate-300">→</span>');
+
     return `
     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
       <div class="flex flex-wrap items-start justify-between gap-3">
@@ -97,11 +104,7 @@ function renderList(container, session, tab) {
       </div>
 
       <div class="flex items-center gap-2 mt-4 flex-wrap">
-        ${(r.approval_flow || []).map((step, i) => {
-          const st = (r.approval_steps || [])[i];
-          const cls = st === "APPROVE" ? "bg-emerald-100 text-emerald-700" : st === "REJECT" ? "bg-red-100 text-red-700" : i === idx ? "bg-amber-100 text-amber-700 ring-2 ring-amber-300" : "bg-slate-100 text-slate-400";
-          return \`<span class="px-2.5 py-1 rounded-full text-xs font-medium \${cls}">\${i + 1}. \${escapeHtml(step)}</span>\`;
-        }).join('<span class="text-slate-300">→</span>')}
+        ${stepsHtml}
       </div>
 
       <div class="mt-4 flex items-center justify-between">
