@@ -206,11 +206,11 @@ export async function mount(container, { session }) {
                 div.className = "flex gap-2 items-start bg-white p-2 rounded-lg border border-slate-200 shadow-sm";
                 div.innerHTML = `
                   <div class="flex-1 space-y-2">
-                     <input type="text" placeholder="Aspek" value="${escapeHtml(data.aspek)}" class="soal-aspek w-full px-2 py-1.5 text-xs border border-slate-200 rounded outline-none" required>
-                     <input type="text" placeholder="Indikator" value="${escapeHtml(data.indikator)}" class="soal-indikator w-full px-2 py-1.5 text-xs border border-slate-200 rounded outline-none" required>
+                     <input type="text" placeholder="Aspek" value="${escapeHtml(data.aspek)}" class="soal-aspek w-full px-2 py-1.5 text-xs border rounded outline-none" required>
+                     <input type="text" placeholder="Indikator" value="${escapeHtml(data.indikator)}" class="soal-indikator w-full px-2 py-1.5 text-xs border rounded outline-none" required>
                   </div>
                   <div class="w-20">
-                     <input type="number" placeholder="Bobot %" value="${data.bobot}" class="soal-bobot w-full px-2 py-1.5 text-xs border border-slate-200 rounded text-center" required min="1" max="100">
+                     <input type="number" placeholder="Bobot %" value="${data.bobot}" class="soal-bobot w-full px-2 py-1.5 text-xs border rounded text-center" required min="1" max="100">
                   </div>
                   <button type="button" class="text-slate-300 hover:text-red-500 mt-1.5 p-1">✖</button>
                 `;
@@ -291,7 +291,9 @@ export async function mount(container, { session }) {
   // =====================================================================
   async function openDistribusiModal() {
     const allKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
-    const activeK = allKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF");
+    // PERBAIKAN: Pastikan kita menyaring dan hanya mengambil data yang benar-benar memiliki nama
+    const activeK = allKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF" && k.nama_karyawan);
+    
     const optKaryawanSelect = activeK.map(k => `<option value="${escapeHtml(k.nama_karyawan)}">${escapeHtml(k.nama_karyawan)} — ${escapeHtml(k.jabatan || "")}</option>`).join("");
 
     const templates = await fsGetAll(COL.MASTER_SOAL_KPI);
@@ -357,15 +359,22 @@ export async function mount(container, { session }) {
          // Loop Render Checkbox Berdasarkan Array Pencarian
          function drawCheckboxes(filterText = "") {
              const term = filterText.toLowerCase();
+             
              listContainer.innerHTML = activeK.map(k => {
-                 const match = k.nama_karyawan.toLowerCase().includes(term) || (k.jabatan || "").toLowerCase().includes(term);
-                 if(!match) return "";
+                 // Pengaman tambahan agar tidak error saat map jika data aneh masuk
+                 const nama = k.nama_karyawan || "";
+                 const jabatan = k.jabatan || "";
+                 const cabang = k.cabang || "";
+
+                 const match = nama.toLowerCase().includes(term) || jabatan.toLowerCase().includes(term);
+                 if(!match || !nama) return "";
+                 
                  return `
                    <label class="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 rounded-lg cursor-pointer transition select-none">
-                      <input type="checkbox" name="dinilai-checkbox" value="${escapeHtml(k.nama_karyawan)}" class="w-4 h-4 text-maroon-600 border-slate-300 rounded focus:ring-maroon-500 cursor-pointer">
+                      <input type="checkbox" name="dinilai-checkbox" value="${escapeHtml(nama)}" class="w-4 h-4 text-maroon-600 border-slate-300 rounded focus:ring-maroon-500 cursor-pointer">
                       <div class="text-xs">
-                         <p class="font-semibold text-slate-700">${escapeHtml(k.nama_karyawan)}</p>
-                         <p class="text-slate-400 text-[10px]">${escapeHtml(k.jabatan || "-")} • ${escapeHtml(k.cabang || "-")}</p>
+                         <p class="font-semibold text-slate-700">${escapeHtml(nama)}</p>
+                         <p class="text-slate-400 text-[10px]">${escapeHtml(jabatan)} • ${escapeHtml(cabang)}</p>
                       </div>
                    </label>
                  `;
