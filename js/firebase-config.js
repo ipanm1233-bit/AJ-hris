@@ -1,12 +1,13 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
 import {
-  initializeFirestore, // Menggunakan inisialisasi modern
-  persistentLocalCache, 
-  persistentMultipleTabManager,
+  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc,
   query, where, orderBy, limit, onSnapshot, writeBatch, serverTimestamp,
   Timestamp, increment
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+
+// TAMBAHKAN IMPORT STORAGE DI SINI
+import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyBAAUHaqYrzTp6wi1PDYkrKY0IWI2XQoVw",
@@ -18,17 +19,18 @@ const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
-
-// SOLUSI MULTI-TAB FIREBASE ERROR
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()})
 });
 
-// Helper exports
+// INISIALISASI STORAGE
+export const storage = getStorage(app);
+
+// Helper exports (tambahkan ref, uploadBytes, getDownloadURL)
 export {
   collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc,
   query, where, orderBy, limit, onSnapshot, writeBatch, serverTimestamp,
-  Timestamp, increment
+  Timestamp, increment, ref, uploadBytes, getDownloadURL
 };
 
 // Daftar Koleksi
