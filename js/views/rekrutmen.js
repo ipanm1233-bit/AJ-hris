@@ -1,5 +1,6 @@
 import { db, COL, collection, onSnapshot, doc, updateDoc, storage, ref, uploadBytes, getDownloadURL } from "../firebase-config.js";
 import { fsAdd, openModal, closeModal, toast, escapeHtml, genId, fmtDateShort } from "../utils.js";
+import { callGeminiJson } from "../ai-gemini.js";
 
 const KANBAN_STAGES = [
   { id: "Applied", label: "Pelamar Baru (Applied)" },
@@ -8,9 +9,6 @@ const KANBAN_STAGES = [
   { id: "Offered", label: "Offering / PKWT" },
   { id: "Rejected", label: "Ditolak (Rejected)" }
 ];
-
-// KUNCI API BARU ANDA (VALID)
-const GEMINI_API_KEY = "AQ." + "Ab8RN6KhDWv2VXwsCCkONnkP6JCY5Z7RNmceUbbWqJ4l61_hlw";
 
 export async function mount(container, { session }) {
   if (!window['pdfjs-dist/build/pdf']) {
@@ -131,9 +129,6 @@ export async function mount(container, { session }) {
   }
 
   async function analyzeCVWithGemini(cvText, posisi, kualifikasi) {
-      // PERBAIKAN FINAL: MENGGUNAKAN NAMA MODEL PALING MURNI (gemini-1.5-flash)
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-      
       const prompt = `Anda adalah Senior HRD Recruiter di CV Andela Jaya.
       Analisa isi CV pelamar di bawah ini dan bandingkan dengan kualifikasi posisi yang dicari.
 
@@ -151,21 +146,8 @@ export async function mount(container, { session }) {
         "kesimpulan_rekomendasi": "<kesimpulan_akhir>"
       }`;
 
-      const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-      });
-
-      if (!response.ok) {
-          const errData = await response.json();
-          throw new Error(errData.error?.message || `HTTP Error ${response.status}`);
-      }
-      
-      const data = await response.json();
-      let textResponse = data.candidates[0].content.parts[0].text;
-      textResponse = textResponse.replace(/```json/g, "").replace(/```/g, "").trim();
-      return JSON.parse(textResponse);
+      // Konfigurasi API Key & model diambil terpusat dari Konfigurasi Sistem (lihat js/ai-gemini.js)
+      return await callGeminiJson(prompt);
   }
 
   container.querySelector("#ats-new").addEventListener("click", () => {
