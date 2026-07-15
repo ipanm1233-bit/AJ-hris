@@ -1,13 +1,11 @@
 import { COL } from "../firebase-config.js";
 import { fsGetAll, openModal, closeModal, toast } from "../utils.js";
 import { renderCrudModule, emptyState } from "../components.js";
+import { callGeminiJson } from "../ai-gemini.js";
 
 function escapeHtml(unsafe) {
     return (unsafe || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
-
-// KUNCI API BARU ANDA (VALID)
-const GEMINI_API_KEY = "AQ." + "Ab8RN6KhDWv2VXwsCCkONnkP6JCY5Z7RNmceUbbWqJ4l61_hlw";
 
 export async function mount(container) {
   container.innerHTML = `
@@ -126,9 +124,6 @@ export async function mount(container) {
               resultEl.innerHTML = `<span class="animate-pulse text-blue-600 font-medium">✨ Membaca teks SOP dan menghubungkan ke Google...</span>`;
 
               try {
-                  // PERBAIKAN FINAL: MENGGUNAKAN NAMA MODEL PALING MURNI (gemini-1.5-flash)
-                  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-                  
                   const prompt = `Anda adalah ahli pembuat SOP perusahaan. Baca teks alur proses ini: "${targetSOP.alur_proses}".
                   Ubah teks tersebut menjadi langkah-langkah prosedural yang terstruktur rapi.
                   Kembalikan respon murni dalam format JSON array (TANPA backtick markdown \`\`\`json) seperti contoh ini:
@@ -136,22 +131,8 @@ export async function mount(container) {
                     { "step": 1, "actor": "Nama Jabatan/Pelaku", "action": "Judul Tindakan Singkat", "detail": "Penjelasan detail" }
                   ]`;
 
-                  const response = await fetch(endpoint, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-                  });
-
-                  if (!response.ok) {
-                      const errData = await response.json();
-                      throw new Error(errData.error?.message || `HTTP Error ${response.status}`);
-                  }
-
-                  const data = await response.json();
-                  let textResponse = data.candidates[0].content.parts[0].text;
-                  textResponse = textResponse.replace(/```json/g, "").replace(/```/g, "").trim();
-                  
-                  const stepsArray = JSON.parse(textResponse);
+                  // Konfigurasi API Key & model diambil terpusat dari Konfigurasi Sistem (lihat js/ai-gemini.js)
+                  const stepsArray = await callGeminiJson(prompt);
 
                   let flowchartHtml = `<h2 class="font-bold text-lg text-slate-800 mb-6 text-center border-b pb-2 w-full uppercase">${escapeHtml(targetSOP.judul)}</h2><div class="flex flex-col items-center w-full max-w-lg mx-auto">`;
                   
