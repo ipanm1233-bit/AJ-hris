@@ -35,20 +35,21 @@ export const MENU_CONFIG = [
   { route: "penilaian-kontrak", label: "Penilaian & Kontrak", icon: "star", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR", "MANAGER", "SPV", "KOORDINATOR"] },
   { route: "rekrutmen", label: "Rekrutmen (ATS)", icon: "user-group", group: "hrd", roles: ["HRD", "SUPERADMIN"] },
   { route: "siklus-karyawan", label: "Siklus Karyawan", icon: "refresh", group: "hrd", roles: ["HRD", "SUPERADMIN"] },
-
-  // MODUL MANAJEMEN (Menu yang dikembalikan)
-  // CATATAN: value `route` HARUS SAMA PERSIS dengan nama file di /views/*.html & /js/views/*.js
-  // agar router (app.js) tidak 404. Sebelumnya beberapa route salah ketik dan menyebabkan menu
-  // "hilang" (link muncul tapi klik-nya error 404 karena file view sebenarnya bernama beda).
   { route: "uang-makan", label: "Uang Makan Expedisi", icon: "currency-dollar", group: "manajemen", roles: ["HRD", "SUPERADMIN", "FINANCE", "ACCOUNTING"] },
   { route: "lembur-kasbon", label: "Lembur & Kasbon", icon: "cash", group: "manajemen", roles: ["HRD", "SUPERADMIN", "FINANCE", "ACCOUNTING"] },
   { route: "pemanggilan", label: "Kedisiplinan & SP", icon: "shield-exclamation", group: "manajemen", roles: ["HRD", "SUPERADMIN", "DIREKTUR", "MANAGER"] },
   { route: "inventory", label: "Manajemen Inventory & ATK", icon: "archive", group: "manajemen", roles: ["HRD", "SUPERADMIN", "ADMIN"] },
   { route: "gimmick-sop", label: "Manajemen Gimmick & SOP", icon: "gift", group: "manajemen", roles: ["HRD", "SUPERADMIN", "MARKETING", "DIREKTUR"] },
   { route: "kendaraan", label: "Manajemen Kendaraan", icon: "truck", group: "manajemen", roles: ["HRD", "SUPERADMIN", "GA"] },
+  { route: "manajemen-data", label: "Manajemen Data", icon: "database", group: "manajemen", roles: ["HRD", "SUPERADMIN", "DIREKTUR", "FINANCE"] },
+  { route: "manajemen-cuti", label: "Jatah Cuti Karyawan", icon: "calendar", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
+  
+  // MODUL MANAJEMEN (Menu yang dikembalikan)
+  // CATATAN: value `route` HARUS SAMA PERSIS dengan nama file di /views/*.html & /js/views/*.js
+  // agar router (app.js) tidak 404. Sebelumnya beberapa route salah ketik dan menyebabkan menu
+  // "hilang" (link muncul tapi klik-nya error 404 karena file view sebenarnya bernama beda).
   { route: "approval", label: "Antrean Persetujuan", icon: "check-circle", group: "manajemen", roles: ["MANAGER", "HRD", "DIREKTUR", "FINANCE", "ACCOUNTING", "SPV", "KOORDINATOR"] },
-  { route: "broadcast", label: "Broadcast Memo", icon: "speakerphone", group: "manajemen", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
-  { route: "manajemen-data", label: "Manajemen Data", icon: "database", group: "manajemen", roles: ["HRD", "SUPERADMIN", "DIREKTUR", "FINANCE"] }, 
+  { route: "broadcast", label: "Broadcast Memo", icon: "speakerphone", group: "manajemen", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] }, 
   { route: "pengaturan", label: "Akses & Pengguna", icon: "shield-check", group: "manajemen", roles: ["SUPERADMIN", "DIREKTUR"] },
   { route: "konfigurasi", label: "Konfigurasi Sistem", icon: "cog", group: "manajemen", roles: ["SUPERADMIN", "DIREKTUR"] }
 ];
