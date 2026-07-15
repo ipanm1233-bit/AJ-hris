@@ -234,7 +234,10 @@ function showDetail(row, session) {
                 const denda = Math.max(0, getValue("denda"));
                 let trip = kmAkhir - kmAwal;
                 if (trip < 0) trip = 0;
-                const rowTotal = (trip * (HARGA_BENSIN/RASIO_KM)) + parkir + denda;
+                
+                // PERBAIKAN: Denda dikurangi (-)
+                const rowTotal = (trip * (HARGA_BENSIN/RASIO_KM)) + parkir - denda;
+                
                 tr.querySelector(".klaim-row-total").textContent = Math.round(rowTotal).toLocaleString("id-ID");
                 grandTotal += rowTotal;
             });
@@ -257,7 +260,9 @@ function showDetail(row, session) {
                 const denda = Math.max(0, getValue("denda"));
                 let trip = kmAkhir - kmAwal;
                 if (trip < 0) trip = 0;
-                const rowTotal = Math.round((trip * (HARGA_BENSIN/RASIO_KM)) + parkir + denda);
+                
+                // PERBAIKAN: Denda dikurangi (-)
+                const rowTotal = Math.round((trip * (HARGA_BENSIN/RASIO_KM)) + parkir - denda);
 
                 detailKlaim.push({
                     tanggal: tgl, km_awal: kmAwal, km_akhir: kmAkhir,
@@ -385,7 +390,6 @@ async function processAction(row, action, note, session) {
                const token = await createLoginToken(target.username);
                let htmlFinal = "";
                
-               // TEMPLATE EMAIL UNTUK CUTI (PDF FORMAT)
                if (isCuti) {
                   let jenisVal = row.detail.jenis_cuti || row.detail.jenis || "-";
                   const isHalfDay = jenisVal.includes("1/2");
@@ -448,16 +452,13 @@ async function processAction(row, action, note, session) {
                       `;
                   }
                } 
-               // TEMPLATE EMAIL MODERN UNTUK PENGAJUAN LAINNYA (Dinas, Bensin, Gimmick, dll)
                else {
                   const jabatanPemohon = karyawanByNama[row.nama_pemohon]?.jabatan || "-";
                   
-                  // Generate Tabel Detail Dinamis
                   let detailHtml = `<table style="width: 100%; border-collapse: collapse; font-size: 12px; font-family: Arial, sans-serif;">`;
                   for (const [key, val] of Object.entries(row.detail || {})) {
                       const formattedKey = escapeHtml(key.replace(/_/g, " ").toUpperCase());
                       
-                      // Jika Value berbentuk array (contoh: Rincian Tabel Klaim Bensin)
                       if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'object') {
                           const headers = Object.keys(val[0]);
                           let nestedTable = `<table style="width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 10px; border: 1px solid #cbd5e1;">`;
@@ -478,7 +479,6 @@ async function processAction(row, action, note, session) {
                           nestedTable += `</tbody></table>`;
                           detailHtml += `<tr><td style="padding: 12px; border-bottom: 1px solid #f1f5f9; color: #64748b; font-weight: bold; width: 35%; vertical-align: top; border-right: 1px solid #f1f5f9;">${formattedKey}</td><td style="padding: 12px; border-bottom: 1px solid #f1f5f9; vertical-align: top; color: #1e293b;">${nestedTable}</td></tr>`;
                       } 
-                      // Jika Value berbentuk String / Angka biasa
                       else {
                           let displayVal = val;
                           if (typeof val === 'number' && (key.includes('total') || key.includes('biaya') || key.includes('harga') || key.includes('kasbon'))) {
