@@ -9,7 +9,7 @@ const KANBAN_STAGES = [
   { id: "Rejected", label: "Ditolak (Rejected)" }
 ];
 
-// MENGGUNAKAN KUNCI BARU ANDA YANG VALID
+// KUNCI API ANDA - MENGGUNAKAN MODEL GEMINI PRO YANG UNIVERSAL
 const GEMINI_API_KEY = "AQ." + "Ab8RN6KhDWv2VXwsCCkONnkP6JCY5Z7RNmceUbbWqJ4l61_hlw";
 
 export async function mount(container, { session }) {
@@ -131,8 +131,8 @@ export async function mount(container, { session }) {
   }
 
   async function analyzeCVWithGemini(cvText, posisi, kualifikasi) {
-      // MENGGUNAKAN VERSI -latest AGAR ERROR 404 HILANG
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
+      // PERBAIKAN DI SINI: MENGGUNAKAN gemini-pro
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`;
       
       const prompt = `Anda adalah Senior HRD Recruiter di CV Andela Jaya.
       Analisa isi CV pelamar di bawah ini dan bandingkan dengan kualifikasi posisi yang dicari.
