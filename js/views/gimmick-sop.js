@@ -2,13 +2,12 @@ import { COL } from "../firebase-config.js";
 import { fsGetAll, openModal, closeModal, toast } from "../utils.js";
 import { renderCrudModule, emptyState } from "../components.js";
 
-// Fungsi pelindung teks bawaan (Bulletproof)
 function escapeHtml(unsafe) {
     return (unsafe || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
-// KUNCI API AI GEMINI
-const GEMINI_API_KEY = "AQ." + "Ab8RN6Kc20rPvvEi-hFtL4XTyLUVN40Lgt1jB5fiz9LKZrANXg";
+// MENGGUNAKAN KUNCI BARU ANDA YANG VALID (AQ...)
+const GEMINI_API_KEY = "AQ." + "Ab8RN6KhDWv2VXwsCCkONnkP6JCY5Z7RNmceUbbWqJ4l61_hlw";
 
 export async function mount(container) {
   container.innerHTML = `
@@ -84,7 +83,6 @@ export async function mount(container) {
     }
   }
 
-  // FITUR AI FLOWCHART GENERATOR
   async function openAIFlowchartModal() {
      const allSOP = await fsGetAll(COL.GIMMICK_SOP);
      const validSOP = allSOP.filter(s => s.alur_proses && s.alur_proses.length > 10);
@@ -118,7 +116,6 @@ export async function mount(container) {
         onMount: (m) => {
            m.querySelector("#btn-tutup-ai").onclick = closeModal;
            m.querySelector("#btn-proses-ai").onclick = async () => {
-              
               const btn = m.querySelector("#btn-proses-ai");
               const resultEl = m.querySelector("#flowchart-result");
               const selectedId = m.querySelector("#sop-selector").value;
@@ -129,7 +126,8 @@ export async function mount(container) {
               resultEl.innerHTML = `<span class="animate-pulse text-blue-600 font-medium">✨ Membaca teks SOP dan menghubungkan ke Google...</span>`;
 
               try {
-                  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+                  // MENGGUNAKAN VERSI -latest AGAR ERROR 404 HILANG
+                  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
                   
                   const prompt = `Anda adalah ahli pembuat SOP perusahaan. Baca teks alur proses ini: "${targetSOP.alur_proses}".
                   Ubah teks tersebut menjadi langkah-langkah prosedural yang terstruktur rapi.
@@ -146,7 +144,7 @@ export async function mount(container) {
 
                   if (!response.ok) {
                       const errData = await response.json();
-                      throw new Error(errData.error?.message || \`HTTP Error \${response.status}\`);
+                      throw new Error(errData.error?.message || `HTTP Error ${response.status}`);
                   }
 
                   const data = await response.json();
