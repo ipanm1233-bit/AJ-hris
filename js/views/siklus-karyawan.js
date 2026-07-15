@@ -1,6 +1,11 @@
 import { COL, db, updateDoc, doc } from "../firebase-config.js";
-import { fsGetAll, fsAdd, toast, genId, fmtRupiah, fmtDateShort, escapeHtml, smartParseDate } from "../utils.js";
+import { fsGetAll, fsAdd, toast, genId, fmtRupiah, fmtDateShort, smartParseDate } from "../utils.js";
 import { renderCrudModule } from "../components.js";
+
+// Fungsi pelindung teks bawaan (Bulletproof)
+function escapeHtml(unsafe) {
+    return (unsafe || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
 
 export async function mount(container) {
   container.innerHTML = `
@@ -17,7 +22,6 @@ export async function mount(container) {
 
       <div id="sk-panel-input">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <!-- FORM SIKLUS -->
           <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
              <h3 class="font-bold text-slate-800 mb-4">Input Data Pergerakan</h3>
              <form id="form-siklus" class="space-y-4">
@@ -39,14 +43,12 @@ export async function mount(container) {
                    </select>
                 </div>
                 
-                <!-- WADAH DINAMIS -->
                 <div id="siklus-dynamic-fields" class="space-y-4 border-t border-slate-100 pt-4 mt-4 hidden"></div>
                 
                 <button type="button" id="btn-kalkulasi" class="w-full bg-slate-800 text-white font-medium py-2.5 rounded-lg hover:bg-slate-900 transition hidden shadow-sm">Buat Rincian & Analisa Dokumen</button>
              </form>
           </div>
 
-          <!-- HASIL & CHECKLIST -->
           <div class="bg-slate-50 p-6 rounded-2xl border border-slate-200">
              <h3 class="font-bold text-slate-800 mb-4">Hasil Analisa & Rencana Aksi</h3>
              <div id="siklus-result-box" class="space-y-4">
@@ -63,10 +65,9 @@ export async function mount(container) {
     </div>
   `;
 
-  // 1. MEMUAT DROPDOWN NAMA KARYAWAN AKTIF
   const allKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
   const activeKaryawan = allKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF");
-  activeKaryawan.sort((a,b) => a.nama_karyawan.localeCompare(b.nama_karyawan));
+  activeKaryawan.sort((a,b) => (a.nama_karyawan||"").localeCompare(b.nama_karyawan||""));
   
   const selectNama = container.querySelector("#siklus-nama");
   selectNama.innerHTML = `<option value="">Pilih Karyawan Aktif...</option>` + 
@@ -79,22 +80,20 @@ export async function mount(container) {
 
   let currentSelectedKaryawan = null;
 
-  // 2. LISTENER SAAT KARYAWAN DIPILIH (AUTO-FILL)
   selectNama.addEventListener("change", () => {
      currentSelectedKaryawan = activeKaryawan.find(k => k.id === selectNama.value);
-     renderFields(); // Render ulang kolom dengan data yang tersedot otomatis
+     renderFields(); 
   });
 
   selJenis.addEventListener("change", renderFields);
 
-  // Helper konversi format tanggal ISO untuk input type="date"
   function formatDateInput(d) {
+      if(!d) return "";
       const date = smartParseDate(d);
       if (!date) return "";
       return date.toISOString().split("T")[0];
   }
 
-  // 3. FUNGSI MERENDER KOLOM BERDASARKAN JENIS SIKLUS
   function renderFields() {
      const jenis = selJenis.value;
      if (!jenis) {
@@ -107,7 +106,6 @@ export async function mount(container) {
      btnKalkulasi.classList.remove("hidden");
      resBox.innerHTML = `<p class="text-sm text-slate-400 text-center py-10 border-2 border-dashed border-slate-200 rounded-xl mt-4">Isi form di samping lalu klik tombol Buat Rincian.</p>`;
 
-     // Tangkap data karyawan yang terpilih (jika ada) untuk auto-fill
      const joinDate = currentSelectedKaryawan ? formatDateInput(currentSelectedKaryawan.tanggal_join) : "";
      const jabLama = currentSelectedKaryawan ? escapeHtml(currentSelectedKaryawan.jabatan || "-") : "";
      const cabLama = currentSelectedKaryawan ? escapeHtml(currentSelectedKaryawan.cabang || "-") : "";
@@ -167,7 +165,6 @@ export async function mount(container) {
      }
   }
 
-  // 4. LOGIKA TOMBOL PROSES (KALKULASI & CHECKLIST)
   btnKalkulasi.addEventListener("click", () => {
       const form = container.querySelector("#form-siklus");
       if (!form.reportValidity()) return;
@@ -176,7 +173,6 @@ export async function mount(container) {
       const jenis = selJenis.value;
       let previewHtml = "";
       
-      // Menyiapkan Payload yang akan dikirim ke Firestore nantinya
       let payloadLog = {
          id_karyawan: currentSelectedKaryawan.id,
          nama_karyawan: currentSelectedKaryawan.nama_karyawan,
@@ -184,9 +180,6 @@ export async function mount(container) {
          tanggal_proses: new Date().toISOString()
       };
 
-      // ===========================================
-      // KALKULATOR OFFBOARDING BERDASARKAN PP
-      // ===========================================
       if (jenis === "Offboarding") {
          const join = new Date(container.querySelector("#off-join").value);
          const out = new Date(container.querySelector("#off-out").value);
@@ -196,9 +189,8 @@ export async function mount(container) {
          let diffTime = out - join;
          if (diffTime < 0) diffTime = 0;
          const years = diffTime / (1000 * 3600 * 24 * 365.25);
-         const mathYears = Math.floor(years); // Pembulatan tahun masa kerja
+         const mathYears = Math.floor(years); 
 
-         // Aturan PP: Uang Pisah
          const hitungUangPisah = (y, upah) => {
             if (y >= 9) return 4 * upah;
             if (y >= 6) return 3 * upah;
@@ -206,14 +198,12 @@ export async function mount(container) {
             return 0;
          };
 
-         // Aturan PP: Pesangon
          const hitungPesangon = (y, upah) => {
             let bln = y + 1;
             if (bln > 9) bln = 9;
             return bln * upah;
          };
 
-         // Aturan PP: UPMK
          const hitungUPMK = (y, upah) => {
             if (y >= 24) return 10 * upah;
             if (y >= 21) return 8 * upah;
@@ -248,7 +238,7 @@ export async function mount(container) {
          payloadLog.tanggal_efektif = out.toISOString();
          payloadLog.keterangan = `Alasan: ${alasan}`;
          payloadLog.detail_offboarding = { masa_kerja_tahun: mathYears, pesangon, upmk, uang_pisah: uangPisah };
-         payloadLog.update_master = { aktif_tdk_aktif: "TIDAK AKTIF" }; // Otomatis nonaktifkan di DB Karyawan
+         payloadLog.update_master = { aktif_tdk_aktif: "TIDAK AKTIF" }; 
 
          previewHtml = `
             <div class="mb-4">
@@ -273,9 +263,6 @@ export async function mount(container) {
             </div>
          `;
       } 
-      // ===========================================
-      // LOGIKA MUTASI / PROMOSI / DEMOSI
-      // ===========================================
       else if (["Mutasi", "Promosi", "Demosi"].includes(jenis)) {
          const tglEfektif = container.querySelector("#mutasi-tgl").value;
          const jLama = container.querySelector("#lama-jabatan").value;
@@ -288,7 +275,7 @@ export async function mount(container) {
          payloadLog.tanggal_efektif = new Date(tglEfektif).toISOString();
          payloadLog.keterangan = cat || `${jenis} Jabatan`;
          payloadLog.detail_mutasi = { jabatan_lama: jLama, cabang_lama: cLama, jabatan_baru: jBaru, cabang_baru: cBaru, no_sk: sk };
-         payloadLog.update_master = { jabatan: jBaru, cabang: cBaru }; // Otomatis ubah jabatan di DB
+         payloadLog.update_master = { jabatan: jBaru, cabang: cBaru }; 
 
          previewHtml = `
             <div class="bg-white p-4 rounded-xl border border-slate-200 mb-5 text-center">
@@ -315,9 +302,6 @@ export async function mount(container) {
             </div>
          `;
       }
-      // ===========================================
-      // LOGIKA ONBOARDING
-      // ===========================================
       else if (jenis === "Onboarding") {
          const tgl = container.querySelector("#onb-tgl").value;
          const cat = container.querySelector("#onb-catatan").value.trim();
@@ -345,7 +329,6 @@ export async function mount(container) {
          `;
       }
 
-      // TAMPILKAN TOMBOL FINAL UNTUK MENGUBAH DATABASE
       resBox.innerHTML = `
          ${previewHtml}
          <div class="mt-6 pt-4 border-t border-slate-200">
@@ -357,26 +340,21 @@ export async function mount(container) {
          </div>
       `;
 
-      // AKSI TOMBOL SIMPAN FINAL
       resBox.querySelector("#btn-final-simpan").addEventListener("click", async () => {
          const btnSimpan = resBox.querySelector("#btn-final-simpan");
          btnSimpan.disabled = true;
          btnSimpan.textContent = "Menyimpan ke Database...";
 
          try {
-            // A. Simpan log sejarahnya
             await fsAdd(COL.SIKLUS_KARYAWAN, payloadLog, genId("SKL"));
 
-            // B. UPDATE MASTER KARYAWAN SECARA OTOMATIS! (Inilah letak kecerdasannya)
             if (payloadLog.update_master) {
                 await updateDoc(doc(db, COL.MASTER_KARYAWAN, payloadLog.id_karyawan), payloadLog.update_master);
-                // Sinkronkan ke variabel lokal agar tidak perlu refresh halaman
                 Object.assign(currentSelectedKaryawan, payloadLog.update_master);
             }
 
             toast("Siklus berhasil direkam & Data Induk sukses diperbarui!", "success");
             
-            // Bersihkan form
             form.reset();
             selectNama.value = "";
             currentSelectedKaryawan = null;
@@ -384,7 +362,6 @@ export async function mount(container) {
             btnKalkulasi.classList.add("hidden");
             resBox.innerHTML = `<p class="text-sm text-slate-400 text-center py-10">Pilih jenis siklus dan isi formulir di samping untuk melihat prosedur & dokumen yang harus disiapkan.</p>`;
             
-            // Reload tabel riwayat di latar belakang
             if (loaded.riwayat) await loadRiwayat();
          } catch (e) {
             toast("Gagal memproses data: " + e.message, "error");
@@ -394,7 +371,6 @@ export async function mount(container) {
       });
   });
 
-  // 5. TAB TABEL RIWAYAT HISTORIS MENGGUNAKAN CRUD
   const panelInput = container.querySelector("#sk-panel-input");
   const panelRiwayat = container.querySelector("#sk-panel-riwayat");
   const loaded = {};
@@ -405,7 +381,7 @@ export async function mount(container) {
          subtitle: "Log historis seluruh mutasi, promosi, demosi, dan offboarding karyawan.",
          collectionName: COL.SIKLUS_KARYAWAN,
          idPrefix: "SKL",
-         canCreate: false, // Karena ditambahnya lewat form kalkulator pintar di atas
+         canCreate: false, 
          searchFields: ["nama_karyawan", "jenis_siklus", "keterangan"],
          orderByField: "tanggal_proses",
          columns: [
