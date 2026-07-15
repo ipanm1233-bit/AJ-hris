@@ -120,8 +120,11 @@ async function loadLeaveBalances(container, session) {
   try {
     const q = query(collection(db, COL.MASTER_CUTI), where("nama_karyawan", "==", session.nama));
     const snap = await getDocs(q);
+    const currentYear = new Date().getFullYear();
     snap.docs.forEach(d => {
       const row = d.data();
+      const rowYear = parseInt(row.tahun) || (row.tanggal ? new Date(row.tanggal).getFullYear() : currentYear);
+      if (rowYear !== currentYear) return; // hanya hitung transaksi tahun berjalan (lihat cuti.js)
       if (row.potong_jatah && terpakai[row.potong_jatah] !== undefined) {
          let hitung = parseFloat(row.count);
          if (isNaN(hitung)) hitung = 1; 
