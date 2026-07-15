@@ -9,11 +9,10 @@ const KANBAN_STAGES = [
   { id: "Rejected", label: "Ditolak (Rejected)" }
 ];
 
-// KUNCI API SUDAH DIMASUKKAN DAN DIPECAH AGAR LOLOS GITHUB
-const GEMINI_API_KEY = "AQ." + "Ab8RN6Kc20rPvvEi-hFtL4XTyLUVN40Lgt1jB5fiz9LKZrANXg";
+// MENGGUNAKAN KUNCI BARU ANDA YANG VALID
+const GEMINI_API_KEY = "AQ." + "Ab8RN6KhDWv2VXwsCCkONnkP6JCY5Z7RNmceUbbWqJ4l61_hlw";
 
 export async function mount(container, { session }) {
-  // Memuat Library Pembaca PDF secara otomatis jika belum ada
   if (!window['pdfjs-dist/build/pdf']) {
       const script = document.createElement('script');
       script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js";
@@ -110,7 +109,6 @@ export async function mount(container, { session }) {
     renderKanban();
   });
 
-  // FUNGSI EKSTRAKSI TEKS DARI PDF
   async function extractTextFromPDF(file) {
       if (!window['pdfjs-dist/build/pdf']) {
           throw new Error("Library PDF belum selesai dimuat, coba lagi dalam beberapa detik.");
@@ -132,9 +130,9 @@ export async function mount(container, { session }) {
       return text;
   }
 
-  // FUNGSI ANALISA KE GEMINI API VIA REST HTTP
   async function analyzeCVWithGemini(cvText, posisi, kualifikasi) {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+      // MENGGUNAKAN VERSI -latest AGAR ERROR 404 HILANG
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
       
       const prompt = `Anda adalah Senior HRD Recruiter di CV Andela Jaya.
       Analisa isi CV pelamar di bawah ini dan bandingkan dengan kualifikasi posisi yang dicari.
@@ -159,7 +157,10 @@ export async function mount(container, { session }) {
           body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
       });
 
-      if (!response.ok) throw new Error("Gagal menghubungi server Google Gemini AI");
+      if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error?.message || `HTTP Error ${response.status}`);
+      }
       
       const data = await response.json();
       let textResponse = data.candidates[0].content.parts[0].text;
@@ -191,7 +192,7 @@ export async function mount(container, { session }) {
         m.querySelector("#btn-ats-simpan").onclick = async () => {
            const form = m.querySelector("#form-ats-add");
            if(!form.reportValidity()) return;
-           
+
            const btn = m.querySelector("#btn-ats-simpan");
            btn.disabled = true; 
 
@@ -202,21 +203,17 @@ export async function mount(container, { session }) {
            const fileInput = m.querySelector("#ats-cv-file").files[0];
 
            try {
-              // 1. Ekstrak Teks dari PDF secara lokal
               btn.textContent = "Membaca file PDF...";
               const cvText = await extractTextFromPDF(fileInput);
 
-              // 2. Kirim Teks ke Gemini API
               btn.textContent = "AI sedang berpikir...";
               const aiResponse = await analyzeCVWithGemini(cvText, posisi, kualifikasi);
 
-              // 3. Upload File ke Storage
               btn.textContent = "Menyimpan Dokumen Asli...";
               const storageRef = ref(storage, `cv_pelamar/${kandidatId}_${fileInput.name.replace(/[^a-zA-Z0-9.]/g, "")}`);
               await uploadBytes(storageRef, fileInput);
               const cv_url = await getDownloadURL(storageRef);
 
-              // 4. Simpan Database Firestore beserta hasil AI
               btn.textContent = "Menyelesaikan...";
               await fsAdd(COL.REKRUTMEN_PELAMAR, {
                   nama: nama,
