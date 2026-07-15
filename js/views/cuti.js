@@ -97,9 +97,18 @@ export async function mount(container, { session }) {
 
   function calculateBalances() {
     terpakaiMap = {};
+    // PERBAIKAN PERHITUNGAN: sebelumnya seluruh riwayat cuti dari SEMUA tahun dijumlahkan
+    // untuk mengurangi jatah, sehingga saldo karyawan lama terus mengecil selamanya dan
+    // tidak pernah benar-benar "reset" walau menu Jatah Cuti Karyawan sudah dijalankan
+    // setiap tahun. Sesuai SK Kebijakan Cuti (siklus tahunan + carryover eksplisit lewat
+    // field Akumulasi), potongan saldo tahun berjalan HARUS dihitung hanya dari transaksi
+    // cuti pada TAHUN INI (field `tahun` pada setiap baris master_cuti).
+    const currentYear = new Date().getFullYear();
     allCuti.forEach(r => {
       const key = r.nama_karyawan;
-      if(!key) return; 
+      if(!key) return;
+      const rowYear = parseInt(r.tahun) || (r.tanggal ? new Date(r.tanggal).getFullYear() : currentYear);
+      if (rowYear !== currentYear) return; // hanya hitung transaksi tahun berjalan
       if (!terpakaiMap[key]) terpakaiMap[key] = { Tahunan: 0, Khusus: 0, Akumulasi: 0 };
       if (r.potong_jatah && terpakaiMap[key][r.potong_jatah] !== undefined) {
          terpakaiMap[key][r.potong_jatah] += parseFloat(r.count) || 0;
@@ -499,9 +508,6 @@ export async function mount(container, { session }) {
     const printWindow = window.open('', '_blank');
     const todayStr = new Date().toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' });
     
-    // Konfigurasi Logo (Memanggil file logo.png di root folder)
-    const LOGO_URL = "../../logo.png"; 
-    
     let html = `
     <html><head><title>Form Cuti - ${escapeHtml(k.nama_karyawan)}</title>
       <style>
@@ -516,7 +522,7 @@ export async function mount(container, { session }) {
       
       <table class="ht">
         <tr>
-          <td rowspan="2" width="20%" style="padding:5px;"><img src="${LOGO_URL}" width="80" alt="Logo Andela Jaya"/></td>
+          <td rowspan="2" width="20%" style="padding:5px;">${logoImgTag(80)}</td>
           <td rowspan="2" style="font-size: 16px; text-transform: uppercase;">
              FORMULIR PENGAJUAN ${data.isHalfDay ? "CUTI SETENGAH HARI" : "CUTI KARYAWAN"}<br/>CV ANDELA JAYA
           </td>
