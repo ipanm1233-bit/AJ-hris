@@ -6,7 +6,7 @@ function escapeHtml(unsafe) {
     return (unsafe || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
-// KUNCI API ANDA - MENGGUNAKAN MODEL GEMINI PRO YANG UNIVERSAL
+// KUNCI API BARU ANDA (VALID)
 const GEMINI_API_KEY = "AQ." + "Ab8RN6KhDWv2VXwsCCkONnkP6JCY5Z7RNmceUbbWqJ4l61_hlw";
 
 export async function mount(container) {
@@ -123,11 +123,11 @@ export async function mount(container) {
 
               btn.disabled = true;
               btn.textContent = "AI Sedang Berpikir...";
-              resultEl.innerHTML = `<span class="animate-pulse text-blue-600 font-medium">✨ Membaca teks SOP dan menggambar alur...</span>`;
+              resultEl.innerHTML = `<span class="animate-pulse text-blue-600 font-medium">✨ Membaca teks SOP dan menghubungkan ke Google...</span>`;
 
               try {
-                  // PERBAIKAN DI SINI: MENGGUNAKAN gemini-pro 
-                  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`;
+                  // PERBAIKAN FINAL: MENGGUNAKAN NAMA MODEL PALING MURNI (gemini-1.5-flash)
+                  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
                   
                   const prompt = `Anda adalah ahli pembuat SOP perusahaan. Baca teks alur proses ini: "${targetSOP.alur_proses}".
                   Ubah teks tersebut menjadi langkah-langkah prosedural yang terstruktur rapi.
