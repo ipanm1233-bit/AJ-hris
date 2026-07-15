@@ -11,7 +11,6 @@ export async function mount(container, { session }) {
   const RASIO_KM = 25;
   let rowCount = 0;
 
-  // Fungsi untuk menambah baris tabel secara dinamis
   function addRow() {
     rowCount++;
     const tr = document.createElement("tr");
@@ -28,12 +27,10 @@ export async function mount(container, { session }) {
       </td>
     `;
     
-    // Memicu kalkulasi per baris saat ada input yang diketik
     tr.querySelectorAll(".kb-input").forEach(input => {
       input.addEventListener("input", calculateTotal);
     });
     
-    // Fungsi hapus baris
     tr.querySelector(".kb-delete").addEventListener("click", () => {
       tr.remove();
       calculateTotal();
@@ -42,12 +39,10 @@ export async function mount(container, { session }) {
     tbody.appendChild(tr);
   }
 
-  // Hubungkan tombol di layar dengan fungsi addRow()
   if (addRowBtn) {
     addRowBtn.addEventListener("click", addRow);
   }
 
-  // Fungsi Kalkulasi Total (Dipanggil otomatis saat ada perubahan input)
   function calculateTotal() {
     let grandTotal = 0;
     
@@ -60,10 +55,11 @@ export async function mount(container, { session }) {
       const denda = Math.max(0, getValue("denda"));
       
       let trip = kmAkhir - kmAwal;
-      if (trip < 0) trip = 0; // Mencegah minus jika salah ketik KM Awal > KM Akhir
+      if (trip < 0) trip = 0; 
       
       const totalPetrol = trip * (HARGA_BENSIN / RASIO_KM);
-      const rowTotal = totalPetrol + parkir + denda;
+      // PERBAIKAN: Denda dikurangi (-) bukan ditambah (+)
+      const rowTotal = totalPetrol + parkir - denda; 
       
       tr.querySelector(".kb-row-total").textContent = Math.round(rowTotal).toLocaleString("id-ID");
       grandTotal += rowTotal;
@@ -72,17 +68,14 @@ export async function mount(container, { session }) {
     grandTotalEl.textContent = `Rp ${Math.round(grandTotal).toLocaleString("id-ID")}`;
   }
 
-  // Aksi saat tombol Submit Klaim diklik
   container.querySelector("#kb-submit").addEventListener("click", async () => {
     const rows = tbody.querySelectorAll("tr");
     
-    // Validasi kosong
     if (rows.length === 0) {
       toast("Tambahkan minimal 1 baris perjalanan", "warning");
       return;
     }
 
-    // Validasi input tanggal wajib diisi
     let isValid = true;
     rows.forEach(tr => {
       if (!tr.querySelector(`[data-field="tanggal"]`).value) isValid = false;
@@ -95,14 +88,15 @@ export async function mount(container, { session }) {
     const detailKlaim = [];
     let totalKlaim = 0;
     
-    // Mengumpulkan dan mengemas data baris-per-baris
     rows.forEach(tr => {
       const getValue = (field) => parseFloat(tr.querySelector(`[data-field="${field}"]`).value) || 0;
       const tgl = tr.querySelector(`[data-field="tanggal"]`).value;
       
       const trip = Math.max(0, getValue("km_akhir") - getValue("km_awal"));
       const petrol = trip * (HARGA_BENSIN / RASIO_KM);
-      const rowTotal = petrol + getValue("parkir") + getValue("denda");
+      
+      // PERBAIKAN: Denda dikurangi (-)
+      const rowTotal = petrol + getValue("parkir") - getValue("denda"); 
       
       detailKlaim.push({
         tanggal: tgl,
@@ -120,7 +114,6 @@ export async function mount(container, { session }) {
     submitBtn.disabled = true;
     submitBtn.textContent = "Mengirim...";
     
-    // Menyiapkan Payload untuk dikirim ke Firestore
     const payload = {
       id: genId("TRX-KLAIM"),
       tgl: new Date().toISOString(),
@@ -130,9 +123,8 @@ export async function mount(container, { session }) {
       nama_form: "Klaim Bensin Operasional",
       detail: {
         total_klaim: Math.round(totalKlaim),
-        rincian_tabel: detailKlaim // Data multi-baris berupa Array of Objects
+        rincian_tabel: detailKlaim 
       },
-      // ALUR PERSETUJUAN KLAIM BENSIN (Hardcoded)
       approval_flow: ["ATASAN", "HRD", "FINANCE"],
       approval_steps: ["PENDING", "PENDING", "PENDING"],
       status_final: "MENUNGGU",
@@ -140,19 +132,16 @@ export async function mount(container, { session }) {
     };
     
     try {
-      // 1. Simpan ke Database Firebase
       await fsAdd(COL.DATA_PENGAJUAN, payload, payload.id);
       toast("Klaim bensin berhasil diajukan", "success");
-
-      // 2. Kirim Notifikasi Email ke Approver Pertama (ATASAN) + MAGIC LINK
+      
       if (typeof sendEmailNotif === 'function') {
         try {
           const targets = await getTargetsForRole("ATASAN", payload.nama_pemohon);
           
           for (const target of targets) {
-             const token = await createLoginToken(target.username); // Buat Token Personal
-             const magicLink = `https://andela-hris.vercel.app/#approval?token=${token}`; // Sisipkan token di URL Vercel
-
+             const token = await createLoginToken(target.username);
+             const magicLink = `https://andela-hris.vercel.app/#approval?token=${token}`;
              const htmlEmail = `
                <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
                  <h2 style="color: #7a1f2b;">Pengajuan Baru: ${payload.nama_form}</h2>
@@ -171,15 +160,12 @@ export async function mount(container, { session }) {
         }
       }
       
-      // 3. Reset form tabel untuk isian berikutnya
       tbody.innerHTML = "";
       addRow();
       calculateTotal();
       
       submitBtn.disabled = false;
       submitBtn.textContent = "Ajukan Klaim";
-      
-      // 4. Kembali ke halaman dashboard
       window.location.hash = "#dashboard";
       
     } catch (e) {
@@ -189,8 +175,6 @@ export async function mount(container, { session }) {
     }
   });
 
-  // Inisialisasi 1 baris pertama saat halaman dimuat
   addRow();
-
   return { unmount() {} };
 }
