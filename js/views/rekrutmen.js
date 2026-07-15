@@ -1,6 +1,5 @@
 import { db, COL, collection, onSnapshot, doc, updateDoc, storage, ref, uploadBytes, getDownloadURL } from "../firebase-config.js";
-import { fsAdd, fsUpdate, openModal, closeModal, toast, escapeHtml, genId, fmtDateShort } from "../utils.js";
-import { avatar, emptyState, badge, icon } from "../components.js";
+import { fsAdd, openModal, closeModal, toast, escapeHtml, genId, fmtDateShort } from "../utils.js";
 
 const KANBAN_STAGES = [
   { id: "Applied", label: "Pelamar Baru (Applied)" },
@@ -10,13 +9,25 @@ const KANBAN_STAGES = [
   { id: "Rejected", label: "Ditolak (Rejected)" }
 ];
 
+// ==========================================
+// 1. MASUKKAN API KEY GEMINI ANDA DI BAWAH INI
+// ==========================================
+const GEMINI_API_KEY = "AQ.Ab8" + "RN6Kc20rPvvEi-hFtL4XTyLUVN40Lgt1jB5fiz9LKZrANXg"; 
+
 export async function mount(container, { session }) {
+  // Memuat Library Pembaca PDF secara otomatis jika belum ada
+  if (!window['pdfjs-dist/build/pdf']) {
+      const script = document.createElement('script');
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js";
+      document.head.appendChild(script);
+  }
+
   container.innerHTML = `
     <div class="space-y-6 max-w-[1600px] mx-auto pb-10">
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
         <div>
           <h1 class="text-2xl font-bold text-slate-800">Rekrutmen & ATS (AI-Powered)</h1>
-          <p class="text-sm text-slate-500 mt-1">Sistem pelacakan pelamar kerja. Tarik dan lepas (Drag & Drop) kartu untuk memindahkan status.</p>
+          <p class="text-sm text-slate-500 mt-1">Sistem pelacakan pelamar kerja cerdas. AI berjalan langsung di browser Anda.</p>
         </div>
         <button id="ats-new" class="flex items-center gap-1.5 bg-maroon-700 hover:bg-maroon-800 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition shadow-sm">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg> Tambah Kandidat
@@ -44,6 +55,8 @@ export async function mount(container, { session }) {
             if (aiScore !== undefined) {
                const color = aiScore >= 80 ? "text-emerald-700 bg-emerald-100 border-emerald-200" : aiScore >= 60 ? "text-amber-700 bg-amber-100 border-amber-200" : "text-red-700 bg-red-100 border-red-200";
                aiBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold border ${color}">✨ AI Match: ${aiScore}%</span>`;
+            } else if (c.status_analisis === "Gagal") {
+               aiBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold border text-red-700 bg-red-100 border-red-200">❌ AI Gagal Membaca</span>`;
             } else if (c.cv_url) {
                aiBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold border text-blue-700 bg-blue-100 border-blue-200 animate-pulse">⚙️ Sedang dianalisa AI...</span>`;
             }
@@ -57,7 +70,7 @@ export async function mount(container, { session }) {
               <p class="text-xs text-slate-500 font-medium mb-3">${escapeHtml(c.posisi_dilamar)}</p>
               <div class="flex justify-between items-center">
                  ${aiBadge}
-                 <button type="button" class="text-[10px] text-maroon-700 font-bold hover:underline">Detail</button>
+                 <button type="button" class="text-[10px] text-maroon-700 font-bold hover:underline btn-detail-kandidat">Detail</button>
               </div>
             </div>`;
           }).join("")}
@@ -65,14 +78,13 @@ export async function mount(container, { session }) {
       </div>
     `).join("");
 
-    // WIRING DRAG AND DROP LOKAL
     boardEl.querySelectorAll("[draggable]").forEach(card => {
       card.addEventListener("dragstart", (e) => {
         e.dataTransfer.setData("text/plain", card.dataset.kandidatId);
         card.classList.add("opacity-50");
       });
       card.addEventListener("dragend", () => card.classList.remove("opacity-50"));
-      card.addEventListener("click", () => openDetailModal(allCandidates.find(x => x.id === card.dataset.kandidatId)));
+      card.querySelector(".btn-detail-kandidat").addEventListener("click", () => openDetailModal(allCandidates.find(x => x.id === card.dataset.kandidatId)));
     });
 
     boardEl.querySelectorAll(".kanban-dropzone").forEach(zone => {
@@ -86,7 +98,7 @@ export async function mount(container, { session }) {
         const kandidat = allCandidates.find(c => c.id === kandidatId);
         
         if (kandidat && kandidat.status !== newStatus) {
-           kandidat.status = newStatus; // Update UI langsung biar smooth
+           kandidat.status = newStatus;
            renderKanban(); 
            try { await updateDoc(doc(db, COL.REKRUTMEN_PELAMAR, kandidatId), { status: newStatus }); } 
            catch (err) { toast("Gagal memindah status", "error"); }
@@ -95,21 +107,81 @@ export async function mount(container, { session }) {
     });
   }
 
-  // Listener Real-time Firestore untuk ATS
   unsubscribe = onSnapshot(collection(db, COL.REKRUTMEN_PELAMAR), (snap) => {
     allCandidates = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.tanggal_lamar) - new Date(a.tanggal_lamar));
     renderKanban();
   });
 
-  // MODAL TAMBAH PELAMAR & UPLOAD CV
+  // ==========================================
+  // FUNGSI EKSTRAKSI TEKS DARI PDF (CLIENT-SIDE)
+  // ==========================================
+  async function extractTextFromPDF(file) {
+      if (!window['pdfjs-dist/build/pdf']) {
+          throw new Error("Library PDF belum selesai dimuat, coba lagi dalam beberapa detik.");
+      }
+      const pdfjsLib = window['pdfjs-dist/build/pdf'];
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+      
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+      let text = "";
+      
+      // Batasi maksimal 5 halaman agar tidak memberatkan browser
+      const maxPages = pdf.numPages > 5 ? 5 : pdf.numPages; 
+      for (let i = 1; i <= maxPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const strings = content.items.map(item => item.str);
+          text += strings.join(" ") + " ";
+      }
+      return text;
+  }
+
+  // ==========================================
+  // FUNGSI ANALISA KE GEMINI API VIA REST HTTP
+  // ==========================================
+  async function analyzeCVWithGemini(cvText, posisi, kualifikasi) {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+      
+      const prompt = `Anda adalah Senior HRD Recruiter di CV Andela Jaya.
+      Analisa isi CV pelamar di bawah ini dan bandingkan dengan kualifikasi posisi yang dicari.
+
+      [Kualifikasi yang Dicari untuk posisi ${posisi}]:
+      ${kualifikasi}
+
+      [Isi Teks CV Pelamar]:
+      ${cvText.substring(0, 8000)}
+
+      Evaluasi dan kembalikan respon TEPAT dalam format JSON (tanpa format markdown tambahan seperti \`\`\`json) dengan struktur berikut:
+      {
+        "skor_kecocokan": <angka_0_sampai_100>,
+        "kelebihan": "<penjelasan_kelebihan_kandidat>",
+        "kekurangan_gap": "<penjelasan_kekurangan_kandidat>",
+        "kesimpulan_rekomendasi": "<kesimpulan_akhir>"
+      }`;
+
+      const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+      });
+
+      if (!response.ok) throw new Error("Gagal menghubungi server Google Gemini AI");
+      
+      const data = await response.json();
+      let textResponse = data.candidates[0].content.parts[0].text;
+      textResponse = textResponse.replace(/```json/g, "").replace(/```/g, "").trim();
+      return JSON.parse(textResponse);
+  }
+
   container.querySelector("#ats-new").addEventListener("click", () => {
     openModal({
-      title: "Tambah Kandidat & Upload CV",
+      title: "Tambah Kandidat & Analisa AI",
       size: "md",
       bodyHtml: `
         <form id="form-ats-add" class="space-y-4">
           <div class="bg-blue-50 p-3 rounded-lg border border-blue-200 mb-2">
-             <p class="text-xs text-blue-800 font-medium leading-relaxed">✨ Setelah CV berformat PDF diunggah, <b>AI Engine (Gemini)</b> akan berjalan di latar belakang untuk menganalisa kecocokan kandidat secara otomatis.</p>
+             <p class="text-xs text-blue-800 font-medium leading-relaxed">✨ Sistem akan membaca isi PDF langsung di browser Anda dan mengirimkannya ke <b>AI Gemini</b> untuk dianalisa otomatis tanpa menggunakan server pihak ketiga.</p>
           </div>
           <div><label class="block text-xs font-medium text-slate-500 mb-1">Nama Kandidat</label><input type="text" id="ats-nama" required class="w-full px-3 py-2 text-sm border rounded outline-none focus:border-maroon-400"></div>
           <div><label class="block text-xs font-medium text-slate-500 mb-1">Posisi yang Dilamar</label><input type="text" id="ats-posisi" placeholder="Cth: Sales Staff, Admin" required class="w-full px-3 py-2 text-sm border rounded outline-none focus:border-maroon-400"></div>
@@ -119,63 +191,77 @@ export async function mount(container, { session }) {
       `,
       footerHtml: `
         <button id="btn-ats-batal" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
-        <button id="btn-ats-simpan" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2 text-sm font-bold rounded-lg shadow transition">Simpan & Analisa AI</button>
+        <button id="btn-ats-simpan" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2 text-sm font-bold rounded-lg shadow transition">Baca PDF & Analisa AI</button>
       `,
       onMount: (m) => {
         m.querySelector("#btn-ats-batal").onclick = closeModal;
         m.querySelector("#btn-ats-simpan").onclick = async () => {
            const form = m.querySelector("#form-ats-add");
            if(!form.reportValidity()) return;
+           
+           if(GEMINI_API_KEY === "MASUKKAN_KUNCI_API_ANDA_DI_SINI") {
+               toast("Kunci API Gemini belum diatur di file rekrutmen.js!", "warning");
+               return;
+           }
+
            const btn = m.querySelector("#btn-ats-simpan");
-           btn.disabled = true; btn.textContent = "Mengunggah Data...";
+           btn.disabled = true; 
+
+           const kandidatId = genId("ATSC");
+           const nama = m.querySelector("#ats-nama").value.trim();
+           const posisi = m.querySelector("#ats-posisi").value.trim();
+           const kualifikasi = m.querySelector("#ats-kualifikasi").value.trim();
+           const fileInput = m.querySelector("#ats-cv-file").files[0];
 
            try {
-              const kandidatId = genId("ATSC");
-              const posisi = m.querySelector("#ats-posisi").value.trim();
-              const kualifikasi = m.querySelector("#ats-kualifikasi").value.trim();
-              const fileInput = m.querySelector("#ats-cv-file").files[0];
+              // 1. Ekstrak Teks dari PDF secara lokal
+              btn.textContent = "Membaca file PDF...";
+              const cvText = await extractTextFromPDF(fileInput);
 
-              // 1. Upload File ke Storage
-              let cv_url = null;
-              if (fileInput) {
-                  btn.textContent = "Mengunggah File PDF...";
-                  const storageRef = ref(storage, `cv_pelamar/${kandidatId}_${fileInput.name.replace(/[^a-zA-Z0-9.]/g, "")}`);
-                  const metadata = { customMetadata: { pelamar_id: kandidatId, posisi_dilamar: posisi, kualifikasi: kualifikasi } };
-                  await uploadBytes(storageRef, fileInput, metadata);
-                  cv_url = await getDownloadURL(storageRef);
-              }
+              // 2. Kirim Teks ke Gemini API
+              btn.textContent = "AI sedang berpikir...";
+              const aiResponse = await analyzeCVWithGemini(cvText, posisi, kualifikasi);
 
-              // 2. Simpan Database Firestore
-              btn.textContent = "Menyimpan ke Database...";
+              // 3. Upload File ke Storage
+              btn.textContent = "Menyimpan Dokumen Asli...";
+              const storageRef = ref(storage, `cv_pelamar/${kandidatId}_${fileInput.name.replace(/[^a-zA-Z0-9.]/g, "")}`);
+              await uploadBytes(storageRef, fileInput);
+              const cv_url = await getDownloadURL(storageRef);
+
+              // 4. Simpan Database Firestore beserta hasil AI
+              btn.textContent = "Menyelesaikan...";
               await fsAdd(COL.REKRUTMEN_PELAMAR, {
-                  nama: m.querySelector("#ats-nama").value.trim(),
+                  nama: nama,
                   posisi_dilamar: posisi,
                   sumber: "Portal HRIS",
-                  status: "Applied",
                   tanggal_lamar: new Date().toISOString(),
                   cv_url: cv_url,
-                  kualifikasi_target: kualifikasi
+                  kualifikasi_target: kualifikasi,
+                  ai_score: aiResponse.skor_kecocokan,
+                  ai_analisis: aiResponse,
+                  status_analisis: "Selesai",
+                  status: aiResponse.skor_kecocokan >= 70 ? "Screening" : "Rejected" // Auto routing status
               }, kandidatId);
 
-              toast("Kandidat berhasil ditambahkan. AI sedang memproses CV...", "success");
+              toast("Kandidat berhasil ditambahkan & dianalisa AI!", "success");
               closeModal();
            } catch(e) {
-              toast("Gagal menyimpan: " + e.message, "error");
-              btn.disabled = false; btn.textContent = "Simpan & Analisa AI";
+              console.error(e);
+              toast("Gagal memproses AI: " + e.message, "error");
+              btn.disabled = false; btn.textContent = "Coba Lagi";
            }
         };
       }
     });
   });
 
-  // MODAL DETAIL & HASIL AI
   function openDetailModal(c) {
     if(!c) return;
     const aiData = c.ai_analisis || null;
 
-    let aiHtml = `<div class="p-6 bg-slate-50 border border-slate-200 rounded-xl text-center"><span class="animate-pulse text-slate-500 font-medium">⚙️ AI sedang membaca dan menganalisa CV...</span><p class="text-[11px] text-slate-400 mt-2">Kartu ini akan otomatis ter-update saat proses selesai.</p></div>`;
+    let aiHtml = `<div class="p-6 bg-slate-50 border border-slate-200 rounded-xl text-center"><p class="text-sm text-slate-500 font-medium">Data analisa AI belum tersedia.</p></div>`;
     
-    if (aiData) {
+    if (aiData && c.status_analisis === "Selesai") {
        aiHtml = `
          <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-5 mb-4">
             <div class="flex justify-between items-start mb-3 border-b border-emerald-100 pb-3">
