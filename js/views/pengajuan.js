@@ -106,8 +106,11 @@ async function openFormModal(formCfg, session) {
     let terpakai = { Tahunan: 0, Khusus: 0, Akumulasi: 0 };
     const qC = query(collection(db, COL.MASTER_CUTI), where("nama_karyawan", "==", session.nama));
     const snapC = await getDocs(qC);
+    const currentYear = new Date().getFullYear();
     snapC.docs.forEach(d => {
        const r = d.data();
+       const rowYear = parseInt(r.tahun) || (r.tanggal ? new Date(r.tanggal).getFullYear() : currentYear);
+       if (rowYear !== currentYear) return; // hanya hitung transaksi tahun berjalan (lihat cuti.js)
        if (r.potong_jatah && terpakai[r.potong_jatah] !== undefined) {
            let hitung = parseFloat(r.count);
            if (isNaN(hitung)) hitung = 1;
