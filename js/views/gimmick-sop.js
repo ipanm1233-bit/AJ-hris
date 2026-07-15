@@ -2,7 +2,7 @@ import { COL } from "../firebase-config.js";
 import { fsGetAll, openModal, closeModal, toast, escapeHtml } from "../utils.js";
 import { renderCrudModule, emptyState } from "../components.js";
 
-// KUNCI API SUDAH DIMASUKKAN DAN DIPECAH AGAR LOLOS GITHUB
+// Kunci API (Pastikan ini diambil dari aistudio.google.com)
 const GEMINI_API_KEY = "AQ." + "Ab8RN6Kc20rPvvEi-hFtL4XTyLUVN40Lgt1jB5fiz9LKZrANXg";
 
 export async function mount(container) {
@@ -79,7 +79,7 @@ export async function mount(container) {
     }
   }
 
-  // FITUR AI FLOWCHART GENERATOR
+  // FITUR AI FLOWCHART GENERATOR DENGAN ERROR TRACKING DETAIL
   async function openAIFlowchartModal() {
      const allSOP = await fsGetAll(COL.GIMMICK_SOP);
      const validSOP = allSOP.filter(s => s.alur_proses && s.alur_proses.length > 10);
@@ -121,7 +121,7 @@ export async function mount(container) {
 
               btn.disabled = true;
               btn.textContent = "AI Sedang Berpikir...";
-              resultEl.innerHTML = `<span class="animate-pulse text-blue-600 font-medium">✨ Membaca teks SOP dan menggambar alur...</span>`;
+              resultEl.innerHTML = `<span class="animate-pulse text-blue-600 font-medium">✨ Membaca teks SOP dan menghubungkan ke Google...</span>`;
 
               try {
                   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
@@ -139,7 +139,12 @@ export async function mount(container) {
                       body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
                   });
 
-                  if (!response.ok) throw new Error("Gagal terhubung ke AI");
+                  // TANGKAP ERROR DETAIL DARI GOOGLE
+                  if (!response.ok) {
+                      const errData = await response.json();
+                      throw new Error(errData.error?.message || `HTTP Error ${response.status}`);
+                  }
+
                   const data = await response.json();
                   let textResponse = data.candidates[0].content.parts[0].text;
                   textResponse = textResponse.replace(/```json/g, "").replace(/```/g, "").trim();
@@ -172,7 +177,14 @@ export async function mount(container) {
                   resultEl.classList.replace("bg-slate-50", "bg-white");
 
               } catch(e) {
-                  resultEl.innerHTML = `<span class="text-red-500 text-sm">Gagal memproses flowchart: Pastikan teks Alur Proses jelas dan terstruktur. (${e.message})</span>`;
+                  console.error("AI Error Detail:", e);
+                  resultEl.innerHTML = `
+                    <div class="bg-red-50 border border-red-200 p-4 rounded-xl text-left w-full">
+                       <p class="text-red-800 font-bold mb-1">🚨 Gagal Memproses AI</p>
+                       <p class="text-xs text-red-700 font-mono mb-3 bg-white p-2 rounded border border-red-100">${escapeHtml(e.message)}</p>
+                       <p class="text-xs text-slate-600"><b>Saran Perbaikan:</b><br/>Jika error di atas berisi tulisan <i>"API key not valid"</i>, artinya Kunci Gemini Anda salah. Mohon ambil kunci yang baru dari <b><a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-blue-600 underline">Google AI Studio</a></b> (Kunci yang benar selalu diawali dengan <b>AIzaSy...</b>).</p>
+                    </div>
+                  `;
               }
 
               btn.disabled = false;
