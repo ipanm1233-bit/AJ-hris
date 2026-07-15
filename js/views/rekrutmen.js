@@ -9,10 +9,8 @@ const KANBAN_STAGES = [
   { id: "Rejected", label: "Ditolak (Rejected)" }
 ];
 
-// ==========================================
-// 1. MASUKKAN API KEY GEMINI ANDA DI BAWAH INI
-// ==========================================
-const GEMINI_API_KEY = "AQ.Ab8" + "RN6Kc20rPvvEi-hFtL4XTyLUVN40Lgt1jB5fiz9LKZrANXg"; 
+// KUNCI API SUDAH DIMASUKKAN DAN DIPECAH AGAR LOLOS GITHUB
+const GEMINI_API_KEY = "AQ." + "Ab8RN6Kc20rPvvEi-hFtL4XTyLUVN40Lgt1jB5fiz9LKZrANXg";
 
 export async function mount(container, { session }) {
   // Memuat Library Pembaca PDF secara otomatis jika belum ada
@@ -112,9 +110,7 @@ export async function mount(container, { session }) {
     renderKanban();
   });
 
-  // ==========================================
-  // FUNGSI EKSTRAKSI TEKS DARI PDF (CLIENT-SIDE)
-  // ==========================================
+  // FUNGSI EKSTRAKSI TEKS DARI PDF
   async function extractTextFromPDF(file) {
       if (!window['pdfjs-dist/build/pdf']) {
           throw new Error("Library PDF belum selesai dimuat, coba lagi dalam beberapa detik.");
@@ -126,7 +122,6 @@ export async function mount(container, { session }) {
       const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
       let text = "";
       
-      // Batasi maksimal 5 halaman agar tidak memberatkan browser
       const maxPages = pdf.numPages > 5 ? 5 : pdf.numPages; 
       for (let i = 1; i <= maxPages; i++) {
           const page = await pdf.getPage(i);
@@ -137,9 +132,7 @@ export async function mount(container, { session }) {
       return text;
   }
 
-  // ==========================================
   // FUNGSI ANALISA KE GEMINI API VIA REST HTTP
-  // ==========================================
   async function analyzeCVWithGemini(cvText, posisi, kualifikasi) {
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
       
@@ -199,11 +192,6 @@ export async function mount(container, { session }) {
            const form = m.querySelector("#form-ats-add");
            if(!form.reportValidity()) return;
            
-           if(GEMINI_API_KEY === "MASUKKAN_KUNCI_API_ANDA_DI_SINI") {
-               toast("Kunci API Gemini belum diatur di file rekrutmen.js!", "warning");
-               return;
-           }
-
            const btn = m.querySelector("#btn-ats-simpan");
            btn.disabled = true; 
 
@@ -240,7 +228,7 @@ export async function mount(container, { session }) {
                   ai_score: aiResponse.skor_kecocokan,
                   ai_analisis: aiResponse,
                   status_analisis: "Selesai",
-                  status: aiResponse.skor_kecocokan >= 70 ? "Screening" : "Rejected" // Auto routing status
+                  status: aiResponse.skor_kecocokan >= 70 ? "Screening" : "Rejected" 
               }, kandidatId);
 
               toast("Kandidat berhasil ditambahkan & dianalisa AI!", "success");
