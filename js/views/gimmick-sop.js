@@ -1,8 +1,13 @@
 import { COL } from "../firebase-config.js";
-import { fsGetAll, openModal, closeModal, toast, escapeHtml } from "../utils.js";
+import { fsGetAll, openModal, closeModal, toast } from "../utils.js";
 import { renderCrudModule, emptyState } from "../components.js";
 
-// Kunci API (Pastikan ini diambil dari aistudio.google.com)
+// Fungsi pelindung teks bawaan (Bulletproof)
+function escapeHtml(unsafe) {
+    return (unsafe || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+// KUNCI API AI GEMINI
 const GEMINI_API_KEY = "AQ." + "Ab8RN6Kc20rPvvEi-hFtL4XTyLUVN40Lgt1jB5fiz9LKZrANXg";
 
 export async function mount(container) {
@@ -79,7 +84,7 @@ export async function mount(container) {
     }
   }
 
-  // FITUR AI FLOWCHART GENERATOR DENGAN ERROR TRACKING DETAIL
+  // FITUR AI FLOWCHART GENERATOR
   async function openAIFlowchartModal() {
      const allSOP = await fsGetAll(COL.GIMMICK_SOP);
      const validSOP = allSOP.filter(s => s.alur_proses && s.alur_proses.length > 10);
@@ -139,10 +144,9 @@ export async function mount(container) {
                       body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
                   });
 
-                  // TANGKAP ERROR DETAIL DARI GOOGLE
                   if (!response.ok) {
                       const errData = await response.json();
-                      throw new Error(errData.error?.message || `HTTP Error ${response.status}`);
+                      throw new Error(errData.error?.message || \`HTTP Error \${response.status}\`);
                   }
 
                   const data = await response.json();
@@ -182,7 +186,6 @@ export async function mount(container) {
                     <div class="bg-red-50 border border-red-200 p-4 rounded-xl text-left w-full">
                        <p class="text-red-800 font-bold mb-1">🚨 Gagal Memproses AI</p>
                        <p class="text-xs text-red-700 font-mono mb-3 bg-white p-2 rounded border border-red-100">${escapeHtml(e.message)}</p>
-                       <p class="text-xs text-slate-600"><b>Saran Perbaikan:</b><br/>Jika error di atas berisi tulisan <i>"API key not valid"</i>, artinya Kunci Gemini Anda salah. Mohon ambil kunci yang baru dari <b><a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-blue-600 underline">Google AI Studio</a></b> (Kunci yang benar selalu diawali dengan <b>AIzaSy...</b>).</p>
                     </div>
                   `;
               }
