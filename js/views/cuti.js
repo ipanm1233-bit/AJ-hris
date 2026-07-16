@@ -506,84 +506,123 @@ export async function mount(container, { session }) {
 
   function printCutiPdf(k, data, sisa) {
     const printWindow = window.open('', '_blank');
-    const todayStr = new Date().toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' });
-    
+    const todayStr = new Date().toLocaleString('id-ID', { dateStyle: 'long' });
+
     let html = `
-    <html><head><title>Form Cuti - ${escapeHtml(k.nama_karyawan)}</title>
+    <html>
+    <head>
+      <title>Form Cuti - ${escapeHtml(k.nama_karyawan)}</title>
       <style>
-        body { font-family: 'Times New Roman', Times, serif; font-size: 14px; padding: 30px; line-height: 1.5; color: #000; }
-        .ht { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-        .ht td { border: 1px solid #000; padding: 10px; text-align: center; font-weight: bold; }
-        .it { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        .it td { border: 1px solid #000; padding: 6px 10px; vertical-align: top; }
-        .col-lbl { width: 35%; font-weight: bold; background: #f9fafb; }
-      </style>
-    </head><body onload="setTimeout(() => { window.print(); window.close(); }, 800);">
-      
-      <table class="ht">
-        <tr>
-          <td rowspan="2" width="20%" style="padding:5px;">${logoImgTag(80)}</td>
-          <td rowspan="2" style="font-size: 16px; text-transform: uppercase;">
-             FORMULIR PENGAJUAN ${data.isHalfDay ? "CUTI SETENGAH HARI" : "CUTI KARYAWAN"}<br/>CV ANDELA JAYA
-          </td>
-          <td width="25%" style="font-size: 11px; text-align: left; font-weight: normal;">
-             Hal: 1 dari 1<br/>No Dok: HR4
-          </td>
-        </tr>
-        <tr>
-          <td style="font-size: 11px; text-align: left; font-weight: normal;">Terbit/Revisi: 1/1<br/>Tgl terbit: 1 September 2025</td>
-        </tr>
-      </table>
-
-      <table class="it">
-        <tr><td colspan="2" style="text-align: center; background: #e2e8f0; font-weight: bold;">DATA KARYAWAN</td></tr>
-        <tr><td class="col-lbl">Nama Lengkap</td><td>${escapeHtml(k.nama_karyawan)}</td></tr>
-        <tr><td class="col-lbl">Divisi / Bagian / Unit Kerja</td><td>${escapeHtml(k.divisi || k.jabatan || "-")}</td></tr>
+        @media print {
+            @page { margin: 15mm; }
+            body { font-family: 'Times New Roman', Times, serif; font-size: 14px; color: #000; padding: 0; margin: 0; line-height: 1.4; }
+        }
+        body { font-family: 'Times New Roman', Times, serif; font-size: 14px; padding: 30px; line-height: 1.4; color: #000; max-width: 800px; margin: 0 auto; }
         
-        <tr><td colspan="2" style="text-align: center; background: #e2e8f0; font-weight: bold;">KETERANGAN CUTI</td></tr>
-        <tr><td class="col-lbl">Tanggal Cuti</td><td>${fmtDateShort(data.tanggal)}</td></tr>
-        ${data.isHalfDay ? `
-          <tr><td class="col-lbl">Jenis cuti setengah hari</td><td>${escapeHtml(data.type_cuti)}</td></tr>
-          <tr><td class="col-lbl">Jam Keluar</td><td>${data.jam_keluar || "-"}</td></tr>
-          <tr><td class="col-lbl">Jam Kembali</td><td>${data.jam_kembali || "-"}</td></tr>
-        ` : `
-          <tr><td class="col-lbl">Tanggal Selesai Cuti</td><td>${fmtDateShort(data.tgl_akhir)}</td></tr>
-          <tr><td class="col-lbl">Jenis Cuti</td><td>${escapeHtml(data.type_cuti)}</td></tr>
-        `}
-        <tr><td class="col-lbl">Alamat & no hp selama cuti</td><td>${escapeHtml(data.kontak)}</td></tr>
-        <tr><td class="col-lbl">Keterangan/Alasan</td><td>${escapeHtml(data.keterangan_cuti)}</td></tr>
-        <tr><td class="col-lbl">Sisa cuti tahunan</td><td>${sisa.Tahunan} Hari</td></tr>
-        <tr><td class="col-lbl">Sisa cuti khusus</td><td>${sisa.Khusus} Hari</td></tr>
-        <tr><td class="col-lbl">Sisa cuti akumulasi</td><td>${sisa.Akumulasi} Hari</td></tr>
-      </table>
+        .header-wrap { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
+        .header-logo { font-size: 20px; font-weight: bold; }
+        .header-title { font-size: 16px; font-weight: bold; text-align: right; text-decoration: underline; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        table, th, td { border: 1px solid #000; }
+        td { padding: 8px 12px; vertical-align: top; }
+        .col-lbl { width: 40%; }
+        
+        .info-box { border: 1px solid #000; padding: 10px; margin-top: 20px; font-size: 12px; }
+        .signature-table { border: none; width: 100%; margin-top: 40px; text-align: center; }
+        .signature-table td { border: none; width: 33.33%; padding: 0; }
+        .sig-space { height: 80px; }
+      </style>
+    </head>
+    <body onload="setTimeout(() => { window.print(); window.close(); }, 800);">
 
-      <div style="text-align:right; margin-top:15px; font-size:11px; color:#666;">${todayStr}</div>
-
-      <table style="width:100%; text-align:center; margin-top:30px;">
-        <tr>
-          <td width="33%">Pemohon Cuti,</td>
-          <td width="33%">Menyetujui,<br/>Atasan</td>
-          <td width="33%">Mengetahui,<br/>HRD</td>
-        </tr>
-        <tr><td height="80"></td><td></td><td></td></tr>
-        <tr>
-          <td>( <strong>${escapeHtml(k.nama_karyawan)}</strong> )</td>
-          <td>( ................................... )</td>
-          <td>( ................................... )</td>
-        </tr>
-      </table>
-
-      <div style="margin-top:20px; font-size:12px; border:1px solid #000; padding:10px;">
-         <strong>Catatan dari Atasan:</strong><br/><br/><br/>
-         <hr style="border-top: 1px dashed #000;"/><br/>
-         <strong>Perhatikan :</strong>
-         <ol style="margin-top: 5px; padding-left: 20px;">
-            <li>Surat permohonan cuti ini harus diajukan minimal 1 minggu sebelum cuti dijalankan.</li>
-            <li>Sebelum ada persetujuan dari atasan, tidak diperkenankan untuk meninggalkan/mendahului cuti, kecuali sakit dengan dibuktikan dengan surat keterangan dokter atau karena keperluan yang mendesak.</li>
-         </ol>
+      <div class="header-wrap">
+         <div class="header-logo">CV. ANDELA JAYA</div>
+         <div class="header-title">${data.isHalfDay ? "FORMULIR PENGAJUAN CUTI SETENGAH HARI" : "FORMULIR PENGAJUAN CUTI"}</div>
       </div>
-    </body></html>`;
-    printWindow.document.write(html); printWindow.document.close();
+
+      <table>
+        <tr>
+          <td class="col-lbl">Nama Karyawan</td>
+          <td>: ${escapeHtml(k.nama_karyawan)}</td>
+        </tr>
+        <tr>
+          <td class="col-lbl">Jabatan / Divisi</td>
+          <td>: ${escapeHtml(k.jabatan || "-")} / ${escapeHtml(k.cabang || "-")}</td>
+        </tr>
+      </table>
+
+      <table>
+        ${data.isHalfDay ? `
+          <tr>
+            <td class="col-lbl">Tanggal Cuti</td>
+            <td>: ${fmtDateShort(data.tanggal)}</td>
+          </tr>
+          <tr>
+            <td class="col-lbl">Waktu Cuti</td>
+            <td>: ${data.jam_keluar || "-"} s/d ${data.jam_kembali || "-"}</td>
+          </tr>
+        ` : `
+          <tr>
+            <td class="col-lbl">Tanggal Mulai Cuti</td>
+            <td>: ${fmtDateShort(data.tanggal)}</td>
+          </tr>
+          <tr>
+            <td class="col-lbl">Tanggal Selesai Cuti</td>
+            <td>: ${fmtDateShort(data.tgl_akhir)}</td>
+          </tr>
+          <tr>
+            <td class="col-lbl">Total Hari Cuti</td>
+            <td>: ${data.count} Hari</td>
+          </tr>
+        `}
+        <tr>
+          <td class="col-lbl">Alasan Cuti</td>
+          <td>: ${escapeHtml(data.keterangan_cuti)}</td>
+        </tr>
+        <tr>
+          <td class="col-lbl">Alamat / No. HP selama cuti</td>
+          <td>: ${escapeHtml(data.kontak)}</td>
+        </tr>
+      </table>
+
+      <table>
+        <tr>
+          <td colspan="2" style="font-weight: bold; background-color: #f0f0f0;">Sisa Jatah Cuti Saat Pengajuan:</td>
+        </tr>
+        <tr>
+          <td class="col-lbl">1. Cuti Tahunan</td>
+          <td>: ${sisa.Tahunan} Hari</td>
+        </tr>
+        <tr>
+          <td class="col-lbl">2. Cuti Khusus</td>
+          <td>: ${sisa.Khusus} Hari</td>
+        </tr>
+      </table>
+
+      <table class="signature-table">
+        <tr>
+          <td>Pemohon,<br/><br/><br/><div class="sig-space"></div>( ${escapeHtml(k.nama_karyawan)} )</td>
+          <td>Menyetujui, Atasan<br/><br/><br/><div class="sig-space"></div>( ..................................... )</td>
+          <td>Mengetahui, HRD<br/><br/><br/><div class="sig-space"></div>( ..................................... )</td>
+        </tr>
+      </table>
+      <div style="text-align: right; margin-top: 10px; font-size: 12px;">Tanggal Pengajuan: ${todayStr}</div>
+
+      <div class="info-box">
+        <strong>Perhatian:</strong>
+        <ol style="margin-top: 5px; padding-left: 20px; margin-bottom: 0;">
+           <li>Surat permohonan ini harus diajukan minimal 1 (satu) minggu sebelum tanggal cuti.</li>
+           <li>Karyawan tidak diperkenankan memulai cuti sebelum formulir ini ditandatangani dan disetujui oleh atasan langsung dan HRD.</li>
+           <li>Jika sakit, wajib melampirkan Surat Keterangan Dokter.</li>
+        </ol>
+      </div>
+
+    </body>
+    </html>`;
+    
+    printWindow.document.write(html); 
+    printWindow.document.close();
   }
 
   container.querySelector("#btn-setting-cuti")?.addEventListener("click", () => {
