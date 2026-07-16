@@ -1,6 +1,5 @@
 import { db, COL, doc, getDoc, setDoc, collection, getDocs, writeBatch, query, where } from "../firebase-config.js";
 import { toast, genId, escapeHtml } from "../utils.js";
-import { loadGeminiConfig, invalidateGeminiConfigCache, testGeminiConnection } from "../ai-gemini.js";
 
 export async function mount(container, { session }) {
   const tBody = container.querySelector("#cfg-jadwal-tbody");
@@ -31,12 +30,6 @@ export async function mount(container, { session }) {
       });
 
       renderJadwal();
-
-      // Muat konfigurasi AI Gemini (via helper terpusat ai-gemini.js)
-      const geminiCfg = await loadGeminiConfig(true);
-      container.querySelector("#cfg-gemini-key").value = geminiCfg.apiKey || "";
-      container.querySelector("#cfg-gemini-model").value = geminiCfg.model || "gemini-2.5-flash";
-      container.querySelector("#cfg-gemini-active").checked = geminiCfg.active !== false;
     } catch(e) { console.error(e); }
   }
 
@@ -169,60 +162,6 @@ export async function mount(container, { session }) {
         toast("Gagal eksekusi: " + e.message, "error");
      }
      btn.disabled = false; btn.textContent = "⚡ EKSEKUSI MASSAL";
-  };
-
-  // TOGGLE TAMPIL/SEMBUNYI API KEY
-  container.querySelector("#btn-toggle-gemini-key").onclick = () => {
-     const inp = container.querySelector("#cfg-gemini-key");
-     inp.type = inp.type === "password" ? "text" : "password";
-  };
-
-  function showGeminiStatus(msg, ok) {
-     const el = container.querySelector("#cfg-gemini-status");
-     el.classList.remove("hidden", "bg-emerald-50", "text-emerald-700", "border", "border-emerald-200", "bg-red-50", "text-red-700", "border-red-200");
-     el.classList.add(ok ? "bg-emerald-50" : "bg-red-50", ok ? "text-emerald-700" : "text-red-700", "border", ok ? "border-emerald-200" : "border-red-200");
-     el.textContent = msg;
-  }
-
-  // TES KONEKSI API KEY GEMINI
-  container.querySelector("#btn-test-gemini").onclick = async () => {
-     const btn = container.querySelector("#btn-test-gemini");
-     const apiKey = container.querySelector("#cfg-gemini-key").value.trim();
-     const model = container.querySelector("#cfg-gemini-model").value;
-
-     if (!apiKey) return showGeminiStatus("Isi API Key terlebih dahulu sebelum menguji koneksi.", false);
-
-     btn.disabled = true; btn.textContent = "Menguji...";
-     try {
-        await testGeminiConnection(apiKey, model);
-        showGeminiStatus(`✅ Koneksi berhasil! API Key valid untuk model ${model}.`, true);
-     } catch (e) {
-        showGeminiStatus(`❌ Gagal: ${e.message}`, false);
-     }
-     btn.disabled = false; btn.textContent = "Tes Koneksi";
-  };
-
-  // SIMPAN KONFIGURASI AI GEMINI (terpisah dari tombol Simpan Semua Konfigurasi agar key sensitif tidak
-  // ikut tersimpan tanpa sengaja saat admin hanya mengubah jadwal/tarif)
-  container.querySelector("#btn-save-gemini").onclick = async () => {
-     const btn = container.querySelector("#btn-save-gemini");
-     btn.disabled = true; btn.textContent = "Menyimpan...";
-
-     const gemini = {
-        api_key: container.querySelector("#cfg-gemini-key").value.trim(),
-        model: container.querySelector("#cfg-gemini-model").value,
-        active: container.querySelector("#cfg-gemini-active").checked
-     };
-
-     try {
-        await setDoc(docRef, { gemini }, { merge: true });
-        invalidateGeminiConfigCache(); // paksa seluruh modul (Rekrutmen, Gimmick & SOP, dll) memuat ulang config baru
-        toast("Konfigurasi AI Gemini berhasil disimpan!", "success");
-        showGeminiStatus("Tersimpan. Seluruh modul AI akan memakai key/model ini mulai sekarang.", true);
-     } catch(e) {
-        toast("Gagal menyimpan: " + e.message, "error");
-     }
-     btn.disabled = false; btn.textContent = "Simpan";
   };
 
   await loadConfig();
