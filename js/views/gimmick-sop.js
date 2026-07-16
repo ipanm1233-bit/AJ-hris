@@ -1,7 +1,7 @@
 import { COL } from "../firebase-config.js";
 import { fsGetAll, openModal, closeModal, toast } from "../utils.js";
 import { renderCrudModule, emptyState } from "../components.js";
-import { callGeminiJSON } from "../ai-config.js"; // PERBAIKAN IMPORT AI DI SINI
+import { callGeminiJSON } from "../ai-config.js"; // Import AI yang benar
 
 function escapeHtml(unsafe) {
     return (unsafe || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
@@ -89,7 +89,7 @@ export async function mount(container) {
 
         const originalText = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = `<span class="spinner border-emerald-700"></span> <span class="text-slate-500">Membaca SOP dan menghubungkan ke Google...</span>`;
+        btn.innerHTML = `<span class="spinner border-emerald-700"></span> <span class="text-slate-500">Membaca SOP & Menyusun Data...</span>`;
 
         try {
             const prompt = `Anda adalah ahli pembuat SOP perusahaan. Baca teks alur proses ini: "${targetSOP.alur_proses}". Ubah teks tersebut menjadi langkah-langkah prosedural yang terstruktur rapi. Kembalikan respon murni dalam format JSON array (TANPA backtick markdown \`\`\`json) dengan struktur: [{"step_no": 1, "tindakan": "Deskripsi", "pic": "Siapa yang melakukan"}]. Jangan ada teks lain selain JSON.`;
@@ -108,18 +108,18 @@ export async function mount(container) {
                     size: "md",
                     bodyHtml: `
                       <div class="mb-4 bg-emerald-50 border border-emerald-200 p-3 rounded-lg flex items-start gap-2">
-                         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-emerald-600 mt-0.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L15 8L22 9L17 14L18.5 21L12 17.5L5.5 21L7 14L2 9L9 8L12 2Z"/></svg>
-                         <p class="text-xs text-emerald-800">SOP berikut di-generate otomatis oleh AI berdasarkan catatan mentah Anda. Silakan salin (Copy) hasil ini dan pindahkan ke dokumen Microsoft Word / Google Docs Anda.</p>
+                         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L15 8L22 9L17 14L18.5 21L12 17.5L5.5 21L7 14L2 9L9 8L12 2Z"/></svg>
+                         <p class="text-xs text-emerald-800">SOP berikut di-generate otomatis oleh AI berdasarkan catatan mentah Anda. Silakan salin (Copy) hasil ini ke dokumen resmi.</p>
                       </div>
                       <div class="bg-slate-50 border border-slate-200 p-4 rounded-xl max-h-96 overflow-y-auto" id="ai-sop-content">
-                         <h3 class="font-bold text-slate-800 text-lg mb-4 text-center underline uppercase">${targetSOP.judul}</h3>
+                         <h3 class="font-bold text-slate-800 text-lg mb-4 text-center underline uppercase">${escapeHtml(targetSOP.judul)}</h3>
                          ${htmlSteps}
                       </div>
                     `,
-                    footerHtml: `<button class="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm" onclick="navigator.clipboard.writeText(document.getElementById('ai-sop-content').innerText); alert('Teks SOP disalin ke clipboard!');">Copy Teks</button>`
+                    footerHtml: `<button class="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm" onclick="navigator.clipboard.writeText(document.getElementById('ai-sop-content').innerText); alert('Teks SOP disalin!');">Copy Teks</button>`
                 });
             } else {
-                toast("AI gagal mengenali struktur SOP. Coba perjelas teks alur Anda.", "error");
+                toast("AI gagal mengenali struktur SOP.", "error");
             }
         } catch (err) {
             toast(err.message, "error");
