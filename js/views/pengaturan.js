@@ -73,13 +73,10 @@ async function setupRbacMenuTab(container, users) {
   select.innerHTML = users.map(u => `<option value="${u.id}">${escapeHtml(u.nama)} (${u.role})</option>`).join("");
   const grid = container.querySelector("#rbac-menu-grid");
 
-  // PERBAIKAN: sebelumnya memakai `m.id` yang tidak pernah ada di MENU_CONFIG (field yang
-  // benar adalah `m.route`), sehingga seluruh checkbox mendapat data-menu="undefined" yang
-  // sama dan fitur override akses menu per-personil ini tidak pernah benar-benar berfungsi.
   const groupLabel = { all: "Menu Utama", hrd: "Modul HRD", manajemen: "Modul Manajemen" };
   grid.innerHTML = MENU_CONFIG.map(m => `
     <label class="flex items-center gap-2 p-2.5 rounded-lg border border-slate-100 hover:bg-slate-50 text-sm cursor-pointer">
-      <input type="checkbox" data-menu="${m.route}" class="rounded border-slate-300 text-maroon-700 focus:ring-maroon-400">
+      <input type="checkbox" data-menu="${m.id}" class="rounded border-slate-300 text-maroon-700 focus:ring-maroon-400">
       <span class="text-slate-700">${m.label}</span>
       <span class="text-[10px] text-slate-400 ml-auto">${groupLabel[m.group]}</span>
     </label>`).join("");
