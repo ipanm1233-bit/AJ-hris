@@ -29,7 +29,7 @@
  * ------------------------------------------------------------------- */
 
 // GANTI dengan API key baru Anda dari https://aistudio.google.com/apikey (harus diawali "AIzaSy...")
-export const GEMINI_API_KEY = "AQ.Ab8RN6KhDWv2VXwsCCkONnkP6JCY5Z7RNmceUbbWqJ4l61_hlw";
+export const GEMINI_API_KEY = "AIzaSyBD6xrkrxPrOFd4nxjsoMGILYu5-Q4S2Fw";
 
 // Alias "flash-latest" otomatis mengikuti model stabil terbaru dari Google,
 // jadi tidak perlu diubah manual tiap kali Google pensiunkan versi model.
