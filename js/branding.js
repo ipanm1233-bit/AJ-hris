@@ -1,40 +1,83 @@
 /**
  * =====================================================================
- * BRANDING.JS — Sumber logo perusahaan yang dipakai di SEMUA dokumen
- * yang tergenerate oleh sistem (Form Cuti, Form Ijin, Slip Kontrak,
- * Form Persetujuan, dll).
- *
- * PENTING UNTUK ADMIN:
- * Variabel LOGO_DATA_URI di bawah ini masih berisi PLACEHOLDER
- * (lambang "AJ" generik) karena file logo asli CV Andela Jaya belum
- * disediakan saat perbaikan ini dibuat. Untuk memasang logo resmi:
- *   1. Siapkan file logo (PNG/JPG, disarankan persegi, min 300x300px,
- *      latar transparan).
- *   2. Convert ke Base64, misalnya lewat https://www.base64-image.de/
- *      atau command: `base64 -i logo.png`.
- *   3. Ganti isi LOGO_DATA_URI di bawah ini dengan hasilnya, format:
- *      "data:image/png;base64,XXXXXXXXXX...."
- *   4. Simpan file ini — seluruh dokumen (Form Cuti, Form Kontrak, dll)
- *      otomatis akan memakai logo baru karena semua modul mengambil
- *      logo dari satu sumber ini (single source of truth).
+ * BRANDING.JS — Sumber logo & kop surat resmi perusahaan yang dipakai di
+ * SEMUA dokumen yang tergenerate oleh sistem (Form Cuti, Slip Kontrak,
+ * Tanda Terima, Form Pengajuan Fisik, dan dokumen ber-standar ISO lainnya).
+ * Single source of truth — ganti di sini saja untuk update semua dokumen.
  * ------------------------------------------------------------------- */
 
 export const COMPANY_NAME = "CV ANDELA JAYA";
+export const COMPANY_ADDRESS_LINE1 = "Jln. Jendral Sudirman No. 58, Penggung - Cirebon. Telp. (0231) 489345, 489346. Fax (0231) 8815166.";
+export const COMPANY_ADDRESS_LINE2 = "Jln. Tenaga Baru I No. 3, Blimbing, Malang, Jawa Timur  Telp. 0341-400139";
 
-// Placeholder logo (lambang "AJ" bulat warna maroon) — GANTI dengan logo asli perusahaan.
-export const LOGO_DATA_URI =
-  "data:image/svg+xml;base64," +
-  btoa(`
-    <svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
-      <circle cx="80" cy="80" r="78" fill="#7f1d1d" stroke="#450a0a" stroke-width="3"/>
-      <text x="80" y="98" font-family="Georgia, 'Times New Roman', serif" font-size="58" font-weight="bold" fill="#ffffff" text-anchor="middle">AJ</text>
-    </svg>
-  `);
+// Logo resmi CV Andela Jaya (base64, sudah dioptimasi ukurannya untuk dokumen cetak/PDF)
+export const LOGO_DATA_URI = "data:image/png;base64,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";
 
 /**
  * Kembalikan tag <img> logo siap-pakai untuk header dokumen cetak (HTML string).
  * @param {number} sizePx ukuran lebar/tinggi logo dalam px (default 56)
  */
 export function logoImgTag(sizePx = 56) {
-  return `<img src="${LOGO_DATA_URI}" alt="Logo ${COMPANY_NAME}" width="${sizePx}" height="${sizePx}" style="display:block;border-radius:6px;object-fit:contain;" />`;
+  return `<img src="${LOGO_DATA_URI}" alt="Logo ${COMPANY_NAME}" width="${sizePx}" height="${sizePx}" style="display:block;object-fit:contain;" />`;
+}
+
+/**
+ * Kop surat lengkap (logo + nama + alamat perusahaan) untuk dokumen resmi
+ * bergaya Surat Keputusan / memo formal (BUKAN tabel form ISO).
+ */
+export function letterheadHtml() {
+  return `
+    <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">
+      <tr>
+        <td style="width:70px;vertical-align:middle;padding:0 12px 0 0;">${logoImgTag(56)}</td>
+        <td style="vertical-align:middle;">
+          <div style="font-size:20px;font-weight:bold;font-family:Georgia,'Times New Roman',serif;">${COMPANY_NAME}</div>
+        </td>
+      </tr>
+    </table>
+    <div style="font-size:10px;color:#334155;border-bottom:2px solid #0f172a;padding-bottom:6px;margin-bottom:10px;">
+      ${COMPANY_ADDRESS_LINE1}<br/>${COMPANY_ADDRESS_LINE2}
+    </div>
+  `;
+}
+
+/**
+ * Kop dokumen ber-standar ISO (3 baris: Judul / Nama Perusahaan / meta Hal-NoDok-Terbit-Tgl),
+ * meniru PERSIS format resmi Formulir Pengajuan Cuti CV Andela Jaya yang sudah disetujui
+ * manajemen. Dipakai di SEMUA dokumen tergenerate sistem (form cetak, tanda terima, dll)
+ * agar formatnya konsisten & sesuai standar ISO perusahaan.
+ *
+ * @param {object} opts
+ * @param {string} opts.judul  Judul dokumen, mis. "FORMULIR PENGAJUAN CUTI KARYAWAN"
+ * @param {string} opts.noDok  Nomor dokumen, mis. "HR4"
+ * @param {string} opts.terbitRevisi default "1/1"
+ * @param {string} opts.tglTerbit default "1 September 2025"
+ * @param {string} opts.hal default "1 dari 1"
+ */
+export function isoDocHeaderTable(opts = {}) {
+  const {
+    judul = "FORMULIR",
+    noDok = "-",
+    terbitRevisi = "1/1",
+    tglTerbit = "1 September 2025",
+    hal = "1 dari 1"
+  } = opts;
+
+  return `
+    <table class="header-table" style="width:100%;border-collapse:collapse;border:1px solid #000;">
+      <tr>
+        <td rowspan="3" style="width:90px;border:1px solid #000;text-align:center;padding:6px;">${logoImgTag(64)}</td>
+        <td colspan="4" style="border:1px solid #000;font-size:15px;font-weight:bold;text-transform:uppercase;text-align:center;padding:8px 6px;">${judul}</td>
+      </tr>
+      <tr>
+        <td colspan="4" style="border:1px solid #000;background:#d7ecf3;font-size:13px;font-weight:bold;text-align:center;padding:6px;">${COMPANY_NAME}</td>
+      </tr>
+      <tr>
+        <td style="border:1px solid #000;font-size:10px;text-align:left;padding:5px 6px;">Hal : ${hal}</td>
+        <td style="border:1px solid #000;font-size:10px;text-align:left;padding:5px 6px;">No Dok : ${noDok}</td>
+        <td style="border:1px solid #000;font-size:10px;text-align:left;padding:5px 6px;">Terbit/ Revisi : ${terbitRevisi}</td>
+        <td style="border:1px solid #000;font-size:10px;text-align:left;padding:5px 6px;">Tgl terbit : ${tglTerbit}</td>
+      </tr>
+    </table>
+  `;
 }
