@@ -43,6 +43,7 @@ const ICONS = {
   logout: '<path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>',
   plus: '<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>',
   filter: '<path stroke-linecap="round" stroke-linejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>',
+  printer: '<path stroke-linecap="round" stroke-linejoin="round" d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"/>',
   link: '<path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>',
   car: '<path stroke-linecap="round" stroke-linejoin="round" d="M5 17h14M5 17a2 2 0 11-4 0 2 2 0 014 0zm14 0a2 2 0 11-4 0 2 2 0 014 0zM5 17V9l2-5h10l2 5v8M5 9h14"/>',
   gauge: '<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l2.5 2.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>',
@@ -93,7 +94,7 @@ export async function renderCrudModule(container, cfg) {
   const {
     title, subtitle = "", collectionName, columns, formFields,
     idPrefix = "REC", searchFields = [], canCreate = true, canEdit = true,
-    canDelete = true, extraToolbarHtml = "", onRowRender = null,
+    canDelete = true, extraToolbarHtml = "", onRowRender = null, printFn = null, printLabel = "Cetak Dokumen",
     beforeSave = null, orderByField = null, filterFn = null, emptyMessage = null
   } = cfg;
 
@@ -161,11 +162,17 @@ export async function renderCrudModule(container, cfg) {
       <tr class="border-t border-slate-50 hover:bg-slate-50/60 transition">
         ${columns.map(c => `<td class="px-4 py-3 text-slate-700">${cellValue(row, c)}</td>`).join("")}
         <td class="px-4 py-3 text-right whitespace-nowrap">
+          ${printFn ? `<button data-print="${row.id}" title="${escapeHtml(printLabel)}" class="text-slate-400 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50 transition">${icon("printer", "w-4 h-4")}</button>` : ""}
           ${canEdit ? `<button data-edit="${row.id}" class="text-slate-400 hover:text-maroon-700 p-1.5 rounded-lg hover:bg-maroon-50 transition">${icon("edit", "w-4 h-4")}</button>` : ""}
           ${canDelete ? `<button data-del="${row.id}" class="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition">${icon("trash", "w-4 h-4")}</button>` : ""}
         </td>
       </tr>`).join("");
 
+    if (printFn) {
+      tbody.querySelectorAll("[data-print]").forEach(btn => {
+        btn.onclick = () => printFn(rows.find(r => r.id === btn.dataset.print));
+      });
+    }
     tbody.querySelectorAll("[data-edit]").forEach(btn => {
       btn.onclick = () => openForm(rows.find(r => r.id === btn.dataset.edit));
     });
