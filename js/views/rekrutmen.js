@@ -1,6 +1,6 @@
 import { db, COL, collection, onSnapshot, doc, updateDoc, storage, ref, uploadBytes, getDownloadURL } from "../firebase-config.js";
 import { fsAdd, openModal, closeModal, toast, escapeHtml, genId, fmtDateShort } from "../utils.js";
-import { callGeminiJson } from "../ai-gemini.js";
+import { callGeminiJSON } from "../ai-config.js";
 
 const KANBAN_STAGES = [
   { id: "Applied", label: "Pelamar Baru (Applied)" },
@@ -9,6 +9,9 @@ const KANBAN_STAGES = [
   { id: "Offered", label: "Offering / PKWT" },
   { id: "Rejected", label: "Ditolak (Rejected)" }
 ];
+
+// Konfigurasi AI Gemini kini terpusat di js/ai-config.js (lihat file itu untuk detail
+// perbaikan model & API key)
 
 export async function mount(container, { session }) {
   if (!window['pdfjs-dist/build/pdf']) {
@@ -146,8 +149,7 @@ export async function mount(container, { session }) {
         "kesimpulan_rekomendasi": "<kesimpulan_akhir>"
       }`;
 
-      // Konfigurasi API Key & model diambil terpusat dari Konfigurasi Sistem (lihat js/ai-gemini.js)
-      return await callGeminiJson(prompt);
+      return await callGeminiJSON(prompt);
   }
 
   container.querySelector("#ats-new").addEventListener("click", () => {
