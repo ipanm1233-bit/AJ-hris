@@ -1,13 +1,11 @@
 import { COL } from "../firebase-config.js";
 import { fsGetAll, openModal, closeModal, toast } from "../utils.js";
 import { renderCrudModule, emptyState } from "../components.js";
-import { callGeminiJSON } from "../ai-config.js";
+import { callGeminiJSON } from "../ai-config.js"; // PERBAIKAN IMPORT AI DI SINI
 
 function escapeHtml(unsafe) {
     return (unsafe || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
-
-// Konfigurasi AI Gemini kini terpusat di js/ai-config.js
 
 export async function mount(container) {
   container.innerHTML = `
@@ -68,129 +66,89 @@ export async function mount(container) {
       ],
       formFields: [
         { name: "judul", label: "Judul Prosedur (SOP)", type: "text", required: true, full: true },
-        { name: "departemen", label: "Departemen Terkait", type: "select", options: ["HRD", "FINANCE", "SALES", "WAREHOUSE", "LOGISTIC", "ALL"], required: true },
-        { name: "versi", label: "Versi / Revisi", type: "text", default: "1.0" },
-        { name: "status", label: "Status Dokumen", type: "select", options: ["Aktif", "Revisi", "Draft"], default: "Aktif" },
-        { name: "alur_proses", label: "Alur Proses (Ketik bebas langkah-langkahnya di sini)", type: "textarea", full: true },
-        { name: "file_url", label: "Link Lampiran Lengkap (opsional)", type: "text", full: true },
+        { name: "departemen", label: "Departemen Terkait", type: "select", options: ["HRD", "GA", "FINANCE", "MARKETING", "OPERASIONAL", "ALL"] },
+        { name: "versi", label: "Versi", type: "text", default: "v1.0" },
+        { name: "status", label: "Status", type: "select", options: ["Aktif", "Draft", "Revisi", "Usang"] },
+        { name: "file_url", label: "Link G-Drive Dokumen Resmi", type: "text", full: true },
+        { name: "alur_proses", label: "Catatan Alur Proses (Teks Mentah)", type: "textarea", full: true },
       ],
-      extraToolbarHtml: `<button id="btn-generate-flowchart" class="p-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition shadow-sm flex items-center gap-1.5">✨ AI Flowchart Generator</button>`
+      customActions: (row) => `<button type="button" data-ai-sop="${row.id}" class="text-emerald-700 hover:underline font-medium ml-3 text-xs flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L15 8L22 9L17 14L18.5 21L12 17.5L5.5 21L7 14L2 9L9 8L12 2Z"/></svg> Generate AI</button>`
     });
 
-    const btnGen = container.querySelector("#btn-generate-flowchart");
-    if (btnGen) {
-       btnGen.addEventListener("click", openAIFlowchartModal);
+    const tbody = panelSOP.querySelector("tbody");
+    if (tbody) {
+      tbody.addEventListener("click", async (e) => {
+        const btn = e.target.closest("[data-ai-sop]");
+        if (!btn) return;
+        const sops = await fsGetAll(COL.GIMMICK_SOP);
+        const targetSOP = sops.find(s => s.id === btn.dataset.aiSop);
+        if (!targetSOP || !targetSOP.alur_proses) {
+            toast("Harap isi Catatan Alur Proses (Teks Mentah) terlebih dahulu sebelum generate AI.", "warning");
+            return;
+        }
+
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner border-emerald-700"></span> <span class="text-slate-500">Membaca SOP dan menghubungkan ke Google...</span>`;
+
+        try {
+            const prompt = `Anda adalah ahli pembuat SOP perusahaan. Baca teks alur proses ini: "${targetSOP.alur_proses}". Ubah teks tersebut menjadi langkah-langkah prosedural yang terstruktur rapi. Kembalikan respon murni dalam format JSON array (TANPA backtick markdown \`\`\`json) dengan struktur: [{"step_no": 1, "tindakan": "Deskripsi", "pic": "Siapa yang melakukan"}]. Jangan ada teks lain selain JSON.`;
+            const aiData = await callGeminiJSON(prompt);
+
+            if (aiData && aiData.length) {
+                const htmlSteps = aiData.map(st => `
+                   <div class="mb-3 border-l-2 border-emerald-500 pl-3">
+                      <p class="text-xs font-bold text-emerald-800">Langkah ${st.step_no} (PIC: ${st.pic})</p>
+                      <p class="text-sm text-slate-700 mt-1">${st.tindakan}</p>
+                   </div>
+                `).join("");
+
+                openModal({
+                    title: "Draft AI Prosedur SOP",
+                    size: "md",
+                    bodyHtml: `
+                      <div class="mb-4 bg-emerald-50 border border-emerald-200 p-3 rounded-lg flex items-start gap-2">
+                         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-emerald-600 mt-0.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L15 8L22 9L17 14L18.5 21L12 17.5L5.5 21L7 14L2 9L9 8L12 2Z"/></svg>
+                         <p class="text-xs text-emerald-800">SOP berikut di-generate otomatis oleh AI berdasarkan catatan mentah Anda. Silakan salin (Copy) hasil ini dan pindahkan ke dokumen Microsoft Word / Google Docs Anda.</p>
+                      </div>
+                      <div class="bg-slate-50 border border-slate-200 p-4 rounded-xl max-h-96 overflow-y-auto" id="ai-sop-content">
+                         <h3 class="font-bold text-slate-800 text-lg mb-4 text-center underline uppercase">${targetSOP.judul}</h3>
+                         ${htmlSteps}
+                      </div>
+                    `,
+                    footerHtml: `<button class="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm" onclick="navigator.clipboard.writeText(document.getElementById('ai-sop-content').innerText); alert('Teks SOP disalin ke clipboard!');">Copy Teks</button>`
+                });
+            } else {
+                toast("AI gagal mengenali struktur SOP. Coba perjelas teks alur Anda.", "error");
+            }
+        } catch (err) {
+            toast(err.message, "error");
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+      });
     }
   }
 
-  async function openAIFlowchartModal() {
-     const allSOP = await fsGetAll(COL.GIMMICK_SOP);
-     const validSOP = allSOP.filter(s => s.alur_proses && s.alur_proses.length > 10);
-
-     if (validSOP.length === 0) {
-        toast("Belum ada SOP yang memiliki Alur Proses yang cukup panjang untuk digenerate.", "warning");
-        return;
-     }
-
-     const optSOP = validSOP.map(s => `<option value="${s.id}">${escapeHtml(s.judul)}</option>`).join("");
-
-     openModal({
-        title: "✨ AI Flowchart Generator",
-        size: "lg",
-        bodyHtml: `
-           <div class="bg-blue-50 p-4 border border-blue-200 rounded-xl mb-4 text-sm text-blue-800">
-              Pilih SOP di bawah ini. AI Gemini akan membaca teks <b>Alur Proses</b> yang Anda ketikkan sebelumnya dan menyulapnya menjadi <b>Diagram Visual (Flowchart)</b> yang rapi secara otomatis.
-           </div>
-           <label class="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">Pilih SOP yang ingin digambar:</label>
-           <select id="sop-selector" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-400 mb-4">
-              ${optSOP}
-           </select>
-           <div id="flowchart-result" class="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-xl min-h-[200px] flex flex-col items-center justify-center">
-              <span class="text-slate-400 text-sm">Flowchart akan muncul di sini...</span>
-           </div>
-        `,
-        footerHtml: `
-           <button id="btn-tutup-ai" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Tutup</button>
-           <button id="btn-proses-ai" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-bold shadow transition flex items-center gap-2">Generate Flowchart</button>
-        `,
-        onMount: (m) => {
-           m.querySelector("#btn-tutup-ai").onclick = closeModal;
-           m.querySelector("#btn-proses-ai").onclick = async () => {
-              const btn = m.querySelector("#btn-proses-ai");
-              const resultEl = m.querySelector("#flowchart-result");
-              const selectedId = m.querySelector("#sop-selector").value;
-              const targetSOP = validSOP.find(s => s.id === selectedId);
-
-              btn.disabled = true;
-              btn.textContent = "AI Sedang Berpikir...";
-              resultEl.innerHTML = `<span class="animate-pulse text-blue-600 font-medium">✨ Membaca teks SOP dan menghubungkan ke Google...</span>`;
-
-              try {
-                  const prompt = `Anda adalah ahli pembuat SOP perusahaan. Baca teks alur proses ini: "${targetSOP.alur_proses}".
-                  Ubah teks tersebut menjadi langkah-langkah prosedural yang terstruktur rapi.
-                  Kembalikan respon murni dalam format JSON array (TANPA backtick markdown \`\`\`json) seperti contoh ini:
-                  [
-                    { "step": 1, "actor": "Nama Jabatan/Pelaku", "action": "Judul Tindakan Singkat", "detail": "Penjelasan detail" }
-                  ]`;
-
-                  const stepsArray = await callGeminiJSON(prompt);
-
-                  let flowchartHtml = `<h2 class="font-bold text-lg text-slate-800 mb-6 text-center border-b pb-2 w-full uppercase">${escapeHtml(targetSOP.judul)}</h2><div class="flex flex-col items-center w-full max-w-lg mx-auto">`;
-                  
-                  stepsArray.forEach((s, index) => {
-                      flowchartHtml += `
-                         <div class="w-full bg-white border-2 border-blue-500 rounded-xl p-4 shadow-sm text-center relative">
-                            <span class="absolute -top-3 -left-3 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold border-2 border-white shadow">${s.step}</span>
-                            <p class="text-xs font-bold text-blue-600 uppercase tracking-widest mb-1">${escapeHtml(s.actor)}</p>
-                            <p class="font-bold text-slate-800 text-sm mb-2">${escapeHtml(s.action)}</p>
-                            <p class="text-xs text-slate-500 leading-relaxed">${escapeHtml(s.detail)}</p>
-                         </div>
-                      `;
-                      if (index < stepsArray.length - 1) {
-                         flowchartHtml += `
-                            <div class="flex flex-col items-center my-1">
-                               <div class="w-1 h-6 bg-blue-300"></div>
-                               <div class="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[8px] border-transparent border-t-blue-500"></div>
-                            </div>
-                         `;
-                      }
-                  });
-
-                  flowchartHtml += `</div>`;
-                  resultEl.innerHTML = flowchartHtml;
-                  resultEl.classList.replace("bg-slate-50", "bg-white");
-
-              } catch(e) {
-                  console.error("AI Error Detail:", e);
-                  resultEl.innerHTML = `
-                    <div class="bg-red-50 border border-red-200 p-4 rounded-xl text-left w-full">
-                       <p class="text-red-800 font-bold mb-1">🚨 Gagal Memproses AI</p>
-                       <p class="text-xs text-red-700 font-mono mb-3 bg-white p-2 rounded border border-red-100">${escapeHtml(e.message)}</p>
-                    </div>
-                  `;
-              }
-
-              btn.disabled = false;
-              btn.textContent = "Generate Ulang";
-           };
-        }
-     });
-  }
-
-  await loadSOP(); loaded.sop = true;
-
   container.querySelectorAll(".gs-tab").forEach(btn => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", () => {
       const tab = btn.dataset.gtab;
       panelGimmick.classList.toggle("hidden", tab !== "gimmick");
       panelSOP.classList.toggle("hidden", tab !== "sop");
       container.querySelectorAll(".gs-tab").forEach(b => {
-        b.classList.toggle("border-maroon-700", b === btn); b.classList.toggle("text-maroon-700", b === btn);
-        b.classList.toggle("border-transparent", b !== btn); b.classList.toggle("text-slate-500", b !== btn);
+        b.classList.toggle("border-maroon-700", b === btn);
+        b.classList.toggle("text-maroon-700", b === btn);
+        b.classList.toggle("border-transparent", b !== btn);
+        b.classList.toggle("text-slate-500", b !== btn);
       });
-      if (tab === "gimmick" && !loaded.gimmick) { loaded.gimmick = true; await loadGimmick(); }
+      if (tab === "gimmick" && !loaded.gimmick) { loadGimmick(); loaded.gimmick = true; }
+      if (tab === "sop" && !loaded.sop) { loadSOP(); loaded.sop = true; }
     });
   });
+
+  // Load default tab
+  loadSOP(); loaded.sop = true;
 
   return { unmount() {} };
 }
