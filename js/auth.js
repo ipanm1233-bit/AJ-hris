@@ -35,20 +35,20 @@ export const MENU_CONFIG = [
   // oleh computeVisibleMenus() -- sebelumnya array ini didefinisikan tapi TIDAK PERNAH
   // benar-benar dipakai untuk grup 'hrd', sehingga SUPERADMIN/DIREKTUR/atasan yang
   // seharusnya berhak tidak melihat menu ini. Sudah diperbaiki di computeVisibleMenus().
-  { route: "kalender-hr", label: "Kalender HR", icon: "calendar", group: "hrd", roles: ["SUPERADMIN", "DIREKTUR"] },
-  { route: "penilaian-kontrak", label: "Penilaian & Kontrak", icon: "star", group: "hrd", roles: ["SUPERADMIN", "DIREKTUR", "MANAGER", "SPV", "KOORDINATOR"] },
-  { route: "rekrutmen", label: "Rekrutmen (ATS)", icon: "user-group", group: "hrd", roles: ["SUPERADMIN"] },
-  { route: "siklus-karyawan", label: "Siklus Karyawan", icon: "refresh", group: "hrd", roles: ["SUPERADMIN"] },
-  { route: "manajemen-cuti", label: "Jatah Cuti Karyawan", icon: "calendar", group: "hrd", roles: ["SUPERADMIN", "DIREKTUR"] },
-  { route: "uang-makan", label: "Uang Makan Expedisi", icon: "currency-dollar", group: "hrd", roles: ["SUPERADMIN", "FINANCE", "ACCOUNTING"] },
-  { route: "lembur-kasbon", label: "Lembur & Kasbon", icon: "cash", group: "hrd", roles: ["SUPERADMIN", "FINANCE", "ACCOUNTING"] },
-  { route: "pemanggilan", label: "Kedisiplinan & SP", icon: "shield-exclamation", group: "hrd", roles: ["SUPERADMIN", "DIREKTUR", "MANAGER"] },
-  { route: "inventory", label: "Manajemen Inventory & ATK", icon: "archive", group: "hrd", roles: ["SUPERADMIN", "ADMIN"] },
-  { route: "gimmick-sop", label: "Manajemen Gimmick & SOP", icon: "gift", group: "hrd", roles: ["SUPERADMIN", "MARKETING", "DIREKTUR"] },
-  { route: "kendaraan", label: "Manajemen Kendaraan", icon: "truck", group: "hrd", roles: ["SUPERADMIN", "GA"] },
-  { route: "manajemen-data", label: "Manajemen Data", icon: "database", group: "hrd", roles: ["SUPERADMIN", "DIREKTUR", "FINANCE"] },
-  { route: "pengaturan", label: "Akses & Pengguna", icon: "shield-check", group: "hrd", roles: ["SUPERADMIN", "DIREKTUR"] },
-  { route: "konfigurasi", label: "Konfigurasi Sistem", icon: "cog", group: "hrd", roles: ["SUPERADMIN", "DIREKTUR"] },
+  { id: "kalender-hr", route: "kalender-hr", label: "Kalender HR", icon: "calendar", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
+  { id: "penilaian-kontrak", route: "penilaian-kontrak", label: "Penilaian & Kontrak", icon: "star", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR", "MANAGER", "SPV", "KOORDINATOR"] },
+  { id: "rekrutmen", route: "rekrutmen", label: "Rekrutmen (ATS)", icon: "user-group", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
+  { id: "siklus-karyawan", route: "siklus-karyawan", label: "Siklus Karyawan", icon: "refresh", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
+  { id: "manajemen-cuti", route: "manajemen-cuti", label: "Jatah Cuti Karyawan", icon: "calendar", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
+  { id: "uang-makan", route: "uang-makan", label: "Uang Makan Expedisi", icon: "currency-dollar", group: "hrd", roles: ["HRD", "SUPERADMIN", "FINANCE", "ACCOUNTING"] },
+  { id: "lembur-kasbon", route: "lembur-kasbon", label: "Lembur & Kasbon", icon: "cash", group: "hrd", roles: ["HRD", "SUPERADMIN", "FINANCE", "ACCOUNTING"] },
+  { id: "pemanggilan", route: "pemanggilan", label: "Kedisiplinan & SP", icon: "shield-exclamation", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR", "MANAGER"] },
+  { id: "inventory", route: "inventory", label: "Manajemen Inventory & ATK", icon: "archive", group: "hrd", roles: ["HRD", "SUPERADMIN", "ADMIN"] },
+  { id: "gimmick-sop", route: "gimmick-sop", label: "Manajemen Gimmick & SOP", icon: "gift", group: "hrd", roles: ["HRD", "SUPERADMIN", "MARKETING", "DIREKTUR"] },
+  { id: "kendaraan", route: "kendaraan", label: "Manajemen Kendaraan", icon: "truck", group: "hrd", roles: ["HRD", "SUPERADMIN", "GA"] },
+  { id: "manajemen-data", route: "manajemen-data", label: "Manajemen Data", icon: "database", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR", "FINANCE"] },
+  { id: "pengaturan", route: "pengaturan", label: "Akses & Pengguna", icon: "shield-check", group: "hrd", roles: ["SUPERADMIN", "DIREKTUR", "HRD"] },
+  { id: "konfigurasi", route: "konfigurasi", label: "Konfigurasi Sistem", icon: "cog", group: "hrd", roles: ["SUPERADMIN", "DIREKTUR", "HRD"] },
 
   // ===================== MODUL MANAJEMEN =====================
   // CATATAN: value `route` HARUS SAMA PERSIS dengan nama file di /views/*.html & /js/views/*.js
