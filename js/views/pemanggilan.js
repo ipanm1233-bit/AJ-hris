@@ -1,115 +1,120 @@
 import { COL } from "../firebase-config.js";
+import { fsGetAll, fmtDateShort, escapeHtml } from "../utils.js";
 import { renderCrudModule } from "../components.js";
+import { isoDocHeaderTable } from "../branding.js";
 
-export async function mount(container, { session }) {
-  container.innerHTML = `
-    <div class="space-y-6">
-      <div class="flex justify-between items-end flex-wrap gap-4">
-        <div>
-          <h1 class="text-2xl font-bold text-slate-800">Kedisiplinan & Analisa SP</h1>
-          <p class="text-sm text-slate-500 mt-1">Penegakan kedisiplinan dan Analisa kesesuaian sanksi berdasarkan Peraturan Perusahaan (PP).</p>
-        </div>
-        <button id="btn-ai-analyze" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition shadow flex items-center gap-2">
-          ✨ Analisa Kasus Pelanggaran (AI)
-        </button>
-      </div>
-      <div class="flex items-center gap-2 border-b border-slate-100">
-        <button data-ptab="sp" class="pm-tab px-4 py-2.5 text-sm font-medium border-b-2 border-maroon-700 text-maroon-700">SP & Konseling</button>
-        <button data-ptab="panggil" class="pm-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">Pemanggilan</button>
-      </div>
-      <div id="pm-panel-sp"></div>
-      <div id="pm-panel-panggil" class="hidden"></div>
-      
-      <!-- AI ANALYZER PANEL (Hidden by Default) -->
-      <div id="ai-panel" class="hidden bg-blue-50 border border-blue-200 rounded-2xl p-6">
-         <h3 class="font-bold text-blue-900 mb-2">✨ AI Policy Analyzer (Beta)</h3>
-         <p class="text-sm text-blue-700 mb-4">Ketik kronologi pelanggaran karyawan, sistem akan mengecek kesesuaian dengan Pasal 43 & 53 PP Andela Jaya serta UU Ketenagakerjaan.</p>
-         <textarea id="ai-kronologi" rows="4" class="w-full p-3 text-sm border border-blue-200 rounded-lg outline-none mb-3" placeholder="Contoh: Karyawan A ketahuan meminum minuman keras di area gudang pada jam kerja..."></textarea>
-         <button id="btn-run-ai" class="bg-blue-700 text-white font-medium px-5 py-2 rounded-lg hover:bg-blue-800">Mulai Analisa</button>
-         <div id="ai-result" class="mt-4 hidden p-4 bg-white rounded-lg border border-blue-100 text-sm text-slate-700"></div>
-      </div>
-    </div>
-  `;
+export async function mount(container) {
+  // Ambil Dropdown Karyawan Aktif
+  const karyawan = await fsGetAll(COL.MASTER_KARYAWAN);
+  const activeEmpNames = karyawan.filter(k => (k.aktif_tdk_aktif||"AKTIF").toUpperCase() === "AKTIF").map(k => k.nama_karyawan).sort();
 
-  const panelSp = container.querySelector("#pm-panel-sp");
-  const panelPanggil = container.querySelector("#pm-panel-panggil");
-  const aiPanel = container.querySelector("#ai-panel");
+  const panels = {
+    sp: container.querySelector("#pm-panel-sp"),
+    panggil: container.querySelector("#pm-panel-panggil"),
+  };
   const loaded = {};
 
-  container.querySelector("#btn-ai-analyze").addEventListener("click", () => {
-      aiPanel.classList.toggle("hidden");
-  });
+  function printSuratPanggilan(data) {
+    const printWindow = window.open('', '_blank');
+    let html = `
+    <html><head><title>Surat Panggilan - ${escapeHtml(data.nama_karyawan)}</title>
+      <style>body { font-family: 'Times New Roman', serif; font-size: 14px; padding: 40px; line-height: 1.5; color: #000; }
+      .it { width: 100%; margin-top: 20px; } .it td { padding: 4px 8px; vertical-align: top; }</style>
+    </head><body onload="setTimeout(() => { window.print(); window.close(); }, 800);">
+      ${isoDocHeaderTable({ judul: "SURAT PANGGILAN KARYAWAN", noDok: "HR-PGL", terbitRevisi: "1/1", hal: "1 dari 1" })}
+      <br/><p>Kepada Yth,<br/>Sdr/i <strong>${escapeHtml(data.nama_karyawan)}</strong><br/>Di Tempat</p>
+      <p>Dengan hormat,<br/>Bersama surat ini, kami memanggil Saudara/i untuk hadir menemui bagian HRD guna membahas perihal: <strong>${escapeHtml(data.perihal)}</strong>.</p>
+      <table class="it">
+        <tr><td width="20%">Hari/Tanggal</td><td width="2%">:</td><td><strong>${fmtDateShort(data.tanggal_panggilan)}</strong></td></tr>
+        <tr><td>Waktu</td><td>:</td><td><strong>${data.waktu || "09.00 WIB"}</strong></td></tr>
+        <tr><td>Tempat</td><td>:</td><td><strong>Ruang HRD CV Andela Jaya</strong></td></tr>
+      </table>
+      <p>Demikian surat panggilan ini disampaikan agar dapat dihadiri tepat waktu.</p>
+      <table style="width:100%; text-align:center; margin-top:40px;">
+        <tr><td width="50%"></td><td width="50%">HRD Manager,</td></tr><tr><td height="80"></td><td></td></tr>
+        <tr><td></td><td>( ................................. )</td></tr>
+      </table>
+    </body></html>`;
+    printWindow.document.write(html); printWindow.document.close();
+  }
 
-  container.querySelector("#btn-run-ai").addEventListener("click", () => {
-      const txt = container.querySelector("#ai-kronologi").value.toLowerCase();
-      const res = container.querySelector("#ai-result");
-      res.classList.remove("hidden");
-      res.innerHTML = `<span class="animate-pulse">Menghubungkan ke Knowledge Base Peraturan Perusahaan...</span>`;
-      
-      // Simulasi AI Logic berdasarkan teks input dan[cite: 5]
-      setTimeout(() => {
-          if (txt.includes("minum") || txt.includes("mabuk") || txt.includes("judi") || txt.includes("curi")) {
-              res.innerHTML = `<b>🚨 Kesimpulan Analisa: PELANGGARAN BERAT</b><br/>Berdasarkan <b>Pasal 53 Peraturan Perusahaan CV Andela Jaya</b>, tindakan ini termasuk Kesalahan Berat (Mabuk/Judi/Mencuri).<br/><br/><b>Rekomendasi Tindakan:</b><br/>Perusahaan dapat melakukan Pemutusan Hubungan Kerja (PHK) seketika tanpa Pesangon. Karyawan hanya berhak mendapatkan Uang Pisah (Pasal 62) dan Uang Penggantian Hak (Pasal 60).<br/><br/><i>Syarat: Bukti harus didukung pengakuan atau laporan pihak berwenang dengan min. 2 saksi.</i>`;
-          } else if (txt.includes("mangkir") || txt.includes("absen")) {
-              res.innerHTML = `<b>⚠️ Kesimpulan Analisa: MANGKIR / INDISIPLINER</b><br/>Berdasarkan <b>Pasal 52 PP Andela Jaya</b>, jika karyawan mangkir 5 hari berturut-turut tanpa ijin resmi dan telah dipanggil 2x secara patut, maka dikualifikasikan Mengundurkan Diri.<br/><br/><b>Rekomendasi Tindakan:</b><br/>1. Terbitkan Surat Pemanggilan Pertama.<br/>2. Jika masuk 1-2 hari, berikan SP.<br/>3. Hak jika ter-PHK: Uang Pisah (Pasal 61).`;
-          } else {
-              res.innerHTML = `<b>📝 Kesimpulan Analisa: PELANGGARAN TATA TERTIB UMUM</b><br/>Berdasarkan <b>Pasal 43 PP Andela Jaya</b>, tindakan indisipliner umum diselesaikan melalui pemberian Surat Peringatan (SP) berjenjang.<br/><br/><b>Rekomendasi Tindakan:</b><br/>Terbitkan Surat Peringatan 1 (Berlaku 6 bulan). Lakukan sesi Konseling (Bimbingan) oleh Atasan.`;
-          }
-      }, 1500);
-  });
+  function printSuratPeringatan(data) {
+    const printWindow = window.open('', '_blank');
+    let html = `
+    <html><head><title>Surat Peringatan - ${escapeHtml(data.nama_karyawan)}</title>
+      <style>body { font-family: 'Times New Roman', serif; font-size: 14px; padding: 40px; line-height: 1.5; color: #000; }
+      table { width: 100%; }</style>
+    </head><body onload="setTimeout(() => { window.print(); window.close(); }, 800);">
+      ${isoDocHeaderTable({ judul: `SURAT PERINGATAN (SP ${data.tingkat_sp.replace(/[^0-9]/g, '')})`, noDok: "HR-SP", terbitRevisi: "1/1", hal: "1 dari 1" })}
+      <br/><h3 style="text-align:center; text-decoration:underline;">SURAT PERINGATAN</h3>
+      <p>Diberikan kepada:</p>
+      <table><tr><td width="20%">Nama</td><td width="2%">:</td><td><strong>${escapeHtml(data.nama_karyawan)}</strong></td></tr></table>
+      <p>Surat Peringatan ini dikeluarkan sehubungan dengan tindakan pelanggaran tata tertib perusahaan yang Saudara/i lakukan, yaitu:</p>
+      <div style="padding: 10px; border: 1px solid #000; min-height: 60px;">${escapeHtml(data.pelanggaran || data.keterangan)}</div>
+      <p>Berlaku sejak: <strong>${fmtDateShort(data.tanggal)}</strong> s/d <strong>${fmtDateShort(data.masa_berlaku)}</strong>.</p>
+      <p>Diharapkan Saudara/i dapat memperbaiki kinerja dan tidak mengulangi pelanggaran tersebut.</p>
+      <table style="width:100%; text-align:center; margin-top:40px;">
+        <tr><td width="50%">Karyawan Ybs,</td><td width="50%">HRD Manager,</td></tr><tr><td height="80"></td><td></td></tr>
+        <tr><td>( ${escapeHtml(data.nama_karyawan)} )</td><td>( ................................. )</td></tr>
+      </table>
+    </body></html>`;
+    printWindow.document.write(html); printWindow.document.close();
+  }
 
-  async function loadSp() {
-    await renderCrudModule(panelSp, {
+  async function loadSP() {
+    await renderCrudModule(panels.sp, {
       title: "Log SP & Konseling",
-      collectionName: COL.LOG_SP_KONSELING, idPrefix: "SP",
-      searchFields: ["nama_karyawan", "jenis", "alasan"],
+      collectionName: COL.LOG_SP_KONSELING,
+      idPrefix: "SP", printFn: printSuratPeringatan, printLabel: "Cetak Surat SP (PDF)",
+      searchFields: ["nama_karyawan", "pelanggaran"],
       columns: [
         { key: "tanggal", label: "Tanggal", type: "date" },
-        { key: "nama_karyawan", label: "Karyawan" },
-        { key: "jenis", label: "Jenis", type: "badge", badgeTone: (v) => (v || "").toLowerCase().includes("konseling") ? "blue" : "red" },
-        { key: "alasan", label: "Alasan" }
+        { key: "nama_karyawan", label: "Nama Karyawan" },
+        { key: "tingkat_sp", label: "Tingkat", type: "badge" },
+        { key: "pelanggaran", label: "Pelanggaran" }
       ],
       formFields: [
-        { name: "nama_karyawan", label: "Nama Karyawan", type: "text", required: true, full: true },
-        { name: "tanggal", label: "Tanggal", type: "date", required: true },
-        { name: "jenis", label: "Jenis", type: "select", options: ["SP 1", "SP 2", "SP 3 (Terakhir)", "Konseling"], required: true },
-        { name: "alasan", label: "Alasan Pelanggaran", type: "textarea", full: true }
+        { name: "tanggal", label: "Tanggal Dikeluarkan", type: "date", required: true },
+        { name: "nama_karyawan", label: "Nama Karyawan", type: "select", options: activeEmpNames, required: true },
+        { name: "tingkat_sp", label: "Tingkat Peringatan", type: "select", options: ["Teguran Lisan", "SP 1", "SP 2", "SP 3", "Konseling"], required: true },
+        { name: "pelanggaran", label: "Deskripsi Pelanggaran", type: "textarea", full: true, required: true },
+        { name: "masa_berlaku", label: "Masa Berlaku Sanksi Hingga", type: "date" },
       ]
     });
   }
 
   async function loadPanggil() {
-    await renderCrudModule(panelPanggil, {
-      title: "Data Pemanggilan",
-      collectionName: "data_pemanggilan", idPrefix: "PGL",
-      searchFields: ["nama_karyawan", "jenis_pemanggilan"],
+    await renderCrudModule(panels.panggil, {
+      title: "Data Pemanggilan Karyawan",
+      collectionName: COL.DATA_PEMANGGILAN,
+      idPrefix: "PGL", printFn: printSuratPanggilan, printLabel: "Cetak Surat Panggilan (PDF)",
+      searchFields: ["nama_karyawan", "perihal"],
       columns: [
-        { key: "tanggal", label: "Tanggal", type: "date" },
-        { key: "nama_karyawan", label: "Karyawan" },
-        { key: "jenis_pemanggilan", label: "Jenis Panggilan" },
-        { key: "status", label: "Status", type: "badge" },
+        { key: "tanggal_panggilan", label: "Tgl Panggilan", type: "date" },
+        { key: "nama_karyawan", label: "Nama Karyawan" },
+        { key: "perihal", label: "Perihal" },
+        { key: "status", label: "Kehadiran", type: "badge" },
       ],
       formFields: [
-        { name: "nama_karyawan", label: "Nama Karyawan", type: "text", required: true, full: true },
-        { name: "tanggal", label: "Tanggal Panggilan", type: "date", required: true },
-        { name: "jenis_pemanggilan", label: "Jenis Pemanggilan", type: "text", required: true },
-        { name: "status", label: "Status", type: "select", options: ["Terjadwal", "Selesai"], default: "Terjadwal" }
+        { name: "nama_karyawan", label: "Nama Karyawan", type: "select", options: activeEmpNames, required: true },
+        { name: "tanggal_panggilan", label: "Tanggal Pertemuan", type: "date", required: true },
+        { name: "waktu", label: "Jam (Cth: 09:00)", type: "text", default: "09:00" },
+        { name: "perihal", label: "Perihal Pemanggilan", type: "text", full: true, required: true },
+        { name: "status", label: "Status Kehadiran", type: "select", options: ["Menunggu", "Hadir", "Mangkir"], default: "Menunggu" }
       ]
     });
   }
 
-  await loadSp(); loaded.sp = true;
-
+  await loadSP(); loaded.sp = true;
   container.querySelectorAll(".pm-tab").forEach(btn => {
     btn.addEventListener("click", async () => {
       const tab = btn.dataset.ptab;
-      panelSp.classList.toggle("hidden", tab !== "sp");
-      panelPanggil.classList.toggle("hidden", tab !== "panggil");
+      Object.keys(panels).forEach(k => panels[k].classList.toggle("hidden", k !== tab));
       container.querySelectorAll(".pm-tab").forEach(b => {
         b.classList.toggle("border-maroon-700", b === btn); b.classList.toggle("text-maroon-700", b === btn);
         b.classList.toggle("border-transparent", b !== btn); b.classList.toggle("text-slate-500", b !== btn);
       });
-      if (tab === "panggil" && !loaded.panggil) { loaded.panggil = true; await loadPanggil(); }
+      if (!loaded[tab]) { loaded[tab] = true; await loadPanggil(); }
     });
   });
 
