@@ -1,10 +1,9 @@
 import { db, COL, doc, getDoc, setDoc, collection, getDocs, writeBatch, query, where } from "../firebase-config.js";
-import { toast, genId, escapeHtml } from "../utils.js";
+import { toast, escapeHtml } from "../utils.js";
+// DIBERSIHKAN: Tidak ada import ai-gemini.js atau ai-config.js di sini
 
 export async function mount(container, { session }) {
   const tBody = container.querySelector("#cfg-jadwal-tbody");
-  
-  // Referensi Dokumen Konfigurasi Global
   const docRef = doc(db, COL.APP_SETTINGS, "main");
   let cfg = { jadwal: [], tarif: {}, dashboard_widgets: {} };
 
@@ -12,7 +11,6 @@ export async function mount(container, { session }) {
     try {
       const snap = await getDoc(docRef);
       if (snap.exists()) cfg = snap.data();
-
       const t = cfg.tarif || {};
       container.querySelector("#cfg-um-driver").value = t.um_driver || "";
       container.querySelector("#cfg-um-helper").value = t.um_helper || "";
@@ -22,13 +20,11 @@ export async function mount(container, { session }) {
       container.querySelector("#cfg-denda-awal").value = t.denda_awal || "";
       container.querySelector("#cfg-denda-prog").value = t.denda_prog || "";
       container.querySelector("#cfg-denda-alpa").value = t.denda_alpa || "";
-
-      // Widget dashboard karyawan: default aktif (checked) kecuali eksplisit di-set false
+      
       const widgetCfg = cfg.dashboard_widgets || {};
       container.querySelectorAll(".cfg-widget-toggle").forEach(chk => {
         chk.checked = widgetCfg[chk.dataset.widget] !== false;
       });
-
       renderJadwal();
     } catch(e) { console.error(e); }
   }
@@ -44,7 +40,6 @@ export async function mount(container, { session }) {
         <td class="py-2 text-center"><button type="button" data-del="${i}" class="text-red-500 hover:text-red-700">✖</button></td>
       </tr>
     `).join("");
-
     tBody.querySelectorAll("button[data-del]").forEach(btn => {
       btn.onclick = () => { cfg.jadwal.splice(btn.dataset.del, 1); renderJadwal(); };
     });
@@ -58,7 +53,6 @@ export async function mount(container, { session }) {
   container.querySelector("#btn-save-cfg").onclick = async () => {
     const btn = container.querySelector("#btn-save-cfg");
     btn.disabled = true; btn.textContent = "Menyimpan...";
-
     const jadwalBaru = [];
     tBody.querySelectorAll("tr").forEach(tr => {
        jadwalBaru.push({
@@ -68,7 +62,6 @@ export async function mount(container, { session }) {
          pulang: tr.querySelector(".j-pulang").value
        });
     });
-
     const tarifBaru = {
        um_driver: container.querySelector("#cfg-um-driver").value,
        um_helper: container.querySelector("#cfg-um-helper").value,
@@ -79,24 +72,20 @@ export async function mount(container, { session }) {
        denda_prog: container.querySelector("#cfg-denda-prog").value,
        denda_alpa: container.querySelector("#cfg-denda-alpa").value,
     };
-
     try {
       await setDoc(docRef, { jadwal: jadwalBaru, tarif: tarifBaru }, { merge: true });
       toast("Konfigurasi Sistem Berhasil Disimpan!", "success");
     } catch(e) { toast("Gagal menyimpan: " + e.message, "error"); }
-    btn.disabled = false; btn.textContent = "💾 Simpan Semua Konfigurasi";
+    btn.disabled = false; btn.textContent = "Simpan Semua Konfigurasi";
   };
 
-  // SIMPAN PENGATURAN WIDGET DASHBOARD KARYAWAN
   container.querySelector("#btn-save-widget-cfg").onclick = async () => {
      const btn = container.querySelector("#btn-save-widget-cfg");
      btn.disabled = true; btn.textContent = "Menyimpan...";
-
      const widgetCfg = {};
      container.querySelectorAll(".cfg-widget-toggle").forEach(chk => {
         widgetCfg[chk.dataset.widget] = chk.checked;
      });
-
      try {
         await setDoc(docRef, { dashboard_widgets: widgetCfg }, { merge: true });
         cfg.dashboard_widgets = widgetCfg;
@@ -107,31 +96,26 @@ export async function mount(container, { session }) {
      btn.disabled = false; btn.textContent = "Simpan Pengaturan Widget";
   };
 
-  // EKSEKUTOR CUTI BERSAMA
   container.querySelector("#btn-eksekusi-cuti").onclick = async () => {
      const tgl = container.querySelector("#mass-cuti-tgl").value;
      const ket = container.querySelector("#mass-cuti-ket").value.trim();
      const jenis = container.querySelector("#mass-cuti-jenis").value;
-
      if(!tgl || !ket) return toast("Tanggal dan Keterangan wajib diisi!", "warning");
      
      if(!confirm(`PERINGATAN!\nAnda akan memotong 1 Saldo Cuti ${jenis} untuk SELURUH karyawan AKTIF pada tanggal ${tgl}.\nLanjutkan?`)) return;
-
      const btn = container.querySelector("#btn-eksekusi-cuti");
      btn.disabled = true; btn.textContent = "SEDANG MENGEKSEKUSI...";
-
      try {
         const qK = query(collection(db, COL.MASTER_KARYAWAN), where("aktif_tdk_aktif", "in", ["AKTIF", "Aktif", "aktif"]));
         const snapK = await getDocs(qK);
         
         if (snapK.empty) throw new Error("Tidak ada karyawan aktif ditemukan.");
-
-        // Gunakan WriteBatch agar proses massal aman dan tidak putus di tengah jalan
+        
         const chunkedDocs = [];
         let tempArr = [];
         snapK.docs.forEach(doc => {
            tempArr.push(doc);
-           if(tempArr.length === 450) { chunkedDocs.push(tempArr); tempArr = []; } // Max batch firestore is 500
+           if(tempArr.length === 450) { chunkedDocs.push(tempArr); tempArr = []; } 
         });
         if(tempArr.length > 0) chunkedDocs.push(tempArr);
 
@@ -139,7 +123,6 @@ export async function mount(container, { session }) {
            const batch = writeBatch(db);
            chunk.forEach(kDoc => {
                const kData = kDoc.data();
-               // 1. Catat ke Log Cuti
                const cutiRef = doc(collection(db, COL.MASTER_CUTI));
                batch.set(cutiRef, {
                    tanggal: tgl,
@@ -155,13 +138,12 @@ export async function mount(container, { session }) {
            });
            await batch.commit();
         }
-
         toast(`Sukses! Saldo Cuti ${jenis} untuk ${snapK.docs.length} karyawan telah dipotong.`, "success");
         container.querySelector("#mass-cuti-ket").value = "";
      } catch (e) {
         toast("Gagal eksekusi: " + e.message, "error");
      }
-     btn.disabled = false; btn.textContent = "⚡ EKSEKUSI MASSAL";
+     btn.disabled = false; btn.textContent = "EKSEKUSI MASSAL";
   };
 
   await loadConfig();
