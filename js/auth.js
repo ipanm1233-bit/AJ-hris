@@ -23,18 +23,13 @@ const SESSION_KEY = "andela_hris_session";
  * roles: daftar role tambahan yang berhak (di luar aturan group bawaan)
  * ------------------------------------------------------------------- */
 export const MENU_CONFIG = [
-  // ===================== MENU UTAMA (semua karyawan login) =====================
-  { route: "dashboard", label: "Home & Dashboard", icon: "home", group: "all", roles: [] },
-  { route: "pengajuan", label: "Buat Pengajuan", icon: "document-add", group: "all", roles: [] },
-  { route: "klaim-bensin", label: "Klaim Bensin", icon: "truck", group: "all", roles: ["SALES", "DRIVER", "HELPER", "MANAGER", "DIREKTUR", "SPV", "KOORDINATOR"] },
-  { route: "riwayat", label: "Riwayat Pengajuan", icon: "clock", group: "all", roles: [] },
+  // ===================== MENU UTAMA (semua role yang login) =====================
+  { id: "dashboard", route: "dashboard", label: "Home & Dashboard", icon: "home", group: "all", roles: [] },
+  { id: "pengajuan", route: "pengajuan", label: "Buat Pengajuan", icon: "document-add", group: "all", roles: [] },
+  { id: "klaim-bensin", route: "klaim-bensin", label: "Klaim Bensin", icon: "truck", group: "all", roles: ["SALES", "DRIVER", "HELPER", "MANAGER", "DIREKTUR", "SPV", "KOORDINATOR", "SUPERADMIN"] },
+  { id: "riwayat", route: "riwayat", label: "Riwayat Pengajuan", icon: "clock", group: "all", roles: [] },
 
   // ===================== MODUL HRD =====================
-  // CATATAN RBAC: base group "hrd" tampil untuk role HRD. Array `roles` di bawah
-  // adalah TAMBAHAN eksplisit (SUPERADMIN/DIREKTUR/dll) yang juga dicek satu-per-satu
-  // oleh computeVisibleMenus() -- sebelumnya array ini didefinisikan tapi TIDAK PERNAH
-  // benar-benar dipakai untuk grup 'hrd', sehingga SUPERADMIN/DIREKTUR/atasan yang
-  // seharusnya berhak tidak melihat menu ini. Sudah diperbaiki di computeVisibleMenus().
   { id: "kalender-hr", route: "kalender-hr", label: "Kalender HR", icon: "calendar", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
   { id: "penilaian-kontrak", route: "penilaian-kontrak", label: "Penilaian & Kontrak", icon: "star", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR", "MANAGER", "SPV", "KOORDINATOR"] },
   { id: "rekrutmen", route: "rekrutmen", label: "Rekrutmen (ATS)", icon: "user-group", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
@@ -52,12 +47,11 @@ export const MENU_CONFIG = [
 
   // ===================== MODUL MANAJEMEN =====================
   // CATATAN: value `route` HARUS SAMA PERSIS dengan nama file di /views/*.html & /js/views/*.js
-  // agar router (app.js) tidak 404. Sebelumnya beberapa route salah ketik dan menyebabkan menu
-  // "hilang" (link muncul tapi klik-nya error 404 karena file view sebenarnya bernama beda).
-  { route: "approval", label: "Antrean Persetujuan", icon: "check-circle", group: "manajemen", roles: ["DIREKTUR", "ACCOUNTING", "KOORDINATOR"] },
-  { route: "broadcast", label: "Broadcast Memo", icon: "speakerphone", group: "manajemen", roles: ["SUPERADMIN", "DIREKTUR"] },
-  { route: "absensi", label: "Manajemen Absensi", icon: "calendar", group: "manajemen", roles: ["SUPERADMIN", "DIREKTUR"] },
-  { route: "cuti", label: "Manajemen Cuti", icon: "calendar", group: "manajemen", roles: ["SUPERADMIN", "DIREKTUR", "KOORDINATOR"] }
+  // agar router (app.js) tidak 404.
+  { id: "approval", route: "approval", label: "Antrean Persetujuan", icon: "check-circle", group: "manajemen", roles: ["MANAGER", "HRD", "SUPERADMIN", "DIREKTUR", "FINANCE", "ACCOUNTING", "SPV", "KOORDINATOR"] },
+  { id: "broadcast", route: "broadcast", label: "Broadcast Memo", icon: "speakerphone", group: "manajemen", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
+  { id: "absensi", route: "absensi", label: "Manajemen Absensi", icon: "calendar", group: "manajemen", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
+  { id: "cuti", route: "cuti", label: "Manajemen Cuti", icon: "calendar", group: "manajemen", roles: ["HRD", "SUPERADMIN", "DIREKTUR", "MANAGER", "SPV", "KOORDINATOR"] }
 ];
 
 const MANAJEMEN_ROLES = ["SPV", "HRD", "GM", "FINANCE", "MANAGER", "BRANCH MANAGER"];
@@ -210,30 +204,23 @@ export async function computeVisibleMenus(session) {
   const userOverride = overrides[session.username];
 
   // Jika HRD sudah menetapkan daftar menu spesifik untuk user ini -> pakai itu (whitelist absolut)
-  // PERBAIKAN: sebelumnya dibandingkan dengan `m.id` yang tidak pernah ada di MENU_CONFIG
-  // (field yang benar adalah `m.route`), sehingga override per-personil ini tidak pernah
-  // benar-benar bekerja (selalu menghasilkan daftar kosong).
   if (userOverride && Array.isArray(userOverride.allowed_menus) && userOverride.allowed_menus.length) {
-    return MENU_CONFIG.filter(m => userOverride.allowed_menus.includes(m.route));
+    return MENU_CONFIG.filter(m => userOverride.allowed_menus.includes(m.id));
   }
 
-  // SUPERADMIN adalah super-user: selalu melihat seluruh menu tanpa pengecualian.
-  if (role === "SUPERADMIN") return [...MENU_CONFIG];
-
-  const isHrd = role === "HRD";
-  const isMgmt = MANAJEMEN_ROLES.includes(role) || await isAtasan(session.nama);
+  // PERBAIKAN: gerbang lama (group === "hrd" -> hanya role persis "HRD") menyebabkan
+  // SUPERADMIN & DIREKTUR ter-blokir dari hampir semua menu HRD walau sudah ada di
+  // daftar `roles` masing-masing item. Sekarang setiap item dicek langsung terhadap
+  // `roles`-nya sendiri (satu sumber kebenaran), `group` murni untuk pengelompokan sidebar.
+  const isAtasanRole = await isAtasan(session.nama);
 
   return MENU_CONFIG.filter(m => {
-    // PERBAIKAN HAK AKSES: sebelumnya visibilitas menu grup 'hrd'/'manajemen' hanya
-    // ditentukan oleh keanggotaan grup (isHrd / isMgmt) dan mengabaikan sama sekali
-    // daftar `roles` per-menu -- akibatnya role seperti DIREKTUR, FINANCE, ADMIN, GA,
-    // MARKETING, ACCOUNTING, KOORDINATOR yang sudah didaftarkan di `roles` tidak
-    // pernah benar-benar mendapat akses. Sekarang `roles` dicek sebagai OR tambahan
-    // di luar aturan grup dasar, per menu.
-    const explicitRoleMatch = Array.isArray(m.roles) && m.roles.includes(role);
     if (m.group === "all") return true;
-    if (m.group === "hrd") return isHrd || explicitRoleMatch;
-    if (m.group === "manajemen") return isMgmt || explicitRoleMatch;
+    if (!m.roles || m.roles.length === 0) return true;
+    if (m.roles.includes(role)) return true;
+    // Siapapun yang tercatat sebagai atasan (punya bawahan) otomatis kebagian akses
+    // ke menu yang secara eksplisit mengizinkan role generik "ATASAN"
+    if (isAtasanRole && m.roles.includes("ATASAN")) return true;
     return false;
   });
 }
