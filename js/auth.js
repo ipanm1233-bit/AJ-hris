@@ -44,6 +44,7 @@ export const MENU_CONFIG = [
   { id: "manajemen-data", route: "manajemen-data", label: "Manajemen Data", icon: "database", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR", "FINANCE"] },
   { id: "pengaturan", route: "pengaturan", label: "Akses & Pengguna", icon: "shield-check", group: "hrd", roles: ["SUPERADMIN", "DIREKTUR", "HRD"] },
   { id: "konfigurasi", route: "konfigurasi", label: "Konfigurasi Sistem", icon: "cog", group: "hrd", roles: ["SUPERADMIN", "DIREKTUR", "HRD"] },
+  { id: "form-builder", route: "form-builder", label: "Form Builder", icon: "doc-plus", group: "hrd", roles: ["HRD", "SUPERADMIN", "DIREKTUR"] },
 
   // ===================== MODUL MANAJEMEN =====================
   // CATATAN: value `route` HARUS SAMA PERSIS dengan nama file di /views/*.html & /js/views/*.js
