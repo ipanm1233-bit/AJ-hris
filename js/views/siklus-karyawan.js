@@ -353,6 +353,38 @@ export async function mount(container) {
                 Object.assign(currentSelectedKaryawan, payloadLog.update_master);
             }
 
+            // ========================================================
+            // BLOK LOGIKA PENGIRIMAN EMAIL OTOMATIS
+            // ========================================================
+            if (currentSelectedKaryawan.email) {
+               btnSimpan.textContent = "Mengirim Notifikasi Email...";
+               
+               let emailSubject = "";
+               let emailBody = "";
+               
+               if (jenis === "Onboarding") {
+                   emailSubject = "Selamat Datang di CV Andela Jaya!";
+                   emailBody = `Halo ${currentSelectedKaryawan.nama_karyawan}, selamat bergabung di CV Andela Jaya sebagai ${currentSelectedKaryawan.jabatan}. Kami berharap...`;
+               } else if (jenis === "Offboarding") {
+                   emailSubject = "Pemberitahuan Terminasi/Offboarding";
+                   emailBody = `Yth. ${currentSelectedKaryawan.nama_karyawan}, dokumen offboarding Anda telah diproses per tanggal ${payloadLog.tanggal_efektif}...`;
+               }
+               
+               // Opsional: Ganti URL ini dengan endpoint API pengiriman email Anda yang sebenarnya (misal AWS SES / SendGrid / NodeMailer server Anda)
+               /* await fetch("https://api-anda.com/send-email", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                     to: currentSelectedKaryawan.email,
+                     subject: emailSubject,
+                     message: emailBody
+                  })
+               }); 
+               */
+               console.log("Mock Email Sent to:", currentSelectedKaryawan.email, emailSubject);
+            }
+            // ========================================================
+
             toast("Siklus berhasil direkam & Data Induk sukses diperbarui!", "success");
             
             form.reset();
