@@ -1,11 +1,13 @@
 import { COL } from "../firebase-config.js";
 import { fsGetAll, openModal, closeModal, toast } from "../utils.js";
 import { renderCrudModule, emptyState } from "../components.js";
-import { callGeminiJson } from "../ai-gemini.js";
+import { callGeminiJSON } from "../ai-config.js";
 
 function escapeHtml(unsafe) {
     return (unsafe || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
+
+// Konfigurasi AI Gemini kini terpusat di js/ai-config.js
 
 export async function mount(container) {
   container.innerHTML = `
@@ -131,8 +133,7 @@ export async function mount(container) {
                     { "step": 1, "actor": "Nama Jabatan/Pelaku", "action": "Judul Tindakan Singkat", "detail": "Penjelasan detail" }
                   ]`;
 
-                  // Konfigurasi API Key & model diambil terpusat dari Konfigurasi Sistem (lihat js/ai-gemini.js)
-                  const stepsArray = await callGeminiJson(prompt);
+                  const stepsArray = await callGeminiJSON(prompt);
 
                   let flowchartHtml = `<h2 class="font-bold text-lg text-slate-800 mb-6 text-center border-b pb-2 w-full uppercase">${escapeHtml(targetSOP.judul)}</h2><div class="flex flex-col items-center w-full max-w-lg mx-auto">`;
                   
