@@ -28,23 +28,15 @@ function renderFormList(container) {
   listEl.innerHTML = allForms.map(f => `
     <button data-form="${f.id}" class="w-full text-left bg-white border border-slate-100 rounded-xl p-3.5 hover:border-maroon-200 transition ${f.id === editingId ? "ring-2 ring-maroon-300 shadow-sm" : ""}">
       <p class="text-sm font-bold text-slate-700">${escapeHtml(f.nama_form || f.id)}</p>
-      <p class="text-xs text-slate-400 mt-0.5">ID: ${f.id}</p>
+      <p class="text-[11px] font-medium text-slate-400 mt-1">ID: ${f.id} ${f.wajib_lpj ? '<span class="text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded ml-1">Wajib LPJ</span>' : ''}</p>
     </button>`).join("");
   listEl.querySelectorAll("[data-form]").forEach(btn => {
     btn.addEventListener("click", () => openBuilder(container, allForms.find(f => f.id === btn.dataset.form)));
   });
 }
 
-function normalizeFields(v) {
-  if (Array.isArray(v)) return v;
-  if (typeof v === "string") { try { return JSON.parse(v); } catch { return []; } }
-  return [];
-}
-function normalizeArray(v) {
-  if (Array.isArray(v)) return v;
-  if (typeof v === "string") { try { return JSON.parse(v); } catch { return v.split(",").map(s => s.trim()).filter(Boolean); } }
-  return [];
-}
+function normalizeFields(v) { if (Array.isArray(v)) return v; if (typeof v === "string") { try { return JSON.parse(v); } catch { return []; } } return []; }
+function normalizeArray(v) { if (Array.isArray(v)) return v; if (typeof v === "string") { try { return JSON.parse(v); } catch { return v.split(",").map(s => s.trim()).filter(Boolean); } } return []; }
 
 function openBuilder(container, form) {
   editingId = form ? form.id : null;
@@ -58,6 +50,18 @@ function openBuilder(container, form) {
   container.querySelector("#fb-id").disabled = !!form;
   container.querySelector("#fb-nama").value = form ? form.nama_form : "";
   container.querySelector("#fb-users").value = form ? (Array.isArray(form.allowed_users) ? form.allowed_users.join(", ") : form.allowed_users || "") : "ALL";
+  
+  // Fitur Wajib LPJ / Pertanggungjawaban
+  const lpjHtml = `<label class="flex items-center gap-2 mt-4 text-sm font-bold text-amber-700 bg-amber-50 p-3 rounded-lg border border-amber-200 cursor-pointer">
+       <input type="checkbox" id="fb-wajib-lpj" ${form && form.wajib_lpj ? "checked" : ""} class="w-4 h-4 rounded text-amber-600 focus:ring-amber-500">
+       Formulir ini Membutuhkan Laporan Pertanggungjawaban (LPJ) setelah disetujui (Contoh: Dinas, Kasbon).
+  </label>`;
+  if(!container.querySelector("#fb-wajib-lpj")) {
+      container.querySelector("#fb-nama").parentElement.insertAdjacentHTML("afterend", lpjHtml);
+  } else {
+      container.querySelector("#fb-wajib-lpj").checked = form ? form.wajib_lpj : false;
+  }
+
   container.querySelector("#fb-delete").classList.toggle("hidden", !form);
 
   ensureToolbar(container);
@@ -107,7 +111,6 @@ function renderRuleChips(container) {
   });
 }
 
-// Injeksi Toolbar Lengkap secara Dinamis
 function ensureToolbar(container) {
    let tb = container.querySelector("#fb-dynamic-toolbar");
    if (!tb) {
@@ -125,6 +128,7 @@ function ensureToolbar(container) {
         <button type="button" class="btn-add-field text-xs bg-white text-slate-700 px-3 py-1.5 rounded border border-slate-200 hover:border-blue-400 hover:text-blue-600 transition shadow-sm" data-type="date">+ Tanggal</button>
         <button type="button" class="btn-add-field text-xs bg-white text-slate-700 px-3 py-1.5 rounded border border-slate-200 hover:border-emerald-500 hover:text-emerald-700 transition shadow-sm" data-type="select">+ Dropdown Manual</button>
         <button type="button" class="btn-add-field text-xs bg-emerald-50 font-bold text-emerald-700 px-3 py-1.5 rounded border border-emerald-200 hover:bg-emerald-100 transition shadow-sm" data-type="db_select">+ Dropdown Database</button>
+        <button type="button" class="btn-add-field text-xs bg-purple-50 font-bold text-purple-700 px-3 py-1.5 rounded border border-purple-200 hover:bg-purple-100 transition shadow-sm" data-type="upload">+ Upload Foto/Bukti</button>
         <button type="button" class="btn-add-field text-xs bg-amber-50 font-bold text-amber-700 px-3 py-1.5 rounded border border-amber-200 hover:bg-amber-100 transition shadow-sm" data-type="formula">+ Formula Kalkulasi</button>
      </div>
    `;
@@ -139,9 +143,7 @@ function ensureToolbar(container) {
             options: type === "select" ? ["Opsi 1", "Opsi 2"] : undefined,
             db_source: type === "db_select" ? "master_karyawan" : undefined,
             formula: type === "formula" ? "([harga]*[jumlah])" : undefined,
-            is_quiz: false,
-            correct_answer: "",
-            score_value: 0
+            panduan: "" // Menambahkan properti Panduan SOP
          });
          renderFields(container);
       };
@@ -167,6 +169,12 @@ function renderFields(container) {
           <div>
             <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Variabel Sistem (Otomatis)</label>
             <input data-f="name" value="${escapeHtml(f.name)}" readonly class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 bg-slate-100 text-slate-500 outline-none font-mono">
+          </div>
+
+          <div class="sm:col-span-2 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+            <label class="text-[10px] font-bold text-blue-800 uppercase tracking-wide">Panduan / SOP Pengisian Karyawan (Opsional)</label>
+            <p class="text-[10px] text-blue-600 mb-1">Teks ini akan muncul sebagai instruksi bagi karyawan saat mengisi kolom ini.</p>
+            <input data-f="panduan" value="${escapeHtml(f.panduan || "")}" placeholder="Cth: Jika untuk perbaikan rumah, wajib fotokan area yang rusak..." class="w-full px-3 py-2 text-sm rounded-lg border border-blue-200 focus:border-blue-400 outline-none bg-white">
           </div>
           
           ${f.type === "formula" ? `
@@ -196,61 +204,27 @@ function renderFields(container) {
             <label class="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">
                <input type="checkbox" data-f="required" ${f.required ? "checked" : ""} class="rounded border-slate-300 text-maroon-700 w-4 h-4"> Wajib Diisi
             </label>
-            ${f.type !== "formula" ? `
-            <label class="flex items-center gap-2 text-xs font-bold text-blue-700 cursor-pointer bg-blue-50 px-2 py-1 rounded">
-               <input type="checkbox" data-f="is_quiz" ${f.is_quiz ? "checked" : ""} class="rounded border-blue-300 text-blue-700 w-4 h-4"> Mode Penilaian / Kuis
-            </label>` : ""}
           </div>
-
-          ${f.is_quiz ? `
-          <div class="sm:col-span-2 grid grid-cols-2 gap-3 mt-1 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-             <div>
-                <label class="text-[10px] font-bold text-blue-800 uppercase">Kunci Jawaban Benar</label>
-                <input data-f="correct_answer" value="${escapeHtml(f.correct_answer || "")}" placeholder="Tulis jawaban pasti..." class="w-full mt-1 px-3 py-1.5 text-sm rounded-lg border border-blue-300 focus:border-blue-500 outline-none">
-             </div>
-             <div>
-                <label class="text-[10px] font-bold text-blue-800 uppercase">Nilai Poin (Jika Benar)</label>
-                <input type="number" data-f="score_value" value="${f.score_value || 0}" placeholder="10" class="w-full mt-1 px-3 py-1.5 text-sm rounded-lg border border-blue-300 focus:border-blue-500 outline-none font-bold text-blue-700 text-center">
-             </div>
-          </div>
-          ` : ""}
         </div>
         <button data-remove="${i}" class="text-slate-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition" title="Hapus Kolom">${icon("trash", "w-5 h-5")}</button>
       </div>
     </div>`).join("");
 
-  // Event Listener Inputs
   el.querySelectorAll("[data-f]").forEach(input => {
-    // Gunakan 'change' untuk checkbox/select agar langsung render ulang UI jika struktur berubah
     const eventType = (input.type === 'checkbox' || input.tagName === 'SELECT') ? 'change' : 'input';
-    
     input.addEventListener(eventType, (e) => {
       const idx = parseInt(input.closest("[data-idx]").dataset.idx, 10);
       const key = input.dataset.f;
 
-      if (key === "required") {
-          currentFields[idx].required = input.checked;
-      } 
-      else if (key === "is_quiz") { 
-          currentFields[idx].is_quiz = input.checked; 
-          renderFields(container); // Render ulang untuk memunculkan kolom skor
-      } 
-      else if (key === "options") {
-          currentFields[idx].options = input.value.split(",").map(s => s.trim()).filter(Boolean);
-      } 
+      if (key === "required") { currentFields[idx].required = input.checked; } 
+      else if (key === "options") { currentFields[idx].options = input.value.split(",").map(s => s.trim()).filter(Boolean); } 
       else if (key === "label") { 
           currentFields[idx].label = input.value; 
           currentFields[idx].name = toSnakeCase(input.value) || `kolom_${idx + 1}`; 
-          // Update visual name tanpa memicu render ulang keseluruhan (mencegah kursor hilang)
           const nameInput = input.closest('.fb-field').querySelector('[data-f="name"]');
           if (nameInput) nameInput.value = currentFields[idx].name;
       } 
-      else if (key === "score_value") {
-          currentFields[idx].score_value = parseFloat(input.value) || 0;
-      }
-      else {
-          currentFields[idx][key] = input.value; 
-      }
+      else { currentFields[idx][key] = input.value; }
     });
   });
 
@@ -258,7 +232,6 @@ function renderFields(container) {
     btn.addEventListener("click", () => { currentFields.splice(parseInt(btn.dataset.remove, 10), 1); renderFields(container); });
   });
 
-  // Drag & drop reorder
   el.querySelectorAll(".fb-field").forEach(row => {
     row.addEventListener("dragstart", () => { dragIndex = parseInt(row.dataset.idx, 10); row.style.opacity = '0.4'; });
     row.addEventListener("dragend", () => { row.style.opacity = '1'; dragIndex = null; });
@@ -278,6 +251,8 @@ async function saveForm(container) {
   const id = container.querySelector("#fb-id").value.trim();
   const nama = container.querySelector("#fb-nama").value.trim();
   const usersRaw = container.querySelector("#fb-users").value.trim();
+  const wajibLpj = container.querySelector("#fb-wajib-lpj") ? container.querySelector("#fb-wajib-lpj").checked : false;
+
   if (!id || !nama) { toast("ID Form dan Nama Formulir wajib diisi", "warning"); return; }
   if (!currentFields.length) { toast("Tambahkan minimal satu kolom formulir", "warning"); return; }
 
@@ -286,7 +261,8 @@ async function saveForm(container) {
     approval_flow: currentFlow,
     allowed_rules: currentRules.join(", "),
     allowed_users: usersRaw || "ALL",
-    fields_json: currentFields
+    fields_json: currentFields,
+    wajib_lpj: wajibLpj // Simpan setingan LPJ
   };
 
   try {
@@ -307,7 +283,7 @@ async function saveForm(container) {
 
 async function deleteForm(container) {
   if (!editingId) return;
-  const ok = await confirmDialog("Formulir yang dihapus tidak dapat dikembalikan dan akan hilang dari Katalog Pengajuan. Lanjutkan?");
+  const ok = await confirmDialog("Formulir yang dihapus tidak dapat dikembalikan. Lanjutkan?");
   if (!ok) return;
   try {
     await fsDelete(COL.FORM_CONFIG, editingId);
