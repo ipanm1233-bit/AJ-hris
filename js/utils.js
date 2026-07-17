@@ -244,6 +244,26 @@ export async function fsDelete(colName, id) {
 /* ---------------------------------------------------------------------
  * 6. CSV EXPORT
  * ------------------------------------------------------------------- */
+/**
+ * Penulis CSV tingkat-rendah: headers & data SUDAH disiapkan (array of arrays),
+ * tidak menebak-nebak struktur dari Object.keys() seperti exportToCsv() lama.
+ * Dipakai oleh export kolom-terpilih di renderCrudModule (lihat components.js).
+ */
+export function downloadCsv(filename, headers, matrix) {
+  if (!matrix || !matrix.length) { toast("Tidak ada data untuk diekspor", "warning"); return; }
+  const escape = (v) => {
+    const s = String(v ?? "");
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = [headers.map(escape).join(","), ...matrix.map(row => row.map(escape).join(","))].join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename.endsWith(".csv") ? filename : filename + ".csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export function exportToCsv(filename, rows) {
   if (!rows || !rows.length) { toast("Tidak ada data untuk diekspor", "warning"); return; }
   const headers = Object.keys(rows[0]);
