@@ -1,4 +1,4 @@
-import { COL } from "../firebase-config.js";
+import { COL, storage, ref, uploadBytes, getDownloadURL } from "../firebase-config.js";
 import { fsGetAll, fsAdd, openModal, closeModal, toast, genId, escapeHtml, fmtDateTime, sendEmailNotif } from "../utils.js";
 import { avatar, badge, emptyState, skeletonRows } from "../components.js";
 
@@ -75,8 +75,9 @@ function openComposeModal(container, session, karyawan, users, reload) {
           </select>
         </div>
         <div>
-          <label class="block text-xs font-medium text-slate-500 mb-1.5">Lampiran URL (opsional)</label>
-          <input name="lampiran_url" placeholder="https://..." class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none">
+          <label class="block text-xs font-medium text-slate-500 mb-1.5">Lampiran File (opsional)</label>
+          <input type="file" name="lampiran_file" id="bc-lampiran-file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none bg-white">
+          <p class="text-[11px] text-slate-400 mt-1">Foto, PDF, atau dokumen Office, maks 10MB.</p>
         </div>
       </form>`,
     footerHtml: `
@@ -111,22 +112,37 @@ function openComposeModal(container, session, karyawan, users, reload) {
 
         if (plainText.length === 0) { toast("Isi memo tidak boleh kosong!", "warning"); return; }
 
-        const payload = {
-          judul: fd.get("judul"), 
-          isi: htmlContent, 
-          target_type: targetType,
-          target_list: targetList, 
-          tanggal_berakhir: fd.get("tanggal_berakhir"),
-          lampiran_url: fd.get("lampiran_url") || null,
-          tanggal: new Date().toISOString(), 
-          dibuat_oleh: session.nama
-        };
-        
         try {
           const btnSend = m.querySelector("#bc-send");
           btnSend.disabled = true; btnSend.innerHTML = "Sedang Mengirim...";
 
           const id = genId("BC");
+
+          // Upload lampiran (jika ada file dipilih) ke Firebase Storage
+          let lampiranUrl = null;
+          const fileInput = m.querySelector("#bc-lampiran-file");
+          const file = fileInput.files && fileInput.files[0];
+          if (file) {
+            if (file.size > 10 * 1024 * 1024) { toast("Ukuran file lampiran maksimal 10MB", "warning"); btnSend.disabled = false; btnSend.innerHTML = "Kirim Memo"; return; }
+            btnSend.innerHTML = "Mengupload Lampiran...";
+            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+            const storageRef = ref(storage, `broadcast_lampiran/${id}/${safeName}`);
+            await uploadBytes(storageRef, file);
+            lampiranUrl = await getDownloadURL(storageRef);
+            btnSend.innerHTML = "Sedang Mengirim...";
+          }
+
+          const payload = {
+            judul: fd.get("judul"), 
+            isi: htmlContent, 
+            target_type: targetType,
+            target_list: targetList, 
+            tanggal_berakhir: fd.get("tanggal_berakhir"),
+            lampiran_url: lampiranUrl,
+            tanggal: new Date().toISOString(), 
+            dibuat_oleh: session.nama
+          };
+
           await fsAdd(COL.BROADCAST, payload, id);
           
           const targetUsers = targetType === "ALL" ? users : users.filter(u => targetList.includes(u.nama));
