@@ -249,7 +249,8 @@ export async function renderCrudModule(container, cfg) {
 
   container.querySelector("#crud-add")?.addEventListener("click", () => openForm());
   container.querySelector("#crud-export").addEventListener("click", () => {
-    import("./utils.js").then(({ exportToCsv }) => exportToCsv(`${collectionName}.csv`, rows));
+    if (!rows.length) { toast("Tidak ada data untuk diekspor", "warning"); return; }
+    openExportPicker(title, columns, rows);
   });
   container.querySelector("#crud-search").addEventListener("input", (e) => {
     const term = e.target.value.trim().toLowerCase();
@@ -325,6 +326,94 @@ export function renderKanban(container, { columns, items, onCardClick, onDrop })
       const cardId = e.dataTransfer.getData("text/plain");
       onDrop && onDrop(cardId, zone.dataset.dropzone);
     });
+  });
+}
+
+/** Versi teks-polos dari cellValue() — dipakai untuk export, bukan tampilan tabel (tanpa tag HTML). */
+function plainCellValue(row, col) {
+  let v = row[col.key];
+  if (col.type === "date") return v ? fmtDateShort(v) : "";
+  if (col.type === "currency") return v ? fmtRupiah(v) : 0;
+  if (col.type === "number") return v ?? 0;
+  if (col.type === "badge" || col.type === "link") return v ?? "";
+  if (v === undefined || v === null) return "";
+  if (typeof v === "object") { try { return JSON.stringify(v); } catch { return String(v); } }
+  return v;
+}
+
+/**
+ * Modal pemilih kolom export — supaya file yang diunduh PERSIS mengikuti struktur
+ * kolom yang tampil di layar (bukan dump mentah seluruh field database), dan user
+ * bisa pilih kolom mana saja + urutannya sebelum export. Dipakai oleh SEMUA modul
+ * yang lewat renderCrudModule (Manajemen Data, Inventory, Kendaraan, dll).
+ */
+export function openExportPicker(title, columns, rows) {
+  let order = columns.map((c, i) => i); // index ke `columns`, urutan bisa diubah drag
+  let dragIdx = null;
+
+  function renderList(container) {
+    const list = container.querySelector("#exp-col-list");
+    list.innerHTML = order.map((colIdx, pos) => {
+      const c = columns[colIdx];
+      return `
+      <div draggable="true" data-pos="${pos}" class="exp-col-row flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2">
+        <span class="cursor-grab text-slate-300" title="Seret untuk urutkan">${icon("menu", "w-4 h-4")}</span>
+        <label class="flex items-center gap-2 text-sm text-slate-700 flex-1 cursor-pointer">
+          <input type="checkbox" data-colidx="${colIdx}" class="exp-col-check rounded border-slate-300 text-maroon-700" checked>
+          ${escapeHtml(c.label)}
+        </label>
+      </div>`;
+    }).join("");
+
+    list.querySelectorAll(".exp-col-row").forEach(row => {
+      row.addEventListener("dragstart", () => { dragIdx = parseInt(row.dataset.pos, 10); row.style.opacity = "0.4"; });
+      row.addEventListener("dragend", () => { row.style.opacity = "1"; dragIdx = null; });
+      row.addEventListener("dragover", (e) => e.preventDefault());
+      row.addEventListener("drop", () => {
+        const targetPos = parseInt(row.dataset.pos, 10);
+        if (dragIdx === null || dragIdx === targetPos) return;
+        const [moved] = order.splice(dragIdx, 1);
+        order.splice(targetPos, 0, moved);
+        renderList(container);
+      });
+    });
+  }
+
+  openModal({
+    title: `Export ${title}`,
+    size: "md",
+    bodyHtml: `
+      <p class="text-xs text-slate-500 mb-3">Pilih kolom yang ingin diikutsertakan, dan seret ${icon("menu","w-3.5 h-3.5 inline")} untuk mengatur urutannya. File hasil export akan mengikuti urutan ini.</p>
+      <div class="flex gap-2 mb-3">
+        <button type="button" id="exp-select-all" class="text-xs px-2.5 py-1 rounded border border-slate-200 hover:bg-slate-50">Pilih Semua</button>
+        <button type="button" id="exp-select-none" class="text-xs px-2.5 py-1 rounded border border-slate-200 hover:bg-slate-50">Kosongkan</button>
+      </div>
+      <div id="exp-col-list" class="space-y-1.5 max-h-80 overflow-y-auto pr-1"></div>
+    `,
+    footerHtml: `
+      <button id="exp-cancel" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
+      <button id="exp-confirm" class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-maroon-700 hover:bg-maroon-800 transition shadow-md flex items-center gap-1.5">${icon("download","w-4 h-4")}Export CSV</button>`,
+    onMount: (m) => {
+      renderList(m);
+      m.querySelector("#exp-select-all").onclick = () => m.querySelectorAll(".exp-col-check").forEach(chk => chk.checked = true);
+      m.querySelector("#exp-select-none").onclick = () => m.querySelectorAll(".exp-col-check").forEach(chk => chk.checked = false);
+      m.querySelector("#exp-cancel").onclick = closeModal;
+      m.querySelector("#exp-confirm").onclick = async () => {
+        const checks = Array.from(m.querySelectorAll(".exp-col-check"));
+        const chosenIdx = checks.filter(c => c.checked).map(c => parseInt(c.dataset.colidx, 10));
+        if (!chosenIdx.length) { toast("Pilih minimal satu kolom", "warning"); return; }
+        // Urutkan sesuai posisi drag saat ini (bukan urutan checkbox di DOM)
+        const chosenOrdered = order.filter(idx => chosenIdx.includes(idx));
+        const chosenCols = chosenOrdered.map(idx => columns[idx]);
+
+        const { downloadCsv } = await import("./utils.js");
+        const headers = chosenCols.map(c => c.label);
+        const matrix = rows.map(row => chosenCols.map(c => plainCellValue(row, c)));
+        downloadCsv(`${title.toLowerCase().replace(/\s+/g, "_")}.csv`, headers, matrix);
+        toast("File CSV berhasil diunduh", "success");
+        closeModal();
+      };
+    }
   });
 }
 
