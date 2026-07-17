@@ -7,7 +7,7 @@
 import {
   db, COL, collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc,
   deleteDoc, query, where, orderBy, limit, onSnapshot, serverTimestamp,
-  Timestamp
+  Timestamp, storage, ref, uploadBytes, getDownloadURL
 } from "./firebase-config.js";
 /* ---------------------------------------------------------------------
  * 1. SMART DATE PARSER
@@ -397,4 +397,104 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
     console.error("Error getTargetsForRole:", error);
     return [];
   }
+}
+
+/* ---------------------------------------------------------------------
+ * 9. WORKFLOW ENGINE — helper dinamis untuk field formulir (termasuk
+ * tipe "file"/foto) dan Laporan Pertanggungjawaban (LPJ).
+ * Dipakai bersama oleh pengajuan.js (form pengajuan) dan riwayat.js
+ * (form isi LPJ) supaya render input & upload file konsisten di semua
+ * modul yang memakai Form Builder — termasuk modul baru di masa depan.
+ * ------------------------------------------------------------------- */
+
+/** Render satu <input>/<select>/<textarea> untuk definisi field dinamis `f`. */
+export function dynFieldInputHtml(f) {
+  const base = "w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100 outline-none transition";
+  const req = f.required ? "required" : "";
+  if (f.formula) return `<input type="text" name="${f.name}" data-formula="${escapeHtml(f.formula)}" readonly class="${base} bg-slate-50 text-slate-500 cursor-not-allowed" value="0">`;
+
+  switch (f.type) {
+    case "textarea": return `<textarea name="${f.name}" rows="3" class="${base}" ${req}></textarea>`;
+    case "select": return `<select name="${f.name}" class="${base}" ${req}>
+        <option value="">Pilih ${escapeHtml(f.label || "")}</option>
+        ${(f.options || []).map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join("")}
+      </select>`;
+    case "date": return `<input type="date" name="${f.name}" class="${base}" ${req}>`;
+    case "number": return `<input type="number" step="any" name="${f.name}" class="${base}" ${req}>`;
+    case "file": return `<input type="file" name="${f.name}" accept="image/*,.pdf" class="${base} bg-white" ${req}>
+        <p class="text-[11px] text-slate-400 mt-1">Upload foto/dokumen (JPG, PNG, atau PDF, maks 5MB).</p>`;
+    default: return `<input type="text" name="${f.name}" class="${base}" ${req}>`;
+  }
+}
+
+/** Wrapper lengkap (label + input + hint show_if) untuk satu field dinamis. */
+export function dynFieldWrapperHtml(f) {
+  const req = f.required ? ' <span class="text-red-500">*</span>' : "";
+  return `
+    <div data-field-wrap="${f.name}" class="${f.show_if ? "hidden" : ""}">
+      <label class="block text-xs font-medium text-slate-500 mb-1.5">${escapeHtml(f.label || f.name)}${req}</label>
+      ${dynFieldInputHtml(f)}
+      ${f.formula ? `<p class="text-[11px] text-slate-400 mt-1">Dihitung otomatis: ${escapeHtml(f.formula)}</p>` : ""}
+    </div>`;
+}
+
+/** Pasang listener show_if (tampil-kondisional) + formula (kalkulasi otomatis) pada sebuah <form>. */
+export function wireDynFormLogic(form, fields) {
+  const recompute = () => {
+    const fd = new FormData(form);
+    const values = {};
+    fields.forEach(f => values[f.name] = fd.get(f.name));
+
+    fields.forEach(f => {
+      if (!f.show_if) return;
+      const wrap = form.querySelector(`[data-field-wrap="${f.name}"]`);
+      if (!wrap) return;
+      const show = String(values[f.show_if.field] || "") === String(f.show_if.value);
+      wrap.classList.toggle("hidden", !show);
+      // Field yang sedang disembunyikan tidak boleh memblokir submit via `required`
+      const input = wrap.querySelector(`[name="${f.name}"]`);
+      if (input) input.dataset.origRequired = input.dataset.origRequired ?? (input.required ? "1" : "0");
+      if (input) input.required = show && input.dataset.origRequired === "1";
+    });
+
+    fields.forEach(f => {
+      if (!f.formula) return;
+      const input = form.querySelector(`[name="${f.name}"]`);
+      const result = evalFormula(f.formula, values);
+      if (input) input.value = result === null ? "0" : result.toLocaleString("id-ID", { maximumFractionDigits: 2 });
+    });
+  };
+  form.addEventListener("input", recompute);
+  recompute();
+}
+
+/**
+ * Kumpulkan nilai form (termasuk upload file ke Firebase Storage) menjadi
+ * satu object `detail`. File diupload ke path `pathPrefix/fieldName_filename`
+ * dan hasilnya berupa URL string.
+ * @param {HTMLFormElement} form
+ * @param {Array} fields  definisi field (name, type, required, label)
+ * @param {string} pathPrefix  mis. "pengajuan_lampiran/TRX-123" atau "lpj_lampiran/TRX-123"
+ */
+export async function collectDynFormDetail(form, fields, pathPrefix) {
+  const fd = new FormData(form);
+  const detail = {};
+  for (const f of fields) {
+    if (f.type === "file") {
+      const fileInput = form.querySelector(`[name="${f.name}"]`);
+      const file = fileInput && fileInput.files && fileInput.files[0];
+      if (file) {
+        if (file.size > 5 * 1024 * 1024) throw new Error(`File untuk "${f.label || f.name}" melebihi 5MB.`);
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const storageRef = ref(storage, `${pathPrefix}/${f.name}_${Date.now()}_${safeName}`);
+        await uploadBytes(storageRef, file);
+        detail[f.name] = await getDownloadURL(storageRef);
+      } else {
+        detail[f.name] = "";
+      }
+    } else {
+      detail[f.name] = fd.get(f.name) ?? "";
+    }
+  }
+  return detail;
 }

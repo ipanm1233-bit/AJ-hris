@@ -1,5 +1,5 @@
 import { COL, db, updateDoc, doc } from "../firebase-config.js";
-import { fsGetAll, fsAdd, toast, genId, fmtRupiah, fmtDateShort, smartParseDate } from "../utils.js";
+import { fsGetAll, fsAdd, toast, genId, fmtRupiah, fmtDateShort, smartParseDate, sendEmailNotif } from "../utils.js";
 import { renderCrudModule } from "../components.js";
 
 // Fungsi pelindung teks bawaan (Bulletproof)
@@ -38,9 +38,47 @@ export async function mount(container) {
                 </div>
                 <div id="wrap-nama">
                    <label class="block text-xs font-medium text-slate-500 mb-1">Pilih Karyawan Aktif</label>
-                   <select id="siklus-nama" required class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400 bg-white disabled:bg-slate-100 disabled:text-slate-400">
+                   <select id="siklus-nama" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400 bg-white disabled:bg-slate-100 disabled:text-slate-400">
                       <option value="">Sedang Memuat Data Karyawan...</option>
                    </select>
+                </div>
+
+                <div id="wrap-onb-newdata" class="hidden space-y-4 border-t border-slate-100 pt-4">
+                   <p class="text-xs font-bold text-maroon-700 uppercase">Data Karyawan Baru</p>
+                   <div class="grid grid-cols-2 gap-4">
+                      <div class="col-span-2 sm:col-span-1">
+                         <label class="block text-xs font-bold text-slate-600 mb-1">Nama Lengkap</label>
+                         <input type="text" id="onb-nama" required class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+                      </div>
+                      <div class="col-span-2 sm:col-span-1">
+                         <label class="block text-xs font-bold text-slate-600 mb-1">NIK Karyawan</label>
+                         <input type="text" id="onb-nik" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+                      </div>
+                      <div class="col-span-2 sm:col-span-1">
+                         <label class="block text-xs font-bold text-slate-600 mb-1">Email (untuk welcoming letter)</label>
+                         <input type="email" id="onb-email" required class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+                      </div>
+                      <div class="col-span-2 sm:col-span-1">
+                         <label class="block text-xs font-bold text-slate-600 mb-1">No. HP Aktif</label>
+                         <input type="text" id="onb-hp" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+                      </div>
+                      <div class="col-span-2 sm:col-span-1">
+                         <label class="block text-xs font-bold text-slate-600 mb-1">Jabatan</label>
+                         <input type="text" id="onb-jabatan" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+                      </div>
+                      <div class="col-span-2 sm:col-span-1">
+                         <label class="block text-xs font-bold text-slate-600 mb-1">Cabang / Divisi</label>
+                         <input type="text" id="onb-cabang" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+                      </div>
+                      <div class="col-span-2 sm:col-span-1">
+                         <label class="block text-xs font-bold text-slate-600 mb-1">Atasan Langsung</label>
+                         <input type="text" id="onb-atasan" placeholder="Nama atasan (persis)" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+                      </div>
+                      <div class="col-span-2 sm:col-span-1">
+                         <label class="block text-xs font-bold text-slate-600 mb-1">Alamat</label>
+                         <input type="text" id="onb-alamat" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+                      </div>
+                   </div>
                 </div>
                 
                 <div id="siklus-dynamic-fields" class="space-y-4 border-t border-slate-100 pt-4 mt-4 hidden"></div>
@@ -77,15 +115,28 @@ export async function mount(container) {
   const dynFields = container.querySelector("#siklus-dynamic-fields");
   const btnKalkulasi = container.querySelector("#btn-kalkulasi");
   const resBox = container.querySelector("#siklus-result-box");
+  const wrapNama = container.querySelector("#wrap-nama");
+  const wrapOnbNew = container.querySelector("#wrap-onb-newdata");
 
   let currentSelectedKaryawan = null;
+  let isNewHireOnboarding = false; // true jika Onboarding karyawan BARU (belum ada di Master Karyawan)
 
   selectNama.addEventListener("change", () => {
      currentSelectedKaryawan = activeKaryawan.find(k => k.id === selectNama.value);
      renderFields(); 
   });
 
-  selJenis.addEventListener("change", renderFields);
+  selJenis.addEventListener("change", () => {
+     isNewHireOnboarding = selJenis.value === "Onboarding";
+     wrapNama.classList.toggle("hidden", isNewHireOnboarding);
+     wrapOnbNew.classList.toggle("hidden", !isNewHireOnboarding);
+     selectNama.required = !isNewHireOnboarding;
+     if (isNewHireOnboarding) {
+        selectNama.value = "";
+        currentSelectedKaryawan = null;
+     }
+     renderFields();
+  });
 
   function formatDateInput(d) {
       if(!d) return "";
@@ -148,9 +199,10 @@ export async function mount(container) {
              <div><label class="block text-xs font-medium text-slate-500 mb-1">Catatan</label><textarea id="mutasi-catatan" rows="2" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-maroon-400"></textarea></div>
          `;
      } else if (jenis === "Onboarding") {
+          const todayStr = new Date().toISOString().split("T")[0];
           dynFields.innerHTML = `
              <div class="grid grid-cols-2 gap-4">
-                <div><label class="block text-xs font-bold text-slate-600 mb-1">Tanggal Bergabung (Auto)</label><input type="date" id="onb-tgl" value="${joinDate}" required class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-maroon-400"></div>
+                <div><label class="block text-xs font-bold text-slate-600 mb-1">Tanggal Bergabung</label><input type="date" id="onb-tgl" value="${todayStr}" required class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-maroon-400"></div>
                 <div>
                    <label class="block text-xs font-bold text-slate-600 mb-1">Tipe Kontrak</label>
                    <select id="onb-status" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-maroon-400 bg-white">
@@ -168,12 +220,17 @@ export async function mount(container) {
   btnKalkulasi.addEventListener("click", () => {
       const form = container.querySelector("#form-siklus");
       if (!form.reportValidity()) return;
-      if (!currentSelectedKaryawan) return toast("Pilih Karyawan terlebih dahulu", "warning");
+      if (!isNewHireOnboarding && !currentSelectedKaryawan) return toast("Pilih Karyawan terlebih dahulu", "warning");
 
       const jenis = selJenis.value;
       let previewHtml = "";
-      
-      let payloadLog = {
+
+      let payloadLog = isNewHireOnboarding ? {
+         id_karyawan: null, // diisi setelah record master_karyawan baru dibuat saat final save
+         nama_karyawan: container.querySelector("#onb-nama").value.trim(),
+         jenis_siklus: jenis,
+         tanggal_proses: new Date().toISOString()
+      } : {
          id_karyawan: currentSelectedKaryawan.id,
          nama_karyawan: currentSelectedKaryawan.nama_karyawan,
          jenis_siklus: jenis,
@@ -306,15 +363,35 @@ export async function mount(container) {
          const tgl = container.querySelector("#onb-tgl").value;
          const cat = container.querySelector("#onb-catatan").value.trim();
          const stat = container.querySelector("#onb-status").value;
+         const nomaBaru = container.querySelector("#onb-nama").value.trim();
+         const emailBaru = container.querySelector("#onb-email").value.trim();
 
+         if (!nomaBaru || !emailBaru) { toast("Nama dan Email karyawan baru wajib diisi", "warning"); return; }
+
+         payloadLog.nama_karyawan = nomaBaru;
          payloadLog.tanggal_efektif = new Date(tgl).toISOString();
-         payloadLog.keterangan = cat || `Onboarding Karyawan`;
-         payloadLog.update_master = { status_karyawan: stat };
-         
+         payloadLog.keterangan = cat || `Onboarding Karyawan Baru`;
+         // Data lengkap karyawan baru — akan dipakai untuk membuat record Master Karyawan
+         // yang baru (BUKAN update_master, karena karyawan ini belum ada di database).
+         payloadLog.new_employee_data = {
+            nama_karyawan: nomaBaru,
+            nik_karyawan: container.querySelector("#onb-nik").value.trim(),
+            email: emailBaru,
+            no_hp_aktif: container.querySelector("#onb-hp").value.trim(),
+            jabatan: container.querySelector("#onb-jabatan").value.trim(),
+            cabang: container.querySelector("#onb-cabang").value.trim(),
+            atasan: container.querySelector("#onb-atasan").value.trim(),
+            alamat: container.querySelector("#onb-alamat").value.trim(),
+            tanggal_join: tgl,
+            status_karyawan: stat,
+            aktif_tdk_aktif: "AKTIF"
+         };
+
          previewHtml = `
             <div class="mb-4">
-               <p class="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Status Hubungan Kerja</p>
-               <p class="text-lg font-bold text-slate-800">${escapeHtml(stat)}</p>
+               <p class="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Karyawan Baru</p>
+               <p class="text-lg font-bold text-slate-800">${escapeHtml(nomaBaru)}</p>
+               <p class="text-xs text-slate-500">${escapeHtml(container.querySelector("#onb-jabatan").value.trim() || "-")} • ${escapeHtml(stat)}</p>
             </div>
             <div>
                <p class="text-[11px] text-slate-500 uppercase tracking-wider mb-2 font-bold flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg> Checklist Kelengkapan Onboarding</p>
@@ -346,50 +423,96 @@ export async function mount(container) {
          btnSimpan.textContent = "Menyimpan ke Database...";
 
          try {
-            await fsAdd(COL.SIKLUS_KARYAWAN, payloadLog, genId("SKL"));
+            let targetEmail = null;
 
-            if (payloadLog.update_master) {
+            if (payloadLog.new_employee_data) {
+                // ONBOARDING KARYAWAN BARU: buat record Master Karyawan baru (bukan update)
+                const newId = genId("KRY");
+                await fsAdd(COL.MASTER_KARYAWAN, payloadLog.new_employee_data, newId);
+                payloadLog.id_karyawan = newId;
+                targetEmail = payloadLog.new_employee_data.email;
+            } else if (payloadLog.update_master) {
                 await updateDoc(doc(db, COL.MASTER_KARYAWAN, payloadLog.id_karyawan), payloadLog.update_master);
                 Object.assign(currentSelectedKaryawan, payloadLog.update_master);
+                targetEmail = currentSelectedKaryawan.email;
+            } else if (currentSelectedKaryawan) {
+                targetEmail = currentSelectedKaryawan.email;
             }
 
+            await fsAdd(COL.SIKLUS_KARYAWAN, payloadLog, genId("SKL"));
+
             // ========================================================
-            // BLOK LOGIKA PENGIRIMAN EMAIL OTOMATIS
+            // PENGIRIMAN EMAIL PEMBERITAHUAN OTOMATIS KE KARYAWAN
+            // (memakai jalur pengiriman email resmi sistem via sendEmailNotif,
+            // sama seperti yang dipakai modul Approval — bukan lagi mock/console.log)
             // ========================================================
-            if (currentSelectedKaryawan.email) {
-               btnSimpan.textContent = "Mengirim Notifikasi Email...";
-               
+            if (targetEmail) {
+               btnSimpan.textContent = "Mengirim Email Notifikasi...";
+
                let emailSubject = "";
                let emailBody = "";
-               
+               const namaTarget = payloadLog.nama_karyawan;
+
                if (jenis === "Onboarding") {
-                   emailSubject = "Selamat Datang di CV Andela Jaya!";
-                   emailBody = `Halo ${currentSelectedKaryawan.nama_karyawan}, selamat bergabung di CV Andela Jaya sebagai ${currentSelectedKaryawan.jabatan}. Kami berharap...`;
+                   const d = payloadLog.new_employee_data;
+                   emailSubject = "Selamat Datang di CV Andela Jaya! 🎉";
+                   emailBody = `
+                     <div style="font-family:Arial,sans-serif;padding:24px;max-width:560px;margin:0 auto;">
+                       <h2 style="color:#7f1d1d;">Selamat Bergabung, ${escapeHtml(namaTarget)}!</h2>
+                       <p>Seluruh keluarga besar <b>CV Andela Jaya</b> mengucapkan selamat datang. Kami sangat senang Anda bergabung sebagai <b>${escapeHtml(d.jabatan || "-")}</b> di ${escapeHtml(d.cabang || "-")}, terhitung mulai <b>${fmtDateShort(d.tanggal_join)}</b>.</p>
+                       <p>Tim HRD akan menghubungi Anda untuk kelengkapan administrasi (kontrak, ID card, BPJS, dan akun sistem). Selamat bekerja!</p>
+                     </div>`;
                } else if (jenis === "Offboarding") {
-                   emailSubject = "Pemberitahuan Terminasi/Offboarding";
-                   emailBody = `Yth. ${currentSelectedKaryawan.nama_karyawan}, dokumen offboarding Anda telah diproses per tanggal ${payloadLog.tanggal_efektif}...`;
+                   emailSubject = "Pemberitahuan Proses Offboarding";
+                   emailBody = `
+                     <div style="font-family:Arial,sans-serif;padding:24px;max-width:560px;margin:0 auto;">
+                       <h2 style="color:#7f1d1d;">Pemberitahuan Offboarding</h2>
+                       <p>Yth. <b>${escapeHtml(namaTarget)}</b>, proses offboarding Anda telah diinput oleh HRD dengan tanggal efektif <b>${fmtDateShort(payloadLog.tanggal_efektif)}</b>.</p>
+                       <p>${escapeHtml(payloadLog.keterangan || "")}</p>
+                       <p>Silakan koordinasikan serah terima aset & dokumen terkait dengan HRD.</p>
+                     </div>`;
+               } else if (["Mutasi", "Promosi", "Demosi"].includes(jenis)) {
+                   const d = payloadLog.detail_mutasi || {};
+                   emailSubject = `Pemberitahuan ${jenis} Jabatan`;
+                   emailBody = `
+                     <div style="font-family:Arial,sans-serif;padding:24px;max-width:560px;margin:0 auto;">
+                       <h2 style="color:#7f1d1d;">Pemberitahuan ${jenis}</h2>
+                       <p>Yth. <b>${escapeHtml(namaTarget)}</b>, dengan ini diinformasikan bahwa Anda mengalami <b>${jenis}</b> terhitung efektif <b>${fmtDateShort(payloadLog.tanggal_efektif)}</b>:</p>
+                       <table style="width:100%; border-collapse:collapse; margin:12px 0;">
+                         <tr><td style="padding:6px; color:#64748b;">Jabatan</td><td style="padding:6px;">${escapeHtml(d.jabatan_lama || "-")} &rarr; <b>${escapeHtml(d.jabatan_baru || "-")}</b></td></tr>
+                         <tr><td style="padding:6px; color:#64748b;">Cabang</td><td style="padding:6px;">${escapeHtml(d.cabang_lama || "-")} &rarr; <b>${escapeHtml(d.cabang_baru || "-")}</b></td></tr>
+                       </table>
+                       <p>${escapeHtml(payloadLog.keterangan || "")}</p>
+                       <p>Silakan hubungi HRD apabila ada pertanyaan lebih lanjut.</p>
+                     </div>`;
                }
-               
-               // Opsional: Ganti URL ini dengan endpoint API pengiriman email Anda yang sebenarnya (misal AWS SES / SendGrid / NodeMailer server Anda)
-               /* await fetch("https://api-anda.com/send-email", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                     to: currentSelectedKaryawan.email,
-                     subject: emailSubject,
-                     message: emailBody
-                  })
-               }); 
-               */
-               console.log("Mock Email Sent to:", currentSelectedKaryawan.email, emailSubject);
+
+               if (emailSubject) {
+                  sendEmailNotif(targetEmail, emailSubject, emailBody).catch(e => console.warn("Gagal kirim email siklus karyawan:", e));
+               }
+            } else {
+               console.warn("Email siklus karyawan tidak terkirim: karyawan tidak memiliki alamat email.");
             }
             // ========================================================
 
-            toast("Siklus berhasil direkam & Data Induk sukses diperbarui!", "success");
-            
+            toast(`Siklus ${jenis} berhasil direkam${targetEmail ? " & email notifikasi terkirim" : ""}!`, "success");
+
+            // Jika baru saja onboarding karyawan baru, masukkan ke daftar aktif supaya
+            // langsung bisa dipilih untuk siklus lain (Mutasi/Promosi/dst) tanpa reload halaman.
+            if (payloadLog.new_employee_data) {
+               const added = { id: payloadLog.id_karyawan, ...payloadLog.new_employee_data };
+               activeKaryawan.push(added);
+               activeKaryawan.sort((a,b) => (a.nama_karyawan||"").localeCompare(b.nama_karyawan||""));
+               selectNama.innerHTML = `<option value="">Pilih Karyawan Aktif...</option>` +
+                 activeKaryawan.map(k => `<option value="${k.id}">${escapeHtml(k.nama_karyawan)} - ${escapeHtml(k.jabatan || "")} (${escapeHtml(k.cabang || "-")})</option>`).join("");
+            }
+
             form.reset();
             selectNama.value = "";
             currentSelectedKaryawan = null;
+            isNewHireOnboarding = false;
+            wrapNama.classList.remove("hidden");
+            wrapOnbNew.classList.add("hidden");
             dynFields.classList.add("hidden");
             btnKalkulasi.classList.add("hidden");
             resBox.innerHTML = `<p class="text-sm text-slate-400 text-center py-10">Pilih jenis siklus dan isi formulir di samping untuk melihat prosedur & dokumen yang harus disiapkan.</p>`;

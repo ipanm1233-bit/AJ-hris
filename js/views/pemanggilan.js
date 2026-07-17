@@ -38,57 +38,14 @@ export async function mount(container) {
     printWindow.document.write(html); printWindow.document.close();
   }
 
-  // Fungsi Helper untuk mengambil nama HRD yang sedang Login
-  function getHrdName() {
-      try {
-          const u = JSON.parse(localStorage.getItem("authUser") || localStorage.getItem("user") || "{}");
-          return u.nama || localStorage.getItem("userName") || localStorage.getItem("nama_user") || "HRD Manager";
-      } catch(e) { return "HRD Manager"; }
-  }
-
-  function printSuratPanggilan(data) {
-    const printWindow = window.open('', '_blank');
-    let html = `
-    <html><head><title>Surat Panggilan - ${escapeHtml(data.nama_karyawan)}</title>
-      <style>
-        @media print { body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }
-        body { font-family: 'Times New Roman', serif; font-size: 14px; padding: 40px; line-height: 1.5; color: #000; }
-        .it { width: 100%; margin-top: 20px; } .it td { padding: 4px 8px; vertical-align: top; }
-      </style>
-    </head><body onload="setTimeout(() => { window.print(); window.close(); }, 800);">
-      ${isoDocHeaderTable({ judul: "SURAT PANGGILAN KARYAWAN", noDok: "HR-PGL", terbitRevisi: "1/1", hal: "1 dari 1" })}
-      <br/><p>Kepada Yth,<br/>Sdr/i <strong>${escapeHtml(data.nama_karyawan)}</strong><br/>Di Tempat</p>
-      <p>Dengan hormat,<br/>Bersama surat ini, kami memanggil Saudara/i untuk hadir menemui bagian HRD guna membahas perihal: <strong>${escapeHtml(data.perihal)}</strong>.</p>
-      <table class="it">
-        <tr><td width="20%">Hari/Tanggal</td><td width="2%">:</td><td><strong>${fmtDateShort(data.tanggal_panggilan)}</strong></td></tr>
-        <tr><td>Waktu</td><td>:</td><td><strong>${data.waktu || "09.00 WIB"}</strong></td></tr>
-        <tr><td>Tempat</td><td>:</td><td><strong>Ruang HRD CV Andela Jaya</strong></td></tr>
-      </table>
-      <p>Demikian surat panggilan ini disampaikan agar dapat dihadiri tepat waktu.</p>
-      <table style="width:100%; text-align:center; margin-top:40px;">
-        <tr><td width="50%"></td><td width="50%">HRD Manager,</td></tr><tr><td height="80"></td><td></td></tr>
-        <tr><td></td><td>( <strong>${escapeHtml(getHrdName())}</strong> )</td></tr>
-      </table>
-    </body></html>`;
-    printWindow.document.write(html); printWindow.document.close();
-  }
-
   function printSuratPeringatan(data) {
     const printWindow = window.open('', '_blank');
-    // PERBAIKAN BUG REPLACE:
-    const spRaw = data.tingkat_sp || ""; 
-    const spNumber = spRaw.replace(/[^0-9]/g, '');
-    const spTitle = spNumber ? `(SP ${spNumber})` : `(${spRaw})`;
-
     let html = `
     <html><head><title>Surat Peringatan - ${escapeHtml(data.nama_karyawan)}</title>
-      <style>
-        @media print { body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }
-        body { font-family: 'Times New Roman', serif; font-size: 14px; padding: 40px; line-height: 1.5; color: #000; }
-        table { width: 100%; }
-      </style>
+      <style>body { font-family: 'Times New Roman', serif; font-size: 14px; padding: 40px; line-height: 1.5; color: #000; }
+      table { width: 100%; }</style>
     </head><body onload="setTimeout(() => { window.print(); window.close(); }, 800);">
-      ${isoDocHeaderTable({ judul: `SURAT PERINGATAN ${spTitle}`, noDok: "HR-SP", terbitRevisi: "1/1", hal: "1 dari 1" })}
+      ${isoDocHeaderTable({ judul: `SURAT PERINGATAN (SP ${data.tingkat_sp.replace(/[^0-9]/g, '')})`, noDok: "HR-SP", terbitRevisi: "1/1", hal: "1 dari 1" })}
       <br/><h3 style="text-align:center; text-decoration:underline;">SURAT PERINGATAN</h3>
       <p>Diberikan kepada:</p>
       <table><tr><td width="20%">Nama</td><td width="2%">:</td><td><strong>${escapeHtml(data.nama_karyawan)}</strong></td></tr></table>
@@ -98,7 +55,7 @@ export async function mount(container) {
       <p>Diharapkan Saudara/i dapat memperbaiki kinerja dan tidak mengulangi pelanggaran tersebut.</p>
       <table style="width:100%; text-align:center; margin-top:40px;">
         <tr><td width="50%">Karyawan Ybs,</td><td width="50%">HRD Manager,</td></tr><tr><td height="80"></td><td></td></tr>
-        <tr><td>( ${escapeHtml(data.nama_karyawan)} )</td><td>( <strong>${escapeHtml(getHrdName())}</strong> )</td></tr>
+        <tr><td>( ${escapeHtml(data.nama_karyawan)} )</td><td>( ................................. )</td></tr>
       </table>
     </body></html>`;
     printWindow.document.write(html); printWindow.document.close();

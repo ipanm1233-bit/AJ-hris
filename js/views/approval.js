@@ -327,10 +327,20 @@ async function processAction(row, action, note, session) {
   }
   
   const catatan = [...(row.catatan_penolakan || []), `[${session.nama} - ${action}]: ${note}`];
-  
+
+  // Jika pengajuan ini butuh Laporan Pertanggungjawaban (LPJ) dan baru saja mencapai
+  // status APPROVED FINAL, hitung batas waktu pengumpulan LPJ-nya sekarang.
+  const updatePayload = { approval_steps: steps, status_final: statusFinal, catatan_penolakan: catatan };
+  if (statusFinal === "APPROVED FINAL" && row.requires_lpj && row.lpj_status === "BELUM" && !row.lpj_due_date) {
+    const due = new Date();
+    due.setDate(due.getDate() + (parseInt(row.lpj_deadline_days) || 7));
+    updatePayload.lpj_due_date = due.toISOString();
+    row.lpj_due_date = updatePayload.lpj_due_date;
+  }
+
   try {
-    await fsUpdate(COL.DATA_PENGAJUAN, row.id, { approval_steps: steps, status_final: statusFinal, catatan_penolakan: catatan });
-    Object.assign(row, { approval_steps: steps, status_final: statusFinal, catatan_penolakan: catatan });
+    await fsUpdate(COL.DATA_PENGAJUAN, row.id, updatePayload);
+    Object.assign(row, updatePayload);
     toast(action === "APPROVE" ? "Pengajuan disetujui" : "Pengajuan ditolak", action === "APPROVE" ? "success" : "warning");
     
     const isCuti = (row.form_id === "F-ISO-CUTI" || (row.nama_form || "").toLowerCase().includes("cuti"));
@@ -540,6 +550,29 @@ async function processAction(row, action, note, session) {
                }
                
                sendEmailNotif(target.email, `[APPROVED FINAL] ${row.nama_form}`, htmlFinal);
+            }
+
+            // ------------------------------------------------------------
+            // PENGINGAT LPJ (Laporan Pertanggungjawaban) — dikirim khusus ke
+            // PEMOHON jika form ini dikonfigurasi wajib LPJ di Form Builder.
+            // ------------------------------------------------------------
+            if (row.requires_lpj) {
+              const pemohonTargets = await getTargetsForRole("PEMOHON", row.nama_pemohon);
+              const dueStr = row.lpj_due_date ? new Date(row.lpj_due_date).toLocaleDateString('id-ID', { dateStyle: 'long' }) : "-";
+              for (const target of pemohonTargets) {
+                const tokenLpj = await createLoginToken(target.username);
+                const htmlLpj = `
+                  <div style="font-family: Arial, sans-serif; padding: 24px; border: 1px solid #fde68a; background:#fffbeb; border-radius: 8px; max-width:560px; margin:0 auto;">
+                    <h2 style="color: #92400e; margin-top:0;">Jangan Lupa Laporan Pertanggungjawaban (LPJ)</h2>
+                    <p>Pengajuan <strong>${escapeHtml(row.nama_form)}</strong> (${escapeHtml(row.id)}) Anda telah <strong>disetujui</strong>.</p>
+                    <p>Sesuai ketentuan, Anda perlu melengkapi <strong>LPJ</strong> (bukti penggunaan/realisasi) paling lambat:</p>
+                    <p style="font-size:16px; font-weight:bold; color:#92400e;">${dueStr}</p>
+                    <a href="https://andela-hris.vercel.app/#riwayat?token=${tokenLpj}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#92400e; color:#fff; text-decoration:none; border-radius:5px;">Isi LPJ Sekarang</a>
+                    <p style="margin-top:15px; font-size:11px; color:#a16207;">Buka menu Riwayat Pengajuan untuk mengisi LPJ pada transaksi ini.</p>
+                  </div>
+                `;
+                sendEmailNotif(target.email, `[Wajib LPJ] ${row.nama_form} — batas ${dueStr}`, htmlLpj).catch(e => console.warn(e));
+              }
             }
           } 
           // JIKA MASIH ADA APPROVER SELANJUTNYA

@@ -365,6 +365,11 @@ export async function openNotificationCenter(session) {
     const myKpi = tugasKpi.filter(t => t.nama_penilai === session.nama && t.status !== "DONE");
     const kontrakHabis = isHrd ? kontrak.filter(k => k.status_kolom_kontrak === "SEGERA HABIS") : [];
 
+    const nowForLpj = new Date();
+    const myLpjPending = semuaPengajuan.filter(r => r.requires_lpj && r.lpj_status === "BELUM" && r.nama_pemohon === session.nama);
+    const myLpjOverdue = myLpjPending.filter(r => r.lpj_due_date && new Date(r.lpj_due_date) < nowForLpj);
+    const orgLpjOverdue = isHrd ? semuaPengajuan.filter(r => r.requires_lpj && r.lpj_status === "BELUM" && r.lpj_due_date && new Date(r.lpj_due_date) < nowForLpj) : [];
+
     const now = new Date();
     const pengumumanAktif = broadcastRows.filter(r => {
       if (!r.tanggal_berakhir) return true;
@@ -404,7 +409,21 @@ export async function openNotificationCenter(session) {
       </div>`;
     }
 
-    if (pengumumanAktif.length === 0 && myApproval.length === 0 && myKpi.length === 0 && kontrakHabis.length === 0) {
+    if (myLpjPending.length > 0) {
+      htmlContent += `<div class="bg-orange-50 border border-orange-200 p-4 rounded-xl">
+         <h4 class="font-bold text-orange-800 text-xs uppercase mb-1 flex items-center gap-1">🧾 LPJ Belum Diisi (${myLpjPending.length})</h4>
+         <p class="text-sm text-orange-700">Anda punya <b>${myLpjPending.length} laporan pertanggungjawaban</b> yang harus dilengkapi${myLpjOverdue.length > 0 ? `, <b>${myLpjOverdue.length} di antaranya sudah lewat batas waktu</b>` : ""}. Buka menu Riwayat Pengajuan untuk mengisi.</p>
+      </div>`;
+    }
+
+    if (orgLpjOverdue.length > 0) {
+      htmlContent += `<div class="bg-red-50 border border-red-200 p-4 rounded-xl">
+         <h4 class="font-bold text-red-800 text-xs uppercase mb-1 flex items-center gap-1">🧾 LPJ Terlambat (Seluruh Karyawan) (${orgLpjOverdue.length})</h4>
+         <p class="text-sm text-red-700">Ada <b>${orgLpjOverdue.length} LPJ karyawan</b> yang sudah melewati batas waktu pengumpulan.</p>
+      </div>`;
+    }
+
+    if (pengumumanAktif.length === 0 && myApproval.length === 0 && myKpi.length === 0 && kontrakHabis.length === 0 && myLpjPending.length === 0 && orgLpjOverdue.length === 0) {
       htmlContent += `<div class="text-center p-8 text-slate-400">
          ${icon("bell", "w-14 h-14 mx-auto mb-3 text-slate-200")}
          <p class="font-medium">Kerja bagus! Tidak ada notifikasi tertunda.</p>
