@@ -240,15 +240,29 @@ export async function canAccessRoute(routeId, session) {
 export async function canAccessForm(formConfig, session) {
   const overrides = await loadPermissionOverrides();
   const userOverride = overrides[session.username];
+  
   if (userOverride && Array.isArray(userOverride.allowed_forms) && userOverride.allowed_forms.length) {
     return userOverride.allowed_forms.includes(formConfig.id);
   }
-  const allowedUsers = (formConfig.allowed_users || []);
-  const allowedRules = (formConfig.allowed_rules || []).map(r => r.trim().toUpperCase());
+
+  // PERBAIKAN: Mengamankan konversi String ke Array jika data tersimpan sebagai teks
+  let allowedUsers = formConfig.allowed_users || [];
+  if (typeof allowedUsers === "string") {
+    allowedUsers = allowedUsers.split(",").map(u => u.trim());
+  }
+  
+  let allowedRules = formConfig.allowed_rules || [];
+  if (typeof allowedRules === "string") {
+    allowedRules = allowedRules.split(",").map(r => r.trim());
+  }
+  
+  allowedRules = allowedRules.map(r => r.toUpperCase());
+
   if (allowedUsers.includes("ALL")) return true;
-  if (allowedUsers.some(u => u.trim().toUpperCase() === session.nama.toUpperCase())) return true;
+  if (allowedUsers.some(u => u.toUpperCase() === session.nama.toUpperCase())) return true;
   if (allowedRules.includes(session.role.toUpperCase())) return true;
   if (session.role.toUpperCase() === "HRD") return true; // HRD selalu bisa lihat semua form
+  
   return false;
 }
 
