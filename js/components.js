@@ -332,29 +332,43 @@ export function renderKanban(container, { columns, items, onCardClick, onDrop })
 /** Versi teks-polos dari cellValue() — dipakai untuk export, bukan tampilan tabel (tanpa tag HTML). */
 function plainCellValue(row, col) {
   let v = row[col.key];
-  if (col.type === "date") return v ? fmtDateShort(v) : "";
+  if (v && typeof v === "object" && typeof v.toDate === "function") v = v.toDate();
+  if (col.type === "date" || v instanceof Date) return v ? fmtDateShort(v) : "";
   if (col.type === "currency") return v ? fmtRupiah(v) : 0;
   if (col.type === "number") return v ?? 0;
   if (col.type === "badge" || col.type === "link") return v ?? "";
   if (v === undefined || v === null) return "";
+  if (Array.isArray(v)) return v.join(", ");
   if (typeof v === "object") { try { return JSON.stringify(v); } catch { return String(v); } }
   return v;
 }
 
+/** Menggabungkan kolom tampilan (label rapi) dengan SEMUA field lain yang ada di data (label otomatis). */
+function buildFullColumnList(columns, rows) {
+  const seen = new Set(columns.map(c => c.key));
+  const extra = [];
+  rows.forEach(row => {
+    Object.keys(row).forEach(k => { if (!seen.has(k)) { seen.add(k); extra.push(k); } });
+  });
+  const autoLabel = (k) => k.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  return [...columns, ...extra.map(k => ({ key: k, label: autoLabel(k) }))];
+}
+
 /**
- * Modal pemilih kolom export — supaya file yang diunduh PERSIS mengikuti struktur
- * kolom yang tampil di layar (bukan dump mentah seluruh field database), dan user
- * bisa pilih kolom mana saja + urutannya sebelum export. Dipakai oleh SEMUA modul
- * yang lewat renderCrudModule (Manajemen Data, Inventory, Kendaraan, dll).
+ * Modal pemilih kolom export — kini SELALU menampilkan seluruh field yang ada
+ * di data (bukan cuma kolom tampilan tabel), plus pilihan format CSV/Excel.
+ * Kirim columns=[] untuk memaksa daftar kolom sepenuhnya otomatis dari data
+ * (dipakai oleh Export Data untuk koleksi apapun).
  */
 export function openExportPicker(title, columns, rows) {
-  let order = columns.map((c, i) => i); // index ke `columns`, urutan bisa diubah drag
+  const fullColumns = buildFullColumnList(columns || [], rows);
+  let order = fullColumns.map((c, i) => i);
   let dragIdx = null;
 
   function renderList(container) {
     const list = container.querySelector("#exp-col-list");
     list.innerHTML = order.map((colIdx, pos) => {
-      const c = columns[colIdx];
+      const c = fullColumns[colIdx];
       return `
       <div draggable="true" data-pos="${pos}" class="exp-col-row flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2">
         <span class="cursor-grab text-slate-300" title="Seret untuk urutkan">${icon("menu", "w-4 h-4")}</span>
@@ -383,7 +397,7 @@ export function openExportPicker(title, columns, rows) {
     title: `Export ${title}`,
     size: "md",
     bodyHtml: `
-      <p class="text-xs text-slate-500 mb-3">Pilih kolom yang ingin diikutsertakan, dan seret ${icon("menu","w-3.5 h-3.5 inline")} untuk mengatur urutannya. File hasil export akan mengikuti urutan ini.</p>
+      <p class="text-xs text-slate-500 mb-3">Pilih kolom (seluruh field yang ada di data ditampilkan) dan seret ${icon("menu","w-3.5 h-3.5 inline")} untuk mengatur urutan.</p>
       <div class="flex gap-2 mb-3">
         <button type="button" id="exp-select-all" class="text-xs px-2.5 py-1 rounded border border-slate-200 hover:bg-slate-50">Pilih Semua</button>
         <button type="button" id="exp-select-none" class="text-xs px-2.5 py-1 rounded border border-slate-200 hover:bg-slate-50">Kosongkan</button>
@@ -392,25 +406,38 @@ export function openExportPicker(title, columns, rows) {
     `,
     footerHtml: `
       <button id="exp-cancel" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
-      <button id="exp-confirm" class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-maroon-700 hover:bg-maroon-800 transition shadow-md flex items-center gap-1.5">${icon("download","w-4 h-4")}Export CSV</button>`,
+      <button id="exp-csv" class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-slate-600 hover:bg-slate-700 transition flex items-center gap-1.5">${icon("download","w-4 h-4")}CSV</button>
+      <button id="exp-xlsx" class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-maroon-700 hover:bg-maroon-800 transition flex items-center gap-1.5">${icon("download","w-4 h-4")}Excel</button>`,
     onMount: (m) => {
       renderList(m);
       m.querySelector("#exp-select-all").onclick = () => m.querySelectorAll(".exp-col-check").forEach(chk => chk.checked = true);
       m.querySelector("#exp-select-none").onclick = () => m.querySelectorAll(".exp-col-check").forEach(chk => chk.checked = false);
       m.querySelector("#exp-cancel").onclick = closeModal;
-      m.querySelector("#exp-confirm").onclick = async () => {
+
+      function getChosen() {
         const checks = Array.from(m.querySelectorAll(".exp-col-check"));
         const chosenIdx = checks.filter(c => c.checked).map(c => parseInt(c.dataset.colidx, 10));
-        if (!chosenIdx.length) { toast("Pilih minimal satu kolom", "warning"); return; }
-        // Urutkan sesuai posisi drag saat ini (bukan urutan checkbox di DOM)
+        if (!chosenIdx.length) { toast("Pilih minimal satu kolom", "warning"); return null; }
         const chosenOrdered = order.filter(idx => chosenIdx.includes(idx));
-        const chosenCols = chosenOrdered.map(idx => columns[idx]);
-
+        const chosenCols = chosenOrdered.map(idx => fullColumns[idx]);
+        return {
+          headers: chosenCols.map(c => c.label),
+          matrix: rows.map(row => chosenCols.map(c => plainCellValue(row, c)))
+        };
+      }
+      const baseName = title.toLowerCase().replace(/\s+/g, "_");
+      m.querySelector("#exp-csv").onclick = async () => {
+        const data = getChosen(); if (!data) return;
         const { downloadCsv } = await import("./utils.js");
-        const headers = chosenCols.map(c => c.label);
-        const matrix = rows.map(row => chosenCols.map(c => plainCellValue(row, c)));
-        downloadCsv(`${title.toLowerCase().replace(/\s+/g, "_")}.csv`, headers, matrix);
+        downloadCsv(`${baseName}.csv`, data.headers, data.matrix);
         toast("File CSV berhasil diunduh", "success");
+        closeModal();
+      };
+      m.querySelector("#exp-xlsx").onclick = async () => {
+        const data = getChosen(); if (!data) return;
+        const { downloadXlsx } = await import("./utils.js");
+        await downloadXlsx(`${baseName}.xlsx`, data.headers, data.matrix, title);
+        toast("File Excel berhasil diunduh", "success");
         closeModal();
       };
     }
