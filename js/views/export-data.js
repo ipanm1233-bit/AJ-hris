@@ -22,6 +22,8 @@ const LABELS = {
   [COL.GIMMICK_SOP]: "Gimmick & SOP",
   [COL.SIKLUS_KARYAWAN]: "Siklus Karyawan",
   [COL.UANG_MAKAN_EXPEDISI]: "Uang Makan Expedisi",
+  [COL.LOG_LEMBUR]: "Data Lembur",
+  [COL.LOG_KASBON]: "Data Kasbon",
   [COL.USERS]: "Data Akun Pengguna",
 };
 
@@ -39,10 +41,9 @@ export async function mount(container) {
   let currentRows = await updateCount();
   select.addEventListener("change", async () => { currentRows = await updateCount(); });
 
-  container.querySelector("#export-btn").addEventListener("click", async () => {
+  container.querySelector("#export-btn").addEventListener("click", () => {
     if (!currentRows.length) { toast("Tidak ada data pada koleksi ini", "warning"); return; }
-    exportToCsv(`${select.value}_${new Date().toISOString().slice(0,10)}.csv`, currentRows);
-    toast("File CSV berhasil diunduh", "success");
+    openExportPicker(LABELS[select.value] || select.value, [], currentRows);
   });
 
   return { unmount() {} };
