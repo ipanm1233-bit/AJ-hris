@@ -264,6 +264,29 @@ export function downloadCsv(filename, headers, matrix) {
   URL.revokeObjectURL(url);
 }
 
+let _xlsxLoadingPromise = null;
+export function ensureXlsxLoaded() {
+  if (window.XLSX) return Promise.resolve();
+  if (_xlsxLoadingPromise) return _xlsxLoadingPromise;
+  _xlsxLoadingPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Gagal memuat library Excel (SheetJS)."));
+    document.head.appendChild(script);
+  });
+  return _xlsxLoadingPromise;
+}
+
+export async function downloadXlsx(filename, headers, matrix, sheetName = "Data") {
+  if (!matrix || !matrix.length) { toast("Tidak ada data untuk diekspor", "warning"); return; }
+  await ensureXlsxLoaded();
+  const ws = window.XLSX.utils.aoa_to_sheet([headers, ...matrix]);
+  const wb = window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  window.XLSX.writeFile(wb, filename.endsWith(".xlsx") ? filename : filename + ".xlsx");
+}
+
 export function exportToCsv(filename, rows) {
   if (!rows || !rows.length) { toast("Tidak ada data untuk diekspor", "warning"); return; }
   const headers = Object.keys(rows[0]);
