@@ -65,5 +65,7 @@ export const COL = {
   UANG_MAKAN_EXPEDISI: "uang_makan_expedisi",
   NOTIFICATIONS: "notifications",
   APP_SETTINGS: "app_settings",
-  DATA_ABSENSI: "data_absensi"
+  DATA_ABSENSI: "data_absensi",
+  LOG_LEMBUR: "log_lembur",
+  LOG_KASBON: "log_kasbon"
 };
