@@ -8,16 +8,18 @@ Single Page Application (SPA) modular berbasis **HTML5 + Tailwind CSS + Firebase
 
 ```
 andela-hris/
-├─ app.html                  ← Shell utama SPA (header, sidebar, mount point)
+├─ index.html                ← Shell utama SPA (header, sidebar, mount point)
 ├─ super-migrasi.html        ← Alat migrasi data Excel → Firestore
 ├─ firestore.rules           ← Contoh Security Rules (WAJIB disesuaikan sebelum go-live)
 ├─ css/
 │  └─ style.css              ← Pelengkap Tailwind: animasi, state sidebar, dsb
 ├─ js/
 │  ├─ firebase-config.js     ← Konfigurasi Firebase + daftar nama koleksi (COL)
-│  ├─ utils.js                ← Smart Date Parser, formatter, toast, modal, CRUD wrapper
+│  ├─ utils.js                ← Smart Date Parser, formatter, toast, modal, CRUD wrapper, field dinamis & upload
 │  ├─ auth.js                  ← Login, sesi, mesin RBAC (menu & form)
-│  ├─ components.js            ← Komponen UI reusable (ikon, tabel CRUD generik, timeline, kanban)
+│  ├─ branding.js              ← Logo perusahaan & kop dokumen ber-standar ISO (satu sumber untuk semua dokumen cetak)
+│  ├─ ai-config.js             ← Konfigurasi terpusat AI Gemini (Rekrutmen & Gimmick/SOP)
+│  ├─ components.js            ← Komponen UI reusable (ikon, tabel CRUD generik, notifikasi, export kolom-terpilih)
 │  ├─ app.js                    ← Router utama (hash-based)
 │  ├─ migrasi-engine.js         ← Logika di balik super-migrasi.html
 │  └─ views/                    ← Satu file controller JS per menu (mount/unmount)
@@ -55,7 +57,7 @@ andela-hris/
 6. Klik **Buat Data Dummy Sekarang** (langkah 4) untuk mengisi modul-modul baru yang belum ada datanya di Excel (Rekrutmen, Gimmick & SOP, Kalender HR, dsb) agar sistem tidak kosong.
 
 ### C. Menjalankan Aplikasi Utama
-Buka `http://localhost:8080/app.html`. Login menggunakan username & password dari sheet **Users** yang sudah dimigrasi (password otomatis di-hash SHA-256 saat migrasi).
+Buka `http://localhost:8080/index.html`. Login menggunakan username & password dari sheet **Users** yang sudah dimigrasi (password otomatis di-hash SHA-256 saat migrasi).
 
 ### D. Deploy ke Hosting
 Karena ini murni file statis (HTML/CSS/JS), bisa langsung di-deploy ke **Firebase Hosting**, Netlify, Vercel static, GitHub Pages, dsb. Contoh Firebase Hosting:
@@ -117,8 +119,8 @@ Lihat objek `COL` pada `js/firebase-config.js` untuk daftar lengkap & nama kolek
 Didefinisikan di `js/auth.js` melalui `MENU_CONFIG` (satu sumber kebenaran untuk seluruh menu sistem):
 
 - **Grup ALL** — tampil untuk semua karyawan yang login.
-- **Grup HRD** — hanya tampil jika `session.role === 'HRD'`.
-- **Grup MANAJEMEN** — tampil jika role termasuk `SPV/HRD/GM/FINANCE/MANAGER`, **atau** karyawan tersebut terdeteksi sebagai atasan (ada karyawan lain di `master_karyawan` dengan field `atasan` = namanya).
+- **Grup HRD / MANAJEMEN** — murni label pengelompokan tampilan sidebar (Menu Utama / Modul HRD / Modul Manajemen). Akses sesungguhnya dicek **per-menu** lewat array `roles` masing-masing item di `MENU_CONFIG` (mis. `roles: ["HRD","SUPERADMIN","DIREKTUR"]`) — bukan lagi dari nama grup. Ini sengaja diperbaiki karena versi lama mengecek `group === "hrd"` dengan syarat `role === 'HRD'` persis, yang secara tidak sengaja memblokir SUPERADMIN & DIREKTUR dari hampir semua menu HRD walau nama role-nya ada di daftar `roles`.
+- Karyawan yang terdeteksi sebagai **atasan** (ada karyawan lain di `master_karyawan` dengan field `atasan` = namanya) otomatis kebagian akses ke menu yang mengizinkan role generik `"ATASAN"`. Untuk modul Manajemen Cuti & Kontrak, role SPV/MANAGER/KOORDINATOR selain HRD/SUPERADMIN/DIREKTUR otomatis mendapat mode **lihat-saja** dan hanya melihat bawahan langsungnya (lihat `FULL_ACCESS_ROLES` / `ATASAN_VIEW_ROLES` di `js/auth.js`).
 
 **Override per-personil oleh HRD** disimpan di koleksi `user_permissions`:
 - `allowed_menus: string[]` — jika diisi, JADI WHITELIST MUTLAK menu yang tampil untuk user tersebut (menimpa aturan role di atas). Dikelola lewat menu **Pengaturan Sistem → Akses Menu (RBAC)**.
@@ -148,4 +150,38 @@ Mesin evaluasi ada di `evalFormula()` (`js/utils.js`) — hanya mengizinkan kara
 
 ## 8. Ekstensi / Pengembangan Lanjutan
 
-Modul-modul manajemen sederhana (Inventory, Kendaraan, Gimmick & SOP, Uang Makan, dst) dibangun di atas satu factory generik `renderCrudModule()` (`js/components.js`) — untuk menambah modul CRUD baru, cukup panggil factory ini dengan konfigurasi kolom & form baru, tanpa menulis ulang boilerplate tabel/modal/pencarian/export CSV.
+Modul-modul manajemen sederhana (Inventory, Kendaraan, Gimmick & SOP, Uang Makan, dst) dibangun di atas satu factory generik `renderCrudModule()` (`js/components.js`) — untuk menambah modul CRUD baru, cukup panggil factory ini dengan konfigurasi kolom & form baru, tanpa menulis ulang boilerplate tabel/modal/pencarian/export CSV. Tombol Export otomatis membuka pemilih kolom (centang + seret urutan) yang mengikuti persis kolom yang dikonfigurasi, bukan dump mentah field database.
+
+---
+
+## 9. Form Builder — Mesin Alur Kerja (Workflow Engine)
+
+Sejak Form Builder ditingkatkan, formulir yang dibuat lewat menu **Form Builder** bisa punya dua kemampuan tambahan di luar CRUD dasar:
+
+1. **Field kondisional** — tiap kolom formulir bisa diatur "Tampilkan Kolom Ini Hanya Jika [kolom lain] = [nilai]". Contoh: kolom "Upload Foto Rumah" hanya muncul jika kolom "Tujuan Kasbon" diisi "Renovasi Rumah". Data tersimpan sebagai `show_if: {field, value}` pada tiap field di `fields_json`.
+2. **Field tipe Upload Foto/File** — upload langsung ke Firebase Storage (folder `pengajuan_lampiran/{id_transaksi}/`), hasilnya berupa URL yang tersimpan di `detail`.
+3. **Laporan Pertanggungjawaban (LPJ)** — form bisa ditandai `requires_lpj: true` dengan kolom LPJ sendiri (`lpj_fields_json`) dan batas hari (`lpj_deadline_days`). Begitu pengajuan berstatus `APPROVED FINAL`, sistem otomatis menghitung `lpj_due_date`, mengirim email pengingat, dan menandai transaksi di menu **Riwayat Pengajuan** sampai pemohon mengisi LPJ-nya (disimpan di `lpj_status`/`lpj_detail`).
+
+Ketiga kapabilitas ini generik — berlaku untuk **form apapun** yang dibuat lewat Form Builder, termasuk form yang akan dibuat di masa depan, tanpa perlu ubah kode.
+
+---
+
+## 10. Wajib Dikonfigurasi Sebelum Go-Live
+
+1. **API Key Gemini** — buka `js/ai-config.js`, ganti `GEMINI_API_KEY` dengan key baru dari [aistudio.google.com/apikey](https://aistudio.google.com/apikey). **Pastikan key diawali `AIzaSy...`** — key berformat `AQ.` sedang bermasalah di Google dan sering ditolak (401) untuk pemanggilan REST langsung seperti yang dipakai di sini.
+2. **CORS Firebase Storage** — semua fitur upload file (lampiran Broadcast, LPJ, field Upload Foto di form dinamis, CV Rekrutmen) butuh bucket Storage diizinkan menerima request dari domain hosting Anda. Jalankan sekali lewat [Google Cloud Shell](https://console.cloud.google.com/):
+   ```bash
+   cat > cors.json << 'EOF'
+   [
+     {
+       "origin": ["https://domain-hosting-anda.com", "http://localhost:3000"],
+       "method": ["GET", "POST", "PUT", "DELETE", "HEAD"],
+       "responseHeader": ["Content-Type", "Authorization", "x-goog-resumable"],
+       "maxAgeSeconds": 3600
+     }
+   ]
+   EOF
+   gsutil cors set cors.json gs://NAMA_BUCKET_ANDA
+   ```
+   Ganti `NAMA_BUCKET_ANDA` sesuai nilai `storageBucket` di `js/firebase-config.js`.
+3. **Logo & kop dokumen** sudah terpasang di `js/branding.js` — kalau logo perusahaan berganti, cukup update `LOGO_DATA_URI` di file itu, otomatis berlaku ke semua dokumen tergenerate (Form Cuti, Tanda Terima, Surat SP, dll).
