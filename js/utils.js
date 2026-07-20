@@ -388,6 +388,41 @@ export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
   }
 }
 
+export async function sendFCMNotif(tokens, title, body) {
+  const list = (Array.isArray(tokens) ? tokens : [tokens]).filter(Boolean);
+  if (!list.length) return false;
+  try {
+    const res = await fetch("/api/send-push", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tokens: list, title, body })
+    });
+    return res.ok;
+  } catch (e) {
+    console.warn("Gagal mengirim push notification:", e);
+    return false;
+  }
+}
+
+/**
+ * Helper terpadu utk 1 target user: menulis notif lonceng (in-app) +
+ * mengirim push ke HP-nya sekaligus, berdasar fcm_token yg tersimpan
+ * di dokumen Users. Dipakai di seluruh modul yg butuh notif per-orang.
+ */
+export async function notifyUser(username, judul, pesan) {
+  if (!username) return;
+  try {
+    await fsAdd(COL.NOTIFICATIONS, {
+      username_target: username, judul, pesan, dibaca: false, tanggal: new Date().toISOString()
+    }, genId("NTF"));
+    const snap = await getDoc(doc(db, COL.USERS, username));
+    const token = snap.exists() ? snap.data().fcm_token : null;
+    if (token) await sendFCMNotif([token], judul, pesan);
+  } catch (e) {
+    console.warn("Gagal mengirim notifikasi ke " + username, e);
+  }
+}
+
 export async function createLoginToken(username) {
   const token = genId("TKN") + "-" + Math.random().toString(36).slice(2, 10);
   await fsAdd("login_tokens", {
