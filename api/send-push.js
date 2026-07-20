@@ -16,15 +16,16 @@ module.exports = async function handler(req, res) {
     }
 
     // 2. MENGIRIM NOTIFIKASI
-    const { tokens, title, body } = req.body;
+    const { tokens, title, body, link } = req.body; 
     
     if (!tokens || tokens.length === 0) {
         return res.status(200).json({ success: false, message: "Tidak ada token target." });
     }
 
-    // Menembak push notification ke Firebase
+    // Sisipkan link ke dalam properti 'data'
     const response = await admin.messaging().sendEachForMulticast({
       notification: { title, body },
+      data: { link: link || "" }, 
       tokens: tokens
     });
     
