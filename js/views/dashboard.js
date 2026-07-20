@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, orderBy, limit, getDoc, doc } from "../firebase-config.js";
-import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, getTargetsForRole, toast, fsUpdate, fsAdd, genId } from "../utils.js";
+import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, getTargetsForRole, toast, fsUpdate, fsAdd, genId, localDateStr } from "../utils.js";
 import { avatar, badge, icon, emptyState, skeletonRows } from "../components.js";
 import { MANAJEMEN_ROLES } from "../auth.js";
 
@@ -28,8 +28,12 @@ export async function mount(container, { session }) {
     } catch (e) { /* jika gagal memuat konfigurasi, tampilkan semua widget seperti biasa */ }
   }
 
+  // loadProfileCard dipanggil lebih dulu (bukan di dalam Promise.all) karena
+  // loadPersonalBanner butuh data karyawan yang sama supaya tidak query dobel.
+  const karyawanProfile = await loadProfileCard(container, session);
+
   await Promise.all([
-    loadProfileCard(container, session),
+    loadPersonalBanner(container, session, karyawanProfile),
     loadLeaveBalances(container, session),
     loadKpiTasks(container, session),
     loadCutiHariIni(container),
@@ -71,6 +75,7 @@ async function loadProfileCard(container, session) {
   `;
 
   if (profileCard) profileCard.onclick = () => openProfileModal(session, karyawan);
+  return karyawan;
 }
 
 function profileRow(label, value) {
@@ -94,6 +99,88 @@ function openProfileModal(session, k) {
     <div class="mt-6 flex justify-end"><button id="btn-tutup-profil" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition">Tutup Profil</button></div>
   `;
   openModal({ title: "Data Pribadi", size: "lg", bodyHtml: body, onMount: (m) => m.querySelector("#btn-tutup-profil").onclick = closeModal });
+}
+
+/* ------------------------ a2. PERSONALISASI (ULTAH / ANNIVERSARY / CUTI) ------------------------ */
+/**
+ * Menampilkan banner personalisasi di dashboard karyawan sesuai kondisi
+ * hari ini: ulang tahun, hari jadi (anniversary kerja), dan/atau sedang
+ * cuti/izin. Banner bisa tampil lebih dari satu sekaligus (mis. ulang
+ * tahun sekaligus sedang cuti). Kalau tidak ada kondisi yang berlaku,
+ * wrapper dikosongkan (tidak ada banner).
+ */
+async function loadPersonalBanner(container, session, karyawan) {
+  const wrap = container.querySelector("#dash-personal-banner");
+  if (!wrap) return;
+  if (!karyawan) { wrap.innerHTML = ""; return; }
+
+  const now = new Date();
+  const banners = [];
+  const firstName = escapeHtml((session.nama || "").split(" ")[0] || "Anda");
+
+  const parseTgl = (v) => {
+    if (!v) return null;
+    const d = v?.toDate ? v.toDate() : new Date(v);
+    return isNaN(d) ? null : d;
+  };
+
+  // 1) ULANG TAHUN
+  const lahir = parseTgl(karyawan.tanggal_lahir);
+  if (lahir && lahir.getDate() === now.getDate() && lahir.getMonth() === now.getMonth()) {
+    banners.push(`
+      <div class="rounded-2xl p-5 text-white shadow-sm flex items-center gap-4" style="background:linear-gradient(135deg,#db2777,#7c3aed)">
+        <div class="text-4xl">🎂</div>
+        <div>
+          <p class="font-bold text-lg">Selamat Ulang Tahun, ${firstName}!</p>
+          <p class="text-sm text-white/90 mt-0.5">Seluruh keluarga besar CV Andela Jaya mendoakan yang terbaik untuk Anda. 🎉</p>
+        </div>
+      </div>`);
+  }
+
+  // 2) HARI JADI / ANNIVERSARY KERJA
+  const join = parseTgl(karyawan.tanggal_join);
+  if (join && join.getDate() === now.getDate() && join.getMonth() === now.getMonth()) {
+    const years = now.getFullYear() - join.getFullYear();
+    if (years > 0) {
+      banners.push(`
+        <div class="rounded-2xl p-5 text-white shadow-sm flex items-center gap-4" style="background:linear-gradient(135deg,#0891b2,#1d4ed8)">
+          <div class="text-4xl">🎉</div>
+          <div>
+            <p class="font-bold text-lg">Selamat Hari Jadi ke-${years} Tahun!</p>
+            <p class="text-sm text-white/90 mt-0.5">Terima kasih atas dedikasi Anda selama ${years} tahun bersama CV Andela Jaya.</p>
+          </div>
+        </div>`);
+    }
+  }
+
+  // 3) SEDANG CUTI/IZIN HARI INI
+  try {
+    const todayStr = localDateStr(now);
+    const q = query(collection(db, COL.MASTER_CUTI), where("nama_karyawan", "==", session.nama), where("tahun", "==", now.getFullYear()));
+    const snap = await getDocs(q);
+    const activeLeave = snap.docs.map(d => d.data()).find(r => {
+      const start = (r.tanggal || "").toString().substring(0, 10);
+      const end = (r.tanggal_selesai || r.tanggal || "").toString().substring(0, 10);
+      return start && todayStr >= start && todayStr <= end;
+    });
+    if (activeLeave) {
+      banners.push(`
+        <div class="rounded-2xl p-5 text-white shadow-sm flex items-center gap-4" style="background:linear-gradient(135deg,#059669,#0d9488)">
+          <div class="text-4xl">🌴</div>
+          <div>
+            <p class="font-bold text-lg">Anda Sedang ${escapeHtml(activeLeave.type_cuti || "Cuti")}</p>
+            <p class="text-sm text-white/90 mt-0.5">Nikmati waktu istirahat Anda. Sampai jumpa lagi setelah cuti selesai!</p>
+          </div>
+        </div>`);
+      // Ganti subtitle sapaan dashboard supaya "terasa" berbeda saat sedang cuti,
+      // bukan cuma tampil banner tambahan.
+      const greetEl = container.querySelector("#dash-greeting");
+      const subtitleEl = greetEl ? greetEl.nextElementSibling : null;
+      if (subtitleEl) subtitleEl.textContent = "Anda tercatat sedang cuti/izin hari ini. Selamat beristirahat!";
+    }
+  } catch (e) { /* banner cuti bersifat pelengkap, jangan sampai mengganggu dashboard kalau query gagal */ }
+
+  wrap.innerHTML = banners.length ? `<div class="space-y-3">${banners.join("")}</div>` : "";
 }
 
 /* ------------------------ b. LEAVE BALANCE ------------------------ */
@@ -262,12 +349,20 @@ function openPenilaianForm(task, container, session) {
 async function loadCutiHariIni(container) {
   const wrap = container.querySelector("#dash-cuti-hari-ini");
   const now = new Date();
+  const todayStr = localDateStr(now);
   try {
-    const q = query(collection(db, COL.MASTER_CUTI), where("tahun", "==", now.getFullYear()), where("bulan", "==", BULAN_ID[now.getMonth()]));
+    // PERBAIKAN: query lama memfilter berdasar `bulan`/`tahun` dari TANGGAL
+    // MULAI cuti lalu mencocokkan hanya tanggal (getDate()) hari ini -- jadi
+    // cuti multi-hari yang mulainya BUKAN hari ini (misalnya mulai kemarin,
+    // masih berlangsung hari ini) tidak pernah muncul di widget ini. Sekarang
+    // diambil semua transaksi cuti TAHUN INI, lalu dicek apakah HARI INI ada
+    // di dalam rentang [tanggal, tanggal_selesai] masing-masing baris.
+    const q = query(collection(db, COL.MASTER_CUTI), where("tahun", "==", now.getFullYear()));
     const snap = await getDocs(q);
     const todayRows = snap.docs.map(d => d.data()).filter(r => {
-      const t = r.tanggal?.toDate ? r.tanggal.toDate() : new Date(r.tanggal);
-      return !isNaN(t) && t.getDate() === now.getDate();
+     const start = (r.tanggal || "").toString().substring(0, 10);
+     const end = (r.tanggal_selesai || r.tanggal || "").toString().substring(0, 10);
+     return start && todayStr >= start && todayStr <= end;
     });
     if (!todayRows.length) { wrap.innerHTML = emptyState("Tidak ada yang cuti hari ini"); return; }
     wrap.innerHTML = todayRows.map(r => `
@@ -295,10 +390,10 @@ async function loadAnnouncements(container) {
     }).slice(0, 6);
 
     if (!validMemos.length) { wrap.innerHTML = emptyState("Belum ada pengumuman aktif"); return; }
-    wrap.innerHTML = validMemos.map(r => {
+    wrap.innerHTML = validMemos.map((r, idx) => {
       const plainText = String(r.isi || "").replace(/<[^>]+>/g, "").slice(0, 90);
       return `
-        <div class="flex gap-3">
+        <div data-memo-idx="${idx}" class="flex gap-3 cursor-pointer hover:bg-slate-50 rounded-lg p-2 -m-2 transition">
           <div class="w-2 h-2 rounded-full bg-maroon-600 mt-2 shrink-0"></div>
           <div>
             <p class="text-sm font-medium text-slate-700">${escapeHtml(r.judul || "Pengumuman")}</p>
@@ -307,8 +402,37 @@ async function loadAnnouncements(container) {
           </div>
         </div>`;
     }).join("");
+
+    // Klik salah satu pengumuman -> tampilkan detail lengkapnya di modal
+    // (sebelumnya cuma cuplikan 90 karakter yang tampil, tanpa cara melihat
+    // isi lengkap/lampiran dari widget dashboard).
+    wrap.querySelectorAll("[data-memo-idx]").forEach(el => {
+      el.onclick = () => openAnnouncementDetailModal(validMemos[parseInt(el.dataset.memoIdx)]);
+    });
   } catch (e) { wrap.innerHTML = emptyState("Belum ada pengumuman"); }
 }
+
+function openAnnouncementDetailModal(memo) {
+  if (!memo) return;
+  const body = `
+    <div class="space-y-4">
+      <div class="flex items-center justify-between text-xs text-slate-400">
+        <span>${fmtDateShort(memo.tanggal)} • oleh ${escapeHtml(memo.dibuat_oleh || "-")}</span>
+        ${memo.tanggal_berakhir ? `<span>Berlaku s/d ${fmtDateShort(memo.tanggal_berakhir)}</span>` : ""}
+      </div>
+      <div class="text-sm text-slate-700 leading-relaxed">${memo.isi || "<i>Tidak ada isi.</i>"}</div>
+      ${memo.lampiran_url ? `<a href="${memo.lampiran_url}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-sm font-medium text-maroon-700 hover:underline">${icon("link", "w-4 h-4")} Lihat Lampiran</a>` : ""}
+    </div>
+    <div class="mt-6 flex justify-end"><button id="btn-tutup-pengumuman" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition">Tutup</button></div>
+  `;
+  openModal({
+    title: memo.judul || "Pengumuman",
+    size: "lg",
+    bodyHtml: body,
+    onMount: (m) => { m.querySelector("#btn-tutup-pengumuman").onclick = closeModal; }
+  });
+}
+
 
 /* ------------------------ f. CONTRACT EXPIRY ------------------------ */
 async function loadContractExpiry(container) {
