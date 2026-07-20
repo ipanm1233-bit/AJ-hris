@@ -73,25 +73,36 @@ export async function mount(container, { session }) {
           };
 
           // FUNGSI PENTING: Menyimpan Token HP ke Database Karyawan
+          // FUNGSI PENTING: Menyimpan Token HP ke Database Karyawan
           const registerDeviceToken = async () => {
-              if (!messaging) return;
+              if (!messaging) {
+                  alert("ERROR: Modul 'messaging' Firebase belum siap.");
+                  return;
+              }
               try {
+                  alert("1. Sedang meminta Token unik dari HP Anda...");
                   const currentToken = await getToken(messaging, { 
-                      // VAPID Key yang sama seperti yang ada di app.js Anda
+                      // Pastikan VAPID KEY ini sudah benar milik Anda
                       vapidKey: 'UneaSlmf85gaUKcql8uFdVvSMdJVADl7w1kEFOug9Lw' 
                   });
                   
                   if (currentToken) {
-                      // Simpan token ke dokumen Karyawan di Firestore
+                      alert("2. Token berhasil didapat! Menyimpan ke database...");
                       if (session && session.username) {
-                          await updateDoc(doc(db, COL.USERS, session.username), {
+                          // Menyimpan ke koleksi USERS menggunakan fsUpdate bawaan utils Anda
+                          await fsUpdate(COL.USERS, session.username, {
                               fcm_token: currentToken
                           });
-                          console.log("Perangkat berhasil didaftarkan untuk Broadcast!");
+                          alert("3. SUKSES! Token berhasil disimpan ke profil Anda (" + session.username + ") di Firestore!");
+                      } else {
+                          alert("ERROR: Sesi login tidak ditemukan (session.username kosong).");
                       }
+                  } else {
+                      alert("Gagal mendapatkan token dari Google. Pastikan koneksi internet Anda stabil.");
                   }
               } catch (e) {
-                  console.error("Gagal mendaftarkan token perangkat:", e);
+                  alert("CRASH SISTEM saat memproses token: " + e.message);
+                  console.error("Gagal mendaftarkan token:", e);
               }
           };
 
