@@ -3,7 +3,7 @@ import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sen
 import { avatar, badge, icon, emptyState, skeletonRows } from "../components.js";
 import { MANAJEMEN_ROLES } from "../auth.js";
 // IMPORT BARU UNTUK MENDAPATKAN TOKEN HP (FCM)
-import { getToken } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js";
+import { getToken } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js";
 
 const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
 
