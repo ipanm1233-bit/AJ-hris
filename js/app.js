@@ -7,7 +7,8 @@
 import { getSession, logout, computeVisibleMenus, canAccessRoute, MENU_CONFIG, loginWithToken } from "./auth.js";
 import { parseHash, toast, fmtDateTime, openModal, closeModal, sha256, fsUpdate } from "./utils.js";
 import { icon, avatar, openNotificationCenter } from "./components.js";
-import { db, COL, collection, query, where, getDocs, doc, getDoc } from "./firebase-config.js";
+import { db, auth, messaging, COL, collection, query, where, getDocs, doc, getDoc, updateDoc } from "./firebase-config.js";
+import { getToken } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js";
 
 const viewContainer = document.getElementById("view-container");
 let currentUnmount = null;
@@ -115,6 +116,41 @@ async function renderShellForUser(session) {
     `;
   }).join("");
 }
+
+// Anda bisa menempelkan fungsi ini di dalam script app.js
+async function aktifkanNotifikasiHP(userData) {
+    try {
+        // Minta izin ke pengguna HP
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+            // Masukkan VAPID Key Anda di sini
+            const currentToken = await getToken(messaging, { 
+                vapidKey: 'PASTE_VAPID_KEY_ANDA_DI_SINI' 
+            });
+
+            if (currentToken) {
+                console.log('Token HP Karyawan:', currentToken);
+                
+                // Simpan token ke database karyawan agar HRD bisa mengirim pesan ke orang ini
+                if (userData && userData.id) {
+                    await updateDoc(doc(db, COL.MASTER_KARYAWAN, userData.id), {
+                        fcm_token: currentToken
+                    });
+                    console.log("Token FCM berhasil disimpan ke database!");
+                }
+            }
+        } else {
+            console.log('Izin notifikasi ditolak oleh pengguna.');
+        }
+    } catch (error) {
+        console.error('Gagal mengaktifkan notifikasi:', error);
+    }
+}
+
+// CARA MEMANGGILNYA:
+// Cari baris kode tempat Anda menyimpan data "session" atau "user" setelah login berhasil, 
+// lalu panggil fungsi di atas, misalnya:
+// aktifkanNotifikasiHP(session);
 
 function highlightActive(route) {
   document.querySelectorAll(".sidebar-item").forEach(a => {
