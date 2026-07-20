@@ -5,21 +5,13 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).send('Metode tidak diizinkan');
   
   try {
-    // 1. INISIALISASI DI DALAM PENGAMAN
+    // 1. INISIALISASI SUPER AMAN (Membaca utuh dari JSON)
     if (!admin.apps.length) {
-      let formattedKey = process.env.FIREBASE_PRIVATE_KEY || "";
-      // Membersihkan format kunci dari Vercel
-      formattedKey = formattedKey.replace(/\\n/g, '\n'); 
-      if (formattedKey.startsWith('"') && formattedKey.endsWith('"')) {
-          formattedKey = formattedKey.substring(1, formattedKey.length - 1);
-      }
-
+      // JSON.parse akan secara otomatis membereskan masalah format baris (PEM)
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      
       admin.initializeApp({
-        credential: admin.credential.cert({
-          projectId: process.env.FIREBASE_PROJECT_ID,
-          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-          privateKey: formattedKey,
-        }),
+        credential: admin.credential.cert(serviceAccount)
       });
     }
 
@@ -30,6 +22,7 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ success: false, message: "Tidak ada token target." });
     }
 
+    // Menembak push notification ke Firebase
     const response = await admin.messaging().sendEachForMulticast({
       notification: { title, body },
       tokens: tokens
@@ -38,7 +31,6 @@ module.exports = async function handler(req, res) {
     res.status(200).json({ success: true, response });
 
   } catch (error) {
-    // JIKA GAGAL, ERROR ASLINYA AKAN DITANGKAP DI SINI SEBAGAI JSON
     console.error("CRASH SERVER:", error);
     res.status(500).json({ 
         success: false, 
