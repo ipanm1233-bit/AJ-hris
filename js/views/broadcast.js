@@ -1,5 +1,7 @@
-import { COL, storage, ref, uploadBytes, getDownloadURL } from "../firebase-config.js";
+import { COL } from "../firebase-config.js";
 import { fsGetAll, fsAdd, openModal, closeModal, toast, genId, escapeHtml, fmtDateTime, sendEmailNotif } from "../utils.js";
+// PERUBAHAN: lampiran memo kini diupload ke Google Drive, bukan Firebase Storage.
+import { uploadFileToDrive } from "../gas-integration.js";
 import { avatar, badge, emptyState, skeletonRows } from "../components.js";
 
 export async function mount(container, { session }) {
@@ -118,17 +120,19 @@ function openComposeModal(container, session, karyawan, users, reload) {
 
           const id = genId("BC");
 
-          // Upload lampiran (jika ada file dipilih) ke Firebase Storage
+          // Upload lampiran (jika ada file dipilih) ke Google Drive
           let lampiranUrl = null;
           const fileInput = m.querySelector("#bc-lampiran-file");
           const file = fileInput.files && fileInput.files[0];
           if (file) {
             if (file.size > 10 * 1024 * 1024) { toast("Ukuran file lampiran maksimal 10MB", "warning"); btnSend.disabled = false; btnSend.innerHTML = "Kirim Memo"; return; }
-            btnSend.innerHTML = "Mengupload Lampiran...";
-            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-            const storageRef = ref(storage, `broadcast_lampiran/${id}/${safeName}`);
-            await uploadBytes(storageRef, file);
-            lampiranUrl = await getDownloadURL(storageRef);
+            btnSend.innerHTML = "Mengupload Lampiran ke Drive...";
+            try {
+              lampiranUrl = await uploadFileToDrive(file, `Broadcast/${id}`);
+            } catch (upErr) {
+              toast("Gagal upload lampiran: " + upErr.message, "error");
+              btnSend.disabled = false; btnSend.innerHTML = "Kirim Memo"; return;
+            }
             btnSend.innerHTML = "Sedang Mengirim...";
           }
 
