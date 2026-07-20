@@ -455,7 +455,7 @@ export async function mount(container) {
 
                if (jenis === "Onboarding") {
                    const d = payloadLog.new_employee_data;
-                   emailSubject = "Selamat Datang di CV Andela Jaya! 🎉";
+                   emailSubject = "Selamat Datang di CV Andela Jaya!";
                    emailBody = `
                      <div style="font-family:Arial,sans-serif;padding:24px;max-width:560px;margin:0 auto;">
                        <h2 style="color:#7f1d1d;">Selamat Bergabung, ${escapeHtml(namaTarget)}!</h2>
