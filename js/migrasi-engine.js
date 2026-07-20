@@ -194,7 +194,7 @@ function smartConvertValue(rawValue, colKey, mapCfg) {
 
   if (isDateCol) {
     const d = smartParseDate(rawValue);
-    return d ? d.toISOString() : null;
+    return d ? localDateStr(d) : null;   // simpan "YYYY-MM-DD" murni, anti-ambigu
   }
   if (isJsonCol) {
     if (typeof rawValue !== "string") return rawValue;
