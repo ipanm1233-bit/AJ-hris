@@ -2,7 +2,7 @@ import { db, COL, collection, query, where, getDocs, orderBy, limit, doc, getDoc
 import {
   fsGetAll, fsAdd, fsUpdate, openModal, closeModal, toast, genId, escapeHtml,
   fmtDateShort, evalFormula, toNumber, sendEmailNotif, getTargetsForRole, createLoginToken,
-  dynFieldWrapperHtml, wireDynFormLogic, collectDynFormDetail
+  dynFieldWrapperHtml, wireDynFormLogic, collectDynFormDetail, sendFCMNotif
 } from "../utils.js";
 import { canAccessForm } from "../auth.js";
 import { icon, badge, emptyState, skeletonRows } from "../components.js";
@@ -239,8 +239,6 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
     approval_steps: approvalSteps,
     status_final: approvalFlow.length ? "MENUNGGU" : "APPROVED FINAL",
     catatan_penolakan: [],
-    // ---- Laporan Pertanggungjawaban (LPJ) — didenormalisasi dari Form Builder
-    // supaya approval.js tidak perlu fetch ulang konfigurasi form saat approve.
     requires_lpj: requiresLpj,
     lpj_deadline_days: requiresLpj ? (parseInt(formCfg.lpj_deadline_days) || 7) : null,
     lpj_fields_json: requiresLpj ? (formCfg.lpj_fields_json || []) : [],
@@ -249,8 +247,6 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
     lpj_detail: null
   };
 
-  // Form tanpa alur approval otomatis APPROVED FINAL saat submit — jadi batas waktu
-  // LPJ juga harus langsung dihitung di sini (bukan menunggu approval.js).
   if (requiresLpj && payload.status_final === "APPROVED FINAL") {
     const due = new Date();
     due.setDate(due.getDate() + payload.lpj_deadline_days);
@@ -265,25 +261,39 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
     const container = document.getElementById("view-container");
     if (container) await loadRecent(container, session);
     
-    // Memicu Notifikasi Email ke APPROVER PERTAMA
-    if (approvalFlow.length > 0 && typeof sendEmailNotif === 'function') {
+    // Memicu Notifikasi (Email + Lonceng App + Push HP) ke APPROVER PERTAMA
+    if (approvalFlow.length > 0) {
       const nextRole = approvalFlow[0];
       const targets = await getTargetsForRole(nextRole, payload.nama_pemohon);
       
       for (const target of targets) {
-        const token = await createLoginToken(target.username); // Buat Token Personal
-        const magicLink = `https://andela-hris.vercel.app/#approval?token=${token}`; // Sisipkan token di URL
-
-        const htmlEmail = `
-          <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-            <h2 style="color: #7a1f2b;">Pengajuan Baru: ${payload.nama_form}</h2>
-            <p><strong>Diajukan Oleh:</strong> ${payload.nama_pemohon}</p>
-            <p>Pengajuan ini membutuhkan persetujuan Anda sebagai <strong>${nextRole}</strong>.</p>
-            <a href="${magicLink}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Akses Langsung & Setujui</a>
-            <p style="margin-top:15px; font-size:11px; color:#94a3b8;">Tombol di atas adalah tautan masuk aman (hanya berlaku 1 kali).</p>
-          </div>
-        `;
-        sendEmailNotif(target.email, `Persetujuan Dibutuhkan: ${payload.nama_form}`, htmlEmail).catch(e => console.warn(e));
+        // --- 1. NOTIFIKASI EMAIL (Jalur Lama) ---
+        if (typeof sendEmailNotif === 'function') {
+           const token = await createLoginToken(target.username);
+           const magicLink = `https://andela-hris.vercel.app/#approval?token=${token}`;
+           const htmlEmail = `
+             <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+               <h2 style="color: #7a1f2b;">Pengajuan Baru: ${payload.nama_form}</h2>
+               <p><strong>Diajukan Oleh:</strong> ${payload.nama_pemohon}</p>
+               <p>Pengajuan ini membutuhkan persetujuan Anda sebagai <strong>${nextRole}</strong>.</p>
+               <a href="${magicLink}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Akses Langsung & Setujui</a>
+               <p style="margin-top:15px; font-size:11px; color:#94a3b8;">Tombol di atas adalah tautan masuk aman (hanya berlaku 1 kali).</p>
+             </div>
+           `;
+           sendEmailNotif(target.email, `Persetujuan Dibutuhkan: ${payload.nama_form}`, htmlEmail).catch(e => console.warn(e));
+        }
+        
+        // --- 2. NOTIFIKASI LONCENG & PUSH HP (Jalur Baru) ---
+        if (typeof notifyUser === 'function') {
+           await notifyUser(
+               target.username, 
+               `⏳ Persetujuan Dibutuhkan`, 
+               `Ada pengajuan ${payload.nama_form} baru dari ${payload.nama_pemohon}.`
+               // Kita tidak perlu menambahkan url /#approval secara paksa di sini, 
+               // karena komponen Lonceng (Pusat Notifikasi) di js/components.js 
+               // sudah diatur otomatis mengarah ke /#approval untuk pesan berjenis ini.
+           ).catch(e => console.warn("Push gagal:", e));
+        }
       }
     }
   } catch (e) {
