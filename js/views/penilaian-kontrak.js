@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, limit } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, createLoginToken } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, createLoginToken, notifyUser } from "../utils.js";
 import { renderCrudModule, badge, emptyState, skeletonRows } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.js";
 import { COMPANY_NAME, logoImgTag } from "../branding.js";
@@ -478,6 +478,7 @@ export async function mount(container, { session }) {
                   const magicLink = `https://andela-hris.vercel.app/#dashboard?token=${token}`;
                   const htmlEmail = `<div style="font-family: Arial; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;"><h2 style="color: #7a1f2b;">Tugas Penilaian KPI Baru</h2><p>Halo <strong>${penilai}</strong>,</p><p>Anda ditugaskan menilai <strong>${dinilaiList.length} karyawan</strong> periode <strong>${periode}</strong>.</p><a href="${magicLink}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Mulai Menilai</a></div>`;
                   sendEmailNotif(penilaiEmail, "Tugas Penilaian KPI 360", htmlEmail).catch(e => console.warn(e));
+                  await notifyUser(penilaiUsername, "Tugas Penilaian KPI 360", `Anda ditugaskan menilai ${dinilaiList.length} karyawan periode ${periode}.`);
                }
 
                toast("Tugas Penilaian berhasil didistribusikan.", "success"); closeModal(); await loadKpi360(); 
