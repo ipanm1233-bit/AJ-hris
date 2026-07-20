@@ -1,5 +1,5 @@
 import { COL } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsDelete, openModal, closeModal, toast, escapeHtml, sendEmailNotif, genId } from "../utils.js";
+import { fsGetAll, fsAdd, fsDelete, openModal, closeModal, toast, escapeHtml, sendEmailNotif, genId, localDateStr } from "../utils.js";
 import { emptyState } from "../components.js";
 
 export async function mount(container, { session }) {
@@ -67,13 +67,7 @@ export async function mount(container, { session }) {
 
   // Fungsi helper standarisasi format YYYY-MM-DD
   function toLocalDateStr(val) {
-     if (!val) return null;
-     let d = val.toDate ? val.toDate() : new Date(val);
-     if (isNaN(d)) return null;
-     const year = d.getFullYear();
-     const month = String(d.getMonth() + 1).padStart(2, '0');
-     const day = String(d.getDate()).padStart(2, '0');
-     return `${year}-${month}-${day}`;
+     return localDateStr(val);
   }
 
   function renderCalendar() {
@@ -158,8 +152,10 @@ export async function mount(container, { session }) {
          
          let annivYear = "";
          if(type === 'anniv') {
-             const yJoin = new Date(toLocalDateStr(k.tanggal_join)).getFullYear();
-             const yNow = new Date(dStr).getFullYear();
+             // Ambil tahun langsung dari teks "YYYY-MM-DD" (bukan re-parse lewat
+             // new Date() lagi) supaya tidak ada celah zona waktu sama sekali.
+             const yJoin = parseInt(toLocalDateStr(k.tanggal_join)?.substring(0, 4), 10);
+             const yNow = parseInt(dStr.substring(0, 4), 10);
              annivYear = yNow - yJoin;
          }
 
@@ -231,17 +227,17 @@ export async function mount(container, { session }) {
                    try {
                        let subject, htmlBody;
                        if (type === 'bday') {
-                           subject = `🎉 Selamat Ulang Tahun, ${name}!`;
+                           subject = `Selamat Ulang Tahun, ${name}!`;
                            htmlBody = `<div style="font-family: Arial; padding: 30px; text-align: center; border: 1px solid #fbcfe8; background-color: #fdf2f8; border-radius: 10px;">
-                               <h1 style="color: #be185d; margin-bottom: 10px;">Selamat Ulang Tahun! 🎂</h1>
+                               <h1 style="color: #be185d; margin-bottom: 10px;">Selamat Ulang Tahun! &#127874;</h1>
                                <p style="color: #831843; font-size: 16px;">Segenap jajaran Direksi dan tim HRD mengucapkan selamat ulang tahun untuk <strong>${name}</strong>.</p>
                                <p style="color: #831843;">Semoga panjang umur, sehat selalu, dan semakin sukses bersama CV Andela Jaya!</p>
                            </div>`;
                        } else {
                            const years = btn.dataset.annivYear;
-                           subject = `💼 Happy Work Anniversary ke-${years}, ${name}!`;
+                           subject = `Happy Work Anniversary ke-${years}, ${name}!`;
                            htmlBody = `<div style="font-family: Arial; padding: 30px; text-align: center; border: 1px solid #e9d5ff; background-color: #faf5ff; border-radius: 10px;">
-                               <h1 style="color: #7e22ce; margin-bottom: 10px;">Happy Work Anniversary! 🎉</h1>
+                               <h1 style="color: #7e22ce; margin-bottom: 10px;">Happy Work Anniversary! &#127881;</h1>
                                <p style="color: #581c87; font-size: 16px;">Terima kasih atas dedikasi dan kerja keras <strong>${name}</strong> selama <strong>${years} Tahun</strong> ini bersama kami.</p>
                                <p style="color: #581c87;">Mari terus tumbuh dan mencapai kesuksesan bersama CV Andela Jaya!</p>
                            </div>`;
