@@ -109,7 +109,7 @@ function openLpjModal(row, session, onDone) {
         submitBtn.disabled = true;
         submitBtn.textContent = "Mengirim...";
         try {
-          const lpjDetail = await collectDynFormDetail(form, fields, `lpj_lampiran/${row.id}`);
+          const lpjDetail = await collectDynFormDetail(form, fields, `LPJ/${row.id}`);
           await fsUpdate(COL.DATA_PENGAJUAN, row.id, {
             lpj_status: "SELESAI",
             lpj_detail: lpjDetail,
