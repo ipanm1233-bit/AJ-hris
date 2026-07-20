@@ -8,7 +8,7 @@ import {
 
 // TAMBAHKAN IMPORT STORAGE DI SINI
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js";
-import { getMessaging } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js"; 
+import { getMessaging, isSupported } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js"; 
 // Pastikan versinya (10.7.1) sama dengan versi firebase-app.js yang Anda gunakan di baris atas
 
 const firebaseConfig = {
@@ -21,7 +21,18 @@ const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
-export const messaging = getMessaging(app);
+export let messaging = null;
+
+// Cek dulu apakah HP/Browser mendukung notifikasi sebelum menyalakan fiturnya
+isSupported().then((supported) => {
+  if (supported) {
+    messaging = getMessaging(app);
+  } else {
+    console.log("Firebase Messaging tidak didukung di tab ini (Harus Add to Home Screen).");
+  }
+}).catch((err) => {
+  console.log("Gagal mengecek dukungan messaging:", err);
+});
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()})
 });
