@@ -1,7 +1,7 @@
-importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js');
+// Ganti versi 9.22.0 menjadi 10.13.0 agar sama dengan aplikasi
+importScripts('https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js');
 
-// Gunakan konfigurasi Firebase yang sama dengan di js/firebase-config.js
 firebase.initializeApp({
   apiKey: "AIzaSyBAAUHaqYrzTp6wi1PDYkrKY0IWI2XQoVw",
   authDomain: "andela-hris-bc9ed.firebaseapp.com",
@@ -13,12 +13,15 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Menangkap notifikasi saat aplikasi berjalan di background
+// Menerima pesan saat browser HP ditutup/dibuang
 messaging.onBackgroundMessage(function(payload) {
-  const notificationTitle = payload.notification.title;
+  console.log("Pesan background masuk:", payload);
+  
+  const notificationTitle = payload.notification.title || "HRIS Andela Jaya";
   const notificationOptions = {
-    body: payload.notification.body,
-    icon: '/assets/icon-192x192.png'
+    body: payload.notification.body || "Ada pembaruan baru.",
+    icon: '/assets/icon-192x192.png',
+    badge: '/assets/icon-192x192.png'
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);
