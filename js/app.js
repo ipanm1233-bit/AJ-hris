@@ -28,13 +28,9 @@ async function boot() {
       const pText = bootLoader.querySelector("p");
       if (pText) pText.textContent = "Memverifikasi login aman sekali pakai...";
       
-      // Proses login menggunakan token
       await loginWithToken(token);
-      
-      // Hapus parameter ?token=... dari URL secara halus tanpa me-reload halaman
       history.replaceState(null, "", window.location.pathname + "#" + (path || "approval"));
       
-      // Biarkan proses berlanjut ke bawah (jangan gunakan return di sini)
     } catch (e) {
       alert("Akses otomatis gagal: " + e.message + "\nSilakan login secara manual.");
       history.replaceState(null, "", window.location.pathname + "#login");
@@ -56,15 +52,57 @@ async function boot() {
   bindShellEvents(session);
   startClock();
 
+  // MENGAKTIFKAN NOTIFIKASI SETELAH LOGIN BERHASIL
+  aktifkanNotifikasiHP(session);
+
   window.addEventListener("hashchange", () => router(session));
   
-  // Memastikan route default
   if (!location.hash || location.hash === "#login") {
      location.hash = "#dashboard";
   }
   
   await router(session);
   bootLoader.classList.add("hidden");
+}
+
+/* ---------------------------------------------------------------------
+ * FUNGSI NOTIFIKASI PWA (FCM)
+ * ------------------------------------------------------------------- */
+async function aktifkanNotifikasiHP(userData) {
+    // 1. CEK DUKUNGAN BROWSER: Mencegah crash di iPhone (Safari)
+    if (!messaging) {
+        console.warn("Fitur Push Notification tidak didukung di tab ini (Gunakan fitur Add to Home Screen).");
+        return; 
+    }
+
+    try {
+        // 2. Minta izin ke pengguna HP
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+            
+            // JANGAN LUPA GANTI TEKS DI BAWAH INI DENGAN VAPID KEY ASLI ANDA
+            const currentToken = await getToken(messaging, { 
+                vapidKey: 'UneaSlmf85gaUKcql8uFdVvSMdJVADl7w1kEFOug9Lw' 
+            });
+
+            if (currentToken) {
+                console.log('Token HP Karyawan:', currentToken);
+                
+                // Simpan token ke database karyawan
+                if (userData && userData.username) {
+                    // Update field fcm_token di master data pengguna
+                    await updateDoc(doc(db, COL.MASTER_KARYAWAN, userData.id), {
+                        fcm_token: currentToken
+                    });
+                    console.log("Token FCM berhasil disimpan ke database!");
+                }
+            }
+        } else {
+            console.log('Izin notifikasi ditolak oleh pengguna.');
+        }
+    } catch (error) {
+        console.error('Gagal mengaktifkan notifikasi:', error);
+    }
 }
 
 /* ---------------------------------------------------------------------
@@ -82,7 +120,7 @@ async function showLogin() {
   mod.mount(loginContainer, {
     onSuccess: () => {
       loginContainer.classList.add("hidden");
-      location.reload(); // reload bersih agar seluruh state RBAC & cache ter-inisialisasi ulang
+      location.reload(); 
     }
   });
 }
@@ -116,41 +154,6 @@ async function renderShellForUser(session) {
     `;
   }).join("");
 }
-
-// Anda bisa menempelkan fungsi ini di dalam script app.js
-async function aktifkanNotifikasiHP(userData) {
-    try {
-        // Minta izin ke pengguna HP
-        const permission = await Notification.requestPermission();
-        if (permission === 'granted') {
-            // Masukkan VAPID Key Anda di sini
-            const currentToken = await getToken(messaging, { 
-                vapidKey: 'PASTE_VAPID_KEY_ANDA_DI_SINI' 
-            });
-
-            if (currentToken) {
-                console.log('Token HP Karyawan:', currentToken);
-                
-                // Simpan token ke database karyawan agar HRD bisa mengirim pesan ke orang ini
-                if (userData && userData.id) {
-                    await updateDoc(doc(db, COL.MASTER_KARYAWAN, userData.id), {
-                        fcm_token: currentToken
-                    });
-                    console.log("Token FCM berhasil disimpan ke database!");
-                }
-            }
-        } else {
-            console.log('Izin notifikasi ditolak oleh pengguna.');
-        }
-    } catch (error) {
-        console.error('Gagal mengaktifkan notifikasi:', error);
-    }
-}
-
-// CARA MEMANGGILNYA:
-// Cari baris kode tempat Anda menyimpan data "session" atau "user" setelah login berhasil, 
-// lalu panggil fungsi di atas, misalnya:
-// aktifkanNotifikasiHP(session);
 
 function highlightActive(route) {
   document.querySelectorAll(".sidebar-item").forEach(a => {
@@ -312,7 +315,6 @@ async function openChangePasswordModal(session) {
                const user = snap.data();
                const hashLama = await sha256(lama);
 
-               // Cek kecocokan password lama
                if (user.password_hash !== hashLama && user.password !== lama) {
                   throw new Error("Password lama salah");
                }
@@ -323,7 +325,6 @@ async function openChangePasswordModal(session) {
                toast("Password berhasil diubah. Silakan login ulang.", "success");
                closeModal();
                
-               // Paksa logout setelah ganti password untuk merefresh sesi
                setTimeout(() => { logout(); }, 2000);
             } catch(e) {
                toast(e.message, "error");
@@ -353,5 +354,4 @@ function startClock() {
   setInterval(tick, 30000);
 }
 
-// Inisialisasi aplikasi
 boot();
