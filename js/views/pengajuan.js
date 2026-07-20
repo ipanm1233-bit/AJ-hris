@@ -185,7 +185,7 @@ async function openFormModal(formCfg, session) {
         submitBtn.textContent = "Memproses...";
 
         try {
-          const detail = await collectDynFormDetail(form, fields, `pengajuan_lampiran/${trxId}`);
+          const detail = await collectDynFormDetail(form, fields, `Pengajuan/${trxId}`);
           await submitPengajuan(formCfg, detail, session, trxId);
         } catch (e) {
           toast(e.message || "Gagal memproses lampiran", "error");
