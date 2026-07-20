@@ -95,7 +95,7 @@ export async function renderCrudModule(container, cfg) {
     title, subtitle = "", collectionName, columns, formFields,
     idPrefix = "REC", searchFields = [], canCreate = true, canEdit = true,
     canDelete = true, extraToolbarHtml = "", onRowRender = null, printFn = null, printLabel = "Cetak Dokumen",
-    beforeSave = null, orderByField = null, filterFn = null, emptyMessage = null
+    beforeSave = null, afterSave = null, orderByField = null, filterFn = null, emptyMessage = null
   } = cfg;
 
   container.innerHTML = `
@@ -233,8 +233,10 @@ export async function renderCrudModule(container, cfg) {
           });
           if (beforeSave) data = (await beforeSave(data, existing)) || data;
           try {
-            if (existing) await fsUpdate(collectionName, existing.id, data);
-            else await fsAdd(collectionName, data, formFields.idFromField ? data[formFields.idFromField] : genId(idPrefix));
+            let savedId;
+            if (existing) { await fsUpdate(collectionName, existing.id, data); savedId = existing.id; }
+            else { savedId = formFields.idFromField ? data[formFields.idFromField] : genId(idPrefix); await fsAdd(collectionName, data, savedId); }
+            if (afterSave) { try { await afterSave(data, !existing, savedId); } catch (e) { console.warn("afterSave error:", e); } }
             toast(existing ? "Data berhasil diperbarui" : "Data baru berhasil ditambahkan", "success");
             closeModal();
             load();
