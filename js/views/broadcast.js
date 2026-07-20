@@ -1,5 +1,5 @@
 import { COL } from "../firebase-config.js";
-import { fsGetAll, fsAdd, openModal, closeModal, toast, genId, escapeHtml, fmtDateTime, sendEmailNotif } from "../utils.js";
+import { fsGetAll, fsAdd, openModal, closeModal, toast, genId, escapeHtml, fmtDateTime, sendEmailNotif, sendFCMNotif } from "../utils.js";
 // PERUBAHAN: lampiran memo kini diupload ke Google Drive, bukan Firebase Storage.
 import { uploadFileToDrive } from "../gas-integration.js";
 import { avatar, badge, emptyState, skeletonRows } from "../components.js";
@@ -136,6 +136,26 @@ function openComposeModal(container, session, karyawan, users, reload) {
             btnSend.innerHTML = "Sedang Mengirim...";
           }
 
+          // ... kode pengiriman email sebelumnya ...
+          if (targetEmails.length > 0) {
+            // ... (logika email Anda)
+            await Promise.all(targetEmails.map(email => sendEmailNotif(email, `[Memo HRIS] ${payload.judul}`, emailTemplate)));
+          }
+
+          // TAMBAHKAN KODE INI UNTUK PUSH NOTIFICATION:
+          // Mengambil token dari data pengguna yang terpilih
+          const targetTokens = targetUsers.map(u => u.fcm_token).filter(Boolean);
+          
+          if (targetTokens.length > 0) {
+            await sendFCMNotif(
+                targetTokens, 
+                `📢 Memo Baru: ${payload.judul}`, 
+                plainText.substring(0, 80) + '...'
+            );
+          }
+          
+          toast("Memo berhasil dikirim", "success");
+          
           const payload = {
             judul: fd.get("judul"), 
             isi: htmlContent, 
