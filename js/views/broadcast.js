@@ -171,7 +171,8 @@ function openComposeModal(container, session, karyawan, users, reload) {
           // Push notification ke HP (baru)
           const targetTokens = targetUsers.map(u => u.fcm_token).filter(Boolean);
           if (targetTokens.length > 0) {
-            await sendFCMNotif(targetTokens, `📢 Memo Baru: ${payload.judul}`, plainText.substring(0, 80) + '...');
+            // Parameter ke-4 adalah rute menu aplikasinya
+            await sendFCMNotif(targetTokens, `📢 Memo Baru: ${payload.judul}`, plainText.substring(0, 80) + '...', '/#dashboard');
           }
 
           toast("Memo berhasil dikirim", "success");
