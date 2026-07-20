@@ -494,51 +494,67 @@ export async function openNotificationCenter(session) {
     }).sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
 
     let htmlContent = `<div class="space-y-4 max-h-[60vh] overflow-y-auto pr-2">`;
+    
+    // Helper untuk menutup modal saat menu diklik
+    const closeEvt = `onclick="document.getElementById('app-modal-close')?.click()"`;
 
+    // 1. PENGUMUMAN -> Arahkan ke Dashboard
     if (pengumumanAktif.length > 0) {
-      htmlContent += `<div class="bg-purple-50 border border-purple-200 p-4 rounded-xl">
+      htmlContent += `<a href="#dashboard" ${closeEvt} class="block bg-purple-50 border border-purple-200 p-4 rounded-xl hover:bg-purple-100 transition cursor-pointer text-left">
          <h4 class="font-bold text-purple-800 text-xs uppercase mb-1 flex items-center gap-1">📢 Pengumuman (${pengumumanAktif.length})</h4>
          <ul class="text-sm text-purple-700 list-disc list-inside space-y-0.5">
            ${pengumumanAktif.slice(0, 4).map(p => `<li>${escapeHtml(p.judul || p.title || "Pengumuman")}</li>`).join("")}
          </ul>
-      </div>`;
+         <p class="text-xs text-purple-600 font-semibold mt-2">Lihat di Dashboard &rarr;</p>
+      </a>`;
     }
 
+    // 2. ANTREAN PERSETUJUAN -> Arahkan ke menu Approval
     if (myApproval.length > 0) {
-      htmlContent += `<div class="bg-amber-50 border border-amber-200 p-4 rounded-xl">
+      htmlContent += `<a href="#approval" ${closeEvt} class="block bg-amber-50 border border-amber-200 p-4 rounded-xl hover:bg-amber-100 transition cursor-pointer text-left">
          <h4 class="font-bold text-amber-800 text-xs uppercase mb-1 flex items-center gap-1">⏳ Antrean Persetujuan (${myApproval.length})</h4>
          <p class="text-sm text-amber-700">Ada <b>${myApproval.length} pengajuan</b> dari rekan tim yang membutuhkan persetujuan Anda saat ini.</p>
-      </div>`;
+         <p class="text-xs text-amber-600 font-semibold mt-2">Buka Menu Persetujuan &rarr;</p>
+      </a>`;
     }
 
+    // 3. TUGAS KPI 360 -> Arahkan ke Dashboard (Widget KPI)
     if (myKpi.length > 0) {
-      htmlContent += `<div class="bg-blue-50 border border-blue-200 p-4 rounded-xl">
+      htmlContent += `<a href="#dashboard" ${closeEvt} class="block bg-blue-50 border border-blue-200 p-4 rounded-xl hover:bg-blue-100 transition cursor-pointer text-left">
          <h4 class="font-bold text-blue-800 text-xs uppercase mb-1 flex items-center gap-1">📋 Tugas KPI 360 (${myKpi.length})</h4>
          <p class="text-sm text-blue-700">Anda memiliki <b>${myKpi.length} formulir penilaian rekan kerja</b> yang harus segera diselesaikan.</p>
-      </div>`;
+         <p class="text-xs text-blue-600 font-semibold mt-2">Kerjakan Sekarang &rarr;</p>
+      </a>`;
     }
 
+    // 4. WARNING KONTRAK -> Arahkan ke Penilaian & Kontrak
     if (kontrakHabis.length > 0) {
-      htmlContent += `<div class="bg-red-50 border border-red-200 p-4 rounded-xl">
+      htmlContent += `<a href="#penilaian-kontrak" ${closeEvt} class="block bg-red-50 border border-red-200 p-4 rounded-xl hover:bg-red-100 transition cursor-pointer text-left">
          <h4 class="font-bold text-red-800 text-xs uppercase mb-1 flex items-center gap-1">📄 Warning Kontrak (${kontrakHabis.length})</h4>
          <p class="text-sm text-red-700">Ada <b>${kontrakHabis.length} karyawan</b> yang masa ikatan dinas / kontraknya akan berakhir bulan ini.</p>
-      </div>`;
+         <p class="text-xs text-red-600 font-semibold mt-2">Buka Penilaian & Kontrak &rarr;</p>
+      </a>`;
     }
 
+    // 5. LPJ BELUM DIISI -> Arahkan ke Riwayat Pengajuan
     if (myLpjPending.length > 0) {
-      htmlContent += `<div class="bg-orange-50 border border-orange-200 p-4 rounded-xl">
+      htmlContent += `<a href="#riwayat" ${closeEvt} class="block bg-orange-50 border border-orange-200 p-4 rounded-xl hover:bg-orange-100 transition cursor-pointer text-left">
          <h4 class="font-bold text-orange-800 text-xs uppercase mb-1 flex items-center gap-1">🧾 LPJ Belum Diisi (${myLpjPending.length})</h4>
-         <p class="text-sm text-orange-700">Anda punya <b>${myLpjPending.length} laporan pertanggungjawaban</b> yang harus dilengkapi${myLpjOverdue.length > 0 ? `, <b>${myLpjOverdue.length} di antaranya sudah lewat batas waktu</b>` : ""}. Buka menu Riwayat Pengajuan untuk mengisi.</p>
-      </div>`;
+         <p class="text-sm text-orange-700">Anda punya <b>${myLpjPending.length} laporan pertanggungjawaban</b> yang harus dilengkapi${myLpjOverdue.length > 0 ? `, <b>${myLpjOverdue.length} di antaranya sudah lewat batas waktu</b>` : ""}.</p>
+         <p class="text-xs text-orange-600 font-semibold mt-2">Isi di Riwayat Pengajuan &rarr;</p>
+      </a>`;
     }
 
+    // 6. LPJ TERLAMBAT (HRD) -> Arahkan ke Riwayat Pengajuan
     if (orgLpjOverdue.length > 0) {
-      htmlContent += `<div class="bg-red-50 border border-red-200 p-4 rounded-xl">
-         <h4 class="font-bold text-red-800 text-xs uppercase mb-1 flex items-center gap-1">🧾 LPJ Terlambat (Seluruh Karyawan) (${orgLpjOverdue.length})</h4>
+      htmlContent += `<a href="#riwayat" ${closeEvt} class="block bg-red-50 border border-red-200 p-4 rounded-xl hover:bg-red-100 transition cursor-pointer text-left">
+         <h4 class="font-bold text-red-800 text-xs uppercase mb-1 flex items-center gap-1">🧾 LPJ Terlambat Karyawan (${orgLpjOverdue.length})</h4>
          <p class="text-sm text-red-700">Ada <b>${orgLpjOverdue.length} LPJ karyawan</b> yang sudah melewati batas waktu pengumpulan.</p>
-      </div>`;
+         <p class="text-xs text-red-600 font-semibold mt-2">Cek di Riwayat Pengajuan &rarr;</p>
+      </a>`;
     }
 
+    // Jika Kosong
     if (pengumumanAktif.length === 0 && myApproval.length === 0 && myKpi.length === 0 && kontrakHabis.length === 0 && myLpjPending.length === 0 && orgLpjOverdue.length === 0) {
       htmlContent += `<div class="text-center p-8 text-slate-400">
          ${icon("bell", "w-14 h-14 mx-auto mb-3 text-slate-200")}
