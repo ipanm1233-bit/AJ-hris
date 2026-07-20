@@ -68,3 +68,32 @@
     </div>
   </div>
 </div>
+
+<!-- Tombol untuk meminta izin -->
+<div style="text-align: center; margin: 20px;">
+    <button id="btn-test-notif" style="background-color: #0ea5e9; color: white; padding: 12px 24px; border: none; border-radius: 8px; font-weight: bold;">
+        Aktifkan & Test Notifikasi
+    </button>
+</div>
+
+<!-- Script eksekusi -->
+<script>
+document.getElementById('btn-test-notif').addEventListener('click', function() {
+    // Meminta izin kepada sistem iPhone
+    Notification.requestPermission().then((permission) => {
+        if (permission === 'granted') {
+            // Jika diizinkan, kirim notifikasi percobaan langsung dari HP
+            new Notification("HRIS Andela Jaya", {
+                body: "Yay! Notifikasi berhasil aktif di iPhone Anda 🚀",
+                icon: "/assets/icon-192x192.png" // Pastikan path icon ini benar
+            });
+            alert("Izin berhasil diberikan! Silakan cek notifikasi Anda (atau tarik layar dari atas).");
+            
+            // CATATAN: Di sinilah nanti Anda memasukkan fungsi getToken() dari Firebase 
+            // untuk mendapatkan alamat unik HP ini.
+        } else {
+            alert("Izin notifikasi ditolak atau belum didukung.");
+        }
+    });
+});
+</script>
