@@ -8,6 +8,8 @@ import {
 
 // TAMBAHKAN IMPORT STORAGE DI SINI
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js";
+import { getMessaging } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js"; 
+// Pastikan versinya (10.7.1) sama dengan versi firebase-app.js yang Anda gunakan di baris atas
 
 const firebaseConfig = {
     apiKey: "AIzaSyBAAUHaqYrzTp6wi1PDYkrKY0IWI2XQoVw",
@@ -19,6 +21,7 @@ const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
+export const messaging = getMessaging(app);
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()})
 });
