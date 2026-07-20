@@ -391,15 +391,27 @@ export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
 export async function sendFCMNotif(tokens, title, body) {
   const list = (Array.isArray(tokens) ? tokens : [tokens]).filter(Boolean);
   if (!list.length) return false;
+  
   try {
     const res = await fetch("/api/send-push", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tokens: list, title, body })
     });
-    return res.ok;
+    
+    // Membaca jawaban dari Server Vercel
+    const data = await res.json();
+    
+    if (!res.ok || !data.success) {
+       // Memunculkan pop-up error jika server Vercel gagal
+       alert("GAGAL DARI SERVER VERCEL:\n" + JSON.stringify(data));
+       return false;
+    }
+    
+    console.log("Push sukses dikirim Vercel:", data);
+    return true;
   } catch (e) {
-    console.warn("Gagal mengirim push notification:", e);
+    alert("ERROR KONEKSI KE VERCEL: " + e.message);
     return false;
   }
 }
