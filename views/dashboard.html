@@ -69,31 +69,48 @@
   </div>
 </div>
 
-<!-- Tombol untuk meminta izin -->
 <div style="text-align: center; margin: 20px;">
     <button id="btn-test-notif" style="background-color: #0ea5e9; color: white; padding: 12px 24px; border: none; border-radius: 8px; font-weight: bold;">
         Aktifkan & Test Notifikasi
     </button>
 </div>
 
-<!-- Script eksekusi -->
 <script>
-document.getElementById('btn-test-notif').addEventListener('click', function() {
-    // Meminta izin kepada sistem iPhone
-    Notification.requestPermission().then((permission) => {
+document.getElementById('btn-test-notif').addEventListener('click', async function() {
+    // 1. Pengecekan apakah HP mendukung fitur Notifikasi Web
+    if (!('Notification' in window)) {
+        alert("GAGAL: HP/Browser ini tidak mengenali fitur Notifikasi Web. Pastikan iOS Anda versi 16.4 ke atas dan Anda membukanya dari Home Screen (bukan dari Safari).");
+        return;
+    }
+
+    // 2. Pengecekan status izin saat ini
+    alert("Status Izin Saat Ini: " + Notification.permission);
+    
+    if (Notification.permission === 'granted') {
+        alert("Anda sebenarnya sudah memberikan izin sebelumnya! Mengirim notifikasi test...");
+        new Notification("HRIS Andela Jaya", {
+            body: "Ini adalah notifikasi test Anda 🚀"
+        });
+        return;
+    }
+
+    if (Notification.permission === 'denied') {
+        alert("Anda sebelumnya telah menolak izin notifikasi. Anda harus meresetnya dari Pengaturan iPhone > Safari > Lanjutan > Website Data.");
+        return;
+    }
+
+    // 3. Meminta Izin ke iPhone (Harus dipicu oleh klik ini)
+    try {
+        const permission = await Notification.requestPermission();
+        alert("Hasil akhir permintaan izin: " + permission);
+        
         if (permission === 'granted') {
-            // Jika diizinkan, kirim notifikasi percobaan langsung dari HP
             new Notification("HRIS Andela Jaya", {
-                body: "Yay! Notifikasi berhasil aktif di iPhone Anda 🚀",
-                icon: "/assets/icon-192x192.png" // Pastikan path icon ini benar
+                body: "Yay! Izin notifikasi berhasil diberikan! 🚀"
             });
-            alert("Izin berhasil diberikan! Silakan cek notifikasi Anda (atau tarik layar dari atas).");
-            
-            // CATATAN: Di sinilah nanti Anda memasukkan fungsi getToken() dari Firebase 
-            // untuk mendapatkan alamat unik HP ini.
-        } else {
-            alert("Izin notifikasi ditolak atau belum didukung.");
         }
-    });
+    } catch (e) {
+        alert("Error saat meminta izin: " + e.message);
+    }
 });
 </script>
