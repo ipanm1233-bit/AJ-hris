@@ -47,10 +47,19 @@
 
   <div id="absen-panel-data" class="hidden space-y-4">
      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between gap-4 flex-wrap">
-        <div class="w-72">
-           <input type="text" id="search-absen-raw" placeholder="Cari nama karyawan atau NIK..." class="w-full px-3 py-1.5 border border-slate-200 rounded-lg outline-none text-sm focus:border-maroon-500">
-        </div>
-        <p class="text-xs text-slate-400 font-medium">*Menampilkan data mentah sidik jari yang tersimpan. Klik "Koreksi" jika jam scan tidak sesuai.</p>
+        <div class="flex items-center gap-3 flex-wrap">
+           <div class="w-64">
+              <input type="text" id="search-absen-raw" placeholder="Cari nama karyawan atau NIK..." class="w-full px-3 py-1.5 border border-slate-200 rounded-lg outline-none text-sm focus:border-maroon-500">
+           </div>
+           <div class="flex items-center gap-2">
+              <label class="text-xs text-slate-500 font-medium">Periode</label>
+              <input type="date" id="filter-absen-start" class="px-3 py-1.5 border border-slate-200 rounded-lg outline-none text-sm focus:border-maroon-500">
+              <span class="text-xs text-slate-400">s/d</span>
+              <input type="date" id="filter-absen-end" class="px-3 py-1.5 border border-slate-200 rounded-lg outline-none text-sm focus:border-maroon-500">
+              <button id="btn-reset-filter-absen" type="button" class="text-xs text-maroon-700 font-semibold hover:underline">Reset</button>
+           </div>
+         </div>
+        <p class="text-xs text-slate-400 font-medium">*Klik header "Nama Karyawan" utk urutkan A-Z/Z-A. Klik "Koreksi" jika jam scan tidak sesuai.</p>
      </div>
      
      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -60,7 +69,11 @@
                  <tr>
                     <th class="px-4 py-3">Tanggal</th>
                     <th class="px-4 py-3">NIK</th>
-                    <th class="px-4 py-3">Nama Karyawan</th>
+                    <th class="px-4 py-3">
+                       <button id="th-sort-nama" type="button" class="flex items-center gap-1 uppercase text-xs font-medium hover:text-maroon-700 transition">
+                          Nama Karyawan <span id="th-sort-nama-icon">↕</span>
+                       </button>
+                    </th>
                     <th class="px-4 py-3 text-center">Scan Masuk</th>
                     <th class="px-4 py-3 text-center">Scan Keluar</th>
                     <th class="px-4 py-3 text-right">Aksi</th>
