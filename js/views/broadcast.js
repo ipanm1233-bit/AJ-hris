@@ -105,7 +105,7 @@ function openComposeModal(container, session, karyawan, users, reload) {
       m.querySelector("#bc-send").onclick = async () => {
         const form = m.querySelector("#bc-form");
         if (!form.reportValidity()) return;
-        
+
         const fd = new FormData(form);
         const targetType = fd.get("target_type");
         const targetList = targetType === "SPESIFIK" ? Array.from(m.querySelector("#bc-target-list").selectedOptions).map(o => o.value) : [];
@@ -114,8 +114,8 @@ function openComposeModal(container, session, karyawan, users, reload) {
 
         if (plainText.length === 0) { toast("Isi memo tidak boleh kosong!", "warning"); return; }
 
+        const btnSend = m.querySelector("#bc-send");
         try {
-          const btnSend = m.querySelector("#bc-send");
           btnSend.disabled = true; btnSend.innerHTML = "Sedang Mengirim...";
 
           const id = genId("BC");
@@ -136,46 +136,28 @@ function openComposeModal(container, session, karyawan, users, reload) {
             btnSend.innerHTML = "Sedang Mengirim...";
           }
 
-          // ... kode pengiriman email sebelumnya ...
-          if (targetEmails.length > 0) {
-            // ... (logika email Anda)
-            await Promise.all(targetEmails.map(email => sendEmailNotif(email, `[Memo HRIS] ${payload.judul}`, emailTemplate)));
-          }
-
-          // TAMBAHKAN KODE INI UNTUK PUSH NOTIFICATION:
-          // Mengambil token dari data pengguna yang terpilih
-          const targetTokens = targetUsers.map(u => u.fcm_token).filter(Boolean);
-          
-          if (targetTokens.length > 0) {
-            await sendFCMNotif(
-                targetTokens, 
-                `📢 Memo Baru: ${payload.judul}`, 
-                plainText.substring(0, 80) + '...'
-            );
-          }
-          
-          toast("Memo berhasil dikirim", "success");
-          
           const payload = {
-            judul: fd.get("judul"), 
-            isi: htmlContent, 
+            judul: fd.get("judul"),
+            isi: htmlContent,
             target_type: targetType,
-            target_list: targetList, 
+            target_list: targetList,
             tanggal_berakhir: fd.get("tanggal_berakhir"),
             lampiran_url: lampiranUrl,
-            tanggal: new Date().toISOString(), 
+            tanggal: new Date().toISOString(),
             dibuat_oleh: session.nama
           };
 
           await fsAdd(COL.BROADCAST, payload, id);
-          
+
           const targetUsers = targetType === "ALL" ? users : users.filter(u => targetList.includes(u.nama));
           const targetUserIds = targetUsers.map(u => u.id);
-          
+
+          // Notif in-app (lonceng)
           await Promise.all(targetUserIds.map(uname => fsAdd(COL.NOTIFICATIONS, {
             username_target: uname, judul: `Memo Baru: ${payload.judul}`, pesan: plainText.substring(0, 80) + '...', dibaca: false, tanggal: payload.tanggal
           }, genId("NTF"))));
 
+          // Email (jalur yang sudah ada sebelumnya — TETAP dipertahankan)
           const targetEmails = targetUsers.map(u => u.email).filter(Boolean);
           if (targetEmails.length > 0) {
             const emailTemplate = `
@@ -185,12 +167,19 @@ function openComposeModal(container, session, karyawan, users, reload) {
               </div>`;
             await Promise.all(targetEmails.map(email => sendEmailNotif(email, `[Memo HRIS] ${payload.judul}`, emailTemplate)));
           }
-          
+
+          // Push notification ke HP (baru)
+          const targetTokens = targetUsers.map(u => u.fcm_token).filter(Boolean);
+          if (targetTokens.length > 0) {
+            await sendFCMNotif(targetTokens, `📢 Memo Baru: ${payload.judul}`, plainText.substring(0, 80) + '...');
+          }
+
           toast("Memo berhasil dikirim", "success");
           closeModal();
           reload();
-        } catch (e) { 
-          toast("Gagal mengirim memo: " + e.message, "error"); 
+        } catch (e) {
+          toast("Gagal mengirim memo: " + e.message, "error");
+          btnSend.disabled = false; btnSend.innerHTML = "Kirim Memo";
         }
       };
     }
