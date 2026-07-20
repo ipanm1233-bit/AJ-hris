@@ -83,7 +83,7 @@ export async function mount(container, { session }) {
                   alert("1. Sedang meminta Token unik dari HP Anda...");
                   const currentToken = await getToken(messaging, { 
                       // Pastikan VAPID KEY ini sudah benar milik Anda
-                      vapidKey: 'UneaSlmf85gaUKcql8uFdVvSMdJVADl7w1kEFOug9Lw' 
+                      vapidKey: 'BLAv8-HIF945zC4llQ3VaSi_n1cIuk6GbFJLasQA7notR1IP0JbKmG1kzTJ2xoqQs7StT_tyKRW4BWe5ZN24XGE' 
                   });
                   
                   if (currentToken) {
