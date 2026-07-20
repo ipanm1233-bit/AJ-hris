@@ -65,8 +65,14 @@ async function callGasWebApp(payload) {
   }
 
   if (!json || json.success !== true) {
-    throw new Error((json && json.error) || "Google Apps Script mengembalikan error yang tidak diketahui.");
-  }
+    let msg = (json && json.error) || "Google Apps Script mengembalikan error yang tidak diketahui.";
+    // Petunjuk tambahan untuk error izin akses Drive yang paling sering
+    // terjadi -- lihat testSetup() & catatan appsscript.json di Code.gs.
+    if (/access denied/i.test(msg) || /DriveApp/i.test(msg)) {
+      msg += " — Kemungkinan besar scope izin Apps Script belum diatur penuh, atau ID folder/template salah. Buka Code.gs di script.google.com, cek ulang appsscript.json (lihat komentar di bagian bawah Code.gs), lalu jalankan fungsi testSetup() secara manual untuk memicu ulang layar izin akses & mendiagnosa ID folder/template.";
+    }
+    throw new Error(msg);
+   }
   return json;
 }
 
