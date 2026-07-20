@@ -78,21 +78,30 @@ export function smartParseDate(value) {
 
 /* ---------------------------------------------------------------------
  * 2. FORMATTER TAMPILAN (locale Indonesia)
+ * PERBAIKAN PENTING: seluruh formatter di bawah sekarang memaksa
+ * `timeZone: "Asia/Jakarta"` secara eksplisit. Sebelumnya tidak
+ * di-set, jadi hasilnya ikut zona waktu SISTEM PERANGKAT yang membuka
+ * aplikasi ini. Kalau timezone perangkat itu bukan WIB (banyak laptop
+ * kantor dibiarkan default UTC/zona lain oleh IT), tanggal yang tampil
+ * bisa maju/mundur 1 hari dari yang seharusnya -- ini penyebab bug
+ * "ulang tahun karyawan tampil H-1" & "cuti besok muncul di Cuti Hari
+ * Ini". Dengan timeZone eksplisit, hasilnya SELALU benar sesuai WIB,
+ * apa pun timezone perangkat yang dipakai membuka aplikasinya.
  * ------------------------------------------------------------------- */
 export function fmtDate(value, opts = {}) {
   const d = smartParseDate(value);
   if (!d) return "-";
-  return d.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric", ...opts });
+  return d.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric", timeZone: "Asia/Jakarta", ...opts });
 }
 export function fmtDateShort(value) {
   const d = smartParseDate(value);
   if (!d) return "-";
-  return d.toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return d.toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Asia/Jakarta" });
 }
 export function fmtDateTime(value) {
   const d = smartParseDate(value);
   if (!d) return "-";
-  return d.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" });
 }
 export function fmtRupiah(value) {
   const n = toNumber(value);
@@ -545,15 +554,22 @@ export async function collectDynFormDetail(form, fields, pathPrefix) {
 }
 
 /**
- * Format tanggal ke "YYYY-MM-DD" memakai zona waktu LOKAL browser.
- * PENTING: berbeda dari `new Date().toISOString().substring(0,10)` yang
- * memakai UTC — untuk WIB (UTC+7) itu bisa membuat tanggalnya MUNDUR 1
- * hari kalau dipanggil dini hari (00:00–06:59). Dipakai di tempat-tempat
- * yang butuh "tanggal hari ini" yang akurat sesuai jam lokal karyawan.
- */
-export function localDateStr(d = new Date()) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+ * Format sebuah tanggal (Date, Firestore Timestamp, atau string) ke
+ * "YYYY-MM-DD" SELALU dalam zona waktu Asia/Jakarta (WIB) -- BUKAN zona
+ * waktu sistem perangkat yang menjalankan kode ini. Kalau dipanggil
+ * tanpa argumen, defaultnya "hari ini" (WIB).
+ *
+ * PENTING (bug yang diperbaiki): sebelumnya beberapa tempat memakai
+ * `new Date().toISOString().substring(0,10)` (zona UTC) atau
+ * `.getDate()/.getMonth()` (zona waktu SISTEM PERANGKAT). Keduanya bisa
+ * meleset dari WIB tergantung jam & timezone perangkat yang dipakai
+ * membuka aplikasi. Dipakai untuk SEMUA perbandingan "hari ini" (Cuti
+ * Hari Ini, personalisasi ulang tahun/anniversary/cuti di dashboard).
+  */
+export function localDateStr(value) {
+  const v = value === undefined ? new Date() : value;
+  if (v === null || v === "") return null;
+  const d = v && typeof v.toDate === "function" ? v.toDate() : new Date(v);
+  if (isNaN(d)) return null;
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 }
