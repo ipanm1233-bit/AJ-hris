@@ -547,7 +547,7 @@ export async function mount(container, { session }) {
            jam_kembali: pdfData.jam_kembali,
            sisa_tahunan: sisa.Tahunan,
            sisa_khusus: sisa.Khusus,
-           tanggal_pengajuan: fmtDateShort(new Date().toISOString().substring(0, 10))
+           tanggal_pengajuan: fmtDateShort(new Date())
         });
         toast("Dokumen berhasil dibuat", "success");
         window.open(result.pdfUrl, "_blank");
