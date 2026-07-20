@@ -66,11 +66,11 @@ export function getSession() {
     return raw ? JSON.parse(raw) : null;
   } catch { return null; }
 }
-export function setSession(data, remember = false) {
-  const str = JSON.stringify(data);
-  sessionStorage.setItem(SESSION_KEY, str);
-  if (remember) localStorage.setItem(SESSION_KEY, str);
-  else localStorage.removeItem(SESSION_KEY);
+export function setSession(data) {
+    const str = JSON.stringify(data);
+    // Simpan di KEDUA tempat agar lebih aman dan bertahan lama (Persistent)
+    sessionStorage.setItem(SESSION_KEY, str);
+    localStorage.setItem(SESSION_KEY, str); 
 }
 export function clearSession() {
   sessionStorage.removeItem(SESSION_KEY);
