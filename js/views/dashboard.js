@@ -1,7 +1,9 @@
-import { db, COL, collection, query, where, getDocs, orderBy, limit, getDoc, doc } from "../firebase-config.js";
+import { db, COL, collection, query, where, getDocs, orderBy, limit, getDoc, doc, updateDoc, messaging } from "../firebase-config.js";
 import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, getTargetsForRole, toast, fsUpdate, fsAdd, genId, localDateStr } from "../utils.js";
 import { avatar, badge, icon, emptyState, skeletonRows } from "../components.js";
 import { MANAJEMEN_ROLES } from "../auth.js";
+// IMPORT BARU UNTUK MENDAPATKAN TOKEN HP (FCM)
+import { getToken } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js";
 
 const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
 
@@ -50,18 +52,16 @@ export async function mount(container, { session }) {
   // agar bisa diklik dari halaman manapun, tidak hanya saat berada di Dashboard.
 
   // -----------------------------------------------------------------
-  // LOGIKA TOMBOL TEST NOTIFIKASI
+  // LOGIKA TOMBOL TEST & REGISTRASI NOTIFIKASI
   // -----------------------------------------------------------------
   const btnTestNotif = container.querySelector('#btn-test-notif');
   if (btnTestNotif) {
       btnTestNotif.addEventListener('click', async function() {
-          // 1. Cek dukungan browser
           if (!('Notification' in window)) {
               alert("GAGAL: HP/Browser ini tidak mendukung fitur Notifikasi Web.");
               return;
           }
 
-          // FUNGSI KHUSUS ANDROID/IOS: Menggunakan Service Worker untuk mengirim notif
           const sendSafeNotification = (title, options) => {
               if ('serviceWorker' in navigator) {
                   navigator.serviceWorker.ready.then((registration) => {
@@ -72,13 +72,34 @@ export async function mount(container, { session }) {
               }
           };
 
-          // 2. Tampilkan status saat ini
-          alert("Status Izin Saat Ini: " + Notification.permission);
-          
+          // FUNGSI PENTING: Menyimpan Token HP ke Database Karyawan
+          const registerDeviceToken = async () => {
+              if (!messaging) return;
+              try {
+                  const currentToken = await getToken(messaging, { 
+                      // VAPID Key yang sama seperti yang ada di app.js Anda
+                      vapidKey: 'UneaSlmf85gaUKcql8uFdVvSMdJVADl7w1kEFOug9Lw' 
+                  });
+                  
+                  if (currentToken) {
+                      // Simpan token ke dokumen Karyawan di Firestore
+                      if (session && session.username) {
+                          await updateDoc(doc(db, COL.USERS, session.username), {
+                              fcm_token: currentToken
+                          });
+                          console.log("Perangkat berhasil didaftarkan untuk Broadcast!");
+                      }
+                  }
+              } catch (e) {
+                  console.error("Gagal mendaftarkan token perangkat:", e);
+              }
+          };
+
           if (Notification.permission === 'granted') {
-              alert("Izin sudah ada! Mengirim notifikasi test...");
+              alert("Izin sudah ada! Mengirim notifikasi test dan meregistrasi perangkat...");
+              await registerDeviceToken();
               sendSafeNotification("HRIS Andela Jaya", {
-                  body: "Ini adalah notifikasi test Anda 🚀",
+                  body: "Perangkat ini siap menerima pengumuman Broadcast 🚀",
                   icon: "/assets/icon-192x192.png" 
               });
               return;
@@ -89,14 +110,13 @@ export async function mount(container, { session }) {
               return;
           }
 
-          // 3. Minta izin ke HP
           try {
               const permission = await Notification.requestPermission();
-              alert("Hasil akhir permintaan izin: " + permission);
-              
               if (permission === 'granted') {
+                  alert("Izin berhasil! Mendaftarkan perangkat Anda...");
+                  await registerDeviceToken();
                   sendSafeNotification("HRIS Andela Jaya", {
-                      body: "Yay! Izin notifikasi berhasil diberikan! 🚀",
+                      body: "Pendaftaran sukses! Anda akan menerima notifikasi di sini 🚀",
                       icon: "/assets/icon-192x192.png"
                   });
               }
