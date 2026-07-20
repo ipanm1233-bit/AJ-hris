@@ -388,30 +388,25 @@ export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
   }
 }
 
-export async function sendFCMNotif(tokens, title, body) {
+export async function sendFCMNotif(tokens, title, body, link = "") {
   const list = (Array.isArray(tokens) ? tokens : [tokens]).filter(Boolean);
   if (!list.length) return false;
   
+  // Ambil nama domain otomatis (contoh: https://hris.andelajaya.com)
+  const baseUrl = window.location.origin;
+  const targetLink = link ? (baseUrl + link) : baseUrl;
+
   try {
     const res = await fetch("/api/send-push", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tokens: list, title, body })
+      // Kirim targetLink ke Vercel
+      body: JSON.stringify({ tokens: list, title, body, link: targetLink }) 
     });
     
-    // Membaca jawaban dari Server Vercel
-    const data = await res.json();
-    
-    if (!res.ok || !data.success) {
-       // Memunculkan pop-up error jika server Vercel gagal
-       alert("GAGAL DARI SERVER VERCEL:\n" + JSON.stringify(data));
-       return false;
-    }
-    
-    console.log("Push sukses dikirim Vercel:", data);
-    return true;
+    return res.ok;
   } catch (e) {
-    alert("ERROR KONEKSI KE VERCEL: " + e.message);
+    console.error("Gagal mengirim notif: ", e.message);
     return false;
   }
 }
