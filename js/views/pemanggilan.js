@@ -1,5 +1,5 @@
 import { COL } from "../firebase-config.js";
-import { fsGetAll, fmtDateShort, escapeHtml } from "../utils.js";
+import { fsGetAll, fmtDateShort, escapeHtml, notifyUser, sendEmailNotif, getTargetsForRole } from "../utils.js";
 import { renderCrudModule } from "../components.js";
 import { isoDocHeaderTable } from "../branding.js";
 
@@ -79,7 +79,33 @@ export async function mount(container) {
         { name: "tingkat_sp", label: "Tingkat Peringatan", type: "select", options: ["Teguran Lisan", "SP 1", "SP 2", "SP 3", "Konseling"], required: true },
         { name: "pelanggaran", label: "Deskripsi Pelanggaran", type: "textarea", full: true, required: true },
         { name: "masa_berlaku", label: "Masa Berlaku Sanksi Hingga", type: "date" },
-      ]
+      ],
+      await renderCrudModule(panels.sp, {
+      title: "Log SP & Konseling",
+      collectionName: COL.LOG_SP_KONSELING,
+      idPrefix: "SP", printFn: printSuratPeringatan, printLabel: "Cetak Surat SP (PDF)",
+      searchFields: ["nama_karyawan", "pelanggaran"],
+      columns: [
+        { key: "tanggal", label: "Tanggal", type: "date" },
+        { key: "nama_karyawan", label: "Nama Karyawan" },
+        { key: "tingkat_sp", label: "Tingkat", type: "badge" },
+        { key: "pelanggaran", label: "Pelanggaran" }
+      ],
+      formFields: [
+        { name: "tanggal", label: "Tanggal Dikeluarkan", type: "date", required: true },
+        { name: "nama_karyawan", label: "Nama Karyawan", type: "select", options: activeEmpNames, required: true },
+        { name: "tingkat_sp", label: "Tingkat Peringatan", type: "select", options: ["Teguran Lisan", "SP 1", "SP 2", "SP 3", "Konseling"], required: true },
+        { name: "pelanggaran", label: "Deskripsi Pelanggaran", type: "textarea", full: true, required: true },
+        { name: "masa_berlaku", label: "Masa Berlaku Sanksi Hingga", type: "date" },
+      ],
+      afterSave: async (data, isNew) => {
+        if (!isNew) return;
+        const targets = await getTargetsForRole("PEMOHON", data.nama_karyawan);
+        for (const t of targets) {
+          await notifyUser(t.username, "Surat Panggilan/SP Baru", `Anda menerima surat terkait: ${data.perihal || data.pelanggaran || "-"}`);
+          if (t.email) await sendEmailNotif(t.email, "Pemberitahuan dari HRD", `<p>Anda menerima dokumen baru dari HRD terkait: <b>${escapeHtml(data.perihal || data.pelanggaran || "-")}</b>. Silakan cek email/kontak HRD untuk detail.</p>`);
+        }
+      }
     });
   }
 
@@ -101,7 +127,33 @@ export async function mount(container) {
         { name: "waktu", label: "Jam (Cth: 09:00)", type: "text", default: "09:00" },
         { name: "perihal", label: "Perihal Pemanggilan", type: "text", full: true, required: true },
         { name: "status", label: "Status Kehadiran", type: "select", options: ["Menunggu", "Hadir", "Mangkir"], default: "Menunggu" }
-      ]
+      ],
+      await renderCrudModule(panels.sp, {
+      title: "Log SP & Konseling",
+      collectionName: COL.LOG_SP_KONSELING,
+      idPrefix: "SP", printFn: printSuratPeringatan, printLabel: "Cetak Surat SP (PDF)",
+      searchFields: ["nama_karyawan", "pelanggaran"],
+      columns: [
+        { key: "tanggal", label: "Tanggal", type: "date" },
+        { key: "nama_karyawan", label: "Nama Karyawan" },
+        { key: "tingkat_sp", label: "Tingkat", type: "badge" },
+        { key: "pelanggaran", label: "Pelanggaran" }
+      ],
+      formFields: [
+        { name: "tanggal", label: "Tanggal Dikeluarkan", type: "date", required: true },
+        { name: "nama_karyawan", label: "Nama Karyawan", type: "select", options: activeEmpNames, required: true },
+        { name: "tingkat_sp", label: "Tingkat Peringatan", type: "select", options: ["Teguran Lisan", "SP 1", "SP 2", "SP 3", "Konseling"], required: true },
+        { name: "pelanggaran", label: "Deskripsi Pelanggaran", type: "textarea", full: true, required: true },
+        { name: "masa_berlaku", label: "Masa Berlaku Sanksi Hingga", type: "date" },
+      ],
+      afterSave: async (data, isNew) => {
+        if (!isNew) return;
+        const targets = await getTargetsForRole("PEMOHON", data.nama_karyawan);
+        for (const t of targets) {
+          await notifyUser(t.username, "Surat Panggilan/SP Baru", `Anda menerima surat terkait: ${data.perihal || data.pelanggaran || "-"}`);
+          if (t.email) await sendEmailNotif(t.email, "Pemberitahuan dari HRD", `<p>Anda menerima dokumen baru dari HRD terkait: <b>${escapeHtml(data.perihal || data.pelanggaran || "-")}</b>. Silakan cek email/kontak HRD untuk detail.</p>`);
+        }
+      }
     });
   }
 
