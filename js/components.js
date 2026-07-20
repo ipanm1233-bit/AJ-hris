@@ -198,7 +198,7 @@ export async function renderCrudModule(container, cfg) {
       </select>`;
     if (f.type === "date") {
       let dv = "";
-      if (val) { const d = new Date(val); if (!isNaN(d)) dv = d.toISOString().slice(0, 10); }
+      if (val) { const dv2 = localDateStr(val); if (dv2) dv = dv2; }
       return `<input type="date" name="${f.name}" value="${dv}" class="${base}" ${f.required ? "required" : ""}>`;
     }
     return `<input type="${f.type === "number" ? "number" : "text"}" name="${f.name}" value="${escapeHtml(val)}" class="${base}" ${f.required ? "required" : ""}>`;
