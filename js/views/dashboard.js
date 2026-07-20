@@ -49,6 +49,52 @@ export async function mount(container, { session }) {
   // Lonceng notifikasi kini ditangani secara global di app.js (bindShellEvents)
   // agar bisa diklik dari halaman manapun, tidak hanya saat berada di Dashboard.
 
+  // -----------------------------------------------------------------
+  // LOGIKA TOMBOL TEST NOTIFIKASI
+  // -----------------------------------------------------------------
+  const btnTestNotif = container.querySelector('#btn-test-notif');
+  if (btnTestNotif) {
+      btnTestNotif.addEventListener('click', async function() {
+          // 1. Cek dukungan browser
+          if (!('Notification' in window)) {
+              alert("GAGAL: HP/Browser ini tidak mendukung fitur Notifikasi Web.");
+              return;
+          }
+
+          // 2. Tampilkan status saat ini
+          alert("Status Izin Saat Ini: " + Notification.permission);
+          
+          if (Notification.permission === 'granted') {
+              alert("Izin sudah ada! Mengirim notifikasi test...");
+              new Notification("HRIS Andela Jaya", {
+                  body: "Ini adalah notifikasi test Anda 🚀",
+                  icon: "/assets/icon-192x192.png" // Pastikan gambar ini ada di Vercel
+              });
+              return;
+          }
+
+          if (Notification.permission === 'denied') {
+              alert("Izin ditolak permanen. Anda harus meresetnya dari pengaturan browser HP Anda.");
+              return;
+          }
+
+          // 3. Minta izin ke HP
+          try {
+              const permission = await Notification.requestPermission();
+              alert("Hasil akhir permintaan izin: " + permission);
+              
+              if (permission === 'granted') {
+                  new Notification("HRIS Andela Jaya", {
+                      body: "Yay! Izin notifikasi berhasil diberikan! 🚀",
+                      icon: "/assets/icon-192x192.png"
+                  });
+              }
+          } catch (e) {
+              alert("Error saat meminta izin: " + e.message);
+          }
+      });
+  }
+  
   return { unmount() {} };
 }
 
