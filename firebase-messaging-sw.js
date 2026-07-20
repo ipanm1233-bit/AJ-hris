@@ -1,4 +1,3 @@
-// Ganti versi 9.22.0 menjadi 10.13.0 agar sama dengan aplikasi
 importScripts('https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js');
 
@@ -13,16 +12,40 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Menerima pesan saat browser HP ditutup/dibuang
+// 1. Menerima pesan & menyelipkan link rahasia
 messaging.onBackgroundMessage(function(payload) {
-  console.log("Pesan background masuk:", payload);
-  
   const notificationTitle = payload.notification.title || "HRIS Andela Jaya";
   const notificationOptions = {
     body: payload.notification.body || "Ada pembaruan baru.",
     icon: '/assets/icon-192x192.png',
-    badge: '/assets/icon-192x192.png'
+    badge: '/assets/icon-192x192.png',
+    // Tangkap link dari server
+    data: { link: payload.data ? payload.data.link : '/' } 
   };
-
   self.registration.showNotification(notificationTitle, notificationOptions);
+});
+
+// 2. FUNGSI BARU: AKSI SAAT NOTIFIKASI DIKLIK OLEH KARYAWAN
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close(); // Tutup notifikasi segera setelah diklik
+  
+  // Baca tujuan URL, jika kosong arahkan ke beranda '/'
+  const targetUrl = event.notification.data && event.notification.data.link ? event.notification.data.link : '/';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(windowClients) {
+      // Cek apakah tab aplikasi HRIS sudah terbuka di HP
+      for (let i = 0; i < windowClients.length; i++) {
+        const client = windowClients[i];
+        if (client.url.includes(self.registration.scope) && 'focus' in client) {
+          client.navigate(targetUrl); // Paksa tab pindah ke halaman yang dituju
+          return client.focus(); // Buka/Fokuskan layarnya
+        }
+      }
+      // Jika aplikasi sedang tertutup total, buka tab baru
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
+    })
+  );
 });
