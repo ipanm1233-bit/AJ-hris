@@ -112,6 +112,7 @@
 
 <script type="module" src="js/app.js"></script>
 
+<script>
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/firebase-messaging-sw.js')
     .then((registration) => {
@@ -120,6 +121,7 @@ if ('serviceWorker' in navigator) {
       console.log('Service Worker gagal:', err);
     });
 }
+</script>  
   
 </body>
 </html>
