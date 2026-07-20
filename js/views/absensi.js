@@ -11,8 +11,15 @@ export async function mount(container) {
    const panelData = container.querySelector("#absen-panel-data");
    const rawTbody = container.querySelector("#absen-raw-tbody");
    const searchRaw = container.querySelector("#search-absen-raw");
+   const filterStart = container.querySelector("#filter-absen-start");
+   const filterEnd = container.querySelector("#filter-absen-end");
+   const btnResetFilterAbsen = container.querySelector("#btn-reset-filter-absen");
+   const thSortNama = container.querySelector("#th-sort-nama");
+   const iconSortNama = container.querySelector("#th-sort-nama-icon");
 
    let listAbsensiGlobal = [];
+   // sortNama: null (default, urut tanggal terbaru) | "asc" (A-Z) | "desc" (Z-A)
+   let filterState = { search: "", start: "", end: "", sortNama: null };
 
    container.querySelectorAll(".absen-tab").forEach(btn => {
       btn.onclick = () => {
@@ -34,9 +41,33 @@ export async function mount(container) {
    async function loadRawAbsensiTable() {
       rawTbody.innerHTML = `<tr><td colspan="6" class="p-4">${skeletonRows(4)}</td></tr>`;
       listAbsensiGlobal = await fsGetAll(COL.DATA_ABSENSI);
-      listAbsensiGlobal.sort((a,b) => b.tanggal.localeCompare(a.tanggal) || a.nama.localeCompare(b.nama));
-      renderRawTable(listAbsensiGlobal);
+      applyFiltersAbsen();
    }
+
+   /**
+    * Terapkan filter periode/tanggal + pencarian nama/NIK + urutan
+    * (default tanggal terbaru, atau A-Z/Z-A kalau kolom Nama diklik).
+    */
+   function applyFiltersAbsen() {
+      let data = [...listAbsensiGlobal];
+
+      if (filterState.start) data = data.filter(x => x.tanggal >= filterState.start);
+      if (filterState.end) data = data.filter(x => x.tanggal <= filterState.end);
+      if (filterState.search) {
+         const term = filterState.search;
+         data = data.filter(x => (x.nama || "").toLowerCase().includes(term) || (x.nik || "").toLowerCase().includes(term));
+      }
+
+      if (filterState.sortNama === "asc") {
+         data.sort((a, b) => (a.nama || "").localeCompare(b.nama || "", "id", { sensitivity: "base" }));
+      } else if (filterState.sortNama === "desc") {
+         data.sort((a, b) => (b.nama || "").localeCompare(a.nama || "", "id", { sensitivity: "base" }));
+      } else {
+         data.sort((a, b) => b.tanggal.localeCompare(a.tanggal) || a.nama.localeCompare(b.nama));
+      }
+
+      renderRawTable(data);
+    }
 
    function renderRawTable(data) {
       if(!data.length) {
@@ -74,11 +105,36 @@ export async function mount(container) {
 
    if(searchRaw) {
       searchRaw.oninput = (e) => {
-         const term = e.target.value.toLowerCase().trim();
-         const filtered = listAbsensiGlobal.filter(x => x.nama.toLowerCase().includes(term) || (x.nik || "").includes(term));
-         renderRawTable(filtered);
+         filterState.search = e.target.value.toLowerCase().trim();
+         applyFiltersAbsen();
       };
    }
+   if (filterStart) {
+      filterStart.onchange = (e) => { filterState.start = e.target.value; applyFiltersAbsen(); };
+   }
+   if (filterEnd) {
+      filterEnd.onchange = (e) => { filterState.end = e.target.value; applyFiltersAbsen(); };
+   }
+   if (btnResetFilterAbsen) {
+      btnResetFilterAbsen.onclick = () => {
+         filterState = { search: "", start: "", end: "", sortNama: null };
+         if (searchRaw) searchRaw.value = "";
+         if (filterStart) filterStart.value = "";
+         if (filterEnd) filterEnd.value = "";
+         if (iconSortNama) iconSortNama.textContent = "↕";
+         applyFiltersAbsen();
+      };
+   }
+   if (thSortNama) {
+      thSortNama.onclick = () => {
+         // siklus: default (tanggal) -> A-Z -> Z-A -> default
+         filterState.sortNama = filterState.sortNama === "asc" ? "desc" : filterState.sortNama === "desc" ? null : "asc";
+         if (iconSortNama) {
+            iconSortNama.textContent = filterState.sortNama === "asc" ? "↑ A-Z" : filterState.sortNama === "desc" ? "↓ Z-A" : "↕";
+         }
+         applyFiltersAbsen();
+       };
+    }
 
    function openEditAbsenModal(item) {
       if(!item) return;
@@ -183,7 +239,16 @@ export async function mount(container) {
            ]);
 
            const listAbsen = snapAbsen.docs.map(d => d.data());
-           const listCuti = snapCuti.docs.map(d => d.data()).filter(c => c.tanggal && c.tanggal.substring(0,10) >= start && c.tanggal.substring(0,10) <= end);
+           // PERBAIKAN: sebelumnya hanya mengambil record cuti yang TANGGAL MULAI-nya
+           // ada di dalam rentang export. Cuti multi-hari yang MULAI sebelum rentang
+           // tapi masih BERLANGSUNG di dalam rentang jadi tidak terbawa -> hari-hari
+           // itu salah tercatat sebagai "Alpa" di matriks. Sekarang dicek overlap
+           // rentang [tanggal, tanggal_selesai] cuti terhadap rentang export.
+           const listCuti = snapCuti.docs.map(d => d.data()).filter(c => {
+               const cStart = (c.tanggal || "").substring(0, 10);
+               const cEnd = (c.tanggal_selesai || c.tanggal || "").substring(0, 10);
+               return cStart && cEnd >= start && cStart <= end;
+           });
            const listUme = snapUme.docs.map(d => d.data()).filter(u => u.tanggal && u.tanggal >= start && u.tanggal <= end);
 
            const datesArr = [];
@@ -197,8 +262,24 @@ export async function mount(container) {
            const sheet1Rows = [];
            let noIndex = 1;
 
-           allKaryawan.filter(k => (k.aktif_tdk_aktif||"AKTIF").toUpperCase() === "AKTIF").forEach(k => {
-               const rowObj = { "NO": noIndex++, "NAMA KARYAWAN": k.nama_karyawan };
+          // PERBAIKAN: sebelumnya baris karyawan mengikuti urutan Firestore apa
+           // adanya (acak). Sekarang diurutkan A-Z supaya konsisten & mudah dicari,
+           // dan ditambah kolom NIK/Jabatan/Cabang supaya strukturnya standar
+           // (sebelumnya cuma ada NO + Nama Karyawan).
+           const karyawanAktifSorted = allKaryawan
+               .filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF")
+               .sort((a, b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id", { sensitivity: "base" }));
+
+           const BULAN_PENDEK = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+
+           karyawanAktifSorted.forEach(k => {
+               const rowObj = {
+                   "NO": noIndex++,
+                   "NIK": k.nik || k.nik_karyawan || "-",
+                   "NAMA KARYAWAN": k.nama_karyawan,
+                   "JABATAN": k.jabatan || "-",
+                   "CABANG": k.cabang || "-"
+               };
                
                let totalJam = 0; let hariMasuk = 0;
                let c_tahunan = 0; let c_setengah = 0; let c_khusus = 0; let c_sakit = 0;
@@ -210,7 +291,16 @@ export async function mount(container) {
                    const isSunday = tDate.getDay() === 0;
 
                    const matchAbsen = listAbsen.find(x => x.nama === k.nama_karyawan && x.tanggal === dStr);
-                   const matchCuti = listCuti.find(x => x.nama_karyawan === k.nama_karyawan && x.tanggal.substring(0,10) === dStr);
+                   // PERBAIKAN: cocokkan berdasar RENTANG [tanggal, tanggal_selesai],
+                   // bukan tanggal tunggal -- supaya semua hari dalam cuti multi-hari
+                   // ikut tertandai (fallback ke `tanggal` kalau tanggal_selesai belum
+                   // ada, utk data lama sebelum perbaikan ini, tetap kompatibel).
+                   const matchCuti = listCuti.find(x => {
+                       if (x.nama_karyawan !== k.nama_karyawan) return false;
+                       const cStart = (x.tanggal || "").substring(0, 10);
+                       const cEnd = (x.tanggal_selesai || x.tanggal || "").substring(0, 10);
+                       return cStart && dStr >= cStart && dStr <= cEnd;
+                   });
 
                    let cellCode = "-";
                    if (isSunday) cellCode = "L";
@@ -238,32 +328,61 @@ export async function mount(container) {
                        cellCode = "A"; alpa_count++;
                    }
 
-                   // Membuat header tanggal berurutan horizontal (Matrix)
-                   rowObj[`${tDate.getDate().toString()}`] = cellCode;
-               });
+                   // PERBAIKAN UTAMA (penyebab struktur "berantakan"): sebelumnya key
+                   // kolom cuma angka tanggal ("1".."31"). Dua masalah: (1) JS engine
+                   // MEMAKSA urutan key yang "mirip angka" jadi urut angka menaik, jadi
+                   // walau di-insert berurutan sesuai tanggal, begitu rentang melewati
+                   // pergantian bulan urutan kolom malah acak (bukan kronologis); (2) kalau
+                   // rentangnya melewati 2 bulan, tanggal "1" bulan pertama & "1" bulan
+                   // kedua sama-sama pakai key "1" -> data yang belakangan menimpa yang
+                   // duluan (hilang diam-diam). Sekarang key-nya "01-Jul", "02-Jul", dst
+                   // (bukan angka murni) -> urutan kronologis terjaga & tidak ada tabrakan.
+                   const colKey = `${tDate.getDate().toString().padStart(2, "0")}-${BULAN_PENDEK[tDate.getMonth()]}`;
+                   rowObj[colKey] = cellCode;
+                });
 
-               rowObj["Total Jam"] = totalJam;
-               rowObj["HARI MASUK"] = hariMasuk;
-               rowObj["C"] = c_tahunan;
-               rowObj["CS"] = c_sisa;
-               rowObj["C-"] = c_potong_gaji;
-               rowObj["A"] = alpa_count;
-               rowObj["S"] = c_sakit;
-               rowObj["S-"] = c_sakit_tanpa;
-               rowObj["C+"] = c_khusus;
-               rowObj["C 1/2"] = c_setengah;
-               rowObj["C+ 1/2"] = c_khusus_setengah;
-               rowObj["L"] = datesArr.filter(d => new Date(d).getDay() === 0).length;
-
+               rowObj["Total Jam Kerja"] = totalJam;
+               rowObj["Hari Masuk"] = hariMasuk;
+               rowObj["Cuti Tahunan (C)"] = c_tahunan;
+               rowObj["Cuti Sisa (CS)"] = c_sisa;
+               rowObj["Cuti Potong Gaji (C-)"] = c_potong_gaji;
+               rowObj["Alpa (A)"] = alpa_count;
+               rowObj["Sakit dgn Surat (S)"] = c_sakit;
+               rowObj["Sakit tanpa Surat (S-)"] = c_sakit_tanpa;
+               rowObj["Cuti Khusus (C+)"] = c_khusus;
+               rowObj["Cuti 1/2 Hari (C 1/2)"] = c_setengah;
+               rowObj["Cuti Khusus 1/2 Hari (C+ 1/2)"] = c_khusus_setengah;
+               rowObj["Libur Minggu (L)"] = datesArr.filter(d => new Date(d).getDay() === 0).length;
                sheet1Rows.push(rowObj);
            });
 
-           const sheet2Rows = listAbsen.filter(x => x.scan_masuk && x.scan_keluar).map(x => ({
-               "Nama Karyawan": x.nama, "Tanggal": x.tanggal, "Jam Masuk": x.scan_masuk, "Jam Keluar": x.scan_keluar, "Keterangan": "Lembur Terdata"
-           }));
+           // PERBAIKAN: sheet pelengkap (Lembur/Cuti/Uang Makan) diurutkan
+           // tanggal->nama supaya konsisten & mudah ditelusuri, dan kolom
+           // Tanggal Selesai ditambahkan di sheet Cuti (dulu tidak ada sama
+           // sekali walau cutinya multi-hari).
+           const sheet2Rows = listAbsen
+               .filter(x => x.scan_masuk && x.scan_keluar)
+               .sort((a, b) => a.tanggal.localeCompare(b.tanggal) || (a.nama || "").localeCompare(b.nama || "", "id"))
+               .map(x => ({
+                   "Tanggal": x.tanggal, "NIK": x.nik || "-", "Nama Karyawan": x.nama,
+                   "Jam Masuk": x.scan_masuk, "Jam Keluar": x.scan_keluar, "Keterangan": "Lembur Terdata"
+               }));
 
-           const sheet3Rows = listCuti.map(c => ({ "Nama Karyawan": c.nama_karyawan, "Tanggal": c.tanggal.substring(0,10), "Jenis Cuti": c.type_cuti, "Keterangan": c.keterangan_cuti || "-" }));
-           const sheet4Rows = listUme.map(u => ({ "Tanggal": u.tanggal, "Driver": u.driver || "-", "Helper": u.helper || "-", "Tujuan": u.tujuan || "-", "Uang Makan": u.uang_makan || 0 }));
+           const sheet3Rows = [...listCuti]
+               .sort((a, b) => (a.tanggal || "").localeCompare(b.tanggal || "") || (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id"))
+               .map(c => ({
+                   "Tanggal Mulai": (c.tanggal || "").substring(0, 10),
+                   "Tanggal Selesai": (c.tanggal_selesai || c.tanggal || "").substring(0, 10),
+                   "Nama Karyawan": c.nama_karyawan, "Jenis Cuti": c.type_cuti,
+                   "Jumlah Hari": c.count ?? "-", "Keterangan": c.keterangan_cuti || "-"
+               }));
+
+           const sheet4Rows = [...listUme]
+               .sort((a, b) => (a.tanggal || "").localeCompare(b.tanggal || ""))
+               .map(u => ({
+                   "Tanggal": u.tanggal, "Driver": u.driver || "-", "Helper": u.helper || "-",
+                   "Tujuan": u.tujuan || "-", "Uang Makan (Rp)": u.uang_makan || 0
+               }));
 
            const wb = window.XLSX.utils.book_new();
            window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(sheet1Rows), "Rekap Matriks Absensi");
