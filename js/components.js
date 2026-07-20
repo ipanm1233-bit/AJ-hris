@@ -547,10 +547,12 @@ export async function openNotificationCenter(session) {
     }
     htmlContent += `</div>`;
 
-    const modalDiv = document.querySelector('div[role="dialog"]');
+    const modalDiv = document.getElementById("app-modal-panel");
     if (modalDiv) {
       const loadingEl = modalDiv.querySelector(".animate-pulse");
-      if (loadingEl && loadingEl.parentElement) loadingEl.parentElement.innerHTML = htmlContent;
+      if (loadingEl && loadingEl.parentElement) {
+          loadingEl.parentElement.innerHTML = htmlContent;
+      }
     }
   } catch (e) {
     console.error("Gagal memuat notifikasi", e);
