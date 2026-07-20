@@ -61,14 +61,25 @@ export async function mount(container, { session }) {
               return;
           }
 
+          // FUNGSI KHUSUS ANDROID/IOS: Menggunakan Service Worker untuk mengirim notif
+          const sendSafeNotification = (title, options) => {
+              if ('serviceWorker' in navigator) {
+                  navigator.serviceWorker.ready.then((registration) => {
+                      registration.showNotification(title, options);
+                  });
+              } else {
+                  new Notification(title, options);
+              }
+          };
+
           // 2. Tampilkan status saat ini
           alert("Status Izin Saat Ini: " + Notification.permission);
           
           if (Notification.permission === 'granted') {
               alert("Izin sudah ada! Mengirim notifikasi test...");
-              new Notification("HRIS Andela Jaya", {
+              sendSafeNotification("HRIS Andela Jaya", {
                   body: "Ini adalah notifikasi test Anda 🚀",
-                  icon: "/assets/icon-192x192.png" // Pastikan gambar ini ada di Vercel
+                  icon: "/assets/icon-192x192.png" 
               });
               return;
           }
@@ -84,7 +95,7 @@ export async function mount(container, { session }) {
               alert("Hasil akhir permintaan izin: " + permission);
               
               if (permission === 'granted') {
-                  new Notification("HRIS Andela Jaya", {
+                  sendSafeNotification("HRIS Andela Jaya", {
                       body: "Yay! Izin notifikasi berhasil diberikan! 🚀",
                       icon: "/assets/icon-192x192.png"
                   });
