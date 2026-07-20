@@ -64,7 +64,7 @@ export function smartParseDate(value) {
       dd = parseInt(dd, 10); mm = parseInt(mm, 10); yyyy = parseInt(yyyy, 10);
       if (yyyy < 100) yyyy += 2000;
       if (mm > 12) { const t = mm; mm = dd; dd = t; } // fallback jika salah satu > 12 berarti itu pasti hari
-      const d = new Date(yyyy, mm - 1, dd);
+      const d = new Date(Date.UTC(yyyy, mm - 1, dd));
       if (!isNaN(d.getTime())) return d;
     }
 
