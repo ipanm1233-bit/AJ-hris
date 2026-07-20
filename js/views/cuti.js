@@ -3,6 +3,9 @@ import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, toNu
 import { avatar, emptyState, skeletonRows, badge } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.js";
 import { COMPANY_NAME, logoImgTag } from "../branding.js";
+// PERUBAHAN: dokumen Form Cuti sekarang digenerate dari template Google Docs resmi
+// lewat Apps Script, bukan dirakit dari HTML lagi (lihat generateCutiDocument di bawah).
+import { generateCutiDocViaGAS } from "../gas-integration.js";
 
 const DEFAULT_LEAVE_TYPES = [
   { id: "C", name: "Cuti Tahunan", potong: "Tahunan", count: 1 },
@@ -226,8 +229,13 @@ export async function mount(container, { session }) {
         bodyHtml: `
            <form id="form-edit-cuti" class="space-y-4">
               <div>
-                 <label class="block text-xs font-bold text-slate-600 mb-1">Tanggal</label>
+                 <label class="block text-xs font-bold text-slate-600 mb-1">Tanggal Mulai</label>
                  <input type="date" id="edit-tanggal" required value="${row.tanggal || ""}" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+              </div>
+              <div>
+              <label class="block text-xs font-bold text-slate-600 mb-1">Tanggal Selesai</label>
+                 <input type="date" id="edit-tanggal-selesai" value="${row.tanggal_selesai || row.tanggal || ""}" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+                 <p class="text-[11px] text-slate-400 mt-1">Dipakai laporan absensi utk menandai SEMUA hari dalam rentang cuti ini (bukan cuma hari pertama).</p>
               </div>
               <div>
                  <label class="block text-xs font-bold text-slate-600 mb-1">Jenis Cuti</label>
@@ -256,6 +264,7 @@ export async function mount(container, { session }) {
               const opt = selEl.options[selEl.selectedIndex];
               const payload = {
                  tanggal: m2.querySelector("#edit-tanggal").value,
+                 tanggal_selesai: m2.querySelector("#edit-tanggal-selesai").value || m2.querySelector("#edit-tanggal").value,
                  type_cuti: opt.text,
                  potong_jatah: opt.dataset.potong,
                  keterangan_cuti: m2.querySelector("#edit-keterangan").value.trim(),
@@ -459,11 +468,18 @@ export async function mount(container, { session }) {
               const tipePotong = opt.dataset.potong;
               const isHalfDay = parseFloat(opt.dataset.count) === 0.5;
 
-              btnSimpan.disabled = true; btnSimpan.textContent = "Menyimpan & Mencetak...";
+              btnSimpan.disabled = true; btnSimpan.textContent = "Menyimpan & Membuat Dokumen...";
 
               const tglMulai = inMulai.value;
+              const tglAkhir = isHalfDay ? tglMulai : inAkhir.value;
               const payload = {
                  tanggal: tglMulai,
+                 // PERBAIKAN: sebelumnya tanggal akhir cuti (tgl_akhir) HANYA dipakai untuk
+                 // dicetak di PDF, TIDAK PERNAH disimpan ke Firestore. Akibatnya laporan
+                 // absensi (dan widget "Cuti Hari Ini") yang mencocokkan per-tanggal cuma
+                 // mengenali HARI PERTAMA cuti -- hari ke-2, ke-3, dst dari cuti multi-hari
+                 // salah tercatat sebagai "Alpa". Sekarang tanggal_selesai ikut disimpan.
+                 tanggal_selesai: tglAkhir,
                  nama_karyawan: k.nama_karyawan,
                  cabang: k.cabang || "-",
                  type_cuti: jenisVal + " - " + opt.text.split(" - ")[1],
@@ -486,14 +502,14 @@ export async function mount(container, { session }) {
                  const pdfData = {
                     ...payload,
                     isHalfDay,
-                    tgl_akhir: isHalfDay ? tglMulai : inAkhir.value,
+                    tgl_akhir: tglAkhir,
                     jam_keluar: m.querySelector("#inp-jam-keluar").value,
                     jam_kembali: m.querySelector("#inp-jam-kembali").value,
                     kontak: m.querySelector("#inp-kontak").value
                  };
                  const currentSisa = getSisa(k);
 
-                 printCutiPdf(k, pdfData, currentSisa);
+                 await generateCutiDocument(k, pdfData, currentSisa);
 
               } catch (e) {
                  toast("Gagal menyimpan: " + e.message, "error");
@@ -504,7 +520,46 @@ export async function mount(container, { session }) {
      });
   }
 
-  function printCutiPdf(k, data, sisa) {
+  /**
+   * Generate dokumen Form Cuti resmi lewat Google Apps Script (menyalin
+   * template Google Docs asli & mengisi placeholder-nya), lalu membuka
+   * hasil PDF-nya di tab baru. PERUBAHAN: menggantikan printCutiPdf lama
+   * (HTML dirakit sendiri) yang tidak 100% identik dengan template resmi.
+   * Kalau Apps Script gagal/belum dikonfigurasi, sistem otomatis
+   * fallback ke cetak HTML lama supaya proses pengajuan tetap jalan.
+   */
+  async function generateCutiDocument(k, pdfData, sisa) {
+     toast("Membuat dokumen di Google Drive...", "info");
+     try {
+        const result = await generateCutiDocViaGAS({
+           nama_karyawan: k.nama_karyawan,
+           jabatan: k.jabatan || "-",
+           cabang: k.cabang || "-",
+           tanggal: pdfData.tanggal,
+           tanggal_display: fmtDateShort(pdfData.tanggal),
+           tgl_akhir: pdfData.tgl_akhir,
+           tgl_akhir_display: fmtDateShort(pdfData.tgl_akhir),
+           isHalfDay: pdfData.isHalfDay,
+           count: pdfData.count,
+           keterangan_cuti: pdfData.keterangan_cuti,
+           kontak: pdfData.kontak,
+           jam_keluar: pdfData.jam_keluar,
+           jam_kembali: pdfData.jam_kembali,
+           sisa_tahunan: sisa.Tahunan,
+           sisa_khusus: sisa.Khusus,
+           tanggal_pengajuan: fmtDateShort(new Date().toISOString().substring(0, 10))
+        });
+        toast("Dokumen berhasil dibuat", "success");
+        window.open(result.pdfUrl, "_blank");
+     } catch (err) {
+        toast("Gagal generate via Google Apps Script (" + err.message + "), mencetak versi cadangan...", "warning");
+        printCutiPdfFallback(k, pdfData, sisa);
+     }
+  }
+
+  // Versi cadangan (HTML->print) -- dipakai HANYA kalau Google Apps Script
+  // gagal/belum dikonfigurasi. Lihat generateCutiDocument() di atas.
+  function printCutiPdfFallback(k, data, sisa) {
     const printWindow = window.open('', '_blank');
     const todayStr = new Date().toLocaleString('id-ID', { dateStyle: 'long' });
 
