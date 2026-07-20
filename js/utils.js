@@ -7,8 +7,11 @@
 import {
   db, COL, collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc,
   deleteDoc, query, where, orderBy, limit, onSnapshot, serverTimestamp,
-  Timestamp, storage, ref, uploadBytes, getDownloadURL
+  Timestamp
 } from "./firebase-config.js";
+// PERUBAHAN: lampiran file kini disimpan di Google Drive (lewat Apps Script
+// Web App), bukan lagi Firebase Storage. Lihat js/gas-integration.js.
+import { uploadFileToDrive } from "./gas-integration.js";
 /* ---------------------------------------------------------------------
  * 1. SMART DATE PARSER
  * Menangani 3 kemungkinan bentuk tanggal yang lazim ditemui saat migrasi
@@ -512,12 +515,14 @@ export function wireDynFormLogic(form, fields) {
 }
 
 /**
- * Kumpulkan nilai form (termasuk upload file ke Firebase Storage) menjadi
- * satu object `detail`. File diupload ke path `pathPrefix/fieldName_filename`
- * dan hasilnya berupa URL string.
+ * Kumpulkan nilai form (termasuk upload file ke Google Drive) menjadi
+ * satu object `detail`. File diupload ke subfolder Drive `pathPrefix`
+ * (mis. "Pengajuan/TRX-123" atau "LPJ/TRX-123") lewat Apps Script Web
+ * App (lihat js/gas-integration.js), dan hasilnya berupa URL Drive.
+ * PERUBAHAN: sebelumnya file diupload ke Firebase Storage.
  * @param {HTMLFormElement} form
  * @param {Array} fields  definisi field (name, type, required, label)
- * @param {string} pathPrefix  mis. "pengajuan_lampiran/TRX-123" atau "lpj_lampiran/TRX-123"
+ * @param {string} pathPrefix  mis. "Pengajuan/TRX-123" atau "LPJ/TRX-123"
  */
 export async function collectDynFormDetail(form, fields, pathPrefix) {
   const fd = new FormData(form);
@@ -528,10 +533,7 @@ export async function collectDynFormDetail(form, fields, pathPrefix) {
       const file = fileInput && fileInput.files && fileInput.files[0];
       if (file) {
         if (file.size > 5 * 1024 * 1024) throw new Error(`File untuk "${f.label || f.name}" melebihi 5MB.`);
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const storageRef = ref(storage, `${pathPrefix}/${f.name}_${Date.now()}_${safeName}`);
-        await uploadBytes(storageRef, file);
-        detail[f.name] = await getDownloadURL(storageRef);
+        detail[f.name] = await uploadFileToDrive(file, pathPrefix);
       } else {
         detail[f.name] = "";
       }
@@ -540,4 +542,18 @@ export async function collectDynFormDetail(form, fields, pathPrefix) {
     }
   }
   return detail;
+}
+
+/**
+ * Format tanggal ke "YYYY-MM-DD" memakai zona waktu LOKAL browser.
+ * PENTING: berbeda dari `new Date().toISOString().substring(0,10)` yang
+ * memakai UTC — untuk WIB (UTC+7) itu bisa membuat tanggalnya MUNDUR 1
+ * hari kalau dipanggil dini hari (00:00–06:59). Dipakai di tempat-tempat
+ * yang butuh "tanggal hari ini" yang akurat sesuai jam lokal karyawan.
+ */
+export function localDateStr(d = new Date()) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
