@@ -118,15 +118,15 @@ async function loadPersonalBanner(container, session, karyawan) {
   const banners = [];
   const firstName = escapeHtml((session.nama || "").split(" ")[0] || "Anda");
 
-  const parseTgl = (v) => {
-    if (!v) return null;
-    const d = v?.toDate ? v.toDate() : new Date(v);
-    return isNaN(d) ? null : d;
-  };
+ // PERBAIKAN: sebelumnya pakai Date.getDate()/getMonth() yang ikut zona
+ // waktu SISTEM PERANGKAT (bisa salah 1 hari kalau perangkat tidak di-set
+ // WIB). Sekarang pakai localDateStr() yang memaksa Asia/Jakarta secara
+ // eksplisit, lalu dibandingkan sebagai teks "MM-DD" -- selalu akurat WIB.
+ const todayMD = localDateStr(now)?.substring(5); // "MM-DD"
 
   // 1) ULANG TAHUN
-  const lahir = parseTgl(karyawan.tanggal_lahir);
-  if (lahir && lahir.getDate() === now.getDate() && lahir.getMonth() === now.getMonth()) {
+  const lahirMD = localDateStr(karyawan.tanggal_lahir)?.substring(5);
+  if (lahirMD && lahirMD === todayMD) {
     banners.push(`
       <div class="rounded-2xl p-5 text-white shadow-sm flex items-center gap-4" style="background:linear-gradient(135deg,#db2777,#7c3aed)">
         <div class="text-4xl">🎂</div>
@@ -138,9 +138,9 @@ async function loadPersonalBanner(container, session, karyawan) {
   }
 
   // 2) HARI JADI / ANNIVERSARY KERJA
-  const join = parseTgl(karyawan.tanggal_join);
-  if (join && join.getDate() === now.getDate() && join.getMonth() === now.getMonth()) {
-    const years = now.getFullYear() - join.getFullYear();
+  const joinStr = localDateStr(karyawan.tanggal_join); // "YYYY-MM-DD" WIB
+  if (joinStr && joinStr.substring(5) === todayMD) {
+    const years = now.getFullYear() - parseInt(joinStr.substring(0, 4), 10);
     if (years > 0) {
       banners.push(`
         <div class="rounded-2xl p-5 text-white shadow-sm flex items-center gap-4" style="background:linear-gradient(135deg,#0891b2,#1d4ed8)">
