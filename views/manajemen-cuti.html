@@ -17,9 +17,9 @@
   </div>
 
   <div class="bg-blue-50 border border-blue-200 p-4 rounded-xl text-blue-800 text-sm mb-4">
-    <p class="font-bold mb-1">Format Kolom Excel untuk Import (Baris pertama harus persis):</p>
-    <code class="bg-white px-2 py-1 rounded border border-blue-100 font-mono text-xs">NIK | Nama Karyawan | Jatah Cuti Tahunan | Jatah Cuti Khusus | Jatah Cuti Akumulasi</code>
-  </div>
+     <p class="font-bold mb-1">Format Kolom Excel untuk Import (Baris pertama harus persis):</p>
+     <code class="bg-white px-2 py-1 rounded border border-blue-100 font-mono text-xs">NIK | Nama Karyawan | Jatah Cuti Tahunan | Jatah Cuti Khusus | Jatah Cuti Akumulasi | Sisa Cuti Tahun Lalu</code>
+   </div>
 
   <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
     <div class="overflow-x-auto">
@@ -31,10 +31,11 @@
             <th class="py-3 px-4 text-center">Cuti Tahunan</th>
             <th class="py-3 px-4 text-center">Cuti Khusus</th>
             <th class="py-3 px-4 text-center">Carryover (Akumulasi)</th>
-          </tr>
+            <th class="py-3 px-4 text-center">Sisa Cuti Tahun Lalu<br><span class="font-normal normal-case text-[10px] text-slate-400">(input manual HRD)</span></th>
+           </tr>
         </thead>
         <tbody id="cuti-tbody" class="divide-y divide-slate-100">
-           <tr><td colspan="5" class="py-10 text-center text-slate-400">Memuat data karyawan...</td></tr>
+           <tr><td colspan="6" class="py-10 text-center text-slate-400">Memuat data karyawan...</td></tr>
         </tbody>
       </table>
     </div>
