@@ -1,5 +1,5 @@
 import { db, COL, collection, getDocs, doc, setDoc, getDoc } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort, confirmDialog } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort, confirmDialog, sendEmailNotif, notifyUser, getTargetsForRole } from "../utils.js";
 import { avatar, emptyState, skeletonRows, badge } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.js";
 import { COMPANY_NAME, logoImgTag } from "../branding.js";
@@ -550,6 +550,11 @@ export async function mount(container, { session }) {
            tanggal_pengajuan: fmtDateShort(new Date())
         });
         toast("Dokumen berhasil dibuat", "success");
+        const targets = await getTargetsForRole("PEMOHON", k.nama_karyawan);
+        for (const t of targets) {
+          await notifyUser(t.username, "Pengajuan Cuti Tercatat", `Cuti Anda (${pdfData.tanggal_display || pdfData.tanggal}) telah dicatat HRD.`);
+          if (t.email) await sendEmailNotif(t.email, "Cuti Anda Telah Dicatat", `<p>Halo ${escapeHtml(k.nama_karyawan)},</p><p>Pengajuan cuti Anda tanggal <b>${fmtDateShort(pdfData.tanggal)}</b> telah dicatat oleh HRD. Dokumen: <a href="${result.pdfUrl}">lihat di sini</a>.</p>`);
+        }       
         window.open(result.pdfUrl, "_blank");
      } catch (err) {
         toast("Gagal generate via Google Apps Script (" + err.message + "), mencetak versi cadangan...", "warning");
