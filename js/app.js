@@ -52,10 +52,7 @@ async function boot() {
   bindShellEvents(session);
   startClock();
 
-  // MENGAKTIFKAN NOTIFIKASI SETELAH LOGIN BERHASIL
-  aktifkanNotifikasiHP(session);
-
-  window.addEventListener("hashchange", () => router(session));
+   window.addEventListener("hashchange", () => router(session));
   
   if (!location.hash || location.hash === "#login") {
      location.hash = "#dashboard";
