@@ -26,7 +26,7 @@
  * ------------------------------------------------------------------- */
 
 // GANTI dengan URL Web App hasil Deploy Apps Script Anda (harus diakhiri "/exec")
-export const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwGqA57R6YUJgj61aMpdDfJ7wPDL4AEhIrwigR5mcrAPUz0GgE-_VacxQsENcld78coBw/exec";
+export const GAS_WEBAPP_URL = "https://script.google.com/macros/s/GANTI_DENGAN_DEPLOYMENT_ID_ANDA/exec";
 
 function isConfigured() {
   return !!GAS_WEBAPP_URL && !GAS_WEBAPP_URL.includes("GANTI_DENGAN");
@@ -72,7 +72,7 @@ async function callGasWebApp(payload) {
       msg += " — Kemungkinan besar scope izin Apps Script belum diatur penuh, atau ID folder/template salah. Buka Code.gs di script.google.com, cek ulang appsscript.json (lihat komentar di bagian bawah Code.gs), lalu jalankan fungsi testSetup() secara manual untuk memicu ulang layar izin akses & mendiagnosa ID folder/template.";
     }
     throw new Error(msg);
-   }
+  }
   return json;
 }
 
