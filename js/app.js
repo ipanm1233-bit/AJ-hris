@@ -352,11 +352,28 @@ function bindShellEvents(session) {
   
   userBtn.addEventListener("click", () => userDropdown.classList.toggle("hidden"));
 
+  // PERBAIKAN: sebelumnya ikon profil di header MOBILE cuma <a href="#profile">
+  // biasa (langsung pindah halaman), tidak ada pilihan Ganti Password/Keluar
+  // sama sekali -- beda dari versi desktop yang sudah punya dropdown. Sekarang
+  // disamakan: tombol yang membuka dropdown kecil (Profil Saya/Ganti
+  // Password/Keluar).
+  const userBtnMobile = document.getElementById("btn-user-menu-mobile");
+  const userDropdownMobile = document.getElementById("user-menu-dropdown-mobile");
+  if (userBtnMobile && userDropdownMobile) {
+    userBtnMobile.addEventListener("click", (e) => {
+      e.stopPropagation();
+      userDropdownMobile.classList.toggle("hidden");
+    });
+  }
+
   document.addEventListener("click", (e) => {
     if (!userBtn.contains(e.target) && !userDropdown.contains(e.target)) userDropdown.classList.add("hidden");
+    if (userBtnMobile && userDropdownMobile && !userBtnMobile.contains(e.target) && !userDropdownMobile.contains(e.target)) {
+      userDropdownMobile.classList.add("hidden");
+    }
   });
 
-  // INJEKSI TOMBOL GANTI PASSWORD
+  // INJEKSI TOMBOL GANTI PASSWORD (desktop)
   if (!document.getElementById("btn-ganti-pw")) {
       const pwBtn = document.createElement("button");
       pwBtn.id = "btn-ganti-pw";
@@ -366,7 +383,22 @@ function bindShellEvents(session) {
       pwBtn.addEventListener("click", () => openChangePasswordModal(session));
   }
 
+  // INJEKSI TOMBOL GANTI PASSWORD (mobile) -- dropdown mobile sendiri sudah
+  // punya "Profil Saya" & "Keluar" langsung di markup HTML, tinggal sisipkan
+  // "Ganti Password" di antaranya, sama seperti versi desktop di atas.
+  if (userDropdownMobile && !document.getElementById("btn-ganti-pw-mobile")) {
+      const pwBtnMobile = document.createElement("button");
+      pwBtnMobile.id = "btn-ganti-pw-mobile";
+      pwBtnMobile.className = "w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition flex items-center gap-2 border-b border-slate-100";
+      pwBtnMobile.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4v-3.252a1 1 0 01.293-.707l8.96-8.96A6 6 0 0121 9z"/></svg> Ganti Password`;
+      const logoutBtnMobile = document.getElementById("btn-logout-mobile");
+      userDropdownMobile.insertBefore(pwBtnMobile, logoutBtnMobile);
+      pwBtnMobile.addEventListener("click", () => { userDropdownMobile.classList.add("hidden"); openChangePasswordModal(session); });
+  }
+
   document.getElementById("btn-logout").addEventListener("click", () => logout());
+  const btnLogoutMobile = document.getElementById("btn-logout-mobile");
+  if (btnLogoutMobile) btnLogoutMobile.addEventListener("click", () => logout());
   document.getElementById("btn-notif").addEventListener("click", () => openNotificationCenter(session));
 
   const btnNotifMobile = document.getElementById("btn-notif-mobile");

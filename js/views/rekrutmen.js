@@ -1,5 +1,6 @@
-import { db, COL, collection, onSnapshot, doc, updateDoc, storage, ref, uploadBytes, getDownloadURL } from "../firebase-config.js";
+import { db, COL, collection, onSnapshot, doc, updateDoc } from "../firebase-config.js";
 import { fsAdd, openModal, closeModal, toast, escapeHtml, genId, fmtDateShort } from "../utils.js";
+import { uploadFileToDrive } from "../gas-integration.js";
 import { callGeminiJSON } from "../ai-config.js";
 
 const KANBAN_STAGES = [
@@ -194,9 +195,7 @@ export async function mount(container, { session }) {
               const aiResponse = await analyzeCVWithGemini(cvText, posisi, kualifikasi);
 
               btn.textContent = "Menyimpan Dokumen Asli...";
-              const storageRef = ref(storage, `cv_pelamar/${kandidatId}_${fileInput.name.replace(/[^a-zA-Z0-9.]/g, "")}`);
-              await uploadBytes(storageRef, fileInput);
-              const cv_url = await getDownloadURL(storageRef);
+              const cv_url = await uploadFileToDrive(fileInput, `Rekrutmen/${kandidatId}`);
 
               btn.textContent = "Menyelesaikan...";
               await fsAdd(COL.REKRUTMEN_PELAMAR, {
