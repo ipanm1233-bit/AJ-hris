@@ -416,15 +416,20 @@ export async function sendFCMNotif(tokens, title, body, link = "") {
  * mengirim push ke HP-nya sekaligus, berdasar fcm_token yg tersimpan
  * di dokumen Users. Dipakai di seluruh modul yg butuh notif per-orang.
  */
-export async function notifyUser(username, judul, pesan) {
+export async function notifyUser(username, judul, pesan, link = "") {
   if (!username) return;
   try {
+    // 1. Tambahkan ke lonceng notifikasi web
     await fsAdd(COL.NOTIFICATIONS, {
       username_target: username, judul, pesan, dibaca: false, tanggal: new Date().toISOString()
     }, genId("NTF"));
+    
+    // 2. Tembak ke HP target
     const snap = await getDoc(doc(db, COL.USERS, username));
     const token = snap.exists() ? snap.data().fcm_token : null;
-    if (token) await sendFCMNotif([token], judul, pesan);
+    if (token) {
+       await sendFCMNotif([token], judul, pesan, link);
+    }
   } catch (e) {
     console.warn("Gagal mengirim notifikasi ke " + username, e);
   }
