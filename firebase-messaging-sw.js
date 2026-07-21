@@ -38,7 +38,8 @@ self.addEventListener('notificationclick', function(event) {
       for (let i = 0; i < windowClients.length; i++) {
         const client = windowClients[i];
         if (client.url.includes(self.registration.scope) && 'focus' in client) {
-          client.navigate(targetUrl); // Paksa tab pindah ke halaman yang dituju
+          // Kirim pesan navigasi ke halaman yang sedang terbuka agar diproses secara halus tanpa reload
+          client.postMessage({ type: 'NAVIGATE', url: targetUrl });
           return client.focus(); // Buka/Fokuskan layarnya
         }
       }
