@@ -1,1 +1,22 @@
-{ "crons": [{ "path": "/api/cron-check-kontrak", "schedule": "0 1 * * *" }] }
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
+    },
+    {
+      "source": "/((?!api).*项目*)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/((?!api).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron-check-kontrak",
+      "schedule": "0 1 * * *"
+    }
+  ]
+}
