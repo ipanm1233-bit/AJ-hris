@@ -131,25 +131,46 @@ async function renderShellForUser(session) {
   document.getElementById("header-avatar").outerHTML = avatar(session.nama, "w-8 h-8").replace('class="', 'id="header-avatar" class="');
 
   const menus = await computeVisibleMenus(session);
-  const groups = [
-    { key: "all", title: "Menu Utama" },
-    { key: "hrd", title: "Modul HRD" },
-    { key: "manajemen", title: "Modul Manajemen" }
-  ];
+
+  // 1. Kelompokkan menu berdasarkan properti "kategori"
+  const groupedMenus = menus.reduce((acc, menu) => {
+    const cat = menu.kategori || "Lain-lain";
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(menu);
+    return acc;
+  }, {});
 
   const nav = document.getElementById("sidebar-nav");
-  nav.innerHTML = groups.map(g => {
-    const items = menus.filter(m => m.group === g.key);
-    if (!items.length) return "";
-    return `
-      <div class="sidebar-group-title">${g.title}</div>
-      ${items.map(m => `
-        <a href="#${m.route}" data-route="${m.route}" class="sidebar-item" title="${m.label}">
-          ${icon(m.icon, "w-[18px] h-[18px] shrink-0")}
-          <span class="sidebar-label">${m.label}</span>
-        </a>`).join("")}
-    `;
-  }).join("");
+  let html = "";
+
+  // 2. Render HTML menggunakan elemen <details> untuk efek Accordion (Buka/Tutup)
+  for (const [kategori, items] of Object.entries(groupedMenus)) {
+    // Biarkan "Menu Utama" selalu terbuka secara default saat login
+    const isOpen = kategori === "Menu Utama" ? "open" : "";
+
+    html += `
+    <details class="group mb-2" ${isOpen}>
+      <summary class="flex items-center justify-between px-4 py-2.5 cursor-pointer rounded-lg hover:bg-slate-50 transition list-none outline-none [&::-webkit-details-marker]:hidden sidebar-item">
+        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider sidebar-label">${kategori}</span>
+        <!-- Icon Panah (Berputar 180 derajat saat tab dibuka) -->
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-400 transition-transform duration-200 group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </summary>
+      
+      <!-- Isi Anak Menu (Sub-menu) -->
+      <div class="mt-1 space-y-1 px-2 pb-2">
+        ${items.map(m => `
+          <a href="#${m.route || m.id}" data-route="${m.route || m.id}" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-maroon-50 hover:text-maroon-700 transition" title="${m.label}">
+            ${icon(m.icon || 'box', 'w-[18px] h-[18px] shrink-0')}
+            <span class="sidebar-label">${m.label}</span>
+          </a>
+        `).join('')}
+      </div>
+    </details>`;
+  }
+
+  nav.innerHTML = html;
 }
 
 function highlightActive(route) {
