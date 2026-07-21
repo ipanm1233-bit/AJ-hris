@@ -53,6 +53,13 @@ export function icon(name, cls = "w-5 h-5") {
 }
 
 export function avatar(name = "?", size = "w-10 h-10") {
+  if (name && (name.startsWith("data:image/") || name.startsWith("http://") || name.startsWith("https://"))) {
+    return `<div class="${size} rounded-full overflow-hidden shrink-0"><img src="${name}" class="w-full h-full object-cover"></div>`;
+  }
+  const cachedPhoto = localStorage.getItem("custom_avatar_" + name);
+  if (cachedPhoto) {
+    return `<div class="${size} rounded-full overflow-hidden shrink-0"><img src="${cachedPhoto}" class="w-full h-full object-cover"></div>`;
+  }
   const initials = name.trim().split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase();
   return `<div class="${size} rounded-full bg-maroon-100 text-maroon-800 flex items-center justify-center font-semibold text-sm shrink-0">${initials || "?"}</div>`;
 }
