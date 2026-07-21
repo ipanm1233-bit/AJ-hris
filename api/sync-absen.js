@@ -5,7 +5,6 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).send('Metode tidak diizinkan');
 
   try {
-    // 1. Inisialisasi Firebase yang aman (Sama seperti fitur Push Notif)
     if (!admin.apps.length) {
       const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
       admin.initializeApp({
@@ -14,39 +13,50 @@ module.exports = async function handler(req, res) {
     }
 
     const db = admin.firestore();
-    const { logs } = req.body; // Menangkap data yang dikirim dari komputer kantor
+    const { logs } = req.body;
 
     if (!logs || !Array.isArray(logs)) {
       return res.status(400).json({ success: false, error: "Data logs tidak valid" });
     }
 
-    const batch = db.batch();
     let count = 0;
+    const chunkSize = 200; // Pecah pengiriman jadi 200 data per antrean agar Firebase tidak jebol
 
-    // 2. Olah data absen yang masuk
-    logs.forEach(log => {
-      // Membuat ID Unik (Contoh: ABS-101-169876543) agar jika data tertarik 2x, tidak ada duplikat di database
-      const docId = `ABS-${log.userId}-${new Date(log.recordTime).getTime()}`;
-      const ref = db.collection('data_absensi').doc(docId);
+    for (let i = 0; i < logs.length; i += chunkSize) {
+      const chunk = logs.slice(i, i + chunkSize);
+      const batch = db.batch();
 
-      // Simpan ke Firestore
-      batch.set(ref, {
-        uid_mesin: log.uid,
-        username_karyawan: String(log.userId), // Pastikan ID di mesin finger sama dengan NIK atau Username di HRIS
-        waktu: new Date(log.recordTime).toISOString(),
-        tipe_absen: "FINGERPRINT",
-        diinput_pada: admin.firestore.FieldValue.serverTimestamp()
-      }, { merge: true }); 
+      chunk.forEach(log => {
+        // Toleransi perbedaan versi mesin ZKTeco/Solution
+        const uidKaryawan = log.deviceUserId || log.userId || log.userSn || "UNKNOWN";
+        const waktuRecord = log.recordTime || log.timestamp;
 
-      count++;
-    });
+        if (waktuRecord) {
+            // Membuat ID unik agar tidak ada absen ganda
+            const docId = `ABS-${uidKaryawan}-${new Date(waktuRecord).getTime()}`;
+            const ref = db.collection('data_absensi').doc(docId);
 
-    // Eksekusi penyimpanan massal
-    await batch.commit();
-    res.status(200).json({ success: true, message: `${count} data absen berhasil disimpan/diperbarui.` });
+            batch.set(ref, {
+              uid_mesin: log.uid || "",
+              username_karyawan: String(uidKaryawan), // Ini adalah NIK/ID yang diketik di mesin
+              waktu: new Date(waktuRecord).toISOString(),
+              tipe_absen: "FINGERPRINT",
+              diinput_pada: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+
+            count++;
+        }
+      });
+
+      // Simpan antrean ini ke database
+      await batch.commit();
+    }
+
+    res.status(200).json({ success: true, message: `${count} data absen berhasil masuk Cloud!` });
 
   } catch (error) {
     console.error("CRASH SERVER SYNC ABSEN:", error);
-    res.status(500).json({ success: false, error: "Server Error: " + error.message });
+    // Mengirimkan pesan error asli ke layar hitam HRD
+    res.status(500).json({ success: false, error: "Gagal memproses di Vercel: " + error.message });
   }
 };
