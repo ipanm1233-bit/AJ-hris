@@ -224,6 +224,243 @@ export async function mount(container, { session }) {
   searchInput.addEventListener("input", renderList);
   categoryFilter.addEventListener("change", renderList);
 
+  const btnImportExcel = container.querySelector("#btn-import-item-excel");
+  if (btnImportExcel) {
+    btnImportExcel.onclick = () => {
+      openModal({
+        title: "Import Master Item (Produk) dari Excel",
+        size: "lg",
+        bodyHtml: `
+          <div class="space-y-4 text-left">
+            <div class="bg-slate-50 border border-slate-100 p-4 rounded-2xl">
+              <h4 class="font-bold text-slate-800 text-sm mb-2 flex items-center gap-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Struktur & Format Kolom Excel yang Diterima:
+              </h4>
+              <p class="text-xs text-slate-600 leading-relaxed mb-3">
+                Sistem secara cerdas memetakan nama kolom Anda (tidak sensitif huruf besar/kecil). Pastikan dokumen Excel Anda memiliki baris header dengan setidaknya kolom berikut:
+              </p>
+              <div class="grid grid-cols-2 md:grid-cols-3 gap-2.5">
+                <div class="bg-white p-2.5 rounded-xl border border-slate-200/50">
+                  <span class="block text-[10px] font-bold text-emerald-700 uppercase">SKU / Kode Item</span>
+                  <span class="text-slate-500 text-[11px] block mt-0.5">Contoh: SKU, Kode Item, SKU Code, Kode</span>
+                </div>
+                <div class="bg-white p-2.5 rounded-xl border border-slate-200/50">
+                  <span class="block text-[10px] font-bold text-emerald-700 uppercase">Nama Produk</span>
+                  <span class="text-slate-500 text-[11px] block mt-0.5">Contoh: Nama, Nama Produk, Nama Barang, Item Name, Name</span>
+                </div>
+                <div class="bg-white p-2.5 rounded-xl border border-slate-200/50">
+                  <span class="block text-[10px] font-bold text-emerald-700 uppercase">Kategori</span>
+                  <span class="text-slate-500 text-[11px] block mt-0.5">Contoh: Kategori, Category</span>
+                </div>
+                <div class="bg-white p-2.5 rounded-xl border border-slate-200/50">
+                  <span class="block text-[10px] font-bold text-emerald-700 uppercase">Harga Jual (Rp)</span>
+                  <span class="text-slate-500 text-[11px] block mt-0.5">Contoh: Harga, Harga Jual, Price, Rate</span>
+                </div>
+                <div class="bg-white p-2.5 rounded-xl border border-slate-200/50">
+                  <span class="block text-[10px] font-bold text-emerald-700 uppercase">Satuan (UoM)</span>
+                  <span class="text-slate-500 text-[11px] block mt-0.5">Contoh: Satuan, UoM, Unit, Kemasan</span>
+                </div>
+                <div class="bg-white p-2.5 rounded-xl border border-slate-200/50">
+                  <span class="block text-[10px] font-bold text-slate-400 uppercase">Deskripsi (Opsional)</span>
+                  <span class="text-slate-400 text-[11px] block mt-0.5">Contoh: Deskripsi, Keterangan, Description</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Drag & Drop Zone -->
+            <div id="excel-dropzone" class="border-2 border-dashed border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/20 rounded-2xl p-8 text-center cursor-pointer transition">
+              <input type="file" id="excel-file-input" class="hidden" accept=".xlsx, .xls, .csv">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 text-slate-400 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 13h6m-3-3v6m-9 1V4a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+              </svg>
+              <p class="font-semibold text-slate-700 text-sm">Tarik & letakkan berkas Excel Anda di sini</p>
+              <p class="text-xs text-slate-400 mt-1">atau klik untuk memilih berkas (.xlsx, .xls, .csv)</p>
+            </div>
+
+            <!-- Preview Container -->
+            <div id="import-preview-container" class="hidden space-y-3">
+              <div class="flex items-center justify-between">
+                <h5 class="font-bold text-slate-800 text-sm">Pratinjau Data Import (<span id="import-count">0</span> baris):</h5>
+                <button id="btn-clear-import" class="text-rose-600 hover:text-rose-800 text-xs font-semibold">Ganti File</button>
+              </div>
+              <div class="max-h-56 overflow-y-auto border border-slate-100 rounded-xl">
+                <table class="w-full text-left text-xs border-collapse">
+                  <thead class="sticky top-0 bg-slate-50 text-slate-500 font-bold border-b border-slate-100">
+                    <tr>
+                      <th class="px-4 py-2">SKU / Kode</th>
+                      <th class="px-4 py-2">Nama Barang</th>
+                      <th class="px-4 py-2">Kategori</th>
+                      <th class="px-4 py-2">Harga Jual</th>
+                      <th class="px-4 py-2">Satuan</th>
+                      <th class="px-4 py-2">Deskripsi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="import-preview-body" class="divide-y divide-slate-50 text-slate-600"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        `,
+        footerHtml: `
+          <button id="btn-cancel-import" class="px-4 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100 transition">Batal</button>
+          <button id="btn-save-import" disabled class="bg-slate-300 text-slate-500 px-5 py-2 rounded-lg text-sm font-semibold transition cursor-not-allowed">Simpan Data</button>
+        `,
+        onMount: (m) => {
+          const dropzone = m.querySelector("#excel-dropzone");
+          const fileInput = m.querySelector("#excel-file-input");
+          const previewContainer = m.querySelector("#import-preview-container");
+          const previewBody = m.querySelector("#import-preview-body");
+          const importCount = m.querySelector("#import-count");
+          const btnClearImport = m.querySelector("#btn-clear-import");
+          const btnSaveImport = m.querySelector("#btn-save-import");
+          const btnCancelImport = m.querySelector("#btn-cancel-import");
+
+          let parsedRows = [];
+
+          btnCancelImport.onclick = closeModal;
+
+          dropzone.onclick = () => fileInput.click();
+
+          // Drag and drop handlers
+          ["dragenter", "dragover", "dragleave", "drop"].forEach(eventName => {
+            dropzone.addEventListener(eventName, e => {
+              e.preventDefault();
+              e.stopPropagation();
+            });
+          });
+
+          dropzone.addEventListener("drop", (e) => {
+            const dt = e.dataTransfer;
+            const file = dt.files[0];
+            if (file) handleExcelFile(file);
+          });
+
+          fileInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) handleExcelFile(file);
+          };
+
+          btnClearImport.onclick = () => {
+            fileInput.value = "";
+            parsedRows = [];
+            previewContainer.classList.add("hidden");
+            dropzone.classList.remove("hidden");
+            btnSaveImport.disabled = true;
+            btnSaveImport.className = "bg-slate-300 text-slate-500 px-5 py-2 rounded-lg text-sm font-semibold transition cursor-not-allowed";
+          };
+
+          function handleExcelFile(file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              try {
+                const data = new Uint8Array(event.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheetName = workbook.SheetNames[0];
+                const sheet = workbook.Sheets[firstSheetName];
+                const json = XLSX.utils.sheet_to_json(sheet);
+
+                if (!json || json.length === 0) {
+                  return toast("File Excel kosong atau tidak terbaca!", "warning");
+                }
+
+                parsedRows = json.map((row, index) => {
+                  // Cerdas memetakan header kolom
+                  const mapped = {};
+                  for (const key of Object.keys(row)) {
+                    const k = key.toLowerCase().trim();
+                    const val = String(row[key] || "").trim();
+                    if (k.includes("sku") || k.includes("kode item") || k.includes("sku code") || k.includes("kode")) {
+                      mapped.sku = val.toUpperCase();
+                    } else if (k.includes("nama produk") || k.includes("nama barang") || k.includes("item name") || k.includes("product name") || k.includes("nama") || k.includes("name")) {
+                      mapped.nama = val;
+                    } else if (k.includes("kategori") || k.includes("category")) {
+                      mapped.kategori = val;
+                    } else if (k.includes("harga") || k.includes("price") || k.includes("rate")) {
+                      mapped.harga = Number(val.replace(/[^\d]/g, "")) || 0;
+                    } else if (k.includes("satuan") || k.includes("uom") || k.includes("unit") || k.includes("kemasan")) {
+                      mapped.satuan = val;
+                    } else if (k.includes("deskripsi") || k.includes("keterangan") || k.includes("description") || k.includes("notes")) {
+                      mapped.deskripsi = val;
+                    }
+                  }
+
+                  // Validasi minimal
+                  if (!mapped.nama) return null;
+
+                  // Set defaults jika kosong
+                  mapped.sku = mapped.sku || `SKU-TEMP-${Date.now()}-${index}`;
+                  mapped.kategori = mapped.kategori || "Makanan";
+                  mapped.harga = mapped.harga || 0;
+                  mapped.satuan = mapped.satuan || "Pcs";
+                  mapped.deskripsi = mapped.deskripsi || "-";
+
+                  return mapped;
+                }).filter(Boolean);
+
+                if (parsedRows.length === 0) {
+                  return toast("Gagal mengurai baris data! Pastikan kolom 'Nama Produk' ada.", "warning");
+                }
+
+                // Render Preview Table
+                importCount.textContent = parsedRows.length;
+                previewBody.innerHTML = parsedRows.map(r => `
+                  <tr>
+                    <td class="px-4 py-2 font-mono font-semibold">${escapeHtml(r.sku)}</td>
+                    <td class="px-4 py-2 font-medium">${escapeHtml(r.nama)}</td>
+                    <td class="px-4 py-2">${escapeHtml(r.kategori)}</td>
+                    <td class="px-4 py-2 font-mono font-bold">Rp ${r.harga.toLocaleString("id-ID")}</td>
+                    <td class="px-4 py-2 font-mono">${escapeHtml(r.satuan)}</td>
+                    <td class="px-4 py-2 max-w-xs truncate" title="${escapeHtml(r.deskripsi)}">${escapeHtml(r.deskripsi)}</td>
+                  </tr>
+                `).join("");
+
+                dropzone.classList.add("hidden");
+                previewContainer.classList.remove("hidden");
+                btnSaveImport.disabled = false;
+                btnSaveImport.className = "bg-emerald-700 hover:bg-emerald-800 text-white px-5 py-2 rounded-lg text-sm font-semibold transition shadow-md";
+
+              } catch (err) {
+                console.error(err);
+                toast("Gagal membaca berkas Excel: " + err.message, "error");
+              }
+            };
+            reader.readAsArrayBuffer(file);
+          }
+
+          btnSaveImport.onclick = async () => {
+            btnSaveImport.disabled = true;
+            btnSaveImport.innerHTML = "Menyimpan...";
+
+            try {
+              for (const r of parsedRows) {
+                await addDoc(collection(db, COLLECTION_NAME), {
+                  sku: r.sku,
+                  nama: r.nama,
+                  kategori: r.kategori,
+                  harga: r.harga,
+                  satuan: r.satuan,
+                  deskripsi: r.deskripsi
+                });
+              }
+
+              toast(`Berhasil mengimpor ${parsedRows.length} produk baru!`, "success");
+              closeModal();
+              loadItems();
+            } catch (err) {
+              console.error(err);
+              toast("Gagal menyimpan data: " + err.message, "error");
+              btnSaveImport.disabled = false;
+              btnSaveImport.innerHTML = "Simpan Data";
+            }
+          };
+        }
+      });
+    };
+  }
+
   await loadItems();
   return { unmount() {} };
 }

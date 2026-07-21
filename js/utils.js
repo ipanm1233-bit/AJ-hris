@@ -361,7 +361,7 @@ export function escapeHtml(str = "") {
 // Tambahkan di js/utils.js
 
 export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
-  const APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbxnzGQxJnaE_us5n2yrXT-NpM9k3CsRo66t-uH_-3f4in09X3HfBOL4lbiai3LvWiGDsQ/exec";
+  const APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbzmb4v0dYM5_NFiVoR40DtODpX8DHkOZYRs6U1m_zsfKW3S_izzmW7wIGXgJij7iYdilQ/exec";
   
   try {
     await fetch(APPSCRIPT_URL, {
