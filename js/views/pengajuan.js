@@ -2,7 +2,7 @@ import { db, COL, collection, query, where, getDocs, orderBy, limit, doc, getDoc
 import {
   fsGetAll, fsAdd, fsUpdate, openModal, closeModal, toast, genId, escapeHtml,
   fmtDateShort, evalFormula, toNumber, sendEmailNotif, getTargetsForRole, createLoginToken,
-  dynFieldWrapperHtml, wireDynFormLogic, collectDynFormDetail, sendFCMNotif
+  dynFieldWrapperHtml, wireDynFormLogic, collectDynFormDetail, sendFCMNotif, notifyUser
 } from "../utils.js";
 import { canAccessForm } from "../auth.js";
 import { icon, badge, emptyState, skeletonRows } from "../components.js";
@@ -288,10 +288,8 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
            await notifyUser(
                target.username, 
                `⏳ Persetujuan Dibutuhkan`, 
-               `Ada pengajuan ${payload.nama_form} baru dari ${payload.nama_pemohon}.`
-               // Kita tidak perlu menambahkan url /#approval secara paksa di sini, 
-               // karena komponen Lonceng (Pusat Notifikasi) di js/components.js 
-               // sudah diatur otomatis mengarah ke /#approval untuk pesan berjenis ini.
+               `Ada pengajuan ${payload.nama_form} baru dari ${payload.nama_pemohon}.`,
+               `/#approval` // Tambahkan Link Tujuan di sini!
            ).catch(e => console.warn("Push gagal:", e));
         }
       }
