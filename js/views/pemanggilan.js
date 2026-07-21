@@ -14,41 +14,38 @@ export async function mount(container) {
   };
   const loaded = {};
 
-  function printSuratPanggilan(data) {
-    const printWindow = window.open('', '_blank');
+  async function printSuratPanggilan(data) {
+    const { downloadHtmlAsPdf, toast } = await import("../utils.js");
+    toast("Sedang memproses PDF...", "info");
     let html = `
-    <html><head><title>Surat Panggilan - ${escapeHtml(data.nama_karyawan)}</title>
-      <style>body { font-family: 'Times New Roman', serif; font-size: 14px; padding: 40px; line-height: 1.5; color: #000; }
-      .it { width: 100%; margin-top: 20px; } .it td { padding: 4px 8px; vertical-align: top; }</style>
-    </head><body onload="setTimeout(() => { window.print(); window.close(); }, 800);">
+    <div style="font-family: 'Times New Roman', serif; font-size: 14px; padding: 20px; line-height: 1.5; color: #000; background: #fff;">
       ${isoDocHeaderTable({ judul: "SURAT PANGGILAN KARYAWAN", noDok: "HR-PGL", terbitRevisi: "1/1", hal: "1 dari 1" })}
       <br/><p>Kepada Yth,<br/>Sdr/i <strong>${escapeHtml(data.nama_karyawan)}</strong><br/>Di Tempat</p>
       <p>Dengan hormat,<br/>Bersama surat ini, kami memanggil Saudara/i untuk hadir menemui bagian HRD guna membahas perihal: <strong>${escapeHtml(data.perihal)}</strong>.</p>
-      <table class="it">
-        <tr><td width="20%">Hari/Tanggal</td><td width="2%">:</td><td><strong>${fmtDateShort(data.tanggal_panggilan)}</strong></td></tr>
-        <tr><td>Waktu</td><td>:</td><td><strong>${data.waktu || "09.00 WIB"}</strong></td></tr>
-        <tr><td>Tempat</td><td>:</td><td><strong>Ruang HRD CV Andela Jaya</strong></td></tr>
+      <table style="width: 100%; margin-top: 20px;">
+        <tr><td width="20%" style="padding: 4px 8px;">Hari/Tanggal</td><td width="2%" style="padding: 4px 8px;">:</td><td style="padding: 4px 8px;"><strong>${fmtDateShort(data.tanggal_panggilan)}</strong></td></tr>
+        <tr><td style="padding: 4px 8px;">Waktu</td><td style="padding: 4px 8px;">:</td><td style="padding: 4px 8px;"><strong>${data.waktu || "09.00 WIB"}</strong></td></tr>
+        <tr><td style="padding: 4px 8px;">Tempat</td><td style="padding: 4px 8px;">:</td><td style="padding: 4px 8px;"><strong>Ruang HRD CV Andela Jaya</strong></td></tr>
       </table>
       <p>Demikian surat panggilan ini disampaikan agar dapat dihadiri tepat waktu.</p>
       <table style="width:100%; text-align:center; margin-top:40px;">
         <tr><td width="50%"></td><td width="50%">HRD Manager,</td></tr><tr><td height="80"></td><td></td></tr>
         <tr><td></td><td>( ................................. )</td></tr>
       </table>
-    </body></html>`;
-    printWindow.document.write(html); printWindow.document.close();
+    </div>`;
+    await downloadHtmlAsPdf(html, `Surat_Panggilan_${escapeHtml(data.nama_karyawan).replace(/\s+/g, "_")}.pdf`);
+    toast("PDF berhasil diunduh!", "success");
   }
 
-  function printSuratPeringatan(data) {
-    const printWindow = window.open('', '_blank');
+  async function printSuratPeringatan(data) {
+    const { downloadHtmlAsPdf, toast } = await import("../utils.js");
+    toast("Sedang memproses PDF...", "info");
     let html = `
-    <html><head><title>Surat Peringatan - ${escapeHtml(data.nama_karyawan)}</title>
-      <style>body { font-family: 'Times New Roman', serif; font-size: 14px; padding: 40px; line-height: 1.5; color: #000; }
-      table { width: 100%; }</style>
-    </head><body onload="setTimeout(() => { window.print(); window.close(); }, 800);">
+    <div style="font-family: 'Times New Roman', serif; font-size: 14px; padding: 20px; line-height: 1.5; color: #000; background: #fff;">
       ${isoDocHeaderTable({ judul: `SURAT PERINGATAN (SP ${data.tingkat_sp.replace(/[^0-9]/g, '')})`, noDok: "HR-SP", terbitRevisi: "1/1", hal: "1 dari 1" })}
       <br/><h3 style="text-align:center; text-decoration:underline;">SURAT PERINGATAN</h3>
       <p>Diberikan kepada:</p>
-      <table><tr><td width="20%">Nama</td><td width="2%">:</td><td><strong>${escapeHtml(data.nama_karyawan)}</strong></td></tr></table>
+      <table style="width: 100%;"><tr><td width="20%">Nama</td><td width="2%">:</td><td><strong>${escapeHtml(data.nama_karyawan)}</strong></td></tr></table>
       <p>Surat Peringatan ini dikeluarkan sehubungan dengan tindakan pelanggaran tata tertib perusahaan yang Saudara/i lakukan, yaitu:</p>
       <div style="padding: 10px; border: 1px solid #000; min-height: 60px;">${escapeHtml(data.pelanggaran || data.keterangan)}</div>
       <p>Berlaku sejak: <strong>${fmtDateShort(data.tanggal)}</strong> s/d <strong>${fmtDateShort(data.masa_berlaku)}</strong>.</p>
@@ -57,8 +54,9 @@ export async function mount(container) {
         <tr><td width="50%">Karyawan Ybs,</td><td width="50%">HRD Manager,</td></tr><tr><td height="80"></td><td></td></tr>
         <tr><td>( ${escapeHtml(data.nama_karyawan)} )</td><td>( ................................. )</td></tr>
       </table>
-    </body></html>`;
-    printWindow.document.write(html); printWindow.document.close();
+    </div>`;
+    await downloadHtmlAsPdf(html, `Surat_Peringatan_${escapeHtml(data.nama_karyawan).replace(/\s+/g, "_")}.pdf`);
+    toast("PDF berhasil diunduh!", "success");
   }
 
   async function loadSP() {

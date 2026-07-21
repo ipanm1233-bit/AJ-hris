@@ -388,6 +388,41 @@ export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
   }
 }
 
+let _html2PdfLoadingPromise = null;
+export function ensureHtml2PdfLoaded() {
+  if (window.html2pdf) return Promise.resolve();
+  if (_html2PdfLoadingPromise) return _html2PdfLoadingPromise;
+  _html2PdfLoadingPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Gagal memuat library PDF (html2pdf)."));
+    document.head.appendChild(script);
+  });
+  return _html2PdfLoadingPromise;
+}
+
+export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf") {
+  await ensureHtml2PdfLoaded();
+  const element = document.createElement("div");
+  // Set styles to ensure white background, black text and proper print-like container
+  element.style.padding = "20px";
+  element.style.background = "#ffffff";
+  element.style.color = "#000000";
+  element.style.fontFamily = "Arial, sans-serif";
+  element.innerHTML = htmlContent;
+  
+  const opt = {
+    margin:       [15, 15, 15, 15],
+    filename:     filename,
+    image:        { type: 'jpeg', quality: 0.98 },
+    html2canvas:  { scale: 2, useCORS: true, logging: false },
+    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  };
+  
+  await window.html2pdf().set(opt).from(element).save();
+}
+
 export async function sendFCMNotif(tokens, title, body, link = "") {
   const list = (Array.isArray(tokens) ? tokens : [tokens]).filter(Boolean);
   if (!list.length) return false;

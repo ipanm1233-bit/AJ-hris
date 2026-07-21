@@ -564,112 +564,87 @@ export async function mount(container, { session }) {
 
   // Versi cadangan (HTML->print) -- dipakai HANYA kalau Google Apps Script
   // gagal/belum dikonfigurasi. Lihat generateCutiDocument() di atas.
-  function printCutiPdfFallback(k, data, sisa) {
-    const printWindow = window.open('', '_blank');
+  async function printCutiPdfFallback(k, data, sisa) {
+    const { downloadHtmlAsPdf, toast } = await import("../utils.js");
+    toast("Sedang memproses PDF...", "info");
     const todayStr = new Date().toLocaleString('id-ID', { dateStyle: 'long' });
 
     let html = `
-    <html>
-    <head>
-      <title>Form Cuti - ${escapeHtml(k.nama_karyawan)}</title>
-      <style>
-        @media print {
-            @page { margin: 15mm; }
-            body { font-family: 'Times New Roman', Times, serif; font-size: 14px; color: #000; padding: 0; margin: 0; line-height: 1.4; }
-        }
-        body { font-family: 'Times New Roman', Times, serif; font-size: 14px; padding: 30px; line-height: 1.4; color: #000; max-width: 800px; margin: 0 auto; }
-        
-        .header-wrap { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
-        .header-logo { font-size: 20px; font-weight: bold; }
-        .header-title { font-size: 16px; font-weight: bold; text-align: right; text-decoration: underline; }
-        
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        table, th, td { border: 1px solid #000; }
-        td { padding: 8px 12px; vertical-align: top; }
-        .col-lbl { width: 40%; }
-        
-        .info-box { border: 1px solid #000; padding: 10px; margin-top: 20px; font-size: 12px; }
-        .signature-table { border: none; width: 100%; margin-top: 40px; text-align: center; }
-        .signature-table td { border: none; width: 33.33%; padding: 0; }
-        .sig-space { height: 80px; }
-      </style>
-    </head>
-    <body onload="setTimeout(() => { window.print(); window.close(); }, 800);">
-
-      <div class="header-wrap">
-         <div class="header-logo">CV. ANDELA JAYA</div>
-         <div class="header-title">${data.isHalfDay ? "FORMULIR PENGAJUAN CUTI SETENGAH HARI" : "FORMULIR PENGAJUAN CUTI"}</div>
+    <div style="font-family: 'Times New Roman', Times, serif; font-size: 14px; padding: 20px; line-height: 1.4; color: #000; background: #fff; max-width: 800px; margin: 0 auto;">
+      <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px;">
+         <div style="font-size: 20px; font-weight: bold;">CV. ANDELA JAYA</div>
+         <div style="font-size: 16px; font-weight: bold; text-align: right; text-decoration: underline;">${data.isHalfDay ? "FORMULIR PENGAJUAN CUTI SETENGAH HARI" : "FORMULIR PENGAJUAN CUTI"}</div>
       </div>
 
-      <table>
+      <table style="width: 100%; border-collapse: collapse; margin-top: 15px; border: 1px solid #000;">
         <tr>
-          <td class="col-lbl">Nama Karyawan</td>
-          <td>: ${escapeHtml(k.nama_karyawan)}</td>
+          <td style="width: 40%; padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">Nama Karyawan</td>
+          <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${escapeHtml(k.nama_karyawan)}</td>
         </tr>
         <tr>
-          <td class="col-lbl">Jabatan / Divisi</td>
-          <td>: ${escapeHtml(k.jabatan || "-")} / ${escapeHtml(k.cabang || "-")}</td>
+          <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">Jabatan / Divisi</td>
+          <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${escapeHtml(k.jabatan || "-")} / ${escapeHtml(k.cabang || "-")}</td>
         </tr>
       </table>
 
-      <table>
+      <table style="width: 100%; border-collapse: collapse; margin-top: 15px; border: 1px solid #000;">
         ${data.isHalfDay ? `
           <tr>
-            <td class="col-lbl">Tanggal Cuti</td>
-            <td>: ${fmtDateShort(data.tanggal)}</td>
+            <td style="width: 40%; padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">Tanggal Cuti</td>
+            <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${fmtDateShort(data.tanggal)}</td>
           </tr>
           <tr>
-            <td class="col-lbl">Waktu Cuti</td>
-            <td>: ${data.jam_keluar || "-"} s/d ${data.jam_kembali || "-"}</td>
+            <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">Waktu Cuti</td>
+            <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${data.jam_keluar || "-"} s/d ${data.jam_kembali || "-"}</td>
           </tr>
         ` : `
           <tr>
-            <td class="col-lbl">Tanggal Mulai Cuti</td>
-            <td>: ${fmtDateShort(data.tanggal)}</td>
+            <td style="width: 40%; padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">Tanggal Mulai Cuti</td>
+            <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${fmtDateShort(data.tanggal)}</td>
           </tr>
           <tr>
-            <td class="col-lbl">Tanggal Selesai Cuti</td>
-            <td>: ${fmtDateShort(data.tgl_akhir)}</td>
+            <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">Tanggal Selesai Cuti</td>
+            <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${fmtDateShort(data.tgl_akhir)}</td>
           </tr>
           <tr>
-            <td class="col-lbl">Total Hari Cuti</td>
-            <td>: ${data.count} Hari</td>
+            <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">Total Hari Cuti</td>
+            <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${data.count} Hari</td>
           </tr>
         `}
         <tr>
-          <td class="col-lbl">Alasan Cuti</td>
-          <td>: ${escapeHtml(data.keterangan_cuti)}</td>
+          <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">Alasan Cuti</td>
+          <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${escapeHtml(data.keterangan_cuti)}</td>
         </tr>
         <tr>
-          <td class="col-lbl">Alamat / No. HP selama cuti</td>
-          <td>: ${escapeHtml(data.kontak)}</td>
-        </tr>
-      </table>
-
-      <table>
-        <tr>
-          <td colspan="2" style="font-weight: bold; background-color: #f0f0f0;">Sisa Jatah Cuti Saat Pengajuan:</td>
-        </tr>
-        <tr>
-          <td class="col-lbl">1. Cuti Tahunan</td>
-          <td>: ${sisa.Tahunan} Hari</td>
-        </tr>
-        <tr>
-          <td class="col-lbl">2. Cuti Khusus</td>
-          <td>: ${sisa.Khusus} Hari</td>
+          <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">Alamat / No. HP selama cuti</td>
+          <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${escapeHtml(data.kontak)}</td>
         </tr>
       </table>
 
-      <table class="signature-table">
+      <table style="width: 100%; border-collapse: collapse; margin-top: 15px; border: 1px solid #000;">
         <tr>
-          <td>Pemohon,<br/><br/><br/><div class="sig-space"></div>( ${escapeHtml(k.nama_karyawan)} )</td>
-          <td>Menyetujui, Atasan<br/><br/><br/><div class="sig-space"></div>( ..................................... )</td>
-          <td>Mengetahui, HRD<br/><br/><br/><div class="sig-space"></div>( ..................................... )</td>
+          <td colspan="2" style="font-weight: bold; background-color: #f0f0f0; padding: 8px 12px; border: 1px solid #000; vertical-align: top;">Sisa Jatah Cuti Saat Pengajuan:</td>
+        </tr>
+        <tr>
+          <td style="width: 40%; padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">1. Cuti Tahunan</td>
+          <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${sisa.Tahunan} Hari</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">2. Cuti Khusus</td>
+          <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${sisa.Khusus} Hari</td>
+        </tr>
+      </table>
+
+      <table style="width: 100%; margin-top: 40px; text-align: center;">
+        <tr>
+          <td style="padding: 0; vertical-align: top; width: 33.33%;">Pemohon,<br/><br/><br/><div style="height: 50px;"></div>( ${escapeHtml(k.nama_karyawan)} )</td>
+          <td style="padding: 0; vertical-align: top; width: 33.33%;">Menyetujui, Atasan<br/><br/><br/><div style="height: 50px;"></div>( ..................................... )</td>
+          <td style="padding: 0; vertical-align: top; width: 33.33%;">Mengetahui, HRD<br/><br/><br/><div style="height: 50px;"></div>( ..................................... )</td>
         </tr>
       </table>
       <div style="text-align: right; margin-top: 10px; font-size: 12px;">Tanggal Pengajuan: ${todayStr}</div>
 
-      <div class="info-box">
+      <div style="border: 1px solid #000; padding: 10px; margin-top: 20px; font-size: 12px;">
         <strong>Perhatian:</strong>
         <ol style="margin-top: 5px; padding-left: 20px; margin-bottom: 0;">
            <li>Surat permohonan ini harus diajukan minimal 1 (satu) minggu sebelum tanggal cuti.</li>
@@ -677,12 +652,10 @@ export async function mount(container, { session }) {
            <li>Jika sakit, wajib melampirkan Surat Keterangan Dokter.</li>
         </ol>
       </div>
-
-    </body>
-    </html>`;
+    </div>`;
     
-    printWindow.document.write(html); 
-    printWindow.document.close();
+    await downloadHtmlAsPdf(html, `Form_Cuti_${escapeHtml(k.nama_karyawan).replace(/\s+/g, "_")}.pdf`);
+    toast("PDF berhasil diunduh!", "success");
   }
 
   container.querySelector("#btn-setting-cuti")?.addEventListener("click", () => {

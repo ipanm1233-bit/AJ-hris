@@ -1,7 +1,14 @@
 {
   "name": "andela-hris",
   "version": "1.0.0",
+  "scripts": {
+    "build": "echo 'No build step required'",
+    "start": "node server.js",
+    "dev": "node server.js",
+    "lint": "echo 'No lint step required'"
+  },
   "dependencies": {
+    "express": "^5.2.1",
     "firebase-admin": "^12.0.0"
   }
 }

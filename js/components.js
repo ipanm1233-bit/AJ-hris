@@ -490,9 +490,16 @@ export async function openNotificationCenter(session) {
 
     const now = new Date();
     const pengumumanAktif = broadcastRows.filter(r => {
-      if (!r.tanggal_berakhir) return true;
-      const batas = new Date(r.tanggal_berakhir); batas.setHours(23, 59, 59, 999);
-      return batas >= now;
+      if (r.tanggal_berakhir) {
+        const batas = new Date(r.tanggal_berakhir); batas.setHours(23, 59, 59, 999);
+        if (batas < now) return false;
+      }
+      
+      // Filter Penerima Spesifik
+      if (r.target_type === "SPESIFIK") {
+         return (r.target_list || []).includes(session?.nama);
+      }
+      return true;
     }).sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
 
     let htmlContent = `<div class="space-y-4 max-h-[60vh] overflow-y-auto pr-2">`;
@@ -500,15 +507,15 @@ export async function openNotificationCenter(session) {
     // Helper untuk menutup modal saat menu diklik
     const closeEvt = `onclick="document.getElementById('app-modal-close')?.click()"`;
 
-    // 1. PENGUMUMAN -> Arahkan ke Dashboard
+    // 1. PENGUMUMAN -> Pop-up interaktif pengumuman aktif
     if (pengumumanAktif.length > 0) {
-      htmlContent += `<a href="#dashboard" ${closeEvt} class="block bg-purple-50 border border-purple-200 p-4 rounded-xl hover:bg-purple-100 transition cursor-pointer text-left">
+      htmlContent += `<div id="notif-pengumuman-block" class="block bg-purple-50 border border-purple-200 p-4 rounded-xl hover:bg-purple-100 transition cursor-pointer text-left">
          <h4 class="font-bold text-purple-800 text-xs uppercase mb-1 flex items-center gap-1">📢 Pengumuman (${pengumumanAktif.length})</h4>
          <ul class="text-sm text-purple-700 list-disc list-inside space-y-0.5">
            ${pengumumanAktif.slice(0, 4).map(p => `<li>${escapeHtml(p.judul || p.title || "Pengumuman")}</li>`).join("")}
          </ul>
-         <p class="text-xs text-purple-600 font-semibold mt-2">Lihat di Dashboard &rarr;</p>
-      </a>`;
+         <p class="text-xs text-purple-600 font-semibold mt-2">Buka Pengumuman Aktif &rarr;</p>
+      </div>`;
     }
 
     // 2. ANTREAN PERSETUJUAN -> Arahkan ke menu Approval
@@ -520,13 +527,13 @@ export async function openNotificationCenter(session) {
       </a>`;
     }
 
-    // 3. TUGAS KPI 360 -> Arahkan ke Dashboard (Widget KPI)
+    // 3. TUGAS KPI 360 -> Pop-up interaktif daftar karyawan & modul penilaian
     if (myKpi.length > 0) {
-      htmlContent += `<a href="#dashboard" ${closeEvt} class="block bg-blue-50 border border-blue-200 p-4 rounded-xl hover:bg-blue-100 transition cursor-pointer text-left">
+      htmlContent += `<div id="notif-kpi-block" class="block bg-blue-50 border border-blue-200 p-4 rounded-xl hover:bg-blue-100 transition cursor-pointer text-left">
          <h4 class="font-bold text-blue-800 text-xs uppercase mb-1 flex items-center gap-1">📋 Tugas KPI 360 (${myKpi.length})</h4>
          <p class="text-sm text-blue-700">Anda memiliki <b>${myKpi.length} formulir penilaian rekan kerja</b> yang harus segera diselesaikan.</p>
-         <p class="text-xs text-blue-600 font-semibold mt-2">Kerjakan Sekarang &rarr;</p>
-      </a>`;
+         <p class="text-xs text-blue-600 font-semibold mt-2">Buka Daftar Penilaian &rarr;</p>
+      </div>`;
     }
 
     // 4. WARNING KONTRAK -> Arahkan ke Penilaian & Kontrak
@@ -570,9 +577,250 @@ export async function openNotificationCenter(session) {
       const loadingEl = modalDiv.querySelector(".animate-pulse");
       if (loadingEl && loadingEl.parentElement) {
           loadingEl.parentElement.innerHTML = htmlContent;
+          
+          // Sambungkan penangan klik interaktif
+          const blockPengumuman = modalDiv.querySelector("#notif-pengumuman-block");
+          if (blockPengumuman) {
+             blockPengumuman.onclick = () => {
+                openActiveAnnouncementsModal(pengumumanAktif, session);
+             };
+          }
+          
+          const blockKpi = modalDiv.querySelector("#notif-kpi-block");
+          if (blockKpi) {
+             blockKpi.onclick = () => {
+                openKpiTasksModal(myKpi, session);
+             };
+          }
       }
     }
   } catch (e) {
     console.error("Gagal memuat notifikasi", e);
   }
+}
+
+/* ---------------------------------------------------------------------
+ * POPUP PENGUMUMAN AKTIF & DETAILNYA
+ * ------------------------------------------------------------------- */
+function openActiveAnnouncementsModal(memos, session) {
+  const memosHtml = memos.map((r, idx) => {
+    const plainText = String(r.isi || "").replace(/<[^>]+>/g, "").slice(0, 120);
+    return `
+      <div data-memo-idx="${idx}" class="p-4 rounded-xl border border-slate-100 hover:border-purple-300 hover:bg-purple-50/30 transition cursor-pointer text-left">
+        <div class="flex items-start gap-3">
+          <div class="w-2.5 h-2.5 rounded-full bg-purple-600 mt-1.5 shrink-0"></div>
+          <div class="flex-1">
+            <h5 class="text-sm font-semibold text-slate-800">${escapeHtml(r.judul || "Pengumuman")}</h5>
+            <p class="text-xs text-slate-500 mt-1 leading-relaxed">${escapeHtml(plainText)}${plainText.length >= 120 ? "..." : ""}</p>
+            <div class="flex items-center justify-between mt-3 text-[11px] text-slate-400">
+              <span>Oleh: <strong>${escapeHtml(r.dibuat_oleh || "-")}</strong></span>
+              <span>${fmtDateShort(r.tanggal)}</span>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }).join("");
+
+  openModal({
+    title: "📢 Pengumuman Aktif",
+    size: "md",
+    bodyHtml: `
+      <div class="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+        ${memosHtml}
+      </div>`,
+    footerHtml: `
+      <button id="btn-back-to-notif" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition mr-auto">Kembali</button>
+      <button id="btn-close-ann" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition">Tutup</button>
+    `,
+    onMount: (m) => {
+      m.querySelector("#btn-back-to-notif").onclick = () => openNotificationCenter(session);
+      m.querySelector("#btn-close-ann").onclick = closeModal;
+
+      m.querySelectorAll("[data-memo-idx]").forEach(el => {
+        el.onclick = () => {
+          const memo = memos[parseInt(el.dataset.memoIdx)];
+          openAnnouncementDetailFromNotif(memo, memos, session);
+        };
+      });
+    }
+  });
+}
+
+function openAnnouncementDetailFromNotif(memo, memos, session) {
+  if (!memo) return;
+  const body = `
+    <div class="space-y-4 text-left">
+      <div class="flex items-center justify-between text-xs text-slate-400 border-b border-slate-100 pb-2">
+        <span>Oleh: <strong>${escapeHtml(memo.dibuat_oleh || "-")}</strong></span>
+        <span>${fmtDateShort(memo.tanggal)}</span>
+      </div>
+      <div class="text-sm text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100">${memo.isi || "<i>Tidak ada isi.</i>"}</div>
+      ${memo.lampiran_url ? `
+        <div class="pt-2">
+          <a href="${memo.lampiran_url}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-sm font-semibold text-purple-700 hover:text-purple-800 hover:underline">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+            Lihat Lampiran File
+          </a>
+        </div>` : ""}
+    </div>
+  `;
+  openModal({
+    title: memo.judul || "Pengumuman",
+    size: "lg",
+    bodyHtml: body,
+    footerHtml: `
+      <button id="btn-back-to-memos" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition mr-auto">Kembali ke Daftar</button>
+      <button id="btn-close-memo-detail" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition">Tutup</button>
+    `,
+    onMount: (m) => {
+      m.querySelector("#btn-back-to-memos").onclick = () => openActiveAnnouncementsModal(memos, session);
+      m.querySelector("#btn-close-memo-detail").onclick = closeModal;
+    }
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * POPUP DAFTAR KPI 360 & MODUL APPRAISAL PENILAIAN
+ * ------------------------------------------------------------------- */
+function openKpiTasksModal(kpis, session) {
+  const kpiListHtml = kpis.map((t, idx) => `
+    <div data-kpi-idx="${idx}" class="flex items-center justify-between p-4 rounded-xl border border-slate-100 hover:border-blue-300 hover:bg-blue-50/30 transition cursor-pointer bg-white text-left">
+      <div class="flex items-center gap-3">
+        ${avatar(t.nama_dinilai || "?", "w-10 h-10 text-xs font-bold")}
+        <div>
+          <h5 class="text-sm font-semibold text-slate-800">Evaluasi ${escapeHtml(t.nama_dinilai || "-")}</h5>
+          <p class="text-xs text-slate-400 mt-0.5">Deadline: <span class="text-amber-600 font-medium">${t.deadline ? fmtDateShort(t.deadline) : '-'}</span></p>
+        </div>
+      </div>
+      <button class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow transition">Nilai</button>
+    </div>`).join("");
+
+  openModal({
+    title: "📋 Daftar Evaluasi Rekan Kerja (KPI 360)",
+    size: "md",
+    bodyHtml: `
+      <div class="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+        ${kpis.length === 0 ? '<p class="text-center text-sm text-slate-400 py-6">Semua tugas penilaian KPI telah diselesaikan.</p>' : kpiListHtml}
+      </div>`,
+    footerHtml: `
+      <button id="btn-back-to-notif-kpi" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition mr-auto">Kembali</button>
+      <button id="btn-close-kpi-list" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition">Tutup</button>
+    `,
+    onMount: (m) => {
+      m.querySelector("#btn-back-to-notif-kpi").onclick = () => openNotificationCenter(session);
+      m.querySelector("#btn-close-kpi-list").onclick = closeModal;
+
+      m.querySelectorAll("[data-kpi-idx]").forEach(el => {
+        el.onclick = () => {
+          const task = kpis[parseInt(el.dataset.kpiIdx, 10)];
+          openPenilaianFormFromNotif(task, kpis, session);
+        };
+      });
+    }
+  });
+}
+
+function openPenilaianFormFromNotif(task, kpis, session) {
+  const soalHtml = (task.soal_json || []).map((s, i) => `
+     <div class="border-b border-slate-100 pb-4 mb-4 text-left">
+        <div class="flex items-center gap-2 mb-1.5">
+          <span class="bg-maroon-50 text-maroon-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">${escapeHtml(s.aspek)}</span>
+          <span class="text-[10px] text-slate-400 font-medium">Bobot: ${s.bobot}%</span>
+        </div>
+        <p class="text-sm text-slate-800 mb-3">${escapeHtml(s.indikator)}</p>
+        <div class="relative">
+          <input type="number" data-idx="${i}" data-bobot="${s.bobot}" class="kpi-nilai-input w-full pl-3 pr-10 py-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100 transition" placeholder="Berikan Skor (0-100)" required min="0" max="100">
+          <span class="absolute right-3 top-2.5 text-slate-300 font-medium text-sm">/ 100</span>
+        </div>
+     </div>
+  `).join("");
+
+  const catatanHrdHtml = task.catatan_hrd ? `<div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 text-left"><span class="font-bold block mb-1">Catatan HRD untuk Evaluasi ini:</span>${escapeHtml(task.catatan_hrd)}</div>` : '';
+
+  openModal({
+     title: `Evaluasi: ${escapeHtml(task.nama_dinilai)}`, size: "md",
+     bodyHtml: `
+        <form id="form-isi-kpi" class="text-left">
+           <div class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2 text-left">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-amber-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <p class="text-xs text-amber-800 leading-relaxed">Dihitung otomatis berdasar bobot. Batas pengumpulan: <strong>${task.deadline ? fmtDateShort(task.deadline) : '-'}</strong>.</p>
+           </div>
+           ${catatanHrdHtml} ${soalHtml}
+           <div class="mt-5 text-left">
+              <label class="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">Ulasan Karyawan (Opsional)</label>
+              <textarea id="kpi-catatan-penilai" rows="3" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-400" placeholder="Kelebihan / area peningkatan..."></textarea>
+           </div>
+        </form>
+     `,
+     footerHtml: `
+        <div class="w-full flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-200 mb-3"><span class="text-sm font-bold text-slate-600">Skor Akhir Sementara:</span><span id="kpi-live-score" class="text-lg font-black text-maroon-700">0.00</span></div>
+        <div class="flex gap-2 justify-end w-full">
+          <button id="btn-back-to-kpi-list" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition mr-auto">Kembali</button>
+          <button id="btn-submit-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2 rounded-lg text-sm font-medium transition shadow-md">Kirim Penilaian</button>
+        </div>
+     `,
+     onMount: (m) => {
+        const liveScore = m.querySelector("#kpi-live-score");
+        m.querySelector("#form-isi-kpi").addEventListener("input", () => {
+           let calcTotal = 0;
+           m.querySelectorAll(".kpi-nilai-input").forEach(input => {
+               const bbt = parseFloat(input.dataset.bobot) || 0; const val = parseFloat(input.value) || 0;
+               calcTotal += val * (bbt / 100);
+           });
+           liveScore.textContent = calcTotal.toFixed(2);
+        });
+
+        m.querySelector("#btn-back-to-kpi-list").onclick = () => openKpiTasksModal(kpis, session);
+        m.querySelector("#btn-submit-kpi").onclick = async () => {
+           const form = m.querySelector("#form-isi-kpi");
+           if(!form.reportValidity()) return;
+
+           let totalSkorBobot = 0;
+           const answeredSoal = [...task.soal_json];
+           const catatanPenilai = m.querySelector("#kpi-catatan-penilai").value.trim();
+
+           m.querySelectorAll(".kpi-nilai-input").forEach(input => {
+              const idx = parseInt(input.dataset.idx, 10); const nilai = parseFloat(input.value) || 0; const bobot = parseFloat(answeredSoal[idx].bobot) || 0;
+              answeredSoal[idx].nilai_diberikan = nilai; totalSkorBobot += (nilai * (bobot / 100));
+           });
+
+           let finalScore = Math.round(totalSkorBobot * 100) / 100;
+           let keputusan = finalScore >= 80 ? "Sangat Baik" : finalScore >= 60 ? "Baik" : "Kurang";
+
+           const btn = m.querySelector("#btn-submit-kpi");
+           btn.disabled = true; btn.textContent = "Merekap Nilai...";
+
+           try {
+              // Update database
+              await fsUpdate(COL.TUGAS_KPI_360, task.id, { status: "DONE", skor_akhir: finalScore, soal_json: answeredSoal, catatan_penilai: catatanPenilai, tanggal_diselesaikan: new Date().toISOString() });
+              await fsAdd(COL.LOG_PENILAIAN_KPI, { tanggal: new Date().toISOString(), nama_dinilai: task.nama_dinilai, penilai: task.nama_penilai, total_skor: finalScore, keputusan: keputusan, periode: task.periode, detail_json: answeredSoal, catatan_penilai: catatanPenilai }, genId("KPI-LOG"));
+
+              toast("Evaluasi diselesaikan!", "success");
+              
+              // Refresh dashboard widgets if present
+              const dashKpiTasks = document.querySelector("#dash-kpi-tasks");
+              if (dashKpiTasks) {
+                 const itemEl = dashKpiTasks.querySelector(`[data-kpi-id="${task.id}"]`);
+                 if (itemEl) itemEl.remove();
+                 if (!dashKpiTasks.children.length) {
+                    dashKpiTasks.innerHTML = `<div class="text-center p-8 text-slate-400">Tidak ada tugas penilaian tertunda</div>`;
+                 }
+              }
+
+              // Filter out the completed task from the local kpis list
+              const remainingKpis = kpis.filter(x => x.id !== task.id);
+              if (remainingKpis.length > 0) {
+                 openKpiTasksModal(remainingKpis, session);
+              } else {
+                 toast("Semua evaluasi rekan kerja telah diselesaikan!", "success");
+                 closeModal();
+              }
+           } catch(e) {
+              toast("Gagal menyimpan: " + e.message, "error");
+              btn.disabled = false;
+              btn.textContent = "Kirim Penilaian";
+           }
+        };
+     }
+  });
 }

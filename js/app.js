@@ -51,6 +51,7 @@ async function boot() {
   await renderShellForUser(session);
   bindShellEvents(session);
   startClock();
+  aktifkanNotifikasiHP(session);
 
    window.addEventListener("hashchange", () => router(session));
   
@@ -76,21 +77,42 @@ async function aktifkanNotifikasiHP(userData) {
         // 2. Minta izin ke pengguna HP
         const permission = await Notification.requestPermission();
         if (permission === 'granted') {
+            let registration = null;
+            if ('serviceWorker' in navigator) {
+                registration = await navigator.serviceWorker.ready;
+            }
             
-            // JANGAN LUPA GANTI TEKS DI BAWAH INI DENGAN VAPID KEY ASLI ANDA
             const currentToken = await getToken(messaging, { 
-                vapidKey: 'UneaSlmf85gaUKcql8uFdVvSMdJVADl7w1kEFOug9Lw' 
+                vapidKey: 'BLAv8-HIF945zC4llQ3VaSi_n1cIuk6GbFJLasQA7notR1IP0JbKmG1kzTJ2xoqQs7StT_tyKRW4BWe5ZN24XGE',
+                serviceWorkerRegistration: registration
             });
 
             if (currentToken) {
                 console.log('Token HP Karyawan:', currentToken);
                 
-                // Simpan token ke database karyawan
+                // Simpan token ke database karyawan & users
                 if (userData && userData.username) {
-                    // Update field fcm_token di master data pengguna
-                    await updateDoc(doc(db, COL.MASTER_KARYAWAN, userData.id), {
+                    await fsUpdate(COL.USERS, userData.username, {
                         fcm_token: currentToken
                     });
+                    
+                    if (userData.nik) {
+                        try {
+                            await updateDoc(doc(db, COL.MASTER_KARYAWAN, String(userData.nik)), {
+                                fcm_token: currentToken
+                            });
+                        } catch(e) {
+                            console.warn("Karyawan doc update failed: ", e);
+                        }
+                    } else if (userData.id) {
+                        try {
+                            await updateDoc(doc(db, COL.MASTER_KARYAWAN, String(userData.id)), {
+                                fcm_token: currentToken
+                            });
+                        } catch(e) {
+                            console.warn("Karyawan doc update failed: ", e);
+                        }
+                    }
                     console.log("Token FCM berhasil disimpan ke database!");
                 }
             }

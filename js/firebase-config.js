@@ -81,5 +81,7 @@ export const COL = {
   APP_SETTINGS: "app_settings",
   DATA_ABSENSI: "data_absensi",
   LOG_LEMBUR: "log_lembur",
-  LOG_KASBON: "log_kasbon"
+  LOG_KASBON: "log_kasbon",
+  DATA_TRAINING: "data_training",
+  PERFORMANCE_REVIEW: "performance_review"
 };

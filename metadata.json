@@ -1,0 +1,12 @@
+{
+  "name": "Portal HRIS & Operasional — CV Andela Jaya",
+  "description": "Sistem Informasi Sumber Daya Manusia (HRIS) dan Portal Operasional untuk CV Andela Jaya, menampilkan absensi, approval, manajemen kontrak, dan push notifikasi.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

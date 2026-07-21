@@ -1,6 +1,23 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
+<script>
+  // Patch to prevent "Cannot set property fetch of #<Window> which has only a getter" in sandboxed environments
+  (function() {
+    try {
+      var originalFetch = window.fetch;
+      var currentFetch = originalFetch;
+      Object.defineProperty(window, 'fetch', {
+        get: function() { return currentFetch; },
+        set: function(val) { currentFetch = val; },
+        configurable: true,
+        enumerable: true
+      });
+    } catch (e) {
+      console.warn("Patch fetch warning:", e);
+    }
+  })();
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Super Migrasi — Excel ke Firestore | Andela Jaya HRIS</title>

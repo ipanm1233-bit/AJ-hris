@@ -524,16 +524,46 @@ export async function mount(container, { session }) {
     } catch (e) { wrap.innerHTML = emptyState("Gagal memuat"); }
   }
 
-  function printKpiToHtml(row) {
-    const printWindow = window.open('', '_blank');
+  async function printKpiToHtml(row) {
+    const { downloadHtmlAsPdf } = await import("../utils.js");
+    toast("Sedang memproses PDF...", "info");
     let tbody = '';
     (row.detail_json || []).forEach(item => {
         let weighted = (item.nilai_diberikan * (item.bobot / 100)).toFixed(2);
-        tbody += `<tr><td>${escapeHtml(item.aspek)}</td><td>${escapeHtml(item.indikator)}</td><td style="text-align: center;">${item.bobot}%</td><td style="text-align: center;">${item.nilai_diberikan}</td><td style="text-align: center;"><strong>${weighted}</strong></td></tr>`;
+        tbody += `<tr><td style="border:1px solid #cbd5e1; padding:8px;">${escapeHtml(item.aspek)}</td><td style="border:1px solid #cbd5e1; padding:8px;">${escapeHtml(item.indikator)}</td><td style="border:1px solid #cbd5e1; padding:8px; text-align: center;">${item.bobot}%</td><td style="border:1px solid #cbd5e1; padding:8px; text-align: center;">${item.nilai_diberikan}</td><td style="border:1px solid #cbd5e1; padding:8px; text-align: center;"><strong>${weighted}</strong></td></tr>`;
     });
 
-    const html = `<html><head><title>KPI - ${escapeHtml(row.nama_dinilai)}</title><style>body { font-family: Arial; padding: 40px; } table { width:100%; border-collapse:collapse; margin-top:20px; } th, td { border:1px solid #cbd5e1; padding:10px; } th { background:#f8fafc; } .kpi-head { display:flex; align-items:center; gap:14px; margin-bottom:6px; }</style></head><body onload="window.print(); window.close();"><div class="kpi-head">${logoImgTag(48)}<div><h2 style="margin:0;">Laporan KPI Karyawan</h2><p style="margin:2px 0 0;font-size:12px;color:#555;">${COMPANY_NAME}</p></div></div><p>Nama: ${escapeHtml(row.nama_dinilai)}</p><p>Penilai: ${escapeHtml(row.penilai)}</p><table><thead><tr><th>Aspek</th><th>Indikator</th><th>Bobot</th><th>Nilai</th><th>Skor Akhir</th></tr></thead><tbody>${tbody}</tbody></table></body></html>`;
-    printWindow.document.write(html); printWindow.document.close();
+    const html = `
+      <div style="font-family: Arial, sans-serif; padding: 20px;">
+        <div class="kpi-head" style="display:flex; align-items:center; gap:14px; margin-bottom:15px; border-bottom: 2px solid #a70000; padding-bottom: 10px;">
+          ${logoImgTag(48)}
+          <div>
+            <h2 style="margin:0; font-size: 18px; color: #a70000; text-transform: uppercase;">Laporan KPI Karyawan</h2>
+            <p style="margin:2px 0 0;font-size:12px;color:#555;">${COMPANY_NAME}</p>
+          </div>
+        </div>
+        <div style="font-size: 13px; margin-bottom: 15px;">
+          <p style="margin: 4px 0;"><strong>Nama:</strong> ${escapeHtml(row.nama_dinilai)}</p>
+          <p style="margin: 4px 0;"><strong>Penilai:</strong> ${escapeHtml(row.penilai)}</p>
+        </div>
+        <table style="width:100%; border-collapse:collapse; margin-top:10px; font-size: 12px;">
+          <thead>
+            <tr style="background:#f8fafc; border-bottom: 2px solid #cbd5e1;">
+              <th style="border:1px solid #cbd5e1; padding:8px; text-align: left;">Aspek</th>
+              <th style="border:1px solid #cbd5e1; padding:8px; text-align: left;">Indikator</th>
+              <th style="border:1px solid #cbd5e1; padding:8px; text-align: center;">Bobot</th>
+              <th style="border:1px solid #cbd5e1; padding:8px; text-align: center;">Nilai</th>
+              <th style="border:1px solid #cbd5e1; padding:8px; text-align: center;">Skor Akhir</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tbody}
+          </tbody>
+        </table>
+      </div>
+    `;
+    await downloadHtmlAsPdf(html, `Laporan_KPI_${escapeHtml(row.nama_dinilai).replace(/\s+/g, "_")}.pdf`);
+    toast("PDF berhasil diunduh!", "success");
   }
 
   async function loadEvaluasi() {

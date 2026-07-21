@@ -45,6 +45,8 @@ export const MENU_CONFIG = [
   { id: "rekrutmen", label: "Rekrutmen (ATS)", icon: "user-plus", kategori: "Kinerja & Karyawan", roles: ["HRD", "SUPERADMIN"] },
   { id: "siklus-karyawan", label: "Siklus Karyawan", icon: "refresh", kategori: "Kinerja & Karyawan", roles: ["HRD", "SUPERADMIN"] },
   { id: "penilaian-kontrak", label: "Penilaian & Kontrak", icon: "doc-plus", kategori: "Kinerja & Karyawan", roles: ["HRD", "SUPERADMIN"] },
+  { id: "training", label: "Pelatihan & TNA", icon: "book", kategori: "Kinerja & Karyawan", roles: ["ALL"] },
+  { id: "performance-review", label: "Review Kinerja", icon: "gauge", kategori: "Kinerja & Karyawan", roles: ["ALL"] },
   // 👇 INI ADALAH PERBAIKAN UNTUK BUG 404 KEDISIPLINAN:
   { id: "pemanggilan", label: "Kedisiplinan & SP", icon: "alert", kategori: "Kinerja & Karyawan", roles: ["HRD", "SUPERADMIN"] }, 
 
@@ -53,6 +55,13 @@ export const MENU_CONFIG = [
   { id: "inventory", label: "Manajemen Inventory & ATK", icon: "box", kategori: "Operasional & Aset", roles: ["HRD", "GA", "SUPERADMIN"] },
   { id: "uang-makan", label: "Uang Makan Expedisi", icon: "utensils", kategori: "Operasional & Aset", roles: ["HRD", "FINANCE", "SUPERADMIN"] },
   { id: "gimmick-sop", label: "Gimmick & SOP", icon: "book", kategori: "Operasional & Aset", roles: ["HRD", "SUPERADMIN"] },
+
+  // 📁 KATEGORI: MODUL SALES
+  { id: "sales-order", label: "Order Penjualan", icon: "wallet", kategori: "Modul Sales", roles: ["ALL"] },
+  { id: "sales-outlet", label: "Master Outlet", icon: "user-plus", kategori: "Modul Sales", roles: ["ALL"] },
+  { id: "sales-item", label: "Master Item", icon: "box", kategori: "Modul Sales", roles: ["ALL"] },
+  { id: "sales-task", label: "Tugas Sales", icon: "clock", kategori: "Modul Sales", roles: ["ALL"] },
+  { id: "sales-track", label: "Summary Track", icon: "layers", kategori: "Modul Sales", roles: ["ALL"] },
 
   // 📁 KATEGORI: PENGATURAN SISTEM
   { id: "manajemen-data", label: "Manajemen Data", icon: "database", kategori: "Pengaturan Sistem", roles: ["HRD", "SUPERADMIN"] },
@@ -212,7 +221,12 @@ export async function computeVisibleMenus(session) {
 
   // Jika HRD sudah menetapkan daftar menu spesifik untuk user ini -> pakai itu (whitelist absolut)
   if (userOverride && Array.isArray(userOverride.allowed_menus) && userOverride.allowed_menus.length) {
-    return MENU_CONFIG.filter(m => userOverride.allowed_menus.includes(m.id));
+    const list = MENU_CONFIG.filter(m => userOverride.allowed_menus.includes(m.id));
+    if (!list.some(m => m.id === "dashboard")) {
+      const dash = MENU_CONFIG.find(m => m.id === "dashboard");
+      if (dash) list.unshift(dash);
+    }
+    return list;
   }
 
   // PERBAIKAN: gerbang lama (group === "hrd" -> hanya role persis "HRD") menyebabkan
@@ -224,6 +238,7 @@ export async function computeVisibleMenus(session) {
   return MENU_CONFIG.filter(m => {
     if (m.group === "all") return true;
     if (!m.roles || m.roles.length === 0) return true;
+    if (m.roles.includes("ALL")) return true;
     if (m.roles.includes(role)) return true;
     // Siapapun yang tercatat sebagai atasan (punya bawahan) otomatis kebagian akses
     // ke menu yang secara eksplisit mengizinkan role generik "ATASAN"
@@ -235,9 +250,9 @@ export async function computeVisibleMenus(session) {
 export async function canAccessRoute(routeId, session) {
   const menus = await computeVisibleMenus(session);
   // route yang tidak ada di MENU_CONFIG (mis. sub-halaman) dianggap boleh selama login
-  const found = MENU_CONFIG.find(m => m.route === routeId);
+  const found = MENU_CONFIG.find(m => (m.route || m.id) === routeId);
   if (!found) return true;
-  return menus.some(m => m.route === routeId);
+  return menus.some(m => (m.route || m.id) === routeId);
 }
 
 /* ---------------------------------------------------------------------

@@ -5,33 +5,34 @@ import { isoDocHeaderTable } from "../branding.js";
 
 // FUNGSI CETAK BLANKO STOCK OPNAME
 async function printBlankoOpname() {
+  const { downloadHtmlAsPdf, toast } = await import("../utils.js");
+  toast("Sedang memproses PDF...", "info");
   const items = await fsGetAll(COL.MASTER_INVENTORY);
   items.sort((a,b) => a.nama_barang.localeCompare(b.nama_barang));
   
-  const printWindow = window.open('', '_blank');
   let tableRows = items.map(i => `
     <tr>
-      <td>${escapeHtml(i.id_item)}</td>
-      <td>${escapeHtml(i.nama_barang)}</td>
-      <td>${escapeHtml(i.kategori)}</td>
-      <td style="text-align:center;">${i.stok_saat_ini}</td>
-      <td></td>
-      <td></td>
+      <td style="border: 1px solid #000; padding: 6px;">${escapeHtml(i.id_item)}</td>
+      <td style="border: 1px solid #000; padding: 6px;">${escapeHtml(i.nama_barang)}</td>
+      <td style="border: 1px solid #000; padding: 6px;">${escapeHtml(i.kategori)}</td>
+      <td style="border: 1px solid #000; padding: 6px; text-align:center;">${i.stok_saat_ini}</td>
+      <td style="border: 1px solid #000; padding: 6px;"></td>
+      <td style="border: 1px solid #000; padding: 6px;"></td>
     </tr>`).join("");
 
   const html = `
-    <html><head><title>Blanko Stock Opname</title>
-    <style>
-      body { font-family: 'Times New Roman', serif; font-size: 12px; padding: 30px; }
-      table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-      th, td { border: 1px solid #000; padding: 6px; }
-      th { background: #f0f0f0; }
-    </style></head>
-    <body onload="setTimeout(() => { window.print(); window.close(); }, 800);">
+    <div style="font-family: 'Times New Roman', serif; font-size: 12px; padding: 20px; background: #fff; color: #000;">
       ${isoDocHeaderTable({ judul: "BLANKO PEMERIKSAAN FISIK GUDANG (STOCK OPNAME)", noDok: "GA-OPNAME", hal: "1 dari 1" })}
-      <table>
+      <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
         <thead>
-          <tr><th>ID Barang</th><th>Nama Barang</th><th>Kategori</th><th width="10%">Stok Sistem</th><th width="15%">Stok Fisik Gudang</th><th width="20%">Keterangan/Selisih</th></tr>
+          <tr style="background: #f0f0f0;">
+            <th style="border: 1px solid #000; padding: 6px;">ID Barang</th>
+            <th style="border: 1px solid #000; padding: 6px;">Nama Barang</th>
+            <th style="border: 1px solid #000; padding: 6px;">Kategori</th>
+            <th style="border: 1px solid #000; padding: 6px; width: 10%;">Stok Sistem</th>
+            <th style="border: 1px solid #000; padding: 6px; width: 15%;">Stok Fisik Gudang</th>
+            <th style="border: 1px solid #000; padding: 6px; width: 20%;">Keterangan/Selisih</th>
+          </tr>
         </thead>
         <tbody>${tableRows}</tbody>
       </table>
@@ -39,30 +40,31 @@ async function printBlankoOpname() {
          <div style="width:30%;">Petugas Pemeriksa,<br/><br/><br/><br/>( ........................ )</div>
          <div style="width:30%;">Mengetahui,<br/><br/><br/><br/>( ........................ )</div>
       </div>
-    </body></html>`;
-  printWindow.document.write(html); printWindow.document.close();
+    </div>`;
+  await downloadHtmlAsPdf(html, `Blanko_Stock_Opname.pdf`);
+  toast("PDF berhasil diunduh!", "success");
 }
 
-function printTandaTerimaBarang(row) {
-  const printWindow = window.open('', '_blank');
+async function printTandaTerimaBarang(row) {
+  const { downloadHtmlAsPdf, toast } = await import("../utils.js");
+  toast("Sedang memproses PDF...", "info");
   const html = `
-    <html><head><title>Tanda Terima - ${escapeHtml(row.nama_barang || "")}</title>
-    <style>body { font-family: 'Times New Roman', serif; font-size: 14px; padding: 30px; line-height: 1.5;} .it{width: 100%; border-collapse: collapse; margin-top: 20px;} .it td{border: 1px solid #000; padding: 6px 10px;}</style></head>
-    <body onload="setTimeout(() => { window.print(); window.close(); }, 800);">
+    <div style="font-family: 'Times New Roman', serif; font-size: 14px; padding: 20px; line-height: 1.5; background: #fff; color: #000;">
       ${isoDocHeaderTable({ judul: "TANDA TERIMA BARANG INVENTORY / ATK", noDok: "GA1", terbitRevisi: "1/1", hal: "1 dari 1" })}
-      <table class="it">
-        <tr><td width="35%" style="font-weight:bold; background:#f9fafb;">Tanggal</td><td>${fmtDateShort(row.tanggal)}</td></tr>
-        <tr><td style="font-weight:bold; background:#f9fafb;">Nama Barang</td><td>${escapeHtml(row.nama_barang || "-")}</td></tr>
-        <tr><td style="font-weight:bold; background:#f9fafb;">Jumlah</td><td>${escapeHtml(String(row.jumlah_ambil ?? "-"))}</td></tr>
-        <tr><td style="font-weight:bold; background:#f9fafb;">Diambil Oleh</td><td>${escapeHtml(row.nama_karyawan || "-")}</td></tr>
+      <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+        <tr><td width="35%" style="border: 1px solid #000; padding: 6px 10px; font-weight:bold; background:#f9fafb;">Tanggal</td><td style="border: 1px solid #000; padding: 6px 10px;">${fmtDateShort(row.tanggal)}</td></tr>
+        <tr><td style="border: 1px solid #000; padding: 6px 10px; font-weight:bold; background:#f9fafb;">Nama Barang</td><td style="border: 1px solid #000; padding: 6px 10px;">${escapeHtml(row.nama_barang || "-")}</td></tr>
+        <tr><td style="border: 1px solid #000; padding: 6px 10px; font-weight:bold; background:#f9fafb;">Jumlah</td><td style="border: 1px solid #000; padding: 6px 10px;">${escapeHtml(String(row.jumlah_ambil ?? "-"))}</td></tr>
+        <tr><td style="border: 1px solid #000; padding: 6px 10px; font-weight:bold; background:#f9fafb;">Diambil Oleh</td><td style="border: 1px solid #000; padding: 6px 10px;">${escapeHtml(row.nama_karyawan || "-")}</td></tr>
       </table>
       <table style="width:100%; text-align:center; margin-top:40px;">
         <tr><td width="50%">Yang Menyerahkan,</td><td width="50%">Yang Menerima,</td></tr>
         <tr><td height="80"></td><td></td></tr>
         <tr><td>( ................................... )</td><td>( <strong>${escapeHtml(row.nama_karyawan || "")}</strong> )</td></tr>
       </table>
-    </body></html>`;
-  printWindow.document.write(html); printWindow.document.close();
+    </div>`;
+  await downloadHtmlAsPdf(html, `Tanda_Terima_${escapeHtml(row.nama_barang || "").replace(/\s+/g, "_")}.pdf`);
+  toast("PDF berhasil diunduh!", "success");
 }
 
 export async function mount(container) {

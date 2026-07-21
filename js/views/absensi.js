@@ -63,7 +63,7 @@ export async function mount(container) {
       } else if (filterState.sortNama === "desc") {
          data.sort((a, b) => (b.nama || "").localeCompare(a.nama || "", "id", { sensitivity: "base" }));
       } else {
-         data.sort((a, b) => b.tanggal.localeCompare(a.tanggal) || a.nama.localeCompare(b.nama));
+         data.sort((a, b) => (b.tanggal || "").localeCompare(a.tanggal || "") || (a.nama || "").localeCompare(b.nama || ""));
       }
 
       renderRawTable(data);

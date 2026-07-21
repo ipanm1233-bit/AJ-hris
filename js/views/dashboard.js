@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, orderBy, limit, getDoc, doc, updateDoc, messaging } from "../firebase-config.js";
-import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, getTargetsForRole, toast, fsUpdate, fsAdd, genId, localDateStr } from "../utils.js";
+import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, getTargetsForRole, toast, fsUpdate, fsAdd, fsGetAll, genId, localDateStr } from "../utils.js";
 import { avatar, badge, icon, emptyState, skeletonRows } from "../components.js";
 import { MANAJEMEN_ROLES } from "../auth.js";
 // IMPORT BARU UNTUK MENDAPATKAN TOKEN HP (FCM)
@@ -39,7 +39,9 @@ export async function mount(container, { session }) {
     loadLeaveBalances(container, session),
     loadKpiTasks(container, session),
     loadCutiHariIni(container),
-    loadAnnouncements(container),
+    loadAnnouncements(container, session),
+    loadAttendanceAnalytics(container, session),
+    loadPerformanceWidget(container, session),
     // Batasi widget kontrak habis hanya muncul di Dashboard HRD
     isHrd ? loadContractExpiry(container) : (() => { 
         const w = container.querySelector("#dash-contract-widget-wrap"); 
@@ -81,9 +83,13 @@ export async function mount(container, { session }) {
               }
               try {
                   alert("1. Sedang meminta Token unik dari HP Anda...");
+                  let registration = null;
+                  if ('serviceWorker' in navigator) {
+                      registration = await navigator.serviceWorker.ready;
+                  }
                   const currentToken = await getToken(messaging, { 
-                      // Pastikan VAPID KEY ini sudah benar milik Anda
-                      vapidKey: 'BLAv8-HIF945zC4llQ3VaSi_n1cIuk6GbFJLasQA7notR1IP0JbKmG1kzTJ2xoqQs7StT_tyKRW4BWe5ZN24XGE' 
+                      vapidKey: 'BLAv8-HIF945zC4llQ3VaSi_n1cIuk6GbFJLasQA7notR1IP0JbKmG1kzTJ2xoqQs7StT_tyKRW4BWe5ZN24XGE',
+                      serviceWorkerRegistration: registration
                   });
                   
                   if (currentToken) {
@@ -93,6 +99,16 @@ export async function mount(container, { session }) {
                           await fsUpdate(COL.USERS, session.username, {
                               fcm_token: currentToken
                           });
+                          
+                          if (session.nik) {
+                              try {
+                                  await updateDoc(doc(db, COL.MASTER_KARYAWAN, String(session.nik)), {
+                                      fcm_token: currentToken
+                                  });
+                              } catch(err) {
+                                  console.warn("Karyawan doc update failed: ", err);
+                              }
+                          }
                           alert("3. SUKSES! Token berhasil disimpan ke profil Anda (" + session.username + ") di Firestore!");
                       } else {
                           alert("ERROR: Sesi login tidak ditemukan (session.username kosong).");
@@ -465,16 +481,27 @@ async function loadCutiHariIni(container) {
 }
 
 /* ------------------------ e. PENGUMUMAN ------------------------ */
-async function loadAnnouncements(container) {
+async function loadAnnouncements(container, session) {
   const wrap = container.querySelector("#dash-announcements");
   try {
     const q = query(collection(db, COL.BROADCAST), orderBy("tanggal", "desc"), limit(20));
     const snap = await getDocs(q);
     const now = new Date();
     const validMemos = snap.docs.map(d => d.data()).filter(r => {
-      if (!r.tanggal_berakhir) return true; 
-      const tglBatas = new Date(r.tanggal_berakhir); tglBatas.setHours(23, 59, 59, 999);
-      return tglBatas >= now;
+      if (r.tanggal_berakhir) { 
+        const tglBatas = new Date(r.tanggal_berakhir); tglBatas.setHours(23, 59, 59, 999);
+        if (tglBatas < now) return false;
+      }
+      
+      // Filter Penerima Spesifik
+      if (r.target_type === "SPESIFIK") {
+        const list = (r.target_list || []).map(x => String(x).trim().toLowerCase());
+        const myName = String(session?.nama || "").trim().toLowerCase();
+        const myUsername = String(session?.username || "").trim().toLowerCase();
+        const myNik = String(session?.nik || "").trim().toLowerCase();
+        return list.includes(myName) || list.includes(myUsername) || (myNik && list.includes(myNik));
+      }
+      return true;
     }).slice(0, 6);
 
     if (!validMemos.length) { wrap.innerHTML = emptyState("Belum ada pengumuman aktif"); return; }
@@ -550,4 +577,211 @@ async function loadContractExpiry(container) {
     // (Fungsi kirim tugas Atasan sudah dimigrasikan ke file penilaian-kontrak untuk manajemen yang lebih baik)
     wrap.querySelectorAll('button[data-action="atasan"]').forEach(btn => btn.onclick = () => toast("Silakan masuk ke menu Penilaian & Kontrak untuk menugaskan Evaluasi KPI", "info"));
   } catch (e) { wrap.innerHTML = emptyState("Gagal memuat data kontrak"); }
+}
+
+/* ------------------------ g. ATTENDANCE ANALYTICS ------------------------ */
+async function loadAttendanceAnalytics(container, session) {
+  const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
+  const titleEl = container.querySelector("#dash-attendance-title");
+  const bodyEl = container.querySelector("#dash-attendance-body");
+
+  try {
+    const allAbsen = await fsGetAll(COL.DATA_ABSENSI);
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = String(now.getMonth() + 1).padStart(2, '0');
+    const monthPrefix = `${curYear}-${curMonth}`;
+
+    // Filter this month's attendance
+    const thisMonthAbsen = allAbsen.filter(x => (x.tanggal || "").startsWith(monthPrefix));
+
+    if (isHrd) {
+      titleEl.textContent = "Analitik Kehadiran Perusahaan";
+      
+      const totalPresent = thisMonthAbsen.length;
+      if (totalPresent === 0) {
+        bodyEl.innerHTML = emptyState("Belum ada data absensi bulan ini");
+        return;
+      }
+
+      // Calculate Late Rate
+      // Standard start time is "08:00"
+      const lateLogs = thisMonthAbsen.filter(x => x.scan_masuk && x.scan_masuk > "08:00");
+      const lateCount = lateLogs.length;
+      const onTimeCount = totalPresent - lateCount;
+      const onTimeRate = ((onTimeCount / totalPresent) * 100).toFixed(0);
+
+      // Group by Employee to see top lates
+      const employeeLates = {};
+      lateLogs.forEach(log => {
+        employeeLates[log.nama] = (employeeLates[log.nama] || 0) + 1;
+      });
+      const topLates = Object.entries(employeeLates)
+        .map(([nama, count]) => ({ nama, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3);
+
+      bodyEl.innerHTML = `
+        <div class="grid grid-cols-2 gap-4">
+          <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Rasio Tepat Waktu</span>
+            <span class="text-2xl font-black text-emerald-600">${onTimeRate}%</span>
+            <span class="text-[10px] text-slate-400 mt-0.5">${onTimeCount} dari ${totalPresent} scan masuk</span>
+          </div>
+          <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Keterlambatan (> 08:00)</span>
+            <span class="text-2xl font-black text-rose-600">${lateCount} Kali</span>
+            <span class="text-[10px] text-slate-400 mt-0.5">Seluruh Karyawan</span>
+          </div>
+        </div>
+
+        ${topLates.length > 0 ? `
+          <div class="pt-2 space-y-2">
+            <h4 class="text-xs font-bold text-slate-700">Karyawan Sering Terlambat Bulan Ini:</h4>
+            <div class="space-y-1.5">
+              ${topLates.map(tl => `
+                <div class="flex items-center justify-between text-xs text-slate-600 bg-rose-50/50 px-3 py-1.5 rounded-lg border border-rose-100/30">
+                  <span class="font-semibold text-slate-800">${escapeHtml(tl.nama)}</span>
+                  <span class="font-bold text-rose-600">${tl.count} kali terlambat</span>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        ` : `
+          <p class="text-xs text-emerald-600 font-semibold text-center py-2 bg-emerald-50 rounded-lg">Luar biasa! Tidak ada keterlambatan tercatat bulan ini.</p>
+        `}
+      `;
+    } else {
+      titleEl.textContent = "Analitik Kehadiran Saya";
+      
+      const myAbsen = thisMonthAbsen.filter(x => x.nik === session.nik || x.nama === session.nama);
+      const totalPresent = myAbsen.length;
+      
+      if (totalPresent === 0) {
+        bodyEl.innerHTML = emptyState("Belum ada data absensi Anda bulan ini");
+        return;
+      }
+
+      const lateLogs = myAbsen.filter(x => x.scan_masuk && x.scan_masuk > "08:00");
+      const lateCount = lateLogs.length;
+      const onTimeCount = totalPresent - lateCount;
+      const onTimeRate = ((onTimeCount / totalPresent) * 100).toFixed(0);
+
+      bodyEl.innerHTML = `
+        <div class="grid grid-cols-2 gap-4">
+          <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Rasio Tepat Waktu</span>
+            <span class="text-2xl font-black text-emerald-600">${onTimeRate}%</span>
+            <span class="text-[10px] text-slate-400 mt-0.5">${onTimeCount} kali tepat waktu</span>
+          </div>
+          <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Keterlambatan</span>
+            <span class="text-2xl font-black text-rose-600">${lateCount} Hari</span>
+            <span class="text-[10px] text-slate-400 mt-0.5">Scan masuk > 08:00 WIB</span>
+          </div>
+        </div>
+
+        <div class="text-xs bg-slate-50 border border-slate-100 rounded-xl p-3 text-slate-500 leading-relaxed">
+          <p>📌 Jam masuk kantor standar CV Andela Jaya adalah <b>08:00 WIB</b>. Keterlambatan berulang dapat mempengaruhi nilai review kedisiplinan dan poin KPI Anda secara periodik.</p>
+        </div>
+      `;
+    }
+  } catch (err) {
+    console.error(err);
+    bodyEl.innerHTML = `<p class="text-xs text-rose-500">Gagal memuat analitik kehadiran: ${err.message}</p>`;
+  }
+}
+
+/* ------------------------ h. PERFORMANCE WIDGET ------------------------ */
+async function loadPerformanceWidget(container, session) {
+  const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
+  const titleEl = container.querySelector("#dash-performance-title");
+  const bodyEl = container.querySelector("#dash-performance-body");
+
+  try {
+    const allReviews = await fsGetAll(COL.PERFORMANCE_REVIEW);
+
+    if (isHrd) {
+      titleEl.textContent = "Evaluasi Kinerja Karyawan Perusahaan";
+      
+      const totalReviews = allReviews.length;
+      if (totalReviews === 0) {
+        bodyEl.innerHTML = emptyState("Belum ada evaluasi kinerja dirilis");
+        return;
+      }
+
+      // Calculate Average Score
+      const totalScore = allReviews.reduce((acc, r) => acc + (r.skor_akhir || 0), 0);
+      const avgScore = (totalScore / totalReviews).toFixed(1);
+
+      // Best Performer
+      const bestPerformer = [...allReviews].sort((a, b) => b.skor_akhir - a.skor_akhir)[0];
+
+      bodyEl.innerHTML = `
+        <div class="grid grid-cols-2 gap-4">
+          <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Rerata Nilai Karyawan</span>
+            <span class="text-2xl font-black text-maroon-700">${avgScore}</span>
+            <span class="text-[10px] text-slate-400 mt-0.5">Skala 1-100</span>
+          </div>
+          <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Total Evaluasi Rilis</span>
+            <span class="text-2xl font-black text-blue-600">${totalReviews} Review</span>
+            <span class="text-[10px] text-slate-400 mt-0.5">Semua Departemen</span>
+          </div>
+        </div>
+
+        <div class="p-3 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-between gap-3">
+          <div class="space-y-0.5">
+            <span class="text-[10px] font-bold text-emerald-800 uppercase tracking-wide">🏆 Nilai Tertinggi (Top Performer)</span>
+            <h4 class="font-bold text-slate-800 text-xs">${escapeHtml(bestPerformer.nama_karyawan)}</h4>
+            <p class="text-[11px] text-slate-500">Reviewer: ${escapeHtml(bestPerformer.reviewer)}</p>
+          </div>
+          <div class="text-right">
+            <span class="text-lg font-black text-emerald-700">${bestPerformer.skor_akhir}</span>
+            <span class="text-xs text-emerald-600 block">Grade ${bestPerformer.grade}</span>
+          </div>
+        </div>
+      `;
+    } else {
+      titleEl.textContent = "Evaluasi Kinerja Saya";
+      
+      const myReviews = allReviews.filter(r => r.nik === session.nik || r.nama_karyawan === session.nama)
+        .sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+
+      if (myReviews.length === 0) {
+        bodyEl.innerHTML = emptyState("Belum ada evaluasi kinerja resmi", "Manajemen belum merilis review kinerja formal untuk profil Anda.");
+        return;
+      }
+
+      const latestReview = myReviews[0];
+      const avgScore = latestReview.skor_akhir;
+      let gradeColor = "text-emerald-700 bg-emerald-50 border-emerald-100";
+      if (latestReview.grade === "B") gradeColor = "text-blue-700 bg-blue-50 border-blue-100";
+      if (latestReview.grade === "C") gradeColor = "text-amber-700 bg-amber-50 border-amber-100";
+      if (latestReview.grade === "D") gradeColor = "text-rose-700 bg-rose-50 border-rose-100";
+
+      bodyEl.innerHTML = `
+        <div class="flex items-center justify-between p-4 bg-[#faf8ff] border border-slate-100 rounded-2xl gap-4 shadow-xs">
+          <div class="space-y-1">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Skor Evaluasi Periodik</span>
+            <h4 class="font-black text-2xl text-slate-800">${avgScore} <span class="text-xs text-slate-400 font-medium">/ 100</span></h4>
+            <p class="text-xs text-slate-500">Periode: <b>${escapeHtml(latestReview.periode)}</b></p>
+          </div>
+          <div class="text-right flex flex-col items-end justify-center">
+            <span class="px-3.5 py-1.5 border rounded-full font-bold text-xs ${gradeColor}">Grade ${latestReview.grade}</span>
+            <span class="text-[10px] text-slate-400 mt-1.5">Penilai: ${escapeHtml(latestReview.reviewer.split(" ")[0])}</span>
+          </div>
+        </div>
+
+        <div class="bg-blue-50/50 p-3 rounded-xl border border-blue-100/30 text-xs text-slate-600 leading-relaxed">
+          <span class="font-bold text-blue-800 block mb-1">💼 Usulan Manajemen:</span>
+          ${escapeHtml(latestReview.rekomendasi || "-")}
+        </div>
+      `;
+    }
+  } catch (err) {
+    console.error(err);
+    bodyEl.innerHTML = `<p class="text-xs text-rose-500">Gagal memuat evaluasi kinerja: ${err.message}</p>`;
+  }
 }
