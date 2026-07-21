@@ -16,7 +16,7 @@ module.exports = async function handler(req, res) {
     }
 
     // 2. MENGIRIM NOTIFIKASI
-    const { tokens, title, body, link } = req.body; 
+    const { tokens, title, body, link } = req.body;
     
     if (!tokens || tokens.length === 0) {
         return res.status(200).json({ success: false, message: "Tidak ada token target." });
@@ -37,5 +37,5 @@ module.exports = async function handler(req, res) {
         success: false, 
         error: "Server Error: " + error.message 
     });
-  }
-};
+  } // <--- KURUNG INI YANG HILANG DI KODE ANDA
+}; // <--- KURUNG INI JUGA HILANG
