@@ -5,10 +5,6 @@
       "destination": "/api/:path*"
     },
     {
-      "source": "/((?!api).*项目*)",
-      "destination": "/index.html"
-    },
-    {
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }
