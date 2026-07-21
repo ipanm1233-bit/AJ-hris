@@ -1,0 +1,183 @@
+<div class="space-y-6">
+  
+  <!-- PROFILE HEADER CARD -->
+  <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 flex flex-col items-center text-center relative overflow-hidden">
+    <!-- Top subtle accent gradient -->
+    <div class="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-maroon-700 to-red-500"></div>
+    
+    <!-- Large Avatar with Edit overlay -->
+    <div class="relative mt-4 mb-3">
+      <div id="profile-large-avatar" class="w-24 h-24 rounded-full border-4 border-white shadow-md overflow-hidden flex items-center justify-center bg-maroon-50 text-maroon-800 font-extrabold text-3xl">
+        <!-- populated by JS -->
+      </div>
+      <button id="btn-edit-avatar" class="absolute bottom-0 right-0 w-8 h-8 bg-maroon-700 hover:bg-maroon-800 text-white rounded-full flex items-center justify-center border-2 border-white shadow-md transition transform active:scale-90">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+      </button>
+    </div>
+
+    <!-- Name and dynamic metadata -->
+    <h2 id="profile-name" class="text-xl font-bold text-slate-800">-</h2>
+    <div class="mt-1.5 inline-flex items-center gap-1.5 px-3 py-1 bg-red-50 text-maroon-700 rounded-full text-xs font-semibold tracking-wide border border-red-100/30">
+      <span id="profile-nik-badge">-</span>
+    </div>
+    <p id="profile-title" class="text-sm font-medium text-slate-500 mt-2">-</p>
+
+    <!-- Core Actions -->
+    <div class="grid grid-cols-2 gap-3 w-full mt-5">
+      <button id="btn-edit-profile-main" class="flex items-center justify-center gap-2 bg-maroon-700 hover:bg-maroon-800 text-white py-3 px-4 rounded-2xl text-sm font-semibold transition shadow-md hover:shadow-lg active:scale-98">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+        Edit Profile
+      </button>
+      <button id="btn-sign-document" class="flex items-center justify-center gap-2 border-2 border-maroon-100 hover:border-maroon-200 bg-transparent text-maroon-700 py-3 px-4 rounded-2xl text-sm font-semibold transition active:scale-98">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+        Sign Doc
+      </button>
+    </div>
+  </div>
+
+  <!-- NAVIGATION TABS -->
+  <div class="flex border-b border-slate-100 bg-white rounded-2xl p-1.5 shadow-sm">
+    <button id="tab-btn-personal" class="profile-tab-btn flex-1 py-3 text-sm font-semibold text-maroon-700 bg-red-50/50 rounded-xl transition" data-target="tab-content-personal">
+      Personal
+    </button>
+    <button id="tab-btn-employment" class="profile-tab-btn flex-1 py-3 text-sm font-semibold text-slate-500 hover:text-slate-700 rounded-xl transition" data-target="tab-content-employment">
+      Employment
+    </button>
+    <button id="tab-btn-documents" class="profile-tab-btn flex-1 py-3 text-sm font-semibold text-slate-500 hover:text-slate-700 rounded-xl transition" data-target="tab-content-documents">
+      Documents
+    </button>
+  </div>
+
+  <!-- TAB CONTENTS CONTAINER -->
+  <div id="tab-contents">
+    
+    <!-- 1. PERSONAL TAB -->
+    <div id="tab-content-personal" class="profile-tab-panel space-y-5">
+      <!-- Employee Passport Card -->
+      <div class="rounded-3xl p-6 text-white shadow-xl flex flex-col justify-between relative overflow-hidden h-52 select-none" style="background: linear-gradient(135deg, #7a1f2b 0%, #bc0000 100%);">
+        <!-- Decorative abstract background circles -->
+        <div class="absolute -right-10 -bottom-10 w-40 h-40 rounded-full bg-white/5 pointer-events-none"></div>
+        <div class="absolute right-1/4 top-4 w-12 h-12 rounded-full bg-white/5 pointer-events-none"></div>
+        
+        <div class="flex justify-between items-start">
+          <div>
+            <p class="text-[10px] font-bold tracking-widest uppercase text-red-200/80">EMPLOYEE PASSPORT</p>
+            <p class="text-sm font-extrabold tracking-wider mt-1" id="passport-company-name">CV ANDELA JAYA</p>
+          </div>
+          <span class="text-[11px] font-black tracking-tighter bg-white/10 px-2.5 py-1 rounded-full border border-white/10">HRGA CONNECT</span>
+        </div>
+
+        <div class="flex justify-between items-end mt-4">
+          <!-- Mock QR Code as requested -->
+          <div class="bg-white p-2 rounded-xl shadow-md w-16 h-16 flex items-center justify-center shrink-0">
+            <svg class="w-full h-full text-slate-800" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3 3h6v6H3V3zm2 2v2h2V5H5zm8-2h6v6h-6V3zm2 2v2h2V5h-2zM3 13h6v6H3v-6zm2 2v2h2v-2H5zm13.5 0h2.5v2h-2.5v-2zM13 13h3v3h-3v-3zm3 3h3v3h-3v-3zm-3 3h3v3h-3v-3zm5.5-3h2.5v5h-2.5v-5zm-5.5 1.5h1.5v1.5H13v-1.5zm1.5-3h1.5v1.5h-1.5v-1.5zm1.5 3H19v1.5h-3v-1.5z"/>
+            </svg>
+          </div>
+          <div class="text-right">
+            <p class="text-[9px] text-red-200/80 uppercase tracking-wider">Valid Through</p>
+            <p class="text-xs font-bold tracking-wide mt-0.5" id="passport-validity">12 / 2028</p>
+            <p class="text-[10px] font-mono tracking-widest mt-2 bg-black/10 px-2 py-0.5 rounded-md inline-block border border-white/5" id="passport-code">-</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Activity Section -->
+      <div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm">
+        <h3 class="font-bold text-slate-800 text-sm mb-4 flex items-center gap-2">
+          <span class="w-1.5 h-4 bg-maroon-700 rounded-full"></span>
+          Aktivitas Terbaru
+        </h3>
+        <div id="profile-recent-activity" class="space-y-4">
+          <!-- populated dynamically by JS -->
+        </div>
+      </div>
+
+      <!-- Key Documents Checklist -->
+      <div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm">
+        <h3 class="font-bold text-slate-800 text-sm mb-4 flex items-center gap-2">
+          <span class="w-1.5 h-4 bg-maroon-700 rounded-full"></span>
+          Dokumen Kepegawaian Penting
+        </h3>
+        <div class="space-y-3">
+          <div class="flex items-center justify-between p-3.5 bg-rose-50/40 rounded-2xl border border-rose-100/20">
+            <div class="flex items-center gap-3">
+              <span class="p-2 bg-rose-100/60 text-maroon-700 rounded-xl">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+              </span>
+              <div>
+                <p class="text-xs font-bold text-slate-700">Kartu Sehat Karyawan (BPJS)</p>
+                <p class="text-[10px] text-slate-400 mt-0.5">Berlaku Aktif</p>
+              </div>
+            </div>
+            <span class="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-lg text-[10px] font-semibold uppercase">Aktif</span>
+          </div>
+
+          <div class="flex items-center justify-between p-3.5 bg-blue-50/40 rounded-2xl border border-blue-100/20">
+            <div class="flex items-center gap-3">
+              <span class="p-2 bg-blue-100/60 text-blue-700 rounded-xl">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+              </span>
+              <div>
+                <p class="text-xs font-bold text-slate-700">Kontrak Kerja Kepegawaian</p>
+                <p class="text-[10px] text-slate-400 mt-0.5" id="profile-contract-date">-</p>
+              </div>
+            </div>
+            <span class="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-lg text-[10px] font-semibold uppercase" id="profile-contract-status">-</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. EMPLOYMENT TAB -->
+    <div id="tab-content-employment" class="profile-tab-panel hidden space-y-5">
+      <div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm">
+        <h3 class="font-bold text-slate-800 text-sm mb-4 flex items-center gap-2">
+          <span class="w-1.5 h-4 bg-maroon-700 rounded-full"></span>
+          Detail Pekerjaan & Sesi
+        </h3>
+        <div class="grid grid-cols-2 gap-y-4 gap-x-2" id="profile-details-grid">
+          <!-- populated dynamically by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. DOCUMENTS TAB -->
+    <div id="tab-content-documents" class="profile-tab-panel hidden space-y-5">
+      
+      <!-- DRAG AND DROP FILE UPLOAD (Usability Pattern Compliance) -->
+      <div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm">
+        <h3 class="font-bold text-slate-800 text-sm mb-2 flex items-center gap-2">
+          <span class="w-1.5 h-4 bg-maroon-700 rounded-full"></span>
+          Unggah Dokumen Baru
+        </h3>
+        <p class="text-[11px] text-slate-400 mb-4">Unggah salinan KTP, SIM, NPWP, atau sertifikat penunjang pekerjaan.</p>
+        
+        <!-- Dropzone Container -->
+        <div id="profile-upload-dropzone" class="border-2 border-dashed border-slate-200 hover:border-maroon-400 rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition bg-slate-50/50 hover:bg-maroon-50/10">
+          <input type="file" id="profile-doc-file" class="hidden" accept=".pdf,.png,.jpg,.jpeg">
+          <span class="w-12 h-12 rounded-full bg-maroon-50 text-maroon-700 flex items-center justify-center mb-3">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+          </span>
+          <p class="text-xs font-semibold text-slate-700">Tarik & Lepas File di Sini</p>
+          <p class="text-[10px] text-slate-400 mt-1">Atau <span class="text-maroon-700 font-bold hover:underline">pilih file secara manual</span></p>
+          <p class="text-[9px] text-slate-400 mt-1">PDF, PNG, JPG (Maks. 5MB)</p>
+        </div>
+      </div>
+
+      <!-- Uploaded Documents Directory -->
+      <div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm">
+        <h3 class="font-bold text-slate-800 text-sm mb-4 flex items-center gap-2">
+          <span class="w-1.5 h-4 bg-maroon-700 rounded-full"></span>
+          Arsip Dokumen Anda
+        </h3>
+        <div id="profile-documents-list" class="space-y-2">
+          <!-- populated dynamically by JS -->
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>

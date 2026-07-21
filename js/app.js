@@ -152,6 +152,11 @@ async function renderShellForUser(session) {
   document.getElementById("header-role").textContent = session.role;
   document.getElementById("header-avatar").outerHTML = avatar(session.nama, "w-8 h-8").replace('class="', 'id="header-avatar" class="');
 
+  const mobileAvatarEl = document.getElementById("header-avatar-mobile");
+  if (mobileAvatarEl) {
+    mobileAvatarEl.outerHTML = avatar(session.nama, "w-8 h-8").replace('class="', 'id="header-avatar-mobile" class="');
+  }
+
   const menus = await computeVisibleMenus(session);
 
   // 1. Kelompokkan menu berdasarkan properti "kategori"
@@ -199,12 +204,53 @@ function highlightActive(route) {
   document.querySelectorAll(".sidebar-item").forEach(a => {
     a.classList.toggle("active", a.dataset.route === route);
   });
+
+  // Mobile bottom tab active indicator mapping
+  document.querySelectorAll("[data-mobile-tab]").forEach(tab => {
+    const tabRoute = tab.getAttribute("data-mobile-tab");
+    let isActive = false;
+    
+    if (tabRoute === route) {
+      isActive = true;
+    } else if (tabRoute === "dashboard" && route === "dashboard") {
+      isActive = true;
+    } else if (tabRoute === "absensi" && (route === "absensi" || route === "klaim-bensin" || route === "lembur-kasbon" || route === "manajemen-cuti" || route === "cuti")) {
+      isActive = true;
+    } else if (tabRoute === "pengajuan" && route === "pengajuan") {
+      isActive = true;
+    } else if (tabRoute === "riwayat" && (route === "riwayat" || route === "performance-review" || route === "penilaian-kontrak" || route === "training" || route === "siklus-karyawan" || route === "broadcast")) {
+      isActive = true;
+    } else if (tabRoute === "profile" && route === "profile") {
+      isActive = true;
+    }
+
+    if (isActive) {
+      tab.classList.remove("text-slate-400");
+      tab.classList.add("text-maroon-700");
+    } else {
+      tab.classList.add("text-slate-400");
+      tab.classList.remove("text-maroon-700");
+    }
+  });
+
+  // Toggle mobile header back button
+  const backBtn = document.getElementById("mobile-back-btn");
+  if (backBtn) {
+    if (["dashboard", "absensi", "pengajuan", "riwayat", "profile"].includes(route)) {
+      backBtn.classList.add("hidden");
+    } else {
+      backBtn.classList.remove("hidden");
+    }
+  }
 }
 
 /* ---------------------------------------------------------------------
  * ROUTER — inti navigasi SPA tanpa reload
  * ------------------------------------------------------------------- */
-const ROUTE_TITLES = Object.fromEntries(MENU_CONFIG.map(m => [m.route, m.label]));
+const ROUTE_TITLES = {
+  profile: "Profil Saya",
+  ...Object.fromEntries(MENU_CONFIG.map(m => [m.route || m.id, m.label]))
+};
 
 async function router(session) {
   const { path, params } = parseHash();
@@ -306,6 +352,22 @@ function bindShellEvents(session) {
 
   document.getElementById("btn-logout").addEventListener("click", () => logout());
   document.getElementById("btn-notif").addEventListener("click", () => openNotificationCenter(session));
+
+  const btnNotifMobile = document.getElementById("btn-notif-mobile");
+  if (btnNotifMobile) {
+    btnNotifMobile.addEventListener("click", () => openNotificationCenter(session));
+  }
+
+  const mobileBackBtn = document.getElementById("mobile-back-btn");
+  if (mobileBackBtn) {
+    mobileBackBtn.onclick = () => {
+      if (window.history.length > 1) {
+        window.history.back();
+      } else {
+        window.location.hash = "#dashboard";
+      }
+    };
+  }
 
   checkUnreadNotifications(session);
 }

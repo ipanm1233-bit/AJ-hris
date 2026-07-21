@@ -22,7 +22,7 @@ body { -webkit-font-smoothing: antialiased; }
 @media (max-width: 1024px) {
   #sidebar { transform: translateX(-100%); box-shadow: 0 10px 40px rgba(0,0,0,.15); }
   #sidebar.mobile-open { transform: translateX(0); }
-  #main-content { margin-left: 0 !important; }
+  #main-content { margin-left: 0 !important; padding-bottom: 5rem !important; }
 }
 
 /* --- Sidebar nav item --- */
