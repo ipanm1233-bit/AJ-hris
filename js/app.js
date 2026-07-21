@@ -55,6 +55,22 @@ async function boot() {
 
    window.addEventListener("hashchange", () => router(session));
   
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', event => {
+      if (event.data && event.data.type === 'NAVIGATE') {
+        let target = event.data.url || '#dashboard';
+        if (target.includes('#')) {
+          const hash = target.split('#')[1];
+          window.location.hash = '#' + hash;
+        } else if (target.startsWith('#')) {
+          window.location.hash = target;
+        } else {
+          window.location.hash = '#dashboard';
+        }
+      }
+    });
+  }
+
   if (!location.hash || location.hash === "#login") {
      location.hash = "#dashboard";
   }
