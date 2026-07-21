@@ -12,6 +12,7 @@ app.use(express.static(__dirname));
 // Import API Handlers
 const cronCheckKontrak = require('./api/cron-check-kontrak.js');
 const sendPush = require('./api/send-push.js');
+const syncAbsen = require('./api/sync-absen.js');
 
 // Map the API paths to the handlers
 app.all('/api/cron-check-kontrak', async (req, res, next) => {
@@ -28,6 +29,20 @@ app.all('/api/send-push', async (req, res, next) => {
     await sendPush(req, res);
   } catch (error) {
     console.error("Error in send-push:", error);
+    next(error);
+  }
+});
+
+// PERBAIKAN: endpoint ini sebelumnya ADA (api/sync-absen.js) tapi TIDAK
+// PERNAH didaftarkan sebagai route di server ini -- jadi kalau HRIS
+// dijalankan lewat `node server.js` (bukan di-deploy ke Vercel, yang
+// otomatis mendeteksi file di folder api/), bridge mesin fingerprint
+// tidak akan pernah bisa mengirim data ke sini (404).
+app.all('/api/sync-absen', async (req, res, next) => {
+  try {
+    await syncAbsen(req, res);
+  } catch (error) {
+    console.error("Error in sync-absen:", error);
     next(error);
   }
 });
