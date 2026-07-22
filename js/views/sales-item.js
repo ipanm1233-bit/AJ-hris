@@ -6,11 +6,14 @@ const COLLECTION_NAME = "sales_items";
 
 // Seed default items if none exist
 const DEFAULT_ITEMS = [
-  { sku: "SKU-GULA-01", nama: "Gula Pasir Andela Premium 1kg", kategori: "Sembako", harga: 16500, satuan: "Pcs", deskripsi: "Gula pasir tebu asli, butiran halus dan putih bersih." },
-  { sku: "SKU-BERAS-01", nama: "Beras Mentari Wangi 5kg", kategori: "Sembako", harga: 78000, satuan: "Bag", deskripsi: "Beras poles super pulen dan beraroma pandan alami." },
-  { sku: "SKU-TEH-01", nama: "Teh Melati Wangi Khas Andela", kategori: "Minuman", harga: 6000, satuan: "Pack", deskripsi: "Teh celup melati khas dengan rasa pekat mendalam." },
-  { sku: "SKU-KOPI-01", nama: "Kopi Arabika Bubuk Java 250gr", kategori: "Minuman", harga: 32000, satuan: "Pcs", deskripsi: "Kopi murni 100% Arabika giling halus siap seduh." },
-  { sku: "SKU-SNACK-01", nama: "Keripik Singkong Renyah Andela", kategori: "Makanan", harga: 11000, satuan: "Pcs", deskripsi: "Camilan keripik singkong gurih aneka rasa." }
+  { sku: "ICI-DLX-01", nama: "Dulux Catylac Interior Pure White 5L", kategori: "Cat Dekoratif (ICI)", cabang: "Cirebon & Malang", harga: 145000, satuan: "Galon", deskripsi: "Cat tembok emulsi berkualitas tinggi daya tutup maksimal." },
+  { sku: "ICI-WTH-01", nama: "Dulux Weathershield Exterior 20L", kategori: "Cat Dekoratif (ICI)", cabang: "Cirebon & Malang", harga: 1850000, satuan: "Pail", deskripsi: "Cat tembok eksterior tahan cuaca ekstrem garansi 5 tahun." },
+  { sku: "PRM-KUS-03", nama: "Kuas Prima Bulu Halus 3 Inch", kategori: "Alat Cat (Kuas Prima)", cabang: "Cirebon", harga: 12500, satuan: "Pcs", deskripsi: "Kuas cat kayu dan besi premium tidak gampang rontok." },
+  { sku: "PRM-RLR-09", nama: "Roller Cat Prima Foam Pro 9 Inch", kategori: "Alat Cat (Kuas Prima)", cabang: "Cirebon", harga: 38000, satuan: "Set", deskripsi: "Roller cat tembok permukaan halus hemat konsumsi cat." },
+  { sku: "DCT-KRN-12", nama: "Dcota Kran Tembok Kuningan Krom 1/2 Inch", kategori: "Sanitari & Fitting (Dcota)", cabang: "Cirebon", harga: 45000, satuan: "Pcs", deskripsi: "Kran air bahan kuningan tebal lapis krom anti karat." },
+  { sku: "WMK-TNT-YL", nama: "Warna Mikha Pigmen Tinting Yellow Oxide 1L", kategori: "Warna & Tinting (Warna Mikha)", cabang: "Cirebon", harga: 95000, satuan: "Botol", deskripsi: "Pewarna cair pekat untuk mesin tinting cat." },
+  { sku: "BLS-BTA-10", nama: "Bata Ringan Blesscon AAC 10x20x60cm", kategori: "Bata Ringan (Blesscon)", cabang: "Malang", harga: 650000, satuan: "M3", deskripsi: "Bata ringan presisi hemat semen perekat." },
+  { sku: "BLS-MRT-40", nama: "Mortar Blesscon Perekat Bata Ringan 40kg", kategori: "Semen Instan (Blesscon)", cabang: "Malang", harga: 68000, satuan: "Sak", deskripsi: "Semen instan perekat hebel daya rekat kuat." }
 ];
 
 export async function mount(container, { session }) {

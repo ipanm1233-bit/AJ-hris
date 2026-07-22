@@ -6,7 +6,7 @@
 import { COL } from "./firebase-config.js";
 import {
   fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, confirmDialog,
-  toast, fmtDateShort, fmtRupiah, toNumber, genId, escapeHtml
+  toast, fmtDateShort, fmtRupiah, toNumber, genId, escapeHtml, localDateStr
 } from "./utils.js";
 
 /* ---------------------------------------------------------------------
@@ -257,11 +257,11 @@ export async function renderCrudModule(container, cfg) {
   }
 
   container.querySelector("#crud-add")?.addEventListener("click", () => openForm());
-  container.querySelector("#crud-export").addEventListener("click", () => {
+  container.querySelector("#crud-export")?.addEventListener("click", () => {
     if (!rows.length) { toast("Tidak ada data untuk diekspor", "warning"); return; }
     openExportPicker(title, columns, rows);
   });
-  container.querySelector("#crud-search").addEventListener("input", (e) => {
+  container.querySelector("#crud-search")?.addEventListener("input", (e) => {
     const term = e.target.value.trim().toLowerCase();
     if (!term) return renderRows(rows);
     const fields = searchFields.length ? searchFields : columns.map(c => c.key);

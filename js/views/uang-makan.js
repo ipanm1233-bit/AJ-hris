@@ -301,8 +301,8 @@ export async function mount(container) {
     }
   });
 
-  container.querySelector("#um-btn-refresh").addEventListener("click", load);
-  container.querySelector("#um-btn-export").addEventListener("click", () => {
+  container.querySelector("#um-btn-refresh")?.addEventListener("click", load);
+  container.querySelector("#um-btn-export")?.addEventListener("click", () => {
     if (!rows.length) { toast("Tidak ada data untuk diekspor", "warning"); return; }
     openExportPicker("Uang Makan Expedisi", COLUMNS, rows);
   });

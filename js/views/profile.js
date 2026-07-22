@@ -1,6 +1,7 @@
 import { db, COL, collection, query, where, getDocs, doc, getDoc, updateDoc } from "../firebase-config.js";
 import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toast, fsUpdate, fsAdd, fsGetAll, genId, localDateStr } from "../utils.js";
 import { avatar, badge, icon, emptyState } from "../components.js";
+import { setSession } from "../auth.js";
 
 export async function mount(container, { session }) {
   const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
@@ -19,7 +20,7 @@ export async function mount(container, { session }) {
   // Bind Core Header Info
   const largeAvatar = container.querySelector("#profile-large-avatar");
   if (largeAvatar) {
-    largeAvatar.innerHTML = avatar(session.nama, "w-full h-full text-3xl font-extrabold");
+    largeAvatar.innerHTML = avatar(k?.foto_url || session.foto_url || session.nama, "w-full h-full text-3xl font-extrabold");
   }
 
   container.querySelector("#profile-name").textContent = session.nama;
@@ -157,6 +158,10 @@ export async function mount(container, { session }) {
           // Save in localStorage for instant rendering across the app
           localStorage.setItem("custom_avatar_" + session.nama, base64Data);
 
+          // Update active session memory & storage
+          session.foto_url = base64Data;
+          setSession(session);
+
           // Save in USERS database
           await fsUpdate(COL.USERS, session.username, { foto_url: base64Data });
 
@@ -168,21 +173,21 @@ export async function mount(container, { session }) {
           // Update header avatars instantly
           const headerAvatar = document.getElementById("header-avatar");
           if (headerAvatar) {
-            headerAvatar.outerHTML = avatar(session.nama, "w-8 h-8").replace('class="', 'id="header-avatar" class="');
+            headerAvatar.outerHTML = avatar(session.foto_url || session.nama, "w-8 h-8").replace('class="', 'id="header-avatar" class="');
           }
           const headerAvatarMobile = document.getElementById("header-avatar-mobile");
           if (headerAvatarMobile) {
-            headerAvatarMobile.outerHTML = avatar(session.nama, "w-8 h-8").replace('class="', 'id="header-avatar-mobile" class="');
+            headerAvatarMobile.outerHTML = avatar(session.foto_url || session.nama, "w-8 h-8").replace('class="', 'id="header-avatar-mobile" class="');
           }
 
           toast("Foto profil berhasil diperbarui!", "success");
           
           // Re-render large avatar
-          largeAvatar.innerHTML = avatar(session.nama, "w-full h-full text-3xl font-extrabold");
+          largeAvatar.innerHTML = avatar(session.foto_url || session.nama, "w-full h-full text-3xl font-extrabold");
         } catch (err) {
           toast("Gagal memperbarui foto: " + err.message, "error");
           // Restore
-          largeAvatar.innerHTML = avatar(session.nama, "w-full h-full text-3xl font-extrabold");
+          largeAvatar.innerHTML = avatar(session.foto_url || session.nama, "w-full h-full text-3xl font-extrabold");
         }
       };
       reader.readAsDataURL(file);
@@ -441,6 +446,9 @@ function openEditProfileModal(session, k, container) {
             });
           }
 
+          // Persist the updated session in sessionStorage/localStorage
+          setSession(session);
+
           toast("Data profil Anda berhasil diperbarui!", "success");
           closeModal();
           
@@ -455,47 +463,206 @@ function openEditProfileModal(session, k, container) {
   });
 }
 
-function openSignDocModal(session) {
+async function openSignDocModal(session) {
   openModal({
     title: "Penandatanganan Dokumen Digital",
     size: "md",
     bodyHtml: `
       <div class="space-y-4">
         <div class="p-3.5 bg-blue-50 border border-blue-100 rounded-2xl text-xs text-blue-800 leading-relaxed">
-          <strong>Info:</strong> Berikut adalah berkas kepegawaian yang membutuhkan tanda tangan elektronik Anda. Anda dapat menyetujui secara digital dengan satu ketukan aman.
+          <strong>Info:</strong> Berikut adalah berkas kepegawaian resmi yang diterbitkan HRD untuk Anda. Harap tinjau lampiran draft dan bubuhkan tanda tangan elektronik Anda jika setuju.
         </div>
-        <div class="space-y-2">
-          <div class="flex items-center justify-between p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
-            <div>
-              <p class="text-xs font-bold text-slate-700">Adendum Kontrak Kerja 2026</p>
-              <p class="text-[9px] text-slate-400 mt-0.5">Diterbitkan 10 Jan 2026</p>
-            </div>
-            <button id="btn-sign-adendum" class="bg-maroon-700 hover:bg-maroon-800 text-white px-3 py-1.5 rounded-xl text-[11px] font-semibold transition">Sign Now</button>
-          </div>
-          <div class="flex items-center justify-between p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
-            <div>
-              <p class="text-xs font-bold text-slate-700">Kebijakan Kode Etik & SOP HRD v2</p>
-              <p class="text-[9px] text-slate-400 mt-0.5">Diterbitkan 05 Jan 2026</p>
-            </div>
-            <span class="text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-xl text-[10px] font-bold">SIGNED</span>
-          </div>
+        <div id="sd-mobile-list" class="space-y-2 max-h-80 overflow-y-auto">
+          <div class="p-4 text-center text-xs text-slate-400">Memuat berkas Anda...</div>
         </div>
       </div>`,
     footerHtml: `
-      <button id="btn-sign-tutup" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-semibold transition">Tutup</button>`,
-    onMount: m => {
+      <button id="btn-sign-tutup" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-semibold transition w-full">Tutup</button>`,
+    onMount: async m => {
       m.querySelector("#btn-sign-tutup").onclick = closeModal;
-      const btnSignAdendum = m.querySelector("#btn-sign-adendum");
-      if (btnSignAdendum) {
-        btnSignAdendum.onclick = () => {
-          btnSignAdendum.disabled = true;
-          btnSignAdendum.textContent = "Signing...";
-          setTimeout(() => {
-            toast("Dokumen Adendum Kontrak Kerja 2026 berhasil ditandatangani secara digital!", "success");
-            closeModal();
-          }, 1500);
+      const listEl = m.querySelector("#sd-mobile-list");
+
+      async function renderList() {
+        try {
+          const qNik = query(collection(db, COL.SIGN_DOCUMENTS), where("nik_penerima", "==", session.nik || ""));
+          const snapNik = await getDocs(qNik);
+          let myDocs = snapNik.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+          if (myDocs.length === 0) {
+            const qNama = query(collection(db, COL.SIGN_DOCUMENTS), where("nama_penerima", "==", session.nama));
+            const snapNama = await getDocs(qNama);
+            myDocs = snapNama.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          }
+
+          if (myDocs.length === 0) {
+            listEl.innerHTML = `<p class="p-6 text-center text-xs text-slate-400">Tidak ada pengajuan dokumen tanda tangan untuk Anda.</p>`;
+            return;
+          }
+
+          listEl.innerHTML = myDocs.map(d => {
+            const isSigned = d.status === "SIGNED";
+            return `
+              <div class="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 hover:border-maroon-100 transition flex flex-col gap-3">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="min-w-0">
+                    <p class="text-xs font-bold text-slate-700 truncate">${escapeHtml(d.judul)}</p>
+                    <p class="text-[9px] text-slate-400 mt-0.5">Diterbitkan: ${d.tanggal_buat ? d.tanggal_buat.substring(0, 10) : "-"}</p>
+                  </div>
+                  <div>
+                    ${isSigned ? `<span class="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg text-[9px] font-bold">SIGNED</span>` : `<span class="text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg text-[9px] font-bold">PENDING</span>`}
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between gap-2 border-t border-slate-100 pt-2 flex-wrap">
+                  ${d.file_url ? `<a href="${d.file_url}" target="_blank" class="text-xs text-maroon-700 font-bold hover:underline">👁️ Baca Draft Dokumen</a>` : '<span class="text-[10px] text-slate-300">Tidak ada draft</span>'}
+                  ${!isSigned ? `
+                    <button class="btn-sign-item bg-maroon-700 hover:bg-maroon-800 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1 shadow-sm" data-id="${escapeHtml(d.id)}" data-judul="${escapeHtml(d.judul)}">
+                      ✍️ TTD Sekarang
+                    </button>
+                  ` : `
+                    <span class="text-[9px] text-slate-400 font-medium italic">Selesai TTD pada ${d.tanggal_ttd ? d.tanggal_ttd.substring(0, 10) : "-"}</span>
+                  `}
+                </div>
+              </div>`;
+          }).join("");
+
+          // Bind signing canvas modal trigger
+          listEl.querySelectorAll(".btn-sign-item").forEach(btn => {
+            btn.onclick = () => {
+              const docId = btn.dataset.id;
+              const docJudul = btn.dataset.judul;
+              openSignaturePadModal(docId, docJudul, session, renderList);
+            };
+          });
+
+        } catch (err) {
+          listEl.innerHTML = `<p class="p-4 text-xs text-rose-500">Gagal memuat dokumen: ${err.message}</p>`;
+        }
+      }
+
+      await renderList();
+    }
+  });
+}
+
+function openSignaturePadModal(docId, docJudul, session, onSignedDone) {
+  openModal({
+    title: "Buat Tanda Tangan Anda",
+    size: "md",
+    bodyHtml: `
+      <div class="space-y-4 text-center">
+        <p class="text-xs text-slate-500">Gunakan jari atau mouse Anda pada canvas putih di bawah ini untuk menggambar tanda tangan resmi Anda.</p>
+        <div class="border-2 border-slate-200 border-dashed rounded-2xl bg-white p-2 relative">
+          <canvas id="sig-pad" class="w-full h-48 bg-slate-50 rounded-xl cursor-crosshair touch-none" style="touch-action: none;"></canvas>
+          <button id="btn-sig-clear" class="absolute bottom-4 right-4 bg-slate-800 hover:bg-slate-900 text-white rounded-lg px-2.5 py-1 text-[10px] font-bold transition shadow">
+            🗑️ Bersihkan
+          </button>
+        </div>
+        <p class="text-[10px] text-slate-400 leading-normal">Dengan mengetuk tombol sahkan di bawah, Anda secara sadar memberikan tanda tangan elektronik yang sah demi hukum untuk dokumen <b>${escapeHtml(docJudul)}</b>.</p>
+      </div>`,
+    footerHtml: `
+      <button id="btn-sig-cancel" class="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg transition">Batal</button>
+      <button id="btn-sig-confirm" class="bg-maroon-700 hover:bg-maroon-800 text-white font-bold text-sm px-5 py-2 rounded-lg transition shadow-md">✍️ Sahkan & Bubuhkan TTD</button>`,
+    onMount: m => {
+      const canvas = m.querySelector("#sig-pad");
+      const ctx = canvas.getContext("2d");
+      m.querySelector("#btn-sig-cancel").onclick = closeModal;
+
+      // Adjust canvas resolution dynamically
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+
+      let drawing = false;
+      let lastX = 0;
+      let lastY = 0;
+
+      ctx.strokeStyle = "#000000";
+      ctx.lineWidth = 3;
+      ctx.lineCap = "round";
+
+      function getPos(e) {
+        const cRect = canvas.getBoundingClientRect();
+        if (e.touches && e.touches.length > 0) {
+          return {
+            x: e.touches[0].clientX - cRect.left,
+            y: e.touches[0].clientY - cRect.top
+          };
+        }
+        return {
+          x: e.clientX - cRect.left,
+          y: e.clientY - cRect.top
         };
       }
+
+      function startDraw(e) {
+        drawing = true;
+        const pos = getPos(e);
+        lastX = pos.x;
+        lastY = pos.y;
+      }
+
+      function draw(e) {
+        if (!drawing) return;
+        const pos = getPos(e);
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+        ctx.lineTo(pos.x, pos.y);
+        ctx.stroke();
+        lastX = pos.x;
+        lastY = pos.y;
+      }
+
+      function stopDraw() {
+        drawing = false;
+      }
+
+      // Mouse events
+      canvas.addEventListener("mousedown", startDraw);
+      canvas.addEventListener("mousemove", draw);
+      canvas.addEventListener("mouseup", stopDraw);
+      canvas.addEventListener("mouseleave", stopDraw);
+
+      // Touch events
+      canvas.addEventListener("touchstart", startDraw, { passive: true });
+      canvas.addEventListener("touchmove", draw, { passive: true });
+      canvas.addEventListener("touchend", stopDraw);
+
+      m.querySelector("#btn-sig-clear").onclick = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      };
+
+      m.querySelector("#btn-sig-confirm").onclick = async () => {
+        // Simple blank canvas check
+        const blank = document.createElement('canvas');
+        blank.width = canvas.width;
+        blank.height = canvas.height;
+        if (canvas.toDataURL() === blank.toDataURL()) {
+          return toast("Silakan gambar tanda tangan Anda terlebih dahulu!", "warning");
+        }
+
+        const btn = m.querySelector("#btn-sig-confirm");
+        btn.disabled = true; btn.textContent = "⏳ Memproses...";
+
+        try {
+          const ttdUrl = canvas.toDataURL("image/png");
+
+          // Save signature and complete document status in Firestore
+          await updateDoc(doc(db, COL.SIGN_DOCUMENTS, docId), {
+            status: "SIGNED",
+            tanda_tangan_url: ttdUrl,
+            tanggal_ttd: new Date().toISOString()
+          });
+
+          toast("Tanda tangan berhasil disahkan & dibubuhkan!", "success");
+          closeModal();
+          
+          if (onSignedDone) onSignedDone();
+        } catch (err) {
+          toast("Gagal menyimpan tanda tangan: " + err.message, "error");
+          btn.disabled = false; btn.textContent = "✍️ Sahkan & Bubuhkan TTD";
+        }
+      };
     }
   });
 }

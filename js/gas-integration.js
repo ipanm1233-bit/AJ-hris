@@ -42,7 +42,7 @@ function isConfigured() {
  * Script langsung dari fetch()). Apps Script tetap bisa membaca body
  * JSON-nya lewat e.postData.contents di sisi Code.gs.
  */
-async function callGasWebApp(payload) {
+export async function callGasWebApp(payload) {
   if (!isConfigured()) {
     throw new Error("URL Google Apps Script belum dikonfigurasi. Buka js/gas-integration.js dan isi GAS_WEBAPP_URL dengan URL hasil Deploy Web App Anda.");
   }

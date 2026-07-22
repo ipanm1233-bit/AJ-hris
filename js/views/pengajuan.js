@@ -38,7 +38,7 @@ export async function mount(container, { session, params }) {
   }
   renderCatalog(myForms);
 
-  container.querySelector("#pengajuan-search").addEventListener("input", (e) => {
+  container.querySelector("#pengajuan-search")?.addEventListener("input", (e) => {
     const term = e.target.value.trim().toLowerCase();
     renderCatalog(myForms.filter(f => (f.nama_form || "").toLowerCase().includes(term)));
   });

@@ -164,13 +164,18 @@ async function showLogin() {
  * RENDER SHELL: HEADER + SIDEBAR SESUAI RBAC
  * ------------------------------------------------------------------- */
 async function renderShellForUser(session) {
-  document.getElementById("header-nama").textContent = session.nama;
-  document.getElementById("header-role").textContent = session.role;
-  document.getElementById("header-avatar").outerHTML = avatar(session.nama, "w-8 h-8").replace('class="', 'id="header-avatar" class="');
+  const elNama = document.getElementById("header-nama");
+  if (elNama) elNama.textContent = session.nama;
+
+  const elRole = document.getElementById("header-role");
+  if (elRole) elRole.textContent = session.role;
+
+  const elAvatar = document.getElementById("header-avatar");
+  if (elAvatar) elAvatar.outerHTML = avatar(session.foto_url || session.nama, "w-8 h-8").replace('class="', 'id="header-avatar" class="');
 
   const mobileAvatarEl = document.getElementById("header-avatar-mobile");
   if (mobileAvatarEl) {
-    mobileAvatarEl.outerHTML = avatar(session.nama, "w-8 h-8").replace('class="', 'id="header-avatar-mobile" class="');
+    mobileAvatarEl.outerHTML = avatar(session.foto_url || session.nama, "w-8 h-8").replace('class="', 'id="header-avatar-mobile" class="');
   }
 
   const menus = await computeVisibleMenus(session);
@@ -213,7 +218,7 @@ async function renderShellForUser(session) {
     </details>`;
   }
 
-  nav.innerHTML = html;
+  if (nav) nav.innerHTML = html;
 }
 
 function highlightActive(route) {
@@ -269,6 +274,9 @@ const ROUTE_TITLES = {
 };
 
 async function router(session) {
+  const container = document.getElementById("view-container");
+  if (!container) return;
+
   const { path, params } = parseHash();
 
   if (path === currentRoute && path !== "pengajuan") {
@@ -282,9 +290,9 @@ async function router(session) {
     return;
   }
 
-  viewContainer.classList.remove("animate-fadein");
-  void viewContainer.offsetWidth; // reflow trigger biar animasi re-trigger tiap navigasi
-  viewContainer.classList.add("animate-fadein");
+  container.classList.remove("animate-fadein");
+  void container.offsetWidth; // reflow trigger biar animasi re-trigger tiap navigasi
+  container.classList.add("animate-fadein");
 
   try {
     if (typeof currentUnmount === "function") { currentUnmount(); currentUnmount = null; }
@@ -294,11 +302,11 @@ async function router(session) {
       return r.text();
     });
     
-    viewContainer.innerHTML = html;
+    container.innerHTML = html;
     
     const mod = await import(`./views/${path}.js`);
     if (mod && typeof mod.mount === "function") {
-      const result = await mod.mount(viewContainer, { params, session });
+      const result = await mod.mount(container, { params, session });
       if (result && typeof result.unmount === "function") currentUnmount = result.unmount;
     }
     
@@ -308,7 +316,7 @@ async function router(session) {
     
   } catch (err) {
     console.error("Router error:", err);
-    viewContainer.innerHTML = `
+    container.innerHTML = `
       <div class="text-center py-24">
         <p class="text-2xl font-bold text-slate-300">404</p>
         <p class="text-slate-500 mt-2">Halaman "${path}" tidak ditemukan.</p>
@@ -325,56 +333,45 @@ function bindShellEvents(session) {
   const main = document.getElementById("main-content");
   const backdrop = document.getElementById("sidebar-backdrop");
 
-  document.getElementById("btn-sidebar-toggle").addEventListener("click", () => {
+  document.getElementById("btn-sidebar-toggle")?.addEventListener("click", () => {
     if (window.innerWidth < 1024) {
-      sidebar.classList.toggle("mobile-open");
-      backdrop.classList.toggle("hidden");
+      sidebar?.classList.toggle("mobile-open");
+      backdrop?.classList.toggle("hidden");
     } else {
-      sidebar.classList.toggle("collapsed");
-      main.classList.toggle("expanded");
+      sidebar?.classList.toggle("collapsed");
+      main?.classList.toggle("expanded");
     }
   });
 
-  backdrop.addEventListener("click", () => {
-    sidebar.classList.remove("mobile-open");
-    backdrop.classList.add("hidden");
-  });
-
-  document.getElementById("sidebar-nav").addEventListener("click", (e) => {
-    if (window.innerWidth < 1024 && e.target.closest("[data-route]")) {
-      sidebar.classList.remove("mobile-open");
+  if (backdrop) {
+    backdrop.addEventListener("click", () => {
+      sidebar?.classList.remove("mobile-open");
       backdrop.classList.add("hidden");
+    });
+  }
+
+  document.getElementById("sidebar-nav")?.addEventListener("click", (e) => {
+    if (window.innerWidth < 1024 && e.target.closest("[data-route]")) {
+      sidebar?.classList.remove("mobile-open");
+      backdrop?.classList.add("hidden");
     }
   });
 
   const userBtn = document.getElementById("btn-user-menu");
   const userDropdown = document.getElementById("user-menu-dropdown");
   
-  userBtn.addEventListener("click", () => userDropdown.classList.toggle("hidden"));
-
-  // PERBAIKAN: sebelumnya ikon profil di header MOBILE cuma <a href="#profile">
-  // biasa (langsung pindah halaman), tidak ada pilihan Ganti Password/Keluar
-  // sama sekali -- beda dari versi desktop yang sudah punya dropdown. Sekarang
-  // disamakan: tombol yang membuka dropdown kecil (Profil Saya/Ganti
-  // Password/Keluar).
-  const userBtnMobile = document.getElementById("btn-user-menu-mobile");
-  const userDropdownMobile = document.getElementById("user-menu-dropdown-mobile");
-  if (userBtnMobile && userDropdownMobile) {
-    userBtnMobile.addEventListener("click", (e) => {
-      e.stopPropagation();
-      userDropdownMobile.classList.toggle("hidden");
-    });
+  if (userBtn) {
+    userBtn.addEventListener("click", () => userDropdown?.classList.toggle("hidden"));
   }
 
   document.addEventListener("click", (e) => {
-    if (!userBtn.contains(e.target) && !userDropdown.contains(e.target)) userDropdown.classList.add("hidden");
-    if (userBtnMobile && userDropdownMobile && !userBtnMobile.contains(e.target) && !userDropdownMobile.contains(e.target)) {
-      userDropdownMobile.classList.add("hidden");
+    if (userBtn && userDropdown) {
+      if (!userBtn.contains(e.target) && !userDropdown.contains(e.target)) userDropdown.classList.add("hidden");
     }
   });
 
-  // INJEKSI TOMBOL GANTI PASSWORD (desktop)
-  if (!document.getElementById("btn-ganti-pw")) {
+  // INJEKSI TOMBOL GANTI PASSWORD
+  if (userDropdown && !document.getElementById("btn-ganti-pw")) {
       const pwBtn = document.createElement("button");
       pwBtn.id = "btn-ganti-pw";
       pwBtn.className = "w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition flex items-center gap-2 border-b border-slate-100";
@@ -383,27 +380,74 @@ function bindShellEvents(session) {
       pwBtn.addEventListener("click", () => openChangePasswordModal(session));
   }
 
-  // INJEKSI TOMBOL GANTI PASSWORD (mobile) -- dropdown mobile sendiri sudah
-  // punya "Profil Saya" & "Keluar" langsung di markup HTML, tinggal sisipkan
-  // "Ganti Password" di antaranya, sama seperti versi desktop di atas.
-  if (userDropdownMobile && !document.getElementById("btn-ganti-pw-mobile")) {
-      const pwBtnMobile = document.createElement("button");
-      pwBtnMobile.id = "btn-ganti-pw-mobile";
-      pwBtnMobile.className = "w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition flex items-center gap-2 border-b border-slate-100";
-      pwBtnMobile.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4v-3.252a1 1 0 01.293-.707l8.96-8.96A6 6 0 0121 9z"/></svg> Ganti Password`;
-      const logoutBtnMobile = document.getElementById("btn-logout-mobile");
-      userDropdownMobile.insertBefore(pwBtnMobile, logoutBtnMobile);
-      pwBtnMobile.addEventListener("click", () => { userDropdownMobile.classList.add("hidden"); openChangePasswordModal(session); });
-  }
-
-  document.getElementById("btn-logout").addEventListener("click", () => logout());
-  const btnLogoutMobile = document.getElementById("btn-logout-mobile");
-  if (btnLogoutMobile) btnLogoutMobile.addEventListener("click", () => logout());
-  document.getElementById("btn-notif").addEventListener("click", () => openNotificationCenter(session));
+  document.getElementById("btn-logout")?.addEventListener("click", () => logout());
+  document.getElementById("btn-notif")?.addEventListener("click", () => openNotificationCenter(session));
 
   const btnNotifMobile = document.getElementById("btn-notif-mobile");
   if (btnNotifMobile) {
     btnNotifMobile.addEventListener("click", () => openNotificationCenter(session));
+  }
+
+  const btnProfileMobile = document.getElementById("btn-profile-mobile");
+  if (btnProfileMobile) {
+    btnProfileMobile.addEventListener("click", () => {
+      openModal({
+        title: "Menu Akun & Profil",
+        size: "sm",
+        bodyHtml: `
+          <div class="space-y-3 py-2 text-left">
+            <div class="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+              <div class="w-10 h-10 rounded-full bg-maroon-100 text-maroon-800 font-bold flex items-center justify-center shrink-0">
+                ${(session.nama || "U").charAt(0)}
+              </div>
+              <div>
+                <p class="font-bold text-slate-800 text-sm leading-tight">${escapeHtml(session.nama || "-")}</p>
+                <p class="text-xs text-slate-400 mt-0.5">${escapeHtml(session.role || "-")}</p>
+              </div>
+            </div>
+            <button id="mb-btn-profile" class="w-full text-left px-4 py-3 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition flex items-center gap-3">
+              <span class="text-lg">👤</span>
+              <div>
+                <p class="font-semibold text-slate-800">Lihat Profil Saya</p>
+                <p class="text-[11px] text-slate-400">Ubah data diri & dokumen karyawan</p>
+              </div>
+            </button>
+            <button id="mb-btn-password" class="w-full text-left px-4 py-3 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition flex items-center gap-3">
+              <span class="text-lg">🔑</span>
+              <div>
+                <p class="font-semibold text-slate-800">Ganti Password</p>
+                <p class="text-[11px] text-slate-400">Ubah kata sandi akun Anda</p>
+              </div>
+            </button>
+            <button id="mb-btn-logout" class="w-full text-left px-4 py-3 text-sm font-semibold text-red-600 bg-red-50/60 hover:bg-red-100/80 border border-red-100 rounded-xl transition flex items-center gap-3">
+              <span class="text-lg">🚪</span>
+              <div>
+                <p class="font-bold text-red-700">Logout / Keluar</p>
+                <p class="text-[11px] text-red-500">Keluar dari aplikasi HRIS</p>
+              </div>
+            </button>
+          </div>
+        `,
+        footerHtml: `
+          <button id="mb-btn-close" class="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-xl transition">Tutup</button>
+        `,
+        onMount: (m) => {
+          m.querySelector("#mb-btn-close").onclick = closeModal;
+          m.querySelector("#mb-btn-profile").onclick = () => {
+            closeModal();
+            location.hash = "#profile";
+          };
+          m.querySelector("#mb-btn-password").onclick = () => {
+            closeModal();
+            openChangePasswordModal(session);
+          };
+          m.querySelector("#mb-btn-logout").onclick = () => {
+            closeModal();
+            logout();
+          };
+        }
+      });
+    });
   }
 
   const mobileBackBtn = document.getElementById("mobile-back-btn");

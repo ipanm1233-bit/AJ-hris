@@ -1,7 +1,6 @@
 import { COL } from "../firebase-config.js";
 import { fsGetAll, openModal, closeModal, toast } from "../utils.js";
 import { renderCrudModule, emptyState } from "../components.js";
-import { callGeminiJSON } from "../ai-config.js";
 
 function escapeHtml(unsafe) {
     return (unsafe || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
@@ -74,104 +73,177 @@ export async function mount(container) {
         { name: "alur_proses", label: "Alur Proses (Ketik bebas langkah-langkahnya di sini)", type: "textarea", full: true },
         { name: "file_url", label: "Link Lampiran Lengkap (opsional)", type: "text", full: true },
       ],
-      extraToolbarHtml: `<button id="btn-generate-flowchart" class="p-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition shadow-sm flex items-center gap-1.5">✨ AI Flowchart Generator</button>`
+      extraToolbarHtml: `<button id="btn-auto-flowchart" class="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 text-white rounded-lg text-sm font-semibold hover:opacity-95 transition shadow-sm flex items-center gap-2">⚡ Automatic Flowchart Generator</button>`
     });
 
-    const btnGen = container.querySelector("#btn-generate-flowchart");
-    if (btnGen) {
-       btnGen.addEventListener("click", openAIFlowchartModal);
+    const btnFlowchart = container.querySelector("#btn-auto-flowchart");
+    if (btnFlowchart) {
+       btnFlowchart.addEventListener("click", openAutoFlowchartModal);
     }
   }
 
-  async function openAIFlowchartModal() {
+  async function openAutoFlowchartModal() {
      const allSOP = await fsGetAll(COL.GIMMICK_SOP);
-     const validSOP = allSOP.filter(s => s.alur_proses && s.alur_proses.length > 10);
-
-     if (validSOP.length === 0) {
-        toast("Belum ada SOP yang memiliki Alur Proses yang cukup panjang untuk digenerate.", "warning");
+     if (allSOP.length === 0) {
+        toast("Belum ada SOP yang terdaftar. Buat SOP terlebih dahulu.", "warning");
         return;
      }
 
-     const optSOP = validSOP.map(s => `<option value="${s.id}">${escapeHtml(s.judul)}</option>`).join("");
+     const optSOP = allSOP.map(s => `<option value="${s.id}">${escapeHtml(s.judul)} [${escapeHtml(s.departemen)}]</option>`).join("");
 
      openModal({
-        title: "✨ AI Flowchart Generator",
+        title: "⚡ Automatic SOP Flowchart Generator",
         size: "lg",
         bodyHtml: `
-           <div class="bg-blue-50 p-4 border border-blue-200 rounded-xl mb-4 text-sm text-blue-800">
-              Pilih SOP di bawah ini. AI Gemini akan membaca teks <b>Alur Proses</b> yang Anda ketikkan sebelumnya dan menyulapnya menjadi <b>Diagram Visual (Flowchart)</b> yang rapi secara otomatis.
-           </div>
-           <label class="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">Pilih SOP yang ingin digambar:</label>
-           <select id="sop-selector" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-400 mb-4">
-              ${optSOP}
-           </select>
-           <div id="flowchart-result" class="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-xl min-h-[200px] flex flex-col items-center justify-center">
-              <span class="text-slate-400 text-sm">Flowchart akan muncul di sini...</span>
+           <div class="space-y-4">
+              <div class="bg-gradient-to-r from-emerald-50 to-teal-50 p-4 border border-emerald-200 rounded-xl text-xs text-emerald-900 leading-relaxed flex items-center justify-between gap-3">
+                 <div>
+                    <strong>Flowchart Otomatis:</strong> Pilih SOP di bawah ini, sistem akan secara otomatis mengurai teks alur proses dan memvisualisasikannya menjadi diagram alir profesional tanpa perlu membuka aplikasi luar.
+                 </div>
+                 <button id="btn-print-fc" class="shrink-0 bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded-lg font-bold text-xs shadow transition flex items-center gap-1">
+                    🖨️ Cetak / Simpan PDF
+                 </button>
+              </div>
+              
+              <div>
+                 <label class="block text-xs font-bold text-slate-700 mb-1 uppercase tracking-wide">Pilih SOP untuk Didiagramkan:</label>
+                 <select id="auto-sop-selector" class="w-full px-3 py-2.5 text-sm font-medium border border-slate-200 rounded-xl outline-none bg-white focus:ring-2 focus:ring-emerald-200 focus:border-emerald-500 transition">
+                    ${optSOP}
+                 </select>
+              </div>
+
+              <div id="flowchart-render-box" class="p-6 bg-slate-900 rounded-2xl border border-slate-800 text-white min-h-[420px] shadow-inner overflow-x-auto">
+                 <!-- Flowchart otomatis dirender di sini -->
+              </div>
            </div>
         `,
         footerHtml: `
-           <button id="btn-tutup-ai" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Tutup</button>
-           <button id="btn-proses-ai" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-bold shadow transition flex items-center gap-2">Generate Flowchart</button>
+           <button id="btn-tutup-fc" class="px-5 py-2.5 rounded-xl text-sm font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition">Tutup</button>
         `,
         onMount: (m) => {
-           m.querySelector("#btn-tutup-ai").onclick = closeModal;
-           m.querySelector("#btn-proses-ai").onclick = async () => {
-              const btn = m.querySelector("#btn-proses-ai");
-              const resultEl = m.querySelector("#flowchart-result");
-              const selectedId = m.querySelector("#sop-selector").value;
-              const targetSOP = validSOP.find(s => s.id === selectedId);
+           m.querySelector("#btn-tutup-fc").onclick = closeModal;
+           
+           const selector = m.querySelector("#auto-sop-selector");
+           const renderBox = m.querySelector("#flowchart-render-box");
+           const btnPrint = m.querySelector("#btn-print-fc");
 
-              btn.disabled = true;
-              btn.textContent = "AI Sedang Berpikir...";
-              resultEl.innerHTML = `<span class="animate-pulse text-blue-600 font-medium">✨ Membaca teks SOP dan menghubungkan ke Google...</span>`;
+           function renderFlowchartForSOP(sopId) {
+              const sop = allSOP.find(x => x.id === sopId);
+              if (!sop) return;
 
-              try {
-                  const prompt = `Anda adalah ahli pembuat SOP perusahaan. Baca teks alur proses ini: "${targetSOP.alur_proses}".
-                  Ubah teks tersebut menjadi langkah-langkah prosedural yang terstruktur rapi.
-                  Kembalikan respon murni dalam format JSON array (TANPA backtick markdown \`\`\`json) seperti contoh ini:
-                  [
-                    { "step": 1, "actor": "Nama Jabatan/Pelaku", "action": "Judul Tindakan Singkat", "detail": "Penjelasan detail" }
-                  ]`;
+              const rawAlur = (sop.alur_proses || "").trim();
+              let steps = [];
 
-                  const stepsArray = await callGeminiJSON(prompt);
-
-                  let flowchartHtml = `<h2 class="font-bold text-lg text-slate-800 mb-6 text-center border-b pb-2 w-full uppercase">${escapeHtml(targetSOP.judul)}</h2><div class="flex flex-col items-center w-full max-w-lg mx-auto">`;
-                  
-                  stepsArray.forEach((s, index) => {
-                      flowchartHtml += `
-                         <div class="w-full bg-white border-2 border-blue-500 rounded-xl p-4 shadow-sm text-center relative">
-                            <span class="absolute -top-3 -left-3 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold border-2 border-white shadow">${s.step}</span>
-                            <p class="text-xs font-bold text-blue-600 uppercase tracking-widest mb-1">${escapeHtml(s.actor)}</p>
-                            <p class="font-bold text-slate-800 text-sm mb-2">${escapeHtml(s.action)}</p>
-                            <p class="text-xs text-slate-500 leading-relaxed">${escapeHtml(s.detail)}</p>
-                         </div>
-                      `;
-                      if (index < stepsArray.length - 1) {
-                         flowchartHtml += `
-                            <div class="flex flex-col items-center my-1">
-                               <div class="w-1 h-6 bg-blue-300"></div>
-                               <div class="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[8px] border-transparent border-t-blue-500"></div>
-                            </div>
-                         `;
-                      }
-                  });
-
-                  flowchartHtml += `</div>`;
-                  resultEl.innerHTML = flowchartHtml;
-                  resultEl.classList.replace("bg-slate-50", "bg-white");
-
-              } catch(e) {
-                  console.error("AI Error Detail:", e);
-                  resultEl.innerHTML = `
-                    <div class="bg-red-50 border border-red-200 p-4 rounded-xl text-left w-full">
-                       <p class="text-red-800 font-bold mb-1">🚨 Gagal Memproses AI</p>
-                       <p class="text-xs text-red-700 font-mono mb-3 bg-white p-2 rounded border border-red-100">${escapeHtml(e.message)}</p>
-                    </div>
-                  `;
+              if (rawAlur) {
+                 // Split by newlines or numbers like "1.", "2.", "Langkah 1:", "- "
+                 steps = rawAlur.split(/\r?\n+/)
+                    .map(s => s.replace(/^(\d+[\.\)]\s*|langkah\s*\d+\s*:\s*|-\s*|\*\s*)/i, "").trim())
+                    .filter(Boolean);
               }
 
-              btn.disabled = false;
-              btn.textContent = "Generate Ulang";
+              if (steps.length === 0) {
+                 steps = [
+                    `Pemohon mengisi formulir pengajuan ${sop.judul}`,
+                    `Atasan melakukan review & pertimbangan awal`,
+                    `Departemen ${sop.departemen} memproses verifikasi berkas`,
+                    `Approval pihak berwenang & penyelesaian prosedur`
+                 ];
+              }
+
+              let diagramHtml = `
+                 <div id="printable-flowchart" class="max-w-2xl mx-auto space-y-4 font-sans text-left">
+                    <div class="text-center pb-4 border-b border-slate-800">
+                       <span class="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-[11px] font-bold uppercase tracking-wider">SOP RESMI ${escapeHtml(sop.departemen)}</span>
+                       <h3 class="text-xl font-bold text-white mt-2">${escapeHtml(sop.judul)}</h3>
+                       <p class="text-xs text-slate-400 mt-1">Versi Dokumen: ${escapeHtml(sop.versi || "1.0")} | Status: <span class="text-emerald-400 font-semibold">${escapeHtml(sop.status || "Aktif")}</span></p>
+                    </div>
+
+                    <!-- NODE 1: START -->
+                    <div class="flex flex-col items-center">
+                       <div class="w-48 py-2.5 bg-emerald-600 text-white rounded-full text-xs font-bold text-center tracking-widest uppercase shadow-lg shadow-emerald-900/50 border border-emerald-400">
+                          ▶ MULAI / START
+                       </div>
+                       <div class="w-0.5 h-6 bg-emerald-500/60 my-0.5"></div>
+                       <div class="text-emerald-400 text-xs font-bold">▼</div>
+                    </div>
+              `;
+
+              steps.forEach((stepText, idx) => {
+                 const stepNum = idx + 1;
+                 const isLast = idx === steps.length - 1;
+                 const isDecision = /apakah|jika|bila|setuju|sanggah|revisi/i.test(stepText);
+
+                 if (isDecision) {
+                    diagramHtml += `
+                       <div class="flex flex-col items-center my-1">
+                          <div class="w-80 p-4 bg-gradient-to-br from-amber-900/60 to-amber-950/80 border-2 border-amber-500/60 rounded-2xl text-center shadow-lg transform rotate-0">
+                             <div class="flex items-center justify-between mb-1">
+                                <span class="text-[10px] font-bold uppercase px-2 py-0.5 bg-amber-500/30 text-amber-300 rounded">Langkah ${stepNum} (Keputusan)</span>
+                                <span class="text-amber-400 font-mono text-xs">❖</span>
+                             </div>
+                             <p class="text-xs font-semibold text-amber-100 leading-relaxed">${escapeHtml(stepText)}</p>
+                          </div>
+                          <div class="w-0.5 h-6 bg-amber-500/60 my-0.5"></div>
+                          <div class="text-amber-400 text-xs font-bold">▼</div>
+                       </div>
+                    `;
+                 } else {
+                    diagramHtml += `
+                       <div class="flex flex-col items-center my-1">
+                          <div class="w-full bg-slate-800/90 hover:bg-slate-800 border border-slate-700/80 rounded-xl p-4 shadow-md transition">
+                             <div class="flex items-start gap-3">
+                                <div class="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                                   ${stepNum}
+                                </div>
+                                <div class="flex-1">
+                                   <p class="text-xs font-semibold text-slate-100 leading-relaxed">${escapeHtml(stepText)}</p>
+                                </div>
+                             </div>
+                          </div>
+                          ${!isLast ? `
+                             <div class="w-0.5 h-6 bg-slate-700 my-0.5"></div>
+                             <div class="text-slate-500 text-xs font-bold">▼</div>
+                          ` : ""}
+                       </div>
+                    `;
+                 }
+              });
+
+              diagramHtml += `
+                    <!-- NODE END -->
+                    <div class="flex flex-col items-center pt-2">
+                       <div class="w-0.5 h-6 bg-emerald-500/60 my-0.5"></div>
+                       <div class="text-emerald-400 text-xs font-bold mb-1">▼</div>
+                       <div class="w-48 py-2.5 bg-red-700 text-white rounded-full text-xs font-bold text-center tracking-widest uppercase shadow-lg shadow-red-950/50 border border-red-500">
+                          ■ SELESAI / END
+                       </div>
+                    </div>
+                 </div>
+              `;
+
+              renderBox.innerHTML = diagramHtml;
+           }
+
+           selector.onchange = () => renderFlowchartForSOP(selector.value);
+           renderFlowchartForSOP(selector.value);
+
+           btnPrint.onclick = () => {
+              const el = m.querySelector("#printable-flowchart");
+              if (!el) return;
+              const w = window.open("", "_blank");
+              w.document.write(`
+                 <html>
+                    <head>
+                       <title>Flowchart SOP - Andela Jaya</title>
+                       <script src="https://cdn.tailwindcss.com"></script>
+                    </head>
+                    <body class="bg-slate-900 text-white p-8">
+                       ${el.outerHTML}
+                       <script>setTimeout(() => { window.print(); }, 500);</script>
+                    </body>
+                 </html>
+              `);
+              w.document.close();
            };
         }
      });

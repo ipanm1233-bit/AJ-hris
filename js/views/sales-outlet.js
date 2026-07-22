@@ -6,10 +6,12 @@ const COLLECTION_NAME = "sales_outlets";
 
 // Seed default outlets if none exist
 const DEFAULT_OUTLETS = [
-  { id: "OT-001", kode: "OT-001", nama: "Supermarket Pamella 1", wilayah: "Yogyakarta", alamat: "Jl. Kusumanegara No.141, Umbulharjo", telepon: "0274-377243", tipe: "Supermarket" },
-  { id: "OT-002", kode: "OT-002", nama: "Mirota Kampus Godean", wilayah: "Sleman", alamat: "Jl. Raya Godean Km.2.8, Sleman", telepon: "0274-561234", tipe: "Supermarket" },
-  { id: "OT-003", kode: "OT-003", nama: "Toko Kelontong Berkah", wilayah: "Bantul", alamat: "Jl. Bantul Km.7, Pendowoharjo, Sewon", telepon: "0812-3456-7890", tipe: "Retail" },
-  { id: "OT-004", kode: "OT-004", nama: "Suryamart Wates", wilayah: "Kulon Progo", alamat: "Jl. Wates Km. 1, Kulon Progo", telepon: "0857-1111-2222", tipe: "Minimarket" }
+  { id: "OT-CRB-01", kode: "OT-CRB-01", nama: "Toko Cat Warna Abadi Cirebon", wilayah: "Cirebon", alamat: "Jl. Siliwangi No. 88, Cirebon", telepon: "0231-201988", tipe: "Depo Cat / Store" },
+  { id: "OT-CRB-02", kode: "OT-CRB-02", nama: "TB Bangunan Jaya Bersama", wilayah: "Cirebon", alamat: "Jl. Pemuda No. 45, Cirebon", telepon: "0231-332110", tipe: "Toko Bangunan" },
+  { id: "OT-CRB-03", kode: "OT-CRB-03", nama: "Depo Cat Prima Tuparev", wilayah: "Cirebon", alamat: "Jl. Tuparev No. 12, Cirebon", telepon: "0812-9876-5432", tipe: "Distributor Retail" },
+  { id: "OT-MLG-01", kode: "OT-MLG-01", nama: "Toko Cat Dulux Paint Center Malang", wilayah: "Malang", alamat: "Jl. Ahmad Yani No. 102, Malang", telepon: "0341-491223", tipe: "Paint Center" },
+  { id: "OT-MLG-02", kode: "OT-MLG-02", nama: "TB Malang Indah Building Supply", wilayah: "Malang", alamat: "Jl. Raya Dieng No. 15, Malang", telepon: "0341-567890", tipe: "Toko Bangunan" },
+  { id: "OT-MLG-03", kode: "OT-MLG-03", nama: "Depo Material Blesscon Soekarno Hatta", wilayah: "Malang", alamat: "Jl. Soekarno Hatta No. 20, Malang", telepon: "0857-3333-4444", tipe: "Agent Blesscon" }
 ];
 
 export async function mount(container, { session }) {

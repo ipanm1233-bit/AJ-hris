@@ -169,7 +169,7 @@ async function loadProfileCard(container, session) {
   }
 
   const profileCard = container.querySelector("#dash-profile-card");
-  container.querySelector("#dash-profile-avatar").innerHTML = avatar(session.nama, "w-14 h-14 text-base");
+  container.querySelector("#dash-profile-avatar").innerHTML = avatar(karyawan?.foto_url || session.foto_url || session.nama, "w-14 h-14 text-base");
   container.querySelector("#dash-profile-nama").textContent = session.nama;
   container.querySelector("#dash-profile-jabatan").textContent = `${session.posisi || "-"} • ${karyawan?.cabang || session.cabang || "-"}`;
   container.querySelector("#dash-profile-badges").innerHTML = `
@@ -190,7 +190,7 @@ function openProfileModal(session, k) {
   if (!k) { openModal({ title: "Profil Karyawan", bodyHtml: `<p class="text-sm text-slate-500">Data lengkap belum tertaut (Hubungi HRD).</p>` }); return; }
   const body = `
     <div class="flex items-center gap-4 mb-6 pb-5 border-b border-slate-100">
-      ${avatar(k.nama_karyawan || session.nama, "w-16 h-16 text-lg")}
+      ${avatar(k.foto_url || session.foto_url || k.nama_karyawan || session.nama, "w-16 h-16 text-lg")}
       <div><p class="font-bold text-slate-800 text-lg">${escapeHtml(k.nama_karyawan || session.nama)}</p><p class="text-sm text-slate-500">${escapeHtml(k.jabatan || "-")} • ${escapeHtml(k.divisi || "-")}</p></div>
     </div>
     <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">

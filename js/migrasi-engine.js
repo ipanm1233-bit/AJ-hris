@@ -8,7 +8,7 @@
  * =====================================================================
  */
 import { db, COL, collection, doc, getDocs, writeBatch, query, limit } from "./firebase-config.js";
-import { toSnakeCase, smartParseDate, sha256, genId } from "./utils.js";
+import { toSnakeCase, smartParseDate, sha256, genId, localDateStr } from "./utils.js";
 
 /* ---------------------------------------------------------------------
  * PETA SHEET EXCEL -> KOLEKSI FIRESTORE
@@ -378,8 +378,8 @@ async function seedCollection(colName, sampleRows, idPrefix, customIdField = nul
  * INIT
  * ------------------------------------------------------------------- */
 checkFirebaseConnection();
-document.getElementById("file-input").addEventListener("change", (e) => {
+document.getElementById("file-input")?.addEventListener("change", (e) => {
   if (e.target.files[0]) handleFile(e.target.files[0]);
 });
-document.getElementById("btn-migrate").addEventListener("click", runMigration);
-document.getElementById("btn-seed").addEventListener("click", runSeeder);
+document.getElementById("btn-migrate")?.addEventListener("click", runMigration);
+document.getElementById("btn-seed")?.addEventListener("click", runSeeder);

@@ -1,0 +1,77 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User account profile",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "nama": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "cabang": { "type": "string" },
+        "fcm_token": { "type": "string" }
+      },
+      "required": ["username", "nama", "role"]
+    },
+    "DataPengajuan": {
+      "title": "DataPengajuan",
+      "description": "Employee requests and claim submissions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nama_pemohon": { "type": "string" },
+        "nik": { "type": "string" },
+        "cabang": { "type": "string" },
+        "form_id": { "type": "string" },
+        "nama_form": { "type": "string" },
+        "status_final": { "type": "string" },
+        "tgl": { "type": "string" }
+      },
+      "required": ["id", "nama_pemohon", "form_id"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "In-app notifications",
+      "type": "object",
+      "properties": {
+        "username_target": { "type": "string" },
+        "judul": { "type": "string" },
+        "pesan": { "type": "string" },
+        "dibaca": { "type": "boolean" },
+        "tanggal": { "type": "string" }
+      },
+      "required": ["username_target", "judul", "pesan"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User accounts"
+    },
+    "/data_pengajuan/{pengajuanId}": {
+      "schema": { "$ref": "#/entities/DataPengajuan" },
+      "description": "Submissions and claims"
+    },
+    "/notifications/{notifId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "Notifications"
+    },
+    "/master_karyawan/{karyawanId}": {
+      "schema": "object",
+      "description": "Master employee records"
+    },
+    "/broadcast/{broadcastId}": {
+      "schema": "object",
+      "description": "Memos and broadcasts"
+    },
+    "/gimmick_sop/{sopId}": {
+      "schema": "object",
+      "description": "SOPs"
+    },
+    "/login_tokens/{tokenId}": {
+      "schema": "object",
+      "description": "One-time login tokens"
+    }
+  }
+}

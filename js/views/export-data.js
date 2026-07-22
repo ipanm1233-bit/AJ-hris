@@ -1,6 +1,6 @@
 import { COL } from "../firebase-config.js";
 import { fsGetAll, exportToCsv, toast } from "../utils.js";
-import { icon } from "../components.js";
+import { icon, openExportPicker } from "../components.js";
 
 const LABELS = {
   [COL.MASTER_KARYAWAN]: "Master Karyawan",
@@ -29,19 +29,21 @@ const LABELS = {
 
 export async function mount(container) {
   const select = container.querySelector("#export-select");
+  if (!select) return { unmount() {} };
+
   select.innerHTML = Object.entries(LABELS).map(([val, label]) => `<option value="${val}">${label}</option>`).join("");
 
   const countEl = container.querySelector("#export-count");
   async function updateCount() {
-    countEl.textContent = "Menghitung jumlah data...";
+    if (countEl) countEl.textContent = "Menghitung jumlah data...";
     const rows = await fsGetAll(select.value);
-    countEl.textContent = `${rows.length} baris data siap diekspor.`;
+    if (countEl) countEl.textContent = `${rows.length} baris data siap diekspor.`;
     return rows;
   }
   let currentRows = await updateCount();
   select.addEventListener("change", async () => { currentRows = await updateCount(); });
 
-  container.querySelector("#export-btn").addEventListener("click", () => {
+  container.querySelector("#export-btn")?.addEventListener("click", () => {
     if (!currentRows.length) { toast("Tidak ada data pada koleksi ini", "warning"); return; }
     openExportPicker(LABELS[select.value] || select.value, [], currentRows);
   });

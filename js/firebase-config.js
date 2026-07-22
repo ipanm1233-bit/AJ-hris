@@ -83,5 +83,6 @@ export const COL = {
   LOG_LEMBUR: "log_lembur",
   LOG_KASBON: "log_kasbon",
   DATA_TRAINING: "data_training",
-  PERFORMANCE_REVIEW: "performance_review"
+  PERFORMANCE_REVIEW: "performance_review",
+  SIGN_DOCUMENTS: "sign_documents"
 };

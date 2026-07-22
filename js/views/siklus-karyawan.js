@@ -131,6 +131,17 @@ export async function mount(container) {
      wrapNama.classList.toggle("hidden", isNewHireOnboarding);
      wrapOnbNew.classList.toggle("hidden", !isNewHireOnboarding);
      selectNama.required = !isNewHireOnboarding;
+
+     // Toggle required attributes for hidden onboarding fields to prevent silent form.reportValidity() failure
+     const onbNama = container.querySelector("#onb-nama");
+     const onbEmail = container.querySelector("#onb-email");
+     if (onbNama) {
+        onbNama.required = isNewHireOnboarding;
+     }
+     if (onbEmail) {
+        onbEmail.required = isNewHireOnboarding;
+     }
+
      if (isNewHireOnboarding) {
         selectNama.value = "";
         currentSelectedKaryawan = null;
