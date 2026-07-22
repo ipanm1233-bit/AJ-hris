@@ -219,6 +219,27 @@ async function renderShellForUser(session) {
   }
 
   if (nav) nav.innerHTML = html;
+
+  // ------------------------------------------------------------------
+  // MOBILE BOTTOM NAV: penyesuaian per-role
+  // - Tab "Attendance": HRD/SUPERADMIN diarahkan ke manajemen absensi penuh,
+  //   role lain (karyawan) diarahkan ke "Absensi Saya" (riwayat pribadi saja).
+  // - Tab "Approval": hanya ditampilkan untuk role yang berhak approve
+  //   pengajuan (HRD/Finance/SUPERADMIN/Atasan), supaya atasan & HRD bisa
+  //   langsung menyetujui pengajuan dari tampilan mobile.
+  // ------------------------------------------------------------------
+  const mobileAttendanceTab = document.querySelector('[data-mobile-tab="absensi"]');
+  if (mobileAttendanceTab) {
+    const isFullAbsensiAccess = session.role === "HRD" || session.role === "SUPERADMIN";
+    mobileAttendanceTab.setAttribute("href", isFullAbsensiAccess ? "#absensi" : "#absensi-saya");
+  }
+
+  const mobileApprovalTab = document.getElementById("mobile-tab-approval-link");
+  if (mobileApprovalTab) {
+    const canApprove = menus.some(m => m.id === "approval");
+    mobileApprovalTab.classList.toggle("hidden", !canApprove);
+    mobileApprovalTab.classList.toggle("flex", canApprove);
+  }
 }
 
 function highlightActive(route) {
@@ -235,7 +256,9 @@ function highlightActive(route) {
       isActive = true;
     } else if (tabRoute === "dashboard" && route === "dashboard") {
       isActive = true;
-    } else if (tabRoute === "absensi" && (route === "absensi" || route === "klaim-bensin" || route === "lembur-kasbon" || route === "manajemen-cuti" || route === "cuti")) {
+    } else if (tabRoute === "absensi" && (route === "absensi" || route === "absensi-saya" || route === "klaim-bensin" || route === "lembur-kasbon" || route === "manajemen-cuti" || route === "cuti")) {
+      isActive = true;
+    } else if (tabRoute === "approval" && route === "approval") {
       isActive = true;
     } else if (tabRoute === "pengajuan" && route === "pengajuan") {
       isActive = true;
