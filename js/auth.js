@@ -22,15 +22,12 @@ const SESSION_KEY = "andela_hris_session";
  * group: 'all' | 'hrd' | 'manajemen'
  * roles: daftar role tambahan yang berhak (di luar aturan group bawaan)
  * ------------------------------------------------------------------- */
-// Role yang berhak melihat Modul Sales (Order/Outlet/Item/Tugas/Track) secara penuh di sidebar.
-// SUPERADMIN selalu diikutkan sebagai akses penuh sistem.
-const SALES_MODULE_ROLES = ["SALES", "SPV SALES", "KOORDINATOR SALES", "BRANCH MANAGER", "SUPERADMIN"];
-
 // Pengelompokan & Penyesuaian Icon Menu
 export const MENU_CONFIG = [
   // 📁 KATEGORI: MENU UTAMA (Personal)
   { id: "dashboard", label: "Home & Dashboard", icon: "home", kategori: "Menu Utama", roles: ["ALL"] },
   { id: "pengajuan", label: "Buat Pengajuan", icon: "doc-plus", kategori: "Menu Utama", roles: ["ALL"] },
+  { id: "klaim-bensin", label: "Klaim Bensin", icon: "wallet", kategori: "Menu Utama", roles: ["ALL"] },
   { id: "riwayat", label: "Riwayat Pengajuan", icon: "clock", kategori: "Menu Utama", roles: ["ALL"] },
 
   // 📁 KATEGORI: MANAJEMEN & PERSETUJUAN
@@ -38,7 +35,6 @@ export const MENU_CONFIG = [
   { id: "broadcast", label: "Broadcast Memo", icon: "book", kategori: "Manajemen & Persetujuan", roles: ["HRD", "SUPERADMIN"] },
 
   // 📁 KATEGORI: KEHADIRAN & CUTI
-  { id: "absensi-saya", label: "Absensi Saya", icon: "clock", kategori: "Kehadiran & Cuti", roles: ["ALL"] },
   { id: "absensi", label: "Manajemen Absensi", icon: "clock", kategori: "Kehadiran & Cuti", roles: ["HRD", "SUPERADMIN"] },
   { id: "manajemen-cuti", label: "Manajemen Cuti", icon: "calendar", kategori: "Kehadiran & Cuti", roles: ["HRD", "SUPERADMIN"] },
   { id: "cuti", label: "Jatah Cuti Karyawan", icon: "layers", kategori: "Kehadiran & Cuti", roles: ["HRD", "SUPERADMIN"] },
@@ -51,8 +47,8 @@ export const MENU_CONFIG = [
   { id: "penilaian-kontrak", label: "Penilaian & Kontrak", icon: "doc-plus", kategori: "Kinerja & Karyawan", roles: ["HRD", "SUPERADMIN"] },
   { id: "training", label: "Pelatihan & TNA", icon: "book", kategori: "Kinerja & Karyawan", roles: ["ALL"] },
   { id: "performance-review", label: "Review Kinerja", icon: "gauge", kategori: "Kinerja & Karyawan", roles: ["ALL"] },
-  // 👇 INI ADALAH PERBAIKAN UNTUK BUG 404 KEDISIPLINAN:
   { id: "pemanggilan", label: "Kedisiplinan & SP", icon: "alert", kategori: "Kinerja & Karyawan", roles: ["HRD", "SUPERADMIN"] }, 
+  { id: "dokumen", label: "Draft & Builder Dokumen", icon: "doc-plus", kategori: "Kinerja & Karyawan", roles: ["HRD", "SUPERADMIN"] },
 
   // 📁 KATEGORI: OPERASIONAL & ASET
   { id: "kendaraan", label: "Manajemen Kendaraan", icon: "truck", kategori: "Operasional & Aset", roles: ["HRD", "GA", "SUPERADMIN"] },
@@ -60,16 +56,12 @@ export const MENU_CONFIG = [
   { id: "uang-makan", label: "Uang Makan Expedisi", icon: "utensils", kategori: "Operasional & Aset", roles: ["HRD", "FINANCE", "SUPERADMIN"] },
   { id: "gimmick-sop", label: "Gimmick & SOP", icon: "book", kategori: "Operasional & Aset", roles: ["HRD", "SUPERADMIN"] },
 
-  // 📁 KATEGORI: MODUL SALES — khusus Karyawan Sales, SPV Sales, Koordinator Sales & Branch Manager
-  { id: "sales-order", label: "Order Penjualan", icon: "wallet", kategori: "Modul Sales", roles: SALES_MODULE_ROLES },
-  { id: "sales-outlet", label: "Master Outlet", icon: "user-plus", kategori: "Modul Sales", roles: SALES_MODULE_ROLES },
-  { id: "sales-item", label: "Master Item", icon: "box", kategori: "Modul Sales", roles: SALES_MODULE_ROLES },
-  { id: "sales-task", label: "Tugas Sales", icon: "clock", kategori: "Modul Sales", roles: SALES_MODULE_ROLES },
-  { id: "sales-track", label: "Summary Track", icon: "layers", kategori: "Modul Sales", roles: SALES_MODULE_ROLES },
-  // Form Ajukan Klaim Bensin ditampilkan di dalam Modul Sales (tetap bisa diakses semua karyawan
-  // karena klaim bensin juga dipakai operasional cabang non-sales; panel "Manajemen Admin Cabang"
-  // di dalam halaman ini sendiri dibatasi khusus HRD lewat pengecekan role di klaim-bensin.js).
-  { id: "klaim-bensin", label: "Klaim Bensin", icon: "wallet", kategori: "Modul Sales", roles: ["ALL"] },
+  // 📁 KATEGORI: MODUL SALES
+  { id: "sales-order", label: "Order Penjualan", icon: "wallet", kategori: "Modul Sales", roles: ["ALL"] },
+  { id: "sales-outlet", label: "Master Outlet", icon: "user-plus", kategori: "Modul Sales", roles: ["ALL"] },
+  { id: "sales-item", label: "Master Item", icon: "box", kategori: "Modul Sales", roles: ["ALL"] },
+  { id: "sales-task", label: "Tugas Sales", icon: "clock", kategori: "Modul Sales", roles: ["ALL"] },
+  { id: "sales-track", label: "Summary Track", icon: "layers", kategori: "Modul Sales", roles: ["ALL"] },
 
   // 📁 KATEGORI: PENGATURAN SISTEM
   { id: "manajemen-data", label: "Manajemen Data", icon: "database", kategori: "Pengaturan Sistem", roles: ["HRD", "SUPERADMIN"] },
@@ -78,7 +70,7 @@ export const MENU_CONFIG = [
   { id: "form-builder", label: "Form Builder", icon: "doc-plus", kategori: "Pengaturan Sistem", roles: ["HRD", "SUPERADMIN"] }
 ];
 
-const MANAJEMEN_ROLES = ["SPV", "HRD", "GM", "FINANCE", "MANAGER", "BRANCH MANAGER", "SPV SALES", "KOORDINATOR SALES"];
+const MANAJEMEN_ROLES = ["SPV", "HRD", "GM", "FINANCE", "MANAGER", "BRANCH MANAGER"];
 
 /* ---------------------------------------------------------------------
  * SESSION HELPERS
@@ -256,11 +248,15 @@ export async function computeVisibleMenus(session) {
 }
 
 export async function canAccessRoute(routeId, session) {
+  let targetId = routeId;
+  if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(targetId)) {
+    targetId = "pemanggilan";
+  }
   const menus = await computeVisibleMenus(session);
   // route yang tidak ada di MENU_CONFIG (mis. sub-halaman) dianggap boleh selama login
-  const found = MENU_CONFIG.find(m => (m.route || m.id) === routeId);
+  const found = MENU_CONFIG.find(m => (m.route || m.id) === targetId);
   if (!found) return true;
-  return menus.some(m => (m.route || m.id) === routeId);
+  return menus.some(m => (m.route || m.id) === targetId);
 }
 
 /* ---------------------------------------------------------------------

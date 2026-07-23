@@ -1,16 +1,82 @@
-<div class="space-y-6">
-  <div>
-    <h1 class="text-2xl font-bold text-slate-800">Manajemen Inventory & ATK</h1>
-    <p class="text-sm text-slate-500 mt-1">Inventarisasi aset kantor dan alat tulis.</p>
+<div class="space-y-6 pb-12">
+  <!-- HEADER & TITLE -->
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-black text-slate-800 tracking-tight">Asset & Inventory Management</h1>
+      <p class="text-xs sm:text-sm text-slate-500 mt-1">Pengelolaan aset kantor, perangkat IT, kunci, dokumen penting, dan ATK perusahaan.</p>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+      <button id="btn-scan-qr" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm transition shadow-md flex items-center gap-2">
+        <span>🔍</span> Scan QR Aset
+      </button>
+      <button id="btn-assign-asset-quick" class="bg-maroon-700 hover:bg-maroon-800 text-white font-bold px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm transition shadow-md flex items-center gap-2">
+        <span>📦</span> Penyerahan Aset
+      </button>
+      <button id="btn-print-qr-all" class="border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm transition shadow-sm flex items-center gap-2">
+        <span>📷</span> Cetak QR Codes
+      </button>
+    </div>
   </div>
 
-  <div class="flex items-center gap-2 border-b border-slate-100">
-    <button data-itab="barang" class="inv-tab px-4 py-2.5 text-sm font-medium border-b-2 border-maroon-700 text-maroon-700">Master Barang</button>
-    <button data-itab="ambil" class="inv-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">Log Pengambilan</button>
-    <button data-itab="opname" class="inv-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700">Stock Opname</button>
+  <!-- KPI SUMMARY CARDS (BuildCorp HR Style) -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <!-- TOTAL ASSETS -->
+    <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm relative overflow-hidden group">
+      <div class="flex items-center justify-between mb-3">
+        <div class="p-3 bg-red-50 text-maroon-700 rounded-2xl font-bold text-lg">📦</div>
+        <span class="text-[10px] font-extrabold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">+12% Total</span>
+      </div>
+      <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">TOTAL ASET & INVENTARIS</p>
+      <p id="inv-kpi-total" class="text-2xl font-black text-slate-800 mt-0.5">0</p>
+    </div>
+
+    <!-- IN MAINTENANCE / ALERT -->
+    <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm relative overflow-hidden group">
+      <div class="flex items-center justify-between mb-3">
+        <div class="p-3 bg-amber-50 text-amber-600 rounded-2xl font-bold text-lg">🔧</div>
+        <span class="text-[10px] font-extrabold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">⚠️ Perlu Servis</span>
+      </div>
+      <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">DALAM PERBAIKAN / PERLU SERVIS</p>
+      <p id="inv-kpi-maintenance" class="text-2xl font-black text-slate-800 mt-0.5">0</p>
+    </div>
+
+    <!-- ASSIGNED TO EMPLOYEES -->
+    <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm relative overflow-hidden group">
+      <div class="flex items-center justify-between mb-3">
+        <div class="p-3 bg-blue-50 text-blue-600 rounded-2xl font-bold text-lg">👥</div>
+        <span class="text-[10px] font-extrabold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">Tanggung Jawab</span>
+      </div>
+      <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">DIPAKAI KARYAWAN</p>
+      <p id="inv-kpi-assigned" class="text-2xl font-black text-slate-800 mt-0.5">0</p>
+    </div>
+
+    <!-- AVAILABLE / READY -->
+    <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm relative overflow-hidden group">
+      <div class="flex items-center justify-between mb-3">
+        <div class="p-3 bg-emerald-50 text-emerald-600 rounded-2xl font-bold text-lg">✅</div>
+        <span class="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">Ready</span>
+      </div>
+      <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">TERSEDIA / READYS</p>
+      <p id="inv-kpi-ready" class="text-2xl font-black text-slate-800 mt-0.5">0</p>
+    </div>
   </div>
 
+  <!-- NAVIGATION TABS -->
+  <div class="flex items-center gap-2 border-b border-slate-200 overflow-x-auto pb-1">
+    <button data-itab="barang" class="inv-tab px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-maroon-700 text-maroon-700 whitespace-nowrap flex items-center gap-1.5">
+      <span>🏢</span> Master Aset & Inventaris
+    </button>
+    <button data-itab="ambil" class="inv-tab px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap flex items-center gap-1.5">
+      <span>📝</span> Log Penyerahan & Pengembalian
+    </button>
+    <button data-itab="opname" class="inv-tab px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap flex items-center gap-1.5">
+      <span>📊</span> Stock Opname Fisik
+    </button>
+  </div>
+
+  <!-- PANELS -->
   <div id="inv-panel-barang"></div>
   <div id="inv-panel-ambil" class="hidden"></div>
   <div id="inv-panel-opname" class="hidden"></div>
 </div>
+

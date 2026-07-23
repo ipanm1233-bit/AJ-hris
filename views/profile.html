@@ -11,7 +11,7 @@
         <!-- populated by JS -->
       </div>
       <input type="file" id="avatar-file-input" class="hidden" accept="image/*">
-      <button id="btn-edit-avatar" class="absolute bottom-0 right-0 w-8 h-8 bg-maroon-700 hover:bg-maroon-800 text-white rounded-full flex items-center justify-center border-2 border-white shadow-md transition transform active:scale-90">
+      <button id="btn-edit-avatar" class="absolute bottom-0 right-0 w-8 h-8 bg-maroon-700 hover:bg-maroon-800 text-white rounded-full flex items-center justify-center border-2 border-white shadow-md transition transform active:scale-90" title="Ubah Foto Profil">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
       </button>
     </div>
@@ -25,27 +25,30 @@
 
     <!-- Core Actions -->
     <div class="grid grid-cols-2 gap-3 w-full mt-5">
-      <button id="btn-edit-profile-main" class="flex items-center justify-center gap-2 bg-maroon-700 hover:bg-maroon-800 text-white py-3 px-4 rounded-2xl text-sm font-semibold transition shadow-md hover:shadow-lg active:scale-98">
+      <button id="btn-edit-profile-main" class="flex items-center justify-center gap-2 bg-maroon-700 hover:bg-maroon-800 text-white py-3 px-4 rounded-2xl text-xs sm:text-sm font-bold transition shadow-md hover:shadow-lg active:scale-98">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-        Edit Profile
+        ✏️ Update Data Saya
       </button>
-      <button id="btn-sign-document" class="flex items-center justify-center gap-2 border-2 border-maroon-100 hover:border-maroon-200 bg-transparent text-maroon-700 py-3 px-4 rounded-2xl text-sm font-semibold transition active:scale-98">
+      <button id="btn-sign-document" class="flex items-center justify-center gap-2 border-2 border-maroon-100 hover:border-maroon-200 bg-transparent text-maroon-700 py-3 px-4 rounded-2xl text-xs sm:text-sm font-bold transition active:scale-98">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-        Sign Doc
+        ✍️ Dokumen TTD
       </button>
     </div>
   </div>
 
   <!-- NAVIGATION TABS -->
-  <div class="flex border-b border-slate-100 bg-white rounded-2xl p-1.5 shadow-sm">
-    <button id="tab-btn-personal" class="profile-tab-btn flex-1 py-3 text-sm font-semibold text-maroon-700 bg-red-50/50 rounded-xl transition" data-target="tab-content-personal">
-      Personal
+  <div class="flex border-b border-slate-100 bg-white rounded-2xl p-1.5 shadow-sm overflow-x-auto">
+    <button id="tab-btn-personal" class="profile-tab-btn flex-1 py-3 px-3 text-xs sm:text-sm font-bold text-maroon-700 bg-red-50/50 rounded-xl transition shrink-0" data-target="tab-content-personal">
+      👤 Profil & Paspor
     </button>
-    <button id="tab-btn-employment" class="profile-tab-btn flex-1 py-3 text-sm font-semibold text-slate-500 hover:text-slate-700 rounded-xl transition" data-target="tab-content-employment">
-      Employment
+    <button id="tab-btn-details" class="profile-tab-btn flex-1 py-3 px-3 text-xs sm:text-sm font-bold text-slate-500 hover:text-slate-700 rounded-xl transition shrink-0" data-target="tab-content-details">
+      📝 Data Pribadi Lengkap
     </button>
-    <button id="tab-btn-documents" class="profile-tab-btn flex-1 py-3 text-sm font-semibold text-slate-500 hover:text-slate-700 rounded-xl transition" data-target="tab-content-documents">
-      Documents
+    <button id="tab-btn-employment" class="profile-tab-btn flex-1 py-3 px-3 text-xs sm:text-sm font-bold text-slate-500 hover:text-slate-700 rounded-xl transition shrink-0" data-target="tab-content-employment">
+      🏢 Kepegawaian & Finansial
+    </button>
+    <button id="tab-btn-documents" class="profile-tab-btn flex-1 py-3 px-3 text-xs sm:text-sm font-bold text-slate-500 hover:text-slate-700 rounded-xl transition shrink-0" data-target="tab-content-documents">
+      📁 Berkas Arsip
     </button>
   </div>
 
@@ -56,7 +59,6 @@
     <div id="tab-content-personal" class="profile-tab-panel space-y-5">
       <!-- Employee Passport Card -->
       <div class="rounded-3xl p-6 text-white shadow-xl flex flex-col justify-between relative overflow-hidden h-52 select-none" style="background: linear-gradient(135deg, #7a1f2b 0%, #bc0000 100%);">
-        <!-- Decorative abstract background circles -->
         <div class="absolute -right-10 -bottom-10 w-40 h-40 rounded-full bg-white/5 pointer-events-none"></div>
         <div class="absolute right-1/4 top-4 w-12 h-12 rounded-full bg-white/5 pointer-events-none"></div>
         
@@ -69,7 +71,6 @@
         </div>
 
         <div class="flex justify-between items-end mt-4">
-          <!-- Mock QR Code as requested -->
           <div class="bg-white p-2 rounded-xl shadow-md w-16 h-16 flex items-center justify-center shrink-0">
             <svg class="w-full h-full text-slate-800" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
               <path d="M3 3h6v6H3V3zm2 2v2h2V5H5zm8-2h6v6h-6V3zm2 2v2h2V5h-2zM3 13h6v6H3v-6zm2 2v2h2v-2H5zm13.5 0h2.5v2h-2.5v-2zM13 13h3v3h-3v-3zm3 3h3v3h-3v-3zm-3 3h3v3h-3v-3zm5.5-3h2.5v5h-2.5v-5zm-5.5 1.5h1.5v1.5H13v-1.5zm1.5-3h1.5v1.5h-1.5v-1.5zm1.5 3H19v1.5h-3v-1.5z"/>
@@ -130,23 +131,39 @@
       </div>
     </div>
 
-    <!-- 2. EMPLOYMENT TAB -->
-    <div id="tab-content-employment" class="profile-tab-panel hidden space-y-5">
+    <!-- 2. DATA PRIBADI LENGKAP TAB -->
+    <div id="tab-content-details" class="profile-tab-panel hidden space-y-5">
       <div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm">
-        <h3 class="font-bold text-slate-800 text-sm mb-4 flex items-center gap-2">
-          <span class="w-1.5 h-4 bg-maroon-700 rounded-full"></span>
-          Detail Pekerjaan & Sesi
-        </h3>
-        <div class="grid grid-cols-2 gap-y-4 gap-x-2" id="profile-details-grid">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+            <span class="w-1.5 h-4 bg-maroon-700 rounded-full"></span>
+            Biodata Pribadi & Kontak Darurat
+          </h3>
+          <button id="btn-edit-pribadi-tab" class="text-xs font-bold text-maroon-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-xl transition flex items-center gap-1">
+            ✏️ Edit Biodata
+          </button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3" id="profile-personal-grid">
           <!-- populated dynamically by JS -->
         </div>
       </div>
     </div>
 
-    <!-- 3. DOCUMENTS TAB -->
+    <!-- 3. EMPLOYMENT & FINANCIAL TAB -->
+    <div id="tab-content-employment" class="profile-tab-panel hidden space-y-5">
+      <div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm">
+        <h3 class="font-bold text-slate-800 text-sm mb-4 flex items-center gap-2">
+          <span class="w-1.5 h-4 bg-maroon-700 rounded-full"></span>
+          Detail Jabatan, Finansial & Rekening
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3" id="profile-details-grid">
+          <!-- populated dynamically by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. DOCUMENTS TAB -->
     <div id="tab-content-documents" class="profile-tab-panel hidden space-y-5">
-      
-      <!-- DRAG AND DROP FILE UPLOAD (Usability Pattern Compliance) -->
       <div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm">
         <h3 class="font-bold text-slate-800 text-sm mb-2 flex items-center gap-2">
           <span class="w-1.5 h-4 bg-maroon-700 rounded-full"></span>
@@ -154,7 +171,6 @@
         </h3>
         <p class="text-[11px] text-slate-400 mb-4">Unggah salinan KTP, SIM, NPWP, atau sertifikat penunjang pekerjaan.</p>
         
-        <!-- Dropzone Container -->
         <div id="profile-upload-dropzone" class="border-2 border-dashed border-slate-200 hover:border-maroon-400 rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition bg-slate-50/50 hover:bg-maroon-50/10">
           <input type="file" id="profile-doc-file" class="hidden" accept=".pdf,.png,.jpg,.jpeg">
           <span class="w-12 h-12 rounded-full bg-maroon-50 text-maroon-700 flex items-center justify-center mb-3">
@@ -166,7 +182,6 @@
         </div>
       </div>
 
-      <!-- Uploaded Documents Directory -->
       <div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm">
         <h3 class="font-bold text-slate-800 text-sm mb-4 flex items-center gap-2">
           <span class="w-1.5 h-4 bg-maroon-700 rounded-full"></span>
@@ -176,7 +191,6 @@
           <!-- populated dynamically by JS -->
         </div>
       </div>
-
     </div>
 
   </div>

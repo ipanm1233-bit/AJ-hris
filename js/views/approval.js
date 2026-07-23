@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs } from "../firebase-config.js";
-import { fsGetAll, fsUpdate, fsAdd, genId, openModal, closeModal, toast, fmtDateTime, escapeHtml, sendEmailNotif, getTargetsForRole, createLoginToken } from "../utils.js";
+import { fsGetAll, fsUpdate, fsAdd, genId, openModal, closeModal, toast, fmtDateTime, escapeHtml, sendEmailNotif, getTargetsForRole, createLoginToken, notifyUser } from "../utils.js";
 import { badge, emptyState, skeletonRows } from "../components.js";
 
 const CUTI_RULES = {
@@ -123,6 +123,15 @@ function renderList(container, session, tab) {
   listEl.querySelectorAll("[data-detail]").forEach(btn => btn.addEventListener("click", () => showDetail(rows.find(r => r.id === btn.dataset.detail), session)));
   listEl.querySelectorAll("[data-approve]").forEach(btn => btn.addEventListener("click", () => actionModal(rows.find(r => r.id === btn.dataset.approve), "APPROVE", session, container, tab)));
   listEl.querySelectorAll("[data-reject]").forEach(btn => btn.addEventListener("click", () => actionModal(rows.find(r => r.id === btn.dataset.reject), "REJECT", session, container, tab)));
+
+  // Auto-open modal jika URL Hash mengandung id tertentu (mis. dari Klik Notifikasi)
+  const idMatch = window.location.hash.match(/id=([a-zA-Z0-9_-]+)/);
+  if (idMatch && idMatch[1]) {
+     const targetRow = rows.find(x => x.id === idMatch[1]);
+     if (targetRow) {
+        setTimeout(() => showDetail(targetRow, session), 200);
+     }
+  }
 }
 
 function showDetail(row, session) {
@@ -610,6 +619,124 @@ async function processAction(row, action, note, session) {
       } catch (errEmail) {
         console.warn("Gagal mengirim email rantai persetujuan:", errEmail);
       }
+    }
+
+    // ----------------------------------------------------
+    // REAL-TIME IN-APP & HP PUSH NOTIFICATIONS SYSTEM
+    // ----------------------------------------------------
+    try {
+      const pemohonTargetList = await getTargetsForRole("PEMOHON", row.nama_pemohon);
+      const pemohonUsername = pemohonTargetList[0]?.username || row.nama_pemohon;
+
+      if (action === "REJECT") {
+        await notifyUser(
+          pemohonUsername,
+          `❌ [DITOLAK] ${row.nama_form}`,
+          `Pengajuan ${row.nama_form} (${row.id}) Anda ditolak oleh ${session.nama}. Catatan: ${note || "Tidak ada catatan."}`,
+          `#riwayat?id=${row.id}`
+        );
+      } else if (action === "APPROVE") {
+        if (statusFinal === "APPROVED FINAL") {
+          // 1. Notifikasi Full Approved ke Pemohon
+          await notifyUser(
+            pemohonUsername,
+            `🎉 [FULL APPROVED] ${row.nama_form}`,
+            `Selamat! Pengajuan ${row.nama_form} (${row.id}) Anda telah disetujui penuh oleh ${session.nama}. Klik untuk membuka formulir.`,
+            `#riwayat?id=${row.id}`
+          );
+
+          // 2. Notifikasi ke Atasan, Bawahan, dan Rekan Kerja terkait jika Cuti/Izin
+          if (isCuti) {
+            const masterKaryawan = await fsGetAll(COL.MASTER_KARYAWAN).catch(() => []);
+            const pemohonData = masterKaryawan.find(k => (k.nama_karyawan || k.nama) === row.nama_pemohon) || {};
+            const userList = await fsGetAll(COL.USERS).catch(() => []);
+            const userByNama = {};
+            userList.forEach(u => { if (u.nama) userByNama[u.nama] = u.username; });
+
+            const tglRange = row.detail?.tanggal_mulai ? `${row.detail.tanggal_mulai}${row.detail.tanggal_akhir ? ' s/d ' + row.detail.tanggal_akhir : ''}` : (row.tgl || "");
+
+            // Atasan Pemohon
+            if (pemohonData.atasan && userByNama[pemohonData.atasan]) {
+              await notifyUser(
+                userByNama[pemohonData.atasan],
+                `🌴 [Info Cuti Bawahan] ${row.nama_pemohon}`,
+                `Bawahan Anda (${row.nama_pemohon}) telah disetujui Cuti/Izin (${tglRange}).`,
+                `#dashboard`
+              );
+            }
+
+            // Bawahan Pemohon
+            const subordinates = masterKaryawan.filter(k => k.atasan === row.nama_pemohon);
+            for (const sub of subordinates) {
+              const subUser = userByNama[sub.nama_karyawan || sub.nama];
+              if (subUser) {
+                await notifyUser(
+                  subUser,
+                  `🌴 [Info Cuti Atasan] ${row.nama_pemohon}`,
+                  `Atasan Anda (${row.nama_pemohon}) akan Cuti/Izin (${tglRange}).`,
+                  `#dashboard`
+                );
+              }
+            }
+
+            // Rekan kerja se-divisi / cabang
+            const peers = masterKaryawan.filter(k => (k.nama_karyawan || k.nama) !== row.nama_pemohon && ((k.divisi && k.divisi === pemohonData.divisi) || (k.cabang && k.cabang === pemohonData.cabang)));
+            for (const peer of peers.slice(0, 10)) {
+              const peerUser = userByNama[peer.nama_karyawan || peer.nama];
+              if (peerUser) {
+                await notifyUser(
+                  peerUser,
+                  `🌴 [Info Cuti Rekan Kerja] ${row.nama_pemohon}`,
+                  `Rekan se-divisi/cabang (${row.nama_pemohon}) disetujui Cuti/Izin (${tglRange}).`,
+                  `#dashboard`
+                );
+              }
+            }
+          }
+
+          // 3. Notifikasi ke Finance & Accounting jika Dinas Luar Kota / Klaim
+          const isDinas = (row.form_id === "F-ISO-DINAS" || (row.nama_form || "").toLowerCase().includes("dinas") || (row.nama_form || "").toLowerCase().includes("operasional"));
+          const isKlaim = (row.form_id === "F-KLAIM-BENSIN" || (row.nama_form || "").toLowerCase().includes("klaim"));
+
+          if (isDinas || isKlaim) {
+            const finTargets = await getTargetsForRole("FINANCE", row.nama_pemohon);
+            const accTargets = await getTargetsForRole("ACCOUNTING", row.nama_pemohon);
+            const finAll = [...finTargets, ...accTargets].filter((v, i, a) => a.findIndex(v2 => v2.username === v.username) === i);
+
+            for (const fin of finAll) {
+              await notifyUser(
+                fin.username,
+                `✈️ [${isDinas ? 'Dinas Disetujui' : 'Klaim Disetujui'}] ${row.nama_pemohon}`,
+                `Pengajuan ${row.nama_form} oleh ${row.nama_pemohon} (${karyawanByNama[row.nama_pemohon]?.jabatan || 'Sales/SPV'}) telah disetujui final. Rincian uang jalan/klaim siap diproses.`,
+                `#riwayat?id=${row.id}`
+              );
+            }
+          }
+        } else {
+          // Status intermediate approval -> Notify Pemohon & Next Approver
+          const nextRole = row.approval_flow[idx + 1];
+          await notifyUser(
+            pemohonUsername,
+            `⏳ [Update Progress] ${row.nama_form}`,
+            `Pengajuan ${row.nama_form} Anda disetujui oleh ${session.nama} (${row.approval_flow[idx] || "Approver"}). Progress: Step ${idx+1}/${row.approval_flow.length}. Menunggu: ${nextRole || 'Approver Selanjutnya'}.`,
+            `#riwayat?id=${row.id}`
+          );
+
+          if (nextRole) {
+            const nextTargets = await getTargetsForRole(nextRole, row.nama_pemohon);
+            for (const target of nextTargets) {
+              await notifyUser(
+                target.username,
+                `📥 Menunggu Persetujuan Anda: ${row.nama_form}`,
+                `Pengajuan dari ${row.nama_pemohon} membutuhkan persetujuan Anda sebagai ${nextRole}.`,
+                `#approval?id=${row.id}`
+              );
+            }
+          }
+        }
+      }
+    } catch (errNotif) {
+      console.warn("Gagal mengirim push / in-app notification:", errNotif);
     }
     
   } catch (e) {

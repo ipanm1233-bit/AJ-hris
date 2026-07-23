@@ -1,8 +1,7 @@
 import { db, COL } from "../firebase-config.js";
 import {
   fsGetAll, fsUpdate, fmtDateTime, escapeHtml, openModal, closeModal, toast,
-  dynFieldWrapperHtml, wireDynFormLogic, collectDynFormDetail, sendEmailNotif, getTargetsForRole,
-  printFormClaimSales, downloadFormClaimSales
+  dynFieldWrapperHtml, wireDynFormLogic, collectDynFormDetail, sendEmailNotif, getTargetsForRole
 } from "../utils.js";
 import { badge, emptyState, skeletonRows } from "../components.js";
 
@@ -31,9 +30,6 @@ export async function mount(container, { session }) {
           else lpjBadgeHtml = badge(lpjOverdue ? "LPJ Terlambat" : "LPJ Belum Diisi", lpjOverdue ? "red" : "amber");
        }
        const showFillBtn = r.requires_lpj && r.lpj_status === "BELUM" && r.nama_pemohon === session.nama;
-       // Sales/karyawan bisa mencetak & mengunduh dokumen "FORM CLAIM SALES" miliknya sendiri.
-       const isKlaimBensin = r.form_id === "F-KLAIM-BENSIN";
-       const canPrintKlaim = isKlaimBensin && (isHrd || r.nama_pemohon === session.nama);
 
        return `
        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 mb-4 flex items-center justify-between hover:border-maroon-200 transition flex-wrap gap-2">
@@ -45,26 +41,11 @@ export async function mount(container, { session }) {
              <div class="flex items-center gap-2">${badge(r.status_final, tone)}${lpjBadgeHtml}</div>
              <div class="flex items-center gap-3">
                 ${showFillBtn ? `<button data-lpj="${r.id}" class="text-xs font-bold text-amber-700 hover:underline">Isi LPJ</button>` : ""}
-                ${canPrintKlaim ? `<button data-print-klaim="${r.id}" class="text-xs font-medium text-slate-600 hover:underline">🖨️ Cetak</button><button data-download-klaim="${r.id}" class="text-xs font-medium text-slate-600 hover:underline">⬇️ Unduh</button>` : ""}
                 <button data-id="${r.id}" class="text-xs font-medium text-maroon-700 hover:underline">Lihat Detail</button>
              </div>
           </div>
        </div>`;
     }).join("");
-
-    listEl.querySelectorAll("button[data-print-klaim]").forEach(btn => {
-       btn.onclick = () => {
-          const row = myReq.find(x => x.id === btn.dataset.printKlaim);
-          if (row) printFormClaimSales(row);
-       };
-    });
-
-    listEl.querySelectorAll("button[data-download-klaim]").forEach(btn => {
-       btn.onclick = () => {
-          const row = myReq.find(x => x.id === btn.dataset.downloadKlaim);
-          if (row) downloadFormClaimSales(row);
-       };
-    });
 
     listEl.querySelectorAll("button[data-id]").forEach(btn => {
        btn.onclick = () => {
@@ -94,6 +75,18 @@ export async function mount(container, { session }) {
           openLpjModal(row, session, () => mount(container, { session }));
        };
     });
+
+    // Auto-open modal jika URL Hash mengandung id tertentu (mis. dari Klik Notifikasi)
+    const idMatch = window.location.hash.match(/id=([a-zA-Z0-9_-]+)/);
+    if (idMatch && idMatch[1]) {
+       const targetReq = myReq.find(x => x.id === idMatch[1]);
+       if (targetReq) {
+          setTimeout(() => {
+             const btn = listEl.querySelector(`button[data-id="${targetReq.id}"]`);
+             if (btn) btn.click();
+          }, 200);
+       }
+    }
   } catch(e) { listEl.innerHTML = `<p class="text-red-500">Error: ${e.message}</p>`; }
 
   return { unmount() {} };

@@ -49,7 +49,7 @@ async function loadUsersTab(container) {
         { name: "username", label: "Username", type: "text", required: true },
         { name: "password", label: "Password Baru (kosongkan jika tidak diubah)", type: "text" },
         { name: "nama", label: "Nama Lengkap", type: "text", required: true },
-        { name: "role", label: "Role", type: "select", required: true, options: ["HRD", "GM", "FINANCE", "SPV", "MANAGER", "SALES", "SPV SALES", "KOORDINATOR SALES", "BRANCH MANAGER", "STAFF", "DRIVER", "WAREHOUSE", "SUPERADMIN"] },
+        { name: "role", label: "Role", type: "select", required: true, options: ["HRD", "GM", "FINANCE", "SPV", "MANAGER", "SALES", "STAFF", "DRIVER", "WAREHOUSE"] },
         { name: "posisi", label: "Posisi / Jabatan", type: "text" },
         { name: "email", label: "Email", type: "text" },
         { name: "nik", label: "NIK (tautkan ke Master Karyawan)", type: "text", full: true },

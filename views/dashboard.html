@@ -19,10 +19,16 @@
     </div>
   </div>
 
-  <!-- KARYAWAN CUTI / IZIN HARI INI (ditempatkan tepat di bawah kartu identitas karyawan) -->
+  <!-- CUTI HARI INI (DI ATAS, TEPAT DI BAWAH CARD IDENTITAS KARYAWAN) -->
   <div id="dash-widget-cuti-hari-ini" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-    <h3 class="font-semibold text-slate-800 mb-4">Karyawan Cuti / Izin Hari Ini</h3>
-    <div id="dash-cuti-hari-ini" class="space-y-2"></div>
+    <div class="flex items-center justify-between mb-3 border-b border-slate-50 pb-2">
+      <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+        <span class="p-1.5 bg-blue-50 text-blue-600 rounded-lg">🌴</span>
+        <span>Karyawan Cuti / Izin Hari Ini</span>
+      </h3>
+      <span class="text-xs text-slate-400">Real-time status</span>
+    </div>
+    <div id="dash-cuti-hari-ini" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2"></div>
   </div>
 
   <!-- PERSONALISASI: banner ulang tahun / hari jadi / sedang cuti (diisi JS, kosong kalau tidak ada) -->
@@ -34,7 +40,7 @@
   </div>
 
   <!-- PERFORMANCE & ATTENDANCE ANALYTICS SECTION -->
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
     <!-- ATTENDANCE ANALYTICS WIDGET -->
     <div id="dash-widget-attendance" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
       <div class="flex items-center justify-between mb-4 border-b border-slate-50 pb-2">
@@ -51,19 +57,34 @@
       </div>
     </div>
 
-    <!-- EMPLOYEE PERFORMANCE WIDGET -->
-    <div id="dash-widget-performance" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-      <div class="flex items-center justify-between mb-4 border-b border-slate-50 pb-2">
-        <h3 class="font-semibold text-slate-800 flex items-center gap-2">
-          <span class="p-1.5 bg-amber-50 text-amber-600 rounded-lg">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l2.5 2.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-          </span>
-          <span id="dash-performance-title">Evaluasi Kinerja</span>
-        </h3>
-        <a href="#performance-review" class="text-xs text-maroon-700 font-semibold hover:underline">Lihat Rincian</a>
+    <!-- EMPLOYEE PERFORMANCE & TRAINING HISTORY WIDGET -->
+    <div id="dash-widget-performance" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex flex-col justify-between">
+      <div>
+        <div class="flex items-center justify-between mb-4 border-b border-slate-50 pb-2">
+          <h3 class="font-semibold text-slate-800 flex items-center gap-2">
+            <span class="p-1.5 bg-amber-50 text-amber-600 rounded-lg">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l2.5 2.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </span>
+            <span id="dash-performance-title">Evaluasi Kinerja & Perkembangan</span>
+          </h3>
+          <a href="#performance-review" class="text-xs text-maroon-700 font-semibold hover:underline">Review Kinerja</a>
+        </div>
+        <div id="dash-performance-body" class="space-y-4">
+          <!-- populated by JS -->
+        </div>
       </div>
-      <div id="dash-performance-body" class="space-y-4">
-        <!-- populated by JS -->
+
+      <!-- TRAININGS ATTENDED SECTION -->
+      <div class="mt-5 pt-4 border-t border-slate-100">
+        <div class="flex items-center justify-between mb-3">
+          <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+            <span>🎓 Pelatihan & Training Dimiliki</span>
+          </h4>
+          <a href="#training" class="text-[11px] text-maroon-700 font-semibold hover:underline">Lihat Kelas</a>
+        </div>
+        <div id="dash-training-history-body" class="space-y-2 text-xs">
+          <!-- populated by JS -->
+        </div>
       </div>
     </div>
   </div>
@@ -81,18 +102,18 @@
         <div id="dash-kpi-tasks" class="space-y-2"></div>
       </div>
 
-      <!-- TRAINING & SERTIFIKASI SAYA -->
-      <div id="dash-widget-training" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+      <!-- INVENTARIS & ASET TANGGUNG JAWAB SAYA -->
+      <div id="dash-widget-assets" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
         <div class="flex items-center justify-between mb-4 border-b border-slate-50 pb-2">
-          <h3 class="font-semibold text-slate-800 flex items-center gap-2">
-            <span class="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"/></svg>
-            </span>
-            Training & Sertifikasi Saya
+          <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+            <span class="p-1.5 bg-red-50 text-maroon-700 rounded-lg">📦</span>
+            <span>Inventaris & Aset Tanggung Jawab Saya</span>
           </h3>
-          <a href="#training" class="text-xs text-maroon-700 font-semibold hover:underline">Lihat semua</a>
+          <a href="#inventory" class="text-xs text-maroon-700 font-semibold hover:underline">Lihat Semua Aset</a>
         </div>
-        <div id="dash-training-list" class="space-y-2"></div>
+        <div id="dash-assigned-assets-body" class="space-y-3">
+          <!-- populated by JS -->
+        </div>
       </div>
 
     </div>

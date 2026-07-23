@@ -256,7 +256,7 @@ export async function mount(container) {
     panels.signdoc.querySelector("#btn-add-signdoc").onclick = async () => {
        const listKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
        const activeKaryawan = listKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF") === "AKTIF")
-                                          .sort((a,b) => a.nama_karyawan.localeCompare(b.nama_karyawan));
+                                          .sort((a,b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || ""));
 
        openModal({
           title: "Buat Pengajuan Tanda Tangan Baru",

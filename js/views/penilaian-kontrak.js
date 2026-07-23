@@ -2,7 +2,7 @@ import { db, COL, collection, query, where, getDocs, limit } from "../firebase-c
 import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, createLoginToken, notifyUser } from "../utils.js";
 import { renderCrudModule, badge, emptyState, skeletonRows } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.js";
-import { COMPANY_NAME, logoImgTag } from "../branding.js";
+import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
 
 export async function mount(container, { session }) {
   const role = (session.role || "").toUpperCase();
@@ -530,35 +530,43 @@ export async function mount(container, { session }) {
     let tbody = '';
     (row.detail_json || []).forEach(item => {
         let weighted = (item.nilai_diberikan * (item.bobot / 100)).toFixed(2);
-        tbody += `<tr><td style="border:1px solid #cbd5e1; padding:8px;">${escapeHtml(item.aspek)}</td><td style="border:1px solid #cbd5e1; padding:8px;">${escapeHtml(item.indikator)}</td><td style="border:1px solid #cbd5e1; padding:8px; text-align: center;">${item.bobot}%</td><td style="border:1px solid #cbd5e1; padding:8px; text-align: center;">${item.nilai_diberikan}</td><td style="border:1px solid #cbd5e1; padding:8px; text-align: center;"><strong>${weighted}</strong></td></tr>`;
+        tbody += `<tr>
+          <td style="border:1px solid #000; padding:6px 10px;">${escapeHtml(item.aspek)}</td>
+          <td style="border:1px solid #000; padding:6px 10px;">${escapeHtml(item.indikator)}</td>
+          <td style="border:1px solid #000; padding:6px 10px; text-align: center;">${item.bobot}%</td>
+          <td style="border:1px solid #000; padding:6px 10px; text-align: center;">${item.nilai_diberikan}</td>
+          <td style="border:1px solid #000; padding:6px 10px; text-align: center;"><strong>${weighted}</strong></td>
+        </tr>`;
     });
 
     const html = `
-      <div style="font-family: Arial, sans-serif; padding: 20px;">
-        <div class="kpi-head" style="display:flex; align-items:center; gap:14px; margin-bottom:15px; border-bottom: 2px solid #a70000; padding-bottom: 10px;">
-          ${logoImgTag(48)}
-          <div>
-            <h2 style="margin:0; font-size: 18px; color: #a70000; text-transform: uppercase;">Laporan KPI Karyawan</h2>
-            <p style="margin:2px 0 0;font-size:12px;color:#555;">${COMPANY_NAME}</p>
-          </div>
+      <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff;">
+        <div style="page-break-inside:avoid; margin-bottom:15px;">
+          ${isoDocHeaderTable({ judul: "LAPORAN EVALUASI & PENILAIAN KPI KARYAWAN", noDok: "HR-KPI-01", terbitRevisi: "1/0", hal: "1 dari 1" })}
         </div>
-        <div style="font-size: 13px; margin-bottom: 15px;">
-          <p style="margin: 4px 0;"><strong>Nama:</strong> ${escapeHtml(row.nama_dinilai)}</p>
-          <p style="margin: 4px 0;"><strong>Penilai:</strong> ${escapeHtml(row.penilai)}</p>
-        </div>
-        <table style="width:100%; border-collapse:collapse; margin-top:10px; font-size: 12px;">
+        <table style="width:100%; border-collapse:collapse; margin-bottom:15px; border:1px solid #000;">
+          <tr><td width="35%" style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Nama Karyawan</td><td style="border:1px solid #000; padding:6px 10px;"><strong>${escapeHtml(row.nama_dinilai)}</strong></td></tr>
+          <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Penilai / Atasan</td><td style="border:1px solid #000; padding:6px 10px;">${escapeHtml(row.penilai || "-")}</td></tr>
+          <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Skor KPI Akhir</td><td style="border:1px solid #000; padding:6px 10px;"><strong>${row.total_skor || row.skor_akhir || "-"}</strong></td></tr>
+        </table>
+        <table style="width:100%; border-collapse:collapse; margin-top:10px; border:1px solid #000;">
           <thead>
-            <tr style="background:#f8fafc; border-bottom: 2px solid #cbd5e1;">
-              <th style="border:1px solid #cbd5e1; padding:8px; text-align: left;">Aspek</th>
-              <th style="border:1px solid #cbd5e1; padding:8px; text-align: left;">Indikator</th>
-              <th style="border:1px solid #cbd5e1; padding:8px; text-align: center;">Bobot</th>
-              <th style="border:1px solid #cbd5e1; padding:8px; text-align: center;">Nilai</th>
-              <th style="border:1px solid #cbd5e1; padding:8px; text-align: center;">Skor Akhir</th>
+            <tr style="background:#f1f5f9;">
+              <th style="border:1px solid #000; padding:6px 10px; text-align: left;">Aspek</th>
+              <th style="border:1px solid #000; padding:6px 10px; text-align: left;">Indikator</th>
+              <th style="border:1px solid #000; padding:6px 10px; text-align: center;">Bobot</th>
+              <th style="border:1px solid #000; padding:6px 10px; text-align: center;">Nilai</th>
+              <th style="border:1px solid #000; padding:6px 10px; text-align: center;">Skor Akhir</th>
             </tr>
           </thead>
           <tbody>
             ${tbody}
           </tbody>
+        </table>
+        <table style="width:100%; text-align:center; margin-top:35px; page-break-inside:avoid; font-size:11px;">
+          <tr><td width="50%">Karyawan Dinilai,</td><td width="50%">Penilai / HRD,</td></tr>
+          <tr><td height="60"></td><td></td></tr>
+          <tr><td>( <strong>${escapeHtml(row.nama_dinilai)}</strong> )</td><td>( <strong>${escapeHtml(row.penilai || "Atasan Direct")}</strong> )</td></tr>
         </table>
       </div>
     `;

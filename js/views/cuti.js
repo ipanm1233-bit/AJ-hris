@@ -2,7 +2,7 @@ import { db, COL, collection, getDocs, doc, setDoc, getDoc } from "../firebase-c
 import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort, confirmDialog, sendEmailNotif, notifyUser, getTargetsForRole } from "../utils.js";
 import { avatar, emptyState, skeletonRows, badge } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.js";
-import { COMPANY_NAME, logoImgTag } from "../branding.js";
+import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
 // PERUBAHAN: dokumen Form Cuti sekarang digenerate dari template Google Docs resmi
 // lewat Apps Script, bukan dirakit dari HTML lagi (lihat generateCutiDocument di bawah).
 import { generateCutiDocViaGAS } from "../gas-integration.js";
@@ -570,83 +570,88 @@ export async function mount(container, { session }) {
     const todayStr = new Date().toLocaleString('id-ID', { dateStyle: 'long' });
 
     let html = `
-    <div style="font-family: 'Times New Roman', Times, serif; font-size: 14px; padding: 20px; line-height: 1.4; color: #000; background: #fff; max-width: 800px; margin: 0 auto;">
-      <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px;">
-         <div style="font-size: 20px; font-weight: bold;">CV. ANDELA JAYA</div>
-         <div style="font-size: 16px; font-weight: bold; text-align: right; text-decoration: underline;">${data.isHalfDay ? "FORMULIR PENGAJUAN CUTI SETENGAH HARI" : "FORMULIR PENGAJUAN CUTI"}</div>
+    <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff;">
+      <div style="page-break-inside:avoid; margin-bottom:15px;">
+        ${isoDocHeaderTable({
+          judul: data.isHalfDay ? "FORMULIR PENGAJUAN CUTI SETENGAH HARI" : "FORMULIR PENGAJUAN CUTI KARYAWAN",
+          noDok: "HR4",
+          terbitRevisi: "1/1",
+          tglTerbit: "1 September 2025",
+          hal: "1 dari 1"
+        })}
       </div>
 
-      <table style="width: 100%; border-collapse: collapse; margin-top: 15px; border: 1px solid #000;">
+      <table style="width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #000;">
         <tr>
-          <td style="width: 40%; padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">Nama Karyawan</td>
-          <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${escapeHtml(k.nama_karyawan)}</td>
+          <td style="width: 35%; padding: 6px 10px; border: 1px solid #000; vertical-align: top; font-weight: bold; background: #f8fafc;">Nama Karyawan</td>
+          <td style="padding: 6px 10px; border: 1px solid #000; vertical-align: top;">${escapeHtml(k.nama_karyawan)}</td>
         </tr>
         <tr>
-          <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">Jabatan / Divisi</td>
-          <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${escapeHtml(k.jabatan || "-")} / ${escapeHtml(k.cabang || "-")}</td>
+          <td style="padding: 6px 10px; border: 1px solid #000; vertical-align: top; font-weight: bold; background: #f8fafc;">Jabatan / Divisi</td>
+          <td style="padding: 6px 10px; border: 1px solid #000; vertical-align: top;">${escapeHtml(k.jabatan || "-")} / ${escapeHtml(k.cabang || "-")}</td>
         </tr>
       </table>
 
-      <table style="width: 100%; border-collapse: collapse; margin-top: 15px; border: 1px solid #000;">
+      <table style="width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #000;">
         ${data.isHalfDay ? `
           <tr>
-            <td style="width: 40%; padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">Tanggal Cuti</td>
-            <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${fmtDateShort(data.tanggal)}</td>
+            <td style="width: 35%; padding: 6px 10px; border: 1px solid #000; vertical-align: top; font-weight: bold; background: #f8fafc;">Tanggal Cuti</td>
+            <td style="padding: 6px 10px; border: 1px solid #000; vertical-align: top;">${fmtDateShort(data.tanggal)}</td>
           </tr>
           <tr>
-            <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">Waktu Cuti</td>
-            <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${data.jam_keluar || "-"} s/d ${data.jam_kembali || "-"}</td>
+            <td style="padding: 6px 10px; border: 1px solid #000; vertical-align: top; font-weight: bold; background: #f8fafc;">Waktu Cuti</td>
+            <td style="padding: 6px 10px; border: 1px solid #000; vertical-align: top;">${data.jam_keluar || "-"} s/d ${data.jam_kembali || "-"}</td>
           </tr>
         ` : `
           <tr>
-            <td style="width: 40%; padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">Tanggal Mulai Cuti</td>
-            <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${fmtDateShort(data.tanggal)}</td>
+            <td style="width: 35%; padding: 6px 10px; border: 1px solid #000; vertical-align: top; font-weight: bold; background: #f8fafc;">Tanggal Mulai Cuti</td>
+            <td style="padding: 6px 10px; border: 1px solid #000; vertical-align: top;">${fmtDateShort(data.tanggal)}</td>
           </tr>
           <tr>
-            <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">Tanggal Selesai Cuti</td>
-            <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${fmtDateShort(data.tgl_akhir)}</td>
+            <td style="padding: 6px 10px; border: 1px solid #000; vertical-align: top; font-weight: bold; background: #f8fafc;">Tanggal Selesai Cuti</td>
+            <td style="padding: 6px 10px; border: 1px solid #000; vertical-align: top;">${fmtDateShort(data.tgl_akhir)}</td>
           </tr>
           <tr>
-            <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">Total Hari Cuti</td>
-            <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${data.count} Hari</td>
+            <td style="padding: 6px 10px; border: 1px solid #000; vertical-align: top; font-weight: bold; background: #f8fafc;">Total Hari Cuti</td>
+            <td style="padding: 6px 10px; border: 1px solid #000; vertical-align: top;">${data.count} Hari</td>
           </tr>
         `}
         <tr>
-          <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">Alasan Cuti</td>
-          <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${escapeHtml(data.keterangan_cuti)}</td>
+          <td style="padding: 6px 10px; border: 1px solid #000; vertical-align: top; font-weight: bold; background: #f8fafc;">Alasan Cuti</td>
+          <td style="padding: 6px 10px; border: 1px solid #000; vertical-align: top;">${escapeHtml(data.keterangan_cuti)}</td>
         </tr>
         <tr>
-          <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">Alamat / No. HP selama cuti</td>
-          <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${escapeHtml(data.kontak)}</td>
+          <td style="padding: 6px 10px; border: 1px solid #000; vertical-align: top; font-weight: bold; background: #f8fafc;">Alamat / No. HP selama cuti</td>
+          <td style="padding: 6px 10px; border: 1px solid #000; vertical-align: top;">${escapeHtml(data.kontak)}</td>
         </tr>
       </table>
 
-      <table style="width: 100%; border-collapse: collapse; margin-top: 15px; border: 1px solid #000;">
+      <table style="width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #000;">
         <tr>
-          <td colspan="2" style="font-weight: bold; background-color: #f0f0f0; padding: 8px 12px; border: 1px solid #000; vertical-align: top;">Sisa Jatah Cuti Saat Pengajuan:</td>
+          <td colspan="2" style="font-weight: bold; background-color: #f1f5f9; padding: 6px 10px; border: 1px solid #000; vertical-align: top;">Sisa Jatah Cuti Saat Pengajuan:</td>
         </tr>
         <tr>
-          <td style="width: 40%; padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">1. Cuti Tahunan</td>
-          <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${sisa.Tahunan} Hari</td>
+          <td style="width: 35%; padding: 6px 10px; border: 1px solid #000; vertical-align: top; font-weight: bold; background: #f8fafc;">1. Cuti Tahunan</td>
+          <td style="padding: 6px 10px; border: 1px solid #000; vertical-align: top;">${sisa.Tahunan} Hari</td>
         </tr>
         <tr>
-          <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top; font-weight: bold;">2. Cuti Khusus</td>
-          <td style="padding: 8px 12px; border: 1px solid #000; vertical-align: top;">: ${sisa.Khusus} Hari</td>
+          <td style="padding: 6px 10px; border: 1px solid #000; vertical-align: top; font-weight: bold; background: #f8fafc;">2. Cuti Khusus</td>
+          <td style="padding: 6px 10px; border: 1px solid #000; vertical-align: top;">${sisa.Khusus} Hari</td>
         </tr>
       </table>
 
-      <table style="width: 100%; margin-top: 40px; text-align: center;">
+      <table style="width: 100%; margin-top: 30px; text-align: center; page-break-inside: avoid; font-size: 11px;">
         <tr>
-          <td style="padding: 0; vertical-align: top; width: 33.33%;">Pemohon,<br/><br/><br/><div style="height: 50px;"></div>( ${escapeHtml(k.nama_karyawan)} )</td>
-          <td style="padding: 0; vertical-align: top; width: 33.33%;">Menyetujui, Atasan<br/><br/><br/><div style="height: 50px;"></div>( ..................................... )</td>
-          <td style="padding: 0; vertical-align: top; width: 33.33%;">Mengetahui, HRD<br/><br/><br/><div style="height: 50px;"></div>( ..................................... )</td>
+          <td style="padding: 0; vertical-align: top; width: 33.33%;">Pemohon,<br/><br/><br/><br/>( <strong>${escapeHtml(k.nama_karyawan)}</strong> )</td>
+          <td style="padding: 0; vertical-align: top; width: 33.33%;">Menyetujui (Atasan),<br/><br/><br/><br/>( ..................................... )</td>
+          <td style="padding: 0; vertical-align: top; width: 33.33%;">Mengetahui (HRD),<br/><br/><br/><br/>( ..................................... )</td>
         </tr>
       </table>
-      <div style="text-align: right; margin-top: 10px; font-size: 12px;">Tanggal Pengajuan: ${todayStr}</div>
+      <div style="text-align: right; margin-top: 10px; font-size: 10px; color: #475569;">Tanggal Pengajuan: ${todayStr}</div>
 
-      <div style="border: 1px solid #000; padding: 10px; margin-top: 20px; font-size: 12px;">
+      <div style="border: 1px solid #000; padding: 8px 10px; margin-top: 15px; font-size: 10px; line-height: 1.4; page-break-inside: avoid;">
         <strong>Perhatian:</strong>
-        <ol style="margin-top: 5px; padding-left: 20px; margin-bottom: 0;">
+        <ol style="margin-top: 4px; padding-left: 18px; margin-bottom: 0;">
            <li>Surat permohonan ini harus diajukan minimal 1 (satu) minggu sebelum tanggal cuti.</li>
            <li>Karyawan tidak diperkenankan memulai cuti sebelum formulir ini ditandatangani dan disetujui oleh atasan langsung dan HRD.</li>
            <li>Jika sakit, wajib melampirkan Surat Keterangan Dokter.</li>

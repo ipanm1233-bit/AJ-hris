@@ -472,11 +472,12 @@ export async function openNotificationCenter(session) {
   try {
     const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
 
-    const [semuaPengajuan, tugasKpi, kontrak, broadcastRows] = await Promise.all([
+    const [semuaPengajuan, tugasKpi, kontrak, broadcastRows, personalNotifs] = await Promise.all([
       fsGetAll(COL.DATA_PENGAJUAN),
       fsGetAll(COL.TUGAS_KPI_360).catch(() => []),
       isHrd ? fsGetAll(COL.MASTER_KONTRAK) : Promise.resolve([]),
-      fsGetAll(COL.BROADCAST).catch(() => [])
+      fsGetAll(COL.BROADCAST).catch(() => []),
+      fsGetAll(COL.NOTIFICATIONS).then(rows => rows.filter(n => n.username_target === session.username).sort((a,b) => new Date(b.tanggal || 0) - new Date(a.tanggal || 0))).catch(() => [])
     ]);
 
     const myApproval = semuaPengajuan.filter(r => {
@@ -513,6 +514,29 @@ export async function openNotificationCenter(session) {
     
     // Helper untuk menutup modal saat menu diklik
     const closeEvt = `onclick="document.getElementById('app-modal-close')?.click()"`;
+
+    // 0. NOTIFIKASI PRIBADI / UPDATE PENGAJUAN SAYA
+    if (personalNotifs.length > 0) {
+      const unreadCount = personalNotifs.filter(n => !n.dibaca).length;
+      htmlContent += `<div class="bg-indigo-50/80 border border-indigo-200 p-3.5 rounded-xl text-left">
+         <div class="flex items-center justify-between mb-2">
+            <h4 class="font-bold text-indigo-900 text-xs uppercase flex items-center gap-1.5">
+               <span>📱</span> Update Status Pengajuan & Notifikasi HP ${unreadCount > 0 ? `<span class="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">${unreadCount} baru</span>` : ''}
+            </h4>
+         </div>
+         <div class="space-y-2 max-h-48 overflow-y-auto pr-1">
+            ${personalNotifs.slice(0, 10).map(n => `
+               <a href="${n.link || '#riwayat'}" data-notif-id="${n.id}" ${closeEvt} class="block p-2.5 rounded-lg border ${n.dibaca ? 'bg-white border-slate-100 text-slate-600' : 'bg-white border-indigo-200 shadow-sm text-indigo-950 font-medium'} hover:border-indigo-400 transition text-xs">
+                  <div class="flex items-center justify-between gap-1 mb-0.5">
+                     <span class="font-bold ${n.dibaca ? 'text-slate-700' : 'text-indigo-900'}">${escapeHtml(n.judul || 'Notifikasi')}</span>
+                     <span class="text-[10px] text-slate-400 shrink-0">${n.tanggal ? new Date(n.tanggal).toLocaleDateString('id-ID', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                  </div>
+                  <p class="text-[11px] leading-relaxed text-slate-600">${escapeHtml(n.pesan || '')}</p>
+               </a>
+            `).join("")}
+         </div>
+      </div>`;
+    }
 
     // 1. PENGUMUMAN -> Pop-up interaktif pengumuman aktif
     if (pengumumanAktif.length > 0) {

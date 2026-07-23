@@ -3,7 +3,7 @@ import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toast, fsUpda
 import { avatar, badge, icon, emptyState } from "../components.js";
 import { setSession } from "../auth.js";
 
-export async function mount(container, { session }) {
+export async function mount(container, { session, params }) {
   const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
 
   // Load Karyawan Details
@@ -61,33 +61,58 @@ export async function mount(container, { session }) {
     }
   }
 
+  // Load Personal Details Grid
+  const personalGrid = container.querySelector("#profile-personal-grid");
+  if (personalGrid) {
+    const detailRow = (label, val, fullWidth = false) => `
+      <div class="p-3 bg-slate-50/50 rounded-2xl border border-slate-100/60 ${fullWidth ? 'md:col-span-2' : ''}">
+        <p class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">${label}</p>
+        <p class="text-xs text-slate-800 font-bold mt-1 leading-relaxed">${val || "-"}</p>
+      </div>`;
+
+    personalGrid.innerHTML = `
+      ${detailRow("Nama Lengkap", k?.nama_karyawan || session.nama)}
+      ${detailRow("NIK Karyawan", k?.nik_karyawan || session.nik)}
+      ${detailRow("No. KTP / NIK KTP", k?.nik_ktp || k?.nik || "-")}
+      ${detailRow("NPWP", k?.npwp || "-")}
+      ${detailRow("Tempat, Tanggal Lahir", (k?.tempat_lahir || "-") + (k?.tanggal_lahir ? `, ${fmtDate(k.tanggal_lahir)}` : ""))}
+      ${detailRow("Jenis Kelamin", k?.jenis_kelamin || "-")}
+      ${detailRow("Agama", k?.agama || "-")}
+      ${detailRow("Pendidikan Terakhir", k?.pendidikan || "-")}
+      ${detailRow("Status Pernikahan & Tanggungan", (k?.status_pernikahan || "Belum Menikah") + (k?.tanggungan ? ` (${k.tanggungan} Tanggungan)` : ""))}
+      ${detailRow("Ukuran Seragam / Baju", k?.ukuran_baju || "-")}
+      ${detailRow("Email Aktif", k?.email || session.email || "-")}
+      ${detailRow("No. HP / Whatsapp", k?.no_hp_aktif || "-")}
+      ${detailRow("Kontak Darurat", k?.kontak_darurat_nama ? `${k.kontak_darurat_nama} (${k.kontak_darurat_hubungan || 'Keluarga'}) - ${k.kontak_darurat_hp || '-'}` : "-")}
+      ${detailRow("Alamat Domisili", k?.alamat || "-", true)}
+      ${detailRow("Alamat Sesuai KTP", k?.alamat_ktp || k?.alamat || "-", true)}
+    `;
+  }
+
   // Load Employment Details Grid
   const detailsGrid = container.querySelector("#profile-details-grid");
   if (detailsGrid) {
-    const detailRow = (label, val) => `
-      <div class="p-3 bg-slate-50/50 rounded-2xl border border-slate-100/40">
+    const detailRow = (label, val, fullWidth = false) => `
+      <div class="p-3 bg-slate-50/50 rounded-2xl border border-slate-100/60 ${fullWidth ? 'md:col-span-2' : ''}">
         <p class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">${label}</p>
-        <p class="text-xs text-slate-700 font-bold mt-1 truncate">${val || "-"}</p>
+        <p class="text-xs text-slate-800 font-bold mt-1 leading-relaxed">${val || "-"}</p>
       </div>`;
     
     detailsGrid.innerHTML = `
-      ${detailRow("Username Sesi", session.username)}
-      ${detailRow("Sistem Otoritas", session.role)}
-      ${detailRow("ID Karyawan (NIK)", k?.nik_karyawan || session.nik)}
+      ${detailRow("Username Sesi Portal", session.username)}
+      ${detailRow("Role & Hak Akses", session.role)}
       ${detailRow("Jabatan Resmi", k?.jabatan || session.posisi)}
-      ${detailRow("Divisi / Dept", k?.divisi)}
-      ${detailRow("Lokasi Cabang", k?.cabang || session.cabang)}
-      ${detailRow("Status Kepegawaian", k?.status_karyawan)}
-      ${detailRow("Status Akun", k?.aktif_tdk_aktif)}
-      ${detailRow("Pendidikan Terakhir", k?.pendidikan)}
-      ${detailRow("Agama", k?.agama)}
-      ${detailRow("Nomor HP", k?.no_hp_aktif || "-")}
+      ${detailRow("Divisi / Departemen", k?.divisi || "-")}
+      ${detailRow("Lokasi Penempatan / Cabang", k?.cabang || session.cabang)}
+      ${detailRow("Status Kepegawaian", k?.status_karyawan || "-")}
+      ${detailRow("Status Keaktifan", k?.aktif_tdk_aktif || "AKTIF")}
       ${detailRow("Atasan Langsung", k?.atasan || "-")}
-      ${detailRow("Tanggal Lahir", k?.tanggal_lahir ? fmtDate(k.tanggal_lahir) : "-")}
-      ${detailRow("Tanggal Join", k?.tanggal_join ? fmtDate(k.tanggal_join) : "-")}
-      <div class="col-span-2">
-        ${detailRow("Alamat Terdaftar", k?.alamat)}
-      </div>
+      ${detailRow("Tanggal Join / Mulai Kerja", k?.tanggal_join ? fmtDate(k.tanggal_join) : "-")}
+      ${detailRow("Masa Kerja", k?.tanggal_join ? calcMasaKerja(k.tanggal_join) : "-")}
+      ${detailRow("BPJS Kesehatan", k?.bpjs_kes || "-")}
+      ${detailRow("BPJS Ketenagakerjaan", k?.bpjs_tk || "-")}
+      ${detailRow("Bank Pembayaran Gaji", k?.nama_bank || "Bank BCA")}
+      ${detailRow("Nomor Rekening", k?.no_rekening || "-")}
     `;
   }
 
@@ -106,13 +131,14 @@ export async function mount(container, { session }) {
       // Hide all panels
       container.querySelectorAll(".profile-tab-panel").forEach(p => p.classList.add("hidden"));
       // Show target panel
-      container.querySelector(`#${targetId}`).classList.remove("hidden");
+      const targetPanel = container.querySelector(`#${targetId}`);
+      if (targetPanel) targetPanel.classList.remove("hidden");
 
       // Update button styles
       tabButtons.forEach(b => {
-        b.className = "profile-tab-btn flex-1 py-3 text-sm font-semibold text-slate-500 hover:text-slate-700 rounded-xl transition";
+        b.className = "profile-tab-btn flex-1 py-3 px-3 text-xs sm:text-sm font-bold text-slate-500 hover:text-slate-700 rounded-xl transition shrink-0";
       });
-      btn.className = "profile-tab-btn flex-1 py-3 text-sm font-semibold text-maroon-700 bg-red-50/50 rounded-xl transition";
+      btn.className = "profile-tab-btn flex-1 py-3 px-3 text-xs sm:text-sm font-bold text-maroon-700 bg-red-50/50 rounded-xl transition shrink-0";
     };
   });
 
@@ -122,10 +148,24 @@ export async function mount(container, { session }) {
     btnEditProfile.onclick = () => openEditProfileModal(session, k, container);
   }
 
+  const btnEditPribadiTab = container.querySelector("#btn-edit-pribadi-tab");
+  if (btnEditPribadiTab) {
+    btnEditPribadiTab.onclick = () => openEditProfileModal(session, k, container);
+  }
+
   // Action: Sign Document
   const btnSignDoc = container.querySelector("#btn-sign-document");
   if (btnSignDoc) {
     btnSignDoc.onclick = () => openSignDocModal(session);
+  }
+
+  // AUTO NAVIGATE FROM NOTIFICATION (doc_id / docId)
+  const targetDocId = params?.get("doc_id") || params?.get("docId") || params?.get("doc");
+  const reqTab = params?.get("tab");
+  if (targetDocId || reqTab === "documents") {
+    const docTabBtn = container.querySelector("#tab-btn-documents");
+    if (docTabBtn) docTabBtn.click();
+    openSignDocModal(session, targetDocId);
   }
 
   // Action: Edit Avatar
@@ -397,28 +437,148 @@ async function loadRecentActivity(container, session) {
   }
 }
 
+function calcMasaKerja(dateStr) {
+  if (!dateStr) return "-";
+  const start = new Date(dateStr);
+  if (isNaN(start.getTime())) return "-";
+  const now = new Date();
+  let years = now.getFullYear() - start.getFullYear();
+  let months = now.getMonth() - start.getMonth();
+  if (months < 0) {
+    years--;
+    months += 12;
+  }
+  if (years > 0) return `${years} Tahun ${months} Bulan`;
+  return `${months} Bulan`;
+}
+
 function openEditProfileModal(session, k, container) {
   openModal({
-    title: "Edit Data Profil",
-    size: "md",
+    title: "Update Data Karyawan",
+    size: "lg",
     bodyHtml: `
-      <form id="form-edit-profil-mobile" class="space-y-4">
-        <div>
-          <label class="block text-xs font-medium text-slate-500 mb-1">Email Aktif</label>
-          <input type="email" id="edit-p-email" value="${escapeHtml(k?.email || session.email || '')}" required class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 outline-none focus:border-maroon-400">
+      <form id="form-edit-profil-mobile" class="space-y-4 max-h-[70vh] overflow-y-auto pr-1 text-left">
+        <div class="bg-red-50 p-3 rounded-2xl border border-red-100/50 text-[11px] text-maroon-800 font-medium leading-relaxed">
+          💡 Anda dapat memperbarui informasi kontak, alamat, rekening, dan biodata terkini. Data ini akan langsung disinkronkan ke database HRD.
         </div>
-        <div>
-          <label class="block text-xs font-medium text-slate-500 mb-1">Nomor HP Aktif</label>
-          <input type="text" id="edit-p-hp" value="${escapeHtml(k?.no_hp_aktif || '')}" required class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 outline-none focus:border-maroon-400">
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">Email Aktif</label>
+            <input type="email" id="edit-p-email" value="${escapeHtml(k?.email || session.email || '')}" required class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">Nomor HP / WA Aktif</label>
+            <input type="text" id="edit-p-hp" value="${escapeHtml(k?.no_hp_aktif || '')}" required class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400">
+          </div>
         </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">No. KTP / NIK KTP</label>
+            <input type="text" id="edit-p-ktp" value="${escapeHtml(k?.nik_ktp || k?.nik || '')}" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400 font-mono">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">NPWP</label>
+            <input type="text" id="edit-p-npwp" value="${escapeHtml(k?.npwp || '')}" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400 font-mono">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Ukuran Baju / Seragam</label>
+            <select id="edit-p-ukuran-baju" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400 bg-white">
+              <option value="S" ${k?.ukuran_baju === 'S' ? 'selected' : ''}>S</option>
+              <option value="M" ${k?.ukuran_baju === 'M' || !k?.ukuran_baju ? 'selected' : ''}>M</option>
+              <option value="L" ${k?.ukuran_baju === 'L' ? 'selected' : ''}>L</option>
+              <option value="XL" ${k?.ukuran_baju === 'XL' ? 'selected' : ''}>XL</option>
+              <option value="XXL" ${k?.ukuran_baju === 'XXL' ? 'selected' : ''}>XXL</option>
+              <option value="3XL" ${k?.ukuran_baju === '3XL' ? 'selected' : ''}>3XL</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Tempat Lahir</label>
+            <input type="text" id="edit-p-tempat-lahir" value="${escapeHtml(k?.tempat_lahir || '')}" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Tanggal Lahir</label>
+            <input type="date" id="edit-p-tgl-lahir" value="${k?.tanggal_lahir || ''}" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Agama</label>
+            <select id="edit-p-agama" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400 bg-white">
+              <option value="Islam" ${k?.agama === 'Islam' ? 'selected' : ''}>Islam</option>
+              <option value="Kristen" ${k?.agama === 'Kristen' ? 'selected' : ''}>Kristen</option>
+              <option value="Katolik" ${k?.agama === 'Katolik' ? 'selected' : ''}>Katolik</option>
+              <option value="Hindu" ${k?.agama === 'Hindu' ? 'selected' : ''}>Hindu</option>
+              <option value="Buddha" ${k?.agama === 'Buddha' ? 'selected' : ''}>Buddha</option>
+              <option value="Konghucu" ${k?.agama === 'Konghucu' ? 'selected' : ''}>Konghucu</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Status Pernikahan</label>
+            <select id="edit-p-status-nikah" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400 bg-white">
+              <option value="Belum Menikah" ${k?.status_pernikahan === 'Belum Menikah' ? 'selected' : ''}>Belum Menikah</option>
+              <option value="Menikah" ${k?.status_pernikahan === 'Menikah' ? 'selected' : ''}>Menikah</option>
+              <option value="Cerai" ${k?.status_pernikahan === 'Cerai' ? 'selected' : ''}>Cerai</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Jumlah Tanggungan Anak/Keluarga</label>
+            <input type="number" id="edit-p-tanggungan" value="${k?.tanggungan || 0}" min="0" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400">
+          </div>
+        </div>
+
+        <!-- KONTAK DARURAT -->
+        <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
+          <p class="text-xs font-bold text-slate-700">Kontak Darurat (Darurat / Pasangan / Orang Tua)</p>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-0.5">Nama Kontak</label>
+              <input type="text" id="edit-p-kd-nama" value="${escapeHtml(k?.kontak_darurat_nama || '')}" placeholder="Nama Pasangan/Ortu" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200">
+            </div>
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-0.5">Hubungan</label>
+              <input type="text" id="edit-p-kd-hubungan" value="${escapeHtml(k?.kontak_darurat_hubungan || '')}" placeholder="Suami/Istri/Ibu/Ayah" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200">
+            </div>
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-0.5">No. HP Kontak</label>
+              <input type="text" id="edit-p-kd-hp" value="${escapeHtml(k?.kontak_darurat_hp || '')}" placeholder="0812xxxxxxxx" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200">
+            </div>
+          </div>
+        </div>
+
+        <!-- BANK & REKENING -->
+        <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
+          <p class="text-xs font-bold text-slate-700">Informasi Bank & Penggajian</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-0.5">Nama Bank</label>
+              <input type="text" id="edit-p-bank" value="${escapeHtml(k?.nama_bank || 'Bank BCA')}" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200">
+            </div>
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-0.5">No. Rekening</label>
+              <input type="text" id="edit-p-rekening" value="${escapeHtml(k?.no_rekening || '')}" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 font-mono">
+            </div>
+          </div>
+        </div>
+
         <div>
-          <label class="block text-xs font-medium text-slate-500 mb-1">Alamat Domisili</label>
-          <textarea id="edit-p-alamat" rows="3" required class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 outline-none focus:border-maroon-400">${escapeHtml(k?.alamat || '')}</textarea>
+          <label class="block text-xs font-medium text-slate-500 mb-1">Alamat Domisili Sekarang</label>
+          <textarea id="edit-p-alamat" rows="2" required class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400">${escapeHtml(k?.alamat || '')}</textarea>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">Alamat Sesuai KTP</label>
+          <textarea id="edit-p-alamat-ktp" rows="2" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400">${escapeHtml(k?.alamat_ktp || k?.alamat || '')}</textarea>
         </div>
       </form>`,
     footerHtml: `
-      <button id="btn-edit-p-cancel" class="px-4 py-2 text-sm rounded-lg text-slate-500 hover:bg-slate-100">Batal</button>
-      <button id="btn-edit-p-save" class="bg-maroon-700 text-white font-semibold px-4 py-2 text-sm rounded-lg shadow-md hover:bg-maroon-800 transition">Simpan Perubahan</button>`,
+      <button id="btn-edit-p-cancel" class="px-4 py-2 text-xs font-semibold rounded-xl text-slate-500 hover:bg-slate-100 transition">Batal</button>
+      <button id="btn-edit-p-save" class="bg-maroon-700 text-white font-bold px-4 py-2 text-xs rounded-xl shadow-md hover:bg-maroon-800 transition">Simpan Perubahan</button>`,
     onMount: m => {
       m.querySelector("#btn-edit-p-cancel").onclick = closeModal;
       m.querySelector("#btn-edit-p-save").onclick = async () => {
@@ -427,7 +587,24 @@ function openEditProfileModal(session, k, container) {
 
         const emailVal = m.querySelector("#edit-p-email").value.trim();
         const hpVal = m.querySelector("#edit-p-hp").value.trim();
+        const ktpVal = m.querySelector("#edit-p-ktp").value.trim();
+        const npwpVal = m.querySelector("#edit-p-npwp").value.trim();
+        const ukuranBajuVal = m.querySelector("#edit-p-ukuran-baju").value;
+        const tempatLahirVal = m.querySelector("#edit-p-tempat-lahir").value.trim();
+        const tglLahirVal = m.querySelector("#edit-p-tgl-lahir").value;
+        const agamaVal = m.querySelector("#edit-p-agama").value;
+        const statusNikahVal = m.querySelector("#edit-p-status-nikah").value;
+        const tanggunganVal = parseInt(m.querySelector("#edit-p-tanggungan").value || 0);
+
+        const kdNama = m.querySelector("#edit-p-kd-nama").value.trim();
+        const kdHubungan = m.querySelector("#edit-p-kd-hubungan").value.trim();
+        const kdHp = m.querySelector("#edit-p-kd-hp").value.trim();
+
+        const bankVal = m.querySelector("#edit-p-bank").value.trim();
+        const rekeningVal = m.querySelector("#edit-p-rekening").value.trim();
+
         const alamatVal = m.querySelector("#edit-p-alamat").value.trim();
+        const alamatKtpVal = m.querySelector("#edit-p-alamat-ktp").value.trim();
 
         const btn = m.querySelector("#btn-edit-p-save");
         btn.disabled = true; btn.textContent = "Menyimpan...";
@@ -437,13 +614,29 @@ function openEditProfileModal(session, k, container) {
           await fsUpdate(COL.USERS, session.username, { email: emailVal });
           session.email = emailVal;
 
+          const updatePayload = {
+            email: emailVal,
+            no_hp_aktif: hpVal,
+            nik_ktp: ktpVal,
+            npwp: npwpVal,
+            ukuran_baju: ukuranBajuVal,
+            tempat_lahir: tempatLahirVal,
+            tanggal_lahir: tglLahirVal,
+            agama: agamaVal,
+            status_pernikahan: statusNikahVal,
+            tanggungan: tanggunganVal,
+            kontak_darurat_nama: kdNama,
+            kontak_darurat_hubungan: kdHubungan,
+            kontak_darurat_hp: kdHp,
+            nama_bank: bankVal,
+            no_rekening: rekeningVal,
+            alamat: alamatVal,
+            alamat_ktp: alamatKtpVal
+          };
+
           // Update MASTER_KARYAWAN
           if (session.nik) {
-            await updateDoc(doc(db, COL.MASTER_KARYAWAN, String(session.nik)), {
-              email: emailVal,
-              no_hp_aktif: hpVal,
-              alamat: alamatVal
-            });
+            await updateDoc(doc(db, COL.MASTER_KARYAWAN, String(session.nik)), updatePayload);
           }
 
           // Persist the updated session in sessionStorage/localStorage
@@ -463,7 +656,7 @@ function openEditProfileModal(session, k, container) {
   });
 }
 
-async function openSignDocModal(session) {
+async function openSignDocModal(session, targetDocId = null) {
   openModal({
     title: "Penandatanganan Dokumen Digital",
     size: "md",
@@ -501,8 +694,9 @@ async function openSignDocModal(session) {
 
           listEl.innerHTML = myDocs.map(d => {
             const isSigned = d.status === "SIGNED";
+            const isAutoTarget = targetDocId && String(d.id) === String(targetDocId);
             return `
-              <div class="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 hover:border-maroon-100 transition flex flex-col gap-3">
+              <div id="sd-item-${d.id}" class="p-3.5 rounded-2xl border transition flex flex-col gap-3 ${isAutoTarget ? 'bg-amber-50/90 border-2 border-maroon-600 shadow-md ring-2 ring-maroon-200' : 'bg-slate-50 border-slate-100 hover:border-maroon-100'}">
                 <div class="flex items-start justify-between gap-2">
                   <div class="min-w-0">
                     <p class="text-xs font-bold text-slate-700 truncate">${escapeHtml(d.judul)}</p>
@@ -514,7 +708,7 @@ async function openSignDocModal(session) {
                 </div>
 
                 <div class="flex items-center justify-between gap-2 border-t border-slate-100 pt-2 flex-wrap">
-                  ${d.file_url ? `<a href="${d.file_url}" target="_blank" class="text-xs text-maroon-700 font-bold hover:underline">👁️ Baca Draft Dokumen</a>` : '<span class="text-[10px] text-slate-300">Tidak ada draft</span>'}
+                  ${d.file_url && d.file_url !== '#' ? `<a href="${d.file_url}" target="_blank" class="text-xs text-maroon-700 font-bold hover:underline">👁️ Baca Draft Dokumen</a>` : '<span class="text-[10px] text-slate-400 font-medium">📄 Berkas Resmi HRD</span>'}
                   ${!isSigned ? `
                     <button class="btn-sign-item bg-maroon-700 hover:bg-maroon-800 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1 shadow-sm" data-id="${escapeHtml(d.id)}" data-judul="${escapeHtml(d.judul)}">
                       ✍️ TTD Sekarang
@@ -534,6 +728,20 @@ async function openSignDocModal(session) {
               openSignaturePadModal(docId, docJudul, session, renderList);
             };
           });
+
+          // Auto-scroll and launch TTD modal if targetDocId is present and PENDING
+          if (targetDocId) {
+            const targetItem = myDocs.find(d => String(d.id) === String(targetDocId));
+            if (targetItem) {
+              const targetEl = m.querySelector(`#sd-item-${targetItem.id}`);
+              if (targetEl) targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              if (targetItem.status !== "SIGNED") {
+                setTimeout(() => {
+                  openSignaturePadModal(targetItem.id, targetItem.judul, session, renderList);
+                }, 350);
+              }
+            }
+          }
 
         } catch (err) {
           listEl.innerHTML = `<p class="p-4 text-xs text-rose-500">Gagal memuat dokumen: ${err.message}</p>`;

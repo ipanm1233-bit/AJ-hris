@@ -26,7 +26,7 @@
  * ------------------------------------------------------------------- */
 
 // GANTI dengan URL Web App hasil Deploy Apps Script Anda (harus diakhiri "/exec")
-export const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyu5qmFdTReVC5FDIQsfbYwDamcFYMa95noDH0mzN6Ud5c2gVaVUgxP1OnsIWoVqQCThA/exec";
+export const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxjG2e_qmL326uPknydvlmqb1VF3FI9RJ-rRWk0GrCBHKeHJthruC3NFfGLSFXsO7OV/exec";
 
 function isConfigured() {
   return !!GAS_WEBAPP_URL && !GAS_WEBAPP_URL.includes("GANTI_DENGAN");

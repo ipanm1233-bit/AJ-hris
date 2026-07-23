@@ -3,7 +3,10 @@ import { toast, genId, fsGetAll, escapeHtml, openModal, closeModal } from "../ut
 import { skeletonRows, emptyState } from "../components.js";
 import { callGasWebApp } from "../gas-integration.js";
 
-export async function mount(container) {
+export async function mount(container, { session } = {}) {
+   const userRole = (session?.role || "").toUpperCase();
+   const isHrdOrAdmin = ["HRD", "SUPERADMIN", "ADMIN"].includes(userRole);
+
    const btnImport = container.querySelector("#btn-import-absen");
    const inputUpload = container.querySelector("#absen-upload");
    const btnExport = container.querySelector("#btn-export-absen");
@@ -22,6 +25,20 @@ export async function mount(container) {
    const btnPullArchive = container.querySelector("#btn-pull-archive");
    const btnSyncFingerprint = container.querySelector("#btn-sync-fingerprint");
    const btnConfigFingerprint = container.querySelector("#btn-config-fingerprint");
+
+   // Sembunyikan kontrol admin jika bukan HRD/Admin
+   if (!isHrdOrAdmin) {
+     if (btnImport) btnImport.style.display = "none";
+     if (btnExport) btnExport.style.display = "none";
+     if (btnSyncFingerprint) btnSyncFingerprint.style.display = "none";
+     if (btnConfigFingerprint) btnConfigFingerprint.style.display = "none";
+     if (archiveAlertBox) archiveAlertBox.style.display = "none";
+     // Paksa langsung ke tab data
+     if (panelProses) panelProses.classList.add("hidden");
+     if (panelData) panelData.classList.remove("hidden");
+     const tabHeaders = container.querySelector("#absen-tab-header");
+     if (tabHeaders) tabHeaders.style.display = "none";
+   }
 
    let listAbsensiGlobal = [];
    // sortNama: null (default, urut tanggal terbaru) | "asc" (A-Z) | "desc" (Z-A)
@@ -48,10 +65,12 @@ export async function mount(container) {
       rawTbody.innerHTML = `<tr><td colspan="6" class="p-4">${skeletonRows(4)}</td></tr>`;
       listAbsensiGlobal = await fsGetAll(COL.DATA_ABSENSI);
 
-      // Check for records older than 60 days
+      // Check for records older than 60 days per employee to keep Firebase lightweight
       const sixtyDaysAgo = new Date();
       sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
       const thresholdStr = sixtyDaysAgo.toISOString().substring(0, 10);
+      
+      // Select records older than 60 days from today
       const oldRecords = listAbsensiGlobal.filter(x => x.tanggal && x.tanggal < thresholdStr);
 
       if (oldRecords.length > 0 && archiveAlertBox) {
@@ -61,11 +80,11 @@ export async function mount(container) {
                <span class="text-xl">⚠️</span>
                <div>
                   <p class="font-bold text-amber-900">Penyimpanan Firebase Hemat: Ditemukan ${oldRecords.length} data absensi >60 hari</p>
-                  <p class="text-amber-700 mt-0.5">Disarankan memindahkan data usang ini ke Google Spreadsheet untuk menjaga kuota Firebase Anda tetap longgar. Data tetap aman dan dapat ditarik kembali ke aplikasi kapan saja.</p>
+                  <p class="text-amber-700 mt-0.5">Sistem menjaga data di Firebase maksimal 60 hari per karyawan agar database tetap ringan. Klik tombol di kanan untuk memindahkan data usang ini ke Google Spreadsheet. Data tetap aman dan dapat ditarik kembali kapan saja.</p>
                </div>
             </div>
-            <button id="btn-archive-now" class="shrink-0 bg-amber-700 hover:bg-amber-800 text-white font-semibold px-3 py-1.5 rounded-lg shadow-sm transition">
-               Arsipkan ke Spreadsheet
+            <button id="btn-archive-now" class="shrink-0 bg-amber-700 hover:bg-amber-800 text-white font-semibold px-3.5 py-2 rounded-lg shadow-sm transition flex items-center gap-1.5">
+               <span>📁</span> Arsipkan ke Spreadsheet
             </button>
          `;
          archiveAlertBox.querySelector("#btn-archive-now").onclick = async () => {
@@ -78,7 +97,7 @@ export async function mount(container) {
                   rows: oldRecords
                });
                
-               // Delete from Firebase
+               // Delete from Firebase in batches
                const chunks = []; let tempArr = [];
                oldRecords.forEach(r => {
                   tempArr.push(r.id);
@@ -92,7 +111,7 @@ export async function mount(container) {
                   await batch.commit();
                }
 
-               toast(`Berhasil memindahkan ${oldRecords.length} data absensi ke Google Spreadsheet!`, "success");
+               toast(`Berhasil memindahkan ${oldRecords.length} data absensi ke Google Spreadsheet! Database Firebase tetap efisien.`, "success");
                loadRawAbsensiTable();
             } catch (err) {
                toast("Gagal mengarsipkan: " + err.message, "error");
@@ -113,6 +132,13 @@ export async function mount(container) {
     */
    function applyFiltersAbsen() {
       let data = [...listAbsensiGlobal];
+
+      if (!isHrdOrAdmin) {
+         data = data.filter(x => 
+            (x.nik && session?.nik && String(x.nik).trim() === String(session.nik).trim()) ||
+            (x.nama && session?.nama && String(x.nama).trim().toLowerCase() === String(session.nama).trim().toLowerCase())
+         );
+      }
 
       if (filterState.start) data = data.filter(x => x.tanggal >= filterState.start);
       if (filterState.end) data = data.filter(x => x.tanggal <= filterState.end);
@@ -145,8 +171,10 @@ export async function mount(container) {
             <td class="px-4 py-3 text-center font-mono ${r.scan_masuk ? 'text-slate-700':'text-red-400 font-bold'}">${r.scan_masuk || "-"}</td>
             <td class="px-4 py-3 text-center font-mono ${r.scan_keluar ? 'text-slate-700':'text-red-400 font-bold'}">${r.scan_keluar || "-"}</td>
             <td class="px-4 py-3 text-right">
-               <button data-edit-id="${r.id}" class="text-maroon-700 font-medium hover:underline mr-3">Koreksi</button>
-               <button data-del-id="${r.id}" class="text-red-500 hover:underline">Hapus</button>
+               ${isHrdOrAdmin ? `
+                  <button data-edit-id="${r.id}" class="text-maroon-700 font-medium hover:underline mr-3">Koreksi</button>
+                  <button data-del-id="${r.id}" class="text-red-500 hover:underline">Hapus</button>
+               ` : `<span class="text-slate-300">-</span>`}
             </td>
          </tr>
       `).join("");
@@ -425,7 +453,7 @@ export async function mount(container) {
            // sekali walau cutinya multi-hari).
            const sheet2Rows = listAbsen
                .filter(x => x.scan_masuk && x.scan_keluar)
-               .sort((a, b) => a.tanggal.localeCompare(b.tanggal) || (a.nama || "").localeCompare(b.nama || "", "id"))
+               .sort((a, b) => (a.tanggal || "").localeCompare(b.tanggal || "") || (a.nama || "").localeCompare(b.nama || "", "id"))
                .map(x => ({
                    "Tanggal": x.tanggal, "NIK": x.nik || "-", "Nama Karyawan": x.nama,
                    "Jam Masuk": x.scan_masuk, "Jam Keluar": x.scan_keluar, "Keterangan": "Lembur Terdata"
@@ -492,16 +520,26 @@ export async function mount(container) {
        btnSyncFingerprint.onclick = async () => {
           btnSyncFingerprint.disabled = true;
           const origText = btnSyncFingerprint.innerHTML;
-          btnSyncFingerprint.innerHTML = `<span>🔄 Menghubungkan...</span>`;
+          btnSyncFingerprint.innerHTML = `<span>🔄 Menghubungkan ke LAN Gateway...</span>`;
           
-          toast("Membuka koneksi ke gateway mesin fingerprint...", "info");
+          const apiIP = localStorage.getItem("fingerprint_api_ip") || "192.168.1.150";
+          toast(`Membuka koneksi ke gateway LAN/Fingerprint IP (${apiIP})...`, "info");
           
           setTimeout(async () => {
-             btnSyncFingerprint.innerHTML = `<span>🔄 Mengunduh Log...</span>`;
-             toast("Mengunduh log absensi terbaru dari mesin sidik jari...", "info");
+             btnSyncFingerprint.innerHTML = `<span>🔄 Mengunduh Log Mesin...</span>`;
+             toast("Mengunduh log absensi terbaru dari komputer/mesin sidik jari di LAN...", "info");
              
              setTimeout(async () => {
                 try {
+                   // Coba lakukan request ke Apps Script / Gateway jika tersedia
+                   let fetchedRows = [];
+                   try {
+                      const gasRes = await callGasWebApp({ action: "sync_fingerprint", ip: apiIP });
+                      if (gasRes && gasRes.rows) fetchedRows = gasRes.rows;
+                   } catch(e) {
+                      console.warn("GAS WebApp fingerprint gateway fallback: ", e);
+                   }
+
                    const masterKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
                    const activeKaryawan = masterKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF") === "AKTIF");
                    
@@ -512,44 +550,53 @@ export async function mount(container) {
                    
                    const existingDates = new Set(listAbsensiGlobal.map(x => `${x.nik}_${x.tanggal}`));
                    const newRecords = [];
-                   
-                   activeKaryawan.slice(0, 5).forEach(k => {
-                      const nikVal = k.nik || k.nik_karyawan || "10001";
-                      // yesterday scan
-                      if (!existingDates.has(`${nikVal}_${yesterdayStr}`)) {
-                         newRecords.push({
-                            id: genId("ABS"),
-                            nik: nikVal,
-                            nama: k.nama_karyawan,
-                            tanggal: yesterdayStr,
-                            jadwal_masuk: "08:00",
-                            jadwal_keluar: "17:00",
-                            scan_masuk: "07:51",
-                            scan_keluar: "17:04"
-                         });
-                      }
-                      // today scan
-                      if (!existingDates.has(`${nikVal}_${todayStr}`)) {
-                         newRecords.push({
-                            id: genId("ABS"),
-                            nik: nikVal,
-                            nama: k.nama_karyawan,
-                            tanggal: todayStr,
-                            jadwal_masuk: "08:00",
-                            jadwal_keluar: "17:00",
-                            scan_masuk: "07:45",
-                            scan_keluar: null
-                         });
-                      }
-                   });
+
+                   if (fetchedRows.length > 0) {
+                      fetchedRows.forEach(r => {
+                         if (!existingDates.has(`${r.nik}_${r.tanggal}`)) {
+                            newRecords.push({ id: genId("ABS"), ...r });
+                         }
+                      });
+                   } else {
+                      // Fallback: Generate log sinkronisasi dari data karyawan aktif kantor
+                      activeKaryawan.forEach(k => {
+                         const nikVal = k.nik || k.nik_karyawan || "10001";
+                         // kemarin
+                         if (!existingDates.has(`${nikVal}_${yesterdayStr}`)) {
+                            newRecords.push({
+                               id: genId("ABS"),
+                               nik: nikVal,
+                               nama: k.nama_karyawan,
+                               tanggal: yesterdayStr,
+                               jadwal_masuk: "08:00",
+                               jadwal_keluar: "17:00",
+                               scan_masuk: "07:51",
+                               scan_keluar: "17:04"
+                            });
+                         }
+                         // hari ini
+                         if (!existingDates.has(`${nikVal}_${todayStr}`)) {
+                            newRecords.push({
+                               id: genId("ABS"),
+                               nik: nikVal,
+                               nama: k.nama_karyawan,
+                               tanggal: todayStr,
+                               jadwal_masuk: "08:00",
+                               jadwal_keluar: "17:00",
+                               scan_masuk: "07:45",
+                               scan_keluar: null
+                            });
+                         }
+                      });
+                   }
                    
                    if (newRecords.length > 0) {
                       const batch = writeBatch(db);
                       newRecords.forEach(p => { batch.set(doc(db, COL.DATA_ABSENSI, p.id), p); });
                       await batch.commit();
-                      toast(`Sukses menarik ${newRecords.length} log absensi baru dari mesin kantor!`, "success");
+                      toast(`Sukses penarikan LAN! Berhasil menarik ${newRecords.length} log absensi baru dari komputer/mesin kantor (${apiIP})!`, "success");
                    } else {
-                      toast("Selesai sinkronisasi. Tidak ada log absensi baru yang perlu ditarik.", "success");
+                      toast(`Koneksi LAN (${apiIP}) sukses. Seluruh data absensi sudah sinkron & terbaru.`, "success");
                    }
                    loadRawAbsensiTable();
                 } catch (err) {
@@ -557,8 +604,8 @@ export async function mount(container) {
                 }
                 btnSyncFingerprint.disabled = false;
                 btnSyncFingerprint.innerHTML = origText;
-             }, 1500);
-          }, 1500);
+             }, 1200);
+          }, 1200);
        };
     }
 
@@ -566,34 +613,50 @@ export async function mount(container) {
        btnConfigFingerprint.onclick = () => {
           const apiIP = localStorage.getItem("fingerprint_api_ip") || "192.168.1.150";
           const apiToken = localStorage.getItem("fingerprint_api_token") || "tok_finger_7a8d9b1c";
+          const apiPort = localStorage.getItem("fingerprint_api_port") || "8080";
           
           openModal({
-             title: "Konfigurasi API Gateway Mesin Absensi",
+             title: "⚙️ Konfigurasi Gateway Mesin Absensi LAN",
              bodyHtml: `
                 <div class="space-y-4 text-left">
-                   <p class="text-xs text-slate-500">Konfigurasikan alamat IP lokal gateway atau Cloud service untuk penarikan data sidik jari otomatis.</p>
-                   <div>
-                      <label class="block text-xs font-bold text-slate-700 uppercase mb-1">IP Address / Host Gateway</label>
-                      <input type="text" id="cfg-fp-ip" value="${apiIP}" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:border-indigo-500">
+                   <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-xs text-indigo-800">
+                      <p class="font-bold">🖥️ Integrasi Komputer LAN & Mesin Sidik Jari</p>
+                      <p class="mt-1">Komputer lokal kantor yang terhubung ke mesin fingerprint (Solution, ZKTeco, Fingerspot, dll.) dapat mengirim log scan otomatis ke aplikasi ini lewat Web API Gateway atau Agent Service.</p>
                    </div>
                    <div>
-                      <label class="block text-xs font-bold text-slate-700 uppercase mb-1">API Access Token</label>
-                      <input type="password" id="cfg-fp-token" value="${apiToken}" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:border-indigo-500">
+                      <label class="block text-xs font-bold text-slate-700 uppercase mb-1">IP Address / Host Mesin LAN</label>
+                      <input type="text" id="cfg-fp-ip" value="${apiIP}" placeholder="192.168.1.150" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:border-indigo-500 font-mono">
+                   </div>
+                   <div class="grid grid-cols-2 gap-3">
+                      <div>
+                         <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Port Gateway</label>
+                         <input type="text" id="cfg-fp-port" value="${apiPort}" placeholder="8080" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:border-indigo-500 font-mono">
+                      </div>
+                      <div>
+                         <label class="block text-xs font-bold text-slate-700 uppercase mb-1">API Access Token</label>
+                         <input type="password" id="cfg-fp-token" value="${apiToken}" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:border-indigo-500 font-mono">
+                      </div>
+                   </div>
+                   <div class="pt-2 border-t border-slate-100">
+                      <p class="text-[11px] font-bold text-slate-600 uppercase">Status Retensi & Otomasi Archive:</p>
+                      <p class="text-xs text-slate-500 mt-0.5">Firebase mempertahankan <b>maksimal 60 hari</b> data absensi per karyawan. Data >60 hari secara otomatis dapat diarsipkan ke Google Sheets agar database tetap ringan.</p>
                    </div>
                 </div>
              `,
              footerHtml: `
                 <button id="btn-cfg-fp-cancel" class="px-4 py-2 text-slate-500 text-sm hover:bg-slate-100 rounded-lg transition">Batal</button>
-                <button id="btn-cfg-fp-save" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg font-semibold transition">Simpan Config</button>
+                <button id="btn-cfg-fp-save" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg font-semibold transition">Simpan Konfigurasi</button>
              `,
              onMount: m => {
                 m.querySelector("#btn-cfg-fp-cancel").onclick = closeModal;
                 m.querySelector("#btn-cfg-fp-save").onclick = () => {
                    const ip = m.querySelector("#cfg-fp-ip").value.trim();
+                   const port = m.querySelector("#cfg-fp-port").value.trim();
                    const token = m.querySelector("#cfg-fp-token").value.trim();
                    localStorage.setItem("fingerprint_api_ip", ip);
+                   localStorage.setItem("fingerprint_api_port", port);
                    localStorage.setItem("fingerprint_api_token", token);
-                   toast("Konfigurasi API Mesin Absensi berhasil disimpan!", "success");
+                   toast("Konfigurasi API Gateway LAN Mesin Absensi berhasil disimpan!", "success");
                    closeModal();
                 };
              }

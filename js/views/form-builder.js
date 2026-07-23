@@ -68,6 +68,13 @@ function openBuilder(container, form) {
   container.querySelector("#fb-lpj-wrap").classList.toggle("hidden", !requiresLpj);
   container.querySelector("#fb-lpj-deadline").value = (form && form.lpj_deadline_days) || 7;
 
+  // Load target notifikasi
+  const nt = form?.notify_targets || { pemohon: true, atasan_bawahan: true, peers: true, finance: true };
+  if (container.querySelector("#fb-nt-pemohon")) container.querySelector("#fb-nt-pemohon").checked = nt.pemohon !== false;
+  if (container.querySelector("#fb-nt-atasan-bawahan")) container.querySelector("#fb-nt-atasan-bawahan").checked = nt.atasan_bawahan !== false;
+  if (container.querySelector("#fb-nt-peers")) container.querySelector("#fb-nt-peers").checked = nt.peers !== false;
+  if (container.querySelector("#fb-nt-finance")) container.querySelector("#fb-nt-finance").checked = nt.finance !== false;
+
   ensureToolbar(container);
   ensureLpjToolbar(container);
   renderFlowChips(container);
@@ -400,6 +407,13 @@ async function saveForm(container) {
   const lpjDeadline = parseInt(container.querySelector("#fb-lpj-deadline").value) || 7;
   if (requiresLpj && !currentLpjFields.length) { toast("Aktifkan LPJ butuh minimal 1 kolom formulir LPJ (mis. Upload Bukti)", "warning"); return; }
 
+  const notifyTargets = {
+    pemohon: container.querySelector("#fb-nt-pemohon") ? container.querySelector("#fb-nt-pemohon").checked : true,
+    atasan_bawahan: container.querySelector("#fb-nt-atasan-bawahan") ? container.querySelector("#fb-nt-atasan-bawahan").checked : true,
+    peers: container.querySelector("#fb-nt-peers") ? container.querySelector("#fb-nt-peers").checked : true,
+    finance: container.querySelector("#fb-nt-finance") ? container.querySelector("#fb-nt-finance").checked : true
+  };
+
   const payload = {
     nama_form: nama,
     approval_flow: currentFlow,
@@ -408,7 +422,8 @@ async function saveForm(container) {
     fields_json: currentFields,
     requires_lpj: requiresLpj,
     lpj_deadline_days: lpjDeadline,
-    lpj_fields_json: requiresLpj ? currentLpjFields : []
+    lpj_fields_json: requiresLpj ? currentLpjFields : [],
+    notify_targets: notifyTargets
   };
 
   try {

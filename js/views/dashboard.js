@@ -16,7 +16,7 @@ export async function mount(container, { session }) {
 
   // Widget dashboard karyawan bisa diatur HRD lewat menu Konfigurasi Sistem
   // (APP_SETTINGS/main.dashboard_widgets). Default: semua widget aktif jika belum diatur.
-  const WIDGET_IDS = ["dash-widget-leave", "dash-widget-kpi", "dash-widget-cuti-hari-ini", "dash-widget-pengumuman", "dash-widget-training"];
+  const WIDGET_IDS = ["dash-widget-leave", "dash-widget-kpi", "dash-widget-cuti-hari-ini", "dash-widget-pengumuman"];
   if (!isHrd) {
     try {
       const cfgSnap = await getDoc(doc(db, COL.APP_SETTINGS, "main"));
@@ -38,11 +38,12 @@ export async function mount(container, { session }) {
     loadPersonalBanner(container, session, karyawanProfile),
     loadLeaveBalances(container, session),
     loadKpiTasks(container, session),
+    loadAssignedAssets(container, session),
     loadCutiHariIni(container),
     loadAnnouncements(container, session),
     loadAttendanceAnalytics(container, session),
     loadPerformanceWidget(container, session),
-    loadTrainingWidget(container, session),
+    loadTrainingHistory(container, session),
     // Batasi widget kontrak habis hanya muncul di Dashboard HRD
     isHrd ? loadContractExpiry(container) : (() => { 
         const w = container.querySelector("#dash-contract-widget-wrap"); 
@@ -787,74 +788,119 @@ async function loadPerformanceWidget(container, session) {
   }
 }
 
-/* ------------------------ h. TRAINING & SERTIFIKASI SAYA WIDGET ------------------------ */
-// Menampilkan daftar training yang pernah/sedang diikuti karyawan yang login, lengkap
-// dengan status kelulusan (berdasarkan skor post-test) dan tanggal sertifikasi.
-const TRAINING_PLAN_COLL = "training_plans";
-const TRAINING_PROGRESS_COLL = "training_progress";
-const NILAI_KELULUSAN_MINIMAL = 70;
-
-async function loadTrainingWidget(container, session) {
-  const listEl = container.querySelector("#dash-training-list");
-  if (!listEl) return;
-  listEl.innerHTML = skeletonRows(3);
-
+/* ------------------------ i. TRAINING HISTORY WIDGET ------------------------ */
+async function loadTrainingHistory(container, session) {
+  const wrap = container.querySelector("#dash-training-history-body");
+  if (!wrap) return;
   try {
-    const [allPlans, allProgress] = await Promise.all([
-      fsGetAll(TRAINING_PLAN_COLL),
-      fsGetAll(TRAINING_PROGRESS_COLL)
-    ]);
+    const allTrainings = await fsGetAll(COL.DATA_TRAINING);
+    const myTrainings = allTrainings.filter(t => 
+      (t.nik && session.nik && String(t.nik).trim() === String(session.nik).trim()) ||
+      (t.nama_karyawan && session.nama && String(t.nama_karyawan).trim().toLowerCase() === String(session.nama).trim().toLowerCase())
+    );
 
-    const myPlans = allPlans.filter(p => (p.peserta || []).includes(session.nama));
-    if (!myPlans.length) {
-      listEl.innerHTML = emptyState("Belum ada training yang diikuti", "Riwayat training & sertifikasi Anda akan tampil di sini.");
+    if (!myTrainings.length) {
+      wrap.innerHTML = `
+        <div class="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-3 text-center text-slate-400">
+          <p class="text-xs font-medium">Belum ada riwayat training yang diikuti.</p>
+          <a href="#training" class="text-xs text-maroon-700 font-bold hover:underline mt-1 inline-block">+ Ajukan Pelatihan Baru</a>
+        </div>
+      `;
       return;
     }
 
-    const progressByPlan = {};
-    allProgress.forEach(pr => {
-      const isMine = session.nik ? String(pr.nik || "") === String(session.nik) : (pr.nama || "") === session.nama;
-      if (isMine) progressByPlan[pr.plan_id] = pr;
+    wrap.innerHTML = myTrainings.slice(0, 4).map(t => {
+      const status = (t.status || "PENDING").toUpperCase();
+      let badgeClass = "bg-amber-50 text-amber-700 border-amber-200";
+      if (status === "APPROVED" || status === "DISETUJUI" || status === "SELESAI") badgeClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
+      if (status === "REJECTED" || status === "DITOLAK") badgeClass = "bg-rose-50 text-rose-700 border-rose-200";
+
+      return `
+        <div class="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-100 rounded-xl hover:bg-slate-100/70 transition">
+          <div class="min-w-0 flex-1 pr-2">
+            <p class="font-bold text-slate-800 text-xs truncate">${escapeHtml(t.kompetensi || t.nama_pelatihan || "Training TNA")}</p>
+            <p class="text-[11px] text-slate-500 truncate">${escapeHtml(t.kategori || "Pelatihan Skill")} • ${t.tanggal_pengajuan ? fmtDateShort(t.tanggal_pengajuan) : '-'}</p>
+          </div>
+          <span class="px-2 py-0.5 rounded-md text-[10px] font-bold border shrink-0 ${badgeClass}">${status}</span>
+        </div>
+      `;
+    }).join("");
+  } catch (err) {
+    wrap.innerHTML = `<p class="text-xs text-slate-400">Gagal memuat riwayat training</p>`;
+  }
+}
+
+/* ------------------------ j. INVENTARIS & ASET WIDGET ------------------------ */
+async function loadAssignedAssets(container, session) {
+  const wrap = container.querySelector("#dash-assigned-assets-body");
+  if (!wrap) return;
+
+  try {
+    const allAssets = await fsGetAll(COL.MASTER_INVENTORY);
+    const myNameLower = (session.nama || "").trim().toLowerCase();
+    const myNik = (session.nik || "").trim();
+
+    const myAssets = allAssets.filter(a => {
+      const assigned = (a.assigned_to || "").trim().toLowerCase();
+      if (!assigned || assigned === "unassigned" || assigned === "-") return false;
+      if (assigned === myNameLower) return true;
+      if (myNik && a.assigned_nik && String(a.assigned_nik).trim() === myNik) return true;
+      return false;
     });
 
-    const rows = myPlans.map(p => {
-      const prog = progressByPlan[p.id] || { pretest_score: null, posttest_score: null, feedback: null };
-      const hasPosttest = prog.posttest_score !== null && prog.posttest_score !== undefined;
-      const hasPretest = prog.pretest_score !== null && prog.pretest_score !== undefined;
+    if (!myAssets.length) {
+      wrap.innerHTML = `
+        <div class="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-4 text-center text-slate-400">
+          <p class="text-xs font-semibold">Tidak ada aset atau inventaris kantor yang diserahterimakan kepada Anda saat ini.</p>
+          <p class="text-[10px] text-slate-400 mt-0.5">Semua barang, laptop, kunci, atau kendaraan resmi yang diserahkan akan tercatat di sini.</p>
+        </div>`;
+      return;
+    }
 
-      let statusLabel, statusTone, tglSertifikasi;
-      if (hasPosttest) {
-        const lulus = Number(prog.posttest_score) >= NILAI_KELULUSAN_MINIMAL;
-        statusLabel = lulus ? "LULUS" : "TIDAK LULUS";
-        statusTone = lulus ? "green" : "red";
-        tglSertifikasi = lulus ? fmtDateShort(p.tanggal) : "-";
-      } else if (hasPretest) {
-        statusLabel = "SEDANG BERLANGSUNG";
-        statusTone = "amber";
-        tglSertifikasi = "-";
-      } else {
-        statusLabel = "BELUM MULAI";
-        statusTone = "slate";
-        tglSertifikasi = "-";
+    const categoryIcons = {
+      "Vehicles": "🚛",
+      "Office Eq": "💻",
+      "Tools": "🛠️",
+      "Kunci": "🔑",
+      "Dokumen": "📄",
+      "ATK": "📦",
+      "Furniture": "🪑"
+    };
+
+    wrap.innerHTML = myAssets.map(a => {
+      const catKey = Object.keys(categoryIcons).find(k => (a.kategori || "").includes(k)) || "ATK";
+      const icon = categoryIcons[catKey] || "📦";
+      const cond = (a.kondisi || "Good").toUpperCase();
+      let condBadge = `<span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">● Baik (Good)</span>`;
+      if (cond.includes("MAINTENANCE") || cond.includes("PERBAIKAN")) {
+        condBadge = `<span class="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">⚠️ Perlu Servis</span>`;
+      } else if (cond.includes("RUSAK") || cond.includes("DAMAGED")) {
+        condBadge = `<span class="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">❌ Rusak</span>`;
       }
 
-      return { plan: p, statusLabel, statusTone, tglSertifikasi };
-    }).sort((a, b) => (b.plan.tanggal || "").localeCompare(a.plan.tanggal || ""));
-
-    listEl.innerHTML = rows.map(r => `
-      <div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 transition">
-        <div class="min-w-0 flex-1">
-          <p class="text-sm font-semibold text-slate-800 truncate">${escapeHtml(r.plan.judul || "-")}</p>
-          <p class="text-xs text-slate-400 mt-0.5">${escapeHtml(r.plan.kategori || "-")} • Jadwal: ${fmtDateShort(r.plan.tanggal)}</p>
-        </div>
-        <div class="text-right shrink-0">
-          ${badge(r.statusLabel, r.statusTone)}
-          <p class="text-[10px] text-slate-400 mt-1">Sertifikasi: ${escapeHtml(r.tglSertifikasi)}</p>
-        </div>
-      </div>
-    `).join("");
+      return `
+        <div class="p-3.5 bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 hover:bg-slate-100/80 transition group">
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="w-10 h-10 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-lg shadow-sm shrink-0">
+              ${icon}
+            </div>
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-bold text-slate-800 text-xs truncate">${escapeHtml(a.nama_barang || "-")}</span>
+                <span class="font-mono text-[10px] font-extrabold text-slate-400 bg-white border border-slate-200 px-1.5 py-0.5 rounded-md">${escapeHtml(a.id_item || a.id)}</span>
+              </div>
+              <p class="text-[11px] text-slate-500 mt-0.5 truncate">
+                ${escapeHtml(a.kategori || "Aset Kantor")} ${a.serial_number ? `• No: ${escapeHtml(a.serial_number)}` : ''}
+              </p>
+            </div>
+          </div>
+          <div class="shrink-0 text-right">
+            ${condBadge}
+          </div>
+        </div>`;
+    }).join("");
   } catch (err) {
-    console.error(err);
-    listEl.innerHTML = `<p class="text-xs text-rose-500">Gagal memuat data training: ${err.message}</p>`;
+    console.warn("Gagal memuat aset karyawan:", err);
+    wrap.innerHTML = `<p class="text-xs text-slate-400">Gagal memuat daftar aset tanggung jawab.</p>`;
   }
 }

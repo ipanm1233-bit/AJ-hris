@@ -311,19 +311,21 @@ export async function mount(container) {
     const { downloadHtmlAsPdf, toast } = await import("../utils.js");
     toast("Sedang memproses PDF...", "info");
     let html = `
-    <div style="font-family: 'Times New Roman', serif; font-size: 14px; padding: 20px; line-height: 1.5; color: #000; background: #fff;">
-      ${isoDocHeaderTable({ judul: "SURAT PERINTAH LEMBUR KARYAWAN", noDok: "HR-LMBR", terbitRevisi: "1/1", tglTerbit: "1 September 2025", hal: "1 dari 1" })}
-      <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
-        <tr><td style="border: 1px solid #000; padding: 8px; vertical-align: top; width: 35%; font-weight: bold; background: #f9fafb;">Nama Karyawan</td><td style="border: 1px solid #000; padding: 8px; vertical-align: top;">${escapeHtml(data.nama_karyawan)}</td></tr>
-        <tr><td style="border: 1px solid #000; padding: 8px; vertical-align: top; font-weight: bold; background: #f9fafb;">Hari / Tanggal</td><td style="border: 1px solid #000; padding: 8px; vertical-align: top;">${fmtDateShort(data.tanggal)} ${data.is_libur ? "(Hari Libur/Minggu)" : ""}</td></tr>
-        <tr><td style="border: 1px solid #000; padding: 8px; vertical-align: top; font-weight: bold; background: #f9fafb;">Waktu Lembur</td><td style="border: 1px solid #000; padding: 8px; vertical-align: top;">Pukul ${data.jam_mulai} s/d ${data.jam_selesai} (${data.durasi_jam} Jam)</td></tr>
-        <tr><td style="border: 1px solid #000; padding: 8px; vertical-align: top; font-weight: bold; background: #f9fafb;">Pekerjaan / Tugas</td><td style="border: 1px solid #000; padding: 8px; vertical-align: top;">${escapeHtml(data.pekerjaan || "-")}</td></tr>
-        <tr><td style="border: 1px solid #000; padding: 8px; vertical-align: top; font-weight: bold; background: #f9fafb;">Estimasi Upah Lembur</td><td style="border: 1px solid #000; padding: 8px; vertical-align: top;"><strong>${fmtRupiah(data.total_upah)}</strong></td></tr>
+    <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff;">
+      <div style="page-break-inside:avoid; margin-bottom:15px;">
+        ${isoDocHeaderTable({ judul: "SURAT PERINTAH LEMBUR KARYAWAN", noDok: "HR-LMBR", terbitRevisi: "1/1", tglTerbit: "1 September 2025", hal: "1 dari 1" })}
+      </div>
+      <table style="width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #000;">
+        <tr><td style="border: 1px solid #000; padding: 6px 10px; vertical-align: top; width: 35%; font-weight: bold; background: #f8fafc;">Nama Karyawan</td><td style="border: 1px solid #000; padding: 6px 10px; vertical-align: top;">${escapeHtml(data.nama_karyawan)}</td></tr>
+        <tr><td style="border: 1px solid #000; padding: 6px 10px; vertical-align: top; font-weight: bold; background: #f8fafc;">Hari / Tanggal</td><td style="border: 1px solid #000; padding: 6px 10px; vertical-align: top;">${fmtDateShort(data.tanggal)} ${data.is_libur ? "(Hari Libur/Minggu)" : ""}</td></tr>
+        <tr><td style="border: 1px solid #000; padding: 6px 10px; vertical-align: top; font-weight: bold; background: #f8fafc;">Waktu Lembur</td><td style="border: 1px solid #000; padding: 6px 10px; vertical-align: top;">Pukul ${data.jam_mulai} s/d ${data.jam_selesai} (${data.durasi_jam} Jam)</td></tr>
+        <tr><td style="border: 1px solid #000; padding: 6px 10px; vertical-align: top; font-weight: bold; background: #f8fafc;">Pekerjaan / Tugas</td><td style="border: 1px solid #000; padding: 6px 10px; vertical-align: top;">${escapeHtml(data.pekerjaan || "-")}</td></tr>
+        <tr><td style="border: 1px solid #000; padding: 6px 10px; vertical-align: top; font-weight: bold; background: #f8fafc;">Estimasi Upah Lembur</td><td style="border: 1px solid #000; padding: 6px 10px; vertical-align: top;"><strong>${fmtRupiah(data.total_upah)}</strong></td></tr>
       </table>
-      <table style="width:100%; text-align:center; margin-top:40px;">
+      <table style="width:100%; text-align:center; margin-top:35px; page-break-inside:avoid; font-size:11px;">
         <tr><td width="33%">Pemohon (Karyawan),</td><td width="33%">Menyetujui (Atasan),</td><td width="33%">Mengetahui (HRD),</td></tr>
-        <tr><td height="80"></td><td></td><td></td></tr>
-        <tr><td>( ${escapeHtml(data.nama_karyawan)} )</td><td>( ................................. )</td><td>( ................................. )</td></tr>
+        <tr><td height="60"></td><td></td><td></td></tr>
+        <tr><td>( <strong>${escapeHtml(data.nama_karyawan)}</strong> )</td><td>( ................................. )</td><td>( ................................. )</td></tr>
       </table>
     </div>`;
     await downloadHtmlAsPdf(html, `Surat_Lembur_${escapeHtml(data.nama_karyawan).replace(/\s+/g, "_")}.pdf`);
@@ -334,21 +336,23 @@ export async function mount(container) {
     const { downloadHtmlAsPdf, toast } = await import("../utils.js");
     toast("Sedang memproses PDF...", "info");
     let html = `
-    <div style="font-family: 'Times New Roman', serif; font-size: 14px; padding: 20px; line-height: 1.5; color: #000; background: #fff;">
-      ${isoDocHeaderTable({ judul: "FORMULIR PENGAJUAN PINJAMAN / KASBON", noDok: "FIN-KSBN", terbitRevisi: "1/1", tglTerbit: "1 September 2025", hal: "1 dari 1" })}
-      <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
-        <tr><td style="border: 1px solid #000; padding: 8px; vertical-align: top; width: 35%; font-weight: bold; background: #f9fafb;">Nama Karyawan</td><td style="border: 1px solid #000; padding: 8px; vertical-align: top;">${escapeHtml(data.nama_karyawan)}</td></tr>
-        <tr><td style="border: 1px solid #000; padding: 8px; vertical-align: top; font-weight: bold; background: #f9fafb;">Tanggal Pengajuan</td><td style="border: 1px solid #000; padding: 8px; vertical-align: top;">${fmtDateShort(data.tanggal)}</td></tr>
-        <tr><td style="border: 1px solid #000; padding: 8px; vertical-align: top; font-weight: bold; background: #f9fafb;">Nominal Pinjaman</td><td style="border: 1px solid #000; padding: 8px; vertical-align: top;"><span style="font-size:16px; font-weight:bold;">${fmtRupiah(data.nominal)}</span></td></tr>
-        <tr><td style="border: 1px solid #000; padding: 8px; vertical-align: top; font-weight: bold; background: #f9fafb;">Keperluan</td><td style="border: 1px solid #000; padding: 8px; vertical-align: top;">${escapeHtml(data.keperluan || "-")}</td></tr>
+    <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff;">
+      <div style="page-break-inside:avoid; margin-bottom:15px;">
+        ${isoDocHeaderTable({ judul: "FORMULIR PENGAJUAN PINJAMAN / KASBON", noDok: "FIN-KSBN", terbitRevisi: "1/1", tglTerbit: "1 September 2025", hal: "1 dari 1" })}
+      </div>
+      <table style="width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #000;">
+        <tr><td style="border: 1px solid #000; padding: 6px 10px; vertical-align: top; width: 35%; font-weight: bold; background: #f8fafc;">Nama Karyawan</td><td style="border: 1px solid #000; padding: 6px 10px; vertical-align: top;">${escapeHtml(data.nama_karyawan)}</td></tr>
+        <tr><td style="border: 1px solid #000; padding: 6px 10px; vertical-align: top; font-weight: bold; background: #f8fafc;">Tanggal Pengajuan</td><td style="border: 1px solid #000; padding: 6px 10px; vertical-align: top;">${fmtDateShort(data.tanggal)}</td></tr>
+        <tr><td style="border: 1px solid #000; padding: 6px 10px; vertical-align: top; font-weight: bold; background: #f8fafc;">Nominal Pinjaman</td><td style="border: 1px solid #000; padding: 6px 10px; vertical-align: top;"><span style="font-size:14px; font-weight:bold;">${fmtRupiah(data.nominal)}</span></td></tr>
+        <tr><td style="border: 1px solid #000; padding: 6px 10px; vertical-align: top; font-weight: bold; background: #f8fafc;">Keperluan</td><td style="border: 1px solid #000; padding: 6px 10px; vertical-align: top;">${escapeHtml(data.keperluan || "-")}</td></tr>
       </table>
-      <div style="margin-top:20px; font-size:12px; border:1px solid #000; padding:10px;">
+      <div style="margin-top:15px; font-size:10px; border:1px solid #000; padding:8px 10px; line-height:1.4; page-break-inside:avoid;">
         <strong>Perjanjian:</strong> Dengan ini saya menyatakan meminjam uang perusahaan dan bersedia dipotong gaji setiap bulannya untuk melunasi pinjaman tersebut sesuai kebijakan CV Andela Jaya.
       </div>
-      <table style="width:100%; text-align:center; margin-top:40px;">
+      <table style="width:100%; text-align:center; margin-top:35px; page-break-inside:avoid; font-size:11px;">
         <tr><td width="33%">Peminjam,</td><td width="33%">Mengetahui (HRD),</td><td width="33%">Menyetujui (Finance),</td></tr>
-        <tr><td height="80"></td><td></td><td></td></tr>
-        <tr><td>( ${escapeHtml(data.nama_karyawan)} )</td><td>( ................................. )</td><td>( ................................. )</td></tr>
+        <tr><td height="60"></td><td></td><td></td></tr>
+        <tr><td>( <strong>${escapeHtml(data.nama_karyawan)}</strong> )</td><td>( ................................. )</td><td>( ................................. )</td></tr>
       </table>
     </div>`;
     await downloadHtmlAsPdf(html, `Form_Kasbon_${escapeHtml(data.nama_karyawan).replace(/\s+/g, "_")}.pdf`);

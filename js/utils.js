@@ -406,18 +406,21 @@ export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf") 
   await ensureHtml2PdfLoaded();
   const element = document.createElement("div");
   // Set styles to ensure white background, black text and proper print-like container
-  element.style.padding = "20px";
+  element.style.padding = "0px";
+  element.style.margin = "0px";
   element.style.background = "#ffffff";
   element.style.color = "#000000";
-  element.style.fontFamily = "Arial, sans-serif";
+  element.style.fontFamily = "'Times New Roman', Arial, sans-serif";
+  element.style.boxSizing = "border-box";
   element.innerHTML = htmlContent;
   
   const opt = {
-    margin:       [15, 15, 15, 15],
+    margin:       [10, 10, 10, 10],
     filename:     filename,
     image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { scale: 2, useCORS: true, logging: false },
-    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    html2canvas:  { scale: 2, useCORS: true, logging: false, scrollY: 0 },
+    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
   };
   
   await window.html2pdf().set(opt).from(element).save();
@@ -456,7 +459,7 @@ export async function notifyUser(username, judul, pesan, link = "") {
   try {
     // 1. Tambahkan ke lonceng notifikasi web
     await fsAdd(COL.NOTIFICATIONS, {
-      username_target: username, judul, pesan, dibaca: false, tanggal: new Date().toISOString()
+      username_target: username, judul, pesan, link: link || "", dibaca: false, tanggal: new Date().toISOString()
     }, genId("NTF"));
     
     // 2. Tembak ke HP target
@@ -654,129 +657,4 @@ export function localDateStr(value) {
   const d = v && typeof v.toDate === "function" ? v.toDate() : new Date(v);
   if (isNaN(d)) return null;
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
-}
-
-/* ---------------------------------------------------------------------
- * FORM CLAIM SALES — Dokumen cetak/unduh klaim bensin & operasional sales
- * Dipakai bersama oleh halaman Klaim Bensin (panel Admin) dan Riwayat
- * Pengajuan (supaya sales bisa mencetak/mengunduh klaim miliknya sendiri).
- * ------------------------------------------------------------------- */
-const HARGA_BENSIN_KLAIM = 10000;
-const RASIO_KM_KLAIM = 25;
-
-export function buildFormClaimSalesHtml(item) {
-  const detailList = item.detail?.rincian_tabel || [];
-  const total = Number(item.detail?.total_klaim || item.detail?.grand_total || 0);
-  const area = item.cabang || item.detail?.cabang || "-";
-  const jenisBbm = item.detail?.jenis_bbm || "Pertalite";
-  const tglCetak = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
-
-  const rowsHtml = detailList.length ? detailList.map(r => {
-    const jarak = Math.max(0, Number(r.km_akhir || 0) - Number(r.km_awal || 0));
-    const petrol = Math.round(jarak * (HARGA_BENSIN_KLAIM / RASIO_KM_KLAIM));
-    return `
-    <tr>
-      <td style="padding:6px;border:1px solid #cbd5e1;font-size:11px;text-align:center;">${escapeHtml(r.tanggal ? String(r.tanggal).substring(0, 10) : "-")}</td>
-      <td style="padding:6px;border:1px solid #cbd5e1;font-size:11px;text-align:right;">${Number(r.km_awal || 0).toLocaleString("id-ID")}</td>
-      <td style="padding:6px;border:1px solid #cbd5e1;font-size:11px;text-align:right;">${Number(r.km_akhir || 0).toLocaleString("id-ID")}</td>
-      <td style="padding:6px;border:1px solid #cbd5e1;font-size:11px;text-align:right;">${jarak} KM</td>
-      <td style="padding:6px;border:1px solid #cbd5e1;font-size:11px;text-align:right;">Rp ${petrol.toLocaleString("id-ID")}</td>
-      <td style="padding:6px;border:1px solid #cbd5e1;font-size:11px;text-align:right;">Rp ${Number(r.parkir || 0).toLocaleString("id-ID")}</td>
-      <td style="padding:6px;border:1px solid #cbd5e1;font-size:11px;">${escapeHtml(r.tujuan || "-")}</td>
-    </tr>`;
-  }).join("") : `<tr><td colspan="7" style="padding:14px;text-align:center;color:#94a3b8;border:1px solid #cbd5e1;font-size:11px;">Tidak ada data perjalanan / kunjungan</td></tr>`;
-
-  return `
-  <div style="font-family:Arial,sans-serif;color:#0f172a;">
-    <div style="text-align:center;border-bottom:2px solid #0f172a;padding-bottom:10px;margin-bottom:16px;">
-      <p style="margin:0;font-size:11px;letter-spacing:1.5px;color:#64748b;">CV ANDELA JAYA</p>
-      <h2 style="margin:4px 0 0;font-size:19px;text-transform:uppercase;letter-spacing:1px;">FORM CLAIM SALES</h2>
-    </div>
-
-    <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px;">
-      <tr>
-        <td style="padding:3px 0;width:14%;font-weight:bold;">Nama</td>
-        <td style="padding:3px 0;width:36%;">: ${escapeHtml(item.nama_pemohon || "-")}</td>
-        <td style="padding:3px 0;width:16%;font-weight:bold;">Jenis BBM</td>
-        <td style="padding:3px 0;width:34%;">: ${escapeHtml(jenisBbm)}</td>
-      </tr>
-      <tr>
-        <td style="padding:3px 0;font-weight:bold;">Area</td>
-        <td style="padding:3px 0;">: ${escapeHtml(area)}</td>
-        <td style="padding:3px 0;font-weight:bold;">No. Voucher</td>
-        <td style="padding:3px 0;font-family:monospace;">: ${escapeHtml(item.id || "-")}</td>
-      </tr>
-    </table>
-
-    <table style="width:100%;border-collapse:collapse;margin-bottom:18px;">
-      <thead>
-        <tr style="background:#f1f5f9;">
-          <th style="padding:6px;border:1px solid #cbd5e1;font-size:10px;text-transform:uppercase;">TGL</th>
-          <th style="padding:6px;border:1px solid #cbd5e1;font-size:10px;text-transform:uppercase;">KM Awal</th>
-          <th style="padding:6px;border:1px solid #cbd5e1;font-size:10px;text-transform:uppercase;">KM Akhir</th>
-          <th style="padding:6px;border:1px solid #cbd5e1;font-size:10px;text-transform:uppercase;">Jarak Tempuh</th>
-          <th style="padding:6px;border:1px solid #cbd5e1;font-size:10px;text-transform:uppercase;">Petrol (Rp)</th>
-          <th style="padding:6px;border:1px solid #cbd5e1;font-size:10px;text-transform:uppercase;">Parkir (Rp)</th>
-          <th style="padding:6px;border:1px solid #cbd5e1;font-size:10px;text-transform:uppercase;">Tujuan</th>
-        </tr>
-      </thead>
-      <tbody>${rowsHtml}</tbody>
-    </table>
-
-    <div style="text-align:right;font-weight:bold;font-size:13px;background:#f8fafc;padding:10px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:36px;">
-      TOTAL KLAIM: Rp ${total.toLocaleString("id-ID")}
-    </div>
-
-    <p style="font-size:12px;margin-bottom:44px;">${escapeHtml(area)}, ${tglCetak}</p>
-
-    <table style="width:100%;text-align:center;font-size:11px;border-collapse:collapse;">
-      <tr>
-        <td style="width:33%;">Yang Mengajukan,</td>
-        <td style="width:33%;">Mengetahui,</td>
-        <td style="width:33%;">Dicek Oleh,</td>
-      </tr>
-      <tr><td style="height:55px;"></td><td></td><td></td></tr>
-      <tr>
-        <td style="border-top:1px solid #94a3b8;padding-top:5px;font-weight:bold;">${escapeHtml(item.nama_pemohon || "Nama Sales")}</td>
-        <td style="border-top:1px solid #94a3b8;padding-top:5px;font-weight:bold;">SPV Sales</td>
-        <td style="border-top:1px solid #94a3b8;padding-top:5px;font-weight:bold;">HR Staff</td>
-      </tr>
-    </table>
-  </div>`;
-}
-
-/** Cetak dokumen "FORM CLAIM SALES" langsung ke jendela print browser. */
-export function printFormClaimSales(item) {
-  const printWin = window.open("", "_blank", "width=850,height=750");
-  if (!printWin) {
-    toast("Izin popup diblokir oleh browser. Izinkan popup untuk mencetak.", "error");
-    return;
-  }
-  printWin.document.write(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>FORM CLAIM SALES - ${escapeHtml(item.nama_pemohon || "")}</title>
-      <style>
-        body { padding: 25px; }
-        @media print { body { padding: 0; } button { display: none; } }
-      </style>
-    </head>
-    <body>
-      ${buildFormClaimSalesHtml(item)}
-      <script>window.onload = function () { window.print(); };</script>
-    </body>
-    </html>
-  `);
-  printWin.document.close();
-}
-
-/** Unduh dokumen "FORM CLAIM SALES" sebagai file PDF. */
-export async function downloadFormClaimSales(item) {
-  const namaFile = `FORM-CLAIM-SALES_${(item.nama_pemohon || "sales").replace(/\s+/g, "_")}_${String(item.tgl || "").substring(0, 10) || "draft"}.pdf`;
-  try {
-    await downloadHtmlAsPdf(buildFormClaimSalesHtml(item), namaFile);
-  } catch (e) {
-    toast("Gagal mengunduh PDF: " + e.message, "error");
-  }
 }

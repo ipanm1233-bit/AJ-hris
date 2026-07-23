@@ -1,5 +1,5 @@
 import { COL } from "../firebase-config.js";
-import { fsAdd, fsGetAll, fsUpdate, genId, toast, sendEmailNotif, getTargetsForRole, createLoginToken, escapeHtml, printFormClaimSales, downloadFormClaimSales } from "../utils.js";
+import { fsAdd, fsGetAll, fsUpdate, genId, toast, sendEmailNotif, getTargetsForRole, createLoginToken, escapeHtml } from "../utils.js";
 
 export async function mount(container, { session }) {
   const tbody = container.querySelector("#kb-tbody");
@@ -11,14 +11,6 @@ export async function mount(container, { session }) {
   const tabAdminBtn = container.querySelector("#tab-kb-admin");
   const panelForm = container.querySelector("#panel-kb-form");
   const panelAdmin = container.querySelector("#panel-kb-admin");
-  const jenisBbmSelect = container.querySelector("#kb-jenis-bbm-select");
-
-  // Panel "Manajemen Admin Cabang" (approval & rekap per cabang) hanya untuk HRD/SUPERADMIN.
-  // Karyawan Sales / role lain hanya melihat & menggunakan tab "Form Ajukan Klaim".
-  const isHrdAdmin = session.role === "HRD" || session.role === "SUPERADMIN";
-  if (!isHrdAdmin && tabAdminBtn) {
-    tabAdminBtn.classList.add("hidden");
-  }
 
   const btnAdminCirebon = container.querySelector("#admin-tab-cirebon");
   const btnAdminMalang = container.querySelector("#admin-tab-malang");
@@ -56,6 +48,20 @@ export async function mount(container, { session }) {
   }
 
   // CABANG ADMIN SWITCHING (CIREBON vs MALANG)
+  const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
+  if (!isHrd && tabAdminBtn) {
+     tabAdminBtn.style.display = "none";
+  }
+
+  const infoNama = container.querySelector("#kb-info-nama");
+  const infoArea = container.querySelector("#kb-info-area");
+  if (infoNama) infoNama.textContent = session.nama;
+  if (infoArea) infoArea.textContent = cabangSelect ? cabangSelect.value : (session.cabang || "Cirebon");
+  if (cabangSelect) {
+     cabangSelect.onchange = () => {
+        if (infoArea) infoArea.textContent = cabangSelect.value;
+     };
+  }
   if (btnAdminCirebon && btnAdminMalang) {
      btnAdminCirebon.onclick = () => {
         currentBranch = "Cirebon";
@@ -162,7 +168,7 @@ export async function mount(container, { session }) {
         </head>
         <body>
            <div class="header">
-              <h2>CV ANDELA JAYA</h2>
+              <h2>PT. ANDELA JAYA SENTOSA</h2>
               <p>DOKUMEN REKAP KLAIM BENSIN & OPERASIONAL — CABANG ${escapeHtml(currentBranch).toUpperCase()}</p>
               <p>Tanggal Cetak: ${new Date().toLocaleDateString("id-ID", { dateStyle: "full" })}</p>
            </div>
@@ -202,6 +208,130 @@ export async function mount(container, { session }) {
                  <p>Accounting (Approver Akhir)</p>
                  <div class="sig-space"></div>
                  <div class="sig-name">( Finance / Accounting )</div>
+              </div>
+           </div>
+
+           <script>
+              window.onload = function() { window.print(); };
+           </script>
+        </body>
+        </html>
+     `);
+     printWin.document.close();
+  }
+
+  function printSingleSalesClaim(item) {
+     const printWin = window.open("", "_blank", "width=850,height=700");
+     if (!printWin) {
+        toast("Izin popup diblokir browser. Izinkan popup untuk mencetak.", "error");
+        return;
+     }
+
+     const detailList = item.detail?.rincian_tabel || [];
+     const total = Number(item.detail?.total_klaim || item.detail?.grand_total || 0);
+     const cabangArea = item.cabang || item.detail?.cabang || currentBranch || "Cirebon";
+
+     const tripRowsHtml = detailList.length > 0 ? detailList.map((r, i) => {
+        const kmAwal = Number(r.km_awal || 0);
+        const kmAkhir = Number(r.km_akhir || 0);
+        const trip = Math.max(0, kmAkhir - kmAwal);
+        const petrolRp = Math.round(trip * (HARGA_BENSIN / RASIO_KM));
+        const parkirRp = Number(r.parkir || 0);
+
+        return `
+        <tr style="border-bottom: 1px solid #e2e8f0; font-size: 11px;">
+           <td style="padding: 8px; text-align: center;">${i + 1}</td>
+           <td style="padding: 8px;">${escapeHtml(r.tanggal || "-")}</td>
+           <td style="padding: 8px; text-align: right;">${kmAwal.toLocaleString("id-ID")}</td>
+           <td style="padding: 8px; text-align: right;">${kmAkhir.toLocaleString("id-ID")}</td>
+           <td style="padding: 8px; text-align: right; font-weight: bold;">${trip} KM</td>
+           <td style="padding: 8px; text-align: right;">Rp ${petrolRp.toLocaleString("id-ID")}</td>
+           <td style="padding: 8px; text-align: right;">Rp ${parkirRp.toLocaleString("id-ID")}</td>
+           <td style="padding: 8px;">${escapeHtml(r.tujuan || r.kunjungan || "-")}</td>
+        </tr>
+     `;}).join("") : `
+        <tr><td colspan="8" style="padding: 12px; text-align: center; color: #94a3b8;">Tidak ada detail rincian perjalanan</td></tr>
+     `;
+
+     printWin.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+           <title>Form Claim Sales - ${escapeHtml(item.nama_pemohon)}</title>
+           <style>
+              body { font-family: Arial, sans-serif; padding: 25px; color: #0f172a; }
+              .header { border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 15px; text-align: center; }
+              .header h2 { margin: 0; font-size: 18px; text-transform: uppercase; font-weight: bold; }
+              .header h3 { margin: 4px 0 0; font-size: 15px; color: #334155; }
+              .meta-box { margin-bottom: 20px; font-size: 12px; background: #f8fafc; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; }
+              .meta-box p { margin: 4px 0; }
+              table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+              th { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 8px; font-size: 10px; text-align: left; text-transform: uppercase; }
+              td { border: 1px solid #cbd5e1; }
+              .grand-total { text-align: right; font-size: 14px; font-weight: bold; background: #f8fafc; padding: 10px; border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 30px; }
+              .signatures { margin-top: 40px; }
+              .sig-date { text-align: right; font-size: 12px; font-weight: bold; margin-bottom: 20px; }
+              .sig-grid { display: flex; justify-content: space-between; text-align: center; }
+              .sig-box { width: 30%; font-size: 11px; }
+              .sig-space { height: 60px; }
+              .sig-name { font-weight: bold; border-top: 1px solid #94a3b8; padding-top: 4px; }
+              @media print {
+                 body { padding: 0; }
+              }
+           </style>
+        </head>
+        <body>
+           <div class="header">
+              <h2>CV ANDELA JAYA</h2>
+              <h3>FORM CLAIM SALES</h3>
+           </div>
+
+           <div class="meta-box">
+              <p><strong>Nama :</strong> ${escapeHtml(item.nama_pemohon)}</p>
+              <p><strong>Area :</strong> ${escapeHtml(cabangArea)}</p>
+              <p><strong>Jenis BBM :</strong> Pertalite</p>
+           </div>
+
+           <table>
+              <thead>
+                 <tr>
+                    <th style="text-align: center; width: 30px;">NO</th>
+                    <th>TGL</th>
+                    <th style="text-align: right;">KM AWAL</th>
+                    <th style="text-align: right;">KM AKHIR</th>
+                    <th style="text-align: right;">JARAK TEMPUH</th>
+                    <th style="text-align: right;">PETROL (Rp)</th>
+                    <th style="text-align: right;">PARKIR (Rp)</th>
+                    <th>TUJUAN / DAFTAR KUNJUNGAN</th>
+                 </tr>
+              </thead>
+              <tbody>
+                 ${tripRowsHtml}
+              </tbody>
+           </table>
+
+           <div class="grand-total">
+              TOTAL CLAIM BENSIN SALES: Rp ${total.toLocaleString("id-ID")}
+           </div>
+
+           <div class="signatures">
+              <div class="sig-date">${escapeHtml(cabangArea)}, ${new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</div>
+              <div class="sig-grid">
+                 <div class="sig-box">
+                    <p>Yang Mengajukan,</p>
+                    <div class="sig-space"></div>
+                    <div class="sig-name">( ${escapeHtml(item.nama_pemohon)} )<br><span style="font-weight: normal; font-size: 10px;">Sales</span></div>
+                 </div>
+                 <div class="sig-box">
+                    <p>Mengetahui,</p>
+                    <div class="sig-space"></div>
+                    <div class="sig-name">( SPV Sales )<br><span style="font-weight: normal; font-size: 10px;">Supervisor</span></div>
+                 </div>
+                 <div class="sig-box">
+                    <p>Dicek Oleh,</p>
+                    <div class="sig-space"></div>
+                    <div class="sig-name">( HR Staff )<br><span style="font-weight: normal; font-size: 10px;">HRD / Finance</span></div>
+                 </div>
               </div>
            </div>
 
@@ -271,14 +401,9 @@ export async function mount(container, { session }) {
                  </div>
               </td>
               <td class="p-3 text-center">
-                 <div class="flex items-center justify-center gap-1.5">
-                    <button data-print-single="${item.id}" title="Cetak FORM CLAIM SALES" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-[11px] rounded-lg transition border border-slate-200 flex items-center gap-1">
-                       <span>🖨️ Cetak</span>
-                    </button>
-                    <button data-download-single="${item.id}" title="Unduh PDF FORM CLAIM SALES" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-[11px] rounded-lg transition border border-slate-200 flex items-center gap-1">
-                       <span>⬇️ Unduh</span>
-                    </button>
-                 </div>
+                 <button data-print-single="${item.id}" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-[11px] rounded-lg transition border border-slate-200 flex items-center gap-1 mx-auto">
+                    <span>🖨️ Cetak Sales</span>
+                 </button>
               </td>
            </tr>
         `;
@@ -288,15 +413,7 @@ export async function mount(container, { session }) {
         btn.onclick = () => {
            const id = btn.dataset.printSingle;
            const targetItem = allKlaimData.find(x => x.id === id);
-           if (targetItem) printFormClaimSales(targetItem);
-        };
-     });
-
-     adminTbody.querySelectorAll("[data-download-single]").forEach(btn => {
-        btn.onclick = () => {
-           const id = btn.dataset.downloadSingle;
-           const targetItem = allKlaimData.find(x => x.id === id);
-           if (targetItem) downloadFormClaimSales(targetItem);
+           if (targetItem) printSingleSalesClaim(targetItem);
         };
      });
 
@@ -324,13 +441,13 @@ export async function mount(container, { session }) {
     const tr = document.createElement("tr");
     tr.className = "border-b border-slate-50";
     tr.innerHTML = `
-      <td class="p-2"><input type="date" class="kb-input w-full p-2 border border-slate-200 rounded outline-none focus:border-maroon-400 text-sm" data-field="tanggal" required></td>
-      <td class="p-2"><input type="number" class="kb-input w-full p-2 border border-slate-200 rounded outline-none focus:border-maroon-400 text-sm" data-field="km_awal" value="0" min="0" required></td>
-      <td class="p-2"><input type="number" class="kb-input w-full p-2 border border-slate-200 rounded outline-none focus:border-maroon-400 text-sm" data-field="km_akhir" value="0" min="0" required></td>
-      <td class="p-2"><input type="text" class="kb-input w-full p-2 border border-slate-200 rounded outline-none focus:border-maroon-400 text-sm" data-field="tujuan" placeholder="cth: Outlet A, Outlet B, Toko C"></td>
-      <td class="p-2"><input type="number" class="kb-input w-full p-2 border border-slate-200 rounded outline-none focus:border-maroon-400 text-sm" data-field="parkir" value="0" min="0"></td>
-      <td class="p-2"><input type="number" class="kb-input w-full p-2 border border-slate-200 rounded outline-none focus:border-maroon-400 text-sm" data-field="denda" value="0" min="0"></td>
-      <td class="p-2 text-right"><span class="kb-row-total font-semibold text-slate-700 text-sm">0</span></td>
+      <td class="p-2"><input type="date" class="kb-input w-full p-2 border border-slate-200 rounded outline-none focus:border-maroon-400 text-xs" data-field="tanggal" required></td>
+      <td class="p-2"><input type="number" class="kb-input w-full p-2 border border-slate-200 rounded outline-none focus:border-maroon-400 text-xs" data-field="km_awal" value="0" min="0" required></td>
+      <td class="p-2"><input type="number" class="kb-input w-full p-2 border border-slate-200 rounded outline-none focus:border-maroon-400 text-xs" data-field="km_akhir" value="0" min="0" required></td>
+      <td class="p-2"><input type="number" class="kb-input w-full p-2 border border-slate-200 rounded outline-none focus:border-maroon-400 text-xs" data-field="parkir" value="0" min="0"></td>
+      <td class="p-2"><input type="number" class="kb-input w-full p-2 border border-slate-200 rounded outline-none focus:border-maroon-400 text-xs" data-field="denda" value="0" min="0"></td>
+      <td class="p-2"><input type="text" class="kb-input w-full p-2 border border-slate-200 rounded outline-none focus:border-maroon-400 text-xs" data-field="tujuan" placeholder="Daftar toko / kunjungan"></td>
+      <td class="p-2 text-right"><span class="kb-row-total font-semibold text-slate-700 text-xs">0</span></td>
       <td class="p-2 text-center">
         <button type="button" class="kb-delete text-slate-300 hover:text-red-600 transition" title="Hapus baris ini">✖</button>
       </td>
@@ -398,12 +515,11 @@ export async function mount(container, { session }) {
     const detailKlaim = [];
     let totalKlaim = 0;
     const selectedCabang = cabangSelect ? cabangSelect.value : "Cirebon";
-    const selectedJenisBbm = jenisBbmSelect ? jenisBbmSelect.value : "Pertalite";
     
     rows.forEach(tr => {
       const getValue = (field) => parseFloat(tr.querySelector(`[data-field="${field}"]`).value) || 0;
       const tgl = tr.querySelector(`[data-field="tanggal"]`).value;
-      const tujuan = tr.querySelector(`[data-field="tujuan"]`)?.value?.trim() || "";
+      const tujuan = tr.querySelector(`[data-field="tujuan"]`)?.value || "-";
       
       const trip = Math.max(0, getValue("km_akhir") - getValue("km_awal"));
       const petrol = trip * (HARGA_BENSIN / RASIO_KM);
@@ -413,9 +529,9 @@ export async function mount(container, { session }) {
         tanggal: tgl,
         km_awal: getValue("km_awal"),
         km_akhir: getValue("km_akhir"),
-        tujuan: tujuan,
         parkir: getValue("parkir"),
         denda: getValue("denda"),
+        tujuan: tujuan,
         total_baris: Math.round(rowTotal)
       });
       
@@ -436,7 +552,6 @@ export async function mount(container, { session }) {
       nama_form: `Klaim Bensin Operasional (${selectedCabang})`,
       detail: {
         cabang: selectedCabang,
-        jenis_bbm: selectedJenisBbm,
         total_klaim: Math.round(totalKlaim),
         rincian_tabel: detailKlaim 
       },
@@ -477,7 +592,6 @@ export async function mount(container, { session }) {
       tbody.innerHTML = "";
       addRow();
       calculateTotal();
-      if (jenisBbmSelect) jenisBbmSelect.value = "Pertalite";
       
       submitBtn.disabled = false;
       submitBtn.textContent = "Ajukan Klaim";
