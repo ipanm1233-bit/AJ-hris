@@ -35,7 +35,21 @@ module.exports = async function handler(req, res) {
 
   try {
     if (!admin.apps.length) {
-      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+        return res.status(500).json({
+          success: false,
+          error: "FIREBASE_SERVICE_ACCOUNT_JSON environment variable is not configured."
+        });
+      }
+      let serviceAccount;
+      try {
+        serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      } catch (e) {
+        return res.status(500).json({
+          success: false,
+          error: "FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON: " + e.message
+        });
+      }
       admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
     }
     const db = admin.firestore();

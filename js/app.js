@@ -5,7 +5,7 @@
  * =====================================================================
  */
 import { getSession, logout, computeVisibleMenus, canAccessRoute, MENU_CONFIG, loginWithToken } from "./auth.js";
-import { parseHash, toast, fmtDateTime, openModal, closeModal, sha256, fsUpdate } from "./utils.js";
+import { parseHash, toast, fmtDateTime, openModal, closeModal, sha256, fsUpdate, escapeHtml } from "./utils.js";
 import { icon, avatar, openNotificationCenter } from "./components.js";
 import { db, messaging, COL, collection, query, where, getDocs, doc, getDoc, updateDoc } from "./firebase-config.js";
 import { getToken } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js";

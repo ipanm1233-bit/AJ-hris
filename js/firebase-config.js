@@ -12,12 +12,12 @@ import { getMessaging, isSupported } from "https://www.gstatic.com/firebasejs/10
 // Pastikan versinya (10.7.1) sama dengan versi firebase-app.js yang Anda gunakan di baris atas
 
 const firebaseConfig = {
-    apiKey: "AIzaSyBAAUHaqYrzTp6wi1PDYkrKY0IWI2XQoVw",
-    authDomain: "andela-hris-bc9ed.firebaseapp.com",
-    projectId: "andela-hris-bc9ed",
-    storageBucket: "andela-hris-bc9ed.firebasestorage.app",
-    messagingSenderId: "718041616100",
-    appId: "1:718041616100:web:cde303edb932b25ae826f1"
+    apiKey: "AIzaSyB7hYGj4DmellhfggbDbzQdubeL3T8lKHM",
+    authDomain: "gen-lang-client-0670613891.firebaseapp.com",
+    projectId: "gen-lang-client-0670613891",
+    storageBucket: "gen-lang-client-0670613891.firebasestorage.app",
+    messagingSenderId: "558851473740",
+    appId: "1:558851473740:web:bb87504a9d5f324aec4fe9"
 };
 
 export const app = initializeApp(firebaseConfig);
@@ -35,7 +35,7 @@ isSupported().then((supported) => {
 });
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()})
-});
+}, "ai-studio-ajhris-b3979000-ada8-4821-9f1a-49af228e2acb");
 
 // INISIALISASI STORAGE
 export const storage = getStorage(app);
