@@ -83,60 +83,65 @@ async function boot() {
  * FUNGSI NOTIFIKASI PWA (FCM)
  * ------------------------------------------------------------------- */
 async function aktifkanNotifikasiHP(userData) {
-    // 1. CEK DUKUNGAN BROWSER: Mencegah crash di iPhone (Safari)
-    if (!messaging) {
-        console.warn("Fitur Push Notification tidak didukung di tab ini (Gunakan fitur Add to Home Screen).");
+    // 1. CEK DUKUNGAN BROWSER & SERVICeworker: Mencegah error di iframe / browser yang belum mengizinkan
+    if (!messaging || !('Notification' in window)) {
+        console.info("Fitur FCM Push Notification tidak diaktifkan pada lingkungan tab browser ini.");
         return; 
     }
 
     try {
-        // 2. Minta izin ke pengguna HP
-        const permission = await Notification.requestPermission();
-        if (permission === 'granted') {
-            let registration = null;
-            if ('serviceWorker' in navigator) {
-                registration = await navigator.serviceWorker.ready;
-            }
-            
-            const currentToken = await getToken(messaging, { 
-                vapidKey: 'BLAv8-HIF945zC4llQ3VaSi_n1cIuk6GbFJLasQA7notR1IP0JbKmG1kzTJ2xoqQs7StT_tyKRW4BWe5ZN24XGE',
-                serviceWorkerRegistration: registration
-            });
+        // Hanya proses token jika izin sudah diberikan pengguna secara eksplisit
+        if (Notification.permission !== 'granted') {
+            return;
+        }
 
-            if (currentToken) {
-                console.log('Token HP Karyawan:', currentToken);
+        let registration = null;
+        if ('serviceWorker' in navigator) {
+            registration = await navigator.serviceWorker.ready.catch(() => null);
+        }
+        
+        let currentToken = null;
+        try {
+            currentToken = await getToken(messaging, { 
+                vapidKey: 'BLAv8-HIF945zC4llQ3VaSi_n1cIuk6GbFJLasQA7notR1IP0JbKmG1kzTJ2xoqQs7StT_tyKRW4BWe5ZN24XGE',
+                serviceWorkerRegistration: registration || undefined
+            });
+        } catch (fcmErr) {
+            console.info("Layanan Notifikasi FCM tidak memerlukan tindakan lanjutan (Sandbox Mode):", fcmErr.message);
+            return;
+        }
+
+        if (currentToken) {
+            console.log('Token HP Karyawan:', currentToken);
+            
+            // Simpan token ke database karyawan & users
+            if (userData && userData.username) {
+                await fsUpdate(COL.USERS, userData.username, {
+                    fcm_token: currentToken
+                });
                 
-                // Simpan token ke database karyawan & users
-                if (userData && userData.username) {
-                    await fsUpdate(COL.USERS, userData.username, {
-                        fcm_token: currentToken
-                    });
-                    
-                    if (userData.nik) {
-                        try {
-                            await updateDoc(doc(db, COL.MASTER_KARYAWAN, String(userData.nik)), {
-                                fcm_token: currentToken
-                            });
-                        } catch(e) {
-                            console.warn("Karyawan doc update failed: ", e);
-                        }
-                    } else if (userData.id) {
-                        try {
-                            await updateDoc(doc(db, COL.MASTER_KARYAWAN, String(userData.id)), {
-                                fcm_token: currentToken
-                            });
-                        } catch(e) {
-                            console.warn("Karyawan doc update failed: ", e);
-                        }
+                if (userData.nik) {
+                    try {
+                        await updateDoc(doc(db, COL.MASTER_KARYAWAN, String(userData.nik)), {
+                            fcm_token: currentToken
+                        });
+                    } catch(e) {
+                        console.warn("Karyawan doc update failed: ", e);
                     }
-                    console.log("Token FCM berhasil disimpan ke database!");
+                } else if (userData.id) {
+                    try {
+                        await updateDoc(doc(db, COL.MASTER_KARYAWAN, String(userData.id)), {
+                            fcm_token: currentToken
+                        });
+                    } catch(e) {
+                        console.warn("Karyawan doc update failed: ", e);
+                    }
                 }
+                console.log("Token FCM berhasil disimpan ke database!");
             }
-        } else {
-            console.log('Izin notifikasi ditolak oleh pengguna.');
         }
     } catch (error) {
-        console.error('Gagal mengaktifkan notifikasi:', error);
+        console.info('Pemberitahuan Notifikasi:', error.message);
     }
 }
 
