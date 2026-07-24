@@ -22,7 +22,7 @@ export async function mount(container, { session }) {
     if (isHrd) {
       tabsHtml += `
         <button id="tab-tna" class="px-4 py-2 text-sm font-semibold rounded-lg transition ${activeTab === 'tna' ? 'bg-maroon-700 text-white shadow-md' : 'bg-white border border-slate-100 text-slate-600 hover:bg-slate-50'}">
-          📊 TNA Dashboard & Kelas
+          TNA Dashboard & Kelas
         </button>
       `;
     }
@@ -491,7 +491,7 @@ function openQuizModal(type, planId, planJudul, kategori, session, onDone) {
   const selectedQuiz = quizzes[kategori] || quizzes["default"];
 
   openModal({
-    title: `📝 ${type} — ${escapeHtml(planJudul)}`,
+    title: `${type} — ${escapeHtml(planJudul)}`,
     size: "md",
     bodyHtml: `
       <div class="space-y-4 text-left">
@@ -725,7 +725,7 @@ async function renderTnaDashboard(wrap, session) {
           <div class="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
               <h3 class="font-bold text-slate-800 flex items-center gap-2">
-                <span class="text-amber-500">⚡</span> TNA Analytical Intelligence Engine
+                TNA Analytical Intelligence Engine
               </h3>
               <p class="text-xs text-slate-400 mt-0.5">Pengelompokan gap keahlian mayoritas otomatis untuk penghematan budget training.</p>
             </div>
@@ -968,7 +968,7 @@ async function openCreatePlanModal(defaultJudul = "", defaultKategori = "", onSu
   }
 
   openModal({
-    title: "📅 Susun Rencana & Jadwalkan Pelatihan",
+    title: "Susun Rencana & Jadwalkan Pelatihan",
     size: "lg",
     bodyHtml: `
       <form id="form-create-plan" class="space-y-4 text-left">

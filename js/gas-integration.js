@@ -100,14 +100,22 @@ export async function uploadFileToDrive(file, folderPath) {
     throw new Error("Ukuran file maksimal 25MB untuk upload ke Google Drive.");
   }
   const base64 = await fileToBase64(file);
-  const result = await callGasWebApp({
-    action: "upload_file",
-    base64,
-    fileName: file.name,
-    mimeType: file.type || "application/octet-stream",
-    folderPath: folderPath || "Lain-lain"
-  });
-  return result.url;
+  try {
+    const result = await callGasWebApp({
+      action: "upload_file",
+      base64,
+      fileName: file.name,
+      mimeType: file.type || "application/octet-stream",
+      folderPath: folderPath || "Lain-lain"
+    });
+    if (result && result.url) {
+      return result.url;
+    }
+    throw new Error("Respons Apps Script tidak menyertakan URL file.");
+  } catch (err) {
+    console.warn("Upload Google Drive via Apps Script tidak berhasil, menyimpan sebagai file tertanam sistem (Data URL):", err);
+    return `data:${file.type || "application/octet-stream"};base64,${base64}`;
+  }
 }
 
 function fileToBase64(file) {

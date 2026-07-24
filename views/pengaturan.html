@@ -8,6 +8,10 @@
     <button data-stab="users" id="tab-btn-users" class="st-tab px-4 py-2.5 text-sm font-medium border-b-2 border-maroon-700 text-maroon-700 whitespace-nowrap">Manajemen Pengguna</button>
     <button data-stab="menu" class="st-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">Akses Menu (RBAC)</button>
     <button data-stab="forms" class="st-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">Akses Formulir Pengajuan</button>
+    <button data-stab="kanal" class="st-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap flex items-center gap-1.5">
+      <span>🔌 Integrasi API Kanal</span>
+      <span class="px-1.5 py-0.5 text-[10px] font-bold bg-maroon-100 text-maroon-800 rounded-full">Baru</span>
+    </button>
   </div>
 
   <div id="st-panel-users"></div>
@@ -29,6 +33,81 @@
       <p class="text-xs text-slate-400 mb-3">Kosongkan seluruh centang agar akses formulir mengikuti aturan bawaan (Allowed_Rules / Allowed_Users) pada Form Builder. Centang manual untuk override per-personil.</p>
       <div id="rbac-form-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
       <button id="rbac-form-save" class="mt-5 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-maroon-700 hover:bg-maroon-800 transition">Simpan Hak Akses Formulir</button>
+    </div>
+  </div>
+
+  <div id="st-panel-kanal" class="hidden space-y-6">
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+        <div>
+          <h2 class="text-base font-bold text-slate-800">Konfigurasi API Kanal External</h2>
+          <p class="text-xs text-slate-500">Hubungkan sistem HRIS ke Kanal API untuk penarikan data transaksi, absensi, & outlet secara otomatis.</p>
+        </div>
+        <span class="px-2.5 py-1 text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full flex items-center gap-1">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Siap Dihubungkan
+        </span>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Base Endpoint URL API Kanal</label>
+          <input type="url" id="kanal-api-url" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl outline-none focus:border-maroon-400" placeholder="https://api.kanal.co.id/v1/data">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">API Key / Token Otentikasi</label>
+          <input type="password" id="kanal-api-key" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl outline-none focus:border-maroon-400" placeholder="knl_live_secret_key_123456">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Tipe Data Target Penarikan</label>
+          <select id="kanal-data-type" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl outline-none focus:border-maroon-400 bg-white">
+            <option value="all">Semua Tipe Data Kanal (Outlet, Absensi, Item, Transaksi)</option>
+            <option value="outlet">Master Outlet / Cabang Kanal</option>
+            <option value="item">Master Item / Produk Kanal</option>
+            <option value="absensi">Data Absensi & Kehadiran Staf</option>
+            <option value="transaksi">Data Penjualan / Transaksi Kanal</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Metode Sinkronisasi Data</label>
+          <select id="kanal-sync-mode" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl outline-none focus:border-maroon-400 bg-white">
+            <option value="manual">Manual On-Demand (Tarik Saat Dibutuhkan)</option>
+            <option value="hourly">Otomatis Per Jam</option>
+            <option value="daily">Otomatis Setiap Hari (00:00 WIB)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3 pt-2">
+        <button id="btn-save-kanal-config" class="px-4 py-2 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-xl transition shadow-sm">
+          Simpan Konfigurasi
+        </button>
+        <button id="btn-test-kanal-api" class="px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition border border-slate-200">
+          Tes Koneksi API
+        </button>
+        <button id="btn-pull-kanal-data" class="px-4 py-2 text-xs font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 rounded-xl transition border border-emerald-300">
+          Tarik Data Kanal Sekarang
+        </button>
+      </div>
+
+      <div id="kanal-status-box" class="hidden p-3 rounded-xl border text-xs font-mono"></div>
+    </div>
+
+    <!-- PULL LOGS & SYNCED DATA PREVIEW -->
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="text-sm font-bold text-slate-800">Riwayat Penarikan Data Kanal</h3>
+          <p class="text-xs text-slate-400">Data hasil sinkronisasi API Kanal yang tersimpan di sistem.</p>
+        </div>
+        <button id="btn-refresh-kanal-logs" class="text-xs text-maroon-700 font-bold hover:underline">Refresh Log</button>
+      </div>
+
+      <div id="kanal-data-list" class="overflow-x-auto min-h-[120px]">
+        <p class="text-xs text-slate-400 italic">Belum ada penarikan data kanal. Klik "Tarik Data Kanal Sekarang" di atas.</p>
+      </div>
     </div>
   </div>
 </div>

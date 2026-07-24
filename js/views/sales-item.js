@@ -43,11 +43,26 @@ export async function mount(container, { session }) {
         itemList = reloadSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       }
 
+      updateCategoryDropdown();
       renderList();
     } catch (e) {
       console.error(e);
       tableBody.innerHTML = `<tr><td colspan="7" class="px-6 py-8 text-center text-rose-500 font-medium">Gagal memuat data item: ${e.message}</td></tr>`;
     }
+  }
+
+  function updateCategoryDropdown() {
+    if (!categoryFilter) return;
+    const currentVal = categoryFilter.value;
+    const rawCategories = itemList
+      .map(i => i.kategori || i.category || i.kelompok || "")
+      .filter(Boolean);
+    const uniqueCategories = Array.from(new Set(rawCategories)).sort();
+
+    categoryFilter.innerHTML = `
+      <option value="">Semua Kategori (${itemList.length} Item)</option>
+      ${uniqueCategories.map(cat => `<option value="${escapeHtml(cat)}"${cat === currentVal ? " selected" : ""}>${escapeHtml(cat)}</option>`).join("")}
+    `;
   }
 
   function renderList() {

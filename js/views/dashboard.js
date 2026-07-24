@@ -10,7 +10,7 @@ const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agus
 export async function mount(container, { session }) {
   const hour = new Date().getHours();
   const greet = hour < 11 ? "Selamat Pagi" : hour < 15 ? "Selamat Siang" : hour < 18 ? "Selamat Sore" : "Selamat Malam";
-  container.querySelector("#dash-greeting").textContent = `${greet}, ${session.nama.split(" ")[0]} 👋`;
+  container.querySelector("#dash-greeting").textContent = `${greet}, ${session.nama.split(" ")[0]}`;
 
   const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
 
@@ -55,105 +55,8 @@ export async function mount(container, { session }) {
   // Lonceng notifikasi kini ditangani secara global di app.js (bindShellEvents)
   // agar bisa diklik dari halaman manapun, tidak hanya saat berada di Dashboard.
 
-  // -----------------------------------------------------------------
-  // LOGIKA TOMBOL TEST & REGISTRASI NOTIFIKASI
-  // -----------------------------------------------------------------
-  const btnTestNotif = container.querySelector('#btn-test-notif');
-  if (btnTestNotif) {
-      btnTestNotif.addEventListener('click', async function() {
-          if (!('Notification' in window)) {
-              alert("GAGAL: HP/Browser ini tidak mendukung fitur Notifikasi Web.");
-              return;
-          }
-
-          const sendSafeNotification = (title, options) => {
-              if ('serviceWorker' in navigator) {
-                  navigator.serviceWorker.ready.then((registration) => {
-                      registration.showNotification(title, options);
-                  });
-              } else {
-                  new Notification(title, options);
-              }
-          };
-
-          // FUNGSI PENTING: Menyimpan Token HP ke Database Karyawan
-          // FUNGSI PENTING: Menyimpan Token HP ke Database Karyawan
-          const registerDeviceToken = async () => {
-              if (!messaging) {
-                  alert("ERROR: Modul 'messaging' Firebase belum siap.");
-                  return;
-              }
-              try {
-                  alert("1. Sedang meminta Token unik dari HP Anda...");
-                  let registration = null;
-                  if ('serviceWorker' in navigator) {
-                      registration = await navigator.serviceWorker.ready;
-                  }
-                  const currentToken = await getToken(messaging, { 
-                      vapidKey: 'BLAv8-HIF945zC4llQ3VaSi_n1cIuk6GbFJLasQA7notR1IP0JbKmG1kzTJ2xoqQs7StT_tyKRW4BWe5ZN24XGE',
-                      serviceWorkerRegistration: registration
-                  });
-                  
-                  if (currentToken) {
-                      alert("2. Token berhasil didapat! Menyimpan ke database...");
-                      if (session && session.username) {
-                          // Menyimpan ke koleksi USERS menggunakan fsUpdate bawaan utils Anda
-                          await fsUpdate(COL.USERS, session.username, {
-                              fcm_token: currentToken
-                          });
-                          
-                          if (session.nik) {
-                              try {
-                                  await updateDoc(doc(db, COL.MASTER_KARYAWAN, String(session.nik)), {
-                                      fcm_token: currentToken
-                                  });
-                              } catch(err) {
-                                  console.warn("Karyawan doc update failed: ", err);
-                              }
-                          }
-                          alert("3. SUKSES! Token berhasil disimpan ke profil Anda (" + session.username + ") di Firestore!");
-                      } else {
-                          alert("ERROR: Sesi login tidak ditemukan (session.username kosong).");
-                      }
-                  } else {
-                      alert("Gagal mendapatkan token dari Google. Pastikan koneksi internet Anda stabil.");
-                  }
-              } catch (e) {
-                  alert("CRASH SISTEM saat memproses token: " + e.message);
-                  console.error("Gagal mendaftarkan token:", e);
-              }
-          };
-
-          if (Notification.permission === 'granted') {
-              alert("Izin sudah ada! Mengirim notifikasi test dan meregistrasi perangkat...");
-              await registerDeviceToken();
-              sendSafeNotification("HRIS Andela Jaya", {
-                  body: "Perangkat ini siap menerima pengumuman Broadcast 🚀",
-                  icon: "/assets/icon-192x192.png" 
-              });
-              return;
-          }
-
-          if (Notification.permission === 'denied') {
-              alert("Izin ditolak permanen. Anda harus meresetnya dari pengaturan browser HP Anda.");
-              return;
-          }
-
-          try {
-              const permission = await Notification.requestPermission();
-              if (permission === 'granted') {
-                  alert("Izin berhasil! Mendaftarkan perangkat Anda...");
-                  await registerDeviceToken();
-                  sendSafeNotification("HRIS Andela Jaya", {
-                      body: "Pendaftaran sukses! Anda akan menerima notifikasi di sini 🚀",
-                      icon: "/assets/icon-192x192.png"
-                  });
-              }
-          } catch (e) {
-              alert("Error saat meminta izin: " + e.message);
-          }
-      });
-  }
+  // Tombol "Tes Notif" kini berada di Header Atas (sebelah Lonceng Notifikasi)
+  // dan dihandle secara global oleh bindShellEvents di app.js.
   
   return { unmount() {} };
 }
@@ -684,7 +587,7 @@ async function loadAttendanceAnalytics(container, session) {
         </div>
 
         <div class="text-xs bg-slate-50 border border-slate-100 rounded-xl p-3 text-slate-500 leading-relaxed">
-          <p>📌 Jam masuk kantor standar CV Andela Jaya adalah <b>08:00 WIB</b>. Keterlambatan berulang dapat mempengaruhi nilai review kedisiplinan dan poin KPI Anda secara periodik.</p>
+          <p>Jam masuk kantor standar CV Andela Jaya adalah <b>08:00 WIB</b>. Keterlambatan berulang dapat mempengaruhi nilai review kedisiplinan dan poin KPI Anda secara periodik.</p>
         </div>
       `;
     }
@@ -777,7 +680,7 @@ async function loadPerformanceWidget(container, session) {
         </div>
 
         <div class="bg-blue-50/50 p-3 rounded-xl border border-blue-100/30 text-xs text-slate-600 leading-relaxed">
-          <span class="font-bold text-blue-800 block mb-1">💼 Usulan Manajemen:</span>
+          <span class="font-bold text-blue-800 block mb-1">Usulan Manajemen:</span>
           ${escapeHtml(latestReview.rekomendasi || "-")}
         </div>
       `;
@@ -858,31 +761,31 @@ async function loadAssignedAssets(container, session) {
     }
 
     const categoryIcons = {
-      "Vehicles": "🚛",
-      "Office Eq": "💻",
-      "Tools": "🛠️",
-      "Kunci": "🔑",
-      "Dokumen": "📄",
-      "ATK": "📦",
-      "Furniture": "🪑"
+      "Vehicles": "truck",
+      "Office Eq": "laptop",
+      "Tools": "tools",
+      "Kunci": "key",
+      "Dokumen": "file",
+      "ATK": "box",
+      "Furniture": "box"
     };
 
     wrap.innerHTML = myAssets.map(a => {
       const catKey = Object.keys(categoryIcons).find(k => (a.kategori || "").includes(k)) || "ATK";
-      const icon = categoryIcons[catKey] || "📦";
+      const iconKey = categoryIcons[catKey] || "box";
       const cond = (a.kondisi || "Good").toUpperCase();
       let condBadge = `<span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">● Baik (Good)</span>`;
       if (cond.includes("MAINTENANCE") || cond.includes("PERBAIKAN")) {
-        condBadge = `<span class="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">⚠️ Perlu Servis</span>`;
+        condBadge = `<span class="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">Perlu Servis</span>`;
       } else if (cond.includes("RUSAK") || cond.includes("DAMAGED")) {
-        condBadge = `<span class="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">❌ Rusak</span>`;
+        condBadge = `<span class="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">Rusak</span>`;
       }
 
       return `
         <div class="p-3.5 bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 hover:bg-slate-100/80 transition group">
           <div class="flex items-center gap-3 min-w-0">
-            <div class="w-10 h-10 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-lg shadow-sm shrink-0">
-              ${icon}
+            <div class="w-10 h-10 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-600 shadow-sm shrink-0">
+              ${icon(iconKey, "w-5 h-5")}
             </div>
             <div class="min-w-0">
               <div class="flex items-center gap-2 flex-wrap">

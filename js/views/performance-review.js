@@ -18,13 +18,13 @@ export async function mount(container, { session }) {
     if (isHrd) {
       tabsHtml += `
         <button id="tab-all-reviews" class="px-4 py-2 text-sm font-semibold rounded-lg transition ${activeTab === 'all-reviews' ? 'bg-maroon-700 text-white shadow-md' : 'bg-white border border-slate-100 text-slate-600 hover:bg-slate-50'}">
-          📋 Semua Review Kinerja
+          Semua Review Kinerja
         </button>
       `;
     }
     tabsHtml += `
       <button id="tab-my-reviews" class="px-4 py-2 text-sm font-semibold rounded-lg transition ${activeTab === 'my-reviews' ? 'bg-maroon-700 text-white shadow-md' : 'bg-white border border-slate-100 text-slate-600 hover:bg-slate-50'}">
-        🔑 Review Kinerja Saya
+        Review Kinerja Saya
       </button>
     `;
     tabHeader.innerHTML = tabsHtml;
@@ -250,7 +250,7 @@ async function renderMyReviews(wrap, session) {
       </div>
 
       <div class="bg-blue-50/30 p-4 rounded-xl border border-blue-100/50 space-y-1.5">
-        <h4 class="text-xs font-bold text-blue-800 uppercase tracking-wide">💼 Usulan & Rekomendasi Manajemen</h4>
+        <h4 class="text-xs font-bold text-blue-800 uppercase tracking-wide">Usulan & Rekomendasi Manajemen</h4>
         <p class="text-sm font-semibold text-slate-800">${escapeHtml(latestReview.rekomendasi || "-")}</p>
       </div>
     </div>
@@ -449,7 +449,7 @@ function openCreateReviewModal(employees, session, onSuccess) {
   `).join("");
 
   openModal({
-    title: "📝 Buat Evaluasi Review Kinerja Baru",
+    title: "Buat Evaluasi Review Kinerja Baru",
     size: "lg",
     bodyHtml: `
       <form id="form-create-review" class="space-y-4 text-left grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">

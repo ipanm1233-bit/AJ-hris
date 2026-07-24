@@ -88,10 +88,10 @@ export async function mount(container, { session }) {
      if (!adminTbody) return;
      adminTbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-400">Memuat data klaim bensin...</td></tr>`;
      const allPengajuan = await fsGetAll(COL.DATA_PENGAJUAN);
-     allKlaimData = allPengajuan.filter(x => x.form_id === "F-KLAIM-BENSIN" || x.nama_form?.toLowerCase().includes("bensin"));
+     allKlaimData = allPengajuan.filter(x => x.form_id === "F-KLAIM-BENSIN" || String(x.nama_form || "").toLowerCase().includes("bensin"));
      
-     const cirebonData = allKlaimData.filter(x => (x.cabang || x.detail?.cabang || "Cirebon").toLowerCase() === "cirebon");
-     const malangData = allKlaimData.filter(x => (x.cabang || x.detail?.cabang || "Cirebon").toLowerCase() === "malang");
+     const cirebonData = allKlaimData.filter(x => String(x.cabang || x.detail?.cabang || "Cirebon").toLowerCase() === "cirebon");
+     const malangData = allKlaimData.filter(x => String(x.cabang || x.detail?.cabang || "Cirebon").toLowerCase() === "malang");
 
      if (badgeCirebon) badgeCirebon.textContent = cirebonData.length;
      if (badgeMalang) badgeMalang.textContent = malangData.length;

@@ -8,37 +8,117 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
         </span>
-        <h1 class="text-2xl font-bold text-slate-800">Draft & Builder Dokumen HRD</h1>
+        <h1 class="text-2xl font-bold text-slate-800">Manajemen Dokumen & TTD HRD</h1>
       </div>
-      <p class="text-sm text-slate-500 mt-1">Pembuatan draft Kontrak Kerja, Surat Peringatan (SP), dan Pemanggilan resmi dengan kustomisasi klausul-klausul interaktif.</p>
+      <p class="text-sm text-slate-500 mt-1">Pembuatan draft Kontrak, SP, Surat Pemanggilan, pengelolaan TTD digital karyawan, dan kustomisasi placeholder dokumen.</p>
     </div>
     <div class="flex items-center gap-2.5 shrink-0 flex-wrap">
       <button id="btn-gdoc-templates" class="border-2 border-blue-200 bg-blue-50/70 hover:bg-blue-100/80 text-blue-800 font-bold px-4 py-2.5 rounded-2xl text-xs sm:text-sm transition flex items-center gap-2 shadow-sm">
-        <span>📄</span> Template Google Doc & Placeholders
+        Template Google Doc
       </button>
       <button id="btn-create-doc-draft" class="bg-maroon-700 hover:bg-maroon-800 text-white font-bold px-4 py-2.5 rounded-2xl text-xs sm:text-sm transition shadow-md hover:shadow-lg flex items-center gap-2">
-        <span>➕</span> Buat Draft Dokumen Baru
+        Buat Draft Dokumen Baru
       </button>
     </div>
   </div>
 
-  <!-- FILTERS & SEARCH TOOLBAR -->
-  <div class="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-    <div class="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
-      <button data-doc-filter="ALL" class="doc-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold bg-maroon-700 text-white transition">Semua Draft</button>
-      <button data-doc-filter="KONTRAK" class="doc-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition">Kontrak Kerja</button>
-      <button data-doc-filter="SP" class="doc-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition">Surat Peringatan (SP)</button>
-      <button data-doc-filter="PEMANGGILAN" class="doc-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition">Pemanggilan / Konseling</button>
+  <!-- NAVIGATION TABS -->
+  <div class="flex items-center gap-2 border-b border-slate-200 overflow-x-auto pb-1">
+    <button data-doc-tab="drafts" class="doc-main-tab px-4 py-2.5 rounded-t-2xl text-xs font-bold border-b-2 border-maroon-700 text-maroon-700 transition flex items-center gap-2">
+      Draft & Builder Dokumen
+    </button>
+    <button data-doc-tab="signed" class="doc-main-tab px-4 py-2.5 rounded-t-2xl text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-2">
+      Dokumen TTD Karyawan
+    </button>
+    <button data-doc-tab="templates" class="doc-main-tab px-4 py-2.5 rounded-t-2xl text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-2">
+      📂 Master Template Dokumen HRD
+    </button>
+    <button data-doc-tab="placeholders" class="doc-main-tab px-4 py-2.5 rounded-t-2xl text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-2">
+      Kustomisasi Placeholder
+    </button>
+  </div>
+
+  <!-- TAB 1: DRAFTS & BUILDER -->
+  <div id="doc-panel-drafts" class="space-y-6">
+    <!-- FILTERS & SEARCH TOOLBAR -->
+    <div class="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+      <div class="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+        <button data-doc-filter="ALL" class="doc-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold bg-maroon-700 text-white transition">Semua Draft</button>
+        <button data-doc-filter="KONTRAK" class="doc-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition">Kontrak Kerja</button>
+        <button data-doc-filter="SP" class="doc-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition">Surat Peringatan (SP)</button>
+        <button data-doc-filter="PEMANGGILAN" class="doc-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition">Pemanggilan / Konseling</button>
+      </div>
+      <div class="w-full sm:w-64">
+        <input type="text" id="doc-search-input" placeholder="Cari nama / NIK / judul..." class="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500">
+      </div>
     </div>
-    <div class="w-full sm:w-64">
-      <input type="text" id="doc-search-input" placeholder="Cari nama / NIK / judul..." class="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500">
+
+    <!-- DRAFTS LIST TABLE / CARDS -->
+    <div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm">
+      <div id="doc-drafts-list" class="space-y-3">
+        <div class="p-8 text-center text-xs text-slate-400">Memuat berkas draft dokumen...</div>
+      </div>
     </div>
   </div>
 
-  <!-- DRAFTS LIST TABLE / CARDS -->
-  <div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm">
-    <div id="doc-drafts-list" class="space-y-3">
-      <div class="p-8 text-center text-xs text-slate-400">Memuat berkas draft dokumen...</div>
+  <!-- TAB 2: SIGNED DOCUMENTS REPOSITORY -->
+  <div id="doc-panel-signed" class="hidden space-y-6">
+    <div class="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+        <div>
+          <h2 class="text-lg font-bold text-slate-800">Dokumen TTD Karyawan (Sistem HRD)</h2>
+          <p class="text-xs text-slate-500 mt-0.5">Arsip seluruh dokumen resmi yang telah disahkan dan ditandatangani digital oleh karyawan.</p>
+        </div>
+        <div class="w-full sm:w-64">
+          <input type="text" id="signed-doc-search" placeholder="Cari dokumen TTD..." class="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500">
+        </div>
+      </div>
+      <div id="doc-signed-list" class="overflow-x-auto">
+        <div class="p-8 text-center text-xs text-slate-400">Memuat berkas dokumen TTD karyawan...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 3: MASTER TEMPLATE DOKUMEN HRD -->
+  <div id="doc-panel-templates" class="hidden space-y-6">
+    <div class="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+        <div>
+          <h2 class="text-lg font-bold text-slate-800">Master Template Dokumen HRD (Kustom)</h2>
+          <p class="text-xs text-slate-500 mt-0.5">Atur draf dan klausul template dokumen kustom perusahaan (Paklaring, NDA, Surat Mutasi, Rekomendasi, dll) untuk digunakan kapan saja.</p>
+        </div>
+        <button id="btn-add-master-template" class="bg-maroon-700 hover:bg-maroon-800 text-white font-bold px-4 py-2 rounded-xl text-xs transition shadow flex items-center gap-1.5 shrink-0">
+          ➕ Buat Master Template Kustom Baru
+        </button>
+      </div>
+
+      <div id="master-templates-list-container" class="space-y-3">
+        <div class="p-8 text-center text-xs text-slate-400">Memuat daftar master template kustom...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 3: CUSTOM PLACEHOLDERS MANAGEMENT -->
+  <div id="doc-panel-placeholders" class="hidden space-y-6">
+    <div class="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+        <div>
+          <h2 class="text-lg font-bold text-slate-800">Pengaturan Placeholder Dokumen</h2>
+          <p class="text-xs text-slate-500 mt-0.5">Atur daftar placeholder yang bisa digunakan di klausul dokumen. HRD dapat menambah placeholder kustom sesuai kebutuhan dokumen perusahaan.</p>
+        </div>
+        <button id="btn-add-custom-placeholder" class="bg-maroon-700 hover:bg-maroon-800 text-white font-bold px-4 py-2 rounded-xl text-xs transition shadow flex items-center gap-1.5 shrink-0">
+          ➕ Tambah Placeholder Kustom
+        </button>
+      </div>
+
+      <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 leading-relaxed">
+        <p class="font-bold mb-1">💡 Cara Menggunakan Placeholder pada Template / Klausul:</p>
+        <p>Gunakan format <code class="bg-white px-1.5 py-0.5 rounded border border-amber-300 font-mono font-bold text-maroon-800">{KODE_PLACEHOLDER}</code> pada judul atau isi pasal. Saat dokumen dibuat, sistem akan otomatis menggantinya dengan data karyawan atau nilai kustom yang diinput oleh HRD.</p>
+      </div>
+
+      <div id="placeholders-list-container" class="space-y-3">
+        <div class="p-8 text-center text-xs text-slate-400">Memuat konfigurasi placeholder...</div>
+      </div>
     </div>
   </div>
 </div>

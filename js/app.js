@@ -5,7 +5,7 @@
  * =====================================================================
  */
 import { getSession, logout, computeVisibleMenus, canAccessRoute, MENU_CONFIG, loginWithToken } from "./auth.js";
-import { parseHash, toast, fmtDateTime, openModal, closeModal, sha256, fsUpdate, escapeHtml } from "./utils.js";
+import { parseHash, toast, fmtDateTime, openModal, closeModal, sha256, fsUpdate } from "./utils.js";
 import { icon, avatar, openNotificationCenter } from "./components.js";
 import { db, messaging, COL, collection, query, where, getDocs, doc, getDoc, updateDoc } from "./firebase-config.js";
 import { getToken } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js";
@@ -138,6 +138,95 @@ async function aktifkanNotifikasiHP(userData) {
     } catch (error) {
         console.error('Gagal mengaktifkan notifikasi:', error);
     }
+}
+
+export async function handleTestAndActivateNotification(session) {
+  if (!('Notification' in window)) {
+    toast("Browser HP ini tidak mendukung fitur Notifikasi Web.", "error");
+    return;
+  }
+
+  const sendSafeNotification = (title, options) => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then((registration) => {
+        registration.showNotification(title, options);
+      });
+    } else {
+      new Notification(title, options);
+    }
+  };
+
+  const registerDeviceToken = async () => {
+    if (!messaging) {
+      toast("Modul FCM Firebase belum dikonfigurasi di browser ini.", "warning");
+      return;
+    }
+    try {
+      toast("Sedang mendaftarkan token notifikasi perangkat...", "info");
+      let registration = null;
+      if ('serviceWorker' in navigator) {
+        registration = await navigator.serviceWorker.ready;
+      }
+      const currentToken = await getToken(messaging, { 
+        vapidKey: 'BLAv8-HIF945zC4llQ3VaSi_n1cIuk6GbFJLasQA7notR1IP0JbKmG1kzTJ2xoqQs7StT_tyKRW4BWe5ZN24XGE',
+        serviceWorkerRegistration: registration
+      });
+      
+      if (currentToken) {
+        if (session && session.username) {
+          await fsUpdate(COL.USERS, session.username, {
+            fcm_token: currentToken
+          });
+          
+          if (session.nik) {
+            try {
+              await updateDoc(doc(db, COL.MASTER_KARYAWAN, String(session.nik)), {
+                fcm_token: currentToken
+              });
+            } catch(err) {
+              console.warn("Karyawan doc update failed: ", err);
+            }
+          }
+          toast("Token notifikasi berhasil disimpan ke profil Anda!", "success");
+        }
+      } else {
+        toast("Gagal mendapatkan token notifikasi dari Google.", "error");
+      }
+    } catch (e) {
+      toast("Gagal memproses token: " + e.message, "error");
+    }
+  };
+
+  if (Notification.permission === 'granted') {
+    await registerDeviceToken();
+    sendSafeNotification("HRIS Andela Jaya", {
+      body: "Notifikasi aktif! Perangkat ini siap menerima pengumuman & update.",
+      icon: "/assets/icon-192x192.png" 
+    });
+    toast("Notifikasi aktif! Tes kirim pesan berhasil.", "success");
+    return;
+  }
+
+  if (Notification.permission === 'denied') {
+    toast("Izin notifikasi ditolak. Aktifkan lewat pengaturan browser HP.", "warning");
+    return;
+  }
+
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      await registerDeviceToken();
+      sendSafeNotification("HRIS Andela Jaya", {
+        body: "Pendaftaran sukses! Anda akan menerima notifikasi di sini.",
+        icon: "/assets/icon-192x192.png"
+      });
+      toast("Notifikasi berhasil diaktifkan!", "success");
+    } else {
+      toast("Izin notifikasi belum diberikan.", "warning");
+    }
+  } catch (e) {
+    toast("Gagal meminta izin notifikasi: " + e.message, "error");
+  }
 }
 
 /* ---------------------------------------------------------------------
@@ -278,16 +367,19 @@ async function router(session) {
   if (!container) return;
 
   let { path, params } = parseHash();
-  let mappedPath = path;
-  if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(path)) {
+  let cleanPath = String(path || "").replace(/^[\/#]+/, "").replace(/[\/#]+$/, "").trim();
+  if (!cleanPath || cleanPath === "login") cleanPath = "dashboard";
+
+  let mappedPath = cleanPath;
+  if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(cleanPath)) {
     mappedPath = "pemanggilan";
   }
 
-  if (path === currentRoute && path !== "pengajuan") {
+  if (cleanPath === currentRoute && cleanPath !== "pengajuan") {
     // re-render tetap diizinkan untuk pengajuan (deep link form)
   }
 
-  const allowed = await canAccessRoute(path, session);
+  const allowed = await canAccessRoute(cleanPath, session);
   if (!allowed) {
     toast("Anda tidak memiliki akses ke menu tersebut", "warning");
     location.hash = "#dashboard";
@@ -301,29 +393,32 @@ async function router(session) {
   try {
     if (typeof currentUnmount === "function") { currentUnmount(); currentUnmount = null; }
     
-    const html = await fetch(`views/${mappedPath}.html`).then(r => {
-      if (!r.ok) throw new Error("view-not-found");
-      return r.text();
-    });
+    const res = await fetch(`views/${mappedPath}.html`);
+    if (!res.ok) throw new Error("view-not-found");
+    const html = await res.text();
     
     container.innerHTML = html;
     
-    const mod = await import(`./views/${mappedPath}.js`);
-    if (mod && typeof mod.mount === "function") {
-      const result = await mod.mount(container, { params, session });
-      if (result && typeof result.unmount === "function") currentUnmount = result.unmount;
+    try {
+      const mod = await import(`./views/${mappedPath}.js`);
+      if (mod && typeof mod.mount === "function") {
+        const result = await mod.mount(container, { params, session });
+        if (result && typeof result.unmount === "function") currentUnmount = result.unmount;
+      }
+    } catch (modErr) {
+      console.warn(`Could not mount script for view "${mappedPath}":`, modErr);
     }
     
-    currentRoute = path;
+    currentRoute = cleanPath;
     highlightActive(mappedPath);
-    document.title = `${ROUTE_TITLES[mappedPath] || ROUTE_TITLES[path] || "Portal"} — Andela Jaya HRIS`;
+    document.title = `${ROUTE_TITLES[mappedPath] || ROUTE_TITLES[cleanPath] || "Portal"} — Andela Jaya HRIS`;
     
   } catch (err) {
     console.error("Router error:", err);
     container.innerHTML = `
       <div class="text-center py-24">
         <p class="text-2xl font-bold text-slate-300">404</p>
-        <p class="text-slate-500 mt-2">Halaman "${path}" tidak ditemukan.</p>
+        <p class="text-slate-500 mt-2">Halaman "${escapeHtml(cleanPath)}" tidak ditemukan.</p>
         <a href="#dashboard" class="inline-block mt-4 text-maroon-700 font-medium hover:underline">Kembali ke Dashboard</a>
       </div>`;
   }
@@ -386,6 +481,10 @@ function bindShellEvents(session) {
 
   document.getElementById("btn-logout")?.addEventListener("click", () => logout());
   document.getElementById("btn-notif")?.addEventListener("click", () => openNotificationCenter(session));
+
+  document.querySelectorAll(".btn-test-notif-action, #btn-test-notif-desktop, #btn-test-notif-mobile, #btn-test-notif").forEach(btn => {
+    btn.addEventListener("click", () => handleTestAndActivateNotification(session));
+  });
 
   const btnNotifMobile = document.getElementById("btn-notif-mobile");
   if (btnNotifMobile) {

@@ -1,0 +1,111 @@
+<div class="space-y-6">
+  <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-2 border-b border-slate-200/80">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-800 tracking-tight">Pengajuan Cuti Karyawan</h1>
+      <p class="text-sm text-slate-500 mt-0.5">Formulir resmi pengajuan cuti, sakit, dan izin khusus karyawan.</p>
+    </div>
+    <div>
+      <button id="btn-open-cuti-modal" class="bg-maroon-700 hover:bg-maroon-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+        Buat Pengajuan Cuti Baru
+      </button>
+    </div>
+  </div>
+
+  <!-- LEAVE BALANCE SUMMARY CARDS (3 LEAVE TYPES) -->
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="leave-balance-grid">
+    <!-- 1. CUTI TAHUNAN -->
+    <div class="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-xs space-y-2">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-blue-600"></span>
+          Cuti Tahunan
+        </span>
+        <span class="text-[11px] font-medium text-slate-400">Jatah: <strong id="bal-tahunan-jatah" class="text-slate-700 font-mono">0</strong> Hari</span>
+      </div>
+      <div class="flex items-baseline justify-between pt-1">
+        <div>
+          <span class="text-[10px] uppercase tracking-wider font-bold text-slate-400 block">Terpakai</span>
+          <span class="text-sm font-bold text-amber-600 font-mono" id="bal-tahunan-terpakai">0 Hari</span>
+        </div>
+        <div class="text-right">
+          <span class="text-[10px] uppercase tracking-wider font-bold text-slate-400 block">Sisa Jatah</span>
+          <span class="text-2xl font-black text-blue-700 font-mono" id="bal-tahunan-sisa">0</span>
+          <span class="text-xs font-semibold text-slate-500">Hari</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. CUTI AKUMULASI / SISA TAHUN LALU -->
+    <div class="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-xs space-y-2">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-sky-600"></span>
+          Sisa Cuti Tahun Lalu (Akumulasi)
+        </span>
+        <span class="text-[11px] font-medium text-slate-400">Jatah: <strong id="bal-akumulasi-jatah" class="text-slate-700 font-mono">0</strong> Hari</span>
+      </div>
+      <div class="flex items-baseline justify-between pt-1">
+        <div>
+          <span class="text-[10px] uppercase tracking-wider font-bold text-slate-400 block">Terpakai</span>
+          <span class="text-sm font-bold text-amber-600 font-mono" id="bal-akumulasi-terpakai">0 Hari</span>
+        </div>
+        <div class="text-right">
+          <span class="text-[10px] uppercase tracking-wider font-bold text-slate-400 block">Sisa Jatah</span>
+          <span class="text-2xl font-black text-sky-700 font-mono" id="bal-akumulasi-sisa">0</span>
+          <span class="text-xs font-semibold text-slate-500">Hari</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. CUTI KHUSUS -->
+    <div class="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-xs space-y-2">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-purple-600"></span>
+          Cuti Khusus / Alasan Penting
+        </span>
+        <span class="text-[11px] font-medium text-slate-400">Jatah: <strong id="bal-khusus-jatah" class="text-slate-700 font-mono">0</strong> Hari</span>
+      </div>
+      <div class="flex items-baseline justify-between pt-1">
+        <div>
+          <span class="text-[10px] uppercase tracking-wider font-bold text-slate-400 block">Terpakai</span>
+          <span class="text-sm font-bold text-amber-600 font-mono" id="bal-khusus-terpakai">0 Hari</span>
+        </div>
+        <div class="text-right">
+          <span class="text-[10px] uppercase tracking-wider font-bold text-slate-400 block">Sisa Jatah</span>
+          <span class="text-2xl font-black text-purple-700 font-mono" id="bal-khusus-sisa">0</span>
+          <span class="text-xs font-semibold text-slate-500">Hari</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABLE HISTORY PENGAJUAN SAYA -->
+  <div class="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+    <div class="p-4 border-b border-slate-200/80 flex items-center justify-between">
+      <div>
+        <h3 class="font-bold text-slate-800 text-base">Riwayat & Status Pengajuan Cuti Saya</h3>
+        <p class="text-xs text-slate-500">Daftar seluruh pengajuan cuti beserta status persetujuan atasan/HRD.</p>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs text-left">
+        <thead class="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+          <tr>
+            <th class="p-3">No. Ref</th>
+            <th class="p-3">Jenis Cuti</th>
+            <th class="p-3">Tanggal Cuti</th>
+            <th class="p-3">Durasi</th>
+            <th class="p-3">Lampiran Docs</th>
+            <th class="p-3">Status Persetujuan</th>
+            <th class="p-3 text-center">Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="tbl-my-leaves" class="divide-y divide-slate-100">
+          <tr><td colspan="7" class="p-8 text-center text-slate-400">Sedang memuat riwayat cuti...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

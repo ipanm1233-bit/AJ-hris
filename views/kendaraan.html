@@ -1,19 +1,60 @@
 <div class="space-y-6">
-  <div>
-    <h1 class="text-2xl font-bold text-slate-800">Manajemen Kendaraan</h1>
-    <p class="text-sm text-slate-500 mt-1">Logistik pengelolaan operasional armada perusahaan.</p>
+  <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-2 border-b border-slate-200/80">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-800 tracking-tight">Manajemen Kendaraan</h1>
+      <p class="text-sm text-slate-500 mt-0.5">Pengelolaan armada operasional, log BBM, riwayat service, serta pengingat pajak & KIR.</p>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+      <button id="btn-add-kendaraan" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2.5 rounded-xl text-sm font-semibold shadow-sm transition flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+        Tambah Kendaraan
+      </button>
+    </div>
   </div>
 
+  <!-- REMINDER / ALERT BANNER AUTOMATIS -->
   <div id="kend-alert-wrap"></div>
 
-  <div class="flex items-center gap-2 border-b border-slate-100 overflow-x-auto">
-    <button data-ktab="data" class="kd-tab px-4 py-2.5 text-sm font-medium border-b-2 border-maroon-700 text-maroon-700 whitespace-nowrap">Data Kendaraan</button>
-    <button data-ktab="bbm" class="kd-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">Log BBM</button>
-    <button data-ktab="service" class="kd-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">Log Service</button>
-    <button data-ktab="pajak" class="kd-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">Pajak & Compliance</button>
+  <!-- FILTER & VIEW MODE BAR -->
+  <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div class="flex items-center gap-3 flex-wrap flex-1 min-w-0">
+      <div class="relative flex-1 min-w-[200px]">
+        <input type="text" id="kend-search" placeholder="Cari Plat No / Merk / Driver..." class="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-xl outline-none focus:border-maroon-400 bg-slate-50 focus:bg-white transition">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+      </div>
+      <select id="kend-status-filter" class="px-3 py-2 text-sm border border-slate-200 rounded-xl outline-none focus:border-maroon-400 bg-slate-50 font-medium text-slate-700">
+        <option value="ALL">Semua Kendaraan</option>
+        <option value="ALERT">Segera Perpanjang / Service</option>
+        <option value="SIAP">Status: Siap Pakai / Baik</option>
+        <option value="SERVICE">Status: Perlu Service / Perbaikan</option>
+      </select>
+    </div>
+    
+    <!-- TABS SWITCHER -->
+    <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-xl shrink-0">
+      <button data-ktab="cards" class="kd-tab px-3.5 py-1.5 text-xs font-bold rounded-lg transition bg-white text-maroon-700 shadow-sm">
+        Card Kendaraan
+      </button>
+      <button data-ktab="bbm" class="kd-tab px-3.5 py-1.5 text-xs font-semibold rounded-lg transition text-slate-600 hover:text-slate-900">
+        Log BBM
+      </button>
+      <button data-ktab="service" class="kd-tab px-3.5 py-1.5 text-xs font-semibold rounded-lg transition text-slate-600 hover:text-slate-900">
+        Log Service
+      </button>
+      <button data-ktab="pajak" class="kd-tab px-3.5 py-1.5 text-xs font-semibold rounded-lg transition text-slate-600 hover:text-slate-900">
+        Pajak & KIR
+      </button>
+    </div>
   </div>
 
-  <div id="kd-panel-data"></div>
+  <!-- PANEL CARD KENDARAAN (UTAMA) -->
+  <div id="kd-panel-cards" class="space-y-4">
+    <div id="kend-cards-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      <!-- Dynamic Vehicle Cards rendered here -->
+    </div>
+  </div>
+
+  <!-- PANELS LOG UNTUK REKAP TABEL -->
   <div id="kd-panel-bbm" class="hidden"></div>
   <div id="kd-panel-service" class="hidden"></div>
   <div id="kd-panel-pajak" class="hidden"></div>

@@ -178,7 +178,7 @@ async function openQrScannerModal(container, activeEmpNames) {
   const items = await fsGetAll(COL.MASTER_INVENTORY);
 
   openModal({
-    title: "🔍 Scan & Audit QR Code Aset / Inventaris",
+    title: "Scan & Audit QR Code Aset / Inventaris",
     size: "md",
     bodyHtml: `
       <div class="space-y-4 text-xs">
@@ -302,7 +302,7 @@ function openQrCodeModal(row) {
           <p class="font-bold text-slate-700 text-xs mt-0.5">${escapeHtml(row.nama_barang || "-")}</p>
           <p class="text-[11px] text-slate-500 mt-1">${escapeHtml(row.kategori || "Aset Kantor")} • ${escapeHtml(row.serial_number || "No. Seri N/A")}</p>
           <div class="mt-2 text-[10px] text-maroon-700 font-semibold bg-red-50 p-1.5 rounded-lg border border-red-100">
-            👤 Penanggung Jawab: <b>${escapeHtml(row.assigned_to || "Unassigned")}</b>
+            Penanggung Jawab: <b>${escapeHtml(row.assigned_to || "Unassigned")}</b>
           </div>
         </div>
       </div>`,
@@ -399,7 +399,7 @@ async function openQuickAssignModal(container, activeEmpNames) {
     footerHtml: `
       <div class="flex items-center justify-between w-full">
         <button id="btn-qa-close" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl">Batal</button>
-        <button id="btn-qa-save" class="px-5 py-2 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-xl transition shadow">💾 Simpan & Terbitkan Penyerahan</button>
+        <button id="btn-qa-save" class="px-5 py-2 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-xl transition shadow">Simpan & Terbitkan Penyerahan</button>
       </div>`,
     onMount: m => {
       m.querySelector("#btn-qa-close").onclick = closeModal;
@@ -455,6 +455,220 @@ async function openQuickAssignModal(container, activeEmpNames) {
           if (barangTab) barangTab.click();
         } catch (e) {
           toast("Gagal menyimpan penyerahan: " + e.message, "error");
+        }
+      };
+    }
+  });
+}
+
+// FUNGSI MODAL INPUT MULTI-BARIS PENYERAHAN ATK / BARANG
+async function openMultiAssignModal(container, activeEmpNames) {
+  const items = await fsGetAll(COL.MASTER_INVENTORY);
+  if (!items.length) return toast("Belum ada master barang / ATK.", "warning");
+
+  const itemOptionsHtml = items
+    .map(i => `<option value="${escapeHtml(i.id)}">${escapeHtml(i.id_item || i.id)} - ${escapeHtml(i.nama_barang)} (${escapeHtml(i.kategori || 'ATK')})</option>`)
+    .join("");
+
+  const empOptionsHtml = activeEmpNames
+    .map(e => `<option value="${escapeHtml(e)}">${escapeHtml(e)}</option>`)
+    .join("");
+
+  openModal({
+    title: "Multi-Baris Input Log Penyerahan ATK / Barang",
+    size: "xl",
+    bodyHtml: `
+      <div class="space-y-4 text-xs">
+        <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 leading-relaxed flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <b>Input Banyak Baris Penyerahan / Pengambilan ATK dalam 1 Hari:</b><br/>
+            Satu kali input dapat mencatat beberapa barang/ATK yang diambil oleh satu atau beberapa karyawan sekaligus.
+          </div>
+          <button id="btn-add-row-atk" type="button" class="px-3.5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white font-bold rounded-lg shadow transition shrink-0">
+            + Tambah Baris ATK
+          </button>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <label class="font-bold text-slate-700">Tanggal Penyerahan Batch:</label>
+          <input type="date" id="multi-date" value="${new Date().toISOString().substring(0,10)}" class="p-2 border border-slate-300 rounded-xl font-bold text-slate-800 outline-none focus:border-maroon-500">
+        </div>
+
+        <div class="overflow-x-auto border border-slate-200 rounded-xl bg-white">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
+                <th class="p-2.5 w-8 text-center">#</th>
+                <th class="p-2.5 min-w-[220px]">Pilih Barang / ATK</th>
+                <th class="p-2.5 min-w-[180px]">Karyawan Penerima</th>
+                <th class="p-2.5 w-28">Jenis Transaksi</th>
+                <th class="p-2.5 w-20">Qty</th>
+                <th class="p-2.5 min-w-[150px]">Catatan / Keperluan</th>
+                <th class="p-2.5 w-10 text-center">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="multi-atk-rows" class="divide-y divide-slate-100">
+              <!-- Dynamic rows rendered here -->
+            </tbody>
+          </table>
+        </div>
+      </div>`,
+    footerHtml: `
+      <div class="flex items-center justify-between w-full">
+        <button id="btn-multi-close" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl">Batal</button>
+        <button id="btn-multi-save" class="px-5 py-2 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-xl transition shadow flex items-center gap-1.5">
+          Simpan Semua Transaksi ATK
+        </button>
+      </div>`,
+    onMount: m => {
+      const tbody = m.querySelector("#multi-atk-rows");
+
+      function addRow() {
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-50/70 transition multi-row-item";
+        tr.innerHTML = `
+          <td class="p-2.5 text-center font-bold text-slate-400 row-num">1</td>
+          <td class="p-2">
+            <select class="m-item w-full p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-maroon-500 bg-white" required>
+              <option value="">-- Pilih Barang / ATK --</option>
+              ${itemOptionsHtml}
+            </select>
+          </td>
+          <td class="p-2">
+            <select class="m-emp w-full p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-maroon-500 bg-white" required>
+              <option value="">-- Pilih Karyawan --</option>
+              ${empOptionsHtml}
+            </select>
+          </td>
+          <td class="p-2">
+            <select class="m-type w-full p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-maroon-500 bg-white">
+              <option value="PENYERAHAN">Penyerahan</option>
+              <option value="PENGEMBALIAN">Pengembalian</option>
+            </select>
+          </td>
+          <td class="p-2">
+            <input type="number" min="1" value="1" class="m-qty w-full p-2 text-xs border border-slate-300 rounded-lg text-center font-bold outline-none focus:border-maroon-500" required>
+          </td>
+          <td class="p-2">
+            <input type="text" placeholder="Keperluan ATK..." class="m-notes w-full p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-maroon-500">
+          </td>
+          <td class="p-2 text-center">
+            <button type="button" class="btn-del-row p-1 text-slate-400 hover:text-rose-600 transition" title="Hapus Baris">
+              ✖
+            </button>
+          </td>
+        `;
+
+        tr.querySelector(".btn-del-row").onclick = () => {
+          if (tbody.querySelectorAll(".multi-row-item").length <= 1) {
+            toast("Minimal harus ada 1 baris transaksi.", "warning");
+            return;
+          }
+          tr.remove();
+          reindexRows();
+        };
+
+        tbody.appendChild(tr);
+        reindexRows();
+      }
+
+      function reindexRows() {
+        tbody.querySelectorAll(".multi-row-item").forEach((tr, idx) => {
+          tr.querySelector(".row-num").textContent = idx + 1;
+        });
+      }
+
+      // Add 2 initial rows
+      addRow();
+      addRow();
+
+      m.querySelector("#btn-add-row-atk").onclick = () => addRow();
+      m.querySelector("#btn-multi-close").onclick = closeModal;
+
+      m.querySelector("#btn-multi-save").onclick = async () => {
+        const dateVal = m.querySelector("#multi-date").value;
+        const rowEls = tbody.querySelectorAll(".multi-row-item");
+        
+        const payloadRows = [];
+        for (const tr of rowEls) {
+          const itemDocId = tr.querySelector(".m-item").value;
+          const empName = tr.querySelector(".m-emp").value;
+          const typeVal = tr.querySelector(".m-type").value;
+          const qtyVal = parseInt(tr.querySelector(".m-qty").value, 10) || 1;
+          const notesVal = tr.querySelector(".m-notes").value.trim();
+
+          if (!itemDocId || !empName) {
+            return toast("Harap lengkapi Barang dan Karyawan di seluruh baris!", "warning");
+          }
+
+          const targetItem = items.find(i => i.id === itemDocId);
+          payloadRows.push({
+            item: targetItem,
+            itemDocId,
+            empName,
+            typeVal,
+            qtyVal,
+            notesVal
+          });
+        }
+
+        const btnSave = m.querySelector("#btn-multi-save");
+        btnSave.disabled = true;
+        btnSave.innerHTML = `⏳ Menyimpan ${payloadRows.length} Baris...`;
+
+        try {
+          for (const row of payloadRows) {
+            const { item, itemDocId, empName, typeVal, qtyVal, notesVal } = row;
+            const logId = genId("AMB");
+
+            // 1. Add Log Record
+            await fsAdd(COL.LOG_INVENTORY_PENGAMBILAN, {
+              id_barang: item ? (item.id_item || item.id) : itemDocId,
+              nama_barang: item ? item.nama_barang : "ATK / Barang",
+              kategori: item ? (item.kategori || "ATK") : "ATK",
+              nama_karyawan: empName,
+              tanggal: dateVal,
+              jumlah_ambil: qtyVal,
+              jenis_aksi: typeVal,
+              status_pengembalian: typeVal === "PENYERAHAN" ? "SEDANG_DIPAKAI" : "DIKEMBALIKAN",
+              keperluan: notesVal || `Penyerahan Batch ATK/Barang (${qtyVal} Unit)`
+            }, logId);
+
+            // 2. Update Master Inventory
+            if (item) {
+              const updates = {};
+              if (typeVal === "PENYERAHAN") {
+                updates.assigned_to = empName;
+              } else {
+                updates.assigned_to = "Unassigned";
+              }
+              if (typeof item.stok_saat_ini === "number") {
+                updates.stok_saat_ini = Math.max(0, typeVal === "PENYERAHAN" ? item.stok_saat_ini - qtyVal : item.stok_saat_ini + qtyVal);
+              }
+              await fsUpdate(COL.MASTER_INVENTORY, itemDocId, updates);
+            }
+
+            // 3. Notify Recipient (App + Push + Email)
+            await notifyUser(
+              empName,
+              "📦 Penyerahan / Pengambilan ATK",
+              `Anda tercatat menerima/mengambil ${qtyVal} unit ${item ? item.nama_barang : 'ATK'} pada tanggal ${fmtDateShort(dateVal)}.`,
+              "#inventory"
+            );
+          }
+
+          toast(`Berhasil menyimpan ${payloadRows.length} baris log penyerahan ATK!`, "success");
+          closeModal();
+          updateKpiSummary(container);
+
+          // Trigger refresh of active panel
+          const ambilTab = container.querySelector("[data-itab='ambil']");
+          if (ambilTab) ambilTab.click();
+        } catch (e) {
+          toast("Gagal menyimpan multi-baris ATK: " + e.message, "error");
+        } finally {
+          btnSave.disabled = false;
+          btnSave.innerHTML = `💾 Simpan Semua Transaksi ATK`;
         }
       };
     }
@@ -616,6 +830,7 @@ export async function mount(container) {
       title: "Log Penyerahan & Pengembalian Aset",
       collectionName: COL.LOG_INVENTORY_PENGAMBILAN, idPrefix: "AMB", canEdit: false,
       printFn: printTandaTerimaBarang, printLabel: "Cetak Surat Tanda Terima",
+      extraToolbarHtml: `<button id="btn-multi-assign-atk" class="bg-maroon-700 hover:bg-maroon-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow transition flex items-center gap-1.5">Input Multi-Baris Penyerahan ATK/Aset</button>`,
       searchFields: ["nama_barang", "nama_karyawan", "jenis_aksi", "status_pengembalian"],
       columns: [
         { key: "tanggal", label: "Tanggal", type: "date" },
@@ -659,6 +874,11 @@ export async function mount(container) {
         updateKpiSummary(container);
       }
     });
+
+    const btnMulti = panels.ambil.querySelector("#btn-multi-assign-atk");
+    if (btnMulti) {
+      btnMulti.onclick = () => openMultiAssignModal(container, activeEmpNames);
+    }
   }
 
   async function loadOpname() {

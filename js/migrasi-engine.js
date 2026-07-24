@@ -19,26 +19,27 @@ import { toSnakeCase, smartParseDate, sha256, genId, localDateStr } from "./util
  * transform    : fungsi kustom opsional untuk penyesuaian akhir per-baris
  * ------------------------------------------------------------------- */
 const SHEET_MAP = {
-  "Master Karyawan": {
-    collection: COL.MASTER_KARYAWAN, idField: "nik_karyawan",
-    dateFields: ["tanggal_lahir", "tanggal_join", "kontrak_habis"],
-  },
-  "Master Cuti": {
-    collection: COL.MASTER_CUTI, idField: "record_id_cuti",
-    dateFields: ["tanggal"],
-  },
+  "Master Karyawan": { collection: COL.MASTER_KARYAWAN, idField: "nik_karyawan", dateFields: ["tanggal_lahir", "tanggal_join", "kontrak_habis"] },
+  "Master Cabang": { collection: COL.MASTER_CABANG, idField: "id_cabang" },
+  "Master Outlet": { collection: COL.MASTER_CABANG, idField: "id_cabang" },
+  "Outlets": { collection: COL.MASTER_CABANG, idField: "id_cabang" },
+  "Master Inventory": { collection: COL.MASTER_INVENTORY, idField: "id_item" },
+  "Master Item": { collection: COL.MASTER_INVENTORY, idField: "id_item" },
+  "Master Barang": { collection: COL.MASTER_INVENTORY, idField: "id_item" },
+  "Items": { collection: COL.MASTER_INVENTORY, idField: "id_item" },
+  "Absensi": { collection: "absensi", idField: "id_absensi", dateFields: ["tanggal", "jam_masuk", "jam_keluar"] },
+  "Data Absensi": { collection: "absensi", idField: "id_absensi", dateFields: ["tanggal", "jam_masuk", "jam_keluar"] },
+  "Log Absensi": { collection: "absensi", idField: "id_absensi", dateFields: ["tanggal", "jam_masuk", "jam_keluar"] },
+  "Master Shift": { collection: "master_shift", idField: "id_shift" },
+  "Shift": { collection: "master_shift", idField: "id_shift" },
+  "Master Jabatan": { collection: "master_jabatan", idField: "id_jabatan" },
+  "Master Divisi": { collection: "master_divisi", idField: "id_divisi" },
+  "Payroll": { collection: "payroll", idField: "id_payroll", dateFields: ["periode", "tanggal"] },
+  "Data Payroll": { collection: "payroll", idField: "id_payroll", dateFields: ["periode", "tanggal"] },
+  "Master Cuti": { collection: COL.MASTER_CUTI, idField: "record_id_cuti", dateFields: ["tanggal"] },
   "MASTER JATAH CUTI": { skip: true, note: "Data sudah tercakup pada kolom jatah_* di Master Karyawan." },
-  "Master Kendaraan": {
-    collection: COL.MASTER_KENDARAAN, idField: "no_polisi",
-    dateFields: ["tgl_stnk_tahunan", "tgl_pajak_5_thn", "tgl_kir"],
-  },
-  "Master Inventory": {
-    collection: COL.MASTER_INVENTORY, idField: "id_item",
-  },
-  "MASTER KONTRAK": {
-    collection: COL.MASTER_KONTRAK, idField: "record_id",
-    dateFields: ["tanggal_mulai", "tanggal_akhir"],
-  },
+  "Master Kendaraan": { collection: COL.MASTER_KENDARAAN, idField: "no_polisi", dateFields: ["tgl_stnk_tahunan", "tgl_pajak_5_thn", "tgl_kir"] },
+  "MASTER KONTRAK": { collection: COL.MASTER_KONTRAK, idField: "record_id", dateFields: ["tanggal_mulai", "tanggal_akhir"] },
   "Users": {
     collection: COL.USERS, idField: "username",
     transform: async (row) => {
@@ -47,10 +48,7 @@ const SHEET_MAP = {
       return row;
     }
   },
-  "Form_Config": {
-    collection: COL.FORM_CONFIG, idField: "id_form",
-    jsonFields: ["approval_flow", "fields_json"],
-  },
+  "Form_Config": { collection: COL.FORM_CONFIG, idField: "id_form", jsonFields: ["approval_flow", "fields_json"] },
   "Form_Configs": { skip: true, note: "Duplikat dari sheet Form_Config, dilewati agar tidak dobel." },
   "Data_Pengajuan": {
     collection: COL.DATA_PENGAJUAN, idField: "id",
@@ -79,11 +77,53 @@ const SHEET_MAP = {
   "Evaluasi_Kontrak": { collection: COL.EVALUASI_KONTRAK, idField: null, dateFields: ["tanggal"] },
   "Log_Offboarding": { collection: COL.LOG_OFFBOARDING, idField: "id_offboarding", dateFields: ["tgl_proses", "tgl_efektif"], jsonFields: ["checklist_json"] },
   "Konfigurasi_Email": { collection: COL.KONFIGURASI_EMAIL, idField: null },
+  "Log Inspeksi": { collection: "log_inspeksi", idField: "id_inspeksi", dateFields: ["tanggal"] },
+  "Kanal Data": { collection: "kanal_data", idField: "id" },
   "Login_Tokens": { skip: true, note: "Token sesi lama sistem sebelumnya — tidak relevan & sensitif, tidak dimigrasi." },
   "Sheet23": { skip: true, note: "Sheet kerja/staging internal, bukan data final." },
   "Pivot Table 1": { skip: true, note: "Tabel pivot, bukan data mentah." },
   "Sheet14": { skip: true, note: "Sheet kerja/staging internal, bukan data final." },
 };
+
+function getMapConfigForSheet(sheetName) {
+  if (SHEET_MAP[sheetName]) return SHEET_MAP[sheetName];
+
+  const norm = (sheetName || "").toLowerCase().trim();
+  if (norm.includes("outlet") || norm.includes("cabang")) {
+    return { collection: COL.MASTER_CABANG, idField: "id_cabang" };
+  }
+  if (norm.includes("item") || norm.includes("barang") || norm.includes("inventory")) {
+    return { collection: COL.MASTER_INVENTORY, idField: "id_item" };
+  }
+  if (norm.includes("absen") || norm.includes("attend")) {
+    return { collection: "absensi", idField: "id_absensi", dateFields: ["tanggal", "jam_masuk", "jam_keluar"] };
+  }
+  if (norm.includes("shift")) {
+    return { collection: "master_shift", idField: "id_shift" };
+  }
+  if (norm.includes("jabatan")) {
+    return { collection: "master_jabatan", idField: "id_jabatan" };
+  }
+  if (norm.includes("divisi")) {
+    return { collection: "master_divisi", idField: "id_divisi" };
+  }
+  if (norm.includes("payroll") || norm.includes("gaji")) {
+    return { collection: "payroll", idField: "id_payroll", dateFields: ["periode", "tanggal"] };
+  }
+  if (norm.includes("inspeksi")) {
+    return { collection: "log_inspeksi", idField: "id_inspeksi", dateFields: ["tanggal"] };
+  }
+  if (norm.includes("kanal")) {
+    return { collection: "kanal_data", idField: "id" };
+  }
+  if (norm.includes("karyawan") || norm.includes("employee")) {
+    return { collection: COL.MASTER_KARYAWAN, idField: "nik_karyawan", dateFields: ["tanggal_lahir", "tanggal_join", "kontrak_habis"] };
+  }
+
+  // Dynamic fallback mapping
+  const targetCol = toSnakeCase(sheetName) || "data_migrasi";
+  return { collection: targetCol, idField: null, dateFields: ["tanggal", "created_at", "updated_at"] };
+}
 
 let workbookData = {}; // { sheetName: [rows as array-of-arrays] }
 let selectedSheets = new Set();
@@ -152,7 +192,7 @@ function renderSheetPreview() {
   listEl.innerHTML = Object.keys(workbookData).map(name => {
     const rows = workbookData[name];
     const rowCount = Math.max(rows.length - 1, 0);
-    const map = SHEET_MAP[name];
+    const map = getMapConfigForSheet(name);
     const skip = !map || map.skip;
     if (!skip) selectedSheets.add(name);
     return `
@@ -215,7 +255,7 @@ function sheetRowsToObjects(sheetName) {
   if (!rows || rows.length < 2) return [];
   const rawHeaders = rows[0];
   const headers = rawHeaders.map(h => toSnakeCase(h || ""));
-  const mapCfg = SHEET_MAP[sheetName];
+  const mapCfg = getMapConfigForSheet(sheetName);
   const objects = [];
   for (let i = 1; i < rows.length; i++) {
     const rawRow = rows[i];
@@ -245,7 +285,7 @@ async function runMigration() {
   let done = 0;
 
   for (const sheetName of sheetsToRun) {
-    const mapCfg = SHEET_MAP[sheetName];
+    const mapCfg = getMapConfigForSheet(sheetName);
     if (!mapCfg || mapCfg.skip) { done++; continue; }
 
     label.textContent = `Memproses sheet "${sheetName}"...`;

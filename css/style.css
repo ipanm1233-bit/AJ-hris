@@ -76,3 +76,51 @@ body { -webkit-font-smoothing: antialiased; }
 .quill-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1em; }
 .quill-content ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 1em; }
 .quill-content a { color: #7a1f2b; text-decoration: underline; }
+
+/* =====================================================================
+   MOBILE UI OPTIMIZATION & SYMMETRICAL ASPECT RATIOS
+   ===================================================================== */
+@media (max-width: 640px) {
+  body { overflow-x: hidden; }
+
+  /* Ensure main content container fits mobile screen padding symmetrically */
+  #main-content {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+    padding-top: 4.25rem !important;
+    padding-bottom: 5.5rem !important;
+  }
+
+  /* Touch horizontal scrolling for tables */
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+  }
+
+  /* Ensure text inputs do not trigger iOS auto-zoom and fit screen width */
+  input, select, textarea {
+    font-size: 14px !important;
+    max-width: 100%;
+  }
+
+  /* Symmetrical padding on cards for mobile screens */
+  .bg-white.rounded-2xl, .bg-white.rounded-xl {
+    padding: 1rem !important;
+    border-radius: 1rem !important;
+  }
+
+  /* Mobile bottom navigation bar alignment */
+  .mobile-bottom-nav {
+    display: flex !important;
+    justify-content: space-around !important;
+    align-items: center !important;
+  }
+
+  /* Make stacked modal dialogs fill 92% screen width symmetrically */
+  .modal-dialog, [id^="modal-"] > div {
+    width: 94% !important;
+    max-width: 94vw !important;
+    margin: auto !important;
+    border-radius: 1.25rem !important;
+  }
+}

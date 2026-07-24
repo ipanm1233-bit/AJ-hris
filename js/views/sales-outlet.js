@@ -41,11 +41,26 @@ export async function mount(container, { session }) {
         outletList = reloadSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       }
 
+      updateRegionDropdown();
       renderList();
     } catch (e) {
       console.error(e);
       tableBody.innerHTML = `<tr><td colspan="7" class="px-6 py-8 text-center text-rose-500 font-medium">Gagal memuat data outlet: ${e.message}</td></tr>`;
     }
+  }
+
+  function updateRegionDropdown() {
+    if (!regionFilter) return;
+    const currentVal = regionFilter.value;
+    const rawRegions = outletList
+      .map(o => o.wilayah || o.kategori || o.cabang || o.wilayah_sales || "")
+      .filter(Boolean);
+    const uniqueRegions = Array.from(new Set(rawRegions)).sort();
+
+    regionFilter.innerHTML = `
+      <option value="">Semua Wilayah / Kategori Outlet (${outletList.length})</option>
+      ${uniqueRegions.map(r => `<option value="${escapeHtml(r)}"${r === currentVal ? " selected" : ""}>${escapeHtml(r)}</option>`).join("")}
+    `;
   }
 
   function renderList() {

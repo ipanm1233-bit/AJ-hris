@@ -345,6 +345,21 @@ export async function mount(container) {
                 <label class="block text-xs font-bold text-slate-600 mb-1">Catatan Tambahan Handover (Opsi)</label>
                 <textarea id="off-catatan-handover" rows="1" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-maroon-400" placeholder="Cth: Lokasi simpan file kerja di Google Drive Tim & password email..."></textarea>
              </div>
+
+             <!-- CUSTOMIZABLE TERMINATION CHECKLIST FOR HRD -->
+             <div class="border border-slate-200 rounded-xl p-3 bg-slate-50 space-y-2 mt-2">
+               <div class="flex items-center justify-between">
+                 <label class="block text-xs font-bold text-slate-700">Checklist Dokumen Exit Clearance (Kustom HRD)</label>
+                 <button type="button" id="btn-add-checklist-row" class="px-2.5 py-1 text-[11px] font-bold text-maroon-700 bg-white border border-maroon-200 rounded-lg hover:bg-maroon-50 transition flex items-center gap-1 shadow-sm">
+                   + Tambah Syarat Checklist
+                 </button>
+               </div>
+               <p class="text-[11px] text-slate-500">Checklist dokumen di bawah diatur sesuai aturan HRD dan dapat ditambah/diubah secara fleksibel.</p>
+
+               <div id="offboarding-checklist-container" class="space-y-2 max-h-52 overflow-y-auto pr-1">
+                 <!-- Populated dynamically -->
+               </div>
+             </div>
          `;
 
          const taskBox = dynFields.querySelector("#handover-tasks-container");
@@ -388,6 +403,57 @@ export async function mount(container) {
 
          if (btnAddRow) {
            btnAddRow.onclick = () => addHandoverRow("", "Paham (Siap Eksekusi)");
+         }
+
+         // Checklist items container and default loader
+         const chkBox = dynFields.querySelector("#offboarding-checklist-container");
+         const btnAddChk = dynFields.querySelector("#btn-add-checklist-row");
+
+         function addChecklistRow(itemText = "") {
+           if (!chkBox) return;
+           const row = document.createElement("div");
+           row.className = "checklist-item-row flex items-center gap-2 p-2 bg-white border border-slate-200 rounded-lg shadow-sm";
+           row.innerHTML = `
+             <span class="text-xs font-bold text-slate-400 font-mono">✓</span>
+             <input type="text" class="chk-item-text w-full px-2.5 py-1 text-xs border border-slate-200 rounded-md outline-none focus:border-maroon-400 text-slate-800 font-medium" placeholder="Cth: Surat Bebas Tunggakan / Form Exit Clearance" value="${escapeHtml(itemText)}">
+             <button type="button" class="btn-del-chk text-xs text-rose-500 hover:bg-rose-50 p-1 rounded-md font-bold" title="Hapus Item">🗑️</button>
+           `;
+           row.querySelector(".btn-del-chk").onclick = () => {
+             if (chkBox.children.length > 1) {
+               row.remove();
+             } else {
+               toast("Minimal 1 item checklist", "info");
+             }
+           };
+           chkBox.appendChild(row);
+         }
+
+         function populateDefaultChecklists(reason) {
+           if (!chkBox) return;
+           chkBox.innerHTML = "";
+           let defaults = [];
+           if (reason === "Resign" || reason === "Mangkir") {
+             defaults = ["Surat Pengunduran Diri Resmi", "Form Exit Interview HRD", "Form Serah Terima Aset & Kerahasiaan", "Surat Keterangan Penonaktifan BPJS"];
+           } else if (reason === "PHK Efisiensi") {
+             defaults = ["Surat Pemberitahuan PHK", "Perjanjian Bersama (Bipartit)", "Form Pengembalian Aset Perusahaan", "Pencabutan Akses Sistem & Email", "Penerbitan Paklaring HRD"];
+           } else if (reason === "Pelanggaran Berat") {
+             defaults = ["BAP (Berita Acara Pemeriksaan)", "SK Pemutusan Hubungan Kerja (PHK)", "Bukti Kronologi Pelanggaran (Saksi)", "Tanda Terima Pengembalian Aset"];
+           } else if (reason === "Pensiun") {
+             defaults = ["Surat Keputusan Pensiun Karyawan", "Formulir Pencairan BPJS JHT & JP", "Penyerahan Piagam Penghargaan / Tali Asih", "Serah Terima Pekerjaan kepada Tim"];
+           } else {
+             defaults = ["Surat Clearance HRD", "Serah Terima Pekerjaan", "Pengembalian Aset ID Card & Peralatan Kerja"];
+           }
+           defaults.forEach(d => addChecklistRow(d));
+         }
+
+         const selAlasan = dynFields.querySelector("#off-alasan");
+         if (selAlasan) {
+           populateDefaultChecklists(selAlasan.value);
+           selAlasan.addEventListener("change", () => populateDefaultChecklists(selAlasan.value));
+         }
+
+         if (btnAddChk) {
+           btnAddChk.onclick = () => addChecklistRow("");
          }
      } else if (["Mutasi", "Promosi", "Demosi"].includes(jenis)) {
          dynFields.innerHTML = `
@@ -500,20 +566,29 @@ export async function mount(container) {
          let pesangon = 0, upmk = 0, uangPisah = 0;
          let checklist = [];
 
+         // Collect custom checklist items from form inputs
+         const customChkInputs = dynFields.querySelectorAll(".chk-item-text");
+         if (customChkInputs && customChkInputs.length) {
+           customChkInputs.forEach(i => {
+             const v = i.value.trim();
+             if (v) checklist.push(v);
+           });
+         }
+
          if (alasan === "Resign" || alasan === "Mangkir") {
             uangPisah = hitungUangPisah(mathYears, gaji);
-            checklist = ["Surat Pengunduran Diri (Jika Resign)", "Surat Panggilan Mangkir 1 & 2 (Jika Mangkir)", "Form Exit Interview", "Form Serah Terima Aset & Kerahasiaan", "Surat Keterangan Penonaktifan BPJS"];
+            if (!checklist.length) checklist = ["Surat Pengunduran Diri Resmi", "Form Exit Interview HRD", "Form Serah Terima Aset & Kerahasiaan", "Surat Keterangan Penonaktifan BPJS"];
          } else if (alasan === "PHK Efisiensi") {
             pesangon = hitungPesangon(mathYears, gaji); 
             upmk = hitungUPMK(mathYears, gaji);
-            checklist = ["Surat Pemberitahuan PHK", "Perjanjian Bersama (Bipartit)", "Form Pengembalian Aset", "Pencabutan Akses Sistem", "Penerbitan Paklaring"];
+            if (!checklist.length) checklist = ["Surat Pemberitahuan PHK", "Perjanjian Bersama (Bipartit)", "Form Pengembalian Aset Perusahaan", "Pencabutan Akses Sistem & Email", "Penerbitan Paklaring HRD"];
          } else if (alasan === "Pelanggaran Berat") {
             uangPisah = hitungUangPisah(mathYears, gaji);
-            checklist = ["BAP (Berita Acara Pemeriksaan)", "SK Pemutusan Hubungan Kerja (PHK) Cacat Hukum", "Bukti Kronologi Pelanggaran (Saksi)", "Tanda Terima Pengembalian Aset"];
+            if (!checklist.length) checklist = ["BAP (Berita Acara Pemeriksaan)", "SK Pemutusan Hubungan Kerja (PHK)", "Bukti Kronologi Pelanggaran (Saksi)", "Tanda Terima Pengembalian Aset"];
          } else if (alasan === "Pensiun") {
             pesangon = hitungPesangon(mathYears, gaji) * 1.75; 
             upmk = hitungUPMK(mathYears, gaji);
-            checklist = ["Surat Keputusan Pensiun Karyawan", "Formulir Pencairan BPJS JHT & JP", "Penyerahan Piagam Penghargaan / Tali Asih", "Serah Terima Pekerjaan kepada Tim"];
+            if (!checklist.length) checklist = ["Surat Keputusan Pensiun Karyawan", "Formulir Pencairan BPJS JHT & JP", "Penyerahan Piagam Penghargaan / Tali Asih", "Serah Terima Pekerjaan kepada Tim"];
          }
 
          // Fetch assigned assets for clearance checklist
@@ -536,6 +611,7 @@ export async function mount(container) {
            karyawan_pengganti: penggantiVal, 
            catatan_handover: catatanHandoverVal,
            handover_tasks: handoverTasksList,
+           checklist_doc: checklist,
            assigned_assets: assignedAssets 
          };
          payloadLog.update_master = { aktif_tdk_aktif: "TIDAK AKTIF" }; 

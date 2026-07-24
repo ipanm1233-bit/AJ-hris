@@ -342,14 +342,16 @@ export function evalFormula(formulaStr, valuesObj) {
  * 8. QUERY STRING & HASH ROUTE HELPERS
  * ------------------------------------------------------------------- */
 export function parseHash() {
-  const raw = location.hash.replace(/^#/, "");
-  const [path, qs] = raw.split("?");
+  const raw = (location.hash || "").replace(/^#+/, "").replace(/^\/+/, "");
+  const [pathRaw, qs] = raw.split("?");
+  const path = (pathRaw || "").replace(/^\/+|\/+$/g, "").trim() || "dashboard";
   const params = new URLSearchParams(qs || "");
-  return { path: path || "dashboard", params };
+  return { path, params };
 }
 export function navigate(path, params = {}) {
+  const cleanPath = String(path || "").replace(/^#+/, "").replace(/^\/+/, "").replace(/\/+$/, "").trim();
   const qs = new URLSearchParams(params).toString();
-  location.hash = `#${path}${qs ? "?" + qs : ""}`;
+  location.hash = `#${cleanPath}${qs ? "?" + qs : ""}`;
 }
 
 export function escapeHtml(str = "") {
@@ -462,11 +464,49 @@ export async function notifyUser(username, judul, pesan, link = "") {
       username_target: username, judul, pesan, link: link || "", dibaca: false, tanggal: new Date().toISOString()
     }, genId("NTF"));
     
-    // 2. Tembak ke HP target
+    // 2. Tembak ke HP target (Push) & Email
+    let targetEmail = null;
+    let targetName = username;
+
     const snap = await getDoc(doc(db, COL.USERS, username));
-    const token = snap.exists() ? snap.data().fcm_token : null;
-    if (token) {
-       await sendFCMNotif([token], judul, pesan, link);
+    if (snap.exists()) {
+      const uData = snap.data();
+      targetName = uData.nama || username;
+      if (uData.email) targetEmail = uData.email;
+      if (uData.fcm_token) {
+        await sendFCMNotif([uData.fcm_token], judul, pesan, link);
+      }
+    }
+
+    // Fallback: Cari email di Master Karyawan jika belum ada di USERS
+    if (!targetEmail) {
+      try {
+        const qK = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", username), limit(1));
+        const snapK = await getDocs(qK);
+        if (!snapK.empty && snapK.docs[0].data().email) {
+          targetEmail = snapK.docs[0].data().email;
+        }
+      } catch (e) {}
+    }
+
+    // Kirim Notifikasi Email jika email tersedia
+    if (targetEmail) {
+      const appUrl = window.location.origin;
+      const targetLink = link ? (appUrl + (link.startsWith('#') ? link : '#' + link)) : appUrl;
+      const htmlBody = `
+        <div style="font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding:24px; color:#1e293b; max-width:600px; border:1px solid #e2e8f0; border-radius:16px; background-color:#ffffff;">
+          <div style="border-bottom:2px solid #7a1f2b; padding-bottom:12px; margin-bottom:20px;">
+            <h2 style="color:#7a1f2b; margin:0; font-size:18px; font-weight:bold;">HRIS & Operasional CV Andela Jaya</h2>
+          </div>
+          <h3 style="color:#0f172a; margin-top:0; font-size:16px;">${escapeHtml(judul)}</h3>
+          <p style="font-size:14px; line-height:1.6; color:#334155;">Halo <strong>${escapeHtml(targetName)}</strong>,</p>
+          <p style="font-size:14px; line-height:1.6; color:#334155; background-color:#f8fafc; padding:14px; border-radius:10px; border:1px solid #f1f5f9;">${escapeHtml(pesan)}</p>
+          ${link ? `<div style="margin-top:24px; text-align:center;"><a href="${targetLink}" style="background-color:#7a1f2b; color:#ffffff; padding:12px 24px; border-radius:10px; text-decoration:none; font-weight:bold; font-size:13px; display:inline-block; shadow:0 2px 4px rgba(0,0,0,0.1);">Buka Sistem HRIS</a></div>` : ''}
+          <hr style="margin-top:30px; border:0; border-top:1px solid #e2e8f0;" />
+          <p style="font-size:11px; color:#94a3b8; text-align:center;">Pesan ini dikirimkan secara otomatis oleh sistem Portal HRIS CV Andela Jaya.</p>
+        </div>
+      `;
+      sendEmailNotif(targetEmail, `[HRIS Update] ${judul}`, htmlBody);
     }
   } catch (e) {
     console.warn("Gagal mengirim notifikasi ke " + username, e);

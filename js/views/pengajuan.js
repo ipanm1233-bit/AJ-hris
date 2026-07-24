@@ -15,7 +15,14 @@ export async function mount(container, { session, params }) {
 
   const allForms = await fsGetAll(COL.FORM_CONFIG);
   const checks = await Promise.all(allForms.map(f => canAccessForm(normalizeForm(f), session)));
-  let myForms = allForms.filter((f, i) => checks[i]);
+  let myForms = allForms.filter((f, i) => {
+    if (!checks[i]) return false;
+    const formId = (f.id || "").toUpperCase();
+    const formName = (f.nama_form || "").toLowerCase();
+    // Exclude leave forms from generic catalog so employee leave requests focus on #pengajuan-cuti
+    if (formId === "F-ISO-CUTI" || formName.includes("cuti")) return false;
+    return true;
+  });
 
   function renderCatalog(list) {
     if (!list.length) { 

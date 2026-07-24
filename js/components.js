@@ -463,9 +463,9 @@ export { fsGetAll, fsAdd, fsUpdate, fsDelete };
  * ------------------------------------------------------------------- */
 export async function openNotificationCenter(session) {
   openModal({
-    title: "🔔 Pusat Notifikasi",
+    title: "Pusat Notifikasi",
     bodyHtml: `<div class="p-8 text-center text-slate-500 font-medium animate-pulse">Mengumpulkan data notifikasi...</div>`,
-    footerHtml: `<button id="btn-tutup-notif" class="w-full py-2.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm text-slate-700 font-bold transition">Tutup</button>`,
+    footerHtml: `<button id="btn-tutup-notif" class="w-full py-2.5 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs text-slate-700 font-bold transition">Tutup</button>`,
     onMount: m => m.querySelector("#btn-tutup-notif").onclick = closeModal
   });
 
@@ -502,132 +502,268 @@ export async function openNotificationCenter(session) {
         const batas = new Date(r.tanggal_berakhir); batas.setHours(23, 59, 59, 999);
         if (batas < now) return false;
       }
-      
-      // Filter Penerima Spesifik
       if (r.target_type === "SPESIFIK") {
          return (r.target_list || []).includes(session?.nama);
       }
       return true;
     }).sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
 
-    let htmlContent = `<div class="space-y-4 max-h-[60vh] overflow-y-auto pr-2">`;
-    
-    // Helper untuk menutup modal saat menu diklik
-    const closeEvt = `onclick="document.getElementById('app-modal-close')?.click()"`;
+    // Bikin struktur Terpadu & Terkonsolidasi (Unified Stream)
+    const items = [];
 
-    // 0. NOTIFIKASI PRIBADI / UPDATE PENGAJUAN SAYA
-    if (personalNotifs.length > 0) {
-      const unreadCount = personalNotifs.filter(n => !n.dibaca).length;
-      htmlContent += `<div class="bg-indigo-50/80 border border-indigo-200 p-3.5 rounded-xl text-left">
-         <div class="flex items-center justify-between mb-2">
-            <h4 class="font-bold text-indigo-900 text-xs uppercase flex items-center gap-1.5">
-               <span>📱</span> Update Status Pengajuan & Notifikasi HP ${unreadCount > 0 ? `<span class="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">${unreadCount} baru</span>` : ''}
-            </h4>
-         </div>
-         <div class="space-y-2 max-h-48 overflow-y-auto pr-1">
-            ${personalNotifs.slice(0, 10).map(n => `
-               <a href="${n.link || '#riwayat'}" data-notif-id="${n.id}" ${closeEvt} class="block p-2.5 rounded-lg border ${n.dibaca ? 'bg-white border-slate-100 text-slate-600' : 'bg-white border-indigo-200 shadow-sm text-indigo-950 font-medium'} hover:border-indigo-400 transition text-xs">
-                  <div class="flex items-center justify-between gap-1 mb-0.5">
-                     <span class="font-bold ${n.dibaca ? 'text-slate-700' : 'text-indigo-900'}">${escapeHtml(n.judul || 'Notifikasi')}</span>
-                     <span class="text-[10px] text-slate-400 shrink-0">${n.tanggal ? new Date(n.tanggal).toLocaleDateString('id-ID', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
-                  </div>
-                  <p class="text-[11px] leading-relaxed text-slate-600">${escapeHtml(n.pesan || '')}</p>
-               </a>
-            `).join("")}
-         </div>
-      </div>`;
-    }
+    // 1. Notifikasi Pribadi & Status Pengajuan
+    personalNotifs.forEach(n => {
+      items.push({
+        id: n.id,
+        cat: 'status',
+        badge: 'Update Status',
+        tone: 'indigo',
+        iconName: 'bell',
+        title: n.judul || 'Notifikasi Sistem',
+        message: n.pesan || '',
+        date: n.tanggal ? new Date(n.tanggal).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '',
+        unread: !n.dibaca,
+        link: n.link || '#riwayat'
+      });
+    });
 
-    // 1. PENGUMUMAN -> Pop-up interaktif pengumuman aktif
+    // 2. Pengumuman Aktif
     if (pengumumanAktif.length > 0) {
-      htmlContent += `<div id="notif-pengumuman-block" class="block bg-purple-50 border border-purple-200 p-4 rounded-xl hover:bg-purple-100 transition cursor-pointer text-left">
-         <h4 class="font-bold text-purple-800 text-xs uppercase mb-1 flex items-center gap-1">📢 Pengumuman (${pengumumanAktif.length})</h4>
-         <ul class="text-sm text-purple-700 list-disc list-inside space-y-0.5">
-           ${pengumumanAktif.slice(0, 4).map(p => `<li>${escapeHtml(p.judul || p.title || "Pengumuman")}</li>`).join("")}
-         </ul>
-         <p class="text-xs text-purple-600 font-semibold mt-2">Buka Pengumuman Aktif &rarr;</p>
-      </div>`;
+      items.push({
+        id: 'announcements-group',
+        cat: 'announcement',
+        badge: 'Pengumuman Perusahaan',
+        tone: 'purple',
+        iconName: 'megaphone',
+        title: `${pengumumanAktif.length} Pengumuman Resmi Aktif`,
+        message: pengumumanAktif.slice(0, 3).map(p => p.judul || p.title || "Pengumuman").join(" • "),
+        date: pengumumanAktif[0]?.tanggal ? fmtDateShort(pengumumanAktif[0].tanggal) : '',
+        unread: true,
+        action: () => openActiveAnnouncementsModal(pengumumanAktif, session)
+      });
     }
 
-    // 2. ANTREAN PERSETUJUAN -> Arahkan ke menu Approval
+    // 3. Antrean Persetujuan
     if (myApproval.length > 0) {
-      htmlContent += `<a href="#approval" ${closeEvt} class="block bg-amber-50 border border-amber-200 p-4 rounded-xl hover:bg-amber-100 transition cursor-pointer text-left">
-         <h4 class="font-bold text-amber-800 text-xs uppercase mb-1 flex items-center gap-1">⏳ Antrean Persetujuan (${myApproval.length})</h4>
-         <p class="text-sm text-amber-700">Ada <b>${myApproval.length} pengajuan</b> dari rekan tim yang membutuhkan persetujuan Anda saat ini.</p>
-         <p class="text-xs text-amber-600 font-semibold mt-2">Buka Menu Persetujuan &rarr;</p>
-      </a>`;
+      items.push({
+        id: 'approval-group',
+        cat: 'task',
+        badge: 'Antrean Persetujuan',
+        tone: 'amber',
+        iconName: 'alert',
+        title: `${myApproval.length} Pengajuan Menunggu Persetujuan`,
+        message: `Memerlukan pemeriksaan dan persetujuan dari Anda saat ini.`,
+        unread: true,
+        link: '#approval'
+      });
     }
 
-    // 3. TUGAS KPI 360 -> Pop-up interaktif daftar karyawan & modul penilaian
+    // 4. Tugas KPI 360
     if (myKpi.length > 0) {
-      htmlContent += `<div id="notif-kpi-block" class="block bg-blue-50 border border-blue-200 p-4 rounded-xl hover:bg-blue-100 transition cursor-pointer text-left">
-         <h4 class="font-bold text-blue-800 text-xs uppercase mb-1 flex items-center gap-1">📋 Tugas KPI 360 (${myKpi.length})</h4>
-         <p class="text-sm text-blue-700">Anda memiliki <b>${myKpi.length} formulir penilaian rekan kerja</b> yang harus segera diselesaikan.</p>
-         <p class="text-xs text-blue-600 font-semibold mt-2">Buka Daftar Penilaian &rarr;</p>
-      </div>`;
+      items.push({
+        id: 'kpi-group',
+        cat: 'task',
+        badge: 'Tugas Evaluasi KPI',
+        tone: 'blue',
+        iconName: 'gauge',
+        title: `${myKpi.length} Penilaian Rekan Kerja Pending`,
+        message: `Silakan selesaikan pengisian formulir evaluasi kinerja tim.`,
+        unread: true,
+        action: () => openKpiTasksModal(myKpi, session)
+      });
     }
 
-    // 4. WARNING KONTRAK -> Arahkan ke Penilaian & Kontrak
+    // 5. Warning Kontrak
     if (kontrakHabis.length > 0) {
-      htmlContent += `<a href="#penilaian-kontrak" ${closeEvt} class="block bg-red-50 border border-red-200 p-4 rounded-xl hover:bg-red-100 transition cursor-pointer text-left">
-         <h4 class="font-bold text-red-800 text-xs uppercase mb-1 flex items-center gap-1">📄 Warning Kontrak (${kontrakHabis.length})</h4>
-         <p class="text-sm text-red-700">Ada <b>${kontrakHabis.length} karyawan</b> yang masa ikatan dinas / kontraknya akan berakhir bulan ini.</p>
-         <p class="text-xs text-red-600 font-semibold mt-2">Buka Penilaian & Kontrak &rarr;</p>
-      </a>`;
+      items.push({
+        id: 'contract-group',
+        cat: 'task',
+        badge: 'Warning Kontrak',
+        tone: 'red',
+        iconName: 'doc-plus',
+        title: `${kontrakHabis.length} Masa Kontrak Berakhir`,
+        message: `Karyawan akan mengakhiri ikatan dinas/kontrak bulan ini.`,
+        unread: true,
+        link: '#penilaian-kontrak'
+      });
     }
 
-    // 5. LPJ BELUM DIISI -> Arahkan ke Riwayat Pengajuan
+    // 6. Tagihan LPJ Saya
     if (myLpjPending.length > 0) {
-      htmlContent += `<a href="#riwayat" ${closeEvt} class="block bg-orange-50 border border-orange-200 p-4 rounded-xl hover:bg-orange-100 transition cursor-pointer text-left">
-         <h4 class="font-bold text-orange-800 text-xs uppercase mb-1 flex items-center gap-1">🧾 LPJ Belum Diisi (${myLpjPending.length})</h4>
-         <p class="text-sm text-orange-700">Anda punya <b>${myLpjPending.length} laporan pertanggungjawaban</b> yang harus dilengkapi${myLpjOverdue.length > 0 ? `, <b>${myLpjOverdue.length} di antaranya sudah lewat batas waktu</b>` : ""}.</p>
-         <p class="text-xs text-orange-600 font-semibold mt-2">Isi di Riwayat Pengajuan &rarr;</p>
-      </a>`;
+      items.push({
+        id: 'lpj-group',
+        cat: 'status',
+        badge: 'Tagihan LPJ',
+        tone: 'orange',
+        iconName: 'clock',
+        title: `${myLpjPending.length} Laporan LPJ Pengajuan`,
+        message: `Harap melengkapi LPJ pengajuan dana yang telah disetujui.${myLpjOverdue.length > 0 ? ` (${myLpjOverdue.length} terlambat)` : ''}`,
+        unread: true,
+        link: '#riwayat'
+      });
     }
 
-    // 6. LPJ TERLAMBAT (HRD) -> Arahkan ke Riwayat Pengajuan
+    // 7. LPJ Overdue HRD
     if (orgLpjOverdue.length > 0) {
-      htmlContent += `<a href="#riwayat" ${closeEvt} class="block bg-red-50 border border-red-200 p-4 rounded-xl hover:bg-red-100 transition cursor-pointer text-left">
-         <h4 class="font-bold text-red-800 text-xs uppercase mb-1 flex items-center gap-1">🧾 LPJ Terlambat Karyawan (${orgLpjOverdue.length})</h4>
-         <p class="text-sm text-red-700">Ada <b>${orgLpjOverdue.length} LPJ karyawan</b> yang sudah melewati batas waktu pengumpulan.</p>
-         <p class="text-xs text-red-600 font-semibold mt-2">Cek di Riwayat Pengajuan &rarr;</p>
-      </a>`;
+      items.push({
+        id: 'org-lpj-group',
+        cat: 'status',
+        badge: 'LPJ Terlambat',
+        tone: 'red',
+        iconName: 'clock',
+        title: `${orgLpjOverdue.length} LPJ Karyawan Terlambat`,
+        message: `Laporan pertanggungjawaban dana belum diunggah oleh karyawan.`,
+        unread: true,
+        link: '#riwayat'
+      });
     }
 
-    // Jika Kosong
-    if (pengumumanAktif.length === 0 && myApproval.length === 0 && myKpi.length === 0 && kontrakHabis.length === 0 && myLpjPending.length === 0 && orgLpjOverdue.length === 0) {
-      htmlContent += `<div class="text-center p-8 text-slate-400">
-         ${icon("bell", "w-14 h-14 mx-auto mb-3 text-slate-200")}
-         <p class="font-medium">Kerja bagus! Tidak ada notifikasi tertunda.</p>
-      </div>`;
-    }
-    htmlContent += `</div>`;
+    const unreadCount = items.filter(i => i.unread).length;
+
+    let htmlContent = `
+      <div class="space-y-3.5 text-left">
+        <!-- Header & Counter -->
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div class="flex items-center gap-2">
+            <span class="p-2 bg-maroon-50 text-maroon-700 rounded-xl">
+              ${icon("bell", "w-4 h-4")}
+            </span>
+            <div>
+              <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wide">Pemberitahuan & Aktivitas</h4>
+              <p class="text-[11px] text-slate-500">Pusat pemantauan status, tugas persetujuan, dan memo perusahaan</p>
+            </div>
+          </div>
+          ${unreadCount > 0 ? `<span class="px-2.5 py-1 bg-red-50 text-red-600 border border-red-200 rounded-full text-[10px] font-bold">${unreadCount} Aktif / Baru</span>` : ''}
+        </div>
+
+        <!-- Filter Tab Buttons -->
+        <div class="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px]">
+          <button data-notif-tab="all" class="notif-tab-btn px-3 py-1.5 rounded-lg font-bold bg-maroon-700 text-white transition">Semua (${items.length})</button>
+          <button data-notif-tab="status" class="notif-tab-btn px-3 py-1.5 rounded-lg font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition">Update Status</button>
+          <button data-notif-tab="task" class="notif-tab-btn px-3 py-1.5 rounded-lg font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition">Tugas & Persetujuan</button>
+          <button data-notif-tab="announcement" class="notif-tab-btn px-3 py-1.5 rounded-lg font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition">Pengumuman</button>
+        </div>
+
+        <!-- Unified Feed Stream -->
+        <div id="notif-feed-container" class="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
+          ${renderNotifFeed(items)}
+        </div>
+      </div>
+    `;
 
     const modalDiv = document.getElementById("app-modal-panel");
     if (modalDiv) {
       const loadingEl = modalDiv.querySelector(".animate-pulse");
       if (loadingEl && loadingEl.parentElement) {
-          loadingEl.parentElement.innerHTML = htmlContent;
-          
-          // Sambungkan penangan klik interaktif
-          const blockPengumuman = modalDiv.querySelector("#notif-pengumuman-block");
-          if (blockPengumuman) {
-             blockPengumuman.onclick = () => {
-                openActiveAnnouncementsModal(pengumumanAktif, session);
-             };
-          }
-          
-          const blockKpi = modalDiv.querySelector("#notif-kpi-block");
-          if (blockKpi) {
-             blockKpi.onclick = () => {
-                openKpiTasksModal(myKpi, session);
-             };
-          }
+        loadingEl.parentElement.innerHTML = htmlContent;
+
+        // Bind filter tabs
+        modalDiv.querySelectorAll(".notif-tab-btn").forEach(btn => {
+          btn.onclick = () => {
+            modalDiv.querySelectorAll(".notif-tab-btn").forEach(b => {
+              b.className = "notif-tab-btn px-3 py-1.5 rounded-lg font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition";
+            });
+            btn.className = "notif-tab-btn px-3 py-1.5 rounded-lg font-bold bg-maroon-700 text-white transition";
+
+            const cat = btn.dataset.notifTab;
+            const filtered = cat === "all" ? items : items.filter(i => i.cat === cat);
+            const feedContainer = modalDiv.querySelector("#notif-feed-container");
+            if (feedContainer) {
+              feedContainer.innerHTML = renderNotifFeed(filtered);
+              bindFeedEvents(modalDiv, filtered, session);
+            }
+          };
+        });
+
+        bindFeedEvents(modalDiv, items, session);
       }
     }
   } catch (e) {
     console.error("Gagal memuat notifikasi", e);
   }
+}
+
+function renderNotifFeed(items) {
+  if (!items.length) {
+    return `
+      <div class="text-center py-10 text-slate-400 space-y-2">
+        <div class="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center mx-auto text-slate-300">
+          ${icon("bell", "w-6 h-6")}
+        </div>
+        <p class="text-xs font-semibold text-slate-500">Tidak ada pemberitahuan pada kategori ini.</p>
+      </div>
+    `;
+  }
+
+  return items.map((item, idx) => {
+    const toneClasses = {
+      indigo: "bg-indigo-50 border-indigo-100 text-indigo-700",
+      purple: "bg-purple-50 border-purple-100 text-purple-700",
+      amber: "bg-amber-50 border-amber-100 text-amber-700",
+      blue: "bg-blue-50 border-blue-100 text-blue-700",
+      red: "bg-red-50 border-red-100 text-red-700",
+      orange: "bg-orange-50 border-orange-100 text-orange-700"
+    };
+
+    const iconBox = `
+      <div class="p-2.5 rounded-xl border shrink-0 ${toneClasses[item.tone] || toneClasses.indigo}">
+        ${icon(item.iconName || "bell", "w-4 h-4")}
+      </div>
+    `;
+
+    return `
+      <div data-feed-item-idx="${idx}" class="group block p-3 rounded-xl border border-slate-200/80 bg-white hover:border-maroon-300 hover:shadow-sm transition text-xs cursor-pointer">
+        <div class="flex items-start gap-3">
+          ${iconBox}
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <span class="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${toneClasses[item.tone]}">${escapeHtml(item.badge)}</span>
+              ${item.date ? `<span class="text-[10px] text-slate-400 font-medium shrink-0">${item.date}</span>` : ''}
+            </div>
+            <h5 class="font-bold text-slate-800 text-xs group-hover:text-maroon-700 transition truncate">${escapeHtml(item.title)}</h5>
+            <p class="text-[11px] text-slate-500 leading-relaxed mt-0.5 line-clamp-2">${escapeHtml(item.message)}</p>
+          </div>
+          <span class="text-slate-300 group-hover:text-maroon-700 transition self-center pl-1">
+            ${icon("chevron", "w-4 h-4 -rotate-90")}
+          </span>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function bindFeedEvents(modalDiv, currentList, session) {
+  modalDiv.querySelectorAll("[data-feed-item-idx]").forEach(el => {
+    el.onclick = async () => {
+      const idx = parseInt(el.dataset.feedItemIdx, 10);
+      const item = currentList[idx];
+      if (!item) return;
+
+      // Mark notification as read if it is a personal notification
+      if (item.id && !item.id.includes("-group")) {
+        try {
+          await fsUpdate(COL.NOTIFICATIONS, item.id, { dibaca: true });
+        } catch (e) {
+          console.warn("Failed to mark notification read", e);
+        }
+      }
+
+      closeModal();
+
+      if (typeof item.action === "function") {
+        item.action();
+      } else if (item.link) {
+        const rawLink = String(item.link).trim();
+        const targetRoute = rawLink.replace(/^\/+#?|^#+/, "").trim();
+        const currentHash = location.hash.replace(/^#/, "").split("?")[0];
+
+        location.hash = "#" + targetRoute;
+        if (currentHash === targetRoute) {
+          window.dispatchEvent(new Event("hashchange"));
+        }
+      }
+    };
+  });
 }
 
 /* ---------------------------------------------------------------------
@@ -653,7 +789,7 @@ function openActiveAnnouncementsModal(memos, session) {
   }).join("");
 
   openModal({
-    title: "📢 Pengumuman Aktif",
+    title: "Pengumuman Aktif",
     size: "md",
     bodyHtml: `
       <div class="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
@@ -727,7 +863,7 @@ function openKpiTasksModal(kpis, session) {
     </div>`).join("");
 
   openModal({
-    title: "📋 Daftar Evaluasi Rekan Kerja (KPI 360)",
+    title: "Daftar Evaluasi Rekan Kerja (KPI 360)",
     size: "md",
     bodyHtml: `
       <div class="space-y-3 max-h-[50vh] overflow-y-auto pr-1">

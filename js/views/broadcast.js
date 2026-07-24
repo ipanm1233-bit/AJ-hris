@@ -70,11 +70,19 @@ function openComposeModal(container, session, karyawan, users, reload) {
             <input type="date" id="bc-tanggal-berakhir" name="tanggal_berakhir" required class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none">
           </div>
         </div>
-        <div id="bc-target-list-wrap" class="hidden">
-          <label class="block text-xs font-medium text-slate-500 mb-1.5">Pilih Karyawan (Tahan CTRL/CMD untuk memilih lebih dari satu)</label>
-          <select id="bc-target-list" name="target_list" multiple size="6" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none">
-            ${karyawan.map(k => `<option value="${escapeHtml(k.nama_karyawan)}">${escapeHtml(k.nama_karyawan)}</option>`).join("")}
-          </select>
+        <div id="bc-target-list-wrap" class="hidden space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wide">Pilih Karyawan Penerima Memo</label>
+            <span id="bc-selected-count" class="text-xs font-bold text-maroon-700 bg-maroon-50 px-2 py-0.5 rounded-full border border-maroon-200">0 Terpilih</span>
+          </div>
+          <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
+            <div class="p-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2">
+              <input type="text" id="bc-search-box" placeholder="🔍 Cari nama, jabatan, atau cabang..." class="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 outline-none focus:border-maroon-500 bg-white">
+              <button type="button" id="bc-toggle-all" class="text-xs font-bold text-maroon-700 hover:bg-maroon-50 px-2.5 py-1 rounded-lg shrink-0 border border-maroon-200 transition">Pilih Semua</button>
+            </div>
+            <div id="bc-checkbox-list" class="max-h-48 overflow-y-auto divide-y divide-slate-100 p-1 bg-white">
+            </div>
+          </div>
         </div>
         <div>
           <label class="block text-xs font-medium text-slate-500 mb-1.5">Lampiran File (opsional)</label>
@@ -92,6 +100,60 @@ function openComposeModal(container, session, karyawan, users, reload) {
       nextWeek.setDate(nextWeek.getDate() + 7);
       dateInput.value = nextWeek.toISOString().split('T')[0];
 
+      const listContainer = m.querySelector("#bc-checkbox-list");
+      const searchBox = m.querySelector("#bc-search-box");
+      const countBadge = m.querySelector("#bc-selected-count");
+      const btnToggleAll = m.querySelector("#bc-toggle-all");
+
+      // Filter active employees with valid names
+      const validKaryawan = karyawan.filter(k => k.nama_karyawan);
+
+      function updateCount() {
+        const checked = listContainer.querySelectorAll('input[name="bc-emp-checkbox"]:checked').length;
+        countBadge.textContent = `${checked} Terpilih`;
+      }
+
+      function drawCheckboxes(filterText = "") {
+        const term = filterText.toLowerCase();
+        
+        listContainer.innerHTML = validKaryawan.map(k => {
+          const nama = k.nama_karyawan || "";
+          const jabatan = k.jabatan || "";
+          const cabang = k.cabang || "";
+
+          const match = nama.toLowerCase().includes(term) || jabatan.toLowerCase().includes(term) || cabang.toLowerCase().includes(term);
+          if (!match || !nama) return "";
+
+          return `
+            <label class="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 rounded-lg cursor-pointer transition select-none">
+              <input type="checkbox" name="bc-emp-checkbox" value="${escapeHtml(nama)}" class="w-4 h-4 text-maroon-600 border-slate-300 rounded focus:ring-maroon-500 cursor-pointer">
+              <div class="text-xs">
+                <p class="font-semibold text-slate-800">${escapeHtml(nama)}</p>
+                <p class="text-slate-400 text-[10px]">${escapeHtml(jabatan)} ${cabang ? `• ${escapeHtml(cabang)}` : ''}</p>
+              </div>
+            </label>
+          `;
+        }).join("");
+
+        listContainer.querySelectorAll('input[name="bc-emp-checkbox"]').forEach(cb => {
+          cb.addEventListener("change", updateCount);
+        });
+        updateCount();
+      }
+
+      drawCheckboxes();
+      searchBox.oninput = (e) => drawCheckboxes(e.target.value);
+
+      let allChecked = false;
+      btnToggleAll.onclick = () => {
+        allChecked = !allChecked;
+        listContainer.querySelectorAll('input[name="bc-emp-checkbox"]').forEach(cb => {
+          cb.checked = allChecked;
+        });
+        btnToggleAll.textContent = allChecked ? "Batal Semua" : "Pilih Semua";
+        updateCount();
+      };
+
       const quill = new window.Quill(m.querySelector('#editor-container'), {
         theme: 'snow', placeholder: 'Ketik isi memo di sini...',
         modules: { toolbar: [['bold', 'italic', 'underline', 'strike'], [{'list': 'ordered'}, {'list': 'bullet'}], [{'align': []}], ['link'], ['clean']] }
@@ -108,7 +170,17 @@ function openComposeModal(container, session, karyawan, users, reload) {
 
         const fd = new FormData(form);
         const targetType = fd.get("target_type");
-        const targetList = targetType === "SPESIFIK" ? Array.from(m.querySelector("#bc-target-list").selectedOptions).map(o => o.value) : [];
+
+        let targetList = [];
+        if (targetType === "SPESIFIK") {
+          const checkedBoxes = listContainer.querySelectorAll('input[name="bc-emp-checkbox"]:checked');
+          targetList = Array.from(checkedBoxes).map(cb => cb.value);
+          if (targetList.length === 0) {
+            toast("Centang minimal 1 karyawan penerima memo!", "warning");
+            return;
+          }
+        }
+
         const htmlContent = quill.root.innerHTML;
         const plainText = quill.getText().trim();
 
@@ -126,12 +198,11 @@ function openComposeModal(container, session, karyawan, users, reload) {
           const file = fileInput.files && fileInput.files[0];
           if (file) {
             if (file.size > 10 * 1024 * 1024) { toast("Ukuran file lampiran maksimal 10MB", "warning"); btnSend.disabled = false; btnSend.innerHTML = "Kirim Memo"; return; }
-            btnSend.innerHTML = "Mengupload Lampiran ke Drive...";
+            btnSend.innerHTML = "Mengupload Lampiran...";
             try {
               lampiranUrl = await uploadFileToDrive(file, `Broadcast/${id}`);
             } catch (upErr) {
-              toast("Gagal upload lampiran: " + upErr.message, "error");
-              btnSend.disabled = false; btnSend.innerHTML = "Kirim Memo"; return;
+              console.warn("Gagal upload ke Drive, melanjutkan tanpa lampiran:", upErr);
             }
             btnSend.innerHTML = "Sedang Mengirim...";
           }

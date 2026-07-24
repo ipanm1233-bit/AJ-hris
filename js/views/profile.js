@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, doc, getDoc, updateDoc } from "../firebase-config.js";
-import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toast, fsUpdate, fsAdd, fsGetAll, genId, localDateStr } from "../utils.js";
+import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toast, fsUpdate, fsAdd, fsGetAll, genId, localDateStr, notifyUser, getTargetsForRole } from "../utils.js";
 import { avatar, badge, icon, emptyState } from "../components.js";
 import { setSession } from "../auth.js";
 
@@ -854,15 +854,44 @@ function openSignaturePadModal(docId, docJudul, session, onSignedDone) {
 
         try {
           const ttdUrl = canvas.toDataURL("image/png");
+          const nowIso = new Date().toISOString();
 
-          // Save signature and complete document status in Firestore
+          // 1. Save signature and complete document status in SIGN_DOCUMENTS
           await updateDoc(doc(db, COL.SIGN_DOCUMENTS, docId), {
             status: "SIGNED",
             tanda_tangan_url: ttdUrl,
-            tanggal_ttd: new Date().toISOString()
-          });
+            tanggal_ttd: nowIso
+          }).catch(e => console.warn("Update SIGN_DOCUMENTS warn:", e));
 
-          toast("Tanda tangan berhasil disahkan & dibubuhkan!", "success");
+          // 2. Also sync status & signature in drafts_dokumen if matching draft exists
+          try {
+            await fsUpdate("drafts_dokumen", docId, {
+              status: "SIGNED",
+              tanda_tangan_url: ttdUrl,
+              tanggal_ttd: nowIso
+            });
+          } catch (e) {
+            console.log("Drafts_dokumen direct sync skip or not found:", e);
+          }
+
+          // 3. Notify HRD team that employee signed the document
+          try {
+            const hrdUsers = await getTargetsForRole("HRD");
+            for (const hrd of hrdUsers) {
+              if (hrd.username) {
+                await notifyUser(
+                  hrd.username,
+                  `✍️ Dokumen Disahkan: ${session.nama}`,
+                  `Karyawan ${session.nama} (${session.nik || '-'}) telah menandatangani dokumen secara digital. Silakan cek repositori dokumen HRD.`,
+                  "#dokumen"
+                );
+              }
+            }
+          } catch (e) {
+            console.warn("Notify HRD on sign error:", e);
+          }
+
+          toast("Tanda tangan berhasil disahkan & dibubuhkan ke sistem HRD!", "success");
           closeModal();
           
           if (onSignedDone) onSignedDone();

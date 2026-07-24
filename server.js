@@ -12,7 +12,6 @@ app.use(express.static(__dirname));
 // Import API Handlers
 const cronCheckKontrak = require('./api/cron-check-kontrak.js');
 const sendPush = require('./api/send-push.js');
-const syncAbsen = require('./api/sync-absen.js');
 
 // Map the API paths to the handlers
 app.all('/api/cron-check-kontrak', async (req, res, next) => {
@@ -29,15 +28,6 @@ app.all('/api/send-push', async (req, res, next) => {
     await sendPush(req, res);
   } catch (error) {
     console.error("Error in send-push:", error);
-    next(error);
-  }
-});
-
-app.all('/api/sync-absen', async (req, res, next) => {
-  try {
-    await syncAbsen(req, res);
-  } catch (error) {
-    console.error("Error in sync-absen:", error);
     next(error);
   }
 });

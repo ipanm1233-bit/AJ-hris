@@ -26,7 +26,9 @@ const SESSION_KEY = "andela_hris_session";
 export const MENU_CONFIG = [
   // 📁 KATEGORI: MENU UTAMA (Personal)
   { id: "dashboard", label: "Home & Dashboard", icon: "home", kategori: "Menu Utama", roles: ["ALL"] },
-  { id: "pengajuan", label: "Buat Pengajuan", icon: "doc-plus", kategori: "Menu Utama", roles: ["ALL"] },
+  { id: "pengajuan-cuti", label: "Pengajuan Cuti", icon: "calendar", kategori: "Menu Utama", roles: ["ALL"] },
+  { id: "pengajuan-kasbon", label: "Pengajuan Kasbon", icon: "wallet", kategori: "Menu Utama", roles: ["ALL"] },
+  { id: "pengajuan", label: "Buat Pengajuan (Lainnya)", icon: "doc-plus", kategori: "Menu Utama", roles: ["ALL"] },
   { id: "klaim-bensin", label: "Klaim Bensin", icon: "wallet", kategori: "Menu Utama", roles: ["ALL"] },
   { id: "riwayat", label: "Riwayat Pengajuan", icon: "clock", kategori: "Menu Utama", roles: ["ALL"] },
 
@@ -66,7 +68,7 @@ export const MENU_CONFIG = [
   // 📁 KATEGORI: PENGATURAN SISTEM
   { id: "manajemen-data", label: "Manajemen Data", icon: "database", kategori: "Pengaturan Sistem", roles: ["HRD", "SUPERADMIN"] },
   { id: "pengaturan", label: "Akses & Pengguna", icon: "user-plus", kategori: "Pengaturan Sistem", roles: ["HRD", "SUPERADMIN"] },
-  { id: "konfigurasi", label: "Konfigurasi Sistem", icon: "layers", kategori: "Pengaturan Sistem", roles: ["SUPERADMIN"] },
+  { id: "konfigurasi", label: "Konfigurasi Sistem & Aturan Bisnis", icon: "layers", kategori: "Pengaturan Sistem", roles: ["HRD", "SUPERADMIN"] },
   { id: "form-builder", label: "Form Builder", icon: "doc-plus", kategori: "Pengaturan Sistem", roles: ["HRD", "SUPERADMIN"] }
 ];
 

@@ -94,7 +94,12 @@
 
     <div id="header-clock" class="hidden md:block text-xs text-slate-400 mr-2"></div>
 
-    <button id="btn-notif" class="relative p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition">
+    <button id="btn-test-notif-desktop" title="Aktifkan & Tes Notifikasi HP" class="btn-test-notif-action px-2.5 py-1.5 text-xs font-bold text-maroon-700 bg-maroon-50 hover:bg-maroon-100 border border-maroon-200 rounded-xl transition flex items-center gap-1.5 shadow-sm">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-maroon-700 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+      <span>Tes Notif</span>
+    </button>
+
+    <button id="btn-notif" class="relative p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition" title="Lonceng Notifikasi">
       <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
       <span id="notif-dot" class="hidden absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-maroon-600"></span>
     </button>
@@ -125,8 +130,13 @@
       </div>
       <span class="text-lg font-bold text-maroon-700 font-sans tracking-tight">HRGA Connect</span>
     </div>
-    <div class="flex items-center gap-3">
-      <button id="btn-notif-mobile" class="relative p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition">
+    <div class="flex items-center gap-2">
+      <button id="btn-test-notif-mobile" title="Aktifkan & Tes Notifikasi HP" class="btn-test-notif-action px-2 py-1 text-[11px] font-bold text-maroon-700 bg-maroon-50 hover:bg-maroon-100 border border-maroon-200 rounded-lg transition flex items-center gap-1">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-maroon-700 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+        <span>Tes Notif</span>
+      </button>
+
+      <button id="btn-notif-mobile" class="relative p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition" title="Lonceng Notifikasi">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
         <span id="notif-dot-mobile" class="hidden absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-maroon-600"></span>
       </button>
