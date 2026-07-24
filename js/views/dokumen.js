@@ -1,6 +1,7 @@
 import { db, COL, collection, query, where, getDocs, doc, getDoc, setDoc, updateDoc } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsUpdate, fsDelete, genId, openModal, closeModal, toast, fmtDate, fmtDateShort, escapeHtml, notifyUser } from "../utils.js";
 import { badge, emptyState } from "../components.js";
+import { letterheadHtml, COMPANY_NAME, COMPANY_ADDRESS_LINE1 } from "../branding.js";
 
 // Default clause templates
 const DEFAULT_CLAUSES = {
@@ -664,6 +665,7 @@ async function openDocEditorModal(existingData, session, onDone) {
                                        .sort((a,b) => (a.nama_karyawan || a.nama || "").localeCompare(b.nama_karyawan || b.nama || ""));
 
   const customTemplatesList = await fsGetAll("custom_doc_templates").catch(() => []);
+  const gdocTemplatesList = await fsGetAll("gdoc_templates").catch(() => []);
 
   let clauses = existingData?.klausul ? [...existingData.klausul] : [...DEFAULT_CLAUSES.KONTRAK_PKWT];
   let customFieldsValues = existingData?.custom_fields ? { ...existingData.custom_fields } : {};
@@ -688,6 +690,13 @@ async function openDocEditorModal(existingData, session, onDone) {
                 <option value="KETERANGAN_KERJA" ${existingData?.template_type === 'KETERANGAN_KERJA' ? 'selected' : ''}>Surat Keterangan Kerja (Paklaring)</option>
                 <option value="SURAT_TUGAS" ${existingData?.template_type === 'SURAT_TUGAS' ? 'selected' : ''}>Surat Penugasan / Dinas Resmi</option>
               </optgroup>
+              ${gdocTemplatesList.length > 0 ? `
+                <optgroup label="Template Google Doc Registered (HRD)">
+                  ${gdocTemplatesList.map(gt => `
+                    <option value="GDOC_${gt.id}" ${existingData?.template_type === `GDOC_${gt.id}` ? 'selected' : ''}>📄 [${gt.kategori || 'GDoc'}] ${escapeHtml(gt.title || gt.nama)}</option>
+                  `).join("")}
+                </optgroup>
+              ` : ''}
               ${customTemplatesList.length > 0 ? `
                 <optgroup label="Master Template Kustom HRD">
                   ${customTemplatesList.map(ct => `
@@ -718,7 +727,7 @@ async function openDocEditorModal(existingData, session, onDone) {
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
             <label class="block text-xs font-medium text-slate-500 mb-1">Judul / Perihal Dokumen</label>
-            <input type="text" id="doc-title" value="${escapeHtml(existingData?.judul || 'SURAT PERJANJIAN KERJA WAKTU TERTENTU')}" required class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500">
+            <input type="text" id="doc-title" value="${escapeHtml(existingData?.judul || 'SURAT PERJANJIAN KERJA WAKTU TERTENTU')}" required class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 font-bold">
           </div>
           <div>
             <label class="block text-xs font-medium text-slate-500 mb-1">Nomor Surat / Dokumen</label>
@@ -747,11 +756,12 @@ async function openDocEditorModal(existingData, session, onDone) {
         </div>
 
         <!-- DYNAMIC CUSTOM PLACEHOLDERS INPUT AREA -->
-        <div id="dynamic-custom-fields-box" class="hidden p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-2">
-          <p class="text-xs font-bold text-blue-900 flex items-center gap-1.5">
-            <span>⚙️</span> Value Placeholder Kustom Terdeteksi:
+        <div id="dynamic-custom-fields-box" class="p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-2">
+          <p class="text-xs font-bold text-blue-900 flex items-center justify-between">
+            <span class="flex items-center gap-1.5">📌 Kolom Input Placeholder Dokumen:</span>
+            <span class="text-[10px] text-blue-700 font-normal">Otomatis terisi dari data karyawan & dapat disesuaikan HRD</span>
           </p>
-          <div id="dynamic-custom-fields-inputs" class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+          <div id="dynamic-custom-fields-inputs" class="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-xs">
             <!-- populated dynamically -->
           </div>
         </div>
@@ -812,24 +822,36 @@ async function openDocEditorModal(existingData, session, onDone) {
       let activeTextArea = null;
 
       function detectCustomPlaceholdersInClauses() {
-        const textAll = clauses.map(c => (c.judul || "") + " " + (c.isi || "")).join(" ");
-        const found = textAll.match(/\{([A-Z0-9_]+)\}/g) || [];
-        const uniqueKeys = [...new Set(found.map(x => x.replace(/[\{\}]/g, "")))];
+        let allKeys = [];
+        const currentType = typeSelect.value;
 
-        // System auto-handled keys
-        const systemKeys = ["NAMA_KARYAWAN", "NIK", "JABATAN", "CABANG", "DIVISI", "TANGGAL_SURAT", "TANGGAL_MULAI", "TANGGAL_SELESAI", "ALASAN_SP", "GAJI_POKOK", "NOMOR_SURAT"];
-        const extraCustomKeys = uniqueKeys.filter(k => !systemKeys.includes(k));
-
-        if (extraCustomKeys.length === 0) {
-          customFieldsBox.classList.add("hidden");
-          return;
+        // If GDoc template selected, include its registered placeholders
+        if (currentType.startsWith("GDOC_")) {
+          const gdocId = currentType.replace("GDOC_", "");
+          const foundGDoc = gdocTemplatesList.find(x => x.id === gdocId);
+          if (foundGDoc && foundGDoc.placeholders) {
+            const parsed = foundGDoc.placeholders.match(/\{([A-Z0-9_]+)\}/g) || [];
+            allKeys.push(...parsed.map(x => x.replace(/[\{\}]/g, "")));
+          }
         }
 
+        // Also detect placeholders in clauses text
+        const textAll = clauses.map(c => (c.judul || "") + " " + (c.isi || "")).join(" ");
+        const foundClauses = textAll.match(/\{([A-Z0-9_]+)\}/g) || [];
+        allKeys.push(...foundClauses.map(x => x.replace(/[\{\}]/g, "")));
+
+        // Always include core standard contract placeholders if list is empty
+        if (allKeys.length === 0) {
+          allKeys = ["NAMA_KARYAWAN", "NIK", "JABATAN", "DIVISI", "CABANG", "ALAMAT", "LAMA_KONTRAK", "TANGGAL_MULAI", "TANGGAL_SELESAI", "GAJI_POKOK"];
+        }
+
+        const uniqueKeys = [...new Set(allKeys)];
+
         customFieldsBox.classList.remove("hidden");
-        customFieldsInputs.innerHTML = extraCustomKeys.map(key => `
+        customFieldsInputs.innerHTML = uniqueKeys.map(key => `
           <div>
-            <label class="block text-[10px] font-bold text-slate-600 mb-0.5">{${key}}</label>
-            <input type="text" data-custom-key="${key}" value="${escapeHtml(customFieldsValues[key] || '')}" placeholder="Isi nilai {${key}}..." class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 outline-none focus:border-maroon-500 bg-white">
+            <label class="block text-[10px] font-bold text-slate-700 mb-0.5">{${key}}</label>
+            <input type="text" data-custom-key="${key}" value="${escapeHtml(customFieldsValues[key] || '')}" placeholder="Masukkan nilai {${key}}..." class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 font-medium outline-none focus:border-maroon-500 bg-white">
           </div>
         `).join("");
 
@@ -918,9 +940,45 @@ async function openDocEditorModal(existingData, session, onDone) {
         };
       });
 
+      const targetSelect = m.querySelector("#doc-target-karyawan");
+      targetSelect.onchange = () => {
+        const nikVal = targetSelect.value;
+        const targetKaryawan = activeKaryawan.find(k => (k.nik_karyawan || k.nik) === nikVal);
+        if (targetKaryawan) {
+          customFieldsValues["NAMA_KARYAWAN"] = targetKaryawan.nama_karyawan || targetKaryawan.nama || "";
+          customFieldsValues["NIK"] = targetKaryawan.nik_karyawan || targetKaryawan.nik || "";
+          customFieldsValues["JABATAN"] = targetKaryawan.jabatan || "";
+          customFieldsValues["DIVISI"] = targetKaryawan.divisi || "";
+          customFieldsValues["CABANG"] = targetKaryawan.cabang_penempatan || targetKaryawan.cabang || "";
+          customFieldsValues["ALAMAT"] = targetKaryawan.alamat || targetKaryawan.alamat_domisili || "";
+          customFieldsValues["NO_KTP"] = targetKaryawan.no_ktp || targetKaryawan.nik_ktp || "";
+          customFieldsValues["NO_REKENING"] = targetKaryawan.no_rekening || targetKaryawan.rekening || "";
+          if (targetKaryawan.gaji_pokok) {
+            customFieldsValues["GAJI_POKOK"] = "Rp " + (Number(targetKaryawan.gaji_pokok) || 0).toLocaleString("id-ID");
+            const extraNote = m.querySelector("#doc-extra-note");
+            if (extraNote && !extraNote.value) extraNote.value = customFieldsValues["GAJI_POKOK"];
+          }
+          detectCustomPlaceholdersInClauses();
+          toast(`Data karyawan ${targetKaryawan.nama_karyawan || targetKaryawan.nama} otomatis diisikan ke kolom placeholder!`, "info");
+        }
+      };
+
       typeSelect.onchange = () => {
         const val = typeSelect.value;
-        if (val.startsWith("CUST_")) {
+        if (val.startsWith("GDOC_")) {
+          const gdocId = val.replace("GDOC_", "");
+          const foundGDoc = gdocTemplatesList.find(x => x.id === gdocId);
+          if (foundGDoc) {
+            titleInput.value = (foundGDoc.title || foundGDoc.nama || "DOKUMEN GDOC").toUpperCase();
+            clauses = [{
+              judul: `Google Doc Template: ${foundGDoc.title || foundGDoc.nama}`,
+              isi: `Dokumen dibuat berdasarkan master template Google Doc [${foundGDoc.kategori || 'Dokumen'}]: {NAMA_KARYAWAN} ({NIK}). Link Template: ${foundGDoc.url || '#'}`
+            }];
+            renderClausesUI();
+            detectCustomPlaceholdersInClauses();
+            toast(`Template Google Doc "${foundGDoc.title}" berhasil dimuat!`, "info");
+          }
+        } else if (val.startsWith("CUST_")) {
           const custId = val.replace("CUST_", "");
           const foundCust = customTemplatesList.find(x => x.id === custId);
           if (foundCust) {
@@ -1247,16 +1305,7 @@ function previewDocumentModal(docData) {
     bodyHtml: `
       <div id="print-doc-area" class="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm text-slate-900 font-serif leading-relaxed text-sm space-y-6 max-h-[70vh] overflow-y-auto">
         <!-- KOP SURAT ANDELA JAYA -->
-        <div class="border-b-4 border-slate-900 pb-4 flex items-center justify-between text-left font-sans">
-          <div>
-            <h2 class="text-xl font-black text-maroon-800 tracking-wider">CV. ANDELA JAYA</h2>
-            <p class="text-xs text-slate-600 font-medium mt-0.5">Produsen & Distributor Makanan Berkualitas • Wilayah Jawa Barat</p>
-            <p class="text-[10px] text-slate-500">Jl. Industri Raya No. 88, Sumedang - Jawa Barat | Telp: (022) 8765-4321</p>
-          </div>
-          <div class="text-right">
-            <span class="px-3 py-1 bg-maroon-50 border border-maroon-200 text-maroon-800 font-bold text-xs rounded-lg uppercase">Dokumen Resmi HRD</span>
-          </div>
-        </div>
+        ${letterheadHtml()}
 
         <!-- TITLE & NUMBER -->
         <div class="text-center space-y-1 font-sans">
@@ -1367,64 +1416,155 @@ function previewDocumentModal(docData) {
 // GOOGLE DOC TEMPLATE & PLACEHOLDER MANAGER MODAL
 // ----------------------------------------------------------------------
 async function openGDocTemplateModal(session) {
-  let gdocConfigs = {};
+  let gdocList = [];
   try {
-    const list = await fsGetAll("gdoc_templates").catch(() => []);
-    list.forEach(item => { gdocConfigs[item.id] = item.url; });
+    gdocList = await fsGetAll("gdoc_templates").catch(() => []);
   } catch (e) {
     console.warn("GDoc config load err:", e);
   }
 
-  const defaultTemplates = {
-    KONTRAK_PKWT: gdocConfigs.KONTRAK_PKWT || "https://docs.google.com/document/d/1_PKWT_TEMPLATE/edit",
-    KONTRAK_PKWTT: gdocConfigs.KONTRAK_PKWTT || "https://docs.google.com/document/d/1_PKWTT_TEMPLATE/edit",
-    SP_1: gdocConfigs.SP_1 || "https://docs.google.com/document/d/1_SP1_TEMPLATE/edit",
-    SP_2: gdocConfigs.SP_2 || "https://docs.google.com/document/d/1_SP2_TEMPLATE/edit",
-    SP_3: gdocConfigs.SP_3 || "https://docs.google.com/document/d/1_SP3_TEMPLATE/edit",
-    PEMANGGILAN: gdocConfigs.PEMANGGILAN || "https://docs.google.com/document/d/1_PEMANGGILAN_TEMPLATE/edit"
-  };
+  const gdocConfigs = {};
+  gdocList.forEach(item => { gdocConfigs[item.id] = item; });
+
+  const defaultKeys = [
+    { id: "KONTRAK_PKWT", title: "Kontrak Kerja PKWT", defaultUrl: "https://docs.google.com/document/d/1_PKWT_TEMPLATE/edit" },
+    { id: "KONTRAK_PKWTT", title: "Kontrak Kerja PKWTT (Tetap)", defaultUrl: "https://docs.google.com/document/d/1_PKWTT_TEMPLATE/edit" },
+    { id: "SP_1", title: "Surat Peringatan 1 (SP-1)", defaultUrl: "https://docs.google.com/document/d/1_SP1_TEMPLATE/edit" },
+    { id: "SP_2", title: "Surat Peringatan 2 (SP-2)", defaultUrl: "https://docs.google.com/document/d/1_SP2_TEMPLATE/edit" },
+    { id: "SP_3", title: "Surat Peringatan 3 (SP-3)", defaultUrl: "https://docs.google.com/document/d/1_SP3_TEMPLATE/edit" },
+    { id: "PEMANGGILAN", title: "Surat Pemanggilan & Konseling", defaultUrl: "https://docs.google.com/document/d/1_PEMANGGILAN_TEMPLATE/edit" },
+    { id: "KETERANGAN_KERJA", title: "Surat Keterangan Kerja (Paklaring)", defaultUrl: "https://docs.google.com/document/d/1_PAKLARING_TEMPLATE/edit" },
+    { id: "SURAT_TUGAS", title: "Surat Penugasan / Dinas Resmi", defaultUrl: "https://docs.google.com/document/d/1_SURAT_TUGAS_TEMPLATE/edit" }
+  ];
+
+  const customTemplates = gdocList.filter(item => !defaultKeys.some(d => d.id === item.id));
+
+  const masterKaryawan = await fsGetAll(COL.MASTER_KARYAWAN).catch(() => []);
+  const activeKaryawan = masterKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF") === "AKTIF")
+                                       .sort((a,b) => (a.nama_karyawan || a.nama || "").localeCompare(b.nama_karyawan || b.nama || ""));
 
   openModal({
-    title: "Template Google Doc & Daftar Placeholder Resmi",
+    title: "Template Google Doc & Pengolah Placeholder HRD",
     size: "lg",
     bodyHtml: `
       <div class="space-y-6 text-left text-xs">
-        <div class="p-4 bg-blue-50/80 border border-blue-200 rounded-2xl leading-relaxed text-blue-900">
-          <p class="font-bold text-sm mb-1">Pengaturan Template Google Doc Perusahaan</p>
-          <p>Anda dapat memasukkan tautan **Google Doc resmi perusahaan** untuk masing-masing jenis surat/dokumen di bawah ini. Ketika HRD atau sistem membuat dokumen, placeholder seperti <code class="bg-blue-100 px-1 py-0.5 rounded font-mono font-bold text-blue-900">{NAMA_KARYAWAN}</code> akan otomatis diganti dengan data asli karyawan target.</p>
+        <div class="p-4 bg-blue-50/90 border border-blue-200 rounded-2xl leading-relaxed text-blue-900 flex items-start gap-3">
+          <div class="p-2 bg-blue-100 rounded-xl text-blue-800 text-lg">📄</div>
+          <div>
+            <p class="font-extrabold text-sm text-blue-950 mb-0.5">Integrasi Master Template Google Doc Perusahaan</p>
+            <p>HRD dapat menambahkan tautan **Google Doc resmi lainnya** untuk beragam jenis dokumen internal. Sistem akan otomatis memproses semua placeholder seperti <code class="bg-blue-100 px-1 py-0.5 rounded font-mono font-bold text-blue-900">{NAMA_KARYAWAN}</code>, <code class="bg-blue-100 px-1 py-0.5 rounded font-mono font-bold text-blue-900">{NIK}</code>, <code class="bg-blue-100 px-1 py-0.5 rounded font-mono font-bold text-blue-900">{CABANG}</code> saat dokumen diterbitkan.</p>
+          </div>
         </div>
 
-        <!-- CONFIG FORM FOR TEMPLATE URLS -->
+        <!-- 1. MASTER STANDAR GDOC -->
         <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-          <h4 class="font-extrabold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5">
-            Tautan Master Google Doc Perusahaan
+          <h4 class="font-extrabold text-slate-800 text-xs uppercase tracking-wider flex items-center justify-between">
+            <span>Tautan Master Google Doc Bawaan Sistem</span>
           </h4>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            ${defaultKeys.map(dk => {
+              const currentUrl = gdocConfigs[dk.id]?.url || dk.defaultUrl;
+              return `
+                <div>
+                  <label class="block font-bold text-slate-700 mb-1">${escapeHtml(dk.title)}</label>
+                  <div class="flex items-center gap-1.5">
+                    <input type="url" id="gdoc-url-${dk.id}" value="${escapeHtml(currentUrl)}" placeholder="https://docs.google.com/document/d/..." class="w-full p-2 text-xs rounded-xl border border-slate-200 font-mono outline-none focus:border-maroon-500 bg-white">
+                    <a href="${escapeHtml(currentUrl)}" target="_blank" class="p-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold text-xs" title="Buka Link Google Doc">🔗</a>
+                  </div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        </div>
+
+        <!-- 2. CUSTOM GDOC TEMPLATES LIST -->
+        <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+          <div class="flex items-center justify-between">
             <div>
-              <label class="block font-bold text-slate-700 mb-1">Kontrak Kerja PKWT</label>
-              <input type="url" id="gdoc-url-PKWT" value="${escapeHtml(defaultTemplates.KONTRAK_PKWT)}" placeholder="https://docs.google.com/document/d/..." class="w-full p-2 text-xs rounded-xl border border-slate-200 font-mono outline-none focus:border-maroon-500 bg-white">
+              <h4 class="font-extrabold text-slate-800 text-xs uppercase tracking-wider">
+                Daftar Master Template Google Doc & Placeholder
+              </h4>
+              <p class="text-[11px] text-slate-500">Mendaftarkan template GDocs dengan nama, kategori, serta daftar placeholder yang menjadi kolom input draft.</p>
+            </div>
+            <button id="btn-add-custom-gdoc" class="px-3 py-1.5 bg-maroon-700 hover:bg-maroon-800 text-white font-bold rounded-xl text-xs transition flex items-center gap-1 shadow-sm">
+              ✨ + Daftarkan Template GDoc Baru
+            </button>
+          </div>
+
+          <div id="custom-gdoc-container" class="space-y-3">
+            ${customTemplates.length === 0 ? `
+              <p class="text-slate-400 italic text-center py-2 text-xs">Belum ada template Google Doc tambahan. Klik tombol di atas untuk mendaftarkan template.</p>
+            ` : customTemplates.map((ct) => `
+              <div class="custom-gdoc-row bg-white p-3 rounded-2xl border border-slate-200 space-y-2 shadow-2xs">
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+                  <div class="md:col-span-5">
+                    <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Nama Template Dokumen</label>
+                    <input type="text" class="custom-gdoc-title w-full p-2 text-xs rounded-lg border border-slate-200 font-semibold outline-none focus:border-maroon-500" value="${escapeHtml(ct.title || ct.nama || 'Template HRD')}" placeholder="Cth: Surat Perpanjangan Kontrak Kerja (PKWT)">
+                  </div>
+                  <div class="md:col-span-4">
+                    <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Kategori Dokumen</label>
+                    <select class="custom-gdoc-category w-full p-2 text-xs rounded-lg border border-slate-200 font-semibold outline-none focus:border-maroon-500 bg-white">
+                      <option value="Kontrak Kerja" ${ct.kategori === 'Kontrak Kerja' ? 'selected' : ''}>Kontrak Kerja</option>
+                      <option value="Surat Peringatan" ${ct.kategori === 'Surat Peringatan' ? 'selected' : ''}>Surat Peringatan (SP)</option>
+                      <option value="Paklaring" ${ct.kategori === 'Paklaring' ? 'selected' : ''}>Surat Keterangan Kerja (Paklaring)</option>
+                      <option value="Surat Penugasan" ${ct.kategori === 'Surat Penugasan' ? 'selected' : ''}>Surat Penugasan / Dinas</option>
+                      <option value="Lainnya" ${ct.kategori === 'Lainnya' ? 'selected' : ''}>Lainnya / Umum</option>
+                    </select>
+                  </div>
+                  <div class="md:col-span-3 text-right pt-2 md:pt-0">
+                    <button class="btn-remove-custom-gdoc text-rose-600 hover:bg-rose-50 px-2.5 py-1.5 rounded-lg font-bold text-xs transition" title="Hapus Template">🗑️ Hapus Template</button>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+                  <div class="md:col-span-6">
+                    <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Link Google Doc (Edit / View)</label>
+                    <input type="url" class="custom-gdoc-url w-full p-2 text-xs rounded-lg border border-slate-200 font-mono outline-none focus:border-maroon-500" value="${escapeHtml(ct.url || '')}" placeholder="https://docs.google.com/document/d/...">
+                  </div>
+                  <div class="md:col-span-6">
+                    <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Daftar Placeholder Didaftarkan (Pisahkan dengan Koma)</label>
+                    <input type="text" class="custom-gdoc-placeholders w-full p-2 text-xs rounded-lg border border-slate-200 font-mono text-maroon-800 outline-none focus:border-maroon-500" value="${escapeHtml(ct.placeholders || '{NAMA_KARYAWAN}, {NIK}, {JABATAN}, {DIVISI}, {CABANG}, {ALAMAT}, {LAMA_KONTRAK}, {TANGGAL_MULAI}, {TANGGAL_SELESAI}, {GAJI_POKOK}')}" placeholder="{NAMA_KARYAWAN}, {NIK}, {JABATAN}, {LAMA_KONTRAK}, {TANGGAL_MULAI}">
+                  </div>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+
+        <!-- 3. SIMULATOR & PENGOLAH PLACEHOLDER DOKUMEN -->
+        <div class="bg-amber-50/60 p-4 rounded-2xl border border-amber-200 space-y-3">
+          <h4 class="font-extrabold text-amber-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
+            ⚡ Pengolah / Uji Placeholder Data Karyawan
+          </h4>
+          <p class="text-amber-800 text-[11px]">Pilih karyawan dan jenis template untuk memproses seluruh data placeholder secara langsung.</p>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">Pilih Karyawan Target</label>
+              <select id="sim-karyawan-select" class="w-full p-2 rounded-xl border border-slate-200 bg-white font-semibold">
+                <option value="">-- Pilih Karyawan --</option>
+                ${activeKaryawan.map(k => `
+                  <option value="${escapeHtml(k.nik_karyawan || k.nik)}" data-json='${JSON.stringify(k).replace(/'/g, "&apos;")}'>
+                    ${escapeHtml(k.nama_karyawan || k.nama)} (${escapeHtml(k.nik_karyawan || k.nik)}) - ${escapeHtml(k.jabatan || "-")}
+                  </option>
+                `).join("")}
+              </select>
             </div>
             <div>
-              <label class="block font-bold text-slate-700 mb-1">Kontrak Kerja PKWTT (Tetap)</label>
-              <input type="url" id="gdoc-url-PKWTT" value="${escapeHtml(defaultTemplates.KONTRAK_PKWTT)}" placeholder="https://docs.google.com/document/d/..." class="w-full p-2 text-xs rounded-xl border border-slate-200 font-mono outline-none focus:border-maroon-500 bg-white">
+              <label class="block font-bold text-slate-700 mb-1">Aksi Pengolahan</label>
+              <button id="btn-process-placeholders" class="w-full py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs transition shadow flex items-center justify-center gap-2">
+                🔍 Tampilkan Hasil Penggantian Placeholder
+              </button>
             </div>
-            <div>
-              <label class="block font-bold text-slate-700 mb-1">Surat Peringatan 1 (SP-1)</label>
-              <input type="url" id="gdoc-url-SP1" value="${escapeHtml(defaultTemplates.SP_1)}" placeholder="https://docs.google.com/document/d/..." class="w-full p-2 text-xs rounded-xl border border-slate-200 font-mono outline-none focus:border-maroon-500 bg-white">
+          </div>
+
+          <div id="sim-output-box" class="hidden bg-white p-3.5 rounded-xl border border-slate-200 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-slate-800 text-xs">Variabel Data Terisi:</span>
+              <button id="btn-copy-sim-vars" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 font-bold text-[11px] text-slate-700 rounded-lg">📋 Salin Seluruh Nilai Variable</button>
             </div>
-            <div>
-              <label class="block font-bold text-slate-700 mb-1">Surat Peringatan 2 (SP-2)</label>
-              <input type="url" id="gdoc-url-SP2" value="${escapeHtml(defaultTemplates.SP_2)}" placeholder="https://docs.google.com/document/d/..." class="w-full p-2 text-xs rounded-xl border border-slate-200 font-mono outline-none focus:border-maroon-500 bg-white">
-            </div>
-            <div>
-              <label class="block font-bold text-slate-700 mb-1">Surat Peringatan 3 (SP-3)</label>
-              <input type="url" id="gdoc-url-SP3" value="${escapeHtml(defaultTemplates.SP_3)}" placeholder="https://docs.google.com/document/d/..." class="w-full p-2 text-xs rounded-xl border border-slate-200 font-mono outline-none focus:border-maroon-500 bg-white">
-            </div>
-            <div>
-              <label class="block font-bold text-slate-700 mb-1">Surat Pemanggilan & Konseling</label>
-              <input type="url" id="gdoc-url-PEMANGGILAN" value="${escapeHtml(defaultTemplates.PEMANGGILAN)}" placeholder="https://docs.google.com/document/d/..." class="w-full p-2 text-xs rounded-xl border border-slate-200 font-mono outline-none focus:border-maroon-500 bg-white">
-            </div>
+            <pre id="sim-vars-text" class="text-[11px] font-mono bg-slate-50 p-2 rounded-lg text-slate-700 overflow-x-auto max-h-36 whitespace-pre-wrap"></pre>
           </div>
         </div>
 
@@ -1432,7 +1572,7 @@ async function openGDocTemplateModal(session) {
         <div class="border border-slate-200 rounded-2xl p-4 bg-white space-y-3">
           <div class="flex items-center justify-between">
             <h4 class="font-extrabold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5">
-              Daftar Placeholder Yang Didukung
+              Daftar Placeholder Resmi (Sistem & GDoc)
             </h4>
             <span class="text-[10px] text-slate-400">Klik tag untuk menyalin</span>
           </div>
@@ -1474,6 +1614,56 @@ async function openGDocTemplateModal(session) {
     onMount: m => {
       m.querySelector("#btn-gdoc-close").onclick = closeModal;
 
+      // Add custom gdoc row
+      m.querySelector("#btn-add-custom-gdoc").onclick = () => {
+        const container = m.querySelector("#custom-gdoc-container");
+        if (container.querySelector(".italic")) {
+          container.innerHTML = "";
+        }
+        const div = document.createElement("div");
+        div.className = "custom-gdoc-row bg-white p-3 rounded-2xl border border-slate-200 space-y-2 shadow-2xs";
+        div.innerHTML = `
+          <div class="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+            <div class="md:col-span-5">
+              <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Nama Template Dokumen</label>
+              <input type="text" class="custom-gdoc-title w-full p-2 text-xs rounded-lg border border-slate-200 font-semibold outline-none focus:border-maroon-500" placeholder="Cth: Surat Perpanjangan Kontrak Kerja (PKWT)">
+            </div>
+            <div class="md:col-span-4">
+              <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Kategori Dokumen</label>
+              <select class="custom-gdoc-category w-full p-2 text-xs rounded-lg border border-slate-200 font-semibold outline-none focus:border-maroon-500 bg-white">
+                <option value="Kontrak Kerja">Kontrak Kerja</option>
+                <option value="Surat Peringatan">Surat Peringatan (SP)</option>
+                <option value="Paklaring">Surat Keterangan Kerja (Paklaring)</option>
+                <option value="Surat Penugasan">Surat Penugasan / Dinas</option>
+                <option value="Lainnya">Lainnya / Umum</option>
+              </select>
+            </div>
+            <div class="md:col-span-3 text-right pt-2 md:pt-0">
+              <button class="btn-remove-custom-gdoc text-rose-600 hover:bg-rose-50 px-2.5 py-1.5 rounded-lg font-bold text-xs transition" title="Hapus Template">🗑️ Hapus Template</button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+            <div class="md:col-span-6">
+              <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Link Google Doc (Edit / View)</label>
+              <input type="url" class="custom-gdoc-url w-full p-2 text-xs rounded-lg border border-slate-200 font-mono outline-none focus:border-maroon-500" placeholder="https://docs.google.com/document/d/...">
+            </div>
+            <div class="md:col-span-6">
+              <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Daftar Placeholder Didaftarkan (Pisahkan dengan Koma)</label>
+              <input type="text" class="custom-gdoc-placeholders w-full p-2 text-xs rounded-lg border border-slate-200 font-mono text-maroon-800 outline-none focus:border-maroon-500" value="{NAMA_KARYAWAN}, {NIK}, {JABATAN}, {DIVISI}, {CABANG}, {ALAMAT}, {LAMA_KONTRAK}, {TANGGAL_MULAI}, {TANGGAL_SELESAI}, {GAJI_POKOK}" placeholder="{NAMA_KARYAWAN}, {NIK}, {JABATAN}, {LAMA_KONTRAK}, {TANGGAL_MULAI}">
+            </div>
+          </div>
+        `;
+        div.querySelector(".btn-remove-custom-gdoc").onclick = () => div.remove();
+        container.appendChild(div);
+      };
+
+      m.querySelectorAll(".btn-remove-custom-gdoc").forEach(btn => {
+        btn.onclick = (e) => {
+          e.target.closest(".custom-gdoc-row").remove();
+        };
+      });
+
       m.querySelectorAll(".btn-copy-placeholder").forEach(btn => {
         btn.onclick = () => {
           const tag = btn.dataset.tag;
@@ -1482,21 +1672,78 @@ async function openGDocTemplateModal(session) {
         };
       });
 
-      m.querySelector("#btn-gdoc-save").onclick = async () => {
-        const payload = {
-          KONTRAK_PKWT: m.querySelector("#gdoc-url-PKWT").value.trim(),
-          KONTRAK_PKWTT: m.querySelector("#gdoc-url-PKWTT").value.trim(),
-          SP_1: m.querySelector("#gdoc-url-SP1").value.trim(),
-          SP_2: m.querySelector("#gdoc-url-SP2").value.trim(),
-          SP_3: m.querySelector("#gdoc-url-SP3").value.trim(),
-          PEMANGGILAN: m.querySelector("#gdoc-url-PEMANGGILAN").value.trim()
-        };
+      // Process placeholders test
+      m.querySelector("#btn-process-placeholders").onclick = () => {
+        const selectEl = m.querySelector("#sim-karyawan-select");
+        const selectedOpt = selectEl.options[selectEl.selectedIndex];
+        if (!selectedOpt || !selectedOpt.value) {
+          toast("Pilih karyawan target terlebih dahulu", "error");
+          return;
+        }
 
         try {
-          for (const [key, val] of Object.entries(payload)) {
-            await fsAdd("gdoc_templates", { id: key, url: val, updated_at: new Date().toISOString() }, key);
+          const kData = JSON.parse(selectedOpt.dataset.json || "{}");
+          const varsText = `[VARIABEL DATA TERISI KARYAWAN: ${kData.nama_karyawan || kData.nama}]
+{NAMA_KARYAWAN} = ${kData.nama_karyawan || kData.nama || '-'}
+{NIK}           = ${kData.nik_karyawan || kData.nik || '-'}
+{JABATAN}       = ${kData.jabatan || '-'}
+{DIVISI}        = ${kData.divisi || '-'}
+{CABANG}        = ${kData.cabang_penempatan || kData.cabang || '-'}
+{ALAMAT}        = ${kData.alamat || kData.alamat_domisili || '-'}
+{NO_KTP}        = ${kData.no_ktp || kData.nik_ktp || '-'}
+{NO_REKENING}   = ${kData.no_rekening || kData.rekening || '-'}
+{GAJI_POKOK}     = Rp ${(Number(kData.gaji_pokok) || 0).toLocaleString('id-ID')}
+{TANGGAL_SURAT} = ${fmtDate(new Date().toISOString())}
+{TANGGAL_MULAI} = ${fmtDate(kData.tgl_masuk || new Date().toISOString())}`;
+
+          const outBox = m.querySelector("#sim-output-box");
+          const preEl = m.querySelector("#sim-vars-text");
+          preEl.textContent = varsText;
+          outBox.classList.remove("hidden");
+          toast("Placeholder berhasil diisi dengan data asli karyawan!", "success");
+        } catch (e) {
+          toast("Gagal memproses data karyawan: " + e.message, "error");
+        }
+      };
+
+      m.querySelector("#btn-copy-sim-vars").onclick = () => {
+        const preEl = m.querySelector("#sim-vars-text");
+        navigator.clipboard.writeText(preEl.textContent);
+        toast("Variabel data terisi berhasil disalin!", "info");
+      };
+
+      // Save configurations
+      m.querySelector("#btn-gdoc-save").onclick = async () => {
+        try {
+          // Save standard default keys
+          for (const dk of defaultKeys) {
+            const inputEl = m.querySelector(`#gdoc-url-${dk.id}`);
+            const val = inputEl ? inputEl.value.trim() : dk.defaultUrl;
+            await fsAdd("gdoc_templates", { id: dk.id, title: dk.title, url: val, is_default: true, updated_at: new Date().toISOString() }, dk.id);
           }
-          toast("Konfigurasi Template Google Doc berhasil disimpan!", "success");
+
+          // Save custom gdoc templates
+          const customRows = m.querySelectorAll(".custom-gdoc-row");
+          for (const row of customRows) {
+            const title = row.querySelector(".custom-gdoc-title")?.value.trim();
+            const kategori = row.querySelector(".custom-gdoc-category")?.value || "Lainnya";
+            const url = row.querySelector(".custom-gdoc-url")?.value.trim();
+            const placeholders = row.querySelector(".custom-gdoc-placeholders")?.value.trim() || "{NAMA_KARYAWAN}, {NIK}, {JABATAN}, {DIVISI}, {CABANG}, {ALAMAT}, {LAMA_KONTRAK}, {TANGGAL_MULAI}, {TANGGAL_SELESAI}, {GAJI_POKOK}";
+            if (title && url) {
+              const custId = "CUST_" + title.toLowerCase().replace(/[^a-z0-9]/g, "_");
+              await fsAdd("gdoc_templates", {
+                id: custId,
+                title: title,
+                kategori: kategori,
+                url: url,
+                placeholders: placeholders,
+                is_default: false,
+                updated_at: new Date().toISOString()
+              }, custId);
+            }
+          }
+
+          toast("Seluruh konfigurasi Master Google Doc & Placeholder berhasil disimpan!", "success");
           closeModal();
         } catch (e) {
           toast("Gagal menyimpan konfigurasi: " + e.message, "error");

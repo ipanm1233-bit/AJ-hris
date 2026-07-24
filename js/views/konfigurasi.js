@@ -21,12 +21,53 @@ export async function mount(container, { session }) {
       container.querySelector("#cfg-denda-prog").value = t.denda_prog || "";
       container.querySelector("#cfg-denda-alpa").value = t.denda_alpa || "";
       
-      const widgetCfg = cfg.dashboard_widgets || {};
-      container.querySelectorAll(".cfg-widget-toggle").forEach(chk => {
-        chk.checked = widgetCfg[chk.dataset.widget] !== false;
-      });
+      // Load Master Karyawan for per-user widget selector
+      const targetUserSelect = container.querySelector("#cfg-widget-target-user");
+      if (targetUserSelect) {
+        try {
+          const kSnap = await getDocs(collection(db, COL.MASTER_KARYAWAN));
+          const listKaryawan = kSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .sort((a,b) => (a.nama_karyawan || a.nama || "").localeCompare(b.nama_karyawan || b.nama || ""));
+          
+          targetUserSelect.innerHTML = `
+            <option value="GLOBAL">🌐 [ GLOBAL ] - Berlaku Default Untuk Semua Karyawan</option>
+            <optgroup label="Pengaturan Khusus Per-Karyawan">
+              ${listKaryawan.map(k => {
+                const identifier = (k.username || k.nik_karyawan || k.nik || k.nama_karyawan || k.nama || "").trim().toLowerCase();
+                const displayName = `${k.nama_karyawan || k.nama || 'Karyawan'} (${k.nik_karyawan || k.nik || '-'})`;
+                return `<option value="${escapeHtml(identifier)}">👤 ${escapeHtml(displayName)}</option>`;
+              }).join("")}
+            </optgroup>
+          `;
+        } catch (e) {
+          console.warn("Err loading karyawan for widget config:", e);
+        }
+
+        targetUserSelect.onchange = () => {
+          syncWidgetCheckboxes();
+        };
+      }
+
+      syncWidgetCheckboxes();
       renderJadwal();
     } catch(e) { console.error(e); }
+  }
+
+  function syncWidgetCheckboxes() {
+    const targetUserSelect = container.querySelector("#cfg-widget-target-user");
+    const targetKey = targetUserSelect ? targetUserSelect.value : "GLOBAL";
+    
+    let targetCfg = {};
+    if (targetKey === "GLOBAL") {
+      targetCfg = cfg.dashboard_widgets || {};
+    } else {
+      const userWidgets = cfg.user_dashboard_widgets || {};
+      targetCfg = userWidgets[targetKey] || cfg.dashboard_widgets || {};
+    }
+
+    container.querySelectorAll(".cfg-widget-toggle").forEach(chk => {
+      chk.checked = targetCfg[chk.dataset.widget] !== false;
+    });
   }
 
   function renderJadwal() {
@@ -81,19 +122,31 @@ export async function mount(container, { session }) {
 
   container.querySelector("#btn-save-widget-cfg").onclick = async () => {
      const btn = container.querySelector("#btn-save-widget-cfg");
+     const targetUserSelect = container.querySelector("#cfg-widget-target-user");
+     const targetKey = targetUserSelect ? targetUserSelect.value : "GLOBAL";
+
      btn.disabled = true; btn.textContent = "Menyimpan...";
      const widgetCfg = {};
      container.querySelectorAll(".cfg-widget-toggle").forEach(chk => {
         widgetCfg[chk.dataset.widget] = chk.checked;
      });
+
      try {
-        await setDoc(docRef, { dashboard_widgets: widgetCfg }, { merge: true });
-        cfg.dashboard_widgets = widgetCfg;
-        toast("Pengaturan widget dashboard berhasil disimpan", "success");
+        if (targetKey === "GLOBAL") {
+          await setDoc(docRef, { dashboard_widgets: widgetCfg }, { merge: true });
+          cfg.dashboard_widgets = widgetCfg;
+          toast("Pengaturan widget GLOBAL berhasil disimpan", "success");
+        } else {
+          const userWidgets = cfg.user_dashboard_widgets || {};
+          userWidgets[targetKey] = widgetCfg;
+          await setDoc(docRef, { user_dashboard_widgets: userWidgets }, { merge: true });
+          cfg.user_dashboard_widgets = userWidgets;
+          toast(`Pengaturan widget khusus untuk "${targetKey}" berhasil disimpan!`, "success");
+        }
      } catch(e) {
         toast("Gagal menyimpan: " + e.message, "error");
      }
-     btn.disabled = false; btn.textContent = "Simpan Pengaturan Widget";
+     btn.disabled = false; btn.textContent = "Simpan Akses Widget Target";
   };
 
   container.querySelector("#btn-eksekusi-cuti").onclick = async () => {

@@ -11,7 +11,7 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstati
 import { getMessaging, isSupported } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js"; 
 // Pastikan versinya (10.7.1) sama dengan versi firebase-app.js yang Anda gunakan di baris atas
 
-const firebaseConfig = {
+let firebaseConfig = {
     apiKey: "AIzaSyBAAUHaqYrzTp6wi1PDYkrKY0IWI2XQoVw",
     authDomain: "andela-hris-bc9ed.firebaseapp.com",
     projectId: "andela-hris-bc9ed",
@@ -19,6 +19,23 @@ const firebaseConfig = {
     messagingSenderId: "718041616100",
     appId: "1:718041616100:web:cde303edb932b25ae826f1"
 };
+
+let customDbId = undefined;
+
+try {
+  const resp = await fetch("/firebase-applet-config.json");
+  if (resp.ok) {
+    const config = await resp.json();
+    if (config && config.apiKey && config.projectId) {
+      firebaseConfig = config;
+      if (config.firestoreDatabaseId) {
+        customDbId = config.firestoreDatabaseId;
+      }
+    }
+  }
+} catch (e) {
+  console.warn("Using fallback firebase config:", e);
+}
 
 export const app = initializeApp(firebaseConfig);
 export let messaging = null;
@@ -33,9 +50,10 @@ isSupported().then((supported) => {
 }).catch((err) => {
   console.log("Gagal mengecek dukungan messaging:", err);
 });
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()})
-});
+
+export const db = customDbId 
+  ? initializeFirestore(app, { localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()}) }, customDbId)
+  : initializeFirestore(app, { localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()}) });
 
 // INISIALISASI STORAGE
 export const storage = getStorage(app);

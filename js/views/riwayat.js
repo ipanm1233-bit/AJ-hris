@@ -1,7 +1,8 @@
 import { db, COL } from "../firebase-config.js";
 import {
   fsGetAll, fsUpdate, fmtDateTime, escapeHtml, openModal, closeModal, toast,
-  dynFieldWrapperHtml, wireDynFormLogic, collectDynFormDetail, sendEmailNotif, getTargetsForRole
+  dynFieldWrapperHtml, wireDynFormLogic, collectDynFormDetail, sendEmailNotif, getTargetsForRole,
+  renderPengajuanDetailHtml, printSalesKlaimForm
 } from "../utils.js";
 import { badge, emptyState, skeletonRows } from "../components.js";
 
@@ -30,6 +31,7 @@ export async function mount(container, { session }) {
           else lpjBadgeHtml = badge(lpjOverdue ? "LPJ Terlambat" : "LPJ Belum Diisi", lpjOverdue ? "red" : "amber");
        }
        const showFillBtn = r.requires_lpj && r.lpj_status === "BELUM" && r.nama_pemohon === session.nama;
+       const isKlaimBensin = r.form_id === "F-KLAIM-BENSIN" || (r.nama_form || "").toLowerCase().includes("bensin");
 
        return `
        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 mb-4 flex items-center justify-between hover:border-maroon-200 transition flex-wrap gap-2">
@@ -40,6 +42,7 @@ export async function mount(container, { session }) {
           <div class="flex flex-col items-end gap-2">
              <div class="flex items-center gap-2">${badge(r.status_final, tone)}${lpjBadgeHtml}</div>
              <div class="flex items-center gap-3">
+                ${isKlaimBensin ? `<button data-print-klaim="${r.id}" class="text-xs font-bold text-emerald-700 hover:underline flex items-center gap-1">🖨️ Cetak Form</button>` : ""}
                 ${showFillBtn ? `<button data-lpj="${r.id}" class="text-xs font-bold text-amber-700 hover:underline">Isi LPJ</button>` : ""}
                 <button data-id="${r.id}" class="text-xs font-medium text-maroon-700 hover:underline">Lihat Detail</button>
              </div>
@@ -47,10 +50,17 @@ export async function mount(container, { session }) {
        </div>`;
     }).join("");
 
+    listEl.querySelectorAll("button[data-print-klaim]").forEach(btn => {
+       btn.onclick = () => {
+          const row = myReq.find(x => x.id === btn.dataset.printKlaim);
+          if (row) printSalesKlaimForm(row);
+       };
+    });
+
     listEl.querySelectorAll("button[data-id]").forEach(btn => {
        btn.onclick = () => {
           const row = myReq.find(x => x.id === btn.dataset.id);
-          let html = Object.entries(row.detail).map(([k,v]) => `<div class="border-b py-2 text-sm"><span class="block text-xs text-slate-400 capitalize">${k.replace(/_/g," ")}</span><b>${escapeHtml(String(v))}</b></div>`).join("");
+          let html = renderPengajuanDetailHtml(row, session);
           if (row.requires_lpj) {
              html += `<div class="mt-4 p-3 rounded border text-xs ${row.lpj_status === "SELESAI" ? "bg-green-50 border-green-200 text-green-800" : "bg-amber-50 border-amber-200 text-amber-800"}">
                 <b>Status LPJ:</b> ${row.lpj_status === "SELESAI" ? "Sudah diisi" : "Belum diisi"} ${row.lpj_due_date ? `• Batas: ${fmtDateTime(row.lpj_due_date)}` : ""}
@@ -58,14 +68,14 @@ export async function mount(container, { session }) {
              if (row.lpj_status === "SELESAI" && row.lpj_detail) {
                 html += Object.entries(row.lpj_detail).map(([k,v]) => {
                    const isUrl = typeof v === "string" && /^https?:\/\//.test(v);
-                   return `<div class="border-b py-2 text-sm"><span class="block text-xs text-slate-400 capitalize">${k.replace(/_/g," ")}</span>${isUrl ? `<a href="${v}" target="_blank" class="text-blue-600 hover:underline text-xs">Lihat Lampiran</a>` : `<b>${escapeHtml(String(v))}</b>`}</div>`;
+                   return `<div class="border-b py-2 text-sm flex justify-between items-center"><span class="text-xs text-slate-500 capitalize">${k.replace(/_/g," ")}</span>${isUrl ? `<button type="button" onclick="openAttachment('${escapeHtml(String(v))}')" class="text-maroon-700 font-bold hover:underline text-xs">📄 Lihat Lampiran</button>` : `<b class="text-slate-800">${escapeHtml(String(v))}</b>`}</div>`;
                 }).join("");
              }
           }
           if(row.catatan_penolakan && row.catatan_penolakan.length > 0) {
              html += `<div class="mt-4 p-3 bg-red-50 text-red-800 text-xs rounded border border-red-200"><b>Log Proses:</b><br/>${row.catatan_penolakan.join("<br/>")}</div>`;
           }
-          openModal({ title: `Detail Pengajuan`, bodyHtml: html, footerHtml: `<button id="btn-tutup-riwayat" class="px-4 py-2 bg-slate-100 rounded text-sm">Tutup</button>`, onMount: m => m.querySelector("#btn-tutup-riwayat").onclick = closeModal });
+          openModal({ title: `Detail Pengajuan — ${escapeHtml(row.nama_form)}`, size: "lg", bodyHtml: html, footerHtml: `<button id="btn-tutup-riwayat" class="px-4 py-2 bg-slate-100 rounded text-sm font-semibold">Tutup</button>`, onMount: m => m.querySelector("#btn-tutup-riwayat").onclick = closeModal });
        };
     });
 

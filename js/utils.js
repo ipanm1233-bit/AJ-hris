@@ -12,6 +12,7 @@ import {
 // PERUBAHAN: lampiran file kini disimpan di Google Drive (lewat Apps Script
 // Web App), bukan lagi Firebase Storage. Lihat js/gas-integration.js.
 import { uploadFileToDrive } from "./gas-integration.js";
+import { letterheadHtml } from "./branding.js";
 /* ---------------------------------------------------------------------
  * 1. SMART DATE PARSER
  * Menangani 3 kemungkinan bentuk tanggal yang lazim ditemui saat migrasi
@@ -360,6 +361,474 @@ export function escapeHtml(str = "") {
     .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
+/* ---------------------------------------------------------------------
+ * GOOGLE DRIVE & ATTACHMENT VIEWER HELPERS
+ * ------------------------------------------------------------------- */
+export function normalizeDriveUrl(url) {
+  if (!url || typeof url !== "string") return "#";
+  const s = url.trim();
+  if (s.startsWith("data:")) return s;
+
+  // Normalisasi URL Google Drive file
+  const driveFileIdMatch = s.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || 
+                           s.match(/id=([a-zA-Z0-9_-]+)/) ||
+                           s.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (driveFileIdMatch && driveFileIdMatch[1]) {
+    const fileId = driveFileIdMatch[1];
+    return `https://drive.google.com/file/d/${fileId}/view?usp=sharing`;
+  }
+  
+  if (/^[a-zA-Z0-9_-]{25,100}$/.test(s)) {
+    return `https://drive.google.com/file/d/${s}/view?usp=sharing`;
+  }
+
+  if (/^https?:\/\//i.test(s)) return s;
+  return `https://${s}`;
+}
+
+export function openAttachment(url) {
+  if (!url) {
+    toast("Lampiran tidak ditemukan atau kosong", "warning");
+    return;
+  }
+  
+  const trimmed = String(url).trim();
+  
+  // Jika berupa data base64
+  if (trimmed.startsWith("data:")) {
+    try {
+      const parts = trimmed.split(",");
+      const mimeMatch = parts[0].match(/:(.*?);/);
+      const mime = mimeMatch ? mimeMatch[1] : "image/png";
+      const bstr = atob(parts[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      const blob = new Blob([u8arr], { type: mime });
+      const blobUrl = URL.createObjectURL(blob);
+      
+      const win = window.open(blobUrl, "_blank");
+      if (!win) {
+        if (mime.startsWith("image/")) {
+          openModal({
+            title: "Pratinjau Lampiran Gambar",
+            bodyHtml: `<div class="text-center p-2"><img src="${trimmed}" class="max-w-full max-h-[70vh] mx-auto rounded-lg shadow-sm" /></div>`,
+            footerHtml: `<a href="${blobUrl}" download="lampiran" class="px-4 py-2 bg-maroon-700 text-white rounded-lg text-xs font-bold">Unduh File</a> <button id="close-img-preview" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold">Tutup</button>`,
+            onMount: (m) => m.querySelector("#close-img-preview").onclick = closeModal
+          });
+        } else {
+          toast("Izin popup diblokir browser. Izinkan popup untuk melihat lampiran.", "warning");
+        }
+      }
+    } catch (e) {
+      toast("Gagal membuka lampiran base64: " + e.message, "error");
+    }
+    return;
+  }
+  
+  const targetUrl = normalizeDriveUrl(trimmed);
+  const win = window.open(targetUrl, "_blank", "noopener,noreferrer");
+  if (!win) {
+    openModal({
+      title: "Buka Lampiran",
+      bodyHtml: `
+        <div class="text-center p-4">
+          <p class="text-sm text-slate-600 mb-4">Klik tombol di bawah untuk membuka lampiran file di tab baru:</p>
+          <a href="${escapeHtml(targetUrl)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 px-5 py-2.5 bg-maroon-700 text-white rounded-xl font-bold text-xs shadow hover:bg-maroon-800 transition">
+            📂 Buka Dokumen / Lampiran Google Drive
+          </a>
+        </div>`,
+      footerHtml: `<button id="btn-close-att-modal" class="px-4 py-2 bg-slate-100 rounded text-xs font-semibold">Tutup</button>`,
+      onMount: m => m.querySelector("#btn-close-att-modal").onclick = closeModal
+    });
+  }
+}
+if (typeof window !== "undefined") {
+  window.openAttachment = openAttachment;
+  window.normalizeDriveUrl = normalizeDriveUrl;
+}
+
+export function terbilang(n) {
+  const angka = ["", "Satu", "Dua", "Tiga", "Empat", "Lima", "Enam", "Tujuh", "Delapan", "Sembilan", "Sepuluh", "Sebelas"];
+  let num = Math.floor(Math.abs(Number(n) || 0));
+  if (num === 0) return "Nol Rupiah";
+  function bilang(x) {
+    if (x < 12) return angka[x];
+    if (x < 20) return bilang(x - 10) + " Belas";
+    if (x < 100) return bilang(Math.floor(x / 10)) + " Puluh " + bilang(x % 10);
+    if (x < 200) return "Seratus " + bilang(x - 100);
+    if (x < 1000) return bilang(Math.floor(x / 100)) + " Ratus " + bilang(x % 100);
+    if (x < 2000) return "Seribu " + bilang(x - 1000);
+    if (x < 1000000) return bilang(Math.floor(x / 1000)) + " Ribu " + bilang(x % 1000);
+    if (x < 1000000000) return bilang(Math.floor(x / 1000000)) + " Juta " + bilang(x % 1000000);
+    return String(x);
+  }
+  return bilang(num).trim().replace(/\s+/g, " ") + " Rupiah";
+}
+
+export function printSalesKlaimForm(item) {
+  if (!item) return;
+  const detail = item.detail || {};
+  const detailList = detail.rincian_tabel || detail.rincian || detail.items || [];
+  const total = Number(detail.total_klaim || detail.grand_total || detail.total || 0);
+  const cabangArea = item.cabang || detail.cabang || "Cirebon";
+  const HARGA_BENSIN = 10000;
+  const RASIO_KM = 25;
+
+  let totalJarak = 0, totalPetrol = 0, totalParkir = 0, totalDenda = 0;
+
+  const tripRowsHtml = detailList.length > 0 ? detailList.map((r, i) => {
+    const kmAwal = Number(r.km_awal || 0);
+    const kmAkhir = Number(r.km_akhir || 0);
+    const parkirRp = Number(r.parkir || 0);
+    const dendaRp = Number(r.denda || 0);
+    const trip = Math.max(0, kmAkhir - kmAwal);
+    const petrolRp = Math.round(trip * (HARGA_BENSIN / RASIO_KM));
+    const rowTotal = Number(r.total_baris || (petrolRp + parkirRp - dendaRp));
+
+    totalJarak += trip;
+    totalPetrol += petrolRp;
+    totalParkir += parkirRp;
+    totalDenda += dendaRp;
+
+    return `
+      <tr style="border-bottom: 1px solid #cbd5e1; font-size: 11px;">
+        <td style="padding: 8px; text-align: center; font-weight: bold;">${i + 1}</td>
+        <td style="padding: 8px;">${escapeHtml(r.tanggal || "-")}</td>
+        <td style="padding: 8px; text-align: right; font-family: monospace;">${kmAwal.toLocaleString("id-ID")}</td>
+        <td style="padding: 8px; text-align: right; font-family: monospace;">${kmAkhir.toLocaleString("id-ID")}</td>
+        <td style="padding: 8px; text-align: right; font-weight: bold; font-family: monospace;">${trip} KM</td>
+        <td style="padding: 8px; text-align: right; font-family: monospace;">Rp ${petrolRp.toLocaleString("id-ID")}</td>
+        <td style="padding: 8px; text-align: right; font-family: monospace;">Rp ${parkirRp.toLocaleString("id-ID")}</td>
+        <td style="padding: 8px; text-align: right; font-family: monospace; color: #b91c1c;">Rp ${dendaRp.toLocaleString("id-ID")}</td>
+        <td style="padding: 8px;">${escapeHtml(r.tujuan || r.kunjungan || "-")}</td>
+        <td style="padding: 8px; text-align: right; font-weight: bold; font-family: monospace; background-color: #f8fafc;">Rp ${rowTotal.toLocaleString("id-ID")}</td>
+      </tr>
+    `;
+  }).join("") : `
+    <tr><td colspan="10" style="padding: 16px; text-align: center; color: #64748b;">Tidak ada rincian baris perjalanan</td></tr>
+  `;
+
+  const terbilangStr = terbilang(total);
+
+  const printWin = window.open("", "_blank", "width=900,height=750");
+  if (!printWin) {
+    toast("Izin popup diblokir browser. Izinkan popup untuk mencetak/mengunduh form.", "error");
+    return;
+  }
+
+  printWin.document.write(`
+    <!DOCTYPE html>
+    <html lang="id">
+    <head>
+      <meta charset="UTF-8">
+      <title>Form Klaim Bensin Sales — ${escapeHtml(item.nama_pemohon)}</title>
+      <style>
+        @page { size: A4 landscape; margin: 12mm; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; padding: 20px; color: #0f172a; background: #fff; line-height: 1.4; }
+        .header { border-bottom: 3px double #7a1f2b; padding-bottom: 12px; margin-bottom: 16px; text-align: center; }
+        .header h2 { margin: 0; font-size: 20px; text-transform: uppercase; font-weight: 800; color: #7a1f2b; letter-spacing: 1px; }
+        .header h3 { margin: 4px 0 0; font-size: 13px; color: #334155; font-weight: 700; text-transform: uppercase; }
+        .header p { margin: 2px 0 0; font-size: 11px; color: #64748b; }
+        
+        .meta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; background: #f8fafc; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 11px; }
+        .meta-item label { color: #64748b; font-size: 10px; display: block; text-transform: uppercase; font-weight: bold; }
+        .meta-item span { font-weight: bold; color: #0f172a; font-size: 12px; }
+
+        table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+        th { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 8px; font-size: 10px; text-align: left; text-transform: uppercase; color: #334155; font-weight: 800; }
+        td { border: 1px solid #cbd5e1; font-size: 11px; }
+
+        .summary-box { display: flex; justify-content: space-between; align-items: center; background: #faf8ff; border: 1.5px solid #7a1f2b; padding: 12px 16px; border-radius: 8px; margin-bottom: 24px; }
+        .terbilang { font-size: 11px; color: #475569; font-style: italic; }
+        .terbilang strong { color: #7a1f2b; font-style: normal; }
+        .total-nominal { font-size: 16px; font-weight: 900; color: #7a1f2b; font-family: monospace; }
+
+        .signatures { margin-top: 30px; page-break-inside: avoid; }
+        .sig-date { text-align: right; font-size: 11px; font-weight: bold; margin-bottom: 16px; color: #475569; }
+        .sig-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; text-align: center; }
+        .sig-box { font-size: 10px; background: #fff; border: 1px solid #e2e8f0; padding: 10px; border-radius: 6px; }
+        .sig-box p { margin: 0 0 6px; font-weight: bold; color: #334155; text-transform: uppercase; }
+        .sig-space { height: 50px; }
+        .sig-name { font-weight: bold; border-top: 1px solid #94a3b8; padding-top: 4px; color: #0f172a; }
+
+        .no-print-bar { background: #1e293b; color: white; padding: 10px 16px; margin: -20px -20px 20px -20px; display: flex; justify-content: space-between; align-items: center; }
+        .btn-print { background: #7a1f2b; color: white; border: none; padding: 8px 16px; font-weight: bold; border-radius: 6px; cursor: pointer; font-size: 12px; }
+        .btn-print:hover { background: #991b1b; }
+
+        @media print {
+          .no-print-bar { display: none !important; }
+          body { padding: 0; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="no-print-bar">
+        <span><b>Form Klaim Bensin Sales CV Andela Jaya</b></span>
+        <button class="btn-print" onclick="window.print()">🖨️ Cetak / Simpan PDF</button>
+      </div>
+
+      ${letterheadHtml()}
+
+      <div style="text-align:center;margin-bottom:16px;">
+        <h3 style="margin:0;font-size:15px;color:#7a1f2b;font-weight:bold;text-transform:uppercase;">FORM KLAIM BENSIN & OPERASIONAL SALES</h3>
+        <p style="margin:4px 0 0;font-size:11px;color:#64748b;">Cabang / Area Operasional: <strong>${escapeHtml(cabangArea).toUpperCase()}</strong> • No. Transaksi: <strong>${escapeHtml(item.id)}</strong></p>
+      </div>
+
+      <div class="meta-grid">
+        <div class="meta-item">
+          <label>Nama Pemohon / Sales</label>
+          <span>${escapeHtml(item.nama_pemohon)}</span>
+        </div>
+        <div class="meta-item">
+          <label>NIK / Cabang</label>
+          <span>${escapeHtml(item.nik || "-")} / ${escapeHtml(cabangArea)}</span>
+        </div>
+        <div class="meta-item">
+          <label>Tanggal Ajuan</label>
+          <span>${fmtDateTime(item.tgl)}</span>
+        </div>
+        <div class="meta-item">
+          <label>Jenis BBM / Status</label>
+          <span>Pertalite (1L / 25 KM) • <strong style="color: #047857;">${escapeHtml(item.status_final || "MENUNGGU")}</strong></span>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="text-align: center; width: 30px;">NO</th>
+            <th>TGL PERJALANAN</th>
+            <th style="text-align: right;">KM AWAL</th>
+            <th style="text-align: right;">KM AKHIR</th>
+            <th style="text-align: right;">JARAK (KM)</th>
+            <th style="text-align: right;">PETROL (Rp)</th>
+            <th style="text-align: right;">PARKIR (Rp)</th>
+            <th style="text-align: right;">DENDA (Rp)</th>
+            <th>TUJUAN / DAFTAR KUNJUNGAN TOKO</th>
+            <th style="text-align: right;">TOTAL BARIS</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tripRowsHtml}
+        </tbody>
+      </table>
+
+      <div class="summary-box">
+        <div class="terbilang">
+          Terbilang: <strong>${escapeHtml(terbilangStr)}</strong>
+        </div>
+        <div class="total-nominal">
+          TOTAL KLAIM SALES: Rp ${total.toLocaleString("id-ID")}
+        </div>
+      </div>
+
+      <div class="signatures">
+        <div class="sig-date">${escapeHtml(cabangArea)}, ${new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</div>
+        <div class="sig-grid">
+          <div class="sig-box">
+            <p>Yang Mengajukan,</p>
+            <div class="sig-space"></div>
+            <div class="sig-name">( ${escapeHtml(item.nama_pemohon)} )<br/><span style="font-weight:normal; font-size:9px;">Sales / Operasional</span></div>
+          </div>
+          <div class="sig-box">
+            <p>Mengetahui Direct Spv,</p>
+            <div class="sig-space"></div>
+            <div class="sig-name">( SPV Sales / Manager )<br/><span style="font-weight:normal; font-size:9px;">Atasan Langsung</span></div>
+          </div>
+          <div class="sig-box">
+            <p>Diverifikasi HRD,</p>
+            <div class="sig-space"></div>
+            <div class="sig-name">( Staff HRD )<br/><span style="font-weight:normal; font-size:9px;">HRGA & Operasional</span></div>
+          </div>
+          <div class="sig-box">
+            <p>Disetujui Finance,</p>
+            <div class="sig-space"></div>
+            <div class="sig-name">( Finance / Kasir )<br/><span style="font-weight:normal; font-size:9px;">Pencairan Dana</span></div>
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `);
+  printWin.document.close();
+}
+if (typeof window !== "undefined") {
+  window.printSalesKlaimForm = printSalesKlaimForm;
+}
+
+export function renderPengajuanDetailHtml(row, session, options = {}) {
+  if (!row) return "<p class='text-slate-400'>Data tidak ditemukan</p>";
+  const detail = row.detail || {};
+  const isKlaimBensin = row.form_id === "F-KLAIM-BENSIN" || (row.nama_form || "").toLowerCase().includes("bensin");
+  
+  if (isKlaimBensin) {
+    const detailList = detail.rincian_tabel || detail.rincian || detail.items || [];
+    const totalKlaim = Number(detail.total_klaim || detail.grand_total || detail.total || 0);
+    const HARGA_BENSIN = 10000;
+    const RASIO_KM = 25;
+
+    let totalKm = 0, totalPetrol = 0, totalParkir = 0, totalDenda = 0;
+
+    const rowsHtml = detailList.length > 0 ? detailList.map((r, i) => {
+      const kmAwal = Number(r.km_awal || 0);
+      const kmAkhir = Number(r.km_akhir || 0);
+      const parkir = Number(r.parkir || 0);
+      const denda = Number(r.denda || 0);
+      const trip = Math.max(0, kmAkhir - kmAwal);
+      const petrol = Math.round(trip * (HARGA_BENSIN / RASIO_KM));
+      const rowTotal = Number(r.total_baris || (petrol + parkir - denda));
+
+      totalKm += trip;
+      totalPetrol += petrol;
+      totalParkir += parkir;
+      totalDenda += denda;
+
+      const catHrd = r.catatan_hrd ? `<span class="block text-[10px] text-amber-700 bg-amber-50 p-1 rounded mt-1 border border-amber-200">Rev HRD: ${escapeHtml(r.catatan_hrd)}</span>` : "";
+
+      return `
+        <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
+          <td class="p-2.5 text-center font-bold text-slate-500">${i + 1}</td>
+          <td class="p-2.5 font-medium text-slate-700">${escapeHtml(r.tanggal || "-")}</td>
+          <td class="p-2.5 text-right font-mono">${kmAwal.toLocaleString("id-ID")}</td>
+          <td class="p-2.5 text-right font-mono">${kmAkhir.toLocaleString("id-ID")}</td>
+          <td class="p-2.5 text-right font-mono font-bold text-slate-800">${trip} KM</td>
+          <td class="p-2.5 text-right font-mono text-slate-700">Rp ${petrol.toLocaleString("id-ID")}</td>
+          <td class="p-2.5 text-right font-mono text-slate-700">Rp ${parkir.toLocaleString("id-ID")}</td>
+          <td class="p-2.5 text-right font-mono text-red-600">Rp ${denda.toLocaleString("id-ID")}</td>
+          <td class="p-2.5 text-slate-700">${escapeHtml(r.tujuan || r.kunjungan || "-")} ${catHrd}</td>
+          <td class="p-2.5 text-right font-mono font-bold text-maroon-700 bg-slate-50">Rp ${rowTotal.toLocaleString("id-ID")}</td>
+        </tr>
+      `;
+    }).join("") : `
+      <tr><td colspan="10" class="p-6 text-center text-slate-400">Tidak ada rincian baris perjalanan.</td></tr>
+    `;
+
+    const rowJson = escapeHtml(JSON.stringify(row)).replace(/"/g, '&quot;');
+
+    return `
+      <div class="space-y-4 text-left">
+        <!-- HEADER KLAIM BENSIN -->
+        <div class="bg-gradient-to-r from-slate-900 via-slate-800 to-maroon-950 text-white p-4 rounded-2xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-400 text-slate-950 uppercase tracking-wide">KLAIM BENSIN SALES</span>
+              <span class="text-xs text-slate-300">ID: ${escapeHtml(row.id)}</span>
+            </div>
+            <h3 class="text-lg font-black mt-1 text-white">${escapeHtml(row.nama_pemohon)}</h3>
+            <p class="text-xs text-slate-300">Area / Cabang: <span class="font-bold text-amber-300">${escapeHtml(row.cabang || detail.cabang || "Cirebon")}</span> • NIK: ${escapeHtml(row.nik || "-")}</p>
+          </div>
+          <div class="text-right bg-white/10 px-4 py-2.5 rounded-xl border border-white/10 w-full sm:w-auto">
+            <span class="text-[10px] text-slate-300 block uppercase font-bold tracking-wider">Total Klaim</span>
+            <span class="text-xl font-black text-amber-300 font-mono">Rp ${totalKlaim.toLocaleString("id-ID")}</span>
+          </div>
+        </div>
+
+        <!-- TABEL RINCIAN PERJALANAN -->
+        <div class="overflow-x-auto border border-slate-200 rounded-2xl shadow-sm bg-white">
+          <table class="w-full text-left border-collapse min-w-[750px]">
+            <thead>
+              <tr class="bg-slate-100 text-slate-600 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
+                <th class="p-2.5 text-center w-8">No</th>
+                <th class="p-2.5">Tanggal</th>
+                <th class="p-2.5 text-right">KM Awal</th>
+                <th class="p-2.5 text-right">KM Akhir</th>
+                <th class="p-2.5 text-right">Jarak</th>
+                <th class="p-2.5 text-right">Petrol (Rp)</th>
+                <th class="p-2.5 text-right">Parkir (Rp)</th>
+                <th class="p-2.5 text-right">Denda (Rp)</th>
+                <th class="p-2.5">Tujuan / Lokasi Kunjungan</th>
+                <th class="p-2.5 text-right bg-slate-200/60 font-bold">Total Baris</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+            <tfoot class="bg-slate-50 font-bold text-slate-800 border-t-2 border-slate-200 text-xs">
+              <tr>
+                <td colspan="4" class="p-3 text-right uppercase tracking-wide">TOTAL REKAP:</td>
+                <td class="p-3 text-right font-mono text-slate-900">${totalKm} KM</td>
+                <td class="p-3 text-right font-mono">Rp ${totalPetrol.toLocaleString("id-ID")}</td>
+                <td class="p-3 text-right font-mono">Rp ${totalParkir.toLocaleString("id-ID")}</td>
+                <td class="p-3 text-right font-mono text-red-600">Rp ${totalDenda.toLocaleString("id-ID")}</td>
+                <td></td>
+                <td class="p-3 text-right font-mono text-sm text-maroon-700 bg-amber-50">Rp ${totalKlaim.toLocaleString("id-ID")}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <!-- ACTION PRINT FORM KLAIM -->
+        <div class="flex items-center justify-between p-3.5 bg-amber-50 border border-amber-200 rounded-xl">
+          <div class="text-xs text-amber-900">
+            <p class="font-bold">Formulir Klaim Bensin Resmi CV Andela Jaya</p>
+            <p class="text-[11px] text-amber-700">Cetak/unduh form fisik ini untuk diserahkan ke HRD & Kasir Cabang.</p>
+          </div>
+          <button type="button" onclick="window.printSalesKlaimForm(${rowJson})" class="px-4 py-2 bg-maroon-700 hover:bg-maroon-800 text-white font-bold text-xs rounded-lg shadow-sm transition flex items-center gap-1.5 shrink-0">
+            <span>🖨️ Cetak / Download Form Klaim</span>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  // Generic detail formatter
+  const itemsHtml = Object.entries(detail).map(([k, v]) => {
+    const formattedKey = escapeHtml(k.replace(/_/g, " ").toUpperCase());
+
+    const isAttachmentKey = /lampiran|file|foto|bukti|pdf|url|doc/i.test(k);
+    const isUrl = typeof v === "string" && (/^https?:\/\//i.test(v) || v.startsWith("data:"));
+
+    if (isAttachmentKey || isUrl) {
+      if (v) {
+        return `
+          <div class="flex items-center justify-between py-2.5 border-b border-slate-100 text-xs">
+            <span class="font-semibold text-slate-500">${formattedKey}</span>
+            <button type="button" onclick="openAttachment('${escapeHtml(String(v))}')" class="px-3 py-1.5 bg-maroon-50 text-maroon-700 hover:bg-maroon-100 border border-maroon-200 rounded-lg font-bold text-xs transition flex items-center gap-1">
+              <span>📄 Lihat Lampiran</span>
+            </button>
+          </div>`;
+      }
+      return `
+        <div class="flex items-center justify-between py-2 border-b border-slate-100 text-xs">
+          <span class="font-semibold text-slate-500">${formattedKey}</span>
+          <span class="text-slate-400 italic">Tidak ada lampiran</span>
+        </div>`;
+    }
+
+    if (Array.isArray(v)) {
+      if (v.length > 0 && typeof v[0] === 'object') {
+        const headers = Object.keys(v[0]);
+        let tableHtml = `<div class="overflow-x-auto mt-2 border border-slate-200 rounded-xl bg-white shadow-sm"><table class="w-full text-xs text-left border-collapse"><thead class="bg-slate-50 border-b border-slate-200"><tr>`;
+        headers.forEach(h => tableHtml += `<th class="p-2 font-bold text-slate-600 uppercase text-[10px]">${escapeHtml(h.replace(/_/g, " "))}</th>`);
+        tableHtml += `</tr></thead><tbody class="divide-y divide-slate-100">`;
+        v.forEach(itemObj => {
+          tableHtml += `<tr>`;
+          headers.forEach(h => {
+            let val = itemObj[h];
+            if (typeof val === 'number' && /total|biaya|harga|nominal|parkir|denda/i.test(h)) val = "Rp " + val.toLocaleString("id-ID");
+            tableHtml += `<td class="p-2 text-slate-700 font-medium">${escapeHtml(String(val || '-'))}</td>`;
+          });
+          tableHtml += `</tr>`;
+        });
+        tableHtml += `</tbody></table></div>`;
+        return `<div class="py-2 border-b border-slate-100"><span class="font-semibold text-slate-500 text-xs">${formattedKey}</span>${tableHtml}</div>`;
+      }
+      return `<div class="flex justify-between py-2 border-b border-slate-100 text-xs"><span class="font-semibold text-slate-500">${formattedKey}</span><span class="font-bold text-slate-800">${escapeHtml(v.join(", "))}</span></div>`;
+    }
+
+    if (typeof v === "number" && /total|biaya|harga|nominal|kasbon|pinjaman/i.test(k)) {
+      return `<div class="flex justify-between py-2 border-b border-slate-100 text-xs"><span class="font-semibold text-slate-500">${formattedKey}</span><span class="font-bold text-slate-800 font-mono text-sm">Rp ${v.toLocaleString("id-ID")}</span></div>`;
+    }
+
+    return `<div class="flex justify-between py-2 border-b border-slate-100 text-xs"><span class="font-semibold text-slate-500">${formattedKey}</span><span class="font-bold text-slate-800">${escapeHtml(String(v ?? "-"))}</span></div>`;
+  }).join("");
+
+  return `<div class="space-y-1 text-left">${itemsHtml}</div>`;
+}
+
 // Tambahkan di js/utils.js
 
 export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
@@ -458,38 +927,72 @@ export async function sendFCMNotif(tokens, title, body, link = "") {
  */
 export async function notifyUser(username, judul, pesan, link = "") {
   if (!username) return;
+  const rawTarget = typeof username === "object" ? (username.username || username.nama || username.id) : username;
+  if (!rawTarget) return;
+
   try {
-    // 1. Tambahkan ke lonceng notifikasi web
+    // 1. In-App Notification (lonceng)
     await fsAdd(COL.NOTIFICATIONS, {
-      username_target: username, judul, pesan, link: link || "", dibaca: false, tanggal: new Date().toISOString()
+      username_target: rawTarget, judul, pesan, link: link || "", dibaca: false, tanggal: new Date().toISOString()
     }, genId("NTF"));
-    
-    // 2. Tembak ke HP target (Push) & Email
+
+    // 2. Tembak ke FCM Tokens & Email target
+    const tokens = new Set();
     let targetEmail = null;
-    let targetName = username;
+    let targetName = rawTarget;
 
-    const snap = await getDoc(doc(db, COL.USERS, username));
-    if (snap.exists()) {
+    // Search USERS doc directly by ID
+    let snap = await getDoc(doc(db, COL.USERS, String(rawTarget))).catch(() => null);
+    if (snap && snap.exists()) {
       const uData = snap.data();
-      targetName = uData.nama || username;
+      targetName = uData.nama || rawTarget;
+      if (uData.fcm_token) tokens.add(uData.fcm_token);
       if (uData.email) targetEmail = uData.email;
-      if (uData.fcm_token) {
-        await sendFCMNotif([uData.fcm_token], judul, pesan, link);
-      }
     }
 
-    // Fallback: Cari email di Master Karyawan jika belum ada di USERS
-    if (!targetEmail) {
-      try {
-        const qK = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", username), limit(1));
-        const snapK = await getDocs(qK);
-        if (!snapK.empty && snapK.docs[0].data().email) {
-          targetEmail = snapK.docs[0].data().email;
+    // Also query USERS by username, nama, or nik
+    try {
+      const qUsers = query(collection(db, COL.USERS));
+      const snapUsers = await getDocs(qUsers);
+      snapUsers.docs.forEach(d => {
+        const uData = d.data();
+        const matches = d.id === rawTarget ||
+                        uData.username === rawTarget ||
+                        (uData.nama && uData.nama.toLowerCase().includes(String(rawTarget).toLowerCase())) ||
+                        (uData.nik && uData.nik === rawTarget);
+        if (matches) {
+          if (uData.fcm_token) tokens.add(uData.fcm_token);
+          if (uData.email && !targetEmail) targetEmail = uData.email;
+          if (uData.nama) targetName = uData.nama;
         }
-      } catch (e) {}
+      });
+    } catch (e) {}
+
+    // Also query MASTER_KARYAWAN by nama_karyawan or nik
+    try {
+      const qK = query(collection(db, COL.MASTER_KARYAWAN));
+      const snapK = await getDocs(qK);
+      snapK.docs.forEach(d => {
+        const kData = d.data();
+        const matches = d.id === rawTarget ||
+                        kData.nik === rawTarget ||
+                        kData.nik_karyawan === rawTarget ||
+                        (kData.nama_karyawan && kData.nama_karyawan.toLowerCase().includes(String(rawTarget).toLowerCase()));
+        if (matches) {
+          if (kData.fcm_token) tokens.add(kData.fcm_token);
+          if (kData.email && !targetEmail) targetEmail = kData.email;
+          if (kData.nama_karyawan) targetName = kData.nama_karyawan;
+        }
+      });
+    } catch (e) {}
+
+    // Send Push Notification via FCM
+    const tokenList = Array.from(tokens).filter(Boolean);
+    if (tokenList.length > 0) {
+      await sendFCMNotif(tokenList, judul, pesan, link);
     }
 
-    // Kirim Notifikasi Email jika email tersedia
+    // Send Email
     if (targetEmail) {
       const appUrl = window.location.origin;
       const targetLink = link ? (appUrl + (link.startsWith('#') ? link : '#' + link)) : appUrl;
@@ -509,7 +1012,7 @@ export async function notifyUser(username, judul, pesan, link = "") {
       sendEmailNotif(targetEmail, `[HRIS Update] ${judul}`, htmlBody);
     }
   } catch (e) {
-    console.warn("Gagal mengirim notifikasi ke " + username, e);
+    console.warn("Gagal mengirim notifikasi ke " + rawTarget, e);
   }
 }
 

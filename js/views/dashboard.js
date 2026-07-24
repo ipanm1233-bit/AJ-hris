@@ -14,21 +14,29 @@ export async function mount(container, { session }) {
 
   const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
 
-  // Widget dashboard karyawan bisa diatur HRD lewat menu Konfigurasi Sistem
-  // (APP_SETTINGS/main.dashboard_widgets). Default: semua widget aktif jika belum diatur.
-  const WIDGET_IDS = ["dash-widget-leave", "dash-widget-kpi", "dash-widget-cuti-hari-ini", "dash-widget-pengumuman"];
-  if (!isHrd) {
-    try {
-      const cfgSnap = await getDoc(doc(db, COL.APP_SETTINGS, "main"));
-      const widgetCfg = (cfgSnap.exists() && cfgSnap.data().dashboard_widgets) || {};
+  // Widget dashboard karyawan bisa diatur HRD per-karyawan (user_dashboard_widgets)
+  // atau secara global (dashboard_widgets). Default: semua widget aktif jika belum diatur.
+  const WIDGET_IDS = ["dash-widget-leave", "dash-widget-kpi", "dash-widget-cuti-hari-ini", "dash-widget-pengumuman", "dash-widget-attendance", "dash-widget-performance", "dash-widget-assets", "dash-contract-widget-wrap"];
+  try {
+    const cfgSnap = await getDoc(doc(db, COL.APP_SETTINGS, "main"));
+    if (cfgSnap.exists()) {
+      const appData = cfgSnap.data();
+      const globalWidgets = appData.dashboard_widgets || {};
+      const userWidgets = appData.user_dashboard_widgets || {};
+
+      const userKey = (session.username || session.nik || session.nama || "").trim().toLowerCase();
+      const specificUserCfg = userWidgets[userKey] || userWidgets[session.username?.toLowerCase()] || userWidgets[session.nik?.toLowerCase()];
+
+      const effectiveCfg = specificUserCfg || globalWidgets;
+
       WIDGET_IDS.forEach(wid => {
-        if (widgetCfg[wid] === false) {
+        if (effectiveCfg[wid] === false) {
           const el = container.querySelector(`#${wid}`);
           if (el) el.classList.add("hidden");
         }
       });
-    } catch (e) { /* jika gagal memuat konfigurasi, tampilkan semua widget seperti biasa */ }
-  }
+    }
+  } catch (e) { /* jika gagal memuat konfigurasi, tampilkan semua widget seperti biasa */ }
 
   // loadProfileCard dipanggil lebih dulu (bukan di dalam Promise.all) karena
   // loadPersonalBanner butuh data karyawan yang sama supaya tidak query dobel.
@@ -44,12 +52,7 @@ export async function mount(container, { session }) {
     loadAttendanceAnalytics(container, session),
     loadPerformanceWidget(container, session),
     loadTrainingHistory(container, session),
-    // Batasi widget kontrak habis hanya muncul di Dashboard HRD
-    isHrd ? loadContractExpiry(container) : (() => { 
-        const w = container.querySelector("#dash-contract-widget-wrap"); 
-        if(w) w.classList.add("hidden"); 
-        return Promise.resolve(); 
-    })()
+    loadContractExpiry(container, session)
   ]);
 
   // Lonceng notifikasi kini ditangani secara global di app.js (bindShellEvents)
@@ -230,27 +233,40 @@ async function loadLeaveBalances(container, session) {
   } catch (e) {}
 
   const cards = [
-    { label: "Cuti Tahunan", jatah: jatah.tahunan, terpakai: terpakai.Tahunan, tone: "maroon", ic: "sun" },
-    { label: "Cuti Khusus", jatah: jatah.khusus, terpakai: terpakai.Khusus, tone: "blue", ic: "star" },
-    { label: "Cuti Akumulasi", jatah: jatah.akumulasi, terpakai: terpakai.Akumulasi, tone: "amber", ic: "clock" },
+    { label: "Cuti Tahunan", jatah: jatah.tahunan, terpakai: terpakai.Tahunan, tone: "maroon", ic: "sun", cardBg: "bg-maroon-50/40 border-maroon-100" },
+    { label: "Cuti Khusus", jatah: jatah.khusus, terpakai: terpakai.Khusus, tone: "blue", ic: "star", cardBg: "bg-blue-50/40 border-blue-100" },
+    { label: "Cuti Akumulasi", jatah: jatah.akumulasi, terpakai: terpakai.Akumulasi, tone: "amber", ic: "clock", cardBg: "bg-amber-50/40 border-amber-100" },
   ];
 
   wrap.innerHTML = cards.map(c => {
     const sisa = Math.max(c.jatah - c.terpakai, 0);
     const pct = c.jatah > 0 ? Math.min((c.terpakai / c.jatah) * 100, 100) : 0;
-    const toneClasses = { maroon: "text-maroon-700 bg-maroon-50", blue: "text-blue-700 bg-blue-50", amber: "text-amber-700 bg-amber-50" };
+    const toneClasses = { maroon: "text-maroon-700 bg-maroon-100", blue: "text-blue-700 bg-blue-100", amber: "text-amber-700 bg-amber-100" };
     const barTone = { maroon: "bg-maroon-600", blue: "bg-blue-600", amber: "bg-amber-500" };
     return `
-      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-        <div class="flex items-center justify-between mb-3">
-          <div class="w-9 h-9 rounded-xl ${toneClasses[c.tone]} flex items-center justify-center">${icon(c.ic, "w-4.5 h-4.5")}</div>
-          <span class="text-[11px] text-slate-400">Jatah: ${c.jatah} hari</span>
+      <div class="p-2.5 rounded-xl border ${c.cardBg} flex flex-col justify-between transition hover:shadow-xs">
+        <div class="flex items-center justify-between gap-1.5">
+          <div class="flex items-center gap-1.5 min-w-0">
+            <div class="w-6 h-6 rounded-lg ${toneClasses[c.tone]} flex items-center justify-center shrink-0">
+              ${icon(c.ic, "w-3.5 h-3.5")}
+            </div>
+            <span class="text-xs font-bold text-slate-800 truncate">${c.label}</span>
+          </div>
+          <span class="text-[10px] font-medium text-slate-500 bg-white/90 px-1.5 py-0.5 rounded border border-slate-200/80 shrink-0">
+            Total: ${c.jatah} hr
+          </span>
         </div>
-        <p class="text-sm text-slate-500">${c.label}</p>
-        <p class="text-3xl font-bold text-slate-800 mt-1">${sisa}</p>
-        <p class="text-xs text-slate-400 mt-1">${c.terpakai} hari telah digunakan</p>
-        <div class="w-full h-1.5 bg-slate-100 rounded-full mt-3 overflow-hidden">
-          <div class="h-full ${barTone[c.tone]} rounded-full" style="width:${pct}%"></div>
+
+        <div class="flex items-baseline justify-between mt-2 mb-1">
+          <div class="flex items-baseline gap-1">
+            <span class="text-xl font-black text-slate-800 font-mono leading-none">${sisa}</span>
+            <span class="text-[10px] text-slate-500 font-semibold">sisa hari</span>
+          </div>
+          <span class="text-[10px] text-slate-500 font-medium">${c.terpakai} hr terpakai</span>
+        </div>
+
+        <div class="w-full h-1 bg-slate-200/80 rounded-full overflow-hidden">
+          <div class="h-full ${barTone[c.tone]} rounded-full transition-all duration-300" style="width:${pct}%"></div>
         </div>
       </div>`;
   }).join("");
@@ -373,16 +389,24 @@ async function loadCutiHariIni(container) {
      const end = (r.tanggal_selesai || r.tanggal || "").toString().substring(0, 10);
      return start && todayStr >= start && todayStr <= end;
     });
-    if (!todayRows.length) { wrap.innerHTML = emptyState("Tidak ada yang cuti hari ini"); return; }
+    if (!todayRows.length) { 
+      wrap.innerHTML = `<div class="col-span-full py-2 px-3 text-center text-xs text-slate-400 italic bg-slate-50/80 rounded-lg border border-dashed border-slate-200">Tidak ada karyawan yang cuti / izin hari ini</div>`; 
+      return; 
+    }
     wrap.innerHTML = todayRows.map(r => `
-      <div class="flex items-center justify-between p-3 rounded-xl border border-slate-100">
-        <div class="flex items-center gap-3">
-          ${avatar(r.nama_karyawan || "?", "w-9 h-9 text-xs")}
-          <div><p class="text-sm font-medium text-slate-700">${escapeHtml(r.nama_karyawan || "-")}</p><p class="text-xs text-slate-400">${escapeHtml(r.cabang || "-")}</p></div>
+      <div class="flex items-center justify-between px-3 py-2 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition text-xs">
+        <div class="flex items-center gap-2.5 min-w-0">
+          ${avatar(r.nama_karyawan || "?", "w-7 h-7 text-[10px] shrink-0")}
+          <div class="min-w-0">
+            <p class="font-semibold text-slate-800 truncate leading-tight">${escapeHtml(r.nama_karyawan || "-")}</p>
+            <p class="text-[10px] text-slate-400 truncate">${escapeHtml(r.cabang || "-")}</p>
+          </div>
         </div>
-        ${badge(r.type_cuti || "Cuti", "blue")}
+        <span class="px-2 py-0.5 rounded-md font-bold text-[10px] bg-blue-50 text-blue-700 border border-blue-100 shrink-0 ml-1.5">
+          ${escapeHtml(r.type_cuti || "Cuti")}
+        </span>
       </div>`).join("");
-  } catch (e) { wrap.innerHTML = emptyState("Gagal memuat data cuti"); }
+  } catch (e) { wrap.innerHTML = `<div class="col-span-full py-2 px-3 text-center text-xs text-slate-400 italic bg-slate-50 rounded-lg">Gagal memuat data cuti</div>`; }
 }
 
 /* ------------------------ e. PENGUMUMAN ------------------------ */
@@ -455,33 +479,125 @@ function openAnnouncementDetailModal(memo) {
 
 
 /* ------------------------ f. CONTRACT EXPIRY ------------------------ */
-async function loadContractExpiry(container) {
+async function loadContractExpiry(container, session) {
   const wrapOuter = container.querySelector("#dash-contract-widget-wrap");
-  wrapOuter.classList.remove("hidden");
-  const wrap = container.querySelector("#dash-contract-list");
+  if (!wrapOuter) return;
+
+  const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
+  const isAtasanRole = ["SPV", "MANAGER", "GM", "ATASAN", "MANAJEMEN"].includes((session.role || "").toUpperCase());
+
   try {
     const snap = await getDocs(collection(db, COL.MASTER_KARYAWAN));
     const now = new Date();
-    const soon = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(k => k.kontrak_habis).map(k => {
-        const t = k.kontrak_habis?.toDate ? k.kontrak_habis.toDate() : new Date(k.kontrak_habis);
-        return { ...k, _expiry: t, _days: Math.round((t - now) / 86400000) };
-      }).filter(k => !isNaN(k._expiry) && k._days >= 0 && k._days <= 60).sort((a, b) => a._days - b._days);
+    const allKaryawan = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    if (!soon.length) { wrap.innerHTML = emptyState("Tidak ada kontrak yang segera berakhir"); return; }
-    wrap.innerHTML = soon.map(k => `
-      <div class="flex flex-col p-3 rounded-xl border border-amber-200 bg-amber-50 gap-3">
-        <div class="flex items-center justify-between">
-          <div><p class="text-sm font-semibold text-slate-800">${escapeHtml(k.nama_karyawan)}</p><p class="text-xs text-slate-600">${escapeHtml(k.jabatan || "-")} • Berakhir: ${fmtDateShort(k._expiry)}</p></div>
-          ${badge(`${k._days} hari lagi`, k._days <= 14 ? "red" : "amber")}
+    const myNameLower = (session.nama || "").trim().toLowerCase();
+    const myUsernameLower = (session.username || "").trim().toLowerCase();
+    const myNik = (session.nik || "").trim();
+
+    const isDirectAtasan = allKaryawan.some(k => {
+      const atasanStr = (k.atasan_langsung || k.atasan || k.nama_atasan || "").toLowerCase();
+      return atasanStr.includes(myNameLower) || atasanStr.includes(myUsernameLower);
+    });
+
+    if (!isHrd && !isAtasanRole && !isDirectAtasan) {
+      wrapOuter.classList.add("hidden");
+      return;
+    }
+
+    wrapOuter.classList.remove("hidden");
+    const wrap = container.querySelector("#dash-contract-list");
+    const countBadge = container.querySelector("#dash-contract-count-badge");
+    const subtitleEl = container.querySelector("#dash-contract-subtitle");
+
+    let expiringList = allKaryawan.filter(k => k.kontrak_habis).map(k => {
+      const t = k.kontrak_habis?.toDate ? k.kontrak_habis.toDate() : new Date(k.kontrak_habis);
+      return { ...k, _expiry: t, _days: Math.round((t - now) / 86400000) };
+    }).filter(k => !isNaN(k._expiry) && k._days >= 0 && k._days <= 60).sort((a, b) => a._days - b._days);
+
+    // If supervisor (not HRD), show only their subordinates
+    if (!isHrd) {
+      expiringList = expiringList.filter(k => {
+        const atasanStr = (k.atasan_langsung || k.atasan || k.nama_atasan || "").toLowerCase();
+        return atasanStr.includes(myNameLower) || atasanStr.includes(myUsernameLower) || (myNik && k.nik_atasan === myNik);
+      });
+      if (subtitleEl) subtitleEl.textContent = "Masa berlaku kontrak bawahan langsung Anda yang berakhir dalam 60 hari ke depan. Lakukan evaluasi sebelum perpanjangan.";
+    }
+
+    if (countBadge) countBadge.textContent = `${expiringList.length} Karyawan`;
+
+    if (!expiringList.length) {
+      wrap.innerHTML = `
+        <div class="col-span-full bg-amber-50/50 border border-amber-200/60 rounded-2xl p-4 text-center">
+          <p class="text-xs font-bold text-amber-900">✨ Semua Kontrak Dalam Kondisi Aman</p>
+          <p class="text-[11px] text-amber-700/80 mt-0.5">Tidak ada karyawan ${!isHrd ? 'bawahan Anda' : ''} yang masa berlaku kontraknya berakhir dalam 60 hari ke depan.</p>
         </div>
-        <div class="flex items-center gap-2 pt-2 border-t border-amber-200/60">
-           <button data-id="${k.id}" data-action="atasan" class="flex-1 bg-maroon-700 hover:bg-maroon-800 text-white text-[11px] py-1.5 rounded transition">Tugaskan Penilaian (Atasan)</button>
+      `;
+      return;
+    }
+
+    wrap.innerHTML = expiringList.map(k => {
+      const days = k._days;
+      let badgeStyle = "bg-amber-100 text-amber-900 border-amber-300";
+      if (days <= 14) badgeStyle = "bg-rose-100 text-rose-800 border-rose-300 animate-pulse";
+      else if (days <= 30) badgeStyle = "bg-orange-100 text-orange-800 border-orange-300";
+
+      return `
+        <div class="flex flex-col p-3.5 bg-white rounded-2xl border border-amber-200/90 shadow-xs justify-between gap-3 hover:border-amber-400 transition">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <p class="font-extrabold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
+                <span>${escapeHtml(k.nama_karyawan || k.nama)}</span>
+                <span class="text-[10px] font-mono text-slate-400 font-normal">(${escapeHtml(k.nik_karyawan || k.nik || '-')})</span>
+              </p>
+              <p class="text-[11px] text-slate-600 font-medium mt-0.5">
+                ${escapeHtml(k.jabatan || "-")} • ${escapeHtml(k.cabang_penempatan || k.cabang || "-")}
+              </p>
+              <p class="text-[10px] text-amber-900 font-semibold mt-1">
+                📅 Habis Kontrak: <span class="underline">${fmtDate(k._expiry)}</span>
+              </p>
+            </div>
+            <span class="px-2.5 py-1 rounded-lg text-[11px] font-bold border shrink-0 ${badgeStyle}">
+              sisa ${days} hari
+            </span>
+          </div>
+
+          <div class="flex items-center gap-1.5 pt-2 border-t border-amber-100/80 flex-wrap">
+            <a href="#penilaian-kontrak" class="flex-1 px-2.5 py-1.5 bg-maroon-700 hover:bg-maroon-800 text-white font-bold text-[11px] rounded-xl text-center transition shadow-xs">
+              ⚡ Evaluasi / Penilaian
+            </a>
+            <a href="#dokumen" class="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold text-[11px] rounded-xl text-center border border-blue-200 transition">
+              📄 Draft PKWT
+            </a>
+            ${k.atasan_langsung ? `
+              <button data-atasan="${escapeHtml(k.atasan_langsung)}" data-nama="${escapeHtml(k.nama_karyawan || k.nama)}" data-days="${days}" class="btn-notify-atasan px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] rounded-xl border border-slate-200" title="Kirim Pengingat Notif Atasan">
+                🔔 Pengingat
+              </button>
+            ` : ''}
+          </div>
         </div>
-      </div>`).join("");
-      
-    // (Fungsi kirim tugas Atasan sudah dimigrasikan ke file penilaian-kontrak untuk manajemen yang lebih baik)
-    wrap.querySelectorAll('button[data-action="atasan"]').forEach(btn => btn.onclick = () => toast("Silakan masuk ke menu Penilaian & Kontrak untuk menugaskan Evaluasi KPI", "info"));
-  } catch (e) { wrap.innerHTML = emptyState("Gagal memuat data kontrak"); }
+      `;
+    }).join("");
+
+    // Bind notify button
+    wrap.querySelectorAll(".btn-notify-atasan").forEach(btn => {
+      btn.onclick = async () => {
+        const targetAtasan = btn.dataset.atasan;
+        const targetNama = btn.dataset.nama;
+        const remainingDays = btn.dataset.days;
+        try {
+          await notifyUser(targetAtasan, `⚠️ Pengingat Penilaian Kontrak: ${targetNama}`, `Masa kontrak ${targetNama} tersisa ${remainingDays} hari. Mohon lakukan Penilaian Kontrak & Evaluasi Kinerja.`, "#penilaian-kontrak");
+          toast(`Notifikasi pengingat evaluasi berhasil dikirim ke ${targetAtasan}`, "success");
+        } catch (e) {
+          toast("Gagal mengirim notifikasi: " + e.message, "error");
+        }
+      };
+    });
+
+  } catch (e) {
+    console.warn("Contract widget err:", e);
+    if (wrapOuter) wrapOuter.classList.add("hidden");
+  }
 }
 
 /* ------------------------ g. ATTENDANCE ANALYTICS ------------------------ */

@@ -1,5 +1,6 @@
 import { COL } from "../firebase-config.js";
-import { fsAdd, fsGetAll, fsUpdate, genId, toast, sendEmailNotif, getTargetsForRole, createLoginToken, escapeHtml } from "../utils.js";
+import { fsAdd, fsGetAll, fsUpdate, genId, toast, sendEmailNotif, getTargetsForRole, createLoginToken, escapeHtml, openModal, closeModal, printSalesKlaimForm } from "../utils.js";
+import { letterheadHtml } from "../branding.js";
 
 export async function mount(container, { session }) {
   const tbody = container.querySelector("#kb-tbody");
@@ -167,10 +168,11 @@ export async function mount(container, { session }) {
            </style>
         </head>
         <body>
-           <div class="header">
-              <h2>PT. ANDELA JAYA SENTOSA</h2>
-              <p>DOKUMEN REKAP KLAIM BENSIN & OPERASIONAL — CABANG ${escapeHtml(currentBranch).toUpperCase()}</p>
-              <p>Tanggal Cetak: ${new Date().toLocaleDateString("id-ID", { dateStyle: "full" })}</p>
+           ${letterheadHtml()}
+           <div class="header" style="border:none;margin-bottom:15px;padding-bottom:0;">
+              <h2 style="font-size:16px;color:#7a1f2b;font-weight:bold;margin:0;">DOKUMEN REKAP KLAIM BENSIN & OPERASIONAL</h2>
+              <p style="margin:4px 0 0;font-size:12px;color:#475569;font-weight:bold;">CABANG ${escapeHtml(currentBranch).toUpperCase()}</p>
+              <p style="margin:2px 0 0;font-size:11px;color:#64748b;">Tanggal Cetak: ${new Date().toLocaleDateString("id-ID", { dateStyle: "full" })}</p>
            </div>
 
            <table>
@@ -281,9 +283,9 @@ export async function mount(container, { session }) {
            </style>
         </head>
         <body>
-           <div class="header">
-              <h2>CV ANDELA JAYA</h2>
-              <h3>FORM CLAIM SALES</h3>
+           ${letterheadHtml()}
+           <div class="header" style="border:none;margin-bottom:15px;padding-bottom:0;">
+              <h2 style="font-size:16px;color:#7a1f2b;font-weight:bold;margin:0;">FORM CLAIM BENSIN & OPERASIONAL SALES</h2>
            </div>
 
            <div class="meta-box">
@@ -595,7 +597,34 @@ export async function mount(container, { session }) {
       
       submitBtn.disabled = false;
       submitBtn.textContent = "Ajukan Klaim";
-      window.location.hash = "#dashboard";
+      
+      openModal({
+        title: "Pengajuan Klaim Berhasil!",
+        bodyHtml: `
+          <div class="text-center py-4 space-y-4">
+             <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-3xl font-bold">✓</div>
+             <div>
+                <h3 class="font-bold text-slate-800 text-lg">Klaim Bensin Berhasil Diajukan</h3>
+                <p class="text-sm text-slate-600 mt-1 max-w-md mx-auto">Pengajuan Anda sebesar <b>Rp ${Math.round(totalKlaim).toLocaleString("id-ID")}</b> telah disimpan. Silakan unduh atau cetak form fisik klaim untuk diserahkan ke HRD.</p>
+             </div>
+          </div>
+        `,
+        footerHtml: `
+          <div class="flex items-center justify-between w-full">
+             <button id="btn-done-dashboard" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition">Kembali ke Dashboard</button>
+             <button id="btn-print-success-klaim" class="px-5 py-2.5 bg-emerald-700 text-white rounded-lg text-xs font-bold hover:bg-emerald-800 transition shadow-md flex items-center gap-1.5">🖨️ Cetak / Download Form Klaim (PDF)</button>
+          </div>
+        `,
+        onMount: (m) => {
+           m.querySelector("#btn-print-success-klaim").onclick = () => {
+              printSalesKlaimForm(payload);
+           };
+           m.querySelector("#btn-done-dashboard").onclick = () => {
+              closeModal();
+              window.location.hash = "#riwayat";
+           };
+        }
+      });
       
     } catch (e) {
       toast("Gagal mengajukan klaim: " + e.message, "error");

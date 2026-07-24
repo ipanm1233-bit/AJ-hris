@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs } from "../firebase-config.js";
-import { fsGetAll, fsUpdate, fsAdd, genId, openModal, closeModal, toast, fmtDateTime, escapeHtml, sendEmailNotif, getTargetsForRole, createLoginToken, notifyUser } from "../utils.js";
+import { fsGetAll, fsUpdate, fsAdd, genId, openModal, closeModal, toast, fmtDateTime, escapeHtml, sendEmailNotif, getTargetsForRole, createLoginToken, notifyUser, renderPengajuanDetailHtml, printSalesKlaimForm } from "../utils.js";
 import { badge, emptyState, skeletonRows } from "../components.js";
 
 const CUTI_RULES = {
@@ -141,92 +141,79 @@ function showDetail(row, session) {
   const isPending = row.status_final === "MENUNGGU";
   const canEdit = isHrd && isKlaimBensin && isPending;
   
-  const renderValue = (key, val) => {
-    if (key === "rincian_tabel" && canEdit) {
-       let tableHtml = `<div class="overflow-x-auto mt-2 border border-slate-200 rounded-lg">
-          <table class="w-full text-xs text-left whitespace-nowrap" id="edit-klaim-table">
-            <thead class="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th class="p-2 font-medium text-slate-500">Tanggal</th>
-                <th class="p-2 font-medium text-slate-500">KM Awal</th>
-                <th class="p-2 font-medium text-slate-500">KM Akhir</th>
-                <th class="p-2 font-medium text-slate-500">Parkir (Rp)</th>
-                <th class="p-2 font-medium text-slate-500">Denda (Rp)</th>
-                <th class="p-2 font-medium text-slate-500">Total Petrol (Rp)</th>
-                <th class="p-2 font-medium text-amber-600 bg-amber-50">Catatan Revisi HRD</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-100">`;
-            
-        val.forEach((item, index) => {
-           tableHtml += `
-             <tr data-index="${index}">
-                <td class="p-2"><input type="date" class="klaim-input border border-slate-200 rounded p-1.5 w-full outline-none focus:border-maroon-400" data-field="tanggal" value="${item.tanggal}"></td>
-                <td class="p-2"><input type="number" class="klaim-input border border-slate-200 rounded p-1.5 w-20 outline-none focus:border-maroon-400" data-field="km_awal" value="${item.km_awal}"></td>
-                <td class="p-2"><input type="number" class="klaim-input border border-slate-200 rounded p-1.5 w-20 outline-none focus:border-maroon-400" data-field="km_akhir" value="${item.km_akhir}"></td>
-                <td class="p-2"><input type="number" class="klaim-input border border-slate-200 rounded p-1.5 w-20 outline-none focus:border-maroon-400" data-field="parkir" value="${item.parkir}"></td>
-                <td class="p-2"><input type="number" class="klaim-input border border-slate-200 rounded p-1.5 w-20 outline-none focus:border-maroon-400" data-field="denda" value="${item.denda}"></td>
-                <td class="p-2 text-right"><span class="klaim-row-total font-semibold text-slate-700">${item.total_baris.toLocaleString('id-ID')}</span></td>
-                <td class="p-2 bg-amber-50/30"><input type="text" class="klaim-input border border-amber-200 rounded p-1.5 w-32 outline-none focus:border-amber-400 bg-white" data-field="catatan_hrd" value="${item.catatan_hrd || ''}" placeholder="Cth: KM Akhir direvisi"></td>
-             </tr>
-           `;
-        });
-        tableHtml += `</tbody></table></div>`;
-        return tableHtml;
-    }
-    
-    if (Array.isArray(val)) {
-      if (val.length > 0 && typeof val[0] === 'object') {
-        const headers = Object.keys(val[0]);
-        let tableHtml = `<div class="overflow-x-auto mt-2 border border-slate-200 rounded-lg">
-          <table class="w-full text-xs text-left whitespace-nowrap">
-            <thead class="bg-slate-50 border-b border-slate-200">
-              <tr>`;
-        headers.forEach(h => { tableHtml += `<th class="p-2 font-medium text-slate-500 capitalize">${escapeHtml(h.replace(/_/g, " "))}</th>`; });
-        tableHtml += `</tr></thead><tbody class="divide-y divide-slate-100">`;
-        
-        val.forEach(item => {
-          tableHtml += `<tr>`;
-          headers.forEach(h => {
-            let cellVal = item[h];
-            if (typeof cellVal === 'number' && (h.includes('total') || h.includes('parkir') || h.includes('denda') || h.includes('biaya'))) cellVal = "Rp " + cellVal.toLocaleString('id-ID');
-            if (h === 'catatan_hrd' && cellVal) tableHtml += `<td class="p-2 text-amber-700 font-medium bg-amber-50">${escapeHtml(String(cellVal))}</td>`;
-            else tableHtml += `<td class="p-2 text-slate-700">${escapeHtml(String(cellVal || '-'))}</td>`;
-          });
-          tableHtml += `</tr>`;
-        });
-        tableHtml += `</tbody></table></div>`;
-        return tableHtml;
-      }
-      return `<span class="text-slate-800 font-medium text-right">${escapeHtml(val.join(", "))}</span>`;
-    }
-    
-    if (typeof val === 'number' && (key.includes('total') || key.includes('biaya') || key.includes('harga') || key.includes('kasbon'))) {
-       return `<span class="text-slate-800 font-medium text-right font-mono text-sm" ${key==='total_klaim' && canEdit ? 'id="edit-klaim-grandtotal"' : ''}>Rp ${val.toLocaleString('id-ID')}</span>`;
-    }
-    return `<span class="text-slate-800 font-medium text-right">${escapeHtml(String(val))}</span>`;
-  };
+  let body = "";
+  if (!canEdit) {
+     body = renderPengajuanDetailHtml(row, session);
+  } else {
+     const renderValue = (key, val) => {
+       if (key === "rincian_tabel") {
+          let tableHtml = `<div class="overflow-x-auto mt-2 border border-slate-200 rounded-lg">
+             <table class="w-full text-xs text-left whitespace-nowrap" id="edit-klaim-table">
+               <thead class="bg-slate-50 border-b border-slate-200">
+                 <tr>
+                   <th class="p-2 font-medium text-slate-500">Tanggal</th>
+                   <th class="p-2 font-medium text-slate-500">KM Awal</th>
+                   <th class="p-2 font-medium text-slate-500">KM Akhir</th>
+                   <th class="p-2 font-medium text-slate-500">Parkir (Rp)</th>
+                   <th class="p-2 font-medium text-slate-500">Denda (Rp)</th>
+                   <th class="p-2 font-medium text-slate-500">Total Petrol (Rp)</th>
+                   <th class="p-2 font-medium text-amber-600 bg-amber-50">Catatan Revisi HRD</th>
+                 </tr>
+               </thead>
+               <tbody class="divide-y divide-slate-100">`;
+               
+           val.forEach((item, index) => {
+              tableHtml += `
+                <tr data-index="${index}">
+                   <td class="p-2"><input type="date" class="klaim-input border border-slate-200 rounded p-1.5 w-full outline-none focus:border-maroon-400" data-field="tanggal" value="${item.tanggal}"></td>
+                   <td class="p-2"><input type="number" class="klaim-input border border-slate-200 rounded p-1.5 w-20 outline-none focus:border-maroon-400" data-field="km_awal" value="${item.km_awal}"></td>
+                   <td class="p-2"><input type="number" class="klaim-input border border-slate-200 rounded p-1.5 w-20 outline-none focus:border-maroon-400" data-field="km_akhir" value="${item.km_akhir}"></td>
+                   <td class="p-2"><input type="number" class="klaim-input border border-slate-200 rounded p-1.5 w-20 outline-none focus:border-maroon-400" data-field="parkir" value="${item.parkir}"></td>
+                   <td class="p-2"><input type="number" class="klaim-input border border-slate-200 rounded p-1.5 w-20 outline-none focus:border-maroon-400" data-field="denda" value="${item.denda}"></td>
+                   <td class="p-2 text-right"><span class="klaim-row-total font-semibold text-slate-700">${item.total_baris.toLocaleString('id-ID')}</span></td>
+                   <td class="p-2 bg-amber-50/30"><input type="text" class="klaim-input border border-amber-200 rounded p-1.5 w-32 outline-none focus:border-amber-400 bg-white" data-field="catatan_hrd" value="${item.catatan_hrd || ''}" placeholder="Cth: KM Akhir direvisi"></td>
+                </tr>
+              `;
+           });
+           tableHtml += `</tbody></table></div>`;
+           return tableHtml;
+       }
+       if (typeof val === 'number' && (key.includes('total') || key.includes('biaya') || key.includes('harga') || key.includes('kasbon'))) {
+          return `<span class="text-slate-800 font-medium text-right font-mono text-sm" ${key==='total_klaim' ? 'id="edit-klaim-grandtotal"' : ''}>Rp ${val.toLocaleString('id-ID')}</span>`;
+       }
+       return `<span class="text-slate-800 font-medium text-right">${escapeHtml(String(val))}</span>`;
+     };
 
-  const body = `
-    <div class="space-y-4">
-      ${Object.entries(detail).map(([k, v]) => {
-        if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'object') {
-          return `<div class="text-sm border-b border-slate-50 pb-3"><span class="text-slate-500 capitalize block mb-1 font-medium">${escapeHtml(k.replace(/_/g, " "))}</span>${renderValue(k, v)}</div>`;
-        }
-        return `<div class="flex justify-between items-center gap-4 text-sm border-b border-slate-50 pb-2"><span class="text-slate-500 capitalize">${escapeHtml(k.replace(/_/g, " "))}</span>${renderValue(k, v)}</div>`;
-      }).join("")}
-    </div>`;
+     body = `
+       <div class="space-y-4">
+         ${Object.entries(detail).map(([k, v]) => {
+           if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'object') {
+             return `<div class="text-sm border-b border-slate-50 pb-3"><span class="text-slate-500 capitalize block mb-1 font-medium">${escapeHtml(k.replace(/_/g, " "))}</span>${renderValue(k, v)}</div>`;
+           }
+           return `<div class="flex justify-between items-center gap-4 text-sm border-b border-slate-50 pb-2"><span class="text-slate-500 capitalize">${escapeHtml(k.replace(/_/g, " "))}</span>${renderValue(k, v)}</div>`;
+         }).join("")}
+       </div>`;
+  }
     
   let footerHtml = `<button id="detail-close" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Tutup</button>`;
-  if (canEdit) footerHtml += `<button id="detail-save" class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 transition shadow-md">Simpan Revisi HRD</button>`;
+  if (isKlaimBensin) {
+     footerHtml = `<button id="detail-print-klaim" class="px-4 py-2 rounded-lg text-sm font-bold text-white bg-emerald-700 hover:bg-emerald-800 transition shadow-sm mr-auto flex items-center gap-1.5">🖨️ Cetak / Download Form Klaim</button>` + footerHtml;
+  }
+  if (canEdit) {
+     footerHtml += `<button id="detail-save" class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 transition shadow-md">Simpan Revisi HRD</button>`;
+  }
 
   openModal({ 
-     title: `Detail • ${row.nama_form}`, 
+     title: `Detail Pengajuan • ${escapeHtml(row.nama_form || "Pengajuan")}`, 
      bodyHtml: body, 
-     size: canEdit ? "xl" : "lg", 
+     size: canEdit || isKlaimBensin ? "xl" : "lg", 
      footerHtml: footerHtml,
     onMount: (m) => {
       m.querySelector("#detail-close").onclick = closeModal;
+      const printBtn = m.querySelector("#detail-print-klaim");
+      if (printBtn) {
+         printBtn.onclick = () => printSalesKlaimForm(row);
+      }
       if (canEdit) {
         const table = m.querySelector("#edit-klaim-table");
         const grandTotalEl = m.querySelector("#edit-klaim-grandtotal");

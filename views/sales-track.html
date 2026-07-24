@@ -22,41 +22,41 @@
         </svg>
       </div>
       <div>
-        <h4 class="font-bold text-slate-800 text-sm">Status Integrasi Aktif</h4>
-        <p class="text-xs text-slate-500 mt-0.5">Berhasil terhubung ke cloud server <b>Kanal.work (API v2.4)</b>. Sinkronisasi terakhir dilakukan otomatis 15 menit yang lalu.</p>
+        <h4 class="font-bold text-slate-800 text-sm">Status Integrasi API Kanal Aktif</h4>
+        <p class="text-xs text-slate-500 mt-0.5" id="kanal-status-subtitle">Terhubung ke cloud server <b>API Kanal (CV ANDELA JAYA CIREBON)</b>. Mengsinkronkan data check-in sales di toko & outlet mitra.</p>
       </div>
     </div>
-    <span class="px-3 py-1 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded-full uppercase tracking-wider">● Online</span>
+    <span class="px-3 py-1 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded-full uppercase tracking-wider shrink-0">● Terhubung</span>
   </div>
 
   <!-- METRICS CARDS -->
   <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
     <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
-      <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Total Jarak Tempuh</p>
-      <p id="track-dist" class="text-3xl font-black text-slate-800 mt-2">78.5 km</p>
+      <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Total Check-in Toko</p>
+      <p id="track-dist" class="text-3xl font-black text-slate-800 mt-2">0 Visit</p>
       <div class="flex items-center gap-1 text-[11px] text-emerald-600 font-semibold mt-1">
-        <span>+12.4% dari kemarin</span>
+        <span id="track-company-badge">CV ANDELA JAYA CIREBON</span>
       </div>
     </div>
     <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
-      <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Rasio Effective Call (EC)</p>
-      <p id="track-ec" class="text-3xl font-black text-maroon-700 mt-2">84.2%</p>
+      <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Effective Call (EC) Rate</p>
+      <p id="track-ec" class="text-3xl font-black text-maroon-700 mt-2">100%</p>
       <div class="flex items-center gap-1 text-[11px] text-emerald-600 font-semibold mt-1">
-        <span>Target bulanan: 80%</span>
+        <span>Order Toko Selesai</span>
       </div>
     </div>
     <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
-      <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Rata-rata Waktu Kunjungan</p>
-      <p id="track-time" class="text-3xl font-black text-blue-600 mt-2">28 menit</p>
+      <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Rata-rata Durasi Visit</p>
+      <p id="track-time" class="text-3xl font-black text-blue-600 mt-2">35 Menit</p>
       <div class="flex items-center gap-1 text-[11px] text-slate-500 mt-1">
         <span>Per outlet mitra</span>
       </div>
     </div>
     <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
-      <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Lokasi Check-in Hari Ini</p>
-      <p id="track-visits" class="text-3xl font-black text-emerald-600 mt-2">12 Toko</p>
+      <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Check-in Toko Hari Ini</p>
+      <p id="track-visits" class="text-3xl font-black text-emerald-600 mt-2">0 Outlet</p>
       <div class="flex items-center gap-1 text-[11px] text-emerald-600 font-semibold mt-1">
-        <span>Semua sales aktif</span>
+        <span>Kunjungan Salesman</span>
       </div>
     </div>
   </div>

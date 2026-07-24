@@ -220,16 +220,46 @@ function openComposeModal(container, session, karyawan, users, reload) {
 
           await fsAdd(COL.BROADCAST, payload, id);
 
-          const targetUsers = targetType === "ALL" ? users : users.filter(u => targetList.includes(u.nama));
-          const targetUserIds = targetUsers.map(u => u.id);
+          // Match target users & karyawan
+          const fcmTokensSet = new Set();
+          const targetEmailsSet = new Set();
+          const targetUserIdsSet = new Set();
+
+          const isMatch = (name, uname, nik) => {
+            if (targetType === "ALL") return true;
+            return targetList.some(t => {
+              const term = (t || "").toLowerCase();
+              const n = (name || "").toLowerCase();
+              const u = (uname || "").toLowerCase();
+              const nk = (nik || "").toLowerCase();
+              return n === term || u === term || nk === term || n.includes(term) || term.includes(n);
+            });
+          };
+
+          users.forEach(u => {
+            if (isMatch(u.nama, u.username, u.nik)) {
+              if (u.id || u.username) targetUserIdsSet.add(u.id || u.username);
+              if (u.fcm_token) fcmTokensSet.add(u.fcm_token);
+              if (u.email) targetEmailsSet.add(u.email);
+            }
+          });
+
+          karyawan.forEach(k => {
+            if (isMatch(k.nama_karyawan || k.nama, k.username, k.nik_karyawan || k.nik)) {
+              if (k.username || k.nik) targetUserIdsSet.add(k.username || k.nik);
+              if (k.fcm_token) fcmTokensSet.add(k.fcm_token);
+              if (k.email) targetEmailsSet.add(k.email);
+            }
+          });
 
           // Notif in-app (lonceng)
+          const targetUserIds = Array.from(targetUserIdsSet);
           await Promise.all(targetUserIds.map(uname => fsAdd(COL.NOTIFICATIONS, {
             username_target: uname, judul: `Memo Baru: ${payload.judul}`, pesan: plainText.substring(0, 80) + '...', dibaca: false, tanggal: payload.tanggal
           }, genId("NTF"))));
 
-          // Email (jalur yang sudah ada sebelumnya — TETAP dipertahankan)
-          const targetEmails = targetUsers.map(u => u.email).filter(Boolean);
+          // Email
+          const targetEmails = Array.from(targetEmailsSet);
           if (targetEmails.length > 0) {
             const emailTemplate = `
               <div style="font-family: Arial, sans-serif; background-color: #f8fafc; padding: 20px;">
@@ -239,10 +269,9 @@ function openComposeModal(container, session, karyawan, users, reload) {
             await Promise.all(targetEmails.map(email => sendEmailNotif(email, `[Memo HRIS] ${payload.judul}`, emailTemplate)));
           }
 
-          // Push notification ke HP (baru)
-          const targetTokens = targetUsers.map(u => u.fcm_token).filter(Boolean);
+          // Push notification ke HP (FCM)
+          const targetTokens = Array.from(fcmTokensSet);
           if (targetTokens.length > 0) {
-            // Parameter ke-4 adalah rute menu aplikasinya
             await sendFCMNotif(targetTokens, `📢 Memo Baru: ${payload.judul}`, plainText.substring(0, 80) + '...', '/#dashboard');
           }
 
