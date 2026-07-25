@@ -506,8 +506,8 @@ export function printSalesKlaimForm(item) {
     const parkirRp = Number(r.parkir || 0);
     const dendaRp = Number(r.denda || 0);
     const trip = Math.max(0, kmAkhir - kmAwal);
-    const petrolRp = Math.round(trip * (HARGA_BENSIN / RASIO_KM));
-    const rowTotal = Number(r.total_baris || (petrolRp + parkirRp - dendaRp));
+    const petrolRp = trip * (HARGA_BENSIN / RASIO_KM); 
+    const rowTotal = petrolRp + parkirRp - dendaRp;
 
     totalJarak += trip;
     totalPetrol += petrolRp;
