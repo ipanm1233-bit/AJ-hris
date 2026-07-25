@@ -979,8 +979,8 @@ export async function notifyUser(username, judul, pesan, link = "") {
         const uData = d.data();
         const matches = d.id === rawTarget ||
                         uData.username === rawTarget ||
-                        (uData.nama && uData.nama.toLowerCase().includes(String(rawTarget).toLowerCase())) ||
-                        (uData.nik && uData.nik === rawTarget);
+                        (uData.nik && uData.nik === rawTarget) ||
+                        (uData.nama && uData.nama.toLowerCase() === String(rawTarget).toLowerCase());
         if (matches) {
           if (uData.fcm_token) tokens.add(uData.fcm_token);
           if (uData.email && !targetEmail) targetEmail = uData.email;
