@@ -14,13 +14,16 @@ const messaging = firebase.messaging();
 
 // 1. Menerima pesan & menyelipkan link rahasia
 messaging.onBackgroundMessage(function(payload) {
-  const notificationTitle = payload.notification.title || "HRIS Andela Jaya";
+  console.log('[firebase-messaging-sw.js] Background message received:', payload);
+  const notificationTitle = (payload.notification && payload.notification.title) || (payload.data && payload.data.title) || "HRIS Andela Jaya";
+  const notificationBody = (payload.notification && payload.notification.body) || (payload.data && payload.data.body) || "Ada pembaruan baru.";
+  const linkUrl = (payload.data && payload.data.link) || (payload.fcmOptions && payload.fcmOptions.link) || '/';
+
   const notificationOptions = {
-    body: payload.notification.body || "Ada pembaruan baru.",
+    body: notificationBody,
     icon: '/assets/icon-192x192.png',
     badge: '/assets/icon-192x192.png',
-    // Tangkap link dari server
-    data: { link: payload.data ? payload.data.link : '/' } 
+    data: { link: linkUrl } 
   };
   self.registration.showNotification(notificationTitle, notificationOptions);
 });
