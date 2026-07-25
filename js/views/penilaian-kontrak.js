@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, limit } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, createLoginToken, notifyUser, daysBetween } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan } from "../utils.js";
 import { renderCrudModule, badge, emptyState, skeletonRows, avatar } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
@@ -220,7 +220,7 @@ export async function mount(container, { session }) {
                 <div class="flex items-center gap-1.5 flex-wrap text-[11px] text-slate-500 mb-4 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                   <span class="font-semibold text-slate-700">🏢 ${escapeHtml(item.cabang || "Pusat")}</span>
                   ${item.divisi ? `<span>• Divisi: ${escapeHtml(item.divisi)}</span>` : ''}
-                  <span>• Status: <strong class="text-slate-800">${escapeHtml(item.status_karyawan || "KONTRAK")}</strong></span>
+                  <span>• Status: <strong class="text-slate-800">${escapeHtml(formatStatusKaryawan(item.status_karyawan))}</strong></span>
                 </div>
 
                 <!-- Latest Contract Info -->
@@ -317,11 +317,13 @@ export async function mount(container, { session }) {
               <div class="flex flex-col">
                 <label class="text-[10px] font-bold text-slate-400 uppercase">Status Karyawan</label>
                 <select id="modal-emp-type" class="text-xs font-semibold px-2 py-1 rounded-lg border border-slate-200 outline-none focus:border-maroon-500">
-                  <option value="KONTRAK" ${(empData.status_karyawan || "KONTRAK") === "KONTRAK" ? 'selected' : ''}>KONTRAK</option>
-                  <option value="TETAP" ${empData.status_karyawan === "TETAP" ? 'selected' : ''}>TETAP</option>
-                  <option value="PROBATION" ${empData.status_karyawan === "PROBATION" ? 'selected' : ''}>PROBATION</option>
-                  <option value="OUTSOURCING" ${empData.status_karyawan === "OUTSOURCING" ? 'selected' : ''}>OUTSOURCING</option>
-                  <option value="RESIGN" ${empData.status_karyawan === "RESIGN" ? 'selected' : ''}>RESIGN</option>
+                  <option value="PKWTT" ${String(empData.status_karyawan || "").toUpperCase().includes("PKWTT") || empData.status_karyawan === "TETAP" ? 'selected' : ''}>PKWTT (Karyawan Tetap)</option>
+                  <option value="PKWT" ${String(empData.status_karyawan || "").toUpperCase().includes("PKWT") || empData.status_karyawan === "KONTRAK" || !empData.status_karyawan ? 'selected' : ''}>PKWT (Karyawan Kontrak)</option>
+                  <option value="PROBATION" ${String(empData.status_karyawan || "").toUpperCase().includes("PROBATION") ? 'selected' : ''}>Probation (Masa Percobaan)</option>
+                  <option value="MAGANG" ${String(empData.status_karyawan || "").toUpperCase().includes("MAGANG") ? 'selected' : ''}>Magang</option>
+                  <option value="BURUH HARIAN" ${String(empData.status_karyawan || "").toUpperCase().includes("BURUH") ? 'selected' : ''}>Buruh Harian</option>
+                  <option value="OUTSOURCING" ${String(empData.status_karyawan || "").toUpperCase().includes("OUTSOURCING") ? 'selected' : ''}>Outsourcing</option>
+                  <option value="LAINNYA" ${String(empData.status_karyawan || "").toUpperCase().includes("LAINNYA") || empData.status_karyawan === "RESIGN" ? 'selected' : ''}>Lainnya</option>
                 </select>
               </div>
               ${empData.id ? `

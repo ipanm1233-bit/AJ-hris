@@ -20,7 +20,7 @@ export async function mount(container) {
       { name: "jabatan", label: "Jabatan", type: "text", required: true },
       { name: "divisi", label: "Divisi", type: "text" },
       { name: "jenis_kelamin", label: "Jenis Kelamin", type: "select", options: ["LAKI-LAKI", "PEREMPUAN"] },
-      { name: "status_karyawan", label: "Status Karyawan", type: "select", options: ["PKWT", "PKWTT", "KONTRAK", "PROBATION"] },
+      { name: "status_karyawan", label: "Status Karyawan", type: "select", options: ["PKWTT (Karyawan Tetap)", "PKWT (Karyawan Kontrak)", "Probation (Masa Percobaan)", "Magang", "Buruh Harian", "Outsourcing", "Lainnya"] },
       { name: "tanggal_join", label: "Tanggal Join", type: "date" },
       { name: "kontrak_habis", label: "Kontrak Habis", type: "date" },
       { name: "no_hp_aktif", label: "No HP Aktif", type: "text" },

@@ -71,7 +71,10 @@ async function loadUsersTab(container) {
 
 async function setupRbacMenuTab(container, users) {
   const select = container.querySelector("#rbac-user-select");
-  select.innerHTML = users.map(u => `<option value="${u.id}">${escapeHtml(u.nama)} (${u.role})</option>`).join("");
+  select.innerHTML = users.map(u => {
+    const key = u.username || u.id;
+    return `<option value="${escapeHtml(key)}">${escapeHtml(u.nama)} (${u.username || u.role})</option>`;
+  }).join("");
   const grid = container.querySelector("#rbac-menu-grid");
 
   const groupLabel = { all: "Menu Utama", hrd: "Modul HRD", manajemen: "Modul Manajemen" };
@@ -82,22 +85,28 @@ async function setupRbacMenuTab(container, users) {
       <span class="text-[10px] text-slate-400 ml-auto">${groupLabel[m.group]}</span>
     </label>`).join("");
 
-  async function loadForUser(username) {
+  async function loadForUser(userKey) {
     const overrides = await loadPermissionOverrides(true);
-    const current = overrides[username]?.allowed_menus || [];
+    const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey);
+    const altKey = userObj ? (userObj.id || userObj.username) : userKey;
+    const current = (overrides[userKey] || overrides[altKey])?.allowed_menus || [];
     grid.querySelectorAll("[data-menu]").forEach(cb => { cb.checked = current.includes(cb.dataset.menu); });
   }
   await loadForUser(select.value);
   select.addEventListener("change", () => loadForUser(select.value));
 
   container.querySelector("#rbac-menu-save").addEventListener("click", async () => {
-    const username = select.value;
+    const userKey = select.value;
+    const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey);
     const checked = Array.from(grid.querySelectorAll("[data-menu]:checked")).map(cb => cb.dataset.menu);
     try {
-      await fsUpdate(COL.USER_PERMISSIONS, username, { allowed_menus: checked }).catch(async () => {
-        await fsAdd(COL.USER_PERMISSIONS, { allowed_menus: checked, allowed_forms: [] }, username);
-      });
-      toast(`Hak akses menu untuk ${username} berhasil disimpan`, "success");
+      const keysToSave = new Set([userKey, userObj?.username, userObj?.id].filter(Boolean));
+      for (const k of keysToSave) {
+        await fsUpdate(COL.USER_PERMISSIONS, k, { allowed_menus: checked }).catch(async () => {
+          await fsAdd(COL.USER_PERMISSIONS, { allowed_menus: checked, allowed_forms: [] }, k);
+        });
+      }
+      toast(`Hak akses menu untuk ${userObj?.nama || userKey} berhasil disimpan`, "success");
     } catch (e) { toast("Gagal menyimpan: " + e.message, "error"); }
   });
 }
@@ -105,7 +114,10 @@ async function setupRbacMenuTab(container, users) {
 async function setupRbacFormTab(container, users) {
   const forms = await fsGetAll(COL.FORM_CONFIG);
   const select = container.querySelector("#rbac-form-user-select");
-  select.innerHTML = users.map(u => `<option value="${u.id}">${escapeHtml(u.nama)} (${u.role})</option>`).join("");
+  select.innerHTML = users.map(u => {
+    const key = u.username || u.id;
+    return `<option value="${escapeHtml(key)}">${escapeHtml(u.nama)} (${u.username || u.role})</option>`;
+  }).join("");
   const grid = container.querySelector("#rbac-form-grid");
 
   if (!forms.length) { grid.innerHTML = emptyState("Belum ada formulir terdaftar di Form Builder"); }
@@ -115,21 +127,27 @@ async function setupRbacFormTab(container, users) {
       <span class="text-slate-700">${escapeHtml(f.nama_form || f.id)}</span>
     </label>`).join("");
 
-  async function loadForUser(username) {
+  async function loadForUser(userKey) {
     const overrides = await loadPermissionOverrides(true);
-    const current = overrides[username]?.allowed_forms || [];
+    const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey);
+    const altKey = userObj ? (userObj.id || userObj.username) : userKey;
+    const current = (overrides[userKey] || overrides[altKey])?.allowed_forms || [];
     grid.querySelectorAll("[data-form]").forEach(cb => { cb.checked = current.includes(cb.dataset.form); });
   }
   if (forms.length) { await loadForUser(select.value); select.addEventListener("change", () => loadForUser(select.value)); }
 
   container.querySelector("#rbac-form-save").addEventListener("click", async () => {
-    const username = select.value;
+    const userKey = select.value;
+    const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey);
     const checked = Array.from(grid.querySelectorAll("[data-form]:checked")).map(cb => cb.dataset.form);
     try {
-      await fsUpdate(COL.USER_PERMISSIONS, username, { allowed_forms: checked }).catch(async () => {
-        await fsAdd(COL.USER_PERMISSIONS, { allowed_forms: checked, allowed_menus: [] }, username);
-      });
-      toast(`Hak akses formulir untuk ${username} berhasil disimpan`, "success");
+      const keysToSave = new Set([userKey, userObj?.username, userObj?.id].filter(Boolean));
+      for (const k of keysToSave) {
+        await fsUpdate(COL.USER_PERMISSIONS, k, { allowed_forms: checked }).catch(async () => {
+          await fsAdd(COL.USER_PERMISSIONS, { allowed_forms: checked, allowed_menus: [] }, k);
+        });
+      }
+      toast(`Hak akses formulir untuk ${userObj?.nama || userKey} berhasil disimpan`, "success");
     } catch (e) { toast("Gagal menyimpan: " + e.message, "error"); }
   });
 }

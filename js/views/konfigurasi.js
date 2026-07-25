@@ -33,7 +33,8 @@ export async function mount(container, { session }) {
             <option value="GLOBAL">🌐 [ GLOBAL ] - Berlaku Default Untuk Semua Karyawan</option>
             <optgroup label="Pengaturan Khusus Per-Karyawan">
               ${listKaryawan.map(k => {
-                const identifier = (k.username || k.nik_karyawan || k.nik || k.nama_karyawan || k.nama || "").trim().toLowerCase();
+                const rawId = String(k.username || k.nik_karyawan || k.nik || k.nama_karyawan || k.nama || "");
+                const identifier = rawId.trim().toLowerCase();
                 const displayName = `${k.nama_karyawan || k.nama || 'Karyawan'} (${k.nik_karyawan || k.nik || '-'})`;
                 return `<option value="${escapeHtml(identifier)}">👤 ${escapeHtml(displayName)}</option>`;
               }).join("")}

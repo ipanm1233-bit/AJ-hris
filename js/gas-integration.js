@@ -113,7 +113,7 @@ export async function uploadFileToDrive(file, folderPath) {
     }
     throw new Error("Respons Apps Script tidak menyertakan URL file.");
   } catch (err) {
-    console.warn("Upload Google Drive via Apps Script tidak berhasil, menyimpan sebagai file tertanam sistem (Data URL):", err);
+    console.info("Upload Google Drive via Apps Script tidak aktif/diizinkan. Menyimpan lampiran secara internal (Data URL).");
     return `data:${file.type || "application/octet-stream"};base64,${base64}`;
   }
 }

@@ -416,19 +416,28 @@ async function loadAnnouncements(container, session) {
     const q = query(collection(db, COL.BROADCAST), orderBy("tanggal", "desc"), limit(20));
     const snap = await getDocs(q);
     const now = new Date();
+    const isHrdRole = ["HRD", "SUPERADMIN", "ADMIN"].includes((session?.role || "").toUpperCase());
     const validMemos = snap.docs.map(d => d.data()).filter(r => {
       if (r.tanggal_berakhir) { 
         const tglBatas = new Date(r.tanggal_berakhir); tglBatas.setHours(23, 59, 59, 999);
         if (tglBatas < now) return false;
       }
       
+      if (isHrdRole) return true;
+      if (r.dibuat_oleh && r.dibuat_oleh.toLowerCase() === String(session?.nama || "").toLowerCase()) return true;
+
       // Filter Penerima Spesifik
       if (r.target_type === "SPESIFIK") {
-        const list = (r.target_list || []).map(x => String(x).trim().toLowerCase());
+        const list = (r.target_list || []).map(x => String(x || "").trim().toLowerCase());
         const myName = String(session?.nama || "").trim().toLowerCase();
         const myUsername = String(session?.username || "").trim().toLowerCase();
         const myNik = String(session?.nik || "").trim().toLowerCase();
-        return list.includes(myName) || list.includes(myUsername) || (myNik && list.includes(myNik));
+        return list.some(target => 
+          target === myName || 
+          target === myUsername || 
+          (myNik && target === myNik) ||
+          (myName && (target.includes(myName) || myName.includes(target)))
+        );
       }
       return true;
     }).slice(0, 6);

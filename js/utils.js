@@ -203,6 +203,23 @@ export function closeModal() {
   document.body.classList.remove("overflow-hidden");
   setTimeout(() => el.remove(), 200);
 }
+if (typeof window !== "undefined") {
+  window.openModal = openModal;
+  window.closeModal = closeModal;
+}
+
+export function formatStatusKaryawan(val) {
+  if (!val) return "-";
+  const str = String(val).toUpperCase().trim();
+  if (str === "PKWTT" || str === "TETAP" || str.includes("TETAP")) return "PKWTT (Karyawan Tetap)";
+  if (str === "PKWT" || str === "KONTRAK" || str.includes("KONTRAK")) return "PKWT (Karyawan Kontrak)";
+  if (str === "PROBATION" || str.includes("PROBATION") || str.includes("PERCOBAAN")) return "Probation (Masa Percobaan)";
+  if (str === "MAGANG" || str.includes("MAGANG")) return "Magang";
+  if (str === "BURUH HARIAN" || str.includes("BURUH") || str.includes("HARIAN")) return "Buruh Harian";
+  if (str === "OUTSOURCING" || str.includes("OUTSOURCING")) return "Outsourcing";
+  if (str === "LAINNYA" || str.includes("LAIN")) return "Lainnya";
+  return val;
+}
 export function confirmDialog(message, { title = "Konfirmasi", danger = true } = {}) {
   return new Promise((resolve) => {
     openModal({

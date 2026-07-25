@@ -11,8 +11,32 @@ export async function mount(container, { session }) {
   const users = await fsGetAll(COL.USERS);
 
   async function load() {
-    const rows = await fsGetAll(COL.BROADCAST);
-    rows.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+    const allRows = await fsGetAll(COL.BROADCAST);
+    allRows.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+    
+    const userRole = (session?.role || "").toUpperCase();
+    const isHrd = ["HRD", "SUPERADMIN", "ADMIN"].includes(userRole);
+
+    const isRecipient = (r) => {
+      if (isHrd) return true;
+      if (r.dibuat_oleh && r.dibuat_oleh.toLowerCase() === String(session?.nama || "").toLowerCase()) return true;
+      if (!r.target_type || r.target_type === "ALL") return true;
+      if (r.target_type === "SPESIFIK") {
+        const list = (r.target_list || []).map(x => String(x || "").trim().toLowerCase());
+        const myName = String(session?.nama || "").trim().toLowerCase();
+        const myUsername = String(session?.username || "").trim().toLowerCase();
+        const myNik = String(session?.nik || "").trim().toLowerCase();
+        return list.some(target => 
+          target === myName || 
+          target === myUsername || 
+          (myNik && target === myNik) ||
+          (myName && (target.includes(myName) || myName.includes(target)))
+        );
+      }
+      return true;
+    };
+
+    const rows = allRows.filter(isRecipient);
     
     if (!rows.length) { listEl.innerHTML = emptyState("Belum ada memo yang diterbitkan"); return; }
     
@@ -191,8 +215,13 @@ function openComposeModal(container, session, karyawan, users, reload) {
                 }
                 tableHtml += '</tbody></table><p><br></p>';
                 
-                const range = this.quill.getSelection(true) || { index: 0 };
-                this.quill.clipboard.dangerouslyPasteHTML(range.index, tableHtml);
+                const tempDiv = document.createElement("div");
+                tempDiv.innerHTML = tableHtml;
+                const editorRoot = this.quill.root;
+                editorRoot.appendChild(tempDiv.firstElementChild);
+                const p = document.createElement("p");
+                p.innerHTML = "<br>";
+                editorRoot.appendChild(p);
               }
             }
           }

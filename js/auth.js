@@ -218,8 +218,12 @@ export async function getBawahanNames(namaAtasan) {
 export async function computeVisibleMenus(session) {
   if (!session) return [];
   const role = (session.role || "").toUpperCase();
-  const overrides = await loadPermissionOverrides();
-  const userOverride = overrides[session.username];
+  const overrides = await loadPermissionOverrides(true);
+  const userOverride = overrides[session.username] || 
+                       overrides[session.id] || 
+                       (session.username && overrides[session.username.toLowerCase()]) ||
+                       (session.username && overrides[session.username.toUpperCase()]) ||
+                       (session.nik && overrides[session.nik]);
 
   // Jika HRD sudah menetapkan daftar menu spesifik untuk user ini -> pakai itu (whitelist absolut)
   if (userOverride && Array.isArray(userOverride.allowed_menus) && userOverride.allowed_menus.length) {
