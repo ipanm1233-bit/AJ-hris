@@ -920,21 +920,30 @@ export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf") 
 
 export async function sendFCMNotif(tokens, title, body, link = "") {
   const list = (Array.isArray(tokens) ? tokens : [tokens]).filter(Boolean);
-  if (!list.length) return false;
+  if (!list.length) {
+    console.warn("sendFCMNotif dibatalkan: daftar token kosong.");
+    return false;
+  }
   
-  // Ambil nama domain otomatis (contoh: https://hris.andelajaya.com)
+  // Format target URL
   const baseUrl = window.location.origin;
-  const targetLink = link ? (baseUrl + link) : baseUrl;
+  let formattedLink = link || "";
+  if (formattedLink && !formattedLink.startsWith("http")) {
+    formattedLink = baseUrl + (formattedLink.startsWith("/") ? formattedLink : "/" + formattedLink);
+  } else if (!formattedLink) {
+    formattedLink = baseUrl;
+  }
 
   try {
     const res = await fetch("/api/send-push", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // Kirim targetLink ke Vercel
-      body: JSON.stringify({ tokens: list, title, body, link: targetLink }) 
+      body: JSON.stringify({ tokens: list, title, body, link: formattedLink }) 
     });
     
-    return res.ok;
+    const result = await res.json().catch(() => ({}));
+    console.log("Push Notification Result:", result);
+    return res.ok && result.success;
   } catch (e) {
     console.error("Gagal mengirim notif: ", e.message);
     return false;

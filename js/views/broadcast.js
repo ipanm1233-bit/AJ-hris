@@ -215,13 +215,8 @@ function openComposeModal(container, session, karyawan, users, reload) {
                 }
                 tableHtml += '</tbody></table><p><br></p>';
                 
-                const tempDiv = document.createElement("div");
-                tempDiv.innerHTML = tableHtml;
-                const editorRoot = this.quill.root;
-                editorRoot.appendChild(tempDiv.firstElementChild);
-                const p = document.createElement("p");
-                p.innerHTML = "<br>";
-                editorRoot.appendChild(p);
+                const range = this.quill.getSelection(true);
+                this.quill.clipboard.dangerouslyPasteHTML(range ? range.index : 0, tableHtml);
               }
             }
           }
