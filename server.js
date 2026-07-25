@@ -13,6 +13,7 @@ app.use(express.static(__dirname));
 const cronCheckKontrak = require('./api/cron-check-kontrak.js');
 const sendPush = require('./api/send-push.js');
 const syncAbsen = require('./api/sync-absen.js');
+const kanalProxy = require('./api/kanal-proxy.js');
 
 // Map the API paths to the handlers
 app.all('/api/cron-check-kontrak', async (req, res, next) => {
@@ -38,6 +39,15 @@ app.all('/api/sync-absen', async (req, res, next) => {
     await syncAbsen(req, res);
   } catch (error) {
     console.error("Error in sync-absen:", error);
+    next(error);
+  }
+});
+
+app.all('/api/kanal-proxy', async (req, res, next) => {
+  try {
+    await kanalProxy(req, res);
+  } catch (error) {
+    console.error("Error in kanal-proxy:", error);
     next(error);
   }
 });

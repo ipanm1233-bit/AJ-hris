@@ -28,7 +28,7 @@ export async function mount(container, { session }) {
             <div class="text-sm text-slate-600 mt-2 p-3 bg-slate-50 rounded-lg border border-slate-100 quill-content">
               ${r.isi}
             </div>
-            ${r.lampiran_url ? `<a href="${escapeHtml(r.lampiran_url)}" target="_blank" class="inline-block mt-2 text-xs font-medium text-maroon-700 hover:underline">🔗 Lihat Lampiran</a>` : ''}
+            ${r.lampiran_url ? `<a href="${escapeHtml(r.lampiran_url)}" target="_blank" class="inline-flex items-center gap-1 mt-2 text-xs font-medium text-maroon-700 hover:underline"><svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg><span>Lihat Lampiran</span></a>` : ''}
             <div class="flex items-center gap-2 mt-3">
               ${badge(r.target_type === "SPESIFIK" ? `${(r.target_list || []).length} Karyawan Terpilih` : "Seluruh Karyawan", "maroon")}
               <span class="text-xs text-slate-400">oleh ${escapeHtml(r.dibuat_oleh || "-")} • Berakhir: ${r.tanggal_berakhir || "Tanpa Batas"}</span>
@@ -77,7 +77,7 @@ function openComposeModal(container, session, karyawan, users, reload) {
           </div>
           <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
             <div class="p-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2">
-              <input type="text" id="bc-search-box" placeholder="🔍 Cari nama, jabatan, atau cabang..." class="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 outline-none focus:border-maroon-500 bg-white">
+              <input type="text" id="bc-search-box" placeholder="Cari nama, jabatan, atau cabang..." class="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 outline-none focus:border-maroon-500 bg-white">
               <button type="button" id="bc-toggle-all" class="text-xs font-bold text-maroon-700 hover:bg-maroon-50 px-2.5 py-1 rounded-lg shrink-0 border border-maroon-200 transition">Pilih Semua</button>
             </div>
             <div id="bc-checkbox-list" class="max-h-48 overflow-y-auto divide-y divide-slate-100 p-1 bg-white">
@@ -114,12 +114,12 @@ function openComposeModal(container, session, karyawan, users, reload) {
       }
 
       function drawCheckboxes(filterText = "") {
-        const term = filterText.toLowerCase();
+        const term = String(filterText || "").toLowerCase();
         
         listContainer.innerHTML = validKaryawan.map(k => {
-          const nama = k.nama_karyawan || "";
-          const jabatan = k.jabatan || "";
-          const cabang = k.cabang || "";
+          const nama = String(k.nama_karyawan || k.nama || "");
+          const jabatan = String(k.jabatan || "");
+          const cabang = String(k.cabang || "");
 
           const match = nama.toLowerCase().includes(term) || jabatan.toLowerCase().includes(term) || cabang.toLowerCase().includes(term);
           if (!match || !nama) return "";
@@ -155,9 +155,56 @@ function openComposeModal(container, session, karyawan, users, reload) {
       };
 
       const quill = new window.Quill(m.querySelector('#editor-container'), {
-        theme: 'snow', placeholder: 'Ketik isi memo di sini...',
-        modules: { toolbar: [['bold', 'italic', 'underline', 'strike'], [{'list': 'ordered'}, {'list': 'bullet'}], [{'align': []}], ['link'], ['clean']] }
+        theme: 'snow',
+        placeholder: 'Ketik isi memo di sini...',
+        modules: {
+          toolbar: {
+            container: [
+              ['bold', 'italic', 'underline', 'strike'],
+              [{ 'header': [1, 2, 3, false] }],
+              [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+              [{ 'align': [] }],
+              ['link', 'table-btn'],
+              ['clean']
+            ],
+            handlers: {
+              'table-btn': function() {
+                const rows = prompt("Jumlah Baris (misal: 3)", "3");
+                if (!rows) return;
+                const cols = prompt("Jumlah Kolom (misal: 3)", "3");
+                if (!cols) return;
+                
+                const r = Math.max(parseInt(rows) || 2, 1);
+                const c = Math.max(parseInt(cols) || 2, 1);
+                
+                let tableHtml = '<table style="width:100%; border-collapse:collapse; margin:12px 0; border:1px solid #cbd5e1;"><tbody>';
+                for (let i = 0; i < r; i++) {
+                  tableHtml += '<tr>';
+                  for (let j = 0; j < c; j++) {
+                    if (i === 0) {
+                      tableHtml += '<th style="border:1px solid #cbd5e1; padding:8px 12px; background-color:#f8fafc; font-weight:600; text-align:left;">Judul ' + (j + 1) + '</th>';
+                    } else {
+                      tableHtml += '<td style="border:1px solid #cbd5e1; padding:8px 12px;">Data ' + i + '.' + (j + 1) + '</td>';
+                    }
+                  }
+                  tableHtml += '</tr>';
+                }
+                tableHtml += '</tbody></table><p><br></p>';
+                
+                const range = this.quill.getSelection(true) || { index: 0 };
+                this.quill.clipboard.dangerouslyPasteHTML(range.index, tableHtml);
+              }
+            }
+          }
+        }
       });
+
+      // Custom icon for table button
+      const tableBtn = m.querySelector('.ql-table-btn');
+      if (tableBtn) {
+        tableBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18M9 3v18M15 3v18M3 4a1 1 0 011-1h16a1 1 0 011 1v16a1 1 0 01-1 1H4a1 1 0 01-1-1V4z"/></svg>`;
+        tableBtn.title = "Sisipkan Tabel";
+      }
 
       m.querySelector("#bc-target-type").addEventListener("change", (e) => {
         m.querySelector("#bc-target-list-wrap").classList.toggle("hidden", e.target.value !== "SPESIFIK");
@@ -228,16 +275,17 @@ function openComposeModal(container, session, karyawan, users, reload) {
           const isMatch = (name, uname, nik) => {
             if (targetType === "ALL") return true;
             return targetList.some(t => {
-              const term = (t || "").toLowerCase();
-              const n = (name || "").toLowerCase();
-              const u = (uname || "").toLowerCase();
-              const nk = (nik || "").toLowerCase();
-              return n === term || u === term || nk === term || n.includes(term) || term.includes(n);
+              const term = String(t || "").toLowerCase();
+              const n = String(name || "").toLowerCase();
+              const u = String(uname || "").toLowerCase();
+              const nk = String(nik || "").toLowerCase();
+              return n === term || u === term || nk === term || (n && n.includes(term)) || (n && term.includes(n));
             });
           };
 
           users.forEach(u => {
-            if (isMatch(u.nama, u.username, u.nik)) {
+            const matched = isMatch(u.nama, u.username, u.nik);
+            if (matched) {
               if (u.id || u.username) targetUserIdsSet.add(u.id || u.username);
               if (u.fcm_token) fcmTokensSet.add(u.fcm_token);
               if (u.email) targetEmailsSet.add(u.email);
@@ -245,17 +293,35 @@ function openComposeModal(container, session, karyawan, users, reload) {
           });
 
           karyawan.forEach(k => {
-            if (isMatch(k.nama_karyawan || k.nama, k.username, k.nik_karyawan || k.nik)) {
+            const matched = isMatch(k.nama_karyawan || k.nama, k.username, k.nik_karyawan || k.nik);
+            if (matched) {
               if (k.username || k.nik) targetUserIdsSet.add(k.username || k.nik);
               if (k.fcm_token) fcmTokensSet.add(k.fcm_token);
               if (k.email) targetEmailsSet.add(k.email);
+
+              // Cross-match dengan user doc
+              const matchingUser = users.find(u => 
+                (k.username && u.username === k.username) || 
+                (k.nik && (u.nik === k.nik || u.username === k.nik)) ||
+                (k.nama_karyawan && u.nama && u.nama.toLowerCase() === k.nama_karyawan.toLowerCase())
+              );
+              if (matchingUser) {
+                if (matchingUser.fcm_token) fcmTokensSet.add(matchingUser.fcm_token);
+                if (matchingUser.id || matchingUser.username) targetUserIdsSet.add(matchingUser.id || matchingUser.username);
+              }
             }
           });
 
           // Notif in-app (lonceng)
           const targetUserIds = Array.from(targetUserIdsSet);
           await Promise.all(targetUserIds.map(uname => fsAdd(COL.NOTIFICATIONS, {
-            username_target: uname, judul: `Memo Baru: ${payload.judul}`, pesan: plainText.substring(0, 80) + '...', dibaca: false, tanggal: payload.tanggal
+            username_target: uname,
+            judul: `Memo Baru: ${payload.judul}`,
+            pesan: plainText.substring(0, 80) + '...',
+            dibaca: false,
+            tanggal: payload.tanggal,
+            link: `/#broadcast?memo_id=${id}`,
+            memo_id: id
           }, genId("NTF"))));
 
           // Email
@@ -270,9 +336,9 @@ function openComposeModal(container, session, karyawan, users, reload) {
           }
 
           // Push notification ke HP (FCM)
-          const targetTokens = Array.from(fcmTokensSet);
+          const targetTokens = Array.from(fcmTokensSet).filter(Boolean);
           if (targetTokens.length > 0) {
-            await sendFCMNotif(targetTokens, `📢 Memo Baru: ${payload.judul}`, plainText.substring(0, 80) + '...', '/#dashboard');
+            await sendFCMNotif(targetTokens, `Memo Baru: ${payload.judul}`, plainText.substring(0, 80) + '...', `/#broadcast?memo_id=${id}`);
           }
 
           toast("Memo berhasil dikirim", "success");

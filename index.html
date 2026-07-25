@@ -20,7 +20,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Portal HRIS & Operasional — CV Andela Jaya</title>
+<title>HRAPP — Portal HRIS & Operasional</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><rect width=%2224%22 height=%2224%22 rx=%226%22 fill=%22%237a1f2b%22/><text x=%2212%22 y=%2217%22 font-size=%2213%22 fill=%22white%22 text-anchor=%22middle%22 font-family=%22sans-serif%22 font-weight=%22bold%22>AJ</text></svg>">
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
@@ -62,8 +62,7 @@
 <!-- Quill JS untuk Rich Text Editor (Modul Memo) -->
 <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
 <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>  
-</head>
-<body class="font-sans bg-[#faf8ff] text-[#131b2e] antialiased">
+</head><body class="font-sans bg-[#faf8ff] text-[#131b2e] antialiased">
 
 <!-- ===================== TOAST HOST ===================== -->
 <div id="toast-host" class="fixed top-4 right-4 z-[200] flex flex-col gap-2 w-80"></div>
@@ -82,22 +81,29 @@
     <button id="btn-sidebar-toggle" class="p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition">
       <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
-    <div class="flex items-center gap-2">
-      <div class="w-9 h-9 rounded-xl bg-maroon-700 flex items-center justify-center text-white font-bold text-sm shrink-0">AJ</div>
+    <div class="flex items-center gap-2.5">
+      <div class="w-9 h-9 rounded-xl bg-maroon-700 flex items-center justify-center text-white font-black text-sm shrink-0 shadow-sm">HR</div>
       <div class="hidden sm:block leading-tight">
-        <p class="text-sm font-bold text-slate-800">Andela Jaya</p>
-        <p class="text-[11px] text-slate-400 -mt-0.5">Portal HRIS & Operasional</p>
+        <p class="text-base font-black text-slate-800 tracking-tight">HRAPP</p>
+        <p class="text-[10px] text-slate-400 font-medium -mt-0.5">Portal HRIS & Operasional</p>
       </div>
     </div>
 
     <div class="flex-1"></div>
 
-    <div id="header-clock" class="hidden md:block text-xs text-slate-400 mr-2"></div>
+    <div id="header-clock" class="hidden md:block text-xs font-medium text-slate-400 mr-1"></div>
 
-    <button id="btn-test-notif-desktop" title="Aktifkan & Tes Notifikasi HP" class="btn-test-notif-action px-2.5 py-1.5 text-xs font-bold text-maroon-700 bg-maroon-50 hover:bg-maroon-100 border border-maroon-200 rounded-xl transition flex items-center gap-1.5 shadow-sm">
-      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-maroon-700 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
-      <span>Tes Notif</span>
-    </button>
+    <!-- Modul Slide Switch Notifikasi ON/OFF Desktop -->
+    <div id="notif-slide-desktop" title="Klik untuk mengaktifkan/menonaktifkan notifikasi sistem" class="btn-test-notif-action group flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200/80 rounded-full text-xs font-semibold text-slate-600 transition hover:bg-slate-100/80 hover:border-slate-300 cursor-pointer select-none">
+      <span class="text-[11px] font-bold text-slate-600 flex items-center gap-1.5">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-maroon-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+        <span>Notif</span>
+      </span>
+      <div id="notif-toggle-track-desktop" class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-slate-300 transition-colors duration-200 ease-in-out">
+        <span id="notif-toggle-knob-desktop" class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out translate-x-0"></span>
+      </div>
+      <span id="notif-toggle-text-desktop" class="text-[10px] font-extrabold text-slate-400 w-6 text-center">OFF</span>
+    </div>
 
     <button id="btn-notif" class="relative p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition" title="Lonceng Notifikasi">
       <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
@@ -123,20 +129,30 @@
   </header>
 
   <!-- MOBILE HEADER -->
-  <header class="fixed top-0 left-0 right-0 h-16 bg-white border-b border-slate-100 z-40 flex lg:hidden items-center justify-between px-4 shadow-sm">
+  <header class="fixed top-0 left-0 right-0 h-16 bg-white border-b border-slate-100 z-40 flex lg:hidden items-center justify-between px-3.5 shadow-sm">
     <div class="flex items-center gap-2">
+      <button id="btn-mobile-sidebar-toggle" class="p-1.5 -ml-1 rounded-lg hover:bg-slate-100 text-slate-600 transition flex items-center justify-center shrink-0" title="Buka Menu Sidebar">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
       <div id="mobile-back-btn" class="hidden p-1.5 -ml-1 rounded-lg hover:bg-slate-50 text-slate-500 transition cursor-pointer">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
       </div>
-      <span class="text-lg font-bold text-maroon-700 font-sans tracking-tight">HRGA Connect</span>
+      <div class="flex items-center gap-1.5">
+        <div class="w-6 h-6 rounded-md bg-maroon-700 flex items-center justify-center text-white font-black text-[10px] shrink-0">HR</div>
+        <span class="text-base font-extrabold text-maroon-800 tracking-tight">HRAPP</span>
+      </div>
     </div>
     <div class="flex items-center gap-2">
-      <button id="btn-test-notif-mobile" title="Aktifkan & Tes Notifikasi HP" class="btn-test-notif-action px-2 py-1 text-[11px] font-bold text-maroon-700 bg-maroon-50 hover:bg-maroon-100 border border-maroon-200 rounded-lg transition flex items-center gap-1">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-maroon-700 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
-        <span>Tes Notif</span>
-      </button>
+      <!-- Modul Slide Switch Notifikasi ON/OFF Mobile -->
+      <div id="notif-slide-mobile" title="Klik untuk mengaktifkan/menonaktifkan notifikasi HP" class="btn-test-notif-action flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-200/80 rounded-full text-xs font-semibold text-slate-600 transition hover:bg-slate-100/80 cursor-pointer select-none">
+        <span class="text-[10px] font-extrabold text-slate-500">Notif</span>
+        <div id="notif-toggle-track-mobile" class="relative inline-flex h-4.5 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-slate-300 transition-colors duration-200 ease-in-out">
+          <span id="notif-toggle-knob-mobile" class="pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out translate-x-0"></span>
+        </div>
+        <span id="notif-toggle-text-mobile" class="text-[10px] font-extrabold text-slate-400">OFF</span>
+      </div>
 
-      <button id="btn-notif-mobile" class="relative p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition" title="Lonceng Notifikasi">
+      <button id="btn-notif-mobile" class="relative p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 transition" title="Lonceng Notifikasi">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
         <span id="notif-dot-mobile" class="hidden absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-maroon-600"></span>
       </button>
@@ -148,6 +164,15 @@
 
   <!-- SIDEBAR -->
   <aside id="sidebar" class="fixed top-16 left-0 bottom-0 w-64 bg-white border-r border-slate-100 z-30 overflow-y-auto transition-all duration-300 ease-in-out">
+    <div class="lg:hidden flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/80 sticky top-0 z-10 backdrop-blur-sm">
+      <div class="flex items-center gap-2">
+        <div class="w-6 h-6 rounded-lg bg-maroon-700 flex items-center justify-center text-white font-bold text-[10px]">AJ</div>
+        <span class="text-xs font-bold text-slate-800">Menu Navigation</span>
+      </div>
+      <button id="btn-close-sidebar-mobile" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition" title="Sembunyikan Sidebar">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
     <nav id="sidebar-nav" class="p-3 flex flex-col gap-1"></nav>
   </aside>
 
@@ -162,26 +187,35 @@
   </main>
 
   <!-- BOTTOM NAVIGATION FOR MOBILE -->
-  <nav class="fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-slate-100 z-40 flex lg:hidden items-center justify-around px-2 shadow-lg pb-safe">
-    <a href="#dashboard" data-mobile-tab="dashboard" class="flex flex-col items-center justify-center flex-1 h-full text-slate-400 hover:text-maroon-700 transition">
-      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+  <nav class="fixed bottom-0 left-0 right-0 h-16 mobile-nav-bar z-40 flex lg:hidden items-center justify-around px-2 pb-safe">
+    <a href="#dashboard" data-mobile-tab="dashboard" class="mobile-nav-item active flex flex-col items-center justify-center flex-1 h-full transition">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
       <span class="text-[10px] font-medium font-sans">Home</span>
+      <span class="active-dot"></span>
     </a>
-    <a href="#absensi" data-mobile-tab="absensi" class="flex flex-col items-center justify-center flex-1 h-full text-slate-400 hover:text-maroon-700 transition">
-      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+    <a href="#absensi" data-mobile-tab="absensi" class="mobile-nav-item flex flex-col items-center justify-center flex-1 h-full transition">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
       <span class="text-[10px] font-medium font-sans">Attendance</span>
+      <span class="active-dot"></span>
     </a>
-    <a href="#pengajuan" data-mobile-tab="pengajuan" class="flex flex-col items-center justify-center flex-1 h-full text-slate-400 hover:text-maroon-700 transition">
-      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-      <span class="text-[10px] font-medium font-sans">Requests</span>
+
+    <!-- TOMBOL REQUEST BULAT MERAH FLOATING (CENTER) -->
+    <a href="#pengajuan" data-mobile-tab="pengajuan" class="mobile-nav-item flex flex-col items-center justify-center flex-1 relative -mt-5 transition group">
+      <div class="btn-request-floating flex items-center justify-center shrink-0">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+      </div>
+      <span class="text-[10px] font-bold text-white mt-1">Request</span>
     </a>
-    <a href="#riwayat" data-mobile-tab="riwayat" class="flex flex-col items-center justify-center flex-1 h-full text-slate-400 hover:text-maroon-700 transition">
-      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+
+    <a href="#riwayat" data-mobile-tab="riwayat" class="mobile-nav-item flex flex-col items-center justify-center flex-1 h-full transition">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
       <span class="text-[10px] font-medium font-sans">Tasks</span>
+      <span class="active-dot"></span>
     </a>
-    <a href="#profile" data-mobile-tab="profile" class="flex flex-col items-center justify-center flex-1 h-full text-slate-400 hover:text-maroon-700 transition">
-      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+    <a href="#profile" data-mobile-tab="profile" class="mobile-nav-item flex flex-col items-center justify-center flex-1 h-full transition">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
       <span class="text-[10px] font-medium font-sans">Profile</span>
+      <span class="active-dot"></span>
     </a>
   </nav>
 </div>

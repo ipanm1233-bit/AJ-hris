@@ -734,11 +734,17 @@ export async function mount(container, { session }) {
     }
     wrap.innerHTML = html;
 
+    const userRole = (session?.role || "").toUpperCase();
+    const isHrdRole = ["HRD", "SUPERADMIN", "ADMIN"].includes(userRole);
     const btnImport = wrap.querySelector("#btn-import-template");
     const inputExcel = wrap.querySelector("#kpi-excel-upload");
-    if (btnImport && inputExcel) {
-       btnImport.onclick = () => inputExcel.click();
-       inputExcel.onchange = (e) => handleExcelImport(e.target.files[0]);
+    if (btnImport) {
+       if (!isHrdRole) {
+          btnImport.style.display = "none";
+       } else if (inputExcel) {
+          btnImport.onclick = () => inputExcel.click();
+          inputExcel.onchange = (e) => handleExcelImport(e.target.files[0]);
+       }
     }
     const btnAdd = wrap.querySelector("#btn-add-template");
     if(btnAdd) btnAdd.onclick = () => openTemplateModal();

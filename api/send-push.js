@@ -7,12 +7,22 @@ module.exports = async function handler(req, res) {
   try {
     // 1. INISIALISASI SUPER AMAN (Membaca utuh dari JSON)
     if (!admin.apps.length) {
-      // JSON.parse akan secara otomatis membereskan masalah format baris (PEM)
-      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
-      
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-      });
+      if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount)
+        });
+      } else if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+        admin.initializeApp({
+          credential: admin.credential.cert({
+            projectId: process.env.FIREBASE_PROJECT_ID,
+            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+            privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
+          })
+        });
+      } else {
+        admin.initializeApp();
+      }
     }
 
     // 2. MENGIRIM NOTIFIKASI

@@ -4,7 +4,11 @@
    scrollbar custom, dan micro-interactions.
    ===================================================================== */
 html { scroll-behavior: smooth; }
-body { -webkit-font-smoothing: antialiased; }
+body { 
+  -webkit-font-smoothing: antialiased; 
+  background-color: #faf8ff;
+  color: #131b2e;
+}
 
 /* --- Fade-in setiap kali view berpindah (efek halus, anti-kedip) --- */
 @keyframes fadein {
@@ -20,7 +24,11 @@ body { -webkit-font-smoothing: antialiased; }
 #main-content.expanded { margin-left: 4.5rem !important; }
 
 @media (max-width: 1024px) {
-  #sidebar { transform: translateX(-100%); box-shadow: 0 10px 40px rgba(0,0,0,.15); }
+  #sidebar { 
+    transform: translateX(-100%); 
+    box-shadow: 0 10px 40px rgba(0,0,0,.15); 
+    background-color: #ffffff;
+  }
   #sidebar.mobile-open { transform: translateX(0); }
   #main-content { margin-left: 0 !important; padding-bottom: 5rem !important; }
 }
@@ -34,7 +42,11 @@ body { -webkit-font-smoothing: antialiased; }
   cursor: pointer; white-space: nowrap;
 }
 .sidebar-item:hover { background-color: #fbf3f3; color: #7a1f2b; }
-.sidebar-item.active { background-color: #7a1f2b; color: #fff; box-shadow: 0 4px 12px -2px rgba(122,31,43,0.35); }
+.sidebar-item.active { 
+  background-color: #7a1f2b; 
+  color: #fff; 
+  box-shadow: 0 4px 12px -2px rgba(122,31,43,0.35); 
+}
 .sidebar-item:active { transform: scale(0.98); }
 
 .sidebar-group-title {
@@ -64,6 +76,58 @@ body { -webkit-font-smoothing: antialiased; }
 .fb-field.dragging { opacity: .4; }
 .fb-dropline { height: 3px; background: #7a1f2b; border-radius: 3px; margin: 2px 0; }
 
+/* --- Glassmorphism Mobile Bottom Navigation --- */
+.mobile-nav-bar {
+  background: rgba(110, 18, 30, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 -8px 28px rgba(90, 10, 20, 0.4);
+}
+
+.mobile-nav-item {
+  color: rgba(254, 205, 211, 0.75);
+  transition: all 0.2s ease;
+}
+.mobile-nav-item:hover {
+  color: #ffffff;
+}
+.mobile-nav-item.active {
+  color: #ffffff !important;
+  font-weight: 700;
+}
+.mobile-nav-item .active-dot {
+  display: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background-color: #ffffff;
+  margin-top: 2px;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.9);
+}
+.mobile-nav-item.active .active-dot {
+  display: block;
+}
+
+/* Elevated Circular Red Request Button */
+.btn-request-floating {
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #e11d48, #be123c, #881337);
+  color: #ffffff;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 8px 20px rgba(180, 15, 50, 0.65), inset 0 1px 2px rgba(255, 255, 255, 0.6);
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+}
+.btn-request-floating:active {
+  transform: scale(0.92);
+}
+.mobile-nav-item.active .btn-request-floating {
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.35), 0 10px 25px rgba(225, 29, 72, 0.85);
+  transform: scale(1.08);
+}
+
 /* --- Print-friendly (untuk slip/laporan) --- */
 @media print {
   #app-shell header, #sidebar, #toast-host, .no-print { display: none !important; }
@@ -76,6 +140,24 @@ body { -webkit-font-smoothing: antialiased; }
 .quill-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1em; }
 .quill-content ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 1em; }
 .quill-content a { color: #7a1f2b; text-decoration: underline; }
+
+/* --- Style Tabel di Dalam Content Memo Quill --- */
+.quill-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.875rem;
+}
+.quill-content table th, .quill-content table td {
+  border: 1px solid #cbd5e1;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+.quill-content table th {
+  background-color: #f8fafc;
+  font-weight: 600;
+  color: #334155;
+}
 
 /* =====================================================================
    MOBILE UI OPTIMIZATION & SYMMETRICAL ASPECT RATIOS
@@ -106,7 +188,7 @@ body { -webkit-font-smoothing: antialiased; }
   /* Symmetrical padding on cards for mobile screens */
   .bg-white.rounded-2xl, .bg-white.rounded-xl {
     padding: 1rem !important;
-    border-radius: 1rem !important;
+    border-radius: 1.25rem !important;
   }
 
   /* Mobile bottom navigation bar alignment */
@@ -121,6 +203,7 @@ body { -webkit-font-smoothing: antialiased; }
     width: 94% !important;
     max-width: 94vw !important;
     margin: auto !important;
-    border-radius: 1.25rem !important;
+    border-radius: 1.5rem !important;
   }
 }
+

@@ -1,4 +1,4 @@
-import { db, collection, getDocs, addDoc, query, where } from "../firebase-config.js";
+import { db, collection, getDocs, addDoc, doc, updateDoc, query, where } from "../firebase-config.js";
 import { openModal, closeModal, toast, genId, escapeHtml } from "../utils.js";
 import { emptyState, skeletonRows } from "../components.js";
 
@@ -6,15 +6,25 @@ const COLLECTION_NAME = "sales_outlets";
 
 // Seed default outlets if none exist
 const DEFAULT_OUTLETS = [
-  { id: "OT-CRB-01", kode: "OT-CRB-01", nama: "Toko Cat Warna Abadi Cirebon", wilayah: "Cirebon", alamat: "Jl. Siliwangi No. 88, Cirebon", telepon: "0231-201988", tipe: "Depo Cat / Store" },
-  { id: "OT-CRB-02", kode: "OT-CRB-02", nama: "TB Bangunan Jaya Bersama", wilayah: "Cirebon", alamat: "Jl. Pemuda No. 45, Cirebon", telepon: "0231-332110", tipe: "Toko Bangunan" },
-  { id: "OT-CRB-03", kode: "OT-CRB-03", nama: "Depo Cat Prima Tuparev", wilayah: "Cirebon", alamat: "Jl. Tuparev No. 12, Cirebon", telepon: "0812-9876-5432", tipe: "Distributor Retail" },
-  { id: "OT-MLG-01", kode: "OT-MLG-01", nama: "Toko Cat Dulux Paint Center Malang", wilayah: "Malang", alamat: "Jl. Ahmad Yani No. 102, Malang", telepon: "0341-491223", tipe: "Paint Center" },
-  { id: "OT-MLG-02", kode: "OT-MLG-02", nama: "TB Malang Indah Building Supply", wilayah: "Malang", alamat: "Jl. Raya Dieng No. 15, Malang", telepon: "0341-567890", tipe: "Toko Bangunan" },
-  { id: "OT-MLG-03", kode: "OT-MLG-03", nama: "Depo Material Blesscon Soekarno Hatta", wilayah: "Malang", alamat: "Jl. Soekarno Hatta No. 20, Malang", telepon: "0857-3333-4444", tipe: "Agent Blesscon" }
+  { id: "OT-CRB-01", kode: "OT-CRB-01", nama: "Toko Cat Warna Abadi Cirebon", wilayah: "Cirebon", alamat: "Jl. Siliwangi No. 88, Cirebon", telepon: "0231-201988", tipe: "Depo Cat / Store", assigned_sales_nama: "Andika Putera", assigned_sales_nik: "SLS-001" },
+  { id: "OT-CRB-02", kode: "OT-CRB-02", nama: "TB Bangunan Jaya Bersama", wilayah: "Cirebon", alamat: "Jl. Pemuda No. 45, Cirebon", telepon: "0231-332110", tipe: "Toko Bangunan", assigned_sales_nama: "Andika Putera", assigned_sales_nik: "SLS-001" },
+  { id: "OT-CRB-03", kode: "OT-CRB-03", nama: "Depo Cat Prima Tuparev", wilayah: "Cirebon", alamat: "Jl. Tuparev No. 12, Cirebon", telepon: "0812-9876-5432", tipe: "Distributor Retail", assigned_sales_nama: "Bambang Wijaya", assigned_sales_nik: "SLS-002" },
+  { id: "OT-MLG-01", kode: "OT-MLG-01", nama: "Toko Cat Dulux Paint Center Malang", wilayah: "Malang", alamat: "Jl. Ahmad Yani No. 102, Malang", telepon: "0341-491223", tipe: "Paint Center", assigned_sales_nama: "Bambang Wijaya", assigned_sales_nik: "SLS-002" },
+  { id: "OT-MLG-02", kode: "OT-MLG-02", nama: "TB Malang Indah Building Supply", wilayah: "Malang", alamat: "Jl. Raya Dieng No. 15, Malang", telepon: "0341-567890", tipe: "Toko Bangunan", assigned_sales_nama: "Andika Putera", assigned_sales_nik: "SLS-001" },
+  { id: "OT-MLG-03", kode: "OT-MLG-03", nama: "Depo Material Blesscon Soekarno Hatta", wilayah: "Malang", alamat: "Jl. Soekarno Hatta No. 20, Malang", telepon: "0857-3333-4444", tipe: "Agent Blesscon", assigned_sales_nama: "Bambang Wijaya", assigned_sales_nik: "SLS-002" }
 ];
 
 export async function mount(container, { session }) {
+  const userRole = (session?.role || "").toUpperCase();
+  const isHrdOrAdmin = ["HRD", "SUPERADMIN", "ADMIN", "GM", "MANAGER", "SPV"].includes(userRole);
+
+  const headerTitle = container.querySelector("h1");
+  const headerSubtitle = container.querySelector("p");
+  if (!isHrdOrAdmin) {
+    if (headerTitle) headerTitle.textContent = "Master Outlet Binaan Saya";
+    if (headerSubtitle) headerSubtitle.textContent = `Daftar toko dan outlet mitra yang ditugaskan kepada ${escapeHtml(session?.nama || "Sales")}.`;
+  }
+
   const tableBody = container.querySelector("#outlet-table-body");
   const emptyStateContainer = container.querySelector("#outlet-empty-state");
   const searchInput = container.querySelector("#search-outlet");
@@ -45,7 +55,7 @@ export async function mount(container, { session }) {
       renderList();
     } catch (e) {
       console.error(e);
-      tableBody.innerHTML = `<tr><td colspan="7" class="px-6 py-8 text-center text-rose-500 font-medium">Gagal memuat data outlet: ${e.message}</td></tr>`;
+      tableBody.innerHTML = `<tr><td colspan="8" class="px-6 py-8 text-center text-rose-500 font-medium">Gagal memuat data outlet: ${e.message}</td></tr>`;
     }
   }
 
@@ -58,7 +68,7 @@ export async function mount(container, { session }) {
     const uniqueRegions = Array.from(new Set(rawRegions)).sort();
 
     regionFilter.innerHTML = `
-      <option value="">Semua Wilayah / Kategori Outlet (${outletList.length})</option>
+      <option value="">Semua Wilayah (${outletList.length})</option>
       ${uniqueRegions.map(r => `<option value="${escapeHtml(r)}"${r === currentVal ? " selected" : ""}>${escapeHtml(r)}</option>`).join("")}
     `;
   }
@@ -67,17 +77,37 @@ export async function mount(container, { session }) {
     const searchVal = searchInput.value.toLowerCase().trim();
     const regionVal = regionFilter.value;
 
+    const userNik = String(session?.nik || "").trim().toLowerCase();
+    const userNama = String(session?.nama || "").trim().toLowerCase();
+    const userUsername = String(session?.username || "").trim().toLowerCase();
+
     const filtered = outletList.filter(o => {
+      // Hanya tampilkan toko yang di-assign ke sales tersebut jika bukan HRD/Admin
+      if (!isHrdOrAdmin) {
+        const oNik = String(o.assigned_sales_nik || o.sales_nik || "").trim().toLowerCase();
+        const oNama = String(o.assigned_sales_nama || o.sales_nama || o.salesperson || "").trim().toLowerCase();
+
+        if (oNik || oNama) {
+          const matchNik = userNik && oNik && userNik === oNik;
+          const matchNama = userNama && oNama && (userNama === oNama || userNama.includes(oNama) || oNama.includes(userNama));
+          const matchUser = userUsername && (oNik === userUsername || oNama.includes(userUsername));
+          if (!matchNik && !matchNama && !matchUser) {
+            return false;
+          }
+        }
+      }
+
       const matchesSearch = (o.nama || "").toLowerCase().includes(searchVal) ||
                             (o.kode || "").toLowerCase().includes(searchVal) ||
-                            (o.alamat || "").toLowerCase().includes(searchVal);
+                            (o.alamat || "").toLowerCase().includes(searchVal) ||
+                            (o.assigned_sales_nama || o.salesperson || "").toLowerCase().includes(searchVal);
       const matchesRegion = !regionVal || o.wilayah === regionVal;
       return matchesSearch && matchesRegion;
     });
 
     if (filtered.length === 0) {
       tableBody.innerHTML = "";
-      emptyStateContainer.innerHTML = emptyState("Tidak ada outlet ditemukan", "Ganti kata kunci pencarian atau bersihkan filter wilayah Anda.");
+      emptyStateContainer.innerHTML = emptyState("Tidak ada outlet ditemukan", !isHrdOrAdmin ? "Belum ada outlet mitra yang di-assign untuk akun Sales Anda." : "Ganti kata kunci pencarian atau bersihkan filter wilayah Anda.");
       emptyStateContainer.classList.remove("hidden");
       return;
     }
@@ -92,6 +122,14 @@ export async function mount(container, { session }) {
             ${escapeHtml(o.wilayah)}
           </span>
         </td>
+        <td class="px-6 py-4">
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${o.assigned_sales_nama || o.salesperson ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-slate-100 text-slate-500'}">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+            ${escapeHtml(o.assigned_sales_nama || o.salesperson || "Belum Ditetapkan")}
+          </span>
+        </td>
         <td class="px-6 py-4 text-xs max-w-xs truncate" title="${escapeHtml(o.alamat)}">${escapeHtml(o.alamat)}</td>
         <td class="px-6 py-4 font-mono text-xs">${escapeHtml(o.telepon || "-")}</td>
         <td class="px-6 py-4">
@@ -100,9 +138,16 @@ export async function mount(container, { session }) {
           </span>
         </td>
         <td class="px-6 py-4 text-right">
-          <button data-id="${o.id}" class="btn-detail text-maroon-700 hover:text-maroon-900 font-semibold text-xs transition">
-            Lihat Detail
-          </button>
+          <div class="inline-flex items-center gap-2">
+            <button data-id="${o.id}" class="btn-detail text-maroon-700 hover:text-maroon-900 font-semibold text-xs transition">
+              Detail
+            </button>
+            ${isHrdOrAdmin ? `
+              <button data-id="${o.id}" class="btn-edit-sales text-indigo-600 hover:text-indigo-800 font-semibold text-xs transition">
+                Assign Sales
+              </button>
+            ` : ''}
+          </div>
         </td>
       </tr>
     `).join("");
@@ -111,6 +156,13 @@ export async function mount(container, { session }) {
       btn.addEventListener("click", () => {
         const outlet = outletList.find(x => x.id === btn.dataset.id);
         if (outlet) openDetailModal(outlet);
+      });
+    });
+
+    tableBody.querySelectorAll(".btn-edit-sales").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const outlet = outletList.find(x => x.id === btn.dataset.id);
+        if (outlet) openAssignSalesModal(outlet);
       });
     });
   }
@@ -141,9 +193,13 @@ export async function mount(container, { session }) {
               <span class="text-slate-800 text-sm">${escapeHtml(outlet.wilayah)}</span>
             </div>
             <div>
-              <span class="text-[10px] uppercase font-bold text-slate-400 block">No. Telepon</span>
-              <span class="font-mono text-slate-800 text-sm">${escapeHtml(outlet.telepon || "-")}</span>
+              <span class="text-[10px] uppercase font-bold text-slate-400 block">Sales Person Binaan</span>
+              <span class="font-bold text-indigo-700 text-sm">${escapeHtml(outlet.assigned_sales_nama || outlet.salesperson || "Belum Ditetapkan")}</span>
             </div>
+          </div>
+          <div>
+            <span class="text-[10px] uppercase font-bold text-slate-400 block">No. Telepon / HP</span>
+            <span class="font-mono text-slate-800 text-sm">${escapeHtml(outlet.telepon || "-")}</span>
           </div>
           <div>
             <span class="text-[10px] uppercase font-bold text-slate-400 block">Alamat Lengkap</span>
@@ -156,6 +212,59 @@ export async function mount(container, { session }) {
       `,
       onMount: (m) => {
         m.querySelector("#btn-close-modal").onclick = closeModal;
+      }
+    });
+  }
+
+  function openAssignSalesModal(outlet) {
+    openModal({
+      title: `Assign Sales Person: ${escapeHtml(outlet.nama)}`,
+      size: "md",
+      bodyHtml: `
+        <form id="form-assign-sales" class="space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1">Nama Sales Person Penanggung Jawab</label>
+            <input name="assigned_sales_nama" value="${escapeHtml(outlet.assigned_sales_nama || outlet.salesperson || "")}" required class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-indigo-400 outline-none transition" placeholder="Contoh: Andika Putera">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1">NIK Sales (Opsional)</label>
+            <input name="assigned_sales_nik" value="${escapeHtml(outlet.assigned_sales_nik || "")}" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-indigo-400 outline-none transition" placeholder="Contoh: SLS-001">
+          </div>
+        </form>
+      `,
+      footerHtml: `
+        <button id="btn-cancel-assign" class="px-4 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100 transition">Batal</button>
+        <button id="btn-save-assign" class="bg-indigo-700 hover:bg-indigo-800 text-white px-5 py-2 rounded-lg text-sm font-semibold transition shadow-md">Simpan Penugasan</button>
+      `,
+      onMount: (m) => {
+        m.querySelector("#btn-cancel-assign").onclick = closeModal;
+        m.querySelector("#btn-save-assign").onclick = async () => {
+          const form = m.querySelector("#form-assign-sales");
+          if (!form.reportValidity()) return;
+          const fd = new FormData(form);
+          const btn = m.querySelector("#btn-save-assign");
+          btn.disabled = true;
+          btn.innerHTML = "Menyimpan...";
+
+          try {
+            const salesNama = fd.get("assigned_sales_nama").trim();
+            const salesNik = fd.get("assigned_sales_nik").trim();
+
+            await updateDoc(doc(db, COLLECTION_NAME, outlet.id), {
+              assigned_sales_nama: salesNama,
+              assigned_sales_nik: salesNik,
+              salesperson: salesNama
+            });
+
+            toast(`Penugasan Sales untuk outlet ${outlet.nama} berhasil diperbarui!`, "success");
+            closeModal();
+            loadOutlets();
+          } catch (err) {
+            toast(`Gagal memperbarui: ${err.message}`, "error");
+            btn.disabled = false;
+            btn.innerHTML = "Simpan Penugasan";
+          }
+        };
       }
     });
   }
@@ -199,6 +308,10 @@ export async function mount(container, { session }) {
             <label class="block text-xs font-semibold text-slate-500 mb-1">Alamat Lengkap</label>
             <textarea name="alamat" required rows="3" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none transition" placeholder="Alamat jalan, nomor, RT/RW, kelurahan..."></textarea>
           </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1">Sales Person Penanggung Jawab</label>
+            <input name="assigned_sales_nama" value="${escapeHtml(session?.nama || '')}" required class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none transition" placeholder="Contoh: Andika Putera">
+          </div>
         </form>
       `,
       footerHtml: `
@@ -218,13 +331,17 @@ export async function mount(container, { session }) {
 
           try {
             const nextCode = `OT-${String(outletList.length + 1).padStart(3, '0')}`;
+            const salesNama = fd.get("assigned_sales_nama") || session?.nama || "";
             const payload = {
               kode: nextCode,
               nama: fd.get("nama"),
               wilayah: fd.get("wilayah"),
               tipe: fd.get("tipe"),
               telepon: fd.get("telepon"),
-              alamat: fd.get("alamat")
+              alamat: fd.get("alamat"),
+              assigned_sales_nama: salesNama,
+              assigned_sales_nik: session?.nik || "",
+              salesperson: salesNama
             };
 
             await addDoc(collection(db, COLLECTION_NAME), payload);
@@ -244,9 +361,14 @@ export async function mount(container, { session }) {
   searchInput.addEventListener("input", renderList);
   regionFilter.addEventListener("change", renderList);
 
+  const userRole = (session?.role || "").toUpperCase();
+  const isHrdRole = ["HRD", "SUPERADMIN", "ADMIN"].includes(userRole);
   const btnImportExcel = container.querySelector("#btn-import-outlet-excel");
   if (btnImportExcel) {
-    btnImportExcel.onclick = () => {
+    if (!isHrdRole) {
+      btnImportExcel.style.display = "none";
+    } else {
+      btnImportExcel.onclick = () => {
       openModal({
         title: "Import Master Outlet dari Excel",
         size: "lg",
@@ -404,6 +526,8 @@ export async function mount(container, { session }) {
                       mapped.tipe = val;
                     } else if (k.includes("kode") || k.includes("code")) {
                       mapped.kode = val;
+                    } else if (k.includes("sales") || k.includes("pic")) {
+                      mapped.assigned_sales_nama = val;
                     }
                   }
 
@@ -415,6 +539,7 @@ export async function mount(container, { session }) {
                   mapped.tipe = mapped.tipe || "Retail";
                   mapped.alamat = mapped.alamat || "-";
                   mapped.telepon = mapped.telepon || "-";
+                  mapped.assigned_sales_nama = mapped.assigned_sales_nama || session?.nama || "";
 
                   return mapped;
                 }).filter(Boolean);
@@ -463,7 +588,10 @@ export async function mount(container, { session }) {
                   wilayah: r.wilayah,
                   alamat: r.alamat,
                   telepon: r.telepon,
-                  tipe: r.tipe
+                  tipe: r.tipe,
+                  assigned_sales_nama: r.assigned_sales_nama || session?.nama || "",
+                  assigned_sales_nik: session?.nik || "",
+                  salesperson: r.assigned_sales_nama || session?.nama || ""
                 });
               }
 

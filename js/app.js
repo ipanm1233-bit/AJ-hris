@@ -6,7 +6,7 @@
  */
 import { getSession, logout, computeVisibleMenus, canAccessRoute, MENU_CONFIG, loginWithToken } from "./auth.js";
 import { parseHash, toast, fmtDateTime, openModal, closeModal, sha256, fsUpdate } from "./utils.js";
-import { icon, avatar, openNotificationCenter } from "./components.js";
+import { icon, avatar, openNotificationCenter, showMemoDetailById } from "./components.js";
 import { db, messaging, COL, collection, query, where, getDocs, doc, getDoc, updateDoc } from "./firebase-config.js";
 import { getToken } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js";
 
@@ -103,11 +103,10 @@ async function aktifkanNotifikasiHP(userData) {
         let currentToken = null;
         try {
             currentToken = await getToken(messaging, { 
-                vapidKey: 'BLAv8-HIF945zC4llQ3VaSi_n1cIuk6GbFJLasQA7notR1IP0JbKmG1kzTJ2xoqQs7StT_tyKRW4BWe5ZN24XGE',
                 serviceWorkerRegistration: registration || undefined
             });
         } catch (fcmErr) {
-            console.info("Layanan Notifikasi FCM tidak memerlukan tindakan lanjutan (Sandbox Mode):", fcmErr.message);
+            console.info("Layanan Notifikasi FCM tidak memerlukan tindakan lanjutan (Sandbox/VAPID Mode):", fcmErr.message);
             return;
         }
 
@@ -145,6 +144,48 @@ async function aktifkanNotifikasiHP(userData) {
     }
 }
 
+export function syncNotifSwitchUI() {
+  const isGranted = 'Notification' in window && Notification.permission === 'granted';
+
+  // Desktop Elements
+  const trackDesktop = document.getElementById("notif-toggle-track-desktop");
+  const knobDesktop = document.getElementById("notif-toggle-knob-desktop");
+  const textDesktop = document.getElementById("notif-toggle-text-desktop");
+
+  if (trackDesktop && knobDesktop && textDesktop) {
+    if (isGranted) {
+      trackDesktop.className = "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-emerald-500 transition-colors duration-200 ease-in-out shadow-xs";
+      knobDesktop.className = "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out translate-x-4";
+      textDesktop.className = "text-[10px] font-black text-emerald-600 w-6 text-center";
+      textDesktop.textContent = "ON";
+    } else {
+      trackDesktop.className = "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-slate-300 transition-colors duration-200 ease-in-out";
+      knobDesktop.className = "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out translate-x-0";
+      textDesktop.className = "text-[10px] font-extrabold text-slate-400 w-6 text-center";
+      textDesktop.textContent = "OFF";
+    }
+  }
+
+  // Mobile Elements
+  const trackMobile = document.getElementById("notif-toggle-track-mobile");
+  const knobMobile = document.getElementById("notif-toggle-knob-mobile");
+  const textMobile = document.getElementById("notif-toggle-text-mobile");
+
+  if (trackMobile && knobMobile && textMobile) {
+    if (isGranted) {
+      trackMobile.className = "relative inline-flex h-4.5 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-emerald-500 transition-colors duration-200 ease-in-out shadow-xs";
+      knobMobile.className = "pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out translate-x-3.5";
+      textMobile.className = "text-[10px] font-black text-emerald-600";
+      textMobile.textContent = "ON";
+    } else {
+      trackMobile.className = "relative inline-flex h-4.5 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-slate-300 transition-colors duration-200 ease-in-out";
+      knobMobile.className = "pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out translate-x-0";
+      textMobile.className = "text-[10px] font-extrabold text-slate-400";
+      textMobile.textContent = "OFF";
+    }
+  }
+}
+
 export async function handleTestAndActivateNotification(session) {
   if (!('Notification' in window)) {
     toast("Browser HP ini tidak mendukung fitur Notifikasi Web.", "error");
@@ -163,19 +204,24 @@ export async function handleTestAndActivateNotification(session) {
 
   const registerDeviceToken = async () => {
     if (!messaging) {
-      toast("Modul FCM Firebase belum dikonfigurasi di browser ini.", "warning");
+      console.info("Modul FCM Firebase belum dikonfigurasi di browser ini.");
       return;
     }
     try {
       toast("Sedang mendaftarkan token notifikasi perangkat...", "info");
       let registration = null;
       if ('serviceWorker' in navigator) {
-        registration = await navigator.serviceWorker.ready;
+        registration = await navigator.serviceWorker.ready.catch(() => null);
       }
-      const currentToken = await getToken(messaging, { 
-        vapidKey: 'BLAv8-HIF945zC4llQ3VaSi_n1cIuk6GbFJLasQA7notR1IP0JbKmG1kzTJ2xoqQs7StT_tyKRW4BWe5ZN24XGE',
-        serviceWorkerRegistration: registration
-      });
+      
+      let currentToken = null;
+      try {
+        currentToken = await getToken(messaging, { 
+          serviceWorkerRegistration: registration || undefined
+        });
+      } catch (fcmErr) {
+        console.warn("FCM Token subscription info:", fcmErr.message);
+      }
       
       if (currentToken) {
         if (session && session.username) {
@@ -195,25 +241,27 @@ export async function handleTestAndActivateNotification(session) {
           toast("Token notifikasi berhasil disimpan ke profil Anda!", "success");
         }
       } else {
-        toast("Gagal mendapatkan token notifikasi dari Google.", "error");
+        console.info("Pendaftaran FCM Token tidak mengembalikan token, menggunakan notifikasi browser lokal.");
       }
     } catch (e) {
-      toast("Gagal memproses token: " + e.message, "error");
+      console.warn("Proses token notifikasi:", e.message);
     }
   };
 
   if (Notification.permission === 'granted') {
     await registerDeviceToken();
-    sendSafeNotification("HRIS Andela Jaya", {
-      body: "Notifikasi aktif! Perangkat ini siap menerima pengumuman & update.",
+    sendSafeNotification("HRAPP — Notification Test", {
+      body: "Status Notifikasi: AKTIF (ON). Perangkat Anda terhubung!",
       icon: "/assets/icon-192x192.png" 
     });
-    toast("Notifikasi aktif! Tes kirim pesan berhasil.", "success");
+    toast("Modul Notifikasi AKTIF (ON). Tes pengiriman berhasil!", "success");
+    syncNotifSwitchUI();
     return;
   }
 
   if (Notification.permission === 'denied') {
-    toast("Izin notifikasi ditolak. Aktifkan lewat pengaturan browser HP.", "warning");
+    toast("Izin notifikasi ditolak di browser. Silakan izinkan di pengaturan browser Anda.", "warning");
+    syncNotifSwitchUI();
     return;
   }
 
@@ -221,16 +269,18 @@ export async function handleTestAndActivateNotification(session) {
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
       await registerDeviceToken();
-      sendSafeNotification("HRIS Andela Jaya", {
-        body: "Pendaftaran sukses! Anda akan menerima notifikasi di sini.",
+      sendSafeNotification("HRAPP — Notification Test", {
+        body: "Pendaftaran sukses! Modul notifikasi kini dalam status AKTIF (ON).",
         icon: "/assets/icon-192x192.png"
       });
-      toast("Notifikasi berhasil diaktifkan!", "success");
+      toast("Modul Notifikasi Berhasil Diaktifkan (ON)!", "success");
     } else {
       toast("Izin notifikasi belum diberikan.", "warning");
     }
+    syncNotifSwitchUI();
   } catch (e) {
     toast("Gagal meminta izin notifikasi: " + e.message, "error");
+    syncNotifSwitchUI();
   }
 }
 
@@ -274,8 +324,19 @@ async function renderShellForUser(session) {
 
   const menus = await computeVisibleMenus(session);
 
+  const roleUpper = (session?.role || "").toUpperCase();
+  let displayMenus = menus;
+
+  // Jika user role adalah Sales (SALES, SALESMAN, dsb), sidebar dikhususkan untuk menampilkan Modul Sales
+  if (roleUpper.includes("SALES")) {
+    const salesOnly = menus.filter(m => m.kategori === "Modul Sales");
+    if (salesOnly.length > 0) {
+      displayMenus = salesOnly;
+    }
+  }
+
   // 1. Kelompokkan menu berdasarkan properti "kategori"
-  const groupedMenus = menus.reduce((acc, menu) => {
+  const groupedMenus = displayMenus.reduce((acc, menu) => {
     const cat = menu.kategori || "Lain-lain";
     if (!acc[cat]) acc[cat] = [];
     acc[cat].push(menu);
@@ -287,8 +348,8 @@ async function renderShellForUser(session) {
 
   // 2. Render HTML menggunakan elemen <details> untuk efek Accordion (Buka/Tutup)
   for (const [kategori, items] of Object.entries(groupedMenus)) {
-    // Biarkan "Menu Utama" selalu terbuka secara default saat login
-    const isOpen = kategori === "Menu Utama" ? "open" : "";
+    // Biarkan "Menu Utama" & "Modul Sales" selalu terbuka secara default saat login
+    const isOpen = (kategori === "Menu Utama" || kategori === "Modul Sales" || roleUpper.includes("SALES")) ? "open" : "";
 
     html += `
     <details class="group mb-2" ${isOpen}>
@@ -299,8 +360,7 @@ async function renderShellForUser(session) {
           <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
         </svg>
       </summary>
-      
-      <!-- Isi Anak Menu (Sub-menu) -->
+           <!-- Isi Anak Menu (Sub-menu) -->
       <div class="mt-1 space-y-1 px-2 pb-2">
         ${items.map(m => `
           <a href="#${m.route || m.id}" data-route="${m.route || m.id}" class="sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-maroon-50 hover:text-maroon-700 transition" title="${m.label}">
@@ -340,11 +400,9 @@ function highlightActive(route) {
     }
 
     if (isActive) {
-      tab.classList.remove("text-slate-400");
-      tab.classList.add("text-maroon-700");
+      tab.classList.add("active");
     } else {
-      tab.classList.add("text-slate-400");
-      tab.classList.remove("text-maroon-700");
+      tab.classList.remove("active");
     }
   });
 
@@ -418,6 +476,11 @@ async function router(session) {
     highlightActive(mappedPath);
     document.title = `${ROUTE_TITLES[mappedPath] || ROUTE_TITLES[cleanPath] || "Portal"} — Andela Jaya HRIS`;
     
+    if (params && (params.memo_id || params.id)) {
+      const mId = params.memo_id || params.id;
+      showMemoDetailById(mId, session);
+    }
+    
   } catch (err) {
     console.error("Router error:", err);
     container.innerHTML = `
@@ -437,27 +500,40 @@ function bindShellEvents(session) {
   const main = document.getElementById("main-content");
   const backdrop = document.getElementById("sidebar-backdrop");
 
+  const closeMobileSidebar = () => {
+    sidebar?.classList.remove("mobile-open");
+    backdrop?.classList.add("hidden");
+  };
+
+  const toggleMobileSidebar = () => {
+    sidebar?.classList.toggle("mobile-open");
+    backdrop?.classList.toggle("hidden");
+  };
+
   document.getElementById("btn-sidebar-toggle")?.addEventListener("click", () => {
     if (window.innerWidth < 1024) {
-      sidebar?.classList.toggle("mobile-open");
-      backdrop?.classList.toggle("hidden");
+      toggleMobileSidebar();
     } else {
       sidebar?.classList.toggle("collapsed");
       main?.classList.toggle("expanded");
     }
   });
 
+  document.getElementById("btn-mobile-sidebar-toggle")?.addEventListener("click", () => {
+    toggleMobileSidebar();
+  });
+
+  document.getElementById("btn-close-sidebar-mobile")?.addEventListener("click", () => {
+    closeMobileSidebar();
+  });
+
   if (backdrop) {
-    backdrop.addEventListener("click", () => {
-      sidebar?.classList.remove("mobile-open");
-      backdrop.classList.add("hidden");
-    });
+    backdrop.addEventListener("click", closeMobileSidebar);
   }
 
   document.getElementById("sidebar-nav")?.addEventListener("click", (e) => {
     if (window.innerWidth < 1024 && e.target.closest("[data-route]")) {
-      sidebar?.classList.remove("mobile-open");
-      backdrop?.classList.add("hidden");
+      closeMobileSidebar();
     }
   });
 
@@ -487,9 +563,12 @@ function bindShellEvents(session) {
   document.getElementById("btn-logout")?.addEventListener("click", () => logout());
   document.getElementById("btn-notif")?.addEventListener("click", () => openNotificationCenter(session));
 
-  document.querySelectorAll(".btn-test-notif-action, #btn-test-notif-desktop, #btn-test-notif-mobile, #btn-test-notif").forEach(btn => {
+  document.querySelectorAll(".btn-test-notif-action, #btn-test-notif-desktop, #btn-test-notif-mobile, #btn-test-notif, #notif-slide-desktop, #notif-slide-mobile").forEach(btn => {
     btn.addEventListener("click", () => handleTestAndActivateNotification(session));
   });
+
+  // Sync state notif slide switch UI saat init
+  syncNotifSwitchUI();
 
   const btnNotifMobile = document.getElementById("btn-notif-mobile");
   if (btnNotifMobile) {

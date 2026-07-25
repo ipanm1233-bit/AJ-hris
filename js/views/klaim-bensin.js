@@ -367,7 +367,7 @@ export async function mount(container, { session }) {
      }
 
      const searchFiltered = filteredByBranch.filter(x => {
-        return (x.nama_pemohon || "").toLowerCase().includes(query) || (x.nik || "").toLowerCase().includes(query);
+        return String(x.nama_pemohon || "").toLowerCase().includes(query) || String(x.nik || "").toLowerCase().includes(query);
      });
 
      if (searchFiltered.length === 0) {

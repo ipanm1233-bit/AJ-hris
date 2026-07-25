@@ -242,9 +242,14 @@ export async function mount(container, { session }) {
   searchInput.addEventListener("input", renderList);
   categoryFilter.addEventListener("change", renderList);
 
+  const userRole = (session?.role || "").toUpperCase();
+  const isHrdRole = ["HRD", "SUPERADMIN", "ADMIN"].includes(userRole);
   const btnImportExcel = container.querySelector("#btn-import-item-excel");
   if (btnImportExcel) {
-    btnImportExcel.onclick = () => {
+    if (!isHrdRole) {
+      btnImportExcel.style.display = "none";
+    } else {
+      btnImportExcel.onclick = () => {
       openModal({
         title: "Import Master Item (Produk) dari Excel",
         size: "lg",

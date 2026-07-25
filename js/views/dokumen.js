@@ -194,10 +194,10 @@ export async function mount(container, { session }) {
     if (searchKeyword.trim()) {
       const kw = searchKeyword.toLowerCase();
       filtered = filtered.filter(d => 
-        (d.judul || "").toLowerCase().includes(kw) ||
-        (d.nama_karyawan || "").toLowerCase().includes(kw) ||
-        (d.nik_karyawan || "").toLowerCase().includes(kw) ||
-        (d.nomor_surat || "").toLowerCase().includes(kw)
+        String(d.judul || "").toLowerCase().includes(kw) ||
+        String(d.nama_karyawan || "").toLowerCase().includes(kw) ||
+        String(d.nik_karyawan || "").toLowerCase().includes(kw) ||
+        String(d.nomor_surat || "").toLowerCase().includes(kw)
       );
     }
 

@@ -3,6 +3,24 @@ import { toast, genId, fsGetAll, escapeHtml, openModal, closeModal } from "../ut
 import { skeletonRows, emptyState } from "../components.js";
 import { callGasWebApp } from "../gas-integration.js";
 
+function getTwoRunningMonthsRange() {
+   const now = new Date();
+   // Tanggal 1 dari 1 bulan sebelum bulan ini
+   const prevMonth1st = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+   const yyyyStart = prevMonth1st.getFullYear();
+   const mmStart = String(prevMonth1st.getMonth() + 1).padStart(2, "0");
+   const startStr = `${yyyyStart}-${mmStart}-01`;
+
+   // Tanggal terakhir bulan berjalan ini
+   const endMonthLast = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+   const yyyyEnd = endMonthLast.getFullYear();
+   const mmEnd = String(endMonthLast.getMonth() + 1).padStart(2, "0");
+   const ddEnd = String(endMonthLast.getDate()).padStart(2, "0");
+   const endStr = `${yyyyEnd}-${mmEnd}-${ddEnd}`;
+
+   return { startStr, endStr };
+}
+
 export async function mount(container, { session } = {}) {
    const userRole = (session?.role || "").toUpperCase();
    const isHrdOrAdmin = ["HRD", "SUPERADMIN", "ADMIN"].includes(userRole);
@@ -26,23 +44,44 @@ export async function mount(container, { session } = {}) {
    const btnSyncFingerprint = container.querySelector("#btn-sync-fingerprint");
    const btnConfigFingerprint = container.querySelector("#btn-config-fingerprint");
 
+   const { startStr: twoMonthsStart, endStr: twoMonthsEnd } = getTwoRunningMonthsRange();
+
+   let listAbsensiGlobal = [];
+   // sortNama: null (default, urut tanggal terbaru) | "asc" (A-Z) | "desc" (Z-A)
+   let filterState = {
+      search: "",
+      start: isHrdOrAdmin ? "" : twoMonthsStart,
+      end: isHrdOrAdmin ? "" : twoMonthsEnd,
+      sortNama: null
+   };
+
    // Sembunyikan kontrol admin jika bukan HRD/Admin
    if (!isHrdOrAdmin) {
      if (btnImport) btnImport.style.display = "none";
      if (btnExport) btnExport.style.display = "none";
      if (btnSyncFingerprint) btnSyncFingerprint.style.display = "none";
      if (btnConfigFingerprint) btnConfigFingerprint.style.display = "none";
+     if (btnPullArchive) btnPullArchive.style.display = "none";
      if (archiveAlertBox) archiveAlertBox.style.display = "none";
+
      // Paksa langsung ke tab data
      if (panelProses) panelProses.classList.add("hidden");
      if (panelData) panelData.classList.remove("hidden");
-     const tabHeaders = container.querySelector("#absen-tab-header");
-     if (tabHeaders) tabHeaders.style.display = "none";
-   }
 
-   let listAbsensiGlobal = [];
-   // sortNama: null (default, urut tanggal terbaru) | "asc" (A-Z) | "desc" (Z-A)
-   let filterState = { search: "", start: "", end: "", sortNama: null };
+     const tabHeaderContainer = container.querySelector(".absen-tab")?.parentElement;
+     if (tabHeaderContainer) tabHeaderContainer.style.display = "none";
+
+     const pageH1 = container.querySelector("h1");
+     if (pageH1) pageH1.textContent = "Data Absensi Saya";
+     const pageP = container.querySelector("p");
+     if (pageP) pageP.textContent = "Daftar riwayat kehadiran sidik jari Anda pada 2 bulan berjalan.";
+
+     if (filterStart) filterStart.value = twoMonthsStart;
+     if (filterEnd) filterEnd.value = twoMonthsEnd;
+
+     // Panggil pemuatan data absensi otomatis untuk non-HRD
+     loadRawAbsensiTable();
+   }
 
    container.querySelectorAll(".absen-tab").forEach(btn => {
       btn.onclick = () => {
@@ -134,17 +173,27 @@ export async function mount(container, { session } = {}) {
       let data = [...listAbsensiGlobal];
 
       if (!isHrdOrAdmin) {
-         data = data.filter(x => 
-            (x.nik && session?.nik && String(x.nik).trim() === String(session.nik).trim()) ||
-            (x.nama && session?.nama && String(x.nama).trim().toLowerCase() === String(session.nama).trim().toLowerCase())
-         );
+         const uNik = String(session?.nik || "").trim().toLowerCase();
+         const uNama = String(session?.nama || "").trim().toLowerCase();
+         const uUser = String(session?.username || "").trim().toLowerCase();
+
+         data = data.filter(x => {
+            const rNik = String(x.nik || "").trim().toLowerCase();
+            const rNama = String(x.nama || "").trim().toLowerCase();
+
+            const mNik = uNik && rNik && uNik === rNik;
+            const mNama = uNama && rNama && uNama === rNama;
+            const mUser = uUser && (rNik === uUser || rNama === uUser);
+
+            return mNik || mNama || mUser;
+         });
       }
 
       if (filterState.start) data = data.filter(x => x.tanggal >= filterState.start);
       if (filterState.end) data = data.filter(x => x.tanggal <= filterState.end);
       if (filterState.search) {
          const term = filterState.search;
-         data = data.filter(x => (x.nama || "").toLowerCase().includes(term) || (x.nik || "").toLowerCase().includes(term));
+         data = data.filter(x => String(x.nama || "").toLowerCase().includes(term) || String(x.nik || "").toLowerCase().includes(term));
       }
 
       if (filterState.sortNama === "asc") {
@@ -160,7 +209,7 @@ export async function mount(container, { session } = {}) {
 
    function renderRawTable(data) {
       if(!data.length) {
-         rawTbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center">${emptyState("Tidak ada data absensi masuk")}</td></tr>`;
+         rawTbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center">${emptyState("Tidak ada data absensi Anda pada periode ini")}</td></tr>`;
          return;
       }
       rawTbody.innerHTML = data.map(r => `
@@ -208,10 +257,15 @@ export async function mount(container, { session } = {}) {
    }
    if (btnResetFilterAbsen) {
       btnResetFilterAbsen.onclick = () => {
-         filterState = { search: "", start: "", end: "", sortNama: null };
+         filterState = {
+            search: "",
+            start: isHrdOrAdmin ? "" : twoMonthsStart,
+            end: isHrdOrAdmin ? "" : twoMonthsEnd,
+            sortNama: null
+         };
          if (searchRaw) searchRaw.value = "";
-         if (filterStart) filterStart.value = "";
-         if (filterEnd) filterEnd.value = "";
+         if (filterStart) filterStart.value = isHrdOrAdmin ? "" : twoMonthsStart;
+         if (filterEnd) filterEnd.value = isHrdOrAdmin ? "" : twoMonthsEnd;
          if (iconSortNama) iconSortNama.textContent = "↕";
          applyFiltersAbsen();
       };

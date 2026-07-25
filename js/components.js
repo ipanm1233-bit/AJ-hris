@@ -3,7 +3,7 @@
  * COMPONENTS.JS — Pustaka komponen UI yang dapat dipakai ulang
  * =====================================================================
  */
-import { COL } from "./firebase-config.js";
+import { db, COL, doc, getDoc } from "./firebase-config.js";
 import {
   fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, confirmDialog,
   toast, fmtDateShort, fmtRupiah, toNumber, genId, escapeHtml, localDateStr
@@ -513,17 +513,21 @@ export async function openNotificationCenter(session) {
 
     // 1. Notifikasi Pribadi & Status Pengajuan
     personalNotifs.forEach(n => {
+      const isMemo = (n.judul && n.judul.toLowerCase().includes("memo")) || (n.link && n.link.includes("memo_id=")) || n.memo_id;
+      const memoId = n.memo_id || (n.link && n.link.includes("memo_id=") ? n.link.split("memo_id=")[1] : null);
+
       items.push({
         id: n.id,
-        cat: 'status',
-        badge: 'Update Status',
-        tone: 'indigo',
-        iconName: 'bell',
+        cat: isMemo ? 'announcement' : 'status',
+        badge: isMemo ? 'Memo Perusahaan' : 'Update Status',
+        tone: isMemo ? 'purple' : 'indigo',
+        iconName: isMemo ? 'megaphone' : 'bell',
         title: n.judul || 'Notifikasi Sistem',
         message: n.pesan || '',
         date: n.tanggal ? new Date(n.tanggal).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '',
         unread: !n.dibaca,
-        link: n.link || '#riwayat'
+        link: n.link || '#riwayat',
+        memo_id: memoId
       });
     });
 
@@ -752,6 +756,15 @@ function bindFeedEvents(modalDiv, currentList, session) {
 
       if (typeof item.action === "function") {
         item.action();
+      } else if (item.memo_id || (item.link && item.link.includes("memo_id="))) {
+        const memoId = item.memo_id || (item.link ? item.link.split("memo_id=")[1] : null);
+        if (memoId) {
+          showMemoDetailById(memoId, session);
+        } else if (item.link) {
+          const rawLink = String(item.link).trim();
+          const targetRoute = rawLink.replace(/^\/+#?|^#+/, "").trim();
+          location.hash = "#" + targetRoute;
+        }
       } else if (item.link) {
         const rawLink = String(item.link).trim();
         const targetRoute = rawLink.replace(/^\/+#?|^#+/, "").trim();
@@ -763,6 +776,59 @@ function bindFeedEvents(modalDiv, currentList, session) {
         }
       }
     };
+  });
+}
+
+export async function showMemoDetailById(memoId, session) {
+  if (!memoId) return;
+  try {
+    let memo = null;
+    const snap = await getDoc(doc(db, COL.BROADCAST, String(memoId))).catch(() => null);
+    if (snap && snap.exists()) {
+      memo = { id: snap.id, ...snap.data() };
+    } else {
+      const allMemos = await fsGetAll(COL.BROADCAST).catch(() => []);
+      memo = allMemos.find(m => m.id === memoId || m.judul === memoId);
+    }
+
+    if (memo) {
+      openSingleAnnouncementModal(memo, session);
+    } else {
+      toast("Pengumuman tidak ditemukan.", "warning");
+    }
+  } catch (e) {
+    console.error("Gagal membuka detail memo:", e);
+  }
+}
+
+export function openSingleAnnouncementModal(memo, session) {
+  if (!memo) return;
+  const body = `
+    <div class="space-y-4 text-left">
+      <div class="flex items-center justify-between text-xs text-slate-400 border-b border-slate-100 pb-2">
+        <span>Oleh: <strong>${escapeHtml(memo.dibuat_oleh || "-")}</strong></span>
+        <span>${fmtDateShort(memo.tanggal)}</span>
+      </div>
+      <div class="text-sm text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100 quill-content">${memo.isi || "<i>Tidak ada isi.</i>"}</div>
+      ${memo.lampiran_url ? `
+        <div class="pt-2">
+          <a href="${escapeHtml(memo.lampiran_url)}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-sm font-semibold text-purple-700 hover:text-purple-800 hover:underline">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+            Lihat Lampiran File
+          </a>
+        </div>` : ""}
+    </div>
+  `;
+  openModal({
+    title: memo.judul || "Pengumuman",
+    size: "lg",
+    bodyHtml: body,
+    footerHtml: `
+      <button id="btn-close-memo-single" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition ml-auto">Tutup</button>
+    `,
+    onMount: (m) => {
+      m.querySelector("#btn-close-memo-single").onclick = closeModal;
+    }
   });
 }
 

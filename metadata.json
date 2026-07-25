@@ -1,5 +1,5 @@
 {
-  "name": "Portal HRIS & Operasional — CV Andela Jaya",
+  "name": "HRAPP",
   "description": "Sistem Informasi Sumber Daya Manusia (HRIS) dan Portal Operasional untuk CV Andela Jaya, menampilkan absensi, approval, manajemen kontrak, dan push notifikasi.",
   "requestFramePermissions": [
     "camera",

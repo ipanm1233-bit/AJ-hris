@@ -15,6 +15,17 @@ export async function mount(container, { session }) {
   const fileInput = container.querySelector("#excel-upload");
   const btnReset = container.querySelector("#btn-reset-tahunan");
 
+  const userRole = (session?.role || "").toUpperCase();
+  const isHrdRole = ["HRD", "SUPERADMIN", "ADMIN"].includes(userRole);
+
+  if (!isHrdRole) {
+    if (btnImport) btnImport.style.display = "none";
+    if (fileInput) fileInput.style.display = "none";
+    if (btnReset) btnReset.style.display = "none";
+    const excelBox = container.querySelector(".bg-blue-50");
+    if (excelBox) excelBox.style.display = "none";
+  }
+
   let allKaryawan = [];
 
   // ==========================================

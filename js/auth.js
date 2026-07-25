@@ -254,6 +254,9 @@ export async function canAccessRoute(routeId, session) {
   if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(targetId)) {
     targetId = "pemanggilan";
   }
+  // Semua role berhak mengakses route absensi (karyawan non-HRD/Admin otomatis melihat data absensi pribadinya)
+  if (targetId === "absensi" || targetId === "absensi-saya") return true;
+
   const menus = await computeVisibleMenus(session);
   // route yang tidak ada di MENU_CONFIG (mis. sub-halaman) dianggap boleh selama login
   const found = MENU_CONFIG.find(m => (m.route || m.id) === targetId);
