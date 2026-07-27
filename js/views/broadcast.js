@@ -129,28 +129,36 @@ function openComposeModal(container, session, karyawan, users, reload) {
       const countBadge = m.querySelector("#bc-selected-count");
       const btnToggleAll = m.querySelector("#bc-toggle-all");
 
-      // Filter active employees with valid names
-      const validKaryawan = karyawan.filter(k => k.nama_karyawan);
+      // Filter active employees with valid names and sort A-Z
+      const validKaryawan = karyawan.filter(k => k.nama_karyawan || k.nama);
+      validKaryawan.sort((a, b) => {
+        const nameA = String(a.nama_karyawan || a.nama || "");
+        const nameB = String(b.nama_karyawan || b.nama || "");
+        return nameA.localeCompare(nameB, "id", { sensitivity: "base" });
+      });
+
+      const selectedEmpSet = new Set();
 
       function updateCount() {
-        const checked = listContainer.querySelectorAll('input[name="bc-emp-checkbox"]:checked').length;
-        countBadge.textContent = `${checked} Terpilih`;
+        countBadge.textContent = `${selectedEmpSet.size} Terpilih`;
       }
 
       function drawCheckboxes(filterText = "") {
-        const term = String(filterText || "").toLowerCase();
+        const term = String(filterText || "").toLowerCase().trim();
         
         listContainer.innerHTML = validKaryawan.map(k => {
           const nama = String(k.nama_karyawan || k.nama || "");
           const jabatan = String(k.jabatan || "");
           const cabang = String(k.cabang || "");
 
-          const match = nama.toLowerCase().includes(term) || jabatan.toLowerCase().includes(term) || cabang.toLowerCase().includes(term);
+          const match = !term || nama.toLowerCase().includes(term) || jabatan.toLowerCase().includes(term) || cabang.toLowerCase().includes(term);
           if (!match || !nama) return "";
+
+          const isChecked = selectedEmpSet.has(nama);
 
           return `
             <label class="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 rounded-lg cursor-pointer transition select-none">
-              <input type="checkbox" name="bc-emp-checkbox" value="${escapeHtml(nama)}" class="w-4 h-4 text-maroon-600 border-slate-300 rounded focus:ring-maroon-500 cursor-pointer">
+              <input type="checkbox" name="bc-emp-checkbox" value="${escapeHtml(nama)}" ${isChecked ? 'checked' : ''} class="w-4 h-4 text-maroon-600 border-slate-300 rounded focus:ring-maroon-500 cursor-pointer">
               <div class="text-xs">
                 <p class="font-semibold text-slate-800">${escapeHtml(nama)}</p>
                 <p class="text-slate-400 text-[10px]">${escapeHtml(jabatan)} ${cabang ? `• ${escapeHtml(cabang)}` : ''}</p>
@@ -160,7 +168,14 @@ function openComposeModal(container, session, karyawan, users, reload) {
         }).join("");
 
         listContainer.querySelectorAll('input[name="bc-emp-checkbox"]').forEach(cb => {
-          cb.addEventListener("change", updateCount);
+          cb.addEventListener("change", () => {
+            if (cb.checked) {
+              selectedEmpSet.add(cb.value);
+            } else {
+              selectedEmpSet.delete(cb.value);
+            }
+            updateCount();
+          });
         });
         updateCount();
       }
@@ -171,11 +186,28 @@ function openComposeModal(container, session, karyawan, users, reload) {
       let allChecked = false;
       btnToggleAll.onclick = () => {
         allChecked = !allChecked;
-        listContainer.querySelectorAll('input[name="bc-emp-checkbox"]').forEach(cb => {
-          cb.checked = allChecked;
-        });
+        const term = String(searchBox ? searchBox.value : "").toLowerCase().trim();
+        if (allChecked) {
+          validKaryawan.forEach(k => {
+            const nama = String(k.nama_karyawan || k.nama || "");
+            if (!nama) return;
+            const match = !term || nama.toLowerCase().includes(term) || (k.jabatan || "").toLowerCase().includes(term) || (k.cabang || "").toLowerCase().includes(term);
+            if (match) selectedEmpSet.add(nama);
+          });
+        } else {
+          if (!term) {
+            selectedEmpSet.clear();
+          } else {
+            validKaryawan.forEach(k => {
+              const nama = String(k.nama_karyawan || k.nama || "");
+              if (!nama) return;
+              const match = nama.toLowerCase().includes(term) || (k.jabatan || "").toLowerCase().includes(term) || (k.cabang || "").toLowerCase().includes(term);
+              if (match) selectedEmpSet.delete(nama);
+            });
+          }
+        }
+        drawCheckboxes(searchBox ? searchBox.value : "");
         btnToggleAll.textContent = allChecked ? "Batal Semua" : "Pilih Semua";
-        updateCount();
       };
 
       const quill = new window.Quill(m.querySelector('#editor-container'), {
@@ -249,8 +281,7 @@ function openComposeModal(container, session, karyawan, users, reload) {
 
         let targetList = [];
         if (targetType === "SPESIFIK") {
-          const checkedBoxes = listContainer.querySelectorAll('input[name="bc-emp-checkbox"]:checked');
-          targetList = Array.from(checkedBoxes).map(cb => cb.value);
+          targetList = Array.from(selectedEmpSet);
           if (targetList.length === 0) {
             toast("Centang minimal 1 karyawan penerima memo!", "warning");
             return;

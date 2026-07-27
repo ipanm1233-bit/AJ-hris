@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, limit } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan, downloadXlsx, ensureXlsxLoaded } from "../utils.js";
 import { renderCrudModule, badge, emptyState, skeletonRows, avatar } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
@@ -557,6 +557,7 @@ export async function mount(container, { session }) {
   }
 
   function openAddNewContractGlobalModal(allKaryawan, reloadData) {
+    const sortedKaryawan = [...allKaryawan].sort((a, b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id", { sensitivity: "base" }));
     openModal({
       title: "Tambah Kontrak Kerja Baru",
       size: "md",
@@ -566,7 +567,7 @@ export async function mount(container, { session }) {
             <label class="block text-xs font-semibold text-slate-700 mb-1">Pilih Karyawan *</label>
             <select name="nama_karyawan" required class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none bg-white font-medium">
               <option value="">-- Pilih Karyawan --</option>
-              ${allKaryawan.map(k => `<option value="${escapeHtml(k.nama_karyawan)}" data-jabatan="${escapeHtml(k.jabatan || '')}" data-cabang="${escapeHtml(k.cabang || '')}">${escapeHtml(k.nama_karyawan)} - ${escapeHtml(k.jabatan || '')}</option>`).join("")}
+              ${sortedKaryawan.map(k => `<option value="${escapeHtml(k.nama_karyawan)}" data-jabatan="${escapeHtml(k.jabatan || '')}" data-cabang="${escapeHtml(k.cabang || '')}">${escapeHtml(k.nama_karyawan)} - ${escapeHtml(k.jabatan || '')}</option>`).join("")}
             </select>
           </div>
 
@@ -688,6 +689,7 @@ export async function mount(container, { session }) {
     ]);
 
     const activeKaryawan = allKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF" && k.nama_karyawan);
+    activeKaryawan.sort((a, b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id", { sensitivity: "base" }));
 
     function renderView() {
       let html = `
@@ -700,6 +702,9 @@ export async function mount(container, { session }) {
             </div>
             <div class="flex items-center gap-2 self-start md:self-auto flex-wrap">
               <input type="file" id="kpi-excel-upload" accept=".xlsx, .xls" class="hidden">
+              <button id="btn-download-sample-kpi" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5" title="Download Contoh Format Excel KPI">
+                📥 Format Excel Sample
+              </button>
               <button id="btn-import-template" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-semibold transition shadow-sm flex items-center gap-1.5">
                 <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
                 Import Excel
@@ -731,14 +736,28 @@ export async function mount(container, { session }) {
 
       const userRole = (session?.role || "").toUpperCase();
       const isHrdRole = ["HRD", "SUPERADMIN", "ADMIN"].includes(userRole);
+      const btnSample = wrap.querySelector("#btn-download-sample-kpi");
       const btnImport = wrap.querySelector("#btn-import-template");
       const inputExcel = wrap.querySelector("#kpi-excel-upload");
+
+      if (btnSample) {
+        if (!isHrdRole) btnSample.style.display = "none";
+        else btnSample.onclick = downloadSampleExcelTemplateKpi;
+      }
+
       if (btnImport) {
         if (!isHrdRole) {
           btnImport.style.display = "none";
         } else if (inputExcel) {
-          btnImport.onclick = () => inputExcel.click();
-          inputExcel.onchange = (e) => handleExcelImport(e.target.files[0]);
+          btnImport.onclick = () => {
+            inputExcel.value = "";
+            inputExcel.click();
+          };
+          inputExcel.onchange = (e) => {
+            if (e.target.files && e.target.files[0]) {
+              handleExcelImport(e.target.files[0]);
+            }
+          };
         }
       }
 
@@ -896,47 +915,197 @@ export async function mount(container, { session }) {
     renderView();
   }
 
+  async function downloadSampleExcelTemplateKpi() {
+    const headers = ["JABATAN", "NO", "ASPEK", "INDIKATOR", "BOBOT", "PENCAPAIAN (INFO)"];
+    const sampleRows = [
+      ["Sales Representative", 1, "Hasil Kerja", "Pencapaian Target Omzet Penjualan Bulanan", "40%", "Minimal 100% dari target bulanan"],
+      ["Sales Representative", 2, "Sikap Kerja", "Kepatuhan Jam Kerja & Laporan Kunjungan Sales Track", "30%", "Laporan wajib diisi setiap hari"],
+      ["Sales Representative", 3, "Kompetensi", "Pengetahuan Produk & Keterampilan Negosiasi", "30%", "Ujian produk berkala min. score 80"],
+      ["HR Staff", 1, "Hasil Kerja", "Ketepatan waktu dan akurasi pengolahan payroll & absensi", "50%", "Tidak ada keterlambatan payroll"],
+      ["HR Staff", 2, "Sikap Kerja", "Kedisiplinan, kerapian administrasi & ketaatan SOP", "30%", "Nol kesalahan audit dokumen"],
+      ["HR Staff", 3, "Kompetensi", "Pelayanan karyawan & kecepatan respon kendala HR", "20%", "Respon maksimal 1x24 jam"]
+    ];
+
+    try {
+      await downloadXlsx("Format_Sample_Import_Template_KPI", headers, sampleRows, "Template KPI");
+      toast("Format Excel Sample berhasil diunduh!", "success");
+    } catch (e) {
+      toast("Gagal mengunduh format sample: " + e.message, "error");
+    }
+  }
+
   async function handleExcelImport(file) {
-    if (!file || typeof window.XLSX === "undefined") return;
-    const btn = panels.template.querySelector("#btn-import-template");
-    btn.innerHTML = `Membaca File...`; btn.disabled = true;
+    if (!file) return;
+    const btn = panels.template ? panels.template.querySelector("#btn-import-template") : null;
+    const originalText = btn ? btn.innerHTML : "Import Excel";
+    if (btn) { btn.innerHTML = `⏳ Membaca File...`; btn.disabled = true; }
 
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-        try {
-            const data = new Uint8Array(e.target.result);
-            const workbook = window.XLSX.read(data, {type: 'array'});
-            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-            const rows = window.XLSX.utils.sheet_to_json(worksheet, {raw: false});
-            const groupedTemplates = {};
+    try {
+      await ensureXlsxLoaded();
+      if (typeof window.XLSX === "undefined") {
+        throw new Error("Library SheetJS (XLSX) tidak dapat dimuat.");
+      }
 
-            rows.forEach(row => {
-                const getVal = (keys) => {
-                    for(let k of Object.keys(row)) { if(keys.some(x => k.toUpperCase().includes(x))) return row[k]; }
-                    return "";
-                };
-                const jabatan = getVal(["JABATAN", "POSISI"]);
-                const aspek = getVal(["ASPEK"]);
-                const indikator = getVal(["INDIKATOR", "PERTANYAAN"]);
-                const bobot = parseFloat(getVal(["BOBOT", "BOB"])) || 0;
+      const data = await file.arrayBuffer();
+      const workbook = window.XLSX.read(data, { type: 'array' });
+      if (!workbook.SheetNames || !workbook.SheetNames.length) {
+        throw new Error("File Excel kosong atau tidak valid.");
+      }
 
-                if (!jabatan || !indikator) return;
-                if (!groupedTemplates[jabatan]) groupedTemplates[jabatan] = { nama_template: jabatan, soal_json: [], karyawan_assigned: [] };
-                groupedTemplates[jabatan].soal_json.push({ aspek: aspek || "Umum", indikator, bobot, nilai_diberikan: 0 });
-            });
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const matrix = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "", raw: false });
 
-            const templateNames = Object.keys(groupedTemplates);
-            for (const name of templateNames) {
-                await fsAdd(COL.MASTER_SOAL_KPI, groupedTemplates[name], genId("TPL-KPI"));
+      if (!matrix || matrix.length === 0) {
+        throw new Error("Sheet Excel tidak berisi data.");
+      }
+
+      // Step 1: Detect Header Row & Column Indexes
+      let headerRowIdx = -1;
+      let colJabatan = -1;
+      let colNo = -1;
+      let colAspek = -1;
+      let colIndikator = -1;
+      let colBobot = -1;
+      let colPencapaian = -1;
+
+      for (let r = 0; r < Math.min(matrix.length, 15); r++) {
+        const row = matrix[r];
+        if (!Array.isArray(row)) continue;
+
+        row.forEach((cell, cIdx) => {
+          const str = String(cell || "").toUpperCase().trim();
+          if (str.includes("JABATAN") || str.includes("POSISI") || str.includes("TEMPLATE")) colJabatan = cIdx;
+          if (str.includes("NO") || str.includes("NOMOR")) colNo = cIdx;
+          if (str.includes("ASPEK") || str.includes("KATEGORI") || str.includes("DIMENSI")) colAspek = cIdx;
+          if (str.includes("INDIKATOR") || str.includes("PERTANYAAN") || str.includes("SOAL") || str.includes("KRITERIA")) colIndikator = cIdx;
+          if (str.includes("BOBOT") || str.includes("WEIGHT") || str.includes("PERSEN")) colBobot = cIdx;
+          if (str.includes("PENCAPAIAN") || str.includes("INFO") || str.includes("TARGET") || str.includes("KETERANGAN")) colPencapaian = cIdx;
+        });
+
+        if (colIndikator !== -1 || colJabatan !== -1) {
+          headerRowIdx = r;
+          break;
+        }
+      }
+
+      if (headerRowIdx === -1) headerRowIdx = 0;
+
+      // Fallbacks if columns missing
+      if (colIndikator === -1) colIndikator = 3;
+      if (colJabatan === -1) colJabatan = 0;
+      if (colAspek === -1) colAspek = 2;
+      if (colBobot === -1) colBobot = 4;
+      if (colPencapaian === -1) colPencapaian = 5;
+
+      const groupedTemplates = {};
+      let currentJabatan = "";
+
+      for (let r = headerRowIdx + 1; r < matrix.length; r++) {
+        const row = matrix[r];
+        if (!row || !row.length) continue;
+
+        const rawJabatan = colJabatan !== -1 && row[colJabatan] !== undefined ? String(row[colJabatan]).trim() : "";
+        const rawAspek = colAspek !== -1 && row[colAspek] !== undefined ? String(row[colAspek]).trim() : "";
+        const rawIndikator = colIndikator !== -1 && row[colIndikator] !== undefined ? String(row[colIndikator]).trim() : "";
+        const rawBobot = colBobot !== -1 && row[colBobot] !== undefined ? String(row[colBobot]).trim() : "";
+        const rawPencapaian = colPencapaian !== -1 && row[colPencapaian] !== undefined ? String(row[colPencapaian]).trim() : "";
+
+        // Inherit Jabatan from previous row if blank (for grouped rows in Excel)
+        if (rawJabatan) {
+          currentJabatan = rawJabatan;
+        }
+
+        if (!currentJabatan) continue;
+        if (!rawIndikator && !rawAspek) continue;
+        if (!rawIndikator) continue;
+
+        // Clean & Parse Bobot
+        let bobotVal = 0;
+        if (rawBobot) {
+          let cleanStr = rawBobot.replace(/%/g, "").replace(/,/g, ".").trim();
+          let num = parseFloat(cleanStr);
+          if (!isNaN(num)) {
+            if (num > 0 && num <= 1) {
+              bobotVal = Math.round(num * 100);
+            } else {
+              bobotVal = Math.round(num);
             }
-            toast(`Berhasil meng-import ${templateNames.length} Template dari Excel!`, "success");
-            loadTemplateKpi();
-        } catch(err) { toast("Gagal: " + err.message, "error"); }
-    };
-    reader.readAsArrayBuffer(file);
+          }
+        }
+
+        if (!groupedTemplates[currentJabatan]) {
+          groupedTemplates[currentJabatan] = {
+            nama_template: currentJabatan,
+            soal_json: []
+          };
+        }
+
+        groupedTemplates[currentJabatan].soal_json.push({
+          aspek: rawAspek || "Umum",
+          indikator: rawIndikator,
+          bobot: bobotVal,
+          pencapaian_info: rawPencapaian,
+          nilai_diberikan: 0
+        });
+      }
+
+      const templateKeys = Object.keys(groupedTemplates);
+      if (templateKeys.length === 0) {
+        throw new Error("Tidak ada indikator KPI yang valid ditemukan. Mohon periksa header JABATAN, ASPEK, INDIKATOR, dan BOBOT.");
+      }
+
+      // Step 2: Replace or Add existing templates in Firestore
+      const existingTemplates = await fsGetAll(COL.MASTER_SOAL_KPI);
+      let addedCount = 0;
+      let updatedCount = 0;
+
+      for (const name of templateKeys) {
+        const tplData = groupedTemplates[name];
+        const existing = existingTemplates.find(t => (t.nama_template || "").trim().toLowerCase() === name.trim().toLowerCase());
+
+        if (existing) {
+          // Replace / Update existing template, keeping assigned employees
+          await fsUpdate(COL.MASTER_SOAL_KPI, existing.id, {
+            nama_template: name,
+            soal_json: tplData.soal_json,
+            karyawan_assigned: existing.karyawan_assigned || [],
+            updated_at: new Date().toISOString()
+          });
+          updatedCount++;
+        } else {
+          // Add new template
+          await fsAdd(COL.MASTER_SOAL_KPI, {
+            nama_template: name,
+            soal_json: tplData.soal_json,
+            karyawan_assigned: [],
+            created_at: new Date().toISOString()
+          }, genId("TPL-KPI"));
+          addedCount++;
+        }
+      }
+
+      let resMsg = "Berhasil meng-import template KPI! ";
+      if (updatedCount > 0) resMsg += `${updatedCount} template diperbarui. `;
+      if (addedCount > 0) resMsg += `${addedCount} template baru ditambahkan.`;
+
+      toast(resMsg, "success");
+      loadTemplateKpi();
+
+    } catch (err) {
+      console.error("Gagal Import Excel:", err);
+      toast("Gagal Import Excel: " + err.message, "error");
+    } finally {
+      if (btn) {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+      }
+    }
   }
 
   function openTemplateModal(existingData = null, activeKaryawan = []) {
+    // Sort activeKaryawan A-Z
+    activeKaryawan.sort((a, b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id", { sensitivity: "base" }));
+
     const assignedSet = new Set(existingData?.karyawan_assigned || []);
 
     openModal({
@@ -1033,8 +1202,7 @@ export async function mount(container, { session }) {
 
         // Render Karyawan Checkbox List
         function updateCounter() {
-          const checkedBoxes = m.querySelectorAll('input[name="tpl-karyawan-cb"]:checked');
-          counterKaryawan.textContent = checkedBoxes.length;
+          counterKaryawan.textContent = assignedSet.size;
         }
 
         function drawKaryawanCheckboxes(filterText = "") {
@@ -1046,7 +1214,7 @@ export async function mount(container, { session }) {
             const cabang = k.cabang || "Pusat";
             const divisi = k.divisi || "";
 
-            const match = nama.toLowerCase().includes(term) || jabatan.toLowerCase().includes(term) || divisi.toLowerCase().includes(term);
+            const match = !term || nama.toLowerCase().includes(term) || jabatan.toLowerCase().includes(term) || divisi.toLowerCase().includes(term);
             if (!match || !nama) return "";
 
             const isChecked = assignedSet.has(nama);
@@ -1065,7 +1233,14 @@ export async function mount(container, { session }) {
           }).join("");
 
           m.querySelectorAll('input[name="tpl-karyawan-cb"]').forEach(cb => {
-            cb.onchange = updateCounter;
+            cb.onchange = () => {
+              if (cb.checked) {
+                assignedSet.add(cb.value);
+              } else {
+                assignedSet.delete(cb.value);
+              }
+              updateCounter();
+            };
           });
           updateCounter();
         }
@@ -1076,13 +1251,29 @@ export async function mount(container, { session }) {
         }
 
         m.querySelector("#btn-check-all-karyawan").onclick = () => {
-          m.querySelectorAll('input[name="tpl-karyawan-cb"]').forEach(cb => cb.checked = true);
-          updateCounter();
+          const term = (searchKaryawanInput ? searchKaryawanInput.value : "").toLowerCase().trim();
+          activeKaryawan.forEach(k => {
+            const nama = k.nama_karyawan || "";
+            if (!nama) return;
+            const match = !term || nama.toLowerCase().includes(term) || (k.jabatan || "").toLowerCase().includes(term) || (k.divisi || "").toLowerCase().includes(term);
+            if (match) assignedSet.add(nama);
+          });
+          drawKaryawanCheckboxes(searchKaryawanInput ? searchKaryawanInput.value : "");
         };
 
         m.querySelector("#btn-uncheck-all-karyawan").onclick = () => {
-          m.querySelectorAll('input[name="tpl-karyawan-cb"]').forEach(cb => cb.checked = false);
-          updateCounter();
+          const term = (searchKaryawanInput ? searchKaryawanInput.value : "").toLowerCase().trim();
+          if (!term) {
+            assignedSet.clear();
+          } else {
+            activeKaryawan.forEach(k => {
+              const nama = k.nama_karyawan || "";
+              if (!nama) return;
+              const match = nama.toLowerCase().includes(term) || (k.jabatan || "").toLowerCase().includes(term) || (k.divisi || "").toLowerCase().includes(term);
+              if (match) assignedSet.delete(nama);
+            });
+          }
+          drawKaryawanCheckboxes(searchKaryawanInput ? searchKaryawanInput.value : "");
         };
 
         // Indicator & Bobot Logic
@@ -1149,9 +1340,8 @@ export async function mount(container, { session }) {
 
           if (!soalArray.length) return toast("Tambahkan minimal 1 indikator soal KPI!", "warning");
 
-          // Extract checked employees
-          const checkedBoxes = m.querySelectorAll('input[name="tpl-karyawan-cb"]:checked');
-          const checkedEmployees = Array.from(checkedBoxes).map(cb => cb.value);
+          // Extract checked employees from assignedSet (preserves selections across searches)
+          const checkedEmployees = Array.from(assignedSet);
 
           const payload = {
             nama_template: nama,
@@ -1928,6 +2118,7 @@ export async function mount(container, { session }) {
 
     // Daftar semua nama karyawan dari master karyawan untuk opsi pairing Karyawan Ke-2
     const allKaryawanNames = Object.keys(karyawanMap).filter(k => k && k !== "undefined");
+    allKaryawanNames.sort((a, b) => a.localeCompare(b, "id", { sensitivity: "base" }));
 
     function renderActiveContent() {
       if (currentMode === "HALF_A4") {
@@ -2144,12 +2335,15 @@ export async function mount(container, { session }) {
     const allKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
     // PERBAIKAN: Pastikan kita menyaring dan hanya mengambil data yang benar-benar memiliki nama
     const activeK = allKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF" && k.nama_karyawan);
+    activeK.sort((a, b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id", { sensitivity: "base" }));
     
     const optKaryawanSelect = activeK.map(k => `<option value="${escapeHtml(k.nama_karyawan)}">${escapeHtml(k.nama_karyawan)} — ${escapeHtml(k.jabatan || "")}</option>`).join("");
 
     const templates = await fsGetAll(COL.MASTER_SOAL_KPI);
     const validTemplates = templates.filter(t => t.nama_template && t.soal_json && t.soal_json.length > 0);
     const optTemplates = validTemplates.map(t => `<option value="${t.id}">${escapeHtml(t.nama_template)}</option>`).join("");
+
+    const selectedDinilaiSet = new Set();
 
     openModal({
       title: "Distribusi Penilaian KPI 360",
@@ -2209,7 +2403,7 @@ export async function mount(container, { session }) {
 
          // Loop Render Checkbox Berdasarkan Array Pencarian
          function drawCheckboxes(filterText = "") {
-             const term = filterText.toLowerCase();
+             const term = filterText.toLowerCase().trim();
              
              listContainer.innerHTML = activeK.map(k => {
                  // Pengaman tambahan agar tidak error saat map jika data aneh masuk
@@ -2217,12 +2411,14 @@ export async function mount(container, { session }) {
                  const jabatan = k.jabatan || "";
                  const cabang = k.cabang || "";
 
-                 const match = nama.toLowerCase().includes(term) || jabatan.toLowerCase().includes(term);
+                 const match = !term || nama.toLowerCase().includes(term) || jabatan.toLowerCase().includes(term);
                  if(!match || !nama) return "";
+
+                 const isChecked = selectedDinilaiSet.has(nama);
                  
                  return `
                    <label class="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 rounded-lg cursor-pointer transition select-none">
-                      <input type="checkbox" name="dinilai-checkbox" value="${escapeHtml(nama)}" class="w-4 h-4 text-maroon-600 border-slate-300 rounded focus:ring-maroon-500 cursor-pointer">
+                      <input type="checkbox" name="dinilai-checkbox" value="${escapeHtml(nama)}" ${isChecked ? 'checked' : ''} class="w-4 h-4 text-maroon-600 border-slate-300 rounded focus:ring-maroon-500 cursor-pointer">
                       <div class="text-xs">
                          <p class="font-semibold text-slate-700">${escapeHtml(nama)}</p>
                          <p class="text-slate-400 text-[10px]">${escapeHtml(jabatan)} • ${escapeHtml(cabang)}</p>
@@ -2230,6 +2426,16 @@ export async function mount(container, { session }) {
                    </label>
                  `;
              }).join("");
+
+             m.querySelectorAll('input[name="dinilai-checkbox"]').forEach(cb => {
+                 cb.onchange = () => {
+                     if (cb.checked) {
+                         selectedDinilaiSet.add(cb.value);
+                     } else {
+                         selectedDinilaiSet.delete(cb.value);
+                     }
+                 };
+             });
          }
          drawCheckboxes(); // Init render pertama
 
@@ -2265,17 +2471,9 @@ export async function mount(container, { session }) {
               tpl.soal_json.forEach(s => addSoalUI(s));
             }
             if (tpl && Array.isArray(tpl.karyawan_assigned) && tpl.karyawan_assigned.length > 0) {
-              const assignedSet = new Set(tpl.karyawan_assigned);
-              const checkboxes = m.querySelectorAll('input[name="dinilai-checkbox"]');
-              let autoCheckedCount = 0;
-              checkboxes.forEach(cb => {
-                const shouldCheck = assignedSet.has(cb.value);
-                cb.checked = shouldCheck;
-                if (shouldCheck) autoCheckedCount++;
-              });
-              if (autoCheckedCount > 0) {
-                toast(`Otomatis mencentang ${autoCheckedCount} karyawan terdaftar dari template ini!`, "info");
-              }
+              tpl.karyawan_assigned.forEach(n => selectedDinilaiSet.add(n));
+              drawCheckboxes(searchBox.value);
+              toast(`Otomatis mencentang ${tpl.karyawan_assigned.length} karyawan terdaftar dari template ini!`, "info");
             }
          };
 
@@ -2289,9 +2487,8 @@ export async function mount(container, { session }) {
             const periode = m.querySelector("#kpi-periode").value.trim();
             const penilai = m.querySelector("#kpi-penilai").value;
             
-            // Ekstrak nama karyawan yang dicentang dari modul checkbox list
-            const checkedBoxes = m.querySelectorAll('input[name="dinilai-checkbox"]:checked');
-            const dinilaiList = Array.from(checkedBoxes).map(box => box.value);
+            // Ekstrak nama karyawan yang dicentang dari Set agar pilihan tidak hilang saat search
+            const dinilaiList = Array.from(selectedDinilaiSet);
 
             if(!dinilaiList.length) return toast("Centang minimal 1 karyawan yang akan dinilai!", "warning");
             if(dinilaiList.includes(penilai)) return toast("Penilai tidak boleh berada di dalam daftar centang yang dinilai!", "warning");
