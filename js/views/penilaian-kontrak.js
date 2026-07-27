@@ -680,89 +680,220 @@ export async function mount(container, { session }) {
 
   async function loadTemplateKpi() {
     const wrap = panels.template;
-    wrap.innerHTML = `<div class="space-y-2">${skeletonRows(4)}</div>`;
-    const templates = await fsGetAll(COL.MASTER_SOAL_KPI);
+    wrap.innerHTML = `<div class="p-6">${skeletonRows(4)}</div>`;
 
-    let html = `
-        <div class="mb-4 flex justify-between items-end flex-wrap gap-4">
-          <div>
-             <h2 class="text-xl font-semibold text-slate-800">Master Template KPI</h2>
-             <p class="text-sm text-slate-500">Buat set indikator penilaian (Contoh: Template Sales, Admin) untuk digunakan berulang kali.</p>
+    const [templates, allKaryawan] = await Promise.all([
+      fsGetAll(COL.MASTER_SOAL_KPI),
+      fsGetAll(COL.MASTER_KARYAWAN)
+    ]);
+
+    const activeKaryawan = allKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF" && k.nama_karyawan);
+
+    function renderView() {
+      let html = `
+        <div class="space-y-5">
+          <!-- Header Toolbar -->
+          <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 class="text-xl font-bold text-slate-800">Master Template Soal KPI</h2>
+              <p class="text-xs text-slate-500 mt-1">Kelola set indikator penilaian (Contoh: Sales, Admin, Produksi) dan tetapkan daftar karyawan untuk tiap template.</p>
+            </div>
+            <div class="flex items-center gap-2 self-start md:self-auto flex-wrap">
+              <input type="file" id="kpi-excel-upload" accept=".xlsx, .xls" class="hidden">
+              <button id="btn-import-template" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-semibold transition shadow-sm flex items-center gap-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                Import Excel
+              </button>
+              <button id="btn-add-template" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2 rounded-xl text-xs font-semibold transition shadow-sm flex items-center gap-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                Buat Template Baru
+              </button>
+            </div>
           </div>
-          <div class="flex gap-2">
-             <input type="file" id="kpi-excel-upload" accept=".xlsx, .xls" class="hidden">
-             <button id="btn-import-template" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition shadow-sm flex items-center gap-2">
-               <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-               Import Excel
-             </button>
-             <button id="btn-add-template" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition shadow-sm flex items-center gap-2">
-               <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-               Buat Manual
-             </button>
+
+          <!-- Search & Filter Bar -->
+          <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between gap-3">
+            <div class="relative w-full sm:w-80">
+              <input type="text" id="tpl-search-input" placeholder="🔍 Cari nama template, indikator, atau karyawan..." class="w-full px-3.5 py-2 pl-9 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition">
+            </div>
+            <div class="text-xs text-slate-500 font-medium">
+              Total <strong class="text-slate-800">${templates.length}</strong> Template Tersedia
+            </div>
+          </div>
+
+          <!-- Cards Grid -->
+          <div id="tpl-cards-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           </div>
         </div>
-    `;
+      `;
 
-    if (!templates.length) {
-        html += emptyState("Belum ada Template Soal KPI", "Klik tombol Import Excel atau Buat Manual di atas.");
-    } else {
-        html += `
-        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-          <table class="w-full text-sm">
-            <thead class="bg-slate-50 text-slate-500 text-xs uppercase">
-              <tr><th class="px-4 py-3 text-left">Nama Template / Jabatan</th><th class="px-4 py-3 text-center">Jml Indikator</th><th class="px-4 py-3 text-right">Aksi</th></tr>
-            </thead>
-            <tbody>
-              ${templates.map(t => {
-                const isLegacy = !t.nama_template || !t.soal_json;
-                const nama = t.nama_template || "Data Migrasi Lama (Tanpa Nama)";
-                const count = isLegacy ? "-" : (t.soal_json || []).length;
-                return `
-                <tr class="border-t border-slate-50 hover:bg-slate-50 transition">
-                  <td class="px-4 py-3 font-medium ${isLegacy ? 'text-red-500' : 'text-slate-700'}">
-                     ${escapeHtml(nama)}
-                     ${isLegacy ? '<span class="ml-2 text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Format Lama (Hapus)</span>' : ''}
-                  </td>
-                  <td class="px-4 py-3 text-center">${count} Indikator</td>
-                  <td class="px-4 py-3 text-right">
-                    ${!isLegacy ? `<button data-edit-tpl="${t.id}" class="text-maroon-700 hover:underline mr-3 font-medium text-xs">Edit</button>` : ''}
-                    <button data-del-tpl="${t.id}" class="text-red-500 hover:underline font-medium text-xs">Hapus</button>
-                  </td>
-                </tr>
-              `}).join("")}
-            </tbody>
-          </table>
-        </div>`;
-    }
-    wrap.innerHTML = html;
+      wrap.innerHTML = html;
 
-    const userRole = (session?.role || "").toUpperCase();
-    const isHrdRole = ["HRD", "SUPERADMIN", "ADMIN"].includes(userRole);
-    const btnImport = wrap.querySelector("#btn-import-template");
-    const inputExcel = wrap.querySelector("#kpi-excel-upload");
-    if (btnImport) {
-       if (!isHrdRole) {
+      const userRole = (session?.role || "").toUpperCase();
+      const isHrdRole = ["HRD", "SUPERADMIN", "ADMIN"].includes(userRole);
+      const btnImport = wrap.querySelector("#btn-import-template");
+      const inputExcel = wrap.querySelector("#kpi-excel-upload");
+      if (btnImport) {
+        if (!isHrdRole) {
           btnImport.style.display = "none";
-       } else if (inputExcel) {
+        } else if (inputExcel) {
           btnImport.onclick = () => inputExcel.click();
           inputExcel.onchange = (e) => handleExcelImport(e.target.files[0]);
-       }
-    }
-    const btnAdd = wrap.querySelector("#btn-add-template");
-    if(btnAdd) btnAdd.onclick = () => openTemplateModal();
-
-    wrap.querySelectorAll("[data-edit-tpl]").forEach(btn => {
-        btn.onclick = () => openTemplateModal(templates.find(x => x.id === btn.dataset.editTpl));
-    });
-    wrap.querySelectorAll("[data-del-tpl]").forEach(btn => {
-        btn.onclick = async () => {
-            if(confirm("Apakah Anda yakin ingin menghapus data ini?")) {
-                await fsDelete(COL.MASTER_SOAL_KPI, btn.dataset.delTpl);
-                toast("Template berhasil dihapus", "success");
-                loadTemplateKpi();
-            }
         }
-    });
+      }
+
+      const btnAdd = wrap.querySelector("#btn-add-template");
+      if (btnAdd) btnAdd.onclick = () => openTemplateModal(null, activeKaryawan);
+
+      const searchInput = wrap.querySelector("#tpl-search-input");
+      const cardsContainer = wrap.querySelector("#tpl-cards-container");
+
+      function drawCards() {
+        const q = (searchInput.value || "").toLowerCase().trim();
+
+        const filtered = templates.filter(t => {
+          const nama = (t.nama_template || "").toLowerCase();
+          const assigned = (t.karyawan_assigned || []).join(" ").toLowerCase();
+          const indikatorText = (t.soal_json || []).map(s => `${s.aspek} ${s.indikator}`).join(" ").toLowerCase();
+
+          return nama.includes(q) || assigned.includes(q) || indikatorText.includes(q);
+        });
+
+        if (!filtered.length) {
+          cardsContainer.innerHTML = `<div class="col-span-full">${emptyState("Belum ada Template Soal KPI yang cocok", "Klik tombol Buat Template Baru di atas untuk menambah template.")}</div>`;
+          return;
+        }
+
+        cardsContainer.innerHTML = filtered.map(t => {
+          const nama = t.nama_template || "Template Tanpa Nama";
+          const soalList = t.soal_json || [];
+          const totalBobot = soalList.reduce((acc, curr) => acc + (parseFloat(curr.bobot) || 0), 0);
+          const assignedList = Array.isArray(t.karyawan_assigned) ? t.karyawan_assigned : [];
+
+          const isBobot100 = Math.round(totalBobot) === 100;
+
+          // Preview indicators (up to 3)
+          const previewSoal = soalList.slice(0, 3);
+          const extraSoalCount = soalList.length - 3;
+
+          // Preview assigned employees (up to 4)
+          const previewEmployees = assignedList.slice(0, 4);
+          const extraEmpCount = assignedList.length - 4;
+
+          return `
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition p-5 flex flex-col justify-between group cursor-pointer tpl-card-item" data-tpl-id="${t.id}">
+              <div>
+                <!-- Top Header -->
+                <div class="flex items-start justify-between gap-3 mb-3">
+                  <div class="flex items-center gap-2.5">
+                    <div class="w-10 h-10 rounded-xl bg-maroon-50 text-maroon-700 font-bold flex items-center justify-center text-lg shadow-2xs group-hover:bg-maroon-700 group-hover:text-white transition">
+                      📋
+                    </div>
+                    <div>
+                      <h3 class="font-bold text-slate-800 text-sm group-hover:text-maroon-700 transition leading-snug">${escapeHtml(nama)}</h3>
+                      <p class="text-[11px] text-slate-400 font-medium">${soalList.length} Indikator Kinerja</p>
+                    </div>
+                  </div>
+                  ${isBobot100 ? `
+                    <span class="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">Total 100%</span>
+                  ` : `
+                    <span class="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">Bobot ${totalBobot}%</span>
+                  `}
+                </div>
+
+                <!-- Section Preview Indikator KPI -->
+                <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 mb-3 space-y-1.5">
+                  <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wide flex items-center justify-between">
+                    <span>🎯 Detail Soal KPI</span>
+                    <span class="text-slate-400 font-normal lowercase">${soalList.length} soal</span>
+                  </div>
+                  ${soalList.length > 0 ? `
+                    <div class="space-y-1 mt-1">
+                      ${previewSoal.map(s => `
+                        <div class="flex items-center justify-between text-xs bg-white p-1.5 rounded-lg border border-slate-100">
+                          <span class="truncate text-slate-700 font-medium pr-2" title="${escapeHtml(s.indikator)}">${escapeHtml(s.indikator || s.aspek)}</span>
+                          <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">${s.bobot}%</span>
+                        </div>
+                      `).join("")}
+                      ${extraSoalCount > 0 ? `
+                        <div class="text-[10px] text-slate-400 italic text-center pt-0.5">+ ${extraSoalCount} indikator lainnya</div>
+                      ` : ''}
+                    </div>
+                  ` : `
+                    <p class="text-xs text-slate-400 italic py-1">Belum ada indikator ditambahkan</p>
+                  `}
+                </div>
+
+                <!-- Section Karyawan Terdaftar -->
+                <div class="border-t border-slate-100 pt-3">
+                  <div class="flex items-center justify-between text-xs mb-2">
+                    <span class="text-slate-500 font-semibold flex items-center gap-1">👥 Karyawan Masuk Template:</span>
+                    <span class="font-bold text-maroon-700 bg-maroon-50 px-2 py-0.5 rounded-full text-[11px]">${assignedList.length} Orang</span>
+                  </div>
+                  ${assignedList.length > 0 ? `
+                    <div class="flex flex-wrap gap-1">
+                      ${previewEmployees.map(emp => `
+                        <span class="inline-flex items-center gap-1 text-[11px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg font-medium border border-slate-200">
+                          <span>👤</span> ${escapeHtml(emp)}
+                        </span>
+                      `).join("")}
+                      ${extraEmpCount > 0 ? `
+                        <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">+${extraEmpCount} lagi</span>
+                      ` : ''}
+                    </div>
+                  ` : `
+                    <p class="text-xs text-slate-400 italic bg-amber-50/50 border border-amber-100 p-2 rounded-xl text-center">Belum ada karyawan yang dimasukkan ke template ini.</p>
+                  `}
+                </div>
+              </div>
+
+              <!-- Footer Action Buttons -->
+              <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                <button type="button" data-del-tpl="${t.id}" class="text-xs font-semibold text-red-500 hover:text-red-700 hover:bg-red-50 px-2.5 py-1.5 rounded-lg transition">
+                  🗑️ Hapus
+                </button>
+                <button type="button" data-edit-tpl="${t.id}" class="text-xs font-bold text-maroon-700 bg-maroon-50 hover:bg-maroon-100 px-3 py-1.5 rounded-xl transition flex items-center gap-1">
+                  👁️ Detail Soal & Edit
+                </button>
+              </div>
+            </div>
+          `;
+        }).join("");
+
+        // Attach Card Action Events
+        cardsContainer.querySelectorAll("[data-edit-tpl]").forEach(btn => {
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            const tplId = btn.dataset.editTpl;
+            openTemplateModal(templates.find(x => x.id === tplId), activeKaryawan);
+          };
+        });
+
+        cardsContainer.querySelectorAll(".tpl-card-item").forEach(card => {
+          card.onclick = () => {
+            const tplId = card.dataset.tplId;
+            openTemplateModal(templates.find(x => x.id === tplId), activeKaryawan);
+          };
+        });
+
+        cardsContainer.querySelectorAll("[data-del-tpl]").forEach(btn => {
+          btn.onclick = async (e) => {
+            e.stopPropagation();
+            const tplId = btn.dataset.delTpl;
+            if (confirm("Apakah Anda yakin ingin menghapus template KPI ini?")) {
+              await fsDelete(COL.MASTER_SOAL_KPI, tplId);
+              toast("Template berhasil dihapus", "success");
+              loadTemplateKpi();
+            }
+          };
+        });
+      }
+
+      drawCards();
+      if (searchInput) searchInput.oninput = drawCards;
+    }
+
+    renderView();
   }
 
   async function handleExcelImport(file) {
@@ -790,7 +921,7 @@ export async function mount(container, { session }) {
                 const bobot = parseFloat(getVal(["BOBOT", "BOB"])) || 0;
 
                 if (!jabatan || !indikator) return;
-                if (!groupedTemplates[jabatan]) groupedTemplates[jabatan] = { nama_template: jabatan, soal_json: [] };
+                if (!groupedTemplates[jabatan]) groupedTemplates[jabatan] = { nama_template: jabatan, soal_json: [], karyawan_assigned: [] };
                 groupedTemplates[jabatan].soal_json.push({ aspek: aspek || "Umum", indikator, bobot, nilai_diberikan: 0 });
             });
 
@@ -805,87 +936,249 @@ export async function mount(container, { session }) {
     reader.readAsArrayBuffer(file);
   }
 
-  function openTemplateModal(existingData = null) {
+  function openTemplateModal(existingData = null, activeKaryawan = []) {
+    const assignedSet = new Set(existingData?.karyawan_assigned || []);
+
     openModal({
-        title: existingData ? "Edit Template KPI" : "Buat Template KPI Baru",
-        size: "lg",
-        bodyHtml: `
-            <div class="space-y-4">
-                <div>
-                    <label class="block text-xs font-medium text-slate-500 mb-1.5">Nama Template (Cth: Template KPI Sales Staff)</label>
-                    <input type="text" id="tpl-nama" value="${existingData ? escapeHtml(existingData.nama_template) : ''}" required class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none">
-                </div>
-                <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                    <div class="flex justify-between items-center mb-3 border-b border-slate-200 pb-2">
-                       <label class="text-xs font-bold text-slate-700 uppercase tracking-wide">Rancang Indikator & Bobot (Wajib Total 100%)</label>
-                       <span id="tpl-bobot-total" class="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded">Total Bobot: 0%</span>
-                    </div>
-                    <div id="tpl-soal-list" class="space-y-3 mb-3"></div>
-                    <button type="button" id="btn-tpl-add" class="text-xs text-maroon-700 font-medium hover:underline flex items-center gap-1">
-                       <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg> Tambah Indikator Baru
-                    </button>
-                </div>
+      title: existingData ? `Detail & Edit Template: ${escapeHtml(existingData.nama_template || "Template KPI")}` : "Buat Template Soal KPI Baru",
+      size: "lg",
+      bodyHtml: `
+        <div class="space-y-4">
+          <!-- Nama Template -->
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Nama Template / Jabatan <span class="text-red-500">*</span></label>
+            <input type="text" id="tpl-nama" value="${existingData ? escapeHtml(existingData.nama_template || '') : ''}" placeholder="Cth: Template KPI Sales Representative" required class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:border-maroon-500 outline-none font-medium bg-white">
+          </div>
+
+          <!-- TAB / SECTION SELECTOR -->
+          <div class="flex items-center gap-2 border-b border-slate-200 pb-2">
+            <button type="button" id="tab-btn-soal" class="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-maroon-700 text-white transition shadow-2xs">
+              📝 Detail Soal & Indikator KPI
+            </button>
+            <button type="button" id="tab-btn-karyawan" class="px-3.5 py-1.5 text-xs font-bold rounded-xl text-slate-600 hover:bg-slate-100 transition flex items-center gap-1.5">
+              👥 Karyawan yang Masuk Template
+              <span id="tpl-karyawan-counter" class="bg-maroon-100 text-maroon-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full">${assignedSet.size}</span>
+            </button>
+          </div>
+
+          <!-- PANEL 1: SOAL & INDIKATOR KPI -->
+          <div id="panel-tpl-soal" class="space-y-3">
+            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <div class="flex justify-between items-center mb-3 border-b border-slate-200 pb-2">
+                <label class="text-xs font-bold text-slate-700 uppercase tracking-wide">Indikator & Bobot Penilaian (Wajib Total 100%)</label>
+                <span id="tpl-bobot-total" class="text-xs font-bold bg-amber-100 text-amber-700 px-2.5 py-1 rounded-lg">Total Bobot: 0%</span>
+              </div>
+              <div id="tpl-soal-list" class="space-y-2.5 mb-3"></div>
+              <button type="button" id="btn-tpl-add" class="text-xs text-maroon-700 font-bold hover:underline flex items-center gap-1 bg-white px-3 py-1.5 rounded-lg border border-maroon-200 shadow-2xs">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg> Tambah Indikator Baru
+              </button>
             </div>
-        `,
-        footerHtml: `
-            <button id="btn-tpl-batal" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
-            <button id="btn-tpl-simpan" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-md">Simpan Template</button>
-        `,
-        onMount: (m) => {
-            const soalList = m.querySelector("#tpl-soal-list");
-            const badgeBobot = m.querySelector("#tpl-bobot-total");
+          </div>
 
-            function calcTotalBobot() {
-                let total = 0;
-                m.querySelectorAll(".soal-bobot").forEach(input => total += parseFloat(input.value) || 0);
-                badgeBobot.textContent = `Total Bobot: ${total}%`;
-                if (total === 100) badgeBobot.className = "text-xs font-bold bg-green-100 text-green-700 px-2 py-1 rounded";
-                else badgeBobot.className = "text-xs font-bold bg-red-100 text-red-700 px-2 py-1 rounded";
-                return total;
-            }
+          <!-- PANEL 2: DAFTAR KARYAWAN -->
+          <div id="panel-tpl-karyawan" class="hidden space-y-3">
+            <div class="bg-amber-50/60 border border-amber-200 p-3 rounded-xl text-xs text-amber-900 flex items-center justify-between gap-2">
+              <span>💡 <strong>Informasi:</strong> Karyawan yang dicentang di bawah ini akan otomatis menggunakan template KPI ini saat HRD melakukan Distribusi Penilaian 360.</span>
+            </div>
 
-            function addSoalUI(data = { aspek: "", indikator: "", bobot: "" }) {
-                const div = document.createElement("div");
-                div.className = "flex gap-2 items-start bg-white p-2 rounded-lg border border-slate-200 shadow-sm";
-                div.innerHTML = `
-                  <div class="flex-1 space-y-2">
-                     <input type="text" placeholder="Aspek" value="${escapeHtml(data.aspek)}" class="soal-aspek w-full px-2 py-1.5 text-xs border rounded outline-none" required>
-                     <input type="text" placeholder="Indikator" value="${escapeHtml(data.indikator)}" class="soal-indikator w-full px-2 py-1.5 text-xs border rounded outline-none" required>
-                  </div>
-                  <div class="w-20">
-                     <input type="number" placeholder="Bobot %" value="${data.bobot}" class="soal-bobot w-full px-2 py-1.5 text-xs border rounded text-center" required min="1" max="100">
-                  </div>
-                  <button type="button" class="text-slate-300 hover:text-red-500 mt-1.5 p-1">✖</button>
-                `;
-                div.querySelector(".soal-bobot").addEventListener("input", calcTotalBobot);
-                div.querySelector("button").addEventListener("click", () => { div.remove(); calcTotalBobot(); });
-                soalList.appendChild(div); calcTotalBobot();
-            }
+            <div class="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
+              <!-- Search & Quick Selection -->
+              <div class="p-3 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2">
+                <input type="text" id="tpl-search-karyawan" placeholder="🔍 Cari nama karyawan, jabatan, divisi..." class="w-full sm:w-72 px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-white">
+                <div class="flex items-center gap-2 self-end sm:self-auto">
+                  <button type="button" id="btn-check-all-karyawan" class="text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">Centang Semua</button>
+                  <button type="button" id="btn-uncheck-all-karyawan" class="text-[11px] font-semibold text-slate-600 bg-white hover:bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">Hapus Semua</button>
+                </div>
+              </div>
 
-            if (existingData && existingData.soal_json) existingData.soal_json.forEach(s => addSoalUI(s));
-            else addSoalUI();
+              <!-- List Checkbox -->
+              <div id="tpl-karyawan-checkbox-list" class="max-h-60 overflow-y-auto divide-y divide-slate-100 p-1 bg-white">
+              </div>
+            </div>
+          </div>
+        </div>
+      `,
+      footerHtml: `
+        <div class="flex items-center justify-between w-full">
+          <button id="btn-tpl-batal" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition">Batal</button>
+          <button id="btn-tpl-simpan" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-md flex items-center gap-1.5">💾 Simpan Template & Karyawan</button>
+        </div>
+      `,
+      onMount: (m) => {
+        const tabBtnSoal = m.querySelector("#tab-btn-soal");
+        const tabBtnKaryawan = m.querySelector("#tab-btn-karyawan");
+        const panelSoal = m.querySelector("#panel-tpl-soal");
+        const panelKaryawan = m.querySelector("#panel-tpl-karyawan");
 
-            m.querySelector("#btn-tpl-add").onclick = () => addSoalUI();
-            m.querySelector("#btn-tpl-batal").onclick = closeModal;
-            m.querySelector("#btn-tpl-simpan").onclick = async () => {
-                const nama = m.querySelector("#tpl-nama").value.trim();
-                if (!nama || calcTotalBobot() !== 100) return toast("Lengkapi nama & pastikan total bobot tepat 100%!", "warning");
+        const soalList = m.querySelector("#tpl-soal-list");
+        const badgeBobot = m.querySelector("#tpl-bobot-total");
+        const counterKaryawan = m.querySelector("#tpl-karyawan-counter");
+        const karyawanListContainer = m.querySelector("#tpl-karyawan-checkbox-list");
+        const searchKaryawanInput = m.querySelector("#tpl-search-karyawan");
 
-                const soalArray = [];
-                soalList.querySelectorAll(".flex.gap-2").forEach(row => {
-                   soalArray.push({
-                      aspek: row.querySelector(".soal-aspek").value.trim(),
-                      indikator: row.querySelector(".soal-indikator").value.trim(),
-                      bobot: parseFloat(row.querySelector(".soal-bobot").value) || 0,
-                      nilai_diberikan: 0
-                   });
-                });
+        // Tab Switch logic
+        tabBtnSoal.onclick = () => {
+          panelSoal.classList.remove("hidden");
+          panelKaryawan.classList.add("hidden");
+          tabBtnSoal.className = "px-3.5 py-1.5 text-xs font-bold rounded-xl bg-maroon-700 text-white transition shadow-2xs";
+          tabBtnKaryawan.className = "px-3.5 py-1.5 text-xs font-bold rounded-xl text-slate-600 hover:bg-slate-100 transition flex items-center gap-1.5";
+        };
 
-                if (existingData) await fsUpdate(COL.MASTER_SOAL_KPI, existingData.id, { nama_template: nama, soal_json: soalArray });
-                else await fsAdd(COL.MASTER_SOAL_KPI, { nama_template: nama, soal_json: soalArray }, genId("TPL-KPI"));
-                toast("Template disimpan", "success"); closeModal(); loadTemplateKpi();
-            }
+        tabBtnKaryawan.onclick = () => {
+          panelKaryawan.classList.remove("hidden");
+          panelSoal.classList.add("hidden");
+          tabBtnKaryawan.className = "px-3.5 py-1.5 text-xs font-bold rounded-xl bg-maroon-700 text-white transition shadow-2xs flex items-center gap-1.5";
+          tabBtnSoal.className = "px-3.5 py-1.5 text-xs font-bold rounded-xl text-slate-600 hover:bg-slate-100 transition";
+        };
+
+        // Render Karyawan Checkbox List
+        function updateCounter() {
+          const checkedBoxes = m.querySelectorAll('input[name="tpl-karyawan-cb"]:checked');
+          counterKaryawan.textContent = checkedBoxes.length;
         }
+
+        function drawKaryawanCheckboxes(filterText = "") {
+          const term = filterText.toLowerCase().trim();
+
+          karyawanListContainer.innerHTML = activeKaryawan.map(k => {
+            const nama = k.nama_karyawan || "";
+            const jabatan = k.jabatan || "-";
+            const cabang = k.cabang || "Pusat";
+            const divisi = k.divisi || "";
+
+            const match = nama.toLowerCase().includes(term) || jabatan.toLowerCase().includes(term) || divisi.toLowerCase().includes(term);
+            if (!match || !nama) return "";
+
+            const isChecked = assignedSet.has(nama);
+
+            return `
+              <label class="flex items-center justify-between px-3.5 py-2.5 hover:bg-slate-50 rounded-xl cursor-pointer transition select-none group">
+                <div class="flex items-center gap-3">
+                  <input type="checkbox" name="tpl-karyawan-cb" value="${escapeHtml(nama)}" ${isChecked ? 'checked' : ''} class="w-4 h-4 text-maroon-600 border-slate-300 rounded focus:ring-maroon-500 cursor-pointer">
+                  <div>
+                    <p class="text-xs font-bold text-slate-800 group-hover:text-maroon-700 transition">${escapeHtml(nama)}</p>
+                    <p class="text-[11px] text-slate-400 font-medium">${escapeHtml(jabatan)} ${divisi ? `• Divisi ${escapeHtml(divisi)}` : ''} • Cabang ${escapeHtml(cabang)}</p>
+                  </div>
+                </div>
+              </label>
+            `;
+          }).join("");
+
+          m.querySelectorAll('input[name="tpl-karyawan-cb"]').forEach(cb => {
+            cb.onchange = updateCounter;
+          });
+          updateCounter();
+        }
+
+        drawKaryawanCheckboxes();
+        if (searchKaryawanInput) {
+          searchKaryawanInput.oninput = (e) => drawKaryawanCheckboxes(e.target.value);
+        }
+
+        m.querySelector("#btn-check-all-karyawan").onclick = () => {
+          m.querySelectorAll('input[name="tpl-karyawan-cb"]').forEach(cb => cb.checked = true);
+          updateCounter();
+        };
+
+        m.querySelector("#btn-uncheck-all-karyawan").onclick = () => {
+          m.querySelectorAll('input[name="tpl-karyawan-cb"]').forEach(cb => cb.checked = false);
+          updateCounter();
+        };
+
+        // Indicator & Bobot Logic
+        function calcTotalBobot() {
+          let total = 0;
+          m.querySelectorAll(".soal-bobot").forEach(input => total += parseFloat(input.value) || 0);
+          badgeBobot.textContent = `Total Bobot: ${total}%`;
+          if (total === 100) {
+            badgeBobot.className = "text-xs font-bold bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-lg border border-emerald-300";
+          } else {
+            badgeBobot.className = "text-xs font-bold bg-red-100 text-red-700 px-2.5 py-1 rounded-lg border border-red-300";
+          }
+          return total;
+        }
+
+        function addSoalUI(data = { aspek: "", indikator: "", bobot: "" }) {
+          const div = document.createElement("div");
+          div.className = "flex gap-2 items-start bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs";
+          div.innerHTML = `
+            <div class="flex-1 space-y-2">
+              <input type="text" placeholder="Aspek Penilaian (Cth: Kedisiplinan / Target)" value="${escapeHtml(data.aspek || '')}" class="soal-aspek w-full px-2.5 py-1.5 text-xs border rounded-lg outline-none focus:border-maroon-400 font-medium" required>
+              <input type="text" placeholder="Indikator Kinerja / Detail Pertanyaan" value="${escapeHtml(data.indikator || '')}" class="soal-indikator w-full px-2.5 py-1.5 text-xs border rounded-lg outline-none focus:border-maroon-400" required>
+            </div>
+            <div class="w-24 text-center">
+              <label class="block text-[10px] text-slate-400 font-semibold mb-1">Bobot %</label>
+              <input type="number" placeholder="10" value="${data.bobot || ''}" class="soal-bobot w-full px-2.5 py-1.5 text-xs border rounded-lg text-center font-bold text-slate-800 outline-none focus:border-maroon-400" required min="1" max="100">
+            </div>
+            <button type="button" class="text-slate-300 hover:text-red-500 mt-5 p-1 rounded hover:bg-red-50 transition" title="Hapus Indikator">✖</button>
+          `;
+          div.querySelector(".soal-bobot").addEventListener("input", calcTotalBobot);
+          div.querySelector("button").addEventListener("click", () => { div.remove(); calcTotalBobot(); });
+          soalList.appendChild(div);
+          calcTotalBobot();
+        }
+
+        if (existingData && existingData.soal_json && existingData.soal_json.length > 0) {
+          existingData.soal_json.forEach(s => addSoalUI(s));
+        } else {
+          addSoalUI();
+        }
+
+        m.querySelector("#btn-tpl-add").onclick = () => addSoalUI();
+        m.querySelector("#btn-tpl-batal").onclick = closeModal;
+
+        m.querySelector("#btn-tpl-simpan").onclick = async () => {
+          const nama = m.querySelector("#tpl-nama").value.trim();
+          if (!nama) return toast("Nama Template wajib diisi!", "warning");
+          if (calcTotalBobot() !== 100) return toast("Total bobot indikator wajib tepat 100%!", "warning");
+
+          const soalArray = [];
+          soalList.querySelectorAll(".flex.gap-2").forEach(row => {
+            const asp = row.querySelector(".soal-aspek").value.trim();
+            const ind = row.querySelector(".soal-indikator").value.trim();
+            const bbt = parseFloat(row.querySelector(".soal-bobot").value) || 0;
+            if (asp || ind) {
+              soalArray.push({
+                aspek: asp || "Umum",
+                indikator: ind || asp,
+                bobot: bbt,
+                nilai_diberikan: 0
+              });
+            }
+          });
+
+          if (!soalArray.length) return toast("Tambahkan minimal 1 indikator soal KPI!", "warning");
+
+          // Extract checked employees
+          const checkedBoxes = m.querySelectorAll('input[name="tpl-karyawan-cb"]:checked');
+          const checkedEmployees = Array.from(checkedBoxes).map(cb => cb.value);
+
+          const payload = {
+            nama_template: nama,
+            soal_json: soalArray,
+            karyawan_assigned: checkedEmployees
+          };
+
+          const btnSave = m.querySelector("#btn-tpl-simpan");
+          btnSave.disabled = true;
+          btnSave.textContent = "Menyimpan...";
+
+          try {
+            if (existingData && existingData.id) {
+              await fsUpdate(COL.MASTER_SOAL_KPI, existingData.id, payload);
+            } else {
+              await fsAdd(COL.MASTER_SOAL_KPI, payload, genId("TPL-KPI"));
+            }
+            toast("Template Soal KPI & daftar karyawan berhasil disimpan!", "success");
+            closeModal();
+            loadTemplateKpi();
+          } catch (err) {
+            toast("Gagal menyimpan: " + err.message, "error");
+            btnSave.disabled = false;
+            btnSave.textContent = "💾 Simpan Template & Karyawan";
+          }
+        };
+      }
     });
   }
 
@@ -896,8 +1189,14 @@ export async function mount(container, { session }) {
     const isHrd = session.role === "HRD";
 
     let htmlContent = isHrd ? `
-        <div class="mb-4 flex justify-end">
-          <button id="btn-distribusi-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition flex items-center gap-2">
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold text-slate-600">Dokumen Fisik:</span>
+            <button id="btn-print-batch-kpi" class="bg-slate-800 hover:bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-2xs">
+              🖨️ Cetak Form Fisik Semua (${tasks.length})
+            </button>
+          </div>
+          <button id="btn-distribusi-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 shadow-md">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
             Distribusi Penilaian 360
           </button>
@@ -910,16 +1209,19 @@ export async function mount(container, { session }) {
           <div class="overflow-x-auto">
             <table class="w-full text-sm">
               <thead class="bg-slate-50 text-slate-500 text-xs uppercase"><tr>
-                <th class="px-4 py-3 text-left">Periode</th><th class="px-4 py-3 text-left">Penilai</th><th class="px-4 py-3 text-left">Dinilai</th><th class="px-4 py-3 text-left">Batas Waktu</th><th class="px-4 py-3 text-left">Status</th><th class="px-4 py-3 text-left">Skor</th>
+                <th class="px-4 py-3 text-left">Periode</th><th class="px-4 py-3 text-left">Penilai</th><th class="px-4 py-3 text-left">Dinilai</th><th class="px-4 py-3 text-left">Batas Waktu</th><th class="px-4 py-3 text-left">Status</th><th class="px-4 py-3 text-left">Skor</th><th class="px-4 py-3 text-right">Aksi Form Fisik</th>
               </tr></thead>
               <tbody>${tasks.map(t => `
                 <tr class="border-t border-slate-50 hover:bg-slate-50 transition">
-                  <td class="px-4 py-3">${escapeHtml(t.periode || "-")}</td>
+                  <td class="px-4 py-3 font-semibold">${escapeHtml(t.periode || "-")}</td>
                   <td class="px-4 py-3 font-medium">${escapeHtml(t.nama_penilai || "-")}</td>
-                  <td class="px-4 py-3">${escapeHtml(t.nama_dinilai || "-")}</td>
+                  <td class="px-4 py-3 font-bold text-slate-800">${escapeHtml(t.nama_dinilai || "-")}</td>
                   <td class="px-4 py-3 text-xs text-slate-500">${t.deadline ? fmtDateShort(t.deadline) : "-"}</td>
                   <td class="px-4 py-3">${badge(t.status || "PENDING", t.status === "DONE" ? "green" : "amber")}</td>
                   <td class="px-4 py-3 font-semibold">${t.skor_akhir || "-"}</td>
+                  <td class="px-4 py-3 text-right">
+                    <button data-print-fisik="${t.id}" class="px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg inline-flex items-center gap-1 border border-slate-200 transition">🖨️ Form Fisik</button>
+                  </td>
                 </tr>`).join("")}
               </tbody>
             </table>
@@ -927,6 +1229,729 @@ export async function mount(container, { session }) {
         </div>`;
     }
     if (isHrd && wrap.querySelector("#btn-distribusi-kpi")) wrap.querySelector("#btn-distribusi-kpi").onclick = openDistribusiModal;
+    if (isHrd && wrap.querySelector("#btn-print-batch-kpi")) wrap.querySelector("#btn-print-batch-kpi").onclick = () => printBatchFormKpiFisik(tasks);
+
+    wrap.querySelectorAll("[data-print-fisik]").forEach(btn => {
+      btn.onclick = () => printFormKpiFisik(tasks.find(x => x.id === btn.dataset.printFisik));
+    });
+  }
+
+  // =====================================================================
+  // HELPER UNTUK GENERATE & MENCETAK DOKUMEN PENILAIAN FISIK KPI (HEMAT KERTAS)
+  // =====================================================================
+  async function getKaryawanMap() {
+    const allKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
+    const map = {};
+    allKaryawan.forEach(k => {
+      if (k.nama_karyawan) map[k.nama_karyawan] = k;
+    });
+    return map;
+  }
+
+  // FORMAT HALF A4 / A5 CARD (UNTUK MUAT 2 PENILAIAN DALAM 1 KERTAS A4)
+  function generateFormKpiA5CardHtml(task, karyawanMap = {}, isArchiveCopy = false) {
+    const dinilaiInfo = karyawanMap[task.nama_dinilai] || {};
+    const penilaiInfo = karyawanMap[task.nama_penilai] || {};
+
+    const nikDinilai = dinilaiInfo.nik_karyawan || dinilaiInfo.nik || "-";
+    const jabatanDinilai = dinilaiInfo.jabatan || "-";
+    const divisiDinilai = dinilaiInfo.divisi || "-";
+    const cabangDinilai = dinilaiInfo.cabang || "Pusat";
+    const statusDinilai = formatStatusKaryawan(dinilaiInfo.status_karyawan || "-");
+
+    let tbody = "";
+    const soalList = task.soal_json || [];
+    soalList.forEach((item, idx) => {
+      tbody += `
+        <tr>
+          <td style="border:1px solid #000; padding:2px 3px; text-align:center; font-weight:bold; font-size:8.5px;">${idx + 1}</td>
+          <td style="border:1px solid #000; padding:2px 3px; font-weight:600; font-size:8.5px;">${escapeHtml(item.aspek || "-")}</td>
+          <td style="border:1px solid #000; padding:2px 3px; font-size:8px;">${escapeHtml(item.indikator || "-")}</td>
+          <td style="border:1px solid #000; padding:2px 3px; text-align:center; font-weight:bold; font-size:8.5px;">${item.bobot || 0}%</td>
+          <td style="border:1px solid #000; padding:2px 3px; text-align:center; font-weight:bold; background:#fafafa;">
+            <div style="min-height:16px; border:1px dashed #64748b; border-radius:2px; margin:0 auto; width:55px; line-height:16px; text-align:center; font-size:9.5px; color:#334155;">
+              ${item.nilai_diberikan ? item.nilai_diberikan : '[ &nbsp; &nbsp; ]'}
+            </div>
+          </td>
+          <td style="border:1px solid #000; padding:2px 3px; text-align:center;">
+            <div style="min-height:16px; border:1px dashed #cbd5e1; border-radius:2px; margin:0 auto; width:55px;"></div>
+          </td>
+        </tr>
+      `;
+    });
+
+    return `
+      <div style="border:1px solid #000; padding:8px 10px; background:#fff; box-sizing:border-box; border-radius:4px; font-family:'Times New Roman', Times, serif; font-size:9px; line-height:1.15; color:#000; position:relative;">
+        ${isArchiveCopy ? `<div style="position:absolute; top:8px; right:12px; font-size:8px; font-weight:bold; color:#7a1f2b; border:1px solid #7a1f2b; padding:1px 4px; border-radius:2px; background:#fff0f2;">[ LEMBAR ARSIP HRD ]</div>` : ''}
+        
+        <!-- KOP ISO COMPACT -->
+        <div style="margin-bottom:4px;">
+          ${isoDocHeaderTable({
+            judul: "FORMULIR PENILAIAN KPI",
+            noDok: "FM-HRD-KPI-01A5",
+            terbitRevisi: "1/0",
+            tglTerbit: fmtDateShort(new Date()),
+            hal: "1 dari 1"
+          })}
+        </div>
+
+        <!-- INFO KARYAWAN & PENILAI -->
+        <table style="width:100%; border-collapse:collapse; margin-bottom:4px; border:1px solid #000; font-size:8.5px;">
+          <tr>
+            <td width="16%" style="border:1px solid #000; padding:2px 4px; font-weight:bold; background:#f8fafc;">Yang Dinilai</td>
+            <td width="34%" style="border:1px solid #000; padding:2px 4px; font-weight:bold;">${escapeHtml(task.nama_dinilai)} (${escapeHtml(nikDinilai)})</td>
+            <td width="16%" style="border:1px solid #000; padding:2px 4px; font-weight:bold; background:#f8fafc;">Penilai</td>
+            <td width="34%" style="border:1px solid #000; padding:2px 4px; font-weight:bold;">${escapeHtml(task.nama_penilai)}</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #000; padding:2px 4px; font-weight:bold; background:#f8fafc;">Jabatan/Div</td>
+            <td style="border:1px solid #000; padding:2px 4px;">${escapeHtml(jabatanDinilai)} / ${escapeHtml(divisiDinilai)} (${escapeHtml(cabangDinilai)})</td>
+            <td style="border:1px solid #000; padding:2px 4px; font-weight:bold; background:#f8fafc;">Periode & Batas</td>
+            <td style="border:1px solid #000; padding:2px 4px;"><strong>${escapeHtml(task.periode || "-")}</strong> | Batas: ${task.deadline ? fmtDateShort(task.deadline) : "-"}</td>
+          </tr>
+        </table>
+
+        <!-- TABEL INDIKATOR KPI -->
+        <table style="width:100%; border-collapse:collapse; margin-bottom:4px; border:1px solid #000;">
+          <thead>
+            <tr style="background:#e2e8f0; font-weight:bold; text-align:center; font-size:8.5px;">
+              <th width="4%" style="border:1px solid #000; padding:3px 2px;">No</th>
+              <th width="24%" style="border:1px solid #000; padding:3px 3px; text-align:left;">Aspek</th>
+              <th width="42%" style="border:1px solid #000; padding:3px 3px; text-align:left;">Indikator Kinerja Utama</th>
+              <th width="8%" style="border:1px solid #000; padding:3px 2px;">Bobot</th>
+              <th width="11%" style="border:1px solid #000; padding:3px 2px;">Nilai (0-100)</th>
+              <th width="11%" style="border:1px solid #000; padding:3px 2px;">Skor Terbobot</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tbody}
+          </tbody>
+          <tfoot>
+            <tr style="background:#f8fafc; font-weight:bold; font-size:8.5px;">
+              <td colspan="3" style="border:1px solid #000; padding:2px 4px; text-align:right;">TOTAL SKOR AKHIR:</td>
+              <td style="border:1px solid #000; padding:2px 2px; text-align:center;">100%</td>
+              <td colspan="2" style="border:1px solid #000; padding:2px 2px; text-align:center;">
+                <div style="min-height:16px; border:1px solid #000; border-radius:2px; margin:0 auto; width:70px; background:#fff;"></div>
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <!-- CATATAN & EVALUASI DETIL PENILAI -->
+        <div style="border:1px solid #000; padding:3px 5px; margin-bottom:4px; font-size:8px; background:#fff;">
+          <div style="font-weight:bold; font-size:8.5px; border-bottom:1px solid #000; padding-bottom:1px; margin-bottom:2px; color:#000;">
+            📝 CATATAN & EVALUASI KUALITATIF PENILAI:
+          </div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px; margin-bottom:2px;">
+            <div style="border:1px solid #cbd5e1; padding:2px 4px; background:#f8fafc; border-radius:2px;">
+              <strong style="color:#166534; font-size:8px;">✓ Hal-hal yang Sudah Baik (Kelebihan/Prestasi):</strong>
+              <div style="min-height:16px; font-size:8px; line-height:1.15; margin-top:1px; color:#1e293b;">
+                ${escapeHtml(task.catatan_baik || "") || `<div style="border-bottom:1px dotted #cbd5e1; min-height:8px;"></div><div style="border-bottom:1px dotted #cbd5e1; min-height:8px; margin-top:1px;"></div>`}
+              </div>
+            </div>
+            <div style="border:1px solid #cbd5e1; padding:2px 4px; background:#f8fafc; border-radius:2px;">
+              <strong style="color:#991b1b; font-size:8px;">⚠ Hal-hal yang Harus Diperbaiki (Area Peningkatan):</strong>
+              <div style="min-height:16px; font-size:8px; line-height:1.15; margin-top:1px; color:#1e293b;">
+                ${escapeHtml(task.catatan_perbaikan || "") || `<div style="border-bottom:1px dotted #cbd5e1; min-height:8px;"></div><div style="border-bottom:1px dotted #cbd5e1; min-height:8px; margin-top:1px;"></div>`}
+              </div>
+            </div>
+          </div>
+          <div style="border:1px solid #cbd5e1; padding:2px 4px; background:#fafafa; border-radius:2px;">
+            <strong style="color:#334155; font-size:8px;">💬 Catatan & Rekomendasi Tambahan Penilai:</strong>
+            <div style="min-height:12px; font-size:8px; line-height:1.15; margin-top:1px; color:#1e293b;">
+              ${escapeHtml(task.catatan_penilai || task.catatan_umum || "") || `<div style="border-bottom:1px dotted #cbd5e1; min-height:8px;"></div>`}
+            </div>
+          </div>
+        </div>
+
+        <!-- KATEGORI & TANDA TANGAN GRID COMPACT -->
+        <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:8px; margin-top:4px;">
+          <div style="width:46%;">
+            <div style="border:1px solid #000; background:#f8fafc; padding:3px; font-size:8px; line-height:1.2;">
+              <strong>Kategori Performance:</strong><br>
+              [ ] Sangat Baik (90-100) &nbsp; [ ] Baik (80-89)<br>
+              [ ] Cukup (70-79) &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; [ ] Kurang (&lt;70)
+            </div>
+          </div>
+          <div style="width:52%;">
+            <table style="width:100%; text-align:center; font-size:8.5px;">
+              <tr>
+                <td width="33%">Karyawan,</td>
+                <td width="33%">Penilai,</td>
+                <td width="34%">HRD,</td>
+              </tr>
+              <tr>
+                <td height="22" style="vertical-align:bottom; font-size:7px; color:#64748b;">(TTD)</td>
+                <td height="22" style="vertical-align:bottom; font-size:7px; color:#64748b;">(TTD)</td>
+                <td height="22" style="vertical-align:bottom; font-size:7px; color:#64748b;">(TTD)</td>
+              </tr>
+              <tr>
+                <td>( <strong>${escapeHtml(task.nama_dinilai)}</strong> )</td>
+                <td>( <strong>${escapeHtml(task.nama_penilai)}</strong> )</td>
+                <td>( <strong>Andela</strong> )</td>
+              </tr>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // GENERATE BATCH 2-UP PER A4 PAGE LANDSCAPE (SETENGAH A4 / A5 SIDE-BY-SIDE DENGAN GARIS POTONG VERTIKAL)
+  function generate2UpA4Html(tasks, karyawanMap = {}) {
+    if (!tasks || !tasks.length) return "";
+    let html = "";
+    
+    for (let i = 0; i < tasks.length; i += 2) {
+      const taskLeft = tasks[i];
+      const taskRight = tasks[i + 1];
+
+      const leftCard = generateFormKpiA5CardHtml(taskLeft, karyawanMap, false);
+      let rightCard = "";
+
+      if (taskRight) {
+        rightCard = generateFormKpiA5CardHtml(taskRight, karyawanMap, false);
+      } else {
+        // Jika ganjil, salinan kanan adalah lembar arsip HRD
+        rightCard = generateFormKpiA5CardHtml(taskLeft, karyawanMap, true);
+      }
+
+      html += `
+        <div class="a4-2up-page-landscape" style="width:100%; max-width:1050px; margin:0 auto 20px auto; box-sizing:border-box; display:flex; flex-direction:row; justify-content:space-between; align-items:stretch; page-break-after:always; page-break-inside:avoid; min-height:185mm; padding:3mm 0;">
+          <!-- SISI KIRI (FORM 1) -->
+          <div style="width:48.5%; display:flex; flex-direction:column; justify-content:space-between;">
+            ${leftCard}
+          </div>
+
+          <!-- GARIS POTONG VERTIKAL A5 -->
+          <div style="width:3%; display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative;">
+            <div style="border-left:1.5px dashed #475569; height:100%; margin:0 auto;"></div>
+            <span style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%) rotate(-90deg); white-space:nowrap; background:#ffffff; padding:2px 8px; font-size:8px; color:#334155; font-style:italic; font-weight:bold; border:1px solid #cbd5e1; border-radius:4px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+              ✂ POTONG DI SINI (UKURAN A5)
+            </span>
+          </div>
+
+          <!-- SISI KANAN (FORM 2 / ARSIP) -->
+          <div style="width:48.5%; display:flex; flex-direction:column; justify-content:space-between;">
+            ${rightCard}
+          </div>
+        </div>
+      `;
+    }
+    return html;
+  }
+
+  // FORMAT INDIVIDUAL FULL A4
+  function generateFormKpiFisikHtml(task, karyawanMap = {}) {
+    const dinilaiInfo = karyawanMap[task.nama_dinilai] || {};
+    const penilaiInfo = karyawanMap[task.nama_penilai] || {};
+
+    const nikDinilai = dinilaiInfo.nik_karyawan || dinilaiInfo.nik || "-";
+    const jabatanDinilai = dinilaiInfo.jabatan || "-";
+    const divisiDinilai = dinilaiInfo.divisi || "-";
+    const cabangDinilai = dinilaiInfo.cabang || "Pusat";
+    const statusDinilai = formatStatusKaryawan(dinilaiInfo.status_karyawan || "-");
+    const jabatanPenilai = penilaiInfo.jabatan || "Atasan Direct / Assessor";
+
+    let tbody = "";
+    const soalList = task.soal_json || [];
+    soalList.forEach((item, idx) => {
+      tbody += `
+        <tr>
+          <td style="border:1px solid #000; padding:3px 4px; text-align:center; font-weight:bold; font-size:10px;">${idx + 1}</td>
+          <td style="border:1px solid #000; padding:3px 4px; font-weight:600; font-size:10px;">${escapeHtml(item.aspek || "-")}</td>
+          <td style="border:1px solid #000; padding:3px 4px; font-size:9.5px;">${escapeHtml(item.indikator || "-")}</td>
+          <td style="border:1px solid #000; padding:3px 4px; text-align:center; font-weight:bold; font-size:10px;">${item.bobot || 0}%</td>
+          <td style="border:1px solid #000; padding:3px 4px; text-align:center; font-weight:bold; background:#fafafa;">
+            <div style="min-height:20px; border:1px dashed #64748b; border-radius:3px; margin:1px auto; width:65px; line-height:20px; text-align:center; font-size:11px; color:#334155;">
+              ${item.nilai_diberikan ? item.nilai_diberikan : '[ &nbsp; &nbsp; &nbsp; ]'}
+            </div>
+          </td>
+          <td style="border:1px solid #000; padding:3px 4px; text-align:center;">
+            <div style="min-height:20px; border:1px dashed #cbd5e1; border-radius:3px; margin:1px auto; width:65px;"></div>
+          </td>
+          <td style="border:1px solid #000; padding:3px 4px; font-size:9px; color:#334155;">
+            <div style="min-height:20px;"></div>
+          </td>
+        </tr>
+      `;
+    });
+
+    return `
+      <div class="kpi-form-fisik-page" style="width:100%; max-width:750px; margin:0 auto 15px auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:10px; line-height:1.2; color:#000; background:#ffffff; page-break-after:always; page-break-inside:avoid;">
+        <!-- KOP ISO COMPACT -->
+        <div style="margin-bottom:6px;">
+          ${isoDocHeaderTable({
+            judul: "FORMULIR PENILAIAN KINERJA KARYAWAN (KPI)",
+            noDok: "FM-HRD-KPI-01",
+            terbitRevisi: "1/0",
+            tglTerbit: fmtDateShort(new Date()),
+            hal: "1 dari 1"
+          })}
+        </div>
+
+        <!-- INFORMASI KARYAWAN & PENILAI COMPACT -->
+        <table style="width:100%; border-collapse:collapse; margin-bottom:6px; border:1px solid #000; font-size:10px;">
+          <tr>
+            <td width="18%" style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Nama Karyawan</td>
+            <td width="32%" style="border:1px solid #000; padding:3px 6px; font-weight:bold;">${escapeHtml(task.nama_dinilai)}</td>
+            <td width="18%" style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Penilai (Assessor)</td>
+            <td width="32%" style="border:1px solid #000; padding:3px 6px; font-weight:bold;">${escapeHtml(task.nama_penilai)}</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">NIK / Status</td>
+            <td style="border:1px solid #000; padding:3px 6px;">${escapeHtml(nikDinilai)} / ${escapeHtml(statusDinilai)}</td>
+            <td style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Jabatan Penilai</td>
+            <td style="border:1px solid #000; padding:3px 6px;">${escapeHtml(jabatanPenilai)}</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Jabatan / Divisi</td>
+            <td style="border:1px solid #000; padding:3px 6px;">${escapeHtml(jabatanDinilai)} / ${escapeHtml(divisiDinilai)} (${escapeHtml(cabangDinilai)})</td>
+            <td style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Periode & Batas</td>
+            <td style="border:1px solid #000; padding:3px 6px;"><strong>${escapeHtml(task.periode || "-")}</strong> | Batas: ${task.deadline ? fmtDateShort(task.deadline) : "-"}</td>
+          </tr>
+        </table>
+
+        <!-- PETUNJUK COMPACT 1 LINE -->
+        <div style="border:1px solid #000; background:#f1f5f9; padding:3px 8px; margin-bottom:6px; font-size:9px; line-height:1.2;">
+          <strong>PETUNJUK:</strong> Berikan nilai angka <strong>0 - 100</strong> pada kolom <em>Nilai Fisik</em>. Hitung Skor = (Nilai x Bobot) / 100. Tulis catatan jika ada.
+        </div>
+
+        <!-- TABEL INDIKATOR KPI -->
+        <table style="width:100%; border-collapse:collapse; margin-bottom:6px; border:1px solid #000;">
+          <thead>
+            <tr style="background:#e2e8f0; font-weight:bold; text-align:center; font-size:9.5px;">
+              <th width="4%" style="border:1px solid #000; padding:4px 2px;">No</th>
+              <th width="22%" style="border:1px solid #000; padding:4px 4px; text-align:left;">Aspek KPI</th>
+              <th width="36%" style="border:1px solid #000; padding:4px 4px; text-align:left;">Indikator Kinerja Utama</th>
+              <th width="8%" style="border:1px solid #000; padding:4px 2px;">Bobot</th>
+              <th width="11%" style="border:1px solid #000; padding:4px 2px;">Nilai Fisik<br>(0-100)</th>
+              <th width="9%" style="border:1px solid #000; padding:4px 2px;">Skor Terbobot</th>
+              <th width="10%" style="border:1px solid #000; padding:4px 2px;">Catatan</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tbody}
+          </tbody>
+          <tfoot>
+            <tr style="background:#f8fafc; font-weight:bold; font-size:9.5px;">
+              <td colspan="3" style="border:1px solid #000; padding:4px 6px; text-align:right;">TOTAL BOBOT & SKOR AKHIR:</td>
+              <td style="border:1px solid #000; padding:4px 2px; text-align:center;">100%</td>
+              <td colspan="2" style="border:1px solid #000; padding:4px 2px; text-align:center;">
+                <div style="min-height:20px; border:1px solid #000; border-radius:3px; margin:1px auto; width:80px; background:#fff;"></div>
+              </td>
+              <td style="border:1px solid #000; padding:4px 2px;"></td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <!-- CATATAN & EVALUASI PENILAI COMPACT & LENGKAP -->
+        <table style="width:100%; border-collapse:collapse; margin-bottom:6px; border:1px solid #000; font-size:9.5px;">
+          <tr style="background:#f1f5f9; font-weight:bold;">
+            <td style="border:1px solid #000; padding:4px 6px; color:#000;">
+              📝 Ulasan & Catatan Evaluasi Penilai (Kualitatif):
+            </td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #000; padding:5px 6px; background:#fff;">
+              <div style="margin-bottom:4px;">
+                <strong style="color:#166534; font-size:9.5px;">1. Hal-hal yang Sudah Baik (Kelebihan / Prestasi Kerja):</strong>
+                <div style="min-height:22px; font-size:9px; line-height:1.3; color:#1e293b; margin-top:2px;">
+                  ${escapeHtml(task.catatan_baik || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div>`}
+                </div>
+              </div>
+              <div style="margin-bottom:4px;">
+                <strong style="color:#991b1b; font-size:9.5px;">2. Hal-hal yang Harus Diperbaiki (Area Peningkatan / Kelemahan):</strong>
+                <div style="min-height:22px; font-size:9px; line-height:1.3; color:#1e293b; margin-top:2px;">
+                  ${escapeHtml(task.catatan_perbaikan || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div>`}
+                </div>
+              </div>
+              <div>
+                <strong style="color:#334155; font-size:9.5px;">3. Catatan & Rekomendasi Tambahan Penilai:</strong>
+                <div style="min-height:16px; font-size:9px; line-height:1.3; color:#1e293b; margin-top:2px;">
+                  ${escapeHtml(task.catatan_penilai || task.catatan_umum || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div>`}
+                </div>
+              </div>
+            </td>
+          </tr>
+        </table>
+
+        <!-- KATEGORI SKOR PERFORMANCE HORIZONTAL -->
+        <table style="width:100%; border-collapse:collapse; margin-bottom:8px; border:1px solid #000; font-size:9px;">
+          <tr style="background:#f1f5f9; font-weight:bold; text-align:center;">
+            <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Sangat Baik</strong> (90 - 100)</td>
+            <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Baik</strong> (80 - 89)</td>
+            <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Cukup</strong> (70 - 79)</td>
+            <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Kurang</strong> (&lt; 70)</td>
+          </tr>
+        </table>
+
+        <!-- TANDA TANGAN 3 PIHAK COMPACT -->
+        <table style="width:100%; text-align:center; margin-top:8px; page-break-inside:avoid; font-size:10px;">
+          <tr>
+            <td width="33%">Karyawan (Yang Dinilai),</td>
+            <td width="33%">Penilai (Assessor),</td>
+            <td width="34%">Mengetahui (HRD / Manajemen),</td>
+          </tr>
+          <tr>
+            <td height="35" style="vertical-align:bottom; font-size:8.5px; color:#64748b;">(Tanda Tangan & Tanggal)</td>
+            <td height="35" style="vertical-align:bottom; font-size:8.5px; color:#64748b;">(Tanda Tangan & Tanggal)</td>
+            <td height="35" style="vertical-align:bottom; font-size:8.5px; color:#64748b;">(Tanda Tangan & Stempel)</td>
+          </tr>
+          <tr>
+            <td>( <strong>${escapeHtml(task.nama_dinilai)}</strong> )</td>
+            <td>( <strong>${escapeHtml(task.nama_penilai)}</strong> )</td>
+            <td>( <strong>HRD CV ANDELA JAYA</strong> )</td>
+          </tr>
+        </table>
+      </div>
+    `;
+  }
+
+  // FORMAT MATRIKS KOLEKTIF - HEMAT KERTAS MAKSIMAL (GABUNG BANYAK KARYAWAN DALAM 1 LEMBAR)
+  function generateFormKpiMatriksKolektifHtml(tasks, karyawanMap = {}) {
+    if (!tasks || !tasks.length) return "";
+    const samplePenilai = tasks[0].nama_penilai || "Assessor";
+    const samplePeriode = tasks[0].periode || "-";
+    const sampleDeadline = tasks[0].deadline ? fmtDateShort(tasks[0].deadline) : "-";
+
+    const soalList = tasks[0].soal_json || [];
+
+    let thKaryawan = "";
+    tasks.forEach((t, idx) => {
+      const kInfo = karyawanMap[t.nama_dinilai] || {};
+      const jabatan = kInfo.jabatan || "-";
+      thKaryawan += `
+        <th style="border:1px solid #000; padding:4px 3px; text-align:center; width:${Math.floor(50 / tasks.length)}%;">
+          <div style="font-size:10px; font-weight:bold; color:#000;">${idx + 1}. ${escapeHtml(t.nama_dinilai)}</div>
+          <div style="font-size:8.5px; font-weight:normal; color:#475569;">${escapeHtml(jabatan)}</div>
+        </th>
+      `;
+    });
+
+    let tbody = "";
+    soalList.forEach((item, sIdx) => {
+      let tdScores = "";
+      tasks.forEach(t => {
+        const itemVal = (t.soal_json && t.soal_json[sIdx]) ? t.soal_json[sIdx].nilai_diberikan : "";
+        tdScores += `
+          <td style="border:1px solid #000; padding:3px 2px; text-align:center; background:#fafafa;">
+            <div style="min-height:18px; border:1px dashed #94a3b8; border-radius:3px; margin:0 auto; width:90%; line-height:18px; font-size:10px; font-weight:bold;">
+              ${itemVal ? itemVal : '[ &nbsp; ]'}
+            </div>
+          </td>
+        `;
+      });
+
+      tbody += `
+        <tr>
+          <td style="border:1px solid #000; padding:3px 4px; text-align:center; font-weight:bold; font-size:9.5px;">${sIdx + 1}</td>
+          <td style="border:1px solid #000; padding:3px 4px; font-size:9.5px; font-weight:600;">${escapeHtml(item.aspek || "-")}</td>
+          <td style="border:1px solid #000; padding:3px 4px; font-size:9px;">${escapeHtml(item.indikator || "-")}</td>
+          <td style="border:1px solid #000; padding:3px 4px; text-align:center; font-weight:bold; font-size:9.5px;">${item.bobot || 0}%</td>
+          ${tdScores}
+        </tr>
+      `;
+    });
+
+    let tdTotalFoot = "";
+    tasks.forEach(() => {
+      tdTotalFoot += `
+        <td style="border:1px solid #000; padding:4px 2px; text-align:center;">
+          <div style="min-height:22px; border:1px solid #000; border-radius:3px; margin:0 auto; width:90%; background:#fff;"></div>
+        </td>
+      `;
+    });
+
+    return `
+      <div class="kpi-form-fisik-page" style="width:100%; max-width:800px; margin:0 auto 20px auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:10px; line-height:1.2; color:#000; background:#ffffff; page-break-after:always; page-break-inside:avoid;">
+        <!-- KOP ISO MATRIKS -->
+        <div style="margin-bottom:6px;">
+          ${isoDocHeaderTable({
+            judul: "MATRIKS PENILAIAN KPI KOLEKTIF (HEMAT KERTAS)",
+            noDok: "FM-HRD-KPI-01M",
+            terbitRevisi: "1/0",
+            tglTerbit: fmtDateShort(new Date()),
+            hal: "1 dari 1"
+          })}
+        </div>
+
+        <!-- HEADER PENILAI & PERIODE -->
+        <table style="width:100%; border-collapse:collapse; margin-bottom:6px; border:1px solid #000; font-size:10px;">
+          <tr>
+            <td width="15%" style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Nama Penilai</td>
+            <td width="35%" style="border:1px solid #000; padding:3px 6px; font-weight:bold;">${escapeHtml(samplePenilai)}</td>
+            <td width="18%" style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Periode & Batas</td>
+            <td width="32%" style="border:1px solid #000; padding:3px 6px;"><strong>${escapeHtml(samplePeriode)}</strong> | Batas: ${sampleDeadline}</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Jumlah Dinilai</td>
+            <td style="border:1px solid #000; padding:3px 6px;"><strong>${tasks.length} Karyawan</strong> dalam 1 Lembar Dokumen</td>
+            <td style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Metode Pengisian</td>
+            <td style="border:1px solid #000; padding:3px 6px;">Isi angka skor (0-100) pada kolom masing-masing karyawan</td>
+          </tr>
+        </table>
+
+        <!-- TABEL MATRIKS UNTUK SELURUH KARYAWAN -->
+        <table style="width:100%; border-collapse:collapse; margin-bottom:8px; border:1px solid #000;">
+          <thead>
+            <tr style="background:#e2e8f0; font-weight:bold;">
+              <th width="3%" style="border:1px solid #000; padding:4px 2px; text-align:center;">No</th>
+              <th width="18%" style="border:1px solid #000; padding:4px 4px; text-align:left;">Aspek KPI</th>
+              <th width="25%" style="border:1px solid #000; padding:4px 4px; text-align:left;">Indikator Utama</th>
+              <th width="6%" style="border:1px solid #000; padding:4px 2px; text-align:center;">Bobot</th>
+              ${thKaryawan}
+            </tr>
+          </thead>
+          <tbody>
+            ${tbody}
+          </tbody>
+          <tfoot>
+            <tr style="background:#f8fafc; font-weight:bold; font-size:9.5px;">
+              <td colspan="3" style="border:1px solid #000; padding:4px 6px; text-align:right;">SKOR AKHIR TERBOBOT:</td>
+              <td style="border:1px solid #000; padding:4px 2px; text-align:center;">100%</td>
+              ${tdTotalFoot}
+            </tr>
+          </tfoot>
+        </table>
+
+        <!-- KATEGORI SKOR PERFORMANCE -->
+        <div style="border:1px solid #000; background:#f8fafc; padding:4px 8px; margin-bottom:10px; font-size:8.5px; text-align:center;">
+          <strong>Standar Skor:</strong> Sangat Baik (90-100) | Baik (80-89) | Cukup (70-79) | Kurang (&lt;70)
+        </div>
+
+        <!-- TANDA TANGAN PENILAI & HRD -->
+        <table style="width:100%; text-align:center; margin-top:10px; page-break-inside:avoid; font-size:10px;">
+          <tr>
+            <td width="50%">Penilai (Assessor),</td>
+            <td width="50%">Mengetahui (HRD / Manajemen),</td>
+          </tr>
+          <tr>
+            <td height="40" style="vertical-align:bottom; font-size:8.5px; color:#64748b;">(Tanda Tangan & Tanggal)</td>
+            <td height="40" style="vertical-align:bottom; font-size:8.5px; color:#64748b;">(Tanda Tangan & Stempel)</td>
+          </tr>
+          <tr>
+            <td>( <strong>${escapeHtml(samplePenilai)}</strong> )</td>
+            <td>( <strong>HRD CV ANDELA JAYA</strong> )</td>
+          </tr>
+        </table>
+      </div>
+    `;
+  }
+
+  function openPrintOrPdfModal({ title, tasks = [], karyawanMap = {}, filename }) {
+    let currentMode = "HALF_A4"; // DEFAULT: 2 FORM PER LEMBAR A4 (HALF A4 / A5)
+    let currentTasks = [...tasks];
+
+    // Daftar semua nama karyawan dari master karyawan untuk opsi pairing Karyawan Ke-2
+    const allKaryawanNames = Object.keys(karyawanMap).filter(k => k && k !== "undefined");
+
+    function renderActiveContent() {
+      if (currentMode === "HALF_A4") {
+        return generate2UpA4Html(currentTasks, karyawanMap);
+      } else if (currentMode === "MATRIKS" && currentTasks.length > 0) {
+        return generateFormKpiMatriksKolektifHtml(currentTasks, karyawanMap);
+      }
+      return currentTasks.map(t => generateFormKpiFisikHtml(t, karyawanMap)).join("\n");
+    }
+
+    let initialHtml = renderActiveContent();
+
+    // Buat dropdown pilihan karyawan ke-2 jika hanya ada 1 task awal
+    let pairingSelectorHtml = "";
+    if (tasks.length === 1 && allKaryawanNames.length > 0) {
+      const sampleTask = tasks[0];
+      const optKaryawanBawah = allKaryawanNames
+        .filter(n => n !== sampleTask.nama_dinilai)
+        .map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)} (${escapeHtml(karyawanMap[n]?.jabatan || "Karyawan")})</option>`)
+        .join("");
+
+      pairingSelectorHtml = `
+        <div id="pairing-control-box" class="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-amber-900 flex items-center gap-1">✂️ Pasangkan 2 Karyawan (Kiri & Kanan) dalam 1 Lembar A4 Landscape:</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-slate-600 font-medium">Sisi Kanan (Karyawan 2):</span>
+            <select id="select-karyawan-2" class="px-2.5 py-1 text-xs rounded-lg border border-amber-300 bg-white font-semibold text-slate-800 outline-none cursor-pointer focus:ring-2 focus:ring-amber-500">
+              <option value="__ARSIP__">-- (Lembar Salinan Arsip HRD) --</option>
+              ${optKaryawanBawah}
+            </select>
+          </div>
+        </div>
+      `;
+    }
+
+    openModal({
+      title,
+      size: "xl",
+      bodyHtml: `
+        <div class="space-y-3">
+          <div class="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+            <div class="flex items-center gap-1.5 font-medium">
+              <span>🍃 <strong>Format Landscape Hemat Kertas:</strong> 1 Lembar A4 Landscape Memuat 2 Form Penilaian KPI Side-by-Side</span>
+            </div>
+            <div class="flex items-center bg-white border border-emerald-300 rounded-lg p-0.5 shadow-2xs">
+              <button id="toggle-fmt-half" class="px-3 py-1.5 text-[11px] font-bold rounded-md bg-emerald-700 text-white transition shadow-2xs">
+                ✂️ 2 Karyawan Side-by-Side (A4 Landscape)
+              </button>
+              <button id="toggle-fmt-individual" class="px-3 py-1.5 text-[11px] font-bold rounded-md text-emerald-800 hover:bg-emerald-100 transition">
+                📄 1 Karyawan Per A4 Portrait
+              </button>
+              ${tasks.length > 1 ? `
+              <button id="toggle-fmt-matriks" class="px-3 py-1.5 text-[11px] font-bold rounded-md text-emerald-800 hover:bg-emerald-100 transition">
+                📊 Matriks Kolektif (${tasks.length} Karyawan)
+              </button>
+              ` : ''}
+            </div>
+          </div>
+
+          ${pairingSelectorHtml}
+
+          <div class="border rounded-xl p-4 bg-slate-50 max-h-[60vh] overflow-y-auto shadow-inner border-slate-200">
+            <div id="kpi-print-preview-container">${initialHtml}</div>
+          </div>
+        </div>
+      `,
+      footerHtml: `
+        <div class="flex items-center justify-between w-full">
+          <button id="btn-close-print-preview" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold hover:bg-slate-200 transition">Tutup</button>
+          <div class="flex items-center gap-2">
+            <button id="btn-do-print-window" class="px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold hover:bg-slate-900 transition shadow flex items-center gap-1.5">🖨️ Cetak Langsung (Print)</button>
+            <button id="btn-do-download-pdf" class="px-4 py-2 bg-maroon-700 text-white rounded-lg text-xs font-bold hover:bg-maroon-800 transition shadow flex items-center gap-1.5">📥 Download PDF</button>
+          </div>
+        </div>
+      `,
+      onMount: (m) => {
+        m.querySelector("#btn-close-print-preview").onclick = closeModal;
+
+        const container = m.querySelector("#kpi-print-preview-container");
+        const btnHalf = m.querySelector("#toggle-fmt-half");
+        const btnInd = m.querySelector("#toggle-fmt-individual");
+        const btnMat = m.querySelector("#toggle-fmt-matriks");
+        const selectKaryawan2 = m.querySelector("#select-karyawan-2");
+        const pairingBox = m.querySelector("#pairing-control-box");
+
+        function updateBtnStyles() {
+          const activeClass = "px-3 py-1.5 text-[11px] font-bold rounded-md bg-emerald-700 text-white transition shadow-2xs";
+          const inactiveClass = "px-3 py-1.5 text-[11px] font-bold rounded-md text-emerald-800 hover:bg-emerald-100 transition";
+
+          if (btnHalf) btnHalf.className = currentMode === "HALF_A4" ? activeClass : inactiveClass;
+          if (btnInd) btnInd.className = currentMode === "INDIVIDUAL" ? activeClass : inactiveClass;
+          if (btnMat) btnMat.className = currentMode === "MATRIKS" ? activeClass : inactiveClass;
+
+          if (pairingBox) {
+            pairingBox.style.display = currentMode === "HALF_A4" ? "flex" : "none";
+          }
+
+          container.innerHTML = renderActiveContent();
+        }
+
+        if (selectKaryawan2) {
+          selectKaryawan2.onchange = (e) => {
+            const selectedVal = e.target.value;
+            if (selectedVal === "__ARSIP__") {
+              currentTasks = [tasks[0]];
+            } else {
+              const secondTask = {
+                ...tasks[0],
+                nama_dinilai: selectedVal
+              };
+              currentTasks = [tasks[0], secondTask];
+            }
+            container.innerHTML = renderActiveContent();
+          };
+        }
+
+        if (btnHalf) btnHalf.onclick = () => { currentMode = "HALF_A4"; updateBtnStyles(); };
+        if (btnInd) btnInd.onclick = () => { currentMode = "INDIVIDUAL"; updateBtnStyles(); };
+        if (btnMat) btnMat.onclick = () => { currentMode = "MATRIKS"; updateBtnStyles(); };
+
+        m.querySelector("#btn-do-download-pdf").onclick = async () => {
+          const btn = m.querySelector("#btn-do-download-pdf");
+          btn.disabled = true; btn.textContent = "Mengunduh PDF...";
+          try {
+            const { downloadHtmlAsPdf } = await import("../utils.js");
+            const finalContent = renderActiveContent();
+            const isLandscape = currentMode === "HALF_A4";
+            await downloadHtmlAsPdf(finalContent, filename, isLandscape ? "landscape" : "portrait");
+            toast("PDF dokumen fisik KPI berhasil diunduh!", "success");
+          } catch (e) {
+            toast("Gagal mengunduh PDF: " + e.message, "error");
+          } finally {
+            btn.disabled = false; btn.textContent = "📥 Download PDF";
+          }
+        };
+
+        m.querySelector("#btn-do-print-window").onclick = () => {
+          const printWin = window.open("", "_blank");
+          if (!printWin) return toast("Izinkan popup browser untuk mencetak langsung.", "warning");
+          const finalContent = renderActiveContent();
+          const isLandscape = currentMode === "HALF_A4";
+          const pageStyle = isLandscape ? "@page { size: A4 landscape; margin: 4mm 6mm 4mm 6mm; }" : "@page { size: A4 portrait; margin: 6mm 8mm 6mm 8mm; }";
+
+          printWin.document.write(`
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <title>${escapeHtml(title)}</title>
+                <style>
+                  ${pageStyle}
+                  body { font-family: 'Times New Roman', Times, serif; margin: 0; padding: 0; background: #fff; color: #000; font-size: 9px; }
+                  .a4-2up-page-landscape { page-break-after: always; page-break-inside: avoid; }
+                  .a4-2up-page-landscape:last-child { page-break-after: auto; }
+                  .kpi-form-fisik-page { page-break-after: always; page-break-inside: avoid; }
+                  .kpi-form-fisik-page:last-child { page-break-after: auto; }
+                  table { border-collapse: collapse; width: 100%; }
+                  @media print {
+                    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                  }
+                </style>
+              </head>
+              <body>
+                ${finalContent}
+                <script>
+                  window.onload = function() {
+                    window.focus();
+                    window.print();
+                  };
+                </script>
+              </body>
+            </html>
+          `);
+          printWin.document.close();
+        };
+      }
+    });
+  }
+
+  async function printFormKpiFisik(task) {
+    if (!task) return toast("Data tugas KPI tidak ditemukan", "error");
+    toast("Menyiapkan dokumen fisik KPI...", "info");
+    const karyawanMap = await getKaryawanMap();
+
+    openPrintOrPdfModal({
+      title: `Form Fisik KPI — ${escapeHtml(task.nama_dinilai)} (${escapeHtml(task.periode || "")})`,
+      tasks: [task],
+      karyawanMap,
+      filename: `Form_Fisik_KPI_${escapeHtml(task.nama_dinilai).replace(/\s+/g, "_")}_${escapeHtml(task.periode || "").replace(/\s+/g, "_")}.pdf`
+    });
+  }
+
+  async function printBatchFormKpiFisik(tasks) {
+    if (!tasks || !tasks.length) return toast("Tidak ada tugas untuk dicetak", "warning");
+    toast("Menyiapkan dokumen fisik KPI...", "info");
+    const karyawanMap = await getKaryawanMap();
+
+    const samplePeriode = tasks[0]?.periode || "360";
+    const samplePenilai = tasks[0]?.nama_penilai || "Assessor";
+
+    openPrintOrPdfModal({
+      title: `Dokumen Fisik KPI Batch (${tasks.length} Karyawan) — Penilai: ${escapeHtml(samplePenilai)}`,
+      tasks,
+      karyawanMap,
+      filename: `Form_Fisik_KPI_Batch_${escapeHtml(samplePenilai).replace(/\s+/g, "_")}_${escapeHtml(samplePeriode).replace(/\s+/g, "_")}.pdf`
+    });
   }
 
   // =====================================================================
@@ -1052,7 +2077,23 @@ export async function mount(container, { session }) {
 
          m.querySelector("#kpi-template-picker").onchange = (e) => {
             const tpl = validTemplates.find(t => t.id === e.target.value);
-            if (tpl && tpl.soal_json) { soalList.innerHTML = ""; tpl.soal_json.forEach(s => addSoalUI(s)); }
+            if (tpl && tpl.soal_json) {
+              soalList.innerHTML = "";
+              tpl.soal_json.forEach(s => addSoalUI(s));
+            }
+            if (tpl && Array.isArray(tpl.karyawan_assigned) && tpl.karyawan_assigned.length > 0) {
+              const assignedSet = new Set(tpl.karyawan_assigned);
+              const checkboxes = m.querySelectorAll('input[name="dinilai-checkbox"]');
+              let autoCheckedCount = 0;
+              checkboxes.forEach(cb => {
+                const shouldCheck = assignedSet.has(cb.value);
+                cb.checked = shouldCheck;
+                if (shouldCheck) autoCheckedCount++;
+              });
+              if (autoCheckedCount > 0) {
+                toast(`Otomatis mencentang ${autoCheckedCount} karyawan terdaftar dari template ini!`, "info");
+              }
+            }
          };
 
          m.querySelector("#btn-add-soal").onclick = () => addSoalUI();
@@ -1094,8 +2135,21 @@ export async function mount(container, { session }) {
                let penilaiEmail = "", penilaiUsername = "";
                if (!snapU.empty) { penilaiEmail = snapU.docs[0].data().email; penilaiUsername = snapU.docs[0].id; }
 
+               const createdTasks = [];
                for (const dinilai of dinilaiList) {
-                  await fsAdd(COL.TUGAS_KPI_360, { periode, nama_penilai: penilai, nama_dinilai: dinilai, soal_json: soalArray, status: "PENDING", skor_akhir: 0, tanggal: new Date().toISOString(), deadline: deadlineISO }, genId("KPI"));
+                  const payload = {
+                    periode,
+                    nama_penilai: penilai,
+                    nama_dinilai: dinilai,
+                    soal_json: soalArray,
+                    status: "PENDING",
+                    skor_akhir: 0,
+                    tanggal: new Date().toISOString(),
+                    deadline: deadlineISO
+                  };
+                  const kpiId = genId("KPI");
+                  await fsAdd(COL.TUGAS_KPI_360, payload, kpiId);
+                  createdTasks.push({ id: kpiId, ...payload });
                }
 
                if (penilaiEmail && penilaiUsername && typeof sendEmailNotif === 'function') {
@@ -1106,7 +2160,39 @@ export async function mount(container, { session }) {
                   await notifyUser(penilaiUsername, "Tugas Penilaian KPI 360", `Anda ditugaskan menilai ${dinilaiList.length} karyawan periode ${periode}.`);
                }
 
-               toast("Tugas Penilaian berhasil didistribusikan.", "success"); closeModal(); await loadKpi360(); 
+               toast("Tugas Penilaian berhasil didistribusikan.", "success");
+               closeModal();
+               await loadKpi360();
+
+               // Dialog konfirmasi cetak dokumen pengisian fisik
+               openModal({
+                  title: "Pendistribusian KPI Berhasil",
+                  bodyHtml: `
+                    <div class="text-center py-4 space-y-3">
+                      <div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold">✓</div>
+                      <h3 class="text-sm font-bold text-slate-800">Tugas Penilaian KPI Berhasil Dikirim</h3>
+                      <p class="text-xs text-slate-600 max-w-md mx-auto">
+                        Telah didistribusikan <strong>${createdTasks.length} tugas penilaian</strong> untuk Penilai <strong>${escapeHtml(penilai)}</strong> pada periode <strong>${escapeHtml(periode)}</strong>.
+                      </p>
+                      <p class="text-[11px] text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                        Anda dapat langsung mengunduh atau mencetak dokumen pengisian fisik ber-standar ISO CV Andela Jaya untuk keperluan penilaian offline/fisik.
+                      </p>
+                    </div>
+                  `,
+                  footerHtml: `
+                    <div class="flex items-center justify-between w-full">
+                      <button id="btn-done-distribusi" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition">Selesai</button>
+                      <button id="btn-print-fisik-now" class="px-5 py-2.5 bg-maroon-700 text-white rounded-lg text-xs font-bold hover:bg-maroon-800 transition shadow-md flex items-center gap-1.5">🖨️ Cetak / Download Form Fisik (${createdTasks.length} Karyawan)</button>
+                    </div>
+                  `,
+                  onMount: (m2) => {
+                    m2.querySelector("#btn-done-distribusi").onclick = closeModal;
+                    m2.querySelector("#btn-print-fisik-now").onclick = () => {
+                      closeModal();
+                      printBatchFormKpiFisik(createdTasks);
+                    };
+                  }
+               }); 
             } catch (e) { toast("Gagal: " + e.message, "error"); btn.disabled = false; }
          }
       }
@@ -1187,6 +2273,35 @@ export async function mount(container, { session }) {
           <tbody>
             ${tbody}
           </tbody>
+        </table>
+
+        <!-- CATATAN & FEEDBACK KUALITATIF -->
+        <table style="width:100%; border-collapse:collapse; margin-top:12px; border:1px solid #000; font-size:11px;">
+          <tr style="background:#f1f5f9; font-weight:bold;">
+            <td style="border:1px solid #000; padding:6px 10px;">📝 Catatan Evaluasi & Ulasan Penilai:</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #000; padding:8px 10px; background:#fff;">
+              <div style="margin-bottom:8px;">
+                <strong style="color:#166534;">✓ Hal-hal yang Sudah Baik (Kelebihan / Prestasi Kerja):</strong>
+                <div style="margin-top:3px; font-size:10.5px; line-height:1.4; color:#1e293b; background:#f8fafc; padding:6px 8px; border:1px solid #e2e8f0; border-radius:3px;">
+                  ${escapeHtml(row.catatan_baik || "-")}
+                </div>
+              </div>
+              <div style="margin-bottom:8px;">
+                <strong style="color:#991b1b;">⚠ Hal-hal yang Harus Diperbaiki (Area Peningkatan):</strong>
+                <div style="margin-top:3px; font-size:10.5px; line-height:1.4; color:#1e293b; background:#f8fafc; padding:6px 8px; border:1px solid #e2e8f0; border-radius:3px;">
+                  ${escapeHtml(row.catatan_perbaikan || "-")}
+                </div>
+              </div>
+              <div>
+                <strong style="color:#334155;">💬 Catatan & Rekomendasi Tambahan Penilai:</strong>
+                <div style="margin-top:3px; font-size:10.5px; line-height:1.4; color:#1e293b; background:#f8fafc; padding:6px 8px; border:1px solid #e2e8f0; border-radius:3px;">
+                  ${escapeHtml(row.catatan_penilai || row.catatan_umum || "-")}
+                </div>
+              </div>
+            </td>
+          </tr>
         </table>
         <table style="width:100%; text-align:center; margin-top:35px; page-break-inside:avoid; font-size:11px;">
           <tr><td width="50%">Karyawan Dinilai,</td><td width="50%">Penilai / HRD,</td></tr>

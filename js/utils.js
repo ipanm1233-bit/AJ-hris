@@ -252,20 +252,66 @@ export function fsListen(colName, callback, { orderByField = null, direction = "
     callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
   }, (err) => console.error(`onSnapshot(${colName})`, err));
 }
+export function cleanFirestorePayload(obj, seen = new WeakSet()) {
+  if (obj === null || obj === undefined) return null;
+  if (typeof obj !== "object") return obj;
+  if (obj instanceof Date) return obj;
+  if (obj._methodName || (obj.constructor && obj.constructor.name === "FieldValue")) return obj;
+
+  if (
+    (typeof Node !== 'undefined' && obj instanceof Node) ||
+    (typeof Event !== 'undefined' && obj instanceof Event) ||
+    typeof obj === "function" ||
+    (obj.constructor && (
+      obj.constructor.name === "Y" ||
+      obj.constructor.name === "Ka" ||
+      obj.constructor.name === "DocumentReference" ||
+      obj.constructor.name === "Query" ||
+      obj.constructor.name === "Firestore" ||
+      obj.constructor.name.startsWith("HTML")
+    ))
+  ) {
+    return null;
+  }
+
+  if (seen.has(obj)) {
+    return null;
+  }
+  seen.add(obj);
+
+  if (Array.isArray(obj)) {
+    return obj.map(item => cleanFirestorePayload(item, seen)).filter(item => item !== undefined);
+  }
+
+  const result = {};
+  for (const key of Object.keys(obj)) {
+    if (key.startsWith("_") && key !== "_methodName") continue;
+    const val = obj[key];
+    if (val === undefined || typeof val === "function") continue;
+    const cleaned = cleanFirestorePayload(val, seen);
+    if (cleaned !== undefined) {
+      result[key] = cleaned;
+    }
+  }
+  return result;
+}
+
 export async function fsGet(colName, id) {
   const snap = await getDoc(doc(db, colName, id));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 export async function fsAdd(colName, data, customId = null) {
+  const payload = cleanFirestorePayload(data) || {};
   if (customId) {
-    await setDoc(doc(db, colName, String(customId)), { ...data, created_at: serverTimestamp() });
+    await setDoc(doc(db, colName, String(customId)), { ...payload, created_at: serverTimestamp() });
     return customId;
   }
-  const ref = await addDoc(collection(db, colName), { ...data, created_at: serverTimestamp() });
+  const ref = await addDoc(collection(db, colName), { ...payload, created_at: serverTimestamp() });
   return ref.id;
 }
 export async function fsUpdate(colName, id, data) {
-  await updateDoc(doc(db, colName, id), { ...data, updated_at: serverTimestamp() });
+  const payload = cleanFirestorePayload(data) || {};
+  await updateDoc(doc(db, colName, id), { ...payload, updated_at: serverTimestamp() });
 }
 export async function fsDelete(colName, id) {
   await deleteDoc(doc(db, colName, id));
@@ -506,8 +552,8 @@ export function printSalesKlaimForm(item) {
     const parkirRp = Number(r.parkir || 0);
     const dendaRp = Number(r.denda || 0);
     const trip = Math.max(0, kmAkhir - kmAwal);
-    const petrolRp = trip * (HARGA_BENSIN / RASIO_KM); 
-    const rowTotal = petrolRp + parkirRp - dendaRp;
+    const petrolRp = Math.round(trip * (HARGA_BENSIN / RASIO_KM));
+    const rowTotal = Number(r.total_baris || (petrolRp + parkirRp - dendaRp));
 
     totalJarak += trip;
     totalPetrol += petrolRp;
@@ -894,7 +940,7 @@ export function ensureHtml2PdfLoaded() {
   return _html2PdfLoadingPromise;
 }
 
-export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf") {
+export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf", orientation = "portrait") {
   await ensureHtml2PdfLoaded();
   const element = document.createElement("div");
   // Set styles to ensure white background, black text and proper print-like container
@@ -907,11 +953,11 @@ export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf") 
   element.innerHTML = htmlContent;
   
   const opt = {
-    margin:       [10, 10, 10, 10],
+    margin:       orientation === "landscape" ? [6, 6, 6, 6] : [10, 10, 10, 10],
     filename:     filename,
     image:        { type: 'jpeg', quality: 0.98 },
     html2canvas:  { scale: 2, useCORS: true, logging: false, scrollY: 0 },
-    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    jsPDF:        { unit: 'mm', format: 'a4', orientation: orientation },
     pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
   };
   
@@ -920,30 +966,21 @@ export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf") 
 
 export async function sendFCMNotif(tokens, title, body, link = "") {
   const list = (Array.isArray(tokens) ? tokens : [tokens]).filter(Boolean);
-  if (!list.length) {
-    console.warn("sendFCMNotif dibatalkan: daftar token kosong.");
-    return false;
-  }
+  if (!list.length) return false;
   
-  // Format target URL
+  // Ambil nama domain otomatis (contoh: https://hris.andelajaya.com)
   const baseUrl = window.location.origin;
-  let formattedLink = link || "";
-  if (formattedLink && !formattedLink.startsWith("http")) {
-    formattedLink = baseUrl + (formattedLink.startsWith("/") ? formattedLink : "/" + formattedLink);
-  } else if (!formattedLink) {
-    formattedLink = baseUrl;
-  }
+  const targetLink = link ? (baseUrl + link) : baseUrl;
 
   try {
     const res = await fetch("/api/send-push", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tokens: list, title, body, link: formattedLink }) 
+      // Kirim targetLink ke Vercel
+      body: JSON.stringify({ tokens: list, title, body, link: targetLink }) 
     });
     
-    const result = await res.json().catch(() => ({}));
-    console.log("Push Notification Result:", result);
-    return res.ok && result.success;
+    return res.ok;
   } catch (e) {
     console.error("Gagal mengirim notif: ", e.message);
     return false;
@@ -988,8 +1025,8 @@ export async function notifyUser(username, judul, pesan, link = "") {
         const uData = d.data();
         const matches = d.id === rawTarget ||
                         uData.username === rawTarget ||
-                        (uData.nik && uData.nik === rawTarget) ||
-                        (uData.nama && uData.nama.toLowerCase() === String(rawTarget).toLowerCase());
+                        (uData.nama && uData.nama.toLowerCase().includes(String(rawTarget).toLowerCase())) ||
+                        (uData.nik && uData.nik === rawTarget);
         if (matches) {
           if (uData.fcm_token) tokens.add(uData.fcm_token);
           if (uData.email && !targetEmail) targetEmail = uData.email;

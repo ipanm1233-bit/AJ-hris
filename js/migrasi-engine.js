@@ -10,8 +10,6 @@
 import { db, COL, collection, doc, getDocs, writeBatch, query, limit } from "./firebase-config.js";
 import { toSnakeCase, smartParseDate, sha256, genId, localDateStr } from "./utils.js";
 
-export const WAREHOUSE_ROLES = ["Head of Warehouse", "Checker", "Helper", "Driver"];
-
 /* ---------------------------------------------------------------------
  * PETA SHEET EXCEL -> KOLEKSI FIRESTORE
  * dateFields   : kolom (snake_case) yang WAJIB melalui Smart Date Parser
@@ -32,8 +30,8 @@ const SHEET_MAP = {
   "Absensi": { collection: "absensi", idField: "id_absensi", dateFields: ["tanggal", "jam_masuk", "jam_keluar"] },
   "Data Absensi": { collection: "absensi", idField: "id_absensi", dateFields: ["tanggal", "jam_masuk", "jam_keluar"] },
   "Log Absensi": { collection: "absensi", idField: "id_absensi", dateFields: ["tanggal", "jam_masuk", "jam_keluar"] },
-  "Master Shift": { skip: true }, 
-  "Shift": { skip: true },
+  "Master Shift": { collection: "master_shift", idField: "id_shift" },
+  "Shift": { collection: "master_shift", idField: "id_shift" },
   "Master Jabatan": { collection: "master_jabatan", idField: "id_jabatan" },
   "Master Divisi": { collection: "master_divisi", idField: "id_divisi" },
   "Payroll": { collection: "payroll", idField: "id_payroll", dateFields: ["periode", "tanggal"] },
@@ -256,15 +254,7 @@ function sheetRowsToObjects(sheetName) {
   const rows = workbookData[sheetName];
   if (!rows || rows.length < 2) return [];
   const rawHeaders = rows[0];
-  const headers = [];
-  for (let idx = 0; idx < 30; idx++) {
-      const h = rawHeaders[idx];
-      if (!h) {
-          headers.push(`kolom_tak_bernama_${idx + 1}`);
-      } else {
-          headers.push(toSnakeCase(h));
-      }
-  }
+  const headers = rawHeaders.map(h => toSnakeCase(h || ""));
   const mapCfg = getMapConfigForSheet(sheetName);
   const objects = [];
   for (let i = 1; i < rows.length; i++) {

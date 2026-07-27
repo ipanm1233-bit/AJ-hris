@@ -321,7 +321,20 @@ function openPenilaianForm(task, container, session) {
               <p class="text-xs text-amber-800 leading-relaxed">Dihitung otomatis berdasar bobot. Batas pengumpulan: <strong>${task.deadline ? fmtDateShort(task.deadline) : '-'}</strong>.</p>
            </div>
            ${catatanHrdHtml} ${soalHtml}
-           <div class="mt-5"><label class="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">Ulasan Karyawan (Opsional)</label><textarea id="kpi-catatan-penilai" rows="3" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-400" placeholder="Kelebihan / area peningkatan..."></textarea></div>
+           <div class="mt-5 space-y-3">
+             <div>
+               <label class="block text-xs font-bold text-emerald-800 mb-1 uppercase tracking-wide">✓ Hal-hal yang Sudah Baik (Kelebihan / Prestasi Kerja)</label>
+               <textarea id="kpi-catatan-baik" rows="2" class="w-full px-3 py-2 text-xs border border-emerald-200 bg-emerald-50/30 rounded-lg outline-none focus:border-emerald-500 font-medium" placeholder="Tuliskan aspek positif, pencapaian, atau kelebihan kerja..."></textarea>
+             </div>
+             <div>
+               <label class="block text-xs font-bold text-red-800 mb-1 uppercase tracking-wide">⚠ Hal-hal yang Harus Diperbaiki (Area Peningkatan)</label>
+               <textarea id="kpi-catatan-perbaikan" rows="2" class="w-full px-3 py-2 text-xs border border-red-200 bg-red-50/30 rounded-lg outline-none focus:border-red-500 font-medium" placeholder="Tuliskan area yang perlu diperbaiki / ditingkatkan..."></textarea>
+             </div>
+             <div>
+               <label class="block text-xs font-bold text-slate-700 mb-1 uppercase tracking-wide">💬 Catatan & Rekomendasi Tambahan Penilai</label>
+               <textarea id="kpi-catatan-penilai" rows="2" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-400 font-medium" placeholder="Saran, masukan, atau rekomendasi umum..."></textarea>
+             </div>
+           </div>
         </form>
      `,
      footerHtml: `
@@ -346,7 +359,9 @@ function openPenilaianForm(task, container, session) {
 
            let totalSkorBobot = 0;
            const answeredSoal = [...task.soal_json];
-           const catatanPenilai = m.querySelector("#kpi-catatan-penilai").value.trim();
+           const catatanBaik = m.querySelector("#kpi-catatan-baik") ? m.querySelector("#kpi-catatan-baik").value.trim() : "";
+           const catatanPerbaikan = m.querySelector("#kpi-catatan-perbaikan") ? m.querySelector("#kpi-catatan-perbaikan").value.trim() : "";
+           const catatanPenilai = m.querySelector("#kpi-catatan-penilai") ? m.querySelector("#kpi-catatan-penilai").value.trim() : "";
 
            m.querySelectorAll(".kpi-nilai-input").forEach(input => {
               const idx = parseInt(input.dataset.idx); const nilai = parseFloat(input.value) || 0; const bobot = parseFloat(answeredSoal[idx].bobot) || 0;
@@ -360,8 +375,27 @@ function openPenilaianForm(task, container, session) {
            btn.disabled = true; btn.textContent = "Merekap Nilai...";
 
            try {
-              await fsUpdate(COL.TUGAS_KPI_360, task.id, { status: "DONE", skor_akhir: finalScore, soal_json: answeredSoal, catatan_penilai: catatanPenilai, tanggal_diselesaikan: new Date().toISOString() });
-              await fsAdd(COL.LOG_PENILAIAN_KPI, { tanggal: new Date().toISOString(), nama_dinilai: task.nama_dinilai, penilai: task.nama_penilai, total_skor: finalScore, keputusan: keputusan, periode: task.periode, detail_json: answeredSoal, catatan_penilai: catatanPenilai }, genId("KPI-LOG"));
+              await fsUpdate(COL.TUGAS_KPI_360, task.id, {
+                status: "DONE",
+                skor_akhir: finalScore,
+                soal_json: answeredSoal,
+                catatan_baik: catatanBaik,
+                catatan_perbaikan: catatanPerbaikan,
+                catatan_penilai: catatanPenilai,
+                tanggal_diselesaikan: new Date().toISOString()
+              });
+              await fsAdd(COL.LOG_PENILAIAN_KPI, {
+                tanggal: new Date().toISOString(),
+                nama_dinilai: task.nama_dinilai,
+                penilai: task.nama_penilai,
+                total_skor: finalScore,
+                keputusan: keputusan,
+                periode: task.periode,
+                detail_json: answeredSoal,
+                catatan_baik: catatanBaik,
+                catatan_perbaikan: catatanPerbaikan,
+                catatan_penilai: catatanPenilai
+              }, genId("KPI-LOG"));
 
               toast("Evaluasi diselesaikan!", "success"); closeModal(); loadKpiTasks(container, session);
            } catch(e) { toast("Gagal menyimpan: " + e.message, "error"); btn.disabled = false; btn.textContent = "Kirim Penilaian"; }

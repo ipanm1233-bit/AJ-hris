@@ -84,10 +84,15 @@ export function getSession() {
   } catch { return null; }
 }
 export function setSession(data) {
+  try {
     const str = JSON.stringify(data);
-    // Simpan di KEDUA tempat agar lebih aman dan bertahan lama (Persistent)
-    sessionStorage.setItem(SESSION_KEY, str);
-    localStorage.setItem(SESSION_KEY, str); 
+    if (str) {
+      sessionStorage.setItem(SESSION_KEY, str);
+      localStorage.setItem(SESSION_KEY, str);
+    }
+  } catch (e) {
+    console.error("Gagal menyimpan session:", e);
+  }
 }
 export function clearSession() {
   sessionStorage.removeItem(SESSION_KEY);

@@ -981,7 +981,9 @@ function openPenilaianFormFromNotif(task, kpis, session) {
            ${catatanHrdHtml} ${soalHtml}
            <div class="mt-5 text-left">
               <label class="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">Ulasan Karyawan (Opsional)</label>
-              <textarea id="kpi-catatan-penilai" rows="3" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-400" placeholder="Kelebihan / area peningkatan..."></textarea>
+              <textarea id="kpi-catatan-baik" rows="2" class="w-full px-3 py-2 text-xs border border-emerald-200 bg-emerald-50/30 rounded-lg outline-none focus:border-emerald-500 font-medium mb-2" placeholder="✓ Hal-hal yang sudah baik (Kelebihan / Prestasi)..."></textarea>
+              <textarea id="kpi-catatan-perbaikan" rows="2" class="w-full px-3 py-2 text-xs border border-red-200 bg-red-50/30 rounded-lg outline-none focus:border-red-500 font-medium mb-2" placeholder="⚠ Hal-hal yang harus diperbaiki (Area Peningkatan)..."></textarea>
+              <textarea id="kpi-catatan-penilai" rows="2" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-400 font-medium" placeholder="💬 Catatan & rekomendasi tambahan penilai..."></textarea>
            </div>
         </form>
      `,
@@ -1010,7 +1012,9 @@ function openPenilaianFormFromNotif(task, kpis, session) {
 
            let totalSkorBobot = 0;
            const answeredSoal = [...task.soal_json];
-           const catatanPenilai = m.querySelector("#kpi-catatan-penilai").value.trim();
+           const catatanBaik = m.querySelector("#kpi-catatan-baik") ? m.querySelector("#kpi-catatan-baik").value.trim() : "";
+           const catatanPerbaikan = m.querySelector("#kpi-catatan-perbaikan") ? m.querySelector("#kpi-catatan-perbaikan").value.trim() : "";
+           const catatanPenilai = m.querySelector("#kpi-catatan-penilai") ? m.querySelector("#kpi-catatan-penilai").value.trim() : "";
 
            m.querySelectorAll(".kpi-nilai-input").forEach(input => {
               const idx = parseInt(input.dataset.idx, 10); const nilai = parseFloat(input.value) || 0; const bobot = parseFloat(answeredSoal[idx].bobot) || 0;
@@ -1025,8 +1029,27 @@ function openPenilaianFormFromNotif(task, kpis, session) {
 
            try {
               // Update database
-              await fsUpdate(COL.TUGAS_KPI_360, task.id, { status: "DONE", skor_akhir: finalScore, soal_json: answeredSoal, catatan_penilai: catatanPenilai, tanggal_diselesaikan: new Date().toISOString() });
-              await fsAdd(COL.LOG_PENILAIAN_KPI, { tanggal: new Date().toISOString(), nama_dinilai: task.nama_dinilai, penilai: task.nama_penilai, total_skor: finalScore, keputusan: keputusan, periode: task.periode, detail_json: answeredSoal, catatan_penilai: catatanPenilai }, genId("KPI-LOG"));
+              await fsUpdate(COL.TUGAS_KPI_360, task.id, {
+                status: "DONE",
+                skor_akhir: finalScore,
+                soal_json: answeredSoal,
+                catatan_baik: catatanBaik,
+                catatan_perbaikan: catatanPerbaikan,
+                catatan_penilai: catatanPenilai,
+                tanggal_diselesaikan: new Date().toISOString()
+              });
+              await fsAdd(COL.LOG_PENILAIAN_KPI, {
+                tanggal: new Date().toISOString(),
+                nama_dinilai: task.nama_dinilai,
+                penilai: task.nama_penilai,
+                total_skor: finalScore,
+                keputusan: keputusan,
+                periode: task.periode,
+                detail_json: answeredSoal,
+                catatan_baik: catatanBaik,
+                catatan_perbaikan: catatanPerbaikan,
+                catatan_penilai: catatanPenilai
+              }, genId("KPI-LOG"));
 
               toast("Evaluasi diselesaikan!", "success");
               

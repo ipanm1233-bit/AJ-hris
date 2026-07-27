@@ -8,7 +8,7 @@ import { getSession, logout, computeVisibleMenus, canAccessRoute, MENU_CONFIG, l
 import { parseHash, toast, fmtDateTime, openModal, closeModal, sha256, fsUpdate } from "./utils.js";
 import { icon, avatar, openNotificationCenter, showMemoDetailById } from "./components.js";
 import { db, messaging, COL, collection, query, where, getDocs, doc, getDoc, updateDoc } from "./firebase-config.js";
-import { getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js";
+import { getToken } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js";
 
 const viewContainer = document.getElementById("view-container");
 let currentUnmount = null;
@@ -138,37 +138,6 @@ async function aktifkanNotifikasiHP(userData) {
                 }
                 console.log("Token FCM berhasil disimpan ke database!");
             }
-        }
-
-        // Tangkap notifikasi yang masuk saat aplikasi sedang terbuka di layar (Foreground)
-        if (!window._fcmOnMessageRegistered) {
-            window._fcmOnMessageRegistered = true;
-            onMessage(messaging, (payload) => {
-                console.log("Notifikasi FCM Diterima (Foreground):", payload);
-                const title = payload.notification?.title || payload.data?.title || "HRIS Notification";
-                const body = payload.notification?.body || payload.data?.body || "Ada pesan baru.";
-                const link = payload.data?.link || "";
-
-                toast(`🔔 ${title}: ${body}`, "info");
-
-                if ('Notification' in window && Notification.permission === 'granted') {
-                    if ('serviceWorker' in navigator) {
-                        navigator.serviceWorker.ready.then(reg => {
-                            reg.showNotification(title, {
-                                body: body,
-                                icon: '/assets/icon-192x192.png',
-                                badge: '/assets/icon-192x192.png',
-                                data: { link: link }
-                            });
-                        });
-                    } else {
-                        new Notification(title, {
-                            body: body,
-                            icon: '/assets/icon-192x192.png'
-                        });
-                    }
-                }
-            });
         }
     } catch (error) {
         console.info('Pemberitahuan Notifikasi:', error.message);
