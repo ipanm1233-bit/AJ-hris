@@ -1209,7 +1209,7 @@ export async function mount(container, { session }) {
           <div class="overflow-x-auto">
             <table class="w-full text-sm">
               <thead class="bg-slate-50 text-slate-500 text-xs uppercase"><tr>
-                <th class="px-4 py-3 text-left">Periode</th><th class="px-4 py-3 text-left">Penilai</th><th class="px-4 py-3 text-left">Dinilai</th><th class="px-4 py-3 text-left">Batas Waktu</th><th class="px-4 py-3 text-left">Status</th><th class="px-4 py-3 text-left">Skor</th><th class="px-4 py-3 text-right">Aksi Form Fisik</th>
+                <th class="px-4 py-3 text-left">Periode</th><th class="px-4 py-3 text-left">Penilai</th><th class="px-4 py-3 text-left">Dinilai</th><th class="px-4 py-3 text-left">Batas Waktu</th><th class="px-4 py-3 text-left">Status</th><th class="px-4 py-3 text-left">Skor</th><th class="px-4 py-3 text-right">Aksi & Form Fisik</th>
               </tr></thead>
               <tbody>${tasks.map(t => `
                 <tr class="border-t border-slate-50 hover:bg-slate-50 transition">
@@ -1217,10 +1217,20 @@ export async function mount(container, { session }) {
                   <td class="px-4 py-3 font-medium">${escapeHtml(t.nama_penilai || "-")}</td>
                   <td class="px-4 py-3 font-bold text-slate-800">${escapeHtml(t.nama_dinilai || "-")}</td>
                   <td class="px-4 py-3 text-xs text-slate-500">${t.deadline ? fmtDateShort(t.deadline) : "-"}</td>
-                  <td class="px-4 py-3">${badge(t.status || "PENDING", t.status === "DONE" ? "green" : "amber")}</td>
+                  <td class="px-4 py-3">
+                    ${badge(t.status || "PENDING", t.status === "DONE" ? "green" : "amber")}
+                    ${t.diinput_oleh_hrd ? '<span class="block text-[10px] text-emerald-700 font-semibold mt-0.5">📄 Form Fisik (HRD)</span>' : ''}
+                  </td>
                   <td class="px-4 py-3 font-semibold">${t.skor_akhir || "-"}</td>
                   <td class="px-4 py-3 text-right">
-                    <button data-print-fisik="${t.id}" class="px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg inline-flex items-center gap-1 border border-slate-200 transition">🖨️ Form Fisik</button>
+                    <div class="flex items-center justify-end gap-1.5">
+                      ${isHrd ? `
+                        <button data-input-manual="${t.id}" class="px-3 py-1.5 text-xs font-semibold ${t.status === 'DONE' ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200' : 'bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs'} rounded-lg inline-flex items-center gap-1 transition">
+                          ${t.status === 'DONE' ? '✏️ Edit Input' : '📝 Input Manual HRD'}
+                        </button>
+                      ` : ''}
+                      <button data-print-fisik="${t.id}" class="px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg inline-flex items-center gap-1 border border-slate-200 transition">🖨️ Form Fisik</button>
+                    </div>
                   </td>
                 </tr>`).join("")}
               </tbody>
@@ -1231,8 +1241,181 @@ export async function mount(container, { session }) {
     if (isHrd && wrap.querySelector("#btn-distribusi-kpi")) wrap.querySelector("#btn-distribusi-kpi").onclick = openDistribusiModal;
     if (isHrd && wrap.querySelector("#btn-print-batch-kpi")) wrap.querySelector("#btn-print-batch-kpi").onclick = () => printBatchFormKpiFisik(tasks);
 
+    wrap.querySelectorAll("[data-input-manual]").forEach(btn => {
+      btn.onclick = () => {
+        const task = tasks.find(x => x.id === btn.dataset.inputManual);
+        if (task) openManualInputModal(task);
+      };
+    });
+
     wrap.querySelectorAll("[data-print-fisik]").forEach(btn => {
       btn.onclick = () => printFormKpiFisik(tasks.find(x => x.id === btn.dataset.printFisik));
+    });
+  }
+
+  function openManualInputModal(task) {
+    const isDone = task.status === "DONE";
+    const soalHtml = (task.soal_json || []).map((s, i) => `
+       <div class="border-b border-slate-100 pb-4 mb-4 text-left">
+          <div class="flex items-center gap-2 mb-1.5">
+            <span class="bg-maroon-50 text-maroon-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">${escapeHtml(s.aspek || "ASPEK")}</span>
+            <span class="text-[10px] text-slate-400 font-medium">Bobot: ${s.bobot || 0}%</span>
+          </div>
+          <p class="text-xs font-semibold text-slate-800 mb-2">${escapeHtml(s.indikator)}</p>
+          <div class="relative">
+            <input type="number" data-idx="${i}" data-bobot="${s.bobot}" class="kpi-nilai-input w-full pl-3 pr-10 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-500 focus:ring-2 focus:ring-maroon-100 font-bold transition" placeholder="Skor dari Form Fisik (0-100)" value="${s.nilai_diberikan !== undefined && s.nilai_diberikan !== null ? s.nilai_diberikan : ''}" required min="0" max="100">
+            <span class="absolute right-3 top-2 text-slate-400 font-medium text-xs">/ 100</span>
+          </div>
+       </div>
+    `).join("");
+
+    const initialScore = task.skor_akhir ? parseFloat(task.skor_akhir).toFixed(2) : "0.00";
+
+    openModal({
+      title: `${isDone ? '✏️ Edit Input Manual' : '📝 Input Manual'} Penilaian Fisik KPI`,
+      size: "lg",
+      bodyHtml: `
+        <div class="text-left space-y-4">
+          <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+            <span class="text-xl">📄</span>
+            <div class="text-xs text-amber-900 leading-relaxed">
+              <strong class="font-bold block text-amber-950 text-sm mb-0.5">Input Manual Penilaian Form Fisik (Kertas)</strong>
+              HRD menginputkan skor dan ulasan kualitatif yang telah diisi penilai secara manual pada dokumen fisik.
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+            <div>
+              <span class="text-slate-400 block text-[10px] uppercase font-bold">Karyawan Dinilai</span>
+              <strong class="text-slate-800 font-bold text-sm">${escapeHtml(task.nama_dinilai)}</strong>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-[10px] uppercase font-bold">Penilai (Atasan/Rekan)</span>
+              <strong class="text-slate-700 font-semibold">${escapeHtml(task.nama_penilai)}</strong>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-[10px] uppercase font-bold">Periode</span>
+              <span class="text-slate-700 font-medium">${escapeHtml(task.periode || '-')}</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-[10px] uppercase font-bold">Batas Waktu</span>
+              <span class="text-slate-700 font-medium">${task.deadline ? fmtDateShort(task.deadline) : '-'}</span>
+            </div>
+          </div>
+
+          <form id="form-manual-kpi">
+            <div class="mb-4">
+              <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 pb-1 border-b border-slate-200">1. Skor Indikator Penilaian</h4>
+              ${soalHtml}
+            </div>
+
+            <div class="mt-5 space-y-3">
+              <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider pb-1 border-b border-slate-200">2. Evaluasi Kualitatif & Ulasan Penilai</h4>
+              <div>
+                <label class="block text-xs font-bold text-emerald-800 mb-1 uppercase tracking-wide">✓ Hal-hal yang Sudah Baik (Kelebihan / Prestasi Kerja)</label>
+                <textarea id="manual-catatan-baik" rows="3" class="w-full px-3 py-2 text-xs border border-emerald-200 bg-emerald-50/20 rounded-lg outline-none focus:border-emerald-500 font-medium" placeholder="Tuliskan poin-poin kelebihan dari lembar fisik...">${escapeHtml(task.catatan_baik || '')}</textarea>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-red-800 mb-1 uppercase tracking-wide">⚠ Hal-hal yang Harus Diperbaiki (Area Peningkatan)</label>
+                <textarea id="manual-catatan-perbaikan" rows="3" class="w-full px-3 py-2 text-xs border border-red-200 bg-red-50/20 rounded-lg outline-none focus:border-red-500 font-medium" placeholder="Tuliskan area peningkatan dari lembar fisik...">${escapeHtml(task.catatan_perbaikan || '')}</textarea>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1 uppercase tracking-wide">💬 Catatan & Rekomendasi Tambahan Penilai</label>
+                <textarea id="manual-catatan-penilai" rows="3" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-400 font-medium" placeholder="Catatan atau masukan umum penilai...">${escapeHtml(task.catatan_penilai || task.catatan_umum || '')}</textarea>
+              </div>
+            </div>
+          </form>
+        </div>
+      `,
+      footerHtml: `
+        <div class="w-full flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-200 mb-3">
+          <span class="text-xs font-bold text-slate-600">Total Skor Akhir (Dihitung Otomatis):</span>
+          <span id="manual-kpi-live-score" class="text-xl font-black text-maroon-700">${initialScore}</span>
+        </div>
+        <div class="flex gap-2 justify-end w-full">
+          <button id="btn-close-manual-modal" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition">Batal</button>
+          <button id="btn-save-manual-kpi" class="bg-emerald-700 hover:bg-emerald-800 text-white px-5 py-2 rounded-lg text-xs font-bold transition shadow-md flex items-center gap-1.5">
+            💾 Simpan Penilaian Manual
+          </button>
+        </div>
+      `,
+      onMount: (m) => {
+        const liveScore = m.querySelector("#manual-kpi-live-score");
+        const calcScore = () => {
+          let calcTotal = 0;
+          m.querySelectorAll(".kpi-nilai-input").forEach(input => {
+            const bbt = parseFloat(input.dataset.bobot) || 0;
+            const val = parseFloat(input.value) || 0;
+            calcTotal += val * (bbt / 100);
+          });
+          liveScore.textContent = calcTotal.toFixed(2);
+        };
+
+        m.querySelector("#form-manual-kpi").addEventListener("input", calcScore);
+        m.querySelector("#btn-close-manual-modal").onclick = closeModal;
+
+        m.querySelector("#btn-save-manual-kpi").onclick = async () => {
+          const form = m.querySelector("#form-manual-kpi");
+          if (!form.reportValidity()) return;
+
+          let totalSkorBobot = 0;
+          const answeredSoal = [...(task.soal_json || [])];
+          const catatanBaik = m.querySelector("#manual-catatan-baik") ? m.querySelector("#manual-catatan-baik").value.trim() : "";
+          const catatanPerbaikan = m.querySelector("#manual-catatan-perbaikan") ? m.querySelector("#manual-catatan-perbaikan").value.trim() : "";
+          const catatanPenilai = m.querySelector("#manual-catatan-penilai") ? m.querySelector("#manual-catatan-penilai").value.trim() : "";
+
+          m.querySelectorAll(".kpi-nilai-input").forEach(input => {
+            const idx = parseInt(input.dataset.idx, 10);
+            const nilai = parseFloat(input.value) || 0;
+            const bobot = parseFloat(answeredSoal[idx].bobot) || 0;
+            answeredSoal[idx].nilai_diberikan = nilai;
+            totalSkorBobot += (nilai * (bobot / 100));
+          });
+
+          let finalScore = Math.round(totalSkorBobot * 100) / 100;
+          let keputusan = finalScore >= 80 ? "Sangat Baik" : finalScore >= 60 ? "Baik" : "Kurang";
+
+          const btn = m.querySelector("#btn-save-manual-kpi");
+          btn.disabled = true; btn.textContent = "Menyimpan Hasil...";
+
+          try {
+            await fsUpdate(COL.TUGAS_KPI_360, task.id, {
+              status: "DONE",
+              skor_akhir: finalScore,
+              soal_json: answeredSoal,
+              catatan_baik: catatanBaik,
+              catatan_perbaikan: catatanPerbaikan,
+              catatan_penilai: catatanPenilai,
+              diinput_oleh_hrd: true,
+              metode_penilaian: "FORM_FISIK",
+              tanggal_diselesaikan: new Date().toISOString()
+            });
+
+            await fsAdd(COL.LOG_PENILAIAN_KPI, {
+              tanggal: new Date().toISOString(),
+              nama_dinilai: task.nama_dinilai,
+              penilai: task.nama_penilai + " (Input Manual HRD)",
+              total_skor: finalScore,
+              keputusan: keputusan,
+              periode: task.periode,
+              detail_json: answeredSoal,
+              catatan_baik: catatanBaik,
+              catatan_perbaikan: catatanPerbaikan,
+              catatan_penilai: catatanPenilai,
+              diinput_oleh_hrd: true,
+              metode_penilaian: "FORM_FISIK"
+            }, genId("KPI-LOG"));
+
+            toast("Hasil penilaian fisik berhasil disimpan!", "success");
+            closeModal();
+            loadKpi360();
+          } catch(e) {
+            toast("Gagal menyimpan: " + e.message, "error");
+            btn.disabled = false;
+            btn.textContent = "💾 Simpan Penilaian Manual";
+          }
+        };
+      }
     });
   }
 
@@ -1338,28 +1521,28 @@ export async function mount(container, { session }) {
         </table>
 
         <!-- CATATAN & EVALUASI DETIL PENILAI -->
-        <div style="border:1px solid #000; padding:3px 5px; margin-bottom:4px; font-size:8px; background:#fff;">
-          <div style="font-weight:bold; font-size:8.5px; border-bottom:1px solid #000; padding-bottom:1px; margin-bottom:2px; color:#000;">
+        <div style="border:1px solid #000; padding:4px 6px; margin-bottom:5px; font-size:8.5px; background:#fff;">
+          <div style="font-weight:bold; font-size:9px; border-bottom:1px solid #000; padding-bottom:2px; margin-bottom:3px; color:#000;">
             📝 CATATAN & EVALUASI KUALITATIF PENILAI:
           </div>
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px; margin-bottom:2px;">
-            <div style="border:1px solid #cbd5e1; padding:2px 4px; background:#f8fafc; border-radius:2px;">
-              <strong style="color:#166534; font-size:8px;">✓ Hal-hal yang Sudah Baik (Kelebihan/Prestasi):</strong>
-              <div style="min-height:16px; font-size:8px; line-height:1.15; margin-top:1px; color:#1e293b;">
-                ${escapeHtml(task.catatan_baik || "") || `<div style="border-bottom:1px dotted #cbd5e1; min-height:8px;"></div><div style="border-bottom:1px dotted #cbd5e1; min-height:8px; margin-top:1px;"></div>`}
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:3px;">
+            <div style="border:1px solid #cbd5e1; padding:3px 5px; background:#f8fafc; border-radius:2px;">
+              <strong style="color:#166534; font-size:8.5px;">✓ Hal-hal yang Sudah Baik (Kelebihan/Prestasi):</strong>
+              <div style="min-height:38px; font-size:8.5px; line-height:1.25; margin-top:2px; color:#1e293b;">
+                ${escapeHtml(task.catatan_baik || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:11px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div>`}
               </div>
             </div>
-            <div style="border:1px solid #cbd5e1; padding:2px 4px; background:#f8fafc; border-radius:2px;">
-              <strong style="color:#991b1b; font-size:8px;">⚠ Hal-hal yang Harus Diperbaiki (Area Peningkatan):</strong>
-              <div style="min-height:16px; font-size:8px; line-height:1.15; margin-top:1px; color:#1e293b;">
-                ${escapeHtml(task.catatan_perbaikan || "") || `<div style="border-bottom:1px dotted #cbd5e1; min-height:8px;"></div><div style="border-bottom:1px dotted #cbd5e1; min-height:8px; margin-top:1px;"></div>`}
+            <div style="border:1px solid #cbd5e1; padding:3px 5px; background:#f8fafc; border-radius:2px;">
+              <strong style="color:#991b1b; font-size:8.5px;">⚠ Hal-hal yang Harus Diperbaiki (Area Peningkatan):</strong>
+              <div style="min-height:38px; font-size:8.5px; line-height:1.25; margin-top:2px; color:#1e293b;">
+                ${escapeHtml(task.catatan_perbaikan || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:11px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div>`}
               </div>
             </div>
           </div>
-          <div style="border:1px solid #cbd5e1; padding:2px 4px; background:#fafafa; border-radius:2px;">
-            <strong style="color:#334155; font-size:8px;">💬 Catatan & Rekomendasi Tambahan Penilai:</strong>
-            <div style="min-height:12px; font-size:8px; line-height:1.15; margin-top:1px; color:#1e293b;">
-              ${escapeHtml(task.catatan_penilai || task.catatan_umum || "") || `<div style="border-bottom:1px dotted #cbd5e1; min-height:8px;"></div>`}
+          <div style="border:1px solid #cbd5e1; padding:3px 5px; background:#fafafa; border-radius:2px;">
+            <strong style="color:#334155; font-size:8.5px;">💬 Catatan & Rekomendasi Tambahan Penilai:</strong>
+            <div style="min-height:26px; font-size:8.5px; line-height:1.25; margin-top:2px; color:#1e293b;">
+              ${escapeHtml(task.catatan_penilai || task.catatan_umum || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:11px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div>`}
             </div>
           </div>
         </div>
@@ -1545,32 +1728,32 @@ export async function mount(container, { session }) {
           </tfoot>
         </table>
 
-        <!-- CATATAN & EVALUASI PENILAI COMPACT & LENGKAP -->
+        <!-- CATATAN & EVALUASI PENILAI COMPACT & LENGKAP (2-KOLOM UNTUK 1 Halaman) -->
         <table style="width:100%; border-collapse:collapse; margin-bottom:6px; border:1px solid #000; font-size:9.5px;">
           <tr style="background:#f1f5f9; font-weight:bold;">
-            <td style="border:1px solid #000; padding:4px 6px; color:#000;">
+            <td colspan="2" style="border:1px solid #000; padding:4px 6px; color:#000; font-size:9.5px;">
               📝 Ulasan & Catatan Evaluasi Penilai (Kualitatif):
             </td>
           </tr>
           <tr>
-            <td style="border:1px solid #000; padding:5px 6px; background:#fff;">
-              <div style="margin-bottom:4px;">
-                <strong style="color:#166534; font-size:9.5px;">1. Hal-hal yang Sudah Baik (Kelebihan / Prestasi Kerja):</strong>
-                <div style="min-height:22px; font-size:9px; line-height:1.3; color:#1e293b; margin-top:2px;">
-                  ${escapeHtml(task.catatan_baik || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div>`}
-                </div>
+            <td width="50%" style="border:1px solid #000; padding:5px; background:#fff; vertical-align:top;">
+              <strong style="color:#166534; font-size:9.5px;">1. Hal-hal yang Sudah Baik (Kelebihan / Prestasi):</strong>
+              <div style="min-height:38px; font-size:9px; line-height:1.3; color:#1e293b; margin-top:2px;">
+                ${escapeHtml(task.catatan_baik || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div>`}
               </div>
-              <div style="margin-bottom:4px;">
-                <strong style="color:#991b1b; font-size:9.5px;">2. Hal-hal yang Harus Diperbaiki (Area Peningkatan / Kelemahan):</strong>
-                <div style="min-height:22px; font-size:9px; line-height:1.3; color:#1e293b; margin-top:2px;">
-                  ${escapeHtml(task.catatan_perbaikan || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div>`}
-                </div>
+            </td>
+            <td width="50%" style="border:1px solid #000; padding:5px; background:#fff; vertical-align:top;">
+              <strong style="color:#991b1b; font-size:9.5px;">2. Hal-hal yang Harus Diperbaiki (Area Peningkatan):</strong>
+              <div style="min-height:38px; font-size:9px; line-height:1.3; color:#1e293b; margin-top:2px;">
+                ${escapeHtml(task.catatan_perbaikan || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div>`}
               </div>
-              <div>
-                <strong style="color:#334155; font-size:9.5px;">3. Catatan & Rekomendasi Tambahan Penilai:</strong>
-                <div style="min-height:16px; font-size:9px; line-height:1.3; color:#1e293b; margin-top:2px;">
-                  ${escapeHtml(task.catatan_penilai || task.catatan_umum || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div>`}
-                </div>
+            </td>
+          </tr>
+          <tr>
+            <td colspan="2" style="border:1px solid #000; padding:5px; background:#fff;">
+              <strong style="color:#334155; font-size:9.5px;">3. Catatan & Rekomendasi Tambahan Penilai:</strong>
+              <div style="min-height:26px; font-size:9px; line-height:1.3; color:#1e293b; margin-top:2px;">
+                ${escapeHtml(task.catatan_penilai || task.catatan_umum || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div>`}
               </div>
             </td>
           </tr>
