@@ -679,9 +679,16 @@ export async function mount(container, { session }) {
     });
   }
 
-  async function loadTemplateKpi() {
+  async function loadTemplateKpi(lastEditedTplId = null, preserveScrollY = null) {
     const wrap = panels.template;
-    wrap.innerHTML = `<div class="p-6">${skeletonRows(4)}</div>`;
+    const currentScrollY = preserveScrollY !== null ? preserveScrollY : (window.scrollY || document.documentElement.scrollTop || 0);
+
+    const isAlreadyRendered = !!wrap.querySelector("#tpl-cards-container");
+    const previousSearchVal = wrap.querySelector("#tpl-search-input")?.value || "";
+
+    if (!isAlreadyRendered) {
+      wrap.innerHTML = `<div class="p-6">${skeletonRows(4)}</div>`;
+    }
 
     const [rawTemplates, allKaryawan] = await Promise.all([
       fsGetAll(COL.MASTER_SOAL_KPI),
@@ -794,168 +801,197 @@ export async function mount(container, { session }) {
 
       const btnAdd = wrap.querySelector("#btn-add-template");
       if (btnAdd) btnAdd.onclick = () => openTemplateModal(null, activeKaryawan);
-
-      const searchInput = wrap.querySelector("#tpl-search-input");
-      const cardsContainer = wrap.querySelector("#tpl-cards-container");
-
-      function drawCards() {
-        const q = (searchInput.value || "").toLowerCase().trim();
-
-        const filtered = templates.filter(t => {
-          const nama = (t.nama_template || "").toLowerCase();
-          const assigned = (t.karyawan_assigned || []).join(" ").toLowerCase();
-          const indikatorText = (t.soal_json || []).map(s => `${s.aspek} ${s.indikator}`).join(" ").toLowerCase();
-
-          return nama.includes(q) || assigned.includes(q) || indikatorText.includes(q);
-        });
-
-        if (!filtered.length) {
-          cardsContainer.innerHTML = `<div class="col-span-full">${emptyState("Belum ada Template Soal KPI yang cocok", "Klik tombol Buat Template Baru di atas untuk menambah template.")}</div>`;
-          return;
-        }
-
-        cardsContainer.innerHTML = filtered.map(t => {
-          const nama = t.nama_template || "Template Tanpa Nama";
-          const soalList = t.soal_json || [];
-          const totalBobot = soalList.reduce((acc, curr) => acc + (parseFloat(curr.bobot) || 0), 0);
-          const assignedList = Array.isArray(t.karyawan_assigned) ? t.karyawan_assigned : [];
-
-          const isBobot100 = Math.round(totalBobot) === 100;
-
-          // Preview indicators (up to 3)
-          const previewSoal = soalList.slice(0, 3);
-          const extraSoalCount = soalList.length - 3;
-
-          // Preview assigned employees (up to 4)
-          const previewEmployees = assignedList.slice(0, 4);
-          const extraEmpCount = assignedList.length - 4;
-
-          return `
-            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition p-5 flex flex-col justify-between group cursor-pointer tpl-card-item" data-tpl-id="${t.id}">
-              <div>
-                <!-- Top Header -->
-                <div class="flex items-start justify-between gap-3 mb-3">
-                  <div class="flex items-center gap-2.5">
-                    <div class="w-10 h-10 rounded-xl bg-maroon-50 text-maroon-700 font-bold flex items-center justify-center text-lg shadow-2xs group-hover:bg-maroon-700 group-hover:text-white transition">
-                      📋
-                    </div>
-                    <div>
-                      <h3 class="font-bold text-slate-800 text-sm group-hover:text-maroon-700 transition leading-snug">${escapeHtml(nama)}</h3>
-                      <p class="text-[11px] text-slate-400 font-medium">${soalList.length} Indikator Kinerja</p>
-                    </div>
-                  </div>
-                  ${isBobot100 ? `
-                    <span class="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">Total 100%</span>
-                  ` : `
-                    <span class="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">Bobot ${totalBobot}%</span>
-                  `}
-                </div>
-
-                <!-- Section Preview Indikator KPI -->
-                <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 mb-3 space-y-1.5">
-                  <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wide flex items-center justify-between">
-                    <span>🎯 Detail Soal KPI</span>
-                    <span class="text-slate-400 font-normal lowercase">${soalList.length} soal</span>
-                  </div>
-                  ${soalList.length > 0 ? `
-                    <div class="space-y-1 mt-1">
-                      ${previewSoal.map(s => `
-                        <div class="flex items-center justify-between text-xs bg-white p-1.5 rounded-lg border border-slate-100">
-                          <span class="truncate text-slate-700 font-medium pr-2" title="${escapeHtml(s.indikator)}">${escapeHtml(s.indikator || s.aspek)}</span>
-                          <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">${s.bobot}%</span>
-                        </div>
-                      `).join("")}
-                      ${extraSoalCount > 0 ? `
-                        <div class="text-[10px] text-slate-400 italic text-center pt-0.5">+ ${extraSoalCount} indikator lainnya</div>
-                      ` : ''}
-                    </div>
-                  ` : `
-                    <p class="text-xs text-slate-400 italic py-1">Belum ada indikator ditambahkan</p>
-                  `}
-                </div>
-
-                <!-- Section Karyawan Terdaftar -->
-                <div class="border-t border-slate-100 pt-3">
-                  <div class="flex items-center justify-between text-xs mb-2">
-                    <span class="text-slate-500 font-semibold flex items-center gap-1">👥 Karyawan Masuk Template:</span>
-                    <span class="font-bold text-maroon-700 bg-maroon-50 px-2 py-0.5 rounded-full text-[11px]">${assignedList.length} Orang</span>
-                  </div>
-                  ${assignedList.length > 0 ? `
-                    <div class="flex flex-wrap gap-1">
-                      ${previewEmployees.map(emp => `
-                        <span class="inline-flex items-center gap-1 text-[11px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg font-medium border border-slate-200">
-                          <span>👤</span> ${escapeHtml(emp)}
-                        </span>
-                      `).join("")}
-                      ${extraEmpCount > 0 ? `
-                        <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">+${extraEmpCount} lagi</span>
-                      ` : ''}
-                    </div>
-                  ` : `
-                    <p class="text-xs text-slate-400 italic bg-amber-50/50 border border-amber-100 p-2 rounded-xl text-center">Belum ada karyawan yang dimasukkan ke template ini.</p>
-                  `}
-                </div>
-              </div>
-
-              <!-- Footer Action Buttons -->
-              <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                <button type="button" data-del-tpl="${t.id}" class="text-xs font-semibold text-red-500 hover:text-red-700 hover:bg-red-50 px-2.5 py-1.5 rounded-lg transition">
-                  🗑️ Hapus
-                </button>
-                <div class="flex items-center gap-1.5">
-                  <button type="button" data-dist-tpl="${t.id}" class="text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 px-3 py-1.5 rounded-xl transition flex items-center gap-1 shadow-2xs">
-                    🚀 Distribusi KPI
-                  </button>
-                  <button type="button" data-edit-tpl="${t.id}" class="text-xs font-bold text-maroon-700 bg-maroon-50 hover:bg-maroon-100 px-3 py-1.5 rounded-xl transition flex items-center gap-1">
-                    👁️ Edit
-                  </button>
-                </div>
-              </div>
-            </div>
-          `;
-        }).join("");
-
-        // Attach Card Action Events
-        cardsContainer.querySelectorAll("[data-dist-tpl]").forEach(btn => {
-          btn.onclick = (e) => {
-            e.stopPropagation();
-            openDistribusiModal(btn.dataset.distTpl);
-          };
-        });
-
-        cardsContainer.querySelectorAll("[data-edit-tpl]").forEach(btn => {
-          btn.onclick = (e) => {
-            e.stopPropagation();
-            const tplId = btn.dataset.editTpl;
-            openTemplateModal(templates.find(x => x.id === tplId), activeKaryawan);
-          };
-        });
-
-        cardsContainer.querySelectorAll(".tpl-card-item").forEach(card => {
-          card.onclick = () => {
-            const tplId = card.dataset.tplId;
-            openTemplateModal(templates.find(x => x.id === tplId), activeKaryawan);
-          };
-        });
-
-        cardsContainer.querySelectorAll("[data-del-tpl]").forEach(btn => {
-          btn.onclick = async (e) => {
-            e.stopPropagation();
-            const tplId = btn.dataset.delTpl;
-            if (confirm("Apakah Anda yakin ingin menghapus template KPI ini?")) {
-              await fsDelete(COL.MASTER_SOAL_KPI, tplId);
-              toast("Template berhasil dihapus", "success");
-              loadTemplateKpi();
-            }
-          };
-        });
-      }
-
-      drawCards();
-      if (searchInput) searchInput.oninput = drawCards;
     }
 
-    renderView();
+    if (!isAlreadyRendered) {
+      renderView();
+    } else {
+      const totalCountStrong = wrap.querySelector("#tpl-cards-container")?.parentElement?.querySelector("strong");
+      if (totalCountStrong) {
+        totalCountStrong.textContent = templates.length;
+      }
+    }
+
+    const searchInput = wrap.querySelector("#tpl-search-input");
+    if (searchInput && previousSearchVal) {
+      searchInput.value = previousSearchVal;
+    }
+
+    const cardsContainer = wrap.querySelector("#tpl-cards-container");
+
+    function drawCards() {
+      const q = (searchInput.value || "").toLowerCase().trim();
+
+      const filtered = templates.filter(t => {
+        const nama = (t.nama_template || "").toLowerCase();
+        const assigned = (t.karyawan_assigned || []).join(" ").toLowerCase();
+        const indikatorText = (t.soal_json || []).map(s => `${s.aspek} ${s.indikator}`).join(" ").toLowerCase();
+
+        return nama.includes(q) || assigned.includes(q) || indikatorText.includes(q);
+      });
+
+      if (!filtered.length) {
+        cardsContainer.innerHTML = `<div class="col-span-full">${emptyState("Belum ada Template Soal KPI yang cocok", "Klik tombol Buat Template Baru di atas untuk menambah template.")}</div>`;
+        return;
+      }
+
+      cardsContainer.innerHTML = filtered.map(t => {
+        const nama = t.nama_template || "Template Tanpa Nama";
+        const soalList = t.soal_json || [];
+        const totalBobot = soalList.reduce((acc, curr) => acc + (parseFloat(curr.bobot) || 0), 0);
+        const assignedList = Array.isArray(t.karyawan_assigned) ? t.karyawan_assigned : [];
+
+        const isBobot100 = Math.round(totalBobot) === 100;
+
+        // Preview indicators (up to 3)
+        const previewSoal = soalList.slice(0, 3);
+        const extraSoalCount = soalList.length - 3;
+
+        // Preview assigned employees (up to 4)
+        const previewEmployees = assignedList.slice(0, 4);
+        const extraEmpCount = assignedList.length - 4;
+
+        return `
+          <div class="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition p-5 flex flex-col justify-between group cursor-pointer tpl-card-item" data-tpl-id="${t.id}">
+            <div>
+              <!-- Top Header -->
+              <div class="flex items-start justify-between gap-3 mb-3">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-10 h-10 rounded-xl bg-maroon-50 text-maroon-700 font-bold flex items-center justify-center text-lg shadow-2xs group-hover:bg-maroon-700 group-hover:text-white transition">
+                    📋
+                  </div>
+                  <div>
+                    <h3 class="font-bold text-slate-800 text-sm group-hover:text-maroon-700 transition leading-snug">${escapeHtml(nama)}</h3>
+                    <p class="text-[11px] text-slate-400 font-medium">${soalList.length} Indikator Kinerja</p>
+                  </div>
+                </div>
+                ${isBobot100 ? `
+                  <span class="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">Total 100%</span>
+                ` : `
+                  <span class="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">Bobot ${totalBobot}%</span>
+                `}
+              </div>
+
+              <!-- Section Preview Indikator KPI -->
+              <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 mb-3 space-y-1.5">
+                <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wide flex items-center justify-between">
+                  <span>🎯 Detail Soal KPI</span>
+                  <span class="text-slate-400 font-normal lowercase">${soalList.length} soal</span>
+                </div>
+                ${soalList.length > 0 ? `
+                  <div class="space-y-1 mt-1">
+                    ${previewSoal.map(s => `
+                      <div class="flex items-center justify-between text-xs bg-white p-1.5 rounded-lg border border-slate-100">
+                        <span class="truncate text-slate-700 font-medium pr-2" title="${escapeHtml(s.indikator)}">${escapeHtml(s.indikator || s.aspek)}</span>
+                        <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">${s.bobot}%</span>
+                      </div>
+                    `).join("")}
+                    ${extraSoalCount > 0 ? `
+                      <div class="text-[10px] text-slate-400 italic text-center pt-0.5">+ ${extraSoalCount} indikator lainnya</div>
+                    ` : ''}
+                  </div>
+                ` : `
+                  <p class="text-xs text-slate-400 italic py-1">Belum ada indikator ditambahkan</p>
+                `}
+              </div>
+
+              <!-- Section Karyawan Terdaftar -->
+              <div class="border-t border-slate-100 pt-3">
+                <div class="flex items-center justify-between text-xs mb-2">
+                  <span class="text-slate-500 font-semibold flex items-center gap-1">👥 Karyawan Masuk Template:</span>
+                  <span class="font-bold text-maroon-700 bg-maroon-50 px-2 py-0.5 rounded-full text-[11px]">${assignedList.length} Orang</span>
+                </div>
+                ${assignedList.length > 0 ? `
+                  <div class="flex flex-wrap gap-1">
+                    ${previewEmployees.map(emp => `
+                      <span class="inline-flex items-center gap-1 text-[11px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg font-medium border border-slate-200">
+                        <span>👤</span> ${escapeHtml(emp)}
+                      </span>
+                    `).join("")}
+                    ${extraEmpCount > 0 ? `
+                      <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">+${extraEmpCount} lagi</span>
+                    ` : ''}
+                  </div>
+                ` : `
+                  <p class="text-xs text-slate-400 italic bg-amber-50/50 border border-amber-100 p-2 rounded-xl text-center">Belum ada karyawan yang dimasukkan ke template ini.</p>
+                `}
+              </div>
+            </div>
+
+            <!-- Footer Action Buttons -->
+            <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+              <button type="button" data-del-tpl="${t.id}" class="text-xs font-semibold text-red-500 hover:text-red-700 hover:bg-red-50 px-2.5 py-1.5 rounded-lg transition">
+                🗑️ Hapus
+              </button>
+              <div class="flex items-center gap-1.5">
+                <button type="button" data-dist-tpl="${t.id}" class="text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 px-3 py-1.5 rounded-xl transition flex items-center gap-1 shadow-2xs">
+                  🚀 Distribusi KPI
+                </button>
+                <button type="button" data-edit-tpl="${t.id}" class="text-xs font-bold text-maroon-700 bg-maroon-50 hover:bg-maroon-100 px-3 py-1.5 rounded-xl transition flex items-center gap-1">
+                  👁️ Edit
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      // Attach Card Action Events
+      cardsContainer.querySelectorAll("[data-dist-tpl]").forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          openDistribusiModal(btn.dataset.distTpl);
+        };
+      });
+
+      cardsContainer.querySelectorAll("[data-edit-tpl]").forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          const tplId = btn.dataset.editTpl;
+          openTemplateModal(templates.find(x => x.id === tplId), activeKaryawan);
+        };
+      });
+
+      cardsContainer.querySelectorAll(".tpl-card-item").forEach(card => {
+        card.onclick = () => {
+          const tplId = card.dataset.tplId;
+          openTemplateModal(templates.find(x => x.id === tplId), activeKaryawan);
+        };
+      });
+
+      cardsContainer.querySelectorAll("[data-del-tpl]").forEach(btn => {
+        btn.onclick = async (e) => {
+          e.stopPropagation();
+          const tplId = btn.dataset.delTpl;
+          if (confirm("Apakah Anda yakin ingin menghapus template KPI ini?")) {
+            const currentY = window.scrollY || document.documentElement.scrollTop || 0;
+            await fsDelete(COL.MASTER_SOAL_KPI, tplId);
+            toast("Template berhasil dihapus", "success");
+            loadTemplateKpi(null, currentY);
+          }
+        };
+      });
+    }
+
+    drawCards();
+    if (searchInput) searchInput.oninput = drawCards;
+
+    setTimeout(() => {
+      if (lastEditedTplId) {
+        const targetCard = wrap.querySelector(`[data-tpl-id="${lastEditedTplId}"]`);
+        if (targetCard) {
+          targetCard.scrollIntoView({ behavior: "smooth", block: "center" });
+          targetCard.classList.add("ring-2", "ring-maroon-600", "transition-all", "duration-500");
+          setTimeout(() => {
+            targetCard.classList.remove("ring-2", "ring-maroon-600");
+          }, 2500);
+          return;
+        }
+      }
+      if (currentScrollY > 0) {
+        window.scrollTo({ top: currentScrollY, behavior: "instant" });
+      }
+    }, 50);
   }
 
   async function downloadSampleExcelTemplateKpi() {
@@ -979,6 +1015,7 @@ export async function mount(container, { session }) {
 
   async function handleExcelImport(file) {
     if (!file) return;
+    const importY = window.scrollY || document.documentElement.scrollTop || 0;
     const btn = panels.template ? panels.template.querySelector("#btn-import-template") : null;
     const originalText = btn ? btn.innerHTML : "Import Excel";
     if (btn) { btn.innerHTML = `⏳ Membaca File...`; btn.disabled = true; }
@@ -1146,7 +1183,7 @@ export async function mount(container, { session }) {
       if (addedCount > 0) resMsg += `${addedCount} template baru ditambahkan.`;
 
       toast(resMsg, "success");
-      loadTemplateKpi();
+      loadTemplateKpi(null, importY);
 
     } catch (err) {
       console.error("Gagal Import Excel:", err);
@@ -1421,14 +1458,17 @@ export async function mount(container, { session }) {
               await fsDelete(COL.MASTER_SOAL_KPI, dup.id);
             }
 
+            let savedTplId = existingData && existingData.id ? existingData.id : null;
             if (existingData && existingData.id) {
               await fsUpdate(COL.MASTER_SOAL_KPI, existingData.id, payload);
             } else {
-              await fsAdd(COL.MASTER_SOAL_KPI, payload, genId("TPL-KPI"));
+              const newTplId = genId("TPL-KPI");
+              await fsAdd(COL.MASTER_SOAL_KPI, payload, newTplId);
+              savedTplId = newTplId;
             }
             toast("Template Soal KPI & daftar karyawan berhasil disimpan!", "success");
             closeModal();
-            loadTemplateKpi();
+            loadTemplateKpi(savedTplId);
           } catch (err) {
             toast("Gagal menyimpan: " + err.message, "error");
             btnSave.disabled = false;
