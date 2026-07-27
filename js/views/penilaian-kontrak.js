@@ -1487,16 +1487,23 @@ export async function mount(container, { session }) {
 
     let htmlContent = isHrd ? `
         <div class="mb-4 flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
             <span class="text-xs font-bold text-slate-600">Dokumen Fisik:</span>
             <button id="btn-print-batch-kpi" class="bg-slate-800 hover:bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-2xs">
               🖨️ Cetak Form Fisik Semua (${tasks.length})
             </button>
           </div>
-          <button id="btn-distribusi-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 shadow-md">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-            Distribusi Penilaian 360
-          </button>
+          <div class="flex items-center gap-2 flex-wrap">
+            ${tasks.length > 0 ? `
+              <button id="btn-revoke-batch-kpi" class="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5">
+                🗑️ Cabut Semua (${tasks.length})
+              </button>
+            ` : ''}
+            <button id="btn-distribusi-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 shadow-md">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+              Distribusi Penilaian 360
+            </button>
+          </div>
         </div>` : ``;
 
     if (!tasks.length) { wrap.innerHTML = htmlContent + emptyState("Belum ada penugasan"); }
@@ -1525,6 +1532,9 @@ export async function mount(container, { session }) {
                         <button data-input-manual="${t.id}" class="px-3 py-1.5 text-xs font-semibold ${t.status === 'DONE' ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200' : 'bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs'} rounded-lg inline-flex items-center gap-1 transition">
                           ${t.status === 'DONE' ? '✏️ Edit Input' : '📝 Input Manual HRD'}
                         </button>
+                        <button data-del-tugas="${t.id}" class="px-2.5 py-1.5 text-xs font-semibold bg-red-50 hover:bg-red-100 text-red-600 rounded-lg inline-flex items-center gap-1 border border-red-200 transition" title="Cabut / Hapus Penugasan ini">
+                          🗑️ Cabut
+                        </button>
                       ` : ''}
                       <button data-print-fisik="${t.id}" class="px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg inline-flex items-center gap-1 border border-slate-200 transition">🖨️ Form Fisik</button>
                     </div>
@@ -1537,6 +1547,31 @@ export async function mount(container, { session }) {
     }
     if (isHrd && wrap.querySelector("#btn-distribusi-kpi")) wrap.querySelector("#btn-distribusi-kpi").onclick = openDistribusiModal;
     if (isHrd && wrap.querySelector("#btn-print-batch-kpi")) wrap.querySelector("#btn-print-batch-kpi").onclick = () => printBatchFormKpiFisik(tasks);
+    if (isHrd && wrap.querySelector("#btn-revoke-batch-kpi")) {
+      wrap.querySelector("#btn-revoke-batch-kpi").onclick = async () => {
+        if (!tasks || !tasks.length) return;
+        if (confirm(`Apakah Anda yakin ingin MENCABUT / MENGHAPUS SELURUH (${tasks.length}) pendistribusian penugasan penilaian KPI? Penilai tidak akan dapat mengisi tugas ini lagi.`)) {
+          for (const t of tasks) {
+            await fsDelete(COL.TUGAS_KPI_360, t.id);
+          }
+          toast(`Berhasil mencabut ${tasks.length} pendistribusian penugasan KPI`, "success");
+          loadKpi360();
+        }
+      };
+    }
+
+    wrap.querySelectorAll("[data-del-tugas]").forEach(btn => {
+      btn.onclick = async () => {
+        const tId = btn.dataset.delTugas;
+        const task = tasks.find(x => x.id === tId);
+        if (!task) return;
+        if (confirm(`Apakah Anda yakin ingin mencabut / menghapus penugasan penilaian KPI untuk "${task.nama_dinilai}" oleh "${task.nama_penilai}" (Periode: ${task.periode})?`)) {
+          await fsDelete(COL.TUGAS_KPI_360, tId);
+          toast("Pendistribusian penugasan KPI berhasil dicabut", "success");
+          loadKpi360();
+        }
+      };
+    });
 
     wrap.querySelectorAll("[data-input-manual]").forEach(btn => {
       btn.onclick = () => {
