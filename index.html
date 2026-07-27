@@ -16,6 +16,47 @@
     } catch (e) {
       console.warn("Patch fetch warning:", e);
     }
+
+    try {
+      var originalStringify = JSON.stringify;
+      JSON.stringify = function(value, replacer, space) {
+        var seen = new WeakSet();
+        var customReplacer = function(key, val) {
+          var resolvedVal = val;
+          if (typeof replacer === 'function') {
+            resolvedVal = replacer.call(this, key, val);
+          } else if (Array.isArray(replacer) && key !== '') {
+            if (replacer.indexOf(key) === -1) return undefined;
+          }
+          if (typeof resolvedVal === 'object' && resolvedVal !== null) {
+            if (
+              (typeof Node !== 'undefined' && resolvedVal instanceof Node) ||
+              (typeof Event !== 'undefined' && resolvedVal instanceof Event) ||
+              (resolvedVal.constructor && (
+                resolvedVal.constructor.name === 'Y' ||
+                resolvedVal.constructor.name === 'Ka' ||
+                resolvedVal.constructor.name.startsWith('HTML')
+              ))
+            ) {
+              return undefined;
+            }
+            if (seen.has(resolvedVal)) {
+              return undefined;
+            }
+            seen.add(resolvedVal);
+          }
+          return resolvedVal;
+        };
+        try {
+          return originalStringify.call(JSON, value, customReplacer, space);
+        } catch (e) {
+          console.warn("JSON.stringify circular fallback triggered:", e);
+          return "{}";
+        }
+      };
+    } catch (err) {
+      console.warn("JSON.stringify patch warning:", err);
+    }
   })();
 </script>
 <meta charset="UTF-8">
