@@ -683,10 +683,41 @@ export async function mount(container, { session }) {
     const wrap = panels.template;
     wrap.innerHTML = `<div class="p-6">${skeletonRows(4)}</div>`;
 
-    const [templates, allKaryawan] = await Promise.all([
+    const [rawTemplates, allKaryawan] = await Promise.all([
       fsGetAll(COL.MASTER_SOAL_KPI),
       fsGetAll(COL.MASTER_KARYAWAN)
     ]);
+
+    // Hapus duplikat template berdasarkan nama jabatan jika ada di Firestore
+    const templateMap = new Map();
+    const duplicatesToDelete = [];
+
+    rawTemplates.forEach(t => {
+      const normName = (t.nama_template || "").trim().toLowerCase();
+      if (!normName) return;
+      if (templateMap.has(normName)) {
+        const existing = templateMap.get(normName);
+        const existingTime = new Date(existing.updated_at || existing.created_at || 0).getTime();
+        const currentTime = new Date(t.updated_at || t.created_at || 0).getTime();
+
+        if (currentTime > existingTime) {
+          duplicatesToDelete.push(existing.id);
+          templateMap.set(normName, t);
+        } else {
+          duplicatesToDelete.push(t.id);
+        }
+      } else {
+        templateMap.set(normName, t);
+      }
+    });
+
+    if (duplicatesToDelete.length > 0) {
+      duplicatesToDelete.forEach(id => {
+        fsDelete(COL.MASTER_SOAL_KPI, id).catch(e => console.warn("Pembersihan duplikat template:", e));
+      });
+    }
+
+    const templates = Array.from(templateMap.values());
 
     const activeKaryawan = allKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF" && k.nama_karyawan);
     activeKaryawan.sort((a, b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id", { sensitivity: "base" }));
@@ -1073,16 +1104,30 @@ export async function mount(container, { session }) {
 
       for (const name of templateKeys) {
         const tplData = groupedTemplates[name];
-        const existing = existingTemplates.find(t => (t.nama_template || "").trim().toLowerCase() === name.trim().toLowerCase());
+        const normName = name.trim().toLowerCase();
+        const matchingExisting = existingTemplates.filter(t => (t.nama_template || "").trim().toLowerCase() === normName);
 
-        if (existing) {
-          // Replace / Update existing template, keeping assigned employees
-          await fsUpdate(COL.MASTER_SOAL_KPI, existing.id, {
+        if (matchingExisting.length > 0) {
+          // Kumpulkan karyawan assigned dari template lama agar tidak hilang
+          const allAssigned = new Set();
+          matchingExisting.forEach(t => {
+            if (Array.isArray(t.karyawan_assigned)) {
+              t.karyawan_assigned.forEach(k => allAssigned.add(k));
+            }
+          });
+
+          // Hapus SEMUA template lama dengan nama jabatan yang sama
+          for (const oldTpl of matchingExisting) {
+            await fsDelete(COL.MASTER_SOAL_KPI, oldTpl.id);
+          }
+
+          // Buat template baru menggantikan yang terhapus
+          await fsAdd(COL.MASTER_SOAL_KPI, {
             nama_template: name,
             soal_json: tplData.soal_json,
-            karyawan_assigned: existing.karyawan_assigned || [],
+            karyawan_assigned: Array.from(allAssigned),
             updated_at: new Date().toISOString()
-          });
+          }, genId("TPL-KPI"));
           updatedCount++;
         } else {
           // Add new template
@@ -1366,6 +1411,16 @@ export async function mount(container, { session }) {
           btnSave.textContent = "Menyimpan...";
 
           try {
+            // Hapus duplikat lain jika ada template lain dengan nama jabatan yang sama
+            const allExisting = await fsGetAll(COL.MASTER_SOAL_KPI);
+            const duplicates = allExisting.filter(t => 
+              (t.nama_template || "").trim().toLowerCase() === nama.trim().toLowerCase() && 
+              (!existingData || t.id !== existingData.id)
+            );
+            for (const dup of duplicates) {
+              await fsDelete(COL.MASTER_SOAL_KPI, dup.id);
+            }
+
             if (existingData && existingData.id) {
               await fsUpdate(COL.MASTER_SOAL_KPI, existingData.id, payload);
             } else {
@@ -2351,8 +2406,13 @@ export async function mount(container, { session }) {
     
     const optKaryawanSelect = activeK.map(k => `<option value="${escapeHtml(k.nama_karyawan)}">${escapeHtml(k.nama_karyawan)} — ${escapeHtml(k.jabatan || "")}</option>`).join("");
 
-    const templates = await fsGetAll(COL.MASTER_SOAL_KPI);
-    const validTemplates = templates.filter(t => t.nama_template && t.soal_json && t.soal_json.length > 0);
+    const rawTemplates = await fsGetAll(COL.MASTER_SOAL_KPI);
+    const tplMap = new Map();
+    rawTemplates.forEach(t => {
+      const norm = (t.nama_template || "").trim().toLowerCase();
+      if (norm && !tplMap.has(norm)) tplMap.set(norm, t);
+    });
+    const validTemplates = Array.from(tplMap.values()).filter(t => t.nama_template && t.soal_json && t.soal_json.length > 0);
     const optTemplates = validTemplates.map(t => `<option value="${t.id}">${escapeHtml(t.nama_template)}</option>`).join("");
 
     const selectedDinilaiSet = new Set();
