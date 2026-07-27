@@ -871,15 +871,27 @@ export async function mount(container, { session }) {
                 <button type="button" data-del-tpl="${t.id}" class="text-xs font-semibold text-red-500 hover:text-red-700 hover:bg-red-50 px-2.5 py-1.5 rounded-lg transition">
                   🗑️ Hapus
                 </button>
-                <button type="button" data-edit-tpl="${t.id}" class="text-xs font-bold text-maroon-700 bg-maroon-50 hover:bg-maroon-100 px-3 py-1.5 rounded-xl transition flex items-center gap-1">
-                  👁️ Detail Soal & Edit
-                </button>
+                <div class="flex items-center gap-1.5">
+                  <button type="button" data-dist-tpl="${t.id}" class="text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 px-3 py-1.5 rounded-xl transition flex items-center gap-1 shadow-2xs">
+                    🚀 Distribusi KPI
+                  </button>
+                  <button type="button" data-edit-tpl="${t.id}" class="text-xs font-bold text-maroon-700 bg-maroon-50 hover:bg-maroon-100 px-3 py-1.5 rounded-xl transition flex items-center gap-1">
+                    👁️ Edit
+                  </button>
+                </div>
               </div>
             </div>
           `;
         }).join("");
 
         // Attach Card Action Events
+        cardsContainer.querySelectorAll("[data-dist-tpl]").forEach(btn => {
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            openDistribusiModal(btn.dataset.distTpl);
+          };
+        });
+
         cardsContainer.querySelectorAll("[data-edit-tpl]").forEach(btn => {
           btn.onclick = (e) => {
             e.stopPropagation();
@@ -2331,7 +2343,7 @@ export async function mount(container, { session }) {
   // =====================================================================
   // MODAL DISTRIBUSI PINTAR: IMPLEMENTASI FITUR SEARCH & LIST CHECKBOX
   // =====================================================================
-  async function openDistribusiModal() {
+  async function openDistribusiModal(defaultTemplateId = null) {
     const allKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
     // PERBAIKAN: Pastikan kita menyaring dan hanya mengambil data yang benar-benar memiliki nama
     const activeK = allKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF" && k.nama_karyawan);
@@ -2375,16 +2387,24 @@ export async function mount(container, { session }) {
             </div>
           </div>
           
-          <div class="bg-slate-50 p-4 rounded-xl border mt-2">
-            <div class="flex justify-between items-center mb-3 border-b pb-3">
-               <label class="text-xs font-bold text-slate-700 uppercase">Rancang Indikator & Bobot</label>
-               <select id="kpi-template-picker" class="w-48 px-2 py-1.5 text-xs rounded border bg-white outline-none font-medium cursor-pointer">
-                  <option value="">-- Muat Dari Template --</option>
-                  ${optTemplates}
-               </select>
+          <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mt-2">
+            <div class="mb-3 border-b border-slate-200 pb-3">
+              <div class="flex justify-between items-center mb-2">
+                 <label class="text-xs font-bold text-slate-700 uppercase">Pilih Template KPI (Bisa Pilih Beberapa)</label>
+                 <span id="tpl-selected-count" class="text-[11px] font-semibold text-maroon-700 bg-maroon-50 px-2.5 py-0.5 rounded-full border border-maroon-100">0 Template Dipilih</span>
+              </div>
+              <div class="mb-2">
+                 <input type="text" id="tpl-search-input" placeholder="🔍 Cari nama template KPI..." class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-white">
+              </div>
+              <div id="kpi-templates-container" class="max-h-36 overflow-y-auto border border-slate-200 rounded-xl p-2 bg-white divide-y divide-slate-100 space-y-0.5">
+              </div>
+            </div>
+
+            <div class="flex justify-between items-center mb-3">
+               <label class="text-xs font-bold text-slate-700 uppercase">Rancang Indikator & Bobot (Gabungan Template)</label>
+               <button type="button" id="btn-add-soal" class="text-xs text-maroon-700 font-bold hover:underline flex items-center gap-1">➕ Indikator Manual</button>
             </div>
             <div id="soal-list" class="space-y-3 mb-3"></div>
-            <button type="button" id="btn-add-soal" class="text-xs text-maroon-700 font-medium hover:underline flex items-center gap-1">✖ Tambah Indikator Manual</button>
             <div class="mt-3 text-right">
               <span id="indikator-bobot-total" class="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded">Total Bobot: 0%</span>
             </div>
@@ -2464,18 +2484,150 @@ export async function mount(container, { session }) {
          }
          addSoalUI();
 
-         m.querySelector("#kpi-template-picker").onchange = (e) => {
-            const tpl = validTemplates.find(t => t.id === e.target.value);
-            if (tpl && tpl.soal_json) {
-              soalList.innerHTML = "";
-              tpl.soal_json.forEach(s => addSoalUI(s));
-            }
-            if (tpl && Array.isArray(tpl.karyawan_assigned) && tpl.karyawan_assigned.length > 0) {
-              tpl.karyawan_assigned.forEach(n => selectedDinilaiSet.add(n));
-              drawCheckboxes(searchBox.value);
-              toast(`Otomatis mencentang ${tpl.karyawan_assigned.length} karyawan terdaftar dari template ini!`, "info");
-            }
-         };
+         const penilaiSelect = m.querySelector("#kpi-penilai");
+         if (penilaiSelect) {
+           penilaiSelect.onchange = () => {
+             const penilaiVal = penilaiSelect.value;
+             if (penilaiVal && selectedDinilaiSet.has(penilaiVal)) {
+               selectedDinilaiSet.delete(penilaiVal);
+               drawCheckboxes(searchBox.value);
+               toast(`Karyawan penilai (${penilaiVal}) otomatis dicopot dari daftar yang dinilai!`, "info");
+             }
+           };
+         }
+
+         const countBadgeTpl = m.querySelector("#tpl-selected-count");
+         const tplSearchInput = m.querySelector("#tpl-search-input");
+         const tplListContainer = m.querySelector("#kpi-templates-container");
+         const selectedTplSet = new Set();
+
+         if (defaultTemplateId) {
+           selectedTplSet.add(defaultTemplateId);
+         }
+
+         function drawTemplateCheckboxes(filterText = "") {
+           const term = filterText.toLowerCase().trim();
+           
+           tplListContainer.innerHTML = validTemplates.map(t => {
+             const namaTpl = t.nama_template || "";
+             const match = !term || namaTpl.toLowerCase().includes(term);
+             if (!match || !namaTpl) return "";
+
+             const count = Array.isArray(t.karyawan_assigned) ? t.karyawan_assigned.length : 0;
+             const isChecked = selectedTplSet.has(t.id);
+
+             return `
+               <label class="flex items-center gap-2.5 px-2.5 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer transition select-none">
+                 <input type="checkbox" name="kpi-tpl-checkbox" value="${t.id}" ${isChecked ? 'checked' : ''} class="w-4 h-4 text-maroon-600 border-slate-300 rounded focus:ring-maroon-500 cursor-pointer">
+                 <div class="flex-1 min-w-0">
+                   <p class="text-xs font-semibold text-slate-800 truncate">${escapeHtml(namaTpl)}</p>
+                   <p class="text-[10px] text-slate-400">${count > 0 ? `${count} Karyawan Terdaftar` : 'Berdasarkan Posisi/Jabatan'} • ${(t.soal_json || []).length} Indikator</p>
+                 </div>
+               </label>
+             `;
+           }).join("");
+
+           tplListContainer.querySelectorAll('input[name="kpi-tpl-checkbox"]').forEach(cb => {
+             cb.onchange = () => {
+               if (cb.checked) {
+                 selectedTplSet.add(cb.value);
+               } else {
+                 selectedTplSet.delete(cb.value);
+               }
+               syncTemplatesSelection();
+             };
+           });
+         }
+
+         if (tplSearchInput) {
+           tplSearchInput.oninput = (e) => drawTemplateCheckboxes(e.target.value);
+         }
+
+         function syncTemplatesSelection() {
+           const selectedTplIds = Array.from(selectedTplSet);
+
+           if (countBadgeTpl) {
+             countBadgeTpl.textContent = `${selectedTplIds.length} Template Dipilih`;
+           }
+
+           selectedDinilaiSet.clear();
+           soalList.innerHTML = "";
+
+           const selectedPenilai = penilaiSelect ? penilaiSelect.value : "";
+           const combinedSoal = [];
+
+           selectedTplIds.forEach(tplId => {
+             const tpl = validTemplates.find(t => t.id === tplId);
+             if (!tpl) return;
+
+             // Tambahkan soal ke array
+             if (Array.isArray(tpl.soal_json)) {
+               tpl.soal_json.forEach(s => {
+                 if (s && (s.aspek || s.indikator)) {
+                   combinedSoal.push({
+                     aspek: s.aspek || "",
+                     indikator: s.indikator || "",
+                     bobot: parseFloat(s.bobot) || 0
+                   });
+                 }
+               });
+             }
+
+             // Otomatis centang karyawan terdaftar
+             if (Array.isArray(tpl.karyawan_assigned) && tpl.karyawan_assigned.length > 0) {
+               tpl.karyawan_assigned.forEach(n => {
+                 if (n && n !== selectedPenilai) selectedDinilaiSet.add(n);
+               });
+             } else if (tpl.nama_template) {
+               const tplNameLower = tpl.nama_template.toLowerCase().trim();
+               activeK.forEach(k => {
+                 const jab = (k.jabatan || "").toLowerCase().trim();
+                 if (jab && (jab === tplNameLower || jab.includes(tplNameLower) || tplNameLower.includes(jab))) {
+                   if (k.nama_karyawan && k.nama_karyawan !== selectedPenilai) {
+                     selectedDinilaiSet.add(k.nama_karyawan);
+                   }
+                 }
+               });
+             }
+           });
+
+           if (combinedSoal.length > 0) {
+             const rawSum = combinedSoal.reduce((sum, item) => sum + (parseFloat(item.bobot) || 0), 0);
+             if (rawSum > 0 && Math.abs(rawSum - 100) > 0.01) {
+               let currentSum = 0;
+               combinedSoal.forEach(item => {
+                 const scaled = Math.round(((parseFloat(item.bobot) || 0) / rawSum) * 100);
+                 item.bobot = scaled;
+                 currentSum += scaled;
+               });
+               const diff = 100 - currentSum;
+               if (diff !== 0 && combinedSoal.length > 0) {
+                 let maxIdx = 0;
+                 for (let i = 1; i < combinedSoal.length; i++) {
+                   if (combinedSoal[i].bobot > combinedSoal[maxIdx].bobot) maxIdx = i;
+                 }
+                 combinedSoal[maxIdx].bobot = Math.max(1, combinedSoal[maxIdx].bobot + diff);
+               }
+             }
+
+             combinedSoal.forEach(s => addSoalUI(s));
+           } else {
+             addSoalUI(); // Tambahkan 1 baris indikator kosong jika tidak ada template dipilih
+           }
+
+           drawCheckboxes(searchBox.value);
+
+           if (selectedTplIds.length > 1) {
+             toast(`Otomatis mencentang ${selectedDinilaiSet.size} karyawan dari ${selectedTplIds.length} template! Masing-masing karyawan akan menerima indikator/soal spesifik jabatannya.`, "info");
+           } else if (selectedTplIds.length === 1) {
+             toast(`Otomatis mencentang ${selectedDinilaiSet.size} karyawan dari template terpilih!`, "info");
+           }
+         }
+
+         drawTemplateCheckboxes();
+         if (defaultTemplateId) {
+           syncTemplatesSelection();
+         }
 
          m.querySelector("#btn-add-soal").onclick = () => addSoalUI();
          m.querySelector("#btn-batal-kpi").onclick = closeModal;
@@ -2517,11 +2669,76 @@ export async function mount(container, { session }) {
 
                const createdTasks = [];
                for (const dinilai of dinilaiList) {
+                  let empSoal = null;
+
+                  // Jika memilih lebih dari 1 template, distribusikan indikator/soal spesifik sesuai template karyawan tersebut
+                  if (selectedTplSet.size > 1) {
+                     const matchedTpls = Array.from(selectedTplSet)
+                        .map(id => validTemplates.find(t => t.id === id))
+                        .filter(Boolean)
+                        .filter(tpl => {
+                           const assigned = Array.isArray(tpl.karyawan_assigned) ? tpl.karyawan_assigned : [];
+                           if (assigned.includes(dinilai)) return true;
+                           if (tpl.nama_template) {
+                              const empObj = activeK.find(k => k.nama_karyawan === dinilai);
+                              const jab = ((empObj && empObj.jabatan) || "").toLowerCase().trim();
+                              const tplNameLower = tpl.nama_template.toLowerCase().trim();
+                              if (jab && (jab === tplNameLower || jab.includes(tplNameLower) || tplNameLower.includes(jab))) {
+                                 return true;
+                              }
+                           }
+                           return false;
+                        });
+
+                     if (matchedTpls.length > 0) {
+                        const rawEmpSoal = [];
+                        matchedTpls.forEach(tpl => {
+                           if (Array.isArray(tpl.soal_json)) {
+                              tpl.soal_json.forEach(s => {
+                                 if (s && (s.aspek || s.indikator)) {
+                                    rawEmpSoal.push({
+                                       aspek: s.aspek || "",
+                                       indikator: s.indikator || "",
+                                       bobot: parseFloat(s.bobot) || 0,
+                                       nilai_diberikan: 0
+                                    });
+                                 }
+                              });
+                           }
+                        });
+
+                        if (rawEmpSoal.length > 0) {
+                           const rawSum = rawEmpSoal.reduce((sum, item) => sum + (parseFloat(item.bobot) || 0), 0);
+                           if (rawSum > 0 && Math.abs(rawSum - 100) > 0.01) {
+                              let currentSum = 0;
+                              rawEmpSoal.forEach(item => {
+                                 const scaled = Math.round(((parseFloat(item.bobot) || 0) / rawSum) * 100);
+                                 item.bobot = scaled;
+                                 currentSum += scaled;
+                              });
+                              const diff = 100 - currentSum;
+                              if (diff !== 0 && rawEmpSoal.length > 0) {
+                                 let maxIdx = 0;
+                                 for (let i = 1; i < rawEmpSoal.length; i++) {
+                                    if (rawEmpSoal[i].bobot > rawEmpSoal[maxIdx].bobot) maxIdx = i;
+                                 }
+                                 rawEmpSoal[maxIdx].bobot = Math.max(1, rawEmpSoal[maxIdx].bobot + diff);
+                              }
+                           }
+                           empSoal = rawEmpSoal;
+                        }
+                     }
+                  }
+
+                  if (!empSoal || empSoal.length === 0) {
+                     empSoal = soalArray;
+                  }
+
                   const payload = {
                     periode,
                     nama_penilai: penilai,
                     nama_dinilai: dinilai,
-                    soal_json: soalArray,
+                    soal_json: empSoal,
                     status: "PENDING",
                     skor_akhir: 0,
                     tanggal: new Date().toISOString(),

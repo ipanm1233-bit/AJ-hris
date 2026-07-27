@@ -899,7 +899,13 @@ export function renderPengajuanDetailHtml(row, session, options = {}) {
 // Tambahkan di js/utils.js
 
 export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
-  const APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbzmb4v0dYM5_NFiVoR40DtODpX8DHkOZYRs6U1m_zsfKW3S_izzmW7wIGXgJij7iYdilQ/exec";
+  let APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbxjG2e_qmL326uPknydvlmqb1VF3FI9RJ-rRWk0GrCBHKeHJthruC3NFfGLSFXsO7OV/exec";
+  try {
+    const { GAS_WEBAPP_URL } = await import("./gas-integration.js");
+    if (GAS_WEBAPP_URL && !GAS_WEBAPP_URL.includes("GANTI_DENGAN")) {
+      APPSCRIPT_URL = GAS_WEBAPP_URL;
+    }
+  } catch (e) {}
   
   try {
     await fetch(APPSCRIPT_URL, {
@@ -909,6 +915,7 @@ export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
         "Content-Type": "text/plain;charset=utf-8", 
       },
       body: JSON.stringify({
+        action: "send_email",
         to: to,
         subject: subject,
         htmlBody: htmlBody, // Untuk Google Script yang membaca properti htmlBody
@@ -921,7 +928,7 @@ export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
     console.log("Permintaan email telah dikirimkan ke Apps Script.");
     return true;
   } catch (error) {
-    console.error("Gagal menghubungi server Apps Script:", error);
+    console.warn("Informasi: Pengiriman email via Apps Script tidak terjangkau:", error?.message || error);
     return false;
   }
 }
