@@ -54,9 +54,9 @@ export async function mount(container, { session }) {
                const color = aiScore >= 80 ? "text-emerald-700 bg-emerald-100 border-emerald-200" : aiScore >= 60 ? "text-amber-700 bg-amber-100 border-amber-200" : "text-red-700 bg-red-100 border-red-200";
                aiBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold border ${color}">✨ AI Match: ${aiScore}%</span>`;
             } else if (c.status_analisis === "Gagal") {
-               aiBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold border text-red-700 bg-red-100 border-red-200">❌ AI Gagal Membaca</span>`;
+               aiBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold border text-red-700 bg-red-100 border-red-200">AI Gagal Membaca</span>`;
             } else if (c.cv_url) {
-               aiBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold border text-blue-700 bg-blue-100 border-blue-200 animate-pulse">⚙️ Sedang dianalisa AI...</span>`;
+               aiBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold border text-blue-700 bg-blue-100 border-blue-200 animate-pulse">Sedang dianalisa AI...</span>`;
             }
 
             return `
@@ -246,11 +246,11 @@ export async function mount(container, { session }) {
                  <p class="text-emerald-900 leading-relaxed">${escapeHtml(aiData.kelebihan || "-")}</p>
                </div>
                <div>
-                 <span class="font-bold text-red-800 text-xs uppercase block mb-1">⚠️ Kekurangan / Gap</span>
+                 <span class="font-bold text-red-800 text-xs uppercase block mb-1">Kekurangan / Gap</span>
                  <p class="text-red-900 leading-relaxed">${escapeHtml(aiData.kekurangan_gap || "-")}</p>
                </div>
                <div class="pt-3 border-t border-emerald-200/50">
-                 <span class="font-bold text-slate-800 text-xs uppercase block mb-1">💡 Kesimpulan & Rekomendasi</span>
+                 <span class="font-bold text-slate-800 text-xs uppercase block mb-1">Kesimpulan & Rekomendasi</span>
                  <p class="text-slate-700 font-medium">${escapeHtml(aiData.kesimpulan_rekomendasi || "-")}</p>
                </div>
             </div>
@@ -268,7 +268,7 @@ export async function mount(container, { session }) {
                <p class="text-slate-500 font-medium">${escapeHtml(c.posisi_dilamar)}</p>
                <p class="text-[11px] text-slate-400 mt-1">Lamar Tgl: ${fmtDateShort(c.tanggal_lamar)}</p>
             </div>
-            ${c.cv_url ? `<a href="${c.cv_url}" target="_blank" class="bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold px-3 py-2 rounded shadow transition">📥 Download CV Asli</a>` : ''}
+            ${c.cv_url ? `<a href="${c.cv_url}" target="_blank" class="bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold px-3 py-2 rounded shadow transition">Download CV Asli</a>` : ''}
          </div>
          ${aiHtml}
        `,

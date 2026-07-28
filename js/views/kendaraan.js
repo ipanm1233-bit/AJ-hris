@@ -280,7 +280,7 @@ export async function mount(container, { session }) {
           <!-- Card Footer Stats & Action -->
           <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 relative z-10">
             <div class="flex items-center gap-3">
-              <span title="Total Log BBM">⛽ <b>${fuelCount}</b> log</span>
+              <span title="Total Log BBM"><b>${fuelCount}</b> log</span>
               <span title="Total Biaya Service">🔧 <b>${fmtRupiah(serviceCost)}</b></span>
             </div>
             <span class="text-maroon-700 font-bold group-hover:translate-x-0.5 transition flex items-center gap-1">
@@ -326,16 +326,16 @@ export async function mount(container, { session }) {
           <!-- SUB TABS HEADER -->
           <div class="flex items-center gap-2 border-b border-slate-200 overflow-x-auto pb-1 text-xs">
             <button id="vtab-btn-identitas" class="vsub-tab px-4 py-2 font-bold border-b-2 border-maroon-700 text-maroon-700 whitespace-nowrap">
-              📑 Identitas & Spesifikasi
+              Identitas & Spesifikasi
             </button>
             <button id="vtab-btn-bbm" class="vsub-tab px-4 py-2 font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 whitespace-nowrap">
-              ⛽ Log BBM (${vehicleFuels.length})
+              Log BBM (${vehicleFuels.length})
             </button>
             <button id="vtab-btn-service" class="vsub-tab px-4 py-2 font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 whitespace-nowrap">
               🔧 Log Service & Perbaikan (${vehicleServices.length})
             </button>
             <button id="vtab-btn-pajak" class="vsub-tab px-4 py-2 font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 whitespace-nowrap">
-              📄 Pajak, STNK & KIR (${vehicleCompliance.length})
+              Pajak, STNK & KIR (${vehicleCompliance.length})
             </button>
           </div>
 
@@ -371,10 +371,10 @@ export async function mount(container, { session }) {
             ${isHrd ? `
             <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
               <button id="btn-edit-veh-${vDoc.id}" class="px-3.5 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white rounded-xl transition">
-                ✏️ Edit Data Kendaraan
+                Edit Data Kendaraan
               </button>
               <button id="btn-del-veh-${vDoc.id}" class="px-3.5 py-2 text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl transition">
-                🗑️ Hapus Kendaraan
+                 Hapus Kendaraan
               </button>
             </div>` : ''}
           </div>
@@ -482,7 +482,7 @@ export async function mount(container, { session }) {
                       <td class="p-2.5 font-semibold text-slate-800">${escapeHtml(c.jenis_pajak || '-')}</td>
                       <td class="p-2.5 font-bold text-emerald-700">${fmtDateShort(c.berlaku_hingga)}</td>
                       <td class="p-2.5">
-                        ${c.dokumen_url ? `<a href="${c.dokumen_url}" target="_blank" class="text-maroon-700 hover:underline font-bold">📄 Lihat Dokumen</a>` : '-'}
+                        ${c.dokumen_url ? `<a href="${c.dokumen_url}" target="_blank" class="text-maroon-700 hover:underline font-bold">Lihat Dokumen</a>` : '-'}
                       </td>
                       <td class="p-2.5 text-right font-mono font-bold text-slate-800">${fmtRupiah(c.total_biaya)}</td>
                     </tr>

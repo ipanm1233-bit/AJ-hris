@@ -181,9 +181,9 @@ export async function mount(container, { session }) {
       else if (st.includes("REJECT") || st.includes("TOLAK")) stBadge = badge("Ditolak", "red");
 
       const docLink = (st.includes("APPROVED") || st.includes("SETUJU"))
-        ? `<button type="button" onclick="window.printFormCutiFisik(${escapeHtml(JSON.stringify(r))})" class="text-emerald-700 font-bold hover:underline flex items-center gap-1">📄 Form Cuti Fisik</button>`
+        ? `<button type="button" onclick="window.printFormCutiFisik(${escapeHtml(JSON.stringify(r))})" class="text-emerald-700 font-bold hover:underline flex items-center gap-1">Form Cuti Fisik</button>`
         : r.lampiran_url 
-          ? `<a href="${r.lampiran_url}" target="_blank" class="text-maroon-700 font-bold hover:underline">📄 Lihat Lampiran</a>`
+          ? `<a href="${r.lampiran_url}" target="_blank" class="text-maroon-700 font-bold hover:underline">Lihat Lampiran</a>`
           : `<span class="text-slate-400">-</span>`;
 
       const dt = r.detail || {};
@@ -240,7 +240,7 @@ export async function mount(container, { session }) {
             <div class="bg-blue-50 p-3 rounded-xl border border-blue-200 flex items-center justify-between">
               <span class="font-semibold text-blue-900">Dokumen Lampiran Terlampir:</span>
               <a href="${item.lampiran_url}" target="_blank" class="px-3 py-1 bg-blue-700 text-white rounded-lg font-bold text-[11px] hover:bg-blue-800">
-                Buka File 📄
+                Buka File
               </a>
             </div>` : ''}
           ${(item.status_final || "").includes("APPROVED") ? `
@@ -250,7 +250,7 @@ export async function mount(container, { session }) {
                 <p class="text-[11px] text-emerald-700">Form Cuti HR4 resmi telah tergenerate secara otomatis.</p>
               </div>
               <button type="button" onclick="window.printFormCutiFisik(${escapeHtml(JSON.stringify(item))})" class="px-3.5 py-1.5 bg-maroon-700 hover:bg-maroon-800 text-white font-bold text-xs rounded-lg shadow-sm">
-                📄 Form Cuti Fisik
+                Form Cuti Fisik
               </button>
             </div>` : ''}
         </div>`
@@ -504,6 +504,9 @@ export async function mount(container, { session }) {
           no_telepon: document.getElementById("fc-phone").value.trim(),
           alasan: document.getElementById("fc-alasan").value.trim(),
           lampiran_url: uploadedUrl || null,
+          sisa_tahunan: sisaTahunan,
+          sisa_khusus: sisaKhusus,
+          sisa_akumulasi: sisaAkumulasi,
           detail: {
             jenis_cuti: catVal,
             sub_kategori: subCat,
@@ -513,7 +516,10 @@ export async function mount(container, { session }) {
             alasan: document.getElementById("fc-alasan").value.trim(),
             pejabat_pengganti: document.getElementById("fc-pengganti").value,
             no_telepon: document.getElementById("fc-phone").value.trim(),
-            cabang: session.cabang || "-"
+            cabang: session.cabang || "-",
+            sisa_tahunan: sisaTahunan,
+            sisa_khusus: sisaKhusus,
+            sisa_akumulasi: sisaAkumulasi
           },
           approval_flow: approvalFlow,
           approval_steps: ["PENDING", "PENDING"],
@@ -526,27 +532,32 @@ export async function mount(container, { session }) {
 
         // Notify first approver (ATASAN)
         try {
-          const targets = await getTargetsForRole("ATASAN", session.nama);
+          let targets = await getTargetsForRole("ATASAN", session.nama);
+          if (!targets || targets.length === 0) {
+            // Fallback to HRD
+            targets = await getTargetsForRole("HRD", session.nama);
+          }
+          const baseUrl = window.location.origin;
           for (const target of targets) {
             await notifyUser(
               target.username,
-              `⏳ Persetujuan Cuti Dibutuhkan`,
+              `Persetujuan Cuti Dibutuhkan`,
               `Pengajuan Cuti baru dari ${session.nama} (${catName}).`,
               `/#approval`
             );
             if (typeof sendEmailNotif === 'function' && target.email) {
               const token = await createLoginToken(target.username);
-              const magicLink = `https://andela-hris.vercel.app/#approval?token=${token}`;
+              const magicLink = `${baseUrl}/#approval?token=${token}`;
               const htmlEmail = `
                 <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
                   <h2 style="color: #7a1f2b;">Pengajuan Cuti Baru: ${session.nama}</h2>
                   <p><strong>Jenis Cuti:</strong> ${catName}</p>
                   <p><strong>Tanggal:</strong> ${tglMulai.value} s/d ${tglSelesai.value} (${count} Hari)</p>
-                  <p>Pengajuan ini membutuhkan persetujuan Anda sebagai <strong>Atasan Direct</strong>.</p>
+                  <p>Pengajuan ini membutuhkan persetujuan Anda sebagai <strong>Atasan / Approver</strong>.</p>
                   <a href="${magicLink}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Akses Langsung & Setujui</a>
                 </div>
               `;
-              sendEmailNotif(target.email, `Persetujuan Dibutuhkan: Cuti ${session.nama}`, htmlEmail).catch(() => {});
+              sendEmailNotif(target.email, `Persetujuan Dibutuhkan: Cuti ${session.nama}`, htmlEmail).catch(errE => console.warn("Send email error:", errE));
             }
           }
         } catch (eNotif) {

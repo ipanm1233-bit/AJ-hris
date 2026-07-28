@@ -44,8 +44,8 @@ export async function mount(container, { session }) {
           <div class="flex flex-col items-end gap-2">
              <div class="flex items-center gap-2">${badge(r.status_final, tone)}${lpjBadgeHtml}</div>
              <div class="flex items-center gap-3">
-                ${isKlaimBensin ? `<button data-print-klaim="${r.id}" class="text-xs font-bold text-emerald-700 hover:underline flex items-center gap-1">🖨️ Cetak Form</button>` : ""}
-                ${isCutiForm && isApproved ? `<button data-print-cuti="${r.id}" class="text-xs font-bold text-maroon-700 hover:underline flex items-center gap-1">📄 Form Cuti Fisik</button>` : ""}
+                ${isKlaimBensin ? `<button data-print-klaim="${r.id}" class="text-xs font-bold text-emerald-700 hover:underline flex items-center gap-1">Cetak Form</button>` : ""}
+                ${isCutiForm && isApproved ? `<button data-print-cuti="${r.id}" class="text-xs font-bold text-maroon-700 hover:underline flex items-center gap-1">Form Cuti Fisik</button>` : ""}
                 ${showFillBtn ? `<button data-lpj="${r.id}" class="text-xs font-bold text-amber-700 hover:underline">Isi LPJ</button>` : ""}
                 <button data-id="${r.id}" class="text-xs font-medium text-maroon-700 hover:underline">Lihat Detail</button>
              </div>
@@ -78,7 +78,7 @@ export async function mount(container, { session }) {
              if (row.lpj_status === "SELESAI" && row.lpj_detail) {
                 html += Object.entries(row.lpj_detail).map(([k,v]) => {
                    const isUrl = typeof v === "string" && /^https?:\/\//.test(v);
-                   return `<div class="border-b py-2 text-sm flex justify-between items-center"><span class="text-xs text-slate-500 capitalize">${k.replace(/_/g," ")}</span>${isUrl ? `<button type="button" onclick="openAttachment('${escapeHtml(String(v))}')" class="text-maroon-700 font-bold hover:underline text-xs">📄 Lihat Lampiran</button>` : `<b class="text-slate-800">${escapeHtml(String(v))}</b>`}</div>`;
+                   return `<div class="border-b py-2 text-sm flex justify-between items-center"><span class="text-xs text-slate-500 capitalize">${k.replace(/_/g," ")}</span>${isUrl ? `<button type="button" onclick="openAttachment('${escapeHtml(String(v))}')" class="text-maroon-700 font-bold hover:underline text-xs">Lihat Lampiran</button>` : `<b class="text-slate-800">${escapeHtml(String(v))}</b>`}</div>`;
                 }).join("");
              }
           }

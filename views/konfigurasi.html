@@ -49,26 +49,26 @@
     <div class="space-y-6">
       <!-- Widget Dashboard Karyawan & Atasan -->
       <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
-        <h3 class="font-bold text-slate-800 text-sm mb-0.5">🎛️ Customisasi Widget Dashboard Per-Karyawan</h3>
+        <h3 class="font-bold text-slate-800 text-sm mb-0.5">Kustomisasi Widget Dashboard Per-Karyawan</h3>
         <p class="text-[11px] text-slate-500">Atur widget apa saja yang tampil untuk karyawan tertentu (misal: <b>aas</b>) atau secara global untuk seluruh karyawan.</p>
         
         <div>
           <label class="block text-xs font-bold text-slate-700 mb-1">Target Pengaturan Akses Widget:</label>
           <select id="cfg-widget-target-user" class="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 outline-none focus:border-maroon-700 bg-slate-50 text-slate-800">
-            <option value="GLOBAL">🌐 [ GLOBAL ] - Berlaku Default Untuk Semua Karyawan</option>
+            <option value="GLOBAL">[ GLOBAL ] - Berlaku Default Untuk Semua Karyawan</option>
             <!-- Populated dynamically with active employees e.g. aas, Ahmad, etc. -->
           </select>
         </div>
 
         <div class="space-y-1.5 text-xs pt-1 border-t border-slate-100" id="cfg-widget-list">
-          <label class="flex items-center gap-2 text-slate-700 font-semibold cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg"><input type="checkbox" class="cfg-widget-toggle rounded border-slate-300 text-maroon-700" data-widget="dash-contract-widget-wrap" checked> ⚠️ Pengingat Kontrak Karyawan Segera Habis (HRD & Atasan)</label>
-          <label class="flex items-center gap-2 text-slate-700 font-semibold cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg"><input type="checkbox" class="cfg-widget-toggle rounded border-slate-300 text-maroon-700" data-widget="dash-widget-cuti-hari-ini" checked> 🌴 Karyawan Cuti / Izin Hari Ini</label>
-          <label class="flex items-center gap-2 text-slate-700 font-semibold cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg"><input type="checkbox" class="cfg-widget-toggle rounded border-slate-300 text-maroon-700" data-widget="dash-widget-leave" checked> 📊 Informasi Jatah & Saldo Cuti</label>
-          <label class="flex items-center gap-2 text-slate-700 font-semibold cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg"><input type="checkbox" class="cfg-widget-toggle rounded border-slate-300 text-maroon-700" data-widget="dash-widget-attendance" checked> ⏱️ Analitik Kehadiran & Ketepatan Jam</label>
-          <label class="flex items-center gap-2 text-slate-700 font-semibold cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg"><input type="checkbox" class="cfg-widget-toggle rounded border-slate-300 text-maroon-700" data-widget="dash-widget-performance" checked> 🎯 Evaluasi Kinerja & Pelatihan</label>
-          <label class="flex items-center gap-2 text-slate-700 font-semibold cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg"><input type="checkbox" class="cfg-widget-toggle rounded border-slate-300 text-maroon-700" data-widget="dash-widget-kpi" checked> 📝 Tugas Penilaian KPI 360° Saya</label>
-          <label class="flex items-center gap-2 text-slate-700 font-semibold cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg"><input type="checkbox" class="cfg-widget-toggle rounded border-slate-300 text-maroon-700" data-widget="dash-widget-assets" checked> 📦 Inventaris & Aset Tanggung Jawab</label>
-          <label class="flex items-center gap-2 text-slate-700 font-semibold cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg"><input type="checkbox" class="cfg-widget-toggle rounded border-slate-300 text-maroon-700" data-widget="dash-widget-pengumuman" checked> 📢 Pengumuman & Aktivitas Terakhir</label>
+          <label class="flex items-center gap-2 text-slate-700 font-semibold cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg"><input type="checkbox" class="cfg-widget-toggle rounded border-slate-300 text-maroon-700" data-widget="dash-contract-widget-wrap" checked> Pengingat Kontrak Karyawan Segera Habis (HRD & Atasan)</label>
+          <label class="flex items-center gap-2 text-slate-700 font-semibold cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg"><input type="checkbox" class="cfg-widget-toggle rounded border-slate-300 text-maroon-700" data-widget="dash-widget-cuti-hari-ini" checked> Karyawan Cuti / Izin Hari Ini</label>
+          <label class="flex items-center gap-2 text-slate-700 font-semibold cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg"><input type="checkbox" class="cfg-widget-toggle rounded border-slate-300 text-maroon-700" data-widget="dash-widget-leave" checked> Informasi Jatah & Saldo Cuti</label>
+          <label class="flex items-center gap-2 text-slate-700 font-semibold cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg"><input type="checkbox" class="cfg-widget-toggle rounded border-slate-300 text-maroon-700" data-widget="dash-widget-attendance" checked> Analitik Kehadiran & Ketepatan Jam</label>
+          <label class="flex items-center gap-2 text-slate-700 font-semibold cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg"><input type="checkbox" class="cfg-widget-toggle rounded border-slate-300 text-maroon-700" data-widget="dash-widget-performance" checked> Evaluasi Kinerja & Pelatihan</label>
+          <label class="flex items-center gap-2 text-slate-700 font-semibold cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg"><input type="checkbox" class="cfg-widget-toggle rounded border-slate-300 text-maroon-700" data-widget="dash-widget-kpi" checked> Tugas Penilaian KPI 360° Saya</label>
+          <label class="flex items-center gap-2 text-slate-700 font-semibold cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg"><input type="checkbox" class="cfg-widget-toggle rounded border-slate-300 text-maroon-700" data-widget="dash-widget-assets" checked> Inventaris & Aset Tanggung Jawab</label>
+          <label class="flex items-center gap-2 text-slate-700 font-semibold cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg"><input type="checkbox" class="cfg-widget-toggle rounded border-slate-300 text-maroon-700" data-widget="dash-widget-pengumuman" checked> Pengumuman & Aktivitas Terakhir</label>
         </div>
         <button id="btn-save-widget-cfg" class="w-full mt-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold py-2.5 rounded-xl shadow transition">Simpan Akses Widget Target</button>
       </div>

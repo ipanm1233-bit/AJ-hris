@@ -83,7 +83,7 @@ async function openBatchQrCodeModal() {
       <div class="flex items-center justify-between w-full">
         <button id="btn-qr-batch-close" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl">Tutup</button>
         <button id="btn-qr-batch-print" class="px-5 py-2 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-xl transition shadow flex items-center gap-2">
-          🖨️ Cetak Lembar Stiker QR (Print / PDF)
+          Cetak Lembar Stiker QR (Print / PDF)
         </button>
       </div>`,
     onMount: m => {
@@ -238,7 +238,7 @@ async function openQrScannerModal(container, activeEmpNames) {
           resCard.classList.remove("hidden");
           resCard.innerHTML = `
             <div class="p-3 bg-red-50 border border-red-200 rounded-xl text-center text-red-700">
-              ❌ Aset dengan ID / kata kunci "<b>${escapeHtml(queryClean)}</b>" tidak ditemukan dalam database.
+              Aset dengan ID / kata kunci "<b>${escapeHtml(queryClean)}</b>" tidak ditemukan dalam database.
             </div>`;
           return;
         }
@@ -264,7 +264,7 @@ async function openQrScannerModal(container, activeEmpNames) {
             </div>
           </div>
           <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-            <button id="btn-scan-single-print" class="px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition">🖨️ Cetak Stiker</button>
+            <button id="btn-scan-single-print" class="px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition">Cetak Stiker</button>
             <button id="btn-scan-reassign" class="px-3 py-1.5 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-lg transition">🔄 Serah Terima Aset</button>
           </div>`;
 
@@ -310,7 +310,7 @@ function openQrCodeModal(row) {
       <div class="flex items-center justify-between w-full">
         <button id="btn-qr-close" class="px-3.5 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl">Tutup</button>
         <button id="btn-qr-print" class="px-4 py-2 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-xl transition shadow flex items-center gap-1.5">
-          🖨️ Cetak Stiker QR
+          Cetak Stiker QR
         </button>
       </div>`,
     onMount: m => {
@@ -352,12 +352,12 @@ async function openQuickAssignModal(container, activeEmpNames) {
   const unassignedItems = items.filter(i => !i.assigned_to || i.assigned_to === "Unassigned" || i.assigned_to === "-");
 
   openModal({
-    title: "📦 Penyerahan & Serah Terima Aset Ke Karyawan",
+    title: "Penyerahan & Serah Terima Aset Ke Karyawan",
     size: "md",
     bodyHtml: `
       <form id="form-quick-assign" class="space-y-4 text-left text-xs">
         <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 leading-relaxed">
-          <b>💡 Serah Terima Aset & Inventaris Resmi:</b><br/>
+          <b>Serah Terima Aset & Inventaris Resmi:</b><br/>
           Gunakan formulir ini untuk menyerahkan laptop, kendaraan, kunci kantor, dokumen penting, atau peralatan kerja. Aset akan langsung tercatat sebagai <b>Tanggung Jawab Karyawan</b> dan muncul di Dashboard pribadinya.
         </div>
 
@@ -441,7 +441,7 @@ async function openQuickAssignModal(container, activeEmpNames) {
           // 3. Notify Employee
           await notifyUser(
             empName,
-            "📦 Penyerahan Aset Tanggung Jawab",
+            "Penyerahan Aset Tanggung Jawab",
             `Anda telah diserahkan aset/inventaris: ${targetAsset.nama_barang} (${targetAsset.id_item || ''}). Buka dashboard untuk melihat detailnya.`,
             "#inventory"
           );
@@ -614,7 +614,7 @@ async function openMultiAssignModal(container, activeEmpNames) {
 
         const btnSave = m.querySelector("#btn-multi-save");
         btnSave.disabled = true;
-        btnSave.innerHTML = `⏳ Menyimpan ${payloadRows.length} Baris...`;
+        btnSave.innerHTML = `Menyimpan ${payloadRows.length} Baris...`;
 
         try {
           for (const row of payloadRows) {
@@ -651,7 +651,7 @@ async function openMultiAssignModal(container, activeEmpNames) {
             // 3. Notify Recipient (App + Push + Email)
             await notifyUser(
               empName,
-              "📦 Penyerahan / Pengambilan ATK",
+              "Penyerahan / Pengambilan ATK",
               `Anda tercatat menerima/mengambil ${qtyVal} unit ${item ? item.nama_barang : 'ATK'} pada tanggal ${fmtDateShort(dateVal)}.`,
               "#inventory"
             );

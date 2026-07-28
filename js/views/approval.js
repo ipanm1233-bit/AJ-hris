@@ -197,7 +197,7 @@ function showDetail(row, session) {
     
   let footerHtml = `<button id="detail-close" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Tutup</button>`;
   if (isKlaimBensin) {
-     footerHtml = `<button id="detail-print-klaim" class="px-4 py-2 rounded-lg text-sm font-bold text-white bg-emerald-700 hover:bg-emerald-800 transition shadow-sm mr-auto flex items-center gap-1.5">🖨️ Cetak / Download Form Klaim</button>` + footerHtml;
+     footerHtml = `<button id="detail-print-klaim" class="px-4 py-2 rounded-lg text-sm font-bold text-white bg-emerald-700 hover:bg-emerald-800 transition shadow-sm mr-auto flex items-center gap-1.5">Cetak / Download Form Klaim</button>` + footerHtml;
   }
   if (canEdit) {
      footerHtml += `<button id="detail-save" class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 transition shadow-md">Simpan Revisi HRD</button>`;
@@ -546,7 +546,7 @@ async function processAction(row, action, note, session) {
                           </div>
                           
                           <div style="margin-top: 24px; text-align: center;">
-                              <a href="https://andela-hris.vercel.app/#dashboard?token=${token}" style="display:inline-block; padding:10px 20px; background-color:#f1f5f9; color:#475569; text-decoration:none; border-radius:6px; font-size:12px; font-weight:bold; border: 1px solid #e2e8f0;">Buka Sistem HRIS</a>
+                              <a href="${window.location.origin}/#dashboard?token=${token}" style="display:inline-block; padding:10px 20px; background-color:#f1f5f9; color:#475569; text-decoration:none; border-radius:6px; font-size:12px; font-weight:bold; border: 1px solid #e2e8f0;">Buka Sistem HRIS</a>
                           </div>
                       </div>
                   </div>
@@ -571,7 +571,7 @@ async function processAction(row, action, note, session) {
                     <p>Pengajuan <strong>${escapeHtml(row.nama_form)}</strong> (${escapeHtml(row.id)}) Anda telah <strong>disetujui</strong>.</p>
                     <p>Sesuai ketentuan, Anda perlu melengkapi <strong>LPJ</strong> (bukti penggunaan/realisasi) paling lambat:</p>
                     <p style="font-size:16px; font-weight:bold; color:#92400e;">${dueStr}</p>
-                    <a href="https://andela-hris.vercel.app/#riwayat?token=${tokenLpj}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#92400e; color:#fff; text-decoration:none; border-radius:5px;">Isi LPJ Sekarang</a>
+                    <a href="${window.location.origin}/#riwayat?token=${tokenLpj}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#92400e; color:#fff; text-decoration:none; border-radius:5px;">Isi LPJ Sekarang</a>
                     <p style="margin-top:15px; font-size:11px; color:#a16207;">Buka menu Riwayat Pengajuan untuk mengisi LPJ pada transaksi ini.</p>
                   </div>
                 `;
@@ -590,7 +590,7 @@ async function processAction(row, action, note, session) {
                  <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
                    <h2 style="color: #7a1f2b;">Persetujuan Lanjutan: ${row.nama_form}</h2>
                    <p>Pengajuan dari <strong>${row.nama_pemohon}</strong> membutuhkan persetujuan Anda sebagai <strong>${nextRole}</strong>.</p>
-                   <a href="https://andela-hris.vercel.app/#approval?token=${token}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Akses Langsung & Setujui</a>
+                   <a href="${window.location.origin}/#approval?token=${token}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Akses Langsung & Setujui</a>
                  </div>
                `;
                sendEmailNotif(target.email, `Menunggu Persetujuan Anda: ${row.nama_form}`, htmlNext);
@@ -605,7 +605,7 @@ async function processAction(row, action, note, session) {
                  <h2 style="color: #b91c1c;">Pengajuan Ditolak: ${row.nama_form}</h2>
                  <p>Pengajuan Anda telah <strong>ditolak</strong> oleh <strong>${session.nama}</strong>.</p>
                  <p><strong>Catatan:</strong> ${note || "Tidak ada catatan."}</p>
-                 <a href="https://andela-hris.vercel.app/#riwayat?token=${token}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#b91c1c; color:#fff; text-decoration:none; border-radius:5px;">Lihat Riwayat</a>
+                 <a href="${window.location.origin}/#riwayat?token=${token}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#b91c1c; color:#fff; text-decoration:none; border-radius:5px;">Lihat Riwayat</a>
                </div>
              `;
              sendEmailNotif(target.email, `[REJECTED] ${row.nama_form}`, htmlReject);
@@ -626,7 +626,7 @@ async function processAction(row, action, note, session) {
       if (action === "REJECT") {
         await notifyUser(
           pemohonUsername,
-          `❌ [DITOLAK] ${row.nama_form}`,
+          `[DITOLAK] ${row.nama_form}`,
           `Pengajuan ${row.nama_form} (${row.id}) Anda ditolak oleh ${session.nama}. Catatan: ${note || "Tidak ada catatan."}`,
           `#riwayat?id=${row.id}`
         );
@@ -635,7 +635,7 @@ async function processAction(row, action, note, session) {
           // 1. Notifikasi Full Approved ke Pemohon
           await notifyUser(
             pemohonUsername,
-            `🎉 [FULL APPROVED] ${row.nama_form}`,
+            `[FULL APPROVED] ${row.nama_form}`,
             `Selamat! Pengajuan ${row.nama_form} (${row.id}) Anda telah disetujui penuh oleh ${session.nama}. Klik untuk membuka formulir.`,
             `#riwayat?id=${row.id}`
           );
@@ -701,7 +701,7 @@ async function processAction(row, action, note, session) {
             for (const fin of finAll) {
               await notifyUser(
                 fin.username,
-                `✈️ [${isDinas ? 'Dinas Disetujui' : 'Klaim Disetujui'}] ${row.nama_pemohon}`,
+                `[${isDinas ? 'Dinas Disetujui' : 'Klaim Disetujui'}] ${row.nama_pemohon}`,
                 `Pengajuan ${row.nama_form} oleh ${row.nama_pemohon} (${karyawanByNama[row.nama_pemohon]?.jabatan || 'Sales/SPV'}) telah disetujui final. Rincian uang jalan/klaim siap diproses.`,
                 `#riwayat?id=${row.id}`
               );
@@ -712,7 +712,7 @@ async function processAction(row, action, note, session) {
           const nextRole = row.approval_flow[idx + 1];
           await notifyUser(
             pemohonUsername,
-            `⏳ [Update Progress] ${row.nama_form}`,
+            `[Update Progress] ${row.nama_form}`,
             `Pengajuan ${row.nama_form} Anda disetujui oleh ${session.nama} (${row.approval_flow[idx] || "Approver"}). Progress: Step ${idx+1}/${row.approval_flow.length}. Menunggu: ${nextRole || 'Approver Selanjutnya'}.`,
             `#riwayat?id=${row.id}`
           );
@@ -722,7 +722,7 @@ async function processAction(row, action, note, session) {
             for (const target of nextTargets) {
               await notifyUser(
                 target.username,
-                `📥 Menunggu Persetujuan Anda: ${row.nama_form}`,
+                `Menunggu Persetujuan Anda: ${row.nama_form}`,
                 `Pengajuan dari ${row.nama_pemohon} membutuhkan persetujuan Anda sebagai ${nextRole}.`,
                 `#approval?id=${row.id}`
               );

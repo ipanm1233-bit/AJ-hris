@@ -277,7 +277,8 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
         // --- 1. NOTIFIKASI EMAIL (Jalur Lama) ---
         if (typeof sendEmailNotif === 'function') {
            const token = await createLoginToken(target.username);
-           const magicLink = `https://andela-hris.vercel.app/#approval?token=${token}`;
+           const baseUrl = window.location.origin;
+           const magicLink = `${baseUrl}/#approval?token=${token}`;
            const htmlEmail = `
              <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
                <h2 style="color: #7a1f2b;">Pengajuan Baru: ${payload.nama_form}</h2>
@@ -294,7 +295,7 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
         if (typeof notifyUser === 'function') {
            await notifyUser(
                target.username, 
-               `⏳ Persetujuan Dibutuhkan`, 
+               `Persetujuan Dibutuhkan`, 
                `Ada pengajuan ${payload.nama_form} baru dari ${payload.nama_pemohon}.`,
                `/#approval` // Tambahkan Link Tujuan di sini!
            ).catch(e => console.warn("Push gagal:", e));

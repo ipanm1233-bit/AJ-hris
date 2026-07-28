@@ -104,7 +104,7 @@ export async function mount(container) {
         for (const t of targets) {
           await notifyUser(
             t.username,
-            `⚠️ Surat Peringatan (${data.tingkat_sp || 'SP'}) Diterbitkan`,
+            `Surat Peringatan (${data.tingkat_sp || 'SP'}) Diterbitkan`,
             `Anda menerima ${data.tingkat_sp || 'Surat Peringatan'}: ${data.pelanggaran || '-'}. Klik untuk membaca & TTD digital.`,
             `#profile?tab=documents&doc_id=${docId}`
           );

@@ -109,7 +109,7 @@ export async function mount(container, { session }) {
         if (listBday.length) textSummary += `<p class="text-[9px] text-pink-600 truncate font-semibold">🎂 ${listBday.length} Ultah</p>`;
         if (listAnniv.length) textSummary += `<p class="text-[9px] text-purple-600 truncate font-semibold">💼 ${listAnniv.length} Anniv</p>`;
         if (listCuti.length) textSummary += `<p class="text-[9px] text-blue-600 truncate">🛏️ ${listCuti.length} Cuti</p>`;
-        if (listAgenda.length) textSummary += `<p class="text-[9px] text-emerald-600 truncate">📌 ${listAgenda[0].judul}</p>`;
+        if (listAgenda.length) textSummary += `<p class="text-[9px] text-emerald-600 truncate">${listAgenda[0].judul}</p>`;
 
         html += `
            <div data-date="${dStr}" class="bg-white h-28 p-1.5 border-t-2 ${isToday ? 'border-maroon-600 bg-maroon-50/20' : 'border-transparent'} hover:bg-slate-50 cursor-pointer transition flex flex-col">
@@ -172,7 +172,7 @@ export async function mount(container, { session }) {
       let bodyHtml = `<p class="text-sm text-slate-500 mb-5 pb-3 border-b border-slate-100">${formatTgl}</p>`;
 
       if (listAgenda.length) {
-         bodyHtml += `<div class="mb-5"><h3 class="text-xs font-bold text-emerald-800 uppercase tracking-wide mb-2 flex items-center gap-1">📌 Agenda Internal / To-Do List</h3><div class="bg-emerald-50 rounded-lg p-3 border border-emerald-100 space-y-2">`;
+         bodyHtml += `<div class="mb-5"><h3 class="text-xs font-bold text-emerald-800 uppercase tracking-wide mb-2 flex items-center gap-1">Agenda Internal / To-Do List</h3><div class="bg-emerald-50 rounded-lg p-3 border border-emerald-100 space-y-2">`;
          listAgenda.forEach(a => {
             bodyHtml += `<div class="flex justify-between items-start"><p class="text-sm font-medium text-emerald-900">${escapeHtml(a.judul)}</p><button data-del-agenda="${a.id}" class="text-xs text-red-500 hover:underline">Hapus</button></div><p class="text-xs text-emerald-700">${escapeHtml(a.keterangan || "-")}</p>`;
          });
@@ -192,13 +192,13 @@ export async function mount(container, { session }) {
       }
 
       if (listCuti.length) {
-         bodyHtml += `<div class="mb-5"><h3 class="text-xs font-bold text-blue-800 uppercase tracking-wide mb-2 flex items-center gap-1">🛏️ Karyawan Sedang Cuti/Izin</h3><ul class="space-y-1.5">`;
+         bodyHtml += `<div class="mb-5"><h3 class="text-xs font-bold text-blue-800 uppercase tracking-wide mb-2 flex items-center gap-1">Karyawan Sedang Cuti/Izin</h3><ul class="space-y-1.5">`;
          listCuti.forEach(c => bodyHtml += `<li class="text-sm text-slate-700 bg-slate-50 border border-slate-100 p-2 rounded flex justify-between"><span>${escapeHtml(c.nama_karyawan)}</span> <span class="text-xs font-semibold text-blue-600">${escapeHtml(c.type_cuti)}</span></li>`);
          bodyHtml += `</ul></div>`;
       }
 
       if (listKontrak.length) {
-         bodyHtml += `<div class="mb-5"><h3 class="text-xs font-bold text-red-800 uppercase tracking-wide mb-2 flex items-center gap-1">📄 Kontrak Harus Diperbarui</h3><ul class="space-y-1.5">`;
+         bodyHtml += `<div class="mb-5"><h3 class="text-xs font-bold text-red-800 uppercase tracking-wide mb-2 flex items-center gap-1">Kontrak Harus Diperbarui</h3><ul class="space-y-1.5">`;
          listKontrak.forEach(k => bodyHtml += `<li class="text-sm text-slate-700 bg-red-50 border border-red-100 p-2 rounded">${escapeHtml(k.nama_karyawan)} <span class="text-xs text-slate-500">(${escapeHtml(k.jabatan||"-")})</span></li>`);
          bodyHtml += `</ul></div>`;
       }

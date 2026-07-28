@@ -459,7 +459,7 @@ function openEditProfileModal(session, k, container) {
     bodyHtml: `
       <form id="form-edit-profil-mobile" class="space-y-4 max-h-[70vh] overflow-y-auto pr-1 text-left">
         <div class="bg-red-50 p-3 rounded-2xl border border-red-100/50 text-[11px] text-maroon-800 font-medium leading-relaxed">
-          💡 Anda dapat memperbarui informasi kontak, alamat, rekening, dan biodata terkini. Data ini akan langsung disinkronkan ke database HRD.
+          Anda dapat memperbarui informasi kontak, alamat, rekening, dan biodata terkini. Data ini akan langsung disinkronkan ke database HRD.
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -708,10 +708,10 @@ async function openSignDocModal(session, targetDocId = null) {
                 </div>
 
                 <div class="flex items-center justify-between gap-2 border-t border-slate-100 pt-2 flex-wrap">
-                  ${d.file_url && d.file_url !== '#' ? `<a href="${d.file_url}" target="_blank" class="text-xs text-maroon-700 font-bold hover:underline">👁️ Baca Draft Dokumen</a>` : '<span class="text-[10px] text-slate-400 font-medium">📄 Berkas Resmi HRD</span>'}
+                  ${d.file_url && d.file_url !== '#' ? `<a href="${d.file_url}" target="_blank" class="text-xs text-maroon-700 font-bold hover:underline">Baca Draft Dokumen</a>` : '<span class="text-[10px] text-slate-400 font-medium">Berkas Resmi HRD</span>'}
                   ${!isSigned ? `
                     <button class="btn-sign-item bg-maroon-700 hover:bg-maroon-800 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1 shadow-sm" data-id="${escapeHtml(d.id)}" data-judul="${escapeHtml(d.judul)}">
-                      ✍️ TTD Sekarang
+                      TTD Sekarang
                     </button>
                   ` : `
                     <span class="text-[9px] text-slate-400 font-medium italic">Selesai TTD pada ${d.tanggal_ttd ? d.tanggal_ttd.substring(0, 10) : "-"}</span>
@@ -763,14 +763,14 @@ function openSignaturePadModal(docId, docJudul, session, onSignedDone) {
         <div class="border-2 border-slate-200 border-dashed rounded-2xl bg-white p-2 relative">
           <canvas id="sig-pad" class="w-full h-48 bg-slate-50 rounded-xl cursor-crosshair touch-none" style="touch-action: none;"></canvas>
           <button id="btn-sig-clear" class="absolute bottom-4 right-4 bg-slate-800 hover:bg-slate-900 text-white rounded-lg px-2.5 py-1 text-[10px] font-bold transition shadow">
-            🗑️ Bersihkan
+            Bersihkan
           </button>
         </div>
         <p class="text-[10px] text-slate-400 leading-normal">Dengan mengetuk tombol sahkan di bawah, Anda secara sadar memberikan tanda tangan elektronik yang sah demi hukum untuk dokumen <b>${escapeHtml(docJudul)}</b>.</p>
       </div>`,
     footerHtml: `
       <button id="btn-sig-cancel" class="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg transition">Batal</button>
-      <button id="btn-sig-confirm" class="bg-maroon-700 hover:bg-maroon-800 text-white font-bold text-sm px-5 py-2 rounded-lg transition shadow-md">✍️ Sahkan & Bubuhkan TTD</button>`,
+      <button id="btn-sig-confirm" class="bg-maroon-700 hover:bg-maroon-800 text-white font-bold text-sm px-5 py-2 rounded-lg transition shadow-md">Sahkan & Bubuhkan TTD</button>`,
     onMount: m => {
       const canvas = m.querySelector("#sig-pad");
       const ctx = canvas.getContext("2d");
@@ -850,7 +850,7 @@ function openSignaturePadModal(docId, docJudul, session, onSignedDone) {
         }
 
         const btn = m.querySelector("#btn-sig-confirm");
-        btn.disabled = true; btn.textContent = "⏳ Memproses...";
+        btn.disabled = true; btn.textContent = "Memproses...";
 
         try {
           const ttdUrl = canvas.toDataURL("image/png");
@@ -881,7 +881,7 @@ function openSignaturePadModal(docId, docJudul, session, onSignedDone) {
               if (hrd.username) {
                 await notifyUser(
                   hrd.username,
-                  `✍️ Dokumen Disahkan: ${session.nama}`,
+                  `Dokumen Disahkan: ${session.nama}`,
                   `Karyawan ${session.nama} (${session.nik || '-'}) telah menandatangani dokumen secara digital. Silakan cek repositori dokumen HRD.`,
                   "#dokumen"
                 );
@@ -897,7 +897,7 @@ function openSignaturePadModal(docId, docJudul, session, onSignedDone) {
           if (onSignedDone) onSignedDone();
         } catch (err) {
           toast("Gagal menyimpan tanda tangan: " + err.message, "error");
-          btn.disabled = false; btn.textContent = "✍️ Sahkan & Bubuhkan TTD";
+          btn.disabled = false; btn.textContent = "Sahkan & Bubuhkan TTD";
         }
       };
     }

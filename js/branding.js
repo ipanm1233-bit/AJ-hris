@@ -70,7 +70,7 @@ export function isoDocHeaderTable(opts = {}) {
         <td colspan="4" style="border:1px solid #000;font-size:15px;font-weight:bold;text-transform:uppercase;text-align:center;padding:8px 6px;">${judul}</td>
       </tr>
       <tr>
-        <td colspan="4" style="border:1px solid #000;background:#d7ecf3;font-size:13px;font-weight:bold;text-align:center;padding:6px;">${COMPANY_NAME}</td>
+        <td colspan="4" style="border:1px solid #000;background:#d7ecf3 !important;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;font-size:13px;font-weight:bold;text-align:center;padding:6px;">${COMPANY_NAME}</td>
       </tr>
       <tr>
         <td style="border:1px solid #000;font-size:10px;text-align:left;padding:5px 6px;">Hal : ${hal}</td>

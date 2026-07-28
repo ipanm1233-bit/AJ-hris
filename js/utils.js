@@ -626,6 +626,11 @@ export function printSalesKlaimForm(item) {
         .btn-print:hover { background: #991b1b; }
 
         @media print {
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
           .no-print-bar { display: none !important; }
           body { padding: 0; }
         }
@@ -769,15 +774,23 @@ export function generateStandardFormCutiHtml(opts = {}) {
   <title>Form Cuti — ${escapeHtml(namaKaryawan)}</title>
   <style>
     @page { size: A4 portrait; margin: 10mm 12mm; }
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
+    }
     body {
-      font-family: Arial, Helvetica, sans-serif;
-      font-size: 12px;
-      line-height: 1.4;
+      font-family: 'Times New Roman', Times, serif;
+      font-size: 14px;
+      line-height: 1.5;
       color: #000;
       background: #fff;
       margin: 0;
       padding: 10px 0 0 0;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
     }
     .no-print-bar {
       position: fixed;
@@ -792,7 +805,7 @@ export function generateStandardFormCutiHtml(opts = {}) {
       padding: 8px 16px;
       border-radius: 6px;
       font-weight: bold;
-      font-size: 12px;
+      font-size: 13px;
       cursor: pointer;
       box-shadow: 0 2px 8px rgba(0,0,0,0.2);
       display: inline-flex;
@@ -827,20 +840,26 @@ export function generateStandardFormCutiHtml(opts = {}) {
       padding: 8px;
     }
     .hdr-title-1 {
-      font-size: 14px;
+      font-size: 16px;
       font-weight: bold;
       text-align: center;
       text-transform: uppercase;
       padding: 8px;
-      background-color: #dbeafe;
+      background-color: #dbeafe !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
     }
     .hdr-title-2 {
-      font-size: 14px;
+      font-size: 16px;
       font-weight: bold;
       text-align: center;
-      background-color: #dbeafe;
+      background-color: #dbeafe !important;
       padding: 6px;
       text-transform: uppercase;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
     }
     .hdr-meta {
       width: 100%;
@@ -848,7 +867,7 @@ export function generateStandardFormCutiHtml(opts = {}) {
     }
     .hdr-meta td {
       border-right: 1px solid #000;
-      font-size: 11px;
+      font-size: 12px;
       padding: 5px 8px;
       text-align: left;
     }
@@ -862,7 +881,7 @@ export function generateStandardFormCutiHtml(opts = {}) {
 
     .sec-head {
       font-weight: bold;
-      font-size: 12px;
+      font-size: 14px;
       text-transform: uppercase;
       margin-top: 6px;
       margin-bottom: 8px;
@@ -874,12 +893,12 @@ export function generateStandardFormCutiHtml(opts = {}) {
       margin-bottom: 8px;
     }
     .data-table td {
-      padding: 3px 0;
+      padding: 4px 0;
       vertical-align: top;
-      font-size: 12px;
+      font-size: 14px;
     }
     .lbl-col {
-      width: 220px;
+      width: 230px;
     }
 
     .sig-section {
@@ -887,7 +906,7 @@ export function generateStandardFormCutiHtml(opts = {}) {
       width: 100%;
     }
     .sig-location {
-      font-size: 12px;
+      font-size: 14px;
       margin-bottom: 12px;
     }
     .sig-table {
@@ -899,7 +918,7 @@ export function generateStandardFormCutiHtml(opts = {}) {
     .sig-table td {
       width: 33.33%;
       padding: 0 5px;
-      font-size: 12px;
+      font-size: 14px;
     }
 
     .notes-section {
@@ -909,14 +928,14 @@ export function generateStandardFormCutiHtml(opts = {}) {
       min-height: 55px;
     }
     .notes-title {
-      font-size: 12px;
+      font-size: 14px;
       font-weight: normal;
     }
 
     .notice-section {
       padding: 10px 22px 12px 22px;
-      font-size: 11px;
-      line-height: 1.4;
+      font-size: 13px;
+      line-height: 1.45;
     }
     .notice-title {
       margin-bottom: 4px;
@@ -931,9 +950,20 @@ export function generateStandardFormCutiHtml(opts = {}) {
     }
 
     @media print {
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+      }
       .no-print-bar { display: none !important; }
       body { padding: 0; margin: 0; }
       .cuti-box { border: 2px solid #000 !important; width: 100% !important; max-width: none !important; }
+      .hdr-title-1, .hdr-title-2 {
+        background-color: #dbeafe !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+      }
     }
   </style>
 </head>
@@ -946,10 +976,10 @@ export function generateStandardFormCutiHtml(opts = {}) {
     <table class="hdr-table">
       <tr>
         <td rowspan="3" class="hdr-logo">${logoImgTag(70)}</td>
-        <td class="hdr-title-1">${headerTitle}</td>
+        <td class="hdr-title-1" style="background-color:#dbeafe !important;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;">${headerTitle}</td>
       </tr>
       <tr>
-        <td class="hdr-title-2">${COMPANY_NAME}</td>
+        <td class="hdr-title-2" style="background-color:#dbeafe !important;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;">${COMPANY_NAME}</td>
       </tr>
       <tr>
         <td style="padding:0;">
@@ -1084,58 +1114,110 @@ export function generateStandardFormCutiHtml(opts = {}) {
 </html>`;
 }
 
-export function printFormCutiFisik(item) {
+export async function printFormCutiFisik(item) {
   if (!item) return;
   if (typeof item === 'string') {
     try { item = JSON.parse(item); } catch (e) {}
   }
-  const detail = item.detail || {};
-  const namaKaryawan = item.nama_pemohon || item.nama_karyawan || item.pemohon || detail.nama_karyawan || "Karyawan";
-  const nik = item.nik || item.nik_pemohon || detail.nik || "-";
-  const cabang = item.cabang || detail.cabang || "-";
-  const jabatan = detail.jabatan || item.jabatan || detail.divisi || "-";
-  const divisi = detail.divisi || item.divisi || detail.jabatan || item.jabatan || "-";
-  const jenisCuti = item.kategori_cuti || item.jenis_cuti || detail.jenis_cuti || item.type_cuti || "Cuti";
-  const isHalfDay = (jenisCuti || "").toLowerCase().includes("setengah hari") || (jenisCuti || "").includes("1/2");
-  
-  const tglMulai = item.tanggal_mulai || detail.tanggal_mulai || item.tanggal || item.tgl || new Date().toISOString();
-  const tglSelesai = item.tanggal_selesai || detail.tanggal_akhir || detail.tanggal_selesai || tglMulai;
-  const alasan = item.alasan || detail.alasan || detail.keterangan || item.keterangan_cuti || "Pengajuan Cuti";
-  const kontak = item.no_telepon || detail.no_telepon || detail.kontak || item.alamat_dan_hp || detail.alamat_dan_hp || "-";
-  const jamKeluar = detail.jam_keluar || "-";
-  const jamKembali = detail.jam_kembali || "-";
-  const pejabatPengganti = item.pejabat_pengganti || detail.pejabat_pengganti || "-";
-  const tglPengajuan = item.tgl || item.createdAt || new Date().toISOString();
 
+  // Open window immediately to prevent browser popup block
   const printWin = window.open("", "_blank", "width=850,height=900");
   if (!printWin) {
     if (typeof toast === "function") toast("Izin popup diblokir browser. Izinkan popup untuk membuka form cuti.", "error");
     return;
   }
+  printWin.document.write("<html><body style='font-family:sans-serif;padding:40px;text-align:center;'><h3>Memuat Form Cuti Fisik...</h3><p style='color:#64748b;font-size:13px;'>Mengambil data saldo cuti dari database...</p></body></html>");
 
-  const html = generateStandardFormCutiHtml({
-    namaKaryawan,
-    divisi,
-    jabatan,
-    cabang,
-    jenisCuti,
-    isHalfDay,
-    tglMulai,
-    tglSelesai,
-    jamKeluar,
-    jamKembali,
-    kontak,
-    alasan,
-    sisaTahunan: item.sisa_tahunan ?? detail.sisa_tahunan ?? item.sisa_tahunan_display ?? 0,
-    sisaKhusus: item.sisa_khusus ?? detail.sisa_khusus ?? item.sisa_khusus_display ?? 0,
-    sisaAkumulasi: item.sisa_akumulasi ?? detail.sisa_akumulasi ?? item.sisa_akumulasi_display ?? 0,
-    tglPengajuan,
-    pejabatPengganti,
-    catatanAtasan: item.catatan_atasan || detail.catatan_atasan || ""
-  });
+  try {
+    const detail = item.detail || {};
+    const namaKaryawan = item.nama_pemohon || item.nama_karyawan || item.pemohon || detail.nama_karyawan || "Karyawan";
+    const nik = item.nik || item.nik_pemohon || detail.nik || "-";
+    const cabang = item.cabang || detail.cabang || "-";
+    const jabatan = detail.jabatan || item.jabatan || detail.divisi || "-";
+    const divisi = detail.divisi || item.divisi || detail.jabatan || item.jabatan || "-";
+    const jenisCuti = item.kategori_cuti || item.jenis_cuti || detail.jenis_cuti || item.type_cuti || "Cuti";
+    const isHalfDay = (jenisCuti || "").toLowerCase().includes("setengah hari") || (jenisCuti || "").includes("1/2");
+    
+    const tglMulai = item.tanggal_mulai || detail.tanggal_mulai || item.tanggal || item.tgl || new Date().toISOString();
+    const tglSelesai = item.tanggal_selesai || detail.tanggal_akhir || detail.tanggal_selesai || tglMulai;
+    const alasan = item.alasan || detail.alasan || detail.keterangan || item.keterangan_cuti || "Pengajuan Cuti";
+    const kontak = item.no_telepon || detail.no_telepon || detail.kontak || item.alamat_dan_hp || detail.alamat_dan_hp || "-";
+    const jamKeluar = detail.jam_keluar || "-";
+    const jamKembali = detail.jam_kembali || "-";
+    const pejabatPengganti = item.pejabat_pengganti || detail.pejabat_pengganti || "-";
+    const tglPengajuan = item.tgl || item.createdAt || new Date().toISOString();
 
-  printWin.document.write(html);
-  printWin.document.close();
+    // Dynamically calculate accurate sisa cuti from database if not explicitly attached
+    let sisaTahunan = item.sisa_tahunan ?? detail.sisa_tahunan ?? item.sisa_tahunan_display ?? null;
+    let sisaKhusus = item.sisa_khusus ?? detail.sisa_khusus ?? item.sisa_khusus_display ?? null;
+    let sisaAkumulasi = item.sisa_akumulasi ?? detail.sisa_akumulasi ?? item.sisa_akumulasi_display ?? null;
+
+    if (sisaTahunan === null || sisaTahunan === undefined) {
+      try {
+        const allEmp = await fsGetAll(COL.MASTER_KARYAWAN);
+        const kData = allEmp.find(k => 
+          (k.nama_karyawan || "").trim().toLowerCase() === (namaKaryawan || "").trim().toLowerCase() ||
+          (nik !== "-" && String(k.nik || k.nik_karyawan) === String(nik))
+        );
+
+        let jatahTahunan = kData ? (toNumber(kData.jatah_tahunan ?? kData.jatah_cuti_tahunan) || 12) : 12;
+        let jatahAkumulasi = kData ? (toNumber(kData.jatah_akumulasi ?? kData.jatah_cuti_akumulasi) || 0) : 0;
+        let jatahKhusus = kData ? (toNumber(kData.jatah_khusus ?? kData.jatah_cuti_khusus) || 0) : 0;
+
+        let terpakaiTahunan = 0, terpakaiAkumulasi = 0, terpakaiKhusus = 0;
+        const currentYear = new Date().getFullYear();
+        const allMasterCuti = await fsGetAll(COL.MASTER_CUTI);
+
+        allMasterCuti.forEach(d => {
+          if ((d.nama_karyawan || "").trim().toLowerCase() !== (namaKaryawan || "").trim().toLowerCase()) return;
+          const rowYear = parseInt(d.tahun) || (d.tanggal ? new Date(d.tanggal).getFullYear() : currentYear);
+          if (rowYear !== currentYear) return;
+          const p = d.potong_jatah || "Tahunan";
+          const cnt = parseFloat(d.count) || 1;
+          if (p === "Tahunan") terpakaiTahunan += cnt;
+          else if (p === "Akumulasi") terpakaiAkumulasi += cnt;
+          else if (p === "Khusus") terpakaiKhusus += cnt;
+        });
+
+        sisaTahunan = Math.max(0, jatahTahunan - terpakaiTahunan);
+        sisaKhusus = Math.max(0, jatahKhusus - terpakaiKhusus);
+        sisaAkumulasi = Math.max(0, jatahAkumulasi - terpakaiAkumulasi);
+      } catch (errCalc) {
+        console.warn("Could not calculate dynamic sisa cuti:", errCalc);
+        sisaTahunan = 0;
+        sisaKhusus = 0;
+        sisaAkumulasi = 0;
+      }
+    }
+
+    const html = generateStandardFormCutiHtml({
+      namaKaryawan,
+      divisi,
+      jabatan,
+      cabang,
+      jenisCuti,
+      isHalfDay,
+      tglMulai,
+      tglSelesai,
+      jamKeluar,
+      jamKembali,
+      kontak,
+      alasan,
+      sisaTahunan: sisaTahunan ?? 0,
+      sisaKhusus: sisaKhusus ?? 0,
+      sisaAkumulasi: sisaAkumulasi ?? 0,
+      tglPengajuan,
+      pejabatPengganti,
+      catatanAtasan: item.catatan_atasan || detail.catatan_atasan || ""
+    });
+
+    printWin.document.open();
+    printWin.document.write(html);
+    printWin.document.close();
+  } catch (errWin) {
+    console.error("Error writing cuti form window:", errWin);
+    printWin.document.write(`<html><body style='font-family:sans-serif;padding:40px;color:red;'><h3>Gagal Memuat Form Cuti</h3><p>${escapeHtml(errWin.message)}</p></body></html>`);
+  }
 }
 
 export async function generateAndSaveCutiDocument(row) {
@@ -1637,55 +1719,78 @@ export async function createLoginToken(username) {
 
 export async function getTargetsForRole(role, namaKaryawan = "") {
   try {
-    // 1. Jika targetnya adalah PEMOHON itu sendiri
-    if (role === "PEMOHON" && namaKaryawan) {
-      const q = query(collection(db, COL.USERS), where("nama", "==", namaKaryawan), limit(1));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        return [{ username: snap.docs[0].id, email: snap.docs[0].data().email }];
+    const roleUpper = (role || "").toUpperCase();
+    const cleanNama = (namaKaryawan || "").trim().toLowerCase();
+
+    // Fetch all users and master karyawan to do resilient in-memory search
+    const allUsers = await fsGetAll(COL.USERS).catch(() => []);
+    const allEmployees = await fsGetAll(COL.MASTER_KARYAWAN).catch(() => []);
+
+    // 1. PEMOHON
+    if (roleUpper === "PEMOHON" && cleanNama) {
+      const uMatch = allUsers.find(u => 
+        (u.nama || "").trim().toLowerCase() === cleanNama ||
+        (u.username || "").trim().toLowerCase() === cleanNama
+      );
+      if (uMatch && uMatch.email) {
+        return [{ username: uMatch.id || uMatch.username, email: uMatch.email, nama: uMatch.nama || namaKaryawan }];
+      }
+      const kMatch = allEmployees.find(k => (k.nama_karyawan || "").trim().toLowerCase() === cleanNama);
+      if (kMatch && kMatch.email) {
+        return [{ username: kMatch.id || kMatch.nik, email: kMatch.email, nama: kMatch.nama_karyawan }];
       }
       return [];
     }
 
-    // 2. Jika targetnya adalah ATASAN (Melacak dinamis dari Master Karyawan)
-    if (role === "ATASAN" && namaKaryawan) {
-      // Langkah A: Cari data si pemohon di Master Karyawan
-      const qKaryawan = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", namaKaryawan), limit(1));
-      const snapKaryawan = await getDocs(qKaryawan);
+    // 2. ATASAN
+    if (roleUpper === "ATASAN" && cleanNama) {
+      const kData = allEmployees.find(k => (k.nama_karyawan || "").trim().toLowerCase() === cleanNama);
+      let namaAtasan = kData ? (kData.atasan || kData.atasan_langsung || kData.atasan_1 || kData.nama_atasan || kData.head || "") : "";
       
-      if (!snapKaryawan.empty) {
-        const namaAtasan = snapKaryawan.docs[0].data().atasan; // Ambil nama atasannya
-
-        if (namaAtasan) {
-          // Langkah B: Cari email atasan di daftar Akun Users
-          const qAtasan = query(collection(db, COL.USERS), where("nama", "==", namaAtasan), limit(1));
-          const snapAtasan = await getDocs(qAtasan);
-          
-          if (!snapAtasan.empty && snapAtasan.docs[0].data().email) {
-             return [{ username: snapAtasan.docs[0].id, email: snapAtasan.docs[0].data().email }];
-          }
-          
-          // Langkah C: Fallback (Cadangan), cari email atasan di Master Karyawan jika ia belum punya akun User
-          const qAtasanMaster = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", namaAtasan), limit(1));
-          const snapAtasanMaster = await getDocs(qAtasanMaster);
-          
-          if(!snapAtasanMaster.empty && snapAtasanMaster.docs[0].data().email) {
-             return [{ username: snapAtasanMaster.docs[0].id, email: snapAtasanMaster.docs[0].data().email }];
-          }
+      if (namaAtasan) {
+        const cleanAtasan = namaAtasan.trim().toLowerCase();
+        // Check USERS
+        const uAtasan = allUsers.find(u => 
+          (u.nama || "").trim().toLowerCase() === cleanAtasan ||
+          (u.username || "").trim().toLowerCase() === cleanAtasan
+        );
+        if (uAtasan && uAtasan.email) {
+          return [{ username: uAtasan.id || uAtasan.username, email: uAtasan.email, nama: uAtasan.nama || namaAtasan }];
+        }
+        // Check MASTER_KARYAWAN
+        const kAtasan = allEmployees.find(k => (k.nama_karyawan || "").trim().toLowerCase() === cleanAtasan);
+        if (kAtasan && kAtasan.email) {
+          return [{ username: kAtasan.id || kAtasan.nik, email: kAtasan.email, nama: kAtasan.nama_karyawan }];
         }
       }
-      // Jika atasan tidak ditemukan, kembalikan array kosong (mencegah terkirim ke email dummy)
-      console.warn(`Atasan untuk ${namaKaryawan} tidak ditemukan atau tidak memiliki email.`);
-      return []; 
+
+      // FALLBACK: If direct atasan email not found, find users with role ATASAN / MANAGER / SUPERVISOR / HEAD / HRD
+      const fallbackApprovers = allUsers.filter(u => {
+        const r = (u.role || "").toUpperCase();
+        return r.includes("ATASAN") || r.includes("MANAGER") || r.includes("SUPERVISOR") || r.includes("HEAD") || r.includes("HRD") || r.includes("ADMIN");
+      }).filter(u => u.email);
+
+      if (fallbackApprovers.length > 0) {
+        return fallbackApprovers.map(u => ({ username: u.id || u.username, email: u.email, nama: u.nama || u.username }));
+      }
     }
 
-    // 3. Jika targetnya adalah Role Departemen Spesifik (HRD, FINANCE, MANAGER, dll)
-    const qRole = query(collection(db, COL.USERS), where("role", "==", role));
-    const snapRole = await getDocs(qRole);
-    
-    return snapRole.docs
-        .map(d => ({ username: d.id, email: d.data().email }))
-        .filter(x => x.email); // Hanya kembalikan yang email-nya terisi
+    // 3. SPECIFIC ROLE (HRD, FINANCE, MANAGER, DIREKTUR, etc.)
+    let roleTargets = allUsers.filter(u => {
+      const r = (u.role || "").toUpperCase();
+      const j = (u.jabatan || "").toUpperCase();
+      return r === roleUpper || r.includes(roleUpper) || j.includes(roleUpper);
+    }).filter(u => u.email);
+
+    if (!roleTargets.length) {
+      // Fallback to HRD or SUPERADMIN or any admin user with email
+      roleTargets = allUsers.filter(u => {
+        const r = (u.role || "").toUpperCase();
+        return r.includes("HRD") || r.includes("ADMIN") || r.includes("DIREKTUR") || r.includes("MANAGER");
+      }).filter(u => u.email);
+    }
+
+    return roleTargets.map(u => ({ username: u.id || u.username, email: u.email, nama: u.nama || u.username }));
 
   } catch (error) {
     console.error("Error getTargetsForRole:", error);

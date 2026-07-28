@@ -1028,9 +1028,9 @@ function openPenilaianFormFromNotif(task, kpis, session) {
            ${catatanHrdHtml} ${soalHtml}
            <div class="mt-5 text-left">
               <label class="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">Ulasan Karyawan (Opsional)</label>
-              <textarea id="kpi-catatan-baik" rows="2" class="w-full px-3 py-2 text-xs border border-emerald-200 bg-emerald-50/30 rounded-lg outline-none focus:border-emerald-500 font-medium mb-2" placeholder="✓ Hal-hal yang sudah baik (Kelebihan / Prestasi)..."></textarea>
-              <textarea id="kpi-catatan-perbaikan" rows="2" class="w-full px-3 py-2 text-xs border border-red-200 bg-red-50/30 rounded-lg outline-none focus:border-red-500 font-medium mb-2" placeholder="⚠ Hal-hal yang harus diperbaiki (Area Peningkatan)..."></textarea>
-              <textarea id="kpi-catatan-penilai" rows="2" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-400 font-medium" placeholder="💬 Catatan & rekomendasi tambahan penilai..."></textarea>
+              <textarea id="kpi-catatan-baik" rows="2" class="w-full px-3 py-2 text-xs border border-emerald-200 bg-emerald-50/30 rounded-lg outline-none focus:border-emerald-500 font-medium mb-2" placeholder="Hal-hal yang sudah baik (Kelebihan / Prestasi)..."></textarea>
+              <textarea id="kpi-catatan-perbaikan" rows="2" class="w-full px-3 py-2 text-xs border border-red-200 bg-red-50/30 rounded-lg outline-none focus:border-red-500 font-medium mb-2" placeholder="Hal-hal yang harus diperbaiki (Area Peningkatan)..."></textarea>
+              <textarea id="kpi-catatan-penilai" rows="2" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-400 font-medium" placeholder="Catatan & rekomendasi tambahan penilai..."></textarea>
            </div>
         </form>
      `,

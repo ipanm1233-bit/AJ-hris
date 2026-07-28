@@ -573,7 +573,8 @@ export async function mount(container, { session }) {
           
           for (const target of targets) {
              const token = await createLoginToken(target.username);
-             const magicLink = `https://andela-hris.vercel.app/#approval?token=${token}`;
+             const baseUrl = window.location.origin;
+             const magicLink = `${baseUrl}/#approval?token=${token}`;
              const htmlEmail = `
                <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
                  <h2 style="color: #7a1f2b;">Pengajuan Baru: ${payload.nama_form}</h2>

@@ -305,6 +305,7 @@ export async function mount(container) {
              <div>
                 <label class="block text-xs font-bold text-slate-600 mb-1">Alasan Terminasi (Sesuai PP Andela Jaya)</label>
                 <select id="off-alasan" required class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-maroon-400 bg-white font-medium text-slate-700">
+                   <option value="Habis Kontrak">Berakhirnya Jangka Waktu Kontrak Kerja (Habis Kontrak) - PKWT</option>
                    <option value="Resign">Mengundurkan Diri (Resign) - Pasal 46 & 61</option>
                    <option value="PHK Efisiensi">PHK - Efisiensi / Perusahaan Tutup - Pasal 55 & 56</option>
                    <option value="Mangkir">Mangkir > 5 Hari Kerja - Pasal 52</option>
@@ -432,7 +433,17 @@ export async function mount(container) {
            if (!chkBox) return;
            chkBox.innerHTML = "";
            let defaults = [];
-           if (reason === "Resign" || reason === "Mangkir") {
+           if (reason === "Habis Kontrak") {
+             defaults = [
+               "Surat Pemberitahuan Berakhirnya Kontrak Kerja (PKWT)",
+               "Form Evaluasi & Penilaian Kinerja Kontrak (HRD)",
+               "Form Exit Interview HRD",
+               "Form Serah Terima Pekerjaan & Aset Perusahaan",
+               "Perhitungan & Bukti Pembayaran Kompensasi PKWT (PP 35/2021)",
+               "Penerbitan Surat Keterangan Kerja (Paklaring HRD)",
+               "Penonaktifan BPJS & Akses Sistem / Email Perusahaan"
+             ];
+           } else if (reason === "Resign" || reason === "Mangkir") {
              defaults = ["Surat Pengunduran Diri Resmi", "Form Exit Interview HRD", "Form Serah Terima Aset & Kerahasiaan", "Surat Keterangan Penonaktifan BPJS"];
            } else if (reason === "PHK Efisiensi") {
              defaults = ["Surat Pemberitahuan PHK", "Perjanjian Bersama (Bipartit)", "Form Pengembalian Aset Perusahaan", "Pencabutan Akses Sistem & Email", "Penerbitan Paklaring HRD"];
@@ -575,7 +586,19 @@ export async function mount(container) {
            });
          }
 
-         if (alasan === "Resign" || alasan === "Mangkir") {
+         if (alasan === "Habis Kontrak") {
+            const totalMonths = Math.max(1, Math.floor(diffTime / (1000 * 3600 * 24 * 30.4375)));
+            uangPisah = Math.round((totalMonths / 12) * gaji); // Uang Kompensasi PKWT (PP 35/2021)
+            if (!checklist.length) checklist = [
+              "Surat Pemberitahuan Berakhirnya Kontrak Kerja (PKWT)",
+              "Form Evaluasi & Penilaian Kinerja Kontrak (HRD)",
+              "Form Exit Interview HRD",
+              "Form Serah Terima Pekerjaan & Aset Perusahaan",
+              "Perhitungan & Bukti Pembayaran Kompensasi PKWT (PP 35/2021)",
+              "Penerbitan Surat Keterangan Kerja (Paklaring HRD)",
+              "Penonaktifan BPJS & Akses Sistem / Email Perusahaan"
+            ];
+         } else if (alasan === "Resign" || alasan === "Mangkir") {
             uangPisah = hitungUangPisah(mathYears, gaji);
             if (!checklist.length) checklist = ["Surat Pengunduran Diri Resmi", "Form Exit Interview HRD", "Form Serah Terima Aset & Kerahasiaan", "Surat Keterangan Penonaktifan BPJS"];
          } else if (alasan === "PHK Efisiensi") {

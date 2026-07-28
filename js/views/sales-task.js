@@ -101,7 +101,7 @@ export async function mount(container, { session }) {
               </div>
             </div>
             <div class="bg-slate-50/50 rounded-lg p-3 border border-slate-100 text-xs text-slate-600 leading-relaxed">
-              <span class="font-bold text-slate-700 block mb-1">📝 Laporan Hasil Lapangan:</span>
+              <span class="font-bold text-slate-700 block mb-1">Laporan Hasil Lapangan:</span>
               ${escapeHtml(t.catatan_kunjungan || "Tidak ada catatan tambahan.")}
             </div>
             <div class="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-50 pt-2">
