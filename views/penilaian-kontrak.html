@@ -1,10 +1,10 @@
 <div class="space-y-6">
   <div>
-    <h1 class="text-2xl font-bold text-slate-800">Penilaian & Kontrak</h1>
-    <p class="text-sm text-slate-500 mt-1">Evaluasi performa berkala staf (KPI) dan pengingat masa aktif ikatan dinas.</p>
+    <h1 class="text-2xl font-bold text-slate-800" id="pk-title">Penilaian & Kontrak</h1>
+    <p class="text-sm text-slate-500 mt-1" id="pk-subtitle">Evaluasi performa berkala staf (KPI) dan pengingat masa aktif ikatan dinas.</p>
   </div>
 
-  <div class="flex items-center gap-2 border-b border-slate-100 overflow-x-auto">
+  <div id="pk-tab-header" class="flex items-center gap-2 border-b border-slate-100 overflow-x-auto">
     <button data-ntab="kontrak" class="pk-tab px-4 py-2.5 text-sm font-medium border-b-2 border-maroon-700 text-maroon-700 whitespace-nowrap">Kontrak Karyawan</button>
     <button data-ntab="kpi360" class="pk-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">Tugas Penilaian 360°</button>
     <button data-ntab="hasil" class="pk-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">Hasil Penilaian</button>
@@ -17,4 +17,7 @@
   <div id="pk-panel-hasil" class="hidden"></div>
   <div id="pk-panel-evaluasi" class="hidden"></div>
   <div id="pk-panel-template" class="hidden"></div>
+
+  <!-- Panel Grafik Penilaian khusus Karyawan -->
+  <div id="pk-panel-employee-grafik" class="hidden"></div>
 </div>

@@ -2,7 +2,7 @@ import { db, COL } from "../firebase-config.js";
 import {
   fsGetAll, fsUpdate, fmtDateTime, escapeHtml, openModal, closeModal, toast,
   dynFieldWrapperHtml, wireDynFormLogic, collectDynFormDetail, sendEmailNotif, getTargetsForRole,
-  renderPengajuanDetailHtml, printSalesKlaimForm
+  renderPengajuanDetailHtml, printSalesKlaimForm, printFormCutiFisik
 } from "../utils.js";
 import { badge, emptyState, skeletonRows } from "../components.js";
 
@@ -32,6 +32,8 @@ export async function mount(container, { session }) {
        }
        const showFillBtn = r.requires_lpj && r.lpj_status === "BELUM" && r.nama_pemohon === session.nama;
        const isKlaimBensin = r.form_id === "F-KLAIM-BENSIN" || (r.nama_form || "").toLowerCase().includes("bensin");
+       const isCutiForm = r.form_id === "F-ISO-CUTI" || (r.nama_form || "").toLowerCase().includes("cuti") || !!r.kategori_cuti;
+       const isApproved = (r.status_final || "").includes("APPROVED");
 
        return `
        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 mb-4 flex items-center justify-between hover:border-maroon-200 transition flex-wrap gap-2">
@@ -43,6 +45,7 @@ export async function mount(container, { session }) {
              <div class="flex items-center gap-2">${badge(r.status_final, tone)}${lpjBadgeHtml}</div>
              <div class="flex items-center gap-3">
                 ${isKlaimBensin ? `<button data-print-klaim="${r.id}" class="text-xs font-bold text-emerald-700 hover:underline flex items-center gap-1">🖨️ Cetak Form</button>` : ""}
+                ${isCutiForm && isApproved ? `<button data-print-cuti="${r.id}" class="text-xs font-bold text-maroon-700 hover:underline flex items-center gap-1">📄 Form Cuti Fisik</button>` : ""}
                 ${showFillBtn ? `<button data-lpj="${r.id}" class="text-xs font-bold text-amber-700 hover:underline">Isi LPJ</button>` : ""}
                 <button data-id="${r.id}" class="text-xs font-medium text-maroon-700 hover:underline">Lihat Detail</button>
              </div>
@@ -54,6 +57,13 @@ export async function mount(container, { session }) {
        btn.onclick = () => {
           const row = myReq.find(x => x.id === btn.dataset.printKlaim);
           if (row) printSalesKlaimForm(row);
+       };
+    });
+
+    listEl.querySelectorAll("button[data-print-cuti]").forEach(btn => {
+       btn.onclick = () => {
+          const row = myReq.find(x => x.id === btn.dataset.printCuti);
+          if (row) printFormCutiFisik(row);
        };
     });
 

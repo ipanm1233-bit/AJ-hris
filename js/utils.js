@@ -12,7 +12,7 @@ import {
 // PERUBAHAN: lampiran file kini disimpan di Google Drive (lewat Apps Script
 // Web App), bukan lagi Firebase Storage. Lihat js/gas-integration.js.
 import { uploadFileToDrive } from "./gas-integration.js";
-import { letterheadHtml } from "./branding.js";
+import { letterheadHtml, isoDocHeaderTable, COMPANY_NAME, logoImgTag } from "./branding.js";
 /* ---------------------------------------------------------------------
  * 1. SMART DATE PARSER
  * Menangani 3 kemungkinan bentuk tanggal yang lazim ditemui saat migrasi
@@ -722,8 +722,520 @@ export function printSalesKlaimForm(item) {
   `);
   printWin.document.close();
 }
+
+export function generateStandardFormCutiHtml(opts = {}) {
+  const {
+    namaKaryawan = "Karyawan",
+    divisi = "-",
+    jabatan = "-",
+    cabang = "-",
+    jenisCuti = "Cuti",
+    isHalfDay = false,
+    tglMulai = new Date().toISOString(),
+    tglSelesai = tglMulai,
+    jamKeluar = "-",
+    jamKembali = "-",
+    kontak = "-",
+    alasan = "-",
+    sisaTahunan = 0,
+    sisaKhusus = 0,
+    sisaAkumulasi = 0,
+    tglPengajuan = new Date().toISOString(),
+    pejabatPengganti = "-",
+    catatanAtasan = ""
+  } = opts;
+
+  const fmtMulai = fmtDate(tglMulai);
+  const fmtSelesai = fmtDate(tglSelesai);
+  const fmtTglPengajuan = fmtDate(tglPengajuan);
+
+  const locationDateStr = `CIREBON, ${fmtTglPengajuan !== "-" ? fmtTglPengajuan : fmtDate(new Date())}`;
+
+  let divisiDisplay = divisi;
+  if (!divisiDisplay || divisiDisplay === "-") {
+    divisiDisplay = jabatan !== "-" ? jabatan : (cabang !== "-" ? cabang : "Staff");
+  } else if (jabatan && jabatan !== "-" && jabatan !== divisiDisplay) {
+    divisiDisplay = `${jabatan} / ${divisiDisplay}`;
+  }
+
+  const headerTitle = isHalfDay 
+    ? "FORMULIR PENGAJUAN CUTI SETENGAH HARI" 
+    : "FORMULIR PENGAJUAN CUTI KARYAWAN";
+
+  return `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Form Cuti — ${escapeHtml(namaKaryawan)}</title>
+  <style>
+    @page { size: A4 portrait; margin: 10mm 12mm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 12px;
+      line-height: 1.4;
+      color: #000;
+      background: #fff;
+      margin: 0;
+      padding: 10px 0 0 0;
+    }
+    .no-print-bar {
+      position: fixed;
+      top: 12px;
+      right: 16px;
+      z-index: 9999;
+    }
+    .btn-cetak {
+      background: #7a1f2b;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-weight: bold;
+      font-size: 12px;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: Arial, sans-serif;
+    }
+    .btn-cetak:hover {
+      background: #5c1720;
+    }
+    
+    .cuti-box {
+      width: 100%;
+      max-width: 760px;
+      margin: 0 auto;
+      border: 2px solid #000;
+      background: #fff;
+    }
+
+    .hdr-table {
+      width: 100%;
+      border-collapse: collapse;
+      border-bottom: 2px solid #000;
+    }
+    .hdr-table td {
+      border: 1px solid #000;
+      vertical-align: middle;
+    }
+    .hdr-logo {
+      width: 110px;
+      text-align: center;
+      padding: 8px;
+    }
+    .hdr-title-1 {
+      font-size: 14px;
+      font-weight: bold;
+      text-align: center;
+      text-transform: uppercase;
+      padding: 8px;
+      background-color: #dbeafe;
+    }
+    .hdr-title-2 {
+      font-size: 14px;
+      font-weight: bold;
+      text-align: center;
+      background-color: #dbeafe;
+      padding: 6px;
+      text-transform: uppercase;
+    }
+    .hdr-meta {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .hdr-meta td {
+      border-right: 1px solid #000;
+      font-size: 11px;
+      padding: 5px 8px;
+      text-align: left;
+    }
+    .hdr-meta td:last-child {
+      border-right: none;
+    }
+
+    .body-section {
+      padding: 15px 22px 18px 22px;
+    }
+
+    .sec-head {
+      font-weight: bold;
+      font-size: 12px;
+      text-transform: uppercase;
+      margin-top: 6px;
+      margin-bottom: 8px;
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 8px;
+    }
+    .data-table td {
+      padding: 3px 0;
+      vertical-align: top;
+      font-size: 12px;
+    }
+    .lbl-col {
+      width: 220px;
+    }
+
+    .sig-section {
+      margin-top: 22px;
+      width: 100%;
+    }
+    .sig-location {
+      font-size: 12px;
+      margin-bottom: 12px;
+    }
+    .sig-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: center;
+      page-break-inside: avoid;
+    }
+    .sig-table td {
+      width: 33.33%;
+      padding: 0 5px;
+      font-size: 12px;
+    }
+
+    .notes-section {
+      border-top: 2px solid #000;
+      border-bottom: 2px solid #000;
+      padding: 10px 22px;
+      min-height: 55px;
+    }
+    .notes-title {
+      font-size: 12px;
+      font-weight: normal;
+    }
+
+    .notice-section {
+      padding: 10px 22px 12px 22px;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .notice-title {
+      margin-bottom: 4px;
+      font-weight: normal;
+    }
+    .notice-list {
+      margin: 0;
+      padding-left: 18px;
+    }
+    .notice-list li {
+      margin-bottom: 3px;
+    }
+
+    @media print {
+      .no-print-bar { display: none !important; }
+      body { padding: 0; margin: 0; }
+      .cuti-box { border: 2px solid #000 !important; width: 100% !important; max-width: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print-bar">
+    <button onclick="window.print()" class="btn-cetak">🖨️ Cetak Dokumen</button>
+  </div>
+
+  <div class="cuti-box">
+    <table class="hdr-table">
+      <tr>
+        <td rowspan="3" class="hdr-logo">${logoImgTag(70)}</td>
+        <td class="hdr-title-1">${headerTitle}</td>
+      </tr>
+      <tr>
+        <td class="hdr-title-2">${COMPANY_NAME}</td>
+      </tr>
+      <tr>
+        <td style="padding:0;">
+          <table class="hdr-meta">
+            <tr>
+              <td>Hal : 1 dari 1</td>
+              <td>No Dok : HR4</td>
+              <td>Terbit/ Revisi : 1/1</td>
+              <td>Tgl terbit : 1 September 2025</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <div class="body-section">
+      <div class="sec-head">DATA KARYAWAN</div>
+      <table class="data-table">
+        <tr>
+          <td class="lbl-col">Nama Lengkap</td>
+          <td style="width: 15px;">:</td>
+          <td><strong>${escapeHtml(namaKaryawan)}</strong></td>
+        </tr>
+        <tr>
+          <td class="lbl-col">Divisi / Bagian / Unit Kerja</td>
+          <td style="width: 15px;">:</td>
+          <td>${escapeHtml(divisiDisplay)}</td>
+        </tr>
+      </table>
+
+      <div class="sec-head" style="margin-top: 12px;">KETERANGAN CUTI</div>
+      <table class="data-table">
+        ${isHalfDay ? `
+          <tr>
+            <td class="lbl-col">Tanggal Cuti</td>
+            <td style="width: 15px;">:</td>
+            <td>${fmtMulai}</td>
+          </tr>
+          <tr>
+            <td class="lbl-col">Waktu Cuti</td>
+            <td style="width: 15px;">:</td>
+            <td>${escapeHtml(jamKeluar)} s/d ${escapeHtml(jamKembali)}</td>
+          </tr>
+        ` : `
+          <tr>
+            <td class="lbl-col">Tanggal Cuti</td>
+            <td style="width: 15px;">:</td>
+            <td>${fmtMulai}</td>
+          </tr>
+          <tr>
+            <td class="lbl-col">Tanggal Selesai Cuti</td>
+            <td style="width: 15px;">:</td>
+            <td>${fmtSelesai}</td>
+          </tr>
+        `}
+        <tr><td colspan="3" style="height: 6px;"></td></tr>
+        <tr>
+          <td class="lbl-col">Alamat & No HP Selama Cuti</td>
+          <td style="width: 15px;">:</td>
+          <td>${escapeHtml(kontak)}</td>
+        </tr>
+        <tr>
+          <td class="lbl-col">Keterangan/Alasan</td>
+          <td style="width: 15px;">:</td>
+          <td>${escapeHtml(alasan)}</td>
+        </tr>
+        <tr><td colspan="3" style="height: 6px;"></td></tr>
+        <tr>
+          <td class="lbl-col"><strong>Sisa cuti tahunan</strong></td>
+          <td style="width: 15px;">:</td>
+          <td>${sisaTahunan}</td>
+        </tr>
+        <tr>
+          <td class="lbl-col"><strong>Sisa cuti khusus</strong></td>
+          <td style="width: 15px;">:</td>
+          <td>${sisaKhusus}</td>
+        </tr>
+        <tr>
+          <td class="lbl-col"><strong>Sisa cuti akumulasi</strong></td>
+          <td style="width: 15px;">:</td>
+          <td>${sisaAkumulasi}</td>
+        </tr>
+      </table>
+
+      <div class="sig-section">
+        <div class="sig-location">${locationDateStr}</div>
+        <table class="sig-table">
+          <tr>
+            <td style="text-align: center; vertical-align: top;">
+              Pemohon Cuti,
+            </td>
+            <td style="text-align: center; vertical-align: top;">
+              Menyetujui,<br/>Atasan
+            </td>
+            <td style="text-align: center; vertical-align: top;">
+              Mengetahui,<br/>HRD
+            </td>
+          </tr>
+          <tr>
+            <td style="height: 60px;"></td>
+            <td style="height: 60px;"></td>
+            <td style="height: 60px;"></td>
+          </tr>
+          <tr>
+            <td style="text-align: center; vertical-align: bottom;">
+              ( ......................... )
+            </td>
+            <td style="text-align: center; vertical-align: bottom;">
+              ( ......................... )
+            </td>
+            <td style="text-align: center; vertical-align: bottom;">
+              ( ......................... )
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="notes-section">
+      <div class="notes-title">Catatan dari Atasan${catatanAtasan ? `: <i>${escapeHtml(catatanAtasan)}</i>` : ""}</div>
+    </div>
+
+    <div class="notice-section">
+      <div class="notice-title">Perhatikan :</div>
+      <ol class="notice-list">
+        <li>Surat permohonan cuti ini harus diajukan minimal 1 minggu sebelum cuti dijalankan.</li>
+        <li>Sebelum ada persetujuan dari atasan, tidak diperkenankan untuk meninggalkan/mendahului cuti, kecuali sakit dengan dibuktikan dengan surat keterangan dokter atau karena keperluan yang mendesak.</li>
+      </ol>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+export function printFormCutiFisik(item) {
+  if (!item) return;
+  if (typeof item === 'string') {
+    try { item = JSON.parse(item); } catch (e) {}
+  }
+  const detail = item.detail || {};
+  const namaKaryawan = item.nama_pemohon || item.nama_karyawan || item.pemohon || detail.nama_karyawan || "Karyawan";
+  const nik = item.nik || item.nik_pemohon || detail.nik || "-";
+  const cabang = item.cabang || detail.cabang || "-";
+  const jabatan = detail.jabatan || item.jabatan || detail.divisi || "-";
+  const divisi = detail.divisi || item.divisi || detail.jabatan || item.jabatan || "-";
+  const jenisCuti = item.kategori_cuti || item.jenis_cuti || detail.jenis_cuti || item.type_cuti || "Cuti";
+  const isHalfDay = (jenisCuti || "").toLowerCase().includes("setengah hari") || (jenisCuti || "").includes("1/2");
+  
+  const tglMulai = item.tanggal_mulai || detail.tanggal_mulai || item.tanggal || item.tgl || new Date().toISOString();
+  const tglSelesai = item.tanggal_selesai || detail.tanggal_akhir || detail.tanggal_selesai || tglMulai;
+  const alasan = item.alasan || detail.alasan || detail.keterangan || item.keterangan_cuti || "Pengajuan Cuti";
+  const kontak = item.no_telepon || detail.no_telepon || detail.kontak || item.alamat_dan_hp || detail.alamat_dan_hp || "-";
+  const jamKeluar = detail.jam_keluar || "-";
+  const jamKembali = detail.jam_kembali || "-";
+  const pejabatPengganti = item.pejabat_pengganti || detail.pejabat_pengganti || "-";
+  const tglPengajuan = item.tgl || item.createdAt || new Date().toISOString();
+
+  const printWin = window.open("", "_blank", "width=850,height=900");
+  if (!printWin) {
+    if (typeof toast === "function") toast("Izin popup diblokir browser. Izinkan popup untuk membuka form cuti.", "error");
+    return;
+  }
+
+  const html = generateStandardFormCutiHtml({
+    namaKaryawan,
+    divisi,
+    jabatan,
+    cabang,
+    jenisCuti,
+    isHalfDay,
+    tglMulai,
+    tglSelesai,
+    jamKeluar,
+    jamKembali,
+    kontak,
+    alasan,
+    sisaTahunan: item.sisa_tahunan ?? detail.sisa_tahunan ?? item.sisa_tahunan_display ?? 0,
+    sisaKhusus: item.sisa_khusus ?? detail.sisa_khusus ?? item.sisa_khusus_display ?? 0,
+    sisaAkumulasi: item.sisa_akumulasi ?? detail.sisa_akumulasi ?? item.sisa_akumulasi_display ?? 0,
+    tglPengajuan,
+    pejabatPengganti,
+    catatanAtasan: item.catatan_atasan || detail.catatan_atasan || ""
+  });
+
+  printWin.document.write(html);
+  printWin.document.close();
+}
+
+export async function generateAndSaveCutiDocument(row) {
+  if (!row) return null;
+  const detail = row.detail || {};
+  const namaKaryawan = row.nama_pemohon || row.nama_karyawan || detail.nama_karyawan || "Karyawan";
+  const nik = row.nik_pemohon || row.nik || detail.nik || "-";
+  const cabang = row.cabang || detail.cabang || "-";
+  const jabatan = detail.jabatan || row.jabatan || "-";
+  const jenisCuti = row.kategori_cuti || row.jenis_cuti || detail.jenis_cuti || row.type_cuti || "Cuti";
+  const isHalfDay = (jenisCuti || "").toLowerCase().includes("setengah hari") || (jenisCuti || "").includes("1/2");
+  
+  const tglMulai = row.tanggal_mulai || detail.tanggal_mulai || row.tanggal || row.tgl || new Date().toISOString();
+  const tglSelesai = row.tanggal_selesai || detail.tanggal_akhir || detail.tanggal_selesai || tglMulai;
+  const jumlahHari = parseFloat(row.jumlah_hari || detail.jumlah_hari || row.count || (isHalfDay ? 0.5 : 1));
+  const alasan = row.alasan || detail.alasan || detail.keterangan || row.keterangan_cuti || "Pengajuan Cuti Disetujui";
+  const kontak = row.no_telepon || detail.no_telepon || detail.kontak || "-";
+  const jamKeluar = detail.jam_keluar || "-";
+  const jamKembali = detail.jam_kembali || "-";
+
+  let pdfUrl = null;
+
+  try {
+    const { generateCutiDocViaGAS } = await import("./gas-integration.js");
+    const gasRes = await generateCutiDocViaGAS({
+      nama_karyawan: namaKaryawan,
+      jabatan: jabatan,
+      cabang: cabang,
+      tanggal: tglMulai,
+      tanggal_display: fmtDateShort(tglMulai),
+      tgl_akhir: tglSelesai,
+      tgl_akhir_display: fmtDateShort(tglSelesai),
+      isHalfDay,
+      count: jumlahHari,
+      keterangan_cuti: alasan,
+      kontak,
+      jam_keluar: jamKeluar,
+      jam_kembali: jamKembali,
+      sisa_tahunan: 12,
+      sisa_khusus: 0,
+      tanggal_pengajuan: fmtDateShort(row.tgl || new Date())
+    });
+    if (gasRes && gasRes.pdfUrl) {
+      pdfUrl = gasRes.pdfUrl;
+    }
+  } catch (err) {
+    console.warn("GAS document creation failed or not configured, falling back to local physical document generator:", err.message);
+  }
+
+  const updateData = {
+    dokumen_url: pdfUrl || "#",
+    pdf_url: pdfUrl || "#",
+    form_fisik_generated: true,
+    form_fisik_generated_at: new Date().toISOString()
+  };
+
+  // Update DATA_PENGAJUAN
+  if (row.id) {
+    await fsUpdate(COL.DATA_PENGAJUAN, row.id, updateData).catch(() => {});
+  }
+
+  // Update MASTER_CUTI if matching
+  try {
+    const allMaster = await fsGetAll(COL.MASTER_CUTI).catch(() => []);
+    const match = allMaster.find(m => 
+      (m.no_referensi && m.no_referensi === row.id) ||
+      (m.nama_karyawan === namaKaryawan && m.tanggal === tglMulai)
+    );
+    if (match) {
+      await fsUpdate(COL.MASTER_CUTI, match.id, updateData).catch(() => {});
+    }
+  } catch (e) {
+    console.warn("Could not update MASTER_CUTI with doc URL:", e);
+  }
+
+  // Add to SIGN_DOCUMENTS so it appears in Employee Profile / Sign Documents list
+  try {
+    const docId = genId("DOC_CUTI");
+    await fsAdd("sign_documents", {
+      id: docId,
+      no_referensi: row.id || docId,
+      judul: `Formulir Cuti Fisik - ${namaKaryawan} (${fmtDateShort(tglMulai)})`,
+      nik_penerima: nik,
+      nama_penerima: namaKaryawan,
+      tanggal_buat: fmtDateShort(row.tgl || new Date()),
+      status: "APPROVED_FINAL",
+      file_url: pdfUrl || "#",
+      dokumen_url: pdfUrl || "#",
+      tipe_dokumen: "FORM_CUTI_FISIK"
+    }, docId).catch(() => {});
+  } catch (e) {
+    console.warn("Could not write sign_documents entry:", e);
+  }
+
+  return { pdfUrl };
+}
+
 if (typeof window !== "undefined") {
   window.printSalesKlaimForm = printSalesKlaimForm;
+  window.printFormCutiFisik = printFormCutiFisik;
 }
 
 export function renderPengajuanDetailHtml(row, session, options = {}) {
@@ -835,6 +1347,31 @@ export function renderPengajuanDetailHtml(row, session, options = {}) {
           </div>
           <button type="button" onclick="window.printSalesKlaimForm(${rowJson})" class="px-4 py-2 bg-maroon-700 hover:bg-maroon-800 text-white font-bold text-xs rounded-lg shadow-sm transition flex items-center gap-1.5 shrink-0">
             <span>🖨️ Cetak / Download Form Klaim</span>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  const isCutiForm = row.form_id === "F-ISO-CUTI" || (row.nama_form || "").toLowerCase().includes("cuti") || !!row.kategori_cuti;
+  if (isCutiForm && (row.status_final || "").includes("APPROVED")) {
+    const rowJson = escapeHtml(JSON.stringify(row));
+    return `
+      <div class="space-y-4">
+        <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
+          <div class="flex justify-between items-center"><span class="text-slate-500 font-medium">Pemohon:</span><span class="font-bold text-slate-800">${escapeHtml(row.nama_pemohon)}</span></div>
+          <div class="flex justify-between items-center"><span class="text-slate-500 font-medium">Jenis Cuti:</span><span class="font-bold text-slate-800">${escapeHtml(row.kategori_cuti || row.jenis_cuti || detail.jenis_cuti || "Cuti")}</span></div>
+          <div class="flex justify-between items-center"><span class="text-slate-500 font-medium">Tanggal:</span><span class="font-bold text-slate-800">${fmtDateShort(row.tanggal_mulai || detail.tanggal_mulai || row.tgl)} s/d ${fmtDateShort(row.tanggal_selesai || detail.tanggal_akhir || row.tgl)} (${row.jumlah_hari || detail.jumlah_hari || 1} Hari)</span></div>
+          <div class="flex justify-between items-center"><span class="text-slate-500 font-medium">Alasan:</span><span class="font-semibold text-slate-700">${escapeHtml(row.alasan || detail.alasan || "-")}</span></div>
+        </div>
+
+        <div class="flex items-center justify-between p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+          <div class="text-xs text-emerald-900">
+            <p class="font-bold">Formulir Cuti Fisik Resmi (Form HR4)</p>
+            <p class="text-[11px] text-emerald-700">Pengajuan ini telah Full Approved. Cetak / unduh dokumen fisik resmi untuk arsip HRD.</p>
+          </div>
+          <button type="button" onclick="window.printFormCutiFisik(${rowJson})" class="px-4 py-2 bg-maroon-700 hover:bg-maroon-800 text-white font-bold text-xs rounded-lg shadow-sm transition flex items-center gap-1.5 shrink-0">
+            <span>📄 Cetak / Download Form Cuti Fisik</span>
           </button>
         </div>
       </div>

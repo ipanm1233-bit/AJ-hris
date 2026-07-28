@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs } from "../firebase-config.js";
-import { fsGetAll, fsUpdate, fsAdd, genId, openModal, closeModal, toast, fmtDateTime, escapeHtml, sendEmailNotif, getTargetsForRole, createLoginToken, notifyUser, renderPengajuanDetailHtml, printSalesKlaimForm } from "../utils.js";
+import { fsGetAll, fsUpdate, fsAdd, genId, openModal, closeModal, toast, fmtDateTime, escapeHtml, sendEmailNotif, getTargetsForRole, createLoginToken, notifyUser, renderPengajuanDetailHtml, printSalesKlaimForm, generateAndSaveCutiDocument, printFormCutiFisik } from "../utils.js";
 import { badge, emptyState, skeletonRows } from "../components.js";
 
 const CUTI_RULES = {
@@ -368,6 +368,14 @@ async function processAction(row, action, note, session) {
                 tahun: new Date(row.tgl).getFullYear(),
                 bulan: BULAN_ID[new Date(row.tgl).getMonth()]
             }, genId("CUTI"));
+        }
+
+        // GENERATE DOKUMEN FORM CUTI FISIK SECARA OTOMATIS
+        try {
+            await generateAndSaveCutiDocument(row);
+            toast("Dokumen Form Cuti Fisik berhasil tergenerate otomatis", "success");
+        } catch (docErr) {
+            console.warn("Gagal tergenerate dokumen fisik cuti:", docErr);
         }
     }
 

@@ -1,14 +1,17 @@
-import { db, COL, collection, query, where, getDocs, limit } from "../firebase-config.js";
+import { db, COL, collection, query, where, getDocs, getDoc, doc, limit } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan, downloadXlsx, ensureXlsxLoaded } from "../utils.js";
 import { renderCrudModule, badge, emptyState, skeletonRows, avatar } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 
-export async function mount(container, { session }) {
+export async function mount(container, { session, params }) {
   const role = (session.role || "").toUpperCase();
   const isFullAccess = FULL_ACCESS_ROLES.includes(role);
   const isAtasanView = !isFullAccess && ATASAN_VIEW_ROLES.includes(role);
+  const isHrdOrAdmin = isFullAccess || role === "HRD" || role === "SUPERADMIN" || role === "DIREKTUR";
+  const isAtasan = isAtasanView || role === "MANAGER" || role === "SPV" || role === "KOORDINATOR";
+  const isRegularEmployee = !isHrdOrAdmin && !isAtasan;
   const canManageKontrak = isFullAccess;
   let bawahanNames = null;
 
@@ -20,6 +23,305 @@ export async function mount(container, { session }) {
     template: container.querySelector("#pk-panel-template"),
   };
   const loaded = {};
+
+  async function loadEmployeeGrafik() {
+    const wrap = container.querySelector("#pk-panel-employee-grafik");
+    if (!wrap) return;
+    wrap.classList.remove("hidden");
+    wrap.innerHTML = `<div class="p-8">${skeletonRows(6)}</div>`;
+
+    try {
+      const [allLogs, allTasks, allReviews] = await Promise.all([
+        fsGetAll(COL.LOG_PENILAIAN_KPI),
+        fsGetAll(COL.TUGAS_KPI_360),
+        fsGetAll(COL.PERFORMANCE_REVIEW)
+      ]);
+
+      const userNama = (session.nama || "").toLowerCase();
+      const userNik = (session.nik || "").toLowerCase();
+
+      // Filter logs & tasks for current employee
+      const myLogs = allLogs.filter(r => 
+        (r.nama_dinilai && r.nama_dinilai.toLowerCase() === userNama) ||
+        (r.nik_dinilai && r.nik_dinilai.toLowerCase() === userNik)
+      ).sort((a, b) => new Date(b.tanggal || b.created_at || 0) - new Date(a.tanggal || a.created_at || 0));
+
+      const myTasks = allTasks.filter(t => 
+        t.status === "DONE" && 
+        ((t.nama_dinilai && t.nama_dinilai.toLowerCase() === userNama) || (t.nik_dinilai && t.nik_dinilai.toLowerCase() === userNik))
+      ).sort((a, b) => new Date(b.tanggal_selesai || b.created_at || 0) - new Date(a.tanggal_selesai || a.created_at || 0));
+
+      const myReviews = allReviews.filter(r => 
+        (r.nama_karyawan && r.nama_karyawan.toLowerCase() === userNama) ||
+        (r.nik && r.nik.toLowerCase() === userNik)
+      ).sort((a, b) => new Date(b.created_at || b.tanggal || 0) - new Date(a.created_at || a.tanggal || 0));
+
+      // Check if employee has any evaluation record
+      if (myLogs.length === 0 && myTasks.length === 0 && myReviews.length === 0) {
+        wrap.innerHTML = `
+          <div class="bg-white rounded-2xl p-10 border border-slate-200/80 shadow-xs text-center max-w-2xl mx-auto my-6">
+            <div class="w-16 h-16 bg-maroon-50 text-maroon-700 rounded-2xl flex items-center justify-center mx-auto text-3xl mb-4 shadow-xs">📊</div>
+            <h3 class="text-xl font-bold text-slate-800">Belum Ada Hasil Penilaian KPI</h3>
+            <p class="text-slate-500 text-sm mt-2 leading-relaxed">
+              Halo, <strong class="text-slate-700">${escapeHtml(session.nama || "Karyawan")}</strong>. Grafik dan analisis nilai indikator KPI Anda akan tertampil secara otomatis di halaman ini setelah proses evaluasi diselesaikan oleh Atasan / HRD.
+            </p>
+            <div class="mt-6 p-4 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-500 text-left">
+              <strong class="text-slate-700 block mb-1">💡 Informasi Penilaian KPI:</strong>
+              • Penilaian mencakup Indikator Kinerja Utama (KPI), Kedisiplinan, Kualitas Kerja, dan Kerja Sama.<br/>
+              • Hasil evaluasi akan dikelompokkan per indikator dengan grafik persentase nilai akhir.
+            </div>
+          </div>`;
+        return;
+      }
+
+      // Pick the latest log/task or construct indicator list
+      const latestLog = myLogs[0] || myTasks[0] || null;
+      const latestReview = myReviews[0] || null;
+
+      let totalScore = 0;
+      let periodeName = "Periode Terbaru";
+      let penilaiName = "Atasan / HRD";
+      let detailSoal = [];
+
+      if (latestLog) {
+        totalScore = parseFloat(latestLog.total_skor || latestLog.skor_akhir || 0);
+        periodeName = latestLog.periode || "Periode Berjalan";
+        penilaiName = latestLog.penilai || latestLog.nama_penilai || "Atasan Direct";
+        detailSoal = latestLog.detail_json || latestLog.soal_json || [];
+      } else if (latestReview) {
+        totalScore = parseFloat(latestReview.skor_akhir || 0);
+        periodeName = latestReview.periode || "Periode Berjalan";
+        penilaiName = latestReview.reviewer || "Atasan Direct";
+        detailSoal = [
+          { aspek: "Kualitas Kerja", indikator: "Tingkat akurasi dan kerapian hasil kerja", bobot: 20, nilai_diberikan: latestReview.kualitas_kerja || 0 },
+          { aspek: "Produktivitas", indikator: "Pencapaian target kuantitas pekerjaan", bobot: 20, nilai_diberikan: latestReview.produktivitas || 0 },
+          { aspek: "Kerja Sama", indikator: "Kemampuan kolaborasi tim & komunikasi", bobot: 20, nilai_diberikan: latestReview.kerja_sama || 0 },
+          { aspek: "Kedisiplinan", indikator: "Kepatuhan tata tertib & kebersihan kerja", bobot: 20, nilai_diberikan: latestReview.kedisiplinan || 0 },
+          { aspek: "Komunikasi", indikator: "Penyampaian informasi & koordinasi", bobot: 20, nilai_diberikan: latestReview.komunikasi || 0 },
+        ];
+      }
+
+      // Grade determination
+      let gradeLabel = "Perlu Perbaikan";
+      let gradeBadgeClass = "bg-rose-100 text-rose-800 border-rose-200";
+      if (totalScore >= 88) {
+        gradeLabel = "Sangat Baik (A)";
+        gradeBadgeClass = "bg-emerald-100 text-emerald-800 border-emerald-200";
+      } else if (totalScore >= 75) {
+        gradeLabel = "Baik (B)";
+        gradeBadgeClass = "bg-blue-100 text-blue-800 border-blue-200";
+      } else if (totalScore >= 60) {
+        gradeLabel = "Cukup (C)";
+        gradeBadgeClass = "bg-amber-100 text-amber-800 border-amber-200";
+      }
+
+      // Group by Aspek
+      const aspekGroups = {};
+      detailSoal.forEach(s => {
+        const asp = s.aspek || "Umum";
+        if (!aspekGroups[asp]) aspekGroups[asp] = { totalNilai: 0, count: 0, items: [] };
+        aspekGroups[asp].totalNilai += parseFloat(s.nilai_diberikan || s.nilai || 0);
+        aspekGroups[asp].count += 1;
+        aspekGroups[asp].items.push(s);
+      });
+
+      // Render Aspek Summary Cards
+      let aspekCardsHtml = Object.keys(aspekGroups).map(aspKey => {
+        const grp = aspekGroups[aspKey];
+        const avg = Math.round(grp.totalNilai / (grp.count || 1));
+        let barClass = "from-emerald-500 to-teal-600";
+        if (avg < 60) barClass = "from-rose-500 to-red-600";
+        else if (avg < 75) barClass = "from-amber-500 to-yellow-600";
+        else if (avg < 85) barClass = "from-blue-500 to-indigo-600";
+
+        return `
+          <div class="bg-white rounded-xl p-4 border border-slate-200/80 shadow-2xs">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">${escapeHtml(aspKey)}</span>
+              <span class="text-sm font-black text-slate-800">${avg}%</span>
+            </div>
+            <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+              <div class="h-full bg-gradient-to-r ${barClass} transition-all duration-500 rounded-full" style="width: ${Math.min(100, Math.max(0, avg))}%"></div>
+            </div>
+            <span class="text-[11px] text-slate-400 mt-1.5 block">${grp.count} Indikator Kinerja</span>
+          </div>`;
+      }).join("");
+
+      // Render Every Indicator Chart Card
+      let indicatorChartsHtml = detailSoal.map((s, idx) => {
+        const nilai = parseFloat(s.nilai_diberikan || s.nilai || 0);
+        const bobot = parseFloat(s.bobot || 0);
+        const weighted = (nilai * (bobot / 100)).toFixed(2);
+
+        let barClass = "from-emerald-500 to-teal-600";
+        let statusBadge = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Sangat Baik</span>`;
+        if (nilai < 60) {
+          barClass = "from-rose-500 to-red-600";
+          statusBadge = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">Perlu Perbaikan</span>`;
+        } else if (nilai < 75) {
+          barClass = "from-amber-500 to-yellow-600";
+          statusBadge = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">Cukup</span>`;
+        } else if (nilai < 85) {
+          barClass = "from-blue-500 to-indigo-600";
+          statusBadge = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">Baik</span>`;
+        }
+
+        return `
+          <div class="bg-white rounded-xl p-5 border border-slate-200/80 shadow-2xs hover:shadow-xs transition space-y-3">
+            <div class="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 mb-1">
+                  ${escapeHtml(s.aspek || "Umum")}
+                </span>
+                <h4 class="text-sm font-bold text-slate-800 leading-snug">${escapeHtml(s.indikator || s.aspek)}</h4>
+              </div>
+              <div class="text-right">
+                <span class="text-lg font-black text-slate-800">${nilai} <span class="text-xs font-normal text-slate-400">/ 100</span></span>
+                ${bobot > 0 ? `<div class="text-[11px] text-slate-500">Bobot: <strong>${bobot}%</strong> (Skor: ${weighted})</div>` : ''}
+              </div>
+            </div>
+
+            <!-- Visual Progress Bar Chart -->
+            <div class="space-y-1">
+              <div class="flex justify-between items-center text-xs text-slate-500 font-medium">
+                <span>Capaian Indikator</span>
+                <span>${nilai}%</span>
+              </div>
+              <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden p-0.5 border border-slate-200/50">
+                <div class="h-full bg-gradient-to-r ${barClass} rounded-full transition-all duration-700" style="width: ${Math.min(100, Math.max(0, nilai))}%"></div>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between pt-1 border-t border-slate-100 text-xs text-slate-500">
+              <span>Status Indikator</span>
+              ${statusBadge}
+            </div>
+          </div>`;
+      }).join("");
+
+      // Render Historical Evaluation Trend if multiple logs exist
+      let historyHtml = "";
+      if (myLogs.length > 1) {
+        historyHtml = `
+          <div class="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-2xs space-y-4">
+            <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
+              <span>📈</span> Riwayat Perkembangan KPI Per Periode
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              ${myLogs.slice(0, 6).map(lg => {
+                const sc = parseFloat(lg.total_skor || lg.skor_akhir || 0);
+                return `
+                  <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200/60 flex items-center justify-between">
+                    <div>
+                      <div class="text-xs font-bold text-slate-700">${escapeHtml(lg.periode || "Periode")}</div>
+                      <div class="text-[11px] text-slate-400">${fmtDateShort(lg.tanggal)}</div>
+                    </div>
+                    <span class="text-base font-black text-maroon-700">${sc}</span>
+                  </div>`;
+              }).join("")}
+            </div>
+          </div>`;
+      }
+
+      // Render Feedback callout
+      let feedbackHtml = "";
+      if (latestLog && (latestLog.catatan_baik || latestLog.catatan_perbaikan || latestLog.catatan_penilai)) {
+        feedbackHtml = `
+          <div class="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-2xs space-y-4">
+            <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
+              <span>📝</span> Catatan & Ulasan Evaluasi Dari Penilai
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              ${latestLog.catatan_baik ? `
+                <div class="p-4 bg-emerald-50/60 rounded-xl border border-emerald-200/70 text-xs">
+                  <span class="font-bold text-emerald-800 block mb-1">✓ Kelebihan & Hal yang Sudah Baik:</span>
+                  <p class="text-slate-700 leading-relaxed">${escapeHtml(latestLog.catatan_baik)}</p>
+                </div>` : ''}
+              ${latestLog.catatan_perbaikan ? `
+                <div class="p-4 bg-rose-50/60 rounded-xl border border-rose-200/70 text-xs">
+                  <span class="font-bold text-rose-800 block mb-1">⚠ Area Peningkatan:</span>
+                  <p class="text-slate-700 leading-relaxed">${escapeHtml(latestLog.catatan_perbaikan)}</p>
+                </div>` : ''}
+            </div>
+          </div>`;
+      }
+
+      wrap.innerHTML = `
+        <div class="space-y-6">
+          <!-- Main Overall Score Card -->
+          <div class="bg-gradient-to-r from-slate-900 via-slate-800 to-maroon-900 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
+            <div class="relative z-10 flex flex-wrap items-center justify-between gap-6">
+              <div class="space-y-1">
+                <span class="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-white/10 text-amber-300 backdrop-blur-xs">
+                  ${escapeHtml(periodeName)}
+                </span>
+                <h2 class="text-2xl font-black text-white">${escapeHtml(session.nama || "Karyawan")}</h2>
+                <p class="text-xs text-slate-300">Penilai: <strong class="text-white">${escapeHtml(penilaiName)}</strong></p>
+              </div>
+
+              <div class="flex items-center gap-4 bg-white/10 p-4 rounded-xl border border-white/10 backdrop-blur-xs">
+                <div class="text-center">
+                  <div class="text-[11px] uppercase tracking-wider text-slate-300 font-bold">Skor KPI Akhir</div>
+                  <div class="text-3xl font-black text-amber-400 mt-0.5">${totalScore} <span class="text-xs font-normal text-slate-300">/ 100</span></div>
+                </div>
+                <div class="h-10 w-px bg-white/20"></div>
+                <div>
+                  <div class="text-[11px] uppercase tracking-wider text-slate-300 font-bold mb-1">Predikat</div>
+                  <span class="px-3 py-1 rounded-lg text-xs font-bold border ${gradeBadgeClass}">
+                    ${gradeLabel}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Ringkasan Nilai Per Aspek -->
+          <div>
+            <h3 class="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <span>🎯</span> Ringkasan Nilai Per Aspek Kinerja
+            </h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+              ${aspekCardsHtml}
+            </div>
+          </div>
+
+          <!-- Grafik Penilaian Pada Setiap Indikator -->
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                <span>📊</span> Grafik Penilaian Indikator KPI (${detailSoal.length} Indikator)
+              </h3>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              ${indicatorChartsHtml}
+            </div>
+          </div>
+
+          ${historyHtml}
+          ${feedbackHtml}
+        </div>`;
+    } catch (e) {
+      console.error(e);
+      wrap.innerHTML = emptyState("Gagal memuat grafik penilaian KPI: " + e.message);
+    }
+  }
+
+  if (isRegularEmployee) {
+    const titleEl = container.querySelector("#pk-title");
+    const subtitleEl = container.querySelector("#pk-subtitle");
+    const tabHeader = container.querySelector("#pk-tab-header");
+
+    if (titleEl) titleEl.textContent = "Grafik & Analisis Penilaian KPI";
+    if (subtitleEl) subtitleEl.textContent = "Grafik pencapaian indikator penilaian kinerja berkala Anda.";
+    if (tabHeader) tabHeader.classList.add("hidden");
+
+    Object.keys(panels).forEach(k => {
+      if (panels[k]) panels[k].classList.add("hidden");
+    });
+
+    await loadEmployeeGrafik();
+    return { unmount() {} };
+  }
 
   async function loadKontrak() {
     if (isAtasanView && bawahanNames === null) {
@@ -1483,9 +1785,31 @@ export async function mount(container, { session }) {
     const wrap = panels.kpi360;
     wrap.innerHTML = `<div class="space-y-2">${skeletonRows(4)}</div>`;
     const tasks = await fsGetAll(COL.TUGAS_KPI_360);
-    const isHrd = session.role === "HRD";
+    const isHrd = session.role === "HRD" || session.role === "SUPERADMIN" || session.role === "DIREKTUR";
 
-    let htmlContent = isHrd ? `
+    const userNamaLower = (session.nama || "").toLowerCase().trim();
+    const myTasks = tasks.filter(t => (t.nama_penilai || "").toLowerCase().trim() === userNamaLower);
+    const pendingMyTasks = myTasks.filter(t => (t.status || "").toUpperCase() !== "DONE");
+
+    const displayTasks = isHrd ? tasks : myTasks;
+
+    let htmlContent = "";
+
+    if (pendingMyTasks.length > 0) {
+      htmlContent += `
+        <div class="mb-4 p-4 bg-maroon-50 border border-maroon-200 rounded-2xl flex items-center justify-between gap-3 shadow-xs">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-maroon-700 text-white rounded-xl flex items-center justify-center text-lg font-bold shrink-0">📋</div>
+            <div>
+              <h4 class="text-xs font-bold text-maroon-950 uppercase tracking-wide">Tugas Penilaian KPI Anda</h4>
+              <p class="text-xs text-maroon-800 mt-0.5">Anda memiliki <strong class="text-maroon-900 font-extrabold underline">${pendingMyTasks.length} tugas penilaian</strong> yang perlu diisi. Silakan klik tombol <strong>"Nilai Sekarang"</strong> pada daftar di bawah ini.</p>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    if (isHrd) {
+      htmlContent += `
         <div class="mb-4 flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
           <div class="flex items-center gap-2 flex-wrap">
             <span class="text-xs font-bold text-slate-600">Dokumen Fisik:</span>
@@ -1504,18 +1828,23 @@ export async function mount(container, { session }) {
               Distribusi Penilaian 360
             </button>
           </div>
-        </div>` : ``;
+        </div>`;
+    }
 
-    if (!tasks.length) { wrap.innerHTML = htmlContent + emptyState("Belum ada penugasan"); }
-    else {
+    if (!displayTasks.length) { 
+      wrap.innerHTML = htmlContent + emptyState(isHrd ? "Belum ada penugasan KPI" : "Anda tidak memiliki tugas penilaian KPI aktif saat ini"); 
+    } else {
       wrap.innerHTML = htmlContent + `
         <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
           <div class="overflow-x-auto">
             <table class="w-full text-sm">
               <thead class="bg-slate-50 text-slate-500 text-xs uppercase"><tr>
-                <th class="px-4 py-3 text-left">Periode</th><th class="px-4 py-3 text-left">Penilai</th><th class="px-4 py-3 text-left">Dinilai</th><th class="px-4 py-3 text-left">Batas Waktu</th><th class="px-4 py-3 text-left">Status</th><th class="px-4 py-3 text-left">Skor</th><th class="px-4 py-3 text-right">Aksi & Form Fisik</th>
+                <th class="px-4 py-3 text-left">Periode</th><th class="px-4 py-3 text-left">Penilai</th><th class="px-4 py-3 text-left">Karyawan Dinilai</th><th class="px-4 py-3 text-left">Batas Waktu</th><th class="px-4 py-3 text-left">Status</th><th class="px-4 py-3 text-left">Skor</th><th class="px-4 py-3 text-right">Aksi Penilaian</th>
               </tr></thead>
-              <tbody>${tasks.map(t => `
+              <tbody>${displayTasks.map(t => {
+                const isAssignedToMe = (t.nama_penilai || "").toLowerCase().trim() === userNamaLower;
+                const canFill = isAssignedToMe || isHrd;
+                return `
                 <tr class="border-t border-slate-50 hover:bg-slate-50 transition">
                   <td class="px-4 py-3 font-semibold">${escapeHtml(t.periode || "-")}</td>
                   <td class="px-4 py-3 font-medium">${escapeHtml(t.nama_penilai || "-")}</td>
@@ -1525,26 +1854,33 @@ export async function mount(container, { session }) {
                     ${badge(t.status || "PENDING", t.status === "DONE" ? "green" : "amber")}
                     ${t.diinput_oleh_hrd ? '<span class="block text-[10px] text-emerald-700 font-semibold mt-0.5">📄 Form Fisik (HRD)</span>' : ''}
                   </td>
-                  <td class="px-4 py-3 font-semibold">${t.skor_akhir || "-"}</td>
+                  <td class="px-4 py-3 font-semibold">${t.skor_akhir ? t.skor_akhir : "-"}</td>
                   <td class="px-4 py-3 text-right">
-                    <div class="flex items-center justify-end gap-1.5">
-                      ${isHrd ? `
-                        <button data-input-manual="${t.id}" class="px-3 py-1.5 text-xs font-semibold ${t.status === 'DONE' ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200' : 'bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs'} rounded-lg inline-flex items-center gap-1 transition">
-                          ${t.status === 'DONE' ? '✏️ Edit Input' : '📝 Input Manual HRD'}
-                        </button>
-                        <button data-del-tugas="${t.id}" class="px-2.5 py-1.5 text-xs font-semibold bg-red-50 hover:bg-red-100 text-red-600 rounded-lg inline-flex items-center gap-1 border border-red-200 transition" title="Cabut / Hapus Penugasan ini">
-                          🗑️ Cabut
+                    <div class="flex items-center justify-end gap-1.5 flex-wrap">
+                      ${canFill ? `
+                        <button data-isi-kpi="${t.id}" class="px-3 py-1.5 text-xs font-bold ${t.status === 'DONE' ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200' : 'bg-maroon-700 hover:bg-maroon-800 text-white shadow-xs'} rounded-lg inline-flex items-center gap-1 transition">
+                          ${t.status === 'DONE' ? '👁️ Lihat / Edit Nilai' : '📝 Nilai Sekarang'}
                         </button>
                       ` : ''}
-                      <button data-print-fisik="${t.id}" class="px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg inline-flex items-center gap-1 border border-slate-200 transition">🖨️ Form Fisik</button>
+                      ${isHrd ? `
+                        <button data-input-manual="${t.id}" class="px-2.5 py-1.5 text-xs font-semibold ${t.status === 'DONE' ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200' : 'bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs'} rounded-lg inline-flex items-center gap-1 transition">
+                          ${t.status === 'DONE' ? '✏️ Input HRD' : '📝 Input Fisik'}
+                        </button>
+                        <button data-del-tugas="${t.id}" class="px-2 py-1.5 text-xs font-semibold bg-red-50 hover:bg-red-100 text-red-600 rounded-lg inline-flex items-center gap-1 border border-red-200 transition" title="Cabut / Hapus Penugasan ini">
+                          🗑️
+                        </button>
+                      ` : ''}
+                      <button data-print-fisik="${t.id}" class="px-2.5 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg inline-flex items-center gap-1 border border-slate-200 transition" title="Cetak Form Fisik">🖨️</button>
                     </div>
                   </td>
-                </tr>`).join("")}
+                </tr>`;
+              }).join("")}
               </tbody>
             </table>
           </div>
         </div>`;
     }
+
     if (isHrd && wrap.querySelector("#btn-distribusi-kpi")) wrap.querySelector("#btn-distribusi-kpi").onclick = openDistribusiModal;
     if (isHrd && wrap.querySelector("#btn-print-batch-kpi")) wrap.querySelector("#btn-print-batch-kpi").onclick = () => printBatchFormKpiFisik(tasks);
     if (isHrd && wrap.querySelector("#btn-revoke-batch-kpi")) {
@@ -1559,6 +1895,13 @@ export async function mount(container, { session }) {
         }
       };
     }
+
+    wrap.querySelectorAll("[data-isi-kpi]").forEach(btn => {
+      btn.onclick = () => {
+        const task = tasks.find(x => x.id === btn.dataset.isiKpi);
+        if (task) openIsiKpiModal(task);
+      };
+    });
 
     wrap.querySelectorAll("[data-del-tugas]").forEach(btn => {
       btn.onclick = async () => {
@@ -1582,6 +1925,170 @@ export async function mount(container, { session }) {
 
     wrap.querySelectorAll("[data-print-fisik]").forEach(btn => {
       btn.onclick = () => printFormKpiFisik(tasks.find(x => x.id === btn.dataset.printFisik));
+    });
+  }
+
+  function openIsiKpiModal(task) {
+    const isDone = task.status === "DONE";
+    const soalHtml = (task.soal_json || []).map((s, i) => `
+       <div class="border-b border-slate-100 pb-4 mb-4 text-left">
+          <div class="flex items-center gap-2 mb-1.5">
+            <span class="bg-maroon-50 text-maroon-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">${escapeHtml(s.aspek || "ASPEK")}</span>
+            <span class="text-[10px] text-slate-400 font-medium">Bobot: ${s.bobot || 0}%</span>
+          </div>
+          <p class="text-xs font-semibold text-slate-800 mb-2">${escapeHtml(s.indikator)}</p>
+          <div class="relative">
+            <input type="number" data-idx="${i}" data-bobot="${s.bobot}" class="kpi-nilai-input w-full pl-3 pr-10 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-500 focus:ring-2 focus:ring-maroon-100 font-bold transition" placeholder="Berikan Skor (0-100)" value="${s.nilai_diberikan !== undefined && s.nilai_diberikan !== null ? s.nilai_diberikan : ''}" required min="0" max="100">
+            <span class="absolute right-3 top-2 text-slate-400 font-medium text-xs">/ 100</span>
+          </div>
+       </div>
+    `).join("");
+
+    let initialTotal = 0;
+    (task.soal_json || []).forEach(s => {
+       const v = parseFloat(s.nilai_diberikan) || 0;
+       const b = parseFloat(s.bobot) || 0;
+       initialTotal += v * (b / 100);
+    });
+
+    openModal({
+      title: `${isDone ? '✏️ Edit Penilaian' : '📝 Pengisian Penilaian'} KPI: ${escapeHtml(task.nama_dinilai)}`,
+      size: "lg",
+      bodyHtml: `
+        <div class="text-left space-y-4">
+          <div class="p-3 bg-maroon-50 border border-maroon-200 rounded-xl flex items-start gap-3">
+            <span class="text-xl">📋</span>
+            <div class="text-xs text-maroon-900 leading-relaxed">
+              <strong class="font-bold block text-maroon-950 text-sm mb-0.5">Penilaian Kinerja Karyawan (KPI 360)</strong>
+              Silakan berikan skor 0 - 100 untuk tiap indikator penilaian berikut. Nilai akhir akan dihitung secara otomatis berdasarkan bobot.
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+            <div>
+              <span class="text-slate-400 block text-[10px] uppercase font-bold">Karyawan Dinilai</span>
+              <strong class="text-slate-800 font-bold text-sm">${escapeHtml(task.nama_dinilai)}</strong>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-[10px] uppercase font-bold">Penilai</span>
+              <strong class="text-slate-700 font-semibold">${escapeHtml(task.nama_penilai)}</strong>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-[10px] uppercase font-bold">Periode</span>
+              <span class="text-slate-700 font-medium">${escapeHtml(task.periode || '-')}</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-[10px] uppercase font-bold">Batas Waktu</span>
+              <span class="text-slate-700 font-medium">${task.deadline ? fmtDateShort(task.deadline) : '-'}</span>
+            </div>
+          </div>
+
+          <form id="form-isi-kpi-360">
+            <div class="mb-4">
+              <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 pb-1 border-b border-slate-200">1. Indikator & Skor Penilaian</h4>
+              ${soalHtml}
+            </div>
+
+            <div class="mt-5 space-y-3">
+              <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider pb-1 border-b border-slate-200">2. Ulasan & Catatan Penilai</h4>
+              <div>
+                <label class="block text-xs font-bold text-emerald-800 mb-1 uppercase tracking-wide">✓ Hal-hal yang Sudah Baik (Kelebihan / Prestasi Kerja)</label>
+                <textarea id="kpi-catatan-baik" rows="2" class="w-full px-3 py-2 text-xs border border-emerald-200 bg-emerald-50/20 rounded-lg outline-none focus:border-emerald-500 font-medium" placeholder="Tuliskan poin-poin kelebihan karyawan...">${escapeHtml(task.catatan_baik || '')}</textarea>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-red-800 mb-1 uppercase tracking-wide">⚠ Area Peningkatan (Hal-hal yang Perlu Diperbaiki)</label>
+                <textarea id="kpi-catatan-perbaikan" rows="2" class="w-full px-3 py-2 text-xs border border-red-200 bg-red-50/20 rounded-lg outline-none focus:border-red-500 font-medium" placeholder="Tuliskan aspek yang perlu ditingkatkan...">${escapeHtml(task.catatan_perbaikan || '')}</textarea>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1 uppercase tracking-wide">💬 Catatan & Rekomendasi Tambahan</label>
+                <textarea id="kpi-catatan-penilai" rows="2" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-400 font-medium" placeholder="Tuliskan saran pengembangan atau rekomendasi untuk karyawan ini...">${escapeHtml(task.catatan_penilai || '')}</textarea>
+              </div>
+            </div>
+          </form>
+        </div>
+      `,
+      footerHtml: `
+        <div class="flex items-center justify-between w-full">
+          <div class="bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 flex items-center gap-2">
+            <span class="text-xs font-bold text-slate-600">Skor Akhir:</span>
+            <span id="kpi-live-score" class="text-base font-black text-maroon-700">${initialTotal.toFixed(2)}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="btn-cancel-kpi" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition">Batal</button>
+            <button id="btn-save-kpi-360" class="px-5 py-2 bg-maroon-700 text-white rounded-lg text-xs font-bold hover:bg-maroon-800 transition shadow-md flex items-center gap-1.5">💾 Simpan & Kirim Penilaian</button>
+          </div>
+        </div>
+      `,
+      onMount: (m) => {
+        const liveScore = m.querySelector("#kpi-live-score");
+        m.querySelector("#form-isi-kpi-360").addEventListener("input", () => {
+           let calcTotal = 0;
+           m.querySelectorAll(".kpi-nilai-input").forEach(input => {
+               const bbt = parseFloat(input.dataset.bobot) || 0;
+               const val = parseFloat(input.value) || 0;
+               calcTotal += val * (bbt / 100);
+           });
+           liveScore.textContent = calcTotal.toFixed(2);
+        });
+
+        m.querySelector("#btn-cancel-kpi").onclick = closeModal;
+        m.querySelector("#btn-save-kpi-360").onclick = async () => {
+           const form = m.querySelector("#form-isi-kpi-360");
+           if (!form.reportValidity()) return toast("Mohon lengkapi semua nilai indikator!", "warning");
+
+           let totalSkorBobot = 0;
+           const answeredSoal = [...(task.soal_json || [])];
+           const catatanBaik = m.querySelector("#kpi-catatan-baik") ? m.querySelector("#kpi-catatan-baik").value.trim() : "";
+           const catatanPerbaikan = m.querySelector("#kpi-catatan-perbaikan") ? m.querySelector("#kpi-catatan-perbaikan").value.trim() : "";
+           const catatanPenilai = m.querySelector("#kpi-catatan-penilai") ? m.querySelector("#kpi-catatan-penilai").value.trim() : "";
+
+           m.querySelectorAll(".kpi-nilai-input").forEach(input => {
+              const idx = parseInt(input.dataset.idx, 10);
+              const nilai = parseFloat(input.value) || 0;
+              const bobot = parseFloat(answeredSoal[idx]?.bobot) || 0;
+              if (answeredSoal[idx]) answeredSoal[idx].nilai_diberikan = nilai;
+              totalSkorBobot += (nilai * (bobot / 100));
+           });
+
+           let finalScore = Math.round(totalSkorBobot * 100) / 100;
+           let keputusan = finalScore >= 80 ? "Sangat Baik" : finalScore >= 60 ? "Baik" : "Kurang";
+
+           const btn = m.querySelector("#btn-save-kpi-360");
+           btn.disabled = true; btn.textContent = "Menyimpan Penilaian...";
+
+           try {
+              await fsUpdate(COL.TUGAS_KPI_360, task.id, {
+                status: "DONE",
+                skor_akhir: finalScore,
+                soal_json: answeredSoal,
+                catatan_baik: catatanBaik,
+                catatan_perbaikan: catatanPerbaikan,
+                catatan_penilai: catatanPenilai,
+                tanggal_diselesaikan: new Date().toISOString()
+              });
+
+              await fsAdd(COL.LOG_PENILAIAN_KPI, {
+                tanggal: new Date().toISOString(),
+                nama_dinilai: task.nama_dinilai,
+                penilai: task.nama_penilai,
+                total_skor: finalScore,
+                keputusan: keputusan,
+                periode: task.periode,
+                detail_json: answeredSoal,
+                catatan_baik: catatanBaik,
+                catatan_perbaikan: catatanPerbaikan,
+                catatan_penilai: catatanPenilai
+              }, genId("KPI-LOG"));
+
+              toast("Penilaian KPI berhasil disimpan!", "success");
+              closeModal();
+              await loadKpi360();
+           } catch (err) {
+              toast("Gagal menyimpan: " + err.message, "error");
+              btn.disabled = false; btn.textContent = "💾 Simpan & Kirim Penilaian";
+           }
+        };
+      }
     });
   }
 
@@ -2797,10 +3304,42 @@ export async function mount(container, { session }) {
             btn.disabled = true; btn.textContent = "Menyebarkan Tugas...";
 
             try {
-               const qU = query(collection(db, COL.USERS), where("nama", "==", penilai), limit(1));
-               const snapU = await getDocs(qU);
-               let penilaiEmail = "", penilaiUsername = "";
-               if (!snapU.empty) { penilaiEmail = snapU.docs[0].data().email; penilaiUsername = snapU.docs[0].id; }
+               let penilaiEmail = "";
+               let penilaiUsername = "";
+               let penilaiPassword = "";
+
+               let qU = query(collection(db, COL.USERS), where("nama", "==", penilai), limit(1));
+               let snapU = await getDocs(qU);
+
+               if (snapU.empty) {
+                  qU = query(collection(db, COL.USERS), where("username", "==", String(penilai).toUpperCase()), limit(1));
+                  snapU = await getDocs(qU);
+               }
+
+               if (snapU.empty) {
+                  const qK = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", penilai), limit(1));
+                  const snapK = await getDocs(qK);
+                  if (!snapK.empty) {
+                     const kData = snapK.docs[0].data();
+                     penilaiEmail = kData.email || "";
+                     if (kData.nik_karyawan) {
+                        const snapU2 = await getDoc(doc(db, COL.USERS, String(kData.nik_karyawan).toUpperCase()));
+                        if (snapU2.exists()) {
+                           snapU = { empty: false, docs: [snapU2] };
+                        }
+                     }
+                  }
+               }
+
+               if (!snapU.empty) {
+                  const uDoc = snapU.docs[0].data();
+                  penilaiUsername = snapU.docs[0].id || uDoc.username || penilai;
+                  penilaiEmail = uDoc.email || penilaiEmail || "";
+                  penilaiPassword = uDoc.password || uDoc.password_plain || uDoc.password_display || "(Gunakan password akun terdaftar Anda)";
+               } else {
+                  penilaiUsername = String(penilai).toUpperCase();
+                  penilaiPassword = "(Gunakan password akun terdaftar Anda)";
+               }
 
                const createdTasks = [];
                for (const dinilai of dinilaiList) {
@@ -2884,12 +3423,60 @@ export async function mount(container, { session }) {
                   createdTasks.push({ id: kpiId, ...payload });
                }
 
-               if (penilaiEmail && penilaiUsername && typeof sendEmailNotif === 'function') {
+               if (penilaiEmail && typeof sendEmailNotif === 'function') {
                   const token = await createLoginToken(penilaiUsername);
-                  const magicLink = `https://andela-hris.vercel.app/#dashboard?token=${token}`;
-                  const htmlEmail = `<div style="font-family: Arial; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;"><h2 style="color: #7a1f2b;">Tugas Penilaian KPI Baru</h2><p>Halo <strong>${penilai}</strong>,</p><p>Anda ditugaskan menilai <strong>${dinilaiList.length} karyawan</strong> periode <strong>${periode}</strong>.</p><a href="${magicLink}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Mulai Menilai</a></div>`;
-                  sendEmailNotif(penilaiEmail, "Tugas Penilaian KPI 360", htmlEmail).catch(e => console.warn(e));
-                  await notifyUser(penilaiUsername, "Tugas Penilaian KPI 360", `Anda ditugaskan menilai ${dinilaiList.length} karyawan periode ${periode}.`);
+                  const baseUrl = window.location.origin + window.location.pathname;
+                  const magicLink = `${baseUrl}#penilaian-kontrak?tab=kpi360&token=${token}`;
+
+                  const dinilaiItemsHtml = dinilaiList.map(d => `<li style="margin-bottom: 6px;"><strong>${escapeHtml(d)}</strong></li>`).join("");
+
+                  const htmlEmail = `
+                    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 620px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background: #ffffff;">
+                      <div style="background: #7a1f2b; color: #ffffff; padding: 22px 24px;">
+                        <h2 style="margin: 0; font-size: 18px; font-weight: bold; letter-spacing: 0.3px;">Tugas Penilaian KPI 360 Baru</h2>
+                        <p style="margin: 4px 0 0 0; font-size: 12px; opacity: 0.9;">CV Andela Jaya - Portal HRIS</p>
+                      </div>
+                      
+                      <div style="padding: 24px; color: #334155; font-size: 14px; line-height: 1.6;">
+                        <p style="margin-top: 0;">Halo <strong>${escapeHtml(penilai)}</strong>,</p>
+                        <p>Anda telah ditugaskan untuk melakukan penilaian KPI terhadap <strong>${dinilaiList.length} karyawan</strong> pada periode <strong>${escapeHtml(periode)}</strong>.</p>
+                        
+                        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 16px; margin: 20px 0;">
+                          <div style="font-weight: bold; color: #0f172a; margin-bottom: 8px; font-size: 13px;">📋 Daftar Karyawan yang Harus Dinilai:</div>
+                          <ol style="margin: 0; padding-left: 20px; font-size: 13px; color: #334155;">
+                            ${dinilaiItemsHtml}
+                          </ol>
+                          <div style="font-size: 11px; color: #64748b; margin-top: 10px; border-top: 1px dashed #cbd5e1; padding-top: 8px;">
+                            ⏰ Batas Waktu Pengisian: <strong style="color: #b91c1c;">${fmtDateShort(deadlineISO)}</strong>
+                          </div>
+                        </div>
+
+                        <div style="text-align: center; margin: 28px 0;">
+                          <a href="${magicLink}" style="display: inline-block; background: #7a1f2b; color: #ffffff; font-weight: bold; font-size: 14px; padding: 13px 30px; border-radius: 8px; text-decoration: none; box-shadow: 0 4px 12px rgba(122,31,43,0.35);">
+                            🚀 Login & Mulai Menilai Karyawan
+                          </a>
+                        </div>
+
+                        <div style="background: #f1f5f9; border-left: 4px solid #7a1f2b; padding: 14px 18px; border-radius: 0 8px 8px 0; margin-top: 22px; font-size: 12px;">
+                          <div style="font-weight: bold; color: #0f172a; margin-bottom: 6px;">🔑 Informasi Kredensial Akun Anda:</div>
+                          <div style="color: #334155; line-height: 1.8;">
+                            • <strong>Username:</strong> <code style="background:#e2e8f0; padding:3px 8px; border-radius:4px; font-family:monospace; font-weight:bold; color:#0f172a;">${escapeHtml(penilaiUsername)}</code><br/>
+                            • <strong>Password:</strong> <code style="background:#e2e8f0; padding:3px 8px; border-radius:4px; font-family:monospace; font-weight:bold; color:#0f172a;">${escapeHtml(penilaiPassword)}</code>
+                          </div>
+                          <p style="margin: 8px 0 0 0; color: #64748b; font-size: 11px; line-height: 1.4;">
+                            *Jika belum selesai menilai seluruh karyawan, Anda dapat masuk kembali kapan saja melalui link tombol di atas atau login secara manual dengan username dan password tersebut.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 24px; text-align: center; font-size: 11px; color: #94a3b8;">
+                        Email otomatis dari Sistem HRIS CV Andela Jaya.
+                      </div>
+                    </div>
+                  `;
+
+                  sendEmailNotif(penilaiEmail, `[HRIS] Tugas Penilaian KPI 360 - Periode ${periode}`, htmlEmail).catch(e => console.warn(e));
+                  await notifyUser(penilaiUsername, "Tugas Penilaian KPI 360", `Anda ditugaskan menilai ${dinilaiList.length} karyawan periode ${periode}.`, "#penilaian-kontrak?tab=kpi360");
                }
 
                toast("Tugas Penilaian berhasil didistribusikan.", "success");
@@ -3067,15 +3654,14 @@ export async function mount(container, { session }) {
     });
   }
 
-  await loadKontrak(); loaded.kontrak = true;
-
   container.querySelectorAll(".pk-tab").forEach(btn => {
     btn.addEventListener("click", async () => {
       const tab = btn.dataset.ntab;
-      Object.keys(panels).forEach(k => panels[k].classList.toggle("hidden", k !== tab));
+      Object.keys(panels).forEach(k => panels[k]?.classList.toggle("hidden", k !== tab));
       container.querySelectorAll(".pk-tab").forEach(b => {
-        b.classList.toggle("border-maroon-700", b === btn); b.classList.toggle("text-maroon-700", b === btn);
-        b.classList.toggle("border-transparent", b !== btn); b.classList.toggle("text-slate-500", b !== btn);
+        const isSelected = b === btn;
+        b.classList.toggle("border-maroon-700", isSelected); b.classList.toggle("text-maroon-700", isSelected);
+        b.classList.toggle("border-transparent", !isSelected); b.classList.toggle("text-slate-500", !isSelected);
       });
       if (!loaded[tab]) {
         loaded[tab] = true;
@@ -3086,6 +3672,17 @@ export async function mount(container, { session }) {
       }
     });
   });
+
+  const tabParam = params ? (params.get("tab") || params.get("subtab")) : null;
+  const initialTab = (tabParam === "kpi" || tabParam === "kpi360") ? "kpi360" : (panels[tabParam] ? tabParam : "kontrak");
+
+  const targetTabBtn = container.querySelector(`.pk-tab[data-ntab="${initialTab}"]`);
+  if (targetTabBtn && initialTab !== "kontrak") {
+    targetTabBtn.click();
+  } else {
+    await loadKontrak();
+    loaded.kontrak = true;
+  }
 
   return { unmount() {} };
 }

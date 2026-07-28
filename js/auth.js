@@ -38,17 +38,16 @@ export const MENU_CONFIG = [
 
   // 📁 KATEGORI: KEHADIRAN & CUTI
   { id: "absensi", label: "Manajemen Absensi", icon: "clock", kategori: "Kehadiran & Cuti", roles: ["HRD", "SUPERADMIN"] },
-  { id: "manajemen-cuti", label: "Manajemen Cuti", icon: "calendar", kategori: "Kehadiran & Cuti", roles: ["HRD", "SUPERADMIN"] },
-  { id: "cuti", label: "Jatah Cuti Karyawan", icon: "layers", kategori: "Kehadiran & Cuti", roles: ["HRD", "SUPERADMIN"] },
+  { id: "cuti", label: "Manajemen Cuti", icon: "calendar", kategori: "Kehadiran & Cuti", roles: ["HRD", "SUPERADMIN"] },
   { id: "lembur-kasbon", label: "Lembur & Kasbon", icon: "wallet", kategori: "Kehadiran & Cuti", roles: ["HRD", "FINANCE", "SUPERADMIN"] },
   { id: "kalender-hr", label: "Kalender HR", icon: "calendar", kategori: "Kehadiran & Cuti", roles: ["HRD", "SUPERADMIN"] },
 
   // 📁 KATEGORI: KINERJA & KEDISIPLINAN
   { id: "rekrutmen", label: "Rekrutmen (ATS)", icon: "user-plus", kategori: "Kinerja & Karyawan", roles: ["HRD", "SUPERADMIN"] },
   { id: "siklus-karyawan", label: "Siklus Karyawan", icon: "refresh", kategori: "Kinerja & Karyawan", roles: ["HRD", "SUPERADMIN"] },
-  { id: "penilaian-kontrak", label: "Penilaian & Kontrak", icon: "doc-plus", kategori: "Kinerja & Karyawan", roles: ["HRD", "SUPERADMIN"] },
-  { id: "training", label: "Pelatihan & TNA", icon: "book", kategori: "Kinerja & Karyawan", roles: ["ALL"] },
-  { id: "performance-review", label: "Review Kinerja", icon: "gauge", kategori: "Kinerja & Karyawan", roles: ["ALL"] },
+  { id: "penilaian-kontrak", label: "Penilaian & Kontrak", icon: "doc-plus", kategori: "Kinerja & Karyawan", roles: ["ALL"] },
+  { id: "training", label: "Pelatihan & TNA", icon: "book", kategori: "Kinerja & Karyawan", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"] },
+  { id: "performance-review", label: "Review Kinerja", icon: "gauge", kategori: "Kinerja & Karyawan", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"] },
   { id: "pemanggilan", label: "Kedisiplinan & SP", icon: "alert", kategori: "Kinerja & Karyawan", roles: ["HRD", "SUPERADMIN"] }, 
   { id: "dokumen", label: "Draft & Builder Dokumen", icon: "doc-plus", kategori: "Kinerja & Karyawan", roles: ["HRD", "SUPERADMIN"] },
 
@@ -240,11 +239,16 @@ export async function computeVisibleMenus(session) {
     return list;
   }
 
-  // PERBAIKAN: gerbang lama (group === "hrd" -> hanya role persis "HRD") menyebabkan
-  // SUPERADMIN & DIREKTUR ter-blokir dari hampir semua menu HRD walau sudah ada di
-  // daftar `roles` masing-masing item. Sekarang setiap item dicek langsung terhadap
-  // `roles`-nya sendiri (satu sumber kebenaran), `group` murni untuk pengelompokan sidebar.
   const isAtasanRole = await isAtasan(session.nama);
+  const isManagementOrHrd = ["HRD", "SUPERADMIN", "DIREKTUR", "MANAGER", "SPV", "KOORDINATOR", "GM", "FINANCE", "GA", "BRANCH MANAGER"].includes(role) || isAtasanRole;
+
+  // Sesuai instruksi: Untuk role karyawan (non-HRD & non-Atasan), menu yang tertampil HANYA Dashboard dan Penilaian
+  if (!isManagementOrHrd || role === "KARYAWAN" || role === "STAFF") {
+    return [
+      MENU_CONFIG.find(m => m.id === "dashboard") || { id: "dashboard", label: "Home & Dashboard", icon: "home", kategori: "Menu Utama" },
+      { id: "penilaian-kontrak", route: "penilaian-kontrak", label: "Penilaian", icon: "doc-plus", kategori: "Menu Utama" }
+    ];
+  }
 
   return MENU_CONFIG.filter(m => {
     if (m.group === "all") return true;
@@ -263,8 +267,11 @@ export async function canAccessRoute(routeId, session) {
   if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(targetId)) {
     targetId = "pemanggilan";
   }
-  // Semua role berhak mengakses route absensi (karyawan non-HRD/Admin otomatis melihat data absensi pribadinya)
-  if (targetId === "absensi" || targetId === "absensi-saya") return true;
+  if (targetId === "penilaian") {
+    targetId = "penilaian-kontrak";
+  }
+  // Semua role berhak mengakses route absensi & penilaian
+  if (targetId === "absensi" || targetId === "absensi-saya" || targetId === "penilaian" || targetId === "penilaian-kontrak") return true;
 
   const menus = await computeVisibleMenus(session);
   // route yang tidak ada di MENU_CONFIG (mis. sub-halaman) dianggap boleh selama login

@@ -33,16 +33,6 @@ export async function mount(container, { session }) {
       const snap = await getDocs(collection(db, COLLECTION_NAME));
       itemList = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-      // If empty, seed default items
-      if (itemList.length === 0) {
-        for (const item of DEFAULT_ITEMS) {
-          await addDoc(collection(db, COLLECTION_NAME), item);
-        }
-        // reload
-        const reloadSnap = await getDocs(collection(db, COLLECTION_NAME));
-        itemList = reloadSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      }
-
       updateCategoryDropdown();
       renderList();
     } catch (e) {

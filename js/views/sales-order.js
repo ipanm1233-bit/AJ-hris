@@ -43,14 +43,6 @@ export async function mount(container, { session }) {
       const orderSnap = await getDocs(collection(db, COL_ORDERS));
       ordersList = orderSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-      if (ordersList.length === 0) {
-        for (const order of DEFAULT_ORDERS) {
-          await addDoc(collection(db, COL_ORDERS), order);
-        }
-        const reloadSnap = await getDocs(collection(db, COL_ORDERS));
-        ordersList = reloadSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      }
-
       calculateStats();
       renderList();
     } catch (e) {

@@ -518,6 +518,8 @@ export async function openNotificationCenter(session) {
 
       items.push({
         id: n.id,
+        personalId: n.id,
+        isPersonal: true,
         cat: isMemo ? 'announcement' : 'status',
         badge: isMemo ? 'Memo Perusahaan' : 'Update Status',
         tone: isMemo ? 'purple' : 'indigo',
@@ -627,7 +629,7 @@ export async function openNotificationCenter(session) {
     let htmlContent = `
       <div class="space-y-3.5 text-left">
         <!-- Header & Counter -->
-        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100 gap-2">
           <div class="flex items-center gap-2">
             <span class="p-2 bg-maroon-50 text-maroon-700 rounded-xl">
               ${icon("bell", "w-4 h-4")}
@@ -637,7 +639,15 @@ export async function openNotificationCenter(session) {
               <p class="text-[11px] text-slate-500">Pusat pemantauan status, tugas persetujuan, dan memo perusahaan</p>
             </div>
           </div>
-          ${unreadCount > 0 ? `<span class="px-2.5 py-1 bg-red-50 text-red-600 border border-red-200 rounded-full text-[10px] font-bold">${unreadCount} Aktif / Baru</span>` : ''}
+          <div class="flex items-center gap-1.5 shrink-0">
+            ${personalNotifs.length > 0 ? `
+              <button id="btn-clear-my-notifs" class="px-2.5 py-1 text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition flex items-center gap-1 shadow-2xs" title="Hapus semua notifikasi pribadi Anda">
+                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                Bersihkan Notifikasi Saya
+              </button>
+            ` : ''}
+            ${unreadCount > 0 ? `<span class="px-2.5 py-1 bg-red-50 text-red-600 border border-red-200 rounded-full text-[10px] font-bold">${unreadCount} Aktif / Baru</span>` : ''}
+          </div>
         </div>
 
         <!-- Filter Tab Buttons -->
@@ -660,6 +670,21 @@ export async function openNotificationCenter(session) {
       const loadingEl = modalDiv.querySelector(".animate-pulse");
       if (loadingEl && loadingEl.parentElement) {
         loadingEl.parentElement.innerHTML = htmlContent;
+
+        const btnClear = modalDiv.querySelector("#btn-clear-my-notifs");
+        if (btnClear) {
+          btnClear.onclick = async () => {
+            if (confirm("Apakah Anda yakin ingin menghapus seluruh notifikasi pribadi Anda?")) {
+              try {
+                await Promise.all(personalNotifs.map(n => fsDelete(COL.NOTIFICATIONS, n.id)));
+                toast("Seluruh notifikasi pribadi berhasil dibersihkan", "success");
+                openNotificationCenter(session);
+              } catch (err) {
+                toast("Gagal membersihkan notifikasi: " + err.message, "error");
+              }
+            }
+          };
+        }
 
         // Bind filter tabs
         modalDiv.querySelectorAll(".notif-tab-btn").forEach(btn => {
@@ -722,7 +747,14 @@ function renderNotifFeed(items) {
           <div class="flex-1 min-w-0">
             <div class="flex items-center justify-between gap-2 mb-1">
               <span class="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${toneClasses[item.tone]}">${escapeHtml(item.badge)}</span>
-              ${item.date ? `<span class="text-[10px] text-slate-400 font-medium shrink-0">${item.date}</span>` : ''}
+              <div class="flex items-center gap-1.5 shrink-0">
+                ${item.date ? `<span class="text-[10px] text-slate-400 font-medium">${item.date}</span>` : ''}
+                ${item.isPersonal ? `
+                  <button data-del-notif-id="${item.personalId}" class="p-1 text-slate-300 hover:text-red-600 rounded-md hover:bg-red-50 transition" title="Hapus Notifikasi Ini">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  </button>
+                ` : ''}
+              </div>
             </div>
             <h5 class="font-bold text-slate-800 text-xs group-hover:text-maroon-700 transition truncate">${escapeHtml(item.title)}</h5>
             <p class="text-[11px] text-slate-500 leading-relaxed mt-0.5 line-clamp-2">${escapeHtml(item.message)}</p>
@@ -737,6 +769,21 @@ function renderNotifFeed(items) {
 }
 
 function bindFeedEvents(modalDiv, currentList, session) {
+  modalDiv.querySelectorAll("[data-del-notif-id]").forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const notifId = btn.dataset.delNotifId;
+      if (!notifId) return;
+      try {
+        await fsDelete(COL.NOTIFICATIONS, notifId);
+        toast("Notifikasi berhasil dihapus", "success");
+        openNotificationCenter(session);
+      } catch (err) {
+        toast("Gagal menghapus notifikasi: " + err.message, "error");
+      }
+    };
+  });
+
   modalDiv.querySelectorAll("[data-feed-item-idx]").forEach(el => {
     el.onclick = async () => {
       const idx = parseInt(el.dataset.feedItemIdx, 10);

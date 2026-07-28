@@ -29,7 +29,10 @@ async function boot() {
       if (pText) pText.textContent = "Memverifikasi login aman sekali pakai...";
       
       await loginWithToken(token);
-      history.replaceState(null, "", window.location.pathname + "#" + (path || "approval"));
+      params.delete("token");
+      const remainingQs = params.toString();
+      const targetHash = (path || "approval") + (remainingQs ? "?" + remainingQs : "");
+      history.replaceState(null, "", window.location.pathname + "#" + targetHash);
       
     } catch (e) {
       alert("Akses otomatis gagal: " + e.message + "\nSilakan login secara manual.");
@@ -434,8 +437,14 @@ async function router(session) {
   if (!cleanPath || cleanPath === "login") cleanPath = "dashboard";
 
   let mappedPath = cleanPath;
+  if (["manajemen-cuti"].includes(cleanPath)) {
+    mappedPath = "cuti";
+  }
   if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(cleanPath)) {
     mappedPath = "pemanggilan";
+  }
+  if (["penilaian"].includes(cleanPath)) {
+    mappedPath = "penilaian-kontrak";
   }
 
   if (cleanPath === currentRoute && cleanPath !== "pengajuan") {

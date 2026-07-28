@@ -10,9 +10,6 @@ export async function mount(container, { session }) {
 
   let activeTab = isHrd ? "all-reviews" : "my-reviews";
 
-  // Seeding initial data if empty
-  await seedPerformanceReviewsIfEmpty();
-
   function renderTabs() {
     let tabsHtml = "";
     if (isHrd) {

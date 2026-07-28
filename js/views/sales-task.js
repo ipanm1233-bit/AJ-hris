@@ -34,14 +34,6 @@ export async function mount(container, { session }) {
       const taskSnap = await getDocs(collection(db, COL_TASKS));
       tasksList = taskSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-      if (tasksList.length === 0) {
-        for (const task of DEFAULT_TASKS) {
-          await addDoc(collection(db, COL_TASKS), task);
-        }
-        const reloadSnap = await getDocs(collection(db, COL_TASKS));
-        tasksList = reloadSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      }
-
       renderLists();
     } catch (e) {
       console.error(e);

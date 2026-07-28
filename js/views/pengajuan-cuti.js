@@ -180,9 +180,11 @@ export async function mount(container, { session }) {
       if (st.includes("APPROVED") || st.includes("SETUJU")) stBadge = badge("Disetujui", "green");
       else if (st.includes("REJECT") || st.includes("TOLAK")) stBadge = badge("Ditolak", "red");
 
-      const docLink = r.lampiran_url 
-        ? `<a href="${r.lampiran_url}" target="_blank" class="text-maroon-700 font-bold hover:underline">📄 Lihat Lampiran</a>`
-        : `<span class="text-slate-400">-</span>`;
+      const docLink = (st.includes("APPROVED") || st.includes("SETUJU"))
+        ? `<button type="button" onclick="window.printFormCutiFisik(${escapeHtml(JSON.stringify(r))})" class="text-emerald-700 font-bold hover:underline flex items-center gap-1">📄 Form Cuti Fisik</button>`
+        : r.lampiran_url 
+          ? `<a href="${r.lampiran_url}" target="_blank" class="text-maroon-700 font-bold hover:underline">📄 Lihat Lampiran</a>`
+          : `<span class="text-slate-400">-</span>`;
 
       const dt = r.detail || {};
 
@@ -235,11 +237,21 @@ export async function mount(container, { session }) {
             <p class="text-slate-800 leading-relaxed">${escapeHtml(item.alasan || dt.alasan || '-')}</p>
           </div>
           ${item.lampiran_url ? `
-            <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-200 flex items-center justify-between">
-              <span class="font-semibold text-emerald-900">Dokumen Lampiran Terlampir:</span>
-              <a href="${item.lampiran_url}" target="_blank" class="px-3 py-1 bg-emerald-700 text-white rounded-lg font-bold text-[11px] hover:bg-emerald-800">
+            <div class="bg-blue-50 p-3 rounded-xl border border-blue-200 flex items-center justify-between">
+              <span class="font-semibold text-blue-900">Dokumen Lampiran Terlampir:</span>
+              <a href="${item.lampiran_url}" target="_blank" class="px-3 py-1 bg-blue-700 text-white rounded-lg font-bold text-[11px] hover:bg-blue-800">
                 Buka File 📄
               </a>
+            </div>` : ''}
+          ${(item.status_final || "").includes("APPROVED") ? `
+            <div class="bg-emerald-50 p-3.5 rounded-xl border border-emerald-200 flex items-center justify-between">
+              <div class="text-xs text-emerald-900">
+                <p class="font-bold">Dokumen Form Cuti Fisik (Full Approved)</p>
+                <p class="text-[11px] text-emerald-700">Form Cuti HR4 resmi telah tergenerate secara otomatis.</p>
+              </div>
+              <button type="button" onclick="window.printFormCutiFisik(${escapeHtml(JSON.stringify(item))})" class="px-3.5 py-1.5 bg-maroon-700 hover:bg-maroon-800 text-white font-bold text-xs rounded-lg shadow-sm">
+                📄 Form Cuti Fisik
+              </button>
             </div>` : ''}
         </div>`
     });

@@ -14,9 +14,6 @@ export async function mount(container, { session }) {
 
   let activeTab = isHrd ? "tna" : ((isGm || isFinance) ? "requests" : "my-requests");
 
-  // Seed initial data
-  await seedTrainingDataIfEmpty();
-
   function renderTabs() {
     let tabsHtml = "";
     if (isHrd) {
