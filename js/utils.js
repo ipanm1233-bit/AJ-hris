@@ -1637,16 +1637,19 @@ export async function sendFCMNotif(tokens, title, body, link = "") {
  */
 export async function notifyUser(username, judul, pesan, link = "") {
   if (!username) return;
+  let targetEmail = (typeof username === "object" && username.email) ? username.email : null;
   const rawTarget = typeof username === "object" ? (username.username || username.nama || username.id) : username;
   if (!rawTarget) return;
 
   const targetStr = String(rawTarget).trim();
   const targetLower = targetStr.toLowerCase();
+  if (!targetEmail && targetStr.includes("@")) {
+    targetEmail = targetStr;
+  }
 
   try {
     const tokens = new Set();
-    let targetEmail = null;
-    let targetName = targetStr;
+    let targetName = (typeof username === "object" && username.nama) ? username.nama : targetStr;
     let resolvedUsername = targetStr;
     let resolvedNik = targetStr;
 
@@ -1723,25 +1726,39 @@ export async function notifyUser(username, judul, pesan, link = "") {
     };
     await fsAdd(COL.NOTIFICATIONS, notifPayload, genId("NTF"));
 
-    // Send Push Notification via FCM
+    // 2. Send Push Notification via FCM
     const tokenList = Array.from(tokens).filter(Boolean);
     if (tokenList.length > 0) {
       await sendFCMNotif(tokenList, judul, pesan, link);
     }
 
-    // Send Email
+    // 3. Send Email
     if (targetEmail) {
       const appUrl = window.location.origin;
-      const targetLink = link ? (appUrl + (link.startsWith('#') ? link : '#' + link)) : appUrl;
+      let magicToken = "";
+      if (resolvedUsername) {
+        try { magicToken = await createLoginToken(resolvedUsername); } catch (e) {}
+      }
+      
+      let routePath = link || "";
+      if (routePath.startsWith('/')) routePath = routePath.substring(1);
+      if (!routePath.startsWith('#')) routePath = '#' + routePath;
+
+      const targetLink = magicToken 
+        ? `${appUrl}/${routePath}${routePath.includes('?') ? '&' : '?'}token=${magicToken}`
+        : `${appUrl}/${routePath}`;
+
       const htmlBody = `
-        <div style="font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding:24px; color:#1e293b; max-width:600px; border:1px solid #e2e8f0; border-radius:16px; background-color:#ffffff;">
+        <div style="font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding:24px; color:#1e293b; max-width:600px; border:1px solid #e2e8f0; border-radius:16px; background-color:#ffffff; margin:0 auto;">
           <div style="border-bottom:2px solid #7a1f2b; padding-bottom:12px; margin-bottom:20px;">
             <h2 style="color:#7a1f2b; margin:0; font-size:18px; font-weight:bold;">HRIS & Operasional CV Andela Jaya</h2>
           </div>
           <h3 style="color:#0f172a; margin-top:0; font-size:16px;">${escapeHtml(judul)}</h3>
           <p style="font-size:14px; line-height:1.6; color:#334155;">Halo <strong>${escapeHtml(targetName)}</strong>,</p>
           <p style="font-size:14px; line-height:1.6; color:#334155; background-color:#f8fafc; padding:14px; border-radius:10px; border:1px solid #f1f5f9;">${escapeHtml(pesan)}</p>
-          ${link ? `<div style="margin-top:24px; text-align:center;"><a href="${targetLink}" style="background-color:#7a1f2b; color:#ffffff; padding:12px 24px; border-radius:10px; text-decoration:none; font-weight:bold; font-size:13px; display:inline-block; shadow:0 2px 4px rgba(0,0,0,0.1);">Buka Sistem HRIS</a></div>` : ''}
+          <div style="margin-top:24px; text-align:center;">
+            <a href="${targetLink}" style="background-color:#7a1f2b; color:#ffffff; padding:12px 24px; border-radius:10px; text-decoration:none; font-weight:bold; font-size:13px; display:inline-block; box-shadow:0 2px 4px rgba(0,0,0,0.1);">Buka HRIS & Lihat Rincian</a>
+          </div>
           <hr style="margin-top:30px; border:0; border-top:1px solid #e2e8f0;" />
           <p style="font-size:11px; color:#94a3b8; text-align:center;">Pesan ini dikirimkan secara otomatis oleh sistem Portal HRIS CV Andela Jaya.</p>
         </div>
