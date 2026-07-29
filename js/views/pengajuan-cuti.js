@@ -530,35 +530,19 @@ export async function mount(container, { session }) {
 
         await setDoc(doc(db, COL.DATA_PENGAJUAN, refNo), payload);
 
-        // Notify first approver (ATASAN)
+        // Notify first approver (ATASAN / HRD)
         try {
           let targets = await getTargetsForRole("ATASAN", session.nama);
           if (!targets || targets.length === 0) {
-            // Fallback to HRD
             targets = await getTargetsForRole("HRD", session.nama);
           }
-          const baseUrl = window.location.origin;
           for (const target of targets) {
             await notifyUser(
-              target.username,
+              target,
               `Persetujuan Cuti Dibutuhkan`,
-              `Pengajuan Cuti baru dari ${session.nama} (${catName}).`,
-              `/#approval`
+              `Pengajuan Cuti baru dari ${session.nama} (${catName}) sebanyak ${count} hari (${tglMulai.value} s/d ${tglSelesai.value}). Membutuhkan verifikasi Anda.`,
+              `/#approval?id=${refNo}`
             );
-            if (typeof sendEmailNotif === 'function' && target.email) {
-              const token = await createLoginToken(target.username);
-              const magicLink = `${baseUrl}/#approval?token=${token}`;
-              const htmlEmail = `
-                <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-                  <h2 style="color: #7a1f2b;">Pengajuan Cuti Baru: ${session.nama}</h2>
-                  <p><strong>Jenis Cuti:</strong> ${catName}</p>
-                  <p><strong>Tanggal:</strong> ${tglMulai.value} s/d ${tglSelesai.value} (${count} Hari)</p>
-                  <p>Pengajuan ini membutuhkan persetujuan Anda sebagai <strong>Atasan / Approver</strong>.</p>
-                  <a href="${magicLink}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Akses Langsung & Setujui</a>
-                </div>
-              `;
-              sendEmailNotif(target.email, `Persetujuan Dibutuhkan: Cuti ${session.nama}`, htmlEmail).catch(errE => console.warn("Send email error:", errE));
-            }
           }
         } catch (eNotif) {
           console.warn("Notification error:", eNotif);
