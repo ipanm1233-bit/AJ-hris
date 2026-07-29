@@ -87,9 +87,27 @@ async function setupRbacMenuTab(container, users) {
 
   async function loadForUser(userKey) {
     const overrides = await loadPermissionOverrides(true);
-    const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey);
-    const altKey = userObj ? (userObj.id || userObj.username) : userKey;
-    const ov = overrides[userKey] || overrides[altKey] || (userObj?.nama && overrides[userObj.nama]) || (userObj?.nik && overrides[String(userObj.nik)]);
+    const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey || u.username === userKey);
+    const keysToSearch = [
+      userKey,
+      String(userKey).toLowerCase(),
+      String(userKey).toUpperCase(),
+      userObj?.username,
+      userObj?.username ? String(userObj.username).toLowerCase() : null,
+      userObj?.username ? String(userObj.username).toUpperCase() : null,
+      userObj?.id,
+      userObj?.id ? String(userObj.id).toLowerCase() : null,
+      userObj?.id ? String(userObj.id).toUpperCase() : null,
+      userObj?.nama,
+      userObj?.nama ? String(userObj.nama).toLowerCase() : null,
+      userObj?.nama ? String(userObj.nama).toUpperCase() : null,
+      userObj?.nik ? String(userObj.nik) : null
+    ].filter(Boolean);
+
+    let ov = null;
+    for (const k of keysToSearch) {
+      if (overrides[k]) { ov = overrides[k]; break; }
+    }
     const current = ov?.allowed_menus || [];
     grid.querySelectorAll("[data-menu]").forEach(cb => { cb.checked = current.includes(cb.dataset.menu); });
   }
@@ -98,10 +116,25 @@ async function setupRbacMenuTab(container, users) {
 
   container.querySelector("#rbac-menu-save").addEventListener("click", async () => {
     const userKey = select.value;
-    const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey);
+    const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey || u.username === userKey);
     const checked = Array.from(grid.querySelectorAll("[data-menu]:checked")).map(cb => cb.dataset.menu);
     try {
-      const keysToSave = new Set([userKey, userObj?.username, userObj?.id, userObj?.nama, userObj?.nik ? String(userObj.nik) : null].filter(Boolean));
+      const keysToSave = new Set([
+        userKey,
+        String(userKey).toLowerCase(),
+        String(userKey).toUpperCase(),
+        userObj?.username,
+        userObj?.username ? String(userObj.username).toLowerCase() : null,
+        userObj?.username ? String(userObj.username).toUpperCase() : null,
+        userObj?.id,
+        userObj?.id ? String(userObj.id).toLowerCase() : null,
+        userObj?.id ? String(userObj.id).toUpperCase() : null,
+        userObj?.nama,
+        userObj?.nama ? String(userObj.nama).toLowerCase() : null,
+        userObj?.nama ? String(userObj.nama).toUpperCase() : null,
+        userObj?.nik ? String(userObj.nik) : null
+      ].filter(Boolean));
+
       for (const k of keysToSave) {
         await fsUpdate(COL.USER_PERMISSIONS, String(k), { allowed_menus: checked, allowed_menus_set: true }).catch(async () => {
           await fsAdd(COL.USER_PERMISSIONS, { allowed_menus: checked, allowed_forms: [], allowed_menus_set: true }, String(k));
@@ -130,22 +163,56 @@ async function setupRbacFormTab(container, users) {
 
   async function loadForUser(userKey) {
     const overrides = await loadPermissionOverrides(true);
-    const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey);
-    const altKey = userObj ? (userObj.id || userObj.username) : userKey;
-    const current = (overrides[userKey] || overrides[altKey])?.allowed_forms || [];
+    const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey || u.username === userKey);
+    const keysToSearch = [
+      userKey,
+      String(userKey).toLowerCase(),
+      String(userKey).toUpperCase(),
+      userObj?.username,
+      userObj?.username ? String(userObj.username).toLowerCase() : null,
+      userObj?.username ? String(userObj.username).toUpperCase() : null,
+      userObj?.id,
+      userObj?.id ? String(userObj.id).toLowerCase() : null,
+      userObj?.id ? String(userObj.id).toUpperCase() : null,
+      userObj?.nama,
+      userObj?.nama ? String(userObj.nama).toLowerCase() : null,
+      userObj?.nama ? String(userObj.nama).toUpperCase() : null,
+      userObj?.nik ? String(userObj.nik) : null
+    ].filter(Boolean);
+
+    let ov = null;
+    for (const k of keysToSearch) {
+      if (overrides[k]) { ov = overrides[k]; break; }
+    }
+    const current = ov?.allowed_forms || [];
     grid.querySelectorAll("[data-form]").forEach(cb => { cb.checked = current.includes(cb.dataset.form); });
   }
   if (forms.length) { await loadForUser(select.value); select.addEventListener("change", () => loadForUser(select.value)); }
 
   container.querySelector("#rbac-form-save").addEventListener("click", async () => {
     const userKey = select.value;
-    const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey);
+    const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey || u.username === userKey);
     const checked = Array.from(grid.querySelectorAll("[data-form]:checked")).map(cb => cb.dataset.form);
     try {
-      const keysToSave = new Set([userKey, userObj?.username, userObj?.id].filter(Boolean));
+      const keysToSave = new Set([
+        userKey,
+        String(userKey).toLowerCase(),
+        String(userKey).toUpperCase(),
+        userObj?.username,
+        userObj?.username ? String(userObj.username).toLowerCase() : null,
+        userObj?.username ? String(userObj.username).toUpperCase() : null,
+        userObj?.id,
+        userObj?.id ? String(userObj.id).toLowerCase() : null,
+        userObj?.id ? String(userObj.id).toUpperCase() : null,
+        userObj?.nama,
+        userObj?.nama ? String(userObj.nama).toLowerCase() : null,
+        userObj?.nama ? String(userObj.nama).toUpperCase() : null,
+        userObj?.nik ? String(userObj.nik) : null
+      ].filter(Boolean));
+
       for (const k of keysToSave) {
-        await fsUpdate(COL.USER_PERMISSIONS, k, { allowed_forms: checked }).catch(async () => {
-          await fsAdd(COL.USER_PERMISSIONS, { allowed_forms: checked, allowed_menus: [] }, k);
+        await fsUpdate(COL.USER_PERMISSIONS, String(k), { allowed_forms: checked }).catch(async () => {
+          await fsAdd(COL.USER_PERMISSIONS, { allowed_forms: checked, allowed_menus: [] }, String(k));
         });
       }
       toast(`Hak akses formulir untuk ${userObj?.nama || userKey} berhasil disimpan`, "success");
