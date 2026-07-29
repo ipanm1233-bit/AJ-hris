@@ -271,33 +271,18 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
     // Memicu Notifikasi (Email + Lonceng App + Push HP) ke APPROVER PERTAMA
     if (approvalFlow.length > 0) {
       const nextRole = approvalFlow[0];
-      const targets = await getTargetsForRole(nextRole, payload.nama_pemohon);
+      let targets = await getTargetsForRole(nextRole, payload.nama_pemohon);
+      if (!targets || targets.length === 0) {
+        targets = await getTargetsForRole("HRD", payload.nama_pemohon);
+      }
       
       for (const target of targets) {
-        // --- 1. NOTIFIKASI EMAIL (Jalur Lama) ---
-        if (typeof sendEmailNotif === 'function') {
-           const token = await createLoginToken(target.username);
-           const baseUrl = window.location.origin;
-           const magicLink = `${baseUrl}/#approval?token=${token}`;
-           const htmlEmail = `
-             <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-               <h2 style="color: #7a1f2b;">Pengajuan Baru: ${payload.nama_form}</h2>
-               <p><strong>Diajukan Oleh:</strong> ${payload.nama_pemohon}</p>
-               <p>Pengajuan ini membutuhkan persetujuan Anda sebagai <strong>${nextRole}</strong>.</p>
-               <a href="${magicLink}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Akses Langsung & Setujui</a>
-               <p style="margin-top:15px; font-size:11px; color:#94a3b8;">Tombol di atas adalah tautan masuk aman (hanya berlaku 1 kali).</p>
-             </div>
-           `;
-           sendEmailNotif(target.email, `Persetujuan Dibutuhkan: ${payload.nama_form}`, htmlEmail).catch(e => console.warn(e));
-        }
-        
-        // --- 2. NOTIFIKASI LONCENG & PUSH HP (Jalur Baru) ---
         if (typeof notifyUser === 'function') {
            await notifyUser(
-               target.username, 
-               `Persetujuan Dibutuhkan`, 
-               `Ada pengajuan ${payload.nama_form} baru dari ${payload.nama_pemohon}.`,
-               `/#approval` // Tambahkan Link Tujuan di sini!
+               target, 
+               `Persetujuan Dibutuhkan: ${payload.nama_form}`, 
+               `Ada pengajuan ${payload.nama_form} baru dari ${payload.nama_pemohon}. Membutuhkan verifikasi Anda.`,
+               `/#approval?id=${refNo}`
            ).catch(e => console.warn("Push gagal:", e));
         }
       }
