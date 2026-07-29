@@ -330,14 +330,6 @@ async function renderShellForUser(session) {
   const roleUpper = (session?.role || "").toUpperCase();
   let displayMenus = menus;
 
-  // Jika user role adalah Sales (SALES, SALESMAN, dsb), sidebar dikhususkan untuk menampilkan Modul Sales
-  if (roleUpper.includes("SALES")) {
-    const salesOnly = menus.filter(m => m.kategori === "Modul Sales");
-    if (salesOnly.length > 0) {
-      displayMenus = salesOnly;
-    }
-  }
-
   // 1. Kelompokkan menu berdasarkan properti "kategori"
   const groupedMenus = displayMenus.reduce((acc, menu) => {
     const cat = menu.kategori || "Lain-lain";
@@ -351,8 +343,8 @@ async function renderShellForUser(session) {
 
   // 2. Render HTML menggunakan elemen <details> untuk efek Accordion (Buka/Tutup)
   for (const [kategori, items] of Object.entries(groupedMenus)) {
-    // Biarkan "Menu Utama" & "Modul Sales" selalu terbuka secara default saat login
-    const isOpen = (kategori === "Menu Utama" || kategori === "Modul Sales" || roleUpper.includes("SALES")) ? "open" : "";
+    // Biarkan kategori menu yang memiliki isi terbuka secara default agar user langsung dapat melihat seluruh menu yang diberikan
+    const isOpen = "open";
 
     html += `
     <details class="group mb-2" ${isOpen}>
