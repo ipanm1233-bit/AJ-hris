@@ -980,14 +980,14 @@ export async function mount(container, { session, params }) {
             <div class="flex items-center gap-2 w-full md:w-auto flex-wrap bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
               <div class="flex flex-col">
                 <label class="text-[10px] font-bold text-slate-400 uppercase">Status Keaktifan</label>
-                <select id="modal-emp-aktif" class="text-xs font-semibold px-2 py-1 rounded-lg border border-slate-200 outline-none focus:border-maroon-500">
+                <select id="modal-emp-aktif" ${!canManageKontrak ? 'disabled' : ''} class="text-xs font-semibold px-2 py-1 rounded-lg border border-slate-200 outline-none focus:border-maroon-500 ${!canManageKontrak ? 'bg-slate-100 text-slate-600 cursor-not-allowed' : ''}">
                   <option value="AKTIF" ${isAktif ? 'selected' : ''}>AKTIF</option>
                   <option value="TIDAK AKTIF" ${!isAktif ? 'selected' : ''}>TIDAK AKTIF</option>
                 </select>
               </div>
               <div class="flex flex-col">
                 <label class="text-[10px] font-bold text-slate-400 uppercase">Status Karyawan</label>
-                <select id="modal-emp-type" class="text-xs font-semibold px-2 py-1 rounded-lg border border-slate-200 outline-none focus:border-maroon-500">
+                <select id="modal-emp-type" ${!canManageKontrak ? 'disabled' : ''} class="text-xs font-semibold px-2 py-1 rounded-lg border border-slate-200 outline-none focus:border-maroon-500 ${!canManageKontrak ? 'bg-slate-100 text-slate-600 cursor-not-allowed' : ''}">
                   <option value="PKWTT" ${String(empData.status_karyawan || "").toUpperCase().includes("PKWTT") || empData.status_karyawan === "TETAP" ? 'selected' : ''}>PKWTT (Karyawan Tetap)</option>
                   <option value="PKWT" ${String(empData.status_karyawan || "").toUpperCase().includes("PKWT") || empData.status_karyawan === "KONTRAK" || !empData.status_karyawan ? 'selected' : ''}>PKWT (Karyawan Kontrak)</option>
                   <option value="PROBATION" ${String(empData.status_karyawan || "").toUpperCase().includes("PROBATION") ? 'selected' : ''}>Probation (Masa Percobaan)</option>
@@ -997,7 +997,7 @@ export async function mount(container, { session, params }) {
                   <option value="LAINNYA" ${String(empData.status_karyawan || "").toUpperCase().includes("LAINNYA") || empData.status_karyawan === "RESIGN" ? 'selected' : ''}>Lainnya</option>
                 </select>
               </div>
-              ${empData.id ? `
+              ${(canManageKontrak && empData.id) ? `
               <button id="btn-save-emp-status" class="mt-auto bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-2xs">
                 💾 Simpan
               </button>` : ''}

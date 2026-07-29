@@ -89,7 +89,8 @@ async function setupRbacMenuTab(container, users) {
     const overrides = await loadPermissionOverrides(true);
     const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey);
     const altKey = userObj ? (userObj.id || userObj.username) : userKey;
-    const current = (overrides[userKey] || overrides[altKey])?.allowed_menus || [];
+    const ov = overrides[userKey] || overrides[altKey] || (userObj?.nama && overrides[userObj.nama]) || (userObj?.nik && overrides[String(userObj.nik)]);
+    const current = ov?.allowed_menus || [];
     grid.querySelectorAll("[data-menu]").forEach(cb => { cb.checked = current.includes(cb.dataset.menu); });
   }
   await loadForUser(select.value);
@@ -100,10 +101,10 @@ async function setupRbacMenuTab(container, users) {
     const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey);
     const checked = Array.from(grid.querySelectorAll("[data-menu]:checked")).map(cb => cb.dataset.menu);
     try {
-      const keysToSave = new Set([userKey, userObj?.username, userObj?.id].filter(Boolean));
+      const keysToSave = new Set([userKey, userObj?.username, userObj?.id, userObj?.nama, userObj?.nik ? String(userObj.nik) : null].filter(Boolean));
       for (const k of keysToSave) {
-        await fsUpdate(COL.USER_PERMISSIONS, k, { allowed_menus: checked }).catch(async () => {
-          await fsAdd(COL.USER_PERMISSIONS, { allowed_menus: checked, allowed_forms: [] }, k);
+        await fsUpdate(COL.USER_PERMISSIONS, String(k), { allowed_menus: checked, allowed_menus_set: true }).catch(async () => {
+          await fsAdd(COL.USER_PERMISSIONS, { allowed_menus: checked, allowed_forms: [], allowed_menus_set: true }, String(k));
         });
       }
       toast(`Hak akses menu untuk ${userObj?.nama || userKey} berhasil disimpan`, "success");

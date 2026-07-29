@@ -8,13 +8,24 @@ export async function mount(container, { session, params }) {
 
   // Load Karyawan Details
   let k = null;
-  if (session.nik && session.nik !== "null" && session.nik !== "undefined") {
+  if (session.nik && session.nik !== "null" && session.nik !== "undefined" && session.nik !== "UNLINKED") {
     const snap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(session.nik)));
     if (snap.exists()) k = snap.data();
-  } else {
+  }
+  if (!k && session.nama) {
     const q = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", session.nama));
     const snap = await getDocs(q);
     if (!snap.empty) k = snap.docs[0].data();
+  }
+  if (!k) {
+    const allK = await fsGetAll(COL.MASTER_KARYAWAN);
+    const sName = (session.nama || "").trim().toLowerCase();
+    const sNik = String(session.nik || "").trim();
+    k = allK.find(item => {
+      const iName = (item.nama_karyawan || "").trim().toLowerCase();
+      const iNik = String(item.nik_karyawan || item.nik || "").trim();
+      return (sName && iName === sName) || (sNik && sNik !== "unlinked" && iNik === sNik);
+    });
   }
 
   // Bind Core Header Info
@@ -23,41 +34,44 @@ export async function mount(container, { session, params }) {
     largeAvatar.innerHTML = avatar(k?.foto_url || session.foto_url || session.nama, "w-full h-full text-3xl font-extrabold");
   }
 
-  container.querySelector("#profile-name").textContent = session.nama;
-  container.querySelector("#profile-nik-badge").textContent = session.nik ? `EMP-${session.nik}` : "UNLINKED";
-  container.querySelector("#profile-title").textContent = `${session.posisi || "-"} • ${k?.cabang || session.cabang || "-"}`;
+  const displayNik = k?.nik_karyawan || k?.nik || (session.nik && session.nik !== "null" && session.nik !== "UNLINKED" ? session.nik : "");
+  container.querySelector("#profile-name").textContent = k?.nama_karyawan || session.nama;
+  container.querySelector("#profile-nik-badge").textContent = displayNik ? `EMP-${displayNik}` : "UNLINKED";
+  container.querySelector("#profile-title").textContent = `${k?.jabatan || session.posisi || "-"} • ${k?.cabang || session.cabang || "-"}`;
 
   // Passport info
   const passportCode = container.querySelector("#passport-code");
   if (passportCode) {
-    passportCode.textContent = `AJ-${session.nik || session.username || "TEMP"}-${new Date(k?.tanggal_join || Date.now()).getFullYear()}`;
+    passportCode.textContent = `AJ-${displayNik || session.username || "TEMP"}-${new Date(k?.tanggal_join || Date.now()).getFullYear()}`;
   }
 
-  // Key Documents
+  // Key Documents & Status Ketenagakerjaan
+  const statusKaryawanVal = k?.status_karyawan || k?.status || (k?.kontrak_habis ? "PKWT (KONTRAK)" : "PKWTT (PERMANEN)");
   const contractDateEl = container.querySelector("#profile-contract-date");
   const contractStatusEl = container.querySelector("#profile-contract-status");
   if (k?.kontrak_habis) {
     const expDate = k.kontrak_habis.toDate ? k.kontrak_habis.toDate() : new Date(k.kontrak_habis);
     const diffDays = Math.round((expDate - new Date()) / 86400000);
-    if (contractDateEl) contractDateEl.textContent = `Berakhir pada ${fmtDateShort(expDate)}`;
+    if (contractDateEl) contractDateEl.textContent = `Kontrak s/d ${fmtDateShort(expDate)}`;
     
     if (contractStatusEl) {
       if (diffDays < 0) {
-        contractStatusEl.textContent = "Expired";
+        contractStatusEl.textContent = `${statusKaryawanVal} (EXPIRED)`;
         contractStatusEl.className = "px-2.5 py-1 bg-rose-100 text-rose-800 rounded-lg text-[10px] font-semibold uppercase";
       } else if (diffDays <= 30) {
-        contractStatusEl.textContent = "Segera Habis";
+        contractStatusEl.textContent = `${statusKaryawanVal} (SEGERA HABIS)`;
         contractStatusEl.className = "px-2.5 py-1 bg-amber-100 text-amber-800 rounded-lg text-[10px] font-semibold uppercase animate-pulse";
       } else {
-        contractStatusEl.textContent = "Aktif";
+        contractStatusEl.textContent = `${statusKaryawanVal} (AKTIF)`;
         contractStatusEl.className = "px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-lg text-[10px] font-semibold uppercase";
       }
     }
   } else {
-    if (contractDateEl) contractDateEl.textContent = "Status Kontrak Permanen / Tidak Ada Batas";
+    if (contractDateEl) contractDateEl.textContent = `Status Ketenagakerjaan: ${statusKaryawanVal}`;
     if (contractStatusEl) {
-      contractStatusEl.textContent = "PERMANEN";
-      contractStatusEl.className = "px-2.5 py-1 bg-purple-100 text-purple-800 rounded-lg text-[10px] font-semibold uppercase";
+      contractStatusEl.textContent = statusKaryawanVal.toUpperCase();
+      const isPermanen = statusKaryawanVal.toUpperCase().includes("PERMANEN") || statusKaryawanVal.toUpperCase().includes("PKWTT") || statusKaryawanVal.toUpperCase().includes("TETAP");
+      contractStatusEl.className = `px-2.5 py-1 ${isPermanen ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'} rounded-lg text-[10px] font-semibold uppercase`;
     }
   }
 

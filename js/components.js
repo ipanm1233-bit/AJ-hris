@@ -214,11 +214,11 @@ export async function renderCrudModule(container, cfg) {
   function openForm(existing = null) {
     openModal({
       title: existing ? `Edit ${title}` : `Tambah ${title}`,
-      size: "md",
+      size: cfg.size || (formFields.length > 15 ? "2xl" : formFields.length > 8 ? "xl" : "lg"),
       bodyHtml: `
-        <form id="crud-form" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <form id="crud-form" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-h-[70vh] overflow-y-auto p-1">
           ${formFields.map(f => `
-            <div class="${f.full ? "sm:col-span-2" : ""}">
+            <div class="${f.full ? "sm:col-span-2 md:col-span-3" : ""}">
               <label class="block text-xs font-medium text-slate-500 mb-1.5">${f.label}${f.required ? ' <span class="text-red-500">*</span>' : ""}</label>
               ${fieldInput(f, existing ? existing[f.name] : (f.default || ""))}
             </div>`).join("")}

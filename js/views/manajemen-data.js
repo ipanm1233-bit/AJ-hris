@@ -16,22 +16,39 @@ export async function mount(container) {
   async function loadKaryawanTab() {
     const fields = [
       { name: "nik_karyawan", label: "NIK Karyawan", type: "text", required: true },
-      { name: "nama_karyawan", label: "Nama Lengkap", type: "text", required: true },
+      { name: "nama_karyawan", label: "Nama Karyawan", type: "text", required: true },
       { name: "cabang", label: "Cabang", type: "text" },
       { name: "jabatan", label: "Jabatan", type: "text", required: true },
       { name: "divisi", label: "Divisi", type: "text" },
       { name: "jenis_kelamin", label: "Jenis Kelamin", type: "select", options: ["LAKI-LAKI", "PEREMPUAN"] },
+      { name: "nik_ktp", label: "NIK KTP", type: "text" },
+      { name: "no_kk", label: "No Kartu Keluarga", type: "text" },
+      { name: "bpjs_tk", label: "No BPJS TK", type: "text" },
+      { name: "bpjs_kes", label: "No BPJS KES", type: "text" },
       { name: "status_karyawan", label: "Status Karyawan", type: "select", options: ["PKWTT (Karyawan Tetap)", "PKWT (Karyawan Kontrak)", "Probation (Masa Percobaan)", "Magang", "Buruh Harian", "Outsourcing", "Lainnya"] },
+      { name: "tanggal_lahir", label: "Tanggal Lahir", type: "date" },
+      { name: "usia", label: "Usia (Tahun)", type: "number" },
       { name: "tanggal_join", label: "Tanggal Join", type: "date" },
       { name: "kontrak_habis", label: "Kontrak Habis", type: "date" },
+      { name: "masa_kerja", label: "Masa Kerja", type: "text" },
+      { name: "pendidikan", label: "Pendidikan", type: "select", options: ["SMA/SMK", "D1", "D2", "D3", "S1", "S2", "S3", "SMP", "SD", "Lainnya"] },
+      { name: "agama", label: "Agama", type: "select", options: ["ISLAM", "KRISTEN", "KATHOLIK", "HINDU", "BUDDHA", "KHONGHUCU", "LAINNYA"] },
+      { name: "golongan_darah", label: "Golongan Darah", type: "select", options: ["A", "B", "AB", "O", "-"] },
       { name: "no_hp_aktif", label: "No HP Aktif", type: "text" },
-      { name: "email", label: "Email", type: "text" },
+      { name: "email", label: "Email Aktif", type: "text" },
+      { name: "kontak_darurat_nama", label: "Nama Kontak Darurat", type: "text" },
+      { name: "kontak_darurat_hp", label: "Kontak Darurat (No HP)", type: "text" },
+      { name: "npwp", label: "NPWP", type: "text" },
+      { name: "status_pajak", label: "Status Pajak", type: "select", options: ["TK/0", "TK/1", "TK/2", "TK/3", "K/0", "K/1", "K/2", "K/3", "K/I/0", "K/I/1", "K/I/2", "K/I/3"] },
+      { name: "tanggungan", label: "Anak / Tanggungan", type: "number", default: 0 },
+      { name: "jam_kerja", label: "Jam Kerja", type: "text", default: "08:00 - 17:00" },
+      { name: "aktif_tdk_aktif", label: "Aktif / Tdk Aktif", type: "select", options: ["AKTIF", "TIDAK AKTIF"], default: "AKTIF" },
+      { name: "finger_name", label: "Finger Name", type: "text" },
       { name: "atasan", label: "Nama Atasan Langsung", type: "text" },
       { name: "jatah_tahunan", label: "Jatah Cuti Tahunan", type: "number", default: 12 },
       { name: "jatah_khusus", label: "Jatah Cuti Khusus", type: "number", default: 4 },
       { name: "jatah_akumulasi", label: "Jatah Cuti Akumulasi", type: "number", default: 0 },
-      { name: "aktif_tdk_aktif", label: "Status Aktif", type: "select", options: ["AKTIF", "TIDAK AKTIF"], default: "AKTIF" },
-      { name: "alamat", label: "Alamat", type: "textarea", full: true },
+      { name: "alamat", label: "Alamat Lengkap", type: "textarea", full: true },
     ];
     fields.idFromField = "nik_karyawan";
 
@@ -40,7 +57,19 @@ export async function mount(container) {
       subtitle: "Sumber data utama seluruh karyawan CV Andela Jaya.",
       collectionName: COL.MASTER_KARYAWAN,
       orderByField: "nama_karyawan",
-      searchFields: ["nama_karyawan", "nik_karyawan", "jabatan", "cabang", "divisi", "status_karyawan"],
+      size: "2xl",
+      searchFields: ["nama_karyawan", "nik_karyawan", "jabatan", "cabang", "divisi", "status_karyawan", "finger_name", "nik_ktp"],
+      beforeSave: (data) => {
+        if (data.tanggal_lahir && !data.usia) {
+          const dob = new Date(data.tanggal_lahir);
+          if (!isNaN(dob)) {
+            const ageDifMs = Date.now() - dob.getTime();
+            const ageDate = new Date(ageDifMs);
+            data.usia = Math.abs(ageDate.getUTCFullYear() - 1970);
+          }
+        }
+        return data;
+      },
       columns: [
         { key: "nik_karyawan", label: "NIK" },
         { key: "nama_karyawan", label: "Nama" },
@@ -53,9 +82,8 @@ export async function mount(container) {
         { key: "kontrak_habis", label: "Kontrak" },
         { key: "no_hp_aktif", label: "No HP" },
         { key: "email", label: "Email" },
-        { key: "atasan", label: "Atasan" },
+        { key: "finger_name", label: "Finger" },
         { key: "aktif_tdk_aktif", label: "Aktif", type: "badge", badgeTone: (v) => v === "AKTIF" ? "green" : "red" },
-        { key: "alamat", label: "Alamat" }
       ],
       formFields: fields
     });

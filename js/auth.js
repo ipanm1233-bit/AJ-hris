@@ -224,15 +224,19 @@ export async function computeVisibleMenus(session) {
   if (!session) return [];
   const role = (session.role || "").toUpperCase();
   const overrides = await loadPermissionOverrides(true);
-  const userOverride = overrides[session.username] || 
-                       overrides[session.id] || 
+  const userOverride = (session.username && overrides[session.username]) || 
+                       (session.id && overrides[session.id]) || 
                        (session.username && overrides[session.username.toLowerCase()]) ||
                        (session.username && overrides[session.username.toUpperCase()]) ||
-                       (session.nik && overrides[session.nik]);
+                       (session.nik && overrides[String(session.nik)]) ||
+                       (session.nama && overrides[session.nama]) ||
+                       (session.nama && overrides[session.nama.toLowerCase()]) ||
+                       (session.nama && overrides[session.nama.toUpperCase()]);
 
   // Jika HRD sudah menetapkan daftar menu spesifik untuk user ini -> pakai itu (whitelist absolut)
-  if (userOverride && Array.isArray(userOverride.allowed_menus) && userOverride.allowed_menus.length) {
-    const list = MENU_CONFIG.filter(m => userOverride.allowed_menus.includes(m.id));
+  if (userOverride && (userOverride.allowed_menus_set || (Array.isArray(userOverride.allowed_menus) && userOverride.allowed_menus.length > 0))) {
+    const allowed = userOverride.allowed_menus || [];
+    const list = MENU_CONFIG.filter(m => allowed.includes(m.id));
     if (!list.some(m => m.id === "dashboard")) {
       const dash = MENU_CONFIG.find(m => m.id === "dashboard");
       if (dash) list.unshift(dash);
@@ -243,7 +247,7 @@ export async function computeVisibleMenus(session) {
   const isAtasanRole = await isAtasan(session.nama);
   const isManagementOrHrd = ["HRD", "SUPERADMIN", "DIREKTUR", "MANAGER", "SPV", "KOORDINATOR", "GM", "FINANCE", "GA", "BRANCH MANAGER"].includes(role) || isAtasanRole;
 
-  // Sesuai instruksi: Untuk role karyawan (non-HRD & non-Atasan), menu yang tertampil HANYA Dashboard dan Penilaian
+  // Sesuai instruksi: Untuk role karyawan default (tanpa custom override HRD), menu yang tertampil HANYA Dashboard dan Penilaian
   if (!isManagementOrHrd || role === "KARYAWAN" || role === "STAFF") {
     return [
       MENU_CONFIG.find(m => m.id === "dashboard") || { id: "dashboard", label: "Home & Dashboard", icon: "home", kategori: "Menu Utama" },
