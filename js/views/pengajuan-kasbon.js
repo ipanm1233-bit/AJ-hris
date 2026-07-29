@@ -393,7 +393,10 @@ export async function mount(container, { session }) {
 
         // Send Notification & Email to HRD & Approvers
         try {
-          const hrdTargets = await getTargetsForRole("HRD", session.nama);
+          let hrdTargets = await getTargetsForRole("HRD", session.nama);
+          if (!hrdTargets || hrdTargets.length === 0) {
+            hrdTargets = await getTargetsForRole("ADMIN", session.nama);
+          }
           for (const target of hrdTargets) {
             await notifyUser(
               target,
