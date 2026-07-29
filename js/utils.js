@@ -1787,18 +1787,36 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
     const allUsers = await fsGetAll(COL.USERS).catch(() => []);
     const allEmployees = await fsGetAll(COL.MASTER_KARYAWAN).catch(() => []);
 
+    const enrichTarget = (u) => {
+      const uId = u.id || u.username;
+      const uNama = u.nama || u.username || uId;
+      let email = u.email || "";
+      let nik = u.nik || "";
+
+      if (!email || !nik) {
+        const empMatch = allEmployees.find(k => 
+          (k.nik_karyawan || k.nik || "").toString().toLowerCase() === String(nik).toLowerCase() ||
+          (k.nama_karyawan || k.nama || "").trim().toLowerCase() === String(uNama).trim().toLowerCase() ||
+          (k.id || "").toString().toLowerCase() === String(uId).toLowerCase()
+        );
+        if (empMatch) {
+          if (!email && empMatch.email) email = empMatch.email;
+          if (!nik && (empMatch.nik_karyawan || empMatch.nik)) nik = empMatch.nik_karyawan || empMatch.nik;
+        }
+      }
+      return { username: uId, email: email || "", nama: uNama, nik };
+    };
+
     // 1. PEMOHON
     if (roleUpper === "PEMOHON" && cleanNama) {
       const uMatch = allUsers.find(u => 
         (u.nama || "").trim().toLowerCase() === cleanNama ||
         (u.username || "").trim().toLowerCase() === cleanNama
       );
-      if (uMatch && uMatch.email) {
-        return [{ username: uMatch.id || uMatch.username, email: uMatch.email, nama: uMatch.nama || namaKaryawan }];
-      }
+      if (uMatch) return [enrichTarget(uMatch)];
       const kMatch = allEmployees.find(k => (k.nama_karyawan || "").trim().toLowerCase() === cleanNama);
-      if (kMatch && kMatch.email) {
-        return [{ username: kMatch.id || kMatch.nik, email: kMatch.email, nama: kMatch.nama_karyawan }];
+      if (kMatch) {
+        return [{ username: kMatch.id || kMatch.nik, email: kMatch.email || "", nama: kMatch.nama_karyawan, nik: kMatch.nik_karyawan || kMatch.nik }];
       }
       return [];
     }
@@ -1815,43 +1833,51 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
           (u.nama || "").trim().toLowerCase() === cleanAtasan ||
           (u.username || "").trim().toLowerCase() === cleanAtasan
         );
-        if (uAtasan && uAtasan.email) {
-          return [{ username: uAtasan.id || uAtasan.username, email: uAtasan.email, nama: uAtasan.nama || namaAtasan }];
-        }
+        if (uAtasan) return [enrichTarget(uAtasan)];
+
         // Check MASTER_KARYAWAN
         const kAtasan = allEmployees.find(k => (k.nama_karyawan || "").trim().toLowerCase() === cleanAtasan);
-        if (kAtasan && kAtasan.email) {
-          return [{ username: kAtasan.id || kAtasan.nik, email: kAtasan.email, nama: kAtasan.nama_karyawan }];
+        if (kAtasan) {
+          return [{ username: kAtasan.id || kAtasan.nik, email: kAtasan.email || "", nama: kAtasan.nama_karyawan, nik: kAtasan.nik_karyawan || kAtasan.nik }];
         }
       }
 
-      // FALLBACK: If direct atasan email not found, find users with role ATASAN / MANAGER / SUPERVISOR / HEAD / HRD
+      // FALLBACK: If direct atasan email not found or no atasan specified, find users with role/posisi ATASAN / MANAGER / SUPERVISOR / HEAD / HRD / ADMIN
       const fallbackApprovers = allUsers.filter(u => {
         const r = (u.role || "").toUpperCase();
-        return r.includes("ATASAN") || r.includes("MANAGER") || r.includes("SUPERVISOR") || r.includes("HEAD") || r.includes("HRD") || r.includes("ADMIN");
-      }).filter(u => u.email);
+        const p = (u.posisi || u.jabatan || "").toUpperCase();
+        const un = (u.username || u.id || "").toUpperCase();
+        return r.includes("ATASAN") || r.includes("MANAGER") || r.includes("SUPERVISOR") || r.includes("HEAD") || r.includes("HRD") || r.includes("ADMIN") ||
+               p.includes("ATASAN") || p.includes("MANAGER") || p.includes("SUPERVISOR") || p.includes("HEAD") || p.includes("HRD") || p.includes("ADMIN") ||
+               un.includes("HRD") || un.includes("ADMIN");
+      });
 
       if (fallbackApprovers.length > 0) {
-        return fallbackApprovers.map(u => ({ username: u.id || u.username, email: u.email, nama: u.nama || u.username }));
+        return fallbackApprovers.map(enrichTarget);
       }
     }
 
     // 3. SPECIFIC ROLE (HRD, FINANCE, MANAGER, DIREKTUR, etc.)
     let roleTargets = allUsers.filter(u => {
       const r = (u.role || "").toUpperCase();
-      const j = (u.jabatan || "").toUpperCase();
-      return r === roleUpper || r.includes(roleUpper) || j.includes(roleUpper);
-    }).filter(u => u.email);
+      const p = (u.posisi || u.jabatan || "").toUpperCase();
+      const un = (u.username || u.id || "").toUpperCase();
+      return r === roleUpper || r.includes(roleUpper) || p.includes(roleUpper) || un.includes(roleUpper);
+    });
 
     if (!roleTargets.length) {
-      // Fallback to HRD or SUPERADMIN or any admin user with email
+      // Fallback to HRD or SUPERADMIN or ADMIN or MANAGER
       roleTargets = allUsers.filter(u => {
         const r = (u.role || "").toUpperCase();
-        return r.includes("HRD") || r.includes("ADMIN") || r.includes("DIREKTUR") || r.includes("MANAGER");
-      }).filter(u => u.email);
+        const p = (u.posisi || u.jabatan || "").toUpperCase();
+        const un = (u.username || u.id || "").toUpperCase();
+        return r.includes("HRD") || r.includes("ADMIN") || r.includes("DIREKTUR") || r.includes("MANAGER") ||
+               p.includes("HRD") || p.includes("ADMIN") || p.includes("DIREKTUR") || p.includes("MANAGER") ||
+               un.includes("HRD") || un.includes("ADMIN");
+      });
     }
 
-    return roleTargets.map(u => ({ username: u.id || u.username, email: u.email, nama: u.nama || u.username }));
+    return roleTargets.map(enrichTarget);
 
   } catch (error) {
     console.error("Error getTargetsForRole:", error);
