@@ -1,5 +1,5 @@
 import { COL } from "../firebase-config.js";
-import { fsGetAll, fsAdd, openModal, closeModal, toast, genId, escapeHtml, fmtDateTime, sendEmailNotif, sendFCMNotif } from "../utils.js";
+import { fsGetAll, fsAdd, fsDelete, deleteBroadcastMemoAndNotifs, openModal, closeModal, toast, genId, escapeHtml, fmtDateTime, sendEmailNotif, sendFCMNotif } from "../utils.js";
 // PERUBAHAN: lampiran memo kini diupload ke Google Drive, bukan Firebase Storage.
 import { uploadFileToDrive } from "../gas-integration.js";
 import { avatar, badge, emptyState, skeletonRows } from "../components.js";
@@ -15,7 +15,7 @@ export async function mount(container, { session }) {
     allRows.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
     
     const userRole = (session?.role || "").toUpperCase();
-    const isHrd = ["HRD", "SUPERADMIN", "ADMIN"].includes(userRole);
+    const isHrd = ["HRD", "SUPERADMIN", "ADMIN", "ADMINISTRATOR", "DIREKTUR", "GM", "FINANCE"].includes(userRole);
 
     const isRecipient = (r) => {
       if (isHrd) return true;
@@ -47,7 +47,15 @@ export async function mount(container, { session }) {
           <div class="flex-1 min-w-0">
             <div class="flex items-center justify-between gap-2 flex-wrap">
               <p class="font-semibold text-slate-800">${escapeHtml(r.judul)}</p>
-              <span class="text-xs text-slate-400">${fmtDateTime(r.tanggal)}</span>
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-slate-400">${fmtDateTime(r.tanggal)}</span>
+                ${isHrd || (r.dibuat_oleh && r.dibuat_oleh.toLowerCase() === String(session?.nama || "").toLowerCase()) ? `
+                  <button class="btn-delete-bc text-xs font-bold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 transition flex items-center gap-1 shrink-0" data-bc-id="${escapeHtml(r.id)}" data-bc-title="${escapeHtml(r.judul)}">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    Hapus Memo
+                  </button>
+                ` : ''}
+              </div>
             </div>
             <div class="text-sm text-slate-600 mt-2 p-3 bg-slate-50 rounded-lg border border-slate-100 quill-content">
               ${r.isi}
@@ -60,6 +68,23 @@ export async function mount(container, { session }) {
           </div>
         </div>
       </div>`).join("");
+
+    listEl.querySelectorAll(".btn-delete-bc").forEach(btn => {
+      btn.onclick = async () => {
+        const bcId = btn.dataset.bcId;
+        const bcTitle = btn.dataset.bcTitle;
+        if (!bcId) return;
+        if (confirm(`Apakah Anda yakin ingin MENGHAPUS memo pengumuman "${bcTitle}" dari database? Memo tidak akan dapat diakses lagi oleh karyawan.`)) {
+          try {
+            await deleteBroadcastMemoAndNotifs(bcId);
+            toast(`Memo "${bcTitle}" berhasil dihapus dari database.`, "success");
+            await load();
+          } catch (err) {
+            toast("Gagal menghapus memo: " + err.message, "error");
+          }
+        }
+      };
+    });
   }
   
   await load();

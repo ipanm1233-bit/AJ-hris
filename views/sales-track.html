@@ -2,15 +2,21 @@
   <!-- HEADER -->
   <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
     <div>
-      <h1 class="text-2xl font-bold text-slate-800">Summary Track (Kanal.work)</h1>
-      <p class="text-sm text-slate-500 mt-1">Integrasi analitik kunjungan lapangan, waktu check-in, dan log lokasi GPS sales.</p>
+      <h1 class="text-2xl font-bold text-slate-800">Summary Track HRD (Dashboard Kunjungan Sales)</h1>
+      <p class="text-sm text-slate-500 mt-1">Dashboard interaktif analitik kunjungan toko, lokasi GPS, Effective Calls, dan performa tim sales.</p>
     </div>
-    <button id="btn-sync-kanal" class="inline-flex items-center gap-2 bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition shadow-sm">
-      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 15H15.75" />
-      </svg>
-      Sinkronisasi Kanal.work
-    </button>
+    <div class="flex items-center gap-2 flex-wrap">
+      <button id="btn-export-sales-visits" class="inline-flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3.5 py-2.5 rounded-xl text-xs font-bold transition shadow-sm">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        Export Excel Kunjungan
+      </button>
+      <button id="btn-sync-kanal" class="inline-flex items-center gap-2 bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition shadow-sm">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 15H15.75" />
+        </svg>
+        Sinkronisasi Kanal.work
+      </button>
+    </div>
   </div>
 
   <!-- INTEGRATION STATUS ALERT -->
@@ -27,6 +33,47 @@
       </div>
     </div>
     <span class="px-3 py-1 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded-full uppercase tracking-wider shrink-0">● Terhubung</span>
+  </div>
+
+  <!-- INTERACTIVE FILTERS TOOLBAR -->
+  <div class="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-3">
+    <div class="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-slate-100">
+      <h3 class="font-bold text-slate-800 text-xs uppercase tracking-wide flex items-center gap-1.5">
+        <span>🔍 Filter & Pencarian Kunjungan Sales</span>
+        <span id="active-filter-badge" class="px-2 py-0.5 bg-maroon-50 text-maroon-700 text-[10px] font-bold rounded-full border border-maroon-200 hidden">Filter Aktif</span>
+      </h3>
+      <button id="btn-reset-sales-filter" class="text-xs font-bold text-maroon-700 hover:underline">Reset Filter</button>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div>
+        <label class="block text-[11px] font-bold text-slate-500 mb-1 uppercase">Pilih Salesman</label>
+        <select id="filter-salesman" class="w-full px-3 py-2 text-xs font-semibold rounded-xl border border-slate-200 bg-slate-50 outline-none focus:border-maroon-500 cursor-pointer">
+          <option value="ALL">Semua Salesman</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-[11px] font-bold text-slate-500 mb-1 uppercase">Periode Kunjungan</label>
+        <select id="filter-period" class="w-full px-3 py-2 text-xs font-semibold rounded-xl border border-slate-200 bg-slate-50 outline-none focus:border-maroon-500 cursor-pointer">
+          <option value="ALL">Semua Tanggal</option>
+          <option value="TODAY" selected>Hari Ini</option>
+          <option value="WEEK">7 Hari Terakhir</option>
+          <option value="MONTH">Bulan Ini</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-[11px] font-bold text-slate-500 mb-1 uppercase">Status Kunjungan</label>
+        <select id="filter-status" class="w-full px-3 py-2 text-xs font-semibold rounded-xl border border-slate-200 bg-slate-50 outline-none focus:border-maroon-500 cursor-pointer">
+          <option value="ALL">Semua Status</option>
+          <option value="EC">Effective Call (Order Toko)</option>
+          <option value="STOK">Cek Stok & Display Produk</option>
+          <option value="PENAWARAN">Penawaran Produk Baru</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-[11px] font-bold text-slate-500 mb-1 uppercase">Pencarian Outlet / Alamat</label>
+        <input type="text" id="filter-search" placeholder="Cari nama toko, jalan..." class="w-full px-3 py-2 text-xs font-semibold rounded-xl border border-slate-200 bg-white outline-none focus:border-maroon-500">
+      </div>
+    </div>
   </div>
 
   <!-- METRICS CARDS -->
@@ -53,7 +100,7 @@
       </div>
     </div>
     <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
-      <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Check-in Toko Hari Ini</p>
+      <p class="text-xs font-bold text-slate-400 uppercase tracking-wide">Outlet Unik Terkunjungi</p>
       <p id="track-visits" class="text-3xl font-black text-emerald-600 mt-2">0 Outlet</p>
       <div class="flex items-center gap-1 text-[11px] text-emerald-600 font-semibold mt-1">
         <span>Kunjungan Salesman</span>
@@ -61,28 +108,59 @@
     </div>
   </div>
 
-  <!-- ANALYTICS SECTION -->
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <!-- D3 CHART CONTAINER -->
-    <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-100 p-5 shadow-sm space-y-4">
+  <!-- SALES REPRESENTATIVE BREAKDOWN CARDS -->
+  <div class="space-y-3">
+    <div class="flex items-center justify-between">
+      <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+        <span>👤 Performans Setiap Salesman</span>
+        <span class="text-xs font-normal text-slate-400">(Klik kartu sales untuk memfilter dashboard)</span>
+      </h3>
+    </div>
+    <div id="salesman-cards-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <!-- Populated by JS -->
+    </div>
+  </div>
+
+  <!-- ANALYTICS CHARTS SECTION -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- CHART 1: VISITS PER SALESMAN -->
+    <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm space-y-4">
       <div class="flex items-center justify-between border-b border-slate-50 pb-2">
-        <h3 class="font-bold text-slate-800 text-sm">Rasio Kunjungan Mingguan (D3 Analytics)</h3>
-        <span class="text-xs text-slate-400">Canvassing Performance</span>
+        <h3 class="font-bold text-slate-800 text-sm">Grafik Total Kunjungan Per Salesman</h3>
+        <span class="text-xs text-slate-400">Total Visit vs Effective Call</span>
       </div>
-      <div id="d3-chart-container" class="w-full flex justify-center items-center overflow-x-auto min-h-[260px] bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+      <div id="d3-salesman-chart" class="w-full flex justify-center items-center min-h-[220px] bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
         <!-- SVG rendered by D3 -->
       </div>
     </div>
 
-    <!-- LIVE FIELD ACTIVITY TIMELINE -->
+    <!-- CHART 2: STATUS BREAKDOWN -->
     <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm space-y-4">
       <div class="flex items-center justify-between border-b border-slate-50 pb-2">
-        <h3 class="font-bold text-slate-800 text-sm">Aktivitas Live Sales GPS</h3>
-        <span class="text-[10px] text-emerald-600 font-bold uppercase animate-pulse">● LIVE</span>
+        <h3 class="font-bold text-slate-800 text-sm">Komposisi Hasil Kunjungan Toko</h3>
+        <span class="text-xs text-slate-400">Effective Call vs Non-EC</span>
       </div>
-      <div id="live-timeline" class="space-y-4 h-[260px] overflow-y-auto pr-1">
-        <!-- Populated by JS -->
+      <div id="d3-status-chart" class="w-full flex justify-center items-center min-h-[220px] bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+        <!-- SVG rendered by D3 -->
       </div>
     </div>
   </div>
+
+  <!-- FIELD ACTIVITY TIMELINE & TABLE -->
+  <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm space-y-4">
+    <div class="flex items-center justify-between border-b border-slate-100 pb-3 flex-wrap gap-2">
+      <div>
+        <h3 class="font-bold text-slate-800 text-sm">Log Kunjungan Field Sales & GPS Tracking</h3>
+        <p class="text-xs text-slate-400 mt-0.5">Daftar lengkap check-in lokasi toko oleh salesmen.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <span id="visit-feed-count" class="px-2.5 py-1 bg-slate-100 text-slate-700 font-bold text-xs rounded-lg">0 Visit</span>
+      </div>
+    </div>
+
+    <div id="live-timeline" class="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+      <!-- Populated by JS -->
+    </div>
+  </div>
 </div>
+

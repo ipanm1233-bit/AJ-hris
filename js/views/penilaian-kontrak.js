@@ -5,12 +5,80 @@ import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.j
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 
+// =====================================================================
+// PETA KATEGORI & OPSI REKOMENDASI PENILAIAN
+// =====================================================================
+export const JENIS_PENILAIAN_MAP = {
+  KONTRAK: {
+    key: "KONTRAK",
+    label: "Perpanjangan Kontrak",
+    icon: "📜",
+    badgeClass: "bg-blue-50 text-blue-700 border-blue-200",
+    options: [
+      "Perpanjang Kontrak 3 Bulan",
+      "Perpanjang Kontrak 6 Bulan",
+      "Perpanjang Kontrak 9 Bulan",
+      "Perpanjang Kontrak 12 Bulan",
+      "Tidak Diperpanjang (Putus Kontrak)",
+      "Direkomendasikan Karyawan Tetap (Kartap)"
+    ]
+  },
+  KARTAP: {
+    key: "KARTAP",
+    label: "Rekomendasi Karyawan Tetap (Kartap)",
+    icon: "⭐️",
+    badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    options: [
+      "Direkomendasikan Menjadi Karyawan Tetap",
+      "Diperpanjang Kontrak Kembali (3 Bulan)",
+      "Diperpanjang Kontrak Kembali (6 Bulan)",
+      "Diperpanjang Kontrak Kembali (12 Bulan)",
+      "Tidak Direkomendasikan (Putus Hubungan Kerja)"
+    ]
+  },
+  PIP: {
+    key: "PIP",
+    label: "Penilaian PIP (Performance Improvement Plan)",
+    icon: "📈",
+    badgeClass: "bg-amber-50 text-amber-800 border-amber-200",
+    options: [
+      "Lulus PIP (Performa Membaik / Lanjut Kerja)",
+      "Perpanjang Masa PIP (1 - 3 Bulan)",
+      "Gagal PIP (Demosi / Sanksi / PHK)"
+    ]
+  },
+  MUTASI_DEMOSI: {
+    key: "MUTASI_DEMOSI",
+    label: "Penilaian Mutasi / Demosi / Promosi",
+    icon: "🔄",
+    badgeClass: "bg-purple-50 text-purple-700 border-purple-200",
+    options: [
+      "Direkomendasikan Mutasi Jabatan / Divisi",
+      "Direkomendasikan Demosi Jabatan",
+      "Direkomendasikan Promosi Jabatan",
+      "Tetap Pada Posisi Saat Ini"
+    ]
+  },
+  KPI_360: {
+    key: "KPI_360",
+    label: "Penilaian KPI 360",
+    icon: "📋",
+    badgeClass: "bg-maroon-50 text-maroon-700 border-maroon-200",
+    options: [
+      "Kinerja Sangat Baik (Apresiasi / Bonus)",
+      "Kinerja Memenuhi Ekspektasi (Dipertahankan)",
+      "Kinerja Perlu Perbaikan (Evaluasi / Guidance)",
+      "Saran Pelatihan & Peningkatan Kompetensi"
+    ]
+  }
+};
+
 export async function mount(container, { session, params }) {
   const role = (session.role || "").toUpperCase();
   const isFullAccess = FULL_ACCESS_ROLES.includes(role);
   const isAtasanView = !isFullAccess && ATASAN_VIEW_ROLES.includes(role);
-  const isHrdOrAdmin = isFullAccess || role === "HRD" || role === "SUPERADMIN" || role === "DIREKTUR";
-  const isAtasan = isAtasanView || role === "MANAGER" || role === "SPV" || role === "KOORDINATOR";
+  const isHrdOrAdmin = isFullAccess || ["HRD", "SUPERADMIN", "ADMIN", "ADMINISTRATOR", "DIREKTUR", "GM", "FINANCE"].includes(role);
+  const isAtasan = isAtasanView || ["MANAGER", "SPV", "KOORDINATOR", "BRANCH MANAGER"].includes(role);
   const isRegularEmployee = !isHrdOrAdmin && !isAtasan;
   const canManageKontrak = isFullAccess;
   let bawahanNames = null;
@@ -21,6 +89,7 @@ export async function mount(container, { session, params }) {
     hasil: container.querySelector("#pk-panel-hasil"),
     evaluasi: container.querySelector("#pk-panel-evaluasi"),
     template: container.querySelector("#pk-panel-template"),
+    grafik: container.querySelector("#pk-panel-employee-grafik"),
   };
   const loaded = {};
 
@@ -114,6 +183,11 @@ export async function mount(container, { session, params }) {
         gradeLabel = "Cukup (C)";
         gradeBadgeClass = "bg-amber-100 text-amber-800 border-amber-200";
       }
+
+      if (typeof detailSoal === "string") {
+        try { detailSoal = JSON.parse(detailSoal); } catch (e) { detailSoal = []; }
+      }
+      if (!Array.isArray(detailSoal)) detailSoal = [];
 
       // Group by Aspek
       const aspekGroups = {};
@@ -311,16 +385,14 @@ export async function mount(container, { session, params }) {
     const subtitleEl = container.querySelector("#pk-subtitle");
     const tabHeader = container.querySelector("#pk-tab-header");
 
-    if (titleEl) titleEl.textContent = "Grafik & Analisis Penilaian KPI";
-    if (subtitleEl) subtitleEl.textContent = "Grafik pencapaian indikator penilaian kinerja berkala Anda.";
-    if (tabHeader) tabHeader.classList.add("hidden");
-
-    Object.keys(panels).forEach(k => {
-      if (panels[k]) panels[k].classList.add("hidden");
-    });
-
-    await loadEmployeeGrafik();
-    return { unmount() {} };
+    if (titleEl) titleEl.textContent = "Penilaian & Kontrak Saya";
+    if (subtitleEl) subtitleEl.textContent = "Grafik pencapaian penilaian KPI dan rincian dokumen ikatan dinas / kontrak kerja Anda.";
+    if (tabHeader) {
+      tabHeader.innerHTML = `
+        <button data-ntab="grafik" class="pk-tab px-4 py-2.5 text-sm font-medium border-b-2 border-maroon-700 text-maroon-700 whitespace-nowrap">Hasil & Grafik KPI Saya</button>
+        <button data-ntab="kontrak" class="pk-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">Kontrak Kerja Saya</button>
+      `;
+    }
   }
 
   async function loadKontrak() {
@@ -338,6 +410,18 @@ export async function mount(container, { session, params }) {
     if (isAtasanView) {
       allKaryawan = allKaryawan.filter(k => bset.has(k.nama_karyawan));
       allKontrak = allKontrak.filter(k => bset.has(k.nama_karyawan));
+    } else if (isRegularEmployee) {
+      const myName = String(session.nama || "").toLowerCase().trim();
+      const myNik = String(session.nik || "").toLowerCase().trim();
+      allKaryawan = allKaryawan.filter(k => {
+        const kname = String(k.nama_karyawan || "").toLowerCase().trim();
+        const knik = String(k.nik_karyawan || k.nik || "").toLowerCase().trim();
+        return (myName && kname === myName) || (myNik && knik === myNik);
+      });
+      allKontrak = allKontrak.filter(c => {
+        const cname = String(c.nama_karyawan || "").toLowerCase().trim();
+        return (myName && cname === myName);
+      });
     }
 
     function renderCardView() {
@@ -364,12 +448,14 @@ export async function mount(container, { session, params }) {
         if (latestContract && latestContract.tanggal_akhir) {
           const today = new Date().toISOString().split("T")[0];
           daysLeft = daysBetween(today, latestContract.tanggal_akhir);
-          if (daysLeft < 0) {
-            contractStatus = "HABIS";
-          } else if (daysLeft <= 30) {
-            contractStatus = "SEGERA HABIS";
-          } else {
-            contractStatus = "AKTIF";
+          if (daysLeft !== null && !isNaN(daysLeft)) {
+            if (daysLeft < 0) {
+              contractStatus = "HABIS";
+            } else if (daysLeft <= 30) {
+              contractStatus = "SEGERA HABIS";
+            } else {
+              contractStatus = "AKTIF";
+            }
           }
         }
 
@@ -393,9 +479,11 @@ export async function mount(container, { session, params }) {
           if (latestContract && latestContract.tanggal_akhir) {
             const today = new Date().toISOString().split("T")[0];
             daysLeft = daysBetween(today, latestContract.tanggal_akhir);
-            if (daysLeft < 0) contractStatus = "HABIS";
-            else if (daysLeft <= 30) contractStatus = "SEGERA HABIS";
-            else contractStatus = "AKTIF";
+            if (daysLeft !== null && !isNaN(daysLeft)) {
+              if (daysLeft < 0) contractStatus = "HABIS";
+              else if (daysLeft <= 30) contractStatus = "SEGERA HABIS";
+              else contractStatus = "AKTIF";
+            }
           }
           empList.push({
             id: null,
@@ -1037,8 +1125,8 @@ export async function mount(container, { session, params }) {
           <!-- Header Toolbar -->
           <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <h2 class="text-xl font-bold text-slate-800">Master Template Soal KPI</h2>
-              <p class="text-xs text-slate-500 mt-1">Kelola set indikator penilaian (Contoh: Sales, Admin, Produksi) dan tetapkan daftar karyawan untuk tiap template.</p>
+              <h2 class="text-xl font-bold text-slate-800">Master Template Soal KPI & Evaluasi</h2>
+              <p class="text-xs text-slate-500 mt-1">Kelola set indikator penilaian (KPI 360, Perpanjangan Kontrak, Kartap, PIP, Mutasi/Demosi) dan tetapkan daftar karyawan untuk tiap template.</p>
             </div>
             <div class="flex items-center gap-2 self-start md:self-auto flex-wrap">
               <input type="file" id="kpi-excel-upload" accept=".xlsx, .xls" class="hidden">
@@ -1057,11 +1145,19 @@ export async function mount(container, { session, params }) {
           </div>
 
           <!-- Search & Filter Bar -->
-          <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between gap-3">
-            <div class="relative w-full sm:w-80">
-              <input type="text" id="tpl-search-input" placeholder="🔍 Cari nama template, indikator, atau karyawan..." class="w-full px-3.5 py-2 pl-9 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition">
+          <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div class="flex items-center gap-2 w-full sm:w-auto flex-1">
+              <div class="relative w-full sm:w-80">
+                <input type="text" id="tpl-search-input" placeholder="🔍 Cari nama template, indikator, atau karyawan..." class="w-full px-3.5 py-2 pl-9 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition">
+              </div>
+              <select id="tpl-filter-kategori" class="px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-slate-50 font-medium">
+                <option value="">Semua Kategori Penilaian</option>
+                ${Object.values(JENIS_PENILAIAN_MAP).map(cat => `
+                  <option value="${cat.key}">${cat.icon} ${cat.label}</option>
+                `).join('')}
+              </select>
             </div>
-            <div class="text-xs text-slate-500 font-medium">
+            <div class="text-xs text-slate-500 font-medium self-end sm:self-auto">
               Total <strong class="text-slate-800">${templates.length}</strong> Template Tersedia
             </div>
           </div>
@@ -1115,6 +1211,7 @@ export async function mount(container, { session, params }) {
     }
 
     const searchInput = wrap.querySelector("#tpl-search-input");
+    const filterKategori = wrap.querySelector("#tpl-filter-kategori");
     if (searchInput && previousSearchVal) {
       searchInput.value = previousSearchVal;
     }
@@ -1122,14 +1219,19 @@ export async function mount(container, { session, params }) {
     const cardsContainer = wrap.querySelector("#tpl-cards-container");
 
     function drawCards() {
-      const q = (searchInput.value || "").toLowerCase().trim();
+      const q = (searchInput ? searchInput.value : "").toLowerCase().trim();
+      const katVal = filterKategori ? filterKategori.value : "";
 
       const filtered = templates.filter(t => {
         const nama = (t.nama_template || "").toLowerCase();
         const assigned = (t.karyawan_assigned || []).join(" ").toLowerCase();
         const indikatorText = (t.soal_json || []).map(s => `${s.aspek} ${s.indikator}`).join(" ").toLowerCase();
+        const tKat = t.kategori_penilaian || "KPI_360";
 
-        return nama.includes(q) || assigned.includes(q) || indikatorText.includes(q);
+        const matchQ = !q || nama.includes(q) || assigned.includes(q) || indikatorText.includes(q);
+        const matchKat = !katVal || tKat === katVal;
+
+        return matchQ && matchKat;
       });
 
       if (!filtered.length) {
@@ -1139,6 +1241,9 @@ export async function mount(container, { session, params }) {
 
       cardsContainer.innerHTML = filtered.map(t => {
         const nama = t.nama_template || "Template Tanpa Nama";
+        const tKatKey = t.kategori_penilaian || "KPI_360";
+        const catConfig = JENIS_PENILAIAN_MAP[tKatKey] || JENIS_PENILAIAN_MAP.KPI_360;
+
         const soalList = t.soal_json || [];
         const totalBobot = soalList.reduce((acc, curr) => acc + (parseFloat(curr.bobot) || 0), 0);
         const assignedList = Array.isArray(t.karyawan_assigned) ? t.karyawan_assigned : [];
@@ -1157,10 +1262,10 @@ export async function mount(container, { session, params }) {
           <div class="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition p-5 flex flex-col justify-between group cursor-pointer tpl-card-item" data-tpl-id="${t.id}">
             <div>
               <!-- Top Header -->
-              <div class="flex items-start justify-between gap-3 mb-3">
+              <div class="flex items-start justify-between gap-2 mb-2.5">
                 <div class="flex items-center gap-2.5">
                   <div class="w-10 h-10 rounded-xl bg-maroon-50 text-maroon-700 font-bold flex items-center justify-center text-lg shadow-2xs group-hover:bg-maroon-700 group-hover:text-white transition">
-                    📋
+                    ${catConfig.icon}
                   </div>
                   <div>
                     <h3 class="font-bold text-slate-800 text-sm group-hover:text-maroon-700 transition leading-snug">${escapeHtml(nama)}</h3>
@@ -1168,16 +1273,23 @@ export async function mount(container, { session, params }) {
                   </div>
                 </div>
                 ${isBobot100 ? `
-                  <span class="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">Total 100%</span>
+                  <span class="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">Total 100%</span>
                 ` : `
-                  <span class="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">Bobot ${totalBobot}%</span>
+                  <span class="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full shrink-0">Bobot ${totalBobot}%</span>
                 `}
+              </div>
+
+              <!-- Category Tag Badge -->
+              <div class="mb-3">
+                <span class="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-lg border ${catConfig.badgeClass}">
+                  ${catConfig.icon} ${catConfig.label}
+                </span>
               </div>
 
               <!-- Section Preview Indikator KPI -->
               <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 mb-3 space-y-1.5">
                 <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wide flex items-center justify-between">
-                  <span>🎯 Detail Soal KPI</span>
+                  <span>🎯 Detail Soal & Indikator</span>
                   <span class="text-slate-400 font-normal lowercase">${soalList.length} soal</span>
                 </div>
                 ${soalList.length > 0 ? `
@@ -1505,14 +1617,28 @@ export async function mount(container, { session, params }) {
     const assignedSet = new Set(existingData?.karyawan_assigned || []);
 
     openModal({
-      title: existingData ? `Detail & Edit Template: ${escapeHtml(existingData.nama_template || "Template KPI")}` : "Buat Template Soal KPI Baru",
+      title: existingData ? `Detail & Edit Template: ${escapeHtml(existingData.nama_template || "Template KPI")}` : "Buat Template Soal KPI & Evaluasi Baru",
       size: "lg",
       bodyHtml: `
         <div class="space-y-4">
-          <!-- Nama Template -->
-          <div>
-            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Nama Template / Jabatan <span class="text-red-500">*</span></label>
-            <input type="text" id="tpl-nama" value="${existingData ? escapeHtml(existingData.nama_template || '') : ''}" placeholder="Cth: Template KPI Sales Representative" required class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:border-maroon-500 outline-none font-medium bg-white">
+          <!-- Nama Template & Jenis Penilaian -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Nama Template / Jabatan <span class="text-red-500">*</span></label>
+              <input type="text" id="tpl-nama" value="${existingData ? escapeHtml(existingData.nama_template || '') : ''}" placeholder="Cth: Template KPI Sales Representative / Kontrak" required class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:border-maroon-500 outline-none font-medium bg-white">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Jenis / Kategori Penilaian <span class="text-red-500">*</span></label>
+              <select id="tpl-kategori" class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:border-maroon-500 outline-none font-medium bg-white">
+                ${Object.values(JENIS_PENILAIAN_MAP).map(cat => `
+                  <option value="${cat.key}" ${ (existingData?.kategori_penilaian || 'KPI_360') === cat.key ? 'selected' : '' }>${cat.icon} ${cat.label}</option>
+                `).join('')}
+              </select>
+            </div>
+          </div>
+
+          <!-- Dynamic Preview Box for Recommendation Options -->
+          <div id="tpl-rekomendasi-preview-box" class="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1.5">
           </div>
 
           <!-- TAB / SECTION SELECTOR -->
@@ -1570,6 +1696,28 @@ export async function mount(container, { session, params }) {
         </div>
       `,
       onMount: (m) => {
+        const selKategori = m.querySelector("#tpl-kategori");
+        const boxPreview = m.querySelector("#tpl-rekomendasi-preview-box");
+
+        function updateRekomendasiPreview() {
+          const catKey = selKategori ? selKategori.value : "KPI_360";
+          const catObj = JENIS_PENILAIAN_MAP[catKey] || JENIS_PENILAIAN_MAP.KPI_360;
+          boxPreview.innerHTML = `
+            <div class="flex items-center justify-between font-bold text-slate-700">
+              <span>💡 Pilihan Keputusan & Rekomendasi di Template ini (${catObj.icon} ${catObj.label}):</span>
+            </div>
+            <div class="flex flex-wrap gap-1.5 mt-1">
+              ${catObj.options.map(opt => `
+                <span class="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg font-semibold border ${catObj.badgeClass}">
+                  ✓ ${escapeHtml(opt)}
+                </span>
+              `).join('')}
+            </div>
+          `;
+        }
+        if (selKategori) selKategori.onchange = updateRekomendasiPreview;
+        updateRekomendasiPreview();
+
         const tabBtnSoal = m.querySelector("#tab-btn-soal");
         const tabBtnKaryawan = m.querySelector("#tab-btn-karyawan");
         const panelSoal = m.querySelector("#panel-tpl-soal");
@@ -1716,6 +1864,8 @@ export async function mount(container, { session, params }) {
 
         m.querySelector("#btn-tpl-simpan").onclick = async () => {
           const nama = m.querySelector("#tpl-nama").value.trim();
+          const kategoriPenilaian = selKategori ? selKategori.value : "KPI_360";
+
           if (!nama) return toast("Nama Template wajib diisi!", "warning");
           if (calcTotalBobot() !== 100) return toast("Total bobot indikator wajib tepat 100%!", "warning");
 
@@ -1741,6 +1891,7 @@ export async function mount(container, { session, params }) {
 
           const payload = {
             nama_template: nama,
+            kategori_penilaian: kategoriPenilaian,
             soal_json: soalArray,
             karyawan_assigned: checkedEmployees
           };
@@ -1930,6 +2081,9 @@ export async function mount(container, { session, params }) {
 
   function openIsiKpiModal(task) {
     const isDone = task.status === "DONE";
+    const tKatKey = task.kategori_penilaian || "KPI_360";
+    const catConfig = JENIS_PENILAIAN_MAP[tKatKey] || JENIS_PENILAIAN_MAP.KPI_360;
+
     const soalHtml = (task.soal_json || []).map((s, i) => `
        <div class="border-b border-slate-100 pb-4 mb-4 text-left">
           <div class="flex items-center gap-2 mb-1.5">
@@ -1957,9 +2111,9 @@ export async function mount(container, { session, params }) {
       bodyHtml: `
         <div class="text-left space-y-4">
           <div class="p-3 bg-maroon-50 border border-maroon-200 rounded-xl flex items-start gap-3">
-            <span class="text-xl">📋</span>
+            <span class="text-xl">${catConfig.icon}</span>
             <div class="text-xs text-maroon-900 leading-relaxed">
-              <strong class="font-bold block text-maroon-950 text-sm mb-0.5">Penilaian Kinerja Karyawan (KPI 360)</strong>
+              <strong class="font-bold block text-maroon-950 text-sm mb-0.5">${catConfig.label}</strong>
               Silakan berikan skor 0 - 100 untuk tiap indikator penilaian berikut. Nilai akhir akan dihitung secara otomatis berdasarkan bobot.
             </div>
           </div>
@@ -2000,8 +2154,24 @@ export async function mount(container, { session, params }) {
                 <textarea id="kpi-catatan-perbaikan" rows="2" class="w-full px-3 py-2 text-xs border border-red-200 bg-red-50/20 rounded-lg outline-none focus:border-red-500 font-medium" placeholder="Tuliskan aspek yang perlu ditingkatkan...">${escapeHtml(task.catatan_perbaikan || '')}</textarea>
               </div>
               <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1 uppercase tracking-wide">💬 Catatan & Rekomendasi Tambahan</label>
-                <textarea id="kpi-catatan-penilai" rows="2" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-400 font-medium" placeholder="Tuliskan saran pengembangan atau rekomendasi untuk karyawan ini...">${escapeHtml(task.catatan_penilai || '')}</textarea>
+                <label class="block text-xs font-bold text-slate-700 mb-1 uppercase tracking-wide">💬 Catatan & Masukan Tambahan</label>
+                <textarea id="kpi-catatan-penilai" rows="2" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-400 font-medium" placeholder="Tuliskan saran pengembangan...">${escapeHtml(task.catatan_penilai || '')}</textarea>
+              </div>
+            </div>
+
+            <div class="mt-5 space-y-3">
+              <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider pb-1 border-b border-slate-200 flex items-center justify-between">
+                <span>3. Hasil Rekomendasi & Keputusan Penilai</span>
+                <span class="text-[10px] font-extrabold px-2 py-0.5 rounded border ${catConfig.badgeClass}">${catConfig.icon} ${catConfig.label}</span>
+              </h4>
+              <div>
+                <label class="block text-xs font-bold text-slate-800 mb-1">Pilih Opsi Keputusan Penilaian <span class="text-red-500">*</span></label>
+                <select id="kpi-rekomendasi-select" required class="w-full px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl outline-none focus:border-maroon-500 bg-white text-slate-800">
+                  <option value="">-- Pilih Rekomendasi (${catConfig.label}) --</option>
+                  ${catConfig.options.map(opt => `
+                    <option value="${escapeHtml(opt)}" ${ (task.rekomendasi || task.keputusan) === opt ? 'selected' : '' }>${escapeHtml(opt)}</option>
+                  `).join('')}
+                </select>
               </div>
             </div>
           </form>
@@ -2036,6 +2206,9 @@ export async function mount(container, { session, params }) {
            const form = m.querySelector("#form-isi-kpi-360");
            if (!form.reportValidity()) return toast("Mohon lengkapi semua nilai indikator!", "warning");
 
+           const rekomendasiVal = m.querySelector("#kpi-rekomendasi-select") ? m.querySelector("#kpi-rekomendasi-select").value.trim() : "";
+           if (!rekomendasiVal) return toast("Pilih hasil rekomendasi / keputusan penilaian!", "warning");
+
            let totalSkorBobot = 0;
            const answeredSoal = [...(task.soal_json || [])];
            const catatanBaik = m.querySelector("#kpi-catatan-baik") ? m.querySelector("#kpi-catatan-baik").value.trim() : "";
@@ -2051,7 +2224,6 @@ export async function mount(container, { session, params }) {
            });
 
            let finalScore = Math.round(totalSkorBobot * 100) / 100;
-           let keputusan = finalScore >= 80 ? "Sangat Baik" : finalScore >= 60 ? "Baik" : "Kurang";
 
            const btn = m.querySelector("#btn-save-kpi-360");
            btn.disabled = true; btn.textContent = "Menyimpan Penilaian...";
@@ -2064,6 +2236,8 @@ export async function mount(container, { session, params }) {
                 catatan_baik: catatanBaik,
                 catatan_perbaikan: catatanPerbaikan,
                 catatan_penilai: catatanPenilai,
+                rekomendasi: rekomendasiVal,
+                kategori_penilaian: tKatKey,
                 tanggal_diselesaikan: new Date().toISOString()
               });
 
@@ -2072,7 +2246,9 @@ export async function mount(container, { session, params }) {
                 nama_dinilai: task.nama_dinilai,
                 penilai: task.nama_penilai,
                 total_skor: finalScore,
-                keputusan: keputusan,
+                keputusan: rekomendasiVal,
+                rekomendasi: rekomendasiVal,
+                kategori_penilaian: tKatKey,
                 periode: task.periode,
                 detail_json: answeredSoal,
                 catatan_baik: catatanBaik,
@@ -2080,7 +2256,7 @@ export async function mount(container, { session, params }) {
                 catatan_penilai: catatanPenilai
               }, genId("KPI-LOG"));
 
-              toast("Penilaian KPI berhasil disimpan!", "success");
+              toast("Penilaian KPI & Rekomendasi berhasil disimpan!", "success");
               closeModal();
               await loadKpi360();
            } catch (err) {
@@ -2094,6 +2270,9 @@ export async function mount(container, { session, params }) {
 
   function openManualInputModal(task) {
     const isDone = task.status === "DONE";
+    const tKatKey = task.kategori_penilaian || "KPI_360";
+    const catConfig = JENIS_PENILAIAN_MAP[tKatKey] || JENIS_PENILAIAN_MAP.KPI_360;
+
     const soalHtml = (task.soal_json || []).map((s, i) => `
        <div class="border-b border-slate-100 pb-4 mb-4 text-left">
           <div class="flex items-center gap-2 mb-1.5">
@@ -2163,6 +2342,22 @@ export async function mount(container, { session, params }) {
                 <textarea id="manual-catatan-penilai" rows="3" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-400 font-medium" placeholder="Catatan atau masukan umum penilai...">${escapeHtml(task.catatan_penilai || task.catatan_umum || '')}</textarea>
               </div>
             </div>
+
+            <div class="mt-5 space-y-3">
+              <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider pb-1 border-b border-slate-200 flex items-center justify-between">
+                <span>3. Hasil Rekomendasi & Keputusan Penilai</span>
+                <span class="text-[10px] font-extrabold px-2 py-0.5 rounded border ${catConfig.badgeClass}">${catConfig.icon} ${catConfig.label}</span>
+              </h4>
+              <div>
+                <label class="block text-xs font-bold text-slate-800 mb-1">Pilih Opsi Keputusan Penilaian <span class="text-red-500">*</span></label>
+                <select id="manual-rekomendasi-select" required class="w-full px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl outline-none focus:border-maroon-500 bg-white text-slate-800">
+                  <option value="">-- Pilih Rekomendasi (${catConfig.label}) --</option>
+                  ${catConfig.options.map(opt => `
+                    <option value="${escapeHtml(opt)}" ${ (task.rekomendasi || task.keputusan) === opt ? 'selected' : '' }>${escapeHtml(opt)}</option>
+                  `).join('')}
+                </select>
+              </div>
+            </div>
           </form>
         </div>
       `,
@@ -2197,6 +2392,9 @@ export async function mount(container, { session, params }) {
           const form = m.querySelector("#form-manual-kpi");
           if (!form.reportValidity()) return;
 
+          const rekomendasiVal = m.querySelector("#manual-rekomendasi-select") ? m.querySelector("#manual-rekomendasi-select").value.trim() : "";
+          if (!rekomendasiVal) return toast("Pilih hasil rekomendasi / keputusan penilaian!", "warning");
+
           let totalSkorBobot = 0;
           const answeredSoal = [...(task.soal_json || [])];
           const catatanBaik = m.querySelector("#manual-catatan-baik") ? m.querySelector("#manual-catatan-baik").value.trim() : "";
@@ -2212,7 +2410,6 @@ export async function mount(container, { session, params }) {
           });
 
           let finalScore = Math.round(totalSkorBobot * 100) / 100;
-          let keputusan = finalScore >= 80 ? "Sangat Baik" : finalScore >= 60 ? "Baik" : "Kurang";
 
           const btn = m.querySelector("#btn-save-manual-kpi");
           btn.disabled = true; btn.textContent = "Menyimpan Hasil...";
@@ -2225,6 +2422,8 @@ export async function mount(container, { session, params }) {
               catatan_baik: catatanBaik,
               catatan_perbaikan: catatanPerbaikan,
               catatan_penilai: catatanPenilai,
+              rekomendasi: rekomendasiVal,
+              kategori_penilaian: tKatKey,
               diinput_oleh_hrd: true,
               metode_penilaian: "FORM_FISIK",
               tanggal_diselesaikan: new Date().toISOString()
@@ -2235,7 +2434,9 @@ export async function mount(container, { session, params }) {
               nama_dinilai: task.nama_dinilai,
               penilai: task.nama_penilai + " (Input Manual HRD)",
               total_skor: finalScore,
-              keputusan: keputusan,
+              keputusan: rekomendasiVal,
+              rekomendasi: rekomendasiVal,
+              kategori_penilaian: tKatKey,
               periode: task.periode,
               detail_json: answeredSoal,
               catatan_baik: catatanBaik,
@@ -2245,9 +2446,9 @@ export async function mount(container, { session, params }) {
               metode_penilaian: "FORM_FISIK"
             }, genId("KPI-LOG"));
 
-            toast("Hasil penilaian fisik berhasil disimpan!", "success");
+            toast("Hasil penilaian fisik & rekomendasi berhasil disimpan!", "success");
             closeModal();
-            loadKpi360();
+            await loadKpi360();
           } catch(e) {
             toast("Gagal menyimpan: " + e.message, "error");
             btn.disabled = false;
@@ -3408,11 +3609,22 @@ export async function mount(container, { session, params }) {
                      empSoal = soalArray;
                   }
 
+                  // Determine template category if selected
+                  let taskCategory = "KPI_360";
+                  if (selectedTplSet.size > 0) {
+                    const firstTplId = Array.from(selectedTplSet)[0];
+                    const matchedT = validTemplates.find(t => t.id === firstTplId);
+                    if (matchedT && matchedT.kategori_penilaian) {
+                      taskCategory = matchedT.kategori_penilaian;
+                    }
+                  }
+
                   const payload = {
                     periode,
                     nama_penilai: penilai,
                     nama_dinilai: dinilai,
                     soal_json: empSoal,
+                    kategori_penilaian: taskCategory,
                     status: "PENDING",
                     skor_akhir: 0,
                     tanggal: new Date().toISOString(),
@@ -3421,6 +3633,16 @@ export async function mount(container, { session, params }) {
                   const kpiId = genId("KPI");
                   await fsAdd(COL.TUGAS_KPI_360, payload, kpiId);
                   createdTasks.push({ id: kpiId, ...payload });
+               }
+
+               // Always trigger in-app & push notifications to evaluator
+               const notifTitle = "Tugas Penilaian KPI 360 Baru";
+               const notifPesan = `Anda ditugaskan menilai ${dinilaiList.length} karyawan periode ${periode}. Batas waktu: ${fmtDateShort(deadlineISO)}.`;
+               const notifLink = "#penilaian-kontrak?tab=kpi360";
+
+               await notifyUser(penilaiUsername, notifTitle, notifPesan, notifLink).catch(e => console.warn("Err notifyUser penilaiUsername:", e));
+               if (penilai && penilai !== penilaiUsername) {
+                 await notifyUser(penilai, notifTitle, notifPesan, notifLink).catch(e => console.warn("Err notifyUser penilai:", e));
                }
 
                if (penilaiEmail && typeof sendEmailNotif === 'function') {
@@ -3476,7 +3698,6 @@ export async function mount(container, { session, params }) {
                   `;
 
                   sendEmailNotif(penilaiEmail, `[HRIS] Tugas Penilaian KPI 360 - Periode ${periode}`, htmlEmail).catch(e => console.warn(e));
-                  await notifyUser(penilaiUsername, "Tugas Penilaian KPI 360", `Anda ditugaskan menilai ${dinilaiList.length} karyawan periode ${periode}.`, "#penilaian-kontrak?tab=kpi360");
                }
 
                toast("Tugas Penilaian berhasil didistribusikan.", "success");
@@ -3530,19 +3751,27 @@ export async function mount(container, { session, params }) {
           <div class="overflow-x-auto">
             <table class="w-full text-sm">
               <thead class="bg-slate-50 text-slate-500 text-xs uppercase"><tr>
-                <th class="px-4 py-3 text-left">Tanggal</th><th class="px-4 py-3 text-left">Dinilai</th><th class="px-4 py-3 text-left">Penilai</th><th class="px-4 py-3 text-left">Skor Akhir</th><th class="px-4 py-3 text-left">Kategori</th><th class="px-4 py-3 text-right">Aksi</th>
+                <th class="px-4 py-3 text-left">Tanggal</th><th class="px-4 py-3 text-left">Dinilai</th><th class="px-4 py-3 text-left">Penilai</th><th class="px-4 py-3 text-left">Skor Akhir</th><th class="px-4 py-3 text-left">Hasil Keputusan & Rekomendasi</th><th class="px-4 py-3 text-right">Aksi</th>
               </tr></thead>
-              <tbody>${logs.map(r => `
+              <tbody>${logs.map(r => {
+                const cat = JENIS_PENILAIAN_MAP[r.kategori_penilaian] || JENIS_PENILAIAN_MAP.KPI_360;
+                const recText = r.rekomendasi || r.keputusan || "-";
+                return `
                 <tr class="border-t border-slate-50 hover:bg-slate-50 transition">
-                  <td class="px-4 py-3">${fmtDateShort(r.tanggal)}</td>
-                  <td class="px-4 py-3 font-medium">${escapeHtml(r.nama_dinilai)}</td>
-                  <td class="px-4 py-3">${escapeHtml(r.penilai)}</td>
-                  <td class="px-4 py-3 font-semibold">${r.total_skor}</td>
-                  <td class="px-4 py-3">${badge(r.keputusan, r.keputusan === "Sangat Baik" ? "green" : "blue")}</td>
-                  <td class="px-4 py-3 text-right">
-                    <button data-print="${r.id}" class="text-xs bg-slate-800 text-white px-3 py-1.5 rounded flex items-center gap-1 ml-auto">Cetak PDF</button>
+                  <td class="px-4 py-3 text-xs text-slate-500">${fmtDateShort(r.tanggal)}</td>
+                  <td class="px-4 py-3 font-bold text-slate-800">${escapeHtml(r.nama_dinilai)}</td>
+                  <td class="px-4 py-3 text-slate-600">${escapeHtml(r.penilai)}</td>
+                  <td class="px-4 py-3 font-extrabold text-maroon-700">${r.total_skor || r.skor_akhir || 0}</td>
+                  <td class="px-4 py-3">
+                    <span class="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg font-bold border ${cat.badgeClass}">
+                      ${cat.icon} ${escapeHtml(recText)}
+                    </span>
                   </td>
-                </tr>`).join("")}
+                  <td class="px-4 py-3 text-right">
+                    <button data-print="${r.id}" class="text-xs bg-slate-800 hover:bg-slate-900 text-white font-semibold px-3 py-1.5 rounded-lg inline-flex items-center gap-1 shadow-2xs ml-auto transition">🖨️ Cetak PDF</button>
+                  </td>
+                </tr>`;
+              }).join("")}
               </tbody>
             </table>
           </div>
@@ -3569,15 +3798,19 @@ export async function mount(container, { session, params }) {
         </tr>`;
     });
 
+    const catInfo = JENIS_PENILAIAN_MAP[row.kategori_penilaian] || JENIS_PENILAIAN_MAP.KPI_360;
+
     const html = `
       <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff;">
         <div style="page-break-inside:avoid; margin-bottom:15px;">
-          ${isoDocHeaderTable({ judul: "LAPORAN EVALUASI & PENILAIAN KPI KARYAWAN", noDok: "HR-KPI-01", terbitRevisi: "1/0", hal: "1 dari 1" })}
+          ${isoDocHeaderTable({ judul: `LAPORAN EVALUASI (${catInfo.label.toUpperCase()})`, noDok: "HR-KPI-01", terbitRevisi: "1/0", hal: "1 dari 1" })}
         </div>
         <table style="width:100%; border-collapse:collapse; margin-bottom:15px; border:1px solid #000;">
           <tr><td width="35%" style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Nama Karyawan</td><td style="border:1px solid #000; padding:6px 10px;"><strong>${escapeHtml(row.nama_dinilai)}</strong></td></tr>
+          <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Jenis / Kategori Penilaian</td><td style="border:1px solid #000; padding:6px 10px;">${catInfo.icon} ${escapeHtml(catInfo.label)}</td></tr>
           <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Penilai / Atasan</td><td style="border:1px solid #000; padding:6px 10px;">${escapeHtml(row.penilai || "-")}</td></tr>
           <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Skor KPI Akhir</td><td style="border:1px solid #000; padding:6px 10px;"><strong>${row.total_skor || row.skor_akhir || "-"}</strong></td></tr>
+          <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Hasil Keputusan & Rekomendasi</td><td style="border:1px solid #000; padding:6px 10px;"><strong style="font-size:12px; color:#7a1f2b;">${escapeHtml(row.rekomendasi || row.keputusan || "-")}</strong></td></tr>
         </table>
         <table style="width:100%; border-collapse:collapse; margin-top:10px; border:1px solid #000;">
           <thead>
@@ -3654,35 +3887,64 @@ export async function mount(container, { session, params }) {
     });
   }
 
-  container.querySelectorAll(".pk-tab").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const tab = btn.dataset.ntab;
-      Object.keys(panels).forEach(k => panels[k]?.classList.toggle("hidden", k !== tab));
-      container.querySelectorAll(".pk-tab").forEach(b => {
-        const isSelected = b === btn;
-        b.classList.toggle("border-maroon-700", isSelected); b.classList.toggle("text-maroon-700", isSelected);
-        b.classList.toggle("border-transparent", !isSelected); b.classList.toggle("text-slate-500", !isSelected);
-      });
-      if (!loaded[tab]) {
-        loaded[tab] = true;
-        if (tab === "kpi360") await loadKpi360();
-        if (tab === "hasil") await loadHasil();
-        if (tab === "evaluasi") await loadEvaluasi();
-        if (tab === "template") await loadTemplateKpi();
+  async function switchTab(tab) {
+    if (!panels[tab]) return;
+
+    Object.keys(panels).forEach(k => {
+      if (panels[k]) {
+        panels[k].classList.toggle("hidden", k !== tab);
       }
+    });
+
+    container.querySelectorAll(".pk-tab").forEach(b => {
+      const isSelected = b.dataset.ntab === tab;
+      b.classList.toggle("border-maroon-700", isSelected);
+      b.classList.toggle("text-maroon-700", isSelected);
+      b.classList.toggle("border-transparent", !isSelected);
+      b.classList.toggle("text-slate-500", !isSelected);
+    });
+
+    if (!loaded[tab]) {
+      try {
+        if (tab === "kontrak") await loadKontrak();
+        else if (tab === "kpi360") await loadKpi360();
+        else if (tab === "hasil") await loadHasil();
+        else if (tab === "evaluasi") await loadEvaluasi();
+        else if (tab === "template") await loadTemplateKpi();
+        else if (tab === "grafik") await loadEmployeeGrafik();
+        loaded[tab] = true;
+      } catch (err) {
+        console.error(`Gagal memuat data sub menu ${tab}:`, err);
+        loaded[tab] = false;
+        if (panels[tab]) {
+          panels[tab].innerHTML = emptyState(
+            `Gagal memuat data sub menu: ${err.message || err}`,
+            "Silakan klik tombol sub menu di atas untuk mencoba kembali."
+          );
+        }
+      }
+    }
+  }
+
+  container.querySelectorAll(".pk-tab").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.ntab;
+      if (tab) switchTab(tab);
     });
   });
 
-  const tabParam = params ? (params.get("tab") || params.get("subtab")) : null;
-  const initialTab = (tabParam === "kpi" || tabParam === "kpi360") ? "kpi360" : (panels[tabParam] ? tabParam : "kontrak");
-
-  const targetTabBtn = container.querySelector(`.pk-tab[data-ntab="${initialTab}"]`);
-  if (targetTabBtn && initialTab !== "kontrak") {
-    targetTabBtn.click();
+  const tabParam = params ? (typeof params.get === "function" ? params.get("tab") : params.tab) : null;
+  let initialTab = "kontrak";
+  if (isRegularEmployee) {
+    initialTab = (tabParam === "kontrak") ? "kontrak" : "grafik";
   } else {
-    await loadKontrak();
-    loaded.kontrak = true;
+    if (tabParam === "kpi" || tabParam === "kpi360") initialTab = "kpi360";
+    else if (tabParam === "evaluasi" || tabParam === "evaluasi-kontrak") initialTab = "evaluasi";
+    else if (panels[tabParam]) initialTab = tabParam;
+    else initialTab = "kontrak";
   }
+
+  await switchTab(initialTab);
 
   return { unmount() {} };
 }

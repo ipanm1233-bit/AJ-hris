@@ -246,7 +246,7 @@ export async function computeVisibleMenus(session) {
   if (!isManagementOrHrd || role === "KARYAWAN" || role === "STAFF") {
     return [
       MENU_CONFIG.find(m => m.id === "dashboard") || { id: "dashboard", label: "Home & Dashboard", icon: "home", kategori: "Menu Utama" },
-      { id: "penilaian-kontrak", route: "penilaian-kontrak", label: "Penilaian", icon: "doc-plus", kategori: "Menu Utama" }
+      { id: "penilaian-kontrak", route: "penilaian-kontrak", label: "Penilaian & Kontrak", icon: "doc-plus", kategori: "Menu Utama" }
     ];
   }
 
@@ -267,11 +267,11 @@ export async function canAccessRoute(routeId, session) {
   if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(targetId)) {
     targetId = "pemanggilan";
   }
-  if (targetId === "penilaian") {
+  if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi"].includes(targetId)) {
     targetId = "penilaian-kontrak";
   }
-  // Semua role berhak mengakses route absensi & penilaian
-  if (targetId === "absensi" || targetId === "absensi-saya" || targetId === "penilaian" || targetId === "penilaian-kontrak") return true;
+  // Semua role berhak mengakses route absensi & penilaian/kontrak
+  if (targetId === "absensi" || targetId === "absensi-saya" || targetId === "penilaian" || targetId === "penilaian-kontrak" || targetId === "kontrak") return true;
 
   const menus = await computeVisibleMenus(session);
   // route yang tidak ada di MENU_CONFIG (mis. sub-halaman) dianggap boleh selama login

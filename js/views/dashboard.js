@@ -1,6 +1,6 @@
 import { db, COL, collection, query, where, getDocs, orderBy, limit, getDoc, doc, updateDoc, messaging } from "../firebase-config.js";
-import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, getTargetsForRole, toast, fsUpdate, fsAdd, fsGetAll, genId, localDateStr } from "../utils.js";
-import { avatar, badge, icon, emptyState, skeletonRows } from "../components.js";
+import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, getTargetsForRole, toast, fsUpdate, fsAdd, fsGetAll, fsDelete, deleteBroadcastMemoAndNotifs, genId, localDateStr } from "../utils.js";
+import { avatar, badge, icon, emptyState, skeletonRows, getDismissedAnnouncements, dismissAnnouncementForUser } from "../components.js";
 import { MANAJEMEN_ROLES } from "../auth.js";
 // IMPORT BARU UNTUK MENDAPATKAN TOKEN HP (FCM)
 import { getToken } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js";
@@ -450,8 +450,12 @@ async function loadAnnouncements(container, session) {
     const q = query(collection(db, COL.BROADCAST), orderBy("tanggal", "desc"), limit(20));
     const snap = await getDocs(q);
     const now = new Date();
-    const isHrdRole = ["HRD", "SUPERADMIN", "ADMIN"].includes((session?.role || "").toUpperCase());
-    const validMemos = snap.docs.map(d => d.data()).filter(r => {
+    const isHrdRole = ["HRD", "SUPERADMIN", "ADMIN", "ADMINISTRATOR", "DIREKTUR", "GM", "FINANCE"].includes((session?.role || "").toUpperCase());
+    const dismissedIds = getDismissedAnnouncements(session).map(String);
+
+    const validMemos = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => {
+      if (dismissedIds.includes(String(r.id))) return false;
+
       if (r.tanggal_berakhir) { 
         const tglBatas = new Date(r.tanggal_berakhir); tglBatas.setHours(23, 59, 59, 999);
         if (tglBatas < now) return false;
@@ -490,33 +494,67 @@ async function loadAnnouncements(container, session) {
         </div>`;
     }).join("");
 
-    // Klik salah satu pengumuman -> tampilkan detail lengkapnya di modal
-    // (sebelumnya cuma cuplikan 90 karakter yang tampil, tanpa cara melihat
-    // isi lengkap/lampiran dari widget dashboard).
     wrap.querySelectorAll("[data-memo-idx]").forEach(el => {
-      el.onclick = () => openAnnouncementDetailModal(validMemos[parseInt(el.dataset.memoIdx)]);
+      el.onclick = () => openAnnouncementDetailModal(validMemos[parseInt(el.dataset.memoIdx, 10)], session, () => loadAnnouncements(container, session));
     });
   } catch (e) { wrap.innerHTML = emptyState("Belum ada pengumuman"); }
 }
 
-function openAnnouncementDetailModal(memo) {
+function openAnnouncementDetailModal(memo, session, onRefresh) {
   if (!memo) return;
+  const isHrdRole = ["HRD", "SUPERADMIN", "ADMIN", "ADMINISTRATOR", "DIREKTUR", "GM", "FINANCE"].includes((session?.role || "").toUpperCase());
+  const isCreator = memo.dibuat_oleh && memo.dibuat_oleh.toLowerCase() === String(session?.nama || "").toLowerCase();
+  const canDeleteDb = isHrdRole || isCreator;
+
   const body = `
     <div class="space-y-4">
-      <div class="flex items-center justify-between text-xs text-slate-400">
+      <div class="flex items-center justify-between text-xs text-slate-400 border-b border-slate-100 pb-2">
         <span>${fmtDateShort(memo.tanggal)} • oleh ${escapeHtml(memo.dibuat_oleh || "-")}</span>
         ${memo.tanggal_berakhir ? `<span>Berlaku s/d ${fmtDateShort(memo.tanggal_berakhir)}</span>` : ""}
       </div>
-      <div class="text-sm text-slate-700 leading-relaxed">${memo.isi || "<i>Tidak ada isi.</i>"}</div>
-      ${memo.lampiran_url ? `<a href="${memo.lampiran_url}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-sm font-medium text-maroon-700 hover:underline">${icon("link", "w-4 h-4")} Lihat Lampiran</a>` : ""}
+      <div class="text-sm text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100 quill-content">${memo.isi || "<i>Tidak ada isi.</i>"}</div>
+      ${memo.lampiran_url ? `<a href="${escapeHtml(memo.lampiran_url)}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-sm font-medium text-maroon-700 hover:underline">${icon("link", "w-4 h-4")} Lihat Lampiran</a>` : ""}
     </div>
-    <div class="mt-6 flex justify-end"><button id="btn-tutup-pengumuman" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition">Tutup</button></div>
+    <div class="mt-6 flex items-center justify-between gap-2">
+      <button id="btn-delete-dash-memo" class="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition flex items-center gap-1.5">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        ${canDeleteDb ? 'Hapus Pengumuman' : 'Sembunyikan Pengumuman'}
+      </button>
+      <button id="btn-tutup-pengumuman" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-xs font-bold transition">Tutup</button>
+    </div>
   `;
   openModal({
     title: memo.judul || "Pengumuman",
     size: "lg",
     bodyHtml: body,
-    onMount: (m) => { m.querySelector("#btn-tutup-pengumuman").onclick = closeModal; }
+    onMount: (m) => {
+      m.querySelector("#btn-tutup-pengumuman").onclick = closeModal;
+      const btnDel = m.querySelector("#btn-delete-dash-memo");
+      if (btnDel) {
+        btnDel.onclick = async () => {
+          if (!memo.id) return;
+          const promptMsg = canDeleteDb
+            ? `Apakah Anda yakin ingin MENGHAPUS pengumuman "${memo.judul}" ini dari database?`
+            : `Apakah Anda yakin ingin MENGHAPUS / MENYEMBUNYIKAN pengumuman "${memo.judul}" ini dari tampilan Anda?`;
+
+          if (confirm(promptMsg)) {
+            try {
+              if (canDeleteDb) {
+                await deleteBroadcastMemoAndNotifs(memo.id);
+                toast(`Pengumuman "${memo.judul}" berhasil dihapus dari database.`, "success");
+              } else {
+                dismissAnnouncementForUser(memo.id, session);
+                toast(`Pengumuman "${memo.judul}" berhasil disembunyikan.`, "success");
+              }
+              closeModal();
+              if (typeof onRefresh === "function") onRefresh();
+            } catch (err) {
+              toast("Gagal menghapus pengumuman: " + err.message, "error");
+            }
+          }
+        };
+      }
+    }
   });
 }
 

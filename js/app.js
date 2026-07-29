@@ -443,7 +443,14 @@ async function router(session) {
   if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(cleanPath)) {
     mappedPath = "pemanggilan";
   }
-  if (["penilaian"].includes(cleanPath)) {
+  if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi", "penilaian-kontrak"].includes(cleanPath)) {
+    if (["kontrak", "master-kontrak", "kontrak-karyawan"].includes(cleanPath)) {
+      params.set("tab", "kontrak");
+    } else if (["evaluasi-kontrak", "evaluasi"].includes(cleanPath)) {
+      params.set("tab", "evaluasi");
+    } else if (["kpi", "kpi360"].includes(cleanPath)) {
+      params.set("tab", "kpi360");
+    }
     mappedPath = "penilaian-kontrak";
   }
 
@@ -727,9 +734,39 @@ async function openChangePasswordModal(session) {
 
 async function checkUnreadNotifications(session) {
   try {
-    const q = query(collection(db, COL.NOTIFICATIONS), where("username_target", "==", session.username), where("dibaca", "==", false));
-    const snap = await getDocs(q);
-    if (!snap.empty) document.getElementById("notif-dot").classList.remove("hidden");
+    if (!session) return;
+    const uName = (session.username || "").toLowerCase().trim();
+    const uNama = (session.nama || "").toLowerCase().trim();
+    const uNik = (session.nik || "").toLowerCase().trim();
+
+    const allNotifs = await fsGetAll(COL.NOTIFICATIONS);
+    const hasUnread = allNotifs.some(n => {
+      if (n.dibaca) return false;
+      const target = (n.username_target || "").toLowerCase().trim();
+      const namaTarget = (n.nama_target || "").toLowerCase().trim();
+      const nikTarget = (n.nik_target || "").toLowerCase().trim();
+      const aliases = Array.isArray(n.target_aliases) ? n.target_aliases.map(x => String(x).toLowerCase().trim()) : [];
+
+      return (
+        (uName && target === uName) ||
+        (uNama && target === uNama) ||
+        (uNama && namaTarget === uNama) ||
+        (uNik && nikTarget === uNik) ||
+        (uName && aliases.includes(uName)) ||
+        (uNama && aliases.includes(uNama)) ||
+        (uNik && aliases.includes(uNik))
+      );
+    });
+
+    const dotEl = document.getElementById("notif-dot");
+    const dotMobileEl = document.getElementById("notif-dot-mobile");
+    if (hasUnread) {
+      if (dotEl) dotEl.classList.remove("hidden");
+      if (dotMobileEl) dotMobileEl.classList.remove("hidden");
+    } else {
+      if (dotEl) dotEl.classList.add("hidden");
+      if (dotMobileEl) dotMobileEl.classList.add("hidden");
+    }
   } catch (e) {
     /* koleksi mungkin belum ada, abaikan */
   }

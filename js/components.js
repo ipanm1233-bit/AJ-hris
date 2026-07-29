@@ -5,7 +5,7 @@
  */
 import { db, COL, doc, getDoc } from "./firebase-config.js";
 import {
-  fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, confirmDialog,
+  fsGetAll, fsAdd, fsUpdate, fsDelete, deleteBroadcastMemoAndNotifs, openModal, closeModal, confirmDialog,
   toast, fmtDateShort, fmtRupiah, toNumber, genId, escapeHtml, localDateStr
 } from "./utils.js";
 
@@ -461,6 +461,60 @@ export { fsGetAll, fsAdd, fsUpdate, fsDelete };
  * Menampilkan: Antrean Persetujuan, Tugas KPI 360, Warning Kontrak
  * (khusus HRD/SUPERADMIN), dan Pengumuman aktif (broadcast memo).
  * ------------------------------------------------------------------- */
+export function getDismissedAnnouncements(session) {
+  try {
+    const key = `dismissed_announcements_${session?.username || session?.nama || 'user'}`;
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export function dismissAnnouncementForUser(memoId, session) {
+  if (!memoId) return;
+  try {
+    const key = `dismissed_announcements_${session?.username || session?.nama || 'user'}`;
+    const list = getDismissedAnnouncements(session);
+    const strId = String(memoId);
+    if (!list.map(String).includes(strId)) {
+      list.push(strId);
+      localStorage.setItem(key, JSON.stringify(list));
+    }
+  } catch (e) {
+    console.warn("Gagal menyimpan status dismiss memo:", e);
+  }
+}
+
+export async function deletePersonalMemoNotifs(memoId, session) {
+  if (!memoId) return;
+  try {
+    const allNotifs = await fsGetAll(COL.NOTIFICATIONS);
+    const strMemoId = String(memoId);
+    const uName = (session?.username || "").toLowerCase().trim();
+    const uNama = (session?.nama || "").toLowerCase().trim();
+    const uNik = (session?.nik || "").toLowerCase().trim();
+
+    const myNotifs = allNotifs.filter(n => {
+      const target = (n.username_target || "").toLowerCase().trim();
+      const namaTarget = (n.nama_target || "").toLowerCase().trim();
+      const nikTarget = (n.nik_target || "").toLowerCase().trim();
+
+      const isUser = (uName && target === uName) ||
+                     (uNama && target === uNama) ||
+                     (uNama && namaTarget === uNama) ||
+                     (uNik && nikTarget === uNik);
+
+      const isMemo = String(n.memo_id || "") === strMemoId || (n.link && String(n.link).includes(strMemoId));
+      return isUser && isMemo;
+    });
+
+    await Promise.all(myNotifs.map(n => fsDelete(COL.NOTIFICATIONS, n.id)));
+  } catch (err) {
+    console.warn("Gagal menghapus personal notification memo:", err);
+  }
+}
+
 export async function openNotificationCenter(session) {
   openModal({
     title: "Pusat Notifikasi",
@@ -477,7 +531,28 @@ export async function openNotificationCenter(session) {
       fsGetAll(COL.TUGAS_KPI_360).catch(() => []),
       isHrd ? fsGetAll(COL.MASTER_KONTRAK) : Promise.resolve([]),
       fsGetAll(COL.BROADCAST).catch(() => []),
-      fsGetAll(COL.NOTIFICATIONS).then(rows => rows.filter(n => n.username_target === session.username).sort((a,b) => new Date(b.tanggal || 0) - new Date(a.tanggal || 0))).catch(() => [])
+      fsGetAll(COL.NOTIFICATIONS).then(rows => {
+        const uName = (session.username || "").toLowerCase().trim();
+        const uNama = (session.nama || "").toLowerCase().trim();
+        const uNik = (session.nik || "").toLowerCase().trim();
+
+        return rows.filter(n => {
+          const target = (n.username_target || "").toLowerCase().trim();
+          const namaTarget = (n.nama_target || "").toLowerCase().trim();
+          const nikTarget = (n.nik_target || "").toLowerCase().trim();
+          const aliases = Array.isArray(n.target_aliases) ? n.target_aliases.map(x => String(x).toLowerCase().trim()) : [];
+
+          return (
+            (uName && target === uName) ||
+            (uNama && target === uNama) ||
+            (uNama && namaTarget === uNama) ||
+            (uNik && nikTarget === uNik) ||
+            (uName && aliases.includes(uName)) ||
+            (uNama && aliases.includes(uNama)) ||
+            (uNik && aliases.includes(uNik))
+          );
+        }).sort((a,b) => new Date(b.tanggal || 0) - new Date(a.tanggal || 0));
+      }).catch(() => [])
     ]);
 
     const myApproval = semuaPengajuan.filter(r => {
@@ -497,16 +572,40 @@ export async function openNotificationCenter(session) {
     const orgLpjOverdue = isHrd ? semuaPengajuan.filter(r => r.requires_lpj && r.lpj_status === "BELUM" && r.lpj_due_date && new Date(r.lpj_due_date) < nowForLpj) : [];
 
     const now = new Date();
-    const pengumumanAktif = broadcastRows.filter(r => {
+    const dismissedIds = getDismissedAnnouncements(session).map(String);
+
+    const allAnnouncements = broadcastRows.filter(r => {
+      if (dismissedIds.includes(String(r.id))) return false;
+      if (r.target_type === "SPESIFIK") {
+        const list = (r.target_list || []).map(x => String(x || "").trim().toLowerCase());
+        const myName = String(session?.nama || "").trim().toLowerCase();
+        const myUsername = String(session?.username || "").trim().toLowerCase();
+        const myNik = String(session?.nik || "").trim().toLowerCase();
+        return list.some(target => 
+          target === myName || 
+          target === myUsername || 
+          (myNik && target === myNik) ||
+          (myName && (target.includes(myName) || myName.includes(target)))
+        );
+      }
+      return true;
+    }).sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+
+    const pengumumanAktif = allAnnouncements.filter(r => {
       if (r.tanggal_berakhir) {
         const batas = new Date(r.tanggal_berakhir); batas.setHours(23, 59, 59, 999);
         if (batas < now) return false;
       }
-      if (r.target_type === "SPESIFIK") {
-         return (r.target_list || []).includes(session?.nama);
-      }
       return true;
-    }).sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+    });
+
+    const pengumumanLalu = allAnnouncements.filter(r => {
+      if (r.tanggal_berakhir) {
+        const batas = new Date(r.tanggal_berakhir); batas.setHours(23, 59, 59, 999);
+        if (batas < now) return true;
+      }
+      return false;
+    });
 
     // Bikin struktur Terpadu & Terkonsolidasi (Unified Stream)
     const items = [];
@@ -533,19 +632,26 @@ export async function openNotificationCenter(session) {
       });
     });
 
-    // 2. Pengumuman Aktif
-    if (pengumumanAktif.length > 0) {
+    // 2. Pengumuman Aktif & Lalu
+    if (pengumumanAktif.length > 0 || pengumumanLalu.length > 0) {
+      const activeCount = pengumumanAktif.length;
+      const pastCount = pengumumanLalu.length;
+      const groupTitle = activeCount > 0 
+        ? `${activeCount} Pengumuman Resmi Aktif`
+        : `${pastCount} Pengumuman Lalu (Arsip)`;
+      const sampleList = (activeCount > 0 ? pengumumanAktif : pengumumanLalu).slice(0, 3).map(p => p.judul || p.title || "Pengumuman").join(" • ");
+
       items.push({
         id: 'announcements-group',
         cat: 'announcement',
         badge: 'Pengumuman Perusahaan',
         tone: 'purple',
         iconName: 'megaphone',
-        title: `${pengumumanAktif.length} Pengumuman Resmi Aktif`,
-        message: pengumumanAktif.slice(0, 3).map(p => p.judul || p.title || "Pengumuman").join(" • "),
-        date: pengumumanAktif[0]?.tanggal ? fmtDateShort(pengumumanAktif[0].tanggal) : '',
-        unread: true,
-        action: () => openActiveAnnouncementsModal(pengumumanAktif, session)
+        title: groupTitle,
+        message: sampleList,
+        date: (pengumumanAktif[0] || pengumumanLalu[0])?.tanggal ? fmtDateShort((pengumumanAktif[0] || pengumumanLalu[0]).tanggal) : '',
+        unread: activeCount > 0,
+        action: () => openActiveAnnouncementsModal(pengumumanAktif, pengumumanLalu, session)
       });
     }
 
@@ -850,6 +956,10 @@ export async function showMemoDetailById(memoId, session) {
 
 export function openSingleAnnouncementModal(memo, session) {
   if (!memo) return;
+  const isHrd = ["HRD", "SUPERADMIN", "ADMIN"].includes((session?.role || "").toUpperCase());
+  const isCreator = memo.dibuat_oleh && memo.dibuat_oleh.toLowerCase() === String(session?.nama || "").toLowerCase();
+  const canDeleteDb = isHrd || isCreator;
+
   const body = `
     <div class="space-y-4 text-left">
       <div class="flex items-center justify-between text-xs text-slate-400 border-b border-slate-100 pb-2">
@@ -871,10 +981,41 @@ export function openSingleAnnouncementModal(memo, session) {
     size: "lg",
     bodyHtml: body,
     footerHtml: `
-      <button id="btn-close-memo-single" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition ml-auto">Tutup</button>
+      <div class="flex items-center justify-between w-full gap-2">
+        <button id="btn-delete-single-memo" class="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition flex items-center gap-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          ${canDeleteDb ? 'Hapus Pengumuman (Database)' : 'Hapus Notifikasi Ini'}
+        </button>
+        <button id="btn-close-memo-single" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">Tutup</button>
+      </div>
     `,
     onMount: (m) => {
       m.querySelector("#btn-close-memo-single").onclick = closeModal;
+      const btnDel = m.querySelector("#btn-delete-single-memo");
+      if (btnDel) {
+        btnDel.onclick = async () => {
+          if (!memo.id) return;
+          const msg = canDeleteDb
+            ? `Apakah Anda yakin ingin MENGHAPUS pengumuman "${memo.judul}" ini dari database?`
+            : `Apakah Anda yakin ingin MENGHAPUS / MENYEMBUNYIKAN pengumuman "${memo.judul}" ini dari notifikasi Anda?`;
+
+          if (confirm(msg)) {
+            try {
+              if (canDeleteDb) {
+                await deleteBroadcastMemoAndNotifs(memo.id);
+                toast(`Pengumuman "${memo.judul}" berhasil dihapus dari database.`, "success");
+              } else {
+                dismissAnnouncementForUser(memo.id, session);
+                await deletePersonalMemoNotifs(memo.id, session);
+                toast(`Notifikasi pengumuman "${memo.judul}" berhasil dihapus.`, "success");
+              }
+              closeModal();
+            } catch (err) {
+              toast("Gagal menghapus pengumuman: " + err.message, "error");
+            }
+          }
+        };
+      }
     }
   });
 }
@@ -882,32 +1023,111 @@ export function openSingleAnnouncementModal(memo, session) {
 /* ---------------------------------------------------------------------
  * POPUP PENGUMUMAN AKTIF & DETAILNYA
  * ------------------------------------------------------------------- */
-function openActiveAnnouncementsModal(memos, session) {
-  const memosHtml = memos.map((r, idx) => {
-    const plainText = String(r.isi || "").replace(/<[^>]+>/g, "").slice(0, 120);
-    return `
-      <div data-memo-idx="${idx}" class="p-4 rounded-xl border border-slate-100 hover:border-purple-300 hover:bg-purple-50/30 transition cursor-pointer text-left">
-        <div class="flex items-start gap-3">
-          <div class="w-2.5 h-2.5 rounded-full bg-purple-600 mt-1.5 shrink-0"></div>
-          <div class="flex-1">
-            <h5 class="text-sm font-semibold text-slate-800">${escapeHtml(r.judul || "Pengumuman")}</h5>
-            <p class="text-xs text-slate-500 mt-1 leading-relaxed">${escapeHtml(plainText)}${plainText.length >= 120 ? "..." : ""}</p>
-            <div class="flex items-center justify-between mt-3 text-[11px] text-slate-400">
-              <span>Oleh: <strong>${escapeHtml(r.dibuat_oleh || "-")}</strong></span>
-              <span>${fmtDateShort(r.tanggal)}</span>
+export async function fetchAndOpenActiveAnnouncementsModal(session, initialTab = "aktif") {
+  try {
+    const broadcastRows = await fsGetAll(COL.BROADCAST).catch(() => []);
+    const now = new Date();
+    const dismissedIds = getDismissedAnnouncements(session).map(String);
+
+    const allAnnouncements = broadcastRows.filter(r => {
+      if (dismissedIds.includes(String(r.id))) return false;
+      if (r.target_type === "SPESIFIK") {
+        const list = (r.target_list || []).map(x => String(x || "").trim().toLowerCase());
+        const myName = String(session?.nama || "").trim().toLowerCase();
+        const myUsername = String(session?.username || "").trim().toLowerCase();
+        const myNik = String(session?.nik || "").trim().toLowerCase();
+        return list.some(target => 
+          target === myName || 
+          target === myUsername || 
+          (myNik && target === myNik) ||
+          (myName && (target.includes(myName) || myName.includes(target)))
+        );
+      }
+      return true;
+    }).sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+
+    const pengumumanAktif = allAnnouncements.filter(r => {
+      if (r.tanggal_berakhir) {
+        const batas = new Date(r.tanggal_berakhir); batas.setHours(23, 59, 59, 999);
+        if (batas < now) return false;
+      }
+      return true;
+    });
+
+    const pengumumanLalu = allAnnouncements.filter(r => {
+      if (r.tanggal_berakhir) {
+        const batas = new Date(r.tanggal_berakhir); batas.setHours(23, 59, 59, 999);
+        if (batas < now) return true;
+      }
+      return false;
+    });
+
+    openActiveAnnouncementsModal(pengumumanAktif, pengumumanLalu, session, initialTab);
+  } catch (err) {
+    console.error("Gagal memperbarui daftar pengumuman:", err);
+  }
+}
+
+export function openActiveAnnouncementsModal(pengumumanAktif = [], pengumumanLalu = [], session, initialTab = "aktif") {
+  let aktifList = Array.isArray(pengumumanAktif) ? pengumumanAktif : [];
+  let laluList = Array.isArray(pengumumanLalu) ? pengumumanLalu : [];
+
+  const renderList = (list, isPast = false) => {
+    if (!list.length) {
+      return emptyState(isPast ? "Belum ada pengumuman lalu / kadaluwarsa" : "Belum ada pengumuman aktif");
+    }
+    return list.map((r, idx) => {
+      const plainText = String(r.isi || "").replace(/<[^>]+>/g, "").slice(0, 120);
+      return `
+        <div data-ann-idx="${idx}" data-is-past="${isPast ? '1' : '0'}" class="p-4 rounded-xl border border-slate-100 hover:border-purple-300 hover:bg-purple-50/30 transition cursor-pointer text-left bg-white shadow-xs group relative">
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex items-start gap-3 min-w-0 flex-1">
+              <div class="w-2.5 h-2.5 rounded-full ${isPast ? 'bg-slate-400' : 'bg-purple-600'} mt-1.5 shrink-0"></div>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center justify-between gap-2 pr-2">
+                  <h5 class="text-sm font-semibold text-slate-800 truncate">${escapeHtml(r.judul || "Pengumuman")}</h5>
+                  ${isPast ? '<span class="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md shrink-0">Kadaluwarsa</span>' : ''}
+                </div>
+                <p class="text-xs text-slate-500 mt-1 leading-relaxed line-clamp-2">${escapeHtml(plainText)}${plainText.length >= 120 ? "..." : ""}</p>
+                <div class="flex items-center justify-between mt-3 text-[11px] text-slate-400">
+                  <span>Oleh: <strong>${escapeHtml(r.dibuat_oleh || "-")}</strong></span>
+                  <span>${fmtDateShort(r.tanggal)}</span>
+                </div>
+              </div>
             </div>
+            <button data-del-ann-id="${r.id}" data-del-ann-title="${escapeHtml(r.judul || '')}" class="btn-del-ann-item p-1.5 text-slate-300 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition shrink-0" title="Hapus Pengumuman Ini">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            </button>
           </div>
-        </div>
-      </div>`;
-  }).join("");
+        </div>`;
+    }).join("");
+  };
+
+  const body = `
+    <div class="space-y-4">
+      <div class="flex items-center gap-2 border-b border-slate-100 pb-2">
+        <button id="tab-ann-aktif" class="tab-ann-btn text-xs font-bold px-3 py-1.5 rounded-lg border border-purple-600 bg-purple-50 text-purple-700 transition">
+          Pengumuman Aktif (${aktifList.length})
+        </button>
+        <button id="tab-ann-lalu" class="tab-ann-btn text-xs font-medium px-3 py-1.5 rounded-lg border border-transparent text-slate-500 hover:bg-slate-100 transition">
+          Pengumuman Lalu (${laluList.length})
+        </button>
+      </div>
+
+      <div id="panel-ann-aktif" class="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+        ${renderList(aktifList, false)}
+      </div>
+
+      <div id="panel-ann-lalu" class="hidden space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+        ${renderList(laluList, true)}
+      </div>
+    </div>
+  `;
 
   openModal({
-    title: "Pengumuman Aktif",
+    title: "Pengumuman Perusahaan",
     size: "md",
-    bodyHtml: `
-      <div class="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
-        ${memosHtml}
-      </div>`,
+    bodyHtml: body,
     footerHtml: `
       <button id="btn-back-to-notif" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition mr-auto">Kembali</button>
       <button id="btn-close-ann" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition">Tutup</button>
@@ -916,28 +1136,105 @@ function openActiveAnnouncementsModal(memos, session) {
       m.querySelector("#btn-back-to-notif").onclick = () => openNotificationCenter(session);
       m.querySelector("#btn-close-ann").onclick = closeModal;
 
-      m.querySelectorAll("[data-memo-idx]").forEach(el => {
+      const tabAktif = m.querySelector("#tab-ann-aktif");
+      const tabLalu = m.querySelector("#tab-ann-lalu");
+      const panelAktif = m.querySelector("#panel-ann-aktif");
+      const panelLalu = m.querySelector("#panel-ann-lalu");
+
+      const switchTab = (activeName) => {
+        if (activeName === "lalu") {
+          tabLalu.className = "tab-ann-btn text-xs font-bold px-3 py-1.5 rounded-lg border border-purple-600 bg-purple-50 text-purple-700 transition";
+          tabAktif.className = "tab-ann-btn text-xs font-medium px-3 py-1.5 rounded-lg border border-transparent text-slate-500 hover:bg-slate-100 transition";
+          panelLalu.classList.remove("hidden");
+          panelAktif.classList.add("hidden");
+        } else {
+          tabAktif.className = "tab-ann-btn text-xs font-bold px-3 py-1.5 rounded-lg border border-purple-600 bg-purple-50 text-purple-700 transition";
+          tabLalu.className = "tab-ann-btn text-xs font-medium px-3 py-1.5 rounded-lg border border-transparent text-slate-500 hover:bg-slate-100 transition";
+          panelAktif.classList.remove("hidden");
+          panelLalu.classList.add("hidden");
+        }
+      };
+
+      if (tabAktif && tabLalu) {
+        tabAktif.onclick = () => switchTab("aktif");
+        tabLalu.onclick = () => switchTab("lalu");
+        if (initialTab === "lalu") {
+          switchTab("lalu");
+        }
+      }
+
+      m.querySelectorAll(".btn-del-ann-item").forEach(btn => {
+        btn.onclick = async (e) => {
+          e.stopPropagation();
+          const memoId = btn.dataset.delAnnId;
+          const memoJudul = btn.dataset.delAnnTitle || "Pengumuman";
+          if (!memoId) return;
+
+          const allMemos = [...aktifList, ...laluList];
+          const targetMemo = allMemos.find(x => String(x.id) === String(memoId));
+          const userRole = (session?.role || "").toUpperCase();
+          const isHrd = ["HRD", "SUPERADMIN", "ADMIN", "ADMINISTRATOR", "DIREKTUR", "GM", "FINANCE"].includes(userRole);
+          const isCreator = targetMemo && targetMemo.dibuat_oleh && targetMemo.dibuat_oleh.toLowerCase() === String(session?.nama || "").toLowerCase();
+          const canDeleteDb = isHrd || isCreator;
+
+          const promptMsg = canDeleteDb
+            ? `Apakah Anda yakin ingin MENGHAPUS pengumuman "${memoJudul}" dari database? Memo ini akan terhapus untuk seluruh karyawan.`
+            : `Apakah Anda yakin ingin MENGHAPUS / MENYEMBUNYIKAN pengumuman "${memoJudul}" dari daftar notifikasi Anda?`;
+
+          if (confirm(promptMsg)) {
+            try {
+              if (canDeleteDb) {
+                await deleteBroadcastMemoAndNotifs(memoId);
+                toast(`Pengumuman "${memoJudul}" berhasil dihapus dari database.`, "success");
+              } else {
+                dismissAnnouncementForUser(memoId, session);
+                await deletePersonalMemoNotifs(memoId, session);
+                toast(`Notifikasi pengumuman "${memoJudul}" berhasil dihapus.`, "success");
+              }
+              const currentActiveTab = panelLalu && !panelLalu.classList.contains("hidden") ? "lalu" : "aktif";
+              await fetchAndOpenActiveAnnouncementsModal(session, currentActiveTab);
+            } catch (err) {
+              toast("Gagal menghapus pengumuman: " + err.message, "error");
+            }
+          }
+        };
+      });
+
+      m.querySelectorAll("[data-ann-idx]").forEach(el => {
         el.onclick = () => {
-          const memo = memos[parseInt(el.dataset.memoIdx)];
-          openAnnouncementDetailFromNotif(memo, memos, session);
+          const idx = parseInt(el.dataset.annIdx, 10);
+          const isPast = el.dataset.isPast === "1";
+          const list = isPast ? laluList : aktifList;
+          const memo = list[idx];
+          if (memo) {
+            openAnnouncementDetailFromNotif(memo, aktifList, laluList, session);
+          }
         };
       });
     }
   });
 }
 
-function openAnnouncementDetailFromNotif(memo, memos, session) {
+function openAnnouncementDetailFromNotif(memo, aktifList, laluList, session) {
   if (!memo) return;
+  const userRole = (session?.role || "").toUpperCase();
+  const isHrd = ["HRD", "SUPERADMIN", "ADMIN", "ADMINISTRATOR", "DIREKTUR", "GM", "FINANCE"].includes(userRole);
+  const isCreator = memo.dibuat_oleh && memo.dibuat_oleh.toLowerCase() === String(session?.nama || "").toLowerCase();
+  const canDeleteDb = isHrd || isCreator;
+
+  const now = new Date();
+  const isPastMemo = memo.tanggal_berakhir && (new Date(memo.tanggal_berakhir).setHours(23, 59, 59, 999) < now);
+
   const body = `
     <div class="space-y-4 text-left">
       <div class="flex items-center justify-between text-xs text-slate-400 border-b border-slate-100 pb-2">
         <span>Oleh: <strong>${escapeHtml(memo.dibuat_oleh || "-")}</strong></span>
         <span>${fmtDateShort(memo.tanggal)}</span>
       </div>
-      <div class="text-sm text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100">${memo.isi || "<i>Tidak ada isi.</i>"}</div>
+      <div class="text-sm text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100 quill-content">${memo.isi || "<i>Tidak ada isi.</i>"}</div>
       ${memo.lampiran_url ? `
         <div class="pt-2">
-          <a href="${memo.lampiran_url}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-sm font-semibold text-purple-700 hover:text-purple-800 hover:underline">
+          <a href="${escapeHtml(memo.lampiran_url)}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-sm font-semibold text-purple-700 hover:text-purple-800 hover:underline">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
             Lihat Lampiran File
           </a>
@@ -949,15 +1246,50 @@ function openAnnouncementDetailFromNotif(memo, memos, session) {
     size: "lg",
     bodyHtml: body,
     footerHtml: `
-      <button id="btn-back-to-memos" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition mr-auto">Kembali ke Daftar</button>
-      <button id="btn-close-memo-detail" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition">Tutup</button>
+      <div class="flex items-center justify-between w-full gap-2">
+        <div class="flex items-center gap-2">
+          <button id="btn-back-to-memos" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">Kembali ke Daftar</button>
+          <button id="btn-delete-ann-notif" class="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition flex items-center gap-1.5">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            ${canDeleteDb ? 'Hapus Pengumuman (Database)' : 'Hapus Notifikasi Ini'}
+          </button>
+        </div>
+        <button id="btn-close-memo-detail" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">Tutup</button>
+      </div>
     `,
     onMount: (m) => {
-      m.querySelector("#btn-back-to-memos").onclick = () => openActiveAnnouncementsModal(memos, session);
+      m.querySelector("#btn-back-to-memos").onclick = () => openActiveAnnouncementsModal(aktifList, laluList, session, isPastMemo ? "lalu" : "aktif");
       m.querySelector("#btn-close-memo-detail").onclick = closeModal;
+
+      const btnDel = m.querySelector("#btn-delete-ann-notif");
+      if (btnDel) {
+        btnDel.onclick = async () => {
+          if (!memo.id) return;
+          const promptMsg = canDeleteDb
+            ? `Apakah Anda yakin ingin MENGHAPUS pengumuman "${memo.judul}" ini dari database?`
+            : `Apakah Anda yakin ingin MENGHAPUS / MENYEMBUNYIKAN pengumuman "${memo.judul}" ini dari daftar notifikasi Anda?`;
+
+          if (confirm(promptMsg)) {
+            try {
+              if (canDeleteDb) {
+                await deleteBroadcastMemoAndNotifs(memo.id);
+                toast(`Pengumuman "${memo.judul}" berhasil dihapus dari database.`, "success");
+              } else {
+                dismissAnnouncementForUser(memo.id, session);
+                await deletePersonalMemoNotifs(memo.id, session);
+                toast(`Notifikasi pengumuman "${memo.judul}" berhasil dihapus.`, "success");
+              }
+              await fetchAndOpenActiveAnnouncementsModal(session, isPastMemo ? "lalu" : "aktif");
+            } catch (err) {
+              toast("Gagal menghapus pengumuman: " + err.message, "error");
+            }
+          }
+        };
+      }
     }
   });
 }
+
 
 /* ---------------------------------------------------------------------
  * POPUP DAFTAR KPI 360 & MODUL APPRAISAL PENILAIAN

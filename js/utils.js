@@ -314,7 +314,24 @@ export async function fsUpdate(colName, id, data) {
   await updateDoc(doc(db, colName, id), { ...payload, updated_at: serverTimestamp() });
 }
 export async function fsDelete(colName, id) {
-  await deleteDoc(doc(db, colName, id));
+  if (!id) return;
+  await deleteDoc(doc(db, colName, String(id)));
+}
+
+export async function deleteBroadcastMemoAndNotifs(memoId) {
+  if (!memoId) return;
+  const strId = String(memoId);
+  await fsDelete(COL.BROADCAST, strId);
+  try {
+    const allNotifs = await fsGetAll(COL.NOTIFICATIONS);
+    const related = allNotifs.filter(n => 
+      String(n.memo_id || "") === strId || 
+      (n.link && String(n.link).includes(strId))
+    );
+    await Promise.all(related.map(n => fsDelete(COL.NOTIFICATIONS, n.id)));
+  } catch (err) {
+    console.warn("Gagal membersihkan notifikasi terkait memo:", err);
+  }
 }
 
 /* ---------------------------------------------------------------------
@@ -1623,61 +1640,88 @@ export async function notifyUser(username, judul, pesan, link = "") {
   const rawTarget = typeof username === "object" ? (username.username || username.nama || username.id) : username;
   if (!rawTarget) return;
 
-  try {
-    // 1. In-App Notification (lonceng)
-    await fsAdd(COL.NOTIFICATIONS, {
-      username_target: rawTarget, judul, pesan, link: link || "", dibaca: false, tanggal: new Date().toISOString()
-    }, genId("NTF"));
+  const targetStr = String(rawTarget).trim();
+  const targetLower = targetStr.toLowerCase();
 
-    // 2. Tembak ke FCM Tokens & Email target
+  try {
     const tokens = new Set();
     let targetEmail = null;
-    let targetName = rawTarget;
+    let targetName = targetStr;
+    let resolvedUsername = targetStr;
+    let resolvedNik = targetStr;
 
     // Search USERS doc directly by ID
     let snap = await getDoc(doc(db, COL.USERS, String(rawTarget))).catch(() => null);
     if (snap && snap.exists()) {
       const uData = snap.data();
-      targetName = uData.nama || rawTarget;
+      targetName = uData.nama || targetName;
+      resolvedUsername = uData.username || snap.id || resolvedUsername;
+      resolvedNik = uData.nik || resolvedNik;
       if (uData.fcm_token) tokens.add(uData.fcm_token);
       if (uData.email) targetEmail = uData.email;
     }
 
-    // Also query USERS by username, nama, or nik
+    // Query USERS by username, nama, or nik
     try {
       const qUsers = query(collection(db, COL.USERS));
       const snapUsers = await getDocs(qUsers);
       snapUsers.docs.forEach(d => {
         const uData = d.data();
-        const matches = d.id === rawTarget ||
-                        uData.username === rawTarget ||
-                        (uData.nama && uData.nama.toLowerCase().includes(String(rawTarget).toLowerCase())) ||
-                        (uData.nik && uData.nik === rawTarget);
+        const dId = d.id;
+        const uName = (uData.username || dId || "").trim();
+        const uNama = (uData.nama || "").trim();
+        const uNik = (uData.nik || "").trim();
+
+        const matches = dId.toLowerCase() === targetLower ||
+                        uName.toLowerCase() === targetLower ||
+                        (uNama && uNama.toLowerCase() === targetLower) ||
+                        (uNama && uNama.toLowerCase().includes(targetLower)) ||
+                        (uNik && uNik.toLowerCase() === targetLower);
         if (matches) {
+          if (uName) resolvedUsername = uName;
+          if (uNama) targetName = uNama;
+          if (uNik) resolvedNik = uNik;
           if (uData.fcm_token) tokens.add(uData.fcm_token);
           if (uData.email && !targetEmail) targetEmail = uData.email;
-          if (uData.nama) targetName = uData.nama;
         }
       });
     } catch (e) {}
 
-    // Also query MASTER_KARYAWAN by nama_karyawan or nik
+    // Query MASTER_KARYAWAN by nama_karyawan or nik
     try {
       const qK = query(collection(db, COL.MASTER_KARYAWAN));
       const snapK = await getDocs(qK);
       snapK.docs.forEach(d => {
         const kData = d.data();
-        const matches = d.id === rawTarget ||
-                        kData.nik === rawTarget ||
-                        kData.nik_karyawan === rawTarget ||
-                        (kData.nama_karyawan && kData.nama_karyawan.toLowerCase().includes(String(rawTarget).toLowerCase()));
+        const kNama = (kData.nama_karyawan || kData.nama || "").trim();
+        const kNik = (kData.nik_karyawan || kData.nik || "").trim();
+
+        const matches = d.id.toLowerCase() === targetLower ||
+                        (kNik && kNik.toLowerCase() === targetLower) ||
+                        (kNama && kNama.toLowerCase() === targetLower) ||
+                        (kNama && kNama.toLowerCase().includes(targetLower));
         if (matches) {
+          if (kNama) targetName = kNama;
+          if (kNik) resolvedNik = kNik;
           if (kData.fcm_token) tokens.add(kData.fcm_token);
           if (kData.email && !targetEmail) targetEmail = kData.email;
-          if (kData.nama_karyawan) targetName = kData.nama_karyawan;
         }
       });
     } catch (e) {}
+
+    // 1. In-App Notification (lonceng) with target aliases for flexible lookup
+    const notifPayload = {
+      username_target: resolvedUsername,
+      nama_target: targetName,
+      nik_target: resolvedNik,
+      target_aliases: Array.from(new Set([targetStr, targetLower, resolvedUsername, resolvedUsername.toLowerCase(), targetName, targetName.toLowerCase(), resolvedNik, resolvedNik.toLowerCase()])).filter(Boolean),
+      judul,
+      pesan,
+      link: link || "",
+      dibaca: false,
+      tanggal: new Date().toISOString()
+    };
+    await fsAdd(COL.NOTIFICATIONS, notifPayload, genId("NTF"));
 
     // Send Push Notification via FCM
     const tokenList = Array.from(tokens).filter(Boolean);

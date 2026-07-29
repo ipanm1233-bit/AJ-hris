@@ -1,4 +1,4 @@
-import { openModal, closeModal, toast, escapeHtml, fsGetAll, fsAdd, fsUpdate } from "../utils.js";
+import { openModal, closeModal, toast, escapeHtml, fsGetAll, fsAdd, fsUpdate, downloadXlsx } from "../utils.js";
 import { COL } from "../firebase-config.js";
 
 // Beautiful SVG D3 visualization loaded from ESM
@@ -6,6 +6,7 @@ import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
 
 export async function mount(container, { session }) {
   const btnSync = container.querySelector("#btn-sync-kanal");
+  const btnExport = container.querySelector("#btn-export-sales-visits");
   const timelineEl = container.querySelector("#live-timeline");
 
   const subtitleEl = container.querySelector("#kanal-status-subtitle");
@@ -14,6 +15,16 @@ export async function mount(container, { session }) {
   const timeEl = container.querySelector("#track-time");
   const visitsEl = container.querySelector("#track-visits");
   const companyBadgeEl = container.querySelector("#track-company-badge");
+  const feedCountEl = container.querySelector("#visit-feed-count");
+  const salesmanGridEl = container.querySelector("#salesman-cards-grid");
+
+  // Filters
+  const filterSalesmanSelect = container.querySelector("#filter-salesman");
+  const filterPeriodSelect = container.querySelector("#filter-period");
+  const filterStatusSelect = container.querySelector("#filter-status");
+  const filterSearchInput = container.querySelector("#filter-search");
+  const btnResetFilter = container.querySelector("#btn-reset-sales-filter");
+  const activeFilterBadge = container.querySelector("#active-filter-badge");
 
   // Get current date strings for today (Asia/Jakarta WIB)
   const now = new Date();
@@ -24,8 +35,10 @@ export async function mount(container, { session }) {
   const yesterdayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(yesterday);
 
   let companyName = "CV ANDELA JAYA CIREBON";
+  let allCheckinsList = [];
+  let selectedSalesmanFilter = "ALL";
 
-  // Function to perform real Kanal Sales Store Check-in sync and save to Firestore
+  // Perform Kanal API Sync
   async function doKanalSync() {
     let currentCfg = {};
     try {
@@ -39,7 +52,6 @@ export async function mount(container, { session }) {
     const accessToken = currentCfg.token || "eyJ0aW1lX2NyZWF0ZSI6MTc4NDg4MTY0NiwidGltZV9leHAiOjE3ODU1MTcxOTksImFwaWtleSI6Ik1qSmRjcFBZWUJMUkRjVVA5Z2VlIiwiY29tcGFueUlkIjoiMzYxMSJ9.be3bd89a1f49ebfeedf7c6f93c331321ebc7d642b6dbdf96f7ab375aca7f964b";
     const apiUrl = currentCfg.url || "https://api.kanal.work/v1/checkin";
 
-    // Attempt live fetch via Kanal API proxy
     let liveItems = [];
     let isLiveSuccess = false;
     try {
@@ -157,7 +169,6 @@ export async function mount(container, { session }) {
       }
     }
 
-    // Save/upsert store checkin items into kanal_checkins collection
     for (const chk of fetchedCheckins) {
       await fsUpdate("kanal_checkins", chk.id, chk).catch(async () => {
         await fsAdd("kanal_checkins", chk, chk.id);
@@ -177,7 +188,7 @@ export async function mount(container, { session }) {
     await fsAdd("kanal_data", logRecord, batchId);
   }
 
-  // Load and render real sync tracking data for Sales Store Check-in
+  // Load and populate full dashboard
   async function loadAndRenderTrack() {
     try {
       const allCfg = await fsGetAll(COL.APP_SETTINGS).catch(() => []);
@@ -187,55 +198,380 @@ export async function mount(container, { session }) {
       if (subtitleEl) subtitleEl.innerHTML = `Terhubung ke cloud server <b>API Kanal (${escapeHtml(companyName)})</b>. Mengsinkronkan data check-in sales di toko & outlet mitra.`;
       if (companyBadgeEl) companyBadgeEl.textContent = companyName;
 
-      // Read store checkin data from kanal_checkins
-      let checkinsList = await fsGetAll("kanal_checkins").catch(() => []);
+      allCheckinsList = await fsGetAll("kanal_checkins").catch(() => []);
 
-      // If no data exists, do auto sync first
-      if (checkinsList.length === 0) {
+      if (allCheckinsList.length === 0) {
         await doKanalSync();
-        checkinsList = await fsGetAll("kanal_checkins").catch(() => []);
+        allCheckinsList = await fsGetAll("kanal_checkins").catch(() => []);
       }
 
-      // Update Summary Cards
-      if (distEl) distEl.textContent = `${checkinsList.length} Visit`;
-      
-      const todayRecords = checkinsList.filter(a => a.tanggal === todayStr);
-      if (visitsEl) visitsEl.textContent = `${todayRecords.length} Outlet`;
+      // Populate Salesman Dropdown
+      populateSalesmanOptions();
 
-      if (ecEl) {
-        const ecCount = checkinsList.filter(a => (a.status_kunjungan || "").toLowerCase().includes("effective")).length;
-        const pct = checkinsList.length > 0 ? Math.round((ecCount / checkinsList.length) * 100) : 100;
-        ecEl.textContent = `${pct}%`;
-      }
-
-      if (timeEl) timeEl.textContent = "35 Menit";
-
-      // Render Timeline with real Kanal Sales Store Check-in data
-      renderTimeline(checkinsList);
-
-      // Render D3 Weekly Chart
-      renderD3Chart(checkinsList);
+      // Apply Filters and Render
+      applyAndRenderDashboard();
 
     } catch (e) {
       console.error("Err loading sales track data:", e);
     }
   }
 
-  function renderTimeline(records) {
+  function populateSalesmanOptions() {
+    if (!filterSalesmanSelect) return;
+    const salesMap = new Map();
+    allCheckinsList.forEach(c => {
+      if (c.sales_nama) salesMap.set(c.sales_nama, c.sales_nik || "");
+    });
+
+    const currentVal = filterSalesmanSelect.value || "ALL";
+    filterSalesmanSelect.innerHTML = `<option value="ALL">Semua Salesman (${salesMap.size})</option>` + 
+      Array.from(salesMap.entries()).map(([nama, nik]) => 
+        `<option value="${escapeHtml(nama)}">${escapeHtml(nama)} ${nik ? `(${escapeHtml(nik)})` : ''}</option>`
+      ).join("");
+
+    filterSalesmanSelect.value = currentVal;
+  }
+
+  function applyAndRenderDashboard() {
+    const salesmanFilter = filterSalesmanSelect ? filterSalesmanSelect.value : "ALL";
+    const periodFilter = filterPeriodSelect ? filterPeriodSelect.value : "ALL";
+    const statusFilter = filterStatusSelect ? filterStatusSelect.value : "ALL";
+    const searchFilter = (filterSearchInput ? filterSearchInput.value : "").toLowerCase().trim();
+
+    // Check if active filter
+    const isFiltered = salesmanFilter !== "ALL" || periodFilter !== "ALL" || statusFilter !== "ALL" || searchFilter !== "";
+    if (activeFilterBadge) activeFilterBadge.classList.toggle("hidden", !isFiltered);
+
+    const filteredRecords = allCheckinsList.filter(item => {
+      // Salesman filter
+      if (salesmanFilter !== "ALL" && item.sales_nama !== salesmanFilter) return false;
+
+      // Status filter
+      if (statusFilter === "EC") {
+        if (!(item.status_kunjungan || "").toLowerCase().includes("effective")) return false;
+      } else if (statusFilter === "STOK") {
+        if (!(item.status_kunjungan || "").toLowerCase().includes("stok")) return false;
+      } else if (statusFilter === "PENAWARAN") {
+        if (!(item.status_kunjungan || "").toLowerCase().includes("penawaran")) return false;
+      }
+
+      // Period filter
+      if (periodFilter === "TODAY") {
+        if (item.tanggal !== todayStr) return false;
+      } else if (periodFilter === "WEEK") {
+        const itemDate = new Date(item.tanggal);
+        const diffDays = (now - itemDate) / (1000 * 3600 * 24);
+        if (isNaN(diffDays) || diffDays > 7) return false;
+      } else if (periodFilter === "MONTH") {
+        const itemMonth = (item.tanggal || "").substring(0, 7);
+        const currentMonth = todayStr.substring(0, 7);
+        if (itemMonth !== currentMonth) return false;
+      }
+
+      // Search term
+      if (searchFilter) {
+        const text = `${item.sales_nama} ${item.toko_outlet} ${item.alamat_toko} ${item.catatan} ${item.status_kunjungan}`.toLowerCase();
+        if (!text.includes(searchFilter)) return false;
+      }
+
+      return true;
+    });
+
+    // Update Top Summary Cards
+    if (distEl) distEl.textContent = `${filteredRecords.length} Visit`;
+
+    if (ecEl) {
+      const ecCount = filteredRecords.filter(a => (a.status_kunjungan || "").toLowerCase().includes("effective")).length;
+      const pct = filteredRecords.length > 0 ? Math.round((ecCount / filteredRecords.length) * 100) : 100;
+      ecEl.textContent = `${pct}%`;
+    }
+
+    if (visitsEl) {
+      const uniqueOutlets = new Set(filteredRecords.map(r => r.toko_outlet)).size;
+      visitsEl.textContent = `${uniqueOutlets} Outlet`;
+    }
+
+    if (timeEl) timeEl.textContent = "35 Menit";
+    if (feedCountEl) feedCountEl.textContent = `${filteredRecords.length} Visit`;
+
+    // Render Salesman Cards
+    renderSalesmanCards(allCheckinsList, salesmanFilter);
+
+    // Render Charts
+    renderD3SalesmanChart(filteredRecords);
+    renderD3StatusChart(filteredRecords);
+
+    // Render Activity Feed Timeline
+    renderActivityFeed(filteredRecords);
+  }
+
+  function renderSalesmanCards(allRecords, activeSalesman) {
+    if (!salesmanGridEl) return;
+
+    // Group records by salesman
+    const salesMap = new Map();
+    allRecords.forEach(r => {
+      const name = r.sales_nama || "Salesman";
+      if (!salesMap.has(name)) {
+        salesMap.set(name, {
+          nama: name,
+          nik: r.sales_nik || "-",
+          visits: [],
+          ecCount: 0
+        });
+      }
+      const data = salesMap.get(name);
+      data.visits.push(r);
+      if ((r.status_kunjungan || "").toLowerCase().includes("effective")) {
+        data.ecCount++;
+      }
+    });
+
+    if (salesMap.size === 0) {
+      salesmanGridEl.innerHTML = `<div class="col-span-full text-center py-6 text-slate-400 italic text-xs">Belum ada data salesmen</div>`;
+      return;
+    }
+
+    salesmanGridEl.innerHTML = Array.from(salesMap.values()).map(s => {
+      const total = s.visits.length;
+      const ecPct = total > 0 ? Math.round((s.ecCount / total) * 100) : 0;
+      const isSelected = activeSalesman === s.nama;
+      const topStore = s.visits[0]?.toko_outlet || "Outlet Utama";
+
+      return `
+        <div class="salesman-card bg-white rounded-2xl border ${isSelected ? 'border-maroon-600 ring-2 ring-maroon-100 bg-maroon-50/20' : 'border-slate-100 hover:border-slate-300'} p-4 shadow-sm cursor-pointer transition flex flex-col justify-between" data-salesman="${escapeHtml(s.nama)}">
+          <div>
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2.5">
+                <div class="w-10 h-10 rounded-xl bg-maroon-700 text-white font-black flex items-center justify-center text-sm shadow-sm">
+                  ${escapeHtml((s.nama[0] || 'S').toUpperCase())}
+                </div>
+                <div>
+                  <h4 class="font-bold text-slate-800 text-sm">${escapeHtml(s.nama)}</h4>
+                  <p class="text-[10px] text-slate-400">NIK: ${escapeHtml(s.nik)}</p>
+                </div>
+              </div>
+              <span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold ${isSelected ? 'bg-maroon-700 text-white' : 'bg-slate-100 text-slate-700'}">
+                ${total} Visit
+              </span>
+            </div>
+
+            <div class="mt-3 grid grid-cols-2 gap-2 text-xs border-t border-slate-100 pt-3">
+              <div>
+                <p class="text-[10px] text-slate-400 font-semibold uppercase">Effective Call</p>
+                <p class="font-black text-emerald-600 mt-0.5">${s.ecCount} EC (${ecPct}%)</p>
+              </div>
+              <div>
+                <p class="text-[10px] text-slate-400 font-semibold uppercase">Toko Terakhir</p>
+                <p class="font-bold text-slate-700 mt-0.5 truncate">${escapeHtml(topStore)}</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-3 pt-2 border-t border-slate-50 flex items-center justify-between text-[11px] font-bold text-maroon-700">
+            <span>${isSelected ? '● Sedang Dilihat' : 'Lihat Detail Sales Ini →'}</span>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    salesmanGridEl.querySelectorAll(".salesman-card").forEach(card => {
+      card.onclick = () => {
+        const name = card.dataset.salesman;
+        if (filterSalesmanSelect) {
+          filterSalesmanSelect.value = (filterSalesmanSelect.value === name) ? "ALL" : name;
+          applyAndRenderDashboard();
+        }
+      };
+    });
+  }
+
+  function renderD3SalesmanChart(records) {
+    const box = container.querySelector("#d3-salesman-chart");
+    if (!box) return;
+    box.innerHTML = "";
+
+    const salesMap = {};
+    records.forEach(r => {
+      const name = r.sales_nama || "Salesman";
+      if (!salesMap[name]) salesMap[name] = { total: 0, ec: 0 };
+      salesMap[name].total++;
+      if ((r.status_kunjungan || "").toLowerCase().includes("effective")) {
+        salesMap[name].ec++;
+      }
+    });
+
+    const data = Object.keys(salesMap).map(k => ({
+      salesman: k.length > 10 ? k.substring(0, 10) + ".." : k,
+      fullName: k,
+      total: salesMap[k].total,
+      ec: salesMap[k].ec
+    }));
+
+    if (data.length === 0) {
+      box.innerHTML = `<p class="text-xs text-slate-400 italic">Tidak ada data untuk grafik</p>`;
+      return;
+    }
+
+    const width = 420;
+    const height = 200;
+    const margin = { top: 20, right: 20, bottom: 40, left: 40 };
+
+    const svg = d3.create("svg")
+      .attr("width", width)
+      .attr("height", height)
+      .attr("viewBox", [0, 0, width, height])
+      .attr("style", "max-width: 100%; height: auto;");
+
+    const x0 = d3.scaleBand()
+      .domain(data.map(d => d.salesman))
+      .range([margin.left, width - margin.right])
+      .padding(0.3);
+
+    const maxVal = d3.max(data, d => d.total) || 5;
+
+    const y = d3.scaleLinear()
+      .domain([0, maxVal + 2])
+      .nice()
+      .range([height - margin.bottom, margin.top]);
+
+    // Total Bars
+    svg.append("g")
+      .selectAll("rect")
+      .data(data)
+      .join("rect")
+      .attr("x", d => x0(d.salesman))
+      .attr("y", d => y(d.total))
+      .attr("height", d => y(0) - y(d.total))
+      .attr("width", x0.bandwidth())
+      .attr("fill", "#7a1f2b")
+      .attr("rx", 4);
+
+    // EC Bars
+    svg.append("g")
+      .selectAll("rect")
+      .data(data)
+      .join("rect")
+      .attr("x", d => x0(d.salesman) + x0.bandwidth() * 0.2)
+      .attr("y", d => y(d.ec))
+      .attr("height", d => y(0) - y(d.ec))
+      .attr("width", x0.bandwidth() * 0.6)
+      .attr("fill", "#10b981")
+      .attr("rx", 3);
+
+    // X Axis
+    svg.append("g")
+      .attr("transform", `translate(0,${height - margin.bottom})`)
+      .call(d3.axisBottom(x0).tickSizeOuter(0))
+      .attr("font-size", "10px")
+      .attr("color", "#64748b");
+
+    // Y Axis
+    svg.append("g")
+      .attr("transform", `translate(${margin.left},0)`)
+      .call(d3.axisLeft(y).ticks(5))
+      .attr("font-size", "10px")
+      .attr("color", "#64748b");
+
+    box.appendChild(svg.node());
+  }
+
+  function renderD3StatusChart(records) {
+    const box = container.querySelector("#d3-status-chart");
+    if (!box) return;
+    box.innerHTML = "";
+
+    let ecCount = 0;
+    let stokCount = 0;
+    let penawaranCount = 0;
+    let lainCount = 0;
+
+    records.forEach(r => {
+      const st = (r.status_kunjungan || "").toLowerCase();
+      if (st.includes("effective")) ecCount++;
+      else if (st.includes("stok")) stokCount++;
+      else if (st.includes("penawaran")) penawaranCount++;
+      else lainCount++;
+    });
+
+    const data = [
+      { status: "Effective Call", count: ecCount, color: "#10b981" },
+      { status: "Cek Stok", count: stokCount, color: "#3b82f6" },
+      { status: "Penawaran", count: penawaranCount, color: "#f59e0b" },
+      { status: "Lainnya", count: lainCount, color: "#64748b" }
+    ].filter(d => d.count > 0);
+
+    if (data.length === 0) {
+      box.innerHTML = `<p class="text-xs text-slate-400 italic">Tidak ada data status kunjungan</p>`;
+      return;
+    }
+
+    const width = 420;
+    const height = 200;
+    const margin = { top: 20, right: 20, bottom: 30, left: 50 };
+
+    const svg = d3.create("svg")
+      .attr("width", width)
+      .attr("height", height)
+      .attr("viewBox", [0, 0, width, height])
+      .attr("style", "max-width: 100%; height: auto;");
+
+    const y = d3.scaleBand()
+      .domain(data.map(d => d.status))
+      .range([margin.top, height - margin.bottom])
+      .padding(0.3);
+
+    const maxCount = d3.max(data, d => d.count) || 5;
+
+    const x = d3.scaleLinear()
+      .domain([0, maxCount + 2])
+      .range([margin.left, width - margin.right]);
+
+    svg.append("g")
+      .selectAll("rect")
+      .data(data)
+      .join("rect")
+      .attr("x", margin.left)
+      .attr("y", d => y(d.status))
+      .attr("width", d => x(d.count) - margin.left)
+      .attr("height", y.bandwidth())
+      .attr("fill", d => d.color)
+      .attr("rx", 4);
+
+    svg.append("g")
+      .attr("transform", `translate(${margin.left},0)`)
+      .call(d3.axisLeft(y).tickSizeOuter(0))
+      .attr("font-size", "10px")
+      .attr("color", "#334155");
+
+    svg.append("g")
+      .selectAll("text")
+      .data(data)
+      .join("text")
+      .attr("x", d => x(d.count) + 6)
+      .attr("y", d => y(d.status) + y.bandwidth() / 2 + 4)
+      .attr("font-size", "11px")
+      .attr("font-weight", "bold")
+      .attr("fill", "#1e293b")
+      .text(d => `${d.count} Visit`);
+
+    box.appendChild(svg.node());
+  }
+
+  function renderActivityFeed(records) {
     if (!timelineEl) return;
     if (!records || records.length === 0) {
       timelineEl.innerHTML = `
         <div class="text-center py-8 text-slate-400 italic text-xs">
-          Belum ada data check-in sales di toko dari Kanal. Klik tombol "Sinkronisasi Kanal.work" di atas untuk menarik data.
+          Tidak ada data kunjungan yang sesuai filter.
         </div>
       `;
       return;
     }
 
-    // Sort newest date & sales name
     const sorted = [...records].sort((a,b) => (b.tanggal || "").localeCompare(a.tanggal || "") || (a.sales_nama || "").localeCompare(b.sales_nama || ""));
 
-    timelineEl.innerHTML = sorted.map(t => {
+    timelineEl.innerHTML = sorted.map((t, idx) => {
       const checkinTime = t.waktu_checkin || "08:30 WIB";
       const checkoutTime = t.waktu_checkout || "09:05 WIB";
       const statusText = t.status_kunjungan || "Effective Call (Order Toko)";
@@ -245,117 +581,78 @@ export async function mount(container, { session }) {
       const alamatToko = t.alamat_toko || "Cirebon";
       const gpsPos = t.koordinat_gps || "-6.7321, 108.5523";
       const dateVal = t.tanggal || todayStr;
+      const mapsUrl = `https://www.google.com/maps?q=${encodeURIComponent(gpsPos)}`;
 
       return `
-        <div class="flex gap-3 relative pb-4">
-          <div class="absolute left-3 top-6 bottom-0 w-0.5 bg-slate-100"></div>
-          <div class="w-6 h-6 rounded-full bg-maroon-50 border-2 border-maroon-600 flex items-center justify-center shrink-0 z-10">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-maroon-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+        <div class="bg-slate-50 border border-slate-100 p-3.5 rounded-xl hover:bg-white hover:border-maroon-200 transition shadow-2xs">
+          <div class="flex items-start justify-between gap-2 flex-wrap">
+            <div>
+              <p class="text-xs font-bold text-slate-800">${escapeHtml(salesName)} <span class="font-normal text-slate-400">(${escapeHtml(salesNik)})</span> <span class="text-maroon-700 font-bold">@ ${escapeHtml(tokoName)}</span></p>
+              <p class="text-[11px] text-slate-500 mt-0.5">${escapeHtml(alamatToko)}</p>
+            </div>
+            <a href="${mapsUrl}" target="_blank" class="px-2.5 py-1 bg-blue-50 text-blue-700 font-bold text-[10px] rounded-lg border border-blue-200 hover:bg-blue-100 transition inline-flex items-center gap-1">
+              📍 GPS Maps
+            </a>
           </div>
-          <div>
-            <p class="text-xs font-bold text-slate-800">${escapeHtml(salesName)} <span class="font-normal text-slate-400">(${escapeHtml(salesNik)})</span> <span class="text-maroon-700 font-bold">@ ${escapeHtml(tokoName)}</span></p>
-            <p class="text-[10px] text-slate-500 mt-0.5">${escapeHtml(alamatToko)} • GPS: <span class="font-mono text-blue-600 font-bold">${escapeHtml(gpsPos)}</span></p>
-            <p class="text-[10px] text-slate-500 mt-0.5">Check-in Toko: <b>${escapeHtml(checkinTime)}</b> • Check-out: <b>${escapeHtml(checkoutTime)}</b> • Tanggal: <span class="font-mono text-slate-700 font-bold">${escapeHtml(dateVal)}</span></p>
-            <div class="flex items-center gap-1.5 mt-1.5">
-              <span class="px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-800 border border-emerald-200">
+
+          <div class="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-slate-200/60 text-[10px] text-slate-500 flex-wrap">
+            <div class="flex items-center gap-2">
+              <span class="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-emerald-50 text-emerald-800 border border-emerald-200">
                 ● ${escapeHtml(statusText)}
               </span>
+              <span>Check-in: <b>${escapeHtml(checkinTime)}</b> - <b>${escapeHtml(checkoutTime)}</b></span>
             </div>
+            <span class="font-mono font-bold text-slate-600">${escapeHtml(dateVal)}</span>
           </div>
         </div>
       `;
     }).join("");
   }
 
-  function renderD3Chart(records) {
-    const chartBox = container.querySelector("#d3-chart-container");
-    if (!chartBox) return;
-    chartBox.innerHTML = "";
-
-    // Count records by day of week
-    const daysMap = { "Senin": 0, "Selasa": 0, "Rabu": 0, "Kamis": 0, "Jumat": 0, "Sabtu": 0, "Minggu": 0 };
-    const dayNames = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
-
-    records.forEach(r => {
-      if (r.tanggal) {
-        const d = new Date(r.tanggal);
-        if (!isNaN(d.getTime())) {
-          const name = dayNames[d.getDay()];
-          if (daysMap[name] !== undefined) daysMap[name]++;
-        }
+  // Bind Export Excel
+  if (btnExport) {
+    btnExport.onclick = async () => {
+      if (allCheckinsList.length === 0) {
+        return toast("Tidak ada data kunjungan untuk diexport", "warning");
       }
-    });
 
-    const weeklyData = [
-      { day: "Senin", visits: daysMap["Senin"] },
-      { day: "Selasa", visits: daysMap["Selasa"] },
-      { day: "Rabu", visits: daysMap["Rabu"] },
-      { day: "Kamis", visits: daysMap["Kamis"] },
-      { day: "Jumat", visits: daysMap["Jumat"] },
-      { day: "Sabtu", visits: daysMap["Sabtu"] }
-    ];
+      toast("Mengeksport data kunjungan sales ke Excel...", "info");
 
-    const maxVisits = d3.max(weeklyData, d => d.visits) || 5;
+      const headers = ["ID Checkin", "Salesman", "NIK Sales", "Nama Toko / Outlet", "Alamat Toko", "Status Kunjungan", "Waktu Check-in", "Waktu Check-out", "Tanggal", "Koordinat GPS", "Catatan"];
+      const matrix = allCheckinsList.map(item => [
+        item.id || "-",
+        item.sales_nama || "-",
+        item.sales_nik || "-",
+        item.toko_outlet || "-",
+        item.alamat_toko || "-",
+        item.status_kunjungan || "-",
+        item.waktu_checkin || "-",
+        item.waktu_checkout || "-",
+        item.tanggal || "-",
+        item.koordinat_gps || "-",
+        item.catatan || "-"
+      ]);
 
-    const width = 450;
-    const height = 220;
-    const margin = { top: 20, right: 20, bottom: 30, left: 40 };
+      await downloadXlsx(`Summary_Kunjungan_Sales_${todayStr}.xlsx`, headers, matrix, "Data_Kunjungan_Sales");
+      toast("File Excel Summary Kunjungan Sales berhasil diunduh!", "success");
+    };
+  }
 
-    const svg = d3.create("svg")
-      .attr("width", width)
-      .attr("height", height)
-      .attr("viewBox", [0, 0, width, height])
-      .attr("style", "max-width: 100%; height: auto;");
+  // Bind Filter Event Handlers
+  if (filterSalesmanSelect) filterSalesmanSelect.onchange = applyAndRenderDashboard;
+  if (filterPeriodSelect) filterPeriodSelect.onchange = applyAndRenderDashboard;
+  if (filterStatusSelect) filterStatusSelect.onchange = applyAndRenderDashboard;
+  if (filterSearchInput) filterSearchInput.oninput = applyAndRenderDashboard;
 
-    const x = d3.scaleBand()
-      .domain(weeklyData.map(d => d.day))
-      .range([margin.left, width - margin.right])
-      .padding(0.3);
-
-    const y = d3.scaleLinear()
-      .domain([0, maxVisits + 2])
-      .nice()
-      .range([height - margin.bottom, margin.top]);
-
-    svg.append("g")
-      .selectAll("rect")
-      .data(weeklyData)
-      .join("rect")
-      .attr("x", d => x(d.day))
-      .attr("y", d => y(d.visits))
-      .attr("height", d => y(0) - y(d.visits))
-      .attr("width", x.bandwidth())
-      .attr("fill", "#7a1f2b")
-      .attr("rx", 4);
-
-    svg.append("g")
-      .attr("transform", `translate(0,${height - margin.bottom})`)
-      .call(d3.axisBottom(x).tickSizeOuter(0))
-      .attr("font-size", "10px")
-      .attr("color", "#64748b");
-
-    svg.append("g")
-      .attr("transform", `translate(${margin.left},0)`)
-      .call(d3.axisLeft(y).ticks(5))
-      .attr("font-size", "10px")
-      .attr("color", "#64748b");
-
-    svg.append("g")
-      .selectAll("text")
-      .data(weeklyData)
-      .join("text")
-      .attr("x", d => x(d.day) + x.bandwidth() / 2)
-      .attr("y", d => y(d.visits) - 5)
-      .attr("text-anchor", "middle")
-      .attr("font-size", "10px")
-      .attr("font-weight", "bold")
-      .attr("fill", "#334155")
-      .text(d => d.visits);
-
-    chartBox.appendChild(svg.node());
+  if (btnResetFilter) {
+    btnResetFilter.onclick = () => {
+      if (filterSalesmanSelect) filterSalesmanSelect.value = "ALL";
+      if (filterPeriodSelect) filterPeriodSelect.value = "TODAY";
+      if (filterStatusSelect) filterStatusSelect.value = "ALL";
+      if (filterSearchInput) filterSearchInput.value = "";
+      applyAndRenderDashboard();
+      toast("Filter berhasil direset", "info");
+    };
   }
 
   btnSync.onclick = async () => {
@@ -389,4 +686,3 @@ export async function mount(container, { session }) {
 
   return { unmount() {} };
 }
-
