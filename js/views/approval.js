@@ -51,7 +51,7 @@ export async function mount(container, { session }) {
 }
 
 function currentStepIndex(row) {
-  const steps = row.approval_steps || [];
+  const steps = row.approval_steps || ["PENDING", "PENDING"];
   return steps.findIndex(s => s === "PENDING");
 }
 
@@ -59,15 +59,25 @@ function isEligible(row, session) {
   const idx = currentStepIndex(row);
   if (idx === -1) return false;
   
-  const stepLabel = (row.approval_flow || [])[idx];
+  const flow = row.approval_flow || ["ATASAN", "HRD"];
+  const stepLabel = flow[idx];
   if (!stepLabel) return false;
   
+  const myRole = (session.role || "").toUpperCase();
+  const myNameLower = (session.nama || "").trim().toLowerCase();
+
   if (stepLabel.toUpperCase() === "ATASAN") {
     const pemohon = karyawanByNama[row.nama_pemohon];
-    return pemohon && pemohon.atasan === session.nama;
+    const atasanInMaster = (pemohon?.atasan || pemohon?.atasan_langsung || "").trim().toLowerCase();
+    const atasanInRow = (row.atasan_langsung || row.penanggung_jawab || "").trim().toLowerCase();
+    
+    const isDirectAtasan = (atasanInRow && atasanInRow === myNameLower) || (atasanInMaster && atasanInMaster === myNameLower);
+    const isHrdAdminOrDirector = ["HRD", "SUPERADMIN", "ADMIN", "ADMINISTRATOR", "DIREKTUR", "GM"].includes(myRole);
+
+    return isDirectAtasan || isHrdAdminOrDirector;
   }
   
-  return stepLabel.toUpperCase() === session.role.toUpperCase();
+  return stepLabel.toUpperCase() === myRole || ["HRD", "SUPERADMIN", "ADMIN", "ADMINISTRATOR"].includes(myRole);
 }
 
 function renderList(container, session, tab) {
@@ -75,9 +85,13 @@ function renderList(container, session, tab) {
   let rows;
   
   if (tab === "pending") {
-    rows = allPengajuan.filter(r => r.status_final === "MENUNGGU" && isEligible(r, session));
+    rows = allPengajuan.filter(r => {
+      const st = (r.status_final || r.status || "MENUNGGU").toUpperCase();
+      const isPendingStatus = st === "MENUNGGU" || st === "PENDING" || st.includes("MENUNGGU");
+      return isPendingStatus && isEligible(r, session);
+    });
   } else {
-    rows = allPengajuan.filter(r => (r.catatan_penolakan || []).some(c => c.includes(session.nama)));
+    rows = allPengajuan.filter(r => (r.catatan_penolakan || []).some(c => String(c).includes(session.nama)) || (r.approved_by && r.approved_by === session.nama));
   }
   
   rows.sort((a, b) => new Date(b.tgl) - new Date(a.tgl));

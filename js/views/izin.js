@@ -51,14 +51,16 @@ export async function mount(container, { session }) {
         r.tipe_form === "FORM_IZIN" || 
         r.kategori === "IZIN" ||
         (r.nama_form || "").toLowerCase().includes("izin")
-      ).sort((a, b) => new Date(b.tanggal_pengajuan || b.created_at || 0) - new Date(a.tanggal_pengajuan || a.created_at || 0));
+      ).sort((a, b) => new Date(b.tanggal_pengajuan || b.tgl || b.created_at || 0) - new Date(a.tanggal_pengajuan || a.tgl || a.created_at || 0));
 
       // Filter by role if not HRD/Admin
       if (!isHrdOrAdmin) {
-        const myNameLower = (session.nama || "").toLowerCase();
+        const myNameLower = (session.nama || "").trim().toLowerCase();
         allIzinRecords = allIzinRecords.filter(r => {
-          const isMine = (r.nama_pemohon || "").toLowerCase() === myNameLower;
-          const isAtasanTarget = (r.atasan_langsung || "").toLowerCase() === myNameLower || (r.penanggung_jawab || "").toLowerCase() === myNameLower;
+          const pemohonNameLower = (r.nama_pemohon || r.pemohon || "").trim().toLowerCase();
+          const atasanNameLower = (r.atasan_langsung || r.penanggung_jawab || "").trim().toLowerCase();
+          const isMine = pemohonNameLower === myNameLower;
+          const isAtasanTarget = atasanNameLower === myNameLower;
           return isMine || isAtasanTarget;
         });
       }
@@ -246,8 +248,14 @@ export async function mount(container, { session }) {
     const todayStr = new Date().toISOString().split("T")[0];
 
     const optAtasanHtml = allEmployees.map(k => `
-      <option value="${escapeHtml(k.nama_karyawan)}" ${ (myKaryawan && myKaryawan.atasan_langsung === k.nama_karyawan) ? 'selected' : '' }>
+      <option value="${escapeHtml(k.nama_karyawan)}" ${ (myKaryawan && (myKaryawan.atasan_langsung === k.nama_karyawan || myKaryawan.atasan === k.nama_karyawan)) ? 'selected' : '' }>
         ${escapeHtml(k.nama_karyawan)} - ${escapeHtml(k.jabatan || 'Atasan')} (${escapeHtml(k.cabang || '-')})
+      </option>
+    `).join("");
+
+    const optPemohonHtml = allEmployees.map(k => `
+      <option value="${escapeHtml(k.nama_karyawan)}" ${ (k.nama_karyawan || "").toLowerCase() === (session.nama || "").toLowerCase() ? 'selected' : '' }>
+        ${escapeHtml(k.nama_karyawan)} - ${escapeHtml(k.jabatan || 'Karyawan')} (${escapeHtml(k.cabang || '-')})
       </option>
     `).join("");
 
@@ -283,8 +291,15 @@ export async function mount(container, { session }) {
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label class="block text-xs font-bold text-slate-700 mb-1">Nama Pemohon (Karyawan)</label>
-              <input type="text" value="${escapeHtml(session.nama || '-')}" readonly class="w-full px-3 py-2 text-xs font-bold border border-slate-200 bg-slate-100 rounded-xl text-slate-600">
+              <label class="block text-xs font-bold text-slate-700 mb-1">Nama Pemohon (Karyawan) <span class="text-rose-500">*</span></label>
+              ${isHrdOrAdmin ? `
+                <select id="f-nama-pemohon" required class="w-full px-3 py-2 text-xs font-bold border border-slate-200 rounded-xl outline-none focus:border-maroon-500 bg-white">
+                  <option value="">-- Pilih Karyawan Pemohon --</option>
+                  ${optPemohonHtml}
+                </select>
+              ` : `
+                <input type="text" id="f-nama-pemohon-static" value="${escapeHtml(session.nama || '-')}" readonly class="w-full px-3 py-2 text-xs font-bold border border-slate-200 bg-slate-100 rounded-xl text-slate-600">
+              `}
             </div>
             <div>
               <label class="block text-xs font-bold text-slate-700 mb-1">Atasan Langsung / Penanggung Jawab <span class="text-rose-500">*</span></label>
@@ -316,6 +331,23 @@ export async function mount(container, { session }) {
       onMount: (m) => {
         const selJenis = m.querySelector("#f-jenis-izin");
         const timeWrap = m.querySelector("#dynamic-time-fields");
+        const selPemohon = m.querySelector("#f-nama-pemohon");
+        const selAtasan = m.querySelector("#f-atasan-langsung");
+
+        if (selPemohon && selAtasan) {
+          selPemohon.addEventListener("change", () => {
+            const chosenName = selPemohon.value;
+            if (!chosenName) return;
+            const empObj = allEmployees.find(k => (k.nama_karyawan || "").toLowerCase() === chosenName.toLowerCase());
+            if (empObj) {
+              const directAtasan = empObj.atasan_langsung || empObj.atasan || "";
+              if (directAtasan) {
+                const optMatch = Array.from(selAtasan.options).find(o => o.value.toLowerCase() === directAtasan.toLowerCase());
+                if (optMatch) selAtasan.value = optMatch.value;
+              }
+            }
+          });
+        }
 
         function renderTimeFields() {
           const val = selJenis.value;
@@ -371,6 +403,21 @@ export async function mount(container, { session }) {
           const atasanVal = m.querySelector("#f-atasan-langsung").value;
           const alasanVal = m.querySelector("#f-alasan-izin").value.trim();
 
+          let targetEmpNama = session.nama;
+          let targetEmpNik = session.nik || "-";
+          let targetEmpJabatan = session.posisi || myKaryawan?.jabatan || "-";
+          let targetEmpCabang = session.cabang || myKaryawan?.cabang || "Pusat";
+
+          if (isHrdOrAdmin && selPemohon && selPemohon.value) {
+            targetEmpNama = selPemohon.value;
+            const matchedEmp = allEmployees.find(k => (k.nama_karyawan || "").toLowerCase() === targetEmpNama.toLowerCase());
+            if (matchedEmp) {
+              targetEmpNik = matchedEmp.nik || matchedEmp.nik_karyawan || "-";
+              targetEmpJabatan = matchedEmp.jabatan || "-";
+              targetEmpCabang = matchedEmp.cabang || "Pusat";
+            }
+          }
+
           let jamStr = "";
           if (jenisVal === "IZIN_TERLAMBAT") {
             const jamTiba = m.querySelector("#f-jam-tiba") ? m.querySelector("#f-jam-tiba").value : "";
@@ -399,34 +446,80 @@ export async function mount(container, { session }) {
           btn.disabled = true; btn.textContent = "Mengirim Pengajuan...";
 
           try {
+            const nowIso = new Date().toISOString();
             const genNoRef = `IZIN/ANDELA/${new Date().getFullYear()}/${String(new Date().getMonth()+1).padStart(2, "0")}/${genId("IZN").slice(-4)}`;
 
             const payload = {
               id: genNoRef,
               no_referensi: genNoRef,
+              tgl: nowIso,
               form_id: "F-ISO-IZIN",
+              id_form: "F-ISO-IZIN",
               tipe_form: "FORM_IZIN",
               kategori: "IZIN",
               nama_form: "Formulir Permohonan Izin Karyawan",
               jenis_izin: jenisVal,
               tanggal_izin: tglVal,
-              tanggal_pengajuan: new Date().toISOString(),
+              tanggal_pengajuan: nowIso,
               jam_izin: jamStr,
               alasan_izin: alasanVal,
               alasan: alasanVal,
-              nama_pemohon: session.nama,
-              nik: session.nik || "-",
-              jabatan: session.posisi || myKaryawan?.jabatan || "-",
-              cabang: session.cabang || myKaryawan?.cabang || "Pusat",
+              nama_pemohon: targetEmpNama,
+              pemohon: targetEmpNama,
+              nik: targetEmpNik,
+              nik_pemohon: targetEmpNik,
+              jabatan: targetEmpJabatan,
+              cabang: targetEmpCabang,
               atasan_langsung: atasanVal,
               penanggung_jawab: atasanVal,
               lampiran_url: fileUrl,
-              status: "PENDING",
-              status_final: "PENDING",
-              created_at: new Date().toISOString()
+              status: "MENUNGGU",
+              status_final: "MENUNGGU",
+              approval_flow: ["ATASAN", "HRD"],
+              approval_steps: ["PENDING", "PENDING"],
+              catatan_penolakan: [],
+              detail: {
+                jenis_izin: JENIS_IZIN_MAP[jenisVal]?.label || jenisVal,
+                tanggal_izin: tglVal,
+                jam_izin: jamStr,
+                alasan: alasanVal,
+                atasan_langsung: atasanVal
+              },
+              created_at: nowIso,
+              createdAt: nowIso
             };
 
             await fsAdd(COL.DATA_PENGAJUAN, payload, genNoRef);
+
+            // Send Notifications to Atasan & Target Employee
+            try {
+              const notifTitle = `📩 Pengajuan Izin Baru: ${targetEmpNama}`;
+              const notifMsg = `${targetEmpNama} (${targetEmpJabatan}) mengajukan ${JENIS_IZIN_MAP[jenisVal]?.label || 'Izin'} untuk tanggal ${tglVal}. Membutuhkan persetujuan Anda.`;
+              const notifLink = `#approval?id=${genNoRef}`;
+
+              if (atasanVal) {
+                await notifyUser(atasanVal, notifTitle, notifMsg, notifLink);
+              }
+
+              let atasanTargets = await getTargetsForRole("ATASAN", targetEmpNama);
+              for (const t of atasanTargets) {
+                if (t.username && t.username !== atasanVal) {
+                  await notifyUser(t.username, notifTitle, notifMsg, notifLink);
+                }
+              }
+
+              if (targetEmpNama !== session.nama) {
+                await notifyUser(
+                  targetEmpNama,
+                  `ℹ️ Pengajuan Izin Dibuatkan oleh HRD`,
+                  `Pengajuan ${JENIS_IZIN_MAP[jenisVal]?.label || 'Izin'} Anda untuk tanggal ${tglVal} telah dibuatkan oleh HRD (${session.nama}) dan dikirimkan ke atasan (${atasanVal}).`,
+                  `#izin`
+                );
+              }
+            } catch (nErr) {
+              console.warn("Gagal mengirim notifikasi izin:", nErr);
+            }
+
             toast("Pengajuan izin berhasil dibuat!", "success");
             closeModal();
             await loadData();
