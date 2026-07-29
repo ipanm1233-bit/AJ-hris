@@ -391,6 +391,21 @@ export async function mount(container, { session }) {
           setDoc(doc(db, COL.DATA_PENGAJUAN, refNo), payload)
         ]);
 
+        // Send Notification & Email to HRD & Approvers
+        try {
+          const hrdTargets = await getTargetsForRole("HRD", session.nama);
+          for (const target of hrdTargets) {
+            await notifyUser(
+              target,
+              `Persetujuan Kasbon Dibutuhkan`,
+              `Pengajuan Kasbon baru dari ${session.nama} (${catObj.name || catVal}) senilai ${fmtRupiah(nominal)}. Membutuhkan verifikasi Anda.`,
+              `/#approval?id=${refNo}`
+            );
+          }
+        } catch (eNotif) {
+          console.warn("Gagal mengirim notifikasi kasbon:", eNotif);
+        }
+
         toast("Pengajuan kasbon berhasil dikirim!", "success");
         closeModal();
         await loadData();
