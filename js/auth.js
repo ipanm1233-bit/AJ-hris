@@ -122,6 +122,7 @@ export async function login(username, password, remember = false) {
   }
 
   const session = {
+    id: user.id || snap.id || uname,
     username: uname,
     role: (user.role || "STAFF").toUpperCase(),
     nama: user.nama || uname,
@@ -163,6 +164,7 @@ export async function loginWithToken(tokenStr) {
 
   // Buat Sesi Login Otomatis
   const session = {
+    id: user.id || snap.id || uname,
     username: uname, role: (user.role || "STAFF").toUpperCase(), nama: user.nama || uname,
     email: user.email || "", posisi: user.posisi || karyawan?.jabatan || "-",
     nik: user.nik || karyawan?.nik_karyawan || null, cabang: karyawan?.cabang || user.cabang || "-",
@@ -224,14 +226,27 @@ export async function computeVisibleMenus(session) {
   if (!session) return [];
   const role = (session.role || "").toUpperCase();
   const overrides = await loadPermissionOverrides(true);
-  const userOverride = (session.username && overrides[session.username]) || 
-                       (session.id && overrides[session.id]) || 
-                       (session.username && overrides[session.username.toLowerCase()]) ||
-                       (session.username && overrides[session.username.toUpperCase()]) ||
-                       (session.nik && overrides[String(session.nik)]) ||
-                       (session.nama && overrides[session.nama]) ||
-                       (session.nama && overrides[session.nama.toLowerCase()]) ||
-                       (session.nama && overrides[session.nama.toUpperCase()]);
+  
+  const searchKeys = [
+    session.username,
+    session.username ? String(session.username).toLowerCase() : null,
+    session.username ? String(session.username).toUpperCase() : null,
+    session.id,
+    session.id ? String(session.id).toLowerCase() : null,
+    session.id ? String(session.id).toUpperCase() : null,
+    session.nik ? String(session.nik) : null,
+    session.nama,
+    session.nama ? String(session.nama).toLowerCase() : null,
+    session.nama ? String(session.nama).toUpperCase() : null
+  ].filter(Boolean);
+
+  let userOverride = null;
+  for (const k of searchKeys) {
+    if (overrides[k]) {
+      userOverride = overrides[k];
+      break;
+    }
+  }
 
   // Jika HRD sudah menetapkan daftar menu spesifik untuk user ini -> pakai itu (whitelist absolut)
   if (userOverride && (userOverride.allowed_menus_set || (Array.isArray(userOverride.allowed_menus) && userOverride.allowed_menus.length > 0))) {
@@ -289,8 +304,28 @@ export async function canAccessRoute(routeId, session) {
  * RBAC — AKSES FORM PENGAJUAN (Katalog ISO)
  * ------------------------------------------------------------------- */
 export async function canAccessForm(formConfig, session) {
-  const overrides = await loadPermissionOverrides();
-  const userOverride = overrides[session.username];
+  const overrides = await loadPermissionOverrides(true);
+  const searchKeys = [
+    session.username,
+    session.username ? String(session.username).toLowerCase() : null,
+    session.username ? String(session.username).toUpperCase() : null,
+    session.id,
+    session.id ? String(session.id).toLowerCase() : null,
+    session.id ? String(session.id).toUpperCase() : null,
+    session.nik ? String(session.nik) : null,
+    session.nama,
+    session.nama ? String(session.nama).toLowerCase() : null,
+    session.nama ? String(session.nama).toUpperCase() : null
+  ].filter(Boolean);
+
+  let userOverride = null;
+  for (const k of searchKeys) {
+    if (overrides[k]) {
+      userOverride = overrides[k];
+      break;
+    }
+  }
+
   if (userOverride && Array.isArray(userOverride.allowed_forms) && userOverride.allowed_forms.length) {
     return userOverride.allowed_forms.includes(formConfig.id);
   }
