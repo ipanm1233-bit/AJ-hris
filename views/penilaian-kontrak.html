@@ -1,7 +1,14 @@
 <div class="space-y-6">
-  <div>
-    <h1 class="text-2xl font-bold text-slate-800" id="pk-title">Penilaian & Kontrak</h1>
-    <p class="text-sm text-slate-500 mt-1" id="pk-subtitle">Evaluasi performa berkala staf (KPI) dan pengingat masa aktif ikatan dinas.</p>
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-800" id="pk-title">Penilaian & Kontrak</h1>
+      <p class="text-sm text-slate-500 mt-1" id="pk-subtitle">Evaluasi performa berkala staf (KPI) dan pengingat masa aktif ikatan dinas.</p>
+    </div>
+    <div id="pk-hrd-actions" class="flex items-center gap-2">
+      <button id="btn-open-grade-config" class="hidden px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shrink-0 shadow-2xs">
+        ⚙️ Standar Grade & Keputusan HRD
+      </button>
+    </div>
   </div>
 
   <div id="pk-tab-header" class="flex items-center gap-2 border-b border-slate-100 overflow-x-auto">

@@ -39,6 +39,7 @@ export const MENU_CONFIG = [
   // 📁 KATEGORI: KEHADIRAN & CUTI
   { id: "absensi", label: "Manajemen Absensi", icon: "clock", kategori: "Kehadiran & Cuti", roles: ["HRD", "SUPERADMIN"] },
   { id: "cuti", label: "Manajemen Cuti", icon: "calendar", kategori: "Kehadiran & Cuti", roles: ["HRD", "SUPERADMIN"] },
+  { id: "izin", label: "Pengajuan & Surat Izin", icon: "doc-plus", kategori: "Kehadiran & Cuti", roles: ["ALL"] },
   { id: "lembur-kasbon", label: "Lembur & Kasbon", icon: "wallet", kategori: "Kehadiran & Cuti", roles: ["HRD", "FINANCE", "SUPERADMIN"] },
   { id: "kalender-hr", label: "Kalender HR", icon: "calendar", kategori: "Kehadiran & Cuti", roles: ["HRD", "SUPERADMIN"] },
 

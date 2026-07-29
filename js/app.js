@@ -392,7 +392,7 @@ function highlightActive(route) {
       isActive = true;
     } else if (tabRoute === "dashboard" && route === "dashboard") {
       isActive = true;
-    } else if (tabRoute === "absensi" && (route === "absensi" || route === "klaim-bensin" || route === "lembur-kasbon" || route === "manajemen-cuti" || route === "cuti")) {
+    } else if (tabRoute === "absensi" && (route === "absensi" || route === "klaim-bensin" || route === "lembur-kasbon" || route === "manajemen-cuti" || route === "cuti" || route === "izin")) {
       isActive = true;
     } else if (tabRoute === "pengajuan" && route === "pengajuan") {
       isActive = true;

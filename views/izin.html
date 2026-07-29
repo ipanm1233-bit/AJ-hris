@@ -1,0 +1,93 @@
+<div class="space-y-6">
+  <!-- HEADER TITLE -->
+  <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-800">Pengajuan & Surat Izin Karyawan</h1>
+      <p class="text-sm text-slate-500 mt-1">Layanan permohonan izin datang terlambat, izin pulang cepat, dan izin keluar kantor serta cetak dokumen resmi perusahaan.</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <button id="btn-buat-izin" class="px-4 py-2 bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold rounded-xl transition shadow-sm flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+        <span>Buat Pengajuan Izin</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- STAT METRIC CARDS -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div class="bg-white rounded-2xl p-4 border border-slate-100 shadow-2xs flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-maroon-50 text-maroon-700 flex items-center justify-center font-bold text-lg shrink-0">📋</div>
+      <div>
+        <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Total Izin</p>
+        <p id="stat-total-izin" class="text-lg font-black text-slate-800">0</p>
+      </div>
+    </div>
+    <div class="bg-white rounded-2xl p-4 border border-slate-100 shadow-2xs flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold text-lg shrink-0">⏰</div>
+      <div>
+        <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Datang Terlambat</p>
+        <p id="stat-izin-terlambat" class="text-lg font-black text-amber-800">0</p>
+      </div>
+    </div>
+    <div class="bg-white rounded-2xl p-4 border border-slate-100 shadow-2xs flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-lg shrink-0">🏃</div>
+      <div>
+        <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Pulang Cepat</p>
+        <p id="stat-izin-pulang-cepat" class="text-lg font-black text-blue-800">0</p>
+      </div>
+    </div>
+    <div class="bg-white rounded-2xl p-4 border border-slate-100 shadow-2xs flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold text-lg shrink-0">🏢</div>
+      <div>
+        <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Keluar Kantor</p>
+        <p id="stat-izin-keluar" class="text-lg font-black text-purple-800">0</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN DATA SECTION -->
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-2xs p-4 sm:p-6 space-y-4">
+    <!-- TOOLBAR & FILTERS -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+      <div class="flex items-center gap-2 overflow-x-auto">
+        <select id="filter-jenis-izin" class="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 outline-none bg-slate-50 focus:bg-white text-slate-700">
+          <option value="ALL">Semua Jenis Izin</option>
+          <option value="IZIN_TERLAMBAT">⏰ Datang Terlambat</option>
+          <option value="IZIN_PULANG_CEPAT">🏃 Pulang Cepat</option>
+          <option value="IZIN_KELUAR_KANTOR">🏢 Keluar Kantor / Dinas Samping</option>
+        </select>
+        <select id="filter-status-izin" class="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 outline-none bg-slate-50 focus:bg-white text-slate-700">
+          <option value="ALL">Semua Status</option>
+          <option value="PENDING">⏳ Menunggu Persetujuan</option>
+          <option value="APPROVED">✅ Disetujui (Approved)</option>
+          <option value="REJECTED">❌ Ditolak (Rejected)</option>
+        </select>
+      </div>
+      <div class="relative w-full md:w-64">
+        <input type="text" id="search-izin-input" placeholder="Cari nama, No. Ref, alasan..." class="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 outline-none focus:border-maroon-500">
+        <span class="absolute left-2.5 top-2 text-slate-400">🔍</span>
+      </div>
+    </div>
+
+    <!-- TABLE RECORD IZIN -->
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead class="bg-slate-50 text-slate-500 uppercase font-bold text-[10px] tracking-wider border-b border-slate-100">
+          <tr>
+            <th class="px-4 py-3 text-left">No. Referensi & Tanggal</th>
+            <th class="px-4 py-3 text-left">Pemohon</th>
+            <th class="px-4 py-3 text-left">Jenis Izin</th>
+            <th class="px-4 py-3 text-left">Jam / Durasi</th>
+            <th class="px-4 py-3 text-left">Alasan / Keperluan</th>
+            <th class="px-4 py-3 text-left">Status</th>
+            <th class="px-4 py-3 text-right">Aksi & Cetak</th>
+          </tr>
+        </thead>
+        <tbody id="tbl-izin-body" class="divide-y divide-slate-100">
+          <!-- Rendered dynamically in izin.js -->
+        </tbody>
+      </table>
+    </div>
+    <div id="izin-empty-wrap"></div>
+  </div>
+</div>
