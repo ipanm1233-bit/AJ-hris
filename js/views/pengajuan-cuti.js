@@ -1,5 +1,5 @@
 import { db, COL, doc, getDoc, setDoc, query, collection, where, getDocs } from "../firebase-config.js";
-import { fsGetAll, openModal, closeModal, toast, fmtDateShort, escapeHtml, genId, toNumber, sendEmailNotif, getTargetsForRole, createLoginToken, notifyUser } from "../utils.js";
+import { fsGetAll, openModal, closeModal, toast, fmtDateShort, escapeHtml, genId, toNumber, sendEmailNotif, getTargetsForRole, createLoginToken, notifyUser, getCalculatedJatahCuti } from "../utils.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 import { badge } from "../components.js";
 
@@ -36,6 +36,7 @@ export async function mount(container, { session }) {
   let leaveCategories = DEFAULT_LEAVE_TYPES;
   let myLeaveRecords = [];
   let allEmployees = [];
+  let userBalances = { sisaTahunan: 0, sisaKhusus: 0, sisaAkumulasi: 0 };
 
   // Load employee's leave balance & history
   async function loadData() {
@@ -66,9 +67,10 @@ export async function mount(container, { session }) {
         kData = allEmployees.find(k => (k.nama_karyawan || "").toLowerCase() === (session.nama || "").toLowerCase());
       }
 
-      let jatahTahunan = kData ? (toNumber(kData.jatah_tahunan ?? kData.jatah_cuti_tahunan) || 12) : 12;
-      let jatahAkumulasi = kData ? (toNumber(kData.jatah_akumulasi ?? kData.jatah_cuti_akumulasi) || 0) : 0;
-      let jatahKhusus = kData ? (toNumber(kData.jatah_khusus ?? kData.jatah_cuti_khusus) || 0) : 0;
+      const calc = getCalculatedJatahCuti(kData);
+      let jatahTahunan = calc.jatahTahunan;
+      let jatahAkumulasi = calc.jatahAkumulasi;
+      let jatahKhusus = calc.jatahKhusus;
 
       // 3. Fetch current employee's actual usage from MASTER_CUTI
       let terpakaiTahunan = 0;
@@ -99,6 +101,8 @@ export async function mount(container, { session }) {
       const sisaTahunan = Math.max(0, jatahTahunan - terpakaiTahunan);
       const sisaAkumulasi = Math.max(0, jatahAkumulasi - terpakaiAkumulasi);
       const sisaKhusus = Math.max(0, jatahKhusus - terpakaiKhusus);
+
+      userBalances = { sisaTahunan, sisaKhusus, sisaAkumulasi };
 
       if (elTahunanJatah) elTahunanJatah.textContent = jatahTahunan;
       if (elTahunanTerpakai) elTahunanTerpakai.textContent = `${terpakaiTahunan} Hari`;
@@ -504,9 +508,9 @@ export async function mount(container, { session }) {
           no_telepon: document.getElementById("fc-phone").value.trim(),
           alasan: document.getElementById("fc-alasan").value.trim(),
           lampiran_url: uploadedUrl || null,
-          sisa_tahunan: sisaTahunan,
-          sisa_khusus: sisaKhusus,
-          sisa_akumulasi: sisaAkumulasi,
+          sisa_tahunan: userBalances.sisaTahunan || 0,
+          sisa_khusus: userBalances.sisaKhusus || 0,
+          sisa_akumulasi: userBalances.sisaAkumulasi || 0,
           detail: {
             jenis_cuti: catVal,
             sub_kategori: subCat,
@@ -517,9 +521,9 @@ export async function mount(container, { session }) {
             pejabat_pengganti: document.getElementById("fc-pengganti").value,
             no_telepon: document.getElementById("fc-phone").value.trim(),
             cabang: session.cabang || "-",
-            sisa_tahunan: sisaTahunan,
-            sisa_khusus: sisaKhusus,
-            sisa_akumulasi: sisaAkumulasi
+            sisa_tahunan: userBalances.sisaTahunan || 0,
+            sisa_khusus: userBalances.sisaKhusus || 0,
+            sisa_akumulasi: userBalances.sisaAkumulasi || 0
           },
           approval_flow: approvalFlow,
           approval_steps: ["PENDING", "PENDING"],

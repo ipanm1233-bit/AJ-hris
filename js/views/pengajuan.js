@@ -2,7 +2,7 @@ import { db, COL, collection, query, where, getDocs, orderBy, limit, doc, getDoc
 import {
   fsGetAll, fsAdd, fsUpdate, openModal, closeModal, toast, genId, escapeHtml,
   fmtDateShort, evalFormula, toNumber, sendEmailNotif, getTargetsForRole, createLoginToken,
-  dynFieldWrapperHtml, wireDynFormLogic, collectDynFormDetail, sendFCMNotif, notifyUser
+  dynFieldWrapperHtml, wireDynFormLogic, collectDynFormDetail, sendFCMNotif, notifyUser, getCalculatedJatahCuti
 } from "../utils.js";
 import { canAccessForm } from "../auth.js";
 import { icon, badge, emptyState, skeletonRows } from "../components.js";
@@ -108,7 +108,8 @@ async function openFormModal(formCfg, session) {
       if (!snapK.empty) kData = snapK.docs[0].data();
     }
     if (kData) {
-      jatah = { tahunan: toNumber(kData.jatah_tahunan), khusus: toNumber(kData.jatah_khusus), akumulasi: toNumber(kData.jatah_akumulasi) };
+      const calc = getCalculatedJatahCuti(kData);
+      jatah = { tahunan: calc.jatahTahunan, khusus: calc.jatahKhusus, akumulasi: calc.jatahAkumulasi };
     }
 
     let terpakai = { Tahunan: 0, Khusus: 0, Akumulasi: 0 };
@@ -282,7 +283,7 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
                target, 
                `Persetujuan Dibutuhkan: ${payload.nama_form}`, 
                `Ada pengajuan ${payload.nama_form} baru dari ${payload.nama_pemohon}. Membutuhkan verifikasi Anda.`,
-               `/#approval?id=${refNo}`
+               `/#approval?id=${payload.id}`
            ).catch(e => console.warn("Push gagal:", e));
         }
       }

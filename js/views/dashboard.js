@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, orderBy, limit, getDoc, doc, updateDoc, messaging } from "../firebase-config.js";
-import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, getTargetsForRole, toast, fsUpdate, fsAdd, fsGetAll, fsDelete, deleteBroadcastMemoAndNotifs, genId, localDateStr } from "../utils.js";
+import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, getTargetsForRole, toast, fsUpdate, fsAdd, fsGetAll, fsDelete, deleteBroadcastMemoAndNotifs, genId, localDateStr, getCalculatedJatahCuti } from "../utils.js";
 import { avatar, badge, icon, emptyState, skeletonRows, getDismissedAnnouncements, dismissAnnouncementForUser } from "../components.js";
 import { MANAJEMEN_ROLES } from "../auth.js";
 // IMPORT BARU UNTUK MENDAPATKAN TOKEN HP (FCM)
@@ -212,7 +212,10 @@ async function loadLeaveBalances(container, session) {
       const snap = await getDocs(q);
       if (!snap.empty) kData = snap.docs[0].data();
     }
-    if (kData) { jatah = { tahunan: toNumber(kData.jatah_tahunan), khusus: toNumber(kData.jatah_khusus), akumulasi: toNumber(kData.jatah_akumulasi) }; }
+    if (kData) {
+      const calc = getCalculatedJatahCuti(kData);
+      jatah = { tahunan: calc.jatahTahunan, khusus: calc.jatahKhusus, akumulasi: calc.jatahAkumulasi };
+    }
   } catch (e) {}
 
   let terpakai = { Tahunan: 0, Khusus: 0, Akumulasi: 0 };

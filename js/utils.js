@@ -1177,9 +1177,10 @@ export async function printFormCutiFisik(item) {
           (nik !== "-" && String(k.nik || k.nik_karyawan) === String(nik))
         );
 
-        let jatahTahunan = kData ? (toNumber(kData.jatah_tahunan ?? kData.jatah_cuti_tahunan) || 12) : 12;
-        let jatahAkumulasi = kData ? (toNumber(kData.jatah_akumulasi ?? kData.jatah_cuti_akumulasi) || 0) : 0;
-        let jatahKhusus = kData ? (toNumber(kData.jatah_khusus ?? kData.jatah_cuti_khusus) || 0) : 0;
+        const calc = getCalculatedJatahCuti(kData);
+        let jatahTahunan = calc.jatahTahunan;
+        let jatahAkumulasi = calc.jatahAkumulasi;
+        let jatahKhusus = calc.jatahKhusus;
 
         let terpakaiTahunan = 0, terpakaiAkumulasi = 0, terpakaiKhusus = 0;
         const currentYear = new Date().getFullYear();
@@ -1883,6 +1884,56 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
     console.error("Error getTargetsForRole:", error);
     return [];
   }
+}
+
+/* ---------------------------------------------------------------------
+ * PERHITUNGAN JATAH CUTI SESUAI SK No.018/HRGA-AJ/XII/2024
+ * ------------------------------------------------------------------- */
+export function getCalculatedJatahCuti(emp) {
+  if (!emp) return { jatahTahunan: 12, jatahKhusus: 4, jatahAkumulasi: 0 };
+
+  const explicitTahunan = emp.jatah_cuti_tahunan ?? emp.jatah_tahunan;
+  const explicitKhusus = emp.jatah_cuti_khusus ?? emp.jatah_khusus;
+  const explicitAkumulasi = emp.jatah_cuti_akumulasi ?? emp.jatah_akumulasi;
+
+  let jatahTahunan = (explicitTahunan !== undefined && explicitTahunan !== null && explicitTahunan !== "") 
+    ? toNumber(explicitTahunan) 
+    : null;
+  let jatahKhusus = (explicitKhusus !== undefined && explicitKhusus !== null && explicitKhusus !== "") 
+    ? toNumber(explicitKhusus) 
+    : 4;
+  let jatahAkumulasi = (explicitAkumulasi !== undefined && explicitAkumulasi !== null && explicitAkumulasi !== "") 
+    ? toNumber(explicitAkumulasi) 
+    : 0;
+
+  if (jatahTahunan === null && emp.tanggal_join) {
+    const join = smartParseDate(emp.tanggal_join);
+    if (join) {
+      const now = new Date();
+      const diffMonths = (now.getFullYear() - join.getFullYear()) * 12 + (now.getMonth() - join.getMonth());
+      const tenureYears = diffMonths / 12;
+
+      if (diffMonths >= 12) {
+        jatahTahunan = 12;
+        if (tenureYears >= 11) jatahTahunan += 4;       // > 10 thn (>= 11 thn): +4 (total 16)
+        else if (tenureYears >= 10) jatahTahunan += 3; // 10 thn: +3 (total 15)
+        else if (tenureYears >= 8) jatahTahunan += 2;  // 8 thn: +2 (total 14)
+        else if (tenureYears >= 6) jatahTahunan += 1;  // 6 thn: +1 (total 13)
+      } else if (diffMonths >= 3) {
+        // Masa kerja < 1 tahun (3-11 bulan): Cuti tahunan proporsional (1 hari/bulan)
+        jatahTahunan = diffMonths;
+      } else {
+        // Masa kerja < 3 bulan: belum berhak cuti tahunan
+        jatahTahunan = 0;
+      }
+    }
+  }
+
+  if (jatahTahunan === null || jatahTahunan === undefined) {
+    jatahTahunan = 12;
+  }
+
+  return { jatahTahunan, jatahKhusus, jatahAkumulasi };
 }
 
 /* ---------------------------------------------------------------------

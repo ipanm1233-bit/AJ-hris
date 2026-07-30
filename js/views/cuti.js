@@ -1,5 +1,5 @@
 import { db, COL, collection, getDocs, doc, setDoc, getDoc, updateDoc } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort, confirmDialog, sendEmailNotif, notifyUser, getTargetsForRole, generateAndSaveCutiDocument, printFormCutiFisik, generateStandardFormCutiHtml, smartParseDate } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort, confirmDialog, sendEmailNotif, notifyUser, getTargetsForRole, generateAndSaveCutiDocument, printFormCutiFisik, generateStandardFormCutiHtml, smartParseDate, getCalculatedJatahCuti } from "../utils.js";
 import { avatar, emptyState, skeletonRows, badge } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
@@ -270,9 +270,10 @@ export async function mount(container, { session }) {
              }
          }
 
-         const jTahunan = k.jatah_cuti_tahunan || k.jatah_tahunan || 0;
-         const jKhusus = k.jatah_cuti_khusus || k.jatah_khusus || 0;
-         const jAkumulasi = k.jatah_cuti_akumulasi || k.jatah_akumulasi || 0;
+         const calc = getCalculatedJatahCuti(k);
+         const jTahunan = calc.jatahTahunan;
+         const jKhusus = calc.jatahKhusus;
+         const jAkumulasi = calc.jatahAkumulasi;
 
          return `
             <tr class="hover:bg-slate-50/50 transition">
