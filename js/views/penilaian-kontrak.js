@@ -6,6 +6,31 @@ import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 
 // =====================================================================
+// MASTER INDIKATOR PENILAIAN HARIAN & TARGET BULANAN
+// =====================================================================
+export const SALES_LAMPIRAN1_INDICATORS = [
+  { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Volume Dulux", unit: "Ton / Liter / Kaleng", key: "volume_dulux", defaultTarget: 10 },
+  { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Volume Catylac", unit: "Ton / Liter / Kaleng", key: "volume_catylac", defaultTarget: 15 },
+  { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Volume Maxilite", unit: "Ton / Liter / Kaleng", key: "volume_maxilite", defaultTarget: 10 },
+  { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Volume Aquashield", unit: "Ton / Liter / Kaleng", key: "volume_aquashield", defaultTarget: 5 },
+  { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Total Weighted Target", unit: "% Capaian", key: "total_weighted_target", defaultTarget: 100 },
+  { principle: "ALL", aspek: "Value Penjualan Tertagih", indikator: "Value Penjualan Tertagih", unit: "Rp", key: "value_penjualan_tertagih", defaultTarget: 100000000 },
+  { principle: "ALL", aspek: "Over due ( sisa piutang Toko )", indikator: "Over due Piutang Toko", unit: "Rp (Max Limit)", key: "overdue_piutang", defaultTarget: 20000000 },
+  { principle: "ICI", aspek: "AO - ICI", indikator: "Active Outlet ICI", unit: "Toko", key: "ao_ici", defaultTarget: 25 },
+  { principle: "PRIMA", aspek: "Sales Value (SO) - Tertagih", indikator: "Sales Value PRIMA Tertagih", unit: "Rp", key: "sales_value_prima", defaultTarget: 50000000 },
+  { principle: "PRIMA", aspek: "AO", indikator: "Active Outlet PRIMA", unit: "Toko", key: "ao_prima", defaultTarget: 15 },
+  { principle: "DCOTA", aspek: "Sales Value (SO) - Tertagih", indikator: "Sales Value DCOTA Tertagih", unit: "Rp", key: "sales_value_dcota", defaultTarget: 50000000 },
+  { principle: "DCOTA", aspek: "AO", indikator: "Active Outlet DCOTA", unit: "Toko", key: "ao_dcota", defaultTarget: 15 },
+];
+
+export const NON_SALES_INDICATORS = [
+  { aspek: "SOP & Ketepatan Kerja", indikator: "Target Kinerja & Tugas Harian", target_default: 100, key: "sop_tugas" },
+  { aspek: "Respon & Pelayanan Divisi", indikator: "Kepuasan User & Bebas Komplain Divisi Lain", target_default: 100, key: "respon_divisi" },
+  { aspek: "Kedisiplinan & Kehadiran", indikator: "Kedisiplinan Waktu & Absensi", target_default: 100, key: "kedisiplinan" },
+  { aspek: "Inisiatif & Kerjasama Team", indikator: "Kinerja Proaktif & Kerjasama Team", target_default: 100, key: "inisiatif_team" }
+];
+
+// =====================================================================
 // PETA KATEGORI & OPSI REKOMENDASI PENILAIAN
 // =====================================================================
 export const JENIS_PENILAIAN_MAP = {
@@ -369,6 +394,7 @@ export async function mount(container, { session, params }) {
     kpi360: container.querySelector("#pk-panel-kpi360"),
     hasil: container.querySelector("#pk-panel-hasil"),
     evaluasi: container.querySelector("#pk-panel-evaluasi"),
+    daily: container.querySelector("#pk-panel-daily"),
     template: container.querySelector("#pk-panel-template"),
     grafik: container.querySelector("#pk-panel-employee-grafik"),
   };
@@ -4316,6 +4342,1172 @@ export async function mount(container, { session, params }) {
     });
   }
 
+  // =====================================================================
+  // MODUL PENILAIAN HARIAN & TARGET BULANAN (SALES & STAF OPS)
+  // =====================================================================
+  function openTargetSettingModal(activeKaryawan, allTargets, onSaved) {
+    const now = new Date();
+    const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    const contentHtml = `
+      <div class="space-y-4 text-xs text-slate-700">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label class="block font-bold mb-1">Pilih Karyawan: <span class="text-rose-500">*</span></label>
+            <select id="tgt-select-karyawan" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
+              <option value="">-- Pilih Karyawan --</option>
+              ${activeKaryawan.map(k => `<option value="${escapeHtml(k.nama_karyawan)}">${escapeHtml(k.nama_karyawan)} (${k.divisi || "Staf"})</option>`).join('')}
+            </select>
+          </div>
+
+          <div>
+            <label class="block font-bold mb-1">Bulan & Tahun: <span class="text-rose-500">*</span></label>
+            <input type="month" id="tgt-input-month" value="${defaultMonth}" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
+          </div>
+
+          <div>
+            <label class="block font-bold mb-1">Kategori / Divisi: <span class="text-rose-500">*</span></label>
+            <select id="tgt-select-tipe" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
+              <option value="SALES">📈 Sales / Marketing (Sesuai Lampiran 1)</option>
+              <option value="NON_SALES">🏢 Staf / Non-Sales (Operational / HRD / Admin)</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="tgt-form-fields-container" class="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+        </div>
+
+        <div>
+          <label class="block font-bold mb-1">Catatan Target HRD / Manajemen:</label>
+          <textarea id="tgt-input-catatan" rows="2" placeholder="Sampaikan instruksi atau penekanan target bulan ini..." class="w-full p-2.5 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-white text-xs"></textarea>
+        </div>
+      </div>
+    `;
+
+    openModal({
+      title: "🎯 Setting Target Bulanan Karyawan",
+      size: "lg",
+      bodyHtml: contentHtml,
+      footerHtml: `
+        <button id="modal-cancel-target-btn" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition">Batal</button>
+        <button id="modal-submit-target-btn" class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 transition">💾 Simpan Target Bulanan</button>
+      `,
+      onMount: (m) => {
+        m.querySelector("#modal-cancel-target-btn").onclick = closeModal;
+
+        const selectEmp = m.querySelector("#tgt-select-karyawan");
+        const selectMonth = m.querySelector("#tgt-input-month");
+        const selectTipe = m.querySelector("#tgt-select-tipe");
+        const fieldsBox = m.querySelector("#tgt-form-fields-container");
+
+        function renderFields() {
+          if (!fieldsBox) return;
+          const empName = selectEmp?.value;
+          const monthVal = selectMonth?.value;
+          const tipeVal = selectTipe?.value;
+
+          const existingDoc = allTargets.find(t => t.nama_karyawan === empName && t.bulan_tahun === monthVal);
+          const savedCustoms = existingDoc?.custom_indicators || [];
+
+          let baseHtml = "";
+          if (tipeVal === "SALES") {
+            baseHtml = `
+              <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+                <span class="font-bold text-slate-800">Target Indicator Sales (Lampiran 1):</span>
+                <span class="text-[11px] text-slate-500">Set target bulanan untuk sales ini</span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                ${SALES_LAMPIRAN1_INDICATORS.map(ind => {
+                  const val = existingDoc?.targets?.[ind.key] !== undefined ? existingDoc.targets[ind.key] : ind.defaultTarget;
+                  return `
+                    <div>
+                      <label class="block font-semibold text-slate-700 text-[11px] mb-0.5">
+                        <span class="px-1.5 py-0.2 rounded bg-slate-200 text-slate-700 font-bold">${ind.principle}</span> ${escapeHtml(ind.indikator)} (${ind.unit}):
+                      </label>
+                      <input type="number" id="tgt-field-${ind.key}" value="${val}" class="w-full p-2 rounded-xl border border-slate-200 bg-white font-bold text-slate-800 outline-none focus:border-maroon-600">
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `;
+          } else {
+            baseHtml = `
+              <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+                <span class="font-bold text-slate-800">Target Indikator Staf / Operational:</span>
+                <span class="text-[11px] text-slate-500">Standar baseline target = 100% per indikator</span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                ${NON_SALES_INDICATORS.map(ind => {
+                  const val = existingDoc?.targets?.[ind.key] !== undefined ? existingDoc.targets[ind.key] : 100;
+                  return `
+                    <div>
+                      <label class="block font-semibold text-slate-700 text-[11px] mb-0.5">
+                        ${escapeHtml(ind.aspek)} - ${escapeHtml(ind.indikator)} (%):
+                      </label>
+                      <input type="number" id="tgt-field-${ind.key}" value="${val}" min="0" max="100" class="w-full p-2 rounded-xl border border-slate-200 bg-white font-bold text-slate-800 outline-none focus:border-maroon-600">
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+              <div class="p-3 bg-amber-50 rounded-xl border border-amber-200/80 text-[11px] text-amber-800 leading-relaxed mt-2">
+                💡 <strong>Aturan Penalti HRD:</strong> Untuk staf operational, nilai harian dimulai dari baseline 100%. Nilai akan berkurang otomatis saat diinput adanya kesalahan kerja, komplain divisi lain, atau penerbitan Surat Peringatan (SP).
+              </div>
+            `;
+          }
+
+          fieldsBox.innerHTML = `
+            ${baseHtml}
+            <div class="mt-4 pt-3 border-t border-slate-200">
+              <div class="flex items-center justify-between mb-2">
+                <span class="font-bold text-slate-800 text-xs">✨ Indikator Target Kustom (Kategori HRD / Divisi):</span>
+                <button type="button" id="btn-add-custom-tgt" class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[11px] hover:bg-emerald-100 transition">
+                  + Tambah Indikator Kustom
+                </button>
+              </div>
+              <div id="custom-tgt-list" class="space-y-2">
+                ${savedCustoms.map((c, idx) => `
+                  <div class="custom-tgt-row grid grid-cols-1 sm:grid-cols-12 gap-2 p-2 bg-white rounded-xl border border-slate-200 items-center">
+                    <input type="text" class="custom-name sm:col-span-5 p-1.5 rounded-lg border border-slate-200 text-xs font-medium" placeholder="Nama Indikator (Cth: Audit Stok)" value="${escapeHtml(c.indikator || '')}">
+                    <input type="text" class="custom-unit sm:col-span-3 p-1.5 rounded-lg border border-slate-200 text-xs font-medium" placeholder="Satuan (Cth: %, Visit)" value="${escapeHtml(c.unit || '%')}">
+                    <input type="number" class="custom-val sm:col-span-3 p-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-800" placeholder="Target" value="${existingDoc?.targets?.[c.key] !== undefined ? existingDoc.targets[c.key] : (c.defaultTarget || 100)}">
+                    <button type="button" class="btn-del-custom sm:col-span-1 text-center text-rose-500 font-bold hover:bg-rose-50 p-1 rounded-lg">✕</button>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+
+          const btnAdd = fieldsBox.querySelector("#btn-add-custom-tgt");
+          const customList = fieldsBox.querySelector("#custom-tgt-list");
+
+          if (btnAdd && customList) {
+            btnAdd.onclick = () => {
+              const row = document.createElement("div");
+              row.className = "custom-tgt-row grid grid-cols-1 sm:grid-cols-12 gap-2 p-2 bg-white rounded-xl border border-slate-200 items-center";
+              row.innerHTML = `
+                <input type="text" class="custom-name sm:col-span-5 p-1.5 rounded-lg border border-slate-200 text-xs font-medium" placeholder="Nama Indikator (Cth: Audit Stok)">
+                <input type="text" class="custom-unit sm:col-span-3 p-1.5 rounded-lg border border-slate-200 text-xs font-medium" placeholder="Satuan (Cth: %, Visit)" value="%">
+                <input type="number" class="custom-val sm:col-span-3 p-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-800" placeholder="Target" value="100">
+                <button type="button" class="btn-del-custom sm:col-span-1 text-center text-rose-500 font-bold hover:bg-rose-50 p-1 rounded-lg">✕</button>
+              `;
+              row.querySelector(".btn-del-custom").onclick = () => row.remove();
+              customList.appendChild(row);
+            };
+
+            customList.querySelectorAll(".btn-del-custom").forEach(btn => {
+              btn.onclick = (e) => e.target.closest(".custom-tgt-row")?.remove();
+            });
+          }
+        }
+
+        if (selectEmp) selectEmp.onchange = renderFields;
+        if (selectMonth) selectMonth.onchange = renderFields;
+        if (selectTipe) selectTipe.onchange = renderFields;
+        renderFields();
+
+        m.querySelector("#modal-submit-target-btn").onclick = async () => {
+          const empName = m.querySelector("#tgt-select-karyawan")?.value;
+          const monthVal = m.querySelector("#tgt-input-month")?.value;
+          const tipeVal = m.querySelector("#tgt-select-tipe")?.value;
+          const catatanVal = m.querySelector("#tgt-input-catatan")?.value || "";
+
+          if (!empName || !monthVal) {
+            toast("Harap pilih karyawan dan bulan target!", "error");
+            return;
+          }
+
+          const empObj = activeKaryawan.find(k => k.nama_karyawan === empName);
+          const targets = {};
+          const customIndicators = [];
+
+          if (tipeVal === "SALES") {
+            SALES_LAMPIRAN1_INDICATORS.forEach(ind => {
+              const inputEl = m.querySelector(`#tgt-field-${ind.key}`);
+              targets[ind.key] = inputEl ? parseFloat(inputEl.value || 0) : ind.defaultTarget;
+            });
+          } else {
+            NON_SALES_INDICATORS.forEach(ind => {
+              const inputEl = m.querySelector(`#tgt-field-${ind.key}`);
+              targets[ind.key] = inputEl ? parseFloat(inputEl.value || 100) : 100;
+            });
+          }
+
+          // Extract Custom Indicators
+          const customRows = m.querySelectorAll("#custom-tgt-list .custom-tgt-row");
+          customRows.forEach((row, i) => {
+            const name = row.querySelector(".custom-name")?.value.trim();
+            const unit = row.querySelector(".custom-unit")?.value.trim() || "%";
+            const val = parseFloat(row.querySelector(".custom-val")?.value || 100);
+
+            if (name) {
+              const key = `custom_${name.toLowerCase().replace(/[^a-z0-9]/g, "_")}_${i}`;
+              targets[key] = val;
+              customIndicators.push({
+                key: key,
+                indikator: name,
+                unit: unit,
+                defaultTarget: val
+              });
+            }
+          });
+
+          const docId = `TGT_${empName.replace(/\s+/g, "_")}_${monthVal}`;
+          const payload = {
+            id: docId,
+            nama_karyawan: empName,
+            nik_karyawan: empObj?.nik_karyawan || empObj?.nik || "",
+            divisi: empObj?.divisi || "",
+            jabatan: empObj?.jabatan || "",
+            bulan_tahun: monthVal,
+            tipe_karyawan: tipeVal,
+            targets: targets,
+            custom_indicators: customIndicators,
+            catatan: catatanVal,
+            updated_at: new Date().toISOString(),
+            updated_by: session.nama
+          };
+
+          try {
+            await setDoc(doc(db, COL.TARGET_BULANAN_KPI, docId), payload, { merge: true });
+            toast(`Target bulanan ${empName} (${monthVal}) berhasil disimpan!`, "success");
+            closeModal();
+            if (typeof onSaved === "function") onSaved();
+          } catch (err) {
+            toast("Gagal menyimpan target: " + err.message, "error");
+          }
+        };
+      }
+    });
+  }
+
+  function openDailyLogModal(activeKaryawan, allTargets, onSaved) {
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    const contentHtml = `
+      <div class="space-y-4 text-xs text-slate-700">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold mb-1">Tanggal Daily Report: <span class="text-rose-500">*</span></label>
+            <input type="date" id="log-input-date" value="${todayStr}" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
+          </div>
+
+          <div>
+            <label class="block font-bold mb-1">Pilih Karyawan: <span class="text-rose-500">*</span></label>
+            <select id="log-select-karyawan" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
+              <option value="">-- Pilih Karyawan --</option>
+              ${activeKaryawan.map(k => `<option value="${escapeHtml(k.nama_karyawan)}">${escapeHtml(k.nama_karyawan)} (${k.divisi || "Staf"})</option>`).join('')}
+            </select>
+          </div>
+        </div>
+
+        <div id="log-form-dynamic-box" class="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+        </div>
+
+        <div>
+          <label class="block font-bold mb-1">Catatan Daily Report / Ulasan Pekerjaan Hari Ini:</label>
+          <textarea id="log-input-catatan" rows="2" placeholder="Catatan hasil daily report dari admin / ulasan supervisor..." class="w-full p-2.5 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-white text-xs"></textarea>
+        </div>
+      </div>
+    `;
+
+    openModal({
+      title: "✍️ Input Log Pencapaian & Evaluasi Harian",
+      size: "lg",
+      bodyHtml: contentHtml,
+      footerHtml: `
+        <button id="modal-cancel-log-btn" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition">Batal</button>
+        <button id="modal-submit-log-btn" class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 transition">💾 Simpan Daily Log</button>
+      `,
+      onMount: (m) => {
+        m.querySelector("#modal-cancel-log-btn").onclick = closeModal;
+
+        const selectEmp = m.querySelector("#log-select-karyawan");
+        const selectDate = m.querySelector("#log-input-date");
+        const dynamicBox = m.querySelector("#log-form-dynamic-box");
+
+        function renderDynamicForm() {
+          if (!dynamicBox) return;
+          const empName = selectEmp?.value;
+          const dateVal = selectDate?.value || todayStr;
+          const monthVal = dateVal.substring(0, 7);
+
+          if (!empName) {
+            dynamicBox.innerHTML = `<p class="text-slate-400 text-center text-xs py-4">Silakan pilih karyawan terlebih dahulu.</p>`;
+            return;
+          }
+
+          const empObj = activeKaryawan.find(k => k.nama_karyawan === empName);
+          const targetDoc = allTargets.find(t => t.nama_karyawan === empName && t.bulan_tahun === monthVal);
+          const isSales = (targetDoc?.tipe_karyawan === "SALES" || (empObj?.divisi || "").toUpperCase().includes("SALES"));
+
+          const customInds = targetDoc?.custom_indicators || [];
+          let customInputsHtml = "";
+          if (customInds.length > 0) {
+            customInputsHtml = `
+              <div class="mt-3 pt-3 border-t border-slate-200">
+                <span class="font-bold text-slate-800 block mb-2">✨ Indikator Target Kustom HRD Bulan Ini:</span>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  ${customInds.map(ci => {
+                    const tgt = targetDoc?.targets?.[ci.key] !== undefined ? targetDoc.targets[ci.key] : (ci.defaultTarget || 100);
+                    return `
+                      <div>
+                        <label class="block font-semibold text-slate-700 text-[11px] mb-0.5">
+                          ${escapeHtml(ci.indikator)} <span class="text-slate-400">(Target: ${tgt} ${escapeHtml(ci.unit || '%')})</span>:
+                        </label>
+                        <input type="number" id="log-ach-${ci.key}" value="${tgt}" step="any" class="w-full p-2 rounded-xl border border-slate-200 bg-white font-bold text-slate-800 outline-none focus:border-maroon-600">
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+            `;
+          }
+
+          if (isSales) {
+            dynamicBox.innerHTML = `
+              <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+                <span class="font-bold text-slate-800">Input Pencapaian Harian Sales (Lampiran 1):</span>
+                <span class="text-[11px] text-purple-700 font-semibold">Tipe: Sales / Marketing</span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                ${SALES_LAMPIRAN1_INDICATORS.map(ind => {
+                  const tgt = targetDoc?.targets?.[ind.key] || ind.defaultTarget;
+                  return `
+                    <div>
+                      <label class="block font-semibold text-slate-700 text-[11px] mb-0.5">
+                        <span class="px-1.5 py-0.2 rounded bg-purple-100 text-purple-800 font-bold">${ind.principle}</span> ${escapeHtml(ind.indikator)}
+                        <span class="text-slate-400">(Target Mo: ${tgt} ${ind.unit})</span>:
+                      </label>
+                      <input type="number" id="log-ach-${ind.key}" value="0" step="any" class="w-full p-2 rounded-xl border border-slate-200 bg-white font-bold text-slate-800 outline-none focus:border-maroon-600">
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+              ${customInputsHtml}
+            `;
+          } else {
+            dynamicBox.innerHTML = `
+              <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+                <span class="font-bold text-slate-800">Evaluasi Operational & Penalti Staf:</span>
+                <span class="text-[11px] text-blue-700 font-semibold">Base Skor: 100%</span>
+              </div>
+
+              <div class="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+                <label class="flex items-center gap-2 font-bold text-slate-800 cursor-pointer">
+                  <input type="checkbox" id="chk-komplain-divisi" class="w-4 h-4 text-rose-600 rounded">
+                  <span>⚠️ Ada Kesalahan Kerja / Komplain dari Divisi Lain Hari Ini?</span>
+                </label>
+                <div id="box-komplain-detail" class="hidden space-y-2 pt-2 border-t border-slate-100">
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div class="col-span-2">
+                      <label class="block font-semibold text-slate-600 text-[11px] mb-0.5">Detail Kesalahan / Komplain:</label>
+                      <input type="text" id="inp-komplain-ket" placeholder="Misal: Salah input data laporan, terlambat pengiriman..." class="w-full p-2 rounded-xl border border-slate-200 text-xs">
+                    </div>
+                    <div>
+                      <label class="block font-semibold text-slate-600 text-[11px] mb-0.5">Potongan Skor (%):</label>
+                      <input type="number" id="inp-komplain-minus" value="10" min="1" max="100" class="w-full p-2 rounded-xl border border-slate-200 text-xs font-bold text-rose-700">
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+                <label class="flex items-center gap-2 font-bold text-slate-800 cursor-pointer">
+                  <input type="checkbox" id="chk-sp" class="w-4 h-4 text-rose-600 rounded">
+                  <span>🚫 Ada Penerbitan Surat Peringatan (SP) Hari Ini?</span>
+                </label>
+                <div id="box-sp-detail" class="hidden space-y-2 pt-2 border-t border-slate-100">
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div class="col-span-2">
+                      <label class="block font-semibold text-slate-600 text-[11px] mb-0.5">Tipe Surat Peringatan:</label>
+                      <select id="inp-sp-ket" class="w-full p-2 rounded-xl border border-slate-200 text-xs font-semibold">
+                        <option value="Surat Peringatan 1 (SP1)">Surat Peringatan 1 (SP1)</option>
+                        <option value="Surat Peringatan 2 (SP2)">Surat Peringatan 2 (SP2)</option>
+                        <option value="Surat Peringatan 3 (SP3 / Terakhir)">Surat Peringatan 3 (SP3 / Terakhir)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block font-semibold text-slate-600 text-[11px] mb-0.5">Potongan Skor (%):</label>
+                      <input type="number" id="inp-sp-minus" value="25" min="1" max="100" class="w-full p-2 rounded-xl border border-slate-200 text-xs font-bold text-rose-700">
+                    </div>
+                  </div>
+                </div>
+              </div>
+              ${customInputsHtml}
+            `;
+
+            const chkK = dynamicBox.querySelector("#chk-komplain-divisi");
+            const boxK = dynamicBox.querySelector("#box-komplain-detail");
+            if (chkK && boxK) {
+              chkK.onchange = () => boxK.classList.toggle("hidden", !chkK.checked);
+            }
+
+            const chkSp = dynamicBox.querySelector("#chk-sp");
+            const boxSp = dynamicBox.querySelector("#box-sp-detail");
+            const selectSp = dynamicBox.querySelector("#inp-sp-ket");
+            const inpSpMinus = dynamicBox.querySelector("#inp-sp-minus");
+            if (chkSp && boxSp) {
+              chkSp.onchange = () => boxSp.classList.toggle("hidden", !chkSp.checked);
+            }
+            if (selectSp && inpSpMinus) {
+              selectSp.onchange = (e) => {
+                if (e.target.value.includes("SP1")) inpSpMinus.value = 15;
+                else if (e.target.value.includes("SP2")) inpSpMinus.value = 25;
+                else if (e.target.value.includes("SP3")) inpSpMinus.value = 50;
+              };
+            }
+          }
+        }
+
+        if (selectEmp) selectEmp.onchange = renderDynamicForm;
+        if (selectDate) selectDate.onchange = renderDynamicForm;
+        renderDynamicForm();
+
+        m.querySelector("#modal-submit-log-btn").onclick = async () => {
+          const empName = m.querySelector("#log-select-karyawan")?.value;
+          const dateVal = m.querySelector("#log-input-date")?.value;
+          const catatanVal = m.querySelector("#log-input-catatan")?.value || "";
+
+          if (!empName || !dateVal) {
+            toast("Harap pilih karyawan dan tanggal!", "error");
+            return;
+          }
+
+          const monthVal = dateVal.substring(0, 7);
+          const empObj = activeKaryawan.find(k => k.nama_karyawan === empName);
+          const targetDoc = allTargets.find(t => t.nama_karyawan === empName && t.bulan_tahun === monthVal);
+          const isSales = (targetDoc?.tipe_karyawan === "SALES" || (empObj?.divisi || "").toUpperCase().includes("SALES"));
+
+          let achievements = {};
+          let detailPenalti = [];
+          let scoreHarian = 100;
+          let totalMinus = 0;
+
+          if (isSales) {
+            let scoreSum = 0;
+            let count = 0;
+            SALES_LAMPIRAN1_INDICATORS.forEach(ind => {
+              const inputEl = m.querySelector(`#log-ach-${ind.key}`);
+              const val = inputEl ? parseFloat(inputEl.value || 0) : 0;
+              achievements[ind.key] = val;
+
+              const tgt = targetDoc?.targets?.[ind.key] || ind.defaultTarget;
+              if (tgt > 0) {
+                let ratio = 100;
+                if (ind.key === "overdue_piutang") {
+                  ratio = val <= tgt ? 100 : Math.max(0, 100 - ((val - tgt) / tgt) * 100);
+                } else {
+                  ratio = Math.min(120, (val / tgt) * 100);
+                }
+                scoreSum += ratio;
+                count++;
+              }
+            });
+            scoreHarian = count > 0 ? (scoreSum / count) : 100;
+          } else {
+            const chkKomplain = m.querySelector("#chk-komplain-divisi")?.checked;
+            const komplainMinus = parseFloat(m.querySelector("#inp-komplain-minus")?.value || 0);
+            const komplainKet = m.querySelector("#inp-komplain-ket")?.value || "";
+
+            const chkSp = m.querySelector("#chk-sp")?.checked;
+            const spMinus = parseFloat(m.querySelector("#inp-sp-minus")?.value || 0);
+            const spKet = m.querySelector("#inp-sp-ket")?.value || "";
+
+            if (chkKomplain && komplainMinus > 0) {
+              totalMinus += komplainMinus;
+              detailPenalti.push({
+                tipe: "KESALAHAN_KOMPLAIN_DIVISI",
+                deskripsi: komplainKet || "Kesalahan kerja / komplain dari divisi lain",
+                minus: komplainMinus
+              });
+            }
+
+            if (chkSp && spMinus > 0) {
+              totalMinus += spMinus;
+              detailPenalti.push({
+                tipe: "SURAT_PERINGATAN",
+                deskripsi: spKet || "Penerbitan Surat Peringatan (SP)",
+                minus: spMinus
+              });
+            }
+
+            scoreHarian = Math.max(0, 100 - totalMinus);
+          }
+
+          scoreHarian = parseFloat(scoreHarian.toFixed(1));
+
+          const docId = `DAILY_${empName.replace(/\s+/g, "_")}_${dateVal}`;
+          const payload = {
+            id: docId,
+            nama_karyawan: empName,
+            nik_karyawan: empObj?.nik_karyawan || empObj?.nik || "",
+            divisi: empObj?.divisi || "",
+            jabatan: empObj?.jabatan || "",
+            tanggal: dateVal,
+            bulan_tahun: monthVal,
+            tipe_karyawan: isSales ? "SALES" : "NON_SALES",
+            achievements: achievements,
+            potongan_penalti: totalMinus,
+            detail_penalti: detailPenalti,
+            score_harian: scoreHarian,
+            catatan_daily_report: catatanVal,
+            input_by: session.nama,
+            updated_at: new Date().toISOString()
+          };
+
+          try {
+            await setDoc(doc(db, COL.LOG_PENILAIAN_HARIAN, docId), payload, { merge: true });
+            toast(`Daily log ${empName} (${fmtDateShort(dateVal)}) berhasil disimpan! Skor: ${scoreHarian}%`, "success");
+            closeModal();
+            if (typeof onSaved === "function") onSaved();
+          } catch (err) {
+            toast("Gagal menyimpan daily log: " + err.message, "error");
+          }
+        };
+      }
+    });
+  }
+
+  function exportDailyPerformanceExcel(filteredLogs, state) {
+    if (!filteredLogs || filteredLogs.length === 0) {
+      toast("Tidak ada data log harian untuk diexport!", "warning");
+      return;
+    }
+
+    const dataRows = filteredLogs.map((log, idx) => {
+      let detailStr = "";
+      if (log.tipe_karyawan === "SALES" && log.achievements) {
+        detailStr = `Dulux: ${log.achievements.volume_dulux || 0}, Catylac: ${log.achievements.volume_catylac || 0}, Value Tertagih: Rp ${(parseFloat(log.achievements.value_penjualan_tertagih || 0)).toLocaleString("id-ID")}`;
+      } else if (Array.isArray(log.detail_penalti) && log.detail_penalti.length > 0) {
+        detailStr = log.detail_penalti.map(p => `${p.tipe}: ${p.deskripsi} (-${p.minus}%)`).join("; ");
+      } else {
+        detailStr = "Bebas Komplain / Sesuai SOP";
+      }
+
+      return {
+        "No": idx + 1,
+        "Tanggal": log.tanggal,
+        "Nama Karyawan": log.nama_karyawan,
+        "NIK": log.nik_karyawan || "-",
+        "Divisi": log.divisi || "Staf",
+        "Kategori": log.tipe_karyawan === "SALES" ? "Sales" : "Staf Ops",
+        "Skor Harian (%)": log.score_harian || 100,
+        "Detail Capaian / Penalti": detailStr,
+        "Catatan Daily Report": log.catatan_daily_report || "-",
+        "Diinput Oleh": log.input_by || "HRD"
+      };
+    });
+
+    downloadXlsx(dataRows, `Laporan_Performa_Harian_${state.selectedYear}_${state.filterTimeframe}.xlsx`);
+    toast("Laporan Excel berhasil diunduh!", "success");
+  }
+
+  async function exportDailyPerformancePdf(filteredLogs, state, activeKaryawan, avgScore, statusPredikat, statusRekomendasi) {
+    toast("Sedang menyusun Laporan PDF HRD Manajemen...", "info");
+    const { downloadHtmlAsPdf } = await import("../utils.js");
+
+    const empName = state.filterKaryawan || "Seluruh Staf / Karyawan";
+    const empObj = activeKaryawan.find(k => k.nama_karyawan === state.filterKaryawan);
+
+    let rowsHtml = filteredLogs.map((log, idx) => {
+      let detailStr = "";
+      if (log.tipe_karyawan === "SALES" && log.achievements) {
+        detailStr = `Dulux: ${log.achievements.volume_dulux || 0}, Catylac: ${log.achievements.volume_catylac || 0}, Value Tertagih: Rp ${(parseFloat(log.achievements.value_penjualan_tertagih || 0)).toLocaleString("id-ID")}`;
+      } else if (Array.isArray(log.detail_penalti) && log.detail_penalti.length > 0) {
+        detailStr = log.detail_penalti.map(p => `<strong>${escapeHtml(p.tipe)}:</strong> ${escapeHtml(p.deskripsi)} (-${p.minus}%)`).join("<br>");
+      } else {
+        detailStr = `<span style="color:#059669; font-weight:bold;">✓ Kinerja 100% Sesuai SOP</span>`;
+      }
+
+      return `
+        <tr>
+          <td style="border:1px solid #000; padding:5px 8px; text-align:center;">${idx + 1}</td>
+          <td style="border:1px solid #000; padding:5px 8px;">${fmtDateShort(log.tanggal)}</td>
+          <td style="border:1px solid #000; padding:5px 8px; font-weight:bold;">${escapeHtml(log.nama_karyawan)}</td>
+          <td style="border:1px solid #000; padding:5px 8px; text-align:center; font-weight:bold;">${log.score_harian}%</td>
+          <td style="border:1px solid #000; padding:5px 8px;">${detailStr}</td>
+          <td style="border:1px solid #000; padding:5px 8px;">${escapeHtml(log.catatan_daily_report || "-")}</td>
+        </tr>
+      `;
+    }).join("");
+
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; font-size: 11px; color: #0f172a; line-height: 1.4; padding: 10px;">
+        ${isoDocHeaderTable({
+          judul: "LAPORAN EVALUASI PERFORMA HARIAN & BULANAN KARYAWAN",
+          noDok: `AND/HRD/EVAL/${state.selectedYear}/${state.selectedMonth || "ALL"}`,
+          terbitRevisi: "1/2",
+          tglTerbit: fmtDateShort(new Date().toISOString()),
+          hal: "1 dari 1"
+        })}
+
+        <table style="width:100%; border-collapse:collapse; margin-top:15px; margin-bottom:15px; border:1px solid #000;">
+          <tr>
+            <td width="25%" style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Nama Karyawan</td>
+            <td style="border:1px solid #000; padding:6px 10px; font-weight:bold;">${escapeHtml(empName)}</td>
+            <td width="20%" style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Rata-rata Skor</td>
+            <td style="border:1px solid #000; padding:6px 10px; font-weight:bold; color:#7a1f2b; font-size:13px;">${avgScore}% (${statusPredikat})</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">NIK & Divisi</td>
+            <td style="border:1px solid #000; padding:6px 10px;">${escapeHtml(empObj?.nik_karyawan || "-")} | ${escapeHtml(empObj?.divisi || "Staf")}</td>
+            <td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Periode Laporan</td>
+            <td style="border:1px solid #000; padding:6px 10px;">Tahun ${state.selectedYear} (${state.filterTimeframe})</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Keputusan & Rekomendasi HRD</td>
+            <td colspan="3" style="border:1px solid #000; padding:6px 10px; font-weight:bold; color:#7a1f2b;">
+              ${statusRekomendasi}
+            </td>
+          </tr>
+        </table>
+
+        <h4 style="margin-bottom:6px; font-size:12px;">Rincian Log Pencapaian Harian & Rekam Komplain:</h4>
+        <table style="width:100%; border-collapse:collapse; border:1px solid #000; font-size:10px;">
+          <thead>
+            <tr style="background:#f1f5f9; text-align:left;">
+              <th style="border:1px solid #000; padding:6px; text-align:center;" width="5%">No</th>
+              <th style="border:1px solid #000; padding:6px;" width="12%">Tanggal</th>
+              <th style="border:1px solid #000; padding:6px;" width="20%">Karyawan</th>
+              <th style="border:1px solid #000; padding:6px; text-align:center;" width="10%">Skor</th>
+              <th style="border:1px solid #000; padding:6px;" width="30%">Detail Capaian / Penalti</th>
+              <th style="border:1px solid #000; padding:6px;" width="23%">Daily Report Admin</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml || '<tr><td colspan="6" style="text-align:center; padding:10px;">Tidak ada log data.</td></tr>'}
+          </tbody>
+        </table>
+
+        <table style="width:100%; text-align:center; margin-top:35px; page-break-inside:avoid; font-size:11px;">
+          <tr>
+            <td width="33%">Dibuat Oleh,<br><strong>Admin / HRD Staff</strong></td>
+            <td width="33%">Ditinjau Oleh,<br><strong>Atasan Direct / SPV</strong></td>
+            <td width="33%">Disetujui Oleh,<br><strong>Direksi / Manajemen Atas</strong></td>
+          </tr>
+          <tr><td height="50"></td><td></td><td></td></tr>
+          <tr>
+            <td>( ____________________ )</td>
+            <td>( ____________________ )</td>
+            <td>( ____________________ )</td>
+          </tr>
+        </table>
+      </div>
+    `;
+
+    await downloadHtmlAsPdf(htmlContent, `Laporan_Performa_${empName.replace(/\s+/g, "_")}.pdf`);
+    toast("PDF Laporan Manajemen Atas berhasil diunduh!", "success");
+  }
+
+  async function loadDailyPerformance() {
+    const wrap = panels.daily;
+    if (!wrap) return;
+    wrap.innerHTML = `<div class="p-8">${skeletonRows(5)}</div>`;
+
+    try {
+      let [allKaryawan, allTargets, allDailyLogs] = await Promise.all([
+        fsGetAll(COL.MASTER_KARYAWAN),
+        fsGetAll(COL.TARGET_BULANAN_KPI),
+        fsGetAll(COL.LOG_PENILAIAN_HARIAN)
+      ]);
+
+      let activeKaryawan = allKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF" && k.nama_karyawan);
+      activeKaryawan.sort((a, b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id", { sensitivity: "base" }));
+
+      if (isRegularEmployee) {
+        const myName = String(session.nama || "").toLowerCase().trim();
+        const myNik = String(session.nik || "").toLowerCase().trim();
+        activeKaryawan = activeKaryawan.filter(k => {
+          const kname = String(k.nama_karyawan || "").toLowerCase().trim();
+          const knik = String(k.nik_karyawan || k.nik || "").toLowerCase().trim();
+          return (myName && kname === myName) || (myNik && knik === myNik);
+        });
+      }
+
+      const now = new Date();
+      let state = {
+        filterKaryawan: isRegularEmployee ? (activeKaryawan[0]?.nama_karyawan || session.nama || "") : "",
+        filterKategori: "",
+        filterTimeframe: "MONTHLY",
+        selectedYear: String(now.getFullYear()),
+        selectedMonth: String(now.getMonth() + 1).padStart(2, "0"),
+        selectedWeek: "W1",
+        selectedQuarter: "Q" + (Math.floor(now.getMonth() / 3) + 1)
+      };
+
+      function refreshData() {
+        const filtered = filterLogs();
+        renderDashboard(filtered);
+      }
+
+      function filterLogs() {
+        let logs = [...allDailyLogs];
+
+        if (state.filterKaryawan) {
+          logs = logs.filter(l => (l.nama_karyawan || "").toLowerCase() === state.filterKaryawan.toLowerCase());
+        }
+
+        if (state.filterKategori) {
+          logs = logs.filter(l => (l.tipe_karyawan || "NON_SALES") === state.filterKategori);
+        }
+
+        logs = logs.filter(l => {
+          if (!l.tanggal) return false;
+          const d = new Date(l.tanggal);
+          const y = String(d.getFullYear());
+          const m = String(d.getMonth() + 1).padStart(2, "0");
+          const dateNum = d.getDate();
+
+          if (y !== state.selectedYear) return false;
+
+          if (state.filterTimeframe === "MONTHLY") {
+            return m === state.selectedMonth;
+          } else if (state.filterTimeframe === "WEEKLY") {
+            if (m !== state.selectedMonth) return false;
+            if (state.selectedWeek === "W1") return dateNum >= 1 && dateNum <= 7;
+            if (state.selectedWeek === "W2") return dateNum >= 8 && dateNum <= 14;
+            if (state.selectedWeek === "W3") return dateNum >= 15 && dateNum <= 21;
+            if (state.selectedWeek === "W4") return dateNum >= 22;
+            return true;
+          } else if (state.filterTimeframe === "QUARTERLY") {
+            const mNum = parseInt(m, 10);
+            if (state.selectedQuarter === "Q1") return mNum >= 1 && mNum <= 3;
+            if (state.selectedQuarter === "Q2") return mNum >= 4 && mNum <= 6;
+            if (state.selectedQuarter === "Q3") return mNum >= 7 && mNum <= 9;
+            if (state.selectedQuarter === "Q4") return mNum >= 10 && mNum <= 12;
+            return true;
+          } else if (state.filterTimeframe === "YEARLY") {
+            return true;
+          }
+          return true;
+        });
+
+        logs.sort((a, b) => new Date(a.tanggal) - new Date(b.tanggal));
+        return logs;
+      }
+
+      function renderDashboard(filteredLogs) {
+        let totalScoreSum = 0;
+        let totalPenaltyCount = 0;
+        filteredLogs.forEach(l => {
+          totalScoreSum += parseFloat(l.score_harian || 100);
+          if (Array.isArray(l.detail_penalti)) {
+            totalPenaltyCount += l.detail_penalti.length;
+          } else if (l.potongan_penalti > 0) {
+            totalPenaltyCount += 1;
+          }
+        });
+
+        const avgScore = filteredLogs.length > 0 ? (totalScoreSum / filteredLogs.length).toFixed(1) : "100.0";
+        const avgScoreNum = parseFloat(avgScore);
+
+        let statusBadgeClass = "bg-emerald-100 text-emerald-800 border-emerald-300";
+        let statusPredikat = "Sangat Baik (A)";
+        let statusRekomendasi = "Direkomendasikan Lulus Probation / Karyawan Tetap (Kartap) & Bonus";
+
+        if (avgScoreNum < 70) {
+          statusBadgeClass = "bg-rose-100 text-rose-800 border-rose-300";
+          statusPredikat = "Kurang (D)";
+          statusRekomendasi = "Masuk Masa PIP / Pertimbangan Tidak Diperpanjang Kontrak";
+        } else if (avgScoreNum < 80) {
+          statusBadgeClass = "bg-amber-100 text-amber-800 border-amber-300";
+          statusPredikat = "Cukup (C)";
+          statusRekomendasi = "Direkomendasikan Perpanjang Kontrak 6 Bulan (Evaluasi Ketat)";
+        } else if (avgScoreNum < 90) {
+          statusBadgeClass = "bg-blue-100 text-blue-800 border-blue-300";
+          statusPredikat = "Baik (B)";
+          statusRekomendasi = "Direkomendasikan Perpanjang Kontrak 12 Bulan";
+        }
+
+        const chartPoints = filteredLogs.map((lg, i) => {
+          const score = Math.min(100, Math.max(0, parseFloat(lg.score_harian || 100)));
+          return { label: lg.tanggal ? fmtDateShort(lg.tanggal) : `Log #${i+1}`, score, date: lg.tanggal };
+        });
+
+        let lineSvgHtml = "";
+        if (chartPoints.length > 0) {
+          const svgWidth = 800;
+          const svgHeight = 220;
+          const padX = 50;
+          const padY = 30;
+          const usableWidth = svgWidth - padX * 2;
+          const usableHeight = svgHeight - padY * 2;
+
+          const pointsCoords = chartPoints.map((pt, i) => {
+            const x = chartPoints.length === 1 ? svgWidth / 2 : padX + (i / (chartPoints.length - 1)) * usableWidth;
+            const y = padY + (1 - pt.score / 100) * usableHeight;
+            return { x, y, pt };
+          });
+
+          const polylineStr = pointsCoords.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+          const areaPolyStr = `${pointsCoords[0].x.toFixed(1)},${svgHeight - padY} ${polylineStr} ${pointsCoords[pointsCoords.length - 1].x.toFixed(1)},${svgHeight - padY}`;
+
+          lineSvgHtml = `
+            <svg viewBox="0 0 ${svgWidth} ${svgHeight}" class="w-full h-56 overflow-visible">
+              <defs>
+                <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#800020" stop-opacity="0.25"/>
+                  <stop offset="100%" stop-color="#800020" stop-opacity="0.0"/>
+                </linearGradient>
+              </defs>
+              
+              <line x1="${padX}" y1="${padY}" x2="${svgWidth - padX}" y2="${padY}" stroke="#e2e8f0" stroke-dasharray="4" />
+              <text x="${padX - 8}" y="${padY + 4}" font-size="10" fill="#94a3b8" text-anchor="end">100%</text>
+
+              <line x1="${padX}" y1="${padY + usableHeight * 0.25}" x2="${svgWidth - padX}" y2="${padY + usableHeight * 0.25}" stroke="#f1f5f9" stroke-dasharray="4" />
+              <text x="${padX - 8}" y="${padY + usableHeight * 0.25 + 4}" font-size="10" fill="#94a3b8" text-anchor="end">75%</text>
+
+              <line x1="${padX}" y1="${padY + usableHeight * 0.5}" x2="${svgWidth - padX}" y2="${padY + usableHeight * 0.5}" stroke="#f1f5f9" stroke-dasharray="4" />
+              <text x="${padX - 8}" y="${padY + usableHeight * 0.5 + 4}" font-size="10" fill="#94a3b8" text-anchor="end">50%</text>
+
+              <line x1="${padX}" y1="${svgHeight - padY}" x2="${svgWidth - padX}" y2="${svgHeight - padY}" stroke="#cbd5e1" />
+              <text x="${padX - 8}" y="${svgHeight - padY + 4}" font-size="10" fill="#94a3b8" text-anchor="end">0%</text>
+
+              <polygon points="${areaPolyStr}" fill="url(#scoreGrad)" />
+              <polyline points="${polylineStr}" fill="none" stroke="#800020" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+              ${pointsCoords.map(p => `
+                <g class="group cursor-pointer">
+                  <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5" fill="#800020" stroke="#ffffff" stroke-width="2" class="transition-transform hover:scale-125"/>
+                  <text x="${p.x.toFixed(1)}" y="${svgHeight - padY + 16}" font-size="9" fill="#64748b" text-anchor="middle" font-weight="500">${p.pt.label}</text>
+                  <text x="${p.x.toFixed(1)}" y="${(p.y - 10).toFixed(1)}" font-size="10" fill="#1e293b" text-anchor="middle" font-weight="bold">${p.pt.score}%</text>
+                </g>
+              `).join("")}
+            </svg>
+          `;
+        } else {
+          lineSvgHtml = `
+            <div class="h-48 flex flex-col items-center justify-center text-slate-400 text-xs">
+              <span class="text-3xl mb-2">📊</span>
+              <span>Belum ada data daily log pencapaian pada filter periode ini.</span>
+              <span class="text-[11px] text-slate-400 mt-1">Klik tombol <strong>"✍️ Input Daily Report"</strong> di atas untuk menambahkan.</span>
+            </div>
+          `;
+        }
+
+        let html = `
+          <div class="space-y-6">
+            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div>
+                <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+                  <span>📊</span> Penilaian Harian & Target Sales / Staf
+                </h2>
+                <p class="text-xs text-slate-500 mt-1">Modul HRD untuk setting target bulanan, input laporan pencapaian harian admin (termasuk pengurangan kesalahan/komplain/SP), serta grafik evaluasi perpanjangan kontrak & kartap.</p>
+              </div>
+
+              ${isHrdOrAdmin ? `
+                <div class="flex items-center gap-2 flex-wrap self-start lg:self-auto">
+                  <button id="btn-daily-target-setting" class="bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
+                    🎯 Setting Target Bulanan
+                  </button>
+                  <button id="btn-daily-input-log" class="bg-maroon-700 hover:bg-maroon-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
+                    ✍️ Input Daily Report
+                  </button>
+                  <button id="btn-daily-export-excel" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
+                    📥 Export Excel
+                  </button>
+                  <button id="btn-daily-export-pdf" class="bg-blue-700 hover:bg-blue-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
+                    📄 Cetak Laporan PDF
+                  </button>
+                </div>
+              ` : `
+                <div class="flex items-center gap-2">
+                  <button id="btn-daily-export-excel" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
+                    📥 Export Excel
+                  </button>
+                  <button id="btn-daily-export-pdf" class="bg-blue-700 hover:bg-blue-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
+                    📄 Cetak Laporan PDF
+                  </button>
+                </div>
+              `}
+            </div>
+
+            <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+              <div>
+                <label class="block font-bold text-slate-700 mb-1">Pilih Karyawan:</label>
+                <select id="flt-daily-karyawan" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold" ${isRegularEmployee ? 'disabled' : ''}>
+                  <option value="">-- Semua Karyawan --</option>
+                  ${activeKaryawan.map(k => `
+                    <option value="${escapeHtml(k.nama_karyawan)}" ${state.filterKaryawan.toLowerCase() === k.nama_karyawan.toLowerCase() ? 'selected' : ''}>
+                      ${escapeHtml(k.nama_karyawan)} (${k.divisi || "Staf"})
+                    </option>
+                  `).join('')}
+                </select>
+              </div>
+
+              <div>
+                <label class="block font-bold text-slate-700 mb-1">Kategori Tim / Divisi:</label>
+                <select id="flt-daily-kategori" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
+                  <option value="" ${state.filterKategori === "" ? 'selected' : ''}>Semua Kategori</option>
+                  <option value="SALES" ${state.filterKategori === "SALES" ? 'selected' : ''}>📈 Sales / Marketing (Lampiran 1)</option>
+                  <option value="NON_SALES" ${state.filterKategori === "NON_SALES" ? 'selected' : ''}>🏢 Staf / Non-Sales (Operational/HRD/Admin)</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block font-bold text-slate-700 mb-1">Rentang Laporan:</label>
+                <select id="flt-daily-timeframe" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
+                  <option value="WEEKLY" ${state.filterTimeframe === "WEEKLY" ? 'selected' : ''}>📅 Mingguan (Weekly)</option>
+                  <option value="MONTHLY" ${state.filterTimeframe === "MONTHLY" ? 'selected' : ''}>🗓️ Bulanan (Monthly)</option>
+                  <option value="QUARTERLY" ${state.filterTimeframe === "QUARTERLY" ? 'selected' : ''}>📊 Kuartalan (Quarterly)</option>
+                  <option value="YEARLY" ${state.filterTimeframe === "YEARLY" ? 'selected' : ''}>📈 Tahunan (Yearly)</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block font-bold text-slate-700 mb-1">Tahun & Sub-Periode:</label>
+                <div class="flex items-center gap-1.5">
+                  <select id="flt-daily-year" class="w-1/2 p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
+                    ${[2024, 2025, 2026, 2027].map(y => `<option value="${y}" ${state.selectedYear === String(y) ? 'selected' : ''}>${y}</option>`).join('')}
+                  </select>
+
+                  ${state.filterTimeframe === "WEEKLY" ? `
+                    <select id="flt-daily-week" class="w-1/2 p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
+                      <option value="W1" ${state.selectedWeek === "W1" ? 'selected' : ''}>Minggu 1</option>
+                      <option value="W2" ${state.selectedWeek === "W2" ? 'selected' : ''}>Minggu 2</option>
+                      <option value="W3" ${state.selectedWeek === "W3" ? 'selected' : ''}>Minggu 3</option>
+                      <option value="W4" ${state.selectedWeek === "W4" ? 'selected' : ''}>Minggu 4</option>
+                    </select>
+                  ` : state.filterTimeframe === "QUARTERLY" ? `
+                    <select id="flt-daily-quarter" class="w-1/2 p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
+                      <option value="Q1" ${state.selectedQuarter === "Q1" ? 'selected' : ''}>Q1 (Jan-Mar)</option>
+                      <option value="Q2" ${state.selectedQuarter === "Q2" ? 'selected' : ''}>Q2 (Apr-Jun)</option>
+                      <option value="Q3" ${state.selectedQuarter === "Q3" ? 'selected' : ''}>Q3 (Jul-Sep)</option>
+                      <option value="Q4" ${state.selectedQuarter === "Q4" ? 'selected' : ''}>Q4 (Okt-Des)</option>
+                    </select>
+                  ` : `
+                    <select id="flt-daily-month" class="w-1/2 p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold" ${state.filterTimeframe === "YEARLY" ? 'disabled' : ''}>
+                      ${[
+                        {v:"01",l:"Jan"}, {v:"02",l:"Feb"}, {v:"03",l:"Mar"}, {v:"04",l:"Apr"},
+                        {v:"05",l:"Mei"}, {v:"06",l:"Jun"}, {v:"07",l:"Jul"}, {v:"08",l:"Ags"},
+                        {v:"09",l:"Sep"}, {v:"10",l:"Okt"}, {v:"11",l:"Nov"}, {v:"12",l:"Des"}
+                      ].map(m => `<option value="${m.v}" ${state.selectedMonth === m.v ? 'selected' : ''}>${m.l}</option>`).join('')}
+                    </select>
+                  `}
+                </div>
+              </div>
+
+              <div class="flex items-center justify-end">
+                <span class="inline-block px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                  Total Log Data: <strong>${filteredLogs.length} Record</strong>
+                </span>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs flex items-center justify-between">
+                <div>
+                  <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Rata-rata Performa</span>
+                  <div class="text-2xl font-black text-slate-800 mt-1">${avgScore}<span class="text-sm font-normal text-slate-400">%</span></div>
+                  <span class="inline-block mt-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${statusBadgeClass}">${statusPredikat}</span>
+                </div>
+                <div class="w-12 h-12 rounded-2xl bg-maroon-50 text-maroon-700 flex items-center justify-center text-xl font-bold">
+                  🎯
+                </div>
+              </div>
+
+              <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs flex items-center justify-between">
+                <div>
+                  <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Total Log Laporan</span>
+                  <div class="text-2xl font-black text-slate-800 mt-1">${filteredLogs.length} <span class="text-xs font-normal text-slate-400">Hari Kerja</span></div>
+                  <span class="text-[11px] text-slate-400 mt-1.5 block">Diinput via Daily Report</span>
+                </div>
+                <div class="w-12 h-12 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center text-xl font-bold">
+                  📝
+                </div>
+              </div>
+
+              <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs flex items-center justify-between">
+                <div>
+                  <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Penalti & Komplain</span>
+                  <div class="text-2xl font-black text-rose-700 mt-1">${totalPenaltyCount} <span class="text-xs font-normal text-slate-400">Catatan</span></div>
+                  <span class="text-[11px] text-slate-400 mt-1.5 block">Kesalahan / Komplain / SP</span>
+                </div>
+                <div class="w-12 h-12 rounded-2xl bg-rose-50 text-rose-700 flex items-center justify-center text-xl font-bold">
+                  ⚠️
+                </div>
+              </div>
+
+              <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs flex items-center justify-between col-span-1">
+                <div>
+                  <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Rekomendasi Kontrak HRD</span>
+                  <p class="text-xs font-bold text-slate-800 mt-1.5 leading-snug">${statusRekomendasi}</p>
+                  <span class="text-[10px] text-slate-400 block mt-1">Berdasarkan Standar Grade Performa</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-2xs space-y-4">
+              <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div>
+                  <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                    <span>📈</span> Grafik Peningkatan & Tren Performa Karyawan (%)
+                  </h3>
+                  <p class="text-xs text-slate-500 mt-0.5">Visualisasi dinamika pencapaian nilai harian/periodik karyawan dari waktu ke waktu.</p>
+                </div>
+                <span class="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+                  Target Standar: 100%
+                </span>
+              </div>
+
+              <div class="pt-2">
+                ${lineSvgHtml}
+              </div>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-2xs overflow-hidden">
+              <div class="p-5 border-b border-slate-100 flex items-center justify-between gap-4">
+                <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                  <span>📋</span> Rincian Riwayat Log Harian & Catatan Komplain
+                </h3>
+                <span class="text-xs text-slate-500 font-medium">Menampilkan ${filteredLogs.length} entri</span>
+              </div>
+
+              ${filteredLogs.length === 0 ? `
+                <div class="p-8 text-center text-slate-400 text-xs">
+                  <p>Tidak ada log penilaian harian yang ditemukan pada kriteria filter ini.</p>
+                </div>
+              ` : `
+                <div class="overflow-x-auto">
+                  <table class="w-full text-left text-xs text-slate-700 border-collapse">
+                    <thead>
+                      <tr class="bg-slate-50/80 text-slate-600 border-b border-slate-200 font-bold uppercase tracking-wider text-[11px]">
+                        <th class="p-3.5">Tanggal</th>
+                        <th class="p-3.5">Nama Karyawan</th>
+                        <th class="p-3.5">Kategori</th>
+                        <th class="p-3.5 text-center">Skor Harian</th>
+                        <th class="p-3.5">Detail Capaian / Penalti Komplain & SP</th>
+                        <th class="p-3.5">Catatan Daily Report</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                      ${filteredLogs.map(log => {
+                        const score = parseFloat(log.score_harian || 100);
+                        let badgeCol = "bg-emerald-50 text-emerald-700 border-emerald-200";
+                        if (score < 70) badgeCol = "bg-rose-50 text-rose-700 border-rose-200";
+                        else if (score < 80) badgeCol = "bg-amber-50 text-amber-700 border-amber-200";
+                        else if (score < 90) badgeCol = "bg-blue-50 text-blue-700 border-blue-200";
+
+                        let detailContent = "";
+                        if (log.tipe_karyawan === "SALES" && log.achievements) {
+                          detailContent = `
+                            <div class="space-y-1 text-[11px]">
+                              <span class="font-bold text-slate-800">Capaian Sales SO:</span>
+                              <div class="grid grid-cols-2 gap-x-2 gap-y-0.5 text-slate-600">
+                                <div>Dulux: <strong>${log.achievements.volume_dulux || 0}</strong></div>
+                                <div>Catylac: <strong>${log.achievements.volume_catylac || 0}</strong></div>
+                                <div>Maxilite: <strong>${log.achievements.volume_maxilite || 0}</strong></div>
+                                <div>Aquashield: <strong>${log.achievements.volume_aquashield || 0}</strong></div>
+                                <div class="col-span-2">Value Tertagih: <strong>Rp ${(parseFloat(log.achievements.value_penjualan_tertagih || 0)).toLocaleString("id-ID")}</strong></div>
+                              </div>
+                            </div>
+                          `;
+                        } else {
+                          const penaltiList = log.detail_penalti || [];
+                          if (penaltiList.length > 0) {
+                            detailContent = penaltiList.map(p => `
+                              <div class="text-[11px] text-rose-700 bg-rose-50 p-1.5 rounded border border-rose-200/80 mb-1">
+                                <strong>⚠ ${escapeHtml(p.tipe || "Komplain/Kesalahan")}:</strong> ${escapeHtml(p.deskripsi || "-")} (Potongan: -${p.minus}%)
+                              </div>
+                            `).join("");
+                          } else {
+                            detailContent = `<span class="text-emerald-600 font-semibold text-[11px]">✓ Kinerja 100% Sesuai SOP (Bebas Komplain)</span>`;
+                          }
+                        }
+
+                        return `
+                          <tr class="hover:bg-slate-50/50 transition">
+                            <td class="p-3.5 font-bold text-slate-800 whitespace-nowrap">${fmtDateShort(log.tanggal)}</td>
+                            <td class="p-3.5 font-bold text-slate-800 whitespace-nowrap">${escapeHtml(log.nama_karyawan)}</td>
+                            <td class="p-3.5 whitespace-nowrap">
+                              <span class="px-2 py-0.5 rounded text-[10px] font-bold ${log.tipe_karyawan === 'SALES' ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}">
+                                ${log.tipe_karyawan === 'SALES' ? 'Sales' : 'Staf Ops'}
+                              </span>
+                            </td>
+                            <td class="p-3.5 text-center whitespace-nowrap">
+                              <span class="px-2.5 py-1 rounded-lg text-xs font-bold border ${badgeCol}">
+                                ${score}%
+                              </span>
+                            </td>
+                            <td class="p-3.5 max-w-xs">
+                              ${detailContent}
+                            </td>
+                            <td class="p-3.5 max-w-xs text-slate-600 leading-relaxed">
+                              ${escapeHtml(log.catatan_daily_report || "-")}
+                            </td>
+                          </tr>
+                        `;
+                      }).join("")}
+                    </tbody>
+                  </table>
+                </div>
+              `}
+            </div>
+          </div>
+        `;
+
+        wrap.innerHTML = html;
+
+        const fltKaryawan = wrap.querySelector("#flt-daily-karyawan");
+        const fltKategori = wrap.querySelector("#flt-daily-kategori");
+        const fltTimeframe = wrap.querySelector("#flt-daily-timeframe");
+        const fltYear = wrap.querySelector("#flt-daily-year");
+        const fltMonth = wrap.querySelector("#flt-daily-month");
+        const fltWeek = wrap.querySelector("#flt-daily-week");
+        const fltQuarter = wrap.querySelector("#flt-daily-quarter");
+
+        if (fltKaryawan) fltKaryawan.onchange = (e) => { state.filterKaryawan = e.target.value; refreshData(); };
+        if (fltKategori) fltKategori.onchange = (e) => { state.filterKategori = e.target.value; refreshData(); };
+        if (fltTimeframe) fltTimeframe.onchange = (e) => { state.filterTimeframe = e.target.value; refreshData(); };
+        if (fltYear) fltYear.onchange = (e) => { state.selectedYear = e.target.value; refreshData(); };
+        if (fltMonth) fltMonth.onchange = (e) => { state.selectedMonth = e.target.value; refreshData(); };
+        if (fltWeek) fltWeek.onchange = (e) => { state.selectedWeek = e.target.value; refreshData(); };
+        if (fltQuarter) fltQuarter.onchange = (e) => { state.selectedQuarter = e.target.value; refreshData(); };
+
+        const btnTarget = wrap.querySelector("#btn-daily-target-setting");
+        const btnInputLog = wrap.querySelector("#btn-daily-input-log");
+        const btnExcel = wrap.querySelector("#btn-daily-export-excel");
+        const btnPdf = wrap.querySelector("#btn-daily-export-pdf");
+
+        if (btnTarget) {
+          btnTarget.onclick = () => {
+            openTargetSettingModal(activeKaryawan, allTargets, async () => {
+              allTargets = await fsGetAll(COL.TARGET_BULANAN_KPI);
+              refreshData();
+            });
+          };
+        }
+
+        if (btnInputLog) {
+          btnInputLog.onclick = () => {
+            openDailyLogModal(activeKaryawan, allTargets, async () => {
+              allDailyLogs = await fsGetAll(COL.LOG_PENILAIAN_HARIAN);
+              refreshData();
+            });
+          };
+        }
+
+        if (btnExcel) {
+          btnExcel.onclick = () => {
+            exportDailyPerformanceExcel(filteredLogs, state);
+          };
+        }
+
+        if (btnPdf) {
+          btnPdf.onclick = () => {
+            exportDailyPerformancePdf(filteredLogs, state, activeKaryawan, avgScore, statusPredikat, statusRekomendasi);
+          };
+        }
+      }
+
+      refreshData();
+
+    } catch (err) {
+      console.error("Error loading daily performance:", err);
+      wrap.innerHTML = emptyState("Gagal memuat modul penilaian harian: " + err.message);
+    }
+  }
+
   async function switchTab(tab) {
     if (!panels[tab]) return;
 
@@ -4339,6 +5531,7 @@ export async function mount(container, { session, params }) {
         else if (tab === "kpi360") await loadKpi360();
         else if (tab === "hasil") await loadHasil();
         else if (tab === "evaluasi") await loadEvaluasi();
+        else if (tab === "daily") await loadDailyPerformance();
         else if (tab === "template") await loadTemplateKpi();
         else if (tab === "grafik") await loadEmployeeGrafik();
         loaded[tab] = true;

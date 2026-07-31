@@ -168,8 +168,9 @@ export function toast(message, type = "info") {
 /* ---------------------------------------------------------------------
  * 4. MODAL SYSTEM — generik, dipakai semua modul
  * ------------------------------------------------------------------- */
-export function openModal({ title, bodyHtml, footerHtml = "", size = "md", onMount = null }) {
+export function openModal({ title, bodyHtml, content, contentHtml, body, footerHtml = "", size = "md", onMount = null }) {
   closeModal();
+  const modalBody = bodyHtml || contentHtml || content || body || "";
   const sizes = { sm: "max-w-md", md: "max-w-2xl", lg: "max-w-4xl", xl: "max-w-6xl" };
   const backdrop = document.createElement("div");
   backdrop.id = "app-modal-backdrop";
@@ -182,7 +183,7 @@ export function openModal({ title, bodyHtml, footerHtml = "", size = "md", onMou
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
         </button>
       </div>
-      <div class="px-6 py-5 overflow-y-auto flex-1">${bodyHtml}</div>
+      <div class="px-6 py-5 overflow-y-auto flex-1">${modalBody}</div>
       ${footerHtml ? `<div class="px-6 py-4 border-t border-slate-100 flex justify-end gap-2">${footerHtml}</div>` : ""}
     </div>`;
   document.body.appendChild(backdrop);
@@ -371,12 +372,49 @@ export function ensureXlsxLoaded() {
   return _xlsxLoadingPromise;
 }
 
-export async function downloadXlsx(filename, headers, matrix, sheetName = "Data") {
-  if (!matrix || !matrix.length) { toast("Tidak ada data untuk diekspor", "warning"); return; }
+export async function downloadXlsx(arg1, arg2, arg3, arg4 = "Data") {
   await ensureXlsxLoaded();
-  const ws = window.XLSX.utils.aoa_to_sheet([headers, ...matrix]);
+  let filename = "export.xlsx";
+  let ws = null;
+  let sName = "Data";
+
+  if (Array.isArray(arg1) && typeof arg2 === "string") {
+    filename = arg2;
+    sName = arg3 || "Data";
+    if (!arg1 || !arg1.length) {
+      toast("Tidak ada data untuk diekspor", "warning");
+      return;
+    }
+    if (typeof arg1[0] === "object" && !Array.isArray(arg1[0])) {
+      ws = window.XLSX.utils.json_to_sheet(arg1);
+    } else if (Array.isArray(arg1[0])) {
+      ws = window.XLSX.utils.aoa_to_sheet(arg1);
+    }
+  } else if (typeof arg1 === "string" && Array.isArray(arg2) && Array.isArray(arg3)) {
+    filename = arg1;
+    sName = typeof arg4 === "string" ? arg4 : "Data";
+    if (!arg3 || !arg3.length) {
+      toast("Tidak ada data untuk diekspor", "warning");
+      return;
+    }
+    ws = window.XLSX.utils.aoa_to_sheet([arg2, ...arg3]);
+  } else if (typeof arg1 === "string" && Array.isArray(arg2)) {
+    filename = arg1;
+    sName = typeof arg3 === "string" ? arg3 : "Data";
+    if (typeof arg2[0] === "object" && !Array.isArray(arg2[0])) {
+      ws = window.XLSX.utils.json_to_sheet(arg2);
+    } else if (Array.isArray(arg2[0])) {
+      ws = window.XLSX.utils.aoa_to_sheet(arg2);
+    }
+  }
+
+  if (!ws) {
+    toast("Tidak ada data valid untuk diekspor", "warning");
+    return;
+  }
+
   const wb = window.XLSX.utils.book_new();
-  window.XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  window.XLSX.utils.book_append_sheet(wb, ws, sName);
   window.XLSX.writeFile(wb, filename.endsWith(".xlsx") ? filename : filename + ".xlsx");
 }
 

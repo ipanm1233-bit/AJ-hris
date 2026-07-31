@@ -102,5 +102,7 @@ export const COL = {
   LOG_KASBON: "log_kasbon",
   DATA_TRAINING: "data_training",
   PERFORMANCE_REVIEW: "performance_review",
-  SIGN_DOCUMENTS: "sign_documents"
+  SIGN_DOCUMENTS: "sign_documents",
+  TARGET_BULANAN_KPI: "target_bulanan_kpi",
+  LOG_PENILAIAN_HARIAN: "log_penilaian_harian"
 };
