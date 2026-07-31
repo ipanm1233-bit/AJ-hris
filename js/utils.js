@@ -1664,7 +1664,7 @@ export function renderPengajuanDetailHtml(row, session, options = {}) {
 // Tambahkan di js/utils.js
 
 export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
-  let APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbxjG2e_qmL326uPknydvlmqb1VF3FI9RJ-rRWk0GrCBHKeHJthruC3NFfGLSFXsO7OV/exec";
+  let APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbz0H0nC8QXzgPABT0kVjFf3N9zny8pHnu0yYNooUm_SrIQg-qwywKtvtpdOMia78ZGHFQ/exec";
   try {
     const { GAS_WEBAPP_URL } = await import("./gas-integration.js");
     if (GAS_WEBAPP_URL && !GAS_WEBAPP_URL.includes("GANTI_DENGAN")) {
