@@ -28,15 +28,37 @@
             <label class="block text-xs font-medium text-slate-500 mb-1.5">Alur Persetujuan (urut, klik untuk memilih)</label>
             <div id="fb-flow" class="flex flex-wrap gap-2"></div>
           </div>
-          <div>
+          <div class="sm:col-span-2">
             <label class="block text-xs font-medium text-slate-500 mb-1.5">Akses Berdasarkan Role</label>
             <div id="fb-rules" class="flex flex-wrap gap-2"></div>
           </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-500 mb-1.5">Akses Personil Spesifik (pisahkan koma, atau "ALL")</label>
-            <input id="fb-users" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none" placeholder="ALL / Nama satu, Nama dua">
+          <div class="sm:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
+            <div class="flex items-center justify-between mb-2">
+              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wide">Akses Personil Spesifik (Daftar Karyawan)</label>
+              <span id="fb-users-count" class="text-xs font-semibold text-maroon-700 bg-maroon-50 px-2.5 py-0.5 rounded-full border border-maroon-100">ALL (Semua Karyawan)</span>
+            </div>
+            <p class="text-xs text-slate-500 mb-3">Tentukan siapa saja karyawan yang diizinkan melihat dan mengisikan formulir ini. Pilih "Semua Karyawan (ALL)" atau pilih nama personil spesifik:</p>
+            
+            <input type="hidden" id="fb-users" value="ALL">
+
+            <div class="space-y-2">
+              <div class="flex items-center gap-2">
+                <div class="relative flex-1">
+                  <input type="text" id="fb-users-search" class="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:border-maroon-500 outline-none bg-white" placeholder="🔍 Cari nama karyawan, NIK, atau jabatan...">
+                </div>
+                <label class="flex items-center gap-1.5 text-xs font-bold text-slate-700 bg-white px-3 py-1.5 rounded-lg border border-slate-300 cursor-pointer hover:bg-slate-100 transition shrink-0">
+                  <input type="checkbox" id="fb-users-all-cb" checked class="rounded border-slate-300 text-maroon-700 w-4 h-4">
+                  Semua Karyawan (ALL)
+                </label>
+              </div>
+
+              <div id="fb-users-list" class="max-h-52 overflow-y-auto bg-white rounded-lg border border-slate-200 p-2 space-y-1 shadow-inner">
+                <p class="text-xs text-slate-400 text-center py-3">Memuat daftar karyawan...</p>
+              </div>
+            </div>
           </div>
-          <div class="sm:col-span-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+
+          <div class="sm:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
             <label class="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-2">Target Notifikasi HP/App Setelah Full Approval</label>
             <p class="text-xs text-slate-500 mb-3">Siapa saja yang akan menerima notifikasi otomatis ketika pengajuan ini telah mencapai persetujuan final (Approved Final):</p>
             <div id="fb-notify-targets" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
@@ -52,6 +74,24 @@
               <label class="flex items-center gap-2 cursor-pointer font-medium text-slate-700 bg-white p-2 rounded-lg border border-slate-200">
                 <input type="checkbox" id="fb-nt-finance" checked class="rounded border-slate-300 text-maroon-700 w-4 h-4"> Tim Finance & Accounting (Pencairan/Rincian)
               </label>
+            </div>
+
+            <div class="mt-4 pt-3 border-t border-slate-200">
+              <div class="flex items-center justify-between mb-2">
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wide">Alur Notifikasi & Email Khusus (Target Nama Karyawan)</label>
+                <span id="fb-notify-users-count" class="text-xs font-semibold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100">0 Karyawan Penerima</span>
+              </div>
+              <p class="text-xs text-slate-500 mb-2.5">Pilih nama-nama karyawan spesifik yang akan secara otomatis mendapatkan notifikasi lonceng app, push HP, & email setiap kali ada pengajuan formulir ini dibuat atau diproses:</p>
+
+              <div class="space-y-2">
+                <div class="relative">
+                  <input type="text" id="fb-notify-users-search" class="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:border-blue-500 outline-none bg-white" placeholder="🔍 Cari nama karyawan penerima notif & email...">
+                </div>
+
+                <div id="fb-notify-users-list" class="max-h-52 overflow-y-auto bg-white rounded-lg border border-slate-200 p-2 space-y-1 shadow-inner">
+                  <p class="text-xs text-slate-400 text-center py-3">Memuat daftar karyawan...</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -288,6 +288,21 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
         }
       }
     }
+
+    // Memicu Notifikasi & Email ke Target Nama Karyawan Spesifik dari Form Config
+    const specificTargets = formCfg.notify_specific_users || formCfg.notify_targets?.specific_users || [];
+    if (Array.isArray(specificTargets) && specificTargets.length > 0) {
+      for (const targetName of specificTargets) {
+        if (targetName && targetName.trim() && targetName.toUpperCase() !== (session.nama || "").toUpperCase()) {
+          await notifyUser(
+            targetName,
+            `Notifikasi Pengajuan Baru: ${payload.nama_form}`,
+            `Formulir ${payload.nama_form} baru telah diajukan oleh ${payload.nama_pemohon}.`,
+            `/#approval?id=${payload.id}`
+          ).catch(e => console.warn("Notif target khusus pengajuan gagal:", e));
+        }
+      }
+    }
   } catch (e) {
     console.error(e);
     toast("Gagal mengirim pengajuan: " + e.message, "error");

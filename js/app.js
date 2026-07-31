@@ -287,6 +287,25 @@ export async function handleTestAndActivateNotification(session) {
   }
 }
 
+async function loadViewHtml(viewName) {
+  const paths = [
+    `/views/${viewName}.html`,
+    `./views/${viewName}.html`,
+    `views/${viewName}.html`
+  ];
+  for (const p of paths) {
+    try {
+      const res = await fetch(p);
+      if (res.ok) {
+        return await res.text();
+      }
+    } catch (e) {
+      // lanjut mencoba path berikutnya
+    }
+  }
+  throw new Error(`view-not-found: ${viewName}`);
+}
+
 /* ---------------------------------------------------------------------
  * LOGIN SCREEN
  * ------------------------------------------------------------------- */
@@ -295,16 +314,26 @@ async function showLogin() {
   const loginContainer = document.getElementById("login-container");
   loginContainer.classList.remove("hidden");
 
-  const html = await fetch("views/login.html").then(r => r.text());
-  loginContainer.innerHTML = html;
+  try {
+    const html = await loadViewHtml("login");
+    loginContainer.innerHTML = html;
+  } catch (e) {
+    console.warn("Gagal memuat login template via fetch:", e);
+  }
 
-  const mod = await import("./views/login.js");
-  mod.mount(loginContainer, {
-    onSuccess: () => {
-      loginContainer.classList.add("hidden");
-      location.reload(); 
+  try {
+    const mod = await import("./views/login.js");
+    if (mod && typeof mod.mount === "function") {
+      mod.mount(loginContainer, {
+        onSuccess: () => {
+          loginContainer.classList.add("hidden");
+          location.reload(); 
+        }
+      });
     }
-  });
+  } catch (e) {
+    console.error("Gagal memuat modul login.js:", e);
+  }
 }
 
 /* ---------------------------------------------------------------------
@@ -464,10 +493,7 @@ async function router(session) {
   try {
     if (typeof currentUnmount === "function") { currentUnmount(); currentUnmount = null; }
     
-    const res = await fetch(`views/${mappedPath}.html`);
-    if (!res.ok) throw new Error("view-not-found");
-    const html = await res.text();
-    
+    const html = await loadViewHtml(mappedPath);
     container.innerHTML = html;
     
     try {
@@ -477,7 +503,17 @@ async function router(session) {
         if (result && typeof result.unmount === "function") currentUnmount = result.unmount;
       }
     } catch (modErr) {
-      console.warn(`Could not mount script for view "${mappedPath}":`, modErr);
+      console.error(`Could not mount script for view "${mappedPath}":`, modErr);
+      if (!container.firstElementChild || container.children.length === 0 || container.innerHTML.trim() === '<div id="sk-panel"></div>') {
+        container.innerHTML = `
+          <div class="max-w-md mx-auto my-12 p-6 bg-white rounded-2xl border border-slate-200 shadow-sm text-center">
+            <div class="w-12 h-12 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center mx-auto mb-3 font-bold text-lg">!</div>
+            <p class="text-base font-bold text-slate-800 mb-1">Gagal Memuat Halaman ${escapeHtml(cleanPath)}</p>
+            <p class="text-xs text-slate-500 mb-4">${escapeHtml(modErr.message || "Terjadi kendala teknis saat menyiapkan tampilan.")}</p>
+            <button onclick="location.reload()" class="px-4 py-2 bg-maroon-700 hover:bg-maroon-800 text-white rounded-xl text-xs font-bold shadow transition">Muat Ulang Halaman</button>
+          </div>
+        `;
+      }
     }
     
     currentRoute = cleanPath;

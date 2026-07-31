@@ -17,36 +17,69 @@ async function printExitClearancePdf(data) {
 
   const taskRowsHtml = (handoverTasks && handoverTasks.length) ? handoverTasks.map((t, idx) => `
     <tr>
-      <td style="border:1px solid #000; padding:5px 6px; text-align:center; font-weight:bold;">${idx + 1}</td>
-      <td style="border:1px solid #000; padding:5px 6px;">${escapeHtml(t.pekerjaan || t)}</td>
-      <td style="border:1px solid #000; padding:5px 6px; text-align:center; font-weight:bold; background:#fafafa;">${escapeHtml(t.pemahaman || "Paham (Siap Eksekusi)")}</td>
+      <td style="text-align:center; font-weight:bold;">${idx + 1}</td>
+      <td>${escapeHtml(t.pekerjaan || t)}</td>
+      <td style="text-align:center; font-weight:bold; background:#fafafa;">${escapeHtml(t.pemahaman || "Paham (Siap Eksekusi)")}</td>
     </tr>
   `).join("") : `
     <tr>
-      <td colspan="3" style="border:1px solid #000; padding:8px; text-align:center; color:#555; font-style:italic;">
+      <td colspan="3" style="text-align:center; color:#555; font-style:italic;">
         ${escapeHtml(catatanHandover || "Seluruh tugas harian, file dokumen kerja, dan tanggung jawab pekerjaan telah dialihkan penuh.")}
       </td>
     </tr>`;
 
-  const assetRows = (assets && assets.length) ? assets.map((a, idx) => `
+  const assetRows = (assets && assets.length) ? assets.map((a, idx) => {
+    const isWarn = (a.status_pengembalian || "").includes("Hilang") || (a.status_pengembalian || "").includes("Rusak");
+    return `
+      <tr>
+        <td style="text-align:center; font-weight:bold;">${idx + 1}</td>
+        <td style="text-align:center; font-weight:bold; color:#334155;">${escapeHtml(a.kategori || "Aset / Seragam")}</td>
+        <td>
+          <strong style="color:#0f172a;">${escapeHtml(a.nama_barang || a.nama || "Barang")}</strong>
+          ${(a.id_item || a.id) ? `<br/><span style="font-family:monospace; font-size:9px; color:#64748b;">ID/Kode: ${escapeHtml(a.id_item || a.id)}</span>` : ''}
+        </td>
+        <td style="text-align:center; font-weight:bold; color:${isWarn ? '#b91c1c' : '#15803d'};">
+          ${escapeHtml(a.status_pengembalian || "Diterima & Lengkap")}
+        </td>
+      </tr>
+    `;
+  }).join("") : `
     <tr>
-      <td style="border:1px solid #000; padding:5px 6px; text-align:center; font-weight:bold;">${idx + 1}</td>
-      <td style="border:1px solid #000; padding:5px 6px; text-align:center; font-family:monospace; font-weight:bold;">${escapeHtml(a.id_item || a.id)}</td>
-      <td style="border:1px solid #000; padding:5px 6px;">${escapeHtml(a.nama_barang)}</td>
-      <td style="border:1px solid #000; padding:5px 6px;">${escapeHtml(a.kategori || "Aset")}</td>
-      <td style="border:1px solid #000; padding:5px 6px; text-align:center; font-weight:bold; color:#15803d;">Diterima & Lengkap</td>
-    </tr>
-  `).join("") : `
-    <tr>
-      <td colspan="5" style="border:1px solid #000; padding:8px; text-align:center; color:#555; font-style:italic;">Tidak ada aset inventaris kantor yang terdaftar atas nama karyawan.</td>
+      <td colspan="4" style="text-align:center; color:#555; font-style:italic; padding:10px;">
+        Tidak ada aset, seragam, atau barang inventaris kantor yang terdaftar atas nama karyawan.
+      </td>
     </tr>`;
 
   const docRows = (checklistDoc && checklistDoc.length) ? checklistDoc.map(d => `
-    <div style="margin-bottom:3px; font-size:10.5px; color:#111827;">[v] <strong>${escapeHtml(d)}</strong> — Diverifikasi & Disetujui HRD</div>
+    <div style="margin-bottom:3px; font-size:10px; color:#111827;">[v] <strong>${escapeHtml(d)}</strong> — Diverifikasi & Disetujui HRD</div>
   `).join("") : "";
 
   const html = `
-    <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff;">
+    <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff; box-sizing:border-box;">
+      <style>
+        * { box-sizing: border-box !important; }
+        body, div, p, span, table, tr, th, td { font-family: 'Times New Roman', Times, serif; }
+        table.clearance-tbl {
+          width: 100% !important;
+          border-collapse: collapse !important;
+          table-layout: fixed !important;
+          margin-top: 6px !important;
+          font-size: 10.5px !important;
+          page-break-inside: avoid !important;
+        }
+        table.clearance-tbl th, table.clearance-tbl td {
+          border: 1px solid #000 !important;
+          padding: 5px 6px !important;
+          word-wrap: break-word !important;
+          word-break: break-word !important;
+          overflow-wrap: break-word !important;
+          box-sizing: border-box !important;
+          vertical-align: top !important;
+        }
+        .header-table { width: 100% !important; border-collapse: collapse !important; table-layout: fixed !important; }
+        .header-table td { word-wrap: break-word !important; word-break: break-word !important; }
+      </style>
+
       <div style="page-break-inside:avoid; margin-bottom:10px;">
         ${isoDocHeaderTable({ judul: "BERITA ACARA EXIT CLEARANCE, SERAH TERIMA ASET & HANDOVER PEKERJAAN", noDok: "HRD-CLR-01", terbitRevisi: "1/0", hal: "1 dari 1" })}
       </div>
@@ -55,28 +88,28 @@ async function printExitClearancePdf(data) {
         <p style="margin:0 0 8px 0;">Pada hari ini, tanggal <strong>${fmtDateShort(tglEfektif)}</strong>, telah dilaksanakan proses <strong>Exit Clearance & Handover Pekerjaan Resmi</strong> di lingkungan CV ANDELA JAYA untuk karyawan berikut:</p>
       </div>
 
-      <table style="width:100%; border-collapse:collapse; margin-top:4px; font-size:11px; page-break-inside:avoid;">
-        <tr style="background:#f1f5f9;"><td colspan="2" style="border:1px solid #000; padding:5px 8px; font-weight:bold; text-transform:uppercase;">I. IDENTITAS KARYAWAN (OFFBOARDING)</td></tr>
-        <tr><td width="35%" style="border:1px solid #000; padding:4px 8px;">Nama Lengkap</td><td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">${escapeHtml(karyawan.nama_karyawan)}</td></tr>
-        <tr><td style="border:1px solid #000; padding:4px 8px;">NIK / ID Karyawan</td><td style="border:1px solid #000; padding:4px 8px;">${escapeHtml(karyawan.nik_karyawan || karyawan.id || "-")}</td></tr>
-        <tr><td style="border:1px solid #000; padding:4px 8px;">Jabatan & Cabang</td><td style="border:1px solid #000; padding:4px 8px;">${escapeHtml(karyawan.jabatan || "-")} (${escapeHtml(karyawan.cabang || "-")})</td></tr>
-        <tr><td style="border:1px solid #000; padding:4px 8px;">Masa Kerja & Tgl Efektif</td><td style="border:1px solid #000; padding:4px 8px;">${masaKerja} Tahun | Efektif: ${fmtDateShort(tglEfektif)}</td></tr>
-        <tr><td style="border:1px solid #000; padding:4px 8px;">Alasan Resign / Terminasi</td><td style="border:1px solid #000; padding:4px 8px;">${escapeHtml(alasan)}</td></tr>
+      <table class="clearance-tbl">
+        <tr style="background:#f1f5f9;"><td colspan="2" style="font-weight:bold; text-transform:uppercase;">I. IDENTITAS KARYAWAN (OFFBOARDING)</td></tr>
+        <tr><td style="width:35%;">Nama Lengkap</td><td style="width:65%; font-weight:bold;">${escapeHtml(karyawan.nama_karyawan)}</td></tr>
+        <tr><td>NIK / ID Karyawan</td><td>${escapeHtml(karyawan.nik_karyawan || karyawan.id || "-")}</td></tr>
+        <tr><td>Jabatan & Cabang</td><td>${escapeHtml(karyawan.jabatan || "-")} (${escapeHtml(karyawan.cabang || "-")})</td></tr>
+        <tr><td>Masa Kerja & Tgl Efektif</td><td>${masaKerja} Tahun | Efektif: ${fmtDateShort(tglEfektif)}</td></tr>
+        <tr><td>Alasan Resign / Terminasi</td><td>${escapeHtml(alasan)}</td></tr>
       </table>
 
-      <table style="width:100%; border-collapse:collapse; margin-top:10px; font-size:11px; page-break-inside:avoid;">
-        <tr style="background:#f1f5f9;"><td colspan="2" style="border:1px solid #000; padding:5px 8px; font-weight:bold; text-transform:uppercase;">II. IDENTITAS KARYAWAN PENGGANTI (PENERIMA HANDOVER)</td></tr>
-        <tr><td width="35%" style="border:1px solid #000; padding:4px 8px;">Nama Karyawan Pengganti</td><td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">${escapeHtml(pengganti || "Tidak Ada (Dialihkan ke Tim Divisi)")}</td></tr>
-        ${catatanHandover ? `<tr><td style="border:1px solid #000; padding:4px 8px;">Catatan Tambahan Handover</td><td style="border:1px solid #000; padding:4px 8px;">${escapeHtml(catatanHandover)}</td></tr>` : ''}
+      <table class="clearance-tbl">
+        <tr style="background:#f1f5f9;"><td colspan="2" style="font-weight:bold; text-transform:uppercase;">II. IDENTITAS KARYAWAN PENGGANTI (PENERIMA HANDOVER)</td></tr>
+        <tr><td style="width:35%;">Nama Karyawan Pengganti</td><td style="width:65%; font-weight:bold;">${escapeHtml(pengganti || "Tidak Ada (Dialihkan ke Tim Divisi)")}</td></tr>
+        ${catatanHandover ? `<tr><td>Catatan Tambahan Handover</td><td>${escapeHtml(catatanHandover)}</td></tr>` : ''}
       </table>
 
       <div style="margin-top:10px; font-weight:bold; font-size:11px; text-transform:uppercase; page-break-after:avoid;">III. DAFTAR PEKERJAAN HANDOVER & TINGKAT PEMAHAMAN</div>
-      <table style="width:100%; border-collapse:collapse; margin-top:4px; font-size:10.5px; page-break-inside:avoid;">
+      <table class="clearance-tbl">
         <thead>
           <tr style="background:#e2e8f0; text-align:center;">
-            <th style="border:1px solid #000; padding:5px; width:7%;">No</th>
-            <th style="border:1px solid #000; padding:5px; width:58%; text-align:left;">Rincian Pekerjaan Handover</th>
-            <th style="border:1px solid #000; padding:5px; width:35%;">Tingkat Pemahaman Karyawan Pengganti</th>
+            <th style="width:6%;">No</th>
+            <th style="width:60%; text-align:left;">Rincian Pekerjaan Handover</th>
+            <th style="width:34%;">Tingkat Pemahaman Karyawan Pengganti</th>
           </tr>
         </thead>
         <tbody>
@@ -84,15 +117,14 @@ async function printExitClearancePdf(data) {
         </tbody>
       </table>
 
-      <div style="margin-top:10px; font-weight:bold; font-size:11px; text-transform:uppercase; page-break-after:avoid;">IV. BUKTI PENGEMBALIAN ASET & INVENTARIS PERUSAHAAN</div>
-      <table style="width:100%; border-collapse:collapse; margin-top:4px; font-size:10.5px; page-break-inside:avoid;">
+      <div style="margin-top:10px; font-weight:bold; font-size:11px; text-transform:uppercase; page-break-after:avoid;">IV. BUKTI PENGEMBALIAN ASET, SERAGAM & BARANG PERUSAHAAN</div>
+      <table class="clearance-tbl">
         <thead>
           <tr style="background:#e2e8f0; text-align:center;">
-            <th style="border:1px solid #000; padding:5px; width:7%;">No</th>
-            <th style="border:1px solid #000; padding:5px; width:22%;">Kode Aset</th>
-            <th style="border:1px solid #000; padding:5px; text-align:left;">Nama Barang / Aset</th>
-            <th style="border:1px solid #000; padding:5px; width:18%;">Kategori</th>
-            <th style="border:1px solid #000; padding:5px; width:22%;">Status Audit</th>
+            <th style="width:6%;">No</th>
+            <th style="width:20%;">Kategori</th>
+            <th style="width:46%; text-align:left;">Nama Barang / Aset / Seragam / Perlengkapan</th>
+            <th style="width:28%;">Status Audit & Pengembalian</th>
           </tr>
         </thead>
         <tbody>
@@ -103,24 +135,24 @@ async function printExitClearancePdf(data) {
       <div style="margin-top:10px; font-size:10.5px; border:1px solid #000; padding:8px; page-break-inside:avoid; background:#fafafa;">
         <strong style="text-transform:uppercase;">V. VERIFIKASI DOKUMEN & SERAH TERIMA:</strong><br/>
         <div style="margin-top:4px;">${docRows}</div>
-        <p style="margin-top:6px; margin-bottom:0; font-style:italic; font-size:10px; color:#1f2937; line-height:1.35;">
-          Dengan ditandatanganinya Berita Acara ini, Karyawan yang bersangkutan dinyatakan <strong>RESMI BEBAS TANGGUNG JAWAB (CLEAR)</strong> dari seluruh penguasaan fisik aset inventaris perusahaan dan telah menyerahkan seluruh berkas serta kewenangan pekerjaan kepada Karyawan Pengganti / Atasan Direct.
+        <p style="margin-top:6px; margin-bottom:0; font-style:italic; font-size:9.5px; color:#1f2937; line-height:1.35;">
+          Dengan ditandatanganinya Berita Acara ini, Karyawan yang bersangkutan dinyatakan <strong>RESMI BEBAS TANGGUNG JAWAB (CLEAR)</strong> dari seluruh penguasaan fisik aset, seragam, dan inventaris perusahaan serta telah menyerahkan seluruh berkas dan kewenangan pekerjaan.
         </p>
       </div>
 
-      <table style="width:100%; text-align:center; margin-top:20px; font-size:10.5px; page-break-inside:avoid;">
+      <table style="width:100%; border-collapse:collapse; table-layout:fixed; text-align:center; margin-top:20px; font-size:10.5px; page-break-inside:avoid;">
         <tr>
-          <td width="25%">Karyawan Resign,</td>
-          <td width="25%">Karyawan Pengganti,</td>
-          <td width="25%">Atasan Langsung,</td>
-          <td width="25%">HRD & GA Manager,</td>
+          <td style="width:25%; border:none; padding:4px;">Karyawan Resign,</td>
+          <td style="width:25%; border:none; padding:4px;">Karyawan Pengganti,</td>
+          <td style="width:25%; border:none; padding:4px;">Atasan Langsung,</td>
+          <td style="width:25%; border:none; padding:4px;">HRD & GA Manager,</td>
         </tr>
-        <tr><td height="45"></td><td></td><td></td><td></td></tr>
+        <tr><td style="border:none; height:45px;"></td><td style="border:none;"></td><td style="border:none;"></td><td style="border:none;"></td></tr>
         <tr>
-          <td>( <strong>${escapeHtml(karyawan.nama_karyawan)}</strong> )</td>
-          <td>( <strong>${escapeHtml(pengganti || "-")}</strong> )</td>
-          <td>( ................................... )</td>
-          <td>( ................................... )</td>
+          <td style="border:none; padding:4px;">( <strong>${escapeHtml(karyawan.nama_karyawan)}</strong> )</td>
+          <td style="border:none; padding:4px;">( <strong>${escapeHtml(pengganti || "-")}</strong> )</td>
+          <td style="border:none; padding:4px;">( ................................... )</td>
+          <td style="border:none; padding:4px;">( ................................... )</td>
         </tr>
       </table>
     </div>`;
@@ -129,8 +161,129 @@ async function printExitClearancePdf(data) {
   toast("Dokumen Clearance PDF berhasil diunduh!", "success");
 }
 
+// FUNGSI CETAK BERITA ACARA ONBOARDING, ORIENTASI & TRAINING (PDF)
+async function printOnboardingDocPdf(data) {
+  const { downloadHtmlAsPdf, toast } = await import("../utils.js");
+  toast("Sedang memproses PDF Onboarding & Orientasi...", "info");
+
+  const { nama, nik, email, jabatan, cabang, tglJoin, statusKontrak, orientasiItems, trainingItems, catatanFasilitas } = data;
+
+  const orientasiRowsHtml = (orientasiItems && orientasiItems.length) ? orientasiItems.map((o, idx) => `
+    <tr>
+      <td style="text-align:center; font-weight:bold;">${idx + 1}</td>
+      <td>${escapeHtml(o.topik)}</td>
+      <td style="text-align:center; font-weight:bold; color:#15803d;">${escapeHtml(o.status)}</td>
+    </tr>
+  `).join("") : `
+    <tr>
+      <td colspan="3" style="text-align:center; color:#555; font-style:italic;">Orientasi lingkungan kantor diselesaikan sesuai SOP standar.</td>
+    </tr>`;
+
+  const trainingRowsHtml = (trainingItems && trainingItems.length) ? trainingItems.map((t, idx) => `
+    <tr>
+      <td style="text-align:center; font-weight:bold;">${idx + 1}</td>
+      <td><strong>${escapeHtml(t.materi)}</strong></td>
+      <td style="text-align:center;">${escapeHtml(t.trainer || "HRD / Atasan")}</td>
+      <td style="text-align:center; font-weight:bold; color:#1e40af;">${escapeHtml(t.status)}</td>
+    </tr>
+  `).join("") : `
+    <tr>
+      <td colspan="4" style="text-align:center; color:#555; font-style:italic;">Seluruh materi pembekalan & training dasar telah disajikan.</td>
+    </tr>`;
+
+  const html = `
+    <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff; box-sizing:border-box;">
+      <style>
+        * { box-sizing: border-box !important; }
+        body, div, p, span, table, tr, th, td { font-family: 'Times New Roman', Times, serif; }
+        table.onb-tbl {
+          width: 100% !important;
+          border-collapse: collapse !important;
+          table-layout: fixed !important;
+          margin-top: 6px !important;
+          font-size: 10.5px !important;
+          page-break-inside: avoid !important;
+        }
+        table.onb-tbl th, table.onb-tbl td {
+          border: 1px solid #000 !important;
+          padding: 5px 6px !important;
+          word-wrap: break-word !important;
+          word-break: break-word !important;
+          overflow-wrap: break-word !important;
+          box-sizing: border-box !important;
+          vertical-align: top !important;
+        }
+      </style>
+
+      <div style="page-break-inside:avoid; margin-bottom:10px;">
+        ${isoDocHeaderTable({ judul: "BERITA ACARA ONBOARDING, ORIENTASI & TRAINING KARYAWAN BARU", noDok: "HRD-ONB-01", terbitRevisi: "1/0", hal: "1 dari 1" })}
+      </div>
+      
+      <div style="margin-top:8px; text-align:justify; font-size:11px;">
+        <p style="margin:0 0 8px 0;">Pada hari ini, tanggal <strong>${fmtDateShort(tglJoin)}</strong>, telah dilaksanakan proses <strong>Onboarding, Orientasi Kantor & Pembekalan Training Resmi</strong> di lingkungan CV ANDELA JAYA untuk karyawan baru berikut:</p>
+      </div>
+
+      <table class="onb-tbl">
+        <tr style="background:#f1f5f9;"><td colspan="2" style="font-weight:bold; text-transform:uppercase;">I. IDENTITAS KARYAWAN BARU</td></tr>
+        <tr><td style="width:35%;">Nama Lengkap Karyawan</td><td style="width:65%; font-weight:bold;">${escapeHtml(nama)}</td></tr>
+        <tr><td>NIK / ID Karyawan</td><td>${escapeHtml(nik || "-")}</td></tr>
+        <tr><td>Email & Kontak</td><td>${escapeHtml(email || "-")}</td></tr>
+        <tr><td>Jabatan & Cabang</td><td>${escapeHtml(jabatan || "-")} (${escapeHtml(cabang || "-")})</td></tr>
+        <tr><td>Tanggal Bergabung & Tipe Kontrak</td><td>${fmtDateShort(tglJoin)} | Status: ${escapeHtml(statusKontrak || "PKWTT")}</td></tr>
+        ${catatanFasilitas ? `<tr><td>Catatan Fasilitas / Seragam</td><td>${escapeHtml(catatanFasilitas)}</td></tr>` : ''}
+      </table>
+
+      <div style="margin-top:10px; font-weight:bold; font-size:11px; text-transform:uppercase; page-break-after:avoid;">II. REKAPITULASI PENGENALAN LINGKUNGAN KANTOR (ORIENTASI)</div>
+      <table class="onb-tbl">
+        <thead>
+          <tr style="background:#e2e8f0; text-align:center;">
+            <th style="width:6%;">No</th>
+            <th style="width:64%; text-align:left;">Topik / Item Pengenalan Lingkungan Kantor</th>
+            <th style="width:30%;">Status Progress</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${orientasiRowsHtml}
+        </tbody>
+      </table>
+
+      <div style="margin-top:10px; font-weight:bold; font-size:11px; text-transform:uppercase; page-break-after:avoid;">III. DAFTAR MATERI TRAINING & PEMBEKALAN KARYAWAN</div>
+      <table class="onb-tbl">
+        <thead>
+          <tr style="background:#e2e8f0; text-align:center;">
+            <th style="width:6%;">No</th>
+            <th style="width:44%; text-align:left;">Materi / Modul Training</th>
+            <th style="width:25%;">Pemateri / Trainer</th>
+            <th style="width:25%;">Progress & Pemahaman</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${trainingRowsHtml}
+        </tbody>
+      </table>
+
+      <table style="width:100%; border-collapse:collapse; table-layout:fixed; text-align:center; margin-top:25px; font-size:10.5px; page-break-inside:avoid;">
+        <tr>
+          <td style="width:33%; border:none; padding:4px;">Karyawan Baru,</td>
+          <td style="width:33%; border:none; padding:4px;">Atasan Direct / Mentor,</td>
+          <td style="width:34%; border:none; padding:4px;">HRD & GA Manager,</td>
+        </tr>
+        <tr><td style="border:none; height:45px;"></td><td style="border:none;"></td><td style="border:none;"></td></tr>
+        <tr>
+          <td style="border:none; padding:4px;">( <strong>${escapeHtml(nama)}</strong> )</td>
+          <td style="border:none; padding:4px;">( ................................... )</td>
+          <td style="border:none; padding:4px;">( ................................... )</td>
+        </tr>
+      </table>
+    </div>`;
+
+  await downloadHtmlAsPdf(html, `Berita_Acara_Onboarding_${escapeHtml(nama).replace(/\s+/g, "_")}.pdf`);
+  toast("Dokumen Onboarding PDF berhasil diunduh!", "success");
+}
+
 export async function mount(container) {
-  container.innerHTML = `
+  const panel = container.querySelector("#sk-panel") || container;
+  panel.innerHTML = `
     <div class="max-w-6xl mx-auto space-y-6 pb-10">
       <div>
         <h1 class="text-2xl font-bold text-slate-800">Siklus & Pergerakan Karyawan</h1>
@@ -225,13 +378,20 @@ export async function mount(container) {
     </div>
   `;
 
-  const allKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
+  let allKaryawan = [];
+  try {
+    allKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
+  } catch (err) {
+    console.error("Gagal memuat MASTER_KARYAWAN di Siklus Karyawan:", err);
+  }
   const activeKaryawan = allKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF");
   activeKaryawan.sort((a,b) => (a.nama_karyawan||"").localeCompare(b.nama_karyawan||""));
   
   const selectNama = container.querySelector("#siklus-nama");
-  selectNama.innerHTML = `<option value="">Pilih Karyawan Aktif...</option>` + 
-    activeKaryawan.map(k => `<option value="${k.id}">${escapeHtml(k.nama_karyawan)} - ${escapeHtml(k.jabatan || "")} (${escapeHtml(k.cabang || "-")})</option>`).join("");
+  if (selectNama) {
+    selectNama.innerHTML = `<option value="">Pilih Karyawan Aktif...</option>` + 
+      activeKaryawan.map(k => `<option value="${k.id}">${escapeHtml(k.nama_karyawan)} - ${escapeHtml(k.jabatan || "")} (${escapeHtml(k.cabang || "-")})</option>`).join("");
+  }
 
   const selJenis = container.querySelector("#siklus-jenis");
   const dynFields = container.querySelector("#siklus-dynamic-fields");
@@ -243,33 +403,37 @@ export async function mount(container) {
   let currentSelectedKaryawan = null;
   let isNewHireOnboarding = false; // true jika Onboarding karyawan BARU (belum ada di Master Karyawan)
 
-  selectNama.addEventListener("change", () => {
-     currentSelectedKaryawan = activeKaryawan.find(k => k.id === selectNama.value);
-     renderFields(); 
-  });
+  if (selectNama) {
+    selectNama.addEventListener("change", () => {
+       currentSelectedKaryawan = activeKaryawan.find(k => k.id === selectNama.value);
+       renderFields(); 
+    });
+  }
 
-  selJenis.addEventListener("change", () => {
-     isNewHireOnboarding = selJenis.value === "Onboarding";
-     wrapNama.classList.toggle("hidden", isNewHireOnboarding);
-     wrapOnbNew.classList.toggle("hidden", !isNewHireOnboarding);
-     selectNama.required = !isNewHireOnboarding;
+  if (selJenis) {
+    selJenis.addEventListener("change", () => {
+       isNewHireOnboarding = selJenis.value === "Onboarding";
+       if (wrapNama) wrapNama.classList.toggle("hidden", isNewHireOnboarding);
+       if (wrapOnbNew) wrapOnbNew.classList.toggle("hidden", !isNewHireOnboarding);
+       if (selectNama) selectNama.required = !isNewHireOnboarding;
 
-     // Toggle required attributes for hidden onboarding fields to prevent silent form.reportValidity() failure
-     const onbNama = container.querySelector("#onb-nama");
-     const onbEmail = container.querySelector("#onb-email");
-     if (onbNama) {
-        onbNama.required = isNewHireOnboarding;
-     }
-     if (onbEmail) {
-        onbEmail.required = isNewHireOnboarding;
-     }
+       // Toggle required attributes for hidden onboarding fields to prevent silent form.reportValidity() failure
+       const onbNama = container.querySelector("#onb-nama");
+       const onbEmail = container.querySelector("#onb-email");
+       if (onbNama) {
+          onbNama.required = isNewHireOnboarding;
+       }
+       if (onbEmail) {
+          onbEmail.required = isNewHireOnboarding;
+       }
 
-     if (isNewHireOnboarding) {
-        selectNama.value = "";
-        currentSelectedKaryawan = null;
-     }
-     renderFields();
-  });
+       if (isNewHireOnboarding && selectNama) {
+          selectNama.value = "";
+          currentSelectedKaryawan = null;
+       }
+       renderFields();
+    });
+  }
 
   function formatDateInput(d) {
       if(!d) return "";
@@ -319,9 +483,7 @@ export async function mount(container) {
                    <option value="">-- Tidak Ada Pengganti (Dialihkan ke Tim Divisi) --</option>
                    ${otherActive.map(k => `<option value="${escapeHtml(k.nama_karyawan)}">${escapeHtml(k.nama_karyawan)} - ${escapeHtml(k.jabatan || '')} (${escapeHtml(k.cabang || '-')})</option>`).join("")}
                 </select>
-             </div>
-
-             <!-- LIST PEKERJAAN HANDOVER & TINGKAT PEMAHAMAN -->
+             </div>             <!-- LIST PEKERJAAN HANDOVER & TINGKAT PEMAHAMAN -->
              <div class="border border-slate-200 rounded-xl p-3 bg-slate-50 space-y-2 mt-2">
                <div class="flex items-center justify-between">
                  <label class="block text-xs font-bold text-slate-700">Daftar Pekerjaan Handover & Pemahaman Pengganti</label>
@@ -345,6 +507,30 @@ export async function mount(container) {
              <div>
                 <label class="block text-xs font-bold text-slate-600 mb-1">Catatan Tambahan Handover (Opsi)</label>
                 <textarea id="off-catatan-handover" rows="1" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-maroon-400" placeholder="Cth: Lokasi simpan file kerja di Google Drive Tim & password email..."></textarea>
+             </div>
+
+             <!-- CUSTOMIZABLE ASSETS / SERAGAM / BARANG MELEKAT MANAGER -->
+             <div class="border border-slate-200 rounded-xl p-3 bg-slate-50 space-y-2 mt-2">
+               <div class="flex items-center justify-between">
+                 <div>
+                   <label class="block text-xs font-bold text-slate-700">Pengembalian Aset, Seragam & Barang Melekat (Clearance)</label>
+                   <p class="text-[10px] text-slate-500">HRD dapat mengkustomisasi, menambah, atau menghapus seragam/barang/aset yang masih melekat di karyawan.</p>
+                 </div>
+                 <button type="button" id="btn-add-off-asset-row" class="px-2.5 py-1 text-[11px] font-bold text-emerald-800 bg-white border border-emerald-300 rounded-lg hover:bg-emerald-50 transition flex items-center gap-1 shadow-sm shrink-0">
+                   + Tambah Seragam / Barang
+                 </button>
+               </div>
+
+               <div class="grid grid-cols-12 gap-2 text-[10px] font-bold text-slate-600 px-2 pt-1 border-b border-slate-200 pb-1">
+                 <div class="col-span-5">Nama Barang / Aset / Seragam</div>
+                 <div class="col-span-3">Kategori</div>
+                 <div class="col-span-3">Status Pengembalian</div>
+                 <div class="col-span-1 text-center">Aksi</div>
+               </div>
+
+               <div id="offboarding-assets-container" class="space-y-2 max-h-56 overflow-y-auto pr-1">
+                 <!-- Populated dynamically -->
+               </div>
              </div>
 
              <!-- CUSTOMIZABLE TERMINATION CHECKLIST FOR HRD -->
@@ -406,6 +592,105 @@ export async function mount(container) {
            btnAddRow.onclick = () => addHandoverRow("", "Paham (Siap Eksekusi)");
          }
 
+         // Assets & Uniforms editor container
+         const offAssetBox = dynFields.querySelector("#offboarding-assets-container");
+         const btnAddOffAsset = dynFields.querySelector("#btn-add-off-asset-row");
+
+         function addOffAssetRow(item = {}) {
+           if (!offAssetBox) return;
+           const row = document.createElement("div");
+           row.className = "off-asset-item-row grid grid-cols-12 gap-2 items-center p-2 bg-white border border-slate-200 rounded-lg shadow-sm";
+
+           const namaVal = item.nama_barang || item.nama || "";
+           const katVal = item.kategori || "Seragam & APD";
+           const statusVal = item.status_pengembalian || "Diterima & Lengkap";
+           const itemIdVal = item.id_item || item.id || "";
+
+           row.innerHTML = `
+             <div class="col-span-5">
+               <input type="text" class="asset-item-nama w-full px-2 py-1 text-xs border border-slate-300 rounded-md outline-none focus:border-maroon-400 font-medium text-slate-800" placeholder="Cth: Seragam Kerja 2 Stel / ID Card" value="${escapeHtml(namaVal)}">
+               ${itemIdVal ? `<input type="hidden" class="asset-item-id" value="${escapeHtml(itemIdVal)}">` : ''}
+             </div>
+             <div class="col-span-3">
+               <select class="asset-item-kategori w-full px-1.5 py-1 text-xs border border-slate-300 rounded-md outline-none bg-white font-medium text-slate-700">
+                 <option value="Seragam & APD" ${katVal === "Seragam & APD" ? "selected" : ""}>Seragam & APD</option>
+                 <option value="ID Card & Akses" ${katVal === "ID Card & Akses" ? "selected" : ""}>ID Card & Akses</option>
+                 <option value="Aset Kantor / Laptop" ${katVal === "Aset Kantor / Laptop" || katVal === "Elektronik" || katVal === "Laptop" ? "selected" : ""}>Aset / Laptop</option>
+                 <option value="Kendaraan / Kunci" ${katVal === "Kendaraan / Kunci" || katVal === "Kendaraan" ? "selected" : ""}>Kendaraan / Kunci</option>
+                 <option value="Lainnya" ${["Seragam & APD", "ID Card & Akses", "Aset Kantor / Laptop", "Kendaraan / Kunci"].includes(katVal) ? "" : "selected"}>Lainnya (${escapeHtml(katVal)})</option>
+               </select>
+             </div>
+             <div class="col-span-3">
+               <select class="asset-item-status w-full px-1.5 py-1 text-xs border border-slate-300 rounded-md outline-none bg-white font-medium text-slate-700">
+                 <option value="Diterima & Lengkap" ${statusVal === "Diterima & Lengkap" ? "selected" : ""}>Diterima & Lengkap</option>
+                 <option value="Dikembalikan (Rusak)" ${statusVal.includes("Rusak") ? "selected" : ""}>Dikembalikan (Rusak)</option>
+                 <option value="Hilang / Potong Gaji" ${statusVal.includes("Hilang") || statusVal.includes("Potong") ? "selected" : ""}>Hilang / Potong Gaji</option>
+                 <option value="Dalam Proses" ${statusVal.includes("Proses") ? "selected" : ""}>Dalam Proses</option>
+               </select>
+             </div>
+             <div class="col-span-1 text-center">
+               <button type="button" class="btn-del-off-asset text-xs text-rose-500 hover:bg-rose-50 p-1 rounded-md font-bold" title="Hapus Barang">🗑️</button>
+             </div>
+           `;
+
+           row.querySelector(".btn-del-off-asset").onclick = () => {
+             row.remove();
+           };
+
+           offAssetBox.appendChild(row);
+         }
+
+         if (btnAddOffAsset) {
+           btnAddOffAsset.onclick = () => addOffAssetRow({ nama_barang: "", kategori: "Seragam & APD", status_pengembalian: "Diterima & Lengkap" });
+         }
+
+         async function populateOffboardingAssets() {
+           if (!offAssetBox) return;
+           offAssetBox.innerHTML = `<p class="text-xs text-slate-400 text-center py-2 col-span-12">Memuat data aset karyawan...</p>`;
+
+           let assigned = [];
+           if (currentSelectedKaryawan) {
+             try {
+               const allInventory = await fsGetAll(COL.MASTER_INVENTORY);
+               const targetName = (currentSelectedKaryawan.nama_karyawan || "").trim().toLowerCase();
+               assigned = allInventory.filter(a => (a.assigned_to || "").trim().toLowerCase() === targetName);
+             } catch (e) {
+               console.warn("Error fetching employee inventory assets:", e);
+             }
+           }
+
+           offAssetBox.innerHTML = "";
+           if (assigned && assigned.length > 0) {
+             assigned.forEach(a => addOffAssetRow({
+               id_item: a.id_item || a.id,
+               nama_barang: a.nama_barang,
+               kategori: a.kategori || "Aset Kantor / Laptop",
+               status_pengembalian: "Diterima & Lengkap"
+             }));
+           }
+
+           // Pre-populate standard defaults if not present
+           if (!assigned.some(a => (a.nama_barang || "").toLowerCase().includes("id card"))) {
+             addOffAssetRow({
+               id_item: "IDC-01",
+               nama_barang: "ID Card & Lanyard Akses Perusahaan",
+               kategori: "ID Card & Akses",
+               status_pengembalian: "Diterima & Lengkap"
+             });
+           }
+           if (!assigned.some(a => (a.nama_barang || "").toLowerCase().includes("seragam"))) {
+             addOffAssetRow({
+               id_item: "SRG-01",
+               nama_barang: "Seragam Kerja Kantor (2 Stel)",
+               kategori: "Seragam & APD",
+               status_pengembalian: "Diterima & Lengkap"
+             });
+           }
+         }
+       }
+
+       populateOffboardingAssets();
+
          // Checklist items container and default loader
          const chkBox = dynFields.querySelector("#offboarding-checklist-container");
          const btnAddChk = dynFields.querySelector("#btn-add-checklist-row");
@@ -426,6 +711,7 @@ export async function mount(container) {
                toast("Minimal 1 item checklist", "info");
              }
            };
+
            chkBox.appendChild(row);
          }
 
@@ -465,8 +751,7 @@ export async function mount(container) {
 
          if (btnAddChk) {
            btnAddChk.onclick = () => addChecklistRow("");
-         }
-     } else if (["Mutasi", "Promosi", "Demosi"].includes(jenis)) {
+         } else if (["Mutasi", "Promosi", "Demosi"].includes(jenis)) {
          dynFields.innerHTML = `
              <div class="grid grid-cols-2 gap-4">
                 <div><label class="block text-xs font-bold text-slate-500 mb-1">Jabatan Saat Ini</label><input type="text" id="lama-jabatan" value="${jabLama}" readonly class="w-full px-3 py-2 text-sm border rounded-lg bg-slate-100 outline-none text-slate-500 border-transparent"></div>
@@ -499,12 +784,146 @@ export async function mount(container) {
                    </select>
                 </div>
              </div>
-             <div><label class="block text-xs font-medium text-slate-500 mb-1">Catatan Fasilitas Karyawan</label><textarea id="onb-catatan" rows="2" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-maroon-400" placeholder="Cth: Diberikan ID Card, Seragam, dsb..."></textarea></div>
-         `;
-     }
+             <div><label class="block text-xs font-medium text-slate-500 mb-1">Catatan Fasilitas Karyawan</label><textarea id="onb-catatan" rows="2" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-maroon-400" placeholder="Cth: Diberikan ID Card, Seragam, Laptop kantor, Kunci Loker..."></textarea></div>
+
+             <!-- KUSTOMISASI PENGENALAN LINGKUNGAN KANTOR (ORIENTASI) -->
+             <div class="border border-slate-200 rounded-xl p-3 bg-slate-50 space-y-2 mt-2">
+               <div class="flex items-center justify-between">
+                 <div>
+                   <label class="block text-xs font-bold text-slate-700">Pengenalan Lingkungan Kantor & Orientasi</label>
+                   <p class="text-[10px] text-slate-500">Kustomisasi item orientasi fisik, perkenalan tim, serta pengenalan fasilitas/SOP kantor.</p>
+                 </div>
+                 <button type="button" id="btn-add-orientasi-row" class="px-2.5 py-1 text-[11px] font-bold text-emerald-800 bg-white border border-emerald-300 rounded-lg hover:bg-emerald-50 transition flex items-center gap-1 shadow-sm shrink-0">
+                   + Tambah Item Orientasi
+                 </button>
+               </div>
+
+               <div class="grid grid-cols-12 gap-2 text-[10px] font-bold text-slate-600 px-2 pt-1 border-b border-slate-200 pb-1">
+                 <div class="col-span-7">Item / Topik Pengenalan Kantor</div>
+                 <div class="col-span-4">Status Progress</div>
+                 <div class="col-span-1 text-center">Aksi</div>
+               </div>
+
+               <div id="orientasi-container" class="space-y-2 max-h-52 overflow-y-auto pr-1">
+                 <!-- Populated dynamically -->
+               </div>
+             </div>
+
+             <!-- KUSTOMISASI MATERI TRAINING & PEMBEKALAN KARYAWAN -->
+             <div class="border border-slate-200 rounded-xl p-3 bg-slate-50 space-y-2 mt-2">
+               <div class="flex items-center justify-between">
+                 <div>
+                   <label class="block text-xs font-bold text-slate-700">Materi Training & Pembekalan Karyawan Baru</label>
+                   <p class="text-[10px] text-slate-500">Materi training yang disampaikan beserta nama pemateri/trainer dan progress pemahaman.</p>
+                 </div>
+                 <button type="button" id="btn-add-training-row" class="px-2.5 py-1 text-[11px] font-bold text-maroon-700 bg-white border border-maroon-200 rounded-lg hover:bg-maroon-50 transition flex items-center gap-1 shadow-sm shrink-0">
+                   + Tambah Materi Training
+                 </button>
+               </div>
+
+               <div class="grid grid-cols-12 gap-2 text-[10px] font-bold text-slate-600 px-2 pt-1 border-b border-slate-200 pb-1">
+                 <div class="col-span-5">Materi / Modul Training</div>
+                 <div class="col-span-3">Trainer / Pemateri</div>
+                 <div class="col-span-3">Status Progress</div>
+                 <div class="col-span-1 text-center">Aksi</div>
+               </div>
+
+               <div id="training-container" class="space-y-2 max-h-52 overflow-y-auto pr-1">
+                 <!-- Populated dynamically -->
+               </div>
+             </div>
+          `;
+
+          const orientasiBox = dynFields.querySelector("#orientasi-container");
+          const btnAddOrientasi = dynFields.querySelector("#btn-add-orientasi-row");
+
+          function addOrientasiRow(topik = "", status = "Selesai (100%)") {
+             if (!orientasiBox) return;
+             const row = document.createElement("div");
+             row.className = "orientasi-row grid grid-cols-12 gap-2 items-center p-2 bg-white border border-slate-200 rounded-lg shadow-sm";
+             row.innerHTML = `
+               <div class="col-span-7">
+                  <input type="text" class="orientasi-topik w-full px-2 py-1 text-xs border border-slate-300 rounded-md outline-none focus:border-maroon-400 font-medium text-slate-800" placeholder="Cth: Tur Fasilitas & Ruang Kerja / Tata Tertib" value="${escapeHtml(topik)}">
+               </div>
+               <div class="col-span-4">
+                  <select class="orientasi-status w-full px-1.5 py-1 text-xs border border-slate-300 rounded-md outline-none bg-white font-medium text-slate-700">
+                     <option value="Selesai (100%)" ${status === "Selesai (100%)" ? "selected" : ""}>Selesai (100%)</option>
+                     <option value="Sedang Berlangsung (50%)" ${status.includes("50%") || status.includes("Sedang") ? "selected" : ""}>Sedang Berlangsung (50%)</option>
+                     <option value="Belum Dilakukan (0%)" ${status.includes("0%") || status.includes("Belum") ? "selected" : ""}>Belum Dilakukan (0%)</option>
+                  </select>
+               </div>
+               <div class="col-span-1 text-center">
+                  <button type="button" class="btn-del-orientasi text-xs text-rose-500 hover:bg-rose-50 p-1 rounded-md font-bold" title="Hapus Item">🗑️</button>
+               </div>
+             `;
+             row.querySelector(".btn-del-orientasi").onclick = () => {
+                if (orientasiBox.children.length > 1) {
+                   row.remove();
+                } else {
+                   toast("Minimal 1 item orientasi lingkungan kantor", "info");
+                }
+             };
+             orientasiBox.appendChild(row);
+          }
+
+          // Standard initial defaults for Office Environment Orientation
+          addOrientasiRow("Tur Fasilitas Kantor, Ruang Kerja & Area Umum", "Selesai (100%)");
+          addOrientasiRow("Perkenalan Tim Divisi, Atasan & Manajemen Direct", "Selesai (100%)");
+          addOrientasiRow("Sosialisasi Peraturan Perusahaan, Jam Kerja & SOP", "Selesai (100%)");
+          addOrientasiRow("Penyerahan Akses Wi-Fi, Portal HRIS & Email Kerja", "Selesai (100%)");
+
+          if (btnAddOrientasi) {
+             btnAddOrientasi.onclick = () => addOrientasiRow("", "Selesai (100%)");
+          }
+
+          const trainingBox = dynFields.querySelector("#training-container");
+          const btnAddTraining = dynFields.querySelector("#btn-add-training-row");
+
+          function addTrainingRow(materi = "", trainer = "HRD / Atasan", status = "Selesai & Lulus") {
+             if (!trainingBox) return;
+             const row = document.createElement("div");
+             row.className = "training-row grid grid-cols-12 gap-2 items-center p-2 bg-white border border-slate-200 rounded-lg shadow-sm";
+             row.innerHTML = `
+               <div class="col-span-5">
+                  <input type="text" class="training-materi w-full px-2 py-1 text-xs border border-slate-300 rounded-md outline-none focus:border-maroon-400 font-medium text-slate-800" placeholder="Cth: Product Knowledge / SOP Operasional" value="${escapeHtml(materi)}">
+               </div>
+               <div class="col-span-3">
+                  <input type="text" class="training-trainer w-full px-2 py-1 text-xs border border-slate-300 rounded-md outline-none focus:border-maroon-400 font-medium text-slate-700" placeholder="Pemateri / HRD" value="${escapeHtml(trainer)}">
+               </div>
+               <div class="col-span-3">
+                  <select class="training-status w-full px-1.5 py-1 text-xs border border-slate-300 rounded-md outline-none bg-white font-medium text-slate-700">
+                     <option value="Selesai & Lulus" ${status === "Selesai & Lulus" ? "selected" : ""}>Selesai & Lulus</option>
+                     <option value="Sedang Training" ${status.includes("Sedang") ? "selected" : ""}>Sedang Training</option>
+                     <option value="Perlu Evaluasi" ${status.includes("Evaluasi") ? "selected" : ""}>Perlu Evaluasi</option>
+                     <option value="Belum Disampaikan" ${status.includes("Belum") ? "selected" : ""}>Belum Disampaikan</option>
+                  </select>
+               </div>
+               <div class="col-span-1 text-center">
+                  <button type="button" class="btn-del-training text-xs text-rose-500 hover:bg-rose-50 p-1 rounded-md font-bold" title="Hapus Modul">🗑️</button>
+               </div>
+             `;
+             row.querySelector(".btn-del-training").onclick = () => {
+                if (trainingBox.children.length > 1) {
+                   row.remove();
+                } else {
+                   toast("Minimal 1 materi training onboarding", "info");
+                }
+             };
+             trainingBox.appendChild(row);
+          }
+
+          // Standard initial defaults for Training
+          addTrainingRow("Company Profile, Budaya & Visi Misi Perusahaan", "HRD Manager", "Selesai & Lulus");
+          addTrainingRow("Product Knowledge & Standard Operating Procedure (SOP)", "Atasan Direct", "Selesai & Lulus");
+          addTrainingRow("Sistem Operational, Tool Kerja & Aplikasi HRIS", "IT / HRD Admin", "Sedang Training");
+
+          if (btnAddTraining) {
+             btnAddTraining.onclick = () => addTrainingRow("", "Atasan Direct", "Selesai & Lulus");
+          }
   }
 
-  btnKalkulasi.addEventListener("click", async () => {
+if (btnKalkulasi) {
+    btnKalkulasi.addEventListener("click", async () => {
       const form = container.querySelector("#form-siklus");
       if (!form.reportValidity()) return;
       if (!isNewHireOnboarding && !currentSelectedKaryawan) return toast("Pilih Karyawan terlebih dahulu", "warning");
@@ -614,15 +1033,21 @@ export async function mount(container) {
             if (!checklist.length) checklist = ["Surat Keputusan Pensiun Karyawan", "Formulir Pencairan BPJS JHT & JP", "Penyerahan Piagam Penghargaan / Tali Asih", "Serah Terima Pekerjaan kepada Tim"];
          }
 
-         // Fetch assigned assets for clearance checklist
-         let assignedAssets = [];
-         try {
-           const allAssets = await fsGetAll(COL.MASTER_INVENTORY);
-           const targetName = (currentSelectedKaryawan.nama_karyawan || "").trim().toLowerCase();
-           assignedAssets = allAssets.filter(a => (a.assigned_to || "").trim().toLowerCase() === targetName);
-         } catch (e) {
-           console.warn("Offboarding asset fetch err:", e);
-         }
+         // Collect custom assets / uniforms / equipment rows from form inputs
+         const offAssetRows = Array.from(dynFields.querySelectorAll(".off-asset-item-row"));
+         let assignedAssets = offAssetRows.map(row => {
+           const nama = row.querySelector(".asset-item-nama")?.value.trim();
+           const kat = row.querySelector(".asset-item-kategori")?.value || "Seragam & APD";
+           const stat = row.querySelector(".asset-item-status")?.value || "Diterima & Lengkap";
+           const idVal = row.querySelector(".asset-item-id")?.value || "";
+           return nama ? {
+             id: idVal,
+             id_item: idVal,
+             nama_barang: nama,
+             kategori: kat,
+             status_pengembalian: stat
+           } : null;
+         }).filter(Boolean);
 
          payloadLog.tanggal_efektif = out.toISOString();
          payloadLog.keterangan = `Alasan: ${alasan}${penggantiVal ? ` | Pengganti: ${penggantiVal}` : ''}`;
@@ -674,22 +1099,22 @@ export async function mount(container) {
                <div class="p-3 bg-amber-50 rounded-lg border border-amber-200 flex justify-between items-center"><span class="text-xs font-bold text-amber-700">Sisa Cuti / Penggantian Hak</span><span class="font-bold text-amber-700 text-xs text-right">Dihitung manual<br/>oleh HR/Finance</span></div>
             </div>
 
-            <!-- CHECKLIST ASET TERKAIT UNTUK CLEARANCE -->
+            <!-- CHECKLIST ASET, SERAGAM & BARANG TERKAIT UNTUK CLEARANCE -->
             <div class="mb-6">
                <p class="text-[11px] text-slate-500 uppercase tracking-wider mb-2 font-bold flex items-center justify-between">
-                 <span>Checklist Pengembalian Aset & Inventaris (Clearance)</span>
-                 <span class="text-[10px] bg-red-100 text-maroon-800 font-bold px-2 py-0.5 rounded-full">${assignedAssets.length} Aset Wajib Dikembalikan</span>
+                 <span>Checklist Pengembalian Aset, Seragam & Barang (Clearance)</span>
+                 <span class="text-[10px] bg-red-100 text-maroon-800 font-bold px-2 py-0.5 rounded-full">${assignedAssets.length} Barang Clearance</span>
                </p>
                <div class="bg-white border border-slate-200 p-3 rounded-xl space-y-2">
                  ${assignedAssets.length === 0 ? `
-                   <p class="text-xs text-slate-400 italic text-center py-2">Karyawan ini tidak memiliki catatan aset/inventaris tanggung jawab aktif.</p>
+                   <p class="text-xs text-slate-400 italic text-center py-2">Tidak ada daftar aset/seragam/barang yang dicatat.</p>
                  ` : assignedAssets.map(a => `
                    <div class="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-100 rounded-lg text-xs gap-2">
                      <div>
-                       <p class="font-bold text-slate-800">${escapeHtml(a.nama_barang)} <span class="font-mono text-[10px] text-slate-400">(${escapeHtml(a.id_item || a.id)})</span></p>
-                       <p class="text-[10px] text-slate-500">${escapeHtml(a.kategori || "Aset")} ${a.serial_number ? `• No: ${escapeHtml(a.serial_number)}` : ''}</p>
+                       <p class="font-bold text-slate-800">${escapeHtml(a.nama_barang)} ${a.id_item ? `<span class="font-mono text-[10px] text-slate-400">(${escapeHtml(a.id_item)})</span>` : ''}</p>
+                       <p class="text-[10px] text-slate-500">${escapeHtml(a.kategori || "Aset")}</p>
                      </div>
-                     <span class="px-2 py-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg">Selesai Dikembalikan</span>
+                     <span class="px-2 py-1 text-[10px] font-bold ${a.status_pengembalian.includes('Hilang') || a.status_pengembalian.includes('Rusak') ? 'text-rose-800 bg-rose-50 border border-rose-200' : 'text-emerald-800 bg-emerald-50 border border-emerald-200'} rounded-lg">${escapeHtml(a.status_pengembalian || "Diterima & Lengkap")}</span>
                    </div>
                  `).join("")}
                </div>
@@ -759,11 +1184,47 @@ export async function mount(container) {
 
          if (!nomaBaru || !emailBaru) { toast("Nama dan Email karyawan baru wajib diisi", "warning"); return; }
 
+         // Collect Orientasi items
+         const orientasiRows = Array.from(dynFields.querySelectorAll(".orientasi-row"));
+         let orientasiList = orientasiRows.map(r => {
+            const t = r.querySelector(".orientasi-topik")?.value.trim();
+            const s = r.querySelector(".orientasi-status")?.value || "Selesai (100%)";
+            return t ? { topik: t, status: s } : null;
+         }).filter(Boolean);
+
+         // Collect Training items
+         const trainingRows = Array.from(dynFields.querySelectorAll(".training-row"));
+         let trainingList = trainingRows.map(r => {
+            const m = r.querySelector(".training-materi")?.value.trim();
+            const tr = r.querySelector(".training-trainer")?.value.trim() || "HRD / Atasan";
+            const s = r.querySelector(".training-status")?.value || "Selesai & Lulus";
+            return m ? { materi: m, trainer: tr, status: s } : null;
+         }).filter(Boolean);
+
+         // Calculate completion rate
+         let completedOrientasi = orientasiList.filter(o => o.status.includes("100%")).length;
+         let completedTraining = trainingList.filter(t => t.status.includes("Lulus") || t.status.includes("Selesai")).length;
+         let totalItems = orientasiList.length + trainingList.length;
+         let completedCount = completedOrientasi + completedTraining;
+         let progressPercent = totalItems > 0 ? Math.round((completedCount / totalItems) * 100) : 100;
+
          payloadLog.nama_karyawan = nomaBaru;
          payloadLog.tanggal_efektif = new Date(tgl).toISOString();
-         payloadLog.keterangan = cat || `Onboarding Karyawan Baru`;
-         // Data lengkap karyawan baru — akan dipakai untuk membuat record Master Karyawan
-         // yang baru (BUKAN update_master, karena karyawan ini belum ada di database).
+         payloadLog.keterangan = cat || `Onboarding Karyawan Baru (${progressPercent}% Progress)`;
+
+         payloadLog.detail_onboarding = {
+            orientasi_items: orientasiList,
+            training_items: trainingList,
+            catatan_fasilitas: cat,
+            tipe_kontrak: stat,
+            tanggal_join: tgl,
+            progress_persen: progressPercent,
+            nik: container.querySelector("#onb-nik").value.trim(),
+            email: emailBaru,
+            jabatan: container.querySelector("#onb-jabatan").value.trim(),
+            cabang: container.querySelector("#onb-cabang").value.trim()
+         };
+
          payloadLog.new_employee_data = {
             nama_karyawan: nomaBaru,
             nik_karyawan: container.querySelector("#onb-nik").value.trim(),
@@ -779,21 +1240,72 @@ export async function mount(container) {
          };
 
          previewHtml = `
-            <div class="mb-4">
-               <p class="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Karyawan Baru</p>
-               <p class="text-lg font-bold text-slate-800">${escapeHtml(nomaBaru)}</p>
-               <p class="text-xs text-slate-500">${escapeHtml(container.querySelector("#onb-jabatan").value.trim() || "-")} • ${escapeHtml(stat)}</p>
-            </div>
-            <div>
-               <p class="text-[11px] text-slate-500 uppercase tracking-wider mb-2 font-bold flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg> Checklist Kelengkapan Onboarding</p>
-               <div class="bg-white border border-slate-200 p-3 rounded-xl space-y-2">
-                  <label class="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" class="mt-1 w-4 h-4 text-maroon-700"> Penandatanganan Kontrak / PKWTT Baru</label>
-                  <label class="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" class="mt-1 w-4 h-4 text-maroon-700"> Pembuatan ID Card & Seragam Kerja</label>
-                  <label class="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" class="mt-1 w-4 h-4 text-maroon-700"> Pendaftaran BPJS Ketenagakerjaan & Kesehatan</label>
-                  <label class="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" class="mt-1 w-4 h-4 text-maroon-700"> Pembuatan Akun Portal HRIS & Email Operasional</label>
-                  <label class="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" class="mt-1 w-4 h-4 text-maroon-700"> Tur Pengenalan Divisi & Pembacaan Peraturan Perusahaan</label>
+            <div class="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
+               <div>
+                  <p class="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Karyawan Baru (Onboarding)</p>
+                  <p class="text-lg font-bold text-slate-800">${escapeHtml(nomaBaru)}</p>
+                  <p class="text-xs text-slate-500">${escapeHtml(container.querySelector("#onb-jabatan").value.trim() || "-")} • ${escapeHtml(stat)}</p>
+               </div>
+               <div class="text-right">
+                  <p class="text-[10px] text-slate-500 uppercase font-bold">Total Progress</p>
+                  <span class="px-2.5 py-1 text-xs font-black rounded-lg ${progressPercent >= 80 ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-amber-100 text-amber-800 border border-amber-200'}">
+                     ${progressPercent}% Selesai
+                  </span>
                </div>
             </div>
+
+            <!-- REKAP PENGENALAN LINGKUNGAN KANTOR -->
+            <div class="mb-4">
+               <p class="text-[11px] text-slate-500 uppercase tracking-wider mb-2 font-bold flex items-center justify-between">
+                 <span>1. Pengenalan Lingkungan Kantor (Orientasi)</span>
+                 <span class="text-[10px] bg-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded-full">${orientasiList.length} Item</span>
+               </p>
+               <div class="bg-white border border-slate-200 p-3 rounded-xl space-y-2">
+                  ${orientasiList.length === 0 ? `
+                    <p class="text-xs text-slate-400 italic text-center py-2">Belum ada item orientasi lingkungan kantor.</p>
+                  ` : orientasiList.map((o, idx) => `
+                    <div class="flex items-center justify-between p-2 bg-slate-50 border border-slate-100 rounded-lg text-xs gap-2">
+                      <span class="font-medium text-slate-800">${idx + 1}. ${escapeHtml(o.topik)}</span>
+                      <span class="px-2 py-0.5 text-[10px] font-bold ${o.status.includes('100%') ? 'text-emerald-800 bg-emerald-100 border border-emerald-200' : 'text-amber-800 bg-amber-100 border border-amber-200'} rounded-md shrink-0">${escapeHtml(o.status)}</span>
+                    </div>
+                  `).join("")}
+               </div>
+            </div>
+
+            <!-- REKAP MATERI TRAINING & PEMBEKALAN -->
+            <div class="mb-4">
+               <p class="text-[11px] text-slate-500 uppercase tracking-wider mb-2 font-bold flex items-center justify-between">
+                 <span>2. Materi Training & Pembekalan</span>
+                 <span class="text-[10px] bg-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded-full">${trainingList.length} Modul</span>
+               </p>
+               <div class="bg-white border border-slate-200 p-3 rounded-xl space-y-2">
+                  ${trainingList.length === 0 ? `
+                    <p class="text-xs text-slate-400 italic text-center py-2">Belum ada materi training yang dicatat.</p>
+                  ` : trainingList.map((t, idx) => `
+                    <div class="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-100 rounded-lg text-xs gap-2">
+                      <div>
+                         <p class="font-bold text-slate-800">${idx + 1}. ${escapeHtml(t.materi)}</p>
+                         <p class="text-[10px] text-slate-500">Trainer: ${escapeHtml(t.trainer)}</p>
+                      </div>
+                      <span class="px-2 py-0.5 text-[10px] font-bold ${t.status.includes('Lulus') || t.status.includes('Selesai') ? 'text-emerald-800 bg-emerald-100 border border-emerald-200' : 'text-blue-800 bg-blue-100 border border-blue-200'} rounded-md shrink-0">${escapeHtml(t.status)}</span>
+                    </div>
+                  `).join("")}
+               </div>
+            </div>
+
+            <div class="mb-6">
+               <p class="text-[11px] text-slate-500 uppercase tracking-wider mb-2 font-bold flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg> Checklist Administrasi Onboarding</p>
+               <div class="bg-white border border-slate-200 p-3 rounded-xl space-y-2">
+                  <label class="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" checked class="mt-1 w-4 h-4 text-maroon-700"> Penandatanganan Kontrak / PKWTT Baru</label>
+                  <label class="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" checked class="mt-1 w-4 h-4 text-maroon-700"> Pembuatan ID Card & Seragam Kerja</label>
+                  <label class="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" checked class="mt-1 w-4 h-4 text-maroon-700"> Pendaftaran BPJS Ketenagakerjaan & Kesehatan</label>
+                  <label class="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" checked class="mt-1 w-4 h-4 text-maroon-700"> Pembuatan Akun Portal HRIS & Email Operasional</label>
+               </div>
+            </div>
+
+            <button type="button" id="btn-print-onboarding-doc" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 px-4 rounded-xl shadow transition flex items-center justify-center gap-2 text-xs mb-4">
+              Cetak Berita Acara Onboarding & Training (PDF)
+            </button>
          `;
       }
 
@@ -824,135 +1336,146 @@ export async function mount(container) {
          });
       }
 
-      resBox.querySelector("#btn-final-simpan").addEventListener("click", async () => {
-         const btnSimpan = resBox.querySelector("#btn-final-simpan");
-         btnSimpan.disabled = true;
-         btnSimpan.textContent = "Menyimpan ke Database...";
+      // Attach PDF listener if onboarding document button exists
+      const btnPrintOnb = resBox.querySelector("#btn-print-onboarding-doc");
+      if (btnPrintOnb) {
+         btnPrintOnb.onclick = () => printOnboardingDocPdf({
+            nama: payloadLog.new_employee_data?.nama_karyawan || payloadLog.nama_karyawan,
+            nik: payloadLog.new_employee_data?.nik_karyawan || "-",
+            email: payloadLog.new_employee_data?.email || "-",
+            jabatan: payloadLog.new_employee_data?.jabatan || "-",
+            cabang: payloadLog.new_employee_data?.cabang || "-",
+            tglJoin: payloadLog.new_employee_data?.tanggal_join || payloadLog.tanggal_efektif,
+            statusKontrak: payloadLog.new_employee_data?.status_karyawan || "PKWTT",
+            orientasiItems: payloadLog.detail_onboarding?.orientasi_items || [],
+            trainingItems: payloadLog.detail_onboarding?.training_items || [],
+            catatanFasilitas: payloadLog.detail_onboarding?.catatan_fasilitas || ""
+         });
+      }
 
-         try {
-            let targetEmail = null;
+      const btnSimpan = resBox ? resBox.querySelector("#btn-final-simpan") : null;
+      if (btnSimpan) {
+         btnSimpan.addEventListener("click", async () => {
+            btnSimpan.disabled = true;
+            btnSimpan.textContent = "Menyimpan ke Database...";
 
-            if (payloadLog.new_employee_data) {
-                // ONBOARDING KARYAWAN BARU: buat record Master Karyawan baru (bukan update)
-                const newId = genId("KRY");
-                await fsAdd(COL.MASTER_KARYAWAN, payloadLog.new_employee_data, newId);
-                payloadLog.id_karyawan = newId;
-                targetEmail = payloadLog.new_employee_data.email;
-            } else if (payloadLog.update_master) {
-                await updateDoc(doc(db, COL.MASTER_KARYAWAN, payloadLog.id_karyawan), payloadLog.update_master);
-                Object.assign(currentSelectedKaryawan, payloadLog.update_master);
-                targetEmail = currentSelectedKaryawan.email;
-            } else if (currentSelectedKaryawan) {
-                targetEmail = currentSelectedKaryawan.email;
-            }
+            try {
+               let targetEmail = null;
 
-            // OTOMATISASI CLEARANCE & ALIH TANGGUNG JAWAB ASET DI MASTER INVENTORY
-            if (jenis === "Offboarding" && payloadLog.detail_offboarding?.assigned_assets?.length) {
-                const newOwner = payloadLog.detail_offboarding.karyawan_pengganti || "Unassigned";
-                for (const asset of payloadLog.detail_offboarding.assigned_assets) {
-                    await fsUpdate(COL.MASTER_INVENTORY, asset.id, {
-                        assigned_to: newOwner
-                    });
-                    await fsAdd(COL.LOG_INVENTORY_PENGAMBILAN, {
-                        id_barang: asset.id_item || asset.id,
-                        nama_barang: asset.nama_barang,
-                        kategori: asset.kategori || "Aset",
-                        nama_karyawan: payloadLog.nama_karyawan,
-                        tanggal: new Date().toISOString().substring(0, 10),
-                        jumlah_ambil: 1,
-                        jenis_aksi: "PENGEMBALIAN",
-                        status_pengembalian: "DIKEMBALIKAN (CLEARANCE RESIGN)",
-                        keperluan: `Pengembalian asset clearance resign. Handover pengganti: ${newOwner}`
-                    });
-                }
-            }
-
-            await fsAdd(COL.SIKLUS_KARYAWAN, payloadLog, genId("SKL"));
-
-            // ========================================================
-            // PENGIRIMAN EMAIL PEMBERITAHUAN OTOMATIS KE KARYAWAN
-            // (memakai jalur pengiriman email resmi sistem via sendEmailNotif,
-            // sama seperti yang dipakai modul Approval — bukan lagi mock/console.log)
-            // ========================================================
-            if (targetEmail) {
-               btnSimpan.textContent = "Mengirim Email Notifikasi...";
-
-               let emailSubject = "";
-               let emailBody = "";
-               const namaTarget = payloadLog.nama_karyawan;
-
-               if (jenis === "Onboarding") {
-                   const d = payloadLog.new_employee_data;
-                   emailSubject = "Selamat Datang di CV Andela Jaya!";
-                   emailBody = `
-                     <div style="font-family:Arial,sans-serif;padding:24px;max-width:560px;margin:0 auto;">
-                       <h2 style="color:#7f1d1d;">Selamat Bergabung, ${escapeHtml(namaTarget)}!</h2>
-                       <p>Seluruh keluarga besar <b>CV Andela Jaya</b> mengucapkan selamat datang. Kami sangat senang Anda bergabung sebagai <b>${escapeHtml(d.jabatan || "-")}</b> di ${escapeHtml(d.cabang || "-")}, terhitung mulai <b>${fmtDateShort(d.tanggal_join)}</b>.</p>
-                       <p>Tim HRD akan menghubungi Anda untuk kelengkapan administrasi (kontrak, ID card, BPJS, dan akun sistem). Selamat bekerja!</p>
-                     </div>`;
-               } else if (jenis === "Offboarding") {
-                   emailSubject = "Pemberitahuan Proses Offboarding";
-                   emailBody = `
-                     <div style="font-family:Arial,sans-serif;padding:24px;max-width:560px;margin:0 auto;">
-                       <h2 style="color:#7f1d1d;">Pemberitahuan Offboarding</h2>
-                       <p>Yth. <b>${escapeHtml(namaTarget)}</b>, proses offboarding Anda telah diinput oleh HRD dengan tanggal efektif <b>${fmtDateShort(payloadLog.tanggal_efektif)}</b>.</p>
-                       <p>${escapeHtml(payloadLog.keterangan || "")}</p>
-                       <p>Silakan koordinasikan serah terima aset & dokumen terkait dengan HRD.</p>
-                     </div>`;
-               } else if (["Mutasi", "Promosi", "Demosi"].includes(jenis)) {
-                   const d = payloadLog.detail_mutasi || {};
-                   emailSubject = `Pemberitahuan ${jenis} Jabatan`;
-                   emailBody = `
-                     <div style="font-family:Arial,sans-serif;padding:24px;max-width:560px;margin:0 auto;">
-                       <h2 style="color:#7f1d1d;">Pemberitahuan ${jenis}</h2>
-                       <p>Yth. <b>${escapeHtml(namaTarget)}</b>, dengan ini diinformasikan bahwa Anda mengalami <b>${jenis}</b> terhitung efektif <b>${fmtDateShort(payloadLog.tanggal_efektif)}</b>:</p>
-                       <table style="width:100%; border-collapse:collapse; margin:12px 0;">
-                         <tr><td style="padding:6px; color:#64748b;">Jabatan</td><td style="padding:6px;">${escapeHtml(d.jabatan_lama || "-")} &rarr; <b>${escapeHtml(d.jabatan_baru || "-")}</b></td></tr>
-                         <tr><td style="padding:6px; color:#64748b;">Cabang</td><td style="padding:6px;">${escapeHtml(d.cabang_lama || "-")} &rarr; <b>${escapeHtml(d.cabang_baru || "-")}</b></td></tr>
-                       </table>
-                       <p>${escapeHtml(payloadLog.keterangan || "")}</p>
-                       <p>Silakan hubungi HRD apabila ada pertanyaan lebih lanjut.</p>
-                     </div>`;
+               if (payloadLog.new_employee_data) {
+                   const newId = genId("KRY");
+                   await fsAdd(COL.MASTER_KARYAWAN, payloadLog.new_employee_data, newId);
+                   payloadLog.id_karyawan = newId;
+                   targetEmail = payloadLog.new_employee_data.email;
+               } else if (payloadLog.update_master) {
+                   await updateDoc(doc(db, COL.MASTER_KARYAWAN, payloadLog.id_karyawan), payloadLog.update_master);
+                   if (currentSelectedKaryawan) Object.assign(currentSelectedKaryawan, payloadLog.update_master);
+                   targetEmail = currentSelectedKaryawan ? currentSelectedKaryawan.email : null;
+               } else if (currentSelectedKaryawan) {
+                   targetEmail = currentSelectedKaryawan.email;
                }
 
-               if (emailSubject) {
-                  sendEmailNotif(targetEmail, emailSubject, emailBody).catch(e => console.warn("Gagal kirim email siklus karyawan:", e));
+               if (jenis === "Offboarding" && payloadLog.detail_offboarding?.assigned_assets?.length) {
+                   const newOwner = payloadLog.detail_offboarding.karyawan_pengganti || "Unassigned";
+                   for (const asset of payloadLog.detail_offboarding.assigned_assets) {
+                       await fsUpdate(COL.MASTER_INVENTORY, asset.id, {
+                           assigned_to: newOwner
+                       });
+                       await fsAdd(COL.LOG_INVENTORY_PENGAMBILAN, {
+                           id_barang: asset.id_item || asset.id,
+                           nama_barang: asset.nama_barang,
+                           kategori: asset.kategori || "Aset",
+                           nama_karyawan: payloadLog.nama_karyawan,
+                           tanggal: new Date().toISOString().substring(0, 10),
+                           jumlah_ambil: 1,
+                           jenis_aksi: "PENGEMBALIAN",
+                           status_pengembalian: "DIKEMBALIKAN (CLEARANCE RESIGN)",
+                           keperluan: `Pengembalian asset clearance resign. Handover pengganti: ${newOwner}`
+                       });
+                   }
                }
-            } else {
-               console.warn("Email siklus karyawan tidak terkirim: karyawan tidak memiliki alamat email.");
+
+               await fsAdd(COL.SIKLUS_KARYAWAN, payloadLog, genId("SKL"));
+
+               if (targetEmail) {
+                  btnSimpan.textContent = "Mengirim Email Notifikasi...";
+
+                  let emailSubject = "";
+                  let emailBody = "";
+                  const namaTarget = payloadLog.nama_karyawan;
+
+                  if (jenis === "Onboarding") {
+                      const d = payloadLog.new_employee_data;
+                      emailSubject = "Selamat Datang di CV Andela Jaya!";
+                      emailBody = `
+                        <div style="font-family:Arial,sans-serif;padding:24px;max-width:560px;margin:0 auto;">
+                          <h2 style="color:#7f1d1d;">Selamat Bergabung, ${escapeHtml(namaTarget)}!</h2>
+                          <p>Seluruh keluarga besar <b>CV Andela Jaya</b> mengucapkan selamat datang. Kami sangat senang Anda bergabung sebagai <b>${escapeHtml(d.jabatan || "-")}</b> di ${escapeHtml(d.cabang || "-")}, terhitung mulai <b>${fmtDateShort(d.tanggal_join)}</b>.</p>
+                          <p>Tim HRD akan menghubungi Anda untuk kelengkapan administrasi (kontrak, ID card, BPJS, dan akun sistem). Selamat bekerja!</p>
+                        </div>`;
+                  } else if (jenis === "Offboarding") {
+                      emailSubject = "Pemberitahuan Proses Offboarding";
+                      emailBody = `
+                        <div style="font-family:Arial,sans-serif;padding:24px;max-width:560px;margin:0 auto;">
+                          <h2 style="color:#7f1d1d;">Pemberitahuan Offboarding</h2>
+                          <p>Yth. <b>${escapeHtml(namaTarget)}</b>, proses offboarding Anda telah diinput oleh HRD dengan tanggal efektif <b>${fmtDateShort(payloadLog.tanggal_efektif)}</b>.</p>
+                          <p>${escapeHtml(payloadLog.keterangan || "")}</p>
+                          <p>Silakan koordinasikan serah terima aset & dokumen terkait dengan HRD.</p>
+                        </div>`;
+                  } else if (["Mutasi", "Promosi", "Demosi"].includes(jenis)) {
+                      const d = payloadLog.detail_mutasi || {};
+                      emailSubject = `Pemberitahuan ${jenis} Jabatan`;
+                      emailBody = `
+                        <div style="font-family:Arial,sans-serif;padding:24px;max-width:560px;margin:0 auto;">
+                          <h2 style="color:#7f1d1d;">Pemberitahuan ${jenis}</h2>
+                          <p>Yth. <b>${escapeHtml(namaTarget)}</b>, dengan ini diinformasikan bahwa Anda mengalami <b>${jenis}</b> terhitung efektif <b>${fmtDateShort(payloadLog.tanggal_efektif)}</b>:</p>
+                          <table style="width:100%; border-collapse:collapse; margin:12px 0;">
+                            <tr><td style="padding:6px; color:#64748b;">Jabatan</td><td style="padding:6px;">${escapeHtml(d.jabatan_lama || "-")} &rarr; <b>${escapeHtml(d.jabatan_baru || "-")}</b></td></tr>
+                            <tr><td style="padding:6px; color:#64748b;">Cabang</td><td style="padding:6px;">${escapeHtml(d.cabang_lama || "-")} &rarr; <b>${escapeHtml(d.cabang_baru || "-")}</b></td></tr>
+                          </table>
+                          <p>${escapeHtml(payloadLog.keterangan || "")}</p>
+                          <p>Silakan hubungi HRD apabila ada pertanyaan lebih lanjut.</p>
+                        </div>`;
+                  }
+
+                  if (emailSubject) {
+                     sendEmailNotif(targetEmail, emailSubject, emailBody).catch(e => console.warn("Gagal kirim email siklus karyawan:", e));
+                  }
+               } else {
+                  console.warn("Email siklus karyawan tidak terkirim: karyawan tidak memiliki alamat email.");
+               }
+
+               toast(`Siklus ${jenis} berhasil direkam${targetEmail ? " & email notifikasi terkirim" : ""}!`, "success");
+
+               if (payloadLog.new_employee_data) {
+                  const added = { id: payloadLog.id_karyawan, ...payloadLog.new_employee_data };
+                  activeKaryawan.push(added);
+                  activeKaryawan.sort((a,b) => (a.nama_karyawan||"").localeCompare(b.nama_karyawan||""));
+                  if (selectNama) {
+                    selectNama.innerHTML = `<option value="">Pilih Karyawan Aktif...</option>` +
+                      activeKaryawan.map(k => `<option value="${k.id}">${escapeHtml(k.nama_karyawan)} - ${escapeHtml(k.jabatan || "")} (${escapeHtml(k.cabang || "-")})</option>`).join("");
+                  }
+               }
+
+               form.reset();
+               if (selectNama) selectNama.value = "";
+               currentSelectedKaryawan = null;
+               isNewHireOnboarding = false;
+               if (wrapNama) wrapNama.classList.remove("hidden");
+               if (wrapOnbNew) wrapOnbNew.classList.add("hidden");
+               if (dynFields) dynFields.classList.add("hidden");
+               if (btnKalkulasi) btnKalkulasi.classList.add("hidden");
+               if (resBox) resBox.innerHTML = `<p class="text-sm text-slate-400 text-center py-10">Pilih jenis siklus dan isi formulir di samping untuk melihat prosedur & dokumen yang harus disiapkan.</p>`;
+               
+               if (loaded.riwayat) await loadRiwayat();
+            } catch (e) {
+               toast("Gagal memproses data: " + e.message, "error");
+               btnSimpan.disabled = false;
+               btnSimpan.innerHTML = `Selesaikan Proses & Perbarui Master Karyawan`;
             }
-            // ========================================================
-
-            toast(`Siklus ${jenis} berhasil direkam${targetEmail ? " & email notifikasi terkirim" : ""}!`, "success");
-
-            // Jika baru saja onboarding karyawan baru, masukkan ke daftar aktif supaya
-            // langsung bisa dipilih untuk siklus lain (Mutasi/Promosi/dst) tanpa reload halaman.
-            if (payloadLog.new_employee_data) {
-               const added = { id: payloadLog.id_karyawan, ...payloadLog.new_employee_data };
-               activeKaryawan.push(added);
-               activeKaryawan.sort((a,b) => (a.nama_karyawan||"").localeCompare(b.nama_karyawan||""));
-               selectNama.innerHTML = `<option value="">Pilih Karyawan Aktif...</option>` +
-                 activeKaryawan.map(k => `<option value="${k.id}">${escapeHtml(k.nama_karyawan)} - ${escapeHtml(k.jabatan || "")} (${escapeHtml(k.cabang || "-")})</option>`).join("");
-            }
-
-            form.reset();
-            selectNama.value = "";
-            currentSelectedKaryawan = null;
-            isNewHireOnboarding = false;
-            wrapNama.classList.remove("hidden");
-            wrapOnbNew.classList.add("hidden");
-            dynFields.classList.add("hidden");
-            btnKalkulasi.classList.add("hidden");
-            resBox.innerHTML = `<p class="text-sm text-slate-400 text-center py-10">Pilih jenis siklus dan isi formulir di samping untuk melihat prosedur & dokumen yang harus disiapkan.</p>`;
-            
-            if (loaded.riwayat) await loadRiwayat();
-         } catch (e) {
-            toast("Gagal memproses data: " + e.message, "error");
-            btnSimpan.disabled = false;
-            btnSimpan.innerHTML = `Selesaikan Proses & Perbarui Master Karyawan`;
-         }
-      });
-  });
+         });
+      }
+   });
 
   const panelInput = container.querySelector("#sk-panel-input");
   const panelRiwayat = container.querySelector("#sk-panel-riwayat");
@@ -967,6 +1490,43 @@ export async function mount(container) {
          canCreate: false, 
          searchFields: ["nama_karyawan", "jenis_siklus", "keterangan"],
          orderByField: "tanggal_proses",
+         printLabel: "Cetak Dokumen (PDF)",
+         printFn: (row) => {
+            if (row.jenis_siklus === "Offboarding") {
+               printExitClearancePdf({
+                  karyawan: {
+                     nama_karyawan: row.nama_karyawan,
+                     id: row.id_karyawan || "-",
+                     nik_karyawan: row.id_karyawan || "-",
+                     jabatan: row.jabatan || "-",
+                     cabang: row.cabang || "-"
+                  },
+                  pengganti: row.detail_offboarding?.karyawan_pengganti || "",
+                  assets: row.detail_offboarding?.assigned_assets || [],
+                  tglEfektif: row.tanggal_efektif || row.tanggal_proses,
+                  alasan: row.keterangan || "Offboarding Karyawan",
+                  masaKerja: row.detail_offboarding?.masa_kerja_tahun || 0,
+                  catatanHandover: row.detail_offboarding?.catatan_handover || "",
+                  handoverTasks: row.detail_offboarding?.handover_tasks || [],
+                  checklistDoc: row.detail_offboarding?.checklist_doc || []
+               });
+            } else if (row.jenis_siklus === "Onboarding") {
+               printOnboardingDocPdf({
+                  nama: row.nama_karyawan,
+                  nik: row.detail_onboarding?.nik || "-",
+                  email: row.detail_onboarding?.email || "-",
+                  jabatan: row.detail_onboarding?.jabatan || "-",
+                  cabang: row.detail_onboarding?.cabang || "-",
+                  tglJoin: row.tanggal_efektif || row.tanggal_proses,
+                  statusKontrak: row.detail_onboarding?.tipe_kontrak || "PKWTT",
+                  orientasiItems: row.detail_onboarding?.orientasi_items || [],
+                  trainingItems: row.detail_onboarding?.training_items || [],
+                  catatanFasilitas: row.detail_onboarding?.catatan_fasilitas || ""
+               });
+            } else {
+               toast("Dokumen cetak PDF tersedia untuk jenis siklus Offboarding (Exit Clearance) dan Onboarding.", "info");
+             }
+          },
          columns: [
              { key: "tanggal_efektif", label: "Tgl Efektif", type: "date" },
              { key: "nama_karyawan", label: "Karyawan" },
@@ -1003,4 +1563,6 @@ export async function mount(container) {
   });
 
   return { unmount() {} };
+}
+}
 }

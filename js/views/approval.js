@@ -743,6 +743,22 @@ async function processAction(row, action, note, session) {
             }
           }
         }
+
+        // Send notification to custom target employees configured in Form Builder
+        const formCfg = (await fsGetAll(COL.FORM_CONFIG).catch(() => [])).find(f => f.id === row.form_id);
+        const specificTargets = row.notify_specific_users || formCfg?.notify_specific_users || row.notify_targets?.specific_users || [];
+        if (Array.isArray(specificTargets) && specificTargets.length > 0) {
+          for (const targetName of specificTargets) {
+            if (targetName && targetName.trim() && targetName.toUpperCase() !== (session.nama || "").toUpperCase()) {
+              await notifyUser(
+                targetName,
+                `[Update Pengajuan] ${row.nama_form}`,
+                `Pengajuan ${row.nama_form} dari ${row.nama_pemohon} telah diperbarui status persetujuannya: ${isFinalApproved ? 'APPROVED FINAL' : 'Persetujuan Tahap ' + (idx + 1)}.`,
+                `#riwayat?id=${row.id}`
+              ).catch(e => console.warn("Notif target khusus approval gagal:", e));
+            }
+          }
+        }
       }
     } catch (errNotif) {
       console.warn("Gagal mengirim push / in-app notification:", errNotif);

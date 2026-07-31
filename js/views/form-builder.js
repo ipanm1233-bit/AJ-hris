@@ -4,16 +4,26 @@ import { icon, emptyState } from "../components.js";
 
 const ROLE_OPTIONS = ["HRD", "GM", "FINANCE", "SPV", "ATASAN", "SALES", "MANAGER"];
 let allForms = [];
+let allEmployees = [];
 let editingId = null;
 let currentFields = [];
 let currentLpjFields = [];
 let currentFlow = [];
 let currentRules = [];
+let selectedAllowedUsers = ["ALL"];
+let selectedNotifyUsers = [];
 let dragIndex = null;
 let lpjDragIndex = null;
 
 export async function mount(container) {
-  allForms = await fsGetAll(COL.FORM_CONFIG);
+  const [formsData, empData] = await Promise.all([
+    fsGetAll(COL.FORM_CONFIG),
+    fsGetAll(COL.MASTER_KARYAWAN).catch(() => [])
+  ]);
+  allForms = formsData || [];
+  allEmployees = (empData || []).filter(e => e.nama_karyawan || e.nama);
+  allEmployees.sort((a, b) => (a.nama_karyawan || a.nama || "").localeCompare(b.nama_karyawan || b.nama || ""));
+
   renderFormList(container);
 
   container.querySelector("#fb-new").addEventListener("click", () => openBuilder(container, null));
@@ -55,12 +65,33 @@ function openBuilder(container, form) {
   currentRules = form ? (typeof form.allowed_rules === "string" ? form.allowed_rules.split(",").map(s => s.trim()) : normalizeArray(form.allowed_rules)) : ["HRD"];
   currentLpjFields = form ? JSON.parse(JSON.stringify(normalizeFields(form.lpj_fields_json))) : [];
 
+  // Parse Akses Personil Spesifik
+  if (!form || !form.allowed_users) {
+    selectedAllowedUsers = ["ALL"];
+  } else if (typeof form.allowed_users === "string") {
+    selectedAllowedUsers = form.allowed_users.toUpperCase() === "ALL" ? ["ALL"] : form.allowed_users.split(",").map(s => s.trim()).filter(Boolean);
+  } else if (Array.isArray(form.allowed_users)) {
+    selectedAllowedUsers = form.allowed_users.includes("ALL") ? ["ALL"] : [...form.allowed_users];
+  } else {
+    selectedAllowedUsers = ["ALL"];
+  }
+
+  // Parse Target Notifikasi & Email Spesifik
+  const customNotify = form?.notify_specific_users || form?.notify_targets?.specific_users || [];
+  if (Array.isArray(customNotify)) {
+    selectedNotifyUsers = [...customNotify];
+  } else if (typeof customNotify === "string") {
+    selectedNotifyUsers = customNotify.split(",").map(s => s.trim()).filter(Boolean);
+  } else {
+    selectedNotifyUsers = [];
+  }
+
   container.querySelector("#fb-empty-hint").classList.add("hidden");
   container.querySelector("#fb-builder-wrap").classList.remove("hidden");
   container.querySelector("#fb-id").value = form ? form.id : genId("F-CUSTOM");
   container.querySelector("#fb-id").disabled = !!form;
   container.querySelector("#fb-nama").value = form ? form.nama_form : "";
-  container.querySelector("#fb-users").value = form ? (Array.isArray(form.allowed_users) ? form.allowed_users.join(", ") : form.allowed_users || "") : "ALL";
+  container.querySelector("#fb-users").value = selectedAllowedUsers.join(", ");
   container.querySelector("#fb-delete").classList.toggle("hidden", !form);
 
   const requiresLpj = !!(form && form.requires_lpj);
@@ -82,6 +113,9 @@ function openBuilder(container, form) {
   renderFields(container);
   renderLpjFields(container);
   renderFormList(container);
+
+  initAllowedUsersSelector(container);
+  initNotifyUsersSelector(container);
 
   container.querySelector("#fb-requires-lpj").onchange = (e) => {
     container.querySelector("#fb-lpj-wrap").classList.toggle("hidden", !e.target.checked);
@@ -396,10 +430,204 @@ function renderLpjFields(container) {
   });
 }
 
+/* ---------------------------------------------------------------------
+ * SELEKSI AKSES PERSONIL SPESIFIK (SEARCH BAR + CHECKLIST KARYAWAN)
+ * ------------------------------------------------------------------- */
+function initAllowedUsersSelector(container) {
+  const searchInput = container.querySelector("#fb-users-search");
+  const allCb = container.querySelector("#fb-users-all-cb");
+  const hiddenInput = container.querySelector("#fb-users");
+  const countBadge = container.querySelector("#fb-users-count");
+
+  if (!searchInput || !allCb) return;
+
+  const updateUI = () => {
+    const isAll = selectedAllowedUsers.includes("ALL");
+    allCb.checked = isAll;
+    
+    if (isAll) {
+      countBadge.textContent = "ALL (Semua Karyawan)";
+      countBadge.className = "text-xs font-semibold text-maroon-700 bg-maroon-50 px-2.5 py-0.5 rounded-full border border-maroon-100";
+      hiddenInput.value = "ALL";
+    } else {
+      const cnt = selectedAllowedUsers.length;
+      countBadge.textContent = cnt ? `${cnt} Personil Dipilih` : "0 Personil Dipilih (Akses Dibatasi)";
+      countBadge.className = cnt ? "text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100" : "text-xs font-semibold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-100";
+      hiddenInput.value = selectedAllowedUsers.join(", ");
+    }
+    renderAllowedUsersList(container, searchInput.value.trim());
+  };
+
+  allCb.onchange = (e) => {
+    if (e.target.checked) {
+      selectedAllowedUsers = ["ALL"];
+    } else {
+      selectedAllowedUsers = [];
+    }
+    updateUI();
+  };
+
+  searchInput.oninput = () => {
+    renderAllowedUsersList(container, searchInput.value.trim());
+  };
+
+  updateUI();
+}
+
+function renderAllowedUsersList(container, term = "") {
+  const listEl = container.querySelector("#fb-users-list");
+  if (!listEl) return;
+
+  const isAll = selectedAllowedUsers.includes("ALL");
+  const filterTerm = term.toLowerCase();
+
+  const filtered = allEmployees.filter(emp => {
+    if (!filterTerm) return true;
+    const name = (emp.nama_karyawan || emp.nama || "").toLowerCase();
+    const nik = String(emp.nik_karyawan || emp.nik || "").toLowerCase();
+    const jabatan = (emp.jabatan || emp.role || "").toLowerCase();
+    const divisi = (emp.divisi || emp.cabang || "").toLowerCase();
+    return name.includes(filterTerm) || nik.includes(filterTerm) || jabatan.includes(filterTerm) || divisi.includes(filterTerm);
+  });
+
+  if (!filtered.length) {
+    listEl.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">Tidak ada karyawan yang cocok dengan pencarian "${escapeHtml(term)}".</p>`;
+    return;
+  }
+
+  listEl.innerHTML = filtered.map(emp => {
+    const name = emp.nama_karyawan || emp.nama || "";
+    const nik = emp.nik_karyawan || emp.nik || "-";
+    const subtext = [emp.jabatan || emp.role, emp.divisi || emp.cabang].filter(Boolean).join(" • ");
+    const isChecked = !isAll && selectedAllowedUsers.some(u => u.toLowerCase() === name.toLowerCase());
+
+    return `
+      <label class="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 cursor-pointer text-xs border border-transparent hover:border-slate-200 transition ${isChecked ? 'bg-maroon-50/40 border-maroon-100' : ''}">
+        <div class="flex items-center gap-2.5">
+          <input type="checkbox" data-emp-allowed="${escapeHtml(name)}" ${isChecked ? "checked" : ""} ${isAll ? "disabled" : ""} class="fb-allowed-emp-cb rounded border-slate-300 text-maroon-700 w-4 h-4">
+          <div>
+            <span class="font-semibold ${isAll ? 'text-slate-400' : 'text-slate-800'}">${escapeHtml(name)}</span>
+            ${subtext ? `<p class="text-[10px] text-slate-400 mt-0.5">${escapeHtml(subtext)}</p>` : ''}
+          </div>
+        </div>
+        <span class="text-[10px] text-slate-400 font-mono bg-slate-100 px-1.5 py-0.5 rounded">NIK: ${escapeHtml(nik)}</span>
+      </label>
+    `;
+  }).join("");
+
+  listEl.querySelectorAll(".fb-allowed-emp-cb").forEach(cb => {
+    cb.onchange = (e) => {
+      const targetName = cb.dataset.empAllowed;
+      if (selectedAllowedUsers.includes("ALL")) {
+        selectedAllowedUsers = [];
+      }
+      if (e.target.checked) {
+        if (!selectedAllowedUsers.some(u => u.toLowerCase() === targetName.toLowerCase())) {
+          selectedAllowedUsers.push(targetName);
+        }
+      } else {
+        selectedAllowedUsers = selectedAllowedUsers.filter(u => u.toLowerCase() !== targetName.toLowerCase());
+      }
+      
+      const hiddenInput = container.querySelector("#fb-users");
+      const countBadge = container.querySelector("#fb-users-count");
+      const allCb = container.querySelector("#fb-users-all-cb");
+      allCb.checked = false;
+
+      const cnt = selectedAllowedUsers.length;
+      countBadge.textContent = cnt ? `${cnt} Personil Dipilih` : "0 Personil Dipilih (Akses Dibatasi)";
+      countBadge.className = cnt ? "text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100" : "text-xs font-semibold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-100";
+      hiddenInput.value = selectedAllowedUsers.join(", ");
+    };
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * SELEKSI ALUR NOTIFIKASI & EMAIL KHUSUS (TARGET KARYAWAN SPESIFIK)
+ * ------------------------------------------------------------------- */
+function initNotifyUsersSelector(container) {
+  const searchInput = container.querySelector("#fb-notify-users-search");
+  const countBadge = container.querySelector("#fb-notify-users-count");
+
+  if (!searchInput) return;
+
+  const updateUI = () => {
+    const cnt = selectedNotifyUsers.length;
+    countBadge.textContent = `${cnt} Karyawan Penerima`;
+    countBadge.className = cnt ? "text-xs font-semibold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100" : "text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200";
+    renderNotifyUsersList(container, searchInput.value.trim());
+  };
+
+  searchInput.oninput = () => {
+    renderNotifyUsersList(container, searchInput.value.trim());
+  };
+
+  updateUI();
+}
+
+function renderNotifyUsersList(container, term = "") {
+  const listEl = container.querySelector("#fb-notify-users-list");
+  if (!listEl) return;
+
+  const filterTerm = term.toLowerCase();
+
+  const filtered = allEmployees.filter(emp => {
+    if (!filterTerm) return true;
+    const name = (emp.nama_karyawan || emp.nama || "").toLowerCase();
+    const nik = String(emp.nik_karyawan || emp.nik || "").toLowerCase();
+    const jabatan = (emp.jabatan || emp.role || "").toLowerCase();
+    const email = (emp.email || "").toLowerCase();
+    return name.includes(filterTerm) || nik.includes(filterTerm) || jabatan.includes(filterTerm) || email.includes(filterTerm);
+  });
+
+  if (!filtered.length) {
+    listEl.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">Tidak ada karyawan yang cocok dengan pencarian "${escapeHtml(term)}".</p>`;
+    return;
+  }
+
+  listEl.innerHTML = filtered.map(emp => {
+    const name = emp.nama_karyawan || emp.nama || "";
+    const nik = emp.nik_karyawan || emp.nik || "-";
+    const email = emp.email || "";
+    const subtext = [emp.jabatan || emp.role, email].filter(Boolean).join(" • ");
+    const isChecked = selectedNotifyUsers.some(u => u.toLowerCase() === name.toLowerCase());
+
+    return `
+      <label class="flex items-center justify-between p-2 rounded-lg hover:bg-blue-50/50 cursor-pointer text-xs border border-transparent hover:border-blue-100 transition ${isChecked ? 'bg-blue-50/60 border-blue-200' : ''}">
+        <div class="flex items-center gap-2.5">
+          <input type="checkbox" data-emp-notify="${escapeHtml(name)}" ${isChecked ? "checked" : ""} class="fb-notify-emp-cb rounded border-slate-300 text-blue-700 w-4 h-4">
+          <div>
+            <span class="font-semibold text-slate-800">${escapeHtml(name)}</span>
+            ${subtext ? `<p class="text-[10px] text-slate-400 mt-0.5">${escapeHtml(subtext)}</p>` : ''}
+          </div>
+        </div>
+        <span class="text-[10px] text-slate-400 font-mono bg-slate-100 px-1.5 py-0.5 rounded">${email ? escapeHtml(email) : 'NIK: ' + escapeHtml(nik)}</span>
+      </label>
+    `;
+  }).join("");
+
+  listEl.querySelectorAll(".fb-notify-emp-cb").forEach(cb => {
+    cb.onchange = (e) => {
+      const targetName = cb.dataset.empNotify;
+      if (e.target.checked) {
+        if (!selectedNotifyUsers.some(u => u.toLowerCase() === targetName.toLowerCase())) {
+          selectedNotifyUsers.push(targetName);
+        }
+      } else {
+        selectedNotifyUsers = selectedNotifyUsers.filter(u => u.toLowerCase() !== targetName.toLowerCase());
+      }
+
+      const countBadge = container.querySelector("#fb-notify-users-count");
+      const cnt = selectedNotifyUsers.length;
+      countBadge.textContent = `${cnt} Karyawan Penerima`;
+      countBadge.className = cnt ? "text-xs font-semibold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100" : "text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200";
+    };
+  });
+}
+
 async function saveForm(container) {
   const id = container.querySelector("#fb-id").value.trim();
   const nama = container.querySelector("#fb-nama").value.trim();
-  const usersRaw = container.querySelector("#fb-users").value.trim();
   if (!id || !nama) { toast("ID Form dan Nama Formulir wajib diisi", "warning"); return; }
   if (!currentFields.length) { toast("Tambahkan minimal satu kolom formulir", "warning"); return; }
 
@@ -411,14 +639,18 @@ async function saveForm(container) {
     pemohon: container.querySelector("#fb-nt-pemohon") ? container.querySelector("#fb-nt-pemohon").checked : true,
     atasan_bawahan: container.querySelector("#fb-nt-atasan-bawahan") ? container.querySelector("#fb-nt-atasan-bawahan").checked : true,
     peers: container.querySelector("#fb-nt-peers") ? container.querySelector("#fb-nt-peers").checked : true,
-    finance: container.querySelector("#fb-nt-finance") ? container.querySelector("#fb-nt-finance").checked : true
+    finance: container.querySelector("#fb-nt-finance") ? container.querySelector("#fb-nt-finance").checked : true,
+    specific_users: selectedNotifyUsers
   };
+
+  const allowedUsersVal = selectedAllowedUsers.includes("ALL") ? "ALL" : selectedAllowedUsers;
 
   const payload = {
     nama_form: nama,
     approval_flow: currentFlow,
     allowed_rules: currentRules.join(", "),
-    allowed_users: usersRaw || "ALL",
+    allowed_users: allowedUsersVal,
+    notify_specific_users: selectedNotifyUsers,
     fields_json: currentFields,
     requires_lpj: requiresLpj,
     lpj_deadline_days: lpjDeadline,
