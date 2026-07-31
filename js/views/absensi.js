@@ -1,5 +1,5 @@
 import { db, COL, collection, getDocs, writeBatch, doc, query, where, updateDoc, deleteDoc } from "../firebase-config.js";
-import { toast, genId, fsGetAll, escapeHtml, openModal, closeModal } from "../utils.js";
+import { toast, genId, fsGetAll, escapeHtml, openModal, closeModal, formatUangJalanEkspedisiRows } from "../utils.js";
 import { skeletonRows, emptyState } from "../components.js";
 import { callGasWebApp } from "../gas-integration.js";
 
@@ -522,18 +522,13 @@ export async function mount(container, { session } = {}) {
                    "Jumlah Hari": c.count ?? "-", "Keterangan": c.keterangan_cuti || "-"
                }));
 
-           const sheet4Rows = [...listUme]
-               .sort((a, b) => (a.tanggal || "").localeCompare(b.tanggal || ""))
-               .map(u => ({
-                   "Tanggal": u.tanggal, "Driver": u.driver || "-", "Helper": u.helper || "-",
-                   "Tujuan": u.tujuan || "-", "Uang Makan (Rp)": u.uang_makan || 0
-               }));
+           const sheet4Rows = formatUangJalanEkspedisiRows(listUme);
 
            const wb = window.XLSX.utils.book_new();
            window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(sheet1Rows), "Rekap Matriks Absensi");
            window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(sheet2Rows), "Data Lembur");
            window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(sheet3Rows), "Data Cuti");
-           window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(sheet4Rows), "Uang Makan Expedisi");
+           window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(sheet4Rows), "UANG JALAN 2026");
 
            window.XLSX.writeFile(wb, `PAYROLL_REPORT_ANDELA_${start}_TO_${end}.xlsx`);
            toast("Berhasil mendownload laporan terstruktur!", "success");

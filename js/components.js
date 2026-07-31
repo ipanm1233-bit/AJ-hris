@@ -86,7 +86,76 @@ export function emptyState(message = "Belum ada data", sub = "") {
 }
 
 export function skeletonRows(n = 4) {
-  return Array.from({ length: n }).map(() => `<div class="h-14 bg-slate-100 rounded-xl animate-pulse"></div>`).join("");
+  return Array.from({ length: n }).map(() => `
+    <div class="flex items-center gap-3.5 p-3.5 bg-slate-50/90 rounded-xl border border-slate-100 mb-2">
+      <div class="w-8 h-8 rounded-lg bg-slate-200/70 shrink-0"></div>
+      <div class="flex-1 space-y-1.5">
+        <div class="h-3.5 w-1/3 bg-slate-200/80 rounded"></div>
+        <div class="h-2.5 w-1/2 bg-slate-200/50 rounded"></div>
+      </div>
+      <div class="w-14 h-5 bg-slate-200/60 rounded-full"></div>
+    </div>
+  `).join("");
+}
+
+export function skeletonShadowLayout(type = "default") {
+  if (type === "dashboard") {
+    return `
+      <div class="space-y-5 animate-fadein">
+        <div class="flex items-center justify-between">
+          <div class="space-y-1.5">
+            <div class="h-6 w-44 bg-slate-200/70 rounded-lg"></div>
+            <div class="h-3.5 w-64 bg-slate-100 rounded-md"></div>
+          </div>
+          <div class="h-9 w-32 bg-slate-200/60 rounded-xl"></div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          ${Array.from({ length: 4 }).map(() => `
+            <div class="p-4 bg-white rounded-2xl border border-slate-100 shadow-xs space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="h-3.5 w-20 bg-slate-200/70 rounded"></div>
+                <div class="w-8 h-8 rounded-lg bg-slate-100"></div>
+              </div>
+              <div class="h-7 w-28 bg-slate-200/80 rounded-lg"></div>
+              <div class="h-3 w-20 bg-slate-100 rounded"></div>
+            </div>
+          `).join("")}
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-100 p-5 shadow-xs space-y-4">
+            <div class="h-5 w-40 bg-slate-200/70 rounded-lg"></div>
+            <div class="space-y-3 pt-1">
+              ${skeletonRows(4)}
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-xs space-y-4">
+            <div class="h-5 w-32 bg-slate-200/70 rounded-lg"></div>
+            <div class="space-y-3 pt-1">
+              ${skeletonRows(3)}
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+  return `
+    <div class="space-y-5 animate-fadein">
+      <div class="flex items-center justify-between">
+        <div class="space-y-1.5">
+          <div class="h-6 w-48 bg-slate-200/70 rounded-lg"></div>
+          <div class="h-3.5 w-60 bg-slate-100 rounded-md"></div>
+        </div>
+        <div class="h-9 w-28 bg-slate-200/60 rounded-xl"></div>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-xs space-y-4">
+        <div class="flex items-center justify-between gap-3">
+          <div class="h-9 w-56 bg-slate-100 rounded-xl"></div>
+          <div class="h-9 w-24 bg-slate-100 rounded-xl"></div>
+        </div>
+        <div class="space-y-3 pt-1">
+          ${skeletonRows(4)}
+        </div>
+      </div>
+    </div>`;
 }
 
 /* ---------------------------------------------------------------------

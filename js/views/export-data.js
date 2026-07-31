@@ -1,5 +1,5 @@
 import { COL } from "../firebase-config.js";
-import { fsGetAll, exportToCsv, toast } from "../utils.js";
+import { fsGetAll, exportToCsv, toast, formatUangJalanEkspedisiRows } from "../utils.js";
 import { icon, openExportPicker } from "../components.js";
 
 const LABELS = {
@@ -45,7 +45,11 @@ export async function mount(container) {
 
   container.querySelector("#export-btn")?.addEventListener("click", () => {
     if (!currentRows.length) { toast("Tidak ada data pada koleksi ini", "warning"); return; }
-    openExportPicker(LABELS[select.value] || select.value, [], currentRows);
+    let rowsToExport = currentRows;
+    if (select.value === COL.UANG_MAKAN_EXPEDISI) {
+      rowsToExport = formatUangJalanEkspedisiRows(currentRows);
+    }
+    openExportPicker(LABELS[select.value] || select.value, [], rowsToExport);
   });
 
   return { unmount() {} };

@@ -8,11 +8,10 @@ function escapeHtml(unsafe) {
     return (unsafe || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
-// FUNGSI CETAK SURAT EXIT CLEARANCE & HANDOVER PEKERJAAN (PDF)
+// FUNGSI CETAK SURAT EXIT CLEARANCE & HANDOVER PEKERJAAN (PDF & PREVIEW)
 async function printExitClearancePdf(data) {
-  const { downloadHtmlAsPdf, toast } = await import("../utils.js");
-  toast("Sedang memproses PDF Exit Clearance...", "info");
-
+  const { downloadHtmlAsPdf, toast, openModal } = await import("../utils.js");
+  
   const { karyawan, pengganti, assets, tglEfektif, alasan, masaKerja, catatanHandover, handoverTasks, checklistDoc } = data;
 
   const taskRowsHtml = (handoverTasks && handoverTasks.length) ? handoverTasks.map((t, idx) => `
@@ -54,8 +53,8 @@ async function printExitClearancePdf(data) {
     <div style="margin-bottom:3px; font-size:10px; color:#111827;">[v] <strong>${escapeHtml(d)}</strong> — Diverifikasi & Disetujui HRD</div>
   `).join("") : "";
 
-  const html = `
-    <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff; box-sizing:border-box;">
+  const docHtml = `
+    <div style="width:100%; max-width:760px; margin:0 auto; padding:15px; font-family:'Times New Roman', Times, serif; font-size:10px; line-height:1.3; color:#000; background:#ffffff; box-sizing:border-box;">
       <style>
         * { box-sizing: border-box !important; }
         body, div, p, span, table, tr, th, td { font-family: 'Times New Roman', Times, serif; }
@@ -63,34 +62,35 @@ async function printExitClearancePdf(data) {
           width: 100% !important;
           border-collapse: collapse !important;
           table-layout: fixed !important;
-          margin-top: 6px !important;
-          font-size: 10.5px !important;
+          margin-top: 5px !important;
+          font-size: 10px !important;
           page-break-inside: avoid !important;
         }
         table.clearance-tbl th, table.clearance-tbl td {
           border: 1px solid #000 !important;
-          padding: 5px 6px !important;
+          padding: 3.5px 5px !important;
           word-wrap: break-word !important;
           word-break: break-word !important;
           overflow-wrap: break-word !important;
           box-sizing: border-box !important;
-          vertical-align: top !important;
+          vertical-align: middle !important;
         }
         .header-table { width: 100% !important; border-collapse: collapse !important; table-layout: fixed !important; }
         .header-table td { word-wrap: break-word !important; word-break: break-word !important; }
       </style>
 
-      <div style="page-break-inside:avoid; margin-bottom:10px;">
+      <div style="page-break-inside:avoid; margin-bottom:6px;">
         ${isoDocHeaderTable({ judul: "BERITA ACARA EXIT CLEARANCE, SERAH TERIMA ASET & HANDOVER PEKERJAAN", noDok: "HRD-CLR-01", terbitRevisi: "1/0", hal: "1 dari 1" })}
       </div>
       
-      <div style="margin-top:8px; text-align:justify; font-size:11px;">
-        <p style="margin:0 0 8px 0;">Pada hari ini, tanggal <strong>${fmtDateShort(tglEfektif)}</strong>, telah dilaksanakan proses <strong>Exit Clearance & Handover Pekerjaan Resmi</strong> di lingkungan CV ANDELA JAYA untuk karyawan berikut:</p>
+      <div style="margin-top:6px; text-align:justify; font-size:10.5px;">
+        <p style="margin:0 0 5px 0;">Pada hari ini, tanggal <strong>${fmtDateShort(tglEfektif)}</strong>, telah dilaksanakan proses <strong>Exit Clearance & Handover Pekerjaan Resmi</strong> di lingkungan CV ANDELA JAYA untuk karyawan berikut:</p>
       </div>
 
       <table class="clearance-tbl">
+        <colgroup><col style="width:35%;" /><col style="width:65%;" /></colgroup>
         <tr style="background:#f1f5f9;"><td colspan="2" style="font-weight:bold; text-transform:uppercase;">I. IDENTITAS KARYAWAN (OFFBOARDING)</td></tr>
-        <tr><td style="width:35%;">Nama Lengkap</td><td style="width:65%; font-weight:bold;">${escapeHtml(karyawan.nama_karyawan)}</td></tr>
+        <tr><td>Nama Lengkap</td><td style="font-weight:bold;">${escapeHtml(karyawan.nama_karyawan)}</td></tr>
         <tr><td>NIK / ID Karyawan</td><td>${escapeHtml(karyawan.nik_karyawan || karyawan.id || "-")}</td></tr>
         <tr><td>Jabatan & Cabang</td><td>${escapeHtml(karyawan.jabatan || "-")} (${escapeHtml(karyawan.cabang || "-")})</td></tr>
         <tr><td>Masa Kerja & Tgl Efektif</td><td>${masaKerja} Tahun | Efektif: ${fmtDateShort(tglEfektif)}</td></tr>
@@ -98,18 +98,20 @@ async function printExitClearancePdf(data) {
       </table>
 
       <table class="clearance-tbl">
+        <colgroup><col style="width:35%;" /><col style="width:65%;" /></colgroup>
         <tr style="background:#f1f5f9;"><td colspan="2" style="font-weight:bold; text-transform:uppercase;">II. IDENTITAS KARYAWAN PENGGANTI (PENERIMA HANDOVER)</td></tr>
-        <tr><td style="width:35%;">Nama Karyawan Pengganti</td><td style="width:65%; font-weight:bold;">${escapeHtml(pengganti || "Tidak Ada (Dialihkan ke Tim Divisi)")}</td></tr>
+        <tr><td>Nama Karyawan Pengganti</td><td style="font-weight:bold;">${escapeHtml(pengganti || "Tidak Ada (Dialihkan ke Tim Divisi)")}</td></tr>
         ${catatanHandover ? `<tr><td>Catatan Tambahan Handover</td><td>${escapeHtml(catatanHandover)}</td></tr>` : ''}
       </table>
 
-      <div style="margin-top:10px; font-weight:bold; font-size:11px; text-transform:uppercase; page-break-after:avoid;">III. DAFTAR PEKERJAAN HANDOVER & TINGKAT PEMAHAMAN</div>
+      <div style="margin-top:6px; font-weight:bold; font-size:10px; text-transform:uppercase; page-break-after:avoid;">III. DAFTAR PEKERJAAN HANDOVER & TINGKAT PEMAHAMAN</div>
       <table class="clearance-tbl">
+        <colgroup><col style="width:6%;" /><col style="width:60%;" /><col style="width:34%;" /></colgroup>
         <thead>
           <tr style="background:#e2e8f0; text-align:center;">
-            <th style="width:6%;">No</th>
-            <th style="width:60%; text-align:left;">Rincian Pekerjaan Handover</th>
-            <th style="width:34%;">Tingkat Pemahaman Karyawan Pengganti</th>
+            <th>No</th>
+            <th style="text-align:left;">Rincian Pekerjaan Handover</th>
+            <th>Tingkat Pemahaman Karyawan Pengganti</th>
           </tr>
         </thead>
         <tbody>
@@ -117,14 +119,15 @@ async function printExitClearancePdf(data) {
         </tbody>
       </table>
 
-      <div style="margin-top:10px; font-weight:bold; font-size:11px; text-transform:uppercase; page-break-after:avoid;">IV. BUKTI PENGEMBALIAN ASET, SERAGAM & BARANG PERUSAHAAN</div>
+      <div style="margin-top:6px; font-weight:bold; font-size:10px; text-transform:uppercase; page-break-after:avoid;">IV. BUKTI PENGEMBALIAN ASET, SERAGAM & BARANG PERUSAHAAN</div>
       <table class="clearance-tbl">
+        <colgroup><col style="width:6%;" /><col style="width:20%;" /><col style="width:46%;" /><col style="width:28%;" /></colgroup>
         <thead>
           <tr style="background:#e2e8f0; text-align:center;">
-            <th style="width:6%;">No</th>
-            <th style="width:20%;">Kategori</th>
-            <th style="width:46%; text-align:left;">Nama Barang / Aset / Seragam / Perlengkapan</th>
-            <th style="width:28%;">Status Audit & Pengembalian</th>
+            <th>No</th>
+            <th>Kategori</th>
+            <th style="text-align:left;">Nama Barang / Aset / Seragam / Perlengkapan</th>
+            <th>Status Audit & Pengembalian</th>
           </tr>
         </thead>
         <tbody>
@@ -132,39 +135,105 @@ async function printExitClearancePdf(data) {
         </tbody>
       </table>
 
-      <div style="margin-top:10px; font-size:10.5px; border:1px solid #000; padding:8px; page-break-inside:avoid; background:#fafafa;">
-        <strong style="text-transform:uppercase;">V. VERIFIKASI DOKUMEN & SERAH TERIMA:</strong><br/>
-        <div style="margin-top:4px;">${docRows}</div>
-        <p style="margin-top:6px; margin-bottom:0; font-style:italic; font-size:9.5px; color:#1f2937; line-height:1.35;">
-          Dengan ditandatanganinya Berita Acara ini, Karyawan yang bersangkutan dinyatakan <strong>RESMI BEBAS TANGGUNG JAWAB (CLEAR)</strong> dari seluruh penguasaan fisik aset, seragam, dan inventaris perusahaan serta telah menyerahkan seluruh berkas dan kewenangan pekerjaan.
-        </p>
-      </div>
+      <div style="page-break-inside:avoid; break-inside:avoid; margin-top:6px;">
+        <div style="font-size:9.5px; border:1px solid #000; padding:6px; background:#fafafa;">
+          <strong style="text-transform:uppercase;">V. VERIFIKASI DOKUMEN & SERAH TERIMA:</strong><br/>
+          <div style="margin-top:3px;">${docRows}</div>
+          <p style="margin-top:4px; margin-bottom:0; font-style:italic; font-size:9px; color:#1f2937; line-height:1.3;">
+            Dengan ditandatanganinya Berita Acara ini, Karyawan yang bersangkutan dinyatakan <strong>RESMI BEBAS TANGGUNG JAWAB (CLEAR)</strong> dari seluruh penguasaan fisik aset, seragam, dan inventaris perusahaan serta telah menyerahkan seluruh berkas dan kewenangan pekerjaan.
+          </p>
+        </div>
 
-      <table style="width:100%; border-collapse:collapse; table-layout:fixed; text-align:center; margin-top:20px; font-size:10.5px; page-break-inside:avoid;">
-        <tr>
-          <td style="width:25%; border:none; padding:4px;">Karyawan Resign,</td>
-          <td style="width:25%; border:none; padding:4px;">Karyawan Pengganti,</td>
-          <td style="width:25%; border:none; padding:4px;">Atasan Langsung,</td>
-          <td style="width:25%; border:none; padding:4px;">HRD & GA Manager,</td>
-        </tr>
-        <tr><td style="border:none; height:45px;"></td><td style="border:none;"></td><td style="border:none;"></td><td style="border:none;"></td></tr>
-        <tr>
-          <td style="border:none; padding:4px;">( <strong>${escapeHtml(karyawan.nama_karyawan)}</strong> )</td>
-          <td style="border:none; padding:4px;">( <strong>${escapeHtml(pengganti || "-")}</strong> )</td>
-          <td style="border:none; padding:4px;">( ................................... )</td>
-          <td style="border:none; padding:4px;">( ................................... )</td>
-        </tr>
-      </table>
+        <table style="width:100%; border-collapse:collapse; table-layout:fixed; text-align:center; margin-top:10px; font-size:10px; page-break-inside:avoid; break-inside:avoid;">
+          <tr>
+            <td style="width:25%; border:none; padding:2px;">Karyawan Resign,</td>
+            <td style="width:25%; border:none; padding:2px;">Karyawan Pengganti,</td>
+            <td style="width:25%; border:none; padding:2px;">Atasan Langsung,</td>
+            <td style="width:25%; border:none; padding:2px;">HRD & GA Manager,</td>
+          </tr>
+          <tr><td style="border:none; height:34px;"></td><td style="border:none;"></td><td style="border:none;"></td><td style="border:none;"></td></tr>
+          <tr>
+            <td style="border:none; padding:2px;">( <strong>${escapeHtml(karyawan.nama_karyawan)}</strong> )</td>
+            <td style="border:none; padding:2px;">( <strong>${escapeHtml(pengganti || "-")}</strong> )</td>
+            <td style="border:none; padding:2px;">( ................................... )</td>
+            <td style="border:none; padding:2px;">( ................................... )</td>
+          </tr>
+        </table>
+      </div>
     </div>`;
 
-  await downloadHtmlAsPdf(html, `Surat_Clearance_Resign_${escapeHtml(karyawan.nama_karyawan).replace(/\s+/g, "_")}.pdf`);
-  toast("Dokumen Clearance PDF berhasil diunduh!", "success");
+  const filename = `Surat_Clearance_Resign_${escapeHtml(karyawan.nama_karyawan).replace(/\s+/g, "_")}.pdf`;
+
+  const modalBody = `
+    <div class="space-y-4">
+      <div class="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl flex-wrap gap-2">
+        <span class="text-xs font-semibold text-slate-600">Dokumen Resmi Exit Clearance (Pratinjau)</span>
+        <div class="flex items-center gap-2">
+          <button type="button" id="btn-modal-print-clr" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5">
+            🖨️ Cetak Dokumen
+          </button>
+          <button type="button" id="btn-modal-dl-clr" class="px-3.5 py-1.5 bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5">
+            📥 Unduh PDF
+          </button>
+        </div>
+      </div>
+      <div class="border border-slate-300 rounded-xl p-4 bg-slate-100 overflow-y-auto max-h-[70vh]">
+        <div class="bg-white shadow-md p-6 rounded-lg mx-auto" style="max-width:794px;">
+          ${docHtml}
+        </div>
+      </div>
+    </div>
+  `;
+
+  openModal({
+    title: `Dokumen Exit Clearance — ${escapeHtml(karyawan.nama_karyawan)}`,
+    bodyHtml: modalBody,
+    size: "xl",
+    onMount: (backdrop) => {
+      backdrop.querySelector("#btn-modal-dl-clr")?.addEventListener("click", async () => {
+        toast("Sedang mengunduh file PDF...", "info");
+        await downloadHtmlAsPdf(docHtml, filename);
+        toast("Dokumen Clearance PDF berhasil diunduh!", "success");
+      });
+
+      backdrop.querySelector("#btn-modal-print-clr")?.addEventListener("click", () => {
+        const printWin = window.open("", "_blank", "width=850,height=900");
+        if (!printWin) {
+          toast("Izin popup diblokir browser. Gunakan tombol Unduh PDF.", "error");
+          return;
+        }
+        printWin.document.write(`
+          <html>
+            <head>
+              <title>${filename}</title>
+              <style>
+                body { margin: 0; padding: 20px; font-family: 'Times New Roman', serif; }
+                @media print { @page { size: A4 portrait; margin: 10mm; } }
+              </style>
+            </head>
+            <body>
+              ${docHtml}
+              <script>window.onload = function() { window.print(); };</script>
+            </body>
+          </html>
+        `);
+        printWin.document.close();
+      });
+    }
+  });
+
+  // Otomatis jalankan unduh PDF di latar belakang
+  try {
+    await downloadHtmlAsPdf(docHtml, filename);
+    toast("Dokumen Clearance PDF berhasil diunduh!", "success");
+  } catch (e) {
+    console.warn("Gagal auto download PDF:", e);
+  }
 }
 
 // FUNGSI CETAK BERITA ACARA ONBOARDING, ORIENTASI & TRAINING (PDF)
 async function printOnboardingDocPdf(data) {
-  const { downloadHtmlAsPdf, toast } = await import("../utils.js");
-  toast("Sedang memproses PDF Onboarding & Orientasi...", "info");
+  const { downloadHtmlAsPdf, toast, openModal } = await import("../utils.js");
 
   const { nama, nik, email, jabatan, cabang, tglJoin, statusKontrak, orientasiItems, trainingItems, catatanFasilitas } = data;
 
@@ -191,8 +260,8 @@ async function printOnboardingDocPdf(data) {
       <td colspan="4" style="text-align:center; color:#555; font-style:italic;">Seluruh materi pembekalan & training dasar telah disajikan.</td>
     </tr>`;
 
-  const html = `
-    <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff; box-sizing:border-box;">
+  const docHtml = `
+    <div style="width:100%; max-width:760px; margin:0 auto; padding:15px; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff; box-sizing:border-box;">
       <style>
         * { box-sizing: border-box !important; }
         body, div, p, span, table, tr, th, td { font-family: 'Times New Roman', Times, serif; }
@@ -277,8 +346,73 @@ async function printOnboardingDocPdf(data) {
       </table>
     </div>`;
 
-  await downloadHtmlAsPdf(html, `Berita_Acara_Onboarding_${escapeHtml(nama).replace(/\s+/g, "_")}.pdf`);
-  toast("Dokumen Onboarding PDF berhasil diunduh!", "success");
+  const filename = `Berita_Acara_Onboarding_${escapeHtml(nama).replace(/\s+/g, "_")}.pdf`;
+
+  const modalBody = `
+    <div class="space-y-4">
+      <div class="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl flex-wrap gap-2">
+        <span class="text-xs font-semibold text-slate-600">Dokumen Resmi Onboarding (Pratinjau)</span>
+        <div class="flex items-center gap-2">
+          <button type="button" id="btn-modal-print-onb" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5">
+            🖨️ Cetak Dokumen
+          </button>
+          <button type="button" id="btn-modal-dl-onb" class="px-3.5 py-1.5 bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5">
+            📥 Unduh PDF
+          </button>
+        </div>
+      </div>
+      <div class="border border-slate-300 rounded-xl p-4 bg-slate-100 overflow-y-auto max-h-[70vh]">
+        <div class="bg-white shadow-md p-6 rounded-lg mx-auto" style="max-width:794px;">
+          ${docHtml}
+        </div>
+      </div>
+    </div>
+  `;
+
+  openModal({
+    title: `Dokumen Onboarding — ${escapeHtml(nama)}`,
+    bodyHtml: modalBody,
+    size: "xl",
+    onMount: (backdrop) => {
+      backdrop.querySelector("#btn-modal-dl-onb")?.addEventListener("click", async () => {
+        toast("Sedang mengunduh file PDF...", "info");
+        await downloadHtmlAsPdf(docHtml, filename);
+        toast("Dokumen Onboarding PDF berhasil diunduh!", "success");
+      });
+
+      backdrop.querySelector("#btn-modal-print-onb")?.addEventListener("click", () => {
+        const printWin = window.open("", "_blank", "width=850,height=900");
+        if (!printWin) {
+          toast("Izin popup diblokir browser. Gunakan tombol Unduh PDF.", "error");
+          return;
+        }
+        printWin.document.write(`
+          <html>
+            <head>
+              <title>${filename}</title>
+              <style>
+                body { margin: 0; padding: 20px; font-family: 'Times New Roman', serif; }
+                @media print { @page { size: A4 portrait; margin: 10mm; } }
+              </style>
+            </head>
+            <body>
+              ${docHtml}
+              <script>window.onload = function() { window.print(); };</script>
+            </body>
+          </html>
+        `);
+        printWin.document.close();
+      });
+    }
+  });
+
+  // Auto-download PDF in background
+  try {
+    await downloadHtmlAsPdf(docHtml, filename);
+    toast("Dokumen Onboarding PDF berhasil diunduh!", "success");
+  } catch (e) {
+    console.warn("Gagal auto download PDF:", e);
+  }
 }
 
 export async function mount(container) {
@@ -687,9 +821,8 @@ export async function mount(container) {
              });
            }
          }
-       }
 
-       populateOffboardingAssets();
+         populateOffboardingAssets();
 
          // Checklist items container and default loader
          const chkBox = dynFields.querySelector("#offboarding-checklist-container");
@@ -751,7 +884,8 @@ export async function mount(container) {
 
          if (btnAddChk) {
            btnAddChk.onclick = () => addChecklistRow("");
-         } else if (["Mutasi", "Promosi", "Demosi"].includes(jenis)) {
+         }
+      } else if (["Mutasi", "Promosi", "Demosi"].includes(jenis)) {
          dynFields.innerHTML = `
              <div class="grid grid-cols-2 gap-4">
                 <div><label class="block text-xs font-bold text-slate-500 mb-1">Jabatan Saat Ini</label><input type="text" id="lama-jabatan" value="${jabLama}" readonly class="w-full px-3 py-2 text-sm border rounded-lg bg-slate-100 outline-none text-slate-500 border-transparent"></div>

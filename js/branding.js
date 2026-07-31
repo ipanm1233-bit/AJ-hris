@@ -64,19 +64,26 @@ export function isoDocHeaderTable(opts = {}) {
   } = opts;
 
   return `
-    <table class="header-table" style="width:100%;border-collapse:collapse;border:1px solid #000;">
+    <table class="header-table" style="width:100%;border-collapse:collapse;border:1px solid #000;table-layout:fixed;margin:0;padding:0;">
+      <colgroup>
+        <col style="width:14%;" />
+        <col style="width:20%;" />
+        <col style="width:25%;" />
+        <col style="width:21%;" />
+        <col style="width:20%;" />
+      </colgroup>
       <tr>
-        <td rowspan="3" style="width:90px;border:1px solid #000;text-align:center;padding:6px;">${logoImgTag(64)}</td>
-        <td colspan="4" style="border:1px solid #000;font-size:15px;font-weight:bold;text-transform:uppercase;text-align:center;padding:8px 6px;">${judul}</td>
+        <td rowspan="3" style="border:1px solid #000;text-align:center;padding:3px;vertical-align:middle;">${logoImgTag(52)}</td>
+        <td colspan="4" style="border:1px solid #000;font-size:12px;font-weight:bold;text-transform:uppercase;text-align:center;padding:5px 4px;vertical-align:middle;line-height:1.2;">${judul}</td>
       </tr>
       <tr>
-        <td colspan="4" style="border:1px solid #000;background:#d7ecf3 !important;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;font-size:13px;font-weight:bold;text-align:center;padding:6px;">${COMPANY_NAME}</td>
+        <td colspan="4" style="border:1px solid #000;background:#d7ecf3 !important;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;font-size:11px;font-weight:bold;text-align:center;padding:4px;vertical-align:middle;">${COMPANY_NAME}</td>
       </tr>
       <tr>
-        <td style="border:1px solid #000;font-size:10px;text-align:left;padding:5px 6px;">Hal : ${hal}</td>
-        <td style="border:1px solid #000;font-size:10px;text-align:left;padding:5px 6px;">No Dok : ${noDok}</td>
-        <td style="border:1px solid #000;font-size:10px;text-align:left;padding:5px 6px;">Terbit/ Revisi : ${terbitRevisi}</td>
-        <td style="border:1px solid #000;font-size:10px;text-align:left;padding:5px 6px;">Tgl terbit : ${tglTerbit}</td>
+        <td style="border:1px solid #000;font-size:9px;text-align:left;padding:3px 4px;vertical-align:middle;white-space:nowrap;">Hal: ${hal}</td>
+        <td style="border:1px solid #000;font-size:9px;text-align:left;padding:3px 4px;vertical-align:middle;white-space:nowrap;">No Dok: ${noDok}</td>
+        <td style="border:1px solid #000;font-size:9px;text-align:left;padding:3px 4px;vertical-align:middle;white-space:nowrap;">Terbit/Rev: ${terbitRevisi}</td>
+        <td style="border:1px solid #000;font-size:9px;text-align:left;padding:3px 4px;vertical-align:middle;white-space:nowrap;">Tgl: ${tglTerbit}</td>
       </tr>
     </table>
   `;

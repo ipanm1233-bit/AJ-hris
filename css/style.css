@@ -1,21 +1,51 @@
 /* =====================================================================
    STYLE.CSS - Andela Jaya HRIS
    Pelengkap Tailwind: animasi transisi SPA halus, state sidebar,
-   scrollbar custom, dan micro-interactions.
+   scrollbar custom, shadow layout, dan micro-interactions.
    ===================================================================== */
 html { scroll-behavior: smooth; }
 body { 
   -webkit-font-smoothing: antialiased; 
+  -moz-osx-font-smoothing: grayscale;
   background-color: #faf8ff;
   color: #131b2e;
 }
 
-/* --- Fade-in setiap kali view berpindah (efek halus, anti-kedip) --- */
+/* --- Fade-in setiap kali view berpindah (efek halus, GPU accelerated, anti-kedip) --- */
 @keyframes fadein {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translate3d(0, 4px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
 }
-.animate-fadein { animation: fadein .28s ease-out; }
+.animate-fadein { 
+  animation: fadein .22s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+  backface-visibility: hidden;
+}
+
+/* --- Shadow Layout Placeholders (Tanpa motion berlebihan, visual struktur presisi) --- */
+.shadow-layout-box {
+  background-color: #f1f5f9;
+  border-radius: 0.85rem;
+  border: 1px solid #e2e8f0;
+}
+.shadow-layout-card {
+  background-color: #ffffff;
+  border-radius: 1rem;
+  border: 1px solid #f1f5f9;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+}
+.shadow-layout-bar {
+  background-color: #e2e8f0;
+  border-radius: 0.375rem;
+}
+
+/* --- Sidebar transition --- */
+#sidebar {
+  transition: transform .22s cubic-bezier(0.16, 1, 0.3, 1), width .22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+#main-content {
+  transition: margin-left .22s cubic-bezier(0.16, 1, 0.3, 1);
+}
 
 /* --- Sidebar collapsed state (toggle) --- */
 #sidebar.collapsed { width: 4.5rem; }
@@ -60,7 +90,7 @@ body {
 ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 8px; }
 ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
 
-/* --- Loading spinner kecil --- */
+/* --- Loading spinner kecil halus --- */
 .spinner {
   width: 1.1rem; height: 1.1rem; border-radius: 9999px;
   border: 2px solid rgba(255,255,255,.4); border-top-color: #fff;

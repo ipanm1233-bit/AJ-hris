@@ -380,6 +380,96 @@ export async function downloadXlsx(filename, headers, matrix, sheetName = "Data"
   window.XLSX.writeFile(wb, filename.endsWith(".xlsx") ? filename : filename + ".xlsx");
 }
 
+/**
+ * Format tanggal ke format bahasa Indonesia lengkap (e.g. "Senin, 05 Januari 2026")
+ */
+export function fmtDateIndoLong(dateStr) {
+  if (!dateStr) return "-";
+  const cleanStr = String(dateStr).substring(0, 10);
+  const parts = cleanStr.split("-");
+  if (parts.length !== 3) return dateStr;
+  const year = parseInt(parts[0], 10);
+  const monthIdx = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+
+  if (isNaN(year) || isNaN(monthIdx) || isNaN(day)) return dateStr;
+  const d = new Date(year, monthIdx, day);
+  if (isNaN(d.getTime())) return dateStr;
+
+  const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+  const months = [
+    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+    "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+  ];
+
+  const dayName = days[d.getDay()];
+  const monthName = months[monthIdx] || "";
+  const formattedDay = day < 10 ? "0" + day : String(day);
+
+  return `${dayName}, ${formattedDay} ${monthName} ${year}`;
+}
+
+/**
+ * Memformat array trip Uang Makan Ekspedisi menjadi baris-baris terurai
+ * sesuai template Excel standar ("UANG JALAN 2026"):
+ * Tanggal | Nama Karyawan | Jabatan | Area Kirim | Start | End | Jumlah Toko | Jumlah Terkirim | Nominal | STATUS | Validasi | bulan
+ */
+export function formatUangJalanEkspedisiRows(trips) {
+  if (!Array.isArray(trips)) return [];
+  const result = [];
+
+  const sorted = [...trips].sort((a, b) => (a.tanggal || "").localeCompare(b.tanggal || ""));
+
+  sorted.forEach(trip => {
+    const dateStr = trip.tanggal ? String(trip.tanggal).substring(0, 10) : "";
+    const formattedDate = fmtDateIndoLong(dateStr);
+    const monthNum = dateStr && dateStr.includes("-") ? parseInt(dateStr.split("-")[1], 10) : 1;
+    const start = trip.jam_berangkat ? String(trip.jam_berangkat).replace(":", ".") : "-";
+    const end = trip.jam_tiba ? String(trip.jam_tiba).replace(":", ".") : "-";
+    const jmlToko = trip.jml_toko !== undefined && trip.jml_toko !== null ? Number(trip.jml_toko) : 0;
+    const jmlTerkirim = trip.realisasi_toko !== undefined && trip.realisasi_toko !== null ? Number(trip.realisasi_toko) : jmlToko;
+    const statusNote = trip.keterangan_selisih && String(trip.keterangan_selisih).trim() ? String(trip.keterangan_selisih).trim().toUpperCase() : "0";
+
+    // Row Driver
+    if (trip.driver) {
+      result.push({
+        "Tanggal": formattedDate,
+        "Nama Karyawan": String(trip.driver).toUpperCase(),
+        "Jabatan": "Driver",
+        "Area Kirim": String(trip.tujuan || "-").toUpperCase(),
+        "Start": start,
+        "End": end,
+        "Jumlah Toko": jmlToko,
+        "Jumlah Terkirim": jmlTerkirim,
+        "Nominal": Number(trip.um_driver || 35000),
+        "STATUS": statusNote,
+        "Validasi": true,
+        "bulan": monthNum
+      });
+    }
+
+    // Row Helper
+    if (trip.helper && String(trip.helper).trim()) {
+      result.push({
+        "Tanggal": formattedDate,
+        "Nama Karyawan": String(trip.helper).toUpperCase(),
+        "Jabatan": "Helper",
+        "Area Kirim": String(trip.tujuan || "-").toUpperCase(),
+        "Start": start,
+        "End": end,
+        "Jumlah Toko": jmlToko,
+        "Jumlah Terkirim": jmlTerkirim,
+        "Nominal": Number(trip.um_helper || 25000),
+        "STATUS": statusNote,
+        "Validasi": true,
+        "bulan": monthNum
+      });
+    }
+  });
+
+  return result;
+}
+
 export function exportToCsv(filename, rows) {
   if (!rows || !rows.length) { toast("Tidak ada data untuk diekspor", "warning"); return; }
   const headers = Object.keys(rows[0]);
@@ -1586,26 +1676,61 @@ export function ensureHtml2PdfLoaded() {
 
 export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf", orientation = "portrait") {
   await ensureHtml2PdfLoaded();
+  const isLandscape = orientation === "landscape";
+  
+  // Standard A4 dimensions in px at 96 DPI:
+  // Portrait: 210mm = 794px
+  // Landscape: 297mm = 1122px
+  const widthPx = isLandscape ? 1122 : 794;
+
+  const prevScrollX = window.scrollX;
+  const prevScrollY = window.scrollY;
+
+  // Clean container positioned offscreen so it never flashes over UI
   const element = document.createElement("div");
-  // Set styles to ensure white background, black text and proper print-like container
-  element.style.padding = "0px";
+  element.style.position = "absolute";
+  element.style.left = "-9999px";
+  element.style.top = "0px";
+  element.style.width = widthPx + "px";
+  element.style.padding = "10px 15px";
   element.style.margin = "0px";
   element.style.background = "#ffffff";
   element.style.color = "#000000";
-  element.style.fontFamily = "'Times New Roman', Arial, sans-serif";
+  element.style.fontFamily = "'Times New Roman', Times, serif";
   element.style.boxSizing = "border-box";
   element.innerHTML = htmlContent;
   
+  document.body.appendChild(element);
+
+  // Give browser time to process font/layout rendering
+  await new Promise((resolve) => setTimeout(resolve, 300));
+
   const opt = {
-    margin:       orientation === "landscape" ? [6, 6, 6, 6] : [10, 10, 10, 10],
+    margin:       isLandscape ? [6, 6, 6, 6] : [6, 6, 6, 6], // top, left, bottom, right in mm
     filename:     filename,
     image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { scale: 2, useCORS: true, logging: false, scrollY: 0 },
+    html2canvas:  { 
+      scale: 2, 
+      useCORS: true, 
+      logging: false,
+      backgroundColor: "#ffffff",
+      windowWidth: widthPx
+    },
     jsPDF:        { unit: 'mm', format: 'a4', orientation: orientation },
     pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
   };
-  
-  await window.html2pdf().set(opt).from(element).save();
+
+  try {
+    await window.html2pdf().from(element).set(opt).save();
+  } catch (err) {
+    console.error("Gagal men-generate PDF:", err);
+    throw err;
+  } finally {
+    if (element.parentNode) {
+      element.parentNode.removeChild(element);
+    }
+    window.scrollTo(prevScrollX, prevScrollY);
+  }
 }
 
 export async function sendFCMNotif(tokens, title, body, link = "") {

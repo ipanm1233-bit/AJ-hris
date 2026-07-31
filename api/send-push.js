@@ -21,8 +21,19 @@ module.exports = async function handler(req, res) {
           })
         });
       } else {
-        admin.initializeApp();
+        try {
+          admin.initializeApp();
+        } catch (e) {
+          console.warn("Firebase Admin default init failed:", e.message);
+        }
       }
+    }
+
+    if (!admin.apps.length) {
+      return res.status(500).json({
+        success: false,
+        error: "Firebase Admin environment variables are not configured."
+      });
     }
 
     // 2. MENGIRIM NOTIFIKASI

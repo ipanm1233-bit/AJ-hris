@@ -1,7 +1,7 @@
 import { db, COL, doc, getDoc } from "../firebase-config.js";
 import {
   fsGetAll, fsAdd, fsUpdate, fsDelete, toast, fmtDateShort, fmtRupiah,
-  escapeHtml, genId, confirmDialog, toNumber
+  escapeHtml, genId, confirmDialog, toNumber, downloadXlsx, formatUangJalanEkspedisiRows
 } from "../utils.js";
 import { icon, emptyState, openExportPicker } from "../components.js";
 
@@ -139,9 +139,14 @@ export async function mount(container) {
       </div>
 
       <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        <div class="flex items-center justify-between px-5 pt-5 pb-2">
+        <div class="flex items-center justify-between px-5 pt-5 pb-2 flex-wrap gap-2">
           <h3 class="font-semibold text-slate-700">Riwayat Trip</h3>
-          <button id="um-btn-export" class="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 transition" title="Export">${icon("download","w-4 h-4")}</button>
+          <div class="flex items-center gap-2">
+            <button id="um-btn-export-template" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 transition shadow-sm">
+              ${icon("download","w-4 h-4")} Download Excel (UANG JALAN 2026)
+            </button>
+            <button id="um-btn-export" class="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 transition" title="Export Kustom">${icon("download","w-4 h-4")}</button>
+          </div>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
@@ -302,9 +307,31 @@ export async function mount(container) {
   });
 
   container.querySelector("#um-btn-refresh")?.addEventListener("click", load);
+  
+  container.querySelector("#um-btn-export-template")?.addEventListener("click", async () => {
+    if (!rows.length) { toast("Tidak ada data untuk diekspor", "warning"); return; }
+    try {
+      const formatted = formatUangJalanEkspedisiRows(rows);
+      if (!formatted.length) { toast("Tidak ada data trip valid untuk diekspor", "warning"); return; }
+      
+      const headers = Object.keys(formatted[0]);
+      const matrix = formatted.map(r => headers.map(h => r[h]));
+      const currentYear = new Date().getFullYear();
+      const sheetName = `UANG JALAN ${currentYear}`;
+      const filename = `REKAP_UANG_JALAN_EKSPEDISI_${currentYear}.xlsx`;
+      
+      await downloadXlsx(filename, headers, matrix, sheetName);
+      toast(`Berhasil mengunduh Excel rekap (${sheetName})`, "success");
+    } catch (err) {
+      console.error(err);
+      toast("Gagal mengekspor data: " + err.message, "error");
+    }
+  });
+
   container.querySelector("#um-btn-export")?.addEventListener("click", () => {
     if (!rows.length) { toast("Tidak ada data untuk diekspor", "warning"); return; }
-    openExportPicker("Uang Makan Expedisi", COLUMNS, rows);
+    const formatted = formatUangJalanEkspedisiRows(rows);
+    openExportPicker("Uang Makan Expedisi", [], formatted);
   });
 
   resetForm();
