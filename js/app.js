@@ -7,7 +7,7 @@
 import { getSession, logout, computeVisibleMenus, canAccessRoute, MENU_CONFIG, loginWithToken } from "./auth.js";
 import { parseHash, toast, fmtDateTime, openModal, closeModal, sha256, fsUpdate } from "./utils.js";
 import { icon, avatar, openNotificationCenter, showMemoDetailById, skeletonShadowLayout } from "./components.js";
-import { db, messaging, COL, collection, query, where, getDocs, doc, getDoc, updateDoc } from "./firebase-config.js";
+import { db, messaging, firebaseConfig, COL, collection, query, where, getDocs, doc, getDoc, updateDoc } from "./firebase-config.js";
 import { getToken } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js";
 
 const viewContainer = document.getElementById("view-container");
@@ -105,7 +105,9 @@ async function aktifkanNotifikasiHP(userData) {
         
         let currentToken = null;
         try {
+            const vKey = firebaseConfig?.vapidKey || window.fcmVapidKey || undefined;
             currentToken = await getToken(messaging, { 
+                vapidKey: vKey,
                 serviceWorkerRegistration: registration || undefined
             });
         } catch (fcmErr) {
@@ -219,7 +221,9 @@ export async function handleTestAndActivateNotification(session) {
       
       let currentToken = null;
       try {
+        const vKey = firebaseConfig?.vapidKey || window.fcmVapidKey || undefined;
         currentToken = await getToken(messaging, { 
+          vapidKey: vKey,
           serviceWorkerRegistration: registration || undefined
         });
       } catch (fcmErr) {
