@@ -38,6 +38,7 @@ try {
 }
 
 export const app = initializeApp(firebaseConfig);
+export { firebaseConfig };
 export let messaging = null;
 
 // Cek dulu apakah HP/Browser mendukung notifikasi sebelum menyalakan fiturnya
