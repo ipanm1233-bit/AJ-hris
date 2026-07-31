@@ -2596,6 +2596,7 @@ export async function mount(container, { session, params }) {
                 keputusan: rekomendasiVal,
                 rekomendasi: rekomendasiVal,
                 kategori_penilaian: tKatKey,
+                skala_penilaian: task.skala_penilaian || "0-100",
                 periode: task.periode,
                 detail_json: answeredSoal,
                 catatan_baik: catatanBaik,
@@ -2796,6 +2797,7 @@ export async function mount(container, { session, params }) {
               keputusan: rekomendasiVal,
               rekomendasi: rekomendasiVal,
               kategori_penilaian: tKatKey,
+              skala_penilaian: task.skala_penilaian || "0-100",
               periode: task.periode,
               detail_json: answeredSoal,
               catatan_baik: catatanBaik,
@@ -2840,6 +2842,7 @@ export async function mount(container, { session, params }) {
     const divisiDinilai = dinilaiInfo.divisi || "-";
     const cabangDinilai = dinilaiInfo.cabang || "Pusat";
     const statusDinilai = formatStatusKaryawan(dinilaiInfo.status_karyawan || "-");
+    const isScale1to5 = (task.skala_penilaian === "1-5");
 
     let tbody = "";
     const soalList = task.soal_json || [];
@@ -2852,7 +2855,7 @@ export async function mount(container, { session, params }) {
           <td style="border:1px solid #000; padding:2px 3px; text-align:center; font-weight:bold; font-size:8.5px;">${item.bobot || 0}%</td>
           <td style="border:1px solid #000; padding:2px 3px; text-align:center; font-weight:bold; background:#fafafa;">
             <div style="min-height:16px; border:1px dashed #64748b; border-radius:2px; margin:0 auto; width:55px; line-height:16px; text-align:center; font-size:9.5px; color:#334155;">
-              ${item.nilai_diberikan ? item.nilai_diberikan : '[ &nbsp; &nbsp; ]'}
+              ${item.nilai_diberikan !== undefined && item.nilai_diberikan !== null && item.nilai_diberikan !== "" ? item.nilai_diberikan : '[ &nbsp; &nbsp; ]'}
             </div>
           </td>
           <td style="border:1px solid #000; padding:2px 3px; text-align:center;">
@@ -2901,7 +2904,7 @@ export async function mount(container, { session, params }) {
               <th width="24%" style="border:1px solid #000; padding:3px 3px; text-align:left;">Aspek</th>
               <th width="42%" style="border:1px solid #000; padding:3px 3px; text-align:left;">Indikator Kinerja Utama</th>
               <th width="8%" style="border:1px solid #000; padding:3px 2px;">Bobot</th>
-              <th width="11%" style="border:1px solid #000; padding:3px 2px;">Nilai (0-100)</th>
+              <th width="11%" style="border:1px solid #000; padding:3px 2px;">Nilai (${isScale1to5 ? '1-5' : '0-100'})</th>
               <th width="11%" style="border:1px solid #000; padding:3px 2px;">Skor Terbobot</th>
             </tr>
           </thead>
@@ -2950,9 +2953,14 @@ export async function mount(container, { session, params }) {
         <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:8px; margin-top:4px;">
           <div style="width:46%;">
             <div style="border:1px solid #000; background:#f8fafc; padding:3px; font-size:8px; line-height:1.2;">
-              <strong>Kategori Performance:</strong><br>
-              [ ] Sangat Baik (90-100) &nbsp; [ ] Baik (80-89)<br>
-              [ ] Cukup (70-79) &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; [ ] Kurang (&lt;70)
+              <strong>Kategori Performance (${isScale1to5 ? 'Skala 1-5' : 'Skala 0-100'}):</strong><br>
+              ${isScale1to5 ? `
+                [ ] Sangat Baik (4.5-5.0) &nbsp; [ ] Baik (4.0-4.4)<br>
+                [ ] Cukup (3.5-3.9) &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; [ ] Kurang (&lt;3.5)
+              ` : `
+                [ ] Sangat Baik (90-100) &nbsp; [ ] Baik (80-89)<br>
+                [ ] Cukup (70-79) &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; [ ] Kurang (&lt;70)
+              `}
             </div>
           </div>
           <div style="width:52%;">
@@ -3034,6 +3042,7 @@ export async function mount(container, { session, params }) {
     const cabangDinilai = dinilaiInfo.cabang || "Pusat";
     const statusDinilai = formatStatusKaryawan(dinilaiInfo.status_karyawan || "-");
     const jabatanPenilai = penilaiInfo.jabatan || "Atasan Direct / Assessor";
+    const isScale1to5 = (task.skala_penilaian === "1-5");
 
     let tbody = "";
     const soalList = task.soal_json || [];
@@ -3046,7 +3055,7 @@ export async function mount(container, { session, params }) {
           <td style="border:1px solid #000; padding:3px 4px; text-align:center; font-weight:bold; font-size:10px;">${item.bobot || 0}%</td>
           <td style="border:1px solid #000; padding:3px 4px; text-align:center; font-weight:bold; background:#fafafa;">
             <div style="min-height:20px; border:1px dashed #64748b; border-radius:3px; margin:1px auto; width:65px; line-height:20px; text-align:center; font-size:11px; color:#334155;">
-              ${item.nilai_diberikan ? item.nilai_diberikan : '[ &nbsp; &nbsp; &nbsp; ]'}
+              ${item.nilai_diberikan !== undefined && item.nilai_diberikan !== null && item.nilai_diberikan !== "" ? item.nilai_diberikan : '[ &nbsp; &nbsp; &nbsp; ]'}
             </div>
           </td>
           <td style="border:1px solid #000; padding:3px 4px; text-align:center;">
@@ -3096,7 +3105,7 @@ export async function mount(container, { session, params }) {
 
         <!-- PETUNJUK COMPACT 1 LINE -->
         <div style="border:1px solid #000; background:#f1f5f9; padding:3px 8px; margin-bottom:6px; font-size:9px; line-height:1.2;">
-          <strong>PETUNJUK:</strong> Berikan nilai angka <strong>0 - 100</strong> pada kolom <em>Nilai Fisik</em>. Hitung Skor = (Nilai x Bobot) / 100. Tulis catatan jika ada.
+          <strong>PETUNJUK:</strong> Berikan nilai ${isScale1to5 ? 'rating <strong>1 - 5</strong> (desimal/skala Likert)' : 'angka <strong>0 - 100</strong>'} pada kolom <em>Nilai Fisik (${isScale1to5 ? '1-5' : '0-100'})</em>. ${isScale1to5 ? 'Hitung Skor Terbobot = (Nilai x 20 x Bobot) / 100.' : 'Hitung Skor Terbobot = (Nilai x Bobot) / 100.'} Tulis catatan jika ada.
         </div>
 
         <!-- TABEL INDIKATOR KPI -->
@@ -3107,7 +3116,7 @@ export async function mount(container, { session, params }) {
               <th width="22%" style="border:1px solid #000; padding:4px 4px; text-align:left;">Aspek KPI</th>
               <th width="36%" style="border:1px solid #000; padding:4px 4px; text-align:left;">Indikator Kinerja Utama</th>
               <th width="8%" style="border:1px solid #000; padding:4px 2px;">Bobot</th>
-              <th width="11%" style="border:1px solid #000; padding:4px 2px;">Nilai Fisik<br>(0-100)</th>
+              <th width="11%" style="border:1px solid #000; padding:4px 2px;">Nilai Fisik<br>(${isScale1to5 ? '1-5' : '0-100'})</th>
               <th width="9%" style="border:1px solid #000; padding:4px 2px;">Skor Terbobot</th>
               <th width="10%" style="border:1px solid #000; padding:4px 2px;">Catatan</th>
             </tr>
@@ -3161,10 +3170,17 @@ export async function mount(container, { session, params }) {
         <!-- KATEGORI SKOR PERFORMANCE HORIZONTAL -->
         <table style="width:100%; border-collapse:collapse; margin-bottom:8px; border:1px solid #000; font-size:9px;">
           <tr style="background:#f1f5f9; font-weight:bold; text-align:center;">
-            <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Sangat Baik</strong> (90 - 100)</td>
-            <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Baik</strong> (80 - 89)</td>
-            <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Cukup</strong> (70 - 79)</td>
-            <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Kurang</strong> (&lt; 70)</td>
+            ${isScale1to5 ? `
+              <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Sangat Baik</strong> (4.5 - 5.0)</td>
+              <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Baik</strong> (4.0 - 4.4)</td>
+              <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Cukup</strong> (3.5 - 3.9)</td>
+              <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Kurang</strong> (&lt; 3.5)</td>
+            ` : `
+              <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Sangat Baik</strong> (90 - 100)</td>
+              <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Baik</strong> (80 - 89)</td>
+              <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Cukup</strong> (70 - 79)</td>
+              <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Kurang</strong> (&lt; 70)</td>
+            `}
           </tr>
         </table>
 
@@ -3196,6 +3212,7 @@ export async function mount(container, { session, params }) {
     const samplePenilai = tasks[0].nama_penilai || "Assessor";
     const samplePeriode = tasks[0].periode || "-";
     const sampleDeadline = tasks[0].deadline ? fmtDateShort(tasks[0].deadline) : "-";
+    const isScale1to5 = tasks.some(t => t.skala_penilaian === "1-5");
 
     const soalList = tasks[0].soal_json || [];
 
@@ -3219,7 +3236,7 @@ export async function mount(container, { session, params }) {
         tdScores += `
           <td style="border:1px solid #000; padding:3px 2px; text-align:center; background:#fafafa;">
             <div style="min-height:18px; border:1px dashed #94a3b8; border-radius:3px; margin:0 auto; width:90%; line-height:18px; font-size:10px; font-weight:bold;">
-              ${itemVal ? itemVal : '[ &nbsp; ]'}
+              ${itemVal !== undefined && itemVal !== null && itemVal !== "" ? itemVal : '[ &nbsp; ]'}
             </div>
           </td>
         `;
@@ -3270,7 +3287,7 @@ export async function mount(container, { session, params }) {
             <td style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Jumlah Dinilai</td>
             <td style="border:1px solid #000; padding:3px 6px;"><strong>${tasks.length} Karyawan</strong> dalam 1 Lembar Dokumen</td>
             <td style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Metode Pengisian</td>
-            <td style="border:1px solid #000; padding:3px 6px;">Isi angka skor (0-100) pada kolom masing-masing karyawan</td>
+            <td style="border:1px solid #000; padding:3px 6px;">Isi angka skor ${isScale1to5 ? 'rating (1-5)' : '(0-100)'} pada kolom masing-masing karyawan</td>
           </tr>
         </table>
 
@@ -3299,7 +3316,7 @@ export async function mount(container, { session, params }) {
 
         <!-- KATEGORI SKOR PERFORMANCE -->
         <div style="border:1px solid #000; background:#f8fafc; padding:4px 8px; margin-bottom:10px; font-size:8.5px; text-align:center;">
-          <strong>Standar Skor:</strong> Sangat Baik (90-100) | Baik (80-89) | Cukup (70-79) | Kurang (&lt;70)
+          <strong>Standar Skor (${isScale1to5 ? 'Skala 1 - 5' : 'Skala 0 - 100'}):</strong> ${isScale1to5 ? 'Sangat Baik (4.5 - 5.0) | Baik (4.0 - 4.4) | Cukup (3.5 - 3.9) | Kurang (< 3.5)' : 'Sangat Baik (90 - 100) | Baik (80 - 89) | Cukup (70 - 79) | Kurang (< 70)'}
         </div>
 
         <!-- TANDA TANGAN PENILAI & HRD -->
@@ -4194,9 +4211,12 @@ export async function mount(container, { session, params }) {
   async function printKpiToHtml(row) {
     const { downloadHtmlAsPdf } = await import("../utils.js");
     toast("Sedang memproses PDF...", "info");
+    const isScale1to5 = (row.skala_penilaian === "1-5");
     let tbody = '';
     (row.detail_json || []).forEach(item => {
-        let weighted = (item.nilai_diberikan * (item.bobot / 100)).toFixed(2);
+        let weighted = isScale1to5 
+          ? (item.nilai_diberikan * 20 * ((item.bobot || 0) / 100)).toFixed(2)
+          : (item.nilai_diberikan * ((item.bobot || 0) / 100)).toFixed(2);
         tbody += `<tr>
           <td style="border:1px solid #000; padding:6px 10px;">${escapeHtml(item.aspek)}</td>
           <td style="border:1px solid #000; padding:6px 10px;">${escapeHtml(item.indikator)}</td>
@@ -4216,6 +4236,7 @@ export async function mount(container, { session, params }) {
         <table style="width:100%; border-collapse:collapse; margin-bottom:15px; border:1px solid #000;">
           <tr><td width="35%" style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Nama Karyawan</td><td style="border:1px solid #000; padding:6px 10px;"><strong>${escapeHtml(row.nama_dinilai)}</strong></td></tr>
           <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Jenis / Kategori Penilaian</td><td style="border:1px solid #000; padding:6px 10px;">${catInfo.icon} ${escapeHtml(catInfo.label)}</td></tr>
+          <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Skala Penilaian</td><td style="border:1px solid #000; padding:6px 10px;">Skala ${isScale1to5 ? '1 - 5 (Likert / Rating)' : '0 - 100 (Persentase)'}</td></tr>
           <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Penilai / Atasan</td><td style="border:1px solid #000; padding:6px 10px;">${escapeHtml(row.penilai || "-")}</td></tr>
           <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Skor KPI Akhir</td><td style="border:1px solid #000; padding:6px 10px;"><strong>${row.total_skor || row.skor_akhir || "-"}</strong></td></tr>
           <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Hasil Keputusan & Rekomendasi</td><td style="border:1px solid #000; padding:6px 10px;"><strong style="font-size:12px; color:#7a1f2b;">${escapeHtml(row.rekomendasi || row.keputusan || "-")}</strong></td></tr>
@@ -4226,7 +4247,7 @@ export async function mount(container, { session, params }) {
               <th style="border:1px solid #000; padding:6px 10px; text-align: left;">Aspek</th>
               <th style="border:1px solid #000; padding:6px 10px; text-align: left;">Indikator</th>
               <th style="border:1px solid #000; padding:6px 10px; text-align: center;">Bobot</th>
-              <th style="border:1px solid #000; padding:6px 10px; text-align: center;">Nilai</th>
+              <th style="border:1px solid #000; padding:6px 10px; text-align: center;">Nilai (${isScale1to5 ? '1-5' : '0-100'})</th>
               <th style="border:1px solid #000; padding:6px 10px; text-align: center;">Skor Akhir</th>
             </tr>
           </thead>
