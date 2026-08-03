@@ -18,7 +18,7 @@ export const LOGO_DATA_URI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
  * @param {number} sizePx ukuran lebar/tinggi logo dalam px (default 56)
  */
 export function logoImgTag(sizePx = 56) {
-  return `<img src="${LOGO_DATA_URI}" alt="Logo ${COMPANY_NAME}" width="${sizePx}" height="${sizePx}" style="display:block;object-fit:contain;" />`;
+ return `<img src="${LOGO_DATA_URI}" alt="Logo ${COMPANY_NAME}" width="${sizePx}" height="${sizePx}" style="display:block;object-fit:contain;" />`;
 }
 
 /**
@@ -26,19 +26,19 @@ export function logoImgTag(sizePx = 56) {
  * bergaya Surat Keputusan / memo formal (BUKAN tabel form ISO).
  */
 export function letterheadHtml() {
-  return `
-    <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">
-      <tr>
-        <td style="width:70px;vertical-align:middle;padding:0 12px 0 0;">${logoImgTag(56)}</td>
-        <td style="vertical-align:middle;">
-          <div style="font-size:20px;font-weight:bold;font-family:Georgia,'Times New Roman',serif;">${COMPANY_NAME}</div>
-        </td>
-      </tr>
-    </table>
-    <div style="font-size:10px;color:#334155;border-bottom:2px solid #0f172a;padding-bottom:6px;margin-bottom:10px;">
-      ${COMPANY_ADDRESS_LINE1}<br/>${COMPANY_ADDRESS_LINE2}
-    </div>
-  `;
+ return `
+ <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">
+ <tr>
+ <td style="width:70px;vertical-align:middle;padding:0 12px 0 0;">${logoImgTag(56)}</td>
+ <td style="vertical-align:middle;">
+ <div style="font-size:20px;font-weight:bold;font-family:Georgia,'Times New Roman',serif;">${COMPANY_NAME}</div>
+ </td>
+ </tr>
+ </table>
+ <div style="font-size:10px;color:#334155;border-bottom:2px solid #0f172a;padding-bottom:6px;margin-bottom:10px;">
+ ${COMPANY_ADDRESS_LINE1}<br/>${COMPANY_ADDRESS_LINE2}
+ </div>
+ `;
 }
 
 /**
@@ -48,43 +48,43 @@ export function letterheadHtml() {
  * agar formatnya konsisten & sesuai standar ISO perusahaan.
  *
  * @param {object} opts
- * @param {string} opts.judul  Judul dokumen, mis. "FORMULIR PENGAJUAN CUTI KARYAWAN"
- * @param {string} opts.noDok  Nomor dokumen, mis. "HR4"
+ * @param {string} opts.judul Judul dokumen, mis. "FORMULIR PENGAJUAN CUTI KARYAWAN"
+ * @param {string} opts.noDok Nomor dokumen, mis. "HR4"
  * @param {string} opts.terbitRevisi default "1/1"
  * @param {string} opts.tglTerbit default "1 September 2025"
  * @param {string} opts.hal default "1 dari 1"
  */
 export function isoDocHeaderTable(opts = {}) {
-  const {
-    judul = "FORMULIR",
-    noDok = "-",
-    terbitRevisi = "1/1",
-    tglTerbit = "1 September 2025",
-    hal = "1 dari 1"
-  } = opts;
+ const {
+ judul = "FORMULIR",
+ noDok = "-",
+ terbitRevisi = "1/1",
+ tglTerbit = "1 September 2025",
+ hal = "1 dari 1"
+ } = opts;
 
-  return `
-    <table class="header-table" style="width:100%;border-collapse:collapse;border:1px solid #000;table-layout:fixed;margin:0;padding:0;">
-      <colgroup>
-        <col style="width:14%;" />
-        <col style="width:20%;" />
-        <col style="width:25%;" />
-        <col style="width:21%;" />
-        <col style="width:20%;" />
-      </colgroup>
-      <tr>
-        <td rowspan="3" style="border:1px solid #000;text-align:center;padding:3px;vertical-align:middle;">${logoImgTag(52)}</td>
-        <td colspan="4" style="border:1px solid #000;font-size:12px;font-weight:bold;text-transform:uppercase;text-align:center;padding:5px 4px;vertical-align:middle;line-height:1.2;">${judul}</td>
-      </tr>
-      <tr>
-        <td colspan="4" style="border:1px solid #000;background:#d7ecf3 !important;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;font-size:11px;font-weight:bold;text-align:center;padding:4px;vertical-align:middle;">${COMPANY_NAME}</td>
-      </tr>
-      <tr>
-        <td style="border:1px solid #000;font-size:9px;text-align:left;padding:3px 4px;vertical-align:middle;white-space:nowrap;">Hal: ${hal}</td>
-        <td style="border:1px solid #000;font-size:9px;text-align:left;padding:3px 4px;vertical-align:middle;white-space:nowrap;">No Dok: ${noDok}</td>
-        <td style="border:1px solid #000;font-size:9px;text-align:left;padding:3px 4px;vertical-align:middle;white-space:nowrap;">Terbit/Rev: ${terbitRevisi}</td>
-        <td style="border:1px solid #000;font-size:9px;text-align:left;padding:3px 4px;vertical-align:middle;white-space:nowrap;">Tgl: ${tglTerbit}</td>
-      </tr>
-    </table>
-  `;
+ return `
+ <table class="header-table" style="width:100%;border-collapse:collapse;border:1px solid #000;table-layout:fixed;margin:0;padding:0;">
+ <colgroup>
+ <col style="width:14%;" />
+ <col style="width:20%;" />
+ <col style="width:25%;" />
+ <col style="width:21%;" />
+ <col style="width:20%;" />
+ </colgroup>
+ <tr>
+ <td rowspan="3" style="border:1px solid #000;text-align:center;padding:3px;vertical-align:middle;">${logoImgTag(52)}</td>
+ <td colspan="4" style="border:1px solid #000;font-size:12px;font-weight:bold;text-transform:uppercase;text-align:center;padding:5px 4px;vertical-align:middle;line-height:1.2;">${judul}</td>
+ </tr>
+ <tr>
+ <td colspan="4" style="border:1px solid #000;background:#d7ecf3 !important;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;font-size:11px;font-weight:bold;text-align:center;padding:4px;vertical-align:middle;">${COMPANY_NAME}</td>
+ </tr>
+ <tr>
+ <td style="border:1px solid #000;font-size:9px;text-align:left;padding:3px 4px;vertical-align:middle;white-space:nowrap;">Hal: ${hal}</td>
+ <td style="border:1px solid #000;font-size:9px;text-align:left;padding:3px 4px;vertical-align:middle;white-space:nowrap;">No Dok: ${noDok}</td>
+ <td style="border:1px solid #000;font-size:9px;text-align:left;padding:3px 4px;vertical-align:middle;white-space:nowrap;">Terbit/Rev: ${terbitRevisi}</td>
+ <td style="border:1px solid #000;font-size:9px;text-align:left;padding:3px 4px;vertical-align:middle;white-space:nowrap;">Tgl: ${tglTerbit}</td>
+ </tr>
+ </table>
+ `;
 }

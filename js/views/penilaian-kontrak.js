@@ -9,5564 +9,5564 @@ import { uploadFileToDrive } from "../gas-integration.js";
 // MASTER INDIKATOR PENILAIAN HARIAN & TARGET BULANAN
 // =====================================================================
 export const SALES_LAMPIRAN1_INDICATORS = [
-  { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Volume Dulux", unit: "Ton / Liter / Kaleng", key: "volume_dulux", defaultTarget: 10 },
-  { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Volume Catylac", unit: "Ton / Liter / Kaleng", key: "volume_catylac", defaultTarget: 15 },
-  { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Volume Maxilite", unit: "Ton / Liter / Kaleng", key: "volume_maxilite", defaultTarget: 10 },
-  { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Volume Aquashield", unit: "Ton / Liter / Kaleng", key: "volume_aquashield", defaultTarget: 5 },
-  { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Total Weighted Target", unit: "% Capaian", key: "total_weighted_target", defaultTarget: 100 },
-  { principle: "ALL", aspek: "Value Penjualan Tertagih", indikator: "Value Penjualan Tertagih", unit: "Rp", key: "value_penjualan_tertagih", defaultTarget: 100000000 },
-  { principle: "ALL", aspek: "Over due ( sisa piutang Toko )", indikator: "Over due Piutang Toko", unit: "Rp (Max Limit)", key: "overdue_piutang", defaultTarget: 20000000 },
-  { principle: "ICI", aspek: "AO - ICI", indikator: "Active Outlet ICI", unit: "Toko", key: "ao_ici", defaultTarget: 25 },
-  { principle: "PRIMA", aspek: "Sales Value (SO) - Tertagih", indikator: "Sales Value PRIMA Tertagih", unit: "Rp", key: "sales_value_prima", defaultTarget: 50000000 },
-  { principle: "PRIMA", aspek: "AO", indikator: "Active Outlet PRIMA", unit: "Toko", key: "ao_prima", defaultTarget: 15 },
-  { principle: "DCOTA", aspek: "Sales Value (SO) - Tertagih", indikator: "Sales Value DCOTA Tertagih", unit: "Rp", key: "sales_value_dcota", defaultTarget: 50000000 },
-  { principle: "DCOTA", aspek: "AO", indikator: "Active Outlet DCOTA", unit: "Toko", key: "ao_dcota", defaultTarget: 15 },
+ { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Volume Dulux", unit: "Ton / Liter / Kaleng", key: "volume_dulux", defaultTarget: 10 },
+ { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Volume Catylac", unit: "Ton / Liter / Kaleng", key: "volume_catylac", defaultTarget: 15 },
+ { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Volume Maxilite", unit: "Ton / Liter / Kaleng", key: "volume_maxilite", defaultTarget: 10 },
+ { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Volume Aquashield", unit: "Ton / Liter / Kaleng", key: "volume_aquashield", defaultTarget: 5 },
+ { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Total Weighted Target", unit: "% Capaian", key: "total_weighted_target", defaultTarget: 100 },
+ { principle: "ALL", aspek: "Value Penjualan Tertagih", indikator: "Value Penjualan Tertagih", unit: "Rp", key: "value_penjualan_tertagih", defaultTarget: 100000000 },
+ { principle: "ALL", aspek: "Over due ( sisa piutang Toko )", indikator: "Over due Piutang Toko", unit: "Rp (Max Limit)", key: "overdue_piutang", defaultTarget: 20000000 },
+ { principle: "ICI", aspek: "AO - ICI", indikator: "Active Outlet ICI", unit: "Toko", key: "ao_ici", defaultTarget: 25 },
+ { principle: "PRIMA", aspek: "Sales Value (SO) - Tertagih", indikator: "Sales Value PRIMA Tertagih", unit: "Rp", key: "sales_value_prima", defaultTarget: 50000000 },
+ { principle: "PRIMA", aspek: "AO", indikator: "Active Outlet PRIMA", unit: "Toko", key: "ao_prima", defaultTarget: 15 },
+ { principle: "DCOTA", aspek: "Sales Value (SO) - Tertagih", indikator: "Sales Value DCOTA Tertagih", unit: "Rp", key: "sales_value_dcota", defaultTarget: 50000000 },
+ { principle: "DCOTA", aspek: "AO", indikator: "Active Outlet DCOTA", unit: "Toko", key: "ao_dcota", defaultTarget: 15 },
 ];
 
 export const NON_SALES_INDICATORS = [
-  { aspek: "SOP & Ketepatan Kerja", indikator: "Target Kinerja & Tugas Harian", target_default: 100, key: "sop_tugas" },
-  { aspek: "Respon & Pelayanan Divisi", indikator: "Kepuasan User & Bebas Komplain Divisi Lain", target_default: 100, key: "respon_divisi" },
-  { aspek: "Kedisiplinan & Kehadiran", indikator: "Kedisiplinan Waktu & Absensi", target_default: 100, key: "kedisiplinan" },
-  { aspek: "Inisiatif & Kerjasama Team", indikator: "Kinerja Proaktif & Kerjasama Team", target_default: 100, key: "inisiatif_team" }
+ { aspek: "SOP & Ketepatan Kerja", indikator: "Target Kinerja & Tugas Harian", target_default: 100, key: "sop_tugas" },
+ { aspek: "Respon & Pelayanan Divisi", indikator: "Kepuasan User & Bebas Komplain Divisi Lain", target_default: 100, key: "respon_divisi" },
+ { aspek: "Kedisiplinan & Kehadiran", indikator: "Kedisiplinan Waktu & Absensi", target_default: 100, key: "kedisiplinan" },
+ { aspek: "Inisiatif & Kerjasama Team", indikator: "Kinerja Proaktif & Kerjasama Team", target_default: 100, key: "inisiatif_team" }
 ];
 
 // =====================================================================
 // PETA KATEGORI & OPSI REKOMENDASI PENILAIAN
 // =====================================================================
 export const JENIS_PENILAIAN_MAP = {
-  MASA_PERCOBAAN: {
-    key: "MASA_PERCOBAAN",
-    label: "Evaluasi Masa Percobaan (Probation)",
-    icon: "⏳",
-    badgeClass: "bg-teal-50 text-teal-700 border-teal-200",
-    options: [
-      "Sangat Baik - Lulus Masa Percobaan (Karyawan Tetap)",
-      "Baik - Lulus Masa Percobaan",
-      "Cukup - Perpanjang Masa Percobaan (1-3 Bulan)",
-      "Kurang - Tidak Lulus Masa Percobaan / Evaluasi"
-    ]
-  },
-  KONTRAK: {
-    key: "KONTRAK",
-    label: "Perpanjangan Kontrak",
-    icon: "📜",
-    badgeClass: "bg-blue-50 text-blue-700 border-blue-200",
-    options: [
-      "Perpanjang Kontrak 3 Bulan",
-      "Perpanjang Kontrak 6 Bulan",
-      "Perpanjang Kontrak 9 Bulan",
-      "Perpanjang Kontrak 12 Bulan",
-      "Tidak Diperpanjang (Putus Kontrak)",
-      "Direkomendasikan Karyawan Tetap (Kartap)"
-    ]
-  },
-  KARTAP: {
-    key: "KARTAP",
-    label: "Rekomendasi Karyawan Tetap (Kartap)",
-    icon: "⭐️",
-    badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    options: [
-      "Direkomendasikan Menjadi Karyawan Tetap",
-      "Diperpanjang Kontrak Kembali (3 Bulan)",
-      "Diperpanjang Kontrak Kembali (6 Bulan)",
-      "Diperpanjang Kontrak Kembali (12 Bulan)",
-      "Tidak Direkomendasikan (Putus Hubungan Kerja)"
-    ]
-  },
-  PIP: {
-    key: "PIP",
-    label: "Penilaian PIP (Performance Improvement Plan)",
-    icon: "📈",
-    badgeClass: "bg-amber-50 text-amber-800 border-amber-200",
-    options: [
-      "Lulus PIP (Performa Membaik / Lanjut Kerja)",
-      "Perpanjang Masa PIP (1 - 3 Bulan)",
-      "Gagal PIP (Demosi / Sanksi / PHK)"
-    ]
-  },
-  MUTASI_DEMOSI: {
-    key: "MUTASI_DEMOSI",
-    label: "Penilaian Mutasi / Demosi / Promosi",
-    icon: "🔄",
-    badgeClass: "bg-purple-50 text-purple-700 border-purple-200",
-    options: [
-      "Direkomendasikan Mutasi Jabatan / Divisi",
-      "Direkomendasikan Demosi Jabatan",
-      "Direkomendasikan Promosi Jabatan",
-      "Tetap Pada Posisi Saat Ini"
-    ]
-  },
-  KPI_360: {
-    key: "KPI_360",
-    label: "Penilaian KPI 360",
-    icon: "📋",
-    badgeClass: "bg-maroon-50 text-maroon-700 border-maroon-200",
-    options: [
-      "Kinerja Sangat Baik (Apresiasi / Bonus)",
-      "Kinerja Memenuhi Ekspektasi (Dipertahankan)",
-      "Kinerja Perlu Perbaikan (Evaluasi / Guidance)",
-      "Saran Pelatihan & Peningkatan Kompetensi"
-    ]
-  }
+ MASA_PERCOBAAN: {
+ key: "MASA_PERCOBAAN",
+ label: "Evaluasi Masa Percobaan (Probation)",
+ icon: "clock",
+ badgeClass: "bg-teal-50 text-teal-700 border-teal-200",
+ options: [
+ "Sangat Baik - Lulus Masa Percobaan (Karyawan Tetap)",
+ "Baik - Lulus Masa Percobaan",
+ "Cukup - Perpanjang Masa Percobaan (1-3 Bulan)",
+ "Kurang - Tidak Lulus Masa Percobaan / Evaluasi"
+ ]
+ },
+ KONTRAK: {
+ key: "KONTRAK",
+ label: "Perpanjangan Kontrak",
+ icon: "doc-plus",
+ badgeClass: "bg-blue-50 text-blue-700 border-blue-200",
+ options: [
+ "Perpanjang Kontrak 3 Bulan",
+ "Perpanjang Kontrak 6 Bulan",
+ "Perpanjang Kontrak 9 Bulan",
+ "Perpanjang Kontrak 12 Bulan",
+ "Tidak Diperpanjang (Putus Kontrak)",
+ "Direkomendasikan Karyawan Tetap (Kartap)"
+ ]
+ },
+ KARTAP: {
+ key: "KARTAP",
+ label: "Rekomendasi Karyawan Tetap (Kartap)",
+ icon: "star",
+ badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200",
+ options: [
+ "Direkomendasikan Menjadi Karyawan Tetap",
+ "Diperpanjang Kontrak Kembali (3 Bulan)",
+ "Diperpanjang Kontrak Kembali (6 Bulan)",
+ "Diperpanjang Kontrak Kembali (12 Bulan)",
+ "Tidak Direkomendasikan (Putus Hubungan Kerja)"
+ ]
+ },
+ PIP: {
+ key: "PIP",
+ label: "Penilaian PIP (Performance Improvement Plan)",
+ icon: "",
+ badgeClass: "bg-amber-50 text-amber-800 border-amber-200",
+ options: [
+ "Lulus PIP (Performa Membaik / Lanjut Kerja)",
+ "Perpanjang Masa PIP (1 - 3 Bulan)",
+ "Gagal PIP (Demosi / Sanksi / PHK)"
+ ]
+ },
+ MUTASI_DEMOSI: {
+ key: "MUTASI_DEMOSI",
+ label: "Penilaian Mutasi / Demosi / Promosi",
+ icon: "",
+ badgeClass: "bg-purple-50 text-purple-700 border-purple-200",
+ options: [
+ "Direkomendasikan Mutasi Jabatan / Divisi",
+ "Direkomendasikan Demosi Jabatan",
+ "Direkomendasikan Promosi Jabatan",
+ "Tetap Pada Posisi Saat Ini"
+ ]
+ },
+ KPI_360: {
+ key: "KPI_360",
+ label: "Penilaian KPI 360",
+ icon: "",
+ badgeClass: "bg-maroon-50 text-maroon-700 border-maroon-200",
+ options: [
+ "Kinerja Sangat Baik (Apresiasi / Bonus)",
+ "Kinerja Memenuhi Ekspektasi (Dipertahankan)",
+ "Kinerja Perlu Perbaikan (Evaluasi / Guidance)",
+ "Saran Pelatihan & Peningkatan Kompetensi"
+ ]
+ }
 };
 
 // =====================================================================
 // DEFAULT RULES STANDAR GRADE PENILAIAN HRD
 // =====================================================================
 export const DEFAULT_GRADE_RULES = {
-  MASA_PERCOBAAN: [
-    { min: 91, max: 100, predikat: "Sangat Baik", rekomendasi: "Sangat Baik - Lulus Masa Percobaan (Karyawan Tetap)", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300" },
-    { min: 81, max: 90, predikat: "Baik", rekomendasi: "Baik - Lulus Masa Percobaan", badgeClass: "bg-blue-100 text-blue-800 border-blue-300" },
-    { min: 0, max: 80, predikat: "Kurang", rekomendasi: "Kurang - Tidak Lulus Masa Percobaan / Evaluasi", badgeClass: "bg-rose-100 text-rose-800 border-rose-300" }
-  ],
-  KONTRAK: [
-    { min: 91, max: 100, predikat: "Sangat Baik", rekomendasi: "Direkomendasikan Karyawan Tetap (Kartap)", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300" },
-    { min: 81, max: 90, predikat: "Baik", rekomendasi: "Perpanjang Kontrak 12 Bulan", badgeClass: "bg-blue-100 text-blue-800 border-blue-300" },
-    { min: 70, max: 80, predikat: "Cukup", rekomendasi: "Perpanjang Kontrak 6 Bulan", badgeClass: "bg-amber-100 text-amber-800 border-amber-300" },
-    { min: 0, max: 69, predikat: "Kurang", rekomendasi: "Tidak Diperpanjang (Putus Kontrak)", badgeClass: "bg-rose-100 text-rose-800 border-rose-300" }
-  ],
-  KARTAP: [
-    { min: 91, max: 100, predikat: "Sangat Baik", rekomendasi: "Direkomendasikan Menjadi Karyawan Tetap", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300" },
-    { min: 81, max: 90, predikat: "Baik", rekomendasi: "Diperpanjang Kontrak Kembali (12 Bulan)", badgeClass: "bg-blue-100 text-blue-800 border-blue-300" },
-    { min: 70, max: 80, predikat: "Cukup", rekomendasi: "Diperpanjang Kontrak Kembali (6 Bulan)", badgeClass: "bg-amber-100 text-amber-800 border-amber-300" },
-    { min: 0, max: 69, predikat: "Kurang", rekomendasi: "Tidak Direkomendasikan (Putus Hubungan Kerja)", badgeClass: "bg-rose-100 text-rose-800 border-rose-300" }
-  ],
-  PIP: [
-    { min: 85, max: 100, predikat: "Sangat Baik", rekomendasi: "Lulus PIP (Performa Membaik / Lanjut Kerja)", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300" },
-    { min: 70, max: 84, predikat: "Cukup", rekomendasi: "Perpanjang Masa PIP (1 - 3 Bulan)", badgeClass: "bg-amber-100 text-amber-800 border-amber-300" },
-    { min: 0, max: 69, predikat: "Kurang", rekomendasi: "Gagal PIP (Demosi / Sanksi / PHK)", badgeClass: "bg-rose-100 text-rose-800 border-rose-300" }
-  ],
-  MUTASI_DEMOSI: [
-    { min: 90, max: 100, predikat: "Sangat Baik", rekomendasi: "Direkomendasikan Promosi Jabatan", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300" },
-    { min: 75, max: 89, predikat: "Baik", rekomendasi: "Tetap Pada Posisi Saat Ini", badgeClass: "bg-blue-100 text-blue-800 border-blue-300" },
-    { min: 60, max: 74, predikat: "Cukup", rekomendasi: "Direkomendasikan Mutasi Jabatan / Divisi", badgeClass: "bg-purple-100 text-purple-800 border-purple-300" },
-    { min: 0, max: 59, predikat: "Kurang", rekomendasi: "Direkomendasikan Demosi Jabatan", badgeClass: "bg-rose-100 text-rose-800 border-rose-300" }
-  ],
-  KPI_360: [
-    { min: 90, max: 100, predikat: "Sangat Baik", rekomendasi: "Kinerja Sangat Baik (Apresiasi / Bonus)", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300" },
-    { min: 80, max: 89, predikat: "Baik", rekomendasi: "Kinerja Memenuhi Ekspektasi (Dipertahankan)", badgeClass: "bg-blue-100 text-blue-800 border-blue-300" },
-    { min: 70, max: 79, predikat: "Cukup", rekomendasi: "Kinerja Perlu Perbaikan (Evaluasi / Guidance)", badgeClass: "bg-amber-100 text-amber-800 border-amber-300" },
-    { min: 0, max: 69, predikat: "Kurang", rekomendasi: "Saran Pelatihan & Peningkatan Kompetensi", badgeClass: "bg-rose-100 text-rose-800 border-rose-300" }
-  ]
+ MASA_PERCOBAAN: [
+ { min: 91, max: 100, predikat: "Sangat Baik", rekomendasi: "Sangat Baik - Lulus Masa Percobaan (Karyawan Tetap)", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+ { min: 81, max: 90, predikat: "Baik", rekomendasi: "Baik - Lulus Masa Percobaan", badgeClass: "bg-blue-100 text-blue-800 border-blue-300" },
+ { min: 0, max: 80, predikat: "Kurang", rekomendasi: "Kurang - Tidak Lulus Masa Percobaan / Evaluasi", badgeClass: "bg-rose-100 text-rose-800 border-rose-300" }
+ ],
+ KONTRAK: [
+ { min: 91, max: 100, predikat: "Sangat Baik", rekomendasi: "Direkomendasikan Karyawan Tetap (Kartap)", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+ { min: 81, max: 90, predikat: "Baik", rekomendasi: "Perpanjang Kontrak 12 Bulan", badgeClass: "bg-blue-100 text-blue-800 border-blue-300" },
+ { min: 70, max: 80, predikat: "Cukup", rekomendasi: "Perpanjang Kontrak 6 Bulan", badgeClass: "bg-amber-100 text-amber-800 border-amber-300" },
+ { min: 0, max: 69, predikat: "Kurang", rekomendasi: "Tidak Diperpanjang (Putus Kontrak)", badgeClass: "bg-rose-100 text-rose-800 border-rose-300" }
+ ],
+ KARTAP: [
+ { min: 91, max: 100, predikat: "Sangat Baik", rekomendasi: "Direkomendasikan Menjadi Karyawan Tetap", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+ { min: 81, max: 90, predikat: "Baik", rekomendasi: "Diperpanjang Kontrak Kembali (12 Bulan)", badgeClass: "bg-blue-100 text-blue-800 border-blue-300" },
+ { min: 70, max: 80, predikat: "Cukup", rekomendasi: "Diperpanjang Kontrak Kembali (6 Bulan)", badgeClass: "bg-amber-100 text-amber-800 border-amber-300" },
+ { min: 0, max: 69, predikat: "Kurang", rekomendasi: "Tidak Direkomendasikan (Putus Hubungan Kerja)", badgeClass: "bg-rose-100 text-rose-800 border-rose-300" }
+ ],
+ PIP: [
+ { min: 85, max: 100, predikat: "Sangat Baik", rekomendasi: "Lulus PIP (Performa Membaik / Lanjut Kerja)", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+ { min: 70, max: 84, predikat: "Cukup", rekomendasi: "Perpanjang Masa PIP (1 - 3 Bulan)", badgeClass: "bg-amber-100 text-amber-800 border-amber-300" },
+ { min: 0, max: 69, predikat: "Kurang", rekomendasi: "Gagal PIP (Demosi / Sanksi / PHK)", badgeClass: "bg-rose-100 text-rose-800 border-rose-300" }
+ ],
+ MUTASI_DEMOSI: [
+ { min: 90, max: 100, predikat: "Sangat Baik", rekomendasi: "Direkomendasikan Promosi Jabatan", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+ { min: 75, max: 89, predikat: "Baik", rekomendasi: "Tetap Pada Posisi Saat Ini", badgeClass: "bg-blue-100 text-blue-800 border-blue-300" },
+ { min: 60, max: 74, predikat: "Cukup", rekomendasi: "Direkomendasikan Mutasi Jabatan / Divisi", badgeClass: "bg-purple-100 text-purple-800 border-purple-300" },
+ { min: 0, max: 59, predikat: "Kurang", rekomendasi: "Direkomendasikan Demosi Jabatan", badgeClass: "bg-rose-100 text-rose-800 border-rose-300" }
+ ],
+ KPI_360: [
+ { min: 90, max: 100, predikat: "Sangat Baik", rekomendasi: "Kinerja Sangat Baik (Apresiasi / Bonus)", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+ { min: 80, max: 89, predikat: "Baik", rekomendasi: "Kinerja Memenuhi Ekspektasi (Dipertahankan)", badgeClass: "bg-blue-100 text-blue-800 border-blue-300" },
+ { min: 70, max: 79, predikat: "Cukup", rekomendasi: "Kinerja Perlu Perbaikan (Evaluasi / Guidance)", badgeClass: "bg-amber-100 text-amber-800 border-amber-300" },
+ { min: 0, max: 69, predikat: "Kurang", rekomendasi: "Saran Pelatihan & Peningkatan Kompetensi", badgeClass: "bg-rose-100 text-rose-800 border-rose-300" }
+ ]
 };
 
 export function evaluateGradeRule(categoryKey, score, rulesMap = DEFAULT_GRADE_RULES) {
-  const catKey = categoryKey || "KPI_360";
-  const catRules = rulesMap[catKey] || rulesMap.KPI_360 || DEFAULT_GRADE_RULES.KPI_360;
-  
-  const numScore = parseFloat(score) || 0;
-  for (const r of catRules) {
-    if (numScore >= parseFloat(r.min) && numScore <= parseFloat(r.max)) {
-      return {
-        predikat: r.predikat,
-        rekomendasi: r.rekomendasi,
-        badgeClass: r.badgeClass || "bg-blue-100 text-blue-800 border-blue-300"
-      };
-    }
-  }
-  
-  return {
-    predikat: numScore >= 80 ? "Baik" : "Kurang",
-    rekomendasi: catRules[0]?.rekomendasi || "Evaluasi",
-    badgeClass: numScore >= 80 ? "bg-blue-100 text-blue-800 border-blue-300" : "bg-rose-100 text-rose-800 border-rose-300"
-  };
+ const catKey = categoryKey || "KPI_360";
+ const catRules = rulesMap[catKey] || rulesMap.KPI_360 || DEFAULT_GRADE_RULES.KPI_360;
+ 
+ const numScore = parseFloat(score) || 0;
+ for (const r of catRules) {
+ if (numScore >= parseFloat(r.min) && numScore <= parseFloat(r.max)) {
+ return {
+ predikat: r.predikat,
+ rekomendasi: r.rekomendasi,
+ badgeClass: r.badgeClass || "bg-blue-100 text-blue-800 border-blue-300"
+ };
+ }
+ }
+ 
+ return {
+ predikat: numScore >= 80 ? "Baik" : "Kurang",
+ rekomendasi: catRules[0]?.rekomendasi || "Evaluasi",
+ badgeClass: numScore >= 80 ? "bg-blue-100 text-blue-800 border-blue-300" : "bg-rose-100 text-rose-800 border-rose-300"
+ };
 }
 
 export function getCatConfig(key) {
-  if (!key) return JENIS_PENILAIAN_MAP.KPI_360;
-  if (JENIS_PENILAIAN_MAP[key]) return JENIS_PENILAIAN_MAP[key];
-  if (key === "PERPANJANGAN_KONTRAK" || key === "KONTRAK_KERJA") return JENIS_PENILAIAN_MAP.KONTRAK;
-  return JENIS_PENILAIAN_MAP.KPI_360;
+ if (!key) return JENIS_PENILAIAN_MAP.KPI_360;
+ if (JENIS_PENILAIAN_MAP[key]) return JENIS_PENILAIAN_MAP[key];
+ if (key === "PERPANJANGAN_KONTRAK" || key === "KONTRAK_KERJA") return JENIS_PENILAIAN_MAP.KONTRAK;
+ return JENIS_PENILAIAN_MAP.KPI_360;
 }
 
 let currentGradeRulesMap = DEFAULT_GRADE_RULES;
 
 export function openGradeRulesModal(session, rulesMap, onSaveCallback) {
-  let activeCategory = "MASA_PERCOBAAN";
-  let workingRules = JSON.parse(JSON.stringify(rulesMap || currentGradeRulesMap || DEFAULT_GRADE_RULES));
+ let activeCategory = "MASA_PERCOBAAN";
+ let workingRules = JSON.parse(JSON.stringify(rulesMap || currentGradeRulesMap || DEFAULT_GRADE_RULES));
 
-  function renderCategoryRules() {
-    const rulesList = workingRules[activeCategory] || DEFAULT_GRADE_RULES[activeCategory] || [];
-    const catCfg = JENIS_PENILAIAN_MAP[activeCategory] || JENIS_PENILAIAN_MAP.KPI_360;
+ function renderCategoryRules() {
+ const rulesList = workingRules[activeCategory] || DEFAULT_GRADE_RULES[activeCategory] || [];
+ const catCfg = JENIS_PENILAIAN_MAP[activeCategory] || JENIS_PENILAIAN_MAP.KPI_360;
 
-    const rowsHtml = rulesList.map((r, idx) => `
-      <tr class="border-b border-slate-100">
-        <td class="p-2">
-          <div class="flex items-center gap-1 text-xs">
-            <input type="number" data-idx="${idx}" data-field="min" value="${r.min}" min="0" max="100" class="rule-inp w-16 px-2 py-1 border border-slate-200 rounded font-bold text-center">
-            <span>-</span>
-            <input type="number" data-idx="${idx}" data-field="max" value="${r.max}" min="0" max="100" class="rule-inp w-16 px-2 py-1 border border-slate-200 rounded font-bold text-center">
-          </div>
-        </td>
-        <td class="p-2">
-          <input type="text" data-idx="${idx}" data-field="predikat" value="${escapeHtml(r.predikat || '')}" class="rule-inp w-full px-2 py-1 text-xs border border-slate-200 rounded font-bold text-slate-800" placeholder="Contoh: Sangat Baik / Baik / Kurang">
-        </td>
-        <td class="p-2">
-          <input type="text" data-idx="${idx}" data-field="rekomendasi" value="${escapeHtml(r.rekomendasi || '')}" class="rule-inp w-full px-2 py-1 text-xs border border-slate-200 rounded font-medium text-slate-700" placeholder="Contoh: Lulus Masa Percobaan / Tidak Lulus">
-        </td>
-        <td class="p-2 text-center">
-          <button data-del-rule="${idx}" class="p-1 text-slate-400 hover:text-rose-600 transition" title="Hapus Aturan Tier Ini">🗑️</button>
-        </td>
-      </tr>
-    `).join("");
+ const rowsHtml = rulesList.map((r, idx) => `
+ <tr class="border-b border-slate-100">
+ <td class="p-2">
+ <div class="flex items-center gap-1 text-xs">
+ <input type="number" data-idx="${idx}" data-field="min" value="${r.min}" min="0" max="100" class="rule-inp w-16 px-2 py-1 border border-slate-200 rounded font-bold text-center">
+ <span>-</span>
+ <input type="number" data-idx="${idx}" data-field="max" value="${r.max}" min="0" max="100" class="rule-inp w-16 px-2 py-1 border border-slate-200 rounded font-bold text-center">
+ </div>
+ </td>
+ <td class="p-2">
+ <input type="text" data-idx="${idx}" data-field="predikat" value="${escapeHtml(r.predikat || '')}" class="rule-inp w-full px-2 py-1 text-xs border border-slate-200 rounded font-bold text-slate-800" placeholder="Contoh: Sangat Baik / Baik / Kurang">
+ </td>
+ <td class="p-2">
+ <input type="text" data-idx="${idx}" data-field="rekomendasi" value="${escapeHtml(r.rekomendasi || '')}" class="rule-inp w-full px-2 py-1 text-xs border border-slate-200 rounded font-medium text-slate-700" placeholder="Contoh: Lulus Masa Percobaan / Tidak Lulus">
+ </td>
+ <td class="p-2 text-center">
+ <button data-del-rule="${idx}" class="p-1 text-slate-400 hover:text-rose-600 transition" title="Hapus Aturan Tier Ini"></button>
+ </td>
+ </tr>
+ `).join("");
 
-    return `
-      <div class="space-y-4 text-left">
-        <div class="p-3 bg-slate-800 text-white rounded-xl flex items-center justify-between">
-          <div>
-            <h3 class="font-bold text-sm flex items-center gap-2">
-              <span>${catCfg.icon}</span>
-              <span>${catCfg.label}</span>
-            </h3>
-            <p class="text-[11px] text-slate-300 mt-0.5">Atur rentang skor (misal >81 Lulus Masa Percobaan, <=80 Tidak Lulus), sebutan predikat, dan standar opsi rekomendasi otomatis.</p>
-          </div>
-          <button id="btn-add-rule-tier" class="px-3 py-1.5 bg-maroon-700 hover:bg-maroon-800 text-white rounded-lg text-xs font-bold transition shrink-0 shadow-2xs">+ Tambah Tier Range</button>
-        </div>
+ return `
+ <div class="space-y-4 text-left">
+ <div class="p-3 bg-slate-800 text-white rounded-xl flex items-center justify-between">
+ <div>
+ <h3 class="font-bold text-sm flex items-center gap-2">
+ <span>${catCfg.icon}</span>
+ <span>${catCfg.label}</span>
+ </h3>
+ <p class="text-[11px] text-slate-300 mt-0.5">Atur rentang skor (misal >81 Lulus Masa Percobaan, <=80 Tidak Lulus), sebutan predikat, dan standar opsi rekomendasi otomatis.</p>
+ </div>
+ <button id="btn-add-rule-tier" class="px-3 py-1.5 bg-maroon-700 hover:bg-maroon-800 text-white rounded-lg text-xs font-bold transition shrink-0 shadow-2xs">+ Tambah Tier Range</button>
+ </div>
 
-        <div class="overflow-x-auto border border-slate-200 rounded-xl">
-          <table class="w-full text-xs">
-            <thead class="bg-slate-50 text-slate-500 uppercase font-bold text-[10px] border-b border-slate-200">
-              <tr>
-                <th class="p-2 text-left">Rentang Skor (Min - Max)</th>
-                <th class="p-2 text-left">Sebutan Predikat (Grade)</th>
-                <th class="p-2 text-left">Default Opsi Rekomendasi / Keputusan Auto-Suggest</th>
-                <th class="p-2 text-center w-12">Hapus</th>
-              </tr>
-            </thead>
-            <tbody id="tbl-rules-body" class="divide-y divide-slate-100 bg-white">
-              ${rowsHtml.length ? rowsHtml : '<tr><td colspan="4" class="p-4 text-center text-slate-400">Belum ada tier aturan untuk kategori ini.</td></tr>'}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
-  }
+ <div class="overflow-x-auto border border-slate-200 rounded-xl">
+ <table class="w-full text-xs">
+ <thead class="bg-slate-50 text-slate-500 uppercase font-bold text-[10px] border-b border-slate-200">
+ <tr>
+ <th class="p-2 text-left">Rentang Skor (Min - Max)</th>
+ <th class="p-2 text-left">Sebutan Predikat (Grade)</th>
+ <th class="p-2 text-left">Default Opsi Rekomendasi / Keputusan Auto-Suggest</th>
+ <th class="p-2 text-center w-12">Hapus</th>
+ </tr>
+ </thead>
+ <tbody id="tbl-rules-body" class="divide-y divide-slate-100 bg-white">
+ ${rowsHtml.length ? rowsHtml : '<tr><td colspan="4" class="p-4 text-center text-slate-400">Belum ada tier aturan untuk kategori ini.</td></tr>'}
+ </tbody>
+ </table>
+ </div>
+ </div>
+ `;
+ }
 
-  openModal({
-    title: "⚙️ Pengaturan Standar Grade Penilaian & Keputusan HRD",
-    size: "xl",
-    bodyHtml: `
-      <div class="space-y-4">
-        <div class="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-100">
-          <span class="text-xs font-bold text-slate-400 uppercase tracking-wider shrink-0">Kategori Evaluasi:</span>
-          ${Object.keys(JENIS_PENILAIAN_MAP).map(catKey => `
-            <button data-cat-rule="${catKey}" class="btn-rule-cat px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${catKey === activeCategory ? 'bg-maroon-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
-              ${JENIS_PENILAIAN_MAP[catKey].icon} ${JENIS_PENILAIAN_MAP[catKey].label}
-            </button>
-          `).join('')}
-        </div>
+ openModal({
+ title: "Pengaturan Standar Grade Penilaian & Keputusan HRD",
+ size: "xl",
+ bodyHtml: `
+ <div class="space-y-4">
+ <div class="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-100">
+ <span class="text-xs font-bold text-slate-400 uppercase tracking-wider shrink-0">Kategori Evaluasi:</span>
+ ${Object.keys(JENIS_PENILAIAN_MAP).map(catKey => `
+ <button data-cat-rule="${catKey}" class="btn-rule-cat px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${catKey === activeCategory ? 'bg-maroon-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
+ ${JENIS_PENILAIAN_MAP[catKey].icon} ${JENIS_PENILAIAN_MAP[catKey].label}
+ </button>
+ `).join('')}
+ </div>
 
-        <div id="rule-category-content">
-          ${renderCategoryRules()}
-        </div>
-      </div>
-    `,
-    footerHtml: `
-      <div class="flex items-center justify-between w-full">
-        <button id="btn-reset-default-rules" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition">🔄 Reset ke Default Perusahaan</button>
-        <div class="flex items-center gap-2">
-          <button id="btn-cancel-grade-rules" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition">Batal</button>
-          <button id="btn-save-grade-rules" class="px-5 py-2 bg-maroon-700 text-white rounded-lg text-xs font-bold hover:bg-maroon-800 transition shadow-md">💾 Simpan Aturan Grade HRD</button>
-        </div>
-      </div>
-    `,
-    onMount: (m) => {
-      const contentWrap = m.querySelector("#rule-category-content");
+ <div id="rule-category-content">
+ ${renderCategoryRules()}
+ </div>
+ </div>
+ `,
+ footerHtml: `
+ <div class="flex items-center justify-between w-full">
+ <button id="btn-reset-default-rules" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition"> Reset ke Default Perusahaan</button>
+ <div class="flex items-center gap-2">
+ <button id="btn-cancel-grade-rules" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition">Batal</button>
+ <button id="btn-save-grade-rules" class="px-5 py-2 bg-maroon-700 text-white rounded-lg text-xs font-bold hover:bg-maroon-800 transition shadow-md">Simpan Aturan Grade HRD</button>
+ </div>
+ </div>
+ `,
+ onMount: (m) => {
+ const contentWrap = m.querySelector("#rule-category-content");
 
-      function updateCategoryView() {
-        m.querySelectorAll(".btn-rule-cat").forEach(btn => {
-          if (btn.dataset.catRule === activeCategory) {
-            btn.className = "btn-rule-cat px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap bg-maroon-700 text-white shadow-2xs";
-          } else {
-            btn.className = "btn-rule-cat px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap bg-slate-100 text-slate-600 hover:bg-slate-200";
-          }
-        });
-        contentWrap.innerHTML = renderCategoryRules();
-        bindRuleEvents();
-      }
+ function updateCategoryView() {
+ m.querySelectorAll(".btn-rule-cat").forEach(btn => {
+ if (btn.dataset.catRule === activeCategory) {
+ btn.className = "btn-rule-cat px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap bg-maroon-700 text-white shadow-2xs";
+ } else {
+ btn.className = "btn-rule-cat px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap bg-slate-100 text-slate-600 hover:bg-slate-200";
+ }
+ });
+ contentWrap.innerHTML = renderCategoryRules();
+ bindRuleEvents();
+ }
 
-      function bindRuleEvents() {
-        contentWrap.querySelectorAll(".rule-inp").forEach(inp => {
-          inp.oninput = () => {
-            const idx = parseInt(inp.dataset.idx, 10);
-            const field = inp.dataset.field;
-            if (workingRules[activeCategory] && workingRules[activeCategory][idx]) {
-              workingRules[activeCategory][idx][field] = inp.value;
-            }
-          };
-        });
+ function bindRuleEvents() {
+ contentWrap.querySelectorAll(".rule-inp").forEach(inp => {
+ inp.oninput = () => {
+ const idx = parseInt(inp.dataset.idx, 10);
+ const field = inp.dataset.field;
+ if (workingRules[activeCategory] && workingRules[activeCategory][idx]) {
+ workingRules[activeCategory][idx][field] = inp.value;
+ }
+ };
+ });
 
-        contentWrap.querySelectorAll("[data-del-rule]").forEach(btn => {
-          btn.onclick = () => {
-            const idx = parseInt(btn.dataset.delRule, 10);
-            workingRules[activeCategory].splice(idx, 1);
-            updateCategoryView();
-          };
-        });
+ contentWrap.querySelectorAll("[data-del-rule]").forEach(btn => {
+ btn.onclick = () => {
+ const idx = parseInt(btn.dataset.delRule, 10);
+ workingRules[activeCategory].splice(idx, 1);
+ updateCategoryView();
+ };
+ });
 
-        const addBtn = contentWrap.querySelector("#btn-add-rule-tier");
-        if (addBtn) {
-          addBtn.onclick = () => {
-            if (!workingRules[activeCategory]) workingRules[activeCategory] = [];
-            workingRules[activeCategory].push({
-              min: 0,
-              max: 100,
-              predikat: "Baru",
-              rekomendasi: "Rekomendasi Baru",
-              badgeClass: "bg-blue-100 text-blue-800 border-blue-300"
-            });
-            updateCategoryView();
-          };
-        }
-      }
+ const addBtn = contentWrap.querySelector("#btn-add-rule-tier");
+ if (addBtn) {
+ addBtn.onclick = () => {
+ if (!workingRules[activeCategory]) workingRules[activeCategory] = [];
+ workingRules[activeCategory].push({
+ min: 0,
+ max: 100,
+ predikat: "Baru",
+ rekomendasi: "Rekomendasi Baru",
+ badgeClass: "bg-blue-100 text-blue-800 border-blue-300"
+ });
+ updateCategoryView();
+ };
+ }
+ }
 
-      m.querySelectorAll(".btn-rule-cat").forEach(btn => {
-        btn.onclick = () => {
-          activeCategory = btn.dataset.catRule;
-          updateCategoryView();
-        };
-      });
+ m.querySelectorAll(".btn-rule-cat").forEach(btn => {
+ btn.onclick = () => {
+ activeCategory = btn.dataset.catRule;
+ updateCategoryView();
+ };
+ });
 
-      bindRuleEvents();
+ bindRuleEvents();
 
-      m.querySelector("#btn-reset-default-rules").onclick = () => {
-        if (confirm("Reset seluruh standar grade dan keputusan ke bawaan default perusahaan?")) {
-          workingRules = JSON.parse(JSON.stringify(DEFAULT_GRADE_RULES));
-          updateCategoryView();
-          toast("Aturan di-reset ke default perusahaan.", "info");
-        }
-      };
+ m.querySelector("#btn-reset-default-rules").onclick = () => {
+ if (confirm("Reset seluruh standar grade dan keputusan ke bawaan default perusahaan?")) {
+ workingRules = JSON.parse(JSON.stringify(DEFAULT_GRADE_RULES));
+ updateCategoryView();
+ toast("Aturan di-reset ke default perusahaan.", "info");
+ }
+ };
 
-      m.querySelector("#btn-cancel-grade-rules").onclick = closeModal;
+ m.querySelector("#btn-cancel-grade-rules").onclick = closeModal;
 
-      m.querySelector("#btn-save-grade-rules").onclick = async () => {
-        const btnSave = m.querySelector("#btn-save-grade-rules");
-        btnSave.disabled = true; btnSave.textContent = "Menyimpan Aturan...";
-        try {
-          await setDoc(doc(db, COL.APP_SETTINGS, "aturan_penilaian_grade"), {
-            rules: workingRules,
-            updated_by: session.nama,
-            updated_at: new Date().toISOString()
-          }, { merge: true });
+ m.querySelector("#btn-save-grade-rules").onclick = async () => {
+ const btnSave = m.querySelector("#btn-save-grade-rules");
+ btnSave.disabled = true; btnSave.textContent = "Menyimpan Aturan...";
+ try {
+ await setDoc(doc(db, COL.APP_SETTINGS, "aturan_penilaian_grade"), {
+ rules: workingRules,
+ updated_by: session.nama,
+ updated_at: new Date().toISOString()
+ }, { merge: true });
 
-          currentGradeRulesMap = workingRules;
-          toast("Standar Grade & Keputusan HRD berhasil disimpan!", "success");
-          if (typeof onSaveCallback === "function") onSaveCallback(workingRules);
-          closeModal();
-        } catch(err) {
-          toast("Gagal menyimpan aturan: " + err.message, "error");
-          btnSave.disabled = false; btnSave.textContent = "💾 Simpan Aturan Grade HRD";
-        }
-      };
-    }
-  });
+ currentGradeRulesMap = workingRules;
+ toast("Standar Grade & Keputusan HRD berhasil disimpan!", "success");
+ if (typeof onSaveCallback === "function") onSaveCallback(workingRules);
+ closeModal();
+ } catch(err) {
+ toast("Gagal menyimpan aturan: " + err.message, "error");
+ btnSave.disabled = false; btnSave.textContent = "Simpan Aturan Grade HRD";
+ }
+ };
+ }
+ });
 }
 
 export async function mount(container, { session, params }) {
-  const role = (session.role || "").toUpperCase();
-  const isFullAccess = FULL_ACCESS_ROLES.includes(role);
-  const isAtasanView = !isFullAccess && ATASAN_VIEW_ROLES.includes(role);
-  const isHrdOrAdmin = isFullAccess || ["HRD", "SUPERADMIN", "ADMIN", "ADMINISTRATOR", "DIREKTUR", "GM", "FINANCE"].includes(role);
-  const isAtasan = isAtasanView || ["MANAGER", "SPV", "KOORDINATOR", "BRANCH MANAGER"].includes(role);
-  const isRegularEmployee = !isHrdOrAdmin && !isAtasan;
-  const canManageKontrak = isFullAccess;
-  let bawahanNames = null;
-
-  try {
-    const snapRules = await getDoc(doc(db, COL.APP_SETTINGS, "aturan_penilaian_grade"));
-    if (snapRules.exists() && snapRules.data()?.rules) {
-      currentGradeRulesMap = { ...DEFAULT_GRADE_RULES, ...snapRules.data().rules };
-    }
-  } catch(e) {}
-
-  const btnGradeCfg = container.querySelector("#btn-open-grade-config");
-  if (btnGradeCfg && isHrdOrAdmin) {
-    btnGradeCfg.classList.remove("hidden");
-    btnGradeCfg.onclick = () => {
-      openGradeRulesModal(session, currentGradeRulesMap, (updated) => {
-        currentGradeRulesMap = updated;
-      });
-    };
-  }
-
-  const panels = {
-    kontrak: container.querySelector("#pk-panel-kontrak"),
-    kpi360: container.querySelector("#pk-panel-kpi360"),
-    hasil: container.querySelector("#pk-panel-hasil"),
-    evaluasi: container.querySelector("#pk-panel-evaluasi"),
-    daily: container.querySelector("#pk-panel-daily"),
-    template: container.querySelector("#pk-panel-template"),
-    grafik: container.querySelector("#pk-panel-employee-grafik"),
-  };
-  const loaded = {};
-
-  async function loadEmployeeGrafik() {
-    const wrap = container.querySelector("#pk-panel-employee-grafik");
-    if (!wrap) return;
-    wrap.classList.remove("hidden");
-    wrap.innerHTML = `<div class="p-8">${skeletonRows(6)}</div>`;
-
-    try {
-      const [allLogs, allTasks, allReviews] = await Promise.all([
-        fsGetAll(COL.LOG_PENILAIAN_KPI),
-        fsGetAll(COL.TUGAS_KPI_360),
-        fsGetAll(COL.PERFORMANCE_REVIEW)
-      ]);
-
-      const userNama = (session.nama || "").toLowerCase();
-      const userNik = (session.nik || "").toLowerCase();
-
-      // Filter logs & tasks for current employee
-      const myLogs = allLogs.filter(r => 
-        (r.nama_dinilai && r.nama_dinilai.toLowerCase() === userNama) ||
-        (r.nik_dinilai && r.nik_dinilai.toLowerCase() === userNik)
-      ).sort((a, b) => new Date(b.tanggal || b.created_at || 0) - new Date(a.tanggal || a.created_at || 0));
-
-      const myTasks = allTasks.filter(t => 
-        t.status === "DONE" && 
-        ((t.nama_dinilai && t.nama_dinilai.toLowerCase() === userNama) || (t.nik_dinilai && t.nik_dinilai.toLowerCase() === userNik))
-      ).sort((a, b) => new Date(b.tanggal_selesai || b.created_at || 0) - new Date(a.tanggal_selesai || a.created_at || 0));
-
-      const myReviews = allReviews.filter(r => 
-        (r.nama_karyawan && r.nama_karyawan.toLowerCase() === userNama) ||
-        (r.nik && r.nik.toLowerCase() === userNik)
-      ).sort((a, b) => new Date(b.created_at || b.tanggal || 0) - new Date(a.created_at || a.tanggal || 0));
-
-      // Check if employee has any evaluation record
-      if (myLogs.length === 0 && myTasks.length === 0 && myReviews.length === 0) {
-        wrap.innerHTML = `
-          <div class="bg-white rounded-2xl p-10 border border-slate-200/80 shadow-xs text-center max-w-2xl mx-auto my-6">
-            <div class="w-16 h-16 bg-maroon-50 text-maroon-700 rounded-2xl flex items-center justify-center mx-auto text-3xl mb-4 shadow-xs">📊</div>
-            <h3 class="text-xl font-bold text-slate-800">Belum Ada Hasil Penilaian KPI</h3>
-            <p class="text-slate-500 text-sm mt-2 leading-relaxed">
-              Halo, <strong class="text-slate-700">${escapeHtml(session.nama || "Karyawan")}</strong>. Grafik dan analisis nilai indikator KPI Anda akan tertampil secara otomatis di halaman ini setelah proses evaluasi diselesaikan oleh Atasan / HRD.
-            </p>
-            <div class="mt-6 p-4 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-500 text-left">
-              <strong class="text-slate-700 block mb-1">💡 Informasi Penilaian KPI:</strong>
-              • Penilaian mencakup Indikator Kinerja Utama (KPI), Kedisiplinan, Kualitas Kerja, dan Kerja Sama.<br/>
-              • Hasil evaluasi akan dikelompokkan per indikator dengan grafik persentase nilai akhir.
-            </div>
-          </div>`;
-        return;
-      }
-
-      // Pick the latest log/task or construct indicator list
-      const latestLog = myLogs[0] || myTasks[0] || null;
-      const latestReview = myReviews[0] || null;
-
-      let totalScore = 0;
-      let periodeName = "Periode Terbaru";
-      let penilaiName = "Atasan / HRD";
-      let detailSoal = [];
-
-      if (latestLog) {
-        totalScore = parseFloat(latestLog.total_skor || latestLog.skor_akhir || 0);
-        periodeName = latestLog.periode || "Periode Berjalan";
-        penilaiName = latestLog.penilai || latestLog.nama_penilai || "Atasan Direct";
-        detailSoal = latestLog.detail_json || latestLog.soal_json || [];
-      } else if (latestReview) {
-        totalScore = parseFloat(latestReview.skor_akhir || 0);
-        periodeName = latestReview.periode || "Periode Berjalan";
-        penilaiName = latestReview.reviewer || "Atasan Direct";
-        detailSoal = [
-          { aspek: "Kualitas Kerja", indikator: "Tingkat akurasi dan kerapian hasil kerja", bobot: 20, nilai_diberikan: latestReview.kualitas_kerja || 0 },
-          { aspek: "Produktivitas", indikator: "Pencapaian target kuantitas pekerjaan", bobot: 20, nilai_diberikan: latestReview.produktivitas || 0 },
-          { aspek: "Kerja Sama", indikator: "Kemampuan kolaborasi tim & komunikasi", bobot: 20, nilai_diberikan: latestReview.kerja_sama || 0 },
-          { aspek: "Kedisiplinan", indikator: "Kepatuhan tata tertib & kebersihan kerja", bobot: 20, nilai_diberikan: latestReview.kedisiplinan || 0 },
-          { aspek: "Komunikasi", indikator: "Penyampaian informasi & koordinasi", bobot: 20, nilai_diberikan: latestReview.komunikasi || 0 },
-        ];
-      }
-
-      // Grade determination
-      let gradeLabel = "Perlu Perbaikan";
-      let gradeBadgeClass = "bg-rose-100 text-rose-800 border-rose-200";
-      if (totalScore >= 88) {
-        gradeLabel = "Sangat Baik (A)";
-        gradeBadgeClass = "bg-emerald-100 text-emerald-800 border-emerald-200";
-      } else if (totalScore >= 75) {
-        gradeLabel = "Baik (B)";
-        gradeBadgeClass = "bg-blue-100 text-blue-800 border-blue-200";
-      } else if (totalScore >= 60) {
-        gradeLabel = "Cukup (C)";
-        gradeBadgeClass = "bg-amber-100 text-amber-800 border-amber-200";
-      }
-
-      if (typeof detailSoal === "string") {
-        try { detailSoal = JSON.parse(detailSoal); } catch (e) { detailSoal = []; }
-      }
-      if (!Array.isArray(detailSoal)) detailSoal = [];
-
-      // Group by Aspek
-      const aspekGroups = {};
-      detailSoal.forEach(s => {
-        const asp = s.aspek || "Umum";
-        if (!aspekGroups[asp]) aspekGroups[asp] = { totalNilai: 0, count: 0, items: [] };
-        aspekGroups[asp].totalNilai += parseFloat(s.nilai_diberikan || s.nilai || 0);
-        aspekGroups[asp].count += 1;
-        aspekGroups[asp].items.push(s);
-      });
-
-      // Render Aspek Summary Cards
-      let aspekCardsHtml = Object.keys(aspekGroups).map(aspKey => {
-        const grp = aspekGroups[aspKey];
-        const avg = Math.round(grp.totalNilai / (grp.count || 1));
-        let barClass = "from-emerald-500 to-teal-600";
-        if (avg < 60) barClass = "from-rose-500 to-red-600";
-        else if (avg < 75) barClass = "from-amber-500 to-yellow-600";
-        else if (avg < 85) barClass = "from-blue-500 to-indigo-600";
-
-        return `
-          <div class="bg-white rounded-xl p-4 border border-slate-200/80 shadow-2xs">
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">${escapeHtml(aspKey)}</span>
-              <span class="text-sm font-black text-slate-800">${avg}%</span>
-            </div>
-            <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-              <div class="h-full bg-gradient-to-r ${barClass} transition-all duration-500 rounded-full" style="width: ${Math.min(100, Math.max(0, avg))}%"></div>
-            </div>
-            <span class="text-[11px] text-slate-400 mt-1.5 block">${grp.count} Indikator Kinerja</span>
-          </div>`;
-      }).join("");
-
-      // Render Every Indicator Chart Card
-      let indicatorChartsHtml = detailSoal.map((s, idx) => {
-        const nilai = parseFloat(s.nilai_diberikan || s.nilai || 0);
-        const bobot = parseFloat(s.bobot || 0);
-        const weighted = (nilai * (bobot / 100)).toFixed(2);
-
-        let barClass = "from-emerald-500 to-teal-600";
-        let statusBadge = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Sangat Baik</span>`;
-        if (nilai < 60) {
-          barClass = "from-rose-500 to-red-600";
-          statusBadge = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">Perlu Perbaikan</span>`;
-        } else if (nilai < 75) {
-          barClass = "from-amber-500 to-yellow-600";
-          statusBadge = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">Cukup</span>`;
-        } else if (nilai < 85) {
-          barClass = "from-blue-500 to-indigo-600";
-          statusBadge = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">Baik</span>`;
-        }
-
-        return `
-          <div class="bg-white rounded-xl p-5 border border-slate-200/80 shadow-2xs hover:shadow-xs transition space-y-3">
-            <div class="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 mb-1">
-                  ${escapeHtml(s.aspek || "Umum")}
-                </span>
-                <h4 class="text-sm font-bold text-slate-800 leading-snug">${escapeHtml(s.indikator || s.aspek)}</h4>
-              </div>
-              <div class="text-right">
-                <span class="text-lg font-black text-slate-800">${nilai} <span class="text-xs font-normal text-slate-400">/ 100</span></span>
-                ${bobot > 0 ? `<div class="text-[11px] text-slate-500">Bobot: <strong>${bobot}%</strong> (Skor: ${weighted})</div>` : ''}
-              </div>
-            </div>
-
-            <!-- Visual Progress Bar Chart -->
-            <div class="space-y-1">
-              <div class="flex justify-between items-center text-xs text-slate-500 font-medium">
-                <span>Capaian Indikator</span>
-                <span>${nilai}%</span>
-              </div>
-              <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden p-0.5 border border-slate-200/50">
-                <div class="h-full bg-gradient-to-r ${barClass} rounded-full transition-all duration-700" style="width: ${Math.min(100, Math.max(0, nilai))}%"></div>
-              </div>
-            </div>
-
-            <div class="flex items-center justify-between pt-1 border-t border-slate-100 text-xs text-slate-500">
-              <span>Status Indikator</span>
-              ${statusBadge}
-            </div>
-          </div>`;
-      }).join("");
-
-      // Render Historical Evaluation Trend if multiple logs exist
-      let historyHtml = "";
-      if (myLogs.length > 1) {
-        historyHtml = `
-          <div class="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-2xs space-y-4">
-            <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
-              <span>📈</span> Riwayat Perkembangan KPI Per Periode
-            </h3>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-              ${myLogs.slice(0, 6).map(lg => {
-                const sc = parseFloat(lg.total_skor || lg.skor_akhir || 0);
-                return `
-                  <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200/60 flex items-center justify-between">
-                    <div>
-                      <div class="text-xs font-bold text-slate-700">${escapeHtml(lg.periode || "Periode")}</div>
-                      <div class="text-[11px] text-slate-400">${fmtDateShort(lg.tanggal)}</div>
-                    </div>
-                    <span class="text-base font-black text-maroon-700">${sc}</span>
-                  </div>`;
-              }).join("")}
-            </div>
-          </div>`;
-      }
-
-      // Render Feedback callout
-      let feedbackHtml = "";
-      if (latestLog && (latestLog.catatan_baik || latestLog.catatan_perbaikan || latestLog.catatan_penilai)) {
-        feedbackHtml = `
-          <div class="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-2xs space-y-4">
-            <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
-              <span>📝</span> Catatan & Ulasan Evaluasi Dari Penilai
-            </h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              ${latestLog.catatan_baik ? `
-                <div class="p-4 bg-emerald-50/60 rounded-xl border border-emerald-200/70 text-xs">
-                  <span class="font-bold text-emerald-800 block mb-1">✓ Kelebihan & Hal yang Sudah Baik:</span>
-                  <p class="text-slate-700 leading-relaxed">${escapeHtml(latestLog.catatan_baik)}</p>
-                </div>` : ''}
-              ${latestLog.catatan_perbaikan ? `
-                <div class="p-4 bg-rose-50/60 rounded-xl border border-rose-200/70 text-xs">
-                  <span class="font-bold text-rose-800 block mb-1">⚠ Area Peningkatan:</span>
-                  <p class="text-slate-700 leading-relaxed">${escapeHtml(latestLog.catatan_perbaikan)}</p>
-                </div>` : ''}
-            </div>
-          </div>`;
-      }
-
-      wrap.innerHTML = `
-        <div class="space-y-6">
-          <!-- Main Overall Score Card -->
-          <div class="bg-gradient-to-r from-slate-900 via-slate-800 to-maroon-900 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
-            <div class="relative z-10 flex flex-wrap items-center justify-between gap-6">
-              <div class="space-y-1">
-                <span class="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-white/10 text-amber-300 backdrop-blur-xs">
-                  ${escapeHtml(periodeName)}
-                </span>
-                <h2 class="text-2xl font-black text-white">${escapeHtml(session.nama || "Karyawan")}</h2>
-                <p class="text-xs text-slate-300">Penilai: <strong class="text-white">${escapeHtml(penilaiName)}</strong></p>
-              </div>
-
-              <div class="flex items-center gap-4 bg-white/10 p-4 rounded-xl border border-white/10 backdrop-blur-xs">
-                <div class="text-center">
-                  <div class="text-[11px] uppercase tracking-wider text-slate-300 font-bold">Skor KPI Akhir</div>
-                  <div class="text-3xl font-black text-amber-400 mt-0.5">${totalScore} <span class="text-xs font-normal text-slate-300">/ 100</span></div>
-                </div>
-                <div class="h-10 w-px bg-white/20"></div>
-                <div>
-                  <div class="text-[11px] uppercase tracking-wider text-slate-300 font-bold mb-1">Predikat</div>
-                  <span class="px-3 py-1 rounded-lg text-xs font-bold border ${gradeBadgeClass}">
-                    ${gradeLabel}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Ringkasan Nilai Per Aspek -->
-          <div>
-            <h3 class="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <span>🎯</span> Ringkasan Nilai Per Aspek Kinerja
-            </h3>
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-              ${aspekCardsHtml}
-            </div>
-          </div>
-
-          <!-- Grafik Penilaian Pada Setiap Indikator -->
-          <div>
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                <span>📊</span> Grafik Penilaian Indikator KPI (${detailSoal.length} Indikator)
-              </h3>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              ${indicatorChartsHtml}
-            </div>
-          </div>
-
-          ${historyHtml}
-          ${feedbackHtml}
-        </div>`;
-    } catch (e) {
-      console.error(e);
-      wrap.innerHTML = emptyState("Gagal memuat grafik penilaian KPI: " + e.message);
-    }
-  }
-
-  if (isRegularEmployee) {
-    const titleEl = container.querySelector("#pk-title");
-    const subtitleEl = container.querySelector("#pk-subtitle");
-    const tabHeader = container.querySelector("#pk-tab-header");
-
-    if (titleEl) titleEl.textContent = "Penilaian & Kontrak Saya";
-    if (subtitleEl) subtitleEl.textContent = "Grafik pencapaian penilaian KPI dan rincian dokumen ikatan dinas / kontrak kerja Anda.";
-    if (tabHeader) {
-      tabHeader.innerHTML = `
-        <button data-ntab="grafik" class="pk-tab px-4 py-2.5 text-sm font-medium border-b-2 border-maroon-700 text-maroon-700 whitespace-nowrap">Hasil & Grafik KPI Saya</button>
-        <button data-ntab="kontrak" class="pk-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">Kontrak Kerja Saya</button>
-      `;
-    }
-  }
-
-  async function loadKontrak() {
-    if (isAtasanView && bawahanNames === null) {
-      bawahanNames = await getBawahanNames(session.nama);
-    }
-    const bset = new Set(bawahanNames || []);
-
-    const wrap = panels.kontrak;
-    wrap.innerHTML = `<div class="p-6">${skeletonRows(4)}</div>`;
-
-    let allKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
-    let allKontrak = await fsGetAll(COL.MASTER_KONTRAK);
-
-    if (isAtasanView) {
-      allKaryawan = allKaryawan.filter(k => bset.has(k.nama_karyawan));
-      allKontrak = allKontrak.filter(k => bset.has(k.nama_karyawan));
-    } else if (isRegularEmployee) {
-      const myName = String(session.nama || "").toLowerCase().trim();
-      const myNik = String(session.nik || "").toLowerCase().trim();
-      allKaryawan = allKaryawan.filter(k => {
-        const kname = String(k.nama_karyawan || "").toLowerCase().trim();
-        const knik = String(k.nik_karyawan || k.nik || "").toLowerCase().trim();
-        return (myName && kname === myName) || (myNik && knik === myNik);
-      });
-      allKontrak = allKontrak.filter(c => {
-        const cname = String(c.nama_karyawan || "").toLowerCase().trim();
-        return (myName && cname === myName);
-      });
-    }
-
-    function renderCardView() {
-      const kontrakMap = {};
-      allKontrak.forEach(c => {
-        if (!c.nama_karyawan) return;
-        if (!kontrakMap[c.nama_karyawan]) kontrakMap[c.nama_karyawan] = [];
-        kontrakMap[c.nama_karyawan].push(c);
-      });
-
-      // Sort contracts for each employee by tanggal_mulai / created_at descending
-      Object.keys(kontrakMap).forEach(nama => {
-        kontrakMap[nama].sort((a, b) => new Date(b.tanggal_mulai || b.created_at || 0) - new Date(a.tanggal_mulai || a.created_at || 0));
-      });
-
-      // Combine employees list with contract data
-      const empList = allKaryawan.map(k => {
-        const contracts = kontrakMap[k.nama_karyawan] || [];
-        const latestContract = contracts[0] || null;
-        
-        let contractStatus = "TANPA KONTRAK";
-        let daysLeft = null;
-
-        if (latestContract && latestContract.tanggal_akhir) {
-          const today = new Date().toISOString().split("T")[0];
-          daysLeft = daysBetween(today, latestContract.tanggal_akhir);
-          if (daysLeft !== null && !isNaN(daysLeft)) {
-            if (daysLeft < 0) {
-              contractStatus = "HABIS";
-            } else if (daysLeft <= 30) {
-              contractStatus = "SEGERA HABIS";
-            } else {
-              contractStatus = "AKTIF";
-            }
-          }
-        }
-
-        return {
-          ...k,
-          contracts,
-          latestContract,
-          contractStatus,
-          daysLeft
-        };
-      });
-
-      // Add employees from contracts that are not in master karyawan list
-      const existingNames = new Set(allKaryawan.map(k => k.nama_karyawan));
-      Object.keys(kontrakMap).forEach(nama => {
-        if (!existingNames.has(nama)) {
-          const contracts = kontrakMap[nama];
-          const latestContract = contracts[0] || null;
-          let contractStatus = "TANPA KONTRAK";
-          let daysLeft = null;
-          if (latestContract && latestContract.tanggal_akhir) {
-            const today = new Date().toISOString().split("T")[0];
-            daysLeft = daysBetween(today, latestContract.tanggal_akhir);
-            if (daysLeft !== null && !isNaN(daysLeft)) {
-              if (daysLeft < 0) contractStatus = "HABIS";
-              else if (daysLeft <= 30) contractStatus = "SEGERA HABIS";
-              else contractStatus = "AKTIF";
-            }
-          }
-          empList.push({
-            id: null,
-            nama_karyawan: nama,
-            jabatan: latestContract?.jabatan || "-",
-            cabang: latestContract?.cabang || "-",
-            divisi: latestContract?.divisi || "-",
-            status_karyawan: "KONTRAK",
-            aktif_tdk_aktif: "AKTIF",
-            contracts,
-            latestContract,
-            contractStatus,
-            daysLeft
-          });
-        }
-      });
-
-      wrap.innerHTML = `
-        <div class="space-y-5">
-          <!-- Toolbar & Header -->
-          <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h2 class="text-xl font-bold text-slate-800">Kartu Kontrak Karyawan</h2>
-              <p class="text-xs text-slate-500 mt-1">Kelola ikatan dinas, riwayat kontrak per karyawan, dan status keaktifan kerja.</p>
-            </div>
-            ${canManageKontrak ? `
-            <button id="btn-add-global-kontrak" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2.5 rounded-xl text-xs font-semibold transition shadow-sm flex items-center gap-2 self-start md:self-auto">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-              Tambah Kontrak Baru
-            </button>` : ''}
-          </div>
-
-          <!-- Filter & Search Bar -->
-          <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div class="relative w-full sm:w-72">
-              <input type="text" id="ktr-search-input" placeholder="🔍 Cari nama, jabatan, cabang..." class="w-full px-3 py-2 pl-9 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition">
-            </div>
-            <div class="flex items-center gap-2 w-full sm:w-auto overflow-x-auto">
-              <select id="ktr-filter-status-karyawan" class="px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white outline-none focus:border-maroon-500 font-medium">
-                <option value="ALL">Semua Status Karyawan</option>
-                <option value="AKTIF">Status: AKTIF</option>
-                <option value="TIDAK AKTIF">Status: TIDAK AKTIF</option>
-              </select>
-              <select id="ktr-filter-status-kontrak" class="px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white outline-none focus:border-maroon-500 font-medium">
-                <option value="ALL">Semua Masa Kontrak</option>
-                <option value="AKTIF">Kontrak: AKTIF (>30 Hari)</option>
-                <option value="SEGERA HABIS">Kontrak: SEGERA HABIS (≤30 Hari)</option>
-                <option value="HABIS">Kontrak: HABIS</option>
-                <option value="TANPA KONTRAK">Tanpa Kontrak</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Cards Grid -->
-          <div id="ktr-cards-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          </div>
-        </div>
-      `;
-
-      const cardsContainer = wrap.querySelector("#ktr-cards-container");
-      const searchInput = wrap.querySelector("#ktr-search-input");
-      const filterStatusKaryawan = wrap.querySelector("#ktr-filter-status-karyawan");
-      const filterStatusKontrak = wrap.querySelector("#ktr-filter-status-kontrak");
-
-      function drawCards() {
-        const q = (searchInput.value || "").toLowerCase().trim();
-        const fStatKaryawan = filterStatusKaryawan.value;
-        const fStatKontrak = filterStatusKontrak.value;
-
-        const filtered = empList.filter(e => {
-          const nameMatch = (e.nama_karyawan || "").toLowerCase().includes(q) ||
-                            (e.jabatan || "").toLowerCase().includes(q) ||
-                            (e.cabang || "").toLowerCase().includes(q);
-          if (!nameMatch) return false;
-
-          const isAktifStr = (e.aktif_tdk_aktif || "AKTIF").toUpperCase();
-          if (fStatKaryawan !== "ALL" && isAktifStr !== fStatKaryawan) return false;
-
-          if (fStatKontrak !== "ALL" && e.contractStatus !== fStatKontrak) return false;
-
-          return true;
-        });
-
-        if (!filtered.length) {
-          cardsContainer.innerHTML = `<div class="col-span-full">${emptyState("Tidak ada data karyawan yang cocok", "Coba ubah kata kunci pencarian atau filter di atas.")}</div>`;
-          return;
-        }
-
-        cardsContainer.innerHTML = filtered.map(item => {
-          const isAktif = (item.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF";
-          const contractCount = item.contracts.length;
-          const lc = item.latestContract;
-
-          let badgeContractColor = "slate";
-          let daysLabel = "Tanpa ikatan kontrak aktif";
-
-          if (item.contractStatus === "AKTIF") {
-            badgeContractColor = "emerald";
-            daysLabel = `Sisa ${item.daysLeft} Hari`;
-          } else if (item.contractStatus === "SEGERA HABIS") {
-            badgeContractColor = "amber";
-            daysLabel = `Perlu Perpanjangan (${item.daysLeft} Hari Lagi)`;
-          } else if (item.contractStatus === "HABIS") {
-            badgeContractColor = "red";
-            daysLabel = `Sudah Kadaluarsa (${Math.abs(item.daysLeft)} Hari Lalu)`;
-          }
-
-          return `
-            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition p-5 flex flex-col justify-between group cursor-pointer card-emp-kontrak" data-emp-name="${escapeHtml(item.nama_karyawan)}">
-              <div>
-                <!-- Top Header -->
-                <div class="flex items-start justify-between gap-3 mb-3">
-                  <div class="flex items-center gap-3">
-                    ${avatar(item.nama_karyawan || "?", "w-11 h-11 border-2 border-slate-100")}
-                    <div>
-                      <h3 class="font-bold text-slate-800 text-sm group-hover:text-maroon-700 transition leading-snug">${escapeHtml(item.nama_karyawan)}</h3>
-                      <p class="text-xs text-slate-500 font-medium">${escapeHtml(item.jabatan || "-")}</p>
-                    </div>
-                  </div>
-                  ${badge(isAktif ? "AKTIF" : "TIDAK AKTIF", isAktif ? "emerald" : "slate")}
-                </div>
-
-                <!-- Info Chips -->
-                <div class="flex items-center gap-1.5 flex-wrap text-[11px] text-slate-500 mb-4 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                  <span class="font-semibold text-slate-700">🏢 ${escapeHtml(item.cabang || "Pusat")}</span>
-                  ${item.divisi ? `<span>• Divisi: ${escapeHtml(item.divisi)}</span>` : ''}
-                  <span>• Status: <strong class="text-slate-800">${escapeHtml(formatStatusKaryawan(item.status_karyawan))}</strong></span>
-                </div>
-
-                <!-- Latest Contract Info -->
-                <div class="border-t border-slate-100 pt-3 space-y-1.5">
-                  <div class="flex items-center justify-between text-xs">
-                    <span class="text-slate-400 font-medium">Kontrak Terbaru:</span>
-                    <span class="font-bold text-slate-700">${lc ? `Kontrak Ke-${lc.kontrak_ke || 1}` : "Belum Ada"}</span>
-                  </div>
-                  ${lc ? `
-                  <div class="flex items-center justify-between text-xs">
-                    <span class="text-slate-400 font-medium">Periode:</span>
-                    <span class="font-medium text-slate-700">${fmtDateShort(lc.tanggal_mulai)} - ${fmtDateShort(lc.tanggal_akhir)}</span>
-                  </div>
-                  <div class="mt-2 flex items-center justify-between">
-                    ${badge(item.contractStatus, badgeContractColor)}
-                    <span class="text-[11px] font-semibold text-slate-500">${daysLabel}</span>
-                  </div>` : `
-                  <div class="py-2 text-center text-xs text-slate-400 italic">Belum ada riwayat kontrak di sistem</div>`}
-                </div>
-              </div>
-
-              <!-- Footer Action -->
-              <div class="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                <span class="text-xs font-semibold text-slate-500">📄 ${contractCount} Riwayat Kontrak</span>
-                <button type="button" class="text-xs font-bold text-maroon-700 hover:text-maroon-800 hover:bg-maroon-50 px-3 py-1.5 rounded-xl transition flex items-center gap-1">
-                  👁️ Detail & Kelola
-                </button>
-              </div>
-            </div>
-          `;
-        }).join("");
-
-        cardsContainer.querySelectorAll(".card-emp-kontrak").forEach(card => {
-          card.onclick = () => {
-            const empName = card.dataset.empName;
-            const empData = empList.find(e => e.nama_karyawan === empName);
-            if (empData) openEmployeeContractModal(empData, reloadData);
-          };
-        });
-      }
-
-      searchInput.oninput = drawCards;
-      filterStatusKaryawan.onchange = drawCards;
-      filterStatusKontrak.onchange = drawCards;
-      drawCards();
-
-      if (canManageKontrak && wrap.querySelector("#btn-add-global-kontrak")) {
-        wrap.querySelector("#btn-add-global-kontrak").onclick = () => {
-          openAddNewContractGlobalModal(allKaryawan, reloadData);
-        };
-      }
-    }
-
-    async function reloadData() {
-      allKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
-      allKontrak = await fsGetAll(COL.MASTER_KONTRAK);
-      if (isAtasanView) {
-        allKaryawan = allKaryawan.filter(k => bset.has(k.nama_karyawan));
-        allKontrak = allKontrak.filter(k => bset.has(k.nama_karyawan));
-      }
-      renderCardView();
-    }
-
-    renderCardView();
-  }
-
-  function openEmployeeContractModal(empData, reloadData) {
-    const isAktif = (empData.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF";
-    const contracts = empData.contracts || [];
-    const latestKe = contracts.length ? Math.max(...contracts.map(c => Number(c.kontrak_ke || 1))) : 0;
-
-    openModal({
-      title: `Riwayat & Kelola Kontrak: ${escapeHtml(empData.nama_karyawan)}`,
-      size: "lg",
-      bodyHtml: `
-        <div class="space-y-6">
-          <!-- Profile Header & Employee Status Update -->
-          <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div class="flex items-center gap-3">
-              ${avatar(empData.nama_karyawan || "?", "w-12 h-12 border-2 border-white shadow-xs")}
-              <div>
-                <h3 class="font-bold text-slate-800 text-base">${escapeHtml(empData.nama_karyawan)}</h3>
-                <p class="text-xs text-slate-500">${escapeHtml(empData.jabatan || "-")} • ${escapeHtml(empData.cabang || "Pusat")}</p>
-              </div>
-            </div>
-            <div class="flex items-center gap-2 w-full md:w-auto flex-wrap bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-              <div class="flex flex-col">
-                <label class="text-[10px] font-bold text-slate-400 uppercase">Status Keaktifan</label>
-                <select id="modal-emp-aktif" ${!canManageKontrak ? 'disabled' : ''} class="text-xs font-semibold px-2 py-1 rounded-lg border border-slate-200 outline-none focus:border-maroon-500 ${!canManageKontrak ? 'bg-slate-100 text-slate-600 cursor-not-allowed' : ''}">
-                  <option value="AKTIF" ${isAktif ? 'selected' : ''}>AKTIF</option>
-                  <option value="TIDAK AKTIF" ${!isAktif ? 'selected' : ''}>TIDAK AKTIF</option>
-                </select>
-              </div>
-              <div class="flex flex-col">
-                <label class="text-[10px] font-bold text-slate-400 uppercase">Status Karyawan</label>
-                <select id="modal-emp-type" ${!canManageKontrak ? 'disabled' : ''} class="text-xs font-semibold px-2 py-1 rounded-lg border border-slate-200 outline-none focus:border-maroon-500 ${!canManageKontrak ? 'bg-slate-100 text-slate-600 cursor-not-allowed' : ''}">
-                  <option value="PKWTT" ${String(empData.status_karyawan || "").toUpperCase().includes("PKWTT") || empData.status_karyawan === "TETAP" ? 'selected' : ''}>PKWTT (Karyawan Tetap)</option>
-                  <option value="PKWT" ${String(empData.status_karyawan || "").toUpperCase().includes("PKWT") || empData.status_karyawan === "KONTRAK" || !empData.status_karyawan ? 'selected' : ''}>PKWT (Karyawan Kontrak)</option>
-                  <option value="PROBATION" ${String(empData.status_karyawan || "").toUpperCase().includes("PROBATION") ? 'selected' : ''}>Probation (Masa Percobaan)</option>
-                  <option value="MAGANG" ${String(empData.status_karyawan || "").toUpperCase().includes("MAGANG") ? 'selected' : ''}>Magang</option>
-                  <option value="BURUH HARIAN" ${String(empData.status_karyawan || "").toUpperCase().includes("BURUH") ? 'selected' : ''}>Buruh Harian</option>
-                  <option value="OUTSOURCING" ${String(empData.status_karyawan || "").toUpperCase().includes("OUTSOURCING") ? 'selected' : ''}>Outsourcing</option>
-                  <option value="LAINNYA" ${String(empData.status_karyawan || "").toUpperCase().includes("LAINNYA") || empData.status_karyawan === "RESIGN" ? 'selected' : ''}>Lainnya</option>
-                </select>
-              </div>
-              ${(canManageKontrak && empData.id) ? `
-              <button id="btn-save-emp-status" class="mt-auto bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-2xs">
-                💾 Simpan
-              </button>` : ''}
-            </div>
-          </div>
-
-          <!-- Section 1: Riwayat Kontrak -->
-          <div>
-            <div class="flex items-center justify-between mb-3">
-              <h4 class="font-bold text-slate-800 text-sm flex items-center gap-2">
-                <span>📋 Riwayat Kontrak Kerja</span>
-                <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">${contracts.length} Dokumen</span>
-              </h4>
-              ${canManageKontrak ? `
-              <button id="btn-toggle-add-kontrak" class="text-xs font-bold text-maroon-700 bg-maroon-50 hover:bg-maroon-100 px-3 py-1.5 rounded-xl border border-maroon-200 transition flex items-center gap-1">
-                ➕ Perpanjang / Kontrak Baru
-              </button>` : ''}
-            </div>
-
-            <!-- Add Contract Form -->
-            <div id="add-kontrak-form-wrap" class="hidden mb-4 bg-amber-50/60 p-4 rounded-2xl border border-amber-200/80 space-y-3">
-              <h5 class="text-xs font-bold text-amber-900 uppercase tracking-wide">Form Tambah / Perpanjang Kontrak</h5>
-              <form id="form-new-kontrak" class="space-y-3">
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Kontrak Ke-</label>
-                    <input type="number" name="kontrak_ke" value="${latestKe + 1}" required class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none bg-white">
-                  </div>
-                  <div>
-                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Tanggal Mulai</label>
-                    <input type="date" name="tanggal_mulai" required class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none bg-white">
-                  </div>
-                  <div>
-                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Tanggal Akhir</label>
-                    <input type="date" name="tanggal_akhir" required class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none bg-white">
-                  </div>
-                </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Jabatan</label>
-                    <input type="text" name="jabatan" value="${escapeHtml(empData.jabatan || "")}" class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none bg-white">
-                  </div>
-                  <div>
-                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Cabang</label>
-                    <input type="text" name="cabang" value="${escapeHtml(empData.cabang || "")}" class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none bg-white">
-                  </div>
-                  <div>
-                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Divisi</label>
-                    <input type="text" name="divisi" value="${escapeHtml(empData.divisi || "")}" class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none bg-white">
-                  </div>
-                </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Status Kontrak</label>
-                    <select name="status_kolom_kontrak" class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none bg-white font-medium">
-                      <option value="AKTIF" selected>AKTIF</option>
-                      <option value="SEGERA HABIS">SEGERA HABIS</option>
-                      <option value="DIPERPANJANG">DIPERPANJANG</option>
-                      <option value="DONE">DONE / SELESAI</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Dokumen Lampiran Kontrak (Google Drive)</label>
-                    <input type="file" name="file_dokumen" accept="image/*,.pdf,.doc,.docx" class="w-full px-3 py-1 text-xs rounded-xl border border-slate-200 bg-white">
-                  </div>
-                </div>
-
-                <div class="flex items-center justify-between pt-2">
-                  <button type="button" id="btn-cancel-add-kontrak" class="text-xs font-semibold text-slate-500 hover:text-slate-700">Batal</button>
-                  <button type="submit" id="btn-submit-kontrak" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs">
-                    💾 Simpan Kontrak Baru
-                  </button>
-                </div>
-              </form>
-            </div>
-
-            <!-- History Timeline Cards -->
-            ${contracts.length === 0 ? `
-              <div class="bg-slate-50 rounded-xl p-6 text-center text-xs text-slate-400 border border-dashed border-slate-200">
-                Belum ada data riwayat kontrak tercatat untuk karyawan ini. Klik tombol "Perpanjang / Kontrak Baru" di atas untuk menambahkan.
-              </div>` : `
-              <div class="space-y-3 max-h-80 overflow-y-auto pr-1">
-                ${contracts.map((c, idx) => `
-                  <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                    <div class="space-y-1">
-                      <div class="flex items-center gap-2">
-                        <span class="font-bold text-slate-800 text-xs bg-slate-100 px-2.5 py-0.5 rounded-lg border border-slate-200">Kontrak Ke-${c.kontrak_ke || (contracts.length - idx)}</span>
-                        ${badge(c.status_kolom_kontrak || "AKTIF", c.status_kolom_kontrak === "AKTIF" ? "emerald" : "amber")}
-                      </div>
-                      <p class="text-xs text-slate-600 font-medium">
-                        📅 Periode: <strong>${fmtDateShort(c.tanggal_mulai)}</strong> s/d <strong>${fmtDateShort(c.tanggal_akhir)}</strong>
-                      </p>
-                      <p class="text-[11px] text-slate-400">
-                        Jabatan: ${escapeHtml(c.jabatan || "-")} ${c.cabang ? `• Cabang: ${escapeHtml(c.cabang)}` : ''}
-                      </p>
-                      ${c.link_dokumen ? `
-                      <a href="${escapeHtml(c.link_dokumen)}" target="_blank" class="inline-block text-xs font-semibold text-maroon-700 hover:underline mt-1">
-                        🔗 Lihat File Dokumen Kontrak
-                      </a>` : ''}
-                    </div>
-                    ${canManageKontrak ? `
-                    <button type="button" class="btn-del-kontrak-item text-xs font-bold text-red-600 hover:bg-red-50 px-2.5 py-1 rounded-lg transition shrink-0" data-kontrak-id="${c.id}">
-                      🗑️ Hapus
-                    </button>` : ''}
-                  </div>
-                `).join("")}
-              </div>`}
-          </div>
-        </div>
-      `,
-      footerHtml: `
-        <button id="modal-close-btn" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition">Tutup</button>
-      `,
-      onMount: (m) => {
-        m.querySelector("#modal-close-btn").onclick = closeModal;
-
-        // Update Employee status button logic
-        const btnSaveEmpStatus = m.querySelector("#btn-save-emp-status");
-        if (btnSaveEmpStatus && empData.id) {
-          btnSaveEmpStatus.onclick = async () => {
-            const aktif_tdk_aktif = m.querySelector("#modal-emp-aktif").value;
-            const status_karyawan = m.querySelector("#modal-emp-type").value;
-
-            try {
-              btnSaveEmpStatus.disabled = true;
-              btnSaveEmpStatus.textContent = "Menyimpan...";
-              await fsUpdate(COL.MASTER_KARYAWAN, empData.id, {
-                aktif_tdk_aktif,
-                status_karyawan
-              });
-              toast("Status karyawan berhasil diperbarui!", "success");
-              closeModal();
-              reloadData();
-            } catch (e) {
-              toast("Gagal memperbarui status: " + e.message, "error");
-              btnSaveEmpStatus.disabled = false;
-              btnSaveEmpStatus.textContent = "💾 Simpan";
-            }
-          };
-        }
-
-        // Toggle Add Contract Form
-        const formWrap = m.querySelector("#add-kontrak-form-wrap");
-        const btnToggleAdd = m.querySelector("#btn-toggle-add-kontrak");
-        const btnCancelAdd = m.querySelector("#btn-cancel-add-kontrak");
-
-        if (btnToggleAdd) btnToggleAdd.onclick = () => formWrap.classList.toggle("hidden");
-        if (btnCancelAdd) btnCancelAdd.onclick = () => formWrap.classList.add("hidden");
-
-        // Handle Delete Contract Item
-        m.querySelectorAll(".btn-del-kontrak-item").forEach(btn => {
-          btn.onclick = async () => {
-            const kId = btn.dataset.kontrakId;
-            if (!kId) return;
-            if (!confirm("Apakah Anda yakin ingin menghapus catatan kontrak ini?")) return;
-
-            try {
-              await fsDelete(COL.MASTER_KONTRAK, kId);
-              toast("Catatan kontrak berhasil dihapus", "success");
-              closeModal();
-              reloadData();
-            } catch (e) {
-              toast("Gagal menghapus kontrak: " + e.message, "error");
-            }
-          };
-        });
-
-        // Submit New Contract Form
-        const formNew = m.querySelector("#form-new-kontrak");
-        if (formNew) {
-          formNew.onsubmit = async (e) => {
-            e.preventDefault();
-            const fd = new FormData(formNew);
-            const btnSubmit = m.querySelector("#btn-submit-kontrak");
-
-            try {
-              btnSubmit.disabled = true;
-              btnSubmit.textContent = "Menyimpan...";
-
-              const kId = genId("KTR");
-              let link_dokumen = "";
-
-              const fileInput = formNew.querySelector('input[name="file_dokumen"]');
-              const file = fileInput.files && fileInput.files[0];
-              if (file) {
-                btnSubmit.textContent = "Mengupload File...";
-                link_dokumen = await uploadFileToDrive(file, `Kontrak/${empData.nama_karyawan}/${kId}`);
-              }
-
-              const payload = {
-                nama_karyawan: empData.nama_karyawan,
-                kontrak_ke: Number(fd.get("kontrak_ke") || 1),
-                tanggal_mulai: fd.get("tanggal_mulai"),
-                tanggal_akhir: fd.get("tanggal_akhir"),
-                jabatan: fd.get("jabatan") || empData.jabatan || "",
-                cabang: fd.get("cabang") || empData.cabang || "",
-                divisi: fd.get("divisi") || empData.divisi || "",
-                status_kolom_kontrak: fd.get("status_kolom_kontrak") || "AKTIF",
-                link_dokumen: link_dokumen
-              };
-
-              await fsAdd(COL.MASTER_KONTRAK, payload, kId);
-
-              // Update Master Karyawan contract dates & status if employee exists
-              if (empData.id) {
-                await fsUpdate(COL.MASTER_KARYAWAN, empData.id, {
-                  status_karyawan: "KONTRAK",
-                  tgl_mulai_kontrak: payload.tanggal_mulai,
-                  tgl_akhir_kontrak: payload.tanggal_akhir,
-                  aktif_tdk_aktif: "AKTIF"
-                });
-              }
-
-              toast("Kontrak baru berhasil ditambahkan!", "success");
-              closeModal();
-              reloadData();
-            } catch (err) {
-              toast("Gagal menambahkan kontrak: " + err.message, "error");
-              btnSubmit.disabled = false;
-              btnSubmit.textContent = "💾 Simpan Kontrak Baru";
-            }
-          };
-        }
-      }
-    });
-  }
-
-  function openAddNewContractGlobalModal(allKaryawan, reloadData) {
-    const sortedKaryawan = [...allKaryawan].sort((a, b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id", { sensitivity: "base" }));
-    openModal({
-      title: "Tambah Kontrak Kerja Baru",
-      size: "md",
-      bodyHtml: `
-        <form id="form-global-kontrak" class="space-y-4">
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1">Pilih Karyawan *</label>
-            <select name="nama_karyawan" required class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none bg-white font-medium">
-              <option value="">-- Pilih Karyawan --</option>
-              ${sortedKaryawan.map(k => `<option value="${escapeHtml(k.nama_karyawan)}" data-jabatan="${escapeHtml(k.jabatan || '')}" data-cabang="${escapeHtml(k.cabang || '')}">${escapeHtml(k.nama_karyawan)} - ${escapeHtml(k.jabatan || '')}</option>`).join("")}
-            </select>
-          </div>
-
-          <div class="grid grid-cols-3 gap-3">
-            <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1">Kontrak Ke- *</label>
-              <input type="number" name="kontrak_ke" value="1" required class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none">
-            </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1">Tanggal Mulai *</label>
-              <input type="date" name="tanggal_mulai" required class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none">
-            </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1">Tanggal Akhir *</label>
-              <input type="date" name="tanggal_akhir" required class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none">
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1">Jabatan</label>
-              <input type="text" name="jabatan" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none">
-            </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1">Cabang</label>
-              <input type="text" name="cabang" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none">
-            </div>
-          </div>
-
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1">Dokumen Lampiran (Google Drive)</label>
-            <input type="file" name="file_dokumen" accept="image/*,.pdf,.doc,.docx" class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-white">
-          </div>
-        </form>
-      `,
-      footerHtml: `
-        <button id="modal-cancel-btn" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition">Batal</button>
-        <button id="modal-submit-btn" class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 transition">Simpan Kontrak</button>
-      `,
-      onMount: (m) => {
-        m.querySelector("#modal-cancel-btn").onclick = closeModal;
-
-        const selEmp = m.querySelector('select[name="nama_karyawan"]');
-        selEmp.onchange = () => {
-          const opt = selEmp.options[selEmp.selectedIndex];
-          if (opt) {
-            m.querySelector('input[name="jabatan"]').value = opt.dataset.jabatan || "";
-            m.querySelector('input[name="cabang"]').value = opt.dataset.cabang || "";
-          }
-        };
-
-        m.querySelector("#modal-submit-btn").onclick = async () => {
-          const form = m.querySelector("#form-global-kontrak");
-          if (!form.reportValidity()) return;
-
-          const fd = new FormData(form);
-          const btnSubmit = m.querySelector("#modal-submit-btn");
-
-          try {
-            btnSubmit.disabled = true;
-            btnSubmit.textContent = "Menyimpan...";
-
-            const kId = genId("KTR");
-            let link_dokumen = "";
-
-            const fileInput = form.querySelector('input[name="file_dokumen"]');
-            const file = fileInput.files && fileInput.files[0];
-            const namaKaryawan = fd.get("nama_karyawan");
-
-            if (file) {
-              btnSubmit.textContent = "Mengupload File...";
-              link_dokumen = await uploadFileToDrive(file, `Kontrak/${namaKaryawan}/${kId}`);
-            }
-
-            const payload = {
-              nama_karyawan: namaKaryawan,
-              kontrak_ke: Number(fd.get("kontrak_ke") || 1),
-              tanggal_mulai: fd.get("tanggal_mulai"),
-              tanggal_akhir: fd.get("tanggal_akhir"),
-              jabatan: fd.get("jabatan") || "",
-              cabang: fd.get("cabang") || "",
-              status_kolom_kontrak: "AKTIF",
-              link_dokumen: link_dokumen
-            };
-
-            await fsAdd(COL.MASTER_KONTRAK, payload, kId);
-
-            // Find employee in allKaryawan to update master karyawan
-            const matched = allKaryawan.find(k => k.nama_karyawan === namaKaryawan);
-            if (matched && matched.id) {
-              await fsUpdate(COL.MASTER_KARYAWAN, matched.id, {
-                status_karyawan: "KONTRAK",
-                tgl_mulai_kontrak: payload.tanggal_mulai,
-                tgl_akhir_kontrak: payload.tanggal_akhir,
-                aktif_tdk_aktif: "AKTIF"
-              });
-            }
-
-            toast("Kontrak kerja berhasil disimpan!", "success");
-            closeModal();
-            reloadData();
-          } catch (e) {
-            toast("Gagal menyimpan kontrak: " + e.message, "error");
-            btnSubmit.disabled = false;
-            btnSubmit.textContent = "Simpan Kontrak";
-          }
-        };
-      }
-    });
-  }
-
-  async function loadTemplateKpi(lastEditedTplId = null, preserveScrollY = null) {
-    const wrap = panels.template;
-    const currentScrollY = preserveScrollY !== null ? preserveScrollY : (window.scrollY || document.documentElement.scrollTop || 0);
-
-    const isAlreadyRendered = !!wrap.querySelector("#tpl-cards-container");
-    const previousSearchVal = wrap.querySelector("#tpl-search-input")?.value || "";
-
-    if (!isAlreadyRendered) {
-      wrap.innerHTML = `<div class="p-6">${skeletonRows(4)}</div>`;
-    }
-
-    const [rawTemplates, allKaryawan] = await Promise.all([
-      fsGetAll(COL.MASTER_SOAL_KPI),
-      fsGetAll(COL.MASTER_KARYAWAN)
-    ]);
-
-    // Hapus duplikat template berdasarkan nama jabatan jika ada di Firestore
-    const templateMap = new Map();
-    const duplicatesToDelete = [];
-
-    rawTemplates.forEach(t => {
-      const normName = (t.nama_template || "").trim().toLowerCase();
-      if (!normName) return;
-      if (templateMap.has(normName)) {
-        const existing = templateMap.get(normName);
-        const existingTime = new Date(existing.updated_at || existing.created_at || 0).getTime();
-        const currentTime = new Date(t.updated_at || t.created_at || 0).getTime();
-
-        if (currentTime > existingTime) {
-          duplicatesToDelete.push(existing.id);
-          templateMap.set(normName, t);
-        } else {
-          duplicatesToDelete.push(t.id);
-        }
-      } else {
-        templateMap.set(normName, t);
-      }
-    });
-
-    if (duplicatesToDelete.length > 0) {
-      duplicatesToDelete.forEach(id => {
-        fsDelete(COL.MASTER_SOAL_KPI, id).catch(e => console.warn("Pembersihan duplikat template:", e));
-      });
-    }
-
-    const templates = Array.from(templateMap.values());
-
-    const activeKaryawan = allKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF" && k.nama_karyawan);
-    activeKaryawan.sort((a, b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id", { sensitivity: "base" }));
-
-    function renderView() {
-      let html = `
-        <div class="space-y-5">
-          <!-- Header Toolbar -->
-          <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h2 class="text-xl font-bold text-slate-800">Master Template Soal KPI & Evaluasi</h2>
-              <p class="text-xs text-slate-500 mt-1">Kelola set indikator penilaian (KPI 360, Perpanjangan Kontrak, Kartap, PIP, Mutasi/Demosi) dan tetapkan daftar karyawan untuk tiap template.</p>
-            </div>
-            <div class="flex items-center gap-2 self-start md:self-auto flex-wrap">
-              <input type="file" id="kpi-excel-upload" accept=".xlsx, .xls" class="hidden">
-              <button id="btn-download-sample-kpi" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5" title="Download Contoh Format Excel KPI">
-                📥 Format Excel Sample
-              </button>
-              <button id="btn-import-template" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-semibold transition shadow-sm flex items-center gap-1.5">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-                Import Excel
-              </button>
-              <button id="btn-add-template" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2 rounded-xl text-xs font-semibold transition shadow-sm flex items-center gap-1.5">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-                Buat Template Baru
-              </button>
-            </div>
-          </div>
-
-          <!-- Search & Filter Bar -->
-          <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div class="flex items-center gap-2 w-full sm:w-auto flex-1">
-              <div class="relative w-full sm:w-80">
-                <input type="text" id="tpl-search-input" placeholder="🔍 Cari nama template, indikator, atau karyawan..." class="w-full px-3.5 py-2 pl-9 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition">
-              </div>
-              <select id="tpl-filter-kategori" class="px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-slate-50 font-medium">
-                <option value="">Semua Kategori Penilaian</option>
-                ${Object.values(JENIS_PENILAIAN_MAP).map(cat => `
-                  <option value="${cat.key}">${cat.icon} ${cat.label}</option>
-                `).join('')}
-              </select>
-            </div>
-            <div class="text-xs text-slate-500 font-medium self-end sm:self-auto">
-              Total <strong class="text-slate-800">${templates.length}</strong> Template Tersedia
-            </div>
-          </div>
-
-          <!-- Cards Grid -->
-          <div id="tpl-cards-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          </div>
-        </div>
-      `;
-
-      wrap.innerHTML = html;
-
-      const userRole = (session?.role || "").toUpperCase();
-      const isHrdRole = ["HRD", "SUPERADMIN", "ADMIN"].includes(userRole);
-      const btnSample = wrap.querySelector("#btn-download-sample-kpi");
-      const btnImport = wrap.querySelector("#btn-import-template");
-      const inputExcel = wrap.querySelector("#kpi-excel-upload");
-
-      if (btnSample) {
-        if (!isHrdRole) btnSample.style.display = "none";
-        else btnSample.onclick = downloadSampleExcelTemplateKpi;
-      }
-
-      if (btnImport) {
-        if (!isHrdRole) {
-          btnImport.style.display = "none";
-        } else if (inputExcel) {
-          btnImport.onclick = () => {
-            inputExcel.value = "";
-            inputExcel.click();
-          };
-          inputExcel.onchange = (e) => {
-            if (e.target.files && e.target.files[0]) {
-              handleExcelImport(e.target.files[0]);
-            }
-          };
-        }
-      }
-
-      const btnAdd = wrap.querySelector("#btn-add-template");
-      if (btnAdd) btnAdd.onclick = () => openTemplateModal(null, activeKaryawan);
-    }
-
-    if (!isAlreadyRendered) {
-      renderView();
-    } else {
-      const totalCountStrong = wrap.querySelector("#tpl-cards-container")?.parentElement?.querySelector("strong");
-      if (totalCountStrong) {
-        totalCountStrong.textContent = templates.length;
-      }
-    }
-
-    const searchInput = wrap.querySelector("#tpl-search-input");
-    const filterKategori = wrap.querySelector("#tpl-filter-kategori");
-    if (searchInput && previousSearchVal) {
-      searchInput.value = previousSearchVal;
-    }
-
-    const cardsContainer = wrap.querySelector("#tpl-cards-container");
-
-    function drawCards() {
-      const q = (searchInput ? searchInput.value : "").toLowerCase().trim();
-      const katVal = filterKategori ? filterKategori.value : "";
-
-      const filtered = templates.filter(t => {
-        const nama = (t.nama_template || "").toLowerCase();
-        const assigned = (t.karyawan_assigned || []).join(" ").toLowerCase();
-        const indikatorText = (t.soal_json || []).map(s => `${s.aspek} ${s.indikator}`).join(" ").toLowerCase();
-        const tKat = t.kategori_penilaian || "KPI_360";
-
-        const matchQ = !q || nama.includes(q) || assigned.includes(q) || indikatorText.includes(q);
-        const matchKat = !katVal || tKat === katVal;
-
-        return matchQ && matchKat;
-      });
-
-      if (!filtered.length) {
-        cardsContainer.innerHTML = `<div class="col-span-full">${emptyState("Belum ada Template Soal KPI yang cocok", "Klik tombol Buat Template Baru di atas untuk menambah template.")}</div>`;
-        return;
-      }
-
-      cardsContainer.innerHTML = filtered.map(t => {
-        const nama = t.nama_template || "Template Tanpa Nama";
-        const tKatKey = t.kategori_penilaian || "KPI_360";
-        const catConfig = getCatConfig(tKatKey);
-        const tSkala = t.skala_penilaian || "0-100";
-
-        const soalList = t.soal_json || [];
-        const totalBobot = soalList.reduce((acc, curr) => acc + (parseFloat(curr.bobot) || 0), 0);
-        const assignedList = Array.isArray(t.karyawan_assigned) ? t.karyawan_assigned : [];
-
-        const isBobot100 = Math.round(totalBobot) === 100;
-
-        // Preview indicators (up to 3)
-        const previewSoal = soalList.slice(0, 3);
-        const extraSoalCount = soalList.length - 3;
-
-        // Preview assigned employees (up to 4)
-        const previewEmployees = assignedList.slice(0, 4);
-        const extraEmpCount = assignedList.length - 4;
-
-        return `
-          <div class="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition p-5 flex flex-col justify-between group cursor-pointer tpl-card-item" data-tpl-id="${t.id}">
-            <div>
-              <!-- Top Header -->
-              <div class="flex items-start justify-between gap-2 mb-2.5">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-10 h-10 rounded-xl bg-maroon-50 text-maroon-700 font-bold flex items-center justify-center text-lg shadow-2xs group-hover:bg-maroon-700 group-hover:text-white transition">
-                    ${catConfig.icon}
-                  </div>
-                  <div>
-                    <h3 class="font-bold text-slate-800 text-sm group-hover:text-maroon-700 transition leading-snug">${escapeHtml(nama)}</h3>
-                    <p class="text-[11px] text-slate-400 font-medium">${soalList.length} Indikator Kinerja</p>
-                  </div>
-                </div>
-                ${isBobot100 ? `
-                  <span class="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">Total 100%</span>
-                ` : `
-                  <span class="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full shrink-0">Bobot ${totalBobot}%</span>
-                `}
-              </div>
-
-              <!-- Category Tag Badge & Skala Badge -->
-              <div class="mb-3 flex flex-wrap gap-1.5 items-center">
-                <span class="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-lg border ${catConfig.badgeClass}">
-                  ${catConfig.icon} ${catConfig.label}
-                </span>
-                <span class="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg border bg-slate-50 text-slate-700 border-slate-200">
-                  📊 Skala ${tSkala}
-                </span>
-              </div>
-
-              <!-- Section Preview Indikator KPI -->
-              <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 mb-3 space-y-1.5">
-                <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wide flex items-center justify-between">
-                  <span>🎯 Detail Soal & Indikator</span>
-                  <span class="text-slate-400 font-normal lowercase">${soalList.length} soal</span>
-                </div>
-                ${soalList.length > 0 ? `
-                  <div class="space-y-1 mt-1">
-                    ${previewSoal.map(s => `
-                      <div class="flex items-center justify-between text-xs bg-white p-1.5 rounded-lg border border-slate-100">
-                        <span class="truncate text-slate-700 font-medium pr-2" title="${escapeHtml(s.indikator)}">${escapeHtml(s.indikator || s.aspek)}</span>
-                        <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">${s.bobot}%</span>
-                      </div>
-                    `).join("")}
-                    ${extraSoalCount > 0 ? `
-                      <div class="text-[10px] text-slate-400 italic text-center pt-0.5">+ ${extraSoalCount} indikator lainnya</div>
-                    ` : ''}
-                  </div>
-                ` : `
-                  <p class="text-xs text-slate-400 italic py-1">Belum ada indikator ditambahkan</p>
-                `}
-              </div>
-
-              <!-- Section Karyawan Terdaftar -->
-              <div class="border-t border-slate-100 pt-3">
-                <div class="flex items-center justify-between text-xs mb-2">
-                  <span class="text-slate-500 font-semibold flex items-center gap-1">👥 Karyawan Masuk Template:</span>
-                  <span class="font-bold text-maroon-700 bg-maroon-50 px-2 py-0.5 rounded-full text-[11px]">${assignedList.length} Orang</span>
-                </div>
-                ${assignedList.length > 0 ? `
-                  <div class="flex flex-wrap gap-1">
-                    ${previewEmployees.map(emp => `
-                      <span class="inline-flex items-center gap-1 text-[11px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg font-medium border border-slate-200">
-                        <span>👤</span> ${escapeHtml(emp)}
-                      </span>
-                    `).join("")}
-                    ${extraEmpCount > 0 ? `
-                      <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">+${extraEmpCount} lagi</span>
-                    ` : ''}
-                  </div>
-                ` : `
-                  <p class="text-xs text-slate-400 italic bg-amber-50/50 border border-amber-100 p-2 rounded-xl text-center">Belum ada karyawan yang dimasukkan ke template ini.</p>
-                `}
-              </div>
-            </div>
-
-            <!-- Footer Action Buttons -->
-            <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-              <button type="button" data-del-tpl="${t.id}" class="text-xs font-semibold text-red-500 hover:text-red-700 hover:bg-red-50 px-2.5 py-1.5 rounded-lg transition">
-                🗑️ Hapus
-              </button>
-              <div class="flex items-center gap-1.5">
-                <button type="button" data-dist-tpl="${t.id}" class="text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 px-3 py-1.5 rounded-xl transition flex items-center gap-1 shadow-2xs">
-                  🚀 Distribusi KPI
-                </button>
-                <button type="button" data-edit-tpl="${t.id}" class="text-xs font-bold text-maroon-700 bg-maroon-50 hover:bg-maroon-100 px-3 py-1.5 rounded-xl transition flex items-center gap-1">
-                  👁️ Edit
-                </button>
-              </div>
-            </div>
-          </div>
-        `;
-      }).join("");
-
-      // Attach Card Action Events
-      cardsContainer.querySelectorAll("[data-dist-tpl]").forEach(btn => {
-        btn.onclick = (e) => {
-          e.stopPropagation();
-          openDistribusiModal(btn.dataset.distTpl);
-        };
-      });
-
-      cardsContainer.querySelectorAll("[data-edit-tpl]").forEach(btn => {
-        btn.onclick = (e) => {
-          e.stopPropagation();
-          const tplId = btn.dataset.editTpl;
-          openTemplateModal(templates.find(x => x.id === tplId), activeKaryawan);
-        };
-      });
-
-      cardsContainer.querySelectorAll(".tpl-card-item").forEach(card => {
-        card.onclick = () => {
-          const tplId = card.dataset.tplId;
-          openTemplateModal(templates.find(x => x.id === tplId), activeKaryawan);
-        };
-      });
-
-      cardsContainer.querySelectorAll("[data-del-tpl]").forEach(btn => {
-        btn.onclick = async (e) => {
-          e.stopPropagation();
-          const tplId = btn.dataset.delTpl;
-          if (confirm("Apakah Anda yakin ingin menghapus template KPI ini?")) {
-            const currentY = window.scrollY || document.documentElement.scrollTop || 0;
-            await fsDelete(COL.MASTER_SOAL_KPI, tplId);
-            toast("Template berhasil dihapus", "success");
-            loadTemplateKpi(null, currentY);
-          }
-        };
-      });
-    }
-
-    drawCards();
-    if (searchInput) searchInput.oninput = drawCards;
-
-    setTimeout(() => {
-      if (lastEditedTplId) {
-        const targetCard = wrap.querySelector(`[data-tpl-id="${lastEditedTplId}"]`);
-        if (targetCard) {
-          targetCard.scrollIntoView({ behavior: "smooth", block: "center" });
-          targetCard.classList.add("ring-2", "ring-maroon-600", "transition-all", "duration-500");
-          setTimeout(() => {
-            targetCard.classList.remove("ring-2", "ring-maroon-600");
-          }, 2500);
-          return;
-        }
-      }
-      if (currentScrollY > 0) {
-        window.scrollTo({ top: currentScrollY, behavior: "instant" });
-      }
-    }, 50);
-  }
-
-  async function downloadSampleExcelTemplateKpi() {
-    const headers = ["JABATAN", "NO", "ASPEK", "INDIKATOR", "BOBOT", "PENCAPAIAN (INFO)"];
-    const sampleRows = [
-      ["Sales Representative", 1, "Hasil Kerja", "Pencapaian Target Omzet Penjualan Bulanan", "40%", "Minimal 100% dari target bulanan"],
-      ["Sales Representative", 2, "Sikap Kerja", "Kepatuhan Jam Kerja & Laporan Kunjungan Sales Track", "30%", "Laporan wajib diisi setiap hari"],
-      ["Sales Representative", 3, "Kompetensi", "Pengetahuan Produk & Keterampilan Negosiasi", "30%", "Ujian produk berkala min. score 80"],
-      ["HR Staff", 1, "Hasil Kerja", "Ketepatan waktu dan akurasi pengolahan payroll & absensi", "50%", "Tidak ada keterlambatan payroll"],
-      ["HR Staff", 2, "Sikap Kerja", "Kedisiplinan, kerapian administrasi & ketaatan SOP", "30%", "Nol kesalahan audit dokumen"],
-      ["HR Staff", 3, "Kompetensi", "Pelayanan karyawan & kecepatan respon kendala HR", "20%", "Respon maksimal 1x24 jam"]
-    ];
-
-    try {
-      await downloadXlsx("Format_Sample_Import_Template_KPI", headers, sampleRows, "Template KPI");
-      toast("Format Excel Sample berhasil diunduh!", "success");
-    } catch (e) {
-      toast("Gagal mengunduh format sample: " + e.message, "error");
-    }
-  }
-
-  async function handleExcelImport(file) {
-    if (!file) return;
-    const importY = window.scrollY || document.documentElement.scrollTop || 0;
-    const btn = panels.template ? panels.template.querySelector("#btn-import-template") : null;
-    const originalText = btn ? btn.innerHTML : "Import Excel";
-    if (btn) { btn.innerHTML = `⏳ Membaca File...`; btn.disabled = true; }
-
-    try {
-      await ensureXlsxLoaded();
-      if (typeof window.XLSX === "undefined") {
-        throw new Error("Library SheetJS (XLSX) tidak dapat dimuat.");
-      }
-
-      const data = await file.arrayBuffer();
-      const workbook = window.XLSX.read(data, { type: 'array' });
-      if (!workbook.SheetNames || !workbook.SheetNames.length) {
-        throw new Error("File Excel kosong atau tidak valid.");
-      }
-
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-      const matrix = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "", raw: false });
-
-      if (!matrix || matrix.length === 0) {
-        throw new Error("Sheet Excel tidak berisi data.");
-      }
-
-      // Step 1: Detect Header Row & Column Indexes
-      let headerRowIdx = -1;
-      let colJabatan = -1;
-      let colNo = -1;
-      let colAspek = -1;
-      let colIndikator = -1;
-      let colBobot = -1;
-      let colPencapaian = -1;
-
-      for (let r = 0; r < Math.min(matrix.length, 15); r++) {
-        const row = matrix[r];
-        if (!Array.isArray(row)) continue;
-
-        row.forEach((cell, cIdx) => {
-          const str = String(cell || "").toUpperCase().trim();
-          if (str.includes("JABATAN") || str.includes("POSISI") || str.includes("TEMPLATE")) colJabatan = cIdx;
-          if (str.includes("NO") || str.includes("NOMOR")) colNo = cIdx;
-          if (str.includes("ASPEK") || str.includes("KATEGORI") || str.includes("DIMENSI")) colAspek = cIdx;
-          if (str.includes("INDIKATOR") || str.includes("PERTANYAAN") || str.includes("SOAL") || str.includes("KRITERIA")) colIndikator = cIdx;
-          if (str.includes("BOBOT") || str.includes("WEIGHT") || str.includes("PERSEN")) colBobot = cIdx;
-          if (str.includes("PENCAPAIAN") || str.includes("INFO") || str.includes("TARGET") || str.includes("KETERANGAN")) colPencapaian = cIdx;
-        });
-
-        if (colIndikator !== -1 || colJabatan !== -1) {
-          headerRowIdx = r;
-          break;
-        }
-      }
-
-      if (headerRowIdx === -1) headerRowIdx = 0;
-
-      // Fallbacks if columns missing
-      if (colIndikator === -1) colIndikator = 3;
-      if (colJabatan === -1) colJabatan = 0;
-      if (colAspek === -1) colAspek = 2;
-      if (colBobot === -1) colBobot = 4;
-      if (colPencapaian === -1) colPencapaian = 5;
-
-      const groupedTemplates = {};
-      let currentJabatan = "";
-
-      for (let r = headerRowIdx + 1; r < matrix.length; r++) {
-        const row = matrix[r];
-        if (!row || !row.length) continue;
-
-        const rawJabatan = colJabatan !== -1 && row[colJabatan] !== undefined ? String(row[colJabatan]).trim() : "";
-        const rawAspek = colAspek !== -1 && row[colAspek] !== undefined ? String(row[colAspek]).trim() : "";
-        const rawIndikator = colIndikator !== -1 && row[colIndikator] !== undefined ? String(row[colIndikator]).trim() : "";
-        const rawBobot = colBobot !== -1 && row[colBobot] !== undefined ? String(row[colBobot]).trim() : "";
-        const rawPencapaian = colPencapaian !== -1 && row[colPencapaian] !== undefined ? String(row[colPencapaian]).trim() : "";
-
-        // Inherit Jabatan from previous row if blank (for grouped rows in Excel)
-        if (rawJabatan) {
-          currentJabatan = rawJabatan;
-        }
-
-        if (!currentJabatan) continue;
-        if (!rawIndikator && !rawAspek) continue;
-        if (!rawIndikator) continue;
-
-        // Clean & Parse Bobot
-        let bobotVal = 0;
-        if (rawBobot) {
-          let cleanStr = rawBobot.replace(/%/g, "").replace(/,/g, ".").trim();
-          let num = parseFloat(cleanStr);
-          if (!isNaN(num)) {
-            if (num > 0 && num <= 1) {
-              bobotVal = Math.round(num * 100);
-            } else {
-              bobotVal = Math.round(num);
-            }
-          }
-        }
-
-        if (!groupedTemplates[currentJabatan]) {
-          groupedTemplates[currentJabatan] = {
-            nama_template: currentJabatan,
-            soal_json: []
-          };
-        }
-
-        groupedTemplates[currentJabatan].soal_json.push({
-          aspek: rawAspek || "Umum",
-          indikator: rawIndikator,
-          bobot: bobotVal,
-          pencapaian_info: rawPencapaian,
-          nilai_diberikan: 0
-        });
-      }
-
-      const templateKeys = Object.keys(groupedTemplates);
-      if (templateKeys.length === 0) {
-        throw new Error("Tidak ada indikator KPI yang valid ditemukan. Mohon periksa header JABATAN, ASPEK, INDIKATOR, dan BOBOT.");
-      }
-
-      // Step 2: Replace or Add existing templates in Firestore
-      const existingTemplates = await fsGetAll(COL.MASTER_SOAL_KPI);
-      let addedCount = 0;
-      let updatedCount = 0;
-
-      for (const name of templateKeys) {
-        const tplData = groupedTemplates[name];
-        const normName = name.trim().toLowerCase();
-        const matchingExisting = existingTemplates.filter(t => (t.nama_template || "").trim().toLowerCase() === normName);
-
-        if (matchingExisting.length > 0) {
-          // Kumpulkan karyawan assigned dari template lama agar tidak hilang
-          const allAssigned = new Set();
-          matchingExisting.forEach(t => {
-            if (Array.isArray(t.karyawan_assigned)) {
-              t.karyawan_assigned.forEach(k => allAssigned.add(k));
-            }
-          });
-
-          // Hapus SEMUA template lama dengan nama jabatan yang sama
-          for (const oldTpl of matchingExisting) {
-            await fsDelete(COL.MASTER_SOAL_KPI, oldTpl.id);
-          }
-
-          // Buat template baru menggantikan yang terhapus
-          await fsAdd(COL.MASTER_SOAL_KPI, {
-            nama_template: name,
-            soal_json: tplData.soal_json,
-            karyawan_assigned: Array.from(allAssigned),
-            updated_at: new Date().toISOString()
-          }, genId("TPL-KPI"));
-          updatedCount++;
-        } else {
-          // Add new template
-          await fsAdd(COL.MASTER_SOAL_KPI, {
-            nama_template: name,
-            soal_json: tplData.soal_json,
-            karyawan_assigned: [],
-            created_at: new Date().toISOString()
-          }, genId("TPL-KPI"));
-          addedCount++;
-        }
-      }
-
-      let resMsg = "Berhasil meng-import template KPI! ";
-      if (updatedCount > 0) resMsg += `${updatedCount} template diperbarui. `;
-      if (addedCount > 0) resMsg += `${addedCount} template baru ditambahkan.`;
-
-      toast(resMsg, "success");
-      loadTemplateKpi(null, importY);
-
-    } catch (err) {
-      console.error("Gagal Import Excel:", err);
-      toast("Gagal Import Excel: " + err.message, "error");
-    } finally {
-      if (btn) {
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-      }
-    }
-  }
-
-  function openTemplateModal(existingData = null, activeKaryawan = []) {
-    // Sort activeKaryawan A-Z
-    activeKaryawan.sort((a, b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id", { sensitivity: "base" }));
-
-    const assignedSet = new Set(existingData?.karyawan_assigned || []);
-
-    openModal({
-      title: existingData ? `Detail & Edit Template: ${escapeHtml(existingData.nama_template || "Template KPI")}` : "Buat Template Soal KPI & Evaluasi Baru",
-      size: "lg",
-      bodyHtml: `
-        <div class="space-y-4">
-          <!-- Nama Template, Jenis Penilaian & Skala Penilaian -->
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Nama Template / Jabatan <span class="text-red-500">*</span></label>
-              <input type="text" id="tpl-nama" value="${existingData ? escapeHtml(existingData.nama_template || '') : ''}" placeholder="Cth: Template KPI Sales / Kontrak" required class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:border-maroon-500 outline-none font-medium bg-white">
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Jenis / Kategori Penilaian <span class="text-red-500">*</span></label>
-              <select id="tpl-kategori" class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:border-maroon-500 outline-none font-medium bg-white">
-                ${Object.values(JENIS_PENILAIAN_MAP).map(cat => `
-                  <option value="${cat.key}" ${ (existingData?.kategori_penilaian || 'KPI_360') === cat.key ? 'selected' : '' }>${cat.icon} ${cat.label}</option>
-                `).join('')}
-              </select>
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Skala Penilaian <span class="text-red-500">*</span></label>
-              <select id="tpl-skala" class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:border-maroon-500 outline-none font-medium bg-white">
-                <option value="0-100" ${ (existingData?.skala_penilaian || '0-100') === '0-100' ? 'selected' : '' }>Skala 0 - 100 (Persentase)</option>
-                <option value="1-5" ${ (existingData?.skala_penilaian) === '1-5' ? 'selected' : '' }>Skala 1 - 5 (Likert / Rating)</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Dynamic Preview Box for Recommendation Options -->
-          <div id="tpl-rekomendasi-preview-box" class="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1.5">
-          </div>
-
-          <!-- TAB / SECTION SELECTOR -->
-          <div class="flex items-center gap-2 border-b border-slate-200 pb-2">
-            <button type="button" id="tab-btn-soal" class="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-maroon-700 text-white transition shadow-2xs">
-              📝 Detail Soal & Indikator KPI
-            </button>
-            <button type="button" id="tab-btn-karyawan" class="px-3.5 py-1.5 text-xs font-bold rounded-xl text-slate-600 hover:bg-slate-100 transition flex items-center gap-1.5">
-              👥 Karyawan yang Masuk Template
-              <span id="tpl-karyawan-counter" class="bg-maroon-100 text-maroon-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full">${assignedSet.size}</span>
-            </button>
-          </div>
-
-          <!-- PANEL 1: SOAL & INDIKATOR KPI -->
-          <div id="panel-tpl-soal" class="space-y-3">
-            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <div class="flex justify-between items-center mb-3 border-b border-slate-200 pb-2">
-                <label class="text-xs font-bold text-slate-700 uppercase tracking-wide">Indikator & Bobot Penilaian (Wajib Total 100%)</label>
-                <span id="tpl-bobot-total" class="text-xs font-bold bg-amber-100 text-amber-700 px-2.5 py-1 rounded-lg">Total Bobot: 0%</span>
-              </div>
-              <div id="tpl-soal-list" class="space-y-2.5 mb-3"></div>
-              <button type="button" id="btn-tpl-add" class="text-xs text-maroon-700 font-bold hover:underline flex items-center gap-1 bg-white px-3 py-1.5 rounded-lg border border-maroon-200 shadow-2xs">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg> Tambah Indikator Baru
-              </button>
-            </div>
-          </div>
-
-          <!-- PANEL 2: DAFTAR KARYAWAN -->
-          <div id="panel-tpl-karyawan" class="hidden space-y-3">
-            <div class="bg-amber-50/60 border border-amber-200 p-3 rounded-xl text-xs text-amber-900 flex items-center justify-between gap-2">
-              <span>💡 <strong>Informasi:</strong> Karyawan yang dicentang di bawah ini akan otomatis menggunakan template KPI ini saat HRD melakukan Distribusi Penilaian 360.</span>
-            </div>
-
-            <div class="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
-              <!-- Search & Quick Selection -->
-              <div class="p-3 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2">
-                <input type="text" id="tpl-search-karyawan" placeholder="🔍 Cari nama karyawan, jabatan, divisi..." class="w-full sm:w-72 px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-white">
-                <div class="flex items-center gap-2 self-end sm:self-auto">
-                  <button type="button" id="btn-check-all-karyawan" class="text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">Centang Semua</button>
-                  <button type="button" id="btn-uncheck-all-karyawan" class="text-[11px] font-semibold text-slate-600 bg-white hover:bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">Hapus Semua</button>
-                </div>
-              </div>
-
-              <!-- List Checkbox -->
-              <div id="tpl-karyawan-checkbox-list" class="max-h-60 overflow-y-auto divide-y divide-slate-100 p-1 bg-white">
-              </div>
-            </div>
-          </div>
-        </div>
-      `,
-      footerHtml: `
-        <div class="flex items-center justify-between w-full">
-          <button id="btn-tpl-batal" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition">Batal</button>
-          <button id="btn-tpl-simpan" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-md flex items-center gap-1.5">💾 Simpan Template & Karyawan</button>
-        </div>
-      `,
-      onMount: (m) => {
-        const selKategori = m.querySelector("#tpl-kategori");
-        const boxPreview = m.querySelector("#tpl-rekomendasi-preview-box");
-
-        function updateRekomendasiPreview() {
-          const catKey = selKategori ? selKategori.value : "KPI_360";
-          const catObj = getCatConfig(catKey);
-          boxPreview.innerHTML = `
-            <div class="flex items-center justify-between font-bold text-slate-700">
-              <span>💡 Pilihan Keputusan & Rekomendasi di Template ini (${catObj.icon} ${catObj.label}):</span>
-            </div>
-            <div class="flex flex-wrap gap-1.5 mt-1">
-              ${catObj.options.map(opt => `
-                <span class="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg font-semibold border ${catObj.badgeClass}">
-                  ✓ ${escapeHtml(opt)}
-                </span>
-              `).join('')}
-            </div>
-          `;
-        }
-        if (selKategori) selKategori.onchange = updateRekomendasiPreview;
-        updateRekomendasiPreview();
-
-        const tabBtnSoal = m.querySelector("#tab-btn-soal");
-        const tabBtnKaryawan = m.querySelector("#tab-btn-karyawan");
-        const panelSoal = m.querySelector("#panel-tpl-soal");
-        const panelKaryawan = m.querySelector("#panel-tpl-karyawan");
-
-        const soalList = m.querySelector("#tpl-soal-list");
-        const badgeBobot = m.querySelector("#tpl-bobot-total");
-        const counterKaryawan = m.querySelector("#tpl-karyawan-counter");
-        const karyawanListContainer = m.querySelector("#tpl-karyawan-checkbox-list");
-        const searchKaryawanInput = m.querySelector("#tpl-search-karyawan");
-
-        // Tab Switch logic
-        tabBtnSoal.onclick = () => {
-          panelSoal.classList.remove("hidden");
-          panelKaryawan.classList.add("hidden");
-          tabBtnSoal.className = "px-3.5 py-1.5 text-xs font-bold rounded-xl bg-maroon-700 text-white transition shadow-2xs";
-          tabBtnKaryawan.className = "px-3.5 py-1.5 text-xs font-bold rounded-xl text-slate-600 hover:bg-slate-100 transition flex items-center gap-1.5";
-        };
-
-        tabBtnKaryawan.onclick = () => {
-          panelKaryawan.classList.remove("hidden");
-          panelSoal.classList.add("hidden");
-          tabBtnKaryawan.className = "px-3.5 py-1.5 text-xs font-bold rounded-xl bg-maroon-700 text-white transition shadow-2xs flex items-center gap-1.5";
-          tabBtnSoal.className = "px-3.5 py-1.5 text-xs font-bold rounded-xl text-slate-600 hover:bg-slate-100 transition";
-        };
-
-        // Render Karyawan Checkbox List
-        function updateCounter() {
-          counterKaryawan.textContent = assignedSet.size;
-        }
-
-        function drawKaryawanCheckboxes(filterText = "") {
-          const term = filterText.toLowerCase().trim();
-
-          karyawanListContainer.innerHTML = activeKaryawan.map(k => {
-            const nama = k.nama_karyawan || "";
-            const jabatan = k.jabatan || "-";
-            const cabang = k.cabang || "Pusat";
-            const divisi = k.divisi || "";
-
-            const match = !term || nama.toLowerCase().includes(term) || jabatan.toLowerCase().includes(term) || divisi.toLowerCase().includes(term);
-            if (!match || !nama) return "";
-
-            const isChecked = assignedSet.has(nama);
-
-            return `
-              <label class="flex items-center justify-between px-3.5 py-2.5 hover:bg-slate-50 rounded-xl cursor-pointer transition select-none group">
-                <div class="flex items-center gap-3">
-                  <input type="checkbox" name="tpl-karyawan-cb" value="${escapeHtml(nama)}" ${isChecked ? 'checked' : ''} class="w-4 h-4 text-maroon-600 border-slate-300 rounded focus:ring-maroon-500 cursor-pointer">
-                  <div>
-                    <p class="text-xs font-bold text-slate-800 group-hover:text-maroon-700 transition">${escapeHtml(nama)}</p>
-                    <p class="text-[11px] text-slate-400 font-medium">${escapeHtml(jabatan)} ${divisi ? `• Divisi ${escapeHtml(divisi)}` : ''} • Cabang ${escapeHtml(cabang)}</p>
-                  </div>
-                </div>
-              </label>
-            `;
-          }).join("");
-
-          m.querySelectorAll('input[name="tpl-karyawan-cb"]').forEach(cb => {
-            cb.onchange = () => {
-              if (cb.checked) {
-                assignedSet.add(cb.value);
-              } else {
-                assignedSet.delete(cb.value);
-              }
-              updateCounter();
-            };
-          });
-          updateCounter();
-        }
-
-        drawKaryawanCheckboxes();
-        if (searchKaryawanInput) {
-          searchKaryawanInput.oninput = (e) => drawKaryawanCheckboxes(e.target.value);
-        }
-
-        m.querySelector("#btn-check-all-karyawan").onclick = () => {
-          const term = (searchKaryawanInput ? searchKaryawanInput.value : "").toLowerCase().trim();
-          activeKaryawan.forEach(k => {
-            const nama = k.nama_karyawan || "";
-            if (!nama) return;
-            const match = !term || nama.toLowerCase().includes(term) || (k.jabatan || "").toLowerCase().includes(term) || (k.divisi || "").toLowerCase().includes(term);
-            if (match) assignedSet.add(nama);
-          });
-          drawKaryawanCheckboxes(searchKaryawanInput ? searchKaryawanInput.value : "");
-        };
-
-        m.querySelector("#btn-uncheck-all-karyawan").onclick = () => {
-          const term = (searchKaryawanInput ? searchKaryawanInput.value : "").toLowerCase().trim();
-          if (!term) {
-            assignedSet.clear();
-          } else {
-            activeKaryawan.forEach(k => {
-              const nama = k.nama_karyawan || "";
-              if (!nama) return;
-              const match = nama.toLowerCase().includes(term) || (k.jabatan || "").toLowerCase().includes(term) || (k.divisi || "").toLowerCase().includes(term);
-              if (match) assignedSet.delete(nama);
-            });
-          }
-          drawKaryawanCheckboxes(searchKaryawanInput ? searchKaryawanInput.value : "");
-        };
-
-        // Indicator & Bobot Logic
-        function calcTotalBobot() {
-          let total = 0;
-          m.querySelectorAll(".soal-bobot").forEach(input => total += parseFloat(input.value) || 0);
-          badgeBobot.textContent = `Total Bobot: ${total}%`;
-          if (total === 100) {
-            badgeBobot.className = "text-xs font-bold bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-lg border border-emerald-300";
-          } else {
-            badgeBobot.className = "text-xs font-bold bg-red-100 text-red-700 px-2.5 py-1 rounded-lg border border-red-300";
-          }
-          return total;
-        }
-
-        function addSoalUI(data = { aspek: "", indikator: "", bobot: "" }) {
-          const div = document.createElement("div");
-          div.className = "flex gap-2 items-start bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs";
-          div.innerHTML = `
-            <div class="flex-1 space-y-2">
-              <input type="text" placeholder="Aspek Penilaian (Cth: Kedisiplinan / Target)" value="${escapeHtml(data.aspek || '')}" class="soal-aspek w-full px-2.5 py-1.5 text-xs border rounded-lg outline-none focus:border-maroon-400 font-medium" required>
-              <input type="text" placeholder="Indikator Kinerja / Detail Pertanyaan" value="${escapeHtml(data.indikator || '')}" class="soal-indikator w-full px-2.5 py-1.5 text-xs border rounded-lg outline-none focus:border-maroon-400" required>
-            </div>
-            <div class="w-24 text-center">
-              <label class="block text-[10px] text-slate-400 font-semibold mb-1">Bobot %</label>
-              <input type="number" placeholder="10" value="${data.bobot || ''}" class="soal-bobot w-full px-2.5 py-1.5 text-xs border rounded-lg text-center font-bold text-slate-800 outline-none focus:border-maroon-400" required min="1" max="100">
-            </div>
-            <button type="button" class="text-slate-300 hover:text-red-500 mt-5 p-1 rounded hover:bg-red-50 transition" title="Hapus Indikator">✖</button>
-          `;
-          div.querySelector(".soal-bobot").addEventListener("input", calcTotalBobot);
-          div.querySelector("button").addEventListener("click", () => { div.remove(); calcTotalBobot(); });
-          soalList.appendChild(div);
-          calcTotalBobot();
-        }
-
-        if (existingData && existingData.soal_json && existingData.soal_json.length > 0) {
-          existingData.soal_json.forEach(s => addSoalUI(s));
-        } else {
-          addSoalUI();
-        }
-
-        m.querySelector("#btn-tpl-add").onclick = () => addSoalUI();
-        m.querySelector("#btn-tpl-batal").onclick = closeModal;
-
-        m.querySelector("#btn-tpl-simpan").onclick = async () => {
-          const nama = m.querySelector("#tpl-nama").value.trim();
-          const kategoriPenilaian = selKategori ? selKategori.value : "KPI_360";
-          const skalaPenilaian = m.querySelector("#tpl-skala") ? m.querySelector("#tpl-skala").value : "0-100";
-
-          if (!nama) return toast("Nama Template wajib diisi!", "warning");
-          if (calcTotalBobot() !== 100) return toast("Total bobot indikator wajib tepat 100%!", "warning");
-
-          const soalArray = [];
-          soalList.querySelectorAll(".flex.gap-2").forEach(row => {
-            const asp = row.querySelector(".soal-aspek").value.trim();
-            const ind = row.querySelector(".soal-indikator").value.trim();
-            const bbt = parseFloat(row.querySelector(".soal-bobot").value) || 0;
-            if (asp || ind) {
-              soalArray.push({
-                aspek: asp || "Umum",
-                indikator: ind || asp,
-                bobot: bbt,
-                nilai_diberikan: 0
-              });
-            }
-          });
-
-          if (!soalArray.length) return toast("Tambahkan minimal 1 indikator soal KPI!", "warning");
-
-          // Extract checked employees from assignedSet (preserves selections across searches)
-          const checkedEmployees = Array.from(assignedSet);
-
-          const payload = {
-            nama_template: nama,
-            kategori_penilaian: kategoriPenilaian,
-            skala_penilaian: skalaPenilaian,
-            soal_json: soalArray,
-            karyawan_assigned: checkedEmployees
-          };
-
-          const btnSave = m.querySelector("#btn-tpl-simpan");
-          btnSave.disabled = true;
-          btnSave.textContent = "Menyimpan...";
-
-          try {
-            // Hapus duplikat lain jika ada template lain dengan nama jabatan yang sama
-            const allExisting = await fsGetAll(COL.MASTER_SOAL_KPI);
-            const duplicates = allExisting.filter(t => 
-              (t.nama_template || "").trim().toLowerCase() === nama.trim().toLowerCase() && 
-              (!existingData || t.id !== existingData.id)
-            );
-            for (const dup of duplicates) {
-              await fsDelete(COL.MASTER_SOAL_KPI, dup.id);
-            }
-
-            let savedTplId = existingData && existingData.id ? existingData.id : null;
-            if (existingData && existingData.id) {
-              await fsUpdate(COL.MASTER_SOAL_KPI, existingData.id, payload);
-            } else {
-              const newTplId = genId("TPL-KPI");
-              await fsAdd(COL.MASTER_SOAL_KPI, payload, newTplId);
-              savedTplId = newTplId;
-            }
-            toast("Template Soal KPI & daftar karyawan berhasil disimpan!", "success");
-            closeModal();
-            loadTemplateKpi(savedTplId);
-          } catch (err) {
-            toast("Gagal menyimpan: " + err.message, "error");
-            btnSave.disabled = false;
-            btnSave.textContent = "💾 Simpan Template & Karyawan";
-          }
-        };
-      }
-    });
-  }
-
-  async function loadKpi360() {
-    const wrap = panels.kpi360;
-    wrap.innerHTML = `<div class="space-y-2">${skeletonRows(4)}</div>`;
-    const tasks = await fsGetAll(COL.TUGAS_KPI_360);
-    const isHrd = session.role === "HRD" || session.role === "SUPERADMIN" || session.role === "DIREKTUR";
-
-    const userNamaLower = (session.nama || "").toLowerCase().trim();
-    const myTasks = tasks.filter(t => (t.nama_penilai || "").toLowerCase().trim() === userNamaLower);
-    const pendingMyTasks = myTasks.filter(t => (t.status || "").toUpperCase() !== "DONE");
-
-    const displayTasks = isHrd ? tasks : myTasks;
-
-    let htmlContent = "";
-
-    if (pendingMyTasks.length > 0) {
-      htmlContent += `
-        <div class="mb-4 p-4 bg-maroon-50 border border-maroon-200 rounded-2xl flex items-center justify-between gap-3 shadow-xs">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 bg-maroon-700 text-white rounded-xl flex items-center justify-center text-lg font-bold shrink-0">📋</div>
-            <div>
-              <h4 class="text-xs font-bold text-maroon-950 uppercase tracking-wide">Tugas Penilaian KPI Anda</h4>
-              <p class="text-xs text-maroon-800 mt-0.5">Anda memiliki <strong class="text-maroon-900 font-extrabold underline">${pendingMyTasks.length} tugas penilaian</strong> yang perlu diisi. Silakan klik tombol <strong>"Nilai Sekarang"</strong> pada daftar di bawah ini.</p>
-            </div>
-          </div>
-        </div>`;
-    }
-
-    if (isHrd) {
-      htmlContent += `
-        <div class="mb-4 flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
-          <div class="flex items-center gap-2 flex-wrap">
-            <span class="text-xs font-bold text-slate-600">Dokumen Fisik:</span>
-            <button id="btn-print-batch-kpi" class="bg-slate-800 hover:bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-2xs">
-              🖨️ Cetak Form Fisik Semua (${tasks.length})
-            </button>
-          </div>
-          <div class="flex items-center gap-2 flex-wrap">
-            ${tasks.length > 0 ? `
-              <button id="btn-revoke-batch-kpi" class="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5">
-                🗑️ Cabut Semua (${tasks.length})
-              </button>
-            ` : ''}
-            <button id="btn-distribusi-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 shadow-md">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-              Distribusi Penilaian 360
-            </button>
-          </div>
-        </div>`;
-    }
-
-    if (!displayTasks.length) { 
-      wrap.innerHTML = htmlContent + emptyState(isHrd ? "Belum ada penugasan KPI" : "Anda tidak memiliki tugas penilaian KPI aktif saat ini"); 
-    } else {
-      wrap.innerHTML = htmlContent + `
-        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead class="bg-slate-50 text-slate-500 text-xs uppercase"><tr>
-                <th class="px-4 py-3 text-left">Periode & Kategori</th><th class="px-4 py-3 text-left">Penilai</th><th class="px-4 py-3 text-left">Karyawan Dinilai</th><th class="px-4 py-3 text-left">Batas Waktu</th><th class="px-4 py-3 text-left">Status</th><th class="px-4 py-3 text-left">Skor</th><th class="px-4 py-3 text-right">Aksi Penilaian</th>
-              </tr></thead>
-              <tbody>${displayTasks.map(t => {
-                const isAssignedToMe = (t.nama_penilai || "").toLowerCase().trim() === userNamaLower;
-                const canFill = isAssignedToMe || isHrd;
-                const catCfg = getCatConfig(t.kategori_penilaian);
-                return `
-                <tr class="border-t border-slate-50 hover:bg-slate-50 transition">
-                  <td class="px-4 py-3">
-                    <span class="font-semibold block text-slate-800">${escapeHtml(t.periode || "-")}</span>
-                    <div class="flex items-center gap-1 mt-0.5 flex-wrap">
-                      <span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border ${catCfg.badgeClass}">
-                        ${catCfg.icon} ${catCfg.label}
-                      </span>
-                      ${t.skala_penilaian ? `<span class="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">Skala ${t.skala_penilaian}</span>` : ''}
-                    </div>
-                  </td>
-                  <td class="px-4 py-3 font-medium">${escapeHtml(t.nama_penilai || "-")}</td>
-                  <td class="px-4 py-3 font-bold text-slate-800">${escapeHtml(t.nama_dinilai || "-")}</td>
-                  <td class="px-4 py-3 text-xs text-slate-500">${t.deadline ? fmtDateShort(t.deadline) : "-"}</td>
-                  <td class="px-4 py-3">
-                    ${badge(t.status || "PENDING", t.status === "DONE" ? "green" : "amber")}
-                    ${t.diinput_oleh_hrd ? '<span class="block text-[10px] text-emerald-700 font-semibold mt-0.5">📄 Form Fisik (HRD)</span>' : ''}
-                  </td>
-                  <td class="px-4 py-3 font-semibold">${t.skor_akhir ? t.skor_akhir : "-"}</td>
-                  <td class="px-4 py-3 text-right">
-                    <div class="flex items-center justify-end gap-1.5 flex-wrap">
-                      ${canFill ? `
-                        <button data-isi-kpi="${t.id}" class="px-3 py-1.5 text-xs font-bold ${t.status === 'DONE' ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200' : 'bg-maroon-700 hover:bg-maroon-800 text-white shadow-xs'} rounded-lg inline-flex items-center gap-1 transition">
-                          ${t.status === 'DONE' ? '👁️ Lihat / Edit Nilai' : '📝 Nilai Sekarang'}
-                        </button>
-                      ` : ''}
-                      ${isHrd ? `
-                        <button data-input-manual="${t.id}" class="px-2.5 py-1.5 text-xs font-semibold ${t.status === 'DONE' ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200' : 'bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs'} rounded-lg inline-flex items-center gap-1 transition">
-                          ${t.status === 'DONE' ? '✏️ Input HRD' : '📝 Input Fisik'}
-                        </button>
-                        <button data-del-tugas="${t.id}" class="px-2 py-1.5 text-xs font-semibold bg-red-50 hover:bg-red-100 text-red-600 rounded-lg inline-flex items-center gap-1 border border-red-200 transition" title="Cabut / Hapus Penugasan ini">
-                          🗑️
-                        </button>
-                      ` : ''}
-                      <button data-print-fisik="${t.id}" class="px-2.5 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg inline-flex items-center gap-1 border border-slate-200 transition" title="Cetak Form Fisik">🖨️</button>
-                    </div>
-                  </td>
-                </tr>`;
-              }).join("")}
-              </tbody>
-            </table>
-          </div>
-        </div>`;
-    }
-
-    if (isHrd && wrap.querySelector("#btn-distribusi-kpi")) wrap.querySelector("#btn-distribusi-kpi").onclick = openDistribusiModal;
-    if (isHrd && wrap.querySelector("#btn-print-batch-kpi")) wrap.querySelector("#btn-print-batch-kpi").onclick = () => printBatchFormKpiFisik(tasks);
-    if (isHrd && wrap.querySelector("#btn-revoke-batch-kpi")) {
-      wrap.querySelector("#btn-revoke-batch-kpi").onclick = async () => {
-        if (!tasks || !tasks.length) return;
-        if (confirm(`Apakah Anda yakin ingin MENCABUT / MENGHAPUS SELURUH (${tasks.length}) pendistribusian penugasan penilaian KPI? Penilai tidak akan dapat mengisi tugas ini lagi.`)) {
-          for (const t of tasks) {
-            await fsDelete(COL.TUGAS_KPI_360, t.id);
-          }
-          toast(`Berhasil mencabut ${tasks.length} pendistribusian penugasan KPI`, "success");
-          loadKpi360();
-        }
-      };
-    }
-
-    wrap.querySelectorAll("[data-isi-kpi]").forEach(btn => {
-      btn.onclick = () => {
-        const task = tasks.find(x => x.id === btn.dataset.isiKpi);
-        if (task) openIsiKpiModal(task);
-      };
-    });
-
-    wrap.querySelectorAll("[data-del-tugas]").forEach(btn => {
-      btn.onclick = async () => {
-        const tId = btn.dataset.delTugas;
-        const task = tasks.find(x => x.id === tId);
-        if (!task) return;
-        if (confirm(`Apakah Anda yakin ingin mencabut / menghapus penugasan penilaian KPI untuk "${task.nama_dinilai}" oleh "${task.nama_penilai}" (Periode: ${task.periode})?`)) {
-          await fsDelete(COL.TUGAS_KPI_360, tId);
-          toast("Pendistribusian penugasan KPI berhasil dicabut", "success");
-          loadKpi360();
-        }
-      };
-    });
-
-    wrap.querySelectorAll("[data-input-manual]").forEach(btn => {
-      btn.onclick = () => {
-        const task = tasks.find(x => x.id === btn.dataset.inputManual);
-        if (task) openManualInputModal(task);
-      };
-    });
-
-    wrap.querySelectorAll("[data-print-fisik]").forEach(btn => {
-      btn.onclick = () => printFormKpiFisik(tasks.find(x => x.id === btn.dataset.printFisik));
-    });
-  }
-
-  function openIsiKpiModal(task) {
-    const isDone = task.status === "DONE";
-    const tKatKey = task.kategori_penilaian || "KPI_360";
-    const catConfig = getCatConfig(tKatKey);
-    const isScale1to5 = (task.skala_penilaian === "1-5");
-    const maxSkor = isScale1to5 ? 5 : 100;
-    const minSkor = isScale1to5 ? 1 : 0;
-    const stepSkor = isScale1to5 ? "0.1" : "1";
-
-    const soalHtml = (task.soal_json || []).map((s, i) => `
-       <div class="border-b border-slate-100 pb-4 mb-4 text-left">
-          <div class="flex items-center gap-2 mb-1.5">
-            <span class="bg-maroon-50 text-maroon-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">${escapeHtml(s.aspek || "ASPEK")}</span>
-            <span class="text-[10px] text-slate-400 font-medium">Bobot: ${s.bobot || 0}%</span>
-          </div>
-          <p class="text-xs font-semibold text-slate-800 mb-2">${escapeHtml(s.indikator)}</p>
-          <div class="relative">
-            <input type="number" data-idx="${i}" data-bobot="${s.bobot}" class="kpi-nilai-input w-full pl-3 pr-12 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-500 focus:ring-2 focus:ring-maroon-100 font-bold transition" placeholder="Berikan Skor (${minSkor}-${maxSkor})" value="${s.nilai_diberikan !== undefined && s.nilai_diberikan !== null ? s.nilai_diberikan : ''}" required min="${minSkor}" max="${maxSkor}" step="${stepSkor}">
-            <span class="absolute right-3 top-2 text-slate-400 font-medium text-xs">/ ${maxSkor}</span>
-          </div>
-       </div>
-    `).join("");
-
-    let calcWeighted = 0;
-    (task.soal_json || []).forEach(s => {
-       const v = parseFloat(s.nilai_diberikan) || 0;
-       const b = parseFloat(s.bobot) || 0;
-       calcWeighted += v * (b / 100);
-    });
-    let initialFinalScore = isScale1to5 ? Math.round(calcWeighted * 20 * 100) / 100 : Math.round(calcWeighted * 100) / 100;
-    let initialDisplay = isScale1to5 ? `${calcWeighted.toFixed(2)} / 5.00 (Nilai: ${initialFinalScore.toFixed(2)})` : `${initialFinalScore.toFixed(2)}`;
-
-    openModal({
-      title: `${isDone ? '✏️ Edit Penilaian' : '📝 Pengisian Penilaian'} KPI: ${escapeHtml(task.nama_dinilai)}`,
-      size: "lg",
-      bodyHtml: `
-        <div class="text-left space-y-4">
-          <div class="p-3 bg-maroon-50 border border-maroon-200 rounded-xl flex items-start gap-3">
-            <span class="text-xl">${catConfig.icon}</span>
-            <div class="text-xs text-maroon-900 leading-relaxed">
-              <strong class="font-bold block text-maroon-950 text-sm mb-0.5">${catConfig.label} (Skala ${isScale1to5 ? '1 - 5' : '0 - 100'})</strong>
-              Silakan berikan skor ${minSkor} - ${maxSkor} untuk tiap indikator penilaian berikut. Nilai akhir akan dihitung secara otomatis berdasarkan bobot.
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
-            <div>
-              <span class="text-slate-400 block text-[10px] uppercase font-bold">Karyawan Dinilai</span>
-              <strong class="text-slate-800 font-bold text-sm">${escapeHtml(task.nama_dinilai)}</strong>
-            </div>
-            <div>
-              <span class="text-slate-400 block text-[10px] uppercase font-bold">Penilai</span>
-              <strong class="text-slate-700 font-semibold">${escapeHtml(task.nama_penilai)}</strong>
-            </div>
-            <div>
-              <span class="text-slate-400 block text-[10px] uppercase font-bold">Periode</span>
-              <span class="text-slate-700 font-medium">${escapeHtml(task.periode || '-')}</span>
-            </div>
-            <div>
-              <span class="text-slate-400 block text-[10px] uppercase font-bold">Batas Waktu</span>
-              <span class="text-slate-700 font-medium">${task.deadline ? fmtDateShort(task.deadline) : '-'}</span>
-            </div>
-          </div>
-
-          <form id="form-isi-kpi-360">
-            <div class="mb-4">
-              <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 pb-1 border-b border-slate-200">1. Indikator & Skor Penilaian</h4>
-              ${soalHtml}
-            </div>
-
-            <div class="mt-5 space-y-3">
-              <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider pb-1 border-b border-slate-200">2. Ulasan & Catatan Penilai</h4>
-              <div>
-                <label class="block text-xs font-bold text-emerald-800 mb-1 uppercase tracking-wide">✓ Hal-hal yang Sudah Baik (Kelebihan / Prestasi Kerja)</label>
-                <textarea id="kpi-catatan-baik" rows="2" class="w-full px-3 py-2 text-xs border border-emerald-200 bg-emerald-50/20 rounded-lg outline-none focus:border-emerald-500 font-medium" placeholder="Tuliskan poin-poin kelebihan karyawan...">${escapeHtml(task.catatan_baik || '')}</textarea>
-              </div>
-              <div>
-                <label class="block text-xs font-bold text-red-800 mb-1 uppercase tracking-wide">⚠ Area Peningkatan (Hal-hal yang Perlu Diperbaiki)</label>
-                <textarea id="kpi-catatan-perbaikan" rows="2" class="w-full px-3 py-2 text-xs border border-red-200 bg-red-50/20 rounded-lg outline-none focus:border-red-500 font-medium" placeholder="Tuliskan aspek yang perlu ditingkatkan...">${escapeHtml(task.catatan_perbaikan || '')}</textarea>
-              </div>
-              <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1 uppercase tracking-wide">💬 Catatan & Masukan Tambahan</label>
-                <textarea id="kpi-catatan-penilai" rows="2" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-400 font-medium" placeholder="Tuliskan saran pengembangan...">${escapeHtml(task.catatan_penilai || '')}</textarea>
-              </div>
-            </div>
-
-            <div class="mt-5 space-y-3">
-              <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider pb-1 border-b border-slate-200 flex items-center justify-between">
-                <span>3. Hasil Rekomendasi & Keputusan Penilai</span>
-                <span class="text-[10px] font-extrabold px-2 py-0.5 rounded border ${catConfig.badgeClass}">${catConfig.icon} ${catConfig.label}</span>
-              </h4>
-              <div id="kpi-live-grade-badge-wrap" class="mb-2"></div>
-              <div>
-                <label class="block text-xs font-bold text-slate-800 mb-1">Pilih Opsi Keputusan Penilaian <span class="text-red-500">*</span></label>
-                <select id="kpi-rekomendasi-select" required class="w-full px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl outline-none focus:border-maroon-500 bg-white text-slate-800">
-                  <option value="">-- Pilih Rekomendasi (${catConfig.label}) --</option>
-                  ${catConfig.options.map(opt => `
-                    <option value="${escapeHtml(opt)}" ${ (task.rekomendasi || task.keputusan) === opt ? 'selected' : '' }>${escapeHtml(opt)}</option>
-                  `).join('')}
-                </select>
-              </div>
-            </div>
-          </form>
-        </div>
-      `,
-      footerHtml: `
-        <div class="flex items-center justify-between w-full">
-          <div class="bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 flex items-center gap-2">
-            <span class="text-xs font-bold text-slate-600">Skor Akhir:</span>
-            <span id="kpi-live-score" class="text-base font-black text-maroon-700">${initialDisplay}</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <button id="btn-cancel-kpi" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition">Batal</button>
-            <button id="btn-save-kpi-360" class="px-5 py-2 bg-maroon-700 text-white rounded-lg text-xs font-bold hover:bg-maroon-800 transition shadow-md flex items-center gap-1.5">💾 Simpan & Kirim Penilaian</button>
-          </div>
-        </div>
-      `,
-      onMount: (m) => {
-        const liveScore = m.querySelector("#kpi-live-score");
-        const selRekomendasi = m.querySelector("#kpi-rekomendasi-select");
-        const badgeWrap = m.querySelector("#kpi-live-grade-badge-wrap");
-
-        const updateGradeLogic = () => {
-           let sumWeighted = 0;
-           m.querySelectorAll(".kpi-nilai-input").forEach(input => {
-               const bbt = parseFloat(input.dataset.bobot) || 0;
-               const val = parseFloat(input.value) || 0;
-               sumWeighted += val * (bbt / 100);
-           });
-           let calcFinal = isScale1to5 ? Math.round(sumWeighted * 20 * 100) / 100 : Math.round(sumWeighted * 100) / 100;
-           liveScore.textContent = isScale1to5 ? `${sumWeighted.toFixed(2)} / 5.00 (Nilai: ${calcFinal.toFixed(2)})` : `${calcFinal.toFixed(2)}`;
-
-           const evalRes = evaluateGradeRule(tKatKey, calcFinal, currentGradeRulesMap);
-           if (badgeWrap) {
-             badgeWrap.innerHTML = `
-               <div class="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
-                 <div class="flex items-center gap-2">
-                   <span class="font-extrabold text-slate-700">Hasil Evaluasi Standar Grade:</span>
-                   <span class="px-2 py-0.5 rounded text-[11px] font-black border ${evalRes.badgeClass}">${evalRes.predikat}</span>
-                 </div>
-                 <div class="text-slate-600 font-medium text-[11px]">
-                   Auto-Suggest: <strong class="text-slate-800">${escapeHtml(evalRes.rekomendasi)}</strong>
-                 </div>
-               </div>
-             `;
-           }
-
-           if (selRekomendasi && evalRes.rekomendasi && !selRekomendasi.dataset.manuallyChanged) {
-             for (let opt of selRekomendasi.options) {
-               if (opt.value && (opt.value === evalRes.rekomendasi || opt.value.includes(evalRes.predikat) || evalRes.rekomendasi.includes(opt.value))) {
-                 selRekomendasi.value = opt.value;
-                 break;
-               }
-             }
-           }
-        };
-
-        if (selRekomendasi) {
-          selRekomendasi.onchange = () => {
-            selRekomendasi.dataset.manuallyChanged = "true";
-          };
-        }
-
-        updateGradeLogic();
-        m.querySelector("#form-isi-kpi-360").addEventListener("input", updateGradeLogic);
-
-        m.querySelector("#btn-cancel-kpi").onclick = closeModal;
-        m.querySelector("#btn-save-kpi-360").onclick = async () => {
-           const form = m.querySelector("#form-isi-kpi-360");
-           if (!form.reportValidity()) return toast("Mohon lengkapi semua nilai indikator!", "warning");
-
-           const rekomendasiVal = m.querySelector("#kpi-rekomendasi-select") ? m.querySelector("#kpi-rekomendasi-select").value.trim() : "";
-           if (!rekomendasiVal) return toast("Pilih hasil rekomendasi / keputusan penilaian!", "warning");
-
-           let totalWeighted = 0;
-           const answeredSoal = [...(task.soal_json || [])];
-           const catatanBaik = m.querySelector("#kpi-catatan-baik") ? m.querySelector("#kpi-catatan-baik").value.trim() : "";
-           const catatanPerbaikan = m.querySelector("#kpi-catatan-perbaikan") ? m.querySelector("#kpi-catatan-perbaikan").value.trim() : "";
-           const catatanPenilai = m.querySelector("#kpi-catatan-penilai") ? m.querySelector("#kpi-catatan-penilai").value.trim() : "";
-
-           m.querySelectorAll(".kpi-nilai-input").forEach(input => {
-              const idx = parseInt(input.dataset.idx, 10);
-              const nilai = parseFloat(input.value) || 0;
-              const bobot = parseFloat(answeredSoal[idx]?.bobot) || 0;
-              if (answeredSoal[idx]) answeredSoal[idx].nilai_diberikan = nilai;
-              totalWeighted += (nilai * (bobot / 100));
-           });
-
-           let finalScore = isScale1to5 ? Math.round(totalWeighted * 20 * 100) / 100 : Math.round(totalWeighted * 100) / 100;
-
-           const btn = m.querySelector("#btn-save-kpi-360");
-           btn.disabled = true; btn.textContent = "Menyimpan Penilaian...";
-
-           try {
-              await fsUpdate(COL.TUGAS_KPI_360, task.id, {
-                status: "DONE",
-                skor_akhir: finalScore,
-                soal_json: answeredSoal,
-                catatan_baik: catatanBaik,
-                catatan_perbaikan: catatanPerbaikan,
-                catatan_penilai: catatanPenilai,
-                rekomendasi: rekomendasiVal,
-                kategori_penilaian: tKatKey,
-                tanggal_diselesaikan: new Date().toISOString()
-              });
-
-              await fsAdd(COL.LOG_PENILAIAN_KPI, {
-                tanggal: new Date().toISOString(),
-                nama_dinilai: task.nama_dinilai,
-                penilai: task.nama_penilai,
-                total_skor: finalScore,
-                keputusan: rekomendasiVal,
-                rekomendasi: rekomendasiVal,
-                kategori_penilaian: tKatKey,
-                skala_penilaian: task.skala_penilaian || "0-100",
-                periode: task.periode,
-                detail_json: answeredSoal,
-                catatan_baik: catatanBaik,
-                catatan_perbaikan: catatanPerbaikan,
-                catatan_penilai: catatanPenilai
-              }, genId("KPI-LOG"));
-
-              toast("Penilaian KPI & Rekomendasi berhasil disimpan!", "success");
-              closeModal();
-              await loadKpi360();
-           } catch (err) {
-              toast("Gagal menyimpan: " + err.message, "error");
-              btn.disabled = false; btn.textContent = "💾 Simpan & Kirim Penilaian";
-           }
-        };
-      }
-    });
-  }
-
-  function openManualInputModal(task) {
-    const isDone = task.status === "DONE";
-    const tKatKey = task.kategori_penilaian || "KPI_360";
-    const catConfig = getCatConfig(tKatKey);
-    const isScale1to5 = (task.skala_penilaian === "1-5");
-    const maxSkor = isScale1to5 ? 5 : 100;
-    const minSkor = isScale1to5 ? 1 : 0;
-    const stepSkor = isScale1to5 ? "0.1" : "1";
-
-    const soalHtml = (task.soal_json || []).map((s, i) => `
-       <div class="border-b border-slate-100 pb-4 mb-4 text-left">
-          <div class="flex items-center gap-2 mb-1.5">
-            <span class="bg-maroon-50 text-maroon-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">${escapeHtml(s.aspek || "ASPEK")}</span>
-            <span class="text-[10px] text-slate-400 font-medium">Bobot: ${s.bobot || 0}%</span>
-          </div>
-          <p class="text-xs font-semibold text-slate-800 mb-2">${escapeHtml(s.indikator)}</p>
-          <div class="relative">
-            <input type="number" data-idx="${i}" data-bobot="${s.bobot}" class="kpi-nilai-input w-full pl-3 pr-12 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-500 focus:ring-2 focus:ring-maroon-100 font-bold transition" placeholder="Skor dari Form Fisik (${minSkor}-${maxSkor})" value="${s.nilai_diberikan !== undefined && s.nilai_diberikan !== null ? s.nilai_diberikan : ''}" required min="${minSkor}" max="${maxSkor}" step="${stepSkor}">
-            <span class="absolute right-3 top-2 text-slate-400 font-medium text-xs">/ ${maxSkor}</span>
-          </div>
-       </div>
-    `).join("");
-
-    let calcWeighted = 0;
-    (task.soal_json || []).forEach(s => {
-       const v = parseFloat(s.nilai_diberikan) || 0;
-       const b = parseFloat(s.bobot) || 0;
-       calcWeighted += v * (b / 100);
-    });
-    let initialFinalScore = isScale1to5 ? Math.round(calcWeighted * 20 * 100) / 100 : Math.round(calcWeighted * 100) / 100;
-    let initialScoreDisplay = isScale1to5 ? `${calcWeighted.toFixed(2)} / 5.00 (Nilai: ${initialFinalScore.toFixed(2)})` : `${initialFinalScore.toFixed(2)}`;
-
-    openModal({
-      title: `${isDone ? '✏️ Edit Input Manual' : '📝 Input Manual'} Penilaian Fisik KPI`,
-      size: "lg",
-      bodyHtml: `
-        <div class="text-left space-y-4">
-          <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
-            <span class="text-xl">📄</span>
-            <div class="text-xs text-amber-900 leading-relaxed">
-              <strong class="font-bold block text-amber-950 text-sm mb-0.5">Input Manual Penilaian Form Fisik (Kertas) - Skala ${isScale1to5 ? '1 - 5' : '0 - 100'}</strong>
-              HRD menginputkan skor dan ulasan kualitatif yang telah diisi penilai secara manual pada dokumen fisik.
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
-            <div>
-              <span class="text-slate-400 block text-[10px] uppercase font-bold">Karyawan Dinilai</span>
-              <strong class="text-slate-800 font-bold text-sm">${escapeHtml(task.nama_dinilai)}</strong>
-            </div>
-            <div>
-              <span class="text-slate-400 block text-[10px] uppercase font-bold">Penilai (Atasan/Rekan)</span>
-              <strong class="text-slate-700 font-semibold">${escapeHtml(task.nama_penilai)}</strong>
-            </div>
-            <div>
-              <span class="text-slate-400 block text-[10px] uppercase font-bold">Periode</span>
-              <span class="text-slate-700 font-medium">${escapeHtml(task.periode || '-')}</span>
-            </div>
-            <div>
-              <span class="text-slate-400 block text-[10px] uppercase font-bold">Batas Waktu</span>
-              <span class="text-slate-700 font-medium">${task.deadline ? fmtDateShort(task.deadline) : '-'}</span>
-            </div>
-          </div>
-
-          <form id="form-manual-kpi">
-            <div class="mb-4">
-              <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 pb-1 border-b border-slate-200">1. Skor Indikator Penilaian</h4>
-              ${soalHtml}
-            </div>
-
-            <div class="mt-5 space-y-3">
-              <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider pb-1 border-b border-slate-200">2. Evaluasi Kualitatif & Ulasan Penilai</h4>
-              <div>
-                <label class="block text-xs font-bold text-emerald-800 mb-1 uppercase tracking-wide">✓ Hal-hal yang Sudah Baik (Kelebihan / Prestasi Kerja)</label>
-                <textarea id="manual-catatan-baik" rows="3" class="w-full px-3 py-2 text-xs border border-emerald-200 bg-emerald-50/20 rounded-lg outline-none focus:border-emerald-500 font-medium" placeholder="Tuliskan poin-poin kelebihan dari lembar fisik...">${escapeHtml(task.catatan_baik || '')}</textarea>
-              </div>
-              <div>
-                <label class="block text-xs font-bold text-red-800 mb-1 uppercase tracking-wide">⚠ Hal-hal yang Harus Diperbaiki (Area Peningkatan)</label>
-                <textarea id="manual-catatan-perbaikan" rows="3" class="w-full px-3 py-2 text-xs border border-red-200 bg-red-50/20 rounded-lg outline-none focus:border-red-500 font-medium" placeholder="Tuliskan area peningkatan dari lembar fisik...">${escapeHtml(task.catatan_perbaikan || '')}</textarea>
-              </div>
-              <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1 uppercase tracking-wide">💬 Catatan & Rekomendasi Tambahan Penilai</label>
-                <textarea id="manual-catatan-penilai" rows="3" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-400 font-medium" placeholder="Catatan atau masukan umum penilai...">${escapeHtml(task.catatan_penilai || task.catatan_umum || '')}</textarea>
-              </div>
-            </div>
-
-            <div class="mt-5 space-y-3">
-              <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider pb-1 border-b border-slate-200 flex items-center justify-between">
-                <span>3. Hasil Rekomendasi & Keputusan Penilai</span>
-                <span class="text-[10px] font-extrabold px-2 py-0.5 rounded border ${catConfig.badgeClass}">${catConfig.icon} ${catConfig.label}</span>
-              </h4>
-              <div>
-                <label class="block text-xs font-bold text-slate-800 mb-1">Pilih Opsi Keputusan Penilaian <span class="text-red-500">*</span></label>
-                <select id="manual-rekomendasi-select" required class="w-full px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl outline-none focus:border-maroon-500 bg-white text-slate-800">
-                  <option value="">-- Pilih Rekomendasi (${catConfig.label}) --</option>
-                  ${catConfig.options.map(opt => `
-                    <option value="${escapeHtml(opt)}" ${ (task.rekomendasi || task.keputusan) === opt ? 'selected' : '' }>${escapeHtml(opt)}</option>
-                  `).join('')}
-                </select>
-              </div>
-            </div>
-          </form>
-        </div>
-      `,
-      footerHtml: `
-        <div class="w-full flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-200 mb-3">
-          <span class="text-xs font-bold text-slate-600">Total Skor Akhir (Dihitung Otomatis):</span>
-          <span id="manual-kpi-live-score" class="text-xl font-black text-maroon-700">${initialScoreDisplay}</span>
-        </div>
-        <div class="flex gap-2 justify-end w-full">
-          <button id="btn-close-manual-modal" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition">Batal</button>
-          <button id="btn-save-manual-kpi" class="bg-emerald-700 hover:bg-emerald-800 text-white px-5 py-2 rounded-lg text-xs font-bold transition shadow-md flex items-center gap-1.5">
-            💾 Simpan Penilaian Manual
-          </button>
-        </div>
-      `,
-      onMount: (m) => {
-        const liveScore = m.querySelector("#manual-kpi-live-score");
-        const calcScore = () => {
-          let sumWeighted = 0;
-          m.querySelectorAll(".kpi-nilai-input").forEach(input => {
-            const bbt = parseFloat(input.dataset.bobot) || 0;
-            const val = parseFloat(input.value) || 0;
-            sumWeighted += val * (bbt / 100);
-          });
-          let calcFinal = isScale1to5 ? Math.round(sumWeighted * 20 * 100) / 100 : Math.round(sumWeighted * 100) / 100;
-          liveScore.textContent = isScale1to5 ? `${sumWeighted.toFixed(2)} / 5.00 (Nilai: ${calcFinal.toFixed(2)})` : `${calcFinal.toFixed(2)}`;
-        };
-
-        m.querySelector("#form-manual-kpi").addEventListener("input", calcScore);
-        m.querySelector("#btn-close-manual-modal").onclick = closeModal;
-
-        m.querySelector("#btn-save-manual-kpi").onclick = async () => {
-          const form = m.querySelector("#form-manual-kpi");
-          if (!form.reportValidity()) return;
-
-          const rekomendasiVal = m.querySelector("#manual-rekomendasi-select") ? m.querySelector("#manual-rekomendasi-select").value.trim() : "";
-          if (!rekomendasiVal) return toast("Pilih hasil rekomendasi / keputusan penilaian!", "warning");
-
-          let sumWeighted = 0;
-          const answeredSoal = [...(task.soal_json || [])];
-          const catatanBaik = m.querySelector("#manual-catatan-baik") ? m.querySelector("#manual-catatan-baik").value.trim() : "";
-          const catatanPerbaikan = m.querySelector("#manual-catatan-perbaikan") ? m.querySelector("#manual-catatan-perbaikan").value.trim() : "";
-          const catatanPenilai = m.querySelector("#manual-catatan-penilai") ? m.querySelector("#manual-catatan-penilai").value.trim() : "";
-
-          m.querySelectorAll(".kpi-nilai-input").forEach(input => {
-            const idx = parseInt(input.dataset.idx, 10);
-            const nilai = parseFloat(input.value) || 0;
-            const bobot = parseFloat(answeredSoal[idx]?.bobot) || 0;
-            if (answeredSoal[idx]) answeredSoal[idx].nilai_diberikan = nilai;
-            sumWeighted += (nilai * (bobot / 100));
-          });
-
-          let finalScore = isScale1to5 ? Math.round(sumWeighted * 20 * 100) / 100 : Math.round(sumWeighted * 100) / 100;
-
-          const btn = m.querySelector("#btn-save-manual-kpi");
-          btn.disabled = true; btn.textContent = "Menyimpan Hasil...";
-
-          try {
-            await fsUpdate(COL.TUGAS_KPI_360, task.id, {
-              status: "DONE",
-              skor_akhir: finalScore,
-              soal_json: answeredSoal,
-              catatan_baik: catatanBaik,
-              catatan_perbaikan: catatanPerbaikan,
-              catatan_penilai: catatanPenilai,
-              rekomendasi: rekomendasiVal,
-              kategori_penilaian: tKatKey,
-              diinput_oleh_hrd: true,
-              metode_penilaian: "FORM_FISIK",
-              tanggal_diselesaikan: new Date().toISOString()
-            });
-
-            await fsAdd(COL.LOG_PENILAIAN_KPI, {
-              tanggal: new Date().toISOString(),
-              nama_dinilai: task.nama_dinilai,
-              penilai: task.nama_penilai + " (Input Manual HRD)",
-              total_skor: finalScore,
-              keputusan: rekomendasiVal,
-              rekomendasi: rekomendasiVal,
-              kategori_penilaian: tKatKey,
-              skala_penilaian: task.skala_penilaian || "0-100",
-              periode: task.periode,
-              detail_json: answeredSoal,
-              catatan_baik: catatanBaik,
-              catatan_perbaikan: catatanPerbaikan,
-              catatan_penilai: catatanPenilai,
-              diinput_oleh_hrd: true,
-              metode_penilaian: "FORM_FISIK"
-            }, genId("KPI-LOG"));
-
-            toast("Hasil penilaian fisik & rekomendasi berhasil disimpan!", "success");
-            closeModal();
-            await loadKpi360();
-          } catch(e) {
-            toast("Gagal menyimpan: " + e.message, "error");
-            btn.disabled = false;
-            btn.textContent = "💾 Simpan Penilaian Manual";
-          }
-        };
-      }
-    });
-  }
-
-  // =====================================================================
-  // HELPER UNTUK GENERATE & MENCETAK DOKUMEN PENILAIAN FISIK KPI (HEMAT KERTAS)
-  // =====================================================================
-  async function getKaryawanMap() {
-    const allKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
-    const map = {};
-    allKaryawan.forEach(k => {
-      if (k.nama_karyawan) map[k.nama_karyawan] = k;
-    });
-    return map;
-  }
-
-  // FORMAT HALF A4 / A5 CARD (UNTUK MUAT 2 PENILAIAN DALAM 1 KERTAS A4)
-  function generateFormKpiA5CardHtml(task, karyawanMap = {}, isArchiveCopy = false) {
-    const dinilaiInfo = karyawanMap[task.nama_dinilai] || {};
-    const penilaiInfo = karyawanMap[task.nama_penilai] || {};
-
-    const nikDinilai = dinilaiInfo.nik_karyawan || dinilaiInfo.nik || "-";
-    const jabatanDinilai = dinilaiInfo.jabatan || "-";
-    const divisiDinilai = dinilaiInfo.divisi || "-";
-    const cabangDinilai = dinilaiInfo.cabang || "Pusat";
-    const statusDinilai = formatStatusKaryawan(dinilaiInfo.status_karyawan || "-");
-    const isScale1to5 = (task.skala_penilaian === "1-5");
-
-    let tbody = "";
-    const soalList = task.soal_json || [];
-    soalList.forEach((item, idx) => {
-      tbody += `
-        <tr>
-          <td style="border:1px solid #000; padding:2px 3px; text-align:center; font-weight:bold; font-size:8.5px;">${idx + 1}</td>
-          <td style="border:1px solid #000; padding:2px 3px; font-weight:600; font-size:8.5px;">${escapeHtml(item.aspek || "-")}</td>
-          <td style="border:1px solid #000; padding:2px 3px; font-size:8px;">${escapeHtml(item.indikator || "-")}</td>
-          <td style="border:1px solid #000; padding:2px 3px; text-align:center; font-weight:bold; font-size:8.5px;">${item.bobot || 0}%</td>
-          <td style="border:1px solid #000; padding:2px 3px; text-align:center; font-weight:bold; background:#fafafa;">
-            <div style="min-height:16px; border:1px dashed #64748b; border-radius:2px; margin:0 auto; width:55px; line-height:16px; text-align:center; font-size:9.5px; color:#334155;">
-              ${item.nilai_diberikan !== undefined && item.nilai_diberikan !== null && item.nilai_diberikan !== "" ? item.nilai_diberikan : '[ &nbsp; &nbsp; ]'}
-            </div>
-          </td>
-          <td style="border:1px solid #000; padding:2px 3px; text-align:center;">
-            <div style="min-height:16px; border:1px dashed #cbd5e1; border-radius:2px; margin:0 auto; width:55px;"></div>
-          </td>
-        </tr>
-      `;
-    });
-
-    return `
-      <div style="border:1px solid #000; padding:8px 10px; background:#fff; box-sizing:border-box; border-radius:4px; font-family:'Times New Roman', Times, serif; font-size:9px; line-height:1.15; color:#000; position:relative;">
-        ${isArchiveCopy ? `<div style="position:absolute; top:8px; right:12px; font-size:8px; font-weight:bold; color:#7a1f2b; border:1px solid #7a1f2b; padding:1px 4px; border-radius:2px; background:#fff0f2;">[ LEMBAR ARSIP HRD ]</div>` : ''}
-        
-        <!-- KOP ISO COMPACT -->
-        <div style="margin-bottom:4px;">
-          ${isoDocHeaderTable({
-            judul: "FORMULIR PENILAIAN KPI",
-            noDok: "FM-HRD-KPI-01A5",
-            terbitRevisi: "1/0",
-            tglTerbit: fmtDateShort(new Date()),
-            hal: "1 dari 1"
-          })}
-        </div>
-
-        <!-- INFO KARYAWAN & PENILAI -->
-        <table style="width:100%; border-collapse:collapse; margin-bottom:4px; border:1px solid #000; font-size:8.5px;">
-          <tr>
-            <td width="16%" style="border:1px solid #000; padding:2px 4px; font-weight:bold; background:#f8fafc;">Yang Dinilai</td>
-            <td width="34%" style="border:1px solid #000; padding:2px 4px; font-weight:bold;">${escapeHtml(task.nama_dinilai)} (${escapeHtml(nikDinilai)})</td>
-            <td width="16%" style="border:1px solid #000; padding:2px 4px; font-weight:bold; background:#f8fafc;">Penilai</td>
-            <td width="34%" style="border:1px solid #000; padding:2px 4px; font-weight:bold;">${escapeHtml(task.nama_penilai)}</td>
-          </tr>
-          <tr>
-            <td style="border:1px solid #000; padding:2px 4px; font-weight:bold; background:#f8fafc;">Jabatan/Div</td>
-            <td style="border:1px solid #000; padding:2px 4px;">${escapeHtml(jabatanDinilai)} / ${escapeHtml(divisiDinilai)} (${escapeHtml(cabangDinilai)})</td>
-            <td style="border:1px solid #000; padding:2px 4px; font-weight:bold; background:#f8fafc;">Periode & Batas</td>
-            <td style="border:1px solid #000; padding:2px 4px;"><strong>${escapeHtml(task.periode || "-")}</strong> | Batas: ${task.deadline ? fmtDateShort(task.deadline) : "-"}</td>
-          </tr>
-        </table>
-
-        <!-- TABEL INDIKATOR KPI -->
-        <table style="width:100%; border-collapse:collapse; margin-bottom:4px; border:1px solid #000;">
-          <thead>
-            <tr style="background:#e2e8f0; font-weight:bold; text-align:center; font-size:8.5px;">
-              <th width="4%" style="border:1px solid #000; padding:3px 2px;">No</th>
-              <th width="24%" style="border:1px solid #000; padding:3px 3px; text-align:left;">Aspek</th>
-              <th width="42%" style="border:1px solid #000; padding:3px 3px; text-align:left;">Indikator Kinerja Utama</th>
-              <th width="8%" style="border:1px solid #000; padding:3px 2px;">Bobot</th>
-              <th width="11%" style="border:1px solid #000; padding:3px 2px;">Nilai (${isScale1to5 ? '1-5' : '0-100'})</th>
-              <th width="11%" style="border:1px solid #000; padding:3px 2px;">Skor Terbobot</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tbody}
-          </tbody>
-          <tfoot>
-            <tr style="background:#f8fafc; font-weight:bold; font-size:8.5px;">
-              <td colspan="3" style="border:1px solid #000; padding:2px 4px; text-align:right;">TOTAL SKOR AKHIR:</td>
-              <td style="border:1px solid #000; padding:2px 2px; text-align:center;">100%</td>
-              <td colspan="2" style="border:1px solid #000; padding:2px 2px; text-align:center;">
-                <div style="min-height:16px; border:1px solid #000; border-radius:2px; margin:0 auto; width:70px; background:#fff;"></div>
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-
-        <!-- CATATAN & EVALUASI DETIL PENILAI -->
-        <div style="border:1px solid #000; padding:4px 6px; margin-bottom:5px; font-size:8.5px; background:#fff;">
-          <div style="font-weight:bold; font-size:9px; border-bottom:1px solid #000; padding-bottom:2px; margin-bottom:3px; color:#000;">
-            📝 CATATAN & EVALUASI KUALITATIF PENILAI:
-          </div>
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:3px;">
-            <div style="border:1px solid #cbd5e1; padding:3px 5px; background:#f8fafc; border-radius:2px;">
-              <strong style="color:#166534; font-size:8.5px;">✓ Hal-hal yang Sudah Baik (Kelebihan/Prestasi):</strong>
-              <div style="min-height:38px; font-size:8.5px; line-height:1.25; margin-top:2px; color:#1e293b;">
-                ${escapeHtml(task.catatan_baik || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:11px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div>`}
-              </div>
-            </div>
-            <div style="border:1px solid #cbd5e1; padding:3px 5px; background:#f8fafc; border-radius:2px;">
-              <strong style="color:#991b1b; font-size:8.5px;">⚠ Hal-hal yang Harus Diperbaiki (Area Peningkatan):</strong>
-              <div style="min-height:38px; font-size:8.5px; line-height:1.25; margin-top:2px; color:#1e293b;">
-                ${escapeHtml(task.catatan_perbaikan || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:11px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div>`}
-              </div>
-            </div>
-          </div>
-          <div style="border:1px solid #cbd5e1; padding:3px 5px; background:#fafafa; border-radius:2px;">
-            <strong style="color:#334155; font-size:8.5px;">💬 Catatan & Rekomendasi Tambahan Penilai:</strong>
-            <div style="min-height:26px; font-size:8.5px; line-height:1.25; margin-top:2px; color:#1e293b;">
-              ${escapeHtml(task.catatan_penilai || task.catatan_umum || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:11px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div>`}
-            </div>
-          </div>
-        </div>
-
-        <!-- KATEGORI & TANDA TANGAN GRID COMPACT -->
-        <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:8px; margin-top:4px;">
-          <div style="width:46%;">
-            <div style="border:1px solid #000; background:#f8fafc; padding:3px; font-size:8px; line-height:1.2;">
-              <strong>Kategori Performance (${isScale1to5 ? 'Skala 1-5' : 'Skala 0-100'}):</strong><br>
-              ${isScale1to5 ? `
-                [ ] Sangat Baik (4.5-5.0) &nbsp; [ ] Baik (4.0-4.4)<br>
-                [ ] Cukup (3.5-3.9) &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; [ ] Kurang (&lt;3.5)
-              ` : `
-                [ ] Sangat Baik (90-100) &nbsp; [ ] Baik (80-89)<br>
-                [ ] Cukup (70-79) &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; [ ] Kurang (&lt;70)
-              `}
-            </div>
-          </div>
-          <div style="width:52%;">
-            <table style="width:100%; text-align:center; font-size:8.5px;">
-              <tr>
-                <td width="33%">Karyawan,</td>
-                <td width="33%">Penilai,</td>
-                <td width="34%">HRD,</td>
-              </tr>
-              <tr>
-                <td height="22" style="vertical-align:bottom; font-size:7px; color:#64748b;">(TTD)</td>
-                <td height="22" style="vertical-align:bottom; font-size:7px; color:#64748b;">(TTD)</td>
-                <td height="22" style="vertical-align:bottom; font-size:7px; color:#64748b;">(TTD)</td>
-              </tr>
-              <tr>
-                <td>( <strong>${escapeHtml(task.nama_dinilai)}</strong> )</td>
-                <td>( <strong>${escapeHtml(task.nama_penilai)}</strong> )</td>
-                <td>( <strong>Andela</strong> )</td>
-              </tr>
-            </table>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  // GENERATE BATCH 2-UP PER A4 PAGE LANDSCAPE (SETENGAH A4 / A5 SIDE-BY-SIDE DENGAN GARIS POTONG VERTIKAL)
-  function generate2UpA4Html(tasks, karyawanMap = {}) {
-    if (!tasks || !tasks.length) return "";
-    let html = "";
-    
-    for (let i = 0; i < tasks.length; i += 2) {
-      const taskLeft = tasks[i];
-      const taskRight = tasks[i + 1];
-
-      const leftCard = generateFormKpiA5CardHtml(taskLeft, karyawanMap, false);
-      let rightCard = "";
-
-      if (taskRight) {
-        rightCard = generateFormKpiA5CardHtml(taskRight, karyawanMap, false);
-      } else {
-        // Jika ganjil, salinan kanan adalah lembar arsip HRD
-        rightCard = generateFormKpiA5CardHtml(taskLeft, karyawanMap, true);
-      }
-
-      html += `
-        <div class="a4-2up-page-landscape" style="width:100%; max-width:1050px; margin:0 auto 20px auto; box-sizing:border-box; display:flex; flex-direction:row; justify-content:space-between; align-items:stretch; page-break-after:always; page-break-inside:avoid; min-height:185mm; padding:3mm 0;">
-          <!-- SISI KIRI (FORM 1) -->
-          <div style="width:48.5%; display:flex; flex-direction:column; justify-content:space-between;">
-            ${leftCard}
-          </div>
-
-          <!-- GARIS POTONG VERTIKAL A5 -->
-          <div style="width:3%; display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative;">
-            <div style="border-left:1.5px dashed #475569; height:100%; margin:0 auto;"></div>
-            <span style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%) rotate(-90deg); white-space:nowrap; background:#ffffff; padding:2px 8px; font-size:8px; color:#334155; font-style:italic; font-weight:bold; border:1px solid #cbd5e1; border-radius:4px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
-              ✂ POTONG DI SINI (UKURAN A5)
-            </span>
-          </div>
-
-          <!-- SISI KANAN (FORM 2 / ARSIP) -->
-          <div style="width:48.5%; display:flex; flex-direction:column; justify-content:space-between;">
-            ${rightCard}
-          </div>
-        </div>
-      `;
-    }
-    return html;
-  }
-
-  // FORMAT INDIVIDUAL FULL A4
-  function generateFormKpiFisikHtml(task, karyawanMap = {}) {
-    const dinilaiInfo = karyawanMap[task.nama_dinilai] || {};
-    const penilaiInfo = karyawanMap[task.nama_penilai] || {};
-
-    const nikDinilai = dinilaiInfo.nik_karyawan || dinilaiInfo.nik || "-";
-    const jabatanDinilai = dinilaiInfo.jabatan || "-";
-    const divisiDinilai = dinilaiInfo.divisi || "-";
-    const cabangDinilai = dinilaiInfo.cabang || "Pusat";
-    const statusDinilai = formatStatusKaryawan(dinilaiInfo.status_karyawan || "-");
-    const jabatanPenilai = penilaiInfo.jabatan || "Atasan Direct / Assessor";
-    const isScale1to5 = (task.skala_penilaian === "1-5");
-
-    let tbody = "";
-    const soalList = task.soal_json || [];
-    soalList.forEach((item, idx) => {
-      tbody += `
-        <tr>
-          <td style="border:1px solid #000; padding:3px 4px; text-align:center; font-weight:bold; font-size:10px;">${idx + 1}</td>
-          <td style="border:1px solid #000; padding:3px 4px; font-weight:600; font-size:10px;">${escapeHtml(item.aspek || "-")}</td>
-          <td style="border:1px solid #000; padding:3px 4px; font-size:9.5px;">${escapeHtml(item.indikator || "-")}</td>
-          <td style="border:1px solid #000; padding:3px 4px; text-align:center; font-weight:bold; font-size:10px;">${item.bobot || 0}%</td>
-          <td style="border:1px solid #000; padding:3px 4px; text-align:center; font-weight:bold; background:#fafafa;">
-            <div style="min-height:20px; border:1px dashed #64748b; border-radius:3px; margin:1px auto; width:65px; line-height:20px; text-align:center; font-size:11px; color:#334155;">
-              ${item.nilai_diberikan !== undefined && item.nilai_diberikan !== null && item.nilai_diberikan !== "" ? item.nilai_diberikan : '[ &nbsp; &nbsp; &nbsp; ]'}
-            </div>
-          </td>
-          <td style="border:1px solid #000; padding:3px 4px; text-align:center;">
-            <div style="min-height:20px; border:1px dashed #cbd5e1; border-radius:3px; margin:1px auto; width:65px;"></div>
-          </td>
-          <td style="border:1px solid #000; padding:3px 4px; font-size:9px; color:#334155;">
-            <div style="min-height:20px;"></div>
-          </td>
-        </tr>
-      `;
-    });
-
-    return `
-      <div class="kpi-form-fisik-page" style="width:100%; max-width:750px; margin:0 auto 15px auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:10px; line-height:1.2; color:#000; background:#ffffff; page-break-after:always; page-break-inside:avoid;">
-        <!-- KOP ISO COMPACT -->
-        <div style="margin-bottom:6px;">
-          ${isoDocHeaderTable({
-            judul: "FORMULIR PENILAIAN KINERJA KARYAWAN (KPI)",
-            noDok: "FM-HRD-KPI-01",
-            terbitRevisi: "1/0",
-            tglTerbit: fmtDateShort(new Date()),
-            hal: "1 dari 1"
-          })}
-        </div>
-
-        <!-- INFORMASI KARYAWAN & PENILAI COMPACT -->
-        <table style="width:100%; border-collapse:collapse; margin-bottom:6px; border:1px solid #000; font-size:10px;">
-          <tr>
-            <td width="18%" style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Nama Karyawan</td>
-            <td width="32%" style="border:1px solid #000; padding:3px 6px; font-weight:bold;">${escapeHtml(task.nama_dinilai)}</td>
-            <td width="18%" style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Penilai (Assessor)</td>
-            <td width="32%" style="border:1px solid #000; padding:3px 6px; font-weight:bold;">${escapeHtml(task.nama_penilai)}</td>
-          </tr>
-          <tr>
-            <td style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">NIK / Status</td>
-            <td style="border:1px solid #000; padding:3px 6px;">${escapeHtml(nikDinilai)} / ${escapeHtml(statusDinilai)}</td>
-            <td style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Jabatan Penilai</td>
-            <td style="border:1px solid #000; padding:3px 6px;">${escapeHtml(jabatanPenilai)}</td>
-          </tr>
-          <tr>
-            <td style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Jabatan / Divisi</td>
-            <td style="border:1px solid #000; padding:3px 6px;">${escapeHtml(jabatanDinilai)} / ${escapeHtml(divisiDinilai)} (${escapeHtml(cabangDinilai)})</td>
-            <td style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Periode & Batas</td>
-            <td style="border:1px solid #000; padding:3px 6px;"><strong>${escapeHtml(task.periode || "-")}</strong> | Batas: ${task.deadline ? fmtDateShort(task.deadline) : "-"}</td>
-          </tr>
-        </table>
-
-        <!-- PETUNJUK COMPACT 1 LINE -->
-        <div style="border:1px solid #000; background:#f1f5f9; padding:3px 8px; margin-bottom:6px; font-size:9px; line-height:1.2;">
-          <strong>PETUNJUK:</strong> Berikan nilai ${isScale1to5 ? 'rating <strong>1 - 5</strong> (desimal/skala Likert)' : 'angka <strong>0 - 100</strong>'} pada kolom <em>Nilai Fisik (${isScale1to5 ? '1-5' : '0-100'})</em>. ${isScale1to5 ? 'Hitung Skor Terbobot = (Nilai x 20 x Bobot) / 100.' : 'Hitung Skor Terbobot = (Nilai x Bobot) / 100.'} Tulis catatan jika ada.
-        </div>
-
-        <!-- TABEL INDIKATOR KPI -->
-        <table style="width:100%; border-collapse:collapse; margin-bottom:6px; border:1px solid #000;">
-          <thead>
-            <tr style="background:#e2e8f0; font-weight:bold; text-align:center; font-size:9.5px;">
-              <th width="4%" style="border:1px solid #000; padding:4px 2px;">No</th>
-              <th width="22%" style="border:1px solid #000; padding:4px 4px; text-align:left;">Aspek KPI</th>
-              <th width="36%" style="border:1px solid #000; padding:4px 4px; text-align:left;">Indikator Kinerja Utama</th>
-              <th width="8%" style="border:1px solid #000; padding:4px 2px;">Bobot</th>
-              <th width="11%" style="border:1px solid #000; padding:4px 2px;">Nilai Fisik<br>(${isScale1to5 ? '1-5' : '0-100'})</th>
-              <th width="9%" style="border:1px solid #000; padding:4px 2px;">Skor Terbobot</th>
-              <th width="10%" style="border:1px solid #000; padding:4px 2px;">Catatan</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tbody}
-          </tbody>
-          <tfoot>
-            <tr style="background:#f8fafc; font-weight:bold; font-size:9.5px;">
-              <td colspan="3" style="border:1px solid #000; padding:4px 6px; text-align:right;">TOTAL BOBOT & SKOR AKHIR:</td>
-              <td style="border:1px solid #000; padding:4px 2px; text-align:center;">100%</td>
-              <td colspan="2" style="border:1px solid #000; padding:4px 2px; text-align:center;">
-                <div style="min-height:20px; border:1px solid #000; border-radius:3px; margin:1px auto; width:80px; background:#fff;"></div>
-              </td>
-              <td style="border:1px solid #000; padding:4px 2px;"></td>
-            </tr>
-          </tfoot>
-        </table>
-
-        <!-- CATATAN & EVALUASI PENILAI COMPACT & LENGKAP (2-KOLOM UNTUK 1 Halaman) -->
-        <table style="width:100%; border-collapse:collapse; margin-bottom:6px; border:1px solid #000; font-size:9.5px;">
-          <tr style="background:#f1f5f9; font-weight:bold;">
-            <td colspan="2" style="border:1px solid #000; padding:4px 6px; color:#000; font-size:9.5px;">
-              📝 Ulasan & Catatan Evaluasi Penilai (Kualitatif):
-            </td>
-          </tr>
-          <tr>
-            <td width="50%" style="border:1px solid #000; padding:5px; background:#fff; vertical-align:top;">
-              <strong style="color:#166534; font-size:9.5px;">1. Hal-hal yang Sudah Baik (Kelebihan / Prestasi):</strong>
-              <div style="min-height:38px; font-size:9px; line-height:1.3; color:#1e293b; margin-top:2px;">
-                ${escapeHtml(task.catatan_baik || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div>`}
-              </div>
-            </td>
-            <td width="50%" style="border:1px solid #000; padding:5px; background:#fff; vertical-align:top;">
-              <strong style="color:#991b1b; font-size:9.5px;">2. Hal-hal yang Harus Diperbaiki (Area Peningkatan):</strong>
-              <div style="min-height:38px; font-size:9px; line-height:1.3; color:#1e293b; margin-top:2px;">
-                ${escapeHtml(task.catatan_perbaikan || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div>`}
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td colspan="2" style="border:1px solid #000; padding:5px; background:#fff;">
-              <strong style="color:#334155; font-size:9.5px;">3. Catatan & Rekomendasi Tambahan Penilai:</strong>
-              <div style="min-height:26px; font-size:9px; line-height:1.3; color:#1e293b; margin-top:2px;">
-                ${escapeHtml(task.catatan_penilai || task.catatan_umum || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div>`}
-              </div>
-            </td>
-          </tr>
-        </table>
-
-        <!-- KATEGORI SKOR PERFORMANCE HORIZONTAL -->
-        <table style="width:100%; border-collapse:collapse; margin-bottom:8px; border:1px solid #000; font-size:9px;">
-          <tr style="background:#f1f5f9; font-weight:bold; text-align:center;">
-            ${isScale1to5 ? `
-              <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Sangat Baik</strong> (4.5 - 5.0)</td>
-              <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Baik</strong> (4.0 - 4.4)</td>
-              <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Cukup</strong> (3.5 - 3.9)</td>
-              <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Kurang</strong> (&lt; 3.5)</td>
-            ` : `
-              <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Sangat Baik</strong> (90 - 100)</td>
-              <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Baik</strong> (80 - 89)</td>
-              <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Cukup</strong> (70 - 79)</td>
-              <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Kurang</strong> (&lt; 70)</td>
-            `}
-          </tr>
-        </table>
-
-        <!-- TANDA TANGAN 3 PIHAK COMPACT -->
-        <table style="width:100%; text-align:center; margin-top:8px; page-break-inside:avoid; font-size:10px;">
-          <tr>
-            <td width="33%">Karyawan (Yang Dinilai),</td>
-            <td width="33%">Penilai (Assessor),</td>
-            <td width="34%">Mengetahui (HRD / Manajemen),</td>
-          </tr>
-          <tr>
-            <td height="35" style="vertical-align:bottom; font-size:8.5px; color:#64748b;">(Tanda Tangan & Tanggal)</td>
-            <td height="35" style="vertical-align:bottom; font-size:8.5px; color:#64748b;">(Tanda Tangan & Tanggal)</td>
-            <td height="35" style="vertical-align:bottom; font-size:8.5px; color:#64748b;">(Tanda Tangan & Stempel)</td>
-          </tr>
-          <tr>
-            <td>( <strong>${escapeHtml(task.nama_dinilai)}</strong> )</td>
-            <td>( <strong>${escapeHtml(task.nama_penilai)}</strong> )</td>
-            <td>( <strong>HRD CV ANDELA JAYA</strong> )</td>
-          </tr>
-        </table>
-      </div>
-    `;
-  }
-
-  // FORMAT MATRIKS KOLEKTIF - HEMAT KERTAS MAKSIMAL (GABUNG BANYAK KARYAWAN DALAM 1 LEMBAR)
-  function generateFormKpiMatriksKolektifHtml(tasks, karyawanMap = {}) {
-    if (!tasks || !tasks.length) return "";
-    const samplePenilai = tasks[0].nama_penilai || "Assessor";
-    const samplePeriode = tasks[0].periode || "-";
-    const sampleDeadline = tasks[0].deadline ? fmtDateShort(tasks[0].deadline) : "-";
-    const isScale1to5 = tasks.some(t => t.skala_penilaian === "1-5");
-
-    const soalList = tasks[0].soal_json || [];
-
-    let thKaryawan = "";
-    tasks.forEach((t, idx) => {
-      const kInfo = karyawanMap[t.nama_dinilai] || {};
-      const jabatan = kInfo.jabatan || "-";
-      thKaryawan += `
-        <th style="border:1px solid #000; padding:4px 3px; text-align:center; width:${Math.floor(50 / tasks.length)}%;">
-          <div style="font-size:10px; font-weight:bold; color:#000;">${idx + 1}. ${escapeHtml(t.nama_dinilai)}</div>
-          <div style="font-size:8.5px; font-weight:normal; color:#475569;">${escapeHtml(jabatan)}</div>
-        </th>
-      `;
-    });
-
-    let tbody = "";
-    soalList.forEach((item, sIdx) => {
-      let tdScores = "";
-      tasks.forEach(t => {
-        const itemVal = (t.soal_json && t.soal_json[sIdx]) ? t.soal_json[sIdx].nilai_diberikan : "";
-        tdScores += `
-          <td style="border:1px solid #000; padding:3px 2px; text-align:center; background:#fafafa;">
-            <div style="min-height:18px; border:1px dashed #94a3b8; border-radius:3px; margin:0 auto; width:90%; line-height:18px; font-size:10px; font-weight:bold;">
-              ${itemVal !== undefined && itemVal !== null && itemVal !== "" ? itemVal : '[ &nbsp; ]'}
-            </div>
-          </td>
-        `;
-      });
-
-      tbody += `
-        <tr>
-          <td style="border:1px solid #000; padding:3px 4px; text-align:center; font-weight:bold; font-size:9.5px;">${sIdx + 1}</td>
-          <td style="border:1px solid #000; padding:3px 4px; font-size:9.5px; font-weight:600;">${escapeHtml(item.aspek || "-")}</td>
-          <td style="border:1px solid #000; padding:3px 4px; font-size:9px;">${escapeHtml(item.indikator || "-")}</td>
-          <td style="border:1px solid #000; padding:3px 4px; text-align:center; font-weight:bold; font-size:9.5px;">${item.bobot || 0}%</td>
-          ${tdScores}
-        </tr>
-      `;
-    });
-
-    let tdTotalFoot = "";
-    tasks.forEach(() => {
-      tdTotalFoot += `
-        <td style="border:1px solid #000; padding:4px 2px; text-align:center;">
-          <div style="min-height:22px; border:1px solid #000; border-radius:3px; margin:0 auto; width:90%; background:#fff;"></div>
-        </td>
-      `;
-    });
-
-    return `
-      <div class="kpi-form-fisik-page" style="width:100%; max-width:800px; margin:0 auto 20px auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:10px; line-height:1.2; color:#000; background:#ffffff; page-break-after:always; page-break-inside:avoid;">
-        <!-- KOP ISO MATRIKS -->
-        <div style="margin-bottom:6px;">
-          ${isoDocHeaderTable({
-            judul: "MATRIKS PENILAIAN KPI KOLEKTIF (HEMAT KERTAS)",
-            noDok: "FM-HRD-KPI-01M",
-            terbitRevisi: "1/0",
-            tglTerbit: fmtDateShort(new Date()),
-            hal: "1 dari 1"
-          })}
-        </div>
-
-        <!-- HEADER PENILAI & PERIODE -->
-        <table style="width:100%; border-collapse:collapse; margin-bottom:6px; border:1px solid #000; font-size:10px;">
-          <tr>
-            <td width="15%" style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Nama Penilai</td>
-            <td width="35%" style="border:1px solid #000; padding:3px 6px; font-weight:bold;">${escapeHtml(samplePenilai)}</td>
-            <td width="18%" style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Periode & Batas</td>
-            <td width="32%" style="border:1px solid #000; padding:3px 6px;"><strong>${escapeHtml(samplePeriode)}</strong> | Batas: ${sampleDeadline}</td>
-          </tr>
-          <tr>
-            <td style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Jumlah Dinilai</td>
-            <td style="border:1px solid #000; padding:3px 6px;"><strong>${tasks.length} Karyawan</strong> dalam 1 Lembar Dokumen</td>
-            <td style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Metode Pengisian</td>
-            <td style="border:1px solid #000; padding:3px 6px;">Isi angka skor ${isScale1to5 ? 'rating (1-5)' : '(0-100)'} pada kolom masing-masing karyawan</td>
-          </tr>
-        </table>
-
-        <!-- TABEL MATRIKS UNTUK SELURUH KARYAWAN -->
-        <table style="width:100%; border-collapse:collapse; margin-bottom:8px; border:1px solid #000;">
-          <thead>
-            <tr style="background:#e2e8f0; font-weight:bold;">
-              <th width="3%" style="border:1px solid #000; padding:4px 2px; text-align:center;">No</th>
-              <th width="18%" style="border:1px solid #000; padding:4px 4px; text-align:left;">Aspek KPI</th>
-              <th width="25%" style="border:1px solid #000; padding:4px 4px; text-align:left;">Indikator Utama</th>
-              <th width="6%" style="border:1px solid #000; padding:4px 2px; text-align:center;">Bobot</th>
-              ${thKaryawan}
-            </tr>
-          </thead>
-          <tbody>
-            ${tbody}
-          </tbody>
-          <tfoot>
-            <tr style="background:#f8fafc; font-weight:bold; font-size:9.5px;">
-              <td colspan="3" style="border:1px solid #000; padding:4px 6px; text-align:right;">SKOR AKHIR TERBOBOT:</td>
-              <td style="border:1px solid #000; padding:4px 2px; text-align:center;">100%</td>
-              ${tdTotalFoot}
-            </tr>
-          </tfoot>
-        </table>
-
-        <!-- KATEGORI SKOR PERFORMANCE -->
-        <div style="border:1px solid #000; background:#f8fafc; padding:4px 8px; margin-bottom:10px; font-size:8.5px; text-align:center;">
-          <strong>Standar Skor (${isScale1to5 ? 'Skala 1 - 5' : 'Skala 0 - 100'}):</strong> ${isScale1to5 ? 'Sangat Baik (4.5 - 5.0) | Baik (4.0 - 4.4) | Cukup (3.5 - 3.9) | Kurang (< 3.5)' : 'Sangat Baik (90 - 100) | Baik (80 - 89) | Cukup (70 - 79) | Kurang (< 70)'}
-        </div>
-
-        <!-- TANDA TANGAN PENILAI & HRD -->
-        <table style="width:100%; text-align:center; margin-top:10px; page-break-inside:avoid; font-size:10px;">
-          <tr>
-            <td width="50%">Penilai (Assessor),</td>
-            <td width="50%">Mengetahui (HRD / Manajemen),</td>
-          </tr>
-          <tr>
-            <td height="40" style="vertical-align:bottom; font-size:8.5px; color:#64748b;">(Tanda Tangan & Tanggal)</td>
-            <td height="40" style="vertical-align:bottom; font-size:8.5px; color:#64748b;">(Tanda Tangan & Stempel)</td>
-          </tr>
-          <tr>
-            <td>( <strong>${escapeHtml(samplePenilai)}</strong> )</td>
-            <td>( <strong>HRD CV ANDELA JAYA</strong> )</td>
-          </tr>
-        </table>
-      </div>
-    `;
-  }
-
-  function openPrintOrPdfModal({ title, tasks = [], karyawanMap = {}, filename }) {
-    let currentMode = "HALF_A4"; // DEFAULT: 2 FORM PER LEMBAR A4 (HALF A4 / A5)
-    let currentTasks = [...tasks];
-
-    // Daftar semua nama karyawan dari master karyawan untuk opsi pairing Karyawan Ke-2
-    const allKaryawanNames = Object.keys(karyawanMap).filter(k => k && k !== "undefined");
-    allKaryawanNames.sort((a, b) => a.localeCompare(b, "id", { sensitivity: "base" }));
-
-    function renderActiveContent() {
-      if (currentMode === "HALF_A4") {
-        return generate2UpA4Html(currentTasks, karyawanMap);
-      } else if (currentMode === "MATRIKS" && currentTasks.length > 0) {
-        return generateFormKpiMatriksKolektifHtml(currentTasks, karyawanMap);
-      }
-      return currentTasks.map(t => generateFormKpiFisikHtml(t, karyawanMap)).join("\n");
-    }
-
-    let initialHtml = renderActiveContent();
-
-    // Buat dropdown pilihan karyawan ke-2 jika hanya ada 1 task awal
-    let pairingSelectorHtml = "";
-    if (tasks.length === 1 && allKaryawanNames.length > 0) {
-      const sampleTask = tasks[0];
-      const optKaryawanBawah = allKaryawanNames
-        .filter(n => n !== sampleTask.nama_dinilai)
-        .map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)} (${escapeHtml(karyawanMap[n]?.jabatan || "Karyawan")})</option>`)
-        .join("");
-
-      pairingSelectorHtml = `
-        <div id="pairing-control-box" class="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs flex flex-wrap items-center justify-between gap-2">
-          <div class="flex items-center gap-2">
-            <span class="font-bold text-amber-900 flex items-center gap-1">✂️ Pasangkan 2 Karyawan (Kiri & Kanan) dalam 1 Lembar A4 Landscape:</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="text-slate-600 font-medium">Sisi Kanan (Karyawan 2):</span>
-            <select id="select-karyawan-2" class="px-2.5 py-1 text-xs rounded-lg border border-amber-300 bg-white font-semibold text-slate-800 outline-none cursor-pointer focus:ring-2 focus:ring-amber-500">
-              <option value="__ARSIP__">-- (Lembar Salinan Arsip HRD) --</option>
-              ${optKaryawanBawah}
-            </select>
-          </div>
-        </div>
-      `;
-    }
-
-    openModal({
-      title,
-      size: "xl",
-      bodyHtml: `
-        <div class="space-y-3">
-          <div class="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs flex flex-wrap items-center justify-between gap-2 shadow-2xs">
-            <div class="flex items-center gap-1.5 font-medium">
-              <span>🍃 <strong>Format Landscape Hemat Kertas:</strong> 1 Lembar A4 Landscape Memuat 2 Form Penilaian KPI Side-by-Side</span>
-            </div>
-            <div class="flex items-center bg-white border border-emerald-300 rounded-lg p-0.5 shadow-2xs">
-              <button id="toggle-fmt-half" class="px-3 py-1.5 text-[11px] font-bold rounded-md bg-emerald-700 text-white transition shadow-2xs">
-                ✂️ 2 Karyawan Side-by-Side (A4 Landscape)
-              </button>
-              <button id="toggle-fmt-individual" class="px-3 py-1.5 text-[11px] font-bold rounded-md text-emerald-800 hover:bg-emerald-100 transition">
-                📄 1 Karyawan Per A4 Portrait
-              </button>
-              ${tasks.length > 1 ? `
-              <button id="toggle-fmt-matriks" class="px-3 py-1.5 text-[11px] font-bold rounded-md text-emerald-800 hover:bg-emerald-100 transition">
-                📊 Matriks Kolektif (${tasks.length} Karyawan)
-              </button>
-              ` : ''}
-            </div>
-          </div>
-
-          ${pairingSelectorHtml}
-
-          <div class="border rounded-xl p-4 bg-slate-50 max-h-[60vh] overflow-y-auto shadow-inner border-slate-200">
-            <div id="kpi-print-preview-container">${initialHtml}</div>
-          </div>
-        </div>
-      `,
-      footerHtml: `
-        <div class="flex items-center justify-between w-full">
-          <button id="btn-close-print-preview" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold hover:bg-slate-200 transition">Tutup</button>
-          <div class="flex items-center gap-2">
-            <button id="btn-do-print-window" class="px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold hover:bg-slate-900 transition shadow flex items-center gap-1.5">🖨️ Cetak Langsung (Print)</button>
-            <button id="btn-do-download-pdf" class="px-4 py-2 bg-maroon-700 text-white rounded-lg text-xs font-bold hover:bg-maroon-800 transition shadow flex items-center gap-1.5">📥 Download PDF</button>
-          </div>
-        </div>
-      `,
-      onMount: (m) => {
-        m.querySelector("#btn-close-print-preview").onclick = closeModal;
-
-        const container = m.querySelector("#kpi-print-preview-container");
-        const btnHalf = m.querySelector("#toggle-fmt-half");
-        const btnInd = m.querySelector("#toggle-fmt-individual");
-        const btnMat = m.querySelector("#toggle-fmt-matriks");
-        const selectKaryawan2 = m.querySelector("#select-karyawan-2");
-        const pairingBox = m.querySelector("#pairing-control-box");
-
-        function updateBtnStyles() {
-          const activeClass = "px-3 py-1.5 text-[11px] font-bold rounded-md bg-emerald-700 text-white transition shadow-2xs";
-          const inactiveClass = "px-3 py-1.5 text-[11px] font-bold rounded-md text-emerald-800 hover:bg-emerald-100 transition";
-
-          if (btnHalf) btnHalf.className = currentMode === "HALF_A4" ? activeClass : inactiveClass;
-          if (btnInd) btnInd.className = currentMode === "INDIVIDUAL" ? activeClass : inactiveClass;
-          if (btnMat) btnMat.className = currentMode === "MATRIKS" ? activeClass : inactiveClass;
-
-          if (pairingBox) {
-            pairingBox.style.display = currentMode === "HALF_A4" ? "flex" : "none";
-          }
-
-          container.innerHTML = renderActiveContent();
-        }
-
-        if (selectKaryawan2) {
-          selectKaryawan2.onchange = (e) => {
-            const selectedVal = e.target.value;
-            if (selectedVal === "__ARSIP__") {
-              currentTasks = [tasks[0]];
-            } else {
-              const secondTask = {
-                ...tasks[0],
-                nama_dinilai: selectedVal
-              };
-              currentTasks = [tasks[0], secondTask];
-            }
-            container.innerHTML = renderActiveContent();
-          };
-        }
-
-        if (btnHalf) btnHalf.onclick = () => { currentMode = "HALF_A4"; updateBtnStyles(); };
-        if (btnInd) btnInd.onclick = () => { currentMode = "INDIVIDUAL"; updateBtnStyles(); };
-        if (btnMat) btnMat.onclick = () => { currentMode = "MATRIKS"; updateBtnStyles(); };
-
-        m.querySelector("#btn-do-download-pdf").onclick = async () => {
-          const btn = m.querySelector("#btn-do-download-pdf");
-          btn.disabled = true; btn.textContent = "Mengunduh PDF...";
-          try {
-            const { downloadHtmlAsPdf } = await import("../utils.js");
-            const finalContent = renderActiveContent();
-            const isLandscape = currentMode === "HALF_A4";
-            await downloadHtmlAsPdf(finalContent, filename, isLandscape ? "landscape" : "portrait");
-            toast("PDF dokumen fisik KPI berhasil diunduh!", "success");
-          } catch (e) {
-            toast("Gagal mengunduh PDF: " + e.message, "error");
-          } finally {
-            btn.disabled = false; btn.textContent = "📥 Download PDF";
-          }
-        };
-
-        m.querySelector("#btn-do-print-window").onclick = () => {
-          const printWin = window.open("", "_blank");
-          if (!printWin) return toast("Izinkan popup browser untuk mencetak langsung.", "warning");
-          const finalContent = renderActiveContent();
-          const isLandscape = currentMode === "HALF_A4";
-          const pageStyle = isLandscape ? "@page { size: A4 landscape; margin: 4mm 6mm 4mm 6mm; }" : "@page { size: A4 portrait; margin: 6mm 8mm 6mm 8mm; }";
-
-          printWin.document.write(`
-            <!DOCTYPE html>
-            <html>
-              <head>
-                <title>${escapeHtml(title)}</title>
-                <style>
-                  ${pageStyle}
-                  body { font-family: 'Times New Roman', Times, serif; margin: 0; padding: 0; background: #fff; color: #000; font-size: 9px; }
-                  .a4-2up-page-landscape { page-break-after: always; page-break-inside: avoid; }
-                  .a4-2up-page-landscape:last-child { page-break-after: auto; }
-                  .kpi-form-fisik-page { page-break-after: always; page-break-inside: avoid; }
-                  .kpi-form-fisik-page:last-child { page-break-after: auto; }
-                  table { border-collapse: collapse; width: 100%; }
-                  @media print {
-                    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                  }
-                </style>
-              </head>
-              <body>
-                ${finalContent}
-                <script>
-                  window.onload = function() {
-                    window.focus();
-                    window.print();
-                  };
-                </script>
-              </body>
-            </html>
-          `);
-          printWin.document.close();
-        };
-      }
-    });
-  }
-
-  async function printFormKpiFisik(task) {
-    if (!task) return toast("Data tugas KPI tidak ditemukan", "error");
-    toast("Menyiapkan dokumen fisik KPI...", "info");
-    const karyawanMap = await getKaryawanMap();
-
-    openPrintOrPdfModal({
-      title: `Form Fisik KPI — ${escapeHtml(task.nama_dinilai)} (${escapeHtml(task.periode || "")})`,
-      tasks: [task],
-      karyawanMap,
-      filename: `Form_Fisik_KPI_${escapeHtml(task.nama_dinilai).replace(/\s+/g, "_")}_${escapeHtml(task.periode || "").replace(/\s+/g, "_")}.pdf`
-    });
-  }
-
-  async function printBatchFormKpiFisik(tasks) {
-    if (!tasks || !tasks.length) return toast("Tidak ada tugas untuk dicetak", "warning");
-    toast("Menyiapkan dokumen fisik KPI...", "info");
-    const karyawanMap = await getKaryawanMap();
-
-    const samplePeriode = tasks[0]?.periode || "360";
-    const samplePenilai = tasks[0]?.nama_penilai || "Assessor";
-
-    openPrintOrPdfModal({
-      title: `Dokumen Fisik KPI Batch (${tasks.length} Karyawan) — Penilai: ${escapeHtml(samplePenilai)}`,
-      tasks,
-      karyawanMap,
-      filename: `Form_Fisik_KPI_Batch_${escapeHtml(samplePenilai).replace(/\s+/g, "_")}_${escapeHtml(samplePeriode).replace(/\s+/g, "_")}.pdf`
-    });
-  }
-
-  // =====================================================================
-  // MODAL DISTRIBUSI PINTAR: IMPLEMENTASI FITUR SEARCH & LIST CHECKBOX
-  // =====================================================================
-  async function openDistribusiModal(defaultTemplateId = null) {
-    const allKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
-    // PERBAIKAN: Pastikan kita menyaring dan hanya mengambil data yang benar-benar memiliki nama
-    const activeK = allKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF" && k.nama_karyawan);
-    activeK.sort((a, b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id", { sensitivity: "base" }));
-    
-    const optKaryawanSelect = activeK.map(k => `<option value="${escapeHtml(k.nama_karyawan)}">${escapeHtml(k.nama_karyawan)} — ${escapeHtml(k.jabatan || "")}</option>`).join("");
-
-    const rawTemplates = await fsGetAll(COL.MASTER_SOAL_KPI);
-    const tplMap = new Map();
-    rawTemplates.forEach(t => {
-      const norm = (t.nama_template || "").trim().toLowerCase();
-      if (norm && !tplMap.has(norm)) tplMap.set(norm, t);
-    });
-    const validTemplates = Array.from(tplMap.values()).filter(t => t.nama_template && t.soal_json && t.soal_json.length > 0);
-    const optTemplates = validTemplates.map(t => `<option value="${t.id}">${escapeHtml(t.nama_template)}</option>`).join("");
-
-    const selectedDinilaiSet = new Set();
-
-    openModal({
-      title: "Distribusi Penilaian KPI 360",
-      size: "lg",
-      bodyHtml: `
-        <form id="form-distribusi" class="space-y-4">
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div>
-              <label class="block text-xs font-medium text-slate-500 mb-1">Periode Penilaian</label>
-              <input type="text" id="kpi-periode" placeholder="Cth: Q3 2026" required class="w-full px-3 py-2 text-sm rounded-lg border outline-none">
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-slate-500 mb-1">Pilih PENILAI (Assessor)</label>
-              <select id="kpi-penilai" required class="w-full px-3 py-2 text-sm rounded-lg border outline-none">
-                 <option value="">Pilih Karyawan Penilai...</option>
-                 ${optKaryawanSelect}
-              </select>
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-slate-500 mb-1">Kategori Penilaian</label>
-              <select id="kpi-distribusi-kategori" class="w-full px-3 py-2 text-sm rounded-lg border outline-none">
-                ${Object.values(JENIS_PENILAIAN_MAP).map(cat => `
-                  <option value="${cat.key}">${cat.icon} ${cat.label}</option>
-                `).join('')}
-              </select>
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-slate-500 mb-1">Skala Penilaian</label>
-              <select id="kpi-distribusi-skala" class="w-full px-3 py-2 text-sm rounded-lg border outline-none">
-                <option value="0-100">Skala 0 - 100</option>
-                <option value="1-5">Skala 1 - 5</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase">Pilih Karyawan yang DINILAI (Bisa Centang Banyak)</label>
-            <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
-               <div class="p-2.5 bg-slate-50 border-b border-slate-200">
-                  <input type="text" id="kpi-search-box" placeholder="Ketik nama karyawan untuk mencari..." class="w-full px-3 py-1.5 text-xs rounded border border-slate-200 outline-none focus:border-maroon-500">
-               </div>
-               <div id="kpi-checkbox-list" class="max-h-40 overflow-y-auto divide-y divide-slate-100 p-1 bg-white space-y-0.5">
-                  </div>
-            </div>
-          </div>
-          
-          <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mt-2">
-            <div class="mb-3 border-b border-slate-200 pb-3">
-              <div class="flex justify-between items-center mb-2">
-                 <label class="text-xs font-bold text-slate-700 uppercase">Pilih Template KPI (Bisa Pilih Beberapa)</label>
-                 <span id="tpl-selected-count" class="text-[11px] font-semibold text-maroon-700 bg-maroon-50 px-2.5 py-0.5 rounded-full border border-maroon-100">0 Template Dipilih</span>
-              </div>
-              <div class="mb-2">
-                 <input type="text" id="tpl-search-input" placeholder="🔍 Cari nama template KPI..." class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-white">
-              </div>
-              <div id="kpi-templates-container" class="max-h-36 overflow-y-auto border border-slate-200 rounded-xl p-2 bg-white divide-y divide-slate-100 space-y-0.5">
-              </div>
-            </div>
-
-            <div class="flex justify-between items-center mb-3">
-               <label class="text-xs font-bold text-slate-700 uppercase">Rancang Indikator & Bobot (Gabungan Template)</label>
-               <button type="button" id="btn-add-soal" class="text-xs text-maroon-700 font-bold hover:underline flex items-center gap-1">➕ Indikator Manual</button>
-            </div>
-            <div id="soal-list" class="space-y-3 mb-3"></div>
-            <div class="mt-3 text-right">
-              <span id="indikator-bobot-total" class="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded">Total Bobot: 0%</span>
-            </div>
-          </div>
-        </form>
-      `,
-      footerHtml: `
-        <button id="btn-batal-kpi" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
-        <button id="btn-save-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-md">Kirim Tugas Penilaian</button>
-      `,
-      onMount: (m) => {
-         const listContainer = m.querySelector("#kpi-checkbox-list");
-         const searchBox = m.querySelector("#kpi-search-box");
-         const soalList = m.querySelector("#soal-list");
-         const badgeBobot = m.querySelector("#indikator-bobot-total");
-
-         // Loop Render Checkbox Berdasarkan Array Pencarian
-         function drawCheckboxes(filterText = "") {
-             const term = filterText.toLowerCase().trim();
-             
-             listContainer.innerHTML = activeK.map(k => {
-                 // Pengaman tambahan agar tidak error saat map jika data aneh masuk
-                 const nama = k.nama_karyawan || "";
-                 const jabatan = k.jabatan || "";
-                 const cabang = k.cabang || "";
-
-                 const match = !term || nama.toLowerCase().includes(term) || jabatan.toLowerCase().includes(term);
-                 if(!match || !nama) return "";
-
-                 const isChecked = selectedDinilaiSet.has(nama);
-                 
-                 return `
-                   <label class="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 rounded-lg cursor-pointer transition select-none">
-                      <input type="checkbox" name="dinilai-checkbox" value="${escapeHtml(nama)}" ${isChecked ? 'checked' : ''} class="w-4 h-4 text-maroon-600 border-slate-300 rounded focus:ring-maroon-500 cursor-pointer">
-                      <div class="text-xs">
-                         <p class="font-semibold text-slate-700">${escapeHtml(nama)}</p>
-                         <p class="text-slate-400 text-[10px]">${escapeHtml(jabatan)} • ${escapeHtml(cabang)}</p>
-                      </div>
-                   </label>
-                 `;
-             }).join("");
-
-             m.querySelectorAll('input[name="dinilai-checkbox"]').forEach(cb => {
-                 cb.onchange = () => {
-                     if (cb.checked) {
-                         selectedDinilaiSet.add(cb.value);
-                     } else {
-                         selectedDinilaiSet.delete(cb.value);
-                     }
-                 };
-             });
-         }
-         drawCheckboxes(); // Init render pertama
-
-         searchBox.oninput = (e) => drawCheckboxes(e.target.value);
-
-         function calcTotalBobot() {
-            let total = 0; m.querySelectorAll(".soal-bobot").forEach(input => total += parseFloat(input.value) || 0);
-            badgeBobot.textContent = `Total Bobot: ${total}%`;
-            badgeBobot.className = total === 100 ? "text-xs font-bold bg-green-100 text-green-700 px-2 py-1 rounded" : "text-xs font-bold bg-red-100 text-red-700 px-2 py-1 rounded";
-            return total;
-         }
-
-         function addSoalUI(data = { aspek: "", indikator: "", bobot: "" }) {
-            const div = document.createElement("div"); div.className = "flex gap-2 items-start bg-white p-2 rounded-lg border shadow-sm";
-            div.innerHTML = `
-              <div class="flex-1 space-y-2">
-                 <input type="text" placeholder="Aspek" value="${escapeHtml(data.aspek)}" class="soal-aspek w-full px-2 py-1.5 text-xs border rounded outline-none" required>
-                 <input type="text" placeholder="Indikator Kinerja" value="${escapeHtml(data.indikator)}" class="soal-indikator w-full px-2 py-1.5 text-xs border rounded outline-none" required>
-              </div>
-              <div class="w-20"><input type="number" placeholder="Bobot" value="${data.bobot}" class="soal-bobot w-full px-2 py-1.5 text-xs border rounded text-center" required></div>
-              <button type="button" class="text-slate-300 hover:text-red-500 mt-1.5 p-1">✖</button>
-            `;
-            div.querySelector(".soal-bobot").oninput = calcTotalBobot;
-            div.querySelector("button").onclick = () => { div.remove(); calcTotalBobot(); };
-            soalList.appendChild(div); calcTotalBobot();
-         }
-         addSoalUI();
-
-         const penilaiSelect = m.querySelector("#kpi-penilai");
-         if (penilaiSelect) {
-           penilaiSelect.onchange = () => {
-             const penilaiVal = penilaiSelect.value;
-             if (penilaiVal && selectedDinilaiSet.has(penilaiVal)) {
-               selectedDinilaiSet.delete(penilaiVal);
-               drawCheckboxes(searchBox.value);
-               toast(`Karyawan penilai (${penilaiVal}) otomatis dicopot dari daftar yang dinilai!`, "info");
-             }
-           };
-         }
-
-         const countBadgeTpl = m.querySelector("#tpl-selected-count");
-         const tplSearchInput = m.querySelector("#tpl-search-input");
-         const tplListContainer = m.querySelector("#kpi-templates-container");
-         const selectedTplSet = new Set();
-
-         if (defaultTemplateId) {
-           selectedTplSet.add(defaultTemplateId);
-         }
-
-         function drawTemplateCheckboxes(filterText = "") {
-           const term = filterText.toLowerCase().trim();
-           
-           tplListContainer.innerHTML = validTemplates.map(t => {
-             const namaTpl = t.nama_template || "";
-             const match = !term || namaTpl.toLowerCase().includes(term);
-             if (!match || !namaTpl) return "";
-
-             const count = Array.isArray(t.karyawan_assigned) ? t.karyawan_assigned.length : 0;
-             const isChecked = selectedTplSet.has(t.id);
-
-             return `
-               <label class="flex items-center gap-2.5 px-2.5 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer transition select-none">
-                 <input type="checkbox" name="kpi-tpl-checkbox" value="${t.id}" ${isChecked ? 'checked' : ''} class="w-4 h-4 text-maroon-600 border-slate-300 rounded focus:ring-maroon-500 cursor-pointer">
-                 <div class="flex-1 min-w-0">
-                   <p class="text-xs font-semibold text-slate-800 truncate">${escapeHtml(namaTpl)}</p>
-                   <p class="text-[10px] text-slate-400">${count > 0 ? `${count} Karyawan Terdaftar` : 'Berdasarkan Posisi/Jabatan'} • ${(t.soal_json || []).length} Indikator</p>
-                 </div>
-               </label>
-             `;
-           }).join("");
-
-           tplListContainer.querySelectorAll('input[name="kpi-tpl-checkbox"]').forEach(cb => {
-             cb.onchange = () => {
-               if (cb.checked) {
-                 selectedTplSet.add(cb.value);
-               } else {
-                 selectedTplSet.delete(cb.value);
-               }
-               syncTemplatesSelection();
-             };
-           });
-         }
-
-         if (tplSearchInput) {
-           tplSearchInput.oninput = (e) => drawTemplateCheckboxes(e.target.value);
-         }
-
-         function syncTemplatesSelection() {
-           const selectedTplIds = Array.from(selectedTplSet);
-
-           if (countBadgeTpl) {
-             countBadgeTpl.textContent = `${selectedTplIds.length} Template Dipilih`;
-           }
-
-           if (selectedTplIds.length > 0) {
-             const firstTpl = validTemplates.find(t => t.id === selectedTplIds[0]);
-             if (firstTpl) {
-               const selCatEl = m.querySelector("#kpi-distribusi-kategori");
-               const selSkalaEl = m.querySelector("#kpi-distribusi-skala");
-               if (firstTpl.kategori_penilaian && selCatEl) {
-                 selCatEl.value = firstTpl.kategori_penilaian;
-               }
-               if (firstTpl.skala_penilaian && selSkalaEl) {
-                 selSkalaEl.value = firstTpl.skala_penilaian;
-               }
-             }
-           }
-
-           selectedDinilaiSet.clear();
-           soalList.innerHTML = "";
-
-           const selectedPenilai = penilaiSelect ? penilaiSelect.value : "";
-           const combinedSoal = [];
-
-           selectedTplIds.forEach(tplId => {
-             const tpl = validTemplates.find(t => t.id === tplId);
-             if (!tpl) return;
-
-             // Tambahkan soal ke array
-             if (Array.isArray(tpl.soal_json)) {
-               tpl.soal_json.forEach(s => {
-                 if (s && (s.aspek || s.indikator)) {
-                   combinedSoal.push({
-                     aspek: s.aspek || "",
-                     indikator: s.indikator || "",
-                     bobot: parseFloat(s.bobot) || 0
-                   });
-                 }
-               });
-             }
-
-             // Otomatis centang karyawan terdaftar
-             if (Array.isArray(tpl.karyawan_assigned) && tpl.karyawan_assigned.length > 0) {
-               tpl.karyawan_assigned.forEach(n => {
-                 if (n && n !== selectedPenilai) selectedDinilaiSet.add(n);
-               });
-             } else if (tpl.nama_template) {
-               const tplNameLower = tpl.nama_template.toLowerCase().trim();
-               activeK.forEach(k => {
-                 const jab = (k.jabatan || "").toLowerCase().trim();
-                 if (jab && (jab === tplNameLower || jab.includes(tplNameLower) || tplNameLower.includes(jab))) {
-                   if (k.nama_karyawan && k.nama_karyawan !== selectedPenilai) {
-                     selectedDinilaiSet.add(k.nama_karyawan);
-                   }
-                 }
-               });
-             }
-           });
-
-           if (combinedSoal.length > 0) {
-             const rawSum = combinedSoal.reduce((sum, item) => sum + (parseFloat(item.bobot) || 0), 0);
-             if (rawSum > 0 && Math.abs(rawSum - 100) > 0.01) {
-               let currentSum = 0;
-               combinedSoal.forEach(item => {
-                 const scaled = Math.round(((parseFloat(item.bobot) || 0) / rawSum) * 100);
-                 item.bobot = scaled;
-                 currentSum += scaled;
-               });
-               const diff = 100 - currentSum;
-               if (diff !== 0 && combinedSoal.length > 0) {
-                 let maxIdx = 0;
-                 for (let i = 1; i < combinedSoal.length; i++) {
-                   if (combinedSoal[i].bobot > combinedSoal[maxIdx].bobot) maxIdx = i;
-                 }
-                 combinedSoal[maxIdx].bobot = Math.max(1, combinedSoal[maxIdx].bobot + diff);
-               }
-             }
-
-             combinedSoal.forEach(s => addSoalUI(s));
-           } else {
-             addSoalUI(); // Tambahkan 1 baris indikator kosong jika tidak ada template dipilih
-           }
-
-           drawCheckboxes(searchBox.value);
-
-           if (selectedTplIds.length > 1) {
-             toast(`Otomatis mencentang ${selectedDinilaiSet.size} karyawan dari ${selectedTplIds.length} template! Masing-masing karyawan akan menerima indikator/soal spesifik jabatannya.`, "info");
-           } else if (selectedTplIds.length === 1) {
-             toast(`Otomatis mencentang ${selectedDinilaiSet.size} karyawan dari template terpilih!`, "info");
-           }
-         }
-
-         drawTemplateCheckboxes();
-         if (defaultTemplateId) {
-           syncTemplatesSelection();
-         }
-
-         m.querySelector("#btn-add-soal").onclick = () => addSoalUI();
-         m.querySelector("#btn-batal-kpi").onclick = closeModal;
-         
-         m.querySelector("#btn-save-kpi").onclick = async () => {
-            const form = m.querySelector("#form-distribusi");
-            if (!form.reportValidity() || calcTotalBobot() !== 100) return toast("Lengkapi form & pastikan total bobot tepat 100%!", "warning");
-
-            const periode = m.querySelector("#kpi-periode").value.trim();
-            const penilai = m.querySelector("#kpi-penilai").value;
-            
-            // Ekstrak nama karyawan yang dicentang dari Set agar pilihan tidak hilang saat search
-            const dinilaiList = Array.from(selectedDinilaiSet);
-
-            if(!dinilaiList.length) return toast("Centang minimal 1 karyawan yang akan dinilai!", "warning");
-            if(dinilaiList.includes(penilai)) return toast("Penilai tidak boleh berada di dalam daftar centang yang dinilai!", "warning");
-
-            const soalArray = [];
-            soalList.querySelectorAll(".flex.gap-2").forEach(row => {
-               soalArray.push({
-                  aspek: row.querySelector(".soal-aspek").value.trim(),
-                  indikator: row.querySelector(".soal-indikator").value.trim(),
-                  bobot: parseFloat(row.querySelector(".soal-bobot").value) || 0,
-                  nilai_diberikan: 0
-               });
-            });
-
-            const deadlineDate = new Date(); deadlineDate.setDate(deadlineDate.getDate() + 3);
-            const deadlineISO = deadlineDate.toISOString();
-
-            const btn = m.querySelector("#btn-save-kpi");
-            btn.disabled = true; btn.textContent = "Menyebarkan Tugas...";
-
-            try {
-               let penilaiEmail = "";
-               let penilaiUsername = "";
-               let penilaiPassword = "";
-
-               let qU = query(collection(db, COL.USERS), where("nama", "==", penilai), limit(1));
-               let snapU = await getDocs(qU);
-
-               if (snapU.empty) {
-                  qU = query(collection(db, COL.USERS), where("username", "==", String(penilai).toUpperCase()), limit(1));
-                  snapU = await getDocs(qU);
-               }
-
-               if (snapU.empty) {
-                  const qK = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", penilai), limit(1));
-                  const snapK = await getDocs(qK);
-                  if (!snapK.empty) {
-                     const kData = snapK.docs[0].data();
-                     penilaiEmail = kData.email || "";
-                     if (kData.nik_karyawan) {
-                        const snapU2 = await getDoc(doc(db, COL.USERS, String(kData.nik_karyawan).toUpperCase()));
-                        if (snapU2.exists()) {
-                           snapU = { empty: false, docs: [snapU2] };
-                        }
-                     }
-                  }
-               }
-
-               if (!snapU.empty) {
-                  const uDoc = snapU.docs[0].data();
-                  penilaiUsername = snapU.docs[0].id || uDoc.username || penilai;
-                  penilaiEmail = uDoc.email || penilaiEmail || "";
-                  penilaiPassword = uDoc.password || uDoc.password_plain || uDoc.password_display || "(Gunakan password akun terdaftar Anda)";
-               } else {
-                  penilaiUsername = String(penilai).toUpperCase();
-                  penilaiPassword = "(Gunakan password akun terdaftar Anda)";
-               }
-
-               const createdTasks = [];
-               for (const dinilai of dinilaiList) {
-                  let empSoal = null;
-
-                  // Jika memilih lebih dari 1 template, distribusikan indikator/soal spesifik sesuai template karyawan tersebut
-                  if (selectedTplSet.size > 1) {
-                     const matchedTpls = Array.from(selectedTplSet)
-                        .map(id => validTemplates.find(t => t.id === id))
-                        .filter(Boolean)
-                        .filter(tpl => {
-                           const assigned = Array.isArray(tpl.karyawan_assigned) ? tpl.karyawan_assigned : [];
-                           if (assigned.includes(dinilai)) return true;
-                           if (tpl.nama_template) {
-                              const empObj = activeK.find(k => k.nama_karyawan === dinilai);
-                              const jab = ((empObj && empObj.jabatan) || "").toLowerCase().trim();
-                              const tplNameLower = tpl.nama_template.toLowerCase().trim();
-                              if (jab && (jab === tplNameLower || jab.includes(tplNameLower) || tplNameLower.includes(jab))) {
-                                 return true;
-                              }
-                           }
-                           return false;
-                        });
-
-                     if (matchedTpls.length > 0) {
-                        const rawEmpSoal = [];
-                        matchedTpls.forEach(tpl => {
-                           if (Array.isArray(tpl.soal_json)) {
-                              tpl.soal_json.forEach(s => {
-                                 if (s && (s.aspek || s.indikator)) {
-                                    rawEmpSoal.push({
-                                       aspek: s.aspek || "",
-                                       indikator: s.indikator || "",
-                                       bobot: parseFloat(s.bobot) || 0,
-                                       nilai_diberikan: 0
-                                    });
-                                 }
-                              });
-                           }
-                        });
-
-                        if (rawEmpSoal.length > 0) {
-                           const rawSum = rawEmpSoal.reduce((sum, item) => sum + (parseFloat(item.bobot) || 0), 0);
-                           if (rawSum > 0 && Math.abs(rawSum - 100) > 0.01) {
-                              let currentSum = 0;
-                              rawEmpSoal.forEach(item => {
-                                 const scaled = Math.round(((parseFloat(item.bobot) || 0) / rawSum) * 100);
-                                 item.bobot = scaled;
-                                 currentSum += scaled;
-                              });
-                              const diff = 100 - currentSum;
-                              if (diff !== 0 && rawEmpSoal.length > 0) {
-                                 let maxIdx = 0;
-                                 for (let i = 1; i < rawEmpSoal.length; i++) {
-                                    if (rawEmpSoal[i].bobot > rawEmpSoal[maxIdx].bobot) maxIdx = i;
-                                 }
-                                 rawEmpSoal[maxIdx].bobot = Math.max(1, rawEmpSoal[maxIdx].bobot + diff);
-                              }
-                           }
-                           empSoal = rawEmpSoal;
-                        }
-                     }
-                  }
-
-                  if (!empSoal || empSoal.length === 0) {
-                     empSoal = soalArray;
-                  }
-
-                  // Determine template category and scale if selected
-                  const selCatEl = m.querySelector("#kpi-distribusi-kategori");
-                  const selSkalaEl = m.querySelector("#kpi-distribusi-skala");
-                  let taskCategory = selCatEl ? selCatEl.value : "KPI_360";
-                  let taskSkala = selSkalaEl ? selSkalaEl.value : "0-100";
-                  if (!taskCategory && selectedTplSet.size > 0) {
-                    const firstTplId = Array.from(selectedTplSet)[0];
-                    const matchedT = validTemplates.find(t => t.id === firstTplId);
-                    if (matchedT && matchedT.kategori_penilaian) {
-                      taskCategory = matchedT.kategori_penilaian;
-                    }
-                  }
-
-                  const payload = {
-                    periode,
-                    nama_penilai: penilai,
-                    nama_dinilai: dinilai,
-                    soal_json: empSoal,
-                    kategori_penilaian: taskCategory,
-                    skala_penilaian: taskSkala,
-                    status: "PENDING",
-                    skor_akhir: 0,
-                    tanggal: new Date().toISOString(),
-                    deadline: deadlineISO
-                  };
-                  const kpiId = genId("KPI");
-                  await fsAdd(COL.TUGAS_KPI_360, payload, kpiId);
-                  createdTasks.push({ id: kpiId, ...payload });
-               }
-
-               // Always trigger in-app & push notifications to evaluator
-               const notifTitle = "Tugas Penilaian KPI 360 Baru";
-               const notifPesan = `Anda ditugaskan menilai ${dinilaiList.length} karyawan periode ${periode}. Batas waktu: ${fmtDateShort(deadlineISO)}.`;
-               const notifLink = "#penilaian-kontrak?tab=kpi360";
-
-               await notifyUser(penilaiUsername, notifTitle, notifPesan, notifLink).catch(e => console.warn("Err notifyUser penilaiUsername:", e));
-               if (penilai && penilai !== penilaiUsername) {
-                 await notifyUser(penilai, notifTitle, notifPesan, notifLink).catch(e => console.warn("Err notifyUser penilai:", e));
-               }
-
-               if (penilaiEmail && typeof sendEmailNotif === 'function') {
-                  const token = await createLoginToken(penilaiUsername);
-                  const baseUrl = window.location.origin + window.location.pathname;
-                  const magicLink = `${baseUrl}#penilaian-kontrak?tab=kpi360&token=${token}`;
-
-                  const dinilaiItemsHtml = dinilaiList.map(d => `<li style="margin-bottom: 6px;"><strong>${escapeHtml(d)}</strong></li>`).join("");
-
-                  const htmlEmail = `
-                    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 620px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background: #ffffff;">
-                      <div style="background: #7a1f2b; color: #ffffff; padding: 22px 24px;">
-                        <h2 style="margin: 0; font-size: 18px; font-weight: bold; letter-spacing: 0.3px;">Tugas Penilaian KPI 360 Baru</h2>
-                        <p style="margin: 4px 0 0 0; font-size: 12px; opacity: 0.9;">CV Andela Jaya - Portal HRIS</p>
-                      </div>
-                      
-                      <div style="padding: 24px; color: #334155; font-size: 14px; line-height: 1.6;">
-                        <p style="margin-top: 0;">Halo <strong>${escapeHtml(penilai)}</strong>,</p>
-                        <p>Anda telah ditugaskan untuk melakukan penilaian KPI terhadap <strong>${dinilaiList.length} karyawan</strong> pada periode <strong>${escapeHtml(periode)}</strong>.</p>
-                        
-                        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 16px; margin: 20px 0;">
-                          <div style="font-weight: bold; color: #0f172a; margin-bottom: 8px; font-size: 13px;">📋 Daftar Karyawan yang Harus Dinilai:</div>
-                          <ol style="margin: 0; padding-left: 20px; font-size: 13px; color: #334155;">
-                            ${dinilaiItemsHtml}
-                          </ol>
-                          <div style="font-size: 11px; color: #64748b; margin-top: 10px; border-top: 1px dashed #cbd5e1; padding-top: 8px;">
-                            ⏰ Batas Waktu Pengisian: <strong style="color: #b91c1c;">${fmtDateShort(deadlineISO)}</strong>
-                          </div>
-                        </div>
-
-                        <div style="text-align: center; margin: 28px 0;">
-                          <a href="${magicLink}" style="display: inline-block; background: #7a1f2b; color: #ffffff; font-weight: bold; font-size: 14px; padding: 13px 30px; border-radius: 8px; text-decoration: none; box-shadow: 0 4px 12px rgba(122,31,43,0.35);">
-                            🚀 Login & Mulai Menilai Karyawan
-                          </a>
-                        </div>
-
-                        <div style="background: #f1f5f9; border-left: 4px solid #7a1f2b; padding: 14px 18px; border-radius: 0 8px 8px 0; margin-top: 22px; font-size: 12px;">
-                          <div style="font-weight: bold; color: #0f172a; margin-bottom: 6px;">🔑 Informasi Kredensial Akun Anda:</div>
-                          <div style="color: #334155; line-height: 1.8;">
-                            • <strong>Username:</strong> <code style="background:#e2e8f0; padding:3px 8px; border-radius:4px; font-family:monospace; font-weight:bold; color:#0f172a;">${escapeHtml(penilaiUsername)}</code><br/>
-                            • <strong>Password:</strong> <code style="background:#e2e8f0; padding:3px 8px; border-radius:4px; font-family:monospace; font-weight:bold; color:#0f172a;">${escapeHtml(penilaiPassword)}</code>
-                          </div>
-                          <p style="margin: 8px 0 0 0; color: #64748b; font-size: 11px; line-height: 1.4;">
-                            *Jika belum selesai menilai seluruh karyawan, Anda dapat masuk kembali kapan saja melalui link tombol di atas atau login secara manual dengan username dan password tersebut.
-                          </p>
-                        </div>
-                      </div>
-
-                      <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 24px; text-align: center; font-size: 11px; color: #94a3b8;">
-                        Email otomatis dari Sistem HRIS CV Andela Jaya.
-                      </div>
-                    </div>
-                  `;
-
-                  sendEmailNotif(penilaiEmail, `[HRIS] Tugas Penilaian KPI 360 - Periode ${periode}`, htmlEmail).catch(e => console.warn(e));
-               }
-
-               toast("Tugas Penilaian berhasil didistribusikan.", "success");
-               closeModal();
-               await loadKpi360();
-
-               // Dialog konfirmasi cetak dokumen pengisian fisik
-               openModal({
-                  title: "Pendistribusian KPI Berhasil",
-                  bodyHtml: `
-                    <div class="text-center py-4 space-y-3">
-                      <div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold">✓</div>
-                      <h3 class="text-sm font-bold text-slate-800">Tugas Penilaian KPI Berhasil Dikirim</h3>
-                      <p class="text-xs text-slate-600 max-w-md mx-auto">
-                        Telah didistribusikan <strong>${createdTasks.length} tugas penilaian</strong> untuk Penilai <strong>${escapeHtml(penilai)}</strong> pada periode <strong>${escapeHtml(periode)}</strong>.
-                      </p>
-                      <p class="text-[11px] text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                        Anda dapat langsung mengunduh atau mencetak dokumen pengisian fisik ber-standar ISO CV Andela Jaya untuk keperluan penilaian offline/fisik.
-                      </p>
-                    </div>
-                  `,
-                  footerHtml: `
-                    <div class="flex items-center justify-between w-full">
-                      <button id="btn-done-distribusi" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition">Selesai</button>
-                      <button id="btn-print-fisik-now" class="px-5 py-2.5 bg-maroon-700 text-white rounded-lg text-xs font-bold hover:bg-maroon-800 transition shadow-md flex items-center gap-1.5">🖨️ Cetak / Download Form Fisik (${createdTasks.length} Karyawan)</button>
-                    </div>
-                  `,
-                  onMount: (m2) => {
-                    m2.querySelector("#btn-done-distribusi").onclick = closeModal;
-                    m2.querySelector("#btn-print-fisik-now").onclick = () => {
-                      closeModal();
-                      printBatchFormKpiFisik(createdTasks);
-                    };
-                  }
-               }); 
-            } catch (e) { toast("Gagal: " + e.message, "error"); btn.disabled = false; }
-         }
-      }
-    });
-  }
-
-  async function loadHasil() {
-    const wrap = panels.hasil; wrap.innerHTML = `<div class="space-y-2">${skeletonRows(4)}</div>`;
-    try {
-      const logs = await fsGetAll(COL.LOG_PENILAIAN_KPI);
-      logs.sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
-      if (!logs.length) { wrap.innerHTML = emptyState("Belum ada data hasil"); return; }
-
-      wrap.innerHTML = `
-        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead class="bg-slate-50 text-slate-500 text-xs uppercase"><tr>
-                <th class="px-4 py-3 text-left">Tanggal</th><th class="px-4 py-3 text-left">Dinilai</th><th class="px-4 py-3 text-left">Penilai</th><th class="px-4 py-3 text-left">Skor Akhir</th><th class="px-4 py-3 text-left">Hasil Keputusan & Rekomendasi</th><th class="px-4 py-3 text-right">Aksi</th>
-              </tr></thead>
-              <tbody>${logs.map(r => {
-                const cat = getCatConfig(r.kategori_penilaian);
-                const recText = r.rekomendasi || r.keputusan || "-";
-                return `
-                <tr class="border-t border-slate-50 hover:bg-slate-50 transition">
-                  <td class="px-4 py-3 text-xs text-slate-500">${fmtDateShort(r.tanggal)}</td>
-                  <td class="px-4 py-3 font-bold text-slate-800">${escapeHtml(r.nama_dinilai)}</td>
-                  <td class="px-4 py-3 text-slate-600">${escapeHtml(r.penilai)}</td>
-                  <td class="px-4 py-3 font-extrabold text-maroon-700">${r.total_skor || r.skor_akhir || 0}</td>
-                  <td class="px-4 py-3">
-                    <span class="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg font-bold border ${cat.badgeClass}">
-                      ${cat.icon} ${escapeHtml(recText)}
-                    </span>
-                  </td>
-                  <td class="px-4 py-3 text-right">
-                    <div class="flex items-center justify-end gap-1.5">
-                      <button data-print="${r.id}" class="text-xs bg-slate-800 hover:bg-slate-900 text-white font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 shadow-2xs transition">🖨️ Cetak PDF</button>
-                      <button data-del-hasil="${r.id}" class="text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 border border-rose-200 transition">🗑️ Hapus</button>
-                    </div>
-                  </td>
-                </tr>`;
-              }).join("")}
-              </tbody>
-            </table>
-          </div>
-        </div>`;
-
-      wrap.querySelectorAll("[data-print]").forEach(btn => {
-         btn.onclick = () => printKpiToHtml(logs.find(x => x.id === btn.dataset.print));
-      });
-
-      wrap.querySelectorAll("[data-del-hasil]").forEach(btn => {
-         btn.onclick = async () => {
-           const id = btn.dataset.delHasil;
-           const row = logs.find(x => x.id === id);
-           if (!row) return;
-           if (confirm(`Apakah Anda yakin ingin menghapus data hasil penilaian untuk "${row.nama_dinilai}"?`)) {
-             await fsDelete(COL.LOG_PENILAIAN_KPI, id);
-             toast("Data hasil penilaian berhasil dihapus!", "success");
-             await loadHasil();
-           }
-         };
-      });
-    } catch (e) { wrap.innerHTML = emptyState("Gagal memuat"); }
-  }
-
-  async function printKpiToHtml(row) {
-    const { downloadHtmlAsPdf } = await import("../utils.js");
-    toast("Sedang memproses PDF...", "info");
-    const isScale1to5 = (row.skala_penilaian === "1-5");
-    let tbody = '';
-    (row.detail_json || []).forEach(item => {
-        let weighted = isScale1to5 
-          ? (item.nilai_diberikan * 20 * ((item.bobot || 0) / 100)).toFixed(2)
-          : (item.nilai_diberikan * ((item.bobot || 0) / 100)).toFixed(2);
-        tbody += `<tr>
-          <td style="border:1px solid #000; padding:6px 10px;">${escapeHtml(item.aspek)}</td>
-          <td style="border:1px solid #000; padding:6px 10px;">${escapeHtml(item.indikator)}</td>
-          <td style="border:1px solid #000; padding:6px 10px; text-align: center;">${item.bobot}%</td>
-          <td style="border:1px solid #000; padding:6px 10px; text-align: center;">${item.nilai_diberikan}</td>
-          <td style="border:1px solid #000; padding:6px 10px; text-align: center;"><strong>${weighted}</strong></td>
-        </tr>`;
-    });
-
-    const catInfo = JENIS_PENILAIAN_MAP[row.kategori_penilaian] || JENIS_PENILAIAN_MAP.KPI_360;
-
-    const html = `
-      <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff;">
-        <div style="page-break-inside:avoid; margin-bottom:15px;">
-          ${isoDocHeaderTable({ judul: `LAPORAN EVALUASI (${catInfo.label.toUpperCase()})`, noDok: "HR-KPI-01", terbitRevisi: "1/0", hal: "1 dari 1" })}
-        </div>
-        <table style="width:100%; border-collapse:collapse; margin-bottom:15px; border:1px solid #000;">
-          <tr><td width="35%" style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Nama Karyawan</td><td style="border:1px solid #000; padding:6px 10px;"><strong>${escapeHtml(row.nama_dinilai)}</strong></td></tr>
-          <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Jenis / Kategori Penilaian</td><td style="border:1px solid #000; padding:6px 10px;">${catInfo.icon} ${escapeHtml(catInfo.label)}</td></tr>
-          <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Skala Penilaian</td><td style="border:1px solid #000; padding:6px 10px;">Skala ${isScale1to5 ? '1 - 5 (Likert / Rating)' : '0 - 100 (Persentase)'}</td></tr>
-          <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Penilai / Atasan</td><td style="border:1px solid #000; padding:6px 10px;">${escapeHtml(row.penilai || "-")}</td></tr>
-          <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Skor KPI Akhir</td><td style="border:1px solid #000; padding:6px 10px;"><strong>${row.total_skor || row.skor_akhir || "-"}</strong></td></tr>
-          <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Hasil Keputusan & Rekomendasi</td><td style="border:1px solid #000; padding:6px 10px;"><strong style="font-size:12px; color:#7a1f2b;">${escapeHtml(row.rekomendasi || row.keputusan || "-")}</strong></td></tr>
-        </table>
-        <table style="width:100%; border-collapse:collapse; margin-top:10px; border:1px solid #000;">
-          <thead>
-            <tr style="background:#f1f5f9;">
-              <th style="border:1px solid #000; padding:6px 10px; text-align: left;">Aspek</th>
-              <th style="border:1px solid #000; padding:6px 10px; text-align: left;">Indikator</th>
-              <th style="border:1px solid #000; padding:6px 10px; text-align: center;">Bobot</th>
-              <th style="border:1px solid #000; padding:6px 10px; text-align: center;">Nilai (${isScale1to5 ? '1-5' : '0-100'})</th>
-              <th style="border:1px solid #000; padding:6px 10px; text-align: center;">Skor Akhir</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tbody}
-          </tbody>
-        </table>
-
-        <!-- CATATAN & FEEDBACK KUALITATIF -->
-        <table style="width:100%; border-collapse:collapse; margin-top:12px; border:1px solid #000; font-size:11px;">
-          <tr style="background:#f1f5f9; font-weight:bold;">
-            <td style="border:1px solid #000; padding:6px 10px;">📝 Catatan Evaluasi & Ulasan Penilai:</td>
-          </tr>
-          <tr>
-            <td style="border:1px solid #000; padding:8px 10px; background:#fff;">
-              <div style="margin-bottom:8px;">
-                <strong style="color:#166534;">✓ Hal-hal yang Sudah Baik (Kelebihan / Prestasi Kerja):</strong>
-                <div style="margin-top:3px; font-size:10.5px; line-height:1.4; color:#1e293b; background:#f8fafc; padding:6px 8px; border:1px solid #e2e8f0; border-radius:3px;">
-                  ${escapeHtml(row.catatan_baik || "-")}
-                </div>
-              </div>
-              <div style="margin-bottom:8px;">
-                <strong style="color:#991b1b;">⚠ Hal-hal yang Harus Diperbaiki (Area Peningkatan):</strong>
-                <div style="margin-top:3px; font-size:10.5px; line-height:1.4; color:#1e293b; background:#f8fafc; padding:6px 8px; border:1px solid #e2e8f0; border-radius:3px;">
-                  ${escapeHtml(row.catatan_perbaikan || "-")}
-                </div>
-              </div>
-              <div>
-                <strong style="color:#334155;">💬 Catatan & Rekomendasi Tambahan Penilai:</strong>
-                <div style="margin-top:3px; font-size:10.5px; line-height:1.4; color:#1e293b; background:#f8fafc; padding:6px 8px; border:1px solid #e2e8f0; border-radius:3px;">
-                  ${escapeHtml(row.catatan_penilai || row.catatan_umum || "-")}
-                </div>
-              </div>
-            </td>
-          </tr>
-        </table>
-        <table style="width:100%; text-align:center; margin-top:35px; page-break-inside:avoid; font-size:11px;">
-          <tr><td width="50%">Karyawan Dinilai,</td><td width="50%">Penilai / HRD,</td></tr>
-          <tr><td height="60"></td><td></td></tr>
-          <tr><td>( <strong>${escapeHtml(row.nama_dinilai)}</strong> )</td><td>( <strong>${escapeHtml(row.penilai || "Atasan Direct")}</strong> )</td></tr>
-        </table>
-      </div>
-    `;
-    await downloadHtmlAsPdf(html, `Laporan_KPI_${escapeHtml(row.nama_dinilai).replace(/\s+/g, "_")}.pdf`);
-    toast("PDF berhasil diunduh!", "success");
-  }
-
-  async function loadEvaluasi() {
-    await renderCrudModule(panels.evaluasi, {
-      title: "Evaluasi Kontrak",
-      collectionName: COL.EVALUASI_KONTRAK,
-      idPrefix: "EVK",
-      searchFields: ["nama_pekerja"],
-      columns: [
-        { key: "tanggal", label: "Tanggal", type: "date" },
-        { key: "nama_pekerja", label: "Karyawan" },
-        { key: "skor", label: "Skor" },
-        { key: "rekomendasi", label: "Rekomendasi", type: "badge" },
-      ],
-      formFields: [
-        { name: "tanggal", label: "Tanggal", type: "date", required: true },
-        { name: "nama_pekerja", label: "Nama Karyawan", type: "text", required: true },
-        { name: "skor", label: "Skor (0-100)", type: "number", required: true },
-        { name: "rekomendasi", label: "Rekomendasi", type: "select", options: ["Perpanjang Kontrak", "Angkat Tetap", "Tidak Diperpanjang"], required: true },
-      ]
-    });
-  }
-
-  // =====================================================================
-  // MODUL PENILAIAN HARIAN & TARGET BULANAN (SALES & STAF OPS)
-  // =====================================================================
-  function openTargetSettingModal(activeKaryawan, allTargets, onSaved) {
-    const now = new Date();
-    const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-
-    const contentHtml = `
-      <div class="space-y-4 text-xs text-slate-700">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div>
-            <label class="block font-bold mb-1">Pilih Karyawan: <span class="text-rose-500">*</span></label>
-            <select id="tgt-select-karyawan" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
-              <option value="">-- Pilih Karyawan --</option>
-              ${activeKaryawan.map(k => `<option value="${escapeHtml(k.nama_karyawan)}">${escapeHtml(k.nama_karyawan)} (${k.divisi || "Staf"})</option>`).join('')}
-            </select>
-          </div>
-
-          <div>
-            <label class="block font-bold mb-1">Bulan & Tahun: <span class="text-rose-500">*</span></label>
-            <input type="month" id="tgt-input-month" value="${defaultMonth}" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
-          </div>
-
-          <div>
-            <label class="block font-bold mb-1">Kategori / Divisi: <span class="text-rose-500">*</span></label>
-            <select id="tgt-select-tipe" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
-              <option value="SALES">📈 Sales / Marketing (Sesuai Lampiran 1)</option>
-              <option value="NON_SALES">🏢 Staf / Non-Sales (Operational / HRD / Admin)</option>
-            </select>
-          </div>
-        </div>
-
-        <div id="tgt-form-fields-container" class="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-        </div>
-
-        <div>
-          <label class="block font-bold mb-1">Catatan Target HRD / Manajemen:</label>
-          <textarea id="tgt-input-catatan" rows="2" placeholder="Sampaikan instruksi atau penekanan target bulan ini..." class="w-full p-2.5 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-white text-xs"></textarea>
-        </div>
-      </div>
-    `;
-
-    openModal({
-      title: "🎯 Setting Target Bulanan Karyawan",
-      size: "lg",
-      bodyHtml: contentHtml,
-      footerHtml: `
-        <button id="modal-cancel-target-btn" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition">Batal</button>
-        <button id="modal-submit-target-btn" class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 transition">💾 Simpan Target Bulanan</button>
-      `,
-      onMount: (m) => {
-        m.querySelector("#modal-cancel-target-btn").onclick = closeModal;
-
-        const selectEmp = m.querySelector("#tgt-select-karyawan");
-        const selectMonth = m.querySelector("#tgt-input-month");
-        const selectTipe = m.querySelector("#tgt-select-tipe");
-        const fieldsBox = m.querySelector("#tgt-form-fields-container");
-
-        function renderFields() {
-          if (!fieldsBox) return;
-          const empName = selectEmp?.value;
-          const monthVal = selectMonth?.value;
-          const tipeVal = selectTipe?.value;
-
-          const existingDoc = allTargets.find(t => t.nama_karyawan === empName && t.bulan_tahun === monthVal);
-          const savedCustoms = existingDoc?.custom_indicators || [];
-
-          let baseHtml = "";
-          if (tipeVal === "SALES") {
-            baseHtml = `
-              <div class="flex items-center justify-between pb-2 border-b border-slate-200">
-                <span class="font-bold text-slate-800">Target Indicator Sales (Lampiran 1):</span>
-                <span class="text-[11px] text-slate-500">Set target bulanan untuk sales ini</span>
-              </div>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                ${SALES_LAMPIRAN1_INDICATORS.map(ind => {
-                  const val = existingDoc?.targets?.[ind.key] !== undefined ? existingDoc.targets[ind.key] : ind.defaultTarget;
-                  return `
-                    <div>
-                      <label class="block font-semibold text-slate-700 text-[11px] mb-0.5">
-                        <span class="px-1.5 py-0.2 rounded bg-slate-200 text-slate-700 font-bold">${ind.principle}</span> ${escapeHtml(ind.indikator)} (${ind.unit}):
-                      </label>
-                      <input type="number" id="tgt-field-${ind.key}" value="${val}" class="w-full p-2 rounded-xl border border-slate-200 bg-white font-bold text-slate-800 outline-none focus:border-maroon-600">
-                    </div>
-                  `;
-                }).join('')}
-              </div>
-            `;
-          } else {
-            baseHtml = `
-              <div class="flex items-center justify-between pb-2 border-b border-slate-200">
-                <span class="font-bold text-slate-800">Target Indikator Staf / Operational:</span>
-                <span class="text-[11px] text-slate-500">Standar baseline target = 100% per indikator</span>
-              </div>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                ${NON_SALES_INDICATORS.map(ind => {
-                  const val = existingDoc?.targets?.[ind.key] !== undefined ? existingDoc.targets[ind.key] : 100;
-                  return `
-                    <div>
-                      <label class="block font-semibold text-slate-700 text-[11px] mb-0.5">
-                        ${escapeHtml(ind.aspek)} - ${escapeHtml(ind.indikator)} (%):
-                      </label>
-                      <input type="number" id="tgt-field-${ind.key}" value="${val}" min="0" max="100" class="w-full p-2 rounded-xl border border-slate-200 bg-white font-bold text-slate-800 outline-none focus:border-maroon-600">
-                    </div>
-                  `;
-                }).join('')}
-              </div>
-              <div class="p-3 bg-amber-50 rounded-xl border border-amber-200/80 text-[11px] text-amber-800 leading-relaxed mt-2">
-                💡 <strong>Aturan Penalti HRD:</strong> Untuk staf operational, nilai harian dimulai dari baseline 100%. Nilai akan berkurang otomatis saat diinput adanya kesalahan kerja, komplain divisi lain, atau penerbitan Surat Peringatan (SP).
-              </div>
-            `;
-          }
-
-          fieldsBox.innerHTML = `
-            ${baseHtml}
-            <div class="mt-4 pt-3 border-t border-slate-200">
-              <div class="flex items-center justify-between mb-2">
-                <span class="font-bold text-slate-800 text-xs">✨ Indikator Target Kustom (Kategori HRD / Divisi):</span>
-                <button type="button" id="btn-add-custom-tgt" class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[11px] hover:bg-emerald-100 transition">
-                  + Tambah Indikator Kustom
-                </button>
-              </div>
-              <div id="custom-tgt-list" class="space-y-2">
-                ${savedCustoms.map((c, idx) => `
-                  <div class="custom-tgt-row grid grid-cols-1 sm:grid-cols-12 gap-2 p-2 bg-white rounded-xl border border-slate-200 items-center">
-                    <input type="text" class="custom-name sm:col-span-5 p-1.5 rounded-lg border border-slate-200 text-xs font-medium" placeholder="Nama Indikator (Cth: Audit Stok)" value="${escapeHtml(c.indikator || '')}">
-                    <input type="text" class="custom-unit sm:col-span-3 p-1.5 rounded-lg border border-slate-200 text-xs font-medium" placeholder="Satuan (Cth: %, Visit)" value="${escapeHtml(c.unit || '%')}">
-                    <input type="number" class="custom-val sm:col-span-3 p-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-800" placeholder="Target" value="${existingDoc?.targets?.[c.key] !== undefined ? existingDoc.targets[c.key] : (c.defaultTarget || 100)}">
-                    <button type="button" class="btn-del-custom sm:col-span-1 text-center text-rose-500 font-bold hover:bg-rose-50 p-1 rounded-lg">✕</button>
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-          `;
-
-          const btnAdd = fieldsBox.querySelector("#btn-add-custom-tgt");
-          const customList = fieldsBox.querySelector("#custom-tgt-list");
-
-          if (btnAdd && customList) {
-            btnAdd.onclick = () => {
-              const row = document.createElement("div");
-              row.className = "custom-tgt-row grid grid-cols-1 sm:grid-cols-12 gap-2 p-2 bg-white rounded-xl border border-slate-200 items-center";
-              row.innerHTML = `
-                <input type="text" class="custom-name sm:col-span-5 p-1.5 rounded-lg border border-slate-200 text-xs font-medium" placeholder="Nama Indikator (Cth: Audit Stok)">
-                <input type="text" class="custom-unit sm:col-span-3 p-1.5 rounded-lg border border-slate-200 text-xs font-medium" placeholder="Satuan (Cth: %, Visit)" value="%">
-                <input type="number" class="custom-val sm:col-span-3 p-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-800" placeholder="Target" value="100">
-                <button type="button" class="btn-del-custom sm:col-span-1 text-center text-rose-500 font-bold hover:bg-rose-50 p-1 rounded-lg">✕</button>
-              `;
-              row.querySelector(".btn-del-custom").onclick = () => row.remove();
-              customList.appendChild(row);
-            };
-
-            customList.querySelectorAll(".btn-del-custom").forEach(btn => {
-              btn.onclick = (e) => e.target.closest(".custom-tgt-row")?.remove();
-            });
-          }
-        }
-
-        if (selectEmp) selectEmp.onchange = renderFields;
-        if (selectMonth) selectMonth.onchange = renderFields;
-        if (selectTipe) selectTipe.onchange = renderFields;
-        renderFields();
-
-        m.querySelector("#modal-submit-target-btn").onclick = async () => {
-          const empName = m.querySelector("#tgt-select-karyawan")?.value;
-          const monthVal = m.querySelector("#tgt-input-month")?.value;
-          const tipeVal = m.querySelector("#tgt-select-tipe")?.value;
-          const catatanVal = m.querySelector("#tgt-input-catatan")?.value || "";
-
-          if (!empName || !monthVal) {
-            toast("Harap pilih karyawan dan bulan target!", "error");
-            return;
-          }
-
-          const empObj = activeKaryawan.find(k => k.nama_karyawan === empName);
-          const targets = {};
-          const customIndicators = [];
-
-          if (tipeVal === "SALES") {
-            SALES_LAMPIRAN1_INDICATORS.forEach(ind => {
-              const inputEl = m.querySelector(`#tgt-field-${ind.key}`);
-              targets[ind.key] = inputEl ? parseFloat(inputEl.value || 0) : ind.defaultTarget;
-            });
-          } else {
-            NON_SALES_INDICATORS.forEach(ind => {
-              const inputEl = m.querySelector(`#tgt-field-${ind.key}`);
-              targets[ind.key] = inputEl ? parseFloat(inputEl.value || 100) : 100;
-            });
-          }
-
-          // Extract Custom Indicators
-          const customRows = m.querySelectorAll("#custom-tgt-list .custom-tgt-row");
-          customRows.forEach((row, i) => {
-            const name = row.querySelector(".custom-name")?.value.trim();
-            const unit = row.querySelector(".custom-unit")?.value.trim() || "%";
-            const val = parseFloat(row.querySelector(".custom-val")?.value || 100);
-
-            if (name) {
-              const key = `custom_${name.toLowerCase().replace(/[^a-z0-9]/g, "_")}_${i}`;
-              targets[key] = val;
-              customIndicators.push({
-                key: key,
-                indikator: name,
-                unit: unit,
-                defaultTarget: val
-              });
-            }
-          });
-
-          const docId = `TGT_${empName.replace(/\s+/g, "_")}_${monthVal}`;
-          const payload = {
-            id: docId,
-            nama_karyawan: empName,
-            nik_karyawan: empObj?.nik_karyawan || empObj?.nik || "",
-            divisi: empObj?.divisi || "",
-            jabatan: empObj?.jabatan || "",
-            bulan_tahun: monthVal,
-            tipe_karyawan: tipeVal,
-            targets: targets,
-            custom_indicators: customIndicators,
-            catatan: catatanVal,
-            updated_at: new Date().toISOString(),
-            updated_by: session.nama
-          };
-
-          try {
-            await setDoc(doc(db, COL.TARGET_BULANAN_KPI, docId), payload, { merge: true });
-            toast(`Target bulanan ${empName} (${monthVal}) berhasil disimpan!`, "success");
-            closeModal();
-            if (typeof onSaved === "function") onSaved();
-          } catch (err) {
-            toast("Gagal menyimpan target: " + err.message, "error");
-          }
-        };
-      }
-    });
-  }
-
-  function openDailyLogModal(activeKaryawan, allTargets, onSaved) {
-    const todayStr = new Date().toISOString().split("T")[0];
-
-    const contentHtml = `
-      <div class="space-y-4 text-xs text-slate-700">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <label class="block font-bold mb-1">Tanggal Daily Report: <span class="text-rose-500">*</span></label>
-            <input type="date" id="log-input-date" value="${todayStr}" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
-          </div>
-
-          <div>
-            <label class="block font-bold mb-1">Pilih Karyawan: <span class="text-rose-500">*</span></label>
-            <select id="log-select-karyawan" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
-              <option value="">-- Pilih Karyawan --</option>
-              ${activeKaryawan.map(k => `<option value="${escapeHtml(k.nama_karyawan)}">${escapeHtml(k.nama_karyawan)} (${k.divisi || "Staf"})</option>`).join('')}
-            </select>
-          </div>
-        </div>
-
-        <div id="log-form-dynamic-box" class="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-        </div>
-
-        <div>
-          <label class="block font-bold mb-1">Catatan Daily Report / Ulasan Pekerjaan Hari Ini:</label>
-          <textarea id="log-input-catatan" rows="2" placeholder="Catatan hasil daily report dari admin / ulasan supervisor..." class="w-full p-2.5 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-white text-xs"></textarea>
-        </div>
-      </div>
-    `;
-
-    openModal({
-      title: "✍️ Input Log Pencapaian & Evaluasi Harian",
-      size: "lg",
-      bodyHtml: contentHtml,
-      footerHtml: `
-        <button id="modal-cancel-log-btn" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition">Batal</button>
-        <button id="modal-submit-log-btn" class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 transition">💾 Simpan Daily Log</button>
-      `,
-      onMount: (m) => {
-        m.querySelector("#modal-cancel-log-btn").onclick = closeModal;
-
-        const selectEmp = m.querySelector("#log-select-karyawan");
-        const selectDate = m.querySelector("#log-input-date");
-        const dynamicBox = m.querySelector("#log-form-dynamic-box");
-
-        function renderDynamicForm() {
-          if (!dynamicBox) return;
-          const empName = selectEmp?.value;
-          const dateVal = selectDate?.value || todayStr;
-          const monthVal = dateVal.substring(0, 7);
-
-          if (!empName) {
-            dynamicBox.innerHTML = `<p class="text-slate-400 text-center text-xs py-4">Silakan pilih karyawan terlebih dahulu.</p>`;
-            return;
-          }
-
-          const empObj = activeKaryawan.find(k => k.nama_karyawan === empName);
-          const targetDoc = allTargets.find(t => t.nama_karyawan === empName && t.bulan_tahun === monthVal);
-          const isSales = (targetDoc?.tipe_karyawan === "SALES" || (empObj?.divisi || "").toUpperCase().includes("SALES"));
-
-          const customInds = targetDoc?.custom_indicators || [];
-          let customInputsHtml = "";
-          if (customInds.length > 0) {
-            customInputsHtml = `
-              <div class="mt-3 pt-3 border-t border-slate-200">
-                <span class="font-bold text-slate-800 block mb-2">✨ Indikator Target Kustom HRD Bulan Ini:</span>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  ${customInds.map(ci => {
-                    const tgt = targetDoc?.targets?.[ci.key] !== undefined ? targetDoc.targets[ci.key] : (ci.defaultTarget || 100);
-                    return `
-                      <div>
-                        <label class="block font-semibold text-slate-700 text-[11px] mb-0.5">
-                          ${escapeHtml(ci.indikator)} <span class="text-slate-400">(Target: ${tgt} ${escapeHtml(ci.unit || '%')})</span>:
-                        </label>
-                        <input type="number" id="log-ach-${ci.key}" value="${tgt}" step="any" class="w-full p-2 rounded-xl border border-slate-200 bg-white font-bold text-slate-800 outline-none focus:border-maroon-600">
-                      </div>
-                    `;
-                  }).join('')}
-                </div>
-              </div>
-            `;
-          }
-
-          if (isSales) {
-            dynamicBox.innerHTML = `
-              <div class="flex items-center justify-between pb-2 border-b border-slate-200">
-                <span class="font-bold text-slate-800">Input Pencapaian Harian Sales (Lampiran 1):</span>
-                <span class="text-[11px] text-purple-700 font-semibold">Tipe: Sales / Marketing</span>
-              </div>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                ${SALES_LAMPIRAN1_INDICATORS.map(ind => {
-                  const tgt = targetDoc?.targets?.[ind.key] || ind.defaultTarget;
-                  return `
-                    <div>
-                      <label class="block font-semibold text-slate-700 text-[11px] mb-0.5">
-                        <span class="px-1.5 py-0.2 rounded bg-purple-100 text-purple-800 font-bold">${ind.principle}</span> ${escapeHtml(ind.indikator)}
-                        <span class="text-slate-400">(Target Mo: ${tgt} ${ind.unit})</span>:
-                      </label>
-                      <input type="number" id="log-ach-${ind.key}" value="0" step="any" class="w-full p-2 rounded-xl border border-slate-200 bg-white font-bold text-slate-800 outline-none focus:border-maroon-600">
-                    </div>
-                  `;
-                }).join('')}
-              </div>
-              ${customInputsHtml}
-            `;
-          } else {
-            dynamicBox.innerHTML = `
-              <div class="flex items-center justify-between pb-2 border-b border-slate-200">
-                <span class="font-bold text-slate-800">Evaluasi Operational & Penalti Staf:</span>
-                <span class="text-[11px] text-blue-700 font-semibold">Base Skor: 100%</span>
-              </div>
-
-              <div class="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
-                <label class="flex items-center gap-2 font-bold text-slate-800 cursor-pointer">
-                  <input type="checkbox" id="chk-komplain-divisi" class="w-4 h-4 text-rose-600 rounded">
-                  <span>⚠️ Ada Kesalahan Kerja / Komplain dari Divisi Lain Hari Ini?</span>
-                </label>
-                <div id="box-komplain-detail" class="hidden space-y-2 pt-2 border-t border-slate-100">
-                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <div class="col-span-2">
-                      <label class="block font-semibold text-slate-600 text-[11px] mb-0.5">Detail Kesalahan / Komplain:</label>
-                      <input type="text" id="inp-komplain-ket" placeholder="Misal: Salah input data laporan, terlambat pengiriman..." class="w-full p-2 rounded-xl border border-slate-200 text-xs">
-                    </div>
-                    <div>
-                      <label class="block font-semibold text-slate-600 text-[11px] mb-0.5">Potongan Skor (%):</label>
-                      <input type="number" id="inp-komplain-minus" value="10" min="1" max="100" class="w-full p-2 rounded-xl border border-slate-200 text-xs font-bold text-rose-700">
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
-                <label class="flex items-center gap-2 font-bold text-slate-800 cursor-pointer">
-                  <input type="checkbox" id="chk-sp" class="w-4 h-4 text-rose-600 rounded">
-                  <span>🚫 Ada Penerbitan Surat Peringatan (SP) Hari Ini?</span>
-                </label>
-                <div id="box-sp-detail" class="hidden space-y-2 pt-2 border-t border-slate-100">
-                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <div class="col-span-2">
-                      <label class="block font-semibold text-slate-600 text-[11px] mb-0.5">Tipe Surat Peringatan:</label>
-                      <select id="inp-sp-ket" class="w-full p-2 rounded-xl border border-slate-200 text-xs font-semibold">
-                        <option value="Surat Peringatan 1 (SP1)">Surat Peringatan 1 (SP1)</option>
-                        <option value="Surat Peringatan 2 (SP2)">Surat Peringatan 2 (SP2)</option>
-                        <option value="Surat Peringatan 3 (SP3 / Terakhir)">Surat Peringatan 3 (SP3 / Terakhir)</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label class="block font-semibold text-slate-600 text-[11px] mb-0.5">Potongan Skor (%):</label>
-                      <input type="number" id="inp-sp-minus" value="25" min="1" max="100" class="w-full p-2 rounded-xl border border-slate-200 text-xs font-bold text-rose-700">
-                    </div>
-                  </div>
-                </div>
-              </div>
-              ${customInputsHtml}
-            `;
-
-            const chkK = dynamicBox.querySelector("#chk-komplain-divisi");
-            const boxK = dynamicBox.querySelector("#box-komplain-detail");
-            if (chkK && boxK) {
-              chkK.onchange = () => boxK.classList.toggle("hidden", !chkK.checked);
-            }
-
-            const chkSp = dynamicBox.querySelector("#chk-sp");
-            const boxSp = dynamicBox.querySelector("#box-sp-detail");
-            const selectSp = dynamicBox.querySelector("#inp-sp-ket");
-            const inpSpMinus = dynamicBox.querySelector("#inp-sp-minus");
-            if (chkSp && boxSp) {
-              chkSp.onchange = () => boxSp.classList.toggle("hidden", !chkSp.checked);
-            }
-            if (selectSp && inpSpMinus) {
-              selectSp.onchange = (e) => {
-                if (e.target.value.includes("SP1")) inpSpMinus.value = 15;
-                else if (e.target.value.includes("SP2")) inpSpMinus.value = 25;
-                else if (e.target.value.includes("SP3")) inpSpMinus.value = 50;
-              };
-            }
-          }
-        }
-
-        if (selectEmp) selectEmp.onchange = renderDynamicForm;
-        if (selectDate) selectDate.onchange = renderDynamicForm;
-        renderDynamicForm();
-
-        m.querySelector("#modal-submit-log-btn").onclick = async () => {
-          const empName = m.querySelector("#log-select-karyawan")?.value;
-          const dateVal = m.querySelector("#log-input-date")?.value;
-          const catatanVal = m.querySelector("#log-input-catatan")?.value || "";
-
-          if (!empName || !dateVal) {
-            toast("Harap pilih karyawan dan tanggal!", "error");
-            return;
-          }
-
-          const monthVal = dateVal.substring(0, 7);
-          const empObj = activeKaryawan.find(k => k.nama_karyawan === empName);
-          const targetDoc = allTargets.find(t => t.nama_karyawan === empName && t.bulan_tahun === monthVal);
-          const isSales = (targetDoc?.tipe_karyawan === "SALES" || (empObj?.divisi || "").toUpperCase().includes("SALES"));
-
-          let achievements = {};
-          let detailPenalti = [];
-          let scoreHarian = 100;
-          let totalMinus = 0;
-
-          if (isSales) {
-            let scoreSum = 0;
-            let count = 0;
-            SALES_LAMPIRAN1_INDICATORS.forEach(ind => {
-              const inputEl = m.querySelector(`#log-ach-${ind.key}`);
-              const val = inputEl ? parseFloat(inputEl.value || 0) : 0;
-              achievements[ind.key] = val;
-
-              const tgt = targetDoc?.targets?.[ind.key] || ind.defaultTarget;
-              if (tgt > 0) {
-                let ratio = 100;
-                if (ind.key === "overdue_piutang") {
-                  ratio = val <= tgt ? 100 : Math.max(0, 100 - ((val - tgt) / tgt) * 100);
-                } else {
-                  ratio = Math.min(120, (val / tgt) * 100);
-                }
-                scoreSum += ratio;
-                count++;
-              }
-            });
-            scoreHarian = count > 0 ? (scoreSum / count) : 100;
-          } else {
-            const chkKomplain = m.querySelector("#chk-komplain-divisi")?.checked;
-            const komplainMinus = parseFloat(m.querySelector("#inp-komplain-minus")?.value || 0);
-            const komplainKet = m.querySelector("#inp-komplain-ket")?.value || "";
-
-            const chkSp = m.querySelector("#chk-sp")?.checked;
-            const spMinus = parseFloat(m.querySelector("#inp-sp-minus")?.value || 0);
-            const spKet = m.querySelector("#inp-sp-ket")?.value || "";
-
-            if (chkKomplain && komplainMinus > 0) {
-              totalMinus += komplainMinus;
-              detailPenalti.push({
-                tipe: "KESALAHAN_KOMPLAIN_DIVISI",
-                deskripsi: komplainKet || "Kesalahan kerja / komplain dari divisi lain",
-                minus: komplainMinus
-              });
-            }
-
-            if (chkSp && spMinus > 0) {
-              totalMinus += spMinus;
-              detailPenalti.push({
-                tipe: "SURAT_PERINGATAN",
-                deskripsi: spKet || "Penerbitan Surat Peringatan (SP)",
-                minus: spMinus
-              });
-            }
-
-            scoreHarian = Math.max(0, 100 - totalMinus);
-          }
-
-          scoreHarian = parseFloat(scoreHarian.toFixed(1));
-
-          const docId = `DAILY_${empName.replace(/\s+/g, "_")}_${dateVal}`;
-          const payload = {
-            id: docId,
-            nama_karyawan: empName,
-            nik_karyawan: empObj?.nik_karyawan || empObj?.nik || "",
-            divisi: empObj?.divisi || "",
-            jabatan: empObj?.jabatan || "",
-            tanggal: dateVal,
-            bulan_tahun: monthVal,
-            tipe_karyawan: isSales ? "SALES" : "NON_SALES",
-            achievements: achievements,
-            potongan_penalti: totalMinus,
-            detail_penalti: detailPenalti,
-            score_harian: scoreHarian,
-            catatan_daily_report: catatanVal,
-            input_by: session.nama,
-            updated_at: new Date().toISOString()
-          };
-
-          try {
-            await setDoc(doc(db, COL.LOG_PENILAIAN_HARIAN, docId), payload, { merge: true });
-            toast(`Daily log ${empName} (${fmtDateShort(dateVal)}) berhasil disimpan! Skor: ${scoreHarian}%`, "success");
-            closeModal();
-            if (typeof onSaved === "function") onSaved();
-          } catch (err) {
-            toast("Gagal menyimpan daily log: " + err.message, "error");
-          }
-        };
-      }
-    });
-  }
-
-  function exportDailyPerformanceExcel(filteredLogs, state) {
-    if (!filteredLogs || filteredLogs.length === 0) {
-      toast("Tidak ada data log harian untuk diexport!", "warning");
-      return;
-    }
-
-    const dataRows = filteredLogs.map((log, idx) => {
-      let detailStr = "";
-      if (log.tipe_karyawan === "SALES" && log.achievements) {
-        detailStr = `Dulux: ${log.achievements.volume_dulux || 0}, Catylac: ${log.achievements.volume_catylac || 0}, Value Tertagih: Rp ${(parseFloat(log.achievements.value_penjualan_tertagih || 0)).toLocaleString("id-ID")}`;
-      } else if (Array.isArray(log.detail_penalti) && log.detail_penalti.length > 0) {
-        detailStr = log.detail_penalti.map(p => `${p.tipe}: ${p.deskripsi} (-${p.minus}%)`).join("; ");
-      } else {
-        detailStr = "Bebas Komplain / Sesuai SOP";
-      }
-
-      return {
-        "No": idx + 1,
-        "Tanggal": log.tanggal,
-        "Nama Karyawan": log.nama_karyawan,
-        "NIK": log.nik_karyawan || "-",
-        "Divisi": log.divisi || "Staf",
-        "Kategori": log.tipe_karyawan === "SALES" ? "Sales" : "Staf Ops",
-        "Skor Harian (%)": log.score_harian || 100,
-        "Detail Capaian / Penalti": detailStr,
-        "Catatan Daily Report": log.catatan_daily_report || "-",
-        "Diinput Oleh": log.input_by || "HRD"
-      };
-    });
-
-    downloadXlsx(dataRows, `Laporan_Performa_Harian_${state.selectedYear}_${state.filterTimeframe}.xlsx`);
-    toast("Laporan Excel berhasil diunduh!", "success");
-  }
-
-  async function exportDailyPerformancePdf(filteredLogs, state, activeKaryawan, avgScore, statusPredikat, statusRekomendasi) {
-    toast("Sedang menyusun Laporan PDF HRD Manajemen...", "info");
-    const { downloadHtmlAsPdf } = await import("../utils.js");
-
-    const empName = state.filterKaryawan || "Seluruh Staf / Karyawan";
-    const empObj = activeKaryawan.find(k => k.nama_karyawan === state.filterKaryawan);
-
-    let rowsHtml = filteredLogs.map((log, idx) => {
-      let detailStr = "";
-      if (log.tipe_karyawan === "SALES" && log.achievements) {
-        detailStr = `Dulux: ${log.achievements.volume_dulux || 0}, Catylac: ${log.achievements.volume_catylac || 0}, Value Tertagih: Rp ${(parseFloat(log.achievements.value_penjualan_tertagih || 0)).toLocaleString("id-ID")}`;
-      } else if (Array.isArray(log.detail_penalti) && log.detail_penalti.length > 0) {
-        detailStr = log.detail_penalti.map(p => `<strong>${escapeHtml(p.tipe)}:</strong> ${escapeHtml(p.deskripsi)} (-${p.minus}%)`).join("<br>");
-      } else {
-        detailStr = `<span style="color:#059669; font-weight:bold;">✓ Kinerja 100% Sesuai SOP</span>`;
-      }
-
-      return `
-        <tr>
-          <td style="border:1px solid #000; padding:5px 8px; text-align:center;">${idx + 1}</td>
-          <td style="border:1px solid #000; padding:5px 8px;">${fmtDateShort(log.tanggal)}</td>
-          <td style="border:1px solid #000; padding:5px 8px; font-weight:bold;">${escapeHtml(log.nama_karyawan)}</td>
-          <td style="border:1px solid #000; padding:5px 8px; text-align:center; font-weight:bold;">${log.score_harian}%</td>
-          <td style="border:1px solid #000; padding:5px 8px;">${detailStr}</td>
-          <td style="border:1px solid #000; padding:5px 8px;">${escapeHtml(log.catatan_daily_report || "-")}</td>
-        </tr>
-      `;
-    }).join("");
-
-    const htmlContent = `
-      <div style="font-family: Arial, sans-serif; font-size: 11px; color: #0f172a; line-height: 1.4; padding: 10px;">
-        ${isoDocHeaderTable({
-          judul: "LAPORAN EVALUASI PERFORMA HARIAN & BULANAN KARYAWAN",
-          noDok: `AND/HRD/EVAL/${state.selectedYear}/${state.selectedMonth || "ALL"}`,
-          terbitRevisi: "1/2",
-          tglTerbit: fmtDateShort(new Date().toISOString()),
-          hal: "1 dari 1"
-        })}
-
-        <table style="width:100%; border-collapse:collapse; margin-top:15px; margin-bottom:15px; border:1px solid #000;">
-          <tr>
-            <td width="25%" style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Nama Karyawan</td>
-            <td style="border:1px solid #000; padding:6px 10px; font-weight:bold;">${escapeHtml(empName)}</td>
-            <td width="20%" style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Rata-rata Skor</td>
-            <td style="border:1px solid #000; padding:6px 10px; font-weight:bold; color:#7a1f2b; font-size:13px;">${avgScore}% (${statusPredikat})</td>
-          </tr>
-          <tr>
-            <td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">NIK & Divisi</td>
-            <td style="border:1px solid #000; padding:6px 10px;">${escapeHtml(empObj?.nik_karyawan || "-")} | ${escapeHtml(empObj?.divisi || "Staf")}</td>
-            <td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Periode Laporan</td>
-            <td style="border:1px solid #000; padding:6px 10px;">Tahun ${state.selectedYear} (${state.filterTimeframe})</td>
-          </tr>
-          <tr>
-            <td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Keputusan & Rekomendasi HRD</td>
-            <td colspan="3" style="border:1px solid #000; padding:6px 10px; font-weight:bold; color:#7a1f2b;">
-              ${statusRekomendasi}
-            </td>
-          </tr>
-        </table>
-
-        <h4 style="margin-bottom:6px; font-size:12px;">Rincian Log Pencapaian Harian & Rekam Komplain:</h4>
-        <table style="width:100%; border-collapse:collapse; border:1px solid #000; font-size:10px;">
-          <thead>
-            <tr style="background:#f1f5f9; text-align:left;">
-              <th style="border:1px solid #000; padding:6px; text-align:center;" width="5%">No</th>
-              <th style="border:1px solid #000; padding:6px;" width="12%">Tanggal</th>
-              <th style="border:1px solid #000; padding:6px;" width="20%">Karyawan</th>
-              <th style="border:1px solid #000; padding:6px; text-align:center;" width="10%">Skor</th>
-              <th style="border:1px solid #000; padding:6px;" width="30%">Detail Capaian / Penalti</th>
-              <th style="border:1px solid #000; padding:6px;" width="23%">Daily Report Admin</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rowsHtml || '<tr><td colspan="6" style="text-align:center; padding:10px;">Tidak ada log data.</td></tr>'}
-          </tbody>
-        </table>
-
-        <table style="width:100%; text-align:center; margin-top:35px; page-break-inside:avoid; font-size:11px;">
-          <tr>
-            <td width="33%">Dibuat Oleh,<br><strong>Admin / HRD Staff</strong></td>
-            <td width="33%">Ditinjau Oleh,<br><strong>Atasan Direct / SPV</strong></td>
-            <td width="33%">Disetujui Oleh,<br><strong>Direksi / Manajemen Atas</strong></td>
-          </tr>
-          <tr><td height="50"></td><td></td><td></td></tr>
-          <tr>
-            <td>( ____________________ )</td>
-            <td>( ____________________ )</td>
-            <td>( ____________________ )</td>
-          </tr>
-        </table>
-      </div>
-    `;
-
-    await downloadHtmlAsPdf(htmlContent, `Laporan_Performa_${empName.replace(/\s+/g, "_")}.pdf`);
-    toast("PDF Laporan Manajemen Atas berhasil diunduh!", "success");
-  }
-
-  async function loadDailyPerformance() {
-    const wrap = panels.daily;
-    if (!wrap) return;
-    wrap.innerHTML = `<div class="p-8">${skeletonRows(5)}</div>`;
-
-    try {
-      let [allKaryawan, allTargets, allDailyLogs] = await Promise.all([
-        fsGetAll(COL.MASTER_KARYAWAN),
-        fsGetAll(COL.TARGET_BULANAN_KPI),
-        fsGetAll(COL.LOG_PENILAIAN_HARIAN)
-      ]);
-
-      let activeKaryawan = allKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF" && k.nama_karyawan);
-      activeKaryawan.sort((a, b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id", { sensitivity: "base" }));
-
-      if (isRegularEmployee) {
-        const myName = String(session.nama || "").toLowerCase().trim();
-        const myNik = String(session.nik || "").toLowerCase().trim();
-        activeKaryawan = activeKaryawan.filter(k => {
-          const kname = String(k.nama_karyawan || "").toLowerCase().trim();
-          const knik = String(k.nik_karyawan || k.nik || "").toLowerCase().trim();
-          return (myName && kname === myName) || (myNik && knik === myNik);
-        });
-      }
-
-      const now = new Date();
-      let state = {
-        filterKaryawan: isRegularEmployee ? (activeKaryawan[0]?.nama_karyawan || session.nama || "") : "",
-        filterKategori: "",
-        filterTimeframe: "MONTHLY",
-        selectedYear: String(now.getFullYear()),
-        selectedMonth: String(now.getMonth() + 1).padStart(2, "0"),
-        selectedWeek: "W1",
-        selectedQuarter: "Q" + (Math.floor(now.getMonth() / 3) + 1)
-      };
-
-      function refreshData() {
-        const filtered = filterLogs();
-        renderDashboard(filtered);
-      }
-
-      function filterLogs() {
-        let logs = [...allDailyLogs];
-
-        if (state.filterKaryawan) {
-          logs = logs.filter(l => (l.nama_karyawan || "").toLowerCase() === state.filterKaryawan.toLowerCase());
-        }
-
-        if (state.filterKategori) {
-          logs = logs.filter(l => (l.tipe_karyawan || "NON_SALES") === state.filterKategori);
-        }
-
-        logs = logs.filter(l => {
-          if (!l.tanggal) return false;
-          const d = new Date(l.tanggal);
-          const y = String(d.getFullYear());
-          const m = String(d.getMonth() + 1).padStart(2, "0");
-          const dateNum = d.getDate();
-
-          if (y !== state.selectedYear) return false;
-
-          if (state.filterTimeframe === "MONTHLY") {
-            return m === state.selectedMonth;
-          } else if (state.filterTimeframe === "WEEKLY") {
-            if (m !== state.selectedMonth) return false;
-            if (state.selectedWeek === "W1") return dateNum >= 1 && dateNum <= 7;
-            if (state.selectedWeek === "W2") return dateNum >= 8 && dateNum <= 14;
-            if (state.selectedWeek === "W3") return dateNum >= 15 && dateNum <= 21;
-            if (state.selectedWeek === "W4") return dateNum >= 22;
-            return true;
-          } else if (state.filterTimeframe === "QUARTERLY") {
-            const mNum = parseInt(m, 10);
-            if (state.selectedQuarter === "Q1") return mNum >= 1 && mNum <= 3;
-            if (state.selectedQuarter === "Q2") return mNum >= 4 && mNum <= 6;
-            if (state.selectedQuarter === "Q3") return mNum >= 7 && mNum <= 9;
-            if (state.selectedQuarter === "Q4") return mNum >= 10 && mNum <= 12;
-            return true;
-          } else if (state.filterTimeframe === "YEARLY") {
-            return true;
-          }
-          return true;
-        });
-
-        logs.sort((a, b) => new Date(a.tanggal) - new Date(b.tanggal));
-        return logs;
-      }
-
-      function renderDashboard(filteredLogs) {
-        let totalScoreSum = 0;
-        let totalPenaltyCount = 0;
-        filteredLogs.forEach(l => {
-          totalScoreSum += parseFloat(l.score_harian || 100);
-          if (Array.isArray(l.detail_penalti)) {
-            totalPenaltyCount += l.detail_penalti.length;
-          } else if (l.potongan_penalti > 0) {
-            totalPenaltyCount += 1;
-          }
-        });
-
-        const avgScore = filteredLogs.length > 0 ? (totalScoreSum / filteredLogs.length).toFixed(1) : "100.0";
-        const avgScoreNum = parseFloat(avgScore);
-
-        let statusBadgeClass = "bg-emerald-100 text-emerald-800 border-emerald-300";
-        let statusPredikat = "Sangat Baik (A)";
-        let statusRekomendasi = "Direkomendasikan Lulus Probation / Karyawan Tetap (Kartap) & Bonus";
-
-        if (avgScoreNum < 70) {
-          statusBadgeClass = "bg-rose-100 text-rose-800 border-rose-300";
-          statusPredikat = "Kurang (D)";
-          statusRekomendasi = "Masuk Masa PIP / Pertimbangan Tidak Diperpanjang Kontrak";
-        } else if (avgScoreNum < 80) {
-          statusBadgeClass = "bg-amber-100 text-amber-800 border-amber-300";
-          statusPredikat = "Cukup (C)";
-          statusRekomendasi = "Direkomendasikan Perpanjang Kontrak 6 Bulan (Evaluasi Ketat)";
-        } else if (avgScoreNum < 90) {
-          statusBadgeClass = "bg-blue-100 text-blue-800 border-blue-300";
-          statusPredikat = "Baik (B)";
-          statusRekomendasi = "Direkomendasikan Perpanjang Kontrak 12 Bulan";
-        }
-
-        const chartPoints = filteredLogs.map((lg, i) => {
-          const score = Math.min(100, Math.max(0, parseFloat(lg.score_harian || 100)));
-          return { label: lg.tanggal ? fmtDateShort(lg.tanggal) : `Log #${i+1}`, score, date: lg.tanggal };
-        });
-
-        let lineSvgHtml = "";
-        if (chartPoints.length > 0) {
-          const svgWidth = 800;
-          const svgHeight = 220;
-          const padX = 50;
-          const padY = 30;
-          const usableWidth = svgWidth - padX * 2;
-          const usableHeight = svgHeight - padY * 2;
-
-          const pointsCoords = chartPoints.map((pt, i) => {
-            const x = chartPoints.length === 1 ? svgWidth / 2 : padX + (i / (chartPoints.length - 1)) * usableWidth;
-            const y = padY + (1 - pt.score / 100) * usableHeight;
-            return { x, y, pt };
-          });
-
-          const polylineStr = pointsCoords.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-          const areaPolyStr = `${pointsCoords[0].x.toFixed(1)},${svgHeight - padY} ${polylineStr} ${pointsCoords[pointsCoords.length - 1].x.toFixed(1)},${svgHeight - padY}`;
-
-          lineSvgHtml = `
-            <svg viewBox="0 0 ${svgWidth} ${svgHeight}" class="w-full h-56 overflow-visible">
-              <defs>
-                <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="#800020" stop-opacity="0.25"/>
-                  <stop offset="100%" stop-color="#800020" stop-opacity="0.0"/>
-                </linearGradient>
-              </defs>
-              
-              <line x1="${padX}" y1="${padY}" x2="${svgWidth - padX}" y2="${padY}" stroke="#e2e8f0" stroke-dasharray="4" />
-              <text x="${padX - 8}" y="${padY + 4}" font-size="10" fill="#94a3b8" text-anchor="end">100%</text>
-
-              <line x1="${padX}" y1="${padY + usableHeight * 0.25}" x2="${svgWidth - padX}" y2="${padY + usableHeight * 0.25}" stroke="#f1f5f9" stroke-dasharray="4" />
-              <text x="${padX - 8}" y="${padY + usableHeight * 0.25 + 4}" font-size="10" fill="#94a3b8" text-anchor="end">75%</text>
-
-              <line x1="${padX}" y1="${padY + usableHeight * 0.5}" x2="${svgWidth - padX}" y2="${padY + usableHeight * 0.5}" stroke="#f1f5f9" stroke-dasharray="4" />
-              <text x="${padX - 8}" y="${padY + usableHeight * 0.5 + 4}" font-size="10" fill="#94a3b8" text-anchor="end">50%</text>
-
-              <line x1="${padX}" y1="${svgHeight - padY}" x2="${svgWidth - padX}" y2="${svgHeight - padY}" stroke="#cbd5e1" />
-              <text x="${padX - 8}" y="${svgHeight - padY + 4}" font-size="10" fill="#94a3b8" text-anchor="end">0%</text>
-
-              <polygon points="${areaPolyStr}" fill="url(#scoreGrad)" />
-              <polyline points="${polylineStr}" fill="none" stroke="#800020" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-
-              ${pointsCoords.map(p => `
-                <g class="group cursor-pointer">
-                  <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5" fill="#800020" stroke="#ffffff" stroke-width="2" class="transition-transform hover:scale-125"/>
-                  <text x="${p.x.toFixed(1)}" y="${svgHeight - padY + 16}" font-size="9" fill="#64748b" text-anchor="middle" font-weight="500">${p.pt.label}</text>
-                  <text x="${p.x.toFixed(1)}" y="${(p.y - 10).toFixed(1)}" font-size="10" fill="#1e293b" text-anchor="middle" font-weight="bold">${p.pt.score}%</text>
-                </g>
-              `).join("")}
-            </svg>
-          `;
-        } else {
-          lineSvgHtml = `
-            <div class="h-48 flex flex-col items-center justify-center text-slate-400 text-xs">
-              <span class="text-3xl mb-2">📊</span>
-              <span>Belum ada data daily log pencapaian pada filter periode ini.</span>
-              <span class="text-[11px] text-slate-400 mt-1">Klik tombol <strong>"✍️ Input Daily Report"</strong> di atas untuk menambahkan.</span>
-            </div>
-          `;
-        }
-
-        let html = `
-          <div class="space-y-6">
-            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-              <div>
-                <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
-                  <span>📊</span> Penilaian Harian & Target Sales / Staf
-                </h2>
-                <p class="text-xs text-slate-500 mt-1">Modul HRD untuk setting target bulanan, input laporan pencapaian harian admin (termasuk pengurangan kesalahan/komplain/SP), serta grafik evaluasi perpanjangan kontrak & kartap.</p>
-              </div>
-
-              ${isHrdOrAdmin ? `
-                <div class="flex items-center gap-2 flex-wrap self-start lg:self-auto">
-                  <button id="btn-daily-target-setting" class="bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
-                    🎯 Setting Target Bulanan
-                  </button>
-                  <button id="btn-daily-input-log" class="bg-maroon-700 hover:bg-maroon-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
-                    ✍️ Input Daily Report
-                  </button>
-                  <button id="btn-daily-export-excel" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
-                    📥 Export Excel
-                  </button>
-                  <button id="btn-daily-export-pdf" class="bg-blue-700 hover:bg-blue-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
-                    📄 Cetak Laporan PDF
-                  </button>
-                </div>
-              ` : `
-                <div class="flex items-center gap-2">
-                  <button id="btn-daily-export-excel" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
-                    📥 Export Excel
-                  </button>
-                  <button id="btn-daily-export-pdf" class="bg-blue-700 hover:bg-blue-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
-                    📄 Cetak Laporan PDF
-                  </button>
-                </div>
-              `}
-            </div>
-
-            <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
-              <div>
-                <label class="block font-bold text-slate-700 mb-1">Pilih Karyawan:</label>
-                <select id="flt-daily-karyawan" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold" ${isRegularEmployee ? 'disabled' : ''}>
-                  <option value="">-- Semua Karyawan --</option>
-                  ${activeKaryawan.map(k => `
-                    <option value="${escapeHtml(k.nama_karyawan)}" ${state.filterKaryawan.toLowerCase() === k.nama_karyawan.toLowerCase() ? 'selected' : ''}>
-                      ${escapeHtml(k.nama_karyawan)} (${k.divisi || "Staf"})
-                    </option>
-                  `).join('')}
-                </select>
-              </div>
-
-              <div>
-                <label class="block font-bold text-slate-700 mb-1">Kategori Tim / Divisi:</label>
-                <select id="flt-daily-kategori" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
-                  <option value="" ${state.filterKategori === "" ? 'selected' : ''}>Semua Kategori</option>
-                  <option value="SALES" ${state.filterKategori === "SALES" ? 'selected' : ''}>📈 Sales / Marketing (Lampiran 1)</option>
-                  <option value="NON_SALES" ${state.filterKategori === "NON_SALES" ? 'selected' : ''}>🏢 Staf / Non-Sales (Operational/HRD/Admin)</option>
-                </select>
-              </div>
-
-              <div>
-                <label class="block font-bold text-slate-700 mb-1">Rentang Laporan:</label>
-                <select id="flt-daily-timeframe" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
-                  <option value="WEEKLY" ${state.filterTimeframe === "WEEKLY" ? 'selected' : ''}>📅 Mingguan (Weekly)</option>
-                  <option value="MONTHLY" ${state.filterTimeframe === "MONTHLY" ? 'selected' : ''}>🗓️ Bulanan (Monthly)</option>
-                  <option value="QUARTERLY" ${state.filterTimeframe === "QUARTERLY" ? 'selected' : ''}>📊 Kuartalan (Quarterly)</option>
-                  <option value="YEARLY" ${state.filterTimeframe === "YEARLY" ? 'selected' : ''}>📈 Tahunan (Yearly)</option>
-                </select>
-              </div>
-
-              <div>
-                <label class="block font-bold text-slate-700 mb-1">Tahun & Sub-Periode:</label>
-                <div class="flex items-center gap-1.5">
-                  <select id="flt-daily-year" class="w-1/2 p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
-                    ${[2024, 2025, 2026, 2027].map(y => `<option value="${y}" ${state.selectedYear === String(y) ? 'selected' : ''}>${y}</option>`).join('')}
-                  </select>
-
-                  ${state.filterTimeframe === "WEEKLY" ? `
-                    <select id="flt-daily-week" class="w-1/2 p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
-                      <option value="W1" ${state.selectedWeek === "W1" ? 'selected' : ''}>Minggu 1</option>
-                      <option value="W2" ${state.selectedWeek === "W2" ? 'selected' : ''}>Minggu 2</option>
-                      <option value="W3" ${state.selectedWeek === "W3" ? 'selected' : ''}>Minggu 3</option>
-                      <option value="W4" ${state.selectedWeek === "W4" ? 'selected' : ''}>Minggu 4</option>
-                    </select>
-                  ` : state.filterTimeframe === "QUARTERLY" ? `
-                    <select id="flt-daily-quarter" class="w-1/2 p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
-                      <option value="Q1" ${state.selectedQuarter === "Q1" ? 'selected' : ''}>Q1 (Jan-Mar)</option>
-                      <option value="Q2" ${state.selectedQuarter === "Q2" ? 'selected' : ''}>Q2 (Apr-Jun)</option>
-                      <option value="Q3" ${state.selectedQuarter === "Q3" ? 'selected' : ''}>Q3 (Jul-Sep)</option>
-                      <option value="Q4" ${state.selectedQuarter === "Q4" ? 'selected' : ''}>Q4 (Okt-Des)</option>
-                    </select>
-                  ` : `
-                    <select id="flt-daily-month" class="w-1/2 p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold" ${state.filterTimeframe === "YEARLY" ? 'disabled' : ''}>
-                      ${[
-                        {v:"01",l:"Jan"}, {v:"02",l:"Feb"}, {v:"03",l:"Mar"}, {v:"04",l:"Apr"},
-                        {v:"05",l:"Mei"}, {v:"06",l:"Jun"}, {v:"07",l:"Jul"}, {v:"08",l:"Ags"},
-                        {v:"09",l:"Sep"}, {v:"10",l:"Okt"}, {v:"11",l:"Nov"}, {v:"12",l:"Des"}
-                      ].map(m => `<option value="${m.v}" ${state.selectedMonth === m.v ? 'selected' : ''}>${m.l}</option>`).join('')}
-                    </select>
-                  `}
-                </div>
-              </div>
-
-              <div class="flex items-center justify-end">
-                <span class="inline-block px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                  Total Log Data: <strong>${filteredLogs.length} Record</strong>
-                </span>
-              </div>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs flex items-center justify-between">
-                <div>
-                  <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Rata-rata Performa</span>
-                  <div class="text-2xl font-black text-slate-800 mt-1">${avgScore}<span class="text-sm font-normal text-slate-400">%</span></div>
-                  <span class="inline-block mt-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${statusBadgeClass}">${statusPredikat}</span>
-                </div>
-                <div class="w-12 h-12 rounded-2xl bg-maroon-50 text-maroon-700 flex items-center justify-center text-xl font-bold">
-                  🎯
-                </div>
-              </div>
-
-              <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs flex items-center justify-between">
-                <div>
-                  <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Total Log Laporan</span>
-                  <div class="text-2xl font-black text-slate-800 mt-1">${filteredLogs.length} <span class="text-xs font-normal text-slate-400">Hari Kerja</span></div>
-                  <span class="text-[11px] text-slate-400 mt-1.5 block">Diinput via Daily Report</span>
-                </div>
-                <div class="w-12 h-12 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center text-xl font-bold">
-                  📝
-                </div>
-              </div>
-
-              <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs flex items-center justify-between">
-                <div>
-                  <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Penalti & Komplain</span>
-                  <div class="text-2xl font-black text-rose-700 mt-1">${totalPenaltyCount} <span class="text-xs font-normal text-slate-400">Catatan</span></div>
-                  <span class="text-[11px] text-slate-400 mt-1.5 block">Kesalahan / Komplain / SP</span>
-                </div>
-                <div class="w-12 h-12 rounded-2xl bg-rose-50 text-rose-700 flex items-center justify-center text-xl font-bold">
-                  ⚠️
-                </div>
-              </div>
-
-              <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs flex items-center justify-between col-span-1">
-                <div>
-                  <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Rekomendasi Kontrak HRD</span>
-                  <p class="text-xs font-bold text-slate-800 mt-1.5 leading-snug">${statusRekomendasi}</p>
-                  <span class="text-[10px] text-slate-400 block mt-1">Berdasarkan Standar Grade Performa</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-2xs space-y-4">
-              <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                <div>
-                  <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
-                    <span>📈</span> Grafik Peningkatan & Tren Performa Karyawan (%)
-                  </h3>
-                  <p class="text-xs text-slate-500 mt-0.5">Visualisasi dinamika pencapaian nilai harian/periodik karyawan dari waktu ke waktu.</p>
-                </div>
-                <span class="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
-                  Target Standar: 100%
-                </span>
-              </div>
-
-              <div class="pt-2">
-                ${lineSvgHtml}
-              </div>
-            </div>
-
-            <div class="bg-white rounded-2xl border border-slate-100 shadow-2xs overflow-hidden">
-              <div class="p-5 border-b border-slate-100 flex items-center justify-between gap-4">
-                <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
-                  <span>📋</span> Rincian Riwayat Log Harian & Catatan Komplain
-                </h3>
-                <span class="text-xs text-slate-500 font-medium">Menampilkan ${filteredLogs.length} entri</span>
-              </div>
-
-              ${filteredLogs.length === 0 ? `
-                <div class="p-8 text-center text-slate-400 text-xs">
-                  <p>Tidak ada log penilaian harian yang ditemukan pada kriteria filter ini.</p>
-                </div>
-              ` : `
-                <div class="overflow-x-auto">
-                  <table class="w-full text-left text-xs text-slate-700 border-collapse">
-                    <thead>
-                      <tr class="bg-slate-50/80 text-slate-600 border-b border-slate-200 font-bold uppercase tracking-wider text-[11px]">
-                        <th class="p-3.5">Tanggal</th>
-                        <th class="p-3.5">Nama Karyawan</th>
-                        <th class="p-3.5">Kategori</th>
-                        <th class="p-3.5 text-center">Skor Harian</th>
-                        <th class="p-3.5">Detail Capaian / Penalti Komplain & SP</th>
-                        <th class="p-3.5">Catatan Daily Report</th>
-                      </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
-                      ${filteredLogs.map(log => {
-                        const score = parseFloat(log.score_harian || 100);
-                        let badgeCol = "bg-emerald-50 text-emerald-700 border-emerald-200";
-                        if (score < 70) badgeCol = "bg-rose-50 text-rose-700 border-rose-200";
-                        else if (score < 80) badgeCol = "bg-amber-50 text-amber-700 border-amber-200";
-                        else if (score < 90) badgeCol = "bg-blue-50 text-blue-700 border-blue-200";
-
-                        let detailContent = "";
-                        if (log.tipe_karyawan === "SALES" && log.achievements) {
-                          detailContent = `
-                            <div class="space-y-1 text-[11px]">
-                              <span class="font-bold text-slate-800">Capaian Sales SO:</span>
-                              <div class="grid grid-cols-2 gap-x-2 gap-y-0.5 text-slate-600">
-                                <div>Dulux: <strong>${log.achievements.volume_dulux || 0}</strong></div>
-                                <div>Catylac: <strong>${log.achievements.volume_catylac || 0}</strong></div>
-                                <div>Maxilite: <strong>${log.achievements.volume_maxilite || 0}</strong></div>
-                                <div>Aquashield: <strong>${log.achievements.volume_aquashield || 0}</strong></div>
-                                <div class="col-span-2">Value Tertagih: <strong>Rp ${(parseFloat(log.achievements.value_penjualan_tertagih || 0)).toLocaleString("id-ID")}</strong></div>
-                              </div>
-                            </div>
-                          `;
-                        } else {
-                          const penaltiList = log.detail_penalti || [];
-                          if (penaltiList.length > 0) {
-                            detailContent = penaltiList.map(p => `
-                              <div class="text-[11px] text-rose-700 bg-rose-50 p-1.5 rounded border border-rose-200/80 mb-1">
-                                <strong>⚠ ${escapeHtml(p.tipe || "Komplain/Kesalahan")}:</strong> ${escapeHtml(p.deskripsi || "-")} (Potongan: -${p.minus}%)
-                              </div>
-                            `).join("");
-                          } else {
-                            detailContent = `<span class="text-emerald-600 font-semibold text-[11px]">✓ Kinerja 100% Sesuai SOP (Bebas Komplain)</span>`;
-                          }
-                        }
-
-                        return `
-                          <tr class="hover:bg-slate-50/50 transition">
-                            <td class="p-3.5 font-bold text-slate-800 whitespace-nowrap">${fmtDateShort(log.tanggal)}</td>
-                            <td class="p-3.5 font-bold text-slate-800 whitespace-nowrap">${escapeHtml(log.nama_karyawan)}</td>
-                            <td class="p-3.5 whitespace-nowrap">
-                              <span class="px-2 py-0.5 rounded text-[10px] font-bold ${log.tipe_karyawan === 'SALES' ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}">
-                                ${log.tipe_karyawan === 'SALES' ? 'Sales' : 'Staf Ops'}
-                              </span>
-                            </td>
-                            <td class="p-3.5 text-center whitespace-nowrap">
-                              <span class="px-2.5 py-1 rounded-lg text-xs font-bold border ${badgeCol}">
-                                ${score}%
-                              </span>
-                            </td>
-                            <td class="p-3.5 max-w-xs">
-                              ${detailContent}
-                            </td>
-                            <td class="p-3.5 max-w-xs text-slate-600 leading-relaxed">
-                              ${escapeHtml(log.catatan_daily_report || "-")}
-                            </td>
-                          </tr>
-                        `;
-                      }).join("")}
-                    </tbody>
-                  </table>
-                </div>
-              `}
-            </div>
-          </div>
-        `;
-
-        wrap.innerHTML = html;
-
-        const fltKaryawan = wrap.querySelector("#flt-daily-karyawan");
-        const fltKategori = wrap.querySelector("#flt-daily-kategori");
-        const fltTimeframe = wrap.querySelector("#flt-daily-timeframe");
-        const fltYear = wrap.querySelector("#flt-daily-year");
-        const fltMonth = wrap.querySelector("#flt-daily-month");
-        const fltWeek = wrap.querySelector("#flt-daily-week");
-        const fltQuarter = wrap.querySelector("#flt-daily-quarter");
-
-        if (fltKaryawan) fltKaryawan.onchange = (e) => { state.filterKaryawan = e.target.value; refreshData(); };
-        if (fltKategori) fltKategori.onchange = (e) => { state.filterKategori = e.target.value; refreshData(); };
-        if (fltTimeframe) fltTimeframe.onchange = (e) => { state.filterTimeframe = e.target.value; refreshData(); };
-        if (fltYear) fltYear.onchange = (e) => { state.selectedYear = e.target.value; refreshData(); };
-        if (fltMonth) fltMonth.onchange = (e) => { state.selectedMonth = e.target.value; refreshData(); };
-        if (fltWeek) fltWeek.onchange = (e) => { state.selectedWeek = e.target.value; refreshData(); };
-        if (fltQuarter) fltQuarter.onchange = (e) => { state.selectedQuarter = e.target.value; refreshData(); };
-
-        const btnTarget = wrap.querySelector("#btn-daily-target-setting");
-        const btnInputLog = wrap.querySelector("#btn-daily-input-log");
-        const btnExcel = wrap.querySelector("#btn-daily-export-excel");
-        const btnPdf = wrap.querySelector("#btn-daily-export-pdf");
-
-        if (btnTarget) {
-          btnTarget.onclick = () => {
-            openTargetSettingModal(activeKaryawan, allTargets, async () => {
-              allTargets = await fsGetAll(COL.TARGET_BULANAN_KPI);
-              refreshData();
-            });
-          };
-        }
-
-        if (btnInputLog) {
-          btnInputLog.onclick = () => {
-            openDailyLogModal(activeKaryawan, allTargets, async () => {
-              allDailyLogs = await fsGetAll(COL.LOG_PENILAIAN_HARIAN);
-              refreshData();
-            });
-          };
-        }
-
-        if (btnExcel) {
-          btnExcel.onclick = () => {
-            exportDailyPerformanceExcel(filteredLogs, state);
-          };
-        }
-
-        if (btnPdf) {
-          btnPdf.onclick = () => {
-            exportDailyPerformancePdf(filteredLogs, state, activeKaryawan, avgScore, statusPredikat, statusRekomendasi);
-          };
-        }
-      }
-
-      refreshData();
-
-    } catch (err) {
-      console.error("Error loading daily performance:", err);
-      wrap.innerHTML = emptyState("Gagal memuat modul penilaian harian: " + err.message);
-    }
-  }
-
-  async function switchTab(tab) {
-    if (!panels[tab]) return;
-
-    Object.keys(panels).forEach(k => {
-      if (panels[k]) {
-        panels[k].classList.toggle("hidden", k !== tab);
-      }
-    });
-
-    container.querySelectorAll(".pk-tab").forEach(b => {
-      const isSelected = b.dataset.ntab === tab;
-      b.classList.toggle("border-maroon-700", isSelected);
-      b.classList.toggle("text-maroon-700", isSelected);
-      b.classList.toggle("border-transparent", !isSelected);
-      b.classList.toggle("text-slate-500", !isSelected);
-    });
-
-    if (!loaded[tab]) {
-      try {
-        if (tab === "kontrak") await loadKontrak();
-        else if (tab === "kpi360") await loadKpi360();
-        else if (tab === "hasil") await loadHasil();
-        else if (tab === "evaluasi") await loadEvaluasi();
-        else if (tab === "daily") await loadDailyPerformance();
-        else if (tab === "template") await loadTemplateKpi();
-        else if (tab === "grafik") await loadEmployeeGrafik();
-        loaded[tab] = true;
-      } catch (err) {
-        console.error(`Gagal memuat data sub menu ${tab}:`, err);
-        loaded[tab] = false;
-        if (panels[tab]) {
-          panels[tab].innerHTML = emptyState(
-            `Gagal memuat data sub menu: ${err.message || err}`,
-            "Silakan klik tombol sub menu di atas untuk mencoba kembali."
-          );
-        }
-      }
-    }
-  }
-
-  container.querySelectorAll(".pk-tab").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const tab = btn.dataset.ntab;
-      if (tab) switchTab(tab);
-    });
-  });
-
-  const tabParam = params ? (typeof params.get === "function" ? params.get("tab") : params.tab) : null;
-  let initialTab = "kontrak";
-  if (isRegularEmployee) {
-    initialTab = (tabParam === "kontrak") ? "kontrak" : "grafik";
-  } else {
-    if (tabParam === "kpi" || tabParam === "kpi360") initialTab = "kpi360";
-    else if (tabParam === "evaluasi" || tabParam === "evaluasi-kontrak") initialTab = "evaluasi";
-    else if (panels[tabParam]) initialTab = tabParam;
-    else initialTab = "kontrak";
-  }
-
-  await switchTab(initialTab);
-
-  return { unmount() {} };
+ const role = (session.role || "").toUpperCase();
+ const isFullAccess = FULL_ACCESS_ROLES.includes(role);
+ const isAtasanView = !isFullAccess && ATASAN_VIEW_ROLES.includes(role);
+ const isHrdOrAdmin = isFullAccess || ["HRD", "SUPERADMIN", "ADMIN", "ADMINISTRATOR", "DIREKTUR", "GM", "FINANCE"].includes(role);
+ const isAtasan = isAtasanView || ["MANAGER", "SPV", "KOORDINATOR", "BRANCH MANAGER"].includes(role);
+ const isRegularEmployee = !isHrdOrAdmin && !isAtasan;
+ const canManageKontrak = isFullAccess;
+ let bawahanNames = null;
+
+ try {
+ const snapRules = await getDoc(doc(db, COL.APP_SETTINGS, "aturan_penilaian_grade"));
+ if (snapRules.exists() && snapRules.data()?.rules) {
+ currentGradeRulesMap = { ...DEFAULT_GRADE_RULES, ...snapRules.data().rules };
+ }
+ } catch(e) {}
+
+ const btnGradeCfg = container.querySelector("#btn-open-grade-config");
+ if (btnGradeCfg && isHrdOrAdmin) {
+ btnGradeCfg.classList.remove("hidden");
+ btnGradeCfg.onclick = () => {
+ openGradeRulesModal(session, currentGradeRulesMap, (updated) => {
+ currentGradeRulesMap = updated;
+ });
+ };
+ }
+
+ const panels = {
+ kontrak: container.querySelector("#pk-panel-kontrak"),
+ kpi360: container.querySelector("#pk-panel-kpi360"),
+ hasil: container.querySelector("#pk-panel-hasil"),
+ evaluasi: container.querySelector("#pk-panel-evaluasi"),
+ daily: container.querySelector("#pk-panel-daily"),
+ template: container.querySelector("#pk-panel-template"),
+ grafik: container.querySelector("#pk-panel-employee-grafik"),
+ };
+ const loaded = {};
+
+ async function loadEmployeeGrafik() {
+ const wrap = container.querySelector("#pk-panel-employee-grafik");
+ if (!wrap) return;
+ wrap.classList.remove("hidden");
+ wrap.innerHTML = `<div class="p-8">${skeletonRows(6)}</div>`;
+
+ try {
+ const [allLogs, allTasks, allReviews] = await Promise.all([
+ fsGetAll(COL.LOG_PENILAIAN_KPI),
+ fsGetAll(COL.TUGAS_KPI_360),
+ fsGetAll(COL.PERFORMANCE_REVIEW)
+ ]);
+
+ const userNama = (session.nama || "").toLowerCase();
+ const userNik = (session.nik || "").toLowerCase();
+
+ // Filter logs & tasks for current employee
+ const myLogs = allLogs.filter(r => 
+ (r.nama_dinilai && r.nama_dinilai.toLowerCase() === userNama) ||
+ (r.nik_dinilai && r.nik_dinilai.toLowerCase() === userNik)
+ ).sort((a, b) => new Date(b.tanggal || b.created_at || 0) - new Date(a.tanggal || a.created_at || 0));
+
+ const myTasks = allTasks.filter(t => 
+ t.status === "DONE" && 
+ ((t.nama_dinilai && t.nama_dinilai.toLowerCase() === userNama) || (t.nik_dinilai && t.nik_dinilai.toLowerCase() === userNik))
+ ).sort((a, b) => new Date(b.tanggal_selesai || b.created_at || 0) - new Date(a.tanggal_selesai || a.created_at || 0));
+
+ const myReviews = allReviews.filter(r => 
+ (r.nama_karyawan && r.nama_karyawan.toLowerCase() === userNama) ||
+ (r.nik && r.nik.toLowerCase() === userNik)
+ ).sort((a, b) => new Date(b.created_at || b.tanggal || 0) - new Date(a.created_at || a.tanggal || 0));
+
+ // Check if employee has any evaluation record
+ if (myLogs.length === 0 && myTasks.length === 0 && myReviews.length === 0) {
+ wrap.innerHTML = `
+ <div class="bg-white rounded-2xl p-10 border border-slate-200/80 shadow-xs text-center max-w-2xl mx-auto my-6">
+ <div class="w-16 h-16 bg-maroon-50 text-maroon-700 rounded-2xl flex items-center justify-center mx-auto text-3xl mb-4 shadow-xs"></div>
+ <h3 class="text-xl font-bold text-slate-800">Belum Ada Hasil Penilaian KPI</h3>
+ <p class="text-slate-500 text-sm mt-2 leading-relaxed">
+ Halo, <strong class="text-slate-700">${escapeHtml(session.nama || "Karyawan")}</strong>. Grafik dan analisis nilai indikator KPI Anda akan tertampil secara otomatis di halaman ini setelah proses evaluasi diselesaikan oleh Atasan / HRD.
+ </p>
+ <div class="mt-6 p-4 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-500 text-left">
+ <strong class="text-slate-700 block mb-1"> Informasi Penilaian KPI:</strong>
+ • Penilaian mencakup Indikator Kinerja Utama (KPI), Kedisiplinan, Kualitas Kerja, dan Kerja Sama.<br/>
+ • Hasil evaluasi akan dikelompokkan per indikator dengan grafik persentase nilai akhir.
+ </div>
+ </div>`;
+ return;
+ }
+
+ // Pick the latest log/task or construct indicator list
+ const latestLog = myLogs[0] || myTasks[0] || null;
+ const latestReview = myReviews[0] || null;
+
+ let totalScore = 0;
+ let periodeName = "Periode Terbaru";
+ let penilaiName = "Atasan / HRD";
+ let detailSoal = [];
+
+ if (latestLog) {
+ totalScore = parseFloat(latestLog.total_skor || latestLog.skor_akhir || 0);
+ periodeName = latestLog.periode || "Periode Berjalan";
+ penilaiName = latestLog.penilai || latestLog.nama_penilai || "Atasan Direct";
+ detailSoal = latestLog.detail_json || latestLog.soal_json || [];
+ } else if (latestReview) {
+ totalScore = parseFloat(latestReview.skor_akhir || 0);
+ periodeName = latestReview.periode || "Periode Berjalan";
+ penilaiName = latestReview.reviewer || "Atasan Direct";
+ detailSoal = [
+ { aspek: "Kualitas Kerja", indikator: "Tingkat akurasi dan kerapian hasil kerja", bobot: 20, nilai_diberikan: latestReview.kualitas_kerja || 0 },
+ { aspek: "Produktivitas", indikator: "Pencapaian target kuantitas pekerjaan", bobot: 20, nilai_diberikan: latestReview.produktivitas || 0 },
+ { aspek: "Kerja Sama", indikator: "Kemampuan kolaborasi tim & komunikasi", bobot: 20, nilai_diberikan: latestReview.kerja_sama || 0 },
+ { aspek: "Kedisiplinan", indikator: "Kepatuhan tata tertib & kebersihan kerja", bobot: 20, nilai_diberikan: latestReview.kedisiplinan || 0 },
+ { aspek: "Komunikasi", indikator: "Penyampaian informasi & koordinasi", bobot: 20, nilai_diberikan: latestReview.komunikasi || 0 },
+ ];
+ }
+
+ // Grade determination
+ let gradeLabel = "Perlu Perbaikan";
+ let gradeBadgeClass = "bg-rose-100 text-rose-800 border-rose-200";
+ if (totalScore >= 88) {
+ gradeLabel = "Sangat Baik (A)";
+ gradeBadgeClass = "bg-emerald-100 text-emerald-800 border-emerald-200";
+ } else if (totalScore >= 75) {
+ gradeLabel = "Baik (B)";
+ gradeBadgeClass = "bg-blue-100 text-blue-800 border-blue-200";
+ } else if (totalScore >= 60) {
+ gradeLabel = "Cukup (C)";
+ gradeBadgeClass = "bg-amber-100 text-amber-800 border-amber-200";
+ }
+
+ if (typeof detailSoal === "string") {
+ try { detailSoal = JSON.parse(detailSoal); } catch (e) { detailSoal = []; }
+ }
+ if (!Array.isArray(detailSoal)) detailSoal = [];
+
+ // Group by Aspek
+ const aspekGroups = {};
+ detailSoal.forEach(s => {
+ const asp = s.aspek || "Umum";
+ if (!aspekGroups[asp]) aspekGroups[asp] = { totalNilai: 0, count: 0, items: [] };
+ aspekGroups[asp].totalNilai += parseFloat(s.nilai_diberikan || s.nilai || 0);
+ aspekGroups[asp].count += 1;
+ aspekGroups[asp].items.push(s);
+ });
+
+ // Render Aspek Summary Cards
+ let aspekCardsHtml = Object.keys(aspekGroups).map(aspKey => {
+ const grp = aspekGroups[aspKey];
+ const avg = Math.round(grp.totalNilai / (grp.count || 1));
+ let barClass = "from-emerald-500 to-teal-600";
+ if (avg < 60) barClass = "from-rose-500 to-red-600";
+ else if (avg < 75) barClass = "from-amber-500 to-yellow-600";
+ else if (avg < 85) barClass = "from-blue-500 to-indigo-600";
+
+ return `
+ <div class="bg-white rounded-xl p-4 border border-slate-200/80 shadow-2xs">
+ <div class="flex items-center justify-between mb-2">
+ <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">${escapeHtml(aspKey)}</span>
+ <span class="text-sm font-black text-slate-800">${avg}%</span>
+ </div>
+ <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+ <div class="h-full bg-gradient-to-r ${barClass} transition-all duration-500 rounded-full" style="width: ${Math.min(100, Math.max(0, avg))}%"></div>
+ </div>
+ <span class="text-[11px] text-slate-400 mt-1.5 block">${grp.count} Indikator Kinerja</span>
+ </div>`;
+ }).join("");
+
+ // Render Every Indicator Chart Card
+ let indicatorChartsHtml = detailSoal.map((s, idx) => {
+ const nilai = parseFloat(s.nilai_diberikan || s.nilai || 0);
+ const bobot = parseFloat(s.bobot || 0);
+ const weighted = (nilai * (bobot / 100)).toFixed(2);
+
+ let barClass = "from-emerald-500 to-teal-600";
+ let statusBadge = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Sangat Baik</span>`;
+ if (nilai < 60) {
+ barClass = "from-rose-500 to-red-600";
+ statusBadge = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">Perlu Perbaikan</span>`;
+ } else if (nilai < 75) {
+ barClass = "from-amber-500 to-yellow-600";
+ statusBadge = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">Cukup</span>`;
+ } else if (nilai < 85) {
+ barClass = "from-blue-500 to-indigo-600";
+ statusBadge = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">Baik</span>`;
+ }
+
+ return `
+ <div class="bg-white rounded-xl p-5 border border-slate-200/80 shadow-2xs hover:shadow-xs transition space-y-3">
+ <div class="flex flex-wrap items-start justify-between gap-2">
+ <div>
+ <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 mb-1">
+ ${escapeHtml(s.aspek || "Umum")}
+ </span>
+ <h4 class="text-sm font-bold text-slate-800 leading-snug">${escapeHtml(s.indikator || s.aspek)}</h4>
+ </div>
+ <div class="text-right">
+ <span class="text-lg font-black text-slate-800">${nilai} <span class="text-xs font-normal text-slate-400">/ 100</span></span>
+ ${bobot > 0 ? `<div class="text-[11px] text-slate-500">Bobot: <strong>${bobot}%</strong> (Skor: ${weighted})</div>` : ''}
+ </div>
+ </div>
+
+ <!-- Visual Progress Bar Chart -->
+ <div class="space-y-1">
+ <div class="flex justify-between items-center text-xs text-slate-500 font-medium">
+ <span>Capaian Indikator</span>
+ <span>${nilai}%</span>
+ </div>
+ <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden p-0.5 border border-slate-200/50">
+ <div class="h-full bg-gradient-to-r ${barClass} rounded-full transition-all duration-700" style="width: ${Math.min(100, Math.max(0, nilai))}%"></div>
+ </div>
+ </div>
+
+ <div class="flex items-center justify-between pt-1 border-t border-slate-100 text-xs text-slate-500">
+ <span>Status Indikator</span>
+ ${statusBadge}
+ </div>
+ </div>`;
+ }).join("");
+
+ // Render Historical Evaluation Trend if multiple logs exist
+ let historyHtml = "";
+ if (myLogs.length > 1) {
+ historyHtml = `
+ <div class="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-2xs space-y-4">
+ <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
+ <span></span> Riwayat Perkembangan KPI Per Periode
+ </h3>
+ <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+ ${myLogs.slice(0, 6).map(lg => {
+ const sc = parseFloat(lg.total_skor || lg.skor_akhir || 0);
+ return `
+ <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200/60 flex items-center justify-between">
+ <div>
+ <div class="text-xs font-bold text-slate-700">${escapeHtml(lg.periode || "Periode")}</div>
+ <div class="text-[11px] text-slate-400">${fmtDateShort(lg.tanggal)}</div>
+ </div>
+ <span class="text-base font-black text-maroon-700">${sc}</span>
+ </div>`;
+ }).join("")}
+ </div>
+ </div>`;
+ }
+
+ // Render Feedback callout
+ let feedbackHtml = "";
+ if (latestLog && (latestLog.catatan_baik || latestLog.catatan_perbaikan || latestLog.catatan_penilai)) {
+ feedbackHtml = `
+ <div class="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-2xs space-y-4">
+ <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
+ <span></span> Catatan & Ulasan Evaluasi Dari Penilai
+ </h3>
+ <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+ ${latestLog.catatan_baik ? `
+ <div class="p-4 bg-emerald-50/60 rounded-xl border border-emerald-200/70 text-xs">
+ <span class="font-bold text-emerald-800 block mb-1">[v] Kelebihan & Hal yang Sudah Baik:</span>
+ <p class="text-slate-700 leading-relaxed">${escapeHtml(latestLog.catatan_baik)}</p>
+ </div>` : ''}
+ ${latestLog.catatan_perbaikan ? `
+ <div class="p-4 bg-rose-50/60 rounded-xl border border-rose-200/70 text-xs">
+ <span class="font-bold text-rose-800 block mb-1"> Area Peningkatan:</span>
+ <p class="text-slate-700 leading-relaxed">${escapeHtml(latestLog.catatan_perbaikan)}</p>
+ </div>` : ''}
+ </div>
+ </div>`;
+ }
+
+ wrap.innerHTML = `
+ <div class="space-y-6">
+ <!-- Main Overall Score Card -->
+ <div class="bg-gradient-to-r from-slate-900 via-slate-800 to-maroon-900 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
+ <div class="relative z-10 flex flex-wrap items-center justify-between gap-6">
+ <div class="space-y-1">
+ <span class="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-white/10 text-amber-300 backdrop-blur-xs">
+ ${escapeHtml(periodeName)}
+ </span>
+ <h2 class="text-2xl font-black text-white">${escapeHtml(session.nama || "Karyawan")}</h2>
+ <p class="text-xs text-slate-300">Penilai: <strong class="text-white">${escapeHtml(penilaiName)}</strong></p>
+ </div>
+
+ <div class="flex items-center gap-4 bg-white/10 p-4 rounded-xl border border-white/10 backdrop-blur-xs">
+ <div class="text-center">
+ <div class="text-[11px] uppercase tracking-wider text-slate-300 font-bold">Skor KPI Akhir</div>
+ <div class="text-3xl font-black text-amber-400 mt-0.5">${totalScore} <span class="text-xs font-normal text-slate-300">/ 100</span></div>
+ </div>
+ <div class="h-10 w-px bg-white/20"></div>
+ <div>
+ <div class="text-[11px] uppercase tracking-wider text-slate-300 font-bold mb-1">Predikat</div>
+ <span class="px-3 py-1 rounded-lg text-xs font-bold border ${gradeBadgeClass}">
+ ${gradeLabel}
+ </span>
+ </div>
+ </div>
+ </div>
+ </div>
+
+ <!-- Ringkasan Nilai Per Aspek -->
+ <div>
+ <h3 class="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+ <span></span> Ringkasan Nilai Per Aspek Kinerja
+ </h3>
+ <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+ ${aspekCardsHtml}
+ </div>
+ </div>
+
+ <!-- Grafik Penilaian Pada Setiap Indikator -->
+ <div>
+ <div class="flex items-center justify-between mb-3">
+ <h3 class="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+ <span></span> Grafik Penilaian Indikator KPI (${detailSoal.length} Indikator)
+ </h3>
+ </div>
+ <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+ ${indicatorChartsHtml}
+ </div>
+ </div>
+
+ ${historyHtml}
+ ${feedbackHtml}
+ </div>`;
+ } catch (e) {
+ console.error(e);
+ wrap.innerHTML = emptyState("Gagal memuat grafik penilaian KPI: " + e.message);
+ }
+ }
+
+ if (isRegularEmployee) {
+ const titleEl = container.querySelector("#pk-title");
+ const subtitleEl = container.querySelector("#pk-subtitle");
+ const tabHeader = container.querySelector("#pk-tab-header");
+
+ if (titleEl) titleEl.textContent = "Penilaian & Kontrak Saya";
+ if (subtitleEl) subtitleEl.textContent = "Grafik pencapaian penilaian KPI dan rincian dokumen ikatan dinas / kontrak kerja Anda.";
+ if (tabHeader) {
+ tabHeader.innerHTML = `
+ <button data-ntab="grafik" class="pk-tab px-4 py-2.5 text-sm font-medium border-b-2 border-maroon-700 text-maroon-700 whitespace-nowrap">Hasil & Grafik KPI Saya</button>
+ <button data-ntab="kontrak" class="pk-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">Kontrak Kerja Saya</button>
+ `;
+ }
+ }
+
+ async function loadKontrak() {
+ if (isAtasanView && bawahanNames === null) {
+ bawahanNames = await getBawahanNames(session.nama);
+ }
+ const bset = new Set(bawahanNames || []);
+
+ const wrap = panels.kontrak;
+ wrap.innerHTML = `<div class="p-6">${skeletonRows(4)}</div>`;
+
+ let allKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
+ let allKontrak = await fsGetAll(COL.MASTER_KONTRAK);
+
+ if (isAtasanView) {
+ allKaryawan = allKaryawan.filter(k => bset.has(k.nama_karyawan));
+ allKontrak = allKontrak.filter(k => bset.has(k.nama_karyawan));
+ } else if (isRegularEmployee) {
+ const myName = String(session.nama || "").toLowerCase().trim();
+ const myNik = String(session.nik || "").toLowerCase().trim();
+ allKaryawan = allKaryawan.filter(k => {
+ const kname = String(k.nama_karyawan || "").toLowerCase().trim();
+ const knik = String(k.nik_karyawan || k.nik || "").toLowerCase().trim();
+ return (myName && kname === myName) || (myNik && knik === myNik);
+ });
+ allKontrak = allKontrak.filter(c => {
+ const cname = String(c.nama_karyawan || "").toLowerCase().trim();
+ return (myName && cname === myName);
+ });
+ }
+
+ function renderCardView() {
+ const kontrakMap = {};
+ allKontrak.forEach(c => {
+ if (!c.nama_karyawan) return;
+ if (!kontrakMap[c.nama_karyawan]) kontrakMap[c.nama_karyawan] = [];
+ kontrakMap[c.nama_karyawan].push(c);
+ });
+
+ // Sort contracts for each employee by tanggal_mulai / created_at descending
+ Object.keys(kontrakMap).forEach(nama => {
+ kontrakMap[nama].sort((a, b) => new Date(b.tanggal_mulai || b.created_at || 0) - new Date(a.tanggal_mulai || a.created_at || 0));
+ });
+
+ // Combine employees list with contract data
+ const empList = allKaryawan.map(k => {
+ const contracts = kontrakMap[k.nama_karyawan] || [];
+ const latestContract = contracts[0] || null;
+ 
+ let contractStatus = "TANPA KONTRAK";
+ let daysLeft = null;
+
+ if (latestContract && latestContract.tanggal_akhir) {
+ const today = new Date().toISOString().split("T")[0];
+ daysLeft = daysBetween(today, latestContract.tanggal_akhir);
+ if (daysLeft !== null && !isNaN(daysLeft)) {
+ if (daysLeft < 0) {
+ contractStatus = "HABIS";
+ } else if (daysLeft <= 30) {
+ contractStatus = "SEGERA HABIS";
+ } else {
+ contractStatus = "AKTIF";
+ }
+ }
+ }
+
+ return {
+ ...k,
+ contracts,
+ latestContract,
+ contractStatus,
+ daysLeft
+ };
+ });
+
+ // Add employees from contracts that are not in master karyawan list
+ const existingNames = new Set(allKaryawan.map(k => k.nama_karyawan));
+ Object.keys(kontrakMap).forEach(nama => {
+ if (!existingNames.has(nama)) {
+ const contracts = kontrakMap[nama];
+ const latestContract = contracts[0] || null;
+ let contractStatus = "TANPA KONTRAK";
+ let daysLeft = null;
+ if (latestContract && latestContract.tanggal_akhir) {
+ const today = new Date().toISOString().split("T")[0];
+ daysLeft = daysBetween(today, latestContract.tanggal_akhir);
+ if (daysLeft !== null && !isNaN(daysLeft)) {
+ if (daysLeft < 0) contractStatus = "HABIS";
+ else if (daysLeft <= 30) contractStatus = "SEGERA HABIS";
+ else contractStatus = "AKTIF";
+ }
+ }
+ empList.push({
+ id: null,
+ nama_karyawan: nama,
+ jabatan: latestContract?.jabatan || "-",
+ cabang: latestContract?.cabang || "-",
+ divisi: latestContract?.divisi || "-",
+ status_karyawan: "KONTRAK",
+ aktif_tdk_aktif: "AKTIF",
+ contracts,
+ latestContract,
+ contractStatus,
+ daysLeft
+ });
+ }
+ });
+
+ wrap.innerHTML = `
+ <div class="space-y-5">
+ <!-- Toolbar & Header -->
+ <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+ <div>
+ <h2 class="text-xl font-bold text-slate-800">Kartu Kontrak Karyawan</h2>
+ <p class="text-xs text-slate-500 mt-1">Kelola ikatan dinas, riwayat kontrak per karyawan, dan status keaktifan kerja.</p>
+ </div>
+ ${canManageKontrak ? `
+ <button id="btn-add-global-kontrak" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2.5 rounded-xl text-xs font-semibold transition shadow-sm flex items-center gap-2 self-start md:self-auto">
+ <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+ Tambah Kontrak Baru
+ </button>` : ''}
+ </div>
+
+ <!-- Filter & Search Bar -->
+ <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+ <div class="relative w-full sm:w-72">
+ <input type="text" id="ktr-search-input" placeholder=" Cari nama, jabatan, cabang..." class="w-full px-3 py-2 pl-9 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition">
+ </div>
+ <div class="flex items-center gap-2 w-full sm:w-auto overflow-x-auto">
+ <select id="ktr-filter-status-karyawan" class="px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white outline-none focus:border-maroon-500 font-medium">
+ <option value="ALL">Semua Status Karyawan</option>
+ <option value="AKTIF">Status: AKTIF</option>
+ <option value="TIDAK AKTIF">Status: TIDAK AKTIF</option>
+ </select>
+ <select id="ktr-filter-status-kontrak" class="px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white outline-none focus:border-maroon-500 font-medium">
+ <option value="ALL">Semua Masa Kontrak</option>
+ <option value="AKTIF">Kontrak: AKTIF (>30 Hari)</option>
+ <option value="SEGERA HABIS">Kontrak: SEGERA HABIS (≤30 Hari)</option>
+ <option value="HABIS">Kontrak: HABIS</option>
+ <option value="TANPA KONTRAK">Tanpa Kontrak</option>
+ </select>
+ </div>
+ </div>
+
+ <!-- Cards Grid -->
+ <div id="ktr-cards-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+ </div>
+ </div>
+ `;
+
+ const cardsContainer = wrap.querySelector("#ktr-cards-container");
+ const searchInput = wrap.querySelector("#ktr-search-input");
+ const filterStatusKaryawan = wrap.querySelector("#ktr-filter-status-karyawan");
+ const filterStatusKontrak = wrap.querySelector("#ktr-filter-status-kontrak");
+
+ function drawCards() {
+ const q = (searchInput.value || "").toLowerCase().trim();
+ const fStatKaryawan = filterStatusKaryawan.value;
+ const fStatKontrak = filterStatusKontrak.value;
+
+ const filtered = empList.filter(e => {
+ const nameMatch = (e.nama_karyawan || "").toLowerCase().includes(q) ||
+ (e.jabatan || "").toLowerCase().includes(q) ||
+ (e.cabang || "").toLowerCase().includes(q);
+ if (!nameMatch) return false;
+
+ const isAktifStr = (e.aktif_tdk_aktif || "AKTIF").toUpperCase();
+ if (fStatKaryawan !== "ALL" && isAktifStr !== fStatKaryawan) return false;
+
+ if (fStatKontrak !== "ALL" && e.contractStatus !== fStatKontrak) return false;
+
+ return true;
+ });
+
+ if (!filtered.length) {
+ cardsContainer.innerHTML = `<div class="col-span-full">${emptyState("Tidak ada data karyawan yang cocok", "Coba ubah kata kunci pencarian atau filter di atas.")}</div>`;
+ return;
+ }
+
+ cardsContainer.innerHTML = filtered.map(item => {
+ const isAktif = (item.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF";
+ const contractCount = item.contracts.length;
+ const lc = item.latestContract;
+
+ let badgeContractColor = "slate";
+ let daysLabel = "Tanpa ikatan kontrak aktif";
+
+ if (item.contractStatus === "AKTIF") {
+ badgeContractColor = "emerald";
+ daysLabel = `Sisa ${item.daysLeft} Hari`;
+ } else if (item.contractStatus === "SEGERA HABIS") {
+ badgeContractColor = "amber";
+ daysLabel = `Perlu Perpanjangan (${item.daysLeft} Hari Lagi)`;
+ } else if (item.contractStatus === "HABIS") {
+ badgeContractColor = "red";
+ daysLabel = `Sudah Kadaluarsa (${Math.abs(item.daysLeft)} Hari Lalu)`;
+ }
+
+ return `
+ <div class="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition p-5 flex flex-col justify-between group cursor-pointer card-emp-kontrak" data-emp-name="${escapeHtml(item.nama_karyawan)}">
+ <div>
+ <!-- Top Header -->
+ <div class="flex items-start justify-between gap-3 mb-3">
+ <div class="flex items-center gap-3">
+ ${avatar(item.nama_karyawan || "?", "w-11 h-11 border-2 border-slate-100")}
+ <div>
+ <h3 class="font-bold text-slate-800 text-sm group-hover:text-maroon-700 transition leading-snug">${escapeHtml(item.nama_karyawan)}</h3>
+ <p class="text-xs text-slate-500 font-medium">${escapeHtml(item.jabatan || "-")}</p>
+ </div>
+ </div>
+ ${badge(isAktif ? "AKTIF" : "TIDAK AKTIF", isAktif ? "emerald" : "slate")}
+ </div>
+
+ <!-- Info Chips -->
+ <div class="flex items-center gap-1.5 flex-wrap text-[11px] text-slate-500 mb-4 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+ <span class="font-semibold text-slate-700">${escapeHtml(item.cabang || "Pusat")}</span>
+ ${item.divisi ? `<span>• Divisi: ${escapeHtml(item.divisi)}</span>` : ''}
+ <span>• Status: <strong class="text-slate-800">${escapeHtml(formatStatusKaryawan(item.status_karyawan))}</strong></span>
+ </div>
+
+ <!-- Latest Contract Info -->
+ <div class="border-t border-slate-100 pt-3 space-y-1.5">
+ <div class="flex items-center justify-between text-xs">
+ <span class="text-slate-400 font-medium">Kontrak Terbaru:</span>
+ <span class="font-bold text-slate-700">${lc ? `Kontrak Ke-${lc.kontrak_ke || 1}` : "Belum Ada"}</span>
+ </div>
+ ${lc ? `
+ <div class="flex items-center justify-between text-xs">
+ <span class="text-slate-400 font-medium">Periode:</span>
+ <span class="font-medium text-slate-700">${fmtDateShort(lc.tanggal_mulai)} - ${fmtDateShort(lc.tanggal_akhir)}</span>
+ </div>
+ <div class="mt-2 flex items-center justify-between">
+ ${badge(item.contractStatus, badgeContractColor)}
+ <span class="text-[11px] font-semibold text-slate-500">${daysLabel}</span>
+ </div>` : `
+ <div class="py-2 text-center text-xs text-slate-400 italic">Belum ada riwayat kontrak di sistem</div>`}
+ </div>
+ </div>
+
+ <!-- Footer Action -->
+ <div class="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+ <span class="text-xs font-semibold text-slate-500">${contractCount} Riwayat Kontrak</span>
+ <button type="button" class="text-xs font-bold text-maroon-700 hover:text-maroon-800 hover:bg-maroon-50 px-3 py-1.5 rounded-xl transition flex items-center gap-1">
+ Detail & Kelola
+ </button>
+ </div>
+ </div>
+ `;
+ }).join("");
+
+ cardsContainer.querySelectorAll(".card-emp-kontrak").forEach(card => {
+ card.onclick = () => {
+ const empName = card.dataset.empName;
+ const empData = empList.find(e => e.nama_karyawan === empName);
+ if (empData) openEmployeeContractModal(empData, reloadData);
+ };
+ });
+ }
+
+ searchInput.oninput = drawCards;
+ filterStatusKaryawan.onchange = drawCards;
+ filterStatusKontrak.onchange = drawCards;
+ drawCards();
+
+ if (canManageKontrak && wrap.querySelector("#btn-add-global-kontrak")) {
+ wrap.querySelector("#btn-add-global-kontrak").onclick = () => {
+ openAddNewContractGlobalModal(allKaryawan, reloadData);
+ };
+ }
+ }
+
+ async function reloadData() {
+ allKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
+ allKontrak = await fsGetAll(COL.MASTER_KONTRAK);
+ if (isAtasanView) {
+ allKaryawan = allKaryawan.filter(k => bset.has(k.nama_karyawan));
+ allKontrak = allKontrak.filter(k => bset.has(k.nama_karyawan));
+ }
+ renderCardView();
+ }
+
+ renderCardView();
+ }
+
+ function openEmployeeContractModal(empData, reloadData) {
+ const isAktif = (empData.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF";
+ const contracts = empData.contracts || [];
+ const latestKe = contracts.length ? Math.max(...contracts.map(c => Number(c.kontrak_ke || 1))) : 0;
+
+ openModal({
+ title: `Riwayat & Kelola Kontrak: ${escapeHtml(empData.nama_karyawan)}`,
+ size: "lg",
+ bodyHtml: `
+ <div class="space-y-6">
+ <!-- Profile Header & Employee Status Update -->
+ <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+ <div class="flex items-center gap-3">
+ ${avatar(empData.nama_karyawan || "?", "w-12 h-12 border-2 border-white shadow-xs")}
+ <div>
+ <h3 class="font-bold text-slate-800 text-base">${escapeHtml(empData.nama_karyawan)}</h3>
+ <p class="text-xs text-slate-500">${escapeHtml(empData.jabatan || "-")} • ${escapeHtml(empData.cabang || "Pusat")}</p>
+ </div>
+ </div>
+ <div class="flex items-center gap-2 w-full md:w-auto flex-wrap bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+ <div class="flex flex-col">
+ <label class="text-[10px] font-bold text-slate-400 uppercase">Status Keaktifan</label>
+ <select id="modal-emp-aktif" ${!canManageKontrak ? 'disabled' : ''} class="text-xs font-semibold px-2 py-1 rounded-lg border border-slate-200 outline-none focus:border-maroon-500 ${!canManageKontrak ? 'bg-slate-100 text-slate-600 cursor-not-allowed' : ''}">
+ <option value="AKTIF" ${isAktif ? 'selected' : ''}>AKTIF</option>
+ <option value="TIDAK AKTIF" ${!isAktif ? 'selected' : ''}>TIDAK AKTIF</option>
+ </select>
+ </div>
+ <div class="flex flex-col">
+ <label class="text-[10px] font-bold text-slate-400 uppercase">Status Karyawan</label>
+ <select id="modal-emp-type" ${!canManageKontrak ? 'disabled' : ''} class="text-xs font-semibold px-2 py-1 rounded-lg border border-slate-200 outline-none focus:border-maroon-500 ${!canManageKontrak ? 'bg-slate-100 text-slate-600 cursor-not-allowed' : ''}">
+ <option value="PKWTT" ${String(empData.status_karyawan || "").toUpperCase().includes("PKWTT") || empData.status_karyawan === "TETAP" ? 'selected' : ''}>PKWTT (Karyawan Tetap)</option>
+ <option value="PKWT" ${String(empData.status_karyawan || "").toUpperCase().includes("PKWT") || empData.status_karyawan === "KONTRAK" || !empData.status_karyawan ? 'selected' : ''}>PKWT (Karyawan Kontrak)</option>
+ <option value="PROBATION" ${String(empData.status_karyawan || "").toUpperCase().includes("PROBATION") ? 'selected' : ''}>Probation (Masa Percobaan)</option>
+ <option value="MAGANG" ${String(empData.status_karyawan || "").toUpperCase().includes("MAGANG") ? 'selected' : ''}>Magang</option>
+ <option value="BURUH HARIAN" ${String(empData.status_karyawan || "").toUpperCase().includes("BURUH") ? 'selected' : ''}>Buruh Harian</option>
+ <option value="OUTSOURCING" ${String(empData.status_karyawan || "").toUpperCase().includes("OUTSOURCING") ? 'selected' : ''}>Outsourcing</option>
+ <option value="LAINNYA" ${String(empData.status_karyawan || "").toUpperCase().includes("LAINNYA") || empData.status_karyawan === "RESIGN" ? 'selected' : ''}>Lainnya</option>
+ </select>
+ </div>
+ ${(canManageKontrak && empData.id) ? `
+ <button id="btn-save-emp-status" class="mt-auto bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-2xs">
+ Simpan
+ </button>` : ''}
+ </div>
+ </div>
+
+ <!-- Section 1: Riwayat Kontrak -->
+ <div>
+ <div class="flex items-center justify-between mb-3">
+ <h4 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+ <span> Riwayat Kontrak Kerja</span>
+ <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">${contracts.length} Dokumen</span>
+ </h4>
+ ${canManageKontrak ? `
+ <button id="btn-toggle-add-kontrak" class="text-xs font-bold text-maroon-700 bg-maroon-50 hover:bg-maroon-100 px-3 py-1.5 rounded-xl border border-maroon-200 transition flex items-center gap-1">
+ Perpanjang / Kontrak Baru
+ </button>` : ''}
+ </div>
+
+ <!-- Add Contract Form -->
+ <div id="add-kontrak-form-wrap" class="hidden mb-4 bg-amber-50/60 p-4 rounded-2xl border border-amber-200/80 space-y-3">
+ <h5 class="text-xs font-bold text-amber-900 uppercase tracking-wide">Form Tambah / Perpanjang Kontrak</h5>
+ <form id="form-new-kontrak" class="space-y-3">
+ <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+ <div>
+ <label class="block text-[11px] font-semibold text-slate-600 mb-1">Kontrak Ke-</label>
+ <input type="number" name="kontrak_ke" value="${latestKe + 1}" required class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none bg-white">
+ </div>
+ <div>
+ <label class="block text-[11px] font-semibold text-slate-600 mb-1">Tanggal Mulai</label>
+ <input type="date" name="tanggal_mulai" required class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none bg-white">
+ </div>
+ <div>
+ <label class="block text-[11px] font-semibold text-slate-600 mb-1">Tanggal Akhir</label>
+ <input type="date" name="tanggal_akhir" required class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none bg-white">
+ </div>
+ </div>
+
+ <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+ <div>
+ <label class="block text-[11px] font-semibold text-slate-600 mb-1">Jabatan</label>
+ <input type="text" name="jabatan" value="${escapeHtml(empData.jabatan || "")}" class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none bg-white">
+ </div>
+ <div>
+ <label class="block text-[11px] font-semibold text-slate-600 mb-1">Cabang</label>
+ <input type="text" name="cabang" value="${escapeHtml(empData.cabang || "")}" class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none bg-white">
+ </div>
+ <div>
+ <label class="block text-[11px] font-semibold text-slate-600 mb-1">Divisi</label>
+ <input type="text" name="divisi" value="${escapeHtml(empData.divisi || "")}" class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none bg-white">
+ </div>
+ </div>
+
+ <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+ <div>
+ <label class="block text-[11px] font-semibold text-slate-600 mb-1">Status Kontrak</label>
+ <select name="status_kolom_kontrak" class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none bg-white font-medium">
+ <option value="AKTIF" selected>AKTIF</option>
+ <option value="SEGERA HABIS">SEGERA HABIS</option>
+ <option value="DIPERPANJANG">DIPERPANJANG</option>
+ <option value="DONE">DONE / SELESAI</option>
+ </select>
+ </div>
+ <div>
+ <label class="block text-[11px] font-semibold text-slate-600 mb-1">Dokumen Lampiran Kontrak (Google Drive)</label>
+ <input type="file" name="file_dokumen" accept="image/*,.pdf,.doc,.docx" class="w-full px-3 py-1 text-xs rounded-xl border border-slate-200 bg-white">
+ </div>
+ </div>
+
+ <div class="flex items-center justify-between pt-2">
+ <button type="button" id="btn-cancel-add-kontrak" class="text-xs font-semibold text-slate-500 hover:text-slate-700">Batal</button>
+ <button type="submit" id="btn-submit-kontrak" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs">
+ Simpan Kontrak Baru
+ </button>
+ </div>
+ </form>
+ </div>
+
+ <!-- History Timeline Cards -->
+ ${contracts.length === 0 ? `
+ <div class="bg-slate-50 rounded-xl p-6 text-center text-xs text-slate-400 border border-dashed border-slate-200">
+ Belum ada data riwayat kontrak tercatat untuk karyawan ini. Klik tombol "Perpanjang / Kontrak Baru" di atas untuk menambahkan.
+ </div>` : `
+ <div class="space-y-3 max-h-80 overflow-y-auto pr-1">
+ ${contracts.map((c, idx) => `
+ <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+ <div class="space-y-1">
+ <div class="flex items-center gap-2">
+ <span class="font-bold text-slate-800 text-xs bg-slate-100 px-2.5 py-0.5 rounded-lg border border-slate-200">Kontrak Ke-${c.kontrak_ke || (contracts.length - idx)}</span>
+ ${badge(c.status_kolom_kontrak || "AKTIF", c.status_kolom_kontrak === "AKTIF" ? "emerald" : "amber")}
+ </div>
+ <p class="text-xs text-slate-600 font-medium">
+ Periode: <strong>${fmtDateShort(c.tanggal_mulai)}</strong> s/d <strong>${fmtDateShort(c.tanggal_akhir)}</strong>
+ </p>
+ <p class="text-[11px] text-slate-400">
+ Jabatan: ${escapeHtml(c.jabatan || "-")} ${c.cabang ? `• Cabang: ${escapeHtml(c.cabang)}` : ''}
+ </p>
+ ${c.link_dokumen ? `
+ <a href="${escapeHtml(c.link_dokumen)}" target="_blank" class="inline-block text-xs font-semibold text-maroon-700 hover:underline mt-1">
+ Lihat File Dokumen Kontrak
+ </a>` : ''}
+ </div>
+ ${canManageKontrak ? `
+ <button type="button" class="btn-del-kontrak-item text-xs font-bold text-red-600 hover:bg-red-50 px-2.5 py-1 rounded-lg transition shrink-0" data-kontrak-id="${c.id}">
+ Hapus
+ </button>` : ''}
+ </div>
+ `).join("")}
+ </div>`}
+ </div>
+ </div>
+ `,
+ footerHtml: `
+ <button id="modal-close-btn" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition">Tutup</button>
+ `,
+ onMount: (m) => {
+ m.querySelector("#modal-close-btn").onclick = closeModal;
+
+ // Update Employee status button logic
+ const btnSaveEmpStatus = m.querySelector("#btn-save-emp-status");
+ if (btnSaveEmpStatus && empData.id) {
+ btnSaveEmpStatus.onclick = async () => {
+ const aktif_tdk_aktif = m.querySelector("#modal-emp-aktif").value;
+ const status_karyawan = m.querySelector("#modal-emp-type").value;
+
+ try {
+ btnSaveEmpStatus.disabled = true;
+ btnSaveEmpStatus.textContent = "Menyimpan...";
+ await fsUpdate(COL.MASTER_KARYAWAN, empData.id, {
+ aktif_tdk_aktif,
+ status_karyawan
+ });
+ toast("Status karyawan berhasil diperbarui!", "success");
+ closeModal();
+ reloadData();
+ } catch (e) {
+ toast("Gagal memperbarui status: " + e.message, "error");
+ btnSaveEmpStatus.disabled = false;
+ btnSaveEmpStatus.textContent = "Simpan";
+ }
+ };
+ }
+
+ // Toggle Add Contract Form
+ const formWrap = m.querySelector("#add-kontrak-form-wrap");
+ const btnToggleAdd = m.querySelector("#btn-toggle-add-kontrak");
+ const btnCancelAdd = m.querySelector("#btn-cancel-add-kontrak");
+
+ if (btnToggleAdd) btnToggleAdd.onclick = () => formWrap.classList.toggle("hidden");
+ if (btnCancelAdd) btnCancelAdd.onclick = () => formWrap.classList.add("hidden");
+
+ // Handle Delete Contract Item
+ m.querySelectorAll(".btn-del-kontrak-item").forEach(btn => {
+ btn.onclick = async () => {
+ const kId = btn.dataset.kontrakId;
+ if (!kId) return;
+ if (!confirm("Apakah Anda yakin ingin menghapus catatan kontrak ini?")) return;
+
+ try {
+ await fsDelete(COL.MASTER_KONTRAK, kId);
+ toast("Catatan kontrak berhasil dihapus", "success");
+ closeModal();
+ reloadData();
+ } catch (e) {
+ toast("Gagal menghapus kontrak: " + e.message, "error");
+ }
+ };
+ });
+
+ // Submit New Contract Form
+ const formNew = m.querySelector("#form-new-kontrak");
+ if (formNew) {
+ formNew.onsubmit = async (e) => {
+ e.preventDefault();
+ const fd = new FormData(formNew);
+ const btnSubmit = m.querySelector("#btn-submit-kontrak");
+
+ try {
+ btnSubmit.disabled = true;
+ btnSubmit.textContent = "Menyimpan...";
+
+ const kId = genId("KTR");
+ let link_dokumen = "";
+
+ const fileInput = formNew.querySelector('input[name="file_dokumen"]');
+ const file = fileInput.files && fileInput.files[0];
+ if (file) {
+ btnSubmit.textContent = "Mengupload File...";
+ link_dokumen = await uploadFileToDrive(file, `Kontrak/${empData.nama_karyawan}/${kId}`);
+ }
+
+ const payload = {
+ nama_karyawan: empData.nama_karyawan,
+ kontrak_ke: Number(fd.get("kontrak_ke") || 1),
+ tanggal_mulai: fd.get("tanggal_mulai"),
+ tanggal_akhir: fd.get("tanggal_akhir"),
+ jabatan: fd.get("jabatan") || empData.jabatan || "",
+ cabang: fd.get("cabang") || empData.cabang || "",
+ divisi: fd.get("divisi") || empData.divisi || "",
+ status_kolom_kontrak: fd.get("status_kolom_kontrak") || "AKTIF",
+ link_dokumen: link_dokumen
+ };
+
+ await fsAdd(COL.MASTER_KONTRAK, payload, kId);
+
+ // Update Master Karyawan contract dates & status if employee exists
+ if (empData.id) {
+ await fsUpdate(COL.MASTER_KARYAWAN, empData.id, {
+ status_karyawan: "KONTRAK",
+ tgl_mulai_kontrak: payload.tanggal_mulai,
+ tgl_akhir_kontrak: payload.tanggal_akhir,
+ aktif_tdk_aktif: "AKTIF"
+ });
+ }
+
+ toast("Kontrak baru berhasil ditambahkan!", "success");
+ closeModal();
+ reloadData();
+ } catch (err) {
+ toast("Gagal menambahkan kontrak: " + err.message, "error");
+ btnSubmit.disabled = false;
+ btnSubmit.textContent = "Simpan Kontrak Baru";
+ }
+ };
+ }
+ }
+ });
+ }
+
+ function openAddNewContractGlobalModal(allKaryawan, reloadData) {
+ const sortedKaryawan = [...allKaryawan].sort((a, b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id", { sensitivity: "base" }));
+ openModal({
+ title: "Tambah Kontrak Kerja Baru",
+ size: "md",
+ bodyHtml: `
+ <form id="form-global-kontrak" class="space-y-4">
+ <div>
+ <label class="block text-xs font-semibold text-slate-700 mb-1">Pilih Karyawan *</label>
+ <select name="nama_karyawan" required class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none bg-white font-medium">
+ <option value="">-- Pilih Karyawan --</option>
+ ${sortedKaryawan.map(k => `<option value="${escapeHtml(k.nama_karyawan)}" data-jabatan="${escapeHtml(k.jabatan || '')}" data-cabang="${escapeHtml(k.cabang || '')}">${escapeHtml(k.nama_karyawan)} - ${escapeHtml(k.jabatan || '')}</option>`).join("")}
+ </select>
+ </div>
+
+ <div class="grid grid-cols-3 gap-3">
+ <div>
+ <label class="block text-xs font-semibold text-slate-700 mb-1">Kontrak Ke- *</label>
+ <input type="number" name="kontrak_ke" value="1" required class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none">
+ </div>
+ <div>
+ <label class="block text-xs font-semibold text-slate-700 mb-1">Tanggal Mulai *</label>
+ <input type="date" name="tanggal_mulai" required class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none">
+ </div>
+ <div>
+ <label class="block text-xs font-semibold text-slate-700 mb-1">Tanggal Akhir *</label>
+ <input type="date" name="tanggal_akhir" required class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none">
+ </div>
+ </div>
+
+ <div class="grid grid-cols-2 gap-3">
+ <div>
+ <label class="block text-xs font-semibold text-slate-700 mb-1">Jabatan</label>
+ <input type="text" name="jabatan" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none">
+ </div>
+ <div>
+ <label class="block text-xs font-semibold text-slate-700 mb-1">Cabang</label>
+ <input type="text" name="cabang" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none">
+ </div>
+ </div>
+
+ <div>
+ <label class="block text-xs font-semibold text-slate-700 mb-1">Dokumen Lampiran (Google Drive)</label>
+ <input type="file" name="file_dokumen" accept="image/*,.pdf,.doc,.docx" class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-white">
+ </div>
+ </form>
+ `,
+ footerHtml: `
+ <button id="modal-cancel-btn" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition">Batal</button>
+ <button id="modal-submit-btn" class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 transition">Simpan Kontrak</button>
+ `,
+ onMount: (m) => {
+ m.querySelector("#modal-cancel-btn").onclick = closeModal;
+
+ const selEmp = m.querySelector('select[name="nama_karyawan"]');
+ selEmp.onchange = () => {
+ const opt = selEmp.options[selEmp.selectedIndex];
+ if (opt) {
+ m.querySelector('input[name="jabatan"]').value = opt.dataset.jabatan || "";
+ m.querySelector('input[name="cabang"]').value = opt.dataset.cabang || "";
+ }
+ };
+
+ m.querySelector("#modal-submit-btn").onclick = async () => {
+ const form = m.querySelector("#form-global-kontrak");
+ if (!form.reportValidity()) return;
+
+ const fd = new FormData(form);
+ const btnSubmit = m.querySelector("#modal-submit-btn");
+
+ try {
+ btnSubmit.disabled = true;
+ btnSubmit.textContent = "Menyimpan...";
+
+ const kId = genId("KTR");
+ let link_dokumen = "";
+
+ const fileInput = form.querySelector('input[name="file_dokumen"]');
+ const file = fileInput.files && fileInput.files[0];
+ const namaKaryawan = fd.get("nama_karyawan");
+
+ if (file) {
+ btnSubmit.textContent = "Mengupload File...";
+ link_dokumen = await uploadFileToDrive(file, `Kontrak/${namaKaryawan}/${kId}`);
+ }
+
+ const payload = {
+ nama_karyawan: namaKaryawan,
+ kontrak_ke: Number(fd.get("kontrak_ke") || 1),
+ tanggal_mulai: fd.get("tanggal_mulai"),
+ tanggal_akhir: fd.get("tanggal_akhir"),
+ jabatan: fd.get("jabatan") || "",
+ cabang: fd.get("cabang") || "",
+ status_kolom_kontrak: "AKTIF",
+ link_dokumen: link_dokumen
+ };
+
+ await fsAdd(COL.MASTER_KONTRAK, payload, kId);
+
+ // Find employee in allKaryawan to update master karyawan
+ const matched = allKaryawan.find(k => k.nama_karyawan === namaKaryawan);
+ if (matched && matched.id) {
+ await fsUpdate(COL.MASTER_KARYAWAN, matched.id, {
+ status_karyawan: "KONTRAK",
+ tgl_mulai_kontrak: payload.tanggal_mulai,
+ tgl_akhir_kontrak: payload.tanggal_akhir,
+ aktif_tdk_aktif: "AKTIF"
+ });
+ }
+
+ toast("Kontrak kerja berhasil disimpan!", "success");
+ closeModal();
+ reloadData();
+ } catch (e) {
+ toast("Gagal menyimpan kontrak: " + e.message, "error");
+ btnSubmit.disabled = false;
+ btnSubmit.textContent = "Simpan Kontrak";
+ }
+ };
+ }
+ });
+ }
+
+ async function loadTemplateKpi(lastEditedTplId = null, preserveScrollY = null) {
+ const wrap = panels.template;
+ const currentScrollY = preserveScrollY !== null ? preserveScrollY : (window.scrollY || document.documentElement.scrollTop || 0);
+
+ const isAlreadyRendered = !!wrap.querySelector("#tpl-cards-container");
+ const previousSearchVal = wrap.querySelector("#tpl-search-input")?.value || "";
+
+ if (!isAlreadyRendered) {
+ wrap.innerHTML = `<div class="p-6">${skeletonRows(4)}</div>`;
+ }
+
+ const [rawTemplates, allKaryawan] = await Promise.all([
+ fsGetAll(COL.MASTER_SOAL_KPI),
+ fsGetAll(COL.MASTER_KARYAWAN)
+ ]);
+
+ // Hapus duplikat template berdasarkan nama jabatan jika ada di Firestore
+ const templateMap = new Map();
+ const duplicatesToDelete = [];
+
+ rawTemplates.forEach(t => {
+ const normName = (t.nama_template || "").trim().toLowerCase();
+ if (!normName) return;
+ if (templateMap.has(normName)) {
+ const existing = templateMap.get(normName);
+ const existingTime = new Date(existing.updated_at || existing.created_at || 0).getTime();
+ const currentTime = new Date(t.updated_at || t.created_at || 0).getTime();
+
+ if (currentTime > existingTime) {
+ duplicatesToDelete.push(existing.id);
+ templateMap.set(normName, t);
+ } else {
+ duplicatesToDelete.push(t.id);
+ }
+ } else {
+ templateMap.set(normName, t);
+ }
+ });
+
+ if (duplicatesToDelete.length > 0) {
+ duplicatesToDelete.forEach(id => {
+ fsDelete(COL.MASTER_SOAL_KPI, id).catch(e => console.warn("Pembersihan duplikat template:", e));
+ });
+ }
+
+ const templates = Array.from(templateMap.values());
+
+ const activeKaryawan = allKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF" && k.nama_karyawan);
+ activeKaryawan.sort((a, b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id", { sensitivity: "base" }));
+
+ function renderView() {
+ let html = `
+ <div class="space-y-5">
+ <!-- Header Toolbar -->
+ <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+ <div>
+ <h2 class="text-xl font-bold text-slate-800">Master Template Soal KPI & Evaluasi</h2>
+ <p class="text-xs text-slate-500 mt-1">Kelola set indikator penilaian (KPI 360, Perpanjangan Kontrak, Kartap, PIP, Mutasi/Demosi) dan tetapkan daftar karyawan untuk tiap template.</p>
+ </div>
+ <div class="flex items-center gap-2 self-start md:self-auto flex-wrap">
+ <input type="file" id="kpi-excel-upload" accept=".xlsx, .xls" class="hidden">
+ <button id="btn-download-sample-kpi" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5" title="Download Contoh Format Excel KPI">
+ Format Excel Sample
+ </button>
+ <button id="btn-import-template" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-semibold transition shadow-sm flex items-center gap-1.5">
+ <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+ Import Excel
+ </button>
+ <button id="btn-add-template" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2 rounded-xl text-xs font-semibold transition shadow-sm flex items-center gap-1.5">
+ <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+ Buat Template Baru
+ </button>
+ </div>
+ </div>
+
+ <!-- Search & Filter Bar -->
+ <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+ <div class="flex items-center gap-2 w-full sm:w-auto flex-1">
+ <div class="relative w-full sm:w-80">
+ <input type="text" id="tpl-search-input" placeholder=" Cari nama template, indikator, atau karyawan..." class="w-full px-3.5 py-2 pl-9 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition">
+ </div>
+ <select id="tpl-filter-kategori" class="px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-slate-50 font-medium">
+ <option value="">Semua Kategori Penilaian</option>
+ ${Object.values(JENIS_PENILAIAN_MAP).map(cat => `
+ <option value="${cat.key}">${cat.icon} ${cat.label}</option>
+ `).join('')}
+ </select>
+ </div>
+ <div class="text-xs text-slate-500 font-medium self-end sm:self-auto">
+ Total <strong class="text-slate-800">${templates.length}</strong> Template Tersedia
+ </div>
+ </div>
+
+ <!-- Cards Grid -->
+ <div id="tpl-cards-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+ </div>
+ </div>
+ `;
+
+ wrap.innerHTML = html;
+
+ const userRole = (session?.role || "").toUpperCase();
+ const isHrdRole = ["HRD", "SUPERADMIN", "ADMIN"].includes(userRole);
+ const btnSample = wrap.querySelector("#btn-download-sample-kpi");
+ const btnImport = wrap.querySelector("#btn-import-template");
+ const inputExcel = wrap.querySelector("#kpi-excel-upload");
+
+ if (btnSample) {
+ if (!isHrdRole) btnSample.style.display = "none";
+ else btnSample.onclick = downloadSampleExcelTemplateKpi;
+ }
+
+ if (btnImport) {
+ if (!isHrdRole) {
+ btnImport.style.display = "none";
+ } else if (inputExcel) {
+ btnImport.onclick = () => {
+ inputExcel.value = "";
+ inputExcel.click();
+ };
+ inputExcel.onchange = (e) => {
+ if (e.target.files && e.target.files[0]) {
+ handleExcelImport(e.target.files[0]);
+ }
+ };
+ }
+ }
+
+ const btnAdd = wrap.querySelector("#btn-add-template");
+ if (btnAdd) btnAdd.onclick = () => openTemplateModal(null, activeKaryawan);
+ }
+
+ if (!isAlreadyRendered) {
+ renderView();
+ } else {
+ const totalCountStrong = wrap.querySelector("#tpl-cards-container")?.parentElement?.querySelector("strong");
+ if (totalCountStrong) {
+ totalCountStrong.textContent = templates.length;
+ }
+ }
+
+ const searchInput = wrap.querySelector("#tpl-search-input");
+ const filterKategori = wrap.querySelector("#tpl-filter-kategori");
+ if (searchInput && previousSearchVal) {
+ searchInput.value = previousSearchVal;
+ }
+
+ const cardsContainer = wrap.querySelector("#tpl-cards-container");
+
+ function drawCards() {
+ const q = (searchInput ? searchInput.value : "").toLowerCase().trim();
+ const katVal = filterKategori ? filterKategori.value : "";
+
+ const filtered = templates.filter(t => {
+ const nama = (t.nama_template || "").toLowerCase();
+ const assigned = (t.karyawan_assigned || []).join(" ").toLowerCase();
+ const indikatorText = (t.soal_json || []).map(s => `${s.aspek} ${s.indikator}`).join(" ").toLowerCase();
+ const tKat = t.kategori_penilaian || "KPI_360";
+
+ const matchQ = !q || nama.includes(q) || assigned.includes(q) || indikatorText.includes(q);
+ const matchKat = !katVal || tKat === katVal;
+
+ return matchQ && matchKat;
+ });
+
+ if (!filtered.length) {
+ cardsContainer.innerHTML = `<div class="col-span-full">${emptyState("Belum ada Template Soal KPI yang cocok", "Klik tombol Buat Template Baru di atas untuk menambah template.")}</div>`;
+ return;
+ }
+
+ cardsContainer.innerHTML = filtered.map(t => {
+ const nama = t.nama_template || "Template Tanpa Nama";
+ const tKatKey = t.kategori_penilaian || "KPI_360";
+ const catConfig = getCatConfig(tKatKey);
+ const tSkala = t.skala_penilaian || "0-100";
+
+ const soalList = t.soal_json || [];
+ const totalBobot = soalList.reduce((acc, curr) => acc + (parseFloat(curr.bobot) || 0), 0);
+ const assignedList = Array.isArray(t.karyawan_assigned) ? t.karyawan_assigned : [];
+
+ const isBobot100 = Math.round(totalBobot) === 100;
+
+ // Preview indicators (up to 3)
+ const previewSoal = soalList.slice(0, 3);
+ const extraSoalCount = soalList.length - 3;
+
+ // Preview assigned employees (up to 4)
+ const previewEmployees = assignedList.slice(0, 4);
+ const extraEmpCount = assignedList.length - 4;
+
+ return `
+ <div class="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition p-5 flex flex-col justify-between group cursor-pointer tpl-card-item" data-tpl-id="${t.id}">
+ <div>
+ <!-- Top Header -->
+ <div class="flex items-start justify-between gap-2 mb-2.5">
+ <div class="flex items-center gap-2.5">
+ <div class="w-10 h-10 rounded-xl bg-maroon-50 text-maroon-700 font-bold flex items-center justify-center text-lg shadow-2xs group-hover:bg-maroon-700 group-hover:text-white transition">
+ ${catConfig.icon}
+ </div>
+ <div>
+ <h3 class="font-bold text-slate-800 text-sm group-hover:text-maroon-700 transition leading-snug">${escapeHtml(nama)}</h3>
+ <p class="text-[11px] text-slate-400 font-medium">${soalList.length} Indikator Kinerja</p>
+ </div>
+ </div>
+ ${isBobot100 ? `
+ <span class="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">Total 100%</span>
+ ` : `
+ <span class="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full shrink-0">Bobot ${totalBobot}%</span>
+ `}
+ </div>
+
+ <!-- Category Tag Badge & Skala Badge -->
+ <div class="mb-3 flex flex-wrap gap-1.5 items-center">
+ <span class="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-lg border ${catConfig.badgeClass}">
+ ${catConfig.icon} ${catConfig.label}
+ </span>
+ <span class="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg border bg-slate-50 text-slate-700 border-slate-200">
+ Skala ${tSkala}
+ </span>
+ </div>
+
+ <!-- Section Preview Indikator KPI -->
+ <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 mb-3 space-y-1.5">
+ <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wide flex items-center justify-between">
+ <span>Detail Soal & Indikator</span>
+ <span class="text-slate-400 font-normal lowercase">${soalList.length} soal</span>
+ </div>
+ ${soalList.length > 0 ? `
+ <div class="space-y-1 mt-1">
+ ${previewSoal.map(s => `
+ <div class="flex items-center justify-between text-xs bg-white p-1.5 rounded-lg border border-slate-100">
+ <span class="truncate text-slate-700 font-medium pr-2" title="${escapeHtml(s.indikator)}">${escapeHtml(s.indikator || s.aspek)}</span>
+ <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">${s.bobot}%</span>
+ </div>
+ `).join("")}
+ ${extraSoalCount > 0 ? `
+ <div class="text-[10px] text-slate-400 italic text-center pt-0.5">+ ${extraSoalCount} indikator lainnya</div>
+ ` : ''}
+ </div>
+ ` : `
+ <p class="text-xs text-slate-400 italic py-1">Belum ada indikator ditambahkan</p>
+ `}
+ </div>
+
+ <!-- Section Karyawan Terdaftar -->
+ <div class="border-t border-slate-100 pt-3">
+ <div class="flex items-center justify-between text-xs mb-2">
+ <span class="text-slate-500 font-semibold flex items-center gap-1">Karyawan Masuk Template:</span>
+ <span class="font-bold text-maroon-700 bg-maroon-50 px-2 py-0.5 rounded-full text-[11px]">${assignedList.length} Orang</span>
+ </div>
+ ${assignedList.length > 0 ? `
+ <div class="flex flex-wrap gap-1">
+ ${previewEmployees.map(emp => `
+ <span class="inline-flex items-center gap-1 text-[11px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg font-medium border border-slate-200">
+ <span></span> ${escapeHtml(emp)}
+ </span>
+ `).join("")}
+ ${extraEmpCount > 0 ? `
+ <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">+${extraEmpCount} lagi</span>
+ ` : ''}
+ </div>
+ ` : `
+ <p class="text-xs text-slate-400 italic bg-amber-50/50 border border-amber-100 p-2 rounded-xl text-center">Belum ada karyawan yang dimasukkan ke template ini.</p>
+ `}
+ </div>
+ </div>
+
+ <!-- Footer Action Buttons -->
+ <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+ <button type="button" data-del-tpl="${t.id}" class="text-xs font-semibold text-red-500 hover:text-red-700 hover:bg-red-50 px-2.5 py-1.5 rounded-lg transition">
+ Hapus
+ </button>
+ <div class="flex items-center gap-1.5">
+ <button type="button" data-dist-tpl="${t.id}" class="text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 px-3 py-1.5 rounded-xl transition flex items-center gap-1 shadow-2xs">
+ Distribusi KPI
+ </button>
+ <button type="button" data-edit-tpl="${t.id}" class="text-xs font-bold text-maroon-700 bg-maroon-50 hover:bg-maroon-100 px-3 py-1.5 rounded-xl transition flex items-center gap-1">
+ Edit
+ </button>
+ </div>
+ </div>
+ </div>
+ `;
+ }).join("");
+
+ // Attach Card Action Events
+ cardsContainer.querySelectorAll("[data-dist-tpl]").forEach(btn => {
+ btn.onclick = (e) => {
+ e.stopPropagation();
+ openDistribusiModal(btn.dataset.distTpl);
+ };
+ });
+
+ cardsContainer.querySelectorAll("[data-edit-tpl]").forEach(btn => {
+ btn.onclick = (e) => {
+ e.stopPropagation();
+ const tplId = btn.dataset.editTpl;
+ openTemplateModal(templates.find(x => x.id === tplId), activeKaryawan);
+ };
+ });
+
+ cardsContainer.querySelectorAll(".tpl-card-item").forEach(card => {
+ card.onclick = () => {
+ const tplId = card.dataset.tplId;
+ openTemplateModal(templates.find(x => x.id === tplId), activeKaryawan);
+ };
+ });
+
+ cardsContainer.querySelectorAll("[data-del-tpl]").forEach(btn => {
+ btn.onclick = async (e) => {
+ e.stopPropagation();
+ const tplId = btn.dataset.delTpl;
+ if (confirm("Apakah Anda yakin ingin menghapus template KPI ini?")) {
+ const currentY = window.scrollY || document.documentElement.scrollTop || 0;
+ await fsDelete(COL.MASTER_SOAL_KPI, tplId);
+ toast("Template berhasil dihapus", "success");
+ loadTemplateKpi(null, currentY);
+ }
+ };
+ });
+ }
+
+ drawCards();
+ if (searchInput) searchInput.oninput = drawCards;
+
+ setTimeout(() => {
+ if (lastEditedTplId) {
+ const targetCard = wrap.querySelector(`[data-tpl-id="${lastEditedTplId}"]`);
+ if (targetCard) {
+ targetCard.scrollIntoView({ behavior: "smooth", block: "center" });
+ targetCard.classList.add("ring-2", "ring-maroon-600", "transition-all", "duration-500");
+ setTimeout(() => {
+ targetCard.classList.remove("ring-2", "ring-maroon-600");
+ }, 2500);
+ return;
+ }
+ }
+ if (currentScrollY > 0) {
+ window.scrollTo({ top: currentScrollY, behavior: "instant" });
+ }
+ }, 50);
+ }
+
+ async function downloadSampleExcelTemplateKpi() {
+ const headers = ["JABATAN", "NO", "ASPEK", "INDIKATOR", "BOBOT", "PENCAPAIAN (INFO)"];
+ const sampleRows = [
+ ["Sales Representative", 1, "Hasil Kerja", "Pencapaian Target Omzet Penjualan Bulanan", "40%", "Minimal 100% dari target bulanan"],
+ ["Sales Representative", 2, "Sikap Kerja", "Kepatuhan Jam Kerja & Laporan Kunjungan Sales Track", "30%", "Laporan wajib diisi setiap hari"],
+ ["Sales Representative", 3, "Kompetensi", "Pengetahuan Produk & Keterampilan Negosiasi", "30%", "Ujian produk berkala min. score 80"],
+ ["HR Staff", 1, "Hasil Kerja", "Ketepatan waktu dan akurasi pengolahan payroll & absensi", "50%", "Tidak ada keterlambatan payroll"],
+ ["HR Staff", 2, "Sikap Kerja", "Kedisiplinan, kerapian administrasi & ketaatan SOP", "30%", "Nol kesalahan audit dokumen"],
+ ["HR Staff", 3, "Kompetensi", "Pelayanan karyawan & kecepatan respon kendala HR", "20%", "Respon maksimal 1x24 jam"]
+ ];
+
+ try {
+ await downloadXlsx("Format_Sample_Import_Template_KPI", headers, sampleRows, "Template KPI");
+ toast("Format Excel Sample berhasil diunduh!", "success");
+ } catch (e) {
+ toast("Gagal mengunduh format sample: " + e.message, "error");
+ }
+ }
+
+ async function handleExcelImport(file) {
+ if (!file) return;
+ const importY = window.scrollY || document.documentElement.scrollTop || 0;
+ const btn = panels.template ? panels.template.querySelector("#btn-import-template") : null;
+ const originalText = btn ? btn.innerHTML : "Import Excel";
+ if (btn) { btn.innerHTML = `⏳ Membaca File...`; btn.disabled = true; }
+
+ try {
+ await ensureXlsxLoaded();
+ if (typeof window.XLSX === "undefined") {
+ throw new Error("Library SheetJS (XLSX) tidak dapat dimuat.");
+ }
+
+ const data = await file.arrayBuffer();
+ const workbook = window.XLSX.read(data, { type: 'array' });
+ if (!workbook.SheetNames || !workbook.SheetNames.length) {
+ throw new Error("File Excel kosong atau tidak valid.");
+ }
+
+ const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+ const matrix = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "", raw: false });
+
+ if (!matrix || matrix.length === 0) {
+ throw new Error("Sheet Excel tidak berisi data.");
+ }
+
+ // Step 1: Detect Header Row & Column Indexes
+ let headerRowIdx = -1;
+ let colJabatan = -1;
+ let colNo = -1;
+ let colAspek = -1;
+ let colIndikator = -1;
+ let colBobot = -1;
+ let colPencapaian = -1;
+
+ for (let r = 0; r < Math.min(matrix.length, 15); r++) {
+ const row = matrix[r];
+ if (!Array.isArray(row)) continue;
+
+ row.forEach((cell, cIdx) => {
+ const str = String(cell || "").toUpperCase().trim();
+ if (str.includes("JABATAN") || str.includes("POSISI") || str.includes("TEMPLATE")) colJabatan = cIdx;
+ if (str.includes("NO") || str.includes("NOMOR")) colNo = cIdx;
+ if (str.includes("ASPEK") || str.includes("KATEGORI") || str.includes("DIMENSI")) colAspek = cIdx;
+ if (str.includes("INDIKATOR") || str.includes("PERTANYAAN") || str.includes("SOAL") || str.includes("KRITERIA")) colIndikator = cIdx;
+ if (str.includes("BOBOT") || str.includes("WEIGHT") || str.includes("PERSEN")) colBobot = cIdx;
+ if (str.includes("PENCAPAIAN") || str.includes("INFO") || str.includes("TARGET") || str.includes("KETERANGAN")) colPencapaian = cIdx;
+ });
+
+ if (colIndikator !== -1 || colJabatan !== -1) {
+ headerRowIdx = r;
+ break;
+ }
+ }
+
+ if (headerRowIdx === -1) headerRowIdx = 0;
+
+ // Fallbacks if columns missing
+ if (colIndikator === -1) colIndikator = 3;
+ if (colJabatan === -1) colJabatan = 0;
+ if (colAspek === -1) colAspek = 2;
+ if (colBobot === -1) colBobot = 4;
+ if (colPencapaian === -1) colPencapaian = 5;
+
+ const groupedTemplates = {};
+ let currentJabatan = "";
+
+ for (let r = headerRowIdx + 1; r < matrix.length; r++) {
+ const row = matrix[r];
+ if (!row || !row.length) continue;
+
+ const rawJabatan = colJabatan !== -1 && row[colJabatan] !== undefined ? String(row[colJabatan]).trim() : "";
+ const rawAspek = colAspek !== -1 && row[colAspek] !== undefined ? String(row[colAspek]).trim() : "";
+ const rawIndikator = colIndikator !== -1 && row[colIndikator] !== undefined ? String(row[colIndikator]).trim() : "";
+ const rawBobot = colBobot !== -1 && row[colBobot] !== undefined ? String(row[colBobot]).trim() : "";
+ const rawPencapaian = colPencapaian !== -1 && row[colPencapaian] !== undefined ? String(row[colPencapaian]).trim() : "";
+
+ // Inherit Jabatan from previous row if blank (for grouped rows in Excel)
+ if (rawJabatan) {
+ currentJabatan = rawJabatan;
+ }
+
+ if (!currentJabatan) continue;
+ if (!rawIndikator && !rawAspek) continue;
+ if (!rawIndikator) continue;
+
+ // Clean & Parse Bobot
+ let bobotVal = 0;
+ if (rawBobot) {
+ let cleanStr = rawBobot.replace(/%/g, "").replace(/,/g, ".").trim();
+ let num = parseFloat(cleanStr);
+ if (!isNaN(num)) {
+ if (num > 0 && num <= 1) {
+ bobotVal = Math.round(num * 100);
+ } else {
+ bobotVal = Math.round(num);
+ }
+ }
+ }
+
+ if (!groupedTemplates[currentJabatan]) {
+ groupedTemplates[currentJabatan] = {
+ nama_template: currentJabatan,
+ soal_json: []
+ };
+ }
+
+ groupedTemplates[currentJabatan].soal_json.push({
+ aspek: rawAspek || "Umum",
+ indikator: rawIndikator,
+ bobot: bobotVal,
+ pencapaian_info: rawPencapaian,
+ nilai_diberikan: 0
+ });
+ }
+
+ const templateKeys = Object.keys(groupedTemplates);
+ if (templateKeys.length === 0) {
+ throw new Error("Tidak ada indikator KPI yang valid ditemukan. Mohon periksa header JABATAN, ASPEK, INDIKATOR, dan BOBOT.");
+ }
+
+ // Step 2: Replace or Add existing templates in Firestore
+ const existingTemplates = await fsGetAll(COL.MASTER_SOAL_KPI);
+ let addedCount = 0;
+ let updatedCount = 0;
+
+ for (const name of templateKeys) {
+ const tplData = groupedTemplates[name];
+ const normName = name.trim().toLowerCase();
+ const matchingExisting = existingTemplates.filter(t => (t.nama_template || "").trim().toLowerCase() === normName);
+
+ if (matchingExisting.length > 0) {
+ // Kumpulkan karyawan assigned dari template lama agar tidak hilang
+ const allAssigned = new Set();
+ matchingExisting.forEach(t => {
+ if (Array.isArray(t.karyawan_assigned)) {
+ t.karyawan_assigned.forEach(k => allAssigned.add(k));
+ }
+ });
+
+ // Hapus SEMUA template lama dengan nama jabatan yang sama
+ for (const oldTpl of matchingExisting) {
+ await fsDelete(COL.MASTER_SOAL_KPI, oldTpl.id);
+ }
+
+ // Buat template baru menggantikan yang terhapus
+ await fsAdd(COL.MASTER_SOAL_KPI, {
+ nama_template: name,
+ soal_json: tplData.soal_json,
+ karyawan_assigned: Array.from(allAssigned),
+ updated_at: new Date().toISOString()
+ }, genId("TPL-KPI"));
+ updatedCount++;
+ } else {
+ // Add new template
+ await fsAdd(COL.MASTER_SOAL_KPI, {
+ nama_template: name,
+ soal_json: tplData.soal_json,
+ karyawan_assigned: [],
+ created_at: new Date().toISOString()
+ }, genId("TPL-KPI"));
+ addedCount++;
+ }
+ }
+
+ let resMsg = "Berhasil meng-import template KPI! ";
+ if (updatedCount > 0) resMsg += `${updatedCount} template diperbarui. `;
+ if (addedCount > 0) resMsg += `${addedCount} template baru ditambahkan.`;
+
+ toast(resMsg, "success");
+ loadTemplateKpi(null, importY);
+
+ } catch (err) {
+ console.error("Gagal Import Excel:", err);
+ toast("Gagal Import Excel: " + err.message, "error");
+ } finally {
+ if (btn) {
+ btn.innerHTML = originalText;
+ btn.disabled = false;
+ }
+ }
+ }
+
+ function openTemplateModal(existingData = null, activeKaryawan = []) {
+ // Sort activeKaryawan A-Z
+ activeKaryawan.sort((a, b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id", { sensitivity: "base" }));
+
+ const assignedSet = new Set(existingData?.karyawan_assigned || []);
+
+ openModal({
+ title: existingData ? `Detail & Edit Template: ${escapeHtml(existingData.nama_template || "Template KPI")}` : "Buat Template Soal KPI & Evaluasi Baru",
+ size: "lg",
+ bodyHtml: `
+ <div class="space-y-4">
+ <!-- Nama Template, Jenis Penilaian & Skala Penilaian -->
+ <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+ <div>
+ <label class="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Nama Template / Jabatan <span class="text-red-500">*</span></label>
+ <input type="text" id="tpl-nama" value="${existingData ? escapeHtml(existingData.nama_template || '') : ''}" placeholder="Cth: Template KPI Sales / Kontrak" required class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:border-maroon-500 outline-none font-medium bg-white">
+ </div>
+ <div>
+ <label class="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Jenis / Kategori Penilaian <span class="text-red-500">*</span></label>
+ <select id="tpl-kategori" class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:border-maroon-500 outline-none font-medium bg-white">
+ ${Object.values(JENIS_PENILAIAN_MAP).map(cat => `
+ <option value="${cat.key}" ${ (existingData?.kategori_penilaian || 'KPI_360') === cat.key ? 'selected' : '' }>${cat.icon} ${cat.label}</option>
+ `).join('')}
+ </select>
+ </div>
+ <div>
+ <label class="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Skala Penilaian <span class="text-red-500">*</span></label>
+ <select id="tpl-skala" class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:border-maroon-500 outline-none font-medium bg-white">
+ <option value="0-100" ${ (existingData?.skala_penilaian || '0-100') === '0-100' ? 'selected' : '' }>Skala 0 - 100 (Persentase)</option>
+ <option value="1-5" ${ (existingData?.skala_penilaian) === '1-5' ? 'selected' : '' }>Skala 1 - 5 (Likert / Rating)</option>
+ </select>
+ </div>
+ </div>
+
+ <!-- Dynamic Preview Box for Recommendation Options -->
+ <div id="tpl-rekomendasi-preview-box" class="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1.5">
+ </div>
+
+ <!-- TAB / SECTION SELECTOR -->
+ <div class="flex items-center gap-2 border-b border-slate-200 pb-2">
+ <button type="button" id="tab-btn-soal" class="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-maroon-700 text-white transition shadow-2xs">
+ Detail Soal & Indikator KPI
+ </button>
+ <button type="button" id="tab-btn-karyawan" class="px-3.5 py-1.5 text-xs font-bold rounded-xl text-slate-600 hover:bg-slate-100 transition flex items-center gap-1.5">
+ Karyawan yang Masuk Template
+ <span id="tpl-karyawan-counter" class="bg-maroon-100 text-maroon-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full">${assignedSet.size}</span>
+ </button>
+ </div>
+
+ <!-- PANEL 1: SOAL & INDIKATOR KPI -->
+ <div id="panel-tpl-soal" class="space-y-3">
+ <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+ <div class="flex justify-between items-center mb-3 border-b border-slate-200 pb-2">
+ <label class="text-xs font-bold text-slate-700 uppercase tracking-wide">Indikator & Bobot Penilaian (Wajib Total 100%)</label>
+ <span id="tpl-bobot-total" class="text-xs font-bold bg-amber-100 text-amber-700 px-2.5 py-1 rounded-lg">Total Bobot: 0%</span>
+ </div>
+ <div id="tpl-soal-list" class="space-y-2.5 mb-3"></div>
+ <button type="button" id="btn-tpl-add" class="text-xs text-maroon-700 font-bold hover:underline flex items-center gap-1 bg-white px-3 py-1.5 rounded-lg border border-maroon-200 shadow-2xs">
+ <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg> Tambah Indikator Baru
+ </button>
+ </div>
+ </div>
+
+ <!-- PANEL 2: DAFTAR KARYAWAN -->
+ <div id="panel-tpl-karyawan" class="hidden space-y-3">
+ <div class="bg-amber-50/60 border border-amber-200 p-3 rounded-xl text-xs text-amber-900 flex items-center justify-between gap-2">
+ <span> <strong>Informasi:</strong> Karyawan yang dicentang di bawah ini akan otomatis menggunakan template KPI ini saat HRD melakukan Distribusi Penilaian 360.</span>
+ </div>
+
+ <div class="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
+ <!-- Search & Quick Selection -->
+ <div class="p-3 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2">
+ <input type="text" id="tpl-search-karyawan" placeholder=" Cari nama karyawan, jabatan, divisi..." class="w-full sm:w-72 px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-white">
+ <div class="flex items-center gap-2 self-end sm:self-auto">
+ <button type="button" id="btn-check-all-karyawan" class="text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">Centang Semua</button>
+ <button type="button" id="btn-uncheck-all-karyawan" class="text-[11px] font-semibold text-slate-600 bg-white hover:bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">Hapus Semua</button>
+ </div>
+ </div>
+
+ <!-- List Checkbox -->
+ <div id="tpl-karyawan-checkbox-list" class="max-h-60 overflow-y-auto divide-y divide-slate-100 p-1 bg-white">
+ </div>
+ </div>
+ </div>
+ </div>
+ `,
+ footerHtml: `
+ <div class="flex items-center justify-between w-full">
+ <button id="btn-tpl-batal" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition">Batal</button>
+ <button id="btn-tpl-simpan" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-md flex items-center gap-1.5">Simpan Template & Karyawan</button>
+ </div>
+ `,
+ onMount: (m) => {
+ const selKategori = m.querySelector("#tpl-kategori");
+ const boxPreview = m.querySelector("#tpl-rekomendasi-preview-box");
+
+ function updateRekomendasiPreview() {
+ const catKey = selKategori ? selKategori.value : "KPI_360";
+ const catObj = getCatConfig(catKey);
+ boxPreview.innerHTML = `
+ <div class="flex items-center justify-between font-bold text-slate-700">
+ <span> Pilihan Keputusan & Rekomendasi di Template ini (${catObj.icon} ${catObj.label}):</span>
+ </div>
+ <div class="flex flex-wrap gap-1.5 mt-1">
+ ${catObj.options.map(opt => `
+ <span class="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg font-semibold border ${catObj.badgeClass}">
+ [v] ${escapeHtml(opt)}
+ </span>
+ `).join('')}
+ </div>
+ `;
+ }
+ if (selKategori) selKategori.onchange = updateRekomendasiPreview;
+ updateRekomendasiPreview();
+
+ const tabBtnSoal = m.querySelector("#tab-btn-soal");
+ const tabBtnKaryawan = m.querySelector("#tab-btn-karyawan");
+ const panelSoal = m.querySelector("#panel-tpl-soal");
+ const panelKaryawan = m.querySelector("#panel-tpl-karyawan");
+
+ const soalList = m.querySelector("#tpl-soal-list");
+ const badgeBobot = m.querySelector("#tpl-bobot-total");
+ const counterKaryawan = m.querySelector("#tpl-karyawan-counter");
+ const karyawanListContainer = m.querySelector("#tpl-karyawan-checkbox-list");
+ const searchKaryawanInput = m.querySelector("#tpl-search-karyawan");
+
+ // Tab Switch logic
+ tabBtnSoal.onclick = () => {
+ panelSoal.classList.remove("hidden");
+ panelKaryawan.classList.add("hidden");
+ tabBtnSoal.className = "px-3.5 py-1.5 text-xs font-bold rounded-xl bg-maroon-700 text-white transition shadow-2xs";
+ tabBtnKaryawan.className = "px-3.5 py-1.5 text-xs font-bold rounded-xl text-slate-600 hover:bg-slate-100 transition flex items-center gap-1.5";
+ };
+
+ tabBtnKaryawan.onclick = () => {
+ panelKaryawan.classList.remove("hidden");
+ panelSoal.classList.add("hidden");
+ tabBtnKaryawan.className = "px-3.5 py-1.5 text-xs font-bold rounded-xl bg-maroon-700 text-white transition shadow-2xs flex items-center gap-1.5";
+ tabBtnSoal.className = "px-3.5 py-1.5 text-xs font-bold rounded-xl text-slate-600 hover:bg-slate-100 transition";
+ };
+
+ // Render Karyawan Checkbox List
+ function updateCounter() {
+ counterKaryawan.textContent = assignedSet.size;
+ }
+
+ function drawKaryawanCheckboxes(filterText = "") {
+ const term = filterText.toLowerCase().trim();
+
+ karyawanListContainer.innerHTML = activeKaryawan.map(k => {
+ const nama = k.nama_karyawan || "";
+ const jabatan = k.jabatan || "-";
+ const cabang = k.cabang || "Pusat";
+ const divisi = k.divisi || "";
+
+ const match = !term || nama.toLowerCase().includes(term) || jabatan.toLowerCase().includes(term) || divisi.toLowerCase().includes(term);
+ if (!match || !nama) return "";
+
+ const isChecked = assignedSet.has(nama);
+
+ return `
+ <label class="flex items-center justify-between px-3.5 py-2.5 hover:bg-slate-50 rounded-xl cursor-pointer transition select-none group">
+ <div class="flex items-center gap-3">
+ <input type="checkbox" name="tpl-karyawan-cb" value="${escapeHtml(nama)}" ${isChecked ? 'checked' : ''} class="w-4 h-4 text-maroon-600 border-slate-300 rounded focus:ring-maroon-500 cursor-pointer">
+ <div>
+ <p class="text-xs font-bold text-slate-800 group-hover:text-maroon-700 transition">${escapeHtml(nama)}</p>
+ <p class="text-[11px] text-slate-400 font-medium">${escapeHtml(jabatan)} ${divisi ? `• Divisi ${escapeHtml(divisi)}` : ''} • Cabang ${escapeHtml(cabang)}</p>
+ </div>
+ </div>
+ </label>
+ `;
+ }).join("");
+
+ m.querySelectorAll('input[name="tpl-karyawan-cb"]').forEach(cb => {
+ cb.onchange = () => {
+ if (cb.checked) {
+ assignedSet.add(cb.value);
+ } else {
+ assignedSet.delete(cb.value);
+ }
+ updateCounter();
+ };
+ });
+ updateCounter();
+ }
+
+ drawKaryawanCheckboxes();
+ if (searchKaryawanInput) {
+ searchKaryawanInput.oninput = (e) => drawKaryawanCheckboxes(e.target.value);
+ }
+
+ m.querySelector("#btn-check-all-karyawan").onclick = () => {
+ const term = (searchKaryawanInput ? searchKaryawanInput.value : "").toLowerCase().trim();
+ activeKaryawan.forEach(k => {
+ const nama = k.nama_karyawan || "";
+ if (!nama) return;
+ const match = !term || nama.toLowerCase().includes(term) || (k.jabatan || "").toLowerCase().includes(term) || (k.divisi || "").toLowerCase().includes(term);
+ if (match) assignedSet.add(nama);
+ });
+ drawKaryawanCheckboxes(searchKaryawanInput ? searchKaryawanInput.value : "");
+ };
+
+ m.querySelector("#btn-uncheck-all-karyawan").onclick = () => {
+ const term = (searchKaryawanInput ? searchKaryawanInput.value : "").toLowerCase().trim();
+ if (!term) {
+ assignedSet.clear();
+ } else {
+ activeKaryawan.forEach(k => {
+ const nama = k.nama_karyawan || "";
+ if (!nama) return;
+ const match = nama.toLowerCase().includes(term) || (k.jabatan || "").toLowerCase().includes(term) || (k.divisi || "").toLowerCase().includes(term);
+ if (match) assignedSet.delete(nama);
+ });
+ }
+ drawKaryawanCheckboxes(searchKaryawanInput ? searchKaryawanInput.value : "");
+ };
+
+ // Indicator & Bobot Logic
+ function calcTotalBobot() {
+ let total = 0;
+ m.querySelectorAll(".soal-bobot").forEach(input => total += parseFloat(input.value) || 0);
+ badgeBobot.textContent = `Total Bobot: ${total}%`;
+ if (total === 100) {
+ badgeBobot.className = "text-xs font-bold bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-lg border border-emerald-300";
+ } else {
+ badgeBobot.className = "text-xs font-bold bg-red-100 text-red-700 px-2.5 py-1 rounded-lg border border-red-300";
+ }
+ return total;
+ }
+
+ function addSoalUI(data = { aspek: "", indikator: "", bobot: "" }) {
+ const div = document.createElement("div");
+ div.className = "flex gap-2 items-start bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs";
+ div.innerHTML = `
+ <div class="flex-1 space-y-2">
+ <input type="text" placeholder="Aspek Penilaian (Cth: Kedisiplinan / Target)" value="${escapeHtml(data.aspek || '')}" class="soal-aspek w-full px-2.5 py-1.5 text-xs border rounded-lg outline-none focus:border-maroon-400 font-medium" required>
+ <input type="text" placeholder="Indikator Kinerja / Detail Pertanyaan" value="${escapeHtml(data.indikator || '')}" class="soal-indikator w-full px-2.5 py-1.5 text-xs border rounded-lg outline-none focus:border-maroon-400" required>
+ </div>
+ <div class="w-24 text-center">
+ <label class="block text-[10px] text-slate-400 font-semibold mb-1">Bobot %</label>
+ <input type="number" placeholder="10" value="${data.bobot || ''}" class="soal-bobot w-full px-2.5 py-1.5 text-xs border rounded-lg text-center font-bold text-slate-800 outline-none focus:border-maroon-400" required min="1" max="100">
+ </div>
+ <button type="button" class="text-slate-300 hover:text-red-500 mt-5 p-1 rounded hover:bg-red-50 transition" title="Hapus Indikator">&times;</button>
+ `;
+ div.querySelector(".soal-bobot").addEventListener("input", calcTotalBobot);
+ div.querySelector("button").addEventListener("click", () => { div.remove(); calcTotalBobot(); });
+ soalList.appendChild(div);
+ calcTotalBobot();
+ }
+
+ if (existingData && existingData.soal_json && existingData.soal_json.length > 0) {
+ existingData.soal_json.forEach(s => addSoalUI(s));
+ } else {
+ addSoalUI();
+ }
+
+ m.querySelector("#btn-tpl-add").onclick = () => addSoalUI();
+ m.querySelector("#btn-tpl-batal").onclick = closeModal;
+
+ m.querySelector("#btn-tpl-simpan").onclick = async () => {
+ const nama = m.querySelector("#tpl-nama").value.trim();
+ const kategoriPenilaian = selKategori ? selKategori.value : "KPI_360";
+ const skalaPenilaian = m.querySelector("#tpl-skala") ? m.querySelector("#tpl-skala").value : "0-100";
+
+ if (!nama) return toast("Nama Template wajib diisi!", "warning");
+ if (calcTotalBobot() !== 100) return toast("Total bobot indikator wajib tepat 100%!", "warning");
+
+ const soalArray = [];
+ soalList.querySelectorAll(".flex.gap-2").forEach(row => {
+ const asp = row.querySelector(".soal-aspek").value.trim();
+ const ind = row.querySelector(".soal-indikator").value.trim();
+ const bbt = parseFloat(row.querySelector(".soal-bobot").value) || 0;
+ if (asp || ind) {
+ soalArray.push({
+ aspek: asp || "Umum",
+ indikator: ind || asp,
+ bobot: bbt,
+ nilai_diberikan: 0
+ });
+ }
+ });
+
+ if (!soalArray.length) return toast("Tambahkan minimal 1 indikator soal KPI!", "warning");
+
+ // Extract checked employees from assignedSet (preserves selections across searches)
+ const checkedEmployees = Array.from(assignedSet);
+
+ const payload = {
+ nama_template: nama,
+ kategori_penilaian: kategoriPenilaian,
+ skala_penilaian: skalaPenilaian,
+ soal_json: soalArray,
+ karyawan_assigned: checkedEmployees
+ };
+
+ const btnSave = m.querySelector("#btn-tpl-simpan");
+ btnSave.disabled = true;
+ btnSave.textContent = "Menyimpan...";
+
+ try {
+ // Hapus duplikat lain jika ada template lain dengan nama jabatan yang sama
+ const allExisting = await fsGetAll(COL.MASTER_SOAL_KPI);
+ const duplicates = allExisting.filter(t => 
+ (t.nama_template || "").trim().toLowerCase() === nama.trim().toLowerCase() && 
+ (!existingData || t.id !== existingData.id)
+ );
+ for (const dup of duplicates) {
+ await fsDelete(COL.MASTER_SOAL_KPI, dup.id);
+ }
+
+ let savedTplId = existingData && existingData.id ? existingData.id : null;
+ if (existingData && existingData.id) {
+ await fsUpdate(COL.MASTER_SOAL_KPI, existingData.id, payload);
+ } else {
+ const newTplId = genId("TPL-KPI");
+ await fsAdd(COL.MASTER_SOAL_KPI, payload, newTplId);
+ savedTplId = newTplId;
+ }
+ toast("Template Soal KPI & daftar karyawan berhasil disimpan!", "success");
+ closeModal();
+ loadTemplateKpi(savedTplId);
+ } catch (err) {
+ toast("Gagal menyimpan: " + err.message, "error");
+ btnSave.disabled = false;
+ btnSave.textContent = "Simpan Template & Karyawan";
+ }
+ };
+ }
+ });
+ }
+
+ async function loadKpi360() {
+ const wrap = panels.kpi360;
+ wrap.innerHTML = `<div class="space-y-2">${skeletonRows(4)}</div>`;
+ const tasks = await fsGetAll(COL.TUGAS_KPI_360);
+ const isHrd = session.role === "HRD" || session.role === "SUPERADMIN" || session.role === "DIREKTUR";
+
+ const userNamaLower = (session.nama || "").toLowerCase().trim();
+ const myTasks = tasks.filter(t => (t.nama_penilai || "").toLowerCase().trim() === userNamaLower);
+ const pendingMyTasks = myTasks.filter(t => (t.status || "").toUpperCase() !== "DONE");
+
+ const displayTasks = isHrd ? tasks : myTasks;
+
+ let htmlContent = "";
+
+ if (pendingMyTasks.length > 0) {
+ htmlContent += `
+ <div class="mb-4 p-4 bg-maroon-50 border border-maroon-200 rounded-2xl flex items-center justify-between gap-3 shadow-xs">
+ <div class="flex items-center gap-3">
+ <div class="w-10 h-10 bg-maroon-700 text-white rounded-xl flex items-center justify-center text-lg font-bold shrink-0"></div>
+ <div>
+ <h4 class="text-xs font-bold text-maroon-950 uppercase tracking-wide">Tugas Penilaian KPI Anda</h4>
+ <p class="text-xs text-maroon-800 mt-0.5">Anda memiliki <strong class="text-maroon-900 font-extrabold underline">${pendingMyTasks.length} tugas penilaian</strong> yang perlu diisi. Silakan klik tombol <strong>"Nilai Sekarang"</strong> pada daftar di bawah ini.</p>
+ </div>
+ </div>
+ </div>`;
+ }
+
+ if (isHrd) {
+ htmlContent += `
+ <div class="mb-4 flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+ <div class="flex items-center gap-2 flex-wrap">
+ <span class="text-xs font-bold text-slate-600">Dokumen Fisik:</span>
+ <button id="btn-print-batch-kpi" class="bg-slate-800 hover:bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-2xs">
+ Cetak Form Fisik Semua (${tasks.length})
+ </button>
+ </div>
+ <div class="flex items-center gap-2 flex-wrap">
+ ${tasks.length > 0 ? `
+ <button id="btn-revoke-batch-kpi" class="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5">
+ Cabut Semua (${tasks.length})
+ </button>
+ ` : ''}
+ <button id="btn-distribusi-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 shadow-md">
+ <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+ Distribusi Penilaian 360
+ </button>
+ </div>
+ </div>`;
+ }
+
+ if (!displayTasks.length) { 
+ wrap.innerHTML = htmlContent + emptyState(isHrd ? "Belum ada penugasan KPI" : "Anda tidak memiliki tugas penilaian KPI aktif saat ini"); 
+ } else {
+ wrap.innerHTML = htmlContent + `
+ <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+ <div class="overflow-x-auto">
+ <table class="w-full text-sm">
+ <thead class="bg-slate-50 text-slate-500 text-xs uppercase"><tr>
+ <th class="px-4 py-3 text-left">Periode & Kategori</th><th class="px-4 py-3 text-left">Penilai</th><th class="px-4 py-3 text-left">Karyawan Dinilai</th><th class="px-4 py-3 text-left">Batas Waktu</th><th class="px-4 py-3 text-left">Status</th><th class="px-4 py-3 text-left">Skor</th><th class="px-4 py-3 text-right">Aksi Penilaian</th>
+ </tr></thead>
+ <tbody>${displayTasks.map(t => {
+ const isAssignedToMe = (t.nama_penilai || "").toLowerCase().trim() === userNamaLower;
+ const canFill = isAssignedToMe || isHrd;
+ const catCfg = getCatConfig(t.kategori_penilaian);
+ return `
+ <tr class="border-t border-slate-50 hover:bg-slate-50 transition">
+ <td class="px-4 py-3">
+ <span class="font-semibold block text-slate-800">${escapeHtml(t.periode || "-")}</span>
+ <div class="flex items-center gap-1 mt-0.5 flex-wrap">
+ <span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border ${catCfg.badgeClass}">
+ ${catCfg.icon} ${catCfg.label}
+ </span>
+ ${t.skala_penilaian ? `<span class="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">Skala ${t.skala_penilaian}</span>` : ''}
+ </div>
+ </td>
+ <td class="px-4 py-3 font-medium">${escapeHtml(t.nama_penilai || "-")}</td>
+ <td class="px-4 py-3 font-bold text-slate-800">${escapeHtml(t.nama_dinilai || "-")}</td>
+ <td class="px-4 py-3 text-xs text-slate-500">${t.deadline ? fmtDateShort(t.deadline) : "-"}</td>
+ <td class="px-4 py-3">
+ ${badge(t.status || "PENDING", t.status === "DONE" ? "green" : "amber")}
+ ${t.diinput_oleh_hrd ? '<span class="block text-[10px] text-emerald-700 font-semibold mt-0.5">Form Fisik (HRD)</span>' : ''}
+ </td>
+ <td class="px-4 py-3 font-semibold">${t.skor_akhir ? t.skor_akhir : "-"}</td>
+ <td class="px-4 py-3 text-right">
+ <div class="flex items-center justify-end gap-1.5 flex-wrap">
+ ${canFill ? `
+ <button data-isi-kpi="${t.id}" class="px-3 py-1.5 text-xs font-bold ${t.status === 'DONE' ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200' : 'bg-maroon-700 hover:bg-maroon-800 text-white shadow-xs'} rounded-lg inline-flex items-center gap-1 transition">
+ ${t.status === 'DONE' ? 'Lihat / Edit Nilai' : ' Nilai Sekarang'}
+ </button>
+ ` : ''}
+ ${isHrd ? `
+ <button data-input-manual="${t.id}" class="px-2.5 py-1.5 text-xs font-semibold ${t.status === 'DONE' ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200' : 'bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs'} rounded-lg inline-flex items-center gap-1 transition">
+ ${t.status === 'DONE' ? ' Input HRD' : ' Input Fisik'}
+ </button>
+ <button data-del-tugas="${t.id}" class="px-2 py-1.5 text-xs font-semibold bg-red-50 hover:bg-red-100 text-red-600 rounded-lg inline-flex items-center gap-1 border border-red-200 transition" title="Cabut / Hapus Penugasan ini">
+ 
+ </button>
+ ` : ''}
+ <button data-print-fisik="${t.id}" class="px-2.5 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg inline-flex items-center gap-1 border border-slate-200 transition" title="Cetak Form Fisik"></button>
+ </div>
+ </td>
+ </tr>`;
+ }).join("")}
+ </tbody>
+ </table>
+ </div>
+ </div>`;
+ }
+
+ if (isHrd && wrap.querySelector("#btn-distribusi-kpi")) wrap.querySelector("#btn-distribusi-kpi").onclick = openDistribusiModal;
+ if (isHrd && wrap.querySelector("#btn-print-batch-kpi")) wrap.querySelector("#btn-print-batch-kpi").onclick = () => printBatchFormKpiFisik(tasks);
+ if (isHrd && wrap.querySelector("#btn-revoke-batch-kpi")) {
+ wrap.querySelector("#btn-revoke-batch-kpi").onclick = async () => {
+ if (!tasks || !tasks.length) return;
+ if (confirm(`Apakah Anda yakin ingin MENCABUT / MENGHAPUS SELURUH (${tasks.length}) pendistribusian penugasan penilaian KPI? Penilai tidak akan dapat mengisi tugas ini lagi.`)) {
+ for (const t of tasks) {
+ await fsDelete(COL.TUGAS_KPI_360, t.id);
+ }
+ toast(`Berhasil mencabut ${tasks.length} pendistribusian penugasan KPI`, "success");
+ loadKpi360();
+ }
+ };
+ }
+
+ wrap.querySelectorAll("[data-isi-kpi]").forEach(btn => {
+ btn.onclick = () => {
+ const task = tasks.find(x => x.id === btn.dataset.isiKpi);
+ if (task) openIsiKpiModal(task);
+ };
+ });
+
+ wrap.querySelectorAll("[data-del-tugas]").forEach(btn => {
+ btn.onclick = async () => {
+ const tId = btn.dataset.delTugas;
+ const task = tasks.find(x => x.id === tId);
+ if (!task) return;
+ if (confirm(`Apakah Anda yakin ingin mencabut / menghapus penugasan penilaian KPI untuk "${task.nama_dinilai}" oleh "${task.nama_penilai}" (Periode: ${task.periode})?`)) {
+ await fsDelete(COL.TUGAS_KPI_360, tId);
+ toast("Pendistribusian penugasan KPI berhasil dicabut", "success");
+ loadKpi360();
+ }
+ };
+ });
+
+ wrap.querySelectorAll("[data-input-manual]").forEach(btn => {
+ btn.onclick = () => {
+ const task = tasks.find(x => x.id === btn.dataset.inputManual);
+ if (task) openManualInputModal(task);
+ };
+ });
+
+ wrap.querySelectorAll("[data-print-fisik]").forEach(btn => {
+ btn.onclick = () => printFormKpiFisik(tasks.find(x => x.id === btn.dataset.printFisik));
+ });
+ }
+
+ function openIsiKpiModal(task) {
+ const isDone = task.status === "DONE";
+ const tKatKey = task.kategori_penilaian || "KPI_360";
+ const catConfig = getCatConfig(tKatKey);
+ const isScale1to5 = (task.skala_penilaian === "1-5");
+ const maxSkor = isScale1to5 ? 5 : 100;
+ const minSkor = isScale1to5 ? 1 : 0;
+ const stepSkor = isScale1to5 ? "0.1" : "1";
+
+ const soalHtml = (task.soal_json || []).map((s, i) => `
+ <div class="border-b border-slate-100 pb-4 mb-4 text-left">
+ <div class="flex items-center gap-2 mb-1.5">
+ <span class="bg-maroon-50 text-maroon-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">${escapeHtml(s.aspek || "ASPEK")}</span>
+ <span class="text-[10px] text-slate-400 font-medium">Bobot: ${s.bobot || 0}%</span>
+ </div>
+ <p class="text-xs font-semibold text-slate-800 mb-2">${escapeHtml(s.indikator)}</p>
+ <div class="relative">
+ <input type="number" data-idx="${i}" data-bobot="${s.bobot}" class="kpi-nilai-input w-full pl-3 pr-12 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-500 focus:ring-2 focus:ring-maroon-100 font-bold transition" placeholder="Berikan Skor (${minSkor}-${maxSkor})" value="${s.nilai_diberikan !== undefined && s.nilai_diberikan !== null ? s.nilai_diberikan : ''}" required min="${minSkor}" max="${maxSkor}" step="${stepSkor}">
+ <span class="absolute right-3 top-2 text-slate-400 font-medium text-xs">/ ${maxSkor}</span>
+ </div>
+ </div>
+ `).join("");
+
+ let calcWeighted = 0;
+ (task.soal_json || []).forEach(s => {
+ const v = parseFloat(s.nilai_diberikan) || 0;
+ const b = parseFloat(s.bobot) || 0;
+ calcWeighted += v * (b / 100);
+ });
+ let initialFinalScore = isScale1to5 ? Math.round(calcWeighted * 20 * 100) / 100 : Math.round(calcWeighted * 100) / 100;
+ let initialDisplay = isScale1to5 ? `${calcWeighted.toFixed(2)} / 5.00 (Nilai: ${initialFinalScore.toFixed(2)})` : `${initialFinalScore.toFixed(2)}`;
+
+ openModal({
+ title: `${isDone ? ' Edit Penilaian' : ' Pengisian Penilaian'} KPI: ${escapeHtml(task.nama_dinilai)}`,
+ size: "lg",
+ bodyHtml: `
+ <div class="text-left space-y-4">
+ <div class="p-3 bg-maroon-50 border border-maroon-200 rounded-xl flex items-start gap-3">
+ <span class="text-xl">${catConfig.icon}</span>
+ <div class="text-xs text-maroon-900 leading-relaxed">
+ <strong class="font-bold block text-maroon-950 text-sm mb-0.5">${catConfig.label} (Skala ${isScale1to5 ? '1 - 5' : '0 - 100'})</strong>
+ Silakan berikan skor ${minSkor} - ${maxSkor} untuk tiap indikator penilaian berikut. Nilai akhir akan dihitung secara otomatis berdasarkan bobot.
+ </div>
+ </div>
+
+ <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+ <div>
+ <span class="text-slate-400 block text-[10px] uppercase font-bold">Karyawan Dinilai</span>
+ <strong class="text-slate-800 font-bold text-sm">${escapeHtml(task.nama_dinilai)}</strong>
+ </div>
+ <div>
+ <span class="text-slate-400 block text-[10px] uppercase font-bold">Penilai</span>
+ <strong class="text-slate-700 font-semibold">${escapeHtml(task.nama_penilai)}</strong>
+ </div>
+ <div>
+ <span class="text-slate-400 block text-[10px] uppercase font-bold">Periode</span>
+ <span class="text-slate-700 font-medium">${escapeHtml(task.periode || '-')}</span>
+ </div>
+ <div>
+ <span class="text-slate-400 block text-[10px] uppercase font-bold">Batas Waktu</span>
+ <span class="text-slate-700 font-medium">${task.deadline ? fmtDateShort(task.deadline) : '-'}</span>
+ </div>
+ </div>
+
+ <form id="form-isi-kpi-360">
+ <div class="mb-4">
+ <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 pb-1 border-b border-slate-200">1. Indikator & Skor Penilaian</h4>
+ ${soalHtml}
+ </div>
+
+ <div class="mt-5 space-y-3">
+ <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider pb-1 border-b border-slate-200">2. Ulasan & Catatan Penilai</h4>
+ <div>
+ <label class="block text-xs font-bold text-emerald-800 mb-1 uppercase tracking-wide">[v] Hal-hal yang Sudah Baik (Kelebihan / Prestasi Kerja)</label>
+ <textarea id="kpi-catatan-baik" rows="2" class="w-full px-3 py-2 text-xs border border-emerald-200 bg-emerald-50/20 rounded-lg outline-none focus:border-emerald-500 font-medium" placeholder="Tuliskan poin-poin kelebihan karyawan...">${escapeHtml(task.catatan_baik || '')}</textarea>
+ </div>
+ <div>
+ <label class="block text-xs font-bold text-red-800 mb-1 uppercase tracking-wide"> Area Peningkatan (Hal-hal yang Perlu Diperbaiki)</label>
+ <textarea id="kpi-catatan-perbaikan" rows="2" class="w-full px-3 py-2 text-xs border border-red-200 bg-red-50/20 rounded-lg outline-none focus:border-red-500 font-medium" placeholder="Tuliskan aspek yang perlu ditingkatkan...">${escapeHtml(task.catatan_perbaikan || '')}</textarea>
+ </div>
+ <div>
+ <label class="block text-xs font-bold text-slate-700 mb-1 uppercase tracking-wide"> Catatan & Masukan Tambahan</label>
+ <textarea id="kpi-catatan-penilai" rows="2" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-400 font-medium" placeholder="Tuliskan saran pengembangan...">${escapeHtml(task.catatan_penilai || '')}</textarea>
+ </div>
+ </div>
+
+ <div class="mt-5 space-y-3">
+ <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider pb-1 border-b border-slate-200 flex items-center justify-between">
+ <span>3. Hasil Rekomendasi & Keputusan Penilai</span>
+ <span class="text-[10px] font-extrabold px-2 py-0.5 rounded border ${catConfig.badgeClass}">${catConfig.icon} ${catConfig.label}</span>
+ </h4>
+ <div id="kpi-live-grade-badge-wrap" class="mb-2"></div>
+ <div>
+ <label class="block text-xs font-bold text-slate-800 mb-1">Pilih Opsi Keputusan Penilaian <span class="text-red-500">*</span></label>
+ <select id="kpi-rekomendasi-select" required class="w-full px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl outline-none focus:border-maroon-500 bg-white text-slate-800">
+ <option value="">-- Pilih Rekomendasi (${catConfig.label}) --</option>
+ ${catConfig.options.map(opt => `
+ <option value="${escapeHtml(opt)}" ${ (task.rekomendasi || task.keputusan) === opt ? 'selected' : '' }>${escapeHtml(opt)}</option>
+ `).join('')}
+ </select>
+ </div>
+ </div>
+ </form>
+ </div>
+ `,
+ footerHtml: `
+ <div class="flex items-center justify-between w-full">
+ <div class="bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 flex items-center gap-2">
+ <span class="text-xs font-bold text-slate-600">Skor Akhir:</span>
+ <span id="kpi-live-score" class="text-base font-black text-maroon-700">${initialDisplay}</span>
+ </div>
+ <div class="flex items-center gap-2">
+ <button id="btn-cancel-kpi" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition">Batal</button>
+ <button id="btn-save-kpi-360" class="px-5 py-2 bg-maroon-700 text-white rounded-lg text-xs font-bold hover:bg-maroon-800 transition shadow-md flex items-center gap-1.5">Simpan & Kirim Penilaian</button>
+ </div>
+ </div>
+ `,
+ onMount: (m) => {
+ const liveScore = m.querySelector("#kpi-live-score");
+ const selRekomendasi = m.querySelector("#kpi-rekomendasi-select");
+ const badgeWrap = m.querySelector("#kpi-live-grade-badge-wrap");
+
+ const updateGradeLogic = () => {
+ let sumWeighted = 0;
+ m.querySelectorAll(".kpi-nilai-input").forEach(input => {
+ const bbt = parseFloat(input.dataset.bobot) || 0;
+ const val = parseFloat(input.value) || 0;
+ sumWeighted += val * (bbt / 100);
+ });
+ let calcFinal = isScale1to5 ? Math.round(sumWeighted * 20 * 100) / 100 : Math.round(sumWeighted * 100) / 100;
+ liveScore.textContent = isScale1to5 ? `${sumWeighted.toFixed(2)} / 5.00 (Nilai: ${calcFinal.toFixed(2)})` : `${calcFinal.toFixed(2)}`;
+
+ const evalRes = evaluateGradeRule(tKatKey, calcFinal, currentGradeRulesMap);
+ if (badgeWrap) {
+ badgeWrap.innerHTML = `
+ <div class="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
+ <div class="flex items-center gap-2">
+ <span class="font-extrabold text-slate-700">Hasil Evaluasi Standar Grade:</span>
+ <span class="px-2 py-0.5 rounded text-[11px] font-black border ${evalRes.badgeClass}">${evalRes.predikat}</span>
+ </div>
+ <div class="text-slate-600 font-medium text-[11px]">
+ Auto-Suggest: <strong class="text-slate-800">${escapeHtml(evalRes.rekomendasi)}</strong>
+ </div>
+ </div>
+ `;
+ }
+
+ if (selRekomendasi && evalRes.rekomendasi && !selRekomendasi.dataset.manuallyChanged) {
+ for (let opt of selRekomendasi.options) {
+ if (opt.value && (opt.value === evalRes.rekomendasi || opt.value.includes(evalRes.predikat) || evalRes.rekomendasi.includes(opt.value))) {
+ selRekomendasi.value = opt.value;
+ break;
+ }
+ }
+ }
+ };
+
+ if (selRekomendasi) {
+ selRekomendasi.onchange = () => {
+ selRekomendasi.dataset.manuallyChanged = "true";
+ };
+ }
+
+ updateGradeLogic();
+ m.querySelector("#form-isi-kpi-360").addEventListener("input", updateGradeLogic);
+
+ m.querySelector("#btn-cancel-kpi").onclick = closeModal;
+ m.querySelector("#btn-save-kpi-360").onclick = async () => {
+ const form = m.querySelector("#form-isi-kpi-360");
+ if (!form.reportValidity()) return toast("Mohon lengkapi semua nilai indikator!", "warning");
+
+ const rekomendasiVal = m.querySelector("#kpi-rekomendasi-select") ? m.querySelector("#kpi-rekomendasi-select").value.trim() : "";
+ if (!rekomendasiVal) return toast("Pilih hasil rekomendasi / keputusan penilaian!", "warning");
+
+ let totalWeighted = 0;
+ const answeredSoal = [...(task.soal_json || [])];
+ const catatanBaik = m.querySelector("#kpi-catatan-baik") ? m.querySelector("#kpi-catatan-baik").value.trim() : "";
+ const catatanPerbaikan = m.querySelector("#kpi-catatan-perbaikan") ? m.querySelector("#kpi-catatan-perbaikan").value.trim() : "";
+ const catatanPenilai = m.querySelector("#kpi-catatan-penilai") ? m.querySelector("#kpi-catatan-penilai").value.trim() : "";
+
+ m.querySelectorAll(".kpi-nilai-input").forEach(input => {
+ const idx = parseInt(input.dataset.idx, 10);
+ const nilai = parseFloat(input.value) || 0;
+ const bobot = parseFloat(answeredSoal[idx]?.bobot) || 0;
+ if (answeredSoal[idx]) answeredSoal[idx].nilai_diberikan = nilai;
+ totalWeighted += (nilai * (bobot / 100));
+ });
+
+ let finalScore = isScale1to5 ? Math.round(totalWeighted * 20 * 100) / 100 : Math.round(totalWeighted * 100) / 100;
+
+ const btn = m.querySelector("#btn-save-kpi-360");
+ btn.disabled = true; btn.textContent = "Menyimpan Penilaian...";
+
+ try {
+ await fsUpdate(COL.TUGAS_KPI_360, task.id, {
+ status: "DONE",
+ skor_akhir: finalScore,
+ soal_json: answeredSoal,
+ catatan_baik: catatanBaik,
+ catatan_perbaikan: catatanPerbaikan,
+ catatan_penilai: catatanPenilai,
+ rekomendasi: rekomendasiVal,
+ kategori_penilaian: tKatKey,
+ tanggal_diselesaikan: new Date().toISOString()
+ });
+
+ await fsAdd(COL.LOG_PENILAIAN_KPI, {
+ tanggal: new Date().toISOString(),
+ nama_dinilai: task.nama_dinilai,
+ penilai: task.nama_penilai,
+ total_skor: finalScore,
+ keputusan: rekomendasiVal,
+ rekomendasi: rekomendasiVal,
+ kategori_penilaian: tKatKey,
+ skala_penilaian: task.skala_penilaian || "0-100",
+ periode: task.periode,
+ detail_json: answeredSoal,
+ catatan_baik: catatanBaik,
+ catatan_perbaikan: catatanPerbaikan,
+ catatan_penilai: catatanPenilai
+ }, genId("KPI-LOG"));
+
+ toast("Penilaian KPI & Rekomendasi berhasil disimpan!", "success");
+ closeModal();
+ await loadKpi360();
+ } catch (err) {
+ toast("Gagal menyimpan: " + err.message, "error");
+ btn.disabled = false; btn.textContent = "Simpan & Kirim Penilaian";
+ }
+ };
+ }
+ });
+ }
+
+ function openManualInputModal(task) {
+ const isDone = task.status === "DONE";
+ const tKatKey = task.kategori_penilaian || "KPI_360";
+ const catConfig = getCatConfig(tKatKey);
+ const isScale1to5 = (task.skala_penilaian === "1-5");
+ const maxSkor = isScale1to5 ? 5 : 100;
+ const minSkor = isScale1to5 ? 1 : 0;
+ const stepSkor = isScale1to5 ? "0.1" : "1";
+
+ const soalHtml = (task.soal_json || []).map((s, i) => `
+ <div class="border-b border-slate-100 pb-4 mb-4 text-left">
+ <div class="flex items-center gap-2 mb-1.5">
+ <span class="bg-maroon-50 text-maroon-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">${escapeHtml(s.aspek || "ASPEK")}</span>
+ <span class="text-[10px] text-slate-400 font-medium">Bobot: ${s.bobot || 0}%</span>
+ </div>
+ <p class="text-xs font-semibold text-slate-800 mb-2">${escapeHtml(s.indikator)}</p>
+ <div class="relative">
+ <input type="number" data-idx="${i}" data-bobot="${s.bobot}" class="kpi-nilai-input w-full pl-3 pr-12 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-500 focus:ring-2 focus:ring-maroon-100 font-bold transition" placeholder="Skor dari Form Fisik (${minSkor}-${maxSkor})" value="${s.nilai_diberikan !== undefined && s.nilai_diberikan !== null ? s.nilai_diberikan : ''}" required min="${minSkor}" max="${maxSkor}" step="${stepSkor}">
+ <span class="absolute right-3 top-2 text-slate-400 font-medium text-xs">/ ${maxSkor}</span>
+ </div>
+ </div>
+ `).join("");
+
+ let calcWeighted = 0;
+ (task.soal_json || []).forEach(s => {
+ const v = parseFloat(s.nilai_diberikan) || 0;
+ const b = parseFloat(s.bobot) || 0;
+ calcWeighted += v * (b / 100);
+ });
+ let initialFinalScore = isScale1to5 ? Math.round(calcWeighted * 20 * 100) / 100 : Math.round(calcWeighted * 100) / 100;
+ let initialScoreDisplay = isScale1to5 ? `${calcWeighted.toFixed(2)} / 5.00 (Nilai: ${initialFinalScore.toFixed(2)})` : `${initialFinalScore.toFixed(2)}`;
+
+ openModal({
+ title: `${isDone ? ' Edit Input Manual' : ' Input Manual'} Penilaian Fisik KPI`,
+ size: "lg",
+ bodyHtml: `
+ <div class="text-left space-y-4">
+ <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+ <span class="text-xl"></span>
+ <div class="text-xs text-amber-900 leading-relaxed">
+ <strong class="font-bold block text-amber-950 text-sm mb-0.5">Input Manual Penilaian Form Fisik (Kertas) - Skala ${isScale1to5 ? '1 - 5' : '0 - 100'}</strong>
+ HRD menginputkan skor dan ulasan kualitatif yang telah diisi penilai secara manual pada dokumen fisik.
+ </div>
+ </div>
+
+ <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+ <div>
+ <span class="text-slate-400 block text-[10px] uppercase font-bold">Karyawan Dinilai</span>
+ <strong class="text-slate-800 font-bold text-sm">${escapeHtml(task.nama_dinilai)}</strong>
+ </div>
+ <div>
+ <span class="text-slate-400 block text-[10px] uppercase font-bold">Penilai (Atasan/Rekan)</span>
+ <strong class="text-slate-700 font-semibold">${escapeHtml(task.nama_penilai)}</strong>
+ </div>
+ <div>
+ <span class="text-slate-400 block text-[10px] uppercase font-bold">Periode</span>
+ <span class="text-slate-700 font-medium">${escapeHtml(task.periode || '-')}</span>
+ </div>
+ <div>
+ <span class="text-slate-400 block text-[10px] uppercase font-bold">Batas Waktu</span>
+ <span class="text-slate-700 font-medium">${task.deadline ? fmtDateShort(task.deadline) : '-'}</span>
+ </div>
+ </div>
+
+ <form id="form-manual-kpi">
+ <div class="mb-4">
+ <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 pb-1 border-b border-slate-200">1. Skor Indikator Penilaian</h4>
+ ${soalHtml}
+ </div>
+
+ <div class="mt-5 space-y-3">
+ <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider pb-1 border-b border-slate-200">2. Evaluasi Kualitatif & Ulasan Penilai</h4>
+ <div>
+ <label class="block text-xs font-bold text-emerald-800 mb-1 uppercase tracking-wide">[v] Hal-hal yang Sudah Baik (Kelebihan / Prestasi Kerja)</label>
+ <textarea id="manual-catatan-baik" rows="3" class="w-full px-3 py-2 text-xs border border-emerald-200 bg-emerald-50/20 rounded-lg outline-none focus:border-emerald-500 font-medium" placeholder="Tuliskan poin-poin kelebihan dari lembar fisik...">${escapeHtml(task.catatan_baik || '')}</textarea>
+ </div>
+ <div>
+ <label class="block text-xs font-bold text-red-800 mb-1 uppercase tracking-wide"> Hal-hal yang Harus Diperbaiki (Area Peningkatan)</label>
+ <textarea id="manual-catatan-perbaikan" rows="3" class="w-full px-3 py-2 text-xs border border-red-200 bg-red-50/20 rounded-lg outline-none focus:border-red-500 font-medium" placeholder="Tuliskan area peningkatan dari lembar fisik...">${escapeHtml(task.catatan_perbaikan || '')}</textarea>
+ </div>
+ <div>
+ <label class="block text-xs font-bold text-slate-700 mb-1 uppercase tracking-wide"> Catatan & Rekomendasi Tambahan Penilai</label>
+ <textarea id="manual-catatan-penilai" rows="3" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-400 font-medium" placeholder="Catatan atau masukan umum penilai...">${escapeHtml(task.catatan_penilai || task.catatan_umum || '')}</textarea>
+ </div>
+ </div>
+
+ <div class="mt-5 space-y-3">
+ <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider pb-1 border-b border-slate-200 flex items-center justify-between">
+ <span>3. Hasil Rekomendasi & Keputusan Penilai</span>
+ <span class="text-[10px] font-extrabold px-2 py-0.5 rounded border ${catConfig.badgeClass}">${catConfig.icon} ${catConfig.label}</span>
+ </h4>
+ <div>
+ <label class="block text-xs font-bold text-slate-800 mb-1">Pilih Opsi Keputusan Penilaian <span class="text-red-500">*</span></label>
+ <select id="manual-rekomendasi-select" required class="w-full px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl outline-none focus:border-maroon-500 bg-white text-slate-800">
+ <option value="">-- Pilih Rekomendasi (${catConfig.label}) --</option>
+ ${catConfig.options.map(opt => `
+ <option value="${escapeHtml(opt)}" ${ (task.rekomendasi || task.keputusan) === opt ? 'selected' : '' }>${escapeHtml(opt)}</option>
+ `).join('')}
+ </select>
+ </div>
+ </div>
+ </form>
+ </div>
+ `,
+ footerHtml: `
+ <div class="w-full flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-200 mb-3">
+ <span class="text-xs font-bold text-slate-600">Total Skor Akhir (Dihitung Otomatis):</span>
+ <span id="manual-kpi-live-score" class="text-xl font-black text-maroon-700">${initialScoreDisplay}</span>
+ </div>
+ <div class="flex gap-2 justify-end w-full">
+ <button id="btn-close-manual-modal" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition">Batal</button>
+ <button id="btn-save-manual-kpi" class="bg-emerald-700 hover:bg-emerald-800 text-white px-5 py-2 rounded-lg text-xs font-bold transition shadow-md flex items-center gap-1.5">
+ Simpan Penilaian Manual
+ </button>
+ </div>
+ `,
+ onMount: (m) => {
+ const liveScore = m.querySelector("#manual-kpi-live-score");
+ const calcScore = () => {
+ let sumWeighted = 0;
+ m.querySelectorAll(".kpi-nilai-input").forEach(input => {
+ const bbt = parseFloat(input.dataset.bobot) || 0;
+ const val = parseFloat(input.value) || 0;
+ sumWeighted += val * (bbt / 100);
+ });
+ let calcFinal = isScale1to5 ? Math.round(sumWeighted * 20 * 100) / 100 : Math.round(sumWeighted * 100) / 100;
+ liveScore.textContent = isScale1to5 ? `${sumWeighted.toFixed(2)} / 5.00 (Nilai: ${calcFinal.toFixed(2)})` : `${calcFinal.toFixed(2)}`;
+ };
+
+ m.querySelector("#form-manual-kpi").addEventListener("input", calcScore);
+ m.querySelector("#btn-close-manual-modal").onclick = closeModal;
+
+ m.querySelector("#btn-save-manual-kpi").onclick = async () => {
+ const form = m.querySelector("#form-manual-kpi");
+ if (!form.reportValidity()) return;
+
+ const rekomendasiVal = m.querySelector("#manual-rekomendasi-select") ? m.querySelector("#manual-rekomendasi-select").value.trim() : "";
+ if (!rekomendasiVal) return toast("Pilih hasil rekomendasi / keputusan penilaian!", "warning");
+
+ let sumWeighted = 0;
+ const answeredSoal = [...(task.soal_json || [])];
+ const catatanBaik = m.querySelector("#manual-catatan-baik") ? m.querySelector("#manual-catatan-baik").value.trim() : "";
+ const catatanPerbaikan = m.querySelector("#manual-catatan-perbaikan") ? m.querySelector("#manual-catatan-perbaikan").value.trim() : "";
+ const catatanPenilai = m.querySelector("#manual-catatan-penilai") ? m.querySelector("#manual-catatan-penilai").value.trim() : "";
+
+ m.querySelectorAll(".kpi-nilai-input").forEach(input => {
+ const idx = parseInt(input.dataset.idx, 10);
+ const nilai = parseFloat(input.value) || 0;
+ const bobot = parseFloat(answeredSoal[idx]?.bobot) || 0;
+ if (answeredSoal[idx]) answeredSoal[idx].nilai_diberikan = nilai;
+ sumWeighted += (nilai * (bobot / 100));
+ });
+
+ let finalScore = isScale1to5 ? Math.round(sumWeighted * 20 * 100) / 100 : Math.round(sumWeighted * 100) / 100;
+
+ const btn = m.querySelector("#btn-save-manual-kpi");
+ btn.disabled = true; btn.textContent = "Menyimpan Hasil...";
+
+ try {
+ await fsUpdate(COL.TUGAS_KPI_360, task.id, {
+ status: "DONE",
+ skor_akhir: finalScore,
+ soal_json: answeredSoal,
+ catatan_baik: catatanBaik,
+ catatan_perbaikan: catatanPerbaikan,
+ catatan_penilai: catatanPenilai,
+ rekomendasi: rekomendasiVal,
+ kategori_penilaian: tKatKey,
+ diinput_oleh_hrd: true,
+ metode_penilaian: "FORM_FISIK",
+ tanggal_diselesaikan: new Date().toISOString()
+ });
+
+ await fsAdd(COL.LOG_PENILAIAN_KPI, {
+ tanggal: new Date().toISOString(),
+ nama_dinilai: task.nama_dinilai,
+ penilai: task.nama_penilai + " (Input Manual HRD)",
+ total_skor: finalScore,
+ keputusan: rekomendasiVal,
+ rekomendasi: rekomendasiVal,
+ kategori_penilaian: tKatKey,
+ skala_penilaian: task.skala_penilaian || "0-100",
+ periode: task.periode,
+ detail_json: answeredSoal,
+ catatan_baik: catatanBaik,
+ catatan_perbaikan: catatanPerbaikan,
+ catatan_penilai: catatanPenilai,
+ diinput_oleh_hrd: true,
+ metode_penilaian: "FORM_FISIK"
+ }, genId("KPI-LOG"));
+
+ toast("Hasil penilaian fisik & rekomendasi berhasil disimpan!", "success");
+ closeModal();
+ await loadKpi360();
+ } catch(e) {
+ toast("Gagal menyimpan: " + e.message, "error");
+ btn.disabled = false;
+ btn.textContent = "Simpan Penilaian Manual";
+ }
+ };
+ }
+ });
+ }
+
+ // =====================================================================
+ // HELPER UNTUK GENERATE & MENCETAK DOKUMEN PENILAIAN FISIK KPI (HEMAT KERTAS)
+ // =====================================================================
+ async function getKaryawanMap() {
+ const allKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
+ const map = {};
+ allKaryawan.forEach(k => {
+ if (k.nama_karyawan) map[k.nama_karyawan] = k;
+ });
+ return map;
+ }
+
+ // FORMAT HALF A4 / A5 CARD (UNTUK MUAT 2 PENILAIAN DALAM 1 KERTAS A4)
+ function generateFormKpiA5CardHtml(task, karyawanMap = {}, isArchiveCopy = false) {
+ const dinilaiInfo = karyawanMap[task.nama_dinilai] || {};
+ const penilaiInfo = karyawanMap[task.nama_penilai] || {};
+
+ const nikDinilai = dinilaiInfo.nik_karyawan || dinilaiInfo.nik || "-";
+ const jabatanDinilai = dinilaiInfo.jabatan || "-";
+ const divisiDinilai = dinilaiInfo.divisi || "-";
+ const cabangDinilai = dinilaiInfo.cabang || "Pusat";
+ const statusDinilai = formatStatusKaryawan(dinilaiInfo.status_karyawan || "-");
+ const isScale1to5 = (task.skala_penilaian === "1-5");
+
+ let tbody = "";
+ const soalList = task.soal_json || [];
+ soalList.forEach((item, idx) => {
+ tbody += `
+ <tr>
+ <td style="border:1px solid #000; padding:2px 3px; text-align:center; font-weight:bold; font-size:8.5px;">${idx + 1}</td>
+ <td style="border:1px solid #000; padding:2px 3px; font-weight:600; font-size:8.5px;">${escapeHtml(item.aspek || "-")}</td>
+ <td style="border:1px solid #000; padding:2px 3px; font-size:8px;">${escapeHtml(item.indikator || "-")}</td>
+ <td style="border:1px solid #000; padding:2px 3px; text-align:center; font-weight:bold; font-size:8.5px;">${item.bobot || 0}%</td>
+ <td style="border:1px solid #000; padding:2px 3px; text-align:center; font-weight:bold; background:#fafafa;">
+ <div style="min-height:16px; border:1px dashed #64748b; border-radius:2px; margin:0 auto; width:55px; line-height:16px; text-align:center; font-size:9.5px; color:#334155;">
+ ${item.nilai_diberikan !== undefined && item.nilai_diberikan !== null && item.nilai_diberikan !== "" ? item.nilai_diberikan : '[ &nbsp; &nbsp; ]'}
+ </div>
+ </td>
+ <td style="border:1px solid #000; padding:2px 3px; text-align:center;">
+ <div style="min-height:16px; border:1px dashed #cbd5e1; border-radius:2px; margin:0 auto; width:55px;"></div>
+ </td>
+ </tr>
+ `;
+ });
+
+ return `
+ <div style="border:1px solid #000; padding:8px 10px; background:#fff; box-sizing:border-box; border-radius:4px; font-family:'Times New Roman', Times, serif; font-size:9px; line-height:1.15; color:#000; position:relative;">
+ ${isArchiveCopy ? `<div style="position:absolute; top:8px; right:12px; font-size:8px; font-weight:bold; color:#7a1f2b; border:1px solid #7a1f2b; padding:1px 4px; border-radius:2px; background:#fff0f2;">[ LEMBAR ARSIP HRD ]</div>` : ''}
+ 
+ <!-- KOP ISO COMPACT -->
+ <div style="margin-bottom:4px;">
+ ${isoDocHeaderTable({
+ judul: "FORMULIR PENILAIAN KPI",
+ noDok: "FM-HRD-KPI-01A5",
+ terbitRevisi: "1/0",
+ tglTerbit: fmtDateShort(new Date()),
+ hal: "1 dari 1"
+ })}
+ </div>
+
+ <!-- INFO KARYAWAN & PENILAI -->
+ <table style="width:100%; border-collapse:collapse; margin-bottom:4px; border:1px solid #000; font-size:8.5px;">
+ <tr>
+ <td width="16%" style="border:1px solid #000; padding:2px 4px; font-weight:bold; background:#f8fafc;">Yang Dinilai</td>
+ <td width="34%" style="border:1px solid #000; padding:2px 4px; font-weight:bold;">${escapeHtml(task.nama_dinilai)} (${escapeHtml(nikDinilai)})</td>
+ <td width="16%" style="border:1px solid #000; padding:2px 4px; font-weight:bold; background:#f8fafc;">Penilai</td>
+ <td width="34%" style="border:1px solid #000; padding:2px 4px; font-weight:bold;">${escapeHtml(task.nama_penilai)}</td>
+ </tr>
+ <tr>
+ <td style="border:1px solid #000; padding:2px 4px; font-weight:bold; background:#f8fafc;">Jabatan/Div</td>
+ <td style="border:1px solid #000; padding:2px 4px;">${escapeHtml(jabatanDinilai)} / ${escapeHtml(divisiDinilai)} (${escapeHtml(cabangDinilai)})</td>
+ <td style="border:1px solid #000; padding:2px 4px; font-weight:bold; background:#f8fafc;">Periode & Batas</td>
+ <td style="border:1px solid #000; padding:2px 4px;"><strong>${escapeHtml(task.periode || "-")}</strong> | Batas: ${task.deadline ? fmtDateShort(task.deadline) : "-"}</td>
+ </tr>
+ </table>
+
+ <!-- TABEL INDIKATOR KPI -->
+ <table style="width:100%; border-collapse:collapse; margin-bottom:4px; border:1px solid #000;">
+ <thead>
+ <tr style="background:#e2e8f0; font-weight:bold; text-align:center; font-size:8.5px;">
+ <th width="4%" style="border:1px solid #000; padding:3px 2px;">No</th>
+ <th width="24%" style="border:1px solid #000; padding:3px 3px; text-align:left;">Aspek</th>
+ <th width="42%" style="border:1px solid #000; padding:3px 3px; text-align:left;">Indikator Kinerja Utama</th>
+ <th width="8%" style="border:1px solid #000; padding:3px 2px;">Bobot</th>
+ <th width="11%" style="border:1px solid #000; padding:3px 2px;">Nilai (${isScale1to5 ? '1-5' : '0-100'})</th>
+ <th width="11%" style="border:1px solid #000; padding:3px 2px;">Skor Terbobot</th>
+ </tr>
+ </thead>
+ <tbody>
+ ${tbody}
+ </tbody>
+ <tfoot>
+ <tr style="background:#f8fafc; font-weight:bold; font-size:8.5px;">
+ <td colspan="3" style="border:1px solid #000; padding:2px 4px; text-align:right;">TOTAL SKOR AKHIR:</td>
+ <td style="border:1px solid #000; padding:2px 2px; text-align:center;">100%</td>
+ <td colspan="2" style="border:1px solid #000; padding:2px 2px; text-align:center;">
+ <div style="min-height:16px; border:1px solid #000; border-radius:2px; margin:0 auto; width:70px; background:#fff;"></div>
+ </td>
+ </tr>
+ </tfoot>
+ </table>
+
+ <!-- CATATAN & EVALUASI DETIL PENILAI -->
+ <div style="border:1px solid #000; padding:4px 6px; margin-bottom:5px; font-size:8.5px; background:#fff;">
+ <div style="font-weight:bold; font-size:9px; border-bottom:1px solid #000; padding-bottom:2px; margin-bottom:3px; color:#000;">
+ CATATAN & EVALUASI KUALITATIF PENILAI:
+ </div>
+ <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:3px;">
+ <div style="border:1px solid #cbd5e1; padding:3px 5px; background:#f8fafc; border-radius:2px;">
+ <strong style="color:#166534; font-size:8.5px;">[v] Hal-hal yang Sudah Baik (Kelebihan/Prestasi):</strong>
+ <div style="min-height:38px; font-size:8.5px; line-height:1.25; margin-top:2px; color:#1e293b;">
+ ${escapeHtml(task.catatan_baik || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:11px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div>`}
+ </div>
+ </div>
+ <div style="border:1px solid #cbd5e1; padding:3px 5px; background:#f8fafc; border-radius:2px;">
+ <strong style="color:#991b1b; font-size:8.5px;"> Hal-hal yang Harus Diperbaiki (Area Peningkatan):</strong>
+ <div style="min-height:38px; font-size:8.5px; line-height:1.25; margin-top:2px; color:#1e293b;">
+ ${escapeHtml(task.catatan_perbaikan || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:11px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div>`}
+ </div>
+ </div>
+ </div>
+ <div style="border:1px solid #cbd5e1; padding:3px 5px; background:#fafafa; border-radius:2px;">
+ <strong style="color:#334155; font-size:8.5px;"> Catatan & Rekomendasi Tambahan Penilai:</strong>
+ <div style="min-height:26px; font-size:8.5px; line-height:1.25; margin-top:2px; color:#1e293b;">
+ ${escapeHtml(task.catatan_penilai || task.catatan_umum || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:11px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:11px; margin-top:2px;"></div>`}
+ </div>
+ </div>
+ </div>
+
+ <!-- KATEGORI & TANDA TANGAN GRID COMPACT -->
+ <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:8px; margin-top:4px;">
+ <div style="width:46%;">
+ <div style="border:1px solid #000; background:#f8fafc; padding:3px; font-size:8px; line-height:1.2;">
+ <strong>Kategori Performance (${isScale1to5 ? 'Skala 1-5' : 'Skala 0-100'}):</strong><br>
+ ${isScale1to5 ? `
+ [ ] Sangat Baik (4.5-5.0) &nbsp; [ ] Baik (4.0-4.4)<br>
+ [ ] Cukup (3.5-3.9) &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; [ ] Kurang (&lt;3.5)
+ ` : `
+ [ ] Sangat Baik (90-100) &nbsp; [ ] Baik (80-89)<br>
+ [ ] Cukup (70-79) &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; [ ] Kurang (&lt;70)
+ `}
+ </div>
+ </div>
+ <div style="width:52%;">
+ <table style="width:100%; text-align:center; font-size:8.5px;">
+ <tr>
+ <td width="33%">Karyawan,</td>
+ <td width="33%">Penilai,</td>
+ <td width="34%">HRD,</td>
+ </tr>
+ <tr>
+ <td height="22" style="vertical-align:bottom; font-size:7px; color:#64748b;">(TTD)</td>
+ <td height="22" style="vertical-align:bottom; font-size:7px; color:#64748b;">(TTD)</td>
+ <td height="22" style="vertical-align:bottom; font-size:7px; color:#64748b;">(TTD)</td>
+ </tr>
+ <tr>
+ <td>( <strong>${escapeHtml(task.nama_dinilai)}</strong> )</td>
+ <td>( <strong>${escapeHtml(task.nama_penilai)}</strong> )</td>
+ <td>( <strong>Andela</strong> )</td>
+ </tr>
+ </table>
+ </div>
+ </div>
+ </div>
+ `;
+ }
+
+ // GENERATE BATCH 2-UP PER A4 PAGE LANDSCAPE (SETENGAH A4 / A5 SIDE-BY-SIDE DENGAN GARIS POTONG VERTIKAL)
+ function generate2UpA4Html(tasks, karyawanMap = {}) {
+ if (!tasks || !tasks.length) return "";
+ let html = "";
+ 
+ for (let i = 0; i < tasks.length; i += 2) {
+ const taskLeft = tasks[i];
+ const taskRight = tasks[i + 1];
+
+ const leftCard = generateFormKpiA5CardHtml(taskLeft, karyawanMap, false);
+ let rightCard = "";
+
+ if (taskRight) {
+ rightCard = generateFormKpiA5CardHtml(taskRight, karyawanMap, false);
+ } else {
+ // Jika ganjil, salinan kanan adalah lembar arsip HRD
+ rightCard = generateFormKpiA5CardHtml(taskLeft, karyawanMap, true);
+ }
+
+ html += `
+ <div class="a4-2up-page-landscape" style="width:100%; max-width:1050px; margin:0 auto 20px auto; box-sizing:border-box; display:flex; flex-direction:row; justify-content:space-between; align-items:stretch; page-break-after:always; page-break-inside:avoid; min-height:185mm; padding:3mm 0;">
+ <!-- SISI KIRI (FORM 1) -->
+ <div style="width:48.5%; display:flex; flex-direction:column; justify-content:space-between;">
+ ${leftCard}
+ </div>
+
+ <!-- GARIS POTONG VERTIKAL A5 -->
+ <div style="width:3%; display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative;">
+ <div style="border-left:1.5px dashed #475569; height:100%; margin:0 auto;"></div>
+ <span style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%) rotate(-90deg); white-space:nowrap; background:#ffffff; padding:2px 8px; font-size:8px; color:#334155; font-style:italic; font-weight:bold; border:1px solid #cbd5e1; border-radius:4px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+ POTONG DI SINI (UKURAN A5)
+ </span>
+ </div>
+
+ <!-- SISI KANAN (FORM 2 / ARSIP) -->
+ <div style="width:48.5%; display:flex; flex-direction:column; justify-content:space-between;">
+ ${rightCard}
+ </div>
+ </div>
+ `;
+ }
+ return html;
+ }
+
+ // FORMAT INDIVIDUAL FULL A4
+ function generateFormKpiFisikHtml(task, karyawanMap = {}) {
+ const dinilaiInfo = karyawanMap[task.nama_dinilai] || {};
+ const penilaiInfo = karyawanMap[task.nama_penilai] || {};
+
+ const nikDinilai = dinilaiInfo.nik_karyawan || dinilaiInfo.nik || "-";
+ const jabatanDinilai = dinilaiInfo.jabatan || "-";
+ const divisiDinilai = dinilaiInfo.divisi || "-";
+ const cabangDinilai = dinilaiInfo.cabang || "Pusat";
+ const statusDinilai = formatStatusKaryawan(dinilaiInfo.status_karyawan || "-");
+ const jabatanPenilai = penilaiInfo.jabatan || "Atasan Direct / Assessor";
+ const isScale1to5 = (task.skala_penilaian === "1-5");
+
+ let tbody = "";
+ const soalList = task.soal_json || [];
+ soalList.forEach((item, idx) => {
+ tbody += `
+ <tr>
+ <td style="border:1px solid #000; padding:3px 4px; text-align:center; font-weight:bold; font-size:10px;">${idx + 1}</td>
+ <td style="border:1px solid #000; padding:3px 4px; font-weight:600; font-size:10px;">${escapeHtml(item.aspek || "-")}</td>
+ <td style="border:1px solid #000; padding:3px 4px; font-size:9.5px;">${escapeHtml(item.indikator || "-")}</td>
+ <td style="border:1px solid #000; padding:3px 4px; text-align:center; font-weight:bold; font-size:10px;">${item.bobot || 0}%</td>
+ <td style="border:1px solid #000; padding:3px 4px; text-align:center; font-weight:bold; background:#fafafa;">
+ <div style="min-height:20px; border:1px dashed #64748b; border-radius:3px; margin:1px auto; width:65px; line-height:20px; text-align:center; font-size:11px; color:#334155;">
+ ${item.nilai_diberikan !== undefined && item.nilai_diberikan !== null && item.nilai_diberikan !== "" ? item.nilai_diberikan : '[ &nbsp; &nbsp; &nbsp; ]'}
+ </div>
+ </td>
+ <td style="border:1px solid #000; padding:3px 4px; text-align:center;">
+ <div style="min-height:20px; border:1px dashed #cbd5e1; border-radius:3px; margin:1px auto; width:65px;"></div>
+ </td>
+ <td style="border:1px solid #000; padding:3px 4px; font-size:9px; color:#334155;">
+ <div style="min-height:20px;"></div>
+ </td>
+ </tr>
+ `;
+ });
+
+ return `
+ <div class="kpi-form-fisik-page" style="width:100%; max-width:750px; margin:0 auto 15px auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:10px; line-height:1.2; color:#000; background:#ffffff; page-break-after:always; page-break-inside:avoid;">
+ <!-- KOP ISO COMPACT -->
+ <div style="margin-bottom:6px;">
+ ${isoDocHeaderTable({
+ judul: "FORMULIR PENILAIAN KINERJA KARYAWAN (KPI)",
+ noDok: "FM-HRD-KPI-01",
+ terbitRevisi: "1/0",
+ tglTerbit: fmtDateShort(new Date()),
+ hal: "1 dari 1"
+ })}
+ </div>
+
+ <!-- INFORMASI KARYAWAN & PENILAI COMPACT -->
+ <table style="width:100%; border-collapse:collapse; margin-bottom:6px; border:1px solid #000; font-size:10px;">
+ <tr>
+ <td width="18%" style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Nama Karyawan</td>
+ <td width="32%" style="border:1px solid #000; padding:3px 6px; font-weight:bold;">${escapeHtml(task.nama_dinilai)}</td>
+ <td width="18%" style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Penilai (Assessor)</td>
+ <td width="32%" style="border:1px solid #000; padding:3px 6px; font-weight:bold;">${escapeHtml(task.nama_penilai)}</td>
+ </tr>
+ <tr>
+ <td style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">NIK / Status</td>
+ <td style="border:1px solid #000; padding:3px 6px;">${escapeHtml(nikDinilai)} / ${escapeHtml(statusDinilai)}</td>
+ <td style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Jabatan Penilai</td>
+ <td style="border:1px solid #000; padding:3px 6px;">${escapeHtml(jabatanPenilai)}</td>
+ </tr>
+ <tr>
+ <td style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Jabatan / Divisi</td>
+ <td style="border:1px solid #000; padding:3px 6px;">${escapeHtml(jabatanDinilai)} / ${escapeHtml(divisiDinilai)} (${escapeHtml(cabangDinilai)})</td>
+ <td style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Periode & Batas</td>
+ <td style="border:1px solid #000; padding:3px 6px;"><strong>${escapeHtml(task.periode || "-")}</strong> | Batas: ${task.deadline ? fmtDateShort(task.deadline) : "-"}</td>
+ </tr>
+ </table>
+
+ <!-- PETUNJUK COMPACT 1 LINE -->
+ <div style="border:1px solid #000; background:#f1f5f9; padding:3px 8px; margin-bottom:6px; font-size:9px; line-height:1.2;">
+ <strong>PETUNJUK:</strong> Berikan nilai ${isScale1to5 ? 'rating <strong>1 - 5</strong> (desimal/skala Likert)' : 'angka <strong>0 - 100</strong>'} pada kolom <em>Nilai Fisik (${isScale1to5 ? '1-5' : '0-100'})</em>. ${isScale1to5 ? 'Hitung Skor Terbobot = (Nilai x 20 x Bobot) / 100.' : 'Hitung Skor Terbobot = (Nilai x Bobot) / 100.'} Tulis catatan jika ada.
+ </div>
+
+ <!-- TABEL INDIKATOR KPI -->
+ <table style="width:100%; border-collapse:collapse; margin-bottom:6px; border:1px solid #000;">
+ <thead>
+ <tr style="background:#e2e8f0; font-weight:bold; text-align:center; font-size:9.5px;">
+ <th width="4%" style="border:1px solid #000; padding:4px 2px;">No</th>
+ <th width="22%" style="border:1px solid #000; padding:4px 4px; text-align:left;">Aspek KPI</th>
+ <th width="36%" style="border:1px solid #000; padding:4px 4px; text-align:left;">Indikator Kinerja Utama</th>
+ <th width="8%" style="border:1px solid #000; padding:4px 2px;">Bobot</th>
+ <th width="11%" style="border:1px solid #000; padding:4px 2px;">Nilai Fisik<br>(${isScale1to5 ? '1-5' : '0-100'})</th>
+ <th width="9%" style="border:1px solid #000; padding:4px 2px;">Skor Terbobot</th>
+ <th width="10%" style="border:1px solid #000; padding:4px 2px;">Catatan</th>
+ </tr>
+ </thead>
+ <tbody>
+ ${tbody}
+ </tbody>
+ <tfoot>
+ <tr style="background:#f8fafc; font-weight:bold; font-size:9.5px;">
+ <td colspan="3" style="border:1px solid #000; padding:4px 6px; text-align:right;">TOTAL BOBOT & SKOR AKHIR:</td>
+ <td style="border:1px solid #000; padding:4px 2px; text-align:center;">100%</td>
+ <td colspan="2" style="border:1px solid #000; padding:4px 2px; text-align:center;">
+ <div style="min-height:20px; border:1px solid #000; border-radius:3px; margin:1px auto; width:80px; background:#fff;"></div>
+ </td>
+ <td style="border:1px solid #000; padding:4px 2px;"></td>
+ </tr>
+ </tfoot>
+ </table>
+
+ <!-- CATATAN & EVALUASI PENILAI COMPACT & LENGKAP (2-KOLOM UNTUK 1 Halaman) -->
+ <table style="width:100%; border-collapse:collapse; margin-bottom:6px; border:1px solid #000; font-size:9.5px;">
+ <tr style="background:#f1f5f9; font-weight:bold;">
+ <td colspan="2" style="border:1px solid #000; padding:4px 6px; color:#000; font-size:9.5px;">
+ Ulasan & Catatan Evaluasi Penilai (Kualitatif):
+ </td>
+ </tr>
+ <tr>
+ <td width="50%" style="border:1px solid #000; padding:5px; background:#fff; vertical-align:top;">
+ <strong style="color:#166534; font-size:9.5px;">1. Hal-hal yang Sudah Baik (Kelebihan / Prestasi):</strong>
+ <div style="min-height:38px; font-size:9px; line-height:1.3; color:#1e293b; margin-top:2px;">
+ ${escapeHtml(task.catatan_baik || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div>`}
+ </div>
+ </td>
+ <td width="50%" style="border:1px solid #000; padding:5px; background:#fff; vertical-align:top;">
+ <strong style="color:#991b1b; font-size:9.5px;">2. Hal-hal yang Harus Diperbaiki (Area Peningkatan):</strong>
+ <div style="min-height:38px; font-size:9px; line-height:1.3; color:#1e293b; margin-top:2px;">
+ ${escapeHtml(task.catatan_perbaikan || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div>`}
+ </div>
+ </td>
+ </tr>
+ <tr>
+ <td colspan="2" style="border:1px solid #000; padding:5px; background:#fff;">
+ <strong style="color:#334155; font-size:9.5px;">3. Catatan & Rekomendasi Tambahan Penilai:</strong>
+ <div style="min-height:26px; font-size:9px; line-height:1.3; color:#1e293b; margin-top:2px;">
+ ${escapeHtml(task.catatan_penilai || task.catatan_umum || "") || `<div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div><div style="border-bottom:1px dotted #94a3b8; min-height:12px; margin-top:2px;"></div>`}
+ </div>
+ </td>
+ </tr>
+ </table>
+
+ <!-- KATEGORI SKOR PERFORMANCE HORIZONTAL -->
+ <table style="width:100%; border-collapse:collapse; margin-bottom:8px; border:1px solid #000; font-size:9px;">
+ <tr style="background:#f1f5f9; font-weight:bold; text-align:center;">
+ ${isScale1to5 ? `
+ <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Sangat Baik</strong> (4.5 - 5.0)</td>
+ <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Baik</strong> (4.0 - 4.4)</td>
+ <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Cukup</strong> (3.5 - 3.9)</td>
+ <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Kurang</strong> (&lt; 3.5)</td>
+ ` : `
+ <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Sangat Baik</strong> (90 - 100)</td>
+ <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Baik</strong> (80 - 89)</td>
+ <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Cukup</strong> (70 - 79)</td>
+ <td width="25%" style="border:1px solid #000; padding:3px 4px;">[ &nbsp; ] <strong>Kurang</strong> (&lt; 70)</td>
+ `}
+ </tr>
+ </table>
+
+ <!-- TANDA TANGAN 3 PIHAK COMPACT -->
+ <table style="width:100%; text-align:center; margin-top:8px; page-break-inside:avoid; font-size:10px;">
+ <tr>
+ <td width="33%">Karyawan (Yang Dinilai),</td>
+ <td width="33%">Penilai (Assessor),</td>
+ <td width="34%">Mengetahui (HRD / Manajemen),</td>
+ </tr>
+ <tr>
+ <td height="35" style="vertical-align:bottom; font-size:8.5px; color:#64748b;">(Tanda Tangan & Tanggal)</td>
+ <td height="35" style="vertical-align:bottom; font-size:8.5px; color:#64748b;">(Tanda Tangan & Tanggal)</td>
+ <td height="35" style="vertical-align:bottom; font-size:8.5px; color:#64748b;">(Tanda Tangan & Stempel)</td>
+ </tr>
+ <tr>
+ <td>( <strong>${escapeHtml(task.nama_dinilai)}</strong> )</td>
+ <td>( <strong>${escapeHtml(task.nama_penilai)}</strong> )</td>
+ <td>( <strong>HRD CV ANDELA JAYA</strong> )</td>
+ </tr>
+ </table>
+ </div>
+ `;
+ }
+
+ // FORMAT MATRIKS KOLEKTIF - HEMAT KERTAS MAKSIMAL (GABUNG BANYAK KARYAWAN DALAM 1 LEMBAR)
+ function generateFormKpiMatriksKolektifHtml(tasks, karyawanMap = {}) {
+ if (!tasks || !tasks.length) return "";
+ const samplePenilai = tasks[0].nama_penilai || "Assessor";
+ const samplePeriode = tasks[0].periode || "-";
+ const sampleDeadline = tasks[0].deadline ? fmtDateShort(tasks[0].deadline) : "-";
+ const isScale1to5 = tasks.some(t => t.skala_penilaian === "1-5");
+
+ const soalList = tasks[0].soal_json || [];
+
+ let thKaryawan = "";
+ tasks.forEach((t, idx) => {
+ const kInfo = karyawanMap[t.nama_dinilai] || {};
+ const jabatan = kInfo.jabatan || "-";
+ thKaryawan += `
+ <th style="border:1px solid #000; padding:4px 3px; text-align:center; width:${Math.floor(50 / tasks.length)}%;">
+ <div style="font-size:10px; font-weight:bold; color:#000;">${idx + 1}. ${escapeHtml(t.nama_dinilai)}</div>
+ <div style="font-size:8.5px; font-weight:normal; color:#475569;">${escapeHtml(jabatan)}</div>
+ </th>
+ `;
+ });
+
+ let tbody = "";
+ soalList.forEach((item, sIdx) => {
+ let tdScores = "";
+ tasks.forEach(t => {
+ const itemVal = (t.soal_json && t.soal_json[sIdx]) ? t.soal_json[sIdx].nilai_diberikan : "";
+ tdScores += `
+ <td style="border:1px solid #000; padding:3px 2px; text-align:center; background:#fafafa;">
+ <div style="min-height:18px; border:1px dashed #94a3b8; border-radius:3px; margin:0 auto; width:90%; line-height:18px; font-size:10px; font-weight:bold;">
+ ${itemVal !== undefined && itemVal !== null && itemVal !== "" ? itemVal : '[ &nbsp; ]'}
+ </div>
+ </td>
+ `;
+ });
+
+ tbody += `
+ <tr>
+ <td style="border:1px solid #000; padding:3px 4px; text-align:center; font-weight:bold; font-size:9.5px;">${sIdx + 1}</td>
+ <td style="border:1px solid #000; padding:3px 4px; font-size:9.5px; font-weight:600;">${escapeHtml(item.aspek || "-")}</td>
+ <td style="border:1px solid #000; padding:3px 4px; font-size:9px;">${escapeHtml(item.indikator || "-")}</td>
+ <td style="border:1px solid #000; padding:3px 4px; text-align:center; font-weight:bold; font-size:9.5px;">${item.bobot || 0}%</td>
+ ${tdScores}
+ </tr>
+ `;
+ });
+
+ let tdTotalFoot = "";
+ tasks.forEach(() => {
+ tdTotalFoot += `
+ <td style="border:1px solid #000; padding:4px 2px; text-align:center;">
+ <div style="min-height:22px; border:1px solid #000; border-radius:3px; margin:0 auto; width:90%; background:#fff;"></div>
+ </td>
+ `;
+ });
+
+ return `
+ <div class="kpi-form-fisik-page" style="width:100%; max-width:800px; margin:0 auto 20px auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:10px; line-height:1.2; color:#000; background:#ffffff; page-break-after:always; page-break-inside:avoid;">
+ <!-- KOP ISO MATRIKS -->
+ <div style="margin-bottom:6px;">
+ ${isoDocHeaderTable({
+ judul: "MATRIKS PENILAIAN KPI KOLEKTIF (HEMAT KERTAS)",
+ noDok: "FM-HRD-KPI-01M",
+ terbitRevisi: "1/0",
+ tglTerbit: fmtDateShort(new Date()),
+ hal: "1 dari 1"
+ })}
+ </div>
+
+ <!-- HEADER PENILAI & PERIODE -->
+ <table style="width:100%; border-collapse:collapse; margin-bottom:6px; border:1px solid #000; font-size:10px;">
+ <tr>
+ <td width="15%" style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Nama Penilai</td>
+ <td width="35%" style="border:1px solid #000; padding:3px 6px; font-weight:bold;">${escapeHtml(samplePenilai)}</td>
+ <td width="18%" style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Periode & Batas</td>
+ <td width="32%" style="border:1px solid #000; padding:3px 6px;"><strong>${escapeHtml(samplePeriode)}</strong> | Batas: ${sampleDeadline}</td>
+ </tr>
+ <tr>
+ <td style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Jumlah Dinilai</td>
+ <td style="border:1px solid #000; padding:3px 6px;"><strong>${tasks.length} Karyawan</strong> dalam 1 Lembar Dokumen</td>
+ <td style="border:1px solid #000; padding:3px 6px; font-weight:bold; background:#f8fafc;">Metode Pengisian</td>
+ <td style="border:1px solid #000; padding:3px 6px;">Isi angka skor ${isScale1to5 ? 'rating (1-5)' : '(0-100)'} pada kolom masing-masing karyawan</td>
+ </tr>
+ </table>
+
+ <!-- TABEL MATRIKS UNTUK SELURUH KARYAWAN -->
+ <table style="width:100%; border-collapse:collapse; margin-bottom:8px; border:1px solid #000;">
+ <thead>
+ <tr style="background:#e2e8f0; font-weight:bold;">
+ <th width="3%" style="border:1px solid #000; padding:4px 2px; text-align:center;">No</th>
+ <th width="18%" style="border:1px solid #000; padding:4px 4px; text-align:left;">Aspek KPI</th>
+ <th width="25%" style="border:1px solid #000; padding:4px 4px; text-align:left;">Indikator Utama</th>
+ <th width="6%" style="border:1px solid #000; padding:4px 2px; text-align:center;">Bobot</th>
+ ${thKaryawan}
+ </tr>
+ </thead>
+ <tbody>
+ ${tbody}
+ </tbody>
+ <tfoot>
+ <tr style="background:#f8fafc; font-weight:bold; font-size:9.5px;">
+ <td colspan="3" style="border:1px solid #000; padding:4px 6px; text-align:right;">SKOR AKHIR TERBOBOT:</td>
+ <td style="border:1px solid #000; padding:4px 2px; text-align:center;">100%</td>
+ ${tdTotalFoot}
+ </tr>
+ </tfoot>
+ </table>
+
+ <!-- KATEGORI SKOR PERFORMANCE -->
+ <div style="border:1px solid #000; background:#f8fafc; padding:4px 8px; margin-bottom:10px; font-size:8.5px; text-align:center;">
+ <strong>Standar Skor (${isScale1to5 ? 'Skala 1 - 5' : 'Skala 0 - 100'}):</strong> ${isScale1to5 ? 'Sangat Baik (4.5 - 5.0) | Baik (4.0 - 4.4) | Cukup (3.5 - 3.9) | Kurang (< 3.5)' : 'Sangat Baik (90 - 100) | Baik (80 - 89) | Cukup (70 - 79) | Kurang (< 70)'}
+ </div>
+
+ <!-- TANDA TANGAN PENILAI & HRD -->
+ <table style="width:100%; text-align:center; margin-top:10px; page-break-inside:avoid; font-size:10px;">
+ <tr>
+ <td width="50%">Penilai (Assessor),</td>
+ <td width="50%">Mengetahui (HRD / Manajemen),</td>
+ </tr>
+ <tr>
+ <td height="40" style="vertical-align:bottom; font-size:8.5px; color:#64748b;">(Tanda Tangan & Tanggal)</td>
+ <td height="40" style="vertical-align:bottom; font-size:8.5px; color:#64748b;">(Tanda Tangan & Stempel)</td>
+ </tr>
+ <tr>
+ <td>( <strong>${escapeHtml(samplePenilai)}</strong> )</td>
+ <td>( <strong>HRD CV ANDELA JAYA</strong> )</td>
+ </tr>
+ </table>
+ </div>
+ `;
+ }
+
+ function openPrintOrPdfModal({ title, tasks = [], karyawanMap = {}, filename }) {
+ let currentMode = "HALF_A4"; // DEFAULT: 2 FORM PER LEMBAR A4 (HALF A4 / A5)
+ let currentTasks = [...tasks];
+
+ // Daftar semua nama karyawan dari master karyawan untuk opsi pairing Karyawan Ke-2
+ const allKaryawanNames = Object.keys(karyawanMap).filter(k => k && k !== "undefined");
+ allKaryawanNames.sort((a, b) => a.localeCompare(b, "id", { sensitivity: "base" }));
+
+ function renderActiveContent() {
+ if (currentMode === "HALF_A4") {
+ return generate2UpA4Html(currentTasks, karyawanMap);
+ } else if (currentMode === "MATRIKS" && currentTasks.length > 0) {
+ return generateFormKpiMatriksKolektifHtml(currentTasks, karyawanMap);
+ }
+ return currentTasks.map(t => generateFormKpiFisikHtml(t, karyawanMap)).join("\n");
+ }
+
+ let initialHtml = renderActiveContent();
+
+ // Buat dropdown pilihan karyawan ke-2 jika hanya ada 1 task awal
+ let pairingSelectorHtml = "";
+ if (tasks.length === 1 && allKaryawanNames.length > 0) {
+ const sampleTask = tasks[0];
+ const optKaryawanBawah = allKaryawanNames
+ .filter(n => n !== sampleTask.nama_dinilai)
+ .map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)} (${escapeHtml(karyawanMap[n]?.jabatan || "Karyawan")})</option>`)
+ .join("");
+
+ pairingSelectorHtml = `
+ <div id="pairing-control-box" class="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs flex flex-wrap items-center justify-between gap-2">
+ <div class="flex items-center gap-2">
+ <span class="font-bold text-amber-900 flex items-center gap-1"> Pasangkan 2 Karyawan (Kiri & Kanan) dalam 1 Lembar A4 Landscape:</span>
+ </div>
+ <div class="flex items-center gap-2">
+ <span class="text-slate-600 font-medium">Sisi Kanan (Karyawan 2):</span>
+ <select id="select-karyawan-2" class="px-2.5 py-1 text-xs rounded-lg border border-amber-300 bg-white font-semibold text-slate-800 outline-none cursor-pointer focus:ring-2 focus:ring-amber-500">
+ <option value="__ARSIP__">-- (Lembar Salinan Arsip HRD) --</option>
+ ${optKaryawanBawah}
+ </select>
+ </div>
+ </div>
+ `;
+ }
+
+ openModal({
+ title,
+ size: "xl",
+ bodyHtml: `
+ <div class="space-y-3">
+ <div class="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+ <div class="flex items-center gap-1.5 font-medium">
+ <span> <strong>Format Landscape Hemat Kertas:</strong> 1 Lembar A4 Landscape Memuat 2 Form Penilaian KPI Side-by-Side</span>
+ </div>
+ <div class="flex items-center bg-white border border-emerald-300 rounded-lg p-0.5 shadow-2xs">
+ <button id="toggle-fmt-half" class="px-3 py-1.5 text-[11px] font-bold rounded-md bg-emerald-700 text-white transition shadow-2xs">
+ 2 Karyawan Side-by-Side (A4 Landscape)
+ </button>
+ <button id="toggle-fmt-individual" class="px-3 py-1.5 text-[11px] font-bold rounded-md text-emerald-800 hover:bg-emerald-100 transition">
+ 1 Karyawan Per A4 Portrait
+ </button>
+ ${tasks.length > 1 ? `
+ <button id="toggle-fmt-matriks" class="px-3 py-1.5 text-[11px] font-bold rounded-md text-emerald-800 hover:bg-emerald-100 transition">
+ Matriks Kolektif (${tasks.length} Karyawan)
+ </button>
+ ` : ''}
+ </div>
+ </div>
+
+ ${pairingSelectorHtml}
+
+ <div class="border rounded-xl p-4 bg-slate-50 max-h-[60vh] overflow-y-auto shadow-inner border-slate-200">
+ <div id="kpi-print-preview-container">${initialHtml}</div>
+ </div>
+ </div>
+ `,
+ footerHtml: `
+ <div class="flex items-center justify-between w-full">
+ <button id="btn-close-print-preview" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold hover:bg-slate-200 transition">Tutup</button>
+ <div class="flex items-center gap-2">
+ <button id="btn-do-print-window" class="px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold hover:bg-slate-900 transition shadow flex items-center gap-1.5"> Cetak Langsung (Print)</button>
+ <button id="btn-do-download-pdf" class="px-4 py-2 bg-maroon-700 text-white rounded-lg text-xs font-bold hover:bg-maroon-800 transition shadow flex items-center gap-1.5">Download PDF</button>
+ </div>
+ </div>
+ `,
+ onMount: (m) => {
+ m.querySelector("#btn-close-print-preview").onclick = closeModal;
+
+ const container = m.querySelector("#kpi-print-preview-container");
+ const btnHalf = m.querySelector("#toggle-fmt-half");
+ const btnInd = m.querySelector("#toggle-fmt-individual");
+ const btnMat = m.querySelector("#toggle-fmt-matriks");
+ const selectKaryawan2 = m.querySelector("#select-karyawan-2");
+ const pairingBox = m.querySelector("#pairing-control-box");
+
+ function updateBtnStyles() {
+ const activeClass = "px-3 py-1.5 text-[11px] font-bold rounded-md bg-emerald-700 text-white transition shadow-2xs";
+ const inactiveClass = "px-3 py-1.5 text-[11px] font-bold rounded-md text-emerald-800 hover:bg-emerald-100 transition";
+
+ if (btnHalf) btnHalf.className = currentMode === "HALF_A4" ? activeClass : inactiveClass;
+ if (btnInd) btnInd.className = currentMode === "INDIVIDUAL" ? activeClass : inactiveClass;
+ if (btnMat) btnMat.className = currentMode === "MATRIKS" ? activeClass : inactiveClass;
+
+ if (pairingBox) {
+ pairingBox.style.display = currentMode === "HALF_A4" ? "flex" : "none";
+ }
+
+ container.innerHTML = renderActiveContent();
+ }
+
+ if (selectKaryawan2) {
+ selectKaryawan2.onchange = (e) => {
+ const selectedVal = e.target.value;
+ if (selectedVal === "__ARSIP__") {
+ currentTasks = [tasks[0]];
+ } else {
+ const secondTask = {
+ ...tasks[0],
+ nama_dinilai: selectedVal
+ };
+ currentTasks = [tasks[0], secondTask];
+ }
+ container.innerHTML = renderActiveContent();
+ };
+ }
+
+ if (btnHalf) btnHalf.onclick = () => { currentMode = "HALF_A4"; updateBtnStyles(); };
+ if (btnInd) btnInd.onclick = () => { currentMode = "INDIVIDUAL"; updateBtnStyles(); };
+ if (btnMat) btnMat.onclick = () => { currentMode = "MATRIKS"; updateBtnStyles(); };
+
+ m.querySelector("#btn-do-download-pdf").onclick = async () => {
+ const btn = m.querySelector("#btn-do-download-pdf");
+ btn.disabled = true; btn.textContent = "Mengunduh PDF...";
+ try {
+ const { downloadHtmlAsPdf } = await import("../utils.js");
+ const finalContent = renderActiveContent();
+ const isLandscape = currentMode === "HALF_A4";
+ await downloadHtmlAsPdf(finalContent, filename, isLandscape ? "landscape" : "portrait");
+ toast("PDF dokumen fisik KPI berhasil diunduh!", "success");
+ } catch (e) {
+ toast("Gagal mengunduh PDF: " + e.message, "error");
+ } finally {
+ btn.disabled = false; btn.textContent = "Download PDF";
+ }
+ };
+
+ m.querySelector("#btn-do-print-window").onclick = () => {
+ const printWin = window.open("", "_blank");
+ if (!printWin) return toast("Izinkan popup browser untuk mencetak langsung.", "warning");
+ const finalContent = renderActiveContent();
+ const isLandscape = currentMode === "HALF_A4";
+ const pageStyle = isLandscape ? "@page { size: A4 landscape; margin: 4mm 6mm 4mm 6mm; }" : "@page { size: A4 portrait; margin: 6mm 8mm 6mm 8mm; }";
+
+ printWin.document.write(`
+ <!DOCTYPE html>
+ <html>
+ <head>
+ <title>${escapeHtml(title)}</title>
+ <style>
+ ${pageStyle}
+ body { font-family: 'Times New Roman', Times, serif; margin: 0; padding: 0; background: #fff; color: #000; font-size: 9px; }
+ .a4-2up-page-landscape { page-break-after: always; page-break-inside: avoid; }
+ .a4-2up-page-landscape:last-child { page-break-after: auto; }
+ .kpi-form-fisik-page { page-break-after: always; page-break-inside: avoid; }
+ .kpi-form-fisik-page:last-child { page-break-after: auto; }
+ table { border-collapse: collapse; width: 100%; }
+ @media print {
+ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+ }
+ </style>
+ </head>
+ <body>
+ ${finalContent}
+ <script>
+ window.onload = function() {
+ window.focus();
+ window.print();
+ };
+ </script>
+ </body>
+ </html>
+ `);
+ printWin.document.close();
+ };
+ }
+ });
+ }
+
+ async function printFormKpiFisik(task) {
+ if (!task) return toast("Data tugas KPI tidak ditemukan", "error");
+ toast("Menyiapkan dokumen fisik KPI...", "info");
+ const karyawanMap = await getKaryawanMap();
+
+ openPrintOrPdfModal({
+ title: `Form Fisik KPI — ${escapeHtml(task.nama_dinilai)} (${escapeHtml(task.periode || "")})`,
+ tasks: [task],
+ karyawanMap,
+ filename: `Form_Fisik_KPI_${escapeHtml(task.nama_dinilai).replace(/\s+/g, "_")}_${escapeHtml(task.periode || "").replace(/\s+/g, "_")}.pdf`
+ });
+ }
+
+ async function printBatchFormKpiFisik(tasks) {
+ if (!tasks || !tasks.length) return toast("Tidak ada tugas untuk dicetak", "warning");
+ toast("Menyiapkan dokumen fisik KPI...", "info");
+ const karyawanMap = await getKaryawanMap();
+
+ const samplePeriode = tasks[0]?.periode || "360";
+ const samplePenilai = tasks[0]?.nama_penilai || "Assessor";
+
+ openPrintOrPdfModal({
+ title: `Dokumen Fisik KPI Batch (${tasks.length} Karyawan) — Penilai: ${escapeHtml(samplePenilai)}`,
+ tasks,
+ karyawanMap,
+ filename: `Form_Fisik_KPI_Batch_${escapeHtml(samplePenilai).replace(/\s+/g, "_")}_${escapeHtml(samplePeriode).replace(/\s+/g, "_")}.pdf`
+ });
+ }
+
+ // =====================================================================
+ // MODAL DISTRIBUSI PINTAR: IMPLEMENTASI FITUR SEARCH & LIST CHECKBOX
+ // =====================================================================
+ async function openDistribusiModal(defaultTemplateId = null) {
+ const allKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
+ // PERBAIKAN: Pastikan kita menyaring dan hanya mengambil data yang benar-benar memiliki nama
+ const activeK = allKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF" && k.nama_karyawan);
+ activeK.sort((a, b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id", { sensitivity: "base" }));
+ 
+ const optKaryawanSelect = activeK.map(k => `<option value="${escapeHtml(k.nama_karyawan)}">${escapeHtml(k.nama_karyawan)} — ${escapeHtml(k.jabatan || "")}</option>`).join("");
+
+ const rawTemplates = await fsGetAll(COL.MASTER_SOAL_KPI);
+ const tplMap = new Map();
+ rawTemplates.forEach(t => {
+ const norm = (t.nama_template || "").trim().toLowerCase();
+ if (norm && !tplMap.has(norm)) tplMap.set(norm, t);
+ });
+ const validTemplates = Array.from(tplMap.values()).filter(t => t.nama_template && t.soal_json && t.soal_json.length > 0);
+ const optTemplates = validTemplates.map(t => `<option value="${t.id}">${escapeHtml(t.nama_template)}</option>`).join("");
+
+ const selectedDinilaiSet = new Set();
+
+ openModal({
+ title: "Distribusi Penilaian KPI 360",
+ size: "lg",
+ bodyHtml: `
+ <form id="form-distribusi" class="space-y-4">
+ <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+ <div>
+ <label class="block text-xs font-medium text-slate-500 mb-1">Periode Penilaian</label>
+ <input type="text" id="kpi-periode" placeholder="Cth: Q3 2026" required class="w-full px-3 py-2 text-sm rounded-lg border outline-none">
+ </div>
+ <div>
+ <label class="block text-xs font-medium text-slate-500 mb-1">Pilih PENILAI (Assessor)</label>
+ <select id="kpi-penilai" required class="w-full px-3 py-2 text-sm rounded-lg border outline-none">
+ <option value="">Pilih Karyawan Penilai...</option>
+ ${optKaryawanSelect}
+ </select>
+ </div>
+ <div>
+ <label class="block text-xs font-medium text-slate-500 mb-1">Kategori Penilaian</label>
+ <select id="kpi-distribusi-kategori" class="w-full px-3 py-2 text-sm rounded-lg border outline-none">
+ ${Object.values(JENIS_PENILAIAN_MAP).map(cat => `
+ <option value="${cat.key}">${cat.icon} ${cat.label}</option>
+ `).join('')}
+ </select>
+ </div>
+ <div>
+ <label class="block text-xs font-medium text-slate-500 mb-1">Skala Penilaian</label>
+ <select id="kpi-distribusi-skala" class="w-full px-3 py-2 text-sm rounded-lg border outline-none">
+ <option value="0-100">Skala 0 - 100</option>
+ <option value="1-5">Skala 1 - 5</option>
+ </select>
+ </div>
+ </div>
+
+ <div>
+ <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase">Pilih Karyawan yang DINILAI (Bisa Centang Banyak)</label>
+ <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
+ <div class="p-2.5 bg-slate-50 border-b border-slate-200">
+ <input type="text" id="kpi-search-box" placeholder="Ketik nama karyawan untuk mencari..." class="w-full px-3 py-1.5 text-xs rounded border border-slate-200 outline-none focus:border-maroon-500">
+ </div>
+ <div id="kpi-checkbox-list" class="max-h-40 overflow-y-auto divide-y divide-slate-100 p-1 bg-white space-y-0.5">
+ </div>
+ </div>
+ </div>
+ 
+ <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mt-2">
+ <div class="mb-3 border-b border-slate-200 pb-3">
+ <div class="flex justify-between items-center mb-2">
+ <label class="text-xs font-bold text-slate-700 uppercase">Pilih Template KPI (Bisa Pilih Beberapa)</label>
+ <span id="tpl-selected-count" class="text-[11px] font-semibold text-maroon-700 bg-maroon-50 px-2.5 py-0.5 rounded-full border border-maroon-100">0 Template Dipilih</span>
+ </div>
+ <div class="mb-2">
+ <input type="text" id="tpl-search-input" placeholder=" Cari nama template KPI..." class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-white">
+ </div>
+ <div id="kpi-templates-container" class="max-h-36 overflow-y-auto border border-slate-200 rounded-xl p-2 bg-white divide-y divide-slate-100 space-y-0.5">
+ </div>
+ </div>
+
+ <div class="flex justify-between items-center mb-3">
+ <label class="text-xs font-bold text-slate-700 uppercase">Rancang Indikator & Bobot (Gabungan Template)</label>
+ <button type="button" id="btn-add-soal" class="text-xs text-maroon-700 font-bold hover:underline flex items-center gap-1">Indikator Manual</button>
+ </div>
+ <div id="soal-list" class="space-y-3 mb-3"></div>
+ <div class="mt-3 text-right">
+ <span id="indikator-bobot-total" class="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded">Total Bobot: 0%</span>
+ </div>
+ </div>
+ </form>
+ `,
+ footerHtml: `
+ <button id="btn-batal-kpi" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
+ <button id="btn-save-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-md">Kirim Tugas Penilaian</button>
+ `,
+ onMount: (m) => {
+ const listContainer = m.querySelector("#kpi-checkbox-list");
+ const searchBox = m.querySelector("#kpi-search-box");
+ const soalList = m.querySelector("#soal-list");
+ const badgeBobot = m.querySelector("#indikator-bobot-total");
+
+ // Loop Render Checkbox Berdasarkan Array Pencarian
+ function drawCheckboxes(filterText = "") {
+ const term = filterText.toLowerCase().trim();
+ 
+ listContainer.innerHTML = activeK.map(k => {
+ // Pengaman tambahan agar tidak error saat map jika data aneh masuk
+ const nama = k.nama_karyawan || "";
+ const jabatan = k.jabatan || "";
+ const cabang = k.cabang || "";
+
+ const match = !term || nama.toLowerCase().includes(term) || jabatan.toLowerCase().includes(term);
+ if(!match || !nama) return "";
+
+ const isChecked = selectedDinilaiSet.has(nama);
+ 
+ return `
+ <label class="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 rounded-lg cursor-pointer transition select-none">
+ <input type="checkbox" name="dinilai-checkbox" value="${escapeHtml(nama)}" ${isChecked ? 'checked' : ''} class="w-4 h-4 text-maroon-600 border-slate-300 rounded focus:ring-maroon-500 cursor-pointer">
+ <div class="text-xs">
+ <p class="font-semibold text-slate-700">${escapeHtml(nama)}</p>
+ <p class="text-slate-400 text-[10px]">${escapeHtml(jabatan)} • ${escapeHtml(cabang)}</p>
+ </div>
+ </label>
+ `;
+ }).join("");
+
+ m.querySelectorAll('input[name="dinilai-checkbox"]').forEach(cb => {
+ cb.onchange = () => {
+ if (cb.checked) {
+ selectedDinilaiSet.add(cb.value);
+ } else {
+ selectedDinilaiSet.delete(cb.value);
+ }
+ };
+ });
+ }
+ drawCheckboxes(); // Init render pertama
+
+ searchBox.oninput = (e) => drawCheckboxes(e.target.value);
+
+ function calcTotalBobot() {
+ let total = 0; m.querySelectorAll(".soal-bobot").forEach(input => total += parseFloat(input.value) || 0);
+ badgeBobot.textContent = `Total Bobot: ${total}%`;
+ badgeBobot.className = total === 100 ? "text-xs font-bold bg-green-100 text-green-700 px-2 py-1 rounded" : "text-xs font-bold bg-red-100 text-red-700 px-2 py-1 rounded";
+ return total;
+ }
+
+ function addSoalUI(data = { aspek: "", indikator: "", bobot: "" }) {
+ const div = document.createElement("div"); div.className = "flex gap-2 items-start bg-white p-2 rounded-lg border shadow-sm";
+ div.innerHTML = `
+ <div class="flex-1 space-y-2">
+ <input type="text" placeholder="Aspek" value="${escapeHtml(data.aspek)}" class="soal-aspek w-full px-2 py-1.5 text-xs border rounded outline-none" required>
+ <input type="text" placeholder="Indikator Kinerja" value="${escapeHtml(data.indikator)}" class="soal-indikator w-full px-2 py-1.5 text-xs border rounded outline-none" required>
+ </div>
+ <div class="w-20"><input type="number" placeholder="Bobot" value="${data.bobot}" class="soal-bobot w-full px-2 py-1.5 text-xs border rounded text-center" required></div>
+ <button type="button" class="text-slate-300 hover:text-red-500 mt-1.5 p-1">&times;</button>
+ `;
+ div.querySelector(".soal-bobot").oninput = calcTotalBobot;
+ div.querySelector("button").onclick = () => { div.remove(); calcTotalBobot(); };
+ soalList.appendChild(div); calcTotalBobot();
+ }
+ addSoalUI();
+
+ const penilaiSelect = m.querySelector("#kpi-penilai");
+ if (penilaiSelect) {
+ penilaiSelect.onchange = () => {
+ const penilaiVal = penilaiSelect.value;
+ if (penilaiVal && selectedDinilaiSet.has(penilaiVal)) {
+ selectedDinilaiSet.delete(penilaiVal);
+ drawCheckboxes(searchBox.value);
+ toast(`Karyawan penilai (${penilaiVal}) otomatis dicopot dari daftar yang dinilai!`, "info");
+ }
+ };
+ }
+
+ const countBadgeTpl = m.querySelector("#tpl-selected-count");
+ const tplSearchInput = m.querySelector("#tpl-search-input");
+ const tplListContainer = m.querySelector("#kpi-templates-container");
+ const selectedTplSet = new Set();
+
+ if (defaultTemplateId) {
+ selectedTplSet.add(defaultTemplateId);
+ }
+
+ function drawTemplateCheckboxes(filterText = "") {
+ const term = filterText.toLowerCase().trim();
+ 
+ tplListContainer.innerHTML = validTemplates.map(t => {
+ const namaTpl = t.nama_template || "";
+ const match = !term || namaTpl.toLowerCase().includes(term);
+ if (!match || !namaTpl) return "";
+
+ const count = Array.isArray(t.karyawan_assigned) ? t.karyawan_assigned.length : 0;
+ const isChecked = selectedTplSet.has(t.id);
+
+ return `
+ <label class="flex items-center gap-2.5 px-2.5 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer transition select-none">
+ <input type="checkbox" name="kpi-tpl-checkbox" value="${t.id}" ${isChecked ? 'checked' : ''} class="w-4 h-4 text-maroon-600 border-slate-300 rounded focus:ring-maroon-500 cursor-pointer">
+ <div class="flex-1 min-w-0">
+ <p class="text-xs font-semibold text-slate-800 truncate">${escapeHtml(namaTpl)}</p>
+ <p class="text-[10px] text-slate-400">${count > 0 ? `${count} Karyawan Terdaftar` : 'Berdasarkan Posisi/Jabatan'} • ${(t.soal_json || []).length} Indikator</p>
+ </div>
+ </label>
+ `;
+ }).join("");
+
+ tplListContainer.querySelectorAll('input[name="kpi-tpl-checkbox"]').forEach(cb => {
+ cb.onchange = () => {
+ if (cb.checked) {
+ selectedTplSet.add(cb.value);
+ } else {
+ selectedTplSet.delete(cb.value);
+ }
+ syncTemplatesSelection();
+ };
+ });
+ }
+
+ if (tplSearchInput) {
+ tplSearchInput.oninput = (e) => drawTemplateCheckboxes(e.target.value);
+ }
+
+ function syncTemplatesSelection() {
+ const selectedTplIds = Array.from(selectedTplSet);
+
+ if (countBadgeTpl) {
+ countBadgeTpl.textContent = `${selectedTplIds.length} Template Dipilih`;
+ }
+
+ if (selectedTplIds.length > 0) {
+ const firstTpl = validTemplates.find(t => t.id === selectedTplIds[0]);
+ if (firstTpl) {
+ const selCatEl = m.querySelector("#kpi-distribusi-kategori");
+ const selSkalaEl = m.querySelector("#kpi-distribusi-skala");
+ if (firstTpl.kategori_penilaian && selCatEl) {
+ selCatEl.value = firstTpl.kategori_penilaian;
+ }
+ if (firstTpl.skala_penilaian && selSkalaEl) {
+ selSkalaEl.value = firstTpl.skala_penilaian;
+ }
+ }
+ }
+
+ selectedDinilaiSet.clear();
+ soalList.innerHTML = "";
+
+ const selectedPenilai = penilaiSelect ? penilaiSelect.value : "";
+ const combinedSoal = [];
+
+ selectedTplIds.forEach(tplId => {
+ const tpl = validTemplates.find(t => t.id === tplId);
+ if (!tpl) return;
+
+ // Tambahkan soal ke array
+ if (Array.isArray(tpl.soal_json)) {
+ tpl.soal_json.forEach(s => {
+ if (s && (s.aspek || s.indikator)) {
+ combinedSoal.push({
+ aspek: s.aspek || "",
+ indikator: s.indikator || "",
+ bobot: parseFloat(s.bobot) || 0
+ });
+ }
+ });
+ }
+
+ // Otomatis centang karyawan terdaftar
+ if (Array.isArray(tpl.karyawan_assigned) && tpl.karyawan_assigned.length > 0) {
+ tpl.karyawan_assigned.forEach(n => {
+ if (n && n !== selectedPenilai) selectedDinilaiSet.add(n);
+ });
+ } else if (tpl.nama_template) {
+ const tplNameLower = tpl.nama_template.toLowerCase().trim();
+ activeK.forEach(k => {
+ const jab = (k.jabatan || "").toLowerCase().trim();
+ if (jab && (jab === tplNameLower || jab.includes(tplNameLower) || tplNameLower.includes(jab))) {
+ if (k.nama_karyawan && k.nama_karyawan !== selectedPenilai) {
+ selectedDinilaiSet.add(k.nama_karyawan);
+ }
+ }
+ });
+ }
+ });
+
+ if (combinedSoal.length > 0) {
+ const rawSum = combinedSoal.reduce((sum, item) => sum + (parseFloat(item.bobot) || 0), 0);
+ if (rawSum > 0 && Math.abs(rawSum - 100) > 0.01) {
+ let currentSum = 0;
+ combinedSoal.forEach(item => {
+ const scaled = Math.round(((parseFloat(item.bobot) || 0) / rawSum) * 100);
+ item.bobot = scaled;
+ currentSum += scaled;
+ });
+ const diff = 100 - currentSum;
+ if (diff !== 0 && combinedSoal.length > 0) {
+ let maxIdx = 0;
+ for (let i = 1; i < combinedSoal.length; i++) {
+ if (combinedSoal[i].bobot > combinedSoal[maxIdx].bobot) maxIdx = i;
+ }
+ combinedSoal[maxIdx].bobot = Math.max(1, combinedSoal[maxIdx].bobot + diff);
+ }
+ }
+
+ combinedSoal.forEach(s => addSoalUI(s));
+ } else {
+ addSoalUI(); // Tambahkan 1 baris indikator kosong jika tidak ada template dipilih
+ }
+
+ drawCheckboxes(searchBox.value);
+
+ if (selectedTplIds.length > 1) {
+ toast(`Otomatis mencentang ${selectedDinilaiSet.size} karyawan dari ${selectedTplIds.length} template! Masing-masing karyawan akan menerima indikator/soal spesifik jabatannya.`, "info");
+ } else if (selectedTplIds.length === 1) {
+ toast(`Otomatis mencentang ${selectedDinilaiSet.size} karyawan dari template terpilih!`, "info");
+ }
+ }
+
+ drawTemplateCheckboxes();
+ if (defaultTemplateId) {
+ syncTemplatesSelection();
+ }
+
+ m.querySelector("#btn-add-soal").onclick = () => addSoalUI();
+ m.querySelector("#btn-batal-kpi").onclick = closeModal;
+ 
+ m.querySelector("#btn-save-kpi").onclick = async () => {
+ const form = m.querySelector("#form-distribusi");
+ if (!form.reportValidity() || calcTotalBobot() !== 100) return toast("Lengkapi form & pastikan total bobot tepat 100%!", "warning");
+
+ const periode = m.querySelector("#kpi-periode").value.trim();
+ const penilai = m.querySelector("#kpi-penilai").value;
+ 
+ // Ekstrak nama karyawan yang dicentang dari Set agar pilihan tidak hilang saat search
+ const dinilaiList = Array.from(selectedDinilaiSet);
+
+ if(!dinilaiList.length) return toast("Centang minimal 1 karyawan yang akan dinilai!", "warning");
+ if(dinilaiList.includes(penilai)) return toast("Penilai tidak boleh berada di dalam daftar centang yang dinilai!", "warning");
+
+ const soalArray = [];
+ soalList.querySelectorAll(".flex.gap-2").forEach(row => {
+ soalArray.push({
+ aspek: row.querySelector(".soal-aspek").value.trim(),
+ indikator: row.querySelector(".soal-indikator").value.trim(),
+ bobot: parseFloat(row.querySelector(".soal-bobot").value) || 0,
+ nilai_diberikan: 0
+ });
+ });
+
+ const deadlineDate = new Date(); deadlineDate.setDate(deadlineDate.getDate() + 3);
+ const deadlineISO = deadlineDate.toISOString();
+
+ const btn = m.querySelector("#btn-save-kpi");
+ btn.disabled = true; btn.textContent = "Menyebarkan Tugas...";
+
+ try {
+ let penilaiEmail = "";
+ let penilaiUsername = "";
+ let penilaiPassword = "";
+
+ let qU = query(collection(db, COL.USERS), where("nama", "==", penilai), limit(1));
+ let snapU = await getDocs(qU);
+
+ if (snapU.empty) {
+ qU = query(collection(db, COL.USERS), where("username", "==", String(penilai).toUpperCase()), limit(1));
+ snapU = await getDocs(qU);
+ }
+
+ if (snapU.empty) {
+ const qK = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", penilai), limit(1));
+ const snapK = await getDocs(qK);
+ if (!snapK.empty) {
+ const kData = snapK.docs[0].data();
+ penilaiEmail = kData.email || "";
+ if (kData.nik_karyawan) {
+ const snapU2 = await getDoc(doc(db, COL.USERS, String(kData.nik_karyawan).toUpperCase()));
+ if (snapU2.exists()) {
+ snapU = { empty: false, docs: [snapU2] };
+ }
+ }
+ }
+ }
+
+ if (!snapU.empty) {
+ const uDoc = snapU.docs[0].data();
+ penilaiUsername = snapU.docs[0].id || uDoc.username || penilai;
+ penilaiEmail = uDoc.email || penilaiEmail || "";
+ penilaiPassword = uDoc.password || uDoc.password_plain || uDoc.password_display || "(Gunakan password akun terdaftar Anda)";
+ } else {
+ penilaiUsername = String(penilai).toUpperCase();
+ penilaiPassword = "(Gunakan password akun terdaftar Anda)";
+ }
+
+ const createdTasks = [];
+ for (const dinilai of dinilaiList) {
+ let empSoal = null;
+
+ // Jika memilih lebih dari 1 template, distribusikan indikator/soal spesifik sesuai template karyawan tersebut
+ if (selectedTplSet.size > 1) {
+ const matchedTpls = Array.from(selectedTplSet)
+ .map(id => validTemplates.find(t => t.id === id))
+ .filter(Boolean)
+ .filter(tpl => {
+ const assigned = Array.isArray(tpl.karyawan_assigned) ? tpl.karyawan_assigned : [];
+ if (assigned.includes(dinilai)) return true;
+ if (tpl.nama_template) {
+ const empObj = activeK.find(k => k.nama_karyawan === dinilai);
+ const jab = ((empObj && empObj.jabatan) || "").toLowerCase().trim();
+ const tplNameLower = tpl.nama_template.toLowerCase().trim();
+ if (jab && (jab === tplNameLower || jab.includes(tplNameLower) || tplNameLower.includes(jab))) {
+ return true;
+ }
+ }
+ return false;
+ });
+
+ if (matchedTpls.length > 0) {
+ const rawEmpSoal = [];
+ matchedTpls.forEach(tpl => {
+ if (Array.isArray(tpl.soal_json)) {
+ tpl.soal_json.forEach(s => {
+ if (s && (s.aspek || s.indikator)) {
+ rawEmpSoal.push({
+ aspek: s.aspek || "",
+ indikator: s.indikator || "",
+ bobot: parseFloat(s.bobot) || 0,
+ nilai_diberikan: 0
+ });
+ }
+ });
+ }
+ });
+
+ if (rawEmpSoal.length > 0) {
+ const rawSum = rawEmpSoal.reduce((sum, item) => sum + (parseFloat(item.bobot) || 0), 0);
+ if (rawSum > 0 && Math.abs(rawSum - 100) > 0.01) {
+ let currentSum = 0;
+ rawEmpSoal.forEach(item => {
+ const scaled = Math.round(((parseFloat(item.bobot) || 0) / rawSum) * 100);
+ item.bobot = scaled;
+ currentSum += scaled;
+ });
+ const diff = 100 - currentSum;
+ if (diff !== 0 && rawEmpSoal.length > 0) {
+ let maxIdx = 0;
+ for (let i = 1; i < rawEmpSoal.length; i++) {
+ if (rawEmpSoal[i].bobot > rawEmpSoal[maxIdx].bobot) maxIdx = i;
+ }
+ rawEmpSoal[maxIdx].bobot = Math.max(1, rawEmpSoal[maxIdx].bobot + diff);
+ }
+ }
+ empSoal = rawEmpSoal;
+ }
+ }
+ }
+
+ if (!empSoal || empSoal.length === 0) {
+ empSoal = soalArray;
+ }
+
+ // Determine template category and scale if selected
+ const selCatEl = m.querySelector("#kpi-distribusi-kategori");
+ const selSkalaEl = m.querySelector("#kpi-distribusi-skala");
+ let taskCategory = selCatEl ? selCatEl.value : "KPI_360";
+ let taskSkala = selSkalaEl ? selSkalaEl.value : "0-100";
+ if (!taskCategory && selectedTplSet.size > 0) {
+ const firstTplId = Array.from(selectedTplSet)[0];
+ const matchedT = validTemplates.find(t => t.id === firstTplId);
+ if (matchedT && matchedT.kategori_penilaian) {
+ taskCategory = matchedT.kategori_penilaian;
+ }
+ }
+
+ const payload = {
+ periode,
+ nama_penilai: penilai,
+ nama_dinilai: dinilai,
+ soal_json: empSoal,
+ kategori_penilaian: taskCategory,
+ skala_penilaian: taskSkala,
+ status: "PENDING",
+ skor_akhir: 0,
+ tanggal: new Date().toISOString(),
+ deadline: deadlineISO
+ };
+ const kpiId = genId("KPI");
+ await fsAdd(COL.TUGAS_KPI_360, payload, kpiId);
+ createdTasks.push({ id: kpiId, ...payload });
+ }
+
+ // Always trigger in-app & push notifications to evaluator
+ const notifTitle = "Tugas Penilaian KPI 360 Baru";
+ const notifPesan = `Anda ditugaskan menilai ${dinilaiList.length} karyawan periode ${periode}. Batas waktu: ${fmtDateShort(deadlineISO)}.`;
+ const notifLink = "#penilaian-kontrak?tab=kpi360";
+
+ await notifyUser(penilaiUsername, notifTitle, notifPesan, notifLink).catch(e => console.warn("Err notifyUser penilaiUsername:", e));
+ if (penilai && penilai !== penilaiUsername) {
+ await notifyUser(penilai, notifTitle, notifPesan, notifLink).catch(e => console.warn("Err notifyUser penilai:", e));
+ }
+
+ if (penilaiEmail && typeof sendEmailNotif === 'function') {
+ const token = await createLoginToken(penilaiUsername);
+ const baseUrl = window.location.origin + window.location.pathname;
+ const magicLink = `${baseUrl}#penilaian-kontrak?tab=kpi360&token=${token}`;
+
+ const dinilaiItemsHtml = dinilaiList.map(d => `<li style="margin-bottom: 6px;"><strong>${escapeHtml(d)}</strong></li>`).join("");
+
+ const htmlEmail = `
+ <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 620px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background: #ffffff;">
+ <div style="background: #7a1f2b; color: #ffffff; padding: 22px 24px;">
+ <h2 style="margin: 0; font-size: 18px; font-weight: bold; letter-spacing: 0.3px;">Tugas Penilaian KPI 360 Baru</h2>
+ <p style="margin: 4px 0 0 0; font-size: 12px; opacity: 0.9;">CV Andela Jaya - Portal HRIS</p>
+ </div>
+ 
+ <div style="padding: 24px; color: #334155; font-size: 14px; line-height: 1.6;">
+ <p style="margin-top: 0;">Halo <strong>${escapeHtml(penilai)}</strong>,</p>
+ <p>Anda telah ditugaskan untuk melakukan penilaian KPI terhadap <strong>${dinilaiList.length} karyawan</strong> pada periode <strong>${escapeHtml(periode)}</strong>.</p>
+ 
+ <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 16px; margin: 20px 0;">
+ <div style="font-weight: bold; color: #0f172a; margin-bottom: 8px; font-size: 13px;"> Daftar Karyawan yang Harus Dinilai:</div>
+ <ol style="margin: 0; padding-left: 20px; font-size: 13px; color: #334155;">
+ ${dinilaiItemsHtml}
+ </ol>
+ <div style="font-size: 11px; color: #64748b; margin-top: 10px; border-top: 1px dashed #cbd5e1; padding-top: 8px;">
+ ⏰ Batas Waktu Pengisian: <strong style="color: #b91c1c;">${fmtDateShort(deadlineISO)}</strong>
+ </div>
+ </div>
+
+ <div style="text-align: center; margin: 28px 0;">
+ <a href="${magicLink}" style="display: inline-block; background: #7a1f2b; color: #ffffff; font-weight: bold; font-size: 14px; padding: 13px 30px; border-radius: 8px; text-decoration: none; box-shadow: 0 4px 12px rgba(122,31,43,0.35);">
+ Login & Mulai Menilai Karyawan
+ </a>
+ </div>
+
+ <div style="background: #f1f5f9; border-left: 4px solid #7a1f2b; padding: 14px 18px; border-radius: 0 8px 8px 0; margin-top: 22px; font-size: 12px;">
+ <div style="font-weight: bold; color: #0f172a; margin-bottom: 6px;"> Informasi Kredensial Akun Anda:</div>
+ <div style="color: #334155; line-height: 1.8;">
+ • <strong>Username:</strong> <code style="background:#e2e8f0; padding:3px 8px; border-radius:4px; font-family:monospace; font-weight:bold; color:#0f172a;">${escapeHtml(penilaiUsername)}</code><br/>
+ • <strong>Password:</strong> <code style="background:#e2e8f0; padding:3px 8px; border-radius:4px; font-family:monospace; font-weight:bold; color:#0f172a;">${escapeHtml(penilaiPassword)}</code>
+ </div>
+ <p style="margin: 8px 0 0 0; color: #64748b; font-size: 11px; line-height: 1.4;">
+ *Jika belum selesai menilai seluruh karyawan, Anda dapat masuk kembali kapan saja melalui link tombol di atas atau login secara manual dengan username dan password tersebut.
+ </p>
+ </div>
+ </div>
+
+ <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 24px; text-align: center; font-size: 11px; color: #94a3b8;">
+ Email otomatis dari Sistem HRIS CV Andela Jaya.
+ </div>
+ </div>
+ `;
+
+ sendEmailNotif(penilaiEmail, `[HRIS] Tugas Penilaian KPI 360 - Periode ${periode}`, htmlEmail).catch(e => console.warn(e));
+ }
+
+ toast("Tugas Penilaian berhasil didistribusikan.", "success");
+ closeModal();
+ await loadKpi360();
+
+ // Dialog konfirmasi cetak dokumen pengisian fisik
+ openModal({
+ title: "Pendistribusian KPI Berhasil",
+ bodyHtml: `
+ <div class="text-center py-4 space-y-3">
+ <div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold">[v]</div>
+ <h3 class="text-sm font-bold text-slate-800">Tugas Penilaian KPI Berhasil Dikirim</h3>
+ <p class="text-xs text-slate-600 max-w-md mx-auto">
+ Telah didistribusikan <strong>${createdTasks.length} tugas penilaian</strong> untuk Penilai <strong>${escapeHtml(penilai)}</strong> pada periode <strong>${escapeHtml(periode)}</strong>.
+ </p>
+ <p class="text-[11px] text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+ Anda dapat langsung mengunduh atau mencetak dokumen pengisian fisik ber-standar ISO CV Andela Jaya untuk keperluan penilaian offline/fisik.
+ </p>
+ </div>
+ `,
+ footerHtml: `
+ <div class="flex items-center justify-between w-full">
+ <button id="btn-done-distribusi" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition">Selesai</button>
+ <button id="btn-print-fisik-now" class="px-5 py-2.5 bg-maroon-700 text-white rounded-lg text-xs font-bold hover:bg-maroon-800 transition shadow-md flex items-center gap-1.5"> Cetak / Download Form Fisik (${createdTasks.length} Karyawan)</button>
+ </div>
+ `,
+ onMount: (m2) => {
+ m2.querySelector("#btn-done-distribusi").onclick = closeModal;
+ m2.querySelector("#btn-print-fisik-now").onclick = () => {
+ closeModal();
+ printBatchFormKpiFisik(createdTasks);
+ };
+ }
+ }); 
+ } catch (e) { toast("Gagal: " + e.message, "error"); btn.disabled = false; }
+ }
+ }
+ });
+ }
+
+ async function loadHasil() {
+ const wrap = panels.hasil; wrap.innerHTML = `<div class="space-y-2">${skeletonRows(4)}</div>`;
+ try {
+ const logs = await fsGetAll(COL.LOG_PENILAIAN_KPI);
+ logs.sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
+ if (!logs.length) { wrap.innerHTML = emptyState("Belum ada data hasil"); return; }
+
+ wrap.innerHTML = `
+ <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+ <div class="overflow-x-auto">
+ <table class="w-full text-sm">
+ <thead class="bg-slate-50 text-slate-500 text-xs uppercase"><tr>
+ <th class="px-4 py-3 text-left">Tanggal</th><th class="px-4 py-3 text-left">Dinilai</th><th class="px-4 py-3 text-left">Penilai</th><th class="px-4 py-3 text-left">Skor Akhir</th><th class="px-4 py-3 text-left">Hasil Keputusan & Rekomendasi</th><th class="px-4 py-3 text-right">Aksi</th>
+ </tr></thead>
+ <tbody>${logs.map(r => {
+ const cat = getCatConfig(r.kategori_penilaian);
+ const recText = r.rekomendasi || r.keputusan || "-";
+ return `
+ <tr class="border-t border-slate-50 hover:bg-slate-50 transition">
+ <td class="px-4 py-3 text-xs text-slate-500">${fmtDateShort(r.tanggal)}</td>
+ <td class="px-4 py-3 font-bold text-slate-800">${escapeHtml(r.nama_dinilai)}</td>
+ <td class="px-4 py-3 text-slate-600">${escapeHtml(r.penilai)}</td>
+ <td class="px-4 py-3 font-extrabold text-maroon-700">${r.total_skor || r.skor_akhir || 0}</td>
+ <td class="px-4 py-3">
+ <span class="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg font-bold border ${cat.badgeClass}">
+ ${cat.icon} ${escapeHtml(recText)}
+ </span>
+ </td>
+ <td class="px-4 py-3 text-right">
+ <div class="flex items-center justify-end gap-1.5">
+ <button data-print="${r.id}" class="text-xs bg-slate-800 hover:bg-slate-900 text-white font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 shadow-2xs transition"> Cetak PDF</button>
+ <button data-del-hasil="${r.id}" class="text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 border border-rose-200 transition">Hapus</button>
+ </div>
+ </td>
+ </tr>`;
+ }).join("")}
+ </tbody>
+ </table>
+ </div>
+ </div>`;
+
+ wrap.querySelectorAll("[data-print]").forEach(btn => {
+ btn.onclick = () => printKpiToHtml(logs.find(x => x.id === btn.dataset.print));
+ });
+
+ wrap.querySelectorAll("[data-del-hasil]").forEach(btn => {
+ btn.onclick = async () => {
+ const id = btn.dataset.delHasil;
+ const row = logs.find(x => x.id === id);
+ if (!row) return;
+ if (confirm(`Apakah Anda yakin ingin menghapus data hasil penilaian untuk "${row.nama_dinilai}"?`)) {
+ await fsDelete(COL.LOG_PENILAIAN_KPI, id);
+ toast("Data hasil penilaian berhasil dihapus!", "success");
+ await loadHasil();
+ }
+ };
+ });
+ } catch (e) { wrap.innerHTML = emptyState("Gagal memuat"); }
+ }
+
+ async function printKpiToHtml(row) {
+ const { downloadHtmlAsPdf } = await import("../utils.js");
+ toast("Sedang memproses PDF...", "info");
+ const isScale1to5 = (row.skala_penilaian === "1-5");
+ let tbody = '';
+ (row.detail_json || []).forEach(item => {
+ let weighted = isScale1to5 
+ ? (item.nilai_diberikan * 20 * ((item.bobot || 0) / 100)).toFixed(2)
+ : (item.nilai_diberikan * ((item.bobot || 0) / 100)).toFixed(2);
+ tbody += `<tr>
+ <td style="border:1px solid #000; padding:6px 10px;">${escapeHtml(item.aspek)}</td>
+ <td style="border:1px solid #000; padding:6px 10px;">${escapeHtml(item.indikator)}</td>
+ <td style="border:1px solid #000; padding:6px 10px; text-align: center;">${item.bobot}%</td>
+ <td style="border:1px solid #000; padding:6px 10px; text-align: center;">${item.nilai_diberikan}</td>
+ <td style="border:1px solid #000; padding:6px 10px; text-align: center;"><strong>${weighted}</strong></td>
+ </tr>`;
+ });
+
+ const catInfo = JENIS_PENILAIAN_MAP[row.kategori_penilaian] || JENIS_PENILAIAN_MAP.KPI_360;
+
+ const html = `
+ <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff;">
+ <div style="page-break-inside:avoid; margin-bottom:15px;">
+ ${isoDocHeaderTable({ judul: `LAPORAN EVALUASI (${catInfo.label.toUpperCase()})`, noDok: "HR-KPI-01", terbitRevisi: "1/0", hal: "1 dari 1" })}
+ </div>
+ <table style="width:100%; border-collapse:collapse; margin-bottom:15px; border:1px solid #000;">
+ <tr><td width="35%" style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Nama Karyawan</td><td style="border:1px solid #000; padding:6px 10px;"><strong>${escapeHtml(row.nama_dinilai)}</strong></td></tr>
+ <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Jenis / Kategori Penilaian</td><td style="border:1px solid #000; padding:6px 10px;">${catInfo.icon} ${escapeHtml(catInfo.label)}</td></tr>
+ <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Skala Penilaian</td><td style="border:1px solid #000; padding:6px 10px;">Skala ${isScale1to5 ? '1 - 5 (Likert / Rating)' : '0 - 100 (Persentase)'}</td></tr>
+ <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Penilai / Atasan</td><td style="border:1px solid #000; padding:6px 10px;">${escapeHtml(row.penilai || "-")}</td></tr>
+ <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Skor KPI Akhir</td><td style="border:1px solid #000; padding:6px 10px;"><strong>${row.total_skor || row.skor_akhir || "-"}</strong></td></tr>
+ <tr><td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Hasil Keputusan & Rekomendasi</td><td style="border:1px solid #000; padding:6px 10px;"><strong style="font-size:12px; color:#7a1f2b;">${escapeHtml(row.rekomendasi || row.keputusan || "-")}</strong></td></tr>
+ </table>
+ <table style="width:100%; border-collapse:collapse; margin-top:10px; border:1px solid #000;">
+ <thead>
+ <tr style="background:#f1f5f9;">
+ <th style="border:1px solid #000; padding:6px 10px; text-align: left;">Aspek</th>
+ <th style="border:1px solid #000; padding:6px 10px; text-align: left;">Indikator</th>
+ <th style="border:1px solid #000; padding:6px 10px; text-align: center;">Bobot</th>
+ <th style="border:1px solid #000; padding:6px 10px; text-align: center;">Nilai (${isScale1to5 ? '1-5' : '0-100'})</th>
+ <th style="border:1px solid #000; padding:6px 10px; text-align: center;">Skor Akhir</th>
+ </tr>
+ </thead>
+ <tbody>
+ ${tbody}
+ </tbody>
+ </table>
+
+ <!-- CATATAN & FEEDBACK KUALITATIF -->
+ <table style="width:100%; border-collapse:collapse; margin-top:12px; border:1px solid #000; font-size:11px;">
+ <tr style="background:#f1f5f9; font-weight:bold;">
+ <td style="border:1px solid #000; padding:6px 10px;">Catatan Evaluasi & Ulasan Penilai:</td>
+ </tr>
+ <tr>
+ <td style="border:1px solid #000; padding:8px 10px; background:#fff;">
+ <div style="margin-bottom:8px;">
+ <strong style="color:#166534;">[v] Hal-hal yang Sudah Baik (Kelebihan / Prestasi Kerja):</strong>
+ <div style="margin-top:3px; font-size:10.5px; line-height:1.4; color:#1e293b; background:#f8fafc; padding:6px 8px; border:1px solid #e2e8f0; border-radius:3px;">
+ ${escapeHtml(row.catatan_baik || "-")}
+ </div>
+ </div>
+ <div style="margin-bottom:8px;">
+ <strong style="color:#991b1b;"> Hal-hal yang Harus Diperbaiki (Area Peningkatan):</strong>
+ <div style="margin-top:3px; font-size:10.5px; line-height:1.4; color:#1e293b; background:#f8fafc; padding:6px 8px; border:1px solid #e2e8f0; border-radius:3px;">
+ ${escapeHtml(row.catatan_perbaikan || "-")}
+ </div>
+ </div>
+ <div>
+ <strong style="color:#334155;"> Catatan & Rekomendasi Tambahan Penilai:</strong>
+ <div style="margin-top:3px; font-size:10.5px; line-height:1.4; color:#1e293b; background:#f8fafc; padding:6px 8px; border:1px solid #e2e8f0; border-radius:3px;">
+ ${escapeHtml(row.catatan_penilai || row.catatan_umum || "-")}
+ </div>
+ </div>
+ </td>
+ </tr>
+ </table>
+ <table style="width:100%; text-align:center; margin-top:35px; page-break-inside:avoid; font-size:11px;">
+ <tr><td width="50%">Karyawan Dinilai,</td><td width="50%">Penilai / HRD,</td></tr>
+ <tr><td height="60"></td><td></td></tr>
+ <tr><td>( <strong>${escapeHtml(row.nama_dinilai)}</strong> )</td><td>( <strong>${escapeHtml(row.penilai || "Atasan Direct")}</strong> )</td></tr>
+ </table>
+ </div>
+ `;
+ await downloadHtmlAsPdf(html, `Laporan_KPI_${escapeHtml(row.nama_dinilai).replace(/\s+/g, "_")}.pdf`);
+ toast("PDF berhasil diunduh!", "success");
+ }
+
+ async function loadEvaluasi() {
+ await renderCrudModule(panels.evaluasi, {
+ title: "Evaluasi Kontrak",
+ collectionName: COL.EVALUASI_KONTRAK,
+ idPrefix: "EVK",
+ searchFields: ["nama_pekerja"],
+ columns: [
+ { key: "tanggal", label: "Tanggal", type: "date" },
+ { key: "nama_pekerja", label: "Karyawan" },
+ { key: "skor", label: "Skor" },
+ { key: "rekomendasi", label: "Rekomendasi", type: "badge" },
+ ],
+ formFields: [
+ { name: "tanggal", label: "Tanggal", type: "date", required: true },
+ { name: "nama_pekerja", label: "Nama Karyawan", type: "text", required: true },
+ { name: "skor", label: "Skor (0-100)", type: "number", required: true },
+ { name: "rekomendasi", label: "Rekomendasi", type: "select", options: ["Perpanjang Kontrak", "Angkat Tetap", "Tidak Diperpanjang"], required: true },
+ ]
+ });
+ }
+
+ // =====================================================================
+ // MODUL PENILAIAN HARIAN & TARGET BULANAN (SALES & STAF OPS)
+ // =====================================================================
+ function openTargetSettingModal(activeKaryawan, allTargets, onSaved) {
+ const now = new Date();
+ const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+ const contentHtml = `
+ <div class="space-y-4 text-xs text-slate-700">
+ <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+ <div>
+ <label class="block font-bold mb-1">Pilih Karyawan: <span class="text-rose-500">*</span></label>
+ <select id="tgt-select-karyawan" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
+ <option value="">-- Pilih Karyawan --</option>
+ ${activeKaryawan.map(k => `<option value="${escapeHtml(k.nama_karyawan)}">${escapeHtml(k.nama_karyawan)} (${k.divisi || "Staf"})</option>`).join('')}
+ </select>
+ </div>
+
+ <div>
+ <label class="block font-bold mb-1">Bulan & Tahun: <span class="text-rose-500">*</span></label>
+ <input type="month" id="tgt-input-month" value="${defaultMonth}" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
+ </div>
+
+ <div>
+ <label class="block font-bold mb-1">Kategori / Divisi: <span class="text-rose-500">*</span></label>
+ <select id="tgt-select-tipe" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
+ <option value="SALES"> Sales / Marketing (Sesuai Lampiran 1)</option>
+ <option value="NON_SALES">Staf / Non-Sales (Operational / HRD / Admin)</option>
+ </select>
+ </div>
+ </div>
+
+ <div id="tgt-form-fields-container" class="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+ </div>
+
+ <div>
+ <label class="block font-bold mb-1">Catatan Target HRD / Manajemen:</label>
+ <textarea id="tgt-input-catatan" rows="2" placeholder="Sampaikan instruksi atau penekanan target bulan ini..." class="w-full p-2.5 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-white text-xs"></textarea>
+ </div>
+ </div>
+ `;
+
+ openModal({
+ title: "Setting Target Bulanan Karyawan",
+ size: "lg",
+ bodyHtml: contentHtml,
+ footerHtml: `
+ <button id="modal-cancel-target-btn" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition">Batal</button>
+ <button id="modal-submit-target-btn" class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 transition">Simpan Target Bulanan</button>
+ `,
+ onMount: (m) => {
+ m.querySelector("#modal-cancel-target-btn").onclick = closeModal;
+
+ const selectEmp = m.querySelector("#tgt-select-karyawan");
+ const selectMonth = m.querySelector("#tgt-input-month");
+ const selectTipe = m.querySelector("#tgt-select-tipe");
+ const fieldsBox = m.querySelector("#tgt-form-fields-container");
+
+ function renderFields() {
+ if (!fieldsBox) return;
+ const empName = selectEmp?.value;
+ const monthVal = selectMonth?.value;
+ const tipeVal = selectTipe?.value;
+
+ const existingDoc = allTargets.find(t => t.nama_karyawan === empName && t.bulan_tahun === monthVal);
+ const savedCustoms = existingDoc?.custom_indicators || [];
+
+ let baseHtml = "";
+ if (tipeVal === "SALES") {
+ baseHtml = `
+ <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+ <span class="font-bold text-slate-800">Target Indicator Sales (Lampiran 1):</span>
+ <span class="text-[11px] text-slate-500">Set target bulanan untuk sales ini</span>
+ </div>
+ <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+ ${SALES_LAMPIRAN1_INDICATORS.map(ind => {
+ const val = existingDoc?.targets?.[ind.key] !== undefined ? existingDoc.targets[ind.key] : ind.defaultTarget;
+ return `
+ <div>
+ <label class="block font-semibold text-slate-700 text-[11px] mb-0.5">
+ <span class="px-1.5 py-0.2 rounded bg-slate-200 text-slate-700 font-bold">${ind.principle}</span> ${escapeHtml(ind.indikator)} (${ind.unit}):
+ </label>
+ <input type="number" id="tgt-field-${ind.key}" value="${val}" class="w-full p-2 rounded-xl border border-slate-200 bg-white font-bold text-slate-800 outline-none focus:border-maroon-600">
+ </div>
+ `;
+ }).join('')}
+ </div>
+ `;
+ } else {
+ baseHtml = `
+ <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+ <span class="font-bold text-slate-800">Target Indikator Staf / Operational:</span>
+ <span class="text-[11px] text-slate-500">Standar baseline target = 100% per indikator</span>
+ </div>
+ <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+ ${NON_SALES_INDICATORS.map(ind => {
+ const val = existingDoc?.targets?.[ind.key] !== undefined ? existingDoc.targets[ind.key] : 100;
+ return `
+ <div>
+ <label class="block font-semibold text-slate-700 text-[11px] mb-0.5">
+ ${escapeHtml(ind.aspek)} - ${escapeHtml(ind.indikator)} (%):
+ </label>
+ <input type="number" id="tgt-field-${ind.key}" value="${val}" min="0" max="100" class="w-full p-2 rounded-xl border border-slate-200 bg-white font-bold text-slate-800 outline-none focus:border-maroon-600">
+ </div>
+ `;
+ }).join('')}
+ </div>
+ <div class="p-3 bg-amber-50 rounded-xl border border-amber-200/80 text-[11px] text-amber-800 leading-relaxed mt-2">
+ <strong>Aturan Penalti HRD:</strong> Untuk staf operational, nilai harian dimulai dari baseline 100%. Nilai akan berkurang otomatis saat diinput adanya kesalahan kerja, komplain divisi lain, atau penerbitan Surat Peringatan (SP).
+ </div>
+ `;
+ }
+
+ fieldsBox.innerHTML = `
+ ${baseHtml}
+ <div class="mt-4 pt-3 border-t border-slate-200">
+ <div class="flex items-center justify-between mb-2">
+ <span class="font-bold text-slate-800 text-xs"> Indikator Target Kustom (Kategori HRD / Divisi):</span>
+ <button type="button" id="btn-add-custom-tgt" class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[11px] hover:bg-emerald-100 transition">
+ + Tambah Indikator Kustom
+ </button>
+ </div>
+ <div id="custom-tgt-list" class="space-y-2">
+ ${savedCustoms.map((c, idx) => `
+ <div class="custom-tgt-row grid grid-cols-1 sm:grid-cols-12 gap-2 p-2 bg-white rounded-xl border border-slate-200 items-center">
+ <input type="text" class="custom-name sm:col-span-5 p-1.5 rounded-lg border border-slate-200 text-xs font-medium" placeholder="Nama Indikator (Cth: Audit Stok)" value="${escapeHtml(c.indikator || '')}">
+ <input type="text" class="custom-unit sm:col-span-3 p-1.5 rounded-lg border border-slate-200 text-xs font-medium" placeholder="Satuan (Cth: %, Visit)" value="${escapeHtml(c.unit || '%')}">
+ <input type="number" class="custom-val sm:col-span-3 p-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-800" placeholder="Target" value="${existingDoc?.targets?.[c.key] !== undefined ? existingDoc.targets[c.key] : (c.defaultTarget || 100)}">
+ <button type="button" class="btn-del-custom sm:col-span-1 text-center text-rose-500 font-bold hover:bg-rose-50 p-1 rounded-lg">&times;</button>
+ </div>
+ `).join('')}
+ </div>
+ </div>
+ `;
+
+ const btnAdd = fieldsBox.querySelector("#btn-add-custom-tgt");
+ const customList = fieldsBox.querySelector("#custom-tgt-list");
+
+ if (btnAdd && customList) {
+ btnAdd.onclick = () => {
+ const row = document.createElement("div");
+ row.className = "custom-tgt-row grid grid-cols-1 sm:grid-cols-12 gap-2 p-2 bg-white rounded-xl border border-slate-200 items-center";
+ row.innerHTML = `
+ <input type="text" class="custom-name sm:col-span-5 p-1.5 rounded-lg border border-slate-200 text-xs font-medium" placeholder="Nama Indikator (Cth: Audit Stok)">
+ <input type="text" class="custom-unit sm:col-span-3 p-1.5 rounded-lg border border-slate-200 text-xs font-medium" placeholder="Satuan (Cth: %, Visit)" value="%">
+ <input type="number" class="custom-val sm:col-span-3 p-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-800" placeholder="Target" value="100">
+ <button type="button" class="btn-del-custom sm:col-span-1 text-center text-rose-500 font-bold hover:bg-rose-50 p-1 rounded-lg">&times;</button>
+ `;
+ row.querySelector(".btn-del-custom").onclick = () => row.remove();
+ customList.appendChild(row);
+ };
+
+ customList.querySelectorAll(".btn-del-custom").forEach(btn => {
+ btn.onclick = (e) => e.target.closest(".custom-tgt-row")?.remove();
+ });
+ }
+ }
+
+ if (selectEmp) selectEmp.onchange = renderFields;
+ if (selectMonth) selectMonth.onchange = renderFields;
+ if (selectTipe) selectTipe.onchange = renderFields;
+ renderFields();
+
+ m.querySelector("#modal-submit-target-btn").onclick = async () => {
+ const empName = m.querySelector("#tgt-select-karyawan")?.value;
+ const monthVal = m.querySelector("#tgt-input-month")?.value;
+ const tipeVal = m.querySelector("#tgt-select-tipe")?.value;
+ const catatanVal = m.querySelector("#tgt-input-catatan")?.value || "";
+
+ if (!empName || !monthVal) {
+ toast("Harap pilih karyawan dan bulan target!", "error");
+ return;
+ }
+
+ const empObj = activeKaryawan.find(k => k.nama_karyawan === empName);
+ const targets = {};
+ const customIndicators = [];
+
+ if (tipeVal === "SALES") {
+ SALES_LAMPIRAN1_INDICATORS.forEach(ind => {
+ const inputEl = m.querySelector(`#tgt-field-${ind.key}`);
+ targets[ind.key] = inputEl ? parseFloat(inputEl.value || 0) : ind.defaultTarget;
+ });
+ } else {
+ NON_SALES_INDICATORS.forEach(ind => {
+ const inputEl = m.querySelector(`#tgt-field-${ind.key}`);
+ targets[ind.key] = inputEl ? parseFloat(inputEl.value || 100) : 100;
+ });
+ }
+
+ // Extract Custom Indicators
+ const customRows = m.querySelectorAll("#custom-tgt-list .custom-tgt-row");
+ customRows.forEach((row, i) => {
+ const name = row.querySelector(".custom-name")?.value.trim();
+ const unit = row.querySelector(".custom-unit")?.value.trim() || "%";
+ const val = parseFloat(row.querySelector(".custom-val")?.value || 100);
+
+ if (name) {
+ const key = `custom_${name.toLowerCase().replace(/[^a-z0-9]/g, "_")}_${i}`;
+ targets[key] = val;
+ customIndicators.push({
+ key: key,
+ indikator: name,
+ unit: unit,
+ defaultTarget: val
+ });
+ }
+ });
+
+ const docId = `TGT_${empName.replace(/\s+/g, "_")}_${monthVal}`;
+ const payload = {
+ id: docId,
+ nama_karyawan: empName,
+ nik_karyawan: empObj?.nik_karyawan || empObj?.nik || "",
+ divisi: empObj?.divisi || "",
+ jabatan: empObj?.jabatan || "",
+ bulan_tahun: monthVal,
+ tipe_karyawan: tipeVal,
+ targets: targets,
+ custom_indicators: customIndicators,
+ catatan: catatanVal,
+ updated_at: new Date().toISOString(),
+ updated_by: session.nama
+ };
+
+ try {
+ await setDoc(doc(db, COL.TARGET_BULANAN_KPI, docId), payload, { merge: true });
+ toast(`Target bulanan ${empName} (${monthVal}) berhasil disimpan!`, "success");
+ closeModal();
+ if (typeof onSaved === "function") onSaved();
+ } catch (err) {
+ toast("Gagal menyimpan target: " + err.message, "error");
+ }
+ };
+ }
+ });
+ }
+
+ function openDailyLogModal(activeKaryawan, allTargets, onSaved) {
+ const todayStr = new Date().toISOString().split("T")[0];
+
+ const contentHtml = `
+ <div class="space-y-4 text-xs text-slate-700">
+ <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+ <div>
+ <label class="block font-bold mb-1">Tanggal Daily Report: <span class="text-rose-500">*</span></label>
+ <input type="date" id="log-input-date" value="${todayStr}" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
+ </div>
+
+ <div>
+ <label class="block font-bold mb-1">Pilih Karyawan: <span class="text-rose-500">*</span></label>
+ <select id="log-select-karyawan" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
+ <option value="">-- Pilih Karyawan --</option>
+ ${activeKaryawan.map(k => `<option value="${escapeHtml(k.nama_karyawan)}">${escapeHtml(k.nama_karyawan)} (${k.divisi || "Staf"})</option>`).join('')}
+ </select>
+ </div>
+ </div>
+
+ <div id="log-form-dynamic-box" class="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+ </div>
+
+ <div>
+ <label class="block font-bold mb-1">Catatan Daily Report / Ulasan Pekerjaan Hari Ini:</label>
+ <textarea id="log-input-catatan" rows="2" placeholder="Catatan hasil daily report dari admin / ulasan supervisor..." class="w-full p-2.5 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-white text-xs"></textarea>
+ </div>
+ </div>
+ `;
+
+ openModal({
+ title: " Input Log Pencapaian & Evaluasi Harian",
+ size: "lg",
+ bodyHtml: contentHtml,
+ footerHtml: `
+ <button id="modal-cancel-log-btn" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition">Batal</button>
+ <button id="modal-submit-log-btn" class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 transition">Simpan Daily Log</button>
+ `,
+ onMount: (m) => {
+ m.querySelector("#modal-cancel-log-btn").onclick = closeModal;
+
+ const selectEmp = m.querySelector("#log-select-karyawan");
+ const selectDate = m.querySelector("#log-input-date");
+ const dynamicBox = m.querySelector("#log-form-dynamic-box");
+
+ function renderDynamicForm() {
+ if (!dynamicBox) return;
+ const empName = selectEmp?.value;
+ const dateVal = selectDate?.value || todayStr;
+ const monthVal = dateVal.substring(0, 7);
+
+ if (!empName) {
+ dynamicBox.innerHTML = `<p class="text-slate-400 text-center text-xs py-4">Silakan pilih karyawan terlebih dahulu.</p>`;
+ return;
+ }
+
+ const empObj = activeKaryawan.find(k => k.nama_karyawan === empName);
+ const targetDoc = allTargets.find(t => t.nama_karyawan === empName && t.bulan_tahun === monthVal);
+ const isSales = (targetDoc?.tipe_karyawan === "SALES" || (empObj?.divisi || "").toUpperCase().includes("SALES"));
+
+ const customInds = targetDoc?.custom_indicators || [];
+ let customInputsHtml = "";
+ if (customInds.length > 0) {
+ customInputsHtml = `
+ <div class="mt-3 pt-3 border-t border-slate-200">
+ <span class="font-bold text-slate-800 block mb-2"> Indikator Target Kustom HRD Bulan Ini:</span>
+ <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+ ${customInds.map(ci => {
+ const tgt = targetDoc?.targets?.[ci.key] !== undefined ? targetDoc.targets[ci.key] : (ci.defaultTarget || 100);
+ return `
+ <div>
+ <label class="block font-semibold text-slate-700 text-[11px] mb-0.5">
+ ${escapeHtml(ci.indikator)} <span class="text-slate-400">(Target: ${tgt} ${escapeHtml(ci.unit || '%')})</span>:
+ </label>
+ <input type="number" id="log-ach-${ci.key}" value="${tgt}" step="any" class="w-full p-2 rounded-xl border border-slate-200 bg-white font-bold text-slate-800 outline-none focus:border-maroon-600">
+ </div>
+ `;
+ }).join('')}
+ </div>
+ </div>
+ `;
+ }
+
+ if (isSales) {
+ dynamicBox.innerHTML = `
+ <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+ <span class="font-bold text-slate-800">Input Pencapaian Harian Sales (Lampiran 1):</span>
+ <span class="text-[11px] text-purple-700 font-semibold">Tipe: Sales / Marketing</span>
+ </div>
+ <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+ ${SALES_LAMPIRAN1_INDICATORS.map(ind => {
+ const tgt = targetDoc?.targets?.[ind.key] || ind.defaultTarget;
+ return `
+ <div>
+ <label class="block font-semibold text-slate-700 text-[11px] mb-0.5">
+ <span class="px-1.5 py-0.2 rounded bg-purple-100 text-purple-800 font-bold">${ind.principle}</span> ${escapeHtml(ind.indikator)}
+ <span class="text-slate-400">(Target Mo: ${tgt} ${ind.unit})</span>:
+ </label>
+ <input type="number" id="log-ach-${ind.key}" value="0" step="any" class="w-full p-2 rounded-xl border border-slate-200 bg-white font-bold text-slate-800 outline-none focus:border-maroon-600">
+ </div>
+ `;
+ }).join('')}
+ </div>
+ ${customInputsHtml}
+ `;
+ } else {
+ dynamicBox.innerHTML = `
+ <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+ <span class="font-bold text-slate-800">Evaluasi Operational & Penalti Staf:</span>
+ <span class="text-[11px] text-blue-700 font-semibold">Base Skor: 100%</span>
+ </div>
+
+ <div class="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+ <label class="flex items-center gap-2 font-bold text-slate-800 cursor-pointer">
+ <input type="checkbox" id="chk-komplain-divisi" class="w-4 h-4 text-rose-600 rounded">
+ <span>Ada Kesalahan Kerja / Komplain dari Divisi Lain Hari Ini?</span>
+ </label>
+ <div id="box-komplain-detail" class="hidden space-y-2 pt-2 border-t border-slate-100">
+ <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+ <div class="col-span-2">
+ <label class="block font-semibold text-slate-600 text-[11px] mb-0.5">Detail Kesalahan / Komplain:</label>
+ <input type="text" id="inp-komplain-ket" placeholder="Misal: Salah input data laporan, terlambat pengiriman..." class="w-full p-2 rounded-xl border border-slate-200 text-xs">
+ </div>
+ <div>
+ <label class="block font-semibold text-slate-600 text-[11px] mb-0.5">Potongan Skor (%):</label>
+ <input type="number" id="inp-komplain-minus" value="10" min="1" max="100" class="w-full p-2 rounded-xl border border-slate-200 text-xs font-bold text-rose-700">
+ </div>
+ </div>
+ </div>
+ </div>
+
+ <div class="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+ <label class="flex items-center gap-2 font-bold text-slate-800 cursor-pointer">
+ <input type="checkbox" id="chk-sp" class="w-4 h-4 text-rose-600 rounded">
+ <span> Ada Penerbitan Surat Peringatan (SP) Hari Ini?</span>
+ </label>
+ <div id="box-sp-detail" class="hidden space-y-2 pt-2 border-t border-slate-100">
+ <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+ <div class="col-span-2">
+ <label class="block font-semibold text-slate-600 text-[11px] mb-0.5">Tipe Surat Peringatan:</label>
+ <select id="inp-sp-ket" class="w-full p-2 rounded-xl border border-slate-200 text-xs font-semibold">
+ <option value="Surat Peringatan 1 (SP1)">Surat Peringatan 1 (SP1)</option>
+ <option value="Surat Peringatan 2 (SP2)">Surat Peringatan 2 (SP2)</option>
+ <option value="Surat Peringatan 3 (SP3 / Terakhir)">Surat Peringatan 3 (SP3 / Terakhir)</option>
+ </select>
+ </div>
+ <div>
+ <label class="block font-semibold text-slate-600 text-[11px] mb-0.5">Potongan Skor (%):</label>
+ <input type="number" id="inp-sp-minus" value="25" min="1" max="100" class="w-full p-2 rounded-xl border border-slate-200 text-xs font-bold text-rose-700">
+ </div>
+ </div>
+ </div>
+ </div>
+ ${customInputsHtml}
+ `;
+
+ const chkK = dynamicBox.querySelector("#chk-komplain-divisi");
+ const boxK = dynamicBox.querySelector("#box-komplain-detail");
+ if (chkK && boxK) {
+ chkK.onchange = () => boxK.classList.toggle("hidden", !chkK.checked);
+ }
+
+ const chkSp = dynamicBox.querySelector("#chk-sp");
+ const boxSp = dynamicBox.querySelector("#box-sp-detail");
+ const selectSp = dynamicBox.querySelector("#inp-sp-ket");
+ const inpSpMinus = dynamicBox.querySelector("#inp-sp-minus");
+ if (chkSp && boxSp) {
+ chkSp.onchange = () => boxSp.classList.toggle("hidden", !chkSp.checked);
+ }
+ if (selectSp && inpSpMinus) {
+ selectSp.onchange = (e) => {
+ if (e.target.value.includes("SP1")) inpSpMinus.value = 15;
+ else if (e.target.value.includes("SP2")) inpSpMinus.value = 25;
+ else if (e.target.value.includes("SP3")) inpSpMinus.value = 50;
+ };
+ }
+ }
+ }
+
+ if (selectEmp) selectEmp.onchange = renderDynamicForm;
+ if (selectDate) selectDate.onchange = renderDynamicForm;
+ renderDynamicForm();
+
+ m.querySelector("#modal-submit-log-btn").onclick = async () => {
+ const empName = m.querySelector("#log-select-karyawan")?.value;
+ const dateVal = m.querySelector("#log-input-date")?.value;
+ const catatanVal = m.querySelector("#log-input-catatan")?.value || "";
+
+ if (!empName || !dateVal) {
+ toast("Harap pilih karyawan dan tanggal!", "error");
+ return;
+ }
+
+ const monthVal = dateVal.substring(0, 7);
+ const empObj = activeKaryawan.find(k => k.nama_karyawan === empName);
+ const targetDoc = allTargets.find(t => t.nama_karyawan === empName && t.bulan_tahun === monthVal);
+ const isSales = (targetDoc?.tipe_karyawan === "SALES" || (empObj?.divisi || "").toUpperCase().includes("SALES"));
+
+ let achievements = {};
+ let detailPenalti = [];
+ let scoreHarian = 100;
+ let totalMinus = 0;
+
+ if (isSales) {
+ let scoreSum = 0;
+ let count = 0;
+ SALES_LAMPIRAN1_INDICATORS.forEach(ind => {
+ const inputEl = m.querySelector(`#log-ach-${ind.key}`);
+ const val = inputEl ? parseFloat(inputEl.value || 0) : 0;
+ achievements[ind.key] = val;
+
+ const tgt = targetDoc?.targets?.[ind.key] || ind.defaultTarget;
+ if (tgt > 0) {
+ let ratio = 100;
+ if (ind.key === "overdue_piutang") {
+ ratio = val <= tgt ? 100 : Math.max(0, 100 - ((val - tgt) / tgt) * 100);
+ } else {
+ ratio = Math.min(120, (val / tgt) * 100);
+ }
+ scoreSum += ratio;
+ count++;
+ }
+ });
+ scoreHarian = count > 0 ? (scoreSum / count) : 100;
+ } else {
+ const chkKomplain = m.querySelector("#chk-komplain-divisi")?.checked;
+ const komplainMinus = parseFloat(m.querySelector("#inp-komplain-minus")?.value || 0);
+ const komplainKet = m.querySelector("#inp-komplain-ket")?.value || "";
+
+ const chkSp = m.querySelector("#chk-sp")?.checked;
+ const spMinus = parseFloat(m.querySelector("#inp-sp-minus")?.value || 0);
+ const spKet = m.querySelector("#inp-sp-ket")?.value || "";
+
+ if (chkKomplain && komplainMinus > 0) {
+ totalMinus += komplainMinus;
+ detailPenalti.push({
+ tipe: "KESALAHAN_KOMPLAIN_DIVISI",
+ deskripsi: komplainKet || "Kesalahan kerja / komplain dari divisi lain",
+ minus: komplainMinus
+ });
+ }
+
+ if (chkSp && spMinus > 0) {
+ totalMinus += spMinus;
+ detailPenalti.push({
+ tipe: "SURAT_PERINGATAN",
+ deskripsi: spKet || "Penerbitan Surat Peringatan (SP)",
+ minus: spMinus
+ });
+ }
+
+ scoreHarian = Math.max(0, 100 - totalMinus);
+ }
+
+ scoreHarian = parseFloat(scoreHarian.toFixed(1));
+
+ const docId = `DAILY_${empName.replace(/\s+/g, "_")}_${dateVal}`;
+ const payload = {
+ id: docId,
+ nama_karyawan: empName,
+ nik_karyawan: empObj?.nik_karyawan || empObj?.nik || "",
+ divisi: empObj?.divisi || "",
+ jabatan: empObj?.jabatan || "",
+ tanggal: dateVal,
+ bulan_tahun: monthVal,
+ tipe_karyawan: isSales ? "SALES" : "NON_SALES",
+ achievements: achievements,
+ potongan_penalti: totalMinus,
+ detail_penalti: detailPenalti,
+ score_harian: scoreHarian,
+ catatan_daily_report: catatanVal,
+ input_by: session.nama,
+ updated_at: new Date().toISOString()
+ };
+
+ try {
+ await setDoc(doc(db, COL.LOG_PENILAIAN_HARIAN, docId), payload, { merge: true });
+ toast(`Daily log ${empName} (${fmtDateShort(dateVal)}) berhasil disimpan! Skor: ${scoreHarian}%`, "success");
+ closeModal();
+ if (typeof onSaved === "function") onSaved();
+ } catch (err) {
+ toast("Gagal menyimpan daily log: " + err.message, "error");
+ }
+ };
+ }
+ });
+ }
+
+ function exportDailyPerformanceExcel(filteredLogs, state) {
+ if (!filteredLogs || filteredLogs.length === 0) {
+ toast("Tidak ada data log harian untuk diexport!", "warning");
+ return;
+ }
+
+ const dataRows = filteredLogs.map((log, idx) => {
+ let detailStr = "";
+ if (log.tipe_karyawan === "SALES" && log.achievements) {
+ detailStr = `Dulux: ${log.achievements.volume_dulux || 0}, Catylac: ${log.achievements.volume_catylac || 0}, Value Tertagih: Rp ${(parseFloat(log.achievements.value_penjualan_tertagih || 0)).toLocaleString("id-ID")}`;
+ } else if (Array.isArray(log.detail_penalti) && log.detail_penalti.length > 0) {
+ detailStr = log.detail_penalti.map(p => `${p.tipe}: ${p.deskripsi} (-${p.minus}%)`).join("; ");
+ } else {
+ detailStr = "Bebas Komplain / Sesuai SOP";
+ }
+
+ return {
+ "No": idx + 1,
+ "Tanggal": log.tanggal,
+ "Nama Karyawan": log.nama_karyawan,
+ "NIK": log.nik_karyawan || "-",
+ "Divisi": log.divisi || "Staf",
+ "Kategori": log.tipe_karyawan === "SALES" ? "Sales" : "Staf Ops",
+ "Skor Harian (%)": log.score_harian || 100,
+ "Detail Capaian / Penalti": detailStr,
+ "Catatan Daily Report": log.catatan_daily_report || "-",
+ "Diinput Oleh": log.input_by || "HRD"
+ };
+ });
+
+ downloadXlsx(dataRows, `Laporan_Performa_Harian_${state.selectedYear}_${state.filterTimeframe}.xlsx`);
+ toast("Laporan Excel berhasil diunduh!", "success");
+ }
+
+ async function exportDailyPerformancePdf(filteredLogs, state, activeKaryawan, avgScore, statusPredikat, statusRekomendasi) {
+ toast("Sedang menyusun Laporan PDF HRD Manajemen...", "info");
+ const { downloadHtmlAsPdf } = await import("../utils.js");
+
+ const empName = state.filterKaryawan || "Seluruh Staf / Karyawan";
+ const empObj = activeKaryawan.find(k => k.nama_karyawan === state.filterKaryawan);
+
+ let rowsHtml = filteredLogs.map((log, idx) => {
+ let detailStr = "";
+ if (log.tipe_karyawan === "SALES" && log.achievements) {
+ detailStr = `Dulux: ${log.achievements.volume_dulux || 0}, Catylac: ${log.achievements.volume_catylac || 0}, Value Tertagih: Rp ${(parseFloat(log.achievements.value_penjualan_tertagih || 0)).toLocaleString("id-ID")}`;
+ } else if (Array.isArray(log.detail_penalti) && log.detail_penalti.length > 0) {
+ detailStr = log.detail_penalti.map(p => `<strong>${escapeHtml(p.tipe)}:</strong> ${escapeHtml(p.deskripsi)} (-${p.minus}%)`).join("<br>");
+ } else {
+ detailStr = `<span style="color:#059669; font-weight:bold;">[v] Kinerja 100% Sesuai SOP</span>`;
+ }
+
+ return `
+ <tr>
+ <td style="border:1px solid #000; padding:5px 8px; text-align:center;">${idx + 1}</td>
+ <td style="border:1px solid #000; padding:5px 8px;">${fmtDateShort(log.tanggal)}</td>
+ <td style="border:1px solid #000; padding:5px 8px; font-weight:bold;">${escapeHtml(log.nama_karyawan)}</td>
+ <td style="border:1px solid #000; padding:5px 8px; text-align:center; font-weight:bold;">${log.score_harian}%</td>
+ <td style="border:1px solid #000; padding:5px 8px;">${detailStr}</td>
+ <td style="border:1px solid #000; padding:5px 8px;">${escapeHtml(log.catatan_daily_report || "-")}</td>
+ </tr>
+ `;
+ }).join("");
+
+ const htmlContent = `
+ <div style="font-family: Arial, sans-serif; font-size: 11px; color: #0f172a; line-height: 1.4; padding: 10px;">
+ ${isoDocHeaderTable({
+ judul: "LAPORAN EVALUASI PERFORMA HARIAN & BULANAN KARYAWAN",
+ noDok: `AND/HRD/EVAL/${state.selectedYear}/${state.selectedMonth || "ALL"}`,
+ terbitRevisi: "1/2",
+ tglTerbit: fmtDateShort(new Date().toISOString()),
+ hal: "1 dari 1"
+ })}
+
+ <table style="width:100%; border-collapse:collapse; margin-top:15px; margin-bottom:15px; border:1px solid #000;">
+ <tr>
+ <td width="25%" style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Nama Karyawan</td>
+ <td style="border:1px solid #000; padding:6px 10px; font-weight:bold;">${escapeHtml(empName)}</td>
+ <td width="20%" style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Rata-rata Skor</td>
+ <td style="border:1px solid #000; padding:6px 10px; font-weight:bold; color:#7a1f2b; font-size:13px;">${avgScore}% (${statusPredikat})</td>
+ </tr>
+ <tr>
+ <td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">NIK & Divisi</td>
+ <td style="border:1px solid #000; padding:6px 10px;">${escapeHtml(empObj?.nik_karyawan || "-")} | ${escapeHtml(empObj?.divisi || "Staf")}</td>
+ <td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Periode Laporan</td>
+ <td style="border:1px solid #000; padding:6px 10px;">Tahun ${state.selectedYear} (${state.filterTimeframe})</td>
+ </tr>
+ <tr>
+ <td style="border:1px solid #000; padding:6px 10px; font-weight:bold; background:#f8fafc;">Keputusan & Rekomendasi HRD</td>
+ <td colspan="3" style="border:1px solid #000; padding:6px 10px; font-weight:bold; color:#7a1f2b;">
+ ${statusRekomendasi}
+ </td>
+ </tr>
+ </table>
+
+ <h4 style="margin-bottom:6px; font-size:12px;">Rincian Log Pencapaian Harian & Rekam Komplain:</h4>
+ <table style="width:100%; border-collapse:collapse; border:1px solid #000; font-size:10px;">
+ <thead>
+ <tr style="background:#f1f5f9; text-align:left;">
+ <th style="border:1px solid #000; padding:6px; text-align:center;" width="5%">No</th>
+ <th style="border:1px solid #000; padding:6px;" width="12%">Tanggal</th>
+ <th style="border:1px solid #000; padding:6px;" width="20%">Karyawan</th>
+ <th style="border:1px solid #000; padding:6px; text-align:center;" width="10%">Skor</th>
+ <th style="border:1px solid #000; padding:6px;" width="30%">Detail Capaian / Penalti</th>
+ <th style="border:1px solid #000; padding:6px;" width="23%">Daily Report Admin</th>
+ </tr>
+ </thead>
+ <tbody>
+ ${rowsHtml || '<tr><td colspan="6" style="text-align:center; padding:10px;">Tidak ada log data.</td></tr>'}
+ </tbody>
+ </table>
+
+ <table style="width:100%; text-align:center; margin-top:35px; page-break-inside:avoid; font-size:11px;">
+ <tr>
+ <td width="33%">Dibuat Oleh,<br><strong>Admin / HRD Staff</strong></td>
+ <td width="33%">Ditinjau Oleh,<br><strong>Atasan Direct / SPV</strong></td>
+ <td width="33%">Disetujui Oleh,<br><strong>Direksi / Manajemen Atas</strong></td>
+ </tr>
+ <tr><td height="50"></td><td></td><td></td></tr>
+ <tr>
+ <td>( ____________________ )</td>
+ <td>( ____________________ )</td>
+ <td>( ____________________ )</td>
+ </tr>
+ </table>
+ </div>
+ `;
+
+ await downloadHtmlAsPdf(htmlContent, `Laporan_Performa_${empName.replace(/\s+/g, "_")}.pdf`);
+ toast("PDF Laporan Manajemen Atas berhasil diunduh!", "success");
+ }
+
+ async function loadDailyPerformance() {
+ const wrap = panels.daily;
+ if (!wrap) return;
+ wrap.innerHTML = `<div class="p-8">${skeletonRows(5)}</div>`;
+
+ try {
+ let [allKaryawan, allTargets, allDailyLogs] = await Promise.all([
+ fsGetAll(COL.MASTER_KARYAWAN),
+ fsGetAll(COL.TARGET_BULANAN_KPI),
+ fsGetAll(COL.LOG_PENILAIAN_HARIAN)
+ ]);
+
+ let activeKaryawan = allKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF" && k.nama_karyawan);
+ activeKaryawan.sort((a, b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id", { sensitivity: "base" }));
+
+ if (isRegularEmployee) {
+ const myName = String(session.nama || "").toLowerCase().trim();
+ const myNik = String(session.nik || "").toLowerCase().trim();
+ activeKaryawan = activeKaryawan.filter(k => {
+ const kname = String(k.nama_karyawan || "").toLowerCase().trim();
+ const knik = String(k.nik_karyawan || k.nik || "").toLowerCase().trim();
+ return (myName && kname === myName) || (myNik && knik === myNik);
+ });
+ }
+
+ const now = new Date();
+ let state = {
+ filterKaryawan: isRegularEmployee ? (activeKaryawan[0]?.nama_karyawan || session.nama || "") : "",
+ filterKategori: "",
+ filterTimeframe: "MONTHLY",
+ selectedYear: String(now.getFullYear()),
+ selectedMonth: String(now.getMonth() + 1).padStart(2, "0"),
+ selectedWeek: "W1",
+ selectedQuarter: "Q" + (Math.floor(now.getMonth() / 3) + 1)
+ };
+
+ function refreshData() {
+ const filtered = filterLogs();
+ renderDashboard(filtered);
+ }
+
+ function filterLogs() {
+ let logs = [...allDailyLogs];
+
+ if (state.filterKaryawan) {
+ logs = logs.filter(l => (l.nama_karyawan || "").toLowerCase() === state.filterKaryawan.toLowerCase());
+ }
+
+ if (state.filterKategori) {
+ logs = logs.filter(l => (l.tipe_karyawan || "NON_SALES") === state.filterKategori);
+ }
+
+ logs = logs.filter(l => {
+ if (!l.tanggal) return false;
+ const d = new Date(l.tanggal);
+ const y = String(d.getFullYear());
+ const m = String(d.getMonth() + 1).padStart(2, "0");
+ const dateNum = d.getDate();
+
+ if (y !== state.selectedYear) return false;
+
+ if (state.filterTimeframe === "MONTHLY") {
+ return m === state.selectedMonth;
+ } else if (state.filterTimeframe === "WEEKLY") {
+ if (m !== state.selectedMonth) return false;
+ if (state.selectedWeek === "W1") return dateNum >= 1 && dateNum <= 7;
+ if (state.selectedWeek === "W2") return dateNum >= 8 && dateNum <= 14;
+ if (state.selectedWeek === "W3") return dateNum >= 15 && dateNum <= 21;
+ if (state.selectedWeek === "W4") return dateNum >= 22;
+ return true;
+ } else if (state.filterTimeframe === "QUARTERLY") {
+ const mNum = parseInt(m, 10);
+ if (state.selectedQuarter === "Q1") return mNum >= 1 && mNum <= 3;
+ if (state.selectedQuarter === "Q2") return mNum >= 4 && mNum <= 6;
+ if (state.selectedQuarter === "Q3") return mNum >= 7 && mNum <= 9;
+ if (state.selectedQuarter === "Q4") return mNum >= 10 && mNum <= 12;
+ return true;
+ } else if (state.filterTimeframe === "YEARLY") {
+ return true;
+ }
+ return true;
+ });
+
+ logs.sort((a, b) => new Date(a.tanggal) - new Date(b.tanggal));
+ return logs;
+ }
+
+ function renderDashboard(filteredLogs) {
+ let totalScoreSum = 0;
+ let totalPenaltyCount = 0;
+ filteredLogs.forEach(l => {
+ totalScoreSum += parseFloat(l.score_harian || 100);
+ if (Array.isArray(l.detail_penalti)) {
+ totalPenaltyCount += l.detail_penalti.length;
+ } else if (l.potongan_penalti > 0) {
+ totalPenaltyCount += 1;
+ }
+ });
+
+ const avgScore = filteredLogs.length > 0 ? (totalScoreSum / filteredLogs.length).toFixed(1) : "100.0";
+ const avgScoreNum = parseFloat(avgScore);
+
+ let statusBadgeClass = "bg-emerald-100 text-emerald-800 border-emerald-300";
+ let statusPredikat = "Sangat Baik (A)";
+ let statusRekomendasi = "Direkomendasikan Lulus Probation / Karyawan Tetap (Kartap) & Bonus";
+
+ if (avgScoreNum < 70) {
+ statusBadgeClass = "bg-rose-100 text-rose-800 border-rose-300";
+ statusPredikat = "Kurang (D)";
+ statusRekomendasi = "Masuk Masa PIP / Pertimbangan Tidak Diperpanjang Kontrak";
+ } else if (avgScoreNum < 80) {
+ statusBadgeClass = "bg-amber-100 text-amber-800 border-amber-300";
+ statusPredikat = "Cukup (C)";
+ statusRekomendasi = "Direkomendasikan Perpanjang Kontrak 6 Bulan (Evaluasi Ketat)";
+ } else if (avgScoreNum < 90) {
+ statusBadgeClass = "bg-blue-100 text-blue-800 border-blue-300";
+ statusPredikat = "Baik (B)";
+ statusRekomendasi = "Direkomendasikan Perpanjang Kontrak 12 Bulan";
+ }
+
+ const chartPoints = filteredLogs.map((lg, i) => {
+ const score = Math.min(100, Math.max(0, parseFloat(lg.score_harian || 100)));
+ return { label: lg.tanggal ? fmtDateShort(lg.tanggal) : `Log #${i+1}`, score, date: lg.tanggal };
+ });
+
+ let lineSvgHtml = "";
+ if (chartPoints.length > 0) {
+ const svgWidth = 800;
+ const svgHeight = 220;
+ const padX = 50;
+ const padY = 30;
+ const usableWidth = svgWidth - padX * 2;
+ const usableHeight = svgHeight - padY * 2;
+
+ const pointsCoords = chartPoints.map((pt, i) => {
+ const x = chartPoints.length === 1 ? svgWidth / 2 : padX + (i / (chartPoints.length - 1)) * usableWidth;
+ const y = padY + (1 - pt.score / 100) * usableHeight;
+ return { x, y, pt };
+ });
+
+ const polylineStr = pointsCoords.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+ const areaPolyStr = `${pointsCoords[0].x.toFixed(1)},${svgHeight - padY} ${polylineStr} ${pointsCoords[pointsCoords.length - 1].x.toFixed(1)},${svgHeight - padY}`;
+
+ lineSvgHtml = `
+ <svg viewBox="0 0 ${svgWidth} ${svgHeight}" class="w-full h-56 overflow-visible">
+ <defs>
+ <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
+ <stop offset="0%" stop-color="#800020" stop-opacity="0.25"/>
+ <stop offset="100%" stop-color="#800020" stop-opacity="0.0"/>
+ </linearGradient>
+ </defs>
+ 
+ <line x1="${padX}" y1="${padY}" x2="${svgWidth - padX}" y2="${padY}" stroke="#e2e8f0" stroke-dasharray="4" />
+ <text x="${padX - 8}" y="${padY + 4}" font-size="10" fill="#94a3b8" text-anchor="end">100%</text>
+
+ <line x1="${padX}" y1="${padY + usableHeight * 0.25}" x2="${svgWidth - padX}" y2="${padY + usableHeight * 0.25}" stroke="#f1f5f9" stroke-dasharray="4" />
+ <text x="${padX - 8}" y="${padY + usableHeight * 0.25 + 4}" font-size="10" fill="#94a3b8" text-anchor="end">75%</text>
+
+ <line x1="${padX}" y1="${padY + usableHeight * 0.5}" x2="${svgWidth - padX}" y2="${padY + usableHeight * 0.5}" stroke="#f1f5f9" stroke-dasharray="4" />
+ <text x="${padX - 8}" y="${padY + usableHeight * 0.5 + 4}" font-size="10" fill="#94a3b8" text-anchor="end">50%</text>
+
+ <line x1="${padX}" y1="${svgHeight - padY}" x2="${svgWidth - padX}" y2="${svgHeight - padY}" stroke="#cbd5e1" />
+ <text x="${padX - 8}" y="${svgHeight - padY + 4}" font-size="10" fill="#94a3b8" text-anchor="end">0%</text>
+
+ <polygon points="${areaPolyStr}" fill="url(#scoreGrad)" />
+ <polyline points="${polylineStr}" fill="none" stroke="#800020" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+ ${pointsCoords.map(p => `
+ <g class="group cursor-pointer">
+ <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5" fill="#800020" stroke="#ffffff" stroke-width="2" class="transition-transform hover:scale-125"/>
+ <text x="${p.x.toFixed(1)}" y="${svgHeight - padY + 16}" font-size="9" fill="#64748b" text-anchor="middle" font-weight="500">${p.pt.label}</text>
+ <text x="${p.x.toFixed(1)}" y="${(p.y - 10).toFixed(1)}" font-size="10" fill="#1e293b" text-anchor="middle" font-weight="bold">${p.pt.score}%</text>
+ </g>
+ `).join("")}
+ </svg>
+ `;
+ } else {
+ lineSvgHtml = `
+ <div class="h-48 flex flex-col items-center justify-center text-slate-400 text-xs">
+ <span class="text-3xl mb-2"></span>
+ <span>Belum ada data daily log pencapaian pada filter periode ini.</span>
+ <span class="text-[11px] text-slate-400 mt-1">Klik tombol <strong>" Input Daily Report"</strong> di atas untuk menambahkan.</span>
+ </div>
+ `;
+ }
+
+ let html = `
+ <div class="space-y-6">
+ <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+ <div>
+ <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+ <span></span> Penilaian Harian & Target Sales / Staf
+ </h2>
+ <p class="text-xs text-slate-500 mt-1">Modul HRD untuk setting target bulanan, input laporan pencapaian harian admin (termasuk pengurangan kesalahan/komplain/SP), serta grafik evaluasi perpanjangan kontrak & kartap.</p>
+ </div>
+
+ ${isHrdOrAdmin ? `
+ <div class="flex items-center gap-2 flex-wrap self-start lg:self-auto">
+ <button id="btn-daily-target-setting" class="bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
+ Setting Target Bulanan
+ </button>
+ <button id="btn-daily-input-log" class="bg-maroon-700 hover:bg-maroon-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
+ Input Daily Report
+ </button>
+ <button id="btn-daily-export-excel" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
+ Export Excel
+ </button>
+ <button id="btn-daily-export-pdf" class="bg-blue-700 hover:bg-blue-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
+ Cetak Laporan PDF
+ </button>
+ </div>
+ ` : `
+ <div class="flex items-center gap-2">
+ <button id="btn-daily-export-excel" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
+ Export Excel
+ </button>
+ <button id="btn-daily-export-pdf" class="bg-blue-700 hover:bg-blue-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
+ Cetak Laporan PDF
+ </button>
+ </div>
+ `}
+ </div>
+
+ <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+ <div>
+ <label class="block font-bold text-slate-700 mb-1">Pilih Karyawan:</label>
+ <select id="flt-daily-karyawan" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold" ${isRegularEmployee ? 'disabled' : ''}>
+ <option value="">-- Semua Karyawan --</option>
+ ${activeKaryawan.map(k => `
+ <option value="${escapeHtml(k.nama_karyawan)}" ${state.filterKaryawan.toLowerCase() === k.nama_karyawan.toLowerCase() ? 'selected' : ''}>
+ ${escapeHtml(k.nama_karyawan)} (${k.divisi || "Staf"})
+ </option>
+ `).join('')}
+ </select>
+ </div>
+
+ <div>
+ <label class="block font-bold text-slate-700 mb-1">Kategori Tim / Divisi:</label>
+ <select id="flt-daily-kategori" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
+ <option value="" ${state.filterKategori === "" ? 'selected' : ''}>Semua Kategori</option>
+ <option value="SALES" ${state.filterKategori === "SALES" ? 'selected' : ''}> Sales / Marketing (Lampiran 1)</option>
+ <option value="NON_SALES" ${state.filterKategori === "NON_SALES" ? 'selected' : ''}>Staf / Non-Sales (Operational/HRD/Admin)</option>
+ </select>
+ </div>
+
+ <div>
+ <label class="block font-bold text-slate-700 mb-1">Rentang Laporan:</label>
+ <select id="flt-daily-timeframe" class="w-full p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
+ <option value="WEEKLY" ${state.filterTimeframe === "WEEKLY" ? 'selected' : ''}>Mingguan (Weekly)</option>
+ <option value="MONTHLY" ${state.filterTimeframe === "MONTHLY" ? 'selected' : ''}> Bulanan (Monthly)</option>
+ <option value="QUARTERLY" ${state.filterTimeframe === "QUARTERLY" ? 'selected' : ''}> Kuartalan (Quarterly)</option>
+ <option value="YEARLY" ${state.filterTimeframe === "YEARLY" ? 'selected' : ''}> Tahunan (Yearly)</option>
+ </select>
+ </div>
+
+ <div>
+ <label class="block font-bold text-slate-700 mb-1">Tahun & Sub-Periode:</label>
+ <div class="flex items-center gap-1.5">
+ <select id="flt-daily-year" class="w-1/2 p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
+ ${[2024, 2025, 2026, 2027].map(y => `<option value="${y}" ${state.selectedYear === String(y) ? 'selected' : ''}>${y}</option>`).join('')}
+ </select>
+
+ ${state.filterTimeframe === "WEEKLY" ? `
+ <select id="flt-daily-week" class="w-1/2 p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
+ <option value="W1" ${state.selectedWeek === "W1" ? 'selected' : ''}>Minggu 1</option>
+ <option value="W2" ${state.selectedWeek === "W2" ? 'selected' : ''}>Minggu 2</option>
+ <option value="W3" ${state.selectedWeek === "W3" ? 'selected' : ''}>Minggu 3</option>
+ <option value="W4" ${state.selectedWeek === "W4" ? 'selected' : ''}>Minggu 4</option>
+ </select>
+ ` : state.filterTimeframe === "QUARTERLY" ? `
+ <select id="flt-daily-quarter" class="w-1/2 p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold">
+ <option value="Q1" ${state.selectedQuarter === "Q1" ? 'selected' : ''}>Q1 (Jan-Mar)</option>
+ <option value="Q2" ${state.selectedQuarter === "Q2" ? 'selected' : ''}>Q2 (Apr-Jun)</option>
+ <option value="Q3" ${state.selectedQuarter === "Q3" ? 'selected' : ''}>Q3 (Jul-Sep)</option>
+ <option value="Q4" ${state.selectedQuarter === "Q4" ? 'selected' : ''}>Q4 (Okt-Des)</option>
+ </select>
+ ` : `
+ <select id="flt-daily-month" class="w-1/2 p-2 rounded-xl border border-slate-200 outline-none focus:border-maroon-600 bg-slate-50 font-semibold" ${state.filterTimeframe === "YEARLY" ? 'disabled' : ''}>
+ ${[
+ {v:"01",l:"Jan"}, {v:"02",l:"Feb"}, {v:"03",l:"Mar"}, {v:"04",l:"Apr"},
+ {v:"05",l:"Mei"}, {v:"06",l:"Jun"}, {v:"07",l:"Jul"}, {v:"08",l:"Ags"},
+ {v:"09",l:"Sep"}, {v:"10",l:"Okt"}, {v:"11",l:"Nov"}, {v:"12",l:"Des"}
+ ].map(m => `<option value="${m.v}" ${state.selectedMonth === m.v ? 'selected' : ''}>${m.l}</option>`).join('')}
+ </select>
+ `}
+ </div>
+ </div>
+
+ <div class="flex items-center justify-end">
+ <span class="inline-block px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+ Total Log Data: <strong>${filteredLogs.length} Record</strong>
+ </span>
+ </div>
+ </div>
+
+ <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+ <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs flex items-center justify-between">
+ <div>
+ <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Rata-rata Performa</span>
+ <div class="text-2xl font-black text-slate-800 mt-1">${avgScore}<span class="text-sm font-normal text-slate-400">%</span></div>
+ <span class="inline-block mt-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${statusBadgeClass}">${statusPredikat}</span>
+ </div>
+ <div class="w-12 h-12 rounded-2xl bg-maroon-50 text-maroon-700 flex items-center justify-center text-xl font-bold">
+ 
+ </div>
+ </div>
+
+ <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs flex items-center justify-between">
+ <div>
+ <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Total Log Laporan</span>
+ <div class="text-2xl font-black text-slate-800 mt-1">${filteredLogs.length} <span class="text-xs font-normal text-slate-400">Hari Kerja</span></div>
+ <span class="text-[11px] text-slate-400 mt-1.5 block">Diinput via Daily Report</span>
+ </div>
+ <div class="w-12 h-12 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center text-xl font-bold">
+ 
+ </div>
+ </div>
+
+ <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs flex items-center justify-between">
+ <div>
+ <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Penalti & Komplain</span>
+ <div class="text-2xl font-black text-rose-700 mt-1">${totalPenaltyCount} <span class="text-xs font-normal text-slate-400">Catatan</span></div>
+ <span class="text-[11px] text-slate-400 mt-1.5 block">Kesalahan / Komplain / SP</span>
+ </div>
+ <div class="w-12 h-12 rounded-2xl bg-rose-50 text-rose-700 flex items-center justify-center text-xl font-bold">
+ 
+ </div>
+ </div>
+
+ <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs flex items-center justify-between col-span-1">
+ <div>
+ <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Rekomendasi Kontrak HRD</span>
+ <p class="text-xs font-bold text-slate-800 mt-1.5 leading-snug">${statusRekomendasi}</p>
+ <span class="text-[10px] text-slate-400 block mt-1">Berdasarkan Standar Grade Performa</span>
+ </div>
+ </div>
+ </div>
+
+ <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-2xs space-y-4">
+ <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+ <div>
+ <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
+ <span></span> Grafik Peningkatan & Tren Performa Karyawan (%)
+ </h3>
+ <p class="text-xs text-slate-500 mt-0.5">Visualisasi dinamika pencapaian nilai harian/periodik karyawan dari waktu ke waktu.</p>
+ </div>
+ <span class="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+ Target Standar: 100%
+ </span>
+ </div>
+
+ <div class="pt-2">
+ ${lineSvgHtml}
+ </div>
+ </div>
+
+ <div class="bg-white rounded-2xl border border-slate-100 shadow-2xs overflow-hidden">
+ <div class="p-5 border-b border-slate-100 flex items-center justify-between gap-4">
+ <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
+ <span></span> Rincian Riwayat Log Harian & Catatan Komplain
+ </h3>
+ <span class="text-xs text-slate-500 font-medium">Menampilkan ${filteredLogs.length} entri</span>
+ </div>
+
+ ${filteredLogs.length === 0 ? `
+ <div class="p-8 text-center text-slate-400 text-xs">
+ <p>Tidak ada log penilaian harian yang ditemukan pada kriteria filter ini.</p>
+ </div>
+ ` : `
+ <div class="overflow-x-auto">
+ <table class="w-full text-left text-xs text-slate-700 border-collapse">
+ <thead>
+ <tr class="bg-slate-50/80 text-slate-600 border-b border-slate-200 font-bold uppercase tracking-wider text-[11px]">
+ <th class="p-3.5">Tanggal</th>
+ <th class="p-3.5">Nama Karyawan</th>
+ <th class="p-3.5">Kategori</th>
+ <th class="p-3.5 text-center">Skor Harian</th>
+ <th class="p-3.5">Detail Capaian / Penalti Komplain & SP</th>
+ <th class="p-3.5">Catatan Daily Report</th>
+ </tr>
+ </thead>
+ <tbody class="divide-y divide-slate-100">
+ ${filteredLogs.map(log => {
+ const score = parseFloat(log.score_harian || 100);
+ let badgeCol = "bg-emerald-50 text-emerald-700 border-emerald-200";
+ if (score < 70) badgeCol = "bg-rose-50 text-rose-700 border-rose-200";
+ else if (score < 80) badgeCol = "bg-amber-50 text-amber-700 border-amber-200";
+ else if (score < 90) badgeCol = "bg-blue-50 text-blue-700 border-blue-200";
+
+ let detailContent = "";
+ if (log.tipe_karyawan === "SALES" && log.achievements) {
+ detailContent = `
+ <div class="space-y-1 text-[11px]">
+ <span class="font-bold text-slate-800">Capaian Sales SO:</span>
+ <div class="grid grid-cols-2 gap-x-2 gap-y-0.5 text-slate-600">
+ <div>Dulux: <strong>${log.achievements.volume_dulux || 0}</strong></div>
+ <div>Catylac: <strong>${log.achievements.volume_catylac || 0}</strong></div>
+ <div>Maxilite: <strong>${log.achievements.volume_maxilite || 0}</strong></div>
+ <div>Aquashield: <strong>${log.achievements.volume_aquashield || 0}</strong></div>
+ <div class="col-span-2">Value Tertagih: <strong>Rp ${(parseFloat(log.achievements.value_penjualan_tertagih || 0)).toLocaleString("id-ID")}</strong></div>
+ </div>
+ </div>
+ `;
+ } else {
+ const penaltiList = log.detail_penalti || [];
+ if (penaltiList.length > 0) {
+ detailContent = penaltiList.map(p => `
+ <div class="text-[11px] text-rose-700 bg-rose-50 p-1.5 rounded border border-rose-200/80 mb-1">
+ <strong> ${escapeHtml(p.tipe || "Komplain/Kesalahan")}:</strong> ${escapeHtml(p.deskripsi || "-")} (Potongan: -${p.minus}%)
+ </div>
+ `).join("");
+ } else {
+ detailContent = `<span class="text-emerald-600 font-semibold text-[11px]">[v] Kinerja 100% Sesuai SOP (Bebas Komplain)</span>`;
+ }
+ }
+
+ return `
+ <tr class="hover:bg-slate-50/50 transition">
+ <td class="p-3.5 font-bold text-slate-800 whitespace-nowrap">${fmtDateShort(log.tanggal)}</td>
+ <td class="p-3.5 font-bold text-slate-800 whitespace-nowrap">${escapeHtml(log.nama_karyawan)}</td>
+ <td class="p-3.5 whitespace-nowrap">
+ <span class="px-2 py-0.5 rounded text-[10px] font-bold ${log.tipe_karyawan === 'SALES' ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}">
+ ${log.tipe_karyawan === 'SALES' ? 'Sales' : 'Staf Ops'}
+ </span>
+ </td>
+ <td class="p-3.5 text-center whitespace-nowrap">
+ <span class="px-2.5 py-1 rounded-lg text-xs font-bold border ${badgeCol}">
+ ${score}%
+ </span>
+ </td>
+ <td class="p-3.5 max-w-xs">
+ ${detailContent}
+ </td>
+ <td class="p-3.5 max-w-xs text-slate-600 leading-relaxed">
+ ${escapeHtml(log.catatan_daily_report || "-")}
+ </td>
+ </tr>
+ `;
+ }).join("")}
+ </tbody>
+ </table>
+ </div>
+ `}
+ </div>
+ </div>
+ `;
+
+ wrap.innerHTML = html;
+
+ const fltKaryawan = wrap.querySelector("#flt-daily-karyawan");
+ const fltKategori = wrap.querySelector("#flt-daily-kategori");
+ const fltTimeframe = wrap.querySelector("#flt-daily-timeframe");
+ const fltYear = wrap.querySelector("#flt-daily-year");
+ const fltMonth = wrap.querySelector("#flt-daily-month");
+ const fltWeek = wrap.querySelector("#flt-daily-week");
+ const fltQuarter = wrap.querySelector("#flt-daily-quarter");
+
+ if (fltKaryawan) fltKaryawan.onchange = (e) => { state.filterKaryawan = e.target.value; refreshData(); };
+ if (fltKategori) fltKategori.onchange = (e) => { state.filterKategori = e.target.value; refreshData(); };
+ if (fltTimeframe) fltTimeframe.onchange = (e) => { state.filterTimeframe = e.target.value; refreshData(); };
+ if (fltYear) fltYear.onchange = (e) => { state.selectedYear = e.target.value; refreshData(); };
+ if (fltMonth) fltMonth.onchange = (e) => { state.selectedMonth = e.target.value; refreshData(); };
+ if (fltWeek) fltWeek.onchange = (e) => { state.selectedWeek = e.target.value; refreshData(); };
+ if (fltQuarter) fltQuarter.onchange = (e) => { state.selectedQuarter = e.target.value; refreshData(); };
+
+ const btnTarget = wrap.querySelector("#btn-daily-target-setting");
+ const btnInputLog = wrap.querySelector("#btn-daily-input-log");
+ const btnExcel = wrap.querySelector("#btn-daily-export-excel");
+ const btnPdf = wrap.querySelector("#btn-daily-export-pdf");
+
+ if (btnTarget) {
+ btnTarget.onclick = () => {
+ openTargetSettingModal(activeKaryawan, allTargets, async () => {
+ allTargets = await fsGetAll(COL.TARGET_BULANAN_KPI);
+ refreshData();
+ });
+ };
+ }
+
+ if (btnInputLog) {
+ btnInputLog.onclick = () => {
+ openDailyLogModal(activeKaryawan, allTargets, async () => {
+ allDailyLogs = await fsGetAll(COL.LOG_PENILAIAN_HARIAN);
+ refreshData();
+ });
+ };
+ }
+
+ if (btnExcel) {
+ btnExcel.onclick = () => {
+ exportDailyPerformanceExcel(filteredLogs, state);
+ };
+ }
+
+ if (btnPdf) {
+ btnPdf.onclick = () => {
+ exportDailyPerformancePdf(filteredLogs, state, activeKaryawan, avgScore, statusPredikat, statusRekomendasi);
+ };
+ }
+ }
+
+ refreshData();
+
+ } catch (err) {
+ console.error("Error loading daily performance:", err);
+ wrap.innerHTML = emptyState("Gagal memuat modul penilaian harian: " + err.message);
+ }
+ }
+
+ async function switchTab(tab) {
+ if (!panels[tab]) return;
+
+ Object.keys(panels).forEach(k => {
+ if (panels[k]) {
+ panels[k].classList.toggle("hidden", k !== tab);
+ }
+ });
+
+ container.querySelectorAll(".pk-tab").forEach(b => {
+ const isSelected = b.dataset.ntab === tab;
+ b.classList.toggle("border-maroon-700", isSelected);
+ b.classList.toggle("text-maroon-700", isSelected);
+ b.classList.toggle("border-transparent", !isSelected);
+ b.classList.toggle("text-slate-500", !isSelected);
+ });
+
+ if (!loaded[tab]) {
+ try {
+ if (tab === "kontrak") await loadKontrak();
+ else if (tab === "kpi360") await loadKpi360();
+ else if (tab === "hasil") await loadHasil();
+ else if (tab === "evaluasi") await loadEvaluasi();
+ else if (tab === "daily") await loadDailyPerformance();
+ else if (tab === "template") await loadTemplateKpi();
+ else if (tab === "grafik") await loadEmployeeGrafik();
+ loaded[tab] = true;
+ } catch (err) {
+ console.error(`Gagal memuat data sub menu ${tab}:`, err);
+ loaded[tab] = false;
+ if (panels[tab]) {
+ panels[tab].innerHTML = emptyState(
+ `Gagal memuat data sub menu: ${err.message || err}`,
+ "Silakan klik tombol sub menu di atas untuk mencoba kembali."
+ );
+ }
+ }
+ }
+ }
+
+ container.querySelectorAll(".pk-tab").forEach(btn => {
+ btn.addEventListener("click", () => {
+ const tab = btn.dataset.ntab;
+ if (tab) switchTab(tab);
+ });
+ });
+
+ const tabParam = params ? (typeof params.get === "function" ? params.get("tab") : params.tab) : null;
+ let initialTab = "kontrak";
+ if (isRegularEmployee) {
+ initialTab = (tabParam === "kontrak") ? "kontrak" : "grafik";
+ } else {
+ if (tabParam === "kpi" || tabParam === "kpi360") initialTab = "kpi360";
+ else if (tabParam === "evaluasi" || tabParam === "evaluasi-kontrak") initialTab = "evaluasi";
+ else if (panels[tabParam]) initialTab = tabParam;
+ else initialTab = "kontrak";
+ }
+
+ await switchTab(initialTab);
+
+ return { unmount() {} };
 }

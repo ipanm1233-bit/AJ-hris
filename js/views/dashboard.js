@@ -8,109 +8,109 @@ import { getToken } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-me
 const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
 
 export async function mount(container, { session }) {
-  const hour = new Date().getHours();
-  const greet = hour < 11 ? "Selamat Pagi" : hour < 15 ? "Selamat Siang" : hour < 18 ? "Selamat Sore" : "Selamat Malam";
-  container.querySelector("#dash-greeting").textContent = `${greet}, ${session.nama.split(" ")[0]}`;
+ const hour = new Date().getHours();
+ const greet = hour < 11 ? "Selamat Pagi" : hour < 15 ? "Selamat Siang" : hour < 18 ? "Selamat Sore" : "Selamat Malam";
+ container.querySelector("#dash-greeting").textContent = `${greet}, ${session.nama.split(" ")[0]}`;
 
-  const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
+ const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
 
-  // Widget dashboard karyawan bisa diatur HRD per-karyawan (user_dashboard_widgets)
-  // atau secara global (dashboard_widgets). Default: semua widget aktif jika belum diatur.
-  const WIDGET_IDS = ["dash-widget-leave", "dash-widget-kpi", "dash-widget-cuti-hari-ini", "dash-widget-pengumuman", "dash-widget-attendance", "dash-widget-performance", "dash-widget-assets", "dash-contract-widget-wrap"];
-  try {
-    const cfgSnap = await getDoc(doc(db, COL.APP_SETTINGS, "main"));
-    if (cfgSnap.exists()) {
-      const appData = cfgSnap.data();
-      const globalWidgets = appData.dashboard_widgets || {};
-      const userWidgets = appData.user_dashboard_widgets || {};
+ // Widget dashboard karyawan bisa diatur HRD per-karyawan (user_dashboard_widgets)
+ // atau secara global (dashboard_widgets). Default: semua widget aktif jika belum diatur.
+ const WIDGET_IDS = ["dash-widget-leave", "dash-widget-kpi", "dash-widget-cuti-hari-ini", "dash-widget-pengumuman", "dash-widget-attendance", "dash-widget-performance", "dash-widget-assets", "dash-contract-widget-wrap"];
+ try {
+ const cfgSnap = await getDoc(doc(db, COL.APP_SETTINGS, "main"));
+ if (cfgSnap.exists()) {
+ const appData = cfgSnap.data();
+ const globalWidgets = appData.dashboard_widgets || {};
+ const userWidgets = appData.user_dashboard_widgets || {};
 
-      const userKey = (session.username || session.nik || session.nama || "").trim().toLowerCase();
-      const specificUserCfg = userWidgets[userKey] || userWidgets[session.username?.toLowerCase()] || userWidgets[session.nik?.toLowerCase()];
+ const userKey = (session.username || session.nik || session.nama || "").trim().toLowerCase();
+ const specificUserCfg = userWidgets[userKey] || userWidgets[session.username?.toLowerCase()] || userWidgets[session.nik?.toLowerCase()];
 
-      const effectiveCfg = specificUserCfg || globalWidgets;
+ const effectiveCfg = specificUserCfg || globalWidgets;
 
-      WIDGET_IDS.forEach(wid => {
-        if (effectiveCfg[wid] === false) {
-          const el = container.querySelector(`#${wid}`);
-          if (el) el.classList.add("hidden");
-        }
-      });
-    }
-  } catch (e) { /* jika gagal memuat konfigurasi, tampilkan semua widget seperti biasa */ }
+ WIDGET_IDS.forEach(wid => {
+ if (effectiveCfg[wid] === false) {
+ const el = container.querySelector(`#${wid}`);
+ if (el) el.classList.add("hidden");
+ }
+ });
+ }
+ } catch (e) { /* jika gagal memuat konfigurasi, tampilkan semua widget seperti biasa */ }
 
-  // loadProfileCard dipanggil lebih dulu (bukan di dalam Promise.all) karena
-  // loadPersonalBanner butuh data karyawan yang sama supaya tidak query dobel.
-  const karyawanProfile = await loadProfileCard(container, session);
+ // loadProfileCard dipanggil lebih dulu (bukan di dalam Promise.all) karena
+ // loadPersonalBanner butuh data karyawan yang sama supaya tidak query dobel.
+ const karyawanProfile = await loadProfileCard(container, session);
 
-  await Promise.all([
-    loadPersonalBanner(container, session, karyawanProfile),
-    loadLeaveBalances(container, session),
-    loadKpiTasks(container, session),
-    loadAssignedAssets(container, session),
-    loadCutiHariIni(container),
-    loadAnnouncements(container, session),
-    loadAttendanceAnalytics(container, session),
-    loadPerformanceWidget(container, session),
-    loadTrainingHistory(container, session),
-    loadContractExpiry(container, session)
-  ]);
+ await Promise.all([
+ loadPersonalBanner(container, session, karyawanProfile),
+ loadLeaveBalances(container, session),
+ loadKpiTasks(container, session),
+ loadAssignedAssets(container, session),
+ loadCutiHariIni(container),
+ loadAnnouncements(container, session),
+ loadAttendanceAnalytics(container, session),
+ loadPerformanceWidget(container, session),
+ loadTrainingHistory(container, session),
+ loadContractExpiry(container, session)
+ ]);
 
-  // Lonceng notifikasi kini ditangani secara global di app.js (bindShellEvents)
-  // agar bisa diklik dari halaman manapun, tidak hanya saat berada di Dashboard.
+ // Lonceng notifikasi kini ditangani secara global di app.js (bindShellEvents)
+ // agar bisa diklik dari halaman manapun, tidak hanya saat berada di Dashboard.
 
-  // Tombol "Tes Notif" kini berada di Header Atas (sebelah Lonceng Notifikasi)
-  // dan dihandle secara global oleh bindShellEvents di app.js.
-  
-  return { unmount() {} };
+ // Tombol "Tes Notif" kini berada di Header Atas (sebelah Lonceng Notifikasi)
+ // dan dihandle secara global oleh bindShellEvents di app.js.
+ 
+ return { unmount() {} };
 }
 
 /* ------------------------ a. PROFILE CARD & MODAL ------------------------ */
 async function loadProfileCard(container, session) {
-  let karyawan = null;
-  if (session.nik && session.nik !== "null" && session.nik !== "undefined") {
-    const snap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(session.nik)));
-    if (snap.exists()) karyawan = snap.data();
-  } else {
-    const q = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", session.nama), limit(1));
-    const snap = await getDocs(q);
-    if (!snap.empty) karyawan = snap.docs[0].data();
-  }
+ let karyawan = null;
+ if (session.nik && session.nik !== "null" && session.nik !== "undefined") {
+ const snap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(session.nik)));
+ if (snap.exists()) karyawan = snap.data();
+ } else {
+ const q = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", session.nama), limit(1));
+ const snap = await getDocs(q);
+ if (!snap.empty) karyawan = snap.docs[0].data();
+ }
 
-  const profileCard = container.querySelector("#dash-profile-card");
-  container.querySelector("#dash-profile-avatar").innerHTML = avatar(karyawan?.foto_url || session.foto_url || session.nama, "w-14 h-14 text-base");
-  container.querySelector("#dash-profile-nama").textContent = session.nama;
-  container.querySelector("#dash-profile-jabatan").textContent = `${session.posisi || "-"} • ${karyawan?.cabang || session.cabang || "-"}`;
-  container.querySelector("#dash-profile-badges").innerHTML = `
-    ${badge(session.role, "maroon")}
-    ${karyawan?.status_karyawan ? badge(karyawan.status_karyawan, "blue") : ""}
-    ${karyawan?.aktif_tdk_aktif ? badge(karyawan.aktif_tdk_aktif, karyawan.aktif_tdk_aktif === "AKTIF" ? "green" : "red") : ""}
-  `;
+ const profileCard = container.querySelector("#dash-profile-card");
+ container.querySelector("#dash-profile-avatar").innerHTML = avatar(karyawan?.foto_url || session.foto_url || session.nama, "w-14 h-14 text-base");
+ container.querySelector("#dash-profile-nama").textContent = session.nama;
+ container.querySelector("#dash-profile-jabatan").textContent = `${session.posisi || "-"} • ${karyawan?.cabang || session.cabang || "-"}`;
+ container.querySelector("#dash-profile-badges").innerHTML = `
+ ${badge(session.role, "maroon")}
+ ${karyawan?.status_karyawan ? badge(karyawan.status_karyawan, "blue") : ""}
+ ${karyawan?.aktif_tdk_aktif ? badge(karyawan.aktif_tdk_aktif, karyawan.aktif_tdk_aktif === "AKTIF" ? "green" : "red") : ""}
+ `;
 
-  if (profileCard) profileCard.onclick = () => openProfileModal(session, karyawan);
-  return karyawan;
+ if (profileCard) profileCard.onclick = () => openProfileModal(session, karyawan);
+ return karyawan;
 }
 
 function profileRow(label, value) {
-  return `<div><p class="text-[11px] text-slate-400 uppercase tracking-wide">${label}</p><p class="text-sm text-slate-700 font-medium mt-0.5">${value || "-"}</p></div>`;
+ return `<div><p class="text-[11px] text-slate-400 uppercase tracking-wide">${label}</p><p class="text-sm text-slate-700 font-medium mt-0.5">${value || "-"}</p></div>`;
 }
 
 function openProfileModal(session, k) {
-  if (!k) { openModal({ title: "Profil Karyawan", bodyHtml: `<p class="text-sm text-slate-500">Data lengkap belum tertaut (Hubungi HRD).</p>` }); return; }
-  const body = `
-    <div class="flex items-center gap-4 mb-6 pb-5 border-b border-slate-100">
-      ${avatar(k.foto_url || session.foto_url || k.nama_karyawan || session.nama, "w-16 h-16 text-lg")}
-      <div><p class="font-bold text-slate-800 text-lg">${escapeHtml(k.nama_karyawan || session.nama)}</p><p class="text-sm text-slate-500">${escapeHtml(k.jabatan || "-")} • ${escapeHtml(k.divisi || "-")}</p></div>
-    </div>
-    <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
-      ${profileRow("NIK Karyawan", k.nik_karyawan)} ${profileRow("Cabang", k.cabang)} ${profileRow("Status Karyawan", k.status_karyawan)}
-      ${profileRow("Jenis Kelamin", k.jenis_kelamin)} ${profileRow("Tanggal Lahir", fmtDate(k.tanggal_lahir))} ${profileRow("Tanggal Join", fmtDate(k.tanggal_join))}
-      ${profileRow("Pendidikan", k.pendidikan)} ${profileRow("Agama", k.agama)} ${profileRow("No HP Aktif", k.no_hp_aktif)}
-      ${profileRow("Email", k.email)} ${profileRow("Atasan", k.atasan)}
-      <div class="col-span-2 sm:col-span-3">${profileRow("Alamat", k.alamat)}</div>
-    </div>
-    <div class="mt-6 flex justify-end"><button id="btn-tutup-profil" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition">Tutup Profil</button></div>
-  `;
-  openModal({ title: "Data Pribadi", size: "lg", bodyHtml: body, onMount: (m) => m.querySelector("#btn-tutup-profil").onclick = closeModal });
+ if (!k) { openModal({ title: "Profil Karyawan", bodyHtml: `<p class="text-sm text-slate-500">Data lengkap belum tertaut (Hubungi HRD).</p>` }); return; }
+ const body = `
+ <div class="flex items-center gap-4 mb-6 pb-5 border-b border-slate-100">
+ ${avatar(k.foto_url || session.foto_url || k.nama_karyawan || session.nama, "w-16 h-16 text-lg")}
+ <div><p class="font-bold text-slate-800 text-lg">${escapeHtml(k.nama_karyawan || session.nama)}</p><p class="text-sm text-slate-500">${escapeHtml(k.jabatan || "-")} • ${escapeHtml(k.divisi || "-")}</p></div>
+ </div>
+ <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+ ${profileRow("NIK Karyawan", k.nik_karyawan)} ${profileRow("Cabang", k.cabang)} ${profileRow("Status Karyawan", k.status_karyawan)}
+ ${profileRow("Jenis Kelamin", k.jenis_kelamin)} ${profileRow("Tanggal Lahir", fmtDate(k.tanggal_lahir))} ${profileRow("Tanggal Join", fmtDate(k.tanggal_join))}
+ ${profileRow("Pendidikan", k.pendidikan)} ${profileRow("Agama", k.agama)} ${profileRow("No HP Aktif", k.no_hp_aktif)}
+ ${profileRow("Email", k.email)} ${profileRow("Atasan", k.atasan)}
+ <div class="col-span-2 sm:col-span-3">${profileRow("Alamat", k.alamat)}</div>
+ </div>
+ <div class="mt-6 flex justify-end"><button id="btn-tutup-profil" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition">Tutup Profil</button></div>
+ `;
+ openModal({ title: "Data Pribadi", size: "lg", bodyHtml: body, onMount: (m) => m.querySelector("#btn-tutup-profil").onclick = closeModal });
 }
 
 /* ------------------------ a2. PERSONALISASI (ULTAH / ANNIVERSARY / CUTI) ------------------------ */
@@ -122,13 +122,13 @@ function openProfileModal(session, k) {
  * wrapper dikosongkan (tidak ada banner).
  */
 async function loadPersonalBanner(container, session, karyawan) {
-  const wrap = container.querySelector("#dash-personal-banner");
-  if (!wrap) return;
-  if (!karyawan) { wrap.innerHTML = ""; return; }
+ const wrap = container.querySelector("#dash-personal-banner");
+ if (!wrap) return;
+ if (!karyawan) { wrap.innerHTML = ""; return; }
 
-  const now = new Date();
-  const banners = [];
-  const firstName = escapeHtml((session.nama || "").split(" ")[0] || "Anda");
+ const now = new Date();
+ const banners = [];
+ const firstName = escapeHtml((session.nama || "").split(" ")[0] || "Anda");
 
  // PERBAIKAN: sebelumnya pakai Date.getDate()/getMonth() yang ikut zona
  // waktu SISTEM PERANGKAT (bisa salah 1 hari kalau perangkat tidak di-set
@@ -136,874 +136,874 @@ async function loadPersonalBanner(container, session, karyawan) {
  // eksplisit, lalu dibandingkan sebagai teks "MM-DD" -- selalu akurat WIB.
  const todayMD = localDateStr(now)?.substring(5); // "MM-DD"
 
-  // 1) ULANG TAHUN
-  const lahirMD = localDateStr(karyawan.tanggal_lahir)?.substring(5);
-  if (lahirMD && lahirMD === todayMD) {
-    banners.push(`
-      <div class="rounded-2xl p-5 text-white shadow-sm flex items-center gap-4" style="background:linear-gradient(135deg,#db2777,#7c3aed)">
-        <div class="text-4xl">🎂</div>
-        <div>
-          <p class="font-bold text-lg">Selamat Ulang Tahun, ${firstName}!</p>
-          <p class="text-sm text-white/90 mt-0.5">Seluruh keluarga besar CV Andela Jaya mendoakan yang terbaik untuk Anda. 🎉</p>
-        </div>
-      </div>`);
-  }
+ // 1) ULANG TAHUN
+ const lahirMD = localDateStr(karyawan.tanggal_lahir)?.substring(5);
+ if (lahirMD && lahirMD === todayMD) {
+ banners.push(`
+ <div class="rounded-2xl p-5 text-white shadow-sm flex items-center gap-4" style="background:linear-gradient(135deg,#db2777,#7c3aed)">
+ <div class="text-4xl"></div>
+ <div>
+ <p class="font-bold text-lg">Selamat Ulang Tahun, ${firstName}!</p>
+ <p class="text-sm text-white/90 mt-0.5">Seluruh keluarga besar CV Andela Jaya mendoakan yang terbaik untuk Anda. </p>
+ </div>
+ </div>`);
+ }
 
-  // 2) HARI JADI / ANNIVERSARY KERJA
-  const joinStr = localDateStr(karyawan.tanggal_join); // "YYYY-MM-DD" WIB
-  if (joinStr && joinStr.substring(5) === todayMD) {
-    const years = now.getFullYear() - parseInt(joinStr.substring(0, 4), 10);
-    if (years > 0) {
-      banners.push(`
-        <div class="rounded-2xl p-5 text-white shadow-sm flex items-center gap-4" style="background:linear-gradient(135deg,#0891b2,#1d4ed8)">
-          <div class="text-4xl">🎉</div>
-          <div>
-            <p class="font-bold text-lg">Selamat Hari Jadi ke-${years} Tahun!</p>
-            <p class="text-sm text-white/90 mt-0.5">Terima kasih atas dedikasi Anda selama ${years} tahun bersama CV Andela Jaya.</p>
-          </div>
-        </div>`);
-    }
-  }
+ // 2) HARI JADI / ANNIVERSARY KERJA
+ const joinStr = localDateStr(karyawan.tanggal_join); // "YYYY-MM-DD" WIB
+ if (joinStr && joinStr.substring(5) === todayMD) {
+ const years = now.getFullYear() - parseInt(joinStr.substring(0, 4), 10);
+ if (years > 0) {
+ banners.push(`
+ <div class="rounded-2xl p-5 text-white shadow-sm flex items-center gap-4" style="background:linear-gradient(135deg,#0891b2,#1d4ed8)">
+ <div class="text-4xl"></div>
+ <div>
+ <p class="font-bold text-lg">Selamat Hari Jadi ke-${years} Tahun!</p>
+ <p class="text-sm text-white/90 mt-0.5">Terima kasih atas dedikasi Anda selama ${years} tahun bersama CV Andela Jaya.</p>
+ </div>
+ </div>`);
+ }
+ }
 
-  // 3) SEDANG CUTI/IZIN HARI INI
-  try {
-    const todayStr = localDateStr(now);
-    const q = query(collection(db, COL.MASTER_CUTI), where("nama_karyawan", "==", session.nama), where("tahun", "==", now.getFullYear()));
-    const snap = await getDocs(q);
-    const activeLeave = snap.docs.map(d => d.data()).find(r => {
-      const start = (r.tanggal || "").toString().substring(0, 10);
-      const end = (r.tanggal_selesai || r.tanggal || "").toString().substring(0, 10);
-      return start && todayStr >= start && todayStr <= end;
-    });
-    if (activeLeave) {
-      banners.push(`
-        <div class="rounded-2xl p-5 text-white shadow-sm flex items-center gap-4" style="background:linear-gradient(135deg,#059669,#0d9488)">
-          <div class="text-4xl">🌴</div>
-          <div>
-            <p class="font-bold text-lg">Anda Sedang ${escapeHtml(activeLeave.type_cuti || "Cuti")}</p>
-            <p class="text-sm text-white/90 mt-0.5">Nikmati waktu istirahat Anda. Sampai jumpa lagi setelah cuti selesai!</p>
-          </div>
-        </div>`);
-      // Ganti subtitle sapaan dashboard supaya "terasa" berbeda saat sedang cuti,
-      // bukan cuma tampil banner tambahan.
-      const greetEl = container.querySelector("#dash-greeting");
-      const subtitleEl = greetEl ? greetEl.nextElementSibling : null;
-      if (subtitleEl) subtitleEl.textContent = "Anda tercatat sedang cuti/izin hari ini. Selamat beristirahat!";
-    }
-  } catch (e) { /* banner cuti bersifat pelengkap, jangan sampai mengganggu dashboard kalau query gagal */ }
+ // 3) SEDANG CUTI/IZIN HARI INI
+ try {
+ const todayStr = localDateStr(now);
+ const q = query(collection(db, COL.MASTER_CUTI), where("nama_karyawan", "==", session.nama), where("tahun", "==", now.getFullYear()));
+ const snap = await getDocs(q);
+ const activeLeave = snap.docs.map(d => d.data()).find(r => {
+ const start = (r.tanggal || "").toString().substring(0, 10);
+ const end = (r.tanggal_selesai || r.tanggal || "").toString().substring(0, 10);
+ return start && todayStr >= start && todayStr <= end;
+ });
+ if (activeLeave) {
+ banners.push(`
+ <div class="rounded-2xl p-5 text-white shadow-sm flex items-center gap-4" style="background:linear-gradient(135deg,#059669,#0d9488)">
+ <div class="text-4xl"></div>
+ <div>
+ <p class="font-bold text-lg">Anda Sedang ${escapeHtml(activeLeave.type_cuti || "Cuti")}</p>
+ <p class="text-sm text-white/90 mt-0.5">Nikmati waktu istirahat Anda. Sampai jumpa lagi setelah cuti selesai!</p>
+ </div>
+ </div>`);
+ // Ganti subtitle sapaan dashboard supaya "terasa" berbeda saat sedang cuti,
+ // bukan cuma tampil banner tambahan.
+ const greetEl = container.querySelector("#dash-greeting");
+ const subtitleEl = greetEl ? greetEl.nextElementSibling : null;
+ if (subtitleEl) subtitleEl.textContent = "Anda tercatat sedang cuti/izin hari ini. Selamat beristirahat!";
+ }
+ } catch (e) { /* banner cuti bersifat pelengkap, jangan sampai mengganggu dashboard kalau query gagal */ }
 
-  wrap.innerHTML = banners.length ? `<div class="space-y-3">${banners.join("")}</div>` : "";
+ wrap.innerHTML = banners.length ? `<div class="space-y-3">${banners.join("")}</div>` : "";
 }
 
 /* ------------------------ b. LEAVE BALANCE ------------------------ */
 async function loadLeaveBalances(container, session) {
-  const wrap = container.querySelector("#dash-cuti-cards");
-  wrap.innerHTML = `<div class="col-span-3">${skeletonRows(1)}</div>`;
-  let jatah = { tahunan: 0, khusus: 0, akumulasi: 0 };
-  
-  try {
-    let kData = null;
-    if (session.nik && session.nik !== "null" && session.nik !== "undefined") {
-      const snap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(session.nik)));
-      if (snap.exists()) kData = snap.data();
-    }
-    if (!kData) {
-      const q = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", session.nama), limit(1));
-      const snap = await getDocs(q);
-      if (!snap.empty) kData = snap.docs[0].data();
-    }
-    if (kData) {
-      const calc = getCalculatedJatahCuti(kData);
-      jatah = { tahunan: calc.jatahTahunan, khusus: calc.jatahKhusus, akumulasi: calc.jatahAkumulasi };
-    }
-  } catch (e) {}
+ const wrap = container.querySelector("#dash-cuti-cards");
+ wrap.innerHTML = `<div class="col-span-3">${skeletonRows(1)}</div>`;
+ let jatah = { tahunan: 0, khusus: 0, akumulasi: 0 };
+ 
+ try {
+ let kData = null;
+ if (session.nik && session.nik !== "null" && session.nik !== "undefined") {
+ const snap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(session.nik)));
+ if (snap.exists()) kData = snap.data();
+ }
+ if (!kData) {
+ const q = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", session.nama), limit(1));
+ const snap = await getDocs(q);
+ if (!snap.empty) kData = snap.docs[0].data();
+ }
+ if (kData) {
+ const calc = getCalculatedJatahCuti(kData);
+ jatah = { tahunan: calc.jatahTahunan, khusus: calc.jatahKhusus, akumulasi: calc.jatahAkumulasi };
+ }
+ } catch (e) {}
 
-  let terpakai = { Tahunan: 0, Khusus: 0, Akumulasi: 0 };
-  try {
-    const q = query(collection(db, COL.MASTER_CUTI), where("nama_karyawan", "==", session.nama));
-    const snap = await getDocs(q);
-    const currentYear = new Date().getFullYear();
-    snap.docs.forEach(d => {
-      const row = d.data();
-      const rowYear = parseInt(row.tahun) || (row.tanggal ? new Date(row.tanggal).getFullYear() : currentYear);
-      if (rowYear !== currentYear) return; // hanya hitung transaksi tahun berjalan (lihat cuti.js)
-      if (row.potong_jatah && terpakai[row.potong_jatah] !== undefined) {
-         let hitung = parseFloat(row.count);
-         if (isNaN(hitung)) hitung = 1; 
-         terpakai[row.potong_jatah] += hitung;
-      }
-    });
-  } catch (e) {}
+ let terpakai = { Tahunan: 0, Khusus: 0, Akumulasi: 0 };
+ try {
+ const q = query(collection(db, COL.MASTER_CUTI), where("nama_karyawan", "==", session.nama));
+ const snap = await getDocs(q);
+ const currentYear = new Date().getFullYear();
+ snap.docs.forEach(d => {
+ const row = d.data();
+ const rowYear = parseInt(row.tahun) || (row.tanggal ? new Date(row.tanggal).getFullYear() : currentYear);
+ if (rowYear !== currentYear) return; // hanya hitung transaksi tahun berjalan (lihat cuti.js)
+ if (row.potong_jatah && terpakai[row.potong_jatah] !== undefined) {
+ let hitung = parseFloat(row.count);
+ if (isNaN(hitung)) hitung = 1; 
+ terpakai[row.potong_jatah] += hitung;
+ }
+ });
+ } catch (e) {}
 
-  const cards = [
-    { label: "Cuti Tahunan", jatah: jatah.tahunan, terpakai: terpakai.Tahunan, tone: "maroon", ic: "sun", cardBg: "bg-maroon-50/40 border-maroon-100" },
-    { label: "Cuti Khusus", jatah: jatah.khusus, terpakai: terpakai.Khusus, tone: "blue", ic: "star", cardBg: "bg-blue-50/40 border-blue-100" },
-    { label: "Cuti Akumulasi", jatah: jatah.akumulasi, terpakai: terpakai.Akumulasi, tone: "amber", ic: "clock", cardBg: "bg-amber-50/40 border-amber-100" },
-  ];
+ const cards = [
+ { label: "Cuti Tahunan", jatah: jatah.tahunan, terpakai: terpakai.Tahunan, tone: "maroon", ic: "sun", cardBg: "bg-maroon-50/40 border-maroon-100" },
+ { label: "Cuti Khusus", jatah: jatah.khusus, terpakai: terpakai.Khusus, tone: "blue", ic: "star", cardBg: "bg-blue-50/40 border-blue-100" },
+ { label: "Cuti Akumulasi", jatah: jatah.akumulasi, terpakai: terpakai.Akumulasi, tone: "amber", ic: "clock", cardBg: "bg-amber-50/40 border-amber-100" },
+ ];
 
-  wrap.innerHTML = cards.map(c => {
-    const sisa = Math.max(c.jatah - c.terpakai, 0);
-    const pct = c.jatah > 0 ? Math.min((c.terpakai / c.jatah) * 100, 100) : 0;
-    const toneClasses = { maroon: "text-maroon-700 bg-maroon-100", blue: "text-blue-700 bg-blue-100", amber: "text-amber-700 bg-amber-100" };
-    const barTone = { maroon: "bg-maroon-600", blue: "bg-blue-600", amber: "bg-amber-500" };
-    return `
-      <div class="p-2.5 rounded-xl border ${c.cardBg} flex flex-col justify-between transition hover:shadow-xs">
-        <div class="flex items-center justify-between gap-1.5">
-          <div class="flex items-center gap-1.5 min-w-0">
-            <div class="w-6 h-6 rounded-lg ${toneClasses[c.tone]} flex items-center justify-center shrink-0">
-              ${icon(c.ic, "w-3.5 h-3.5")}
-            </div>
-            <span class="text-xs font-bold text-slate-800 truncate">${c.label}</span>
-          </div>
-          <span class="text-[10px] font-medium text-slate-500 bg-white/90 px-1.5 py-0.5 rounded border border-slate-200/80 shrink-0">
-            Total: ${c.jatah} hr
-          </span>
-        </div>
+ wrap.innerHTML = cards.map(c => {
+ const sisa = Math.max(c.jatah - c.terpakai, 0);
+ const pct = c.jatah > 0 ? Math.min((c.terpakai / c.jatah) * 100, 100) : 0;
+ const toneClasses = { maroon: "text-maroon-700 bg-maroon-100", blue: "text-blue-700 bg-blue-100", amber: "text-amber-700 bg-amber-100" };
+ const barTone = { maroon: "bg-maroon-600", blue: "bg-blue-600", amber: "bg-amber-500" };
+ return `
+ <div class="p-2.5 rounded-xl border ${c.cardBg} flex flex-col justify-between transition hover:shadow-xs">
+ <div class="flex items-center justify-between gap-1.5">
+ <div class="flex items-center gap-1.5 min-w-0">
+ <div class="w-6 h-6 rounded-lg ${toneClasses[c.tone]} flex items-center justify-center shrink-0">
+ ${icon(c.ic, "w-3.5 h-3.5")}
+ </div>
+ <span class="text-xs font-bold text-slate-800 truncate">${c.label}</span>
+ </div>
+ <span class="text-[10px] font-medium text-slate-500 bg-white/90 px-1.5 py-0.5 rounded border border-slate-200/80 shrink-0">
+ Total: ${c.jatah} hr
+ </span>
+ </div>
 
-        <div class="flex items-baseline justify-between mt-2 mb-1">
-          <div class="flex items-baseline gap-1">
-            <span class="text-xl font-black text-slate-800 font-mono leading-none">${sisa}</span>
-            <span class="text-[10px] text-slate-500 font-semibold">sisa hari</span>
-          </div>
-          <span class="text-[10px] text-slate-500 font-medium">${c.terpakai} hr terpakai</span>
-        </div>
+ <div class="flex items-baseline justify-between mt-2 mb-1">
+ <div class="flex items-baseline gap-1">
+ <span class="text-xl font-black text-slate-800 font-mono leading-none">${sisa}</span>
+ <span class="text-[10px] text-slate-500 font-semibold">sisa hari</span>
+ </div>
+ <span class="text-[10px] text-slate-500 font-medium">${c.terpakai} hr terpakai</span>
+ </div>
 
-        <div class="w-full h-1 bg-slate-200/80 rounded-full overflow-hidden">
-          <div class="h-full ${barTone[c.tone]} rounded-full transition-all duration-300" style="width:${pct}%"></div>
-        </div>
-      </div>`;
-  }).join("");
+ <div class="w-full h-1 bg-slate-200/80 rounded-full overflow-hidden">
+ <div class="h-full ${barTone[c.tone]} rounded-full transition-all duration-300" style="width:${pct}%"></div>
+ </div>
+ </div>`;
+ }).join("");
 }
 
 /* ------------------------ c. KPI 360 TASKS ------------------------ */
 async function loadKpiTasks(container, session) {
-  const wrap = container.querySelector("#dash-kpi-tasks");
-  try {
-    const q = query(collection(db, COL.TUGAS_KPI_360), where("nama_penilai", "==", session.nama));
-    const snap = await getDocs(q);
-    const pending = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => (r.status || "").toUpperCase() !== "DONE");
-    
-    if (!pending.length) { wrap.innerHTML = emptyState("Tidak ada tugas penilaian tertunda"); return; }
-    
-    wrap.innerHTML = pending.map(t => `
-      <div data-kpi-id="${t.id}" class="flex items-center justify-between p-3 rounded-xl border border-slate-100 hover:border-maroon-300 hover:shadow-md transition cursor-pointer bg-white">
-        <div class="flex items-center gap-3">
-          ${avatar(t.nama_dinilai || "?", "w-9 h-9 text-xs")}
-          <div>
-            <p class="text-sm font-medium text-slate-700">Evaluasi ${escapeHtml(t.nama_dinilai || "-")}</p>
-            <p class="text-[11px] text-slate-400">Deadline: <span class="text-amber-600 font-medium">${t.deadline ? fmtDateShort(t.deadline) : '-'}</span></p>
-          </div>
-        </div>
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-maroon-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
-      </div>`).join("");
+ const wrap = container.querySelector("#dash-kpi-tasks");
+ try {
+ const q = query(collection(db, COL.TUGAS_KPI_360), where("nama_penilai", "==", session.nama));
+ const snap = await getDocs(q);
+ const pending = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => (r.status || "").toUpperCase() !== "DONE");
+ 
+ if (!pending.length) { wrap.innerHTML = emptyState("Tidak ada tugas penilaian tertunda"); return; }
+ 
+ wrap.innerHTML = pending.map(t => `
+ <div data-kpi-id="${t.id}" class="flex items-center justify-between p-3 rounded-xl border border-slate-100 hover:border-maroon-300 hover:shadow-md transition cursor-pointer bg-white">
+ <div class="flex items-center gap-3">
+ ${avatar(t.nama_dinilai || "?", "w-9 h-9 text-xs")}
+ <div>
+ <p class="text-sm font-medium text-slate-700">Evaluasi ${escapeHtml(t.nama_dinilai || "-")}</p>
+ <p class="text-[11px] text-slate-400">Deadline: <span class="text-amber-600 font-medium">${t.deadline ? fmtDateShort(t.deadline) : '-'}</span></p>
+ </div>
+ </div>
+ <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-maroon-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+ </div>`).join("");
 
-    wrap.querySelectorAll("[data-kpi-id]").forEach(el => {
-       el.onclick = () => { openPenilaianForm(pending.find(x => x.id === el.dataset.kpiId), container, session); };
-    });
+ wrap.querySelectorAll("[data-kpi-id]").forEach(el => {
+ el.onclick = () => { openPenilaianForm(pending.find(x => x.id === el.dataset.kpiId), container, session); };
+ });
 
-  } catch (e) { wrap.innerHTML = emptyState("Belum ada data penilaian"); }
+ } catch (e) { wrap.innerHTML = emptyState("Belum ada data penilaian"); }
 }
 
 function openPenilaianForm(task, container, session) {
-  const soalHtml = (task.soal_json || []).map((s, i) => `
-     <div class="border-b border-slate-100 pb-4 mb-4">
-        <div class="flex items-center gap-2 mb-1.5"><span class="bg-maroon-50 text-maroon-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">${escapeHtml(s.aspek)}</span><span class="text-[10px] text-slate-400 font-medium">Bobot: ${s.bobot}%</span></div>
-        <p class="text-sm text-slate-800 mb-3">${escapeHtml(s.indikator)}</p>
-        <div class="relative"><input type="number" data-idx="${i}" data-bobot="${s.bobot}" class="kpi-nilai-input w-full pl-3 pr-10 py-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100 transition" placeholder="Berikan Skor (0-100)" required min="0" max="100"><span class="absolute right-3 top-2.5 text-slate-300 font-medium text-sm">/ 100</span></div>
-     </div>
-  `).join("");
+ const soalHtml = (task.soal_json || []).map((s, i) => `
+ <div class="border-b border-slate-100 pb-4 mb-4">
+ <div class="flex items-center gap-2 mb-1.5"><span class="bg-maroon-50 text-maroon-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">${escapeHtml(s.aspek)}</span><span class="text-[10px] text-slate-400 font-medium">Bobot: ${s.bobot}%</span></div>
+ <p class="text-sm text-slate-800 mb-3">${escapeHtml(s.indikator)}</p>
+ <div class="relative"><input type="number" data-idx="${i}" data-bobot="${s.bobot}" class="kpi-nilai-input w-full pl-3 pr-10 py-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100 transition" placeholder="Berikan Skor (0-100)" required min="0" max="100"><span class="absolute right-3 top-2.5 text-slate-300 font-medium text-sm">/ 100</span></div>
+ </div>
+ `).join("");
 
-  const catatanHrdHtml = task.catatan_hrd ? `<div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800"><span class="font-bold block mb-1">Catatan HRD untuk Evaluasi ini:</span>${escapeHtml(task.catatan_hrd)}</div>` : '';
+ const catatanHrdHtml = task.catatan_hrd ? `<div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800"><span class="font-bold block mb-1">Catatan HRD untuk Evaluasi ini:</span>${escapeHtml(task.catatan_hrd)}</div>` : '';
 
-  openModal({
-     title: `Evaluasi: ${escapeHtml(task.nama_dinilai)}`, size: "md",
-     bodyHtml: `
-        <form id="form-isi-kpi">
-           <div class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-amber-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-              <p class="text-xs text-amber-800 leading-relaxed">Dihitung otomatis berdasar bobot. Batas pengumpulan: <strong>${task.deadline ? fmtDateShort(task.deadline) : '-'}</strong>.</p>
-           </div>
-           ${catatanHrdHtml} ${soalHtml}
-           <div class="mt-5 space-y-3">
-             <div>
-               <label class="block text-xs font-bold text-emerald-800 mb-1 uppercase tracking-wide">✓ Hal-hal yang Sudah Baik (Kelebihan / Prestasi Kerja)</label>
-               <textarea id="kpi-catatan-baik" rows="2" class="w-full px-3 py-2 text-xs border border-emerald-200 bg-emerald-50/30 rounded-lg outline-none focus:border-emerald-500 font-medium" placeholder="Tuliskan aspek positif, pencapaian, atau kelebihan kerja..."></textarea>
-             </div>
-             <div>
-               <label class="block text-xs font-bold text-red-800 mb-1 uppercase tracking-wide">⚠ Hal-hal yang Harus Diperbaiki (Area Peningkatan)</label>
-               <textarea id="kpi-catatan-perbaikan" rows="2" class="w-full px-3 py-2 text-xs border border-red-200 bg-red-50/30 rounded-lg outline-none focus:border-red-500 font-medium" placeholder="Tuliskan area yang perlu diperbaiki / ditingkatkan..."></textarea>
-             </div>
-             <div>
-               <label class="block text-xs font-bold text-slate-700 mb-1 uppercase tracking-wide">💬 Catatan & Rekomendasi Tambahan Penilai</label>
-               <textarea id="kpi-catatan-penilai" rows="2" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-400 font-medium" placeholder="Saran, masukan, atau rekomendasi umum..."></textarea>
-             </div>
-           </div>
-        </form>
-     `,
-     footerHtml: `
-        <div class="w-full flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-200 mb-3"><span class="text-sm font-bold text-slate-600">Skor Akhir Sementara:</span><span id="kpi-live-score" class="text-lg font-black text-maroon-700">0.00</span></div>
-        <div class="flex gap-2 justify-end"><button id="btn-cancel-kpi" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button><button id="btn-submit-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2 rounded-lg text-sm font-medium transition shadow-md">Kirim Penilaian</button></div>
-     `,
-     onMount: (m) => {
-        const liveScore = m.querySelector("#kpi-live-score");
-        m.querySelector("#form-isi-kpi").addEventListener("input", () => {
-           let calcTotal = 0;
-           m.querySelectorAll(".kpi-nilai-input").forEach(input => {
-               const bbt = parseFloat(input.dataset.bobot) || 0; const val = parseFloat(input.value) || 0;
-               calcTotal += val * (bbt / 100);
-           });
-           liveScore.textContent = calcTotal.toFixed(2);
-        });
+ openModal({
+ title: `Evaluasi: ${escapeHtml(task.nama_dinilai)}`, size: "md",
+ bodyHtml: `
+ <form id="form-isi-kpi">
+ <div class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
+ <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-amber-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+ <p class="text-xs text-amber-800 leading-relaxed">Dihitung otomatis berdasar bobot. Batas pengumpulan: <strong>${task.deadline ? fmtDateShort(task.deadline) : '-'}</strong>.</p>
+ </div>
+ ${catatanHrdHtml} ${soalHtml}
+ <div class="mt-5 space-y-3">
+ <div>
+ <label class="block text-xs font-bold text-emerald-800 mb-1 uppercase tracking-wide">[v] Hal-hal yang Sudah Baik (Kelebihan / Prestasi Kerja)</label>
+ <textarea id="kpi-catatan-baik" rows="2" class="w-full px-3 py-2 text-xs border border-emerald-200 bg-emerald-50/30 rounded-lg outline-none focus:border-emerald-500 font-medium" placeholder="Tuliskan aspek positif, pencapaian, atau kelebihan kerja..."></textarea>
+ </div>
+ <div>
+ <label class="block text-xs font-bold text-red-800 mb-1 uppercase tracking-wide"> Hal-hal yang Harus Diperbaiki (Area Peningkatan)</label>
+ <textarea id="kpi-catatan-perbaikan" rows="2" class="w-full px-3 py-2 text-xs border border-red-200 bg-red-50/30 rounded-lg outline-none focus:border-red-500 font-medium" placeholder="Tuliskan area yang perlu diperbaiki / ditingkatkan..."></textarea>
+ </div>
+ <div>
+ <label class="block text-xs font-bold text-slate-700 mb-1 uppercase tracking-wide">Catatan & Rekomendasi Tambahan Penilai</label>
+ <textarea id="kpi-catatan-penilai" rows="2" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-400 font-medium" placeholder="Saran, masukan, atau rekomendasi umum..."></textarea>
+ </div>
+ </div>
+ </form>
+ `,
+ footerHtml: `
+ <div class="w-full flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-200 mb-3"><span class="text-sm font-bold text-slate-600">Skor Akhir Sementara:</span><span id="kpi-live-score" class="text-lg font-black text-maroon-700">0.00</span></div>
+ <div class="flex gap-2 justify-end"><button id="btn-cancel-kpi" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button><button id="btn-submit-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2 rounded-lg text-sm font-medium transition shadow-md">Kirim Penilaian</button></div>
+ `,
+ onMount: (m) => {
+ const liveScore = m.querySelector("#kpi-live-score");
+ m.querySelector("#form-isi-kpi").addEventListener("input", () => {
+ let calcTotal = 0;
+ m.querySelectorAll(".kpi-nilai-input").forEach(input => {
+ const bbt = parseFloat(input.dataset.bobot) || 0; const val = parseFloat(input.value) || 0;
+ calcTotal += val * (bbt / 100);
+ });
+ liveScore.textContent = calcTotal.toFixed(2);
+ });
 
-        m.querySelector("#btn-cancel-kpi").onclick = closeModal;
-        m.querySelector("#btn-submit-kpi").onclick = async () => {
-           const form = m.querySelector("#form-isi-kpi");
-           if(!form.reportValidity()) return;
+ m.querySelector("#btn-cancel-kpi").onclick = closeModal;
+ m.querySelector("#btn-submit-kpi").onclick = async () => {
+ const form = m.querySelector("#form-isi-kpi");
+ if(!form.reportValidity()) return;
 
-           let totalSkorBobot = 0;
-           const answeredSoal = [...task.soal_json];
-           const catatanBaik = m.querySelector("#kpi-catatan-baik") ? m.querySelector("#kpi-catatan-baik").value.trim() : "";
-           const catatanPerbaikan = m.querySelector("#kpi-catatan-perbaikan") ? m.querySelector("#kpi-catatan-perbaikan").value.trim() : "";
-           const catatanPenilai = m.querySelector("#kpi-catatan-penilai") ? m.querySelector("#kpi-catatan-penilai").value.trim() : "";
+ let totalSkorBobot = 0;
+ const answeredSoal = [...task.soal_json];
+ const catatanBaik = m.querySelector("#kpi-catatan-baik") ? m.querySelector("#kpi-catatan-baik").value.trim() : "";
+ const catatanPerbaikan = m.querySelector("#kpi-catatan-perbaikan") ? m.querySelector("#kpi-catatan-perbaikan").value.trim() : "";
+ const catatanPenilai = m.querySelector("#kpi-catatan-penilai") ? m.querySelector("#kpi-catatan-penilai").value.trim() : "";
 
-           m.querySelectorAll(".kpi-nilai-input").forEach(input => {
-              const idx = parseInt(input.dataset.idx); const nilai = parseFloat(input.value) || 0; const bobot = parseFloat(answeredSoal[idx].bobot) || 0;
-              answeredSoal[idx].nilai_diberikan = nilai; totalSkorBobot += (nilai * (bobot / 100));
-           });
+ m.querySelectorAll(".kpi-nilai-input").forEach(input => {
+ const idx = parseInt(input.dataset.idx); const nilai = parseFloat(input.value) || 0; const bobot = parseFloat(answeredSoal[idx].bobot) || 0;
+ answeredSoal[idx].nilai_diberikan = nilai; totalSkorBobot += (nilai * (bobot / 100));
+ });
 
-           let finalScore = Math.round(totalSkorBobot * 100) / 100;
-           let keputusan = finalScore >= 80 ? "Sangat Baik" : finalScore >= 60 ? "Baik" : "Kurang";
+ let finalScore = Math.round(totalSkorBobot * 100) / 100;
+ let keputusan = finalScore >= 80 ? "Sangat Baik" : finalScore >= 60 ? "Baik" : "Kurang";
 
-           const btn = m.querySelector("#btn-submit-kpi");
-           btn.disabled = true; btn.textContent = "Merekap Nilai...";
+ const btn = m.querySelector("#btn-submit-kpi");
+ btn.disabled = true; btn.textContent = "Merekap Nilai...";
 
-           try {
-              await fsUpdate(COL.TUGAS_KPI_360, task.id, {
-                status: "DONE",
-                skor_akhir: finalScore,
-                soal_json: answeredSoal,
-                catatan_baik: catatanBaik,
-                catatan_perbaikan: catatanPerbaikan,
-                catatan_penilai: catatanPenilai,
-                tanggal_diselesaikan: new Date().toISOString()
-              });
-              await fsAdd(COL.LOG_PENILAIAN_KPI, {
-                tanggal: new Date().toISOString(),
-                nama_dinilai: task.nama_dinilai,
-                penilai: task.nama_penilai,
-                total_skor: finalScore,
-                keputusan: keputusan,
-                periode: task.periode,
-                detail_json: answeredSoal,
-                catatan_baik: catatanBaik,
-                catatan_perbaikan: catatanPerbaikan,
-                catatan_penilai: catatanPenilai
-              }, genId("KPI-LOG"));
+ try {
+ await fsUpdate(COL.TUGAS_KPI_360, task.id, {
+ status: "DONE",
+ skor_akhir: finalScore,
+ soal_json: answeredSoal,
+ catatan_baik: catatanBaik,
+ catatan_perbaikan: catatanPerbaikan,
+ catatan_penilai: catatanPenilai,
+ tanggal_diselesaikan: new Date().toISOString()
+ });
+ await fsAdd(COL.LOG_PENILAIAN_KPI, {
+ tanggal: new Date().toISOString(),
+ nama_dinilai: task.nama_dinilai,
+ penilai: task.nama_penilai,
+ total_skor: finalScore,
+ keputusan: keputusan,
+ periode: task.periode,
+ detail_json: answeredSoal,
+ catatan_baik: catatanBaik,
+ catatan_perbaikan: catatanPerbaikan,
+ catatan_penilai: catatanPenilai
+ }, genId("KPI-LOG"));
 
-              toast("Evaluasi diselesaikan!", "success"); closeModal(); loadKpiTasks(container, session);
-           } catch(e) { toast("Gagal menyimpan: " + e.message, "error"); btn.disabled = false; btn.textContent = "Kirim Penilaian"; }
-        };
-     }
-  });
+ toast("Evaluasi diselesaikan!", "success"); closeModal(); loadKpiTasks(container, session);
+ } catch(e) { toast("Gagal menyimpan: " + e.message, "error"); btn.disabled = false; btn.textContent = "Kirim Penilaian"; }
+ };
+ }
+ });
 }
 
 /* ------------------------ d. CUTI HARI INI ------------------------ */
 async function loadCutiHariIni(container) {
-  const wrap = container.querySelector("#dash-cuti-hari-ini");
-  const now = new Date();
-  const todayStr = localDateStr(now);
-  try {
-    // PERBAIKAN: query lama memfilter berdasar `bulan`/`tahun` dari TANGGAL
-    // MULAI cuti lalu mencocokkan hanya tanggal (getDate()) hari ini -- jadi
-    // cuti multi-hari yang mulainya BUKAN hari ini (misalnya mulai kemarin,
-    // masih berlangsung hari ini) tidak pernah muncul di widget ini. Sekarang
-    // diambil semua transaksi cuti TAHUN INI, lalu dicek apakah HARI INI ada
-    // di dalam rentang [tanggal, tanggal_selesai] masing-masing baris.
-    const q = query(collection(db, COL.MASTER_CUTI), where("tahun", "==", now.getFullYear()));
-    const snap = await getDocs(q);
-    const todayRows = snap.docs.map(d => d.data()).filter(r => {
-     const start = (r.tanggal || "").toString().substring(0, 10);
-     const end = (r.tanggal_selesai || r.tanggal || "").toString().substring(0, 10);
-     return start && todayStr >= start && todayStr <= end;
-    });
-    if (!todayRows.length) { 
-      wrap.innerHTML = `<div class="col-span-full py-2 px-3 text-center text-xs text-slate-400 italic bg-slate-50/80 rounded-lg border border-dashed border-slate-200">Tidak ada karyawan yang cuti / izin hari ini</div>`; 
-      return; 
-    }
-    wrap.innerHTML = todayRows.map(r => `
-      <div class="flex items-center justify-between px-3 py-2 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition text-xs">
-        <div class="flex items-center gap-2.5 min-w-0">
-          ${avatar(r.nama_karyawan || "?", "w-7 h-7 text-[10px] shrink-0")}
-          <div class="min-w-0">
-            <p class="font-semibold text-slate-800 truncate leading-tight">${escapeHtml(r.nama_karyawan || "-")}</p>
-            <p class="text-[10px] text-slate-400 truncate">${escapeHtml(r.cabang || "-")}</p>
-          </div>
-        </div>
-        <span class="px-2 py-0.5 rounded-md font-bold text-[10px] bg-blue-50 text-blue-700 border border-blue-100 shrink-0 ml-1.5">
-          ${escapeHtml(r.type_cuti || "Cuti")}
-        </span>
-      </div>`).join("");
-  } catch (e) { wrap.innerHTML = `<div class="col-span-full py-2 px-3 text-center text-xs text-slate-400 italic bg-slate-50 rounded-lg">Gagal memuat data cuti</div>`; }
+ const wrap = container.querySelector("#dash-cuti-hari-ini");
+ const now = new Date();
+ const todayStr = localDateStr(now);
+ try {
+ // PERBAIKAN: query lama memfilter berdasar `bulan`/`tahun` dari TANGGAL
+ // MULAI cuti lalu mencocokkan hanya tanggal (getDate()) hari ini -- jadi
+ // cuti multi-hari yang mulainya BUKAN hari ini (misalnya mulai kemarin,
+ // masih berlangsung hari ini) tidak pernah muncul di widget ini. Sekarang
+ // diambil semua transaksi cuti TAHUN INI, lalu dicek apakah HARI INI ada
+ // di dalam rentang [tanggal, tanggal_selesai] masing-masing baris.
+ const q = query(collection(db, COL.MASTER_CUTI), where("tahun", "==", now.getFullYear()));
+ const snap = await getDocs(q);
+ const todayRows = snap.docs.map(d => d.data()).filter(r => {
+ const start = (r.tanggal || "").toString().substring(0, 10);
+ const end = (r.tanggal_selesai || r.tanggal || "").toString().substring(0, 10);
+ return start && todayStr >= start && todayStr <= end;
+ });
+ if (!todayRows.length) { 
+ wrap.innerHTML = `<div class="col-span-full py-2 px-3 text-center text-xs text-slate-400 italic bg-slate-50/80 rounded-lg border border-dashed border-slate-200">Tidak ada karyawan yang cuti / izin hari ini</div>`; 
+ return; 
+ }
+ wrap.innerHTML = todayRows.map(r => `
+ <div class="flex items-center justify-between px-3 py-2 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition text-xs">
+ <div class="flex items-center gap-2.5 min-w-0">
+ ${avatar(r.nama_karyawan || "?", "w-7 h-7 text-[10px] shrink-0")}
+ <div class="min-w-0">
+ <p class="font-semibold text-slate-800 truncate leading-tight">${escapeHtml(r.nama_karyawan || "-")}</p>
+ <p class="text-[10px] text-slate-400 truncate">${escapeHtml(r.cabang || "-")}</p>
+ </div>
+ </div>
+ <span class="px-2 py-0.5 rounded-md font-bold text-[10px] bg-blue-50 text-blue-700 border border-blue-100 shrink-0 ml-1.5">
+ ${escapeHtml(r.type_cuti || "Cuti")}
+ </span>
+ </div>`).join("");
+ } catch (e) { wrap.innerHTML = `<div class="col-span-full py-2 px-3 text-center text-xs text-slate-400 italic bg-slate-50 rounded-lg">Gagal memuat data cuti</div>`; }
 }
 
 /* ------------------------ e. PENGUMUMAN ------------------------ */
 async function loadAnnouncements(container, session) {
-  const wrap = container.querySelector("#dash-announcements");
-  try {
-    const q = query(collection(db, COL.BROADCAST), orderBy("tanggal", "desc"), limit(20));
-    const snap = await getDocs(q);
-    const now = new Date();
-    const isHrdRole = ["HRD", "SUPERADMIN", "ADMIN", "ADMINISTRATOR", "DIREKTUR", "GM", "FINANCE"].includes((session?.role || "").toUpperCase());
-    const dismissedIds = getDismissedAnnouncements(session).map(String);
+ const wrap = container.querySelector("#dash-announcements");
+ try {
+ const q = query(collection(db, COL.BROADCAST), orderBy("tanggal", "desc"), limit(20));
+ const snap = await getDocs(q);
+ const now = new Date();
+ const isHrdRole = ["HRD", "SUPERADMIN", "ADMIN", "ADMINISTRATOR", "DIREKTUR", "GM", "FINANCE"].includes((session?.role || "").toUpperCase());
+ const dismissedIds = getDismissedAnnouncements(session).map(String);
 
-    const validMemos = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => {
-      if (dismissedIds.includes(String(r.id))) return false;
+ const validMemos = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => {
+ if (dismissedIds.includes(String(r.id))) return false;
 
-      if (r.tanggal_berakhir) { 
-        const tglBatas = new Date(r.tanggal_berakhir); tglBatas.setHours(23, 59, 59, 999);
-        if (tglBatas < now) return false;
-      }
-      
-      if (isHrdRole) return true;
-      if (r.dibuat_oleh && r.dibuat_oleh.toLowerCase() === String(session?.nama || "").toLowerCase()) return true;
+ if (r.tanggal_berakhir) { 
+ const tglBatas = new Date(r.tanggal_berakhir); tglBatas.setHours(23, 59, 59, 999);
+ if (tglBatas < now) return false;
+ }
+ 
+ if (isHrdRole) return true;
+ if (r.dibuat_oleh && r.dibuat_oleh.toLowerCase() === String(session?.nama || "").toLowerCase()) return true;
 
-      // Filter Penerima Spesifik
-      if (r.target_type === "SPESIFIK") {
-        const list = (r.target_list || []).map(x => String(x || "").trim().toLowerCase());
-        const myName = String(session?.nama || "").trim().toLowerCase();
-        const myUsername = String(session?.username || "").trim().toLowerCase();
-        const myNik = String(session?.nik || "").trim().toLowerCase();
-        return list.some(target => 
-          target === myName || 
-          target === myUsername || 
-          (myNik && target === myNik) ||
-          (myName && (target.includes(myName) || myName.includes(target)))
-        );
-      }
-      return true;
-    }).slice(0, 6);
+ // Filter Penerima Spesifik
+ if (r.target_type === "SPESIFIK") {
+ const list = (r.target_list || []).map(x => String(x || "").trim().toLowerCase());
+ const myName = String(session?.nama || "").trim().toLowerCase();
+ const myUsername = String(session?.username || "").trim().toLowerCase();
+ const myNik = String(session?.nik || "").trim().toLowerCase();
+ return list.some(target => 
+ target === myName || 
+ target === myUsername || 
+ (myNik && target === myNik) ||
+ (myName && (target.includes(myName) || myName.includes(target)))
+ );
+ }
+ return true;
+ }).slice(0, 6);
 
-    if (!validMemos.length) { wrap.innerHTML = emptyState("Belum ada pengumuman aktif"); return; }
-    wrap.innerHTML = validMemos.map((r, idx) => {
-      const plainText = String(r.isi || "").replace(/<[^>]+>/g, "").slice(0, 90);
-      return `
-        <div data-memo-idx="${idx}" class="flex gap-3 cursor-pointer hover:bg-slate-50 rounded-lg p-2 -m-2 transition">
-          <div class="w-2 h-2 rounded-full bg-maroon-600 mt-2 shrink-0"></div>
-          <div>
-            <p class="text-sm font-medium text-slate-700">${escapeHtml(r.judul || "Pengumuman")}</p>
-            <p class="text-xs text-slate-500 mt-0.5">${escapeHtml(plainText)}${plainText.length >= 90 ? "..." : ""}</p>
-            <p class="text-[11px] text-slate-400 mt-1">${fmtDateShort(r.tanggal)} oleh ${escapeHtml(r.dibuat_oleh || "-")}</p>
-          </div>
-        </div>`;
-    }).join("");
+ if (!validMemos.length) { wrap.innerHTML = emptyState("Belum ada pengumuman aktif"); return; }
+ wrap.innerHTML = validMemos.map((r, idx) => {
+ const plainText = String(r.isi || "").replace(/<[^>]+>/g, "").slice(0, 90);
+ return `
+ <div data-memo-idx="${idx}" class="flex gap-3 cursor-pointer hover:bg-slate-50 rounded-lg p-2 -m-2 transition">
+ <div class="w-2 h-2 rounded-full bg-maroon-600 mt-2 shrink-0"></div>
+ <div>
+ <p class="text-sm font-medium text-slate-700">${escapeHtml(r.judul || "Pengumuman")}</p>
+ <p class="text-xs text-slate-500 mt-0.5">${escapeHtml(plainText)}${plainText.length >= 90 ? "..." : ""}</p>
+ <p class="text-[11px] text-slate-400 mt-1">${fmtDateShort(r.tanggal)} oleh ${escapeHtml(r.dibuat_oleh || "-")}</p>
+ </div>
+ </div>`;
+ }).join("");
 
-    wrap.querySelectorAll("[data-memo-idx]").forEach(el => {
-      el.onclick = () => openAnnouncementDetailModal(validMemos[parseInt(el.dataset.memoIdx, 10)], session, () => loadAnnouncements(container, session));
-    });
-  } catch (e) { wrap.innerHTML = emptyState("Belum ada pengumuman"); }
+ wrap.querySelectorAll("[data-memo-idx]").forEach(el => {
+ el.onclick = () => openAnnouncementDetailModal(validMemos[parseInt(el.dataset.memoIdx, 10)], session, () => loadAnnouncements(container, session));
+ });
+ } catch (e) { wrap.innerHTML = emptyState("Belum ada pengumuman"); }
 }
 
 function openAnnouncementDetailModal(memo, session, onRefresh) {
-  if (!memo) return;
-  const isHrdRole = ["HRD", "SUPERADMIN", "ADMIN", "ADMINISTRATOR", "DIREKTUR", "GM", "FINANCE"].includes((session?.role || "").toUpperCase());
-  const isCreator = memo.dibuat_oleh && memo.dibuat_oleh.toLowerCase() === String(session?.nama || "").toLowerCase();
-  const canDeleteDb = isHrdRole || isCreator;
+ if (!memo) return;
+ const isHrdRole = ["HRD", "SUPERADMIN", "ADMIN", "ADMINISTRATOR", "DIREKTUR", "GM", "FINANCE"].includes((session?.role || "").toUpperCase());
+ const isCreator = memo.dibuat_oleh && memo.dibuat_oleh.toLowerCase() === String(session?.nama || "").toLowerCase();
+ const canDeleteDb = isHrdRole || isCreator;
 
-  const body = `
-    <div class="space-y-4">
-      <div class="flex items-center justify-between text-xs text-slate-400 border-b border-slate-100 pb-2">
-        <span>${fmtDateShort(memo.tanggal)} • oleh ${escapeHtml(memo.dibuat_oleh || "-")}</span>
-        ${memo.tanggal_berakhir ? `<span>Berlaku s/d ${fmtDateShort(memo.tanggal_berakhir)}</span>` : ""}
-      </div>
-      <div class="text-sm text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100 quill-content">${memo.isi || "<i>Tidak ada isi.</i>"}</div>
-      ${memo.lampiran_url ? `<a href="${escapeHtml(memo.lampiran_url)}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-sm font-medium text-maroon-700 hover:underline">${icon("link", "w-4 h-4")} Lihat Lampiran</a>` : ""}
-    </div>
-    <div class="mt-6 flex items-center justify-between gap-2">
-      <button id="btn-delete-dash-memo" class="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition flex items-center gap-1.5">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-        ${canDeleteDb ? 'Hapus Pengumuman' : 'Sembunyikan Pengumuman'}
-      </button>
-      <button id="btn-tutup-pengumuman" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-xs font-bold transition">Tutup</button>
-    </div>
-  `;
-  openModal({
-    title: memo.judul || "Pengumuman",
-    size: "lg",
-    bodyHtml: body,
-    onMount: (m) => {
-      m.querySelector("#btn-tutup-pengumuman").onclick = closeModal;
-      const btnDel = m.querySelector("#btn-delete-dash-memo");
-      if (btnDel) {
-        btnDel.onclick = async () => {
-          if (!memo.id) return;
-          const promptMsg = canDeleteDb
-            ? `Apakah Anda yakin ingin MENGHAPUS pengumuman "${memo.judul}" ini dari database?`
-            : `Apakah Anda yakin ingin MENGHAPUS / MENYEMBUNYIKAN pengumuman "${memo.judul}" ini dari tampilan Anda?`;
+ const body = `
+ <div class="space-y-4">
+ <div class="flex items-center justify-between text-xs text-slate-400 border-b border-slate-100 pb-2">
+ <span>${fmtDateShort(memo.tanggal)} • oleh ${escapeHtml(memo.dibuat_oleh || "-")}</span>
+ ${memo.tanggal_berakhir ? `<span>Berlaku s/d ${fmtDateShort(memo.tanggal_berakhir)}</span>` : ""}
+ </div>
+ <div class="text-sm text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100 quill-content">${memo.isi || "<i>Tidak ada isi.</i>"}</div>
+ ${memo.lampiran_url ? `<a href="${escapeHtml(memo.lampiran_url)}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-sm font-medium text-maroon-700 hover:underline">${icon("link", "w-4 h-4")} Lihat Lampiran</a>` : ""}
+ </div>
+ <div class="mt-6 flex items-center justify-between gap-2">
+ <button id="btn-delete-dash-memo" class="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition flex items-center gap-1.5">
+ <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+ ${canDeleteDb ? 'Hapus Pengumuman' : 'Sembunyikan Pengumuman'}
+ </button>
+ <button id="btn-tutup-pengumuman" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-xs font-bold transition">Tutup</button>
+ </div>
+ `;
+ openModal({
+ title: memo.judul || "Pengumuman",
+ size: "lg",
+ bodyHtml: body,
+ onMount: (m) => {
+ m.querySelector("#btn-tutup-pengumuman").onclick = closeModal;
+ const btnDel = m.querySelector("#btn-delete-dash-memo");
+ if (btnDel) {
+ btnDel.onclick = async () => {
+ if (!memo.id) return;
+ const promptMsg = canDeleteDb
+ ? `Apakah Anda yakin ingin MENGHAPUS pengumuman "${memo.judul}" ini dari database?`
+ : `Apakah Anda yakin ingin MENGHAPUS / MENYEMBUNYIKAN pengumuman "${memo.judul}" ini dari tampilan Anda?`;
 
-          if (confirm(promptMsg)) {
-            try {
-              if (canDeleteDb) {
-                await deleteBroadcastMemoAndNotifs(memo.id);
-                toast(`Pengumuman "${memo.judul}" berhasil dihapus dari database.`, "success");
-              } else {
-                dismissAnnouncementForUser(memo.id, session);
-                toast(`Pengumuman "${memo.judul}" berhasil disembunyikan.`, "success");
-              }
-              closeModal();
-              if (typeof onRefresh === "function") onRefresh();
-            } catch (err) {
-              toast("Gagal menghapus pengumuman: " + err.message, "error");
-            }
-          }
-        };
-      }
-    }
-  });
+ if (confirm(promptMsg)) {
+ try {
+ if (canDeleteDb) {
+ await deleteBroadcastMemoAndNotifs(memo.id);
+ toast(`Pengumuman "${memo.judul}" berhasil dihapus dari database.`, "success");
+ } else {
+ dismissAnnouncementForUser(memo.id, session);
+ toast(`Pengumuman "${memo.judul}" berhasil disembunyikan.`, "success");
+ }
+ closeModal();
+ if (typeof onRefresh === "function") onRefresh();
+ } catch (err) {
+ toast("Gagal menghapus pengumuman: " + err.message, "error");
+ }
+ }
+ };
+ }
+ }
+ });
 }
 
 
 /* ------------------------ f. CONTRACT EXPIRY ------------------------ */
 async function loadContractExpiry(container, session) {
-  const wrapOuter = container.querySelector("#dash-contract-widget-wrap");
-  if (!wrapOuter) return;
+ const wrapOuter = container.querySelector("#dash-contract-widget-wrap");
+ if (!wrapOuter) return;
 
-  const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
-  const isAtasanRole = ["SPV", "MANAGER", "GM", "ATASAN", "MANAJEMEN"].includes((session.role || "").toUpperCase());
+ const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
+ const isAtasanRole = ["SPV", "MANAGER", "GM", "ATASAN", "MANAJEMEN"].includes((session.role || "").toUpperCase());
 
-  try {
-    const snap = await getDocs(collection(db, COL.MASTER_KARYAWAN));
-    const now = new Date();
-    const allKaryawan = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+ try {
+ const snap = await getDocs(collection(db, COL.MASTER_KARYAWAN));
+ const now = new Date();
+ const allKaryawan = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    const myNameLower = (session.nama || "").trim().toLowerCase();
-    const myUsernameLower = (session.username || "").trim().toLowerCase();
-    const myNik = (session.nik || "").trim();
+ const myNameLower = (session.nama || "").trim().toLowerCase();
+ const myUsernameLower = (session.username || "").trim().toLowerCase();
+ const myNik = (session.nik || "").trim();
 
-    const isDirectAtasan = allKaryawan.some(k => {
-      const atasanStr = (k.atasan_langsung || k.atasan || k.nama_atasan || "").toLowerCase();
-      return atasanStr.includes(myNameLower) || atasanStr.includes(myUsernameLower);
-    });
+ const isDirectAtasan = allKaryawan.some(k => {
+ const atasanStr = (k.atasan_langsung || k.atasan || k.nama_atasan || "").toLowerCase();
+ return atasanStr.includes(myNameLower) || atasanStr.includes(myUsernameLower);
+ });
 
-    if (!isHrd && !isAtasanRole && !isDirectAtasan) {
-      wrapOuter.classList.add("hidden");
-      return;
-    }
+ if (!isHrd && !isAtasanRole && !isDirectAtasan) {
+ wrapOuter.classList.add("hidden");
+ return;
+ }
 
-    wrapOuter.classList.remove("hidden");
-    const wrap = container.querySelector("#dash-contract-list");
-    const countBadge = container.querySelector("#dash-contract-count-badge");
-    const subtitleEl = container.querySelector("#dash-contract-subtitle");
+ wrapOuter.classList.remove("hidden");
+ const wrap = container.querySelector("#dash-contract-list");
+ const countBadge = container.querySelector("#dash-contract-count-badge");
+ const subtitleEl = container.querySelector("#dash-contract-subtitle");
 
-    let expiringList = allKaryawan.filter(k => k.kontrak_habis).map(k => {
-      const t = k.kontrak_habis?.toDate ? k.kontrak_habis.toDate() : new Date(k.kontrak_habis);
-      return { ...k, _expiry: t, _days: Math.round((t - now) / 86400000) };
-    }).filter(k => !isNaN(k._expiry) && k._days >= 0 && k._days <= 60).sort((a, b) => a._days - b._days);
+ let expiringList = allKaryawan.filter(k => k.kontrak_habis).map(k => {
+ const t = k.kontrak_habis?.toDate ? k.kontrak_habis.toDate() : new Date(k.kontrak_habis);
+ return { ...k, _expiry: t, _days: Math.round((t - now) / 86400000) };
+ }).filter(k => !isNaN(k._expiry) && k._days >= 0 && k._days <= 60).sort((a, b) => a._days - b._days);
 
-    // If supervisor (not HRD), show only their subordinates
-    if (!isHrd) {
-      expiringList = expiringList.filter(k => {
-        const atasanStr = (k.atasan_langsung || k.atasan || k.nama_atasan || "").toLowerCase();
-        return atasanStr.includes(myNameLower) || atasanStr.includes(myUsernameLower) || (myNik && k.nik_atasan === myNik);
-      });
-      if (subtitleEl) subtitleEl.textContent = "Masa berlaku kontrak bawahan langsung Anda yang berakhir dalam 60 hari ke depan. Lakukan evaluasi sebelum perpanjangan.";
-    }
+ // If supervisor (not HRD), show only their subordinates
+ if (!isHrd) {
+ expiringList = expiringList.filter(k => {
+ const atasanStr = (k.atasan_langsung || k.atasan || k.nama_atasan || "").toLowerCase();
+ return atasanStr.includes(myNameLower) || atasanStr.includes(myUsernameLower) || (myNik && k.nik_atasan === myNik);
+ });
+ if (subtitleEl) subtitleEl.textContent = "Masa berlaku kontrak bawahan langsung Anda yang berakhir dalam 60 hari ke depan. Lakukan evaluasi sebelum perpanjangan.";
+ }
 
-    if (countBadge) countBadge.textContent = `${expiringList.length} Karyawan`;
+ if (countBadge) countBadge.textContent = `${expiringList.length} Karyawan`;
 
-    if (!expiringList.length) {
-      wrap.innerHTML = `
-        <div class="col-span-full bg-amber-50/50 border border-amber-200/60 rounded-2xl p-4 text-center">
-          <p class="text-xs font-bold text-amber-900">✨ Semua Kontrak Dalam Kondisi Aman</p>
-          <p class="text-[11px] text-amber-700/80 mt-0.5">Tidak ada karyawan ${!isHrd ? 'bawahan Anda' : ''} yang masa berlaku kontraknya berakhir dalam 60 hari ke depan.</p>
-        </div>
-      `;
-      return;
-    }
+ if (!expiringList.length) {
+ wrap.innerHTML = `
+ <div class="col-span-full bg-amber-50/50 border border-amber-200/60 rounded-2xl p-4 text-center">
+ <p class="text-xs font-bold text-amber-900">Semua Kontrak Dalam Kondisi Aman</p>
+ <p class="text-[11px] text-amber-700/80 mt-0.5">Tidak ada karyawan ${!isHrd ? 'bawahan Anda' : ''} yang masa berlaku kontraknya berakhir dalam 60 hari ke depan.</p>
+ </div>
+ `;
+ return;
+ }
 
-    wrap.innerHTML = expiringList.map(k => {
-      const days = k._days;
-      let badgeStyle = "bg-amber-100 text-amber-900 border-amber-300";
-      if (days <= 14) badgeStyle = "bg-rose-100 text-rose-800 border-rose-300 animate-pulse";
-      else if (days <= 30) badgeStyle = "bg-orange-100 text-orange-800 border-orange-300";
+ wrap.innerHTML = expiringList.map(k => {
+ const days = k._days;
+ let badgeStyle = "bg-amber-100 text-amber-900 border-amber-300";
+ if (days <= 14) badgeStyle = "bg-rose-100 text-rose-800 border-rose-300 animate-pulse";
+ else if (days <= 30) badgeStyle = "bg-orange-100 text-orange-800 border-orange-300";
 
-      return `
-        <div class="flex flex-col p-3.5 bg-white rounded-2xl border border-amber-200/90 shadow-xs justify-between gap-3 hover:border-amber-400 transition">
-          <div class="flex items-start justify-between gap-2">
-            <div>
-              <p class="font-extrabold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
-                <span>${escapeHtml(k.nama_karyawan || k.nama)}</span>
-                <span class="text-[10px] font-mono text-slate-400 font-normal">(${escapeHtml(k.nik_karyawan || k.nik || '-')})</span>
-              </p>
-              <p class="text-[11px] text-slate-600 font-medium mt-0.5">
-                ${escapeHtml(k.jabatan || "-")} • ${escapeHtml(k.cabang_penempatan || k.cabang || "-")}
-              </p>
-              <p class="text-[10px] text-amber-900 font-semibold mt-1">
-                📅 Habis Kontrak: <span class="underline">${fmtDate(k._expiry)}</span>
-              </p>
-            </div>
-            <span class="px-2.5 py-1 rounded-lg text-[11px] font-bold border shrink-0 ${badgeStyle}">
-              sisa ${days} hari
-            </span>
-          </div>
+ return `
+ <div class="flex flex-col p-3.5 bg-white rounded-2xl border border-amber-200/90 shadow-xs justify-between gap-3 hover:border-amber-400 transition">
+ <div class="flex items-start justify-between gap-2">
+ <div>
+ <p class="font-extrabold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
+ <span>${escapeHtml(k.nama_karyawan || k.nama)}</span>
+ <span class="text-[10px] font-mono text-slate-400 font-normal">(${escapeHtml(k.nik_karyawan || k.nik || '-')})</span>
+ </p>
+ <p class="text-[11px] text-slate-600 font-medium mt-0.5">
+ ${escapeHtml(k.jabatan || "-")} • ${escapeHtml(k.cabang_penempatan || k.cabang || "-")}
+ </p>
+ <p class="text-[10px] text-amber-900 font-semibold mt-1">
+ Habis Kontrak: <span class="underline">${fmtDate(k._expiry)}</span>
+ </p>
+ </div>
+ <span class="px-2.5 py-1 rounded-lg text-[11px] font-bold border shrink-0 ${badgeStyle}">
+ sisa ${days} hari
+ </span>
+ </div>
 
-          <div class="flex items-center gap-1.5 pt-2 border-t border-amber-100/80 flex-wrap">
-            <a href="#penilaian-kontrak" class="flex-1 px-2.5 py-1.5 bg-maroon-700 hover:bg-maroon-800 text-white font-bold text-[11px] rounded-xl text-center transition shadow-xs">
-              ⚡ Evaluasi / Penilaian
-            </a>
-            <a href="#dokumen" class="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold text-[11px] rounded-xl text-center border border-blue-200 transition">
-              📄 Draft PKWT
-            </a>
-            ${k.atasan_langsung ? `
-              <button data-atasan="${escapeHtml(k.atasan_langsung)}" data-nama="${escapeHtml(k.nama_karyawan || k.nama)}" data-days="${days}" class="btn-notify-atasan px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] rounded-xl border border-slate-200" title="Kirim Pengingat Notif Atasan">
-                🔔 Pengingat
-              </button>
-            ` : ''}
-          </div>
-        </div>
-      `;
-    }).join("");
+ <div class="flex items-center gap-1.5 pt-2 border-t border-amber-100/80 flex-wrap">
+ <a href="#penilaian-kontrak" class="flex-1 px-2.5 py-1.5 bg-maroon-700 hover:bg-maroon-800 text-white font-bold text-[11px] rounded-xl text-center transition shadow-xs">
+ Evaluasi / Penilaian
+ </a>
+ <a href="#dokumen" class="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold text-[11px] rounded-xl text-center border border-blue-200 transition">
+ Draft PKWT
+ </a>
+ ${k.atasan_langsung ? `
+ <button data-atasan="${escapeHtml(k.atasan_langsung)}" data-nama="${escapeHtml(k.nama_karyawan || k.nama)}" data-days="${days}" class="btn-notify-atasan px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] rounded-xl border border-slate-200" title="Kirim Pengingat Notif Atasan">
+ Pengingat
+ </button>
+ ` : ''}
+ </div>
+ </div>
+ `;
+ }).join("");
 
-    // Bind notify button
-    wrap.querySelectorAll(".btn-notify-atasan").forEach(btn => {
-      btn.onclick = async () => {
-        const targetAtasan = btn.dataset.atasan;
-        const targetNama = btn.dataset.nama;
-        const remainingDays = btn.dataset.days;
-        try {
-          await notifyUser(targetAtasan, `⚠️ Pengingat Penilaian Kontrak: ${targetNama}`, `Masa kontrak ${targetNama} tersisa ${remainingDays} hari. Mohon lakukan Penilaian Kontrak & Evaluasi Kinerja.`, "#penilaian-kontrak");
-          toast(`Notifikasi pengingat evaluasi berhasil dikirim ke ${targetAtasan}`, "success");
-        } catch (e) {
-          toast("Gagal mengirim notifikasi: " + e.message, "error");
-        }
-      };
-    });
+ // Bind notify button
+ wrap.querySelectorAll(".btn-notify-atasan").forEach(btn => {
+ btn.onclick = async () => {
+ const targetAtasan = btn.dataset.atasan;
+ const targetNama = btn.dataset.nama;
+ const remainingDays = btn.dataset.days;
+ try {
+ await notifyUser(targetAtasan, `Pengingat Penilaian Kontrak: ${targetNama}`, `Masa kontrak ${targetNama} tersisa ${remainingDays} hari. Mohon lakukan Penilaian Kontrak & Evaluasi Kinerja.`, "#penilaian-kontrak");
+ toast(`Notifikasi pengingat evaluasi berhasil dikirim ke ${targetAtasan}`, "success");
+ } catch (e) {
+ toast("Gagal mengirim notifikasi: " + e.message, "error");
+ }
+ };
+ });
 
-  } catch (e) {
-    console.warn("Contract widget err:", e);
-    if (wrapOuter) wrapOuter.classList.add("hidden");
-  }
+ } catch (e) {
+ console.warn("Contract widget err:", e);
+ if (wrapOuter) wrapOuter.classList.add("hidden");
+ }
 }
 
 /* ------------------------ g. ATTENDANCE ANALYTICS ------------------------ */
 async function loadAttendanceAnalytics(container, session) {
-  const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
-  const titleEl = container.querySelector("#dash-attendance-title");
-  const bodyEl = container.querySelector("#dash-attendance-body");
+ const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
+ const titleEl = container.querySelector("#dash-attendance-title");
+ const bodyEl = container.querySelector("#dash-attendance-body");
 
-  try {
-    const allAbsen = await fsGetAll(COL.DATA_ABSENSI);
-    const now = new Date();
-    const curYear = now.getFullYear();
-    const curMonth = String(now.getMonth() + 1).padStart(2, '0');
-    const monthPrefix = `${curYear}-${curMonth}`;
+ try {
+ const allAbsen = await fsGetAll(COL.DATA_ABSENSI);
+ const now = new Date();
+ const curYear = now.getFullYear();
+ const curMonth = String(now.getMonth() + 1).padStart(2, '0');
+ const monthPrefix = `${curYear}-${curMonth}`;
 
-    // Filter this month's attendance
-    const thisMonthAbsen = allAbsen.filter(x => (x.tanggal || "").startsWith(monthPrefix));
+ // Filter this month's attendance
+ const thisMonthAbsen = allAbsen.filter(x => (x.tanggal || "").startsWith(monthPrefix));
 
-    if (isHrd) {
-      titleEl.textContent = "Analitik Kehadiran Perusahaan";
-      
-      const totalPresent = thisMonthAbsen.length;
-      if (totalPresent === 0) {
-        bodyEl.innerHTML = emptyState("Belum ada data absensi bulan ini");
-        return;
-      }
+ if (isHrd) {
+ titleEl.textContent = "Analitik Kehadiran Perusahaan";
+ 
+ const totalPresent = thisMonthAbsen.length;
+ if (totalPresent === 0) {
+ bodyEl.innerHTML = emptyState("Belum ada data absensi bulan ini");
+ return;
+ }
 
-      // Calculate Late Rate
-      // Standard start time is "08:00"
-      const lateLogs = thisMonthAbsen.filter(x => x.scan_masuk && x.scan_masuk > "08:00");
-      const lateCount = lateLogs.length;
-      const onTimeCount = totalPresent - lateCount;
-      const onTimeRate = ((onTimeCount / totalPresent) * 100).toFixed(0);
+ // Calculate Late Rate
+ // Standard start time is "08:00"
+ const lateLogs = thisMonthAbsen.filter(x => x.scan_masuk && x.scan_masuk > "08:00");
+ const lateCount = lateLogs.length;
+ const onTimeCount = totalPresent - lateCount;
+ const onTimeRate = ((onTimeCount / totalPresent) * 100).toFixed(0);
 
-      // Group by Employee to see top lates
-      const employeeLates = {};
-      lateLogs.forEach(log => {
-        employeeLates[log.nama] = (employeeLates[log.nama] || 0) + 1;
-      });
-      const topLates = Object.entries(employeeLates)
-        .map(([nama, count]) => ({ nama, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 3);
+ // Group by Employee to see top lates
+ const employeeLates = {};
+ lateLogs.forEach(log => {
+ employeeLates[log.nama] = (employeeLates[log.nama] || 0) + 1;
+ });
+ const topLates = Object.entries(employeeLates)
+ .map(([nama, count]) => ({ nama, count }))
+ .sort((a, b) => b.count - a.count)
+ .slice(0, 3);
 
-      bodyEl.innerHTML = `
-        <div class="grid grid-cols-2 gap-4">
-          <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
-            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Rasio Tepat Waktu</span>
-            <span class="text-2xl font-black text-emerald-600">${onTimeRate}%</span>
-            <span class="text-[10px] text-slate-400 mt-0.5">${onTimeCount} dari ${totalPresent} scan masuk</span>
-          </div>
-          <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
-            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Keterlambatan (> 08:00)</span>
-            <span class="text-2xl font-black text-rose-600">${lateCount} Kali</span>
-            <span class="text-[10px] text-slate-400 mt-0.5">Seluruh Karyawan</span>
-          </div>
-        </div>
+ bodyEl.innerHTML = `
+ <div class="grid grid-cols-2 gap-4">
+ <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
+ <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Rasio Tepat Waktu</span>
+ <span class="text-2xl font-black text-emerald-600">${onTimeRate}%</span>
+ <span class="text-[10px] text-slate-400 mt-0.5">${onTimeCount} dari ${totalPresent} scan masuk</span>
+ </div>
+ <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
+ <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Keterlambatan (> 08:00)</span>
+ <span class="text-2xl font-black text-rose-600">${lateCount} Kali</span>
+ <span class="text-[10px] text-slate-400 mt-0.5">Seluruh Karyawan</span>
+ </div>
+ </div>
 
-        ${topLates.length > 0 ? `
-          <div class="pt-2 space-y-2">
-            <h4 class="text-xs font-bold text-slate-700">Karyawan Sering Terlambat Bulan Ini:</h4>
-            <div class="space-y-1.5">
-              ${topLates.map(tl => `
-                <div class="flex items-center justify-between text-xs text-slate-600 bg-rose-50/50 px-3 py-1.5 rounded-lg border border-rose-100/30">
-                  <span class="font-semibold text-slate-800">${escapeHtml(tl.nama)}</span>
-                  <span class="font-bold text-rose-600">${tl.count} kali terlambat</span>
-                </div>
-              `).join("")}
-            </div>
-          </div>
-        ` : `
-          <p class="text-xs text-emerald-600 font-semibold text-center py-2 bg-emerald-50 rounded-lg">Luar biasa! Tidak ada keterlambatan tercatat bulan ini.</p>
-        `}
-      `;
-    } else {
-      titleEl.textContent = "Analitik Kehadiran Saya";
-      
-      const myAbsen = thisMonthAbsen.filter(x => x.nik === session.nik || x.nama === session.nama);
-      const totalPresent = myAbsen.length;
-      
-      if (totalPresent === 0) {
-        bodyEl.innerHTML = emptyState("Belum ada data absensi Anda bulan ini");
-        return;
-      }
+ ${topLates.length > 0 ? `
+ <div class="pt-2 space-y-2">
+ <h4 class="text-xs font-bold text-slate-700">Karyawan Sering Terlambat Bulan Ini:</h4>
+ <div class="space-y-1.5">
+ ${topLates.map(tl => `
+ <div class="flex items-center justify-between text-xs text-slate-600 bg-rose-50/50 px-3 py-1.5 rounded-lg border border-rose-100/30">
+ <span class="font-semibold text-slate-800">${escapeHtml(tl.nama)}</span>
+ <span class="font-bold text-rose-600">${tl.count} kali terlambat</span>
+ </div>
+ `).join("")}
+ </div>
+ </div>
+ ` : `
+ <p class="text-xs text-emerald-600 font-semibold text-center py-2 bg-emerald-50 rounded-lg">Luar biasa! Tidak ada keterlambatan tercatat bulan ini.</p>
+ `}
+ `;
+ } else {
+ titleEl.textContent = "Analitik Kehadiran Saya";
+ 
+ const myAbsen = thisMonthAbsen.filter(x => x.nik === session.nik || x.nama === session.nama);
+ const totalPresent = myAbsen.length;
+ 
+ if (totalPresent === 0) {
+ bodyEl.innerHTML = emptyState("Belum ada data absensi Anda bulan ini");
+ return;
+ }
 
-      const lateLogs = myAbsen.filter(x => x.scan_masuk && x.scan_masuk > "08:00");
-      const lateCount = lateLogs.length;
-      const onTimeCount = totalPresent - lateCount;
-      const onTimeRate = ((onTimeCount / totalPresent) * 100).toFixed(0);
+ const lateLogs = myAbsen.filter(x => x.scan_masuk && x.scan_masuk > "08:00");
+ const lateCount = lateLogs.length;
+ const onTimeCount = totalPresent - lateCount;
+ const onTimeRate = ((onTimeCount / totalPresent) * 100).toFixed(0);
 
-      bodyEl.innerHTML = `
-        <div class="grid grid-cols-2 gap-4">
-          <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
-            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Rasio Tepat Waktu</span>
-            <span class="text-2xl font-black text-emerald-600">${onTimeRate}%</span>
-            <span class="text-[10px] text-slate-400 mt-0.5">${onTimeCount} kali tepat waktu</span>
-          </div>
-          <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
-            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Keterlambatan</span>
-            <span class="text-2xl font-black text-rose-600">${lateCount} Hari</span>
-            <span class="text-[10px] text-slate-400 mt-0.5">Scan masuk > 08:00 WIB</span>
-          </div>
-        </div>
+ bodyEl.innerHTML = `
+ <div class="grid grid-cols-2 gap-4">
+ <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
+ <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Rasio Tepat Waktu</span>
+ <span class="text-2xl font-black text-emerald-600">${onTimeRate}%</span>
+ <span class="text-[10px] text-slate-400 mt-0.5">${onTimeCount} kali tepat waktu</span>
+ </div>
+ <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
+ <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Keterlambatan</span>
+ <span class="text-2xl font-black text-rose-600">${lateCount} Hari</span>
+ <span class="text-[10px] text-slate-400 mt-0.5">Scan masuk > 08:00 WIB</span>
+ </div>
+ </div>
 
-        <div class="text-xs bg-slate-50 border border-slate-100 rounded-xl p-3 text-slate-500 leading-relaxed">
-          <p>Jam masuk kantor standar CV Andela Jaya adalah <b>08:00 WIB</b>. Keterlambatan berulang dapat mempengaruhi nilai review kedisiplinan dan poin KPI Anda secara periodik.</p>
-        </div>
-      `;
-    }
-  } catch (err) {
-    console.error(err);
-    bodyEl.innerHTML = `<p class="text-xs text-rose-500">Gagal memuat analitik kehadiran: ${err.message}</p>`;
-  }
+ <div class="text-xs bg-slate-50 border border-slate-100 rounded-xl p-3 text-slate-500 leading-relaxed">
+ <p>Jam masuk kantor standar CV Andela Jaya adalah <b>08:00 WIB</b>. Keterlambatan berulang dapat mempengaruhi nilai review kedisiplinan dan poin KPI Anda secara periodik.</p>
+ </div>
+ `;
+ }
+ } catch (err) {
+ console.error(err);
+ bodyEl.innerHTML = `<p class="text-xs text-rose-500">Gagal memuat analitik kehadiran: ${err.message}</p>`;
+ }
 }
 
 /* ------------------------ h. PERFORMANCE WIDGET ------------------------ */
 async function loadPerformanceWidget(container, session) {
-  const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
-  const titleEl = container.querySelector("#dash-performance-title");
-  const bodyEl = container.querySelector("#dash-performance-body");
+ const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
+ const titleEl = container.querySelector("#dash-performance-title");
+ const bodyEl = container.querySelector("#dash-performance-body");
 
-  try {
-    const allReviews = await fsGetAll(COL.PERFORMANCE_REVIEW);
+ try {
+ const allReviews = await fsGetAll(COL.PERFORMANCE_REVIEW);
 
-    if (isHrd) {
-      titleEl.textContent = "Evaluasi Kinerja Karyawan Perusahaan";
-      
-      const totalReviews = allReviews.length;
-      if (totalReviews === 0) {
-        bodyEl.innerHTML = emptyState("Belum ada evaluasi kinerja dirilis");
-        return;
-      }
+ if (isHrd) {
+ titleEl.textContent = "Evaluasi Kinerja Karyawan Perusahaan";
+ 
+ const totalReviews = allReviews.length;
+ if (totalReviews === 0) {
+ bodyEl.innerHTML = emptyState("Belum ada evaluasi kinerja dirilis");
+ return;
+ }
 
-      // Calculate Average Score
-      const totalScore = allReviews.reduce((acc, r) => acc + (r.skor_akhir || 0), 0);
-      const avgScore = (totalScore / totalReviews).toFixed(1);
+ // Calculate Average Score
+ const totalScore = allReviews.reduce((acc, r) => acc + (r.skor_akhir || 0), 0);
+ const avgScore = (totalScore / totalReviews).toFixed(1);
 
-      // Best Performer
-      const bestPerformer = [...allReviews].sort((a, b) => b.skor_akhir - a.skor_akhir)[0];
+ // Best Performer
+ const bestPerformer = [...allReviews].sort((a, b) => b.skor_akhir - a.skor_akhir)[0];
 
-      bodyEl.innerHTML = `
-        <div class="grid grid-cols-2 gap-4">
-          <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
-            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Rerata Nilai Karyawan</span>
-            <span class="text-2xl font-black text-maroon-700">${avgScore}</span>
-            <span class="text-[10px] text-slate-400 mt-0.5">Skala 1-100</span>
-          </div>
-          <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
-            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Total Evaluasi Rilis</span>
-            <span class="text-2xl font-black text-blue-600">${totalReviews} Review</span>
-            <span class="text-[10px] text-slate-400 mt-0.5">Semua Departemen</span>
-          </div>
-        </div>
+ bodyEl.innerHTML = `
+ <div class="grid grid-cols-2 gap-4">
+ <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
+ <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Rerata Nilai Karyawan</span>
+ <span class="text-2xl font-black text-maroon-700">${avgScore}</span>
+ <span class="text-[10px] text-slate-400 mt-0.5">Skala 1-100</span>
+ </div>
+ <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
+ <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Total Evaluasi Rilis</span>
+ <span class="text-2xl font-black text-blue-600">${totalReviews} Review</span>
+ <span class="text-[10px] text-slate-400 mt-0.5">Semua Departemen</span>
+ </div>
+ </div>
 
-        <div class="p-3 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-between gap-3">
-          <div class="space-y-0.5">
-            <span class="text-[10px] font-bold text-emerald-800 uppercase tracking-wide">🏆 Nilai Tertinggi (Top Performer)</span>
-            <h4 class="font-bold text-slate-800 text-xs">${escapeHtml(bestPerformer.nama_karyawan)}</h4>
-            <p class="text-[11px] text-slate-500">Reviewer: ${escapeHtml(bestPerformer.reviewer)}</p>
-          </div>
-          <div class="text-right">
-            <span class="text-lg font-black text-emerald-700">${bestPerformer.skor_akhir}</span>
-            <span class="text-xs text-emerald-600 block">Grade ${bestPerformer.grade}</span>
-          </div>
-        </div>
-      `;
-    } else {
-      titleEl.textContent = "Evaluasi Kinerja Saya";
-      
-      const myReviews = allReviews.filter(r => r.nik === session.nik || r.nama_karyawan === session.nama)
-        .sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+ <div class="p-3 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-between gap-3">
+ <div class="space-y-0.5">
+ <span class="text-[10px] font-bold text-emerald-800 uppercase tracking-wide">Nilai Tertinggi (Top Performer)</span>
+ <h4 class="font-bold text-slate-800 text-xs">${escapeHtml(bestPerformer.nama_karyawan)}</h4>
+ <p class="text-[11px] text-slate-500">Reviewer: ${escapeHtml(bestPerformer.reviewer)}</p>
+ </div>
+ <div class="text-right">
+ <span class="text-lg font-black text-emerald-700">${bestPerformer.skor_akhir}</span>
+ <span class="text-xs text-emerald-600 block">Grade ${bestPerformer.grade}</span>
+ </div>
+ </div>
+ `;
+ } else {
+ titleEl.textContent = "Evaluasi Kinerja Saya";
+ 
+ const myReviews = allReviews.filter(r => r.nik === session.nik || r.nama_karyawan === session.nama)
+ .sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
 
-      if (myReviews.length === 0) {
-        bodyEl.innerHTML = emptyState("Belum ada evaluasi kinerja resmi", "Manajemen belum merilis review kinerja formal untuk profil Anda.");
-        return;
-      }
+ if (myReviews.length === 0) {
+ bodyEl.innerHTML = emptyState("Belum ada evaluasi kinerja resmi", "Manajemen belum merilis review kinerja formal untuk profil Anda.");
+ return;
+ }
 
-      const latestReview = myReviews[0];
-      const avgScore = latestReview.skor_akhir;
-      let gradeColor = "text-emerald-700 bg-emerald-50 border-emerald-100";
-      if (latestReview.grade === "B") gradeColor = "text-blue-700 bg-blue-50 border-blue-100";
-      if (latestReview.grade === "C") gradeColor = "text-amber-700 bg-amber-50 border-amber-100";
-      if (latestReview.grade === "D") gradeColor = "text-rose-700 bg-rose-50 border-rose-100";
+ const latestReview = myReviews[0];
+ const avgScore = latestReview.skor_akhir;
+ let gradeColor = "text-emerald-700 bg-emerald-50 border-emerald-100";
+ if (latestReview.grade === "B") gradeColor = "text-blue-700 bg-blue-50 border-blue-100";
+ if (latestReview.grade === "C") gradeColor = "text-amber-700 bg-amber-50 border-amber-100";
+ if (latestReview.grade === "D") gradeColor = "text-rose-700 bg-rose-50 border-rose-100";
 
-      bodyEl.innerHTML = `
-        <div class="flex items-center justify-between p-4 bg-[#faf8ff] border border-slate-100 rounded-2xl gap-4 shadow-xs">
-          <div class="space-y-1">
-            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Skor Evaluasi Periodik</span>
-            <h4 class="font-black text-2xl text-slate-800">${avgScore} <span class="text-xs text-slate-400 font-medium">/ 100</span></h4>
-            <p class="text-xs text-slate-500">Periode: <b>${escapeHtml(latestReview.periode)}</b></p>
-          </div>
-          <div class="text-right flex flex-col items-end justify-center">
-            <span class="px-3.5 py-1.5 border rounded-full font-bold text-xs ${gradeColor}">Grade ${latestReview.grade}</span>
-            <span class="text-[10px] text-slate-400 mt-1.5">Penilai: ${escapeHtml(latestReview.reviewer.split(" ")[0])}</span>
-          </div>
-        </div>
+ bodyEl.innerHTML = `
+ <div class="flex items-center justify-between p-4 bg-[#faf8ff] border border-slate-100 rounded-2xl gap-4 shadow-xs">
+ <div class="space-y-1">
+ <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Skor Evaluasi Periodik</span>
+ <h4 class="font-black text-2xl text-slate-800">${avgScore} <span class="text-xs text-slate-400 font-medium">/ 100</span></h4>
+ <p class="text-xs text-slate-500">Periode: <b>${escapeHtml(latestReview.periode)}</b></p>
+ </div>
+ <div class="text-right flex flex-col items-end justify-center">
+ <span class="px-3.5 py-1.5 border rounded-full font-bold text-xs ${gradeColor}">Grade ${latestReview.grade}</span>
+ <span class="text-[10px] text-slate-400 mt-1.5">Penilai: ${escapeHtml(latestReview.reviewer.split(" ")[0])}</span>
+ </div>
+ </div>
 
-        <div class="bg-blue-50/50 p-3 rounded-xl border border-blue-100/30 text-xs text-slate-600 leading-relaxed">
-          <span class="font-bold text-blue-800 block mb-1">Usulan Manajemen:</span>
-          ${escapeHtml(latestReview.rekomendasi || "-")}
-        </div>
-      `;
-    }
-  } catch (err) {
-    console.error(err);
-    bodyEl.innerHTML = `<p class="text-xs text-rose-500">Gagal memuat evaluasi kinerja: ${err.message}</p>`;
-  }
+ <div class="bg-blue-50/50 p-3 rounded-xl border border-blue-100/30 text-xs text-slate-600 leading-relaxed">
+ <span class="font-bold text-blue-800 block mb-1">Usulan Manajemen:</span>
+ ${escapeHtml(latestReview.rekomendasi || "-")}
+ </div>
+ `;
+ }
+ } catch (err) {
+ console.error(err);
+ bodyEl.innerHTML = `<p class="text-xs text-rose-500">Gagal memuat evaluasi kinerja: ${err.message}</p>`;
+ }
 }
 
 /* ------------------------ i. TRAINING HISTORY WIDGET ------------------------ */
 async function loadTrainingHistory(container, session) {
-  const wrap = container.querySelector("#dash-training-history-body");
-  if (!wrap) return;
-  try {
-    const allTrainings = await fsGetAll(COL.DATA_TRAINING);
-    const myTrainings = allTrainings.filter(t => 
-      (t.nik && session.nik && String(t.nik).trim() === String(session.nik).trim()) ||
-      (t.nama_karyawan && session.nama && String(t.nama_karyawan).trim().toLowerCase() === String(session.nama).trim().toLowerCase())
-    );
+ const wrap = container.querySelector("#dash-training-history-body");
+ if (!wrap) return;
+ try {
+ const allTrainings = await fsGetAll(COL.DATA_TRAINING);
+ const myTrainings = allTrainings.filter(t => 
+ (t.nik && session.nik && String(t.nik).trim() === String(session.nik).trim()) ||
+ (t.nama_karyawan && session.nama && String(t.nama_karyawan).trim().toLowerCase() === String(session.nama).trim().toLowerCase())
+ );
 
-    if (!myTrainings.length) {
-      wrap.innerHTML = `
-        <div class="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-3 text-center text-slate-400">
-          <p class="text-xs font-medium">Belum ada riwayat training yang diikuti.</p>
-          <a href="#training" class="text-xs text-maroon-700 font-bold hover:underline mt-1 inline-block">+ Ajukan Pelatihan Baru</a>
-        </div>
-      `;
-      return;
-    }
+ if (!myTrainings.length) {
+ wrap.innerHTML = `
+ <div class="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-3 text-center text-slate-400">
+ <p class="text-xs font-medium">Belum ada riwayat training yang diikuti.</p>
+ <a href="#training" class="text-xs text-maroon-700 font-bold hover:underline mt-1 inline-block">+ Ajukan Pelatihan Baru</a>
+ </div>
+ `;
+ return;
+ }
 
-    wrap.innerHTML = myTrainings.slice(0, 4).map(t => {
-      const status = (t.status || "PENDING").toUpperCase();
-      let badgeClass = "bg-amber-50 text-amber-700 border-amber-200";
-      if (status === "APPROVED" || status === "DISETUJUI" || status === "SELESAI") badgeClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
-      if (status === "REJECTED" || status === "DITOLAK") badgeClass = "bg-rose-50 text-rose-700 border-rose-200";
+ wrap.innerHTML = myTrainings.slice(0, 4).map(t => {
+ const status = (t.status || "PENDING").toUpperCase();
+ let badgeClass = "bg-amber-50 text-amber-700 border-amber-200";
+ if (status === "APPROVED" || status === "DISETUJUI" || status === "SELESAI") badgeClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
+ if (status === "REJECTED" || status === "DITOLAK") badgeClass = "bg-rose-50 text-rose-700 border-rose-200";
 
-      return `
-        <div class="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-100 rounded-xl hover:bg-slate-100/70 transition">
-          <div class="min-w-0 flex-1 pr-2">
-            <p class="font-bold text-slate-800 text-xs truncate">${escapeHtml(t.kompetensi || t.nama_pelatihan || "Training TNA")}</p>
-            <p class="text-[11px] text-slate-500 truncate">${escapeHtml(t.kategori || "Pelatihan Skill")} • ${t.tanggal_pengajuan ? fmtDateShort(t.tanggal_pengajuan) : '-'}</p>
-          </div>
-          <span class="px-2 py-0.5 rounded-md text-[10px] font-bold border shrink-0 ${badgeClass}">${status}</span>
-        </div>
-      `;
-    }).join("");
-  } catch (err) {
-    wrap.innerHTML = `<p class="text-xs text-slate-400">Gagal memuat riwayat training</p>`;
-  }
+ return `
+ <div class="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-100 rounded-xl hover:bg-slate-100/70 transition">
+ <div class="min-w-0 flex-1 pr-2">
+ <p class="font-bold text-slate-800 text-xs truncate">${escapeHtml(t.kompetensi || t.nama_pelatihan || "Training TNA")}</p>
+ <p class="text-[11px] text-slate-500 truncate">${escapeHtml(t.kategori || "Pelatihan Skill")} • ${t.tanggal_pengajuan ? fmtDateShort(t.tanggal_pengajuan) : '-'}</p>
+ </div>
+ <span class="px-2 py-0.5 rounded-md text-[10px] font-bold border shrink-0 ${badgeClass}">${status}</span>
+ </div>
+ `;
+ }).join("");
+ } catch (err) {
+ wrap.innerHTML = `<p class="text-xs text-slate-400">Gagal memuat riwayat training</p>`;
+ }
 }
 
 /* ------------------------ j. INVENTARIS & ASET WIDGET ------------------------ */
 async function loadAssignedAssets(container, session) {
-  const wrap = container.querySelector("#dash-assigned-assets-body");
-  if (!wrap) return;
+ const wrap = container.querySelector("#dash-assigned-assets-body");
+ if (!wrap) return;
 
-  try {
-    const allAssets = await fsGetAll(COL.MASTER_INVENTORY);
-    const myNameLower = (session.nama || "").trim().toLowerCase();
-    const myNik = (session.nik || "").trim();
+ try {
+ const allAssets = await fsGetAll(COL.MASTER_INVENTORY);
+ const myNameLower = (session.nama || "").trim().toLowerCase();
+ const myNik = (session.nik || "").trim();
 
-    const myAssets = allAssets.filter(a => {
-      const assigned = (a.assigned_to || "").trim().toLowerCase();
-      if (!assigned || assigned === "unassigned" || assigned === "-") return false;
-      if (assigned === myNameLower) return true;
-      if (myNik && a.assigned_nik && String(a.assigned_nik).trim() === myNik) return true;
-      return false;
-    });
+ const myAssets = allAssets.filter(a => {
+ const assigned = (a.assigned_to || "").trim().toLowerCase();
+ if (!assigned || assigned === "unassigned" || assigned === "-") return false;
+ if (assigned === myNameLower) return true;
+ if (myNik && a.assigned_nik && String(a.assigned_nik).trim() === myNik) return true;
+ return false;
+ });
 
-    if (!myAssets.length) {
-      wrap.innerHTML = `
-        <div class="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-4 text-center text-slate-400">
-          <p class="text-xs font-semibold">Tidak ada aset atau inventaris kantor yang diserahterimakan kepada Anda saat ini.</p>
-          <p class="text-[10px] text-slate-400 mt-0.5">Semua barang, laptop, kunci, atau kendaraan resmi yang diserahkan akan tercatat di sini.</p>
-        </div>`;
-      return;
-    }
+ if (!myAssets.length) {
+ wrap.innerHTML = `
+ <div class="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-4 text-center text-slate-400">
+ <p class="text-xs font-semibold">Tidak ada aset atau inventaris kantor yang diserahterimakan kepada Anda saat ini.</p>
+ <p class="text-[10px] text-slate-400 mt-0.5">Semua barang, laptop, kunci, atau kendaraan resmi yang diserahkan akan tercatat di sini.</p>
+ </div>`;
+ return;
+ }
 
-    const categoryIcons = {
-      "Vehicles": "truck",
-      "Office Eq": "laptop",
-      "Tools": "tools",
-      "Kunci": "key",
-      "Dokumen": "file",
-      "ATK": "box",
-      "Furniture": "box"
-    };
+ const categoryIcons = {
+ "Vehicles": "truck",
+ "Office Eq": "laptop",
+ "Tools": "tools",
+ "Kunci": "key",
+ "Dokumen": "file",
+ "ATK": "box",
+ "Furniture": "box"
+ };
 
-    wrap.innerHTML = myAssets.map(a => {
-      const catKey = Object.keys(categoryIcons).find(k => (a.kategori || "").includes(k)) || "ATK";
-      const iconKey = categoryIcons[catKey] || "box";
-      const cond = (a.kondisi || "Good").toUpperCase();
-      let condBadge = `<span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">● Baik (Good)</span>`;
-      if (cond.includes("MAINTENANCE") || cond.includes("PERBAIKAN")) {
-        condBadge = `<span class="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">Perlu Servis</span>`;
-      } else if (cond.includes("RUSAK") || cond.includes("DAMAGED")) {
-        condBadge = `<span class="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">Rusak</span>`;
-      }
+ wrap.innerHTML = myAssets.map(a => {
+ const catKey = Object.keys(categoryIcons).find(k => (a.kategori || "").includes(k)) || "ATK";
+ const iconKey = categoryIcons[catKey] || "box";
+ const cond = (a.kondisi || "Good").toUpperCase();
+ let condBadge = `<span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">Baik (Good)</span>`;
+ if (cond.includes("MAINTENANCE") || cond.includes("PERBAIKAN")) {
+ condBadge = `<span class="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">Perlu Servis</span>`;
+ } else if (cond.includes("RUSAK") || cond.includes("DAMAGED")) {
+ condBadge = `<span class="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">Rusak</span>`;
+ }
 
-      return `
-        <div class="p-3.5 bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 hover:bg-slate-100/80 transition group">
-          <div class="flex items-center gap-3 min-w-0">
-            <div class="w-10 h-10 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-600 shadow-sm shrink-0">
-              ${icon(iconKey, "w-5 h-5")}
-            </div>
-            <div class="min-w-0">
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="font-bold text-slate-800 text-xs truncate">${escapeHtml(a.nama_barang || "-")}</span>
-                <span class="font-mono text-[10px] font-extrabold text-slate-400 bg-white border border-slate-200 px-1.5 py-0.5 rounded-md">${escapeHtml(a.id_item || a.id)}</span>
-              </div>
-              <p class="text-[11px] text-slate-500 mt-0.5 truncate">
-                ${escapeHtml(a.kategori || "Aset Kantor")} ${a.serial_number ? `• No: ${escapeHtml(a.serial_number)}` : ''}
-              </p>
-            </div>
-          </div>
-          <div class="shrink-0 text-right">
-            ${condBadge}
-          </div>
-        </div>`;
-    }).join("");
-  } catch (err) {
-    console.warn("Gagal memuat aset karyawan:", err);
-    wrap.innerHTML = `<p class="text-xs text-slate-400">Gagal memuat daftar aset tanggung jawab.</p>`;
-  }
+ return `
+ <div class="p-3.5 bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 hover:bg-slate-100/80 transition group">
+ <div class="flex items-center gap-3 min-w-0">
+ <div class="w-10 h-10 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-600 shadow-sm shrink-0">
+ ${icon(iconKey, "w-5 h-5")}
+ </div>
+ <div class="min-w-0">
+ <div class="flex items-center gap-2 flex-wrap">
+ <span class="font-bold text-slate-800 text-xs truncate">${escapeHtml(a.nama_barang || "-")}</span>
+ <span class="font-mono text-[10px] font-extrabold text-slate-400 bg-white border border-slate-200 px-1.5 py-0.5 rounded-md">${escapeHtml(a.id_item || a.id)}</span>
+ </div>
+ <p class="text-[11px] text-slate-500 mt-0.5 truncate">
+ ${escapeHtml(a.kategori || "Aset Kantor")} ${a.serial_number ? `• No: ${escapeHtml(a.serial_number)}` : ''}
+ </p>
+ </div>
+ </div>
+ <div class="shrink-0 text-right">
+ ${condBadge}
+ </div>
+ </div>`;
+ }).join("");
+ } catch (err) {
+ console.warn("Gagal memuat aset karyawan:", err);
+ wrap.innerHTML = `<p class="text-xs text-slate-400">Gagal memuat daftar aset tanggung jawab.</p>`;
+ }
 }
