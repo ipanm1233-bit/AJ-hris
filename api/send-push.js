@@ -7,7 +7,18 @@ module.exports = async function handler(req, res) {
   try {
     // 1. INISIALISASI SUPER AMAN (Membaca utuh dari JSON)
     if (!admin.apps.length) {
-      if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+      if (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
+        // Opsi paling aman: seluruh file service account di-encode base64 jadi satu
+        // string tanpa newline, jadi tidak bisa rusak saat di-paste ke Vercel.
+        const decoded = Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf8');
+        const serviceAccount = JSON.parse(decoded);
+        if (!serviceAccount.private_key) {
+          throw new Error('FIREBASE_SERVICE_ACCOUNT_BASE64 ter-decode tapi field private_key kosong/hilang. Cek ulang proses base64 encode-nya.');
+        }
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount)
+        });
+      } else if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
         const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount)
