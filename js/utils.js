@@ -1901,11 +1901,18 @@ export async function notifyUser(username, judul, pesan, link = "") {
  } catch (e) {}
 
  // 1. In-App Notification (lonceng)
+ // Paksa jadi string dulu -- field 'nik'/'username'/'nama' di Firestore kadang
+ // tersimpan sebagai Number (mis. hasil migrasi Excel), yang akan bikin
+ // .toLowerCase() crash kalau dipanggil langsung di atas tipe Number.
+ const safeUsername = String(resolvedUsername ?? "").trim();
+ const safeName = String(targetName ?? "").trim();
+ const safeNik = String(resolvedNik ?? "").trim();
+
  const notifPayload = {
- username_target: resolvedUsername,
- nama_target: targetName,
- nik_target: resolvedNik,
- target_aliases: Array.from(new Set([targetStr, targetLower, resolvedUsername, resolvedUsername.toLowerCase(), targetName, targetName.toLowerCase(), resolvedNik, resolvedNik.toLowerCase()])).filter(Boolean),
+ username_target: safeUsername,
+ nama_target: safeName,
+ nik_target: safeNik,
+ target_aliases: Array.from(new Set([targetStr, targetLower, safeUsername, safeUsername.toLowerCase(), safeName, safeName.toLowerCase(), safeNik, safeNik.toLowerCase()])).filter(Boolean),
  judul,
  pesan,
  link: link || "",
