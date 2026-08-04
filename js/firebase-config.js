@@ -3,7 +3,7 @@ import {
  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
  collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc,
  query, where, orderBy, limit, onSnapshot, writeBatch, serverTimestamp,
- Timestamp, increment
+ Timestamp, increment, arrayUnion
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 // TAMBAHKAN IMPORT STORAGE DI SINI
@@ -84,7 +84,7 @@ export const storage = getStorage(app);
 export {
  collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc,
  query, where, orderBy, limit, onSnapshot, writeBatch, serverTimestamp,
- Timestamp, increment, ref, uploadBytes, getDownloadURL
+ Timestamp, increment, ref, uploadBytes, getDownloadURL, arrayUnion
 };
 
 // Daftar Koleksi
