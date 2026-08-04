@@ -7,7 +7,7 @@
 import { getSession, logout, computeVisibleMenus, canAccessRoute, MENU_CONFIG, loginWithToken } from "./auth.js";
 import { parseHash, toast, fmtDateTime, openModal, closeModal, sha256, fsUpdate } from "./utils.js";
 import { icon, avatar, openNotificationCenter, showMemoDetailById, skeletonShadowLayout } from "./components.js";
-import { db, messaging, firebaseConfig, COL, collection, query, where, getDocs, doc, getDoc, updateDoc } from "./firebase-config.js";
+import { db, messaging, firebaseConfig, COL, collection, query, where, getDocs, doc, getDoc, updateDoc, arrayUnion } from "./firebase-config.js";
 import { getToken } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js";
 
 const viewContainer = document.getElementById("view-container");
@@ -118,16 +118,19 @@ async function aktifkanNotifikasiHP(userData) {
  if (currentToken) {
  console.log('Token HP Karyawan:', currentToken);
  
- // Simpan token ke database karyawan & users
+ // PENTING: pakai arrayUnion ke field 'fcm_tokens' (jamak), BUKAN menimpa
+ // field 'fcm_token' tunggal -- supaya login dari beberapa device (HP,
+ // laptop, dst) sekaligus tersimpan semua & semua device kebagian
+ // notifikasi, bukan cuma device yang paling terakhir login.
  if (userData && userData.username) {
  await fsUpdate(COL.USERS, userData.username, {
- fcm_token: currentToken
+ fcm_tokens: arrayUnion(currentToken)
  });
  
  if (userData.nik) {
  try {
  await updateDoc(doc(db, COL.MASTER_KARYAWAN, String(userData.nik)), {
- fcm_token: currentToken
+ fcm_tokens: arrayUnion(currentToken)
  });
  } catch(e) {
  console.warn("Karyawan doc update failed: ", e);
@@ -135,7 +138,7 @@ async function aktifkanNotifikasiHP(userData) {
  } else if (userData.id) {
  try {
  await updateDoc(doc(db, COL.MASTER_KARYAWAN, String(userData.id)), {
- fcm_token: currentToken
+ fcm_tokens: arrayUnion(currentToken)
  });
  } catch(e) {
  console.warn("Karyawan doc update failed: ", e);
@@ -233,13 +236,13 @@ export async function handleTestAndActivateNotification(session) {
  if (currentToken) {
  if (session && session.username) {
  await fsUpdate(COL.USERS, session.username, {
- fcm_token: currentToken
+ fcm_tokens: arrayUnion(currentToken)
  });
  
  if (session.nik) {
  try {
  await updateDoc(doc(db, COL.MASTER_KARYAWAN, String(session.nik)), {
- fcm_token: currentToken
+ fcm_tokens: arrayUnion(currentToken)
  });
  } catch(err) {
  console.warn("Karyawan doc update failed: ", err);
