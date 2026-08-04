@@ -60,8 +60,25 @@ module.exports = async function handler(req, res) {
       data: { link: link || "" }, 
       tokens: tokens
     });
-    
-    res.status(200).json({ success: true, response });
+
+    // PENTING: sendEachForMulticast bisa balas 200 OK di level API walau ada
+    // token INDIVIDUAL yang gagal (mis. token expired/tidak valid untuk
+    // platform tertentu). Rincian ini HARUS diperiksa satu-satu, jangan
+    // cuma andalkan successCount/failureCount agregat.
+    const detail = response.responses.map((r, i) => ({
+      token: tokens[i].slice(0, 20) + "...",
+      success: r.success,
+      error: r.success ? null : (r.error ? r.error.code + " - " + r.error.message : "Unknown error")
+    }));
+
+    console.log("FCM detail per-token:", JSON.stringify(detail, null, 2));
+
+    res.status(200).json({
+      success: true,
+      successCount: response.successCount,
+      failureCount: response.failureCount,
+      detail
+    });
 
   } catch (error) {
     console.error("CRASH SERVER:", error);
