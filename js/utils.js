@@ -1671,68 +1671,46 @@ export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
  const targetTo = Array.isArray(to) ? to.join(",") : String(to);
  if (!targetTo.trim()) return false;
 
- // 1. Catat ke Firestore 'mail' collection (bisa diproses jika ada extension Firebase Trigger Email)
+ // Catat ke Firestore 'mail' collection (opsional, hanya berguna jika
+ // extension Firebase "Trigger Email" terpasang di project ini)
  try {
  const toArray = Array.isArray(to) ? to : targetTo.split(",").map(s => s.trim()).filter(Boolean);
  fsAdd("mail", {
  to: toArray,
- message: {
- subject: subject,
- html: htmlBody
- },
+ message: { subject: subject, html: htmlBody },
  created_at: new Date().toISOString()
  }).catch(err => console.warn("Note: Write to Firebase mail collection queued:", err?.message));
  } catch (e) {}
 
- let APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbz0H0nC8QXzgPABT0kVjFf3N9zny8pHnu0yYNooUm_SrIQg-qwywKtvtpdOMia78ZGHFQ/exec";
+ // Kirim lewat endpoint server sendiri (/api/send-email, pakai Resend) —
+ // BUKAN lagi lewat Google Apps Script, karena jalur GAS sebelumnya tidak
+ // pernah benar-benar mengecek apakah pengiriman berhasil atau gagal.
  try {
- const { GAS_WEBAPP_URL } = await import("./gas-integration.js");
- if (GAS_WEBAPP_URL && !GAS_WEBAPP_URL.includes("GANTI_DENGAN")) {
- APPSCRIPT_URL = GAS_WEBAPP_URL;
- }
- } catch (e) {}
-
- const payload = {
- action: "send_email",
- type: "send_email",
- to: targetTo,
- recipient: targetTo,
- email: targetTo,
- subject: subject,
- judul: subject,
- htmlBody: htmlBody,
- body: htmlBody,
- html: htmlBody,
- message: htmlBody,
- cc: cc,
- name: "HRIS System - Andela"
- };
-
- // Send request to Apps Script Web App
- try {
- // Modern browser fetch with text/plain body avoids CORS preflight OPTIONS
- await fetch(APPSCRIPT_URL, {
+ const res = await fetch("/api/send-email", {
  method: "POST",
- headers: { "Content-Type": "text/plain;charset=utf-8" },
- body: JSON.stringify(payload)
+ headers: { "Content-Type": "application/json" },
+ body: JSON.stringify({ to: targetTo, subject, htmlBody, cc })
  });
- console.log("Notifikasi email berhasil dikirimkan ke Google Apps Script.");
- return true;
- } catch (error) {
- console.warn("Standard fetch terkendala, menggunakan fallback no-cors ke Apps Script:", error?.message || error);
+
+ let json;
  try {
- await fetch(APPSCRIPT_URL, {
- method: "POST",
- mode: "no-cors",
- headers: { "Content-Type": "text/plain;charset=utf-8" },
- body: JSON.stringify(payload)
- });
- console.log("Notifikasi email dikirim via no-cors fallback.");
- return true;
- } catch (e2) {
- console.error("Gagal mengirim email notifikasi:", e2);
+ json = await res.json();
+ } catch {
+ console.error("sendEmailNotif: respons /api/send-email bukan JSON valid.");
  return false;
  }
+
+ if (!res.ok || json?.success !== true) {
+ console.error("sendEmailNotif GAGAL:", json?.error || `HTTP ${res.status}`);
+ return false;
+ }
+
+ console.log("Email berhasil dikirim via Resend. ID:", json.id);
+ return true;
+
+ } catch (error) {
+ console.error("sendEmailNotif: gagal menghubungi /api/send-email.", error?.message || error);
+ return false;
  }
 }
 
