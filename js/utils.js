@@ -1849,7 +1849,8 @@ export async function notifyUser(username, judul, pesan, link = "") {
  targetName = uData.nama || targetName;
  resolvedUsername = uData.username || snap.id || resolvedUsername;
  resolvedNik = uData.nik || resolvedNik;
- if (uData.fcm_token) tokens.add(uData.fcm_token);
+ if (Array.isArray(uData.fcm_tokens)) uData.fcm_tokens.forEach(t => t && tokens.add(t));
+ if (uData.fcm_token) tokens.add(uData.fcm_token); // kompatibilitas data lama
  if (uData.email && !targetEmail) targetEmail = uData.email;
  }
 
@@ -1872,7 +1873,8 @@ export async function notifyUser(username, judul, pesan, link = "") {
  if (uName) resolvedUsername = uName;
  if (uNama && !targetName) targetName = uNama;
  if (uNik) resolvedNik = uNik;
- if (uData.fcm_token) tokens.add(uData.fcm_token);
+ if (Array.isArray(uData.fcm_tokens)) uData.fcm_tokens.forEach(t => t && tokens.add(t));
+ if (uData.fcm_token) tokens.add(uData.fcm_token); // kompatibilitas data lama
  if (uData.email && !targetEmail) targetEmail = uData.email;
  }
  });
@@ -1894,7 +1896,8 @@ export async function notifyUser(username, judul, pesan, link = "") {
  if (matches) {
  if (kNama && !targetName) targetName = kNama;
  if (kNik) resolvedNik = kNik;
- if (kData.fcm_token) tokens.add(kData.fcm_token);
+ if (Array.isArray(kData.fcm_tokens)) kData.fcm_tokens.forEach(t => t && tokens.add(t));
+ if (kData.fcm_token) tokens.add(kData.fcm_token); // kompatibilitas data lama
  if (kData.email && !targetEmail) targetEmail = kData.email;
  }
  });
