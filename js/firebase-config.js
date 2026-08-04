@@ -8,7 +8,7 @@ import {
 
 // TAMBAHKAN IMPORT STORAGE DI SINI
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js";
-import { getMessaging, isSupported } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js"; 
+import { getMessaging, isSupported, onMessage } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js"; 
 // Pastikan versinya (10.7.1) sama dengan versi firebase-app.js yang Anda gunakan di baris atas
 
 let firebaseConfig = {
@@ -45,6 +45,27 @@ export let messaging = null;
 isSupported().then((supported) => {
  if (supported) {
  messaging = getMessaging(app);
+
+ // PENTING: onBackgroundMessage di firebase-messaging-sw.js HANYA menangani
+ // notifikasi saat tab tidak aktif/browser diminimize. Saat tab HRIS sedang
+ // dibuka & difokus (foreground), pesan FCM TIDAK otomatis tampil kecuali
+ // ditangkap manual di sini lewat onMessage().
+ onMessage(messaging, (payload) => {
+ const title = (payload.notification && payload.notification.title) || "HRIS Andela Jaya";
+ const body = (payload.notification && payload.notification.body) || "Ada pembaruan baru.";
+ const link = payload.data ? payload.data.link : "";
+
+ if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+ const n = new Notification(title, { body, icon: "/assets/icon-192x192.png" });
+ n.onclick = () => {
+ window.focus();
+ if (link) {
+ window.location.hash = link.startsWith("#") ? link : "#" + link;
+ }
+ n.close();
+ };
+ }
+ });
  } else {
  console.log("Firebase Messaging tidak didukung di tab ini (Harus Add to Home Screen).");
  }
