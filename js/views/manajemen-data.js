@@ -1,5 +1,5 @@
 import { db, COL, collection, getDocs, doc, updateDoc, addDoc, setDoc, deleteDoc, query, where, limit } from "../firebase-config.js";
-import { fsGetAll, fsDelete, escapeHtml, toast, genId, notifyUser, openModal, closeModal } from "../utils.js";
+import { fsGetAll, fsDelete, escapeHtml, toast, genId, notifyUser, openModal, closeModal, calculateAge, calculateTenure } from "../utils.js";
 import { renderCrudModule, badge, emptyState, icon, skeletonRows } from "../components.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 
@@ -58,15 +58,15 @@ export async function mount(container) {
  collectionName: COL.MASTER_KARYAWAN,
  orderByField: "nama_karyawan",
  size: "2xl",
- searchFields: ["nama_karyawan", "nik_karyawan", "jabatan", "cabang", "divisi", "status_karyawan", "finger_name", "nik_ktp"],
+ searchFields: ["nama_karyawan", "nik_karyawan", "jabatan", "cabang", "divisi", "status_karyawan", "finger_name", "nik_ktp", "no_kk", "bpjs_tk", "bpjs_kes", "npwp"],
  beforeSave: (data) => {
- if (data.tanggal_lahir && !data.usia) {
- const dob = new Date(data.tanggal_lahir);
- if (!isNaN(dob)) {
- const ageDifMs = Date.now() - dob.getTime();
- const ageDate = new Date(ageDifMs);
- data.usia = Math.abs(ageDate.getUTCFullYear() - 1970);
+ if (data.tanggal_lahir) {
+ const age = calculateAge(data.tanggal_lahir);
+ if (age !== null) data.usia = age;
  }
+ if (data.tanggal_join) {
+ const tenure = calculateTenure(data.tanggal_join);
+ if (tenure) data.masa_kerja = tenure;
  }
  return data;
  },
@@ -76,13 +76,16 @@ export async function mount(container) {
  { key: "cabang", label: "Cabang" },
  { key: "divisi", label: "Divisi" },
  { key: "jabatan", label: "Jabatan" },
- { key: "jenis_kelamin", label: "Gender" },
+ { key: "nik_ktp", label: "NIK KTP", format: (v, r) => r.nik_ktp || r.no_ktp || v || "-" },
+ { key: "no_kk", label: "No. KK", format: (v, r) => r.no_kk || r.no_kartu_keluarga || v || "-" },
+ { key: "bpjs_tk", label: "BPJS TK", format: (v, r) => r.bpjs_tk || r.no_bpjs_tk || r.bpjs_ketenagakerjaan || v || "-" },
+ { key: "bpjs_kes", label: "BPJS KES", format: (v, r) => r.bpjs_kes || r.no_bpjs_kes || r.bpjs_kesehatan || v || "-" },
  { key: "status_karyawan", label: "Status", type: "badge" },
+ { key: "tanggal_lahir", label: "Tgl Lahir" },
+ { key: "usia", label: "Usia", format: (v, r) => (r.tanggal_lahir ? `${calculateAge(r.tanggal_lahir) ?? v ?? "-"} Thn` : (v ? `${v} Thn` : "-")) },
  { key: "tanggal_join", label: "Join" },
- { key: "kontrak_habis", label: "Kontrak" },
+ { key: "masa_kerja", label: "Masa Kerja", format: (v, r) => (r.tanggal_join ? calculateTenure(r.tanggal_join) : (v || "-")) },
  { key: "no_hp_aktif", label: "No HP" },
- { key: "email", label: "Email" },
- { key: "finger_name", label: "Finger" },
  { key: "aktif_tdk_aktif", label: "Aktif", type: "badge", badgeTone: (v) => v === "AKTIF" ? "green" : "red" },
  ],
  formFields: fields
