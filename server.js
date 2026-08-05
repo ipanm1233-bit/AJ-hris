@@ -14,6 +14,7 @@ const cronCheckKontrak = require('./api/cron-check-kontrak.js');
 const sendPush = require('./api/send-push.js');
 const syncAbsen = require('./api/sync-absen.js');
 const kanalProxy = require('./api/kanal-proxy.js');
+const sendEmail = require('./api/send-email.js');
 
 // Map the API paths to the handlers
 app.all('/api/cron-check-kontrak', async (req, res, next) => {
@@ -48,6 +49,15 @@ app.all('/api/kanal-proxy', async (req, res, next) => {
     await kanalProxy(req, res);
   } catch (error) {
     console.error("Error in kanal-proxy:", error);
+    next(error);
+  }
+});
+
+app.all('/api/send-email', async (req, res, next) => {
+  try {
+    await sendEmail(req, res);
+  } catch (error) {
+    console.error("Error in send-email:", error);
     next(error);
   }
 });
