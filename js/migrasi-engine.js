@@ -8,7 +8,7 @@
  * =====================================================================
  */
 import { db, COL, collection, doc, getDocs, writeBatch, query, limit, setDoc } from "./firebase-config.js";
-import { toSnakeCase, smartParseDate, sha256, genId, localDateStr } from "./utils.js";
+import { toSnakeCase, smartParseDate, sha256, genId, localDateStr, calculateAge, calculateTenure } from "./utils.js";
 
 /* ---------------------------------------------------------------------
  * PETA SHEET EXCEL -> KOLEKSI FIRESTORE
@@ -252,7 +252,8 @@ const STRING_ONLY_FIELDS = [
   "nopol", "no_polisi", "username", "user", "id", "kode", "nip", "rekening", "bank", 
   "finger_name", "id_cabang", "id_item", "id_absensi", "id_payroll", "id_shift", 
   "id_jabatan", "id_divisi", "id_outlet", "id_barang", "kode_item", "kode_barang",
-  "kontak_darurat_hp", "password", "password_hash"
+  "kontak_darurat_hp", "password", "password_hash", "nokk", "kartu_keluarga",
+  "bpjs", "ketenagakerjaan", "kesehatan", "ktp", "e_ktp"
 ];
 
 const NUMERIC_FIELDS = [
@@ -269,11 +270,30 @@ function smartConvertValue(rawValue, colKey, mapCfg) {
   const isDateCol = (mapCfg.dateFields || []).includes(colKey) || keyLower.includes("tanggal") || keyLower.includes("tgl") || keyLower.includes("date");
   const isJsonCol = (mapCfg.jsonFields || []).includes(colKey) || keyLower.includes("_json");
 
-  // Force string for code/ID/phone/NIK fields
-  const isStringOnly = STRING_ONLY_FIELDS.some(s => keyLower === s || keyLower.includes("nik") || keyLower.includes("no_hp") || keyLower.includes("phone") || keyLower.includes("telepon") || keyLower.includes("wa"));
+  // Force string for code/ID/phone/NIK/KK/BPJS/KTP/NPWP fields
+  const isStringOnly = STRING_ONLY_FIELDS.some(s => 
+    keyLower === s || 
+    keyLower.includes("nik") || 
+    keyLower.includes("kk") || 
+    keyLower.includes("bpjs") || 
+    keyLower.includes("ktp") || 
+    keyLower.includes("npwp") || 
+    keyLower.includes("no_hp") || 
+    keyLower.includes("phone") || 
+    keyLower.includes("telepon") || 
+    keyLower.includes("wa") ||
+    keyLower.includes("rekening")
+  );
 
-  if (isStringOnly) {
+  if (isStringOnly && !isDateCol && !isJsonCol) {
     let strVal = String(rawValue).trim();
+    if (strVal.includes("e") || strVal.includes("E")) {
+      try {
+        if (typeof rawValue === "number") {
+          strVal = BigInt(Math.round(rawValue)).toString();
+        }
+      } catch (e) {}
+    }
     if (strVal.endsWith(".0")) strVal = strVal.slice(0, -2);
     return strVal;
   }
@@ -338,7 +358,88 @@ function normalizeRecordKeys(obj, sheetName, mapCfg) {
     out.nama = cleanNama;
   }
 
-  // 2. CABANG / OUTLET
+  // 2. NIK KTP / NO KTP
+  const nikKtpVal = getVal(["nik_ktp", "no_ktp", "nikktp", "noktp", "e_ktp", "nik_e_ktp", "no_e_ktp", "nik_sesuai_ktp", "ktp", "id_ktp"]);
+  if (nikKtpVal) {
+    let cleanKtp = String(nikKtpVal).trim();
+    if (cleanKtp.endsWith(".0")) cleanKtp = cleanKtp.slice(0, -2);
+    out.nik_ktp = cleanKtp;
+    out.no_ktp = cleanKtp;
+  }
+
+  // 3. NO KARTU KELUARGA (NO KK)
+  const noKkVal = getVal(["no_kk", "nokk", "no_kartu_keluarga", "kartu_keluarga", "no_k_k", "no_kk_karyawan", "kartu_keluarga_no", "no_kk_ktp"]);
+  if (noKkVal) {
+    let cleanKk = String(noKkVal).trim();
+    if (cleanKk.endsWith(".0")) cleanKk = cleanKk.slice(0, -2);
+    out.no_kk = cleanKk;
+    out.no_kartu_keluarga = cleanKk;
+  }
+
+  // 4. BPJS KETENAGAKERJAAN (BPJS TK)
+  const bpjsTkVal = getVal(["bpjs_tk", "bpjstk", "no_bpjs_tk", "bpjs_ketenagakerjaan", "no_bpjs_ketenagakerjaan", "bpjs_tk_karyawan", "bpjs_tenaga_kerja", "ketenagakerjaan", "no_bpjstk", "no_bpjs_tenaga_kerja", "bpjstk_no"]);
+  if (bpjsTkVal) {
+    let cleanBpjsTk = String(bpjsTkVal).trim();
+    if (cleanBpjsTk.endsWith(".0")) cleanBpjsTk = cleanBpjsTk.slice(0, -2);
+    out.bpjs_tk = cleanBpjsTk;
+    out.no_bpjs_tk = cleanBpjsTk;
+    out.bpjs_ketenagakerjaan = cleanBpjsTk;
+  }
+
+  // 5. BPJS KESEHATAN (BPJS KES)
+  const bpjsKesVal = getVal(["bpjs_kes", "bpjskes", "no_bpjs_kes", "bpjs_kesehatan", "no_bpjs_kesehatan", "bpjs_kes_karyawan", "no_bpjskes", "jkn", "no_jkn", "kis", "no_kis", "bpjskes_no"]);
+  if (bpjsKesVal) {
+    let cleanBpjsKes = String(bpjsKesVal).trim();
+    if (cleanBpjsKes.endsWith(".0")) cleanBpjsKes = cleanBpjsKes.slice(0, -2);
+    out.bpjs_kes = cleanBpjsKes;
+    out.no_bpjs_kes = cleanBpjsKes;
+    out.bpjs_kesehatan = cleanBpjsKes;
+  }
+
+  // 6. NPWP
+  const npwpVal = getVal(["npwp", "no_npwp", "nonpwp", "npwp_karyawan"]);
+  if (npwpVal) {
+    let cleanNpwp = String(npwpVal).trim();
+    if (cleanNpwp.endsWith(".0")) cleanNpwp = cleanNpwp.slice(0, -2);
+    out.npwp = cleanNpwp;
+    out.no_npwp = cleanNpwp;
+  }
+
+  // 7. TANGGAL LAHIR & USIA (AUTO CALCULATE)
+  const tglLahirVal = getVal(["tanggal_lahir", "tgl_lahir", "tgl_lahir_karyawan", "dob", "date_of_birth", "tgl_lahir_pegawai"]);
+  if (tglLahirVal) {
+    const dLahir = smartParseDate(tglLahirVal);
+    if (dLahir) {
+      out.tanggal_lahir = localDateStr(dLahir);
+      out.tgl_lahir = out.tanggal_lahir;
+      const age = calculateAge(dLahir);
+      if (age !== null) {
+        out.usia = age;
+      }
+    }
+  } else if (out.tanggal_lahir) {
+    const age = calculateAge(out.tanggal_lahir);
+    if (age !== null) out.usia = age;
+  }
+
+  // 8. TANGGAL JOIN & MASA KERJA (AUTO CALCULATE)
+  const tglJoinVal = getVal(["tanggal_join", "tgl_join", "tanggal_masuk", "tgl_masuk", "tanggal_masuk_kerja", "tgl_masuk_kerja", "date_join", "join_date", "tgl_bergabung"]);
+  if (tglJoinVal) {
+    const dJoin = smartParseDate(tglJoinVal);
+    if (dJoin) {
+      out.tanggal_join = localDateStr(dJoin);
+      out.tgl_join = out.tanggal_join;
+      const tenure = calculateTenure(dJoin);
+      if (tenure) {
+        out.masa_kerja = tenure;
+      }
+    }
+  } else if (out.tanggal_join) {
+    const tenure = calculateTenure(out.tanggal_join);
+    if (tenure) out.masa_kerja = tenure;
+  }
+
+  // 9. CABANG / OUTLET
   const cabangVal = getVal(["cabang", "cabang_area", "outlet", "lokasi", "lokasi_kerja", "penempatan", "nama_cabang", "nama_outlet"]);
   if (cabangVal) {
     const cleanCab = String(cabangVal).trim();
@@ -347,7 +448,7 @@ function normalizeRecordKeys(obj, sheetName, mapCfg) {
     out.cabang_area = cleanCab;
   }
 
-  // 3. JABATAN / POSISI
+  // 10. JABATAN / POSISI
   const jabatanVal = getVal(["jabatan", "posisi", "jabatan_posisi", "role", "profesi", "nama_jabatan"]);
   if (jabatanVal) {
     const cleanJab = String(jabatanVal).trim();
@@ -355,7 +456,7 @@ function normalizeRecordKeys(obj, sheetName, mapCfg) {
     out.posisi = cleanJab;
   }
 
-  // 4. DIVISI / DEPARTEMEN
+  // 11. DIVISI / DEPARTEMEN
   const divisiVal = getVal(["divisi", "departemen", "bagian", "sektor", "nama_divisi"]);
   if (divisiVal) {
     const cleanDiv = String(divisiVal).trim();
@@ -363,7 +464,7 @@ function normalizeRecordKeys(obj, sheetName, mapCfg) {
     out.departemen = cleanDiv;
   }
 
-  // 5. NO HP / WHATSAPP
+  // 12. NO HP / WHATSAPP
   const hpVal = getVal(["no_hp_aktif", "no_hp", "no_telepon", "whatsapp", "wa", "hp", "handphone", "telepon"]);
   if (hpVal) {
     let cleanHp = String(hpVal).trim();
@@ -373,7 +474,7 @@ function normalizeRecordKeys(obj, sheetName, mapCfg) {
     out.whatsapp = cleanHp;
   }
 
-  // 6. STATUS AKTIF
+  // 13. STATUS AKTIF
   const statusAktifVal = getVal(["aktif_tdk_aktif", "status_aktif", "status", "aktif"]);
   if (statusAktifVal) {
     const stUpper = String(statusAktifVal).toUpperCase().trim();
@@ -386,7 +487,7 @@ function normalizeRecordKeys(obj, sheetName, mapCfg) {
     out.aktif_tdk_aktif = "AKTIF";
   }
 
-  // 7. STATUS KARYAWAN (PKWT / PKWTT / DLL)
+  // 14. STATUS KARYAWAN (PKWT / PKWTT / DLL)
   const statusKaryawanVal = getVal(["status_karyawan", "status_kepegawaian", "status_kerja"]);
   if (statusKaryawanVal) {
     out.status_karyawan = String(statusKaryawanVal).trim();
