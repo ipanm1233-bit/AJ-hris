@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, doc, getDoc, updateDoc } from "../firebase-config.js";
-import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toast, fsUpdate, fsAdd, fsGetAll, genId, localDateStr, notifyUser, getTargetsForRole } from "../utils.js";
+import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toast, fsUpdate, fsAdd, fsGetAll, genId, localDateStr, notifyUser, getTargetsForRole, calculateAge, calculateTenure } from "../utils.js";
 import { avatar, badge, icon, emptyState } from "../components.js";
 import { setSession } from "../auth.js";
 
@@ -87,9 +87,11 @@ export async function mount(container, { session, params }) {
  personalGrid.innerHTML = `
  ${detailRow("Nama Lengkap", k?.nama_karyawan || session.nama)}
  ${detailRow("NIK Karyawan", k?.nik_karyawan || session.nik)}
- ${detailRow("No. KTP / NIK KTP", k?.nik_ktp || k?.nik || "-")}
- ${detailRow("NPWP", k?.npwp || "-")}
+ ${detailRow("No. KTP / NIK KTP", k?.nik_ktp || k?.no_ktp || k?.nik || "-")}
+ ${detailRow("No. Kartu Keluarga (KK)", k?.no_kk || k?.no_kartu_keluarga || "-")}
+ ${detailRow("NPWP", k?.npwp || k?.no_npwp || "-")}
  ${detailRow("Tempat, Tanggal Lahir", (k?.tempat_lahir || "-") + (k?.tanggal_lahir ? `, ${fmtDate(k.tanggal_lahir)}` : ""))}
+ ${detailRow("Usia", k?.tanggal_lahir ? `${calculateAge(k.tanggal_lahir)} Tahun` : (k?.usia ? `${k.usia} Tahun` : "-"))}
  ${detailRow("Jenis Kelamin", k?.jenis_kelamin || "-")}
  ${detailRow("Agama", k?.agama || "-")}
  ${detailRow("Pendidikan Terakhir", k?.pendidikan || "-")}
@@ -122,9 +124,9 @@ export async function mount(container, { session, params }) {
  ${detailRow("Status Keaktifan", k?.aktif_tdk_aktif || "AKTIF")}
  ${detailRow("Atasan Langsung", k?.atasan || "-")}
  ${detailRow("Tanggal Join / Mulai Kerja", k?.tanggal_join ? fmtDate(k.tanggal_join) : "-")}
- ${detailRow("Masa Kerja", k?.tanggal_join ? calcMasaKerja(k.tanggal_join) : "-")}
- ${detailRow("BPJS Kesehatan", k?.bpjs_kes || "-")}
- ${detailRow("BPJS Ketenagakerjaan", k?.bpjs_tk || "-")}
+ ${detailRow("Masa Kerja", k?.tanggal_join ? calculateTenure(k.tanggal_join) : (k?.masa_kerja || "-"))}
+ ${detailRow("BPJS Kesehatan", k?.bpjs_kes || k?.no_bpjs_kes || k?.bpjs_kesehatan || "-")}
+ ${detailRow("BPJS Ketenagakerjaan", k?.bpjs_tk || k?.no_bpjs_tk || k?.bpjs_ketenagakerjaan || "-")}
  ${detailRow("Bank Pembayaran Gaji", k?.nama_bank || "Bank BCA")}
  ${detailRow("Nomor Rekening", k?.no_rekening || "-")}
  `;
@@ -490,11 +492,26 @@ function openEditProfileModal(session, k, container) {
  <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
  <div>
  <label class="block text-xs font-medium text-slate-500 mb-1">No. KTP / NIK KTP</label>
- <input type="text" id="edit-p-ktp" value="${escapeHtml(k?.nik_ktp || k?.nik || '')}" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400 font-mono">
+ <input type="text" id="edit-p-ktp" value="${escapeHtml(k?.nik_ktp || k?.no_ktp || k?.nik || '')}" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400 font-mono">
+ </div>
+ <div>
+ <label class="block text-xs font-medium text-slate-500 mb-1">No. Kartu Keluarga (KK)</label>
+ <input type="text" id="edit-p-kk" value="${escapeHtml(k?.no_kk || k?.no_kartu_keluarga || '')}" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400 font-mono">
  </div>
  <div>
  <label class="block text-xs font-medium text-slate-500 mb-1">NPWP</label>
- <input type="text" id="edit-p-npwp" value="${escapeHtml(k?.npwp || '')}" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400 font-mono">
+ <input type="text" id="edit-p-npwp" value="${escapeHtml(k?.npwp || k?.no_npwp || '')}" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400 font-mono">
+ </div>
+ </div>
+
+ <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+ <div>
+ <label class="block text-xs font-medium text-slate-500 mb-1">BPJS Ketenagakerjaan</label>
+ <input type="text" id="edit-p-bpjs-tk" value="${escapeHtml(k?.bpjs_tk || k?.no_bpjs_tk || k?.bpjs_ketenagakerjaan || '')}" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400 font-mono">
+ </div>
+ <div>
+ <label class="block text-xs font-medium text-slate-500 mb-1">BPJS Kesehatan</label>
+ <input type="text" id="edit-p-bpjs-kes" value="${escapeHtml(k?.bpjs_kes || k?.no_bpjs_kes || k?.bpjs_kesehatan || '')}" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400 font-mono">
  </div>
  <div>
  <label class="block text-xs font-medium text-slate-500 mb-1">Ukuran Baju / Seragam</label>
@@ -602,7 +619,10 @@ function openEditProfileModal(session, k, container) {
  const emailVal = m.querySelector("#edit-p-email").value.trim();
  const hpVal = m.querySelector("#edit-p-hp").value.trim();
  const ktpVal = m.querySelector("#edit-p-ktp").value.trim();
+ const kkVal = m.querySelector("#edit-p-kk") ? m.querySelector("#edit-p-kk").value.trim() : "";
  const npwpVal = m.querySelector("#edit-p-npwp").value.trim();
+ const bpjsTkVal = m.querySelector("#edit-p-bpjs-tk") ? m.querySelector("#edit-p-bpjs-tk").value.trim() : "";
+ const bpjsKesVal = m.querySelector("#edit-p-bpjs-kes") ? m.querySelector("#edit-p-bpjs-kes").value.trim() : "";
  const ukuranBajuVal = m.querySelector("#edit-p-ukuran-baju").value;
  const tempatLahirVal = m.querySelector("#edit-p-tempat-lahir").value.trim();
  const tglLahirVal = m.querySelector("#edit-p-tgl-lahir").value;
@@ -632,7 +652,16 @@ function openEditProfileModal(session, k, container) {
  email: emailVal,
  no_hp_aktif: hpVal,
  nik_ktp: ktpVal,
+ no_ktp: ktpVal,
+ no_kk: kkVal,
+ no_kartu_keluarga: kkVal,
  npwp: npwpVal,
+ bpjs_tk: bpjsTkVal,
+ no_bpjs_tk: bpjsTkVal,
+ bpjs_ketenagakerjaan: bpjsTkVal,
+ bpjs_kes: bpjsKesVal,
+ no_bpjs_kes: bpjsKesVal,
+ bpjs_kesehatan: bpjsKesVal,
  ukuran_baju: ukuranBajuVal,
  tempat_lahir: tempatLahirVal,
  tanggal_lahir: tglLahirVal,
@@ -647,6 +676,15 @@ function openEditProfileModal(session, k, container) {
  alamat: alamatVal,
  alamat_ktp: alamatKtpVal
  };
+
+ if (tglLahirVal) {
+ const age = calculateAge(tglLahirVal);
+ if (age !== null) updatePayload.usia = age;
+ }
+ if (k?.tanggal_join) {
+ const tenure = calculateTenure(k.tanggal_join);
+ if (tenure) updatePayload.masa_kerja = tenure;
+ }
 
  // Update MASTER_KARYAWAN
  if (session.nik) {
