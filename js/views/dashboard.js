@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, orderBy, limit, getDoc, doc, updateDoc, messaging } from "../firebase-config.js";
-import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, getTargetsForRole, toast, fsUpdate, fsAdd, fsGetAll, fsDelete, deleteBroadcastMemoAndNotifs, genId, localDateStr, getCalculatedJatahCuti } from "../utils.js";
+import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, getTargetsForRole, toast, fsUpdate, fsAdd, fsGetAll, fsDelete, deleteBroadcastMemoAndNotifs, genId, localDateStr, getCalculatedJatahCuti, calculateAge, calculateTenure } from "../utils.js";
 import { avatar, badge, icon, emptyState, skeletonRows, getDismissedAnnouncements, dismissAnnouncementForUser } from "../components.js";
 import { MANAJEMEN_ROLES } from "../auth.js";
 // IMPORT BARU UNTUK MENDAPATKAN TOKEN HP (FCM)
@@ -103,9 +103,11 @@ function openProfileModal(session, k) {
  </div>
  <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
  ${profileRow("NIK Karyawan", k.nik_karyawan)} ${profileRow("Cabang", k.cabang)} ${profileRow("Status Karyawan", k.status_karyawan)}
- ${profileRow("Jenis Kelamin", k.jenis_kelamin)} ${profileRow("Tanggal Lahir", fmtDate(k.tanggal_lahir))} ${profileRow("Tanggal Join", fmtDate(k.tanggal_join))}
- ${profileRow("Pendidikan", k.pendidikan)} ${profileRow("Agama", k.agama)} ${profileRow("No HP Aktif", k.no_hp_aktif)}
- ${profileRow("Email", k.email)} ${profileRow("Atasan", k.atasan)}
+ ${profileRow("NIK KTP", k.nik_ktp || k.no_ktp || "-")} ${profileRow("No. KK", k.no_kk || k.no_kartu_keluarga || "-")} ${profileRow("NPWP", k.npwp || k.no_npwp || "-")}
+ ${profileRow("BPJS Ketenagakerjaan", k.bpjs_tk || k.no_bpjs_tk || k.bpjs_ketenagakerjaan || "-")} ${profileRow("BPJS Kesehatan", k.bpjs_kes || k.no_bpjs_kes || k.bpjs_kesehatan || "-")} ${profileRow("No HP Aktif", k.no_hp_aktif)}
+ ${profileRow("Jenis Kelamin", k.jenis_kelamin)} ${profileRow("Tanggal Lahir", fmtDate(k.tanggal_lahir))} ${profileRow("Usia", k.tanggal_lahir ? `${calculateAge(k.tanggal_lahir)} Tahun` : (k.usia ? `${k.usia} Tahun` : "-"))}
+ ${profileRow("Tanggal Join", fmtDate(k.tanggal_join))} ${profileRow("Masa Kerja", k.tanggal_join ? calculateTenure(k.tanggal_join) : (k.masa_kerja || "-"))} ${profileRow("Atasan", k.atasan)}
+ ${profileRow("Pendidikan", k.pendidikan)} ${profileRow("Agama", k.agama)} ${profileRow("Email", k.email)}
  <div class="col-span-2 sm:col-span-3">${profileRow("Alamat", k.alamat)}</div>
  </div>
  <div class="mt-6 flex justify-end"><button id="btn-tutup-profil" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition">Tutup Profil</button></div>
