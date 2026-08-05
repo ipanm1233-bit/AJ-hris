@@ -120,6 +120,42 @@ export function daysBetween(a, b) {
  if (!da || !db_) return null;
  return Math.round((db_.setHours(0,0,0,0) - da.setHours(0,0,0,0)) / 86400000);
 }
+export function calculateAge(value) {
+ if (!value) return null;
+ const d = smartParseDate(value);
+ if (!d || isNaN(d.getTime())) return null;
+ const today = new Date();
+ let age = today.getFullYear() - d.getFullYear();
+ const m = today.getMonth() - d.getMonth();
+ if (m < 0 || (m === 0 && today.getDate() < d.getDate())) {
+ age--;
+ }
+ return age >= 0 ? age : null;
+}
+export function calculateTenure(value) {
+ if (!value) return "-";
+ const d = smartParseDate(value);
+ if (!d || isNaN(d.getTime())) return String(value);
+ const today = new Date();
+ let years = today.getFullYear() - d.getFullYear();
+ let months = today.getMonth() - d.getMonth();
+ if (months < 0 || (months === 0 && today.getDate() < d.getDate())) {
+ years--;
+ months += 12;
+ }
+ if (today.getDate() < d.getDate()) {
+ months--;
+ if (months < 0) {
+ years--;
+ months += 12;
+ }
+ }
+ if (years <= 0 && months <= 0) return "< 1 Bulan";
+ let parts = [];
+ if (years > 0) parts.push(`${years} Tahun`);
+ if (months > 0) parts.push(`${months} Bulan`);
+ return parts.join(" ") || "< 1 Bulan";
+}
 export function toSnakeCase(str) {
  return String(str)
  .trim()
