@@ -2593,19 +2593,19 @@ export async function openInviteEmployeeModal(defaultEmpNikOrName = "") {
             <label class="block text-xs font-bold text-slate-700 mb-1">Pilih Karyawan Ybs *</label>
             <select id="inv-emp-select" class="w-full px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl outline-none focus:border-emerald-500 bg-white">
               <option value="">-- Pilih Karyawan Aktif --</option>
-              ${activeEmp.map(k => {
+              ${activeEmp.map((k, idx) => {
                 const nik = k.nik_karyawan || k.nik || "-";
                 const nama = k.nama_karyawan || k.nama || "Karyawan";
                 const dept = k.departemen || k.jabatan || k.cabang || "-";
-                return `<option value="${escapeHtml(nik)}" data-nama="${escapeHtml(nama)}">${escapeHtml(nama)} (${escapeHtml(nik)}) - ${escapeHtml(dept)}</option>`;
+                return `<option value="${idx}" data-nik="${escapeHtml(nik)}" data-nama="${escapeHtml(nama)}">${escapeHtml(nama)} (${escapeHtml(nik)}) - ${escapeHtml(dept)}</option>`;
               }).join("")}
             </select>
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
             <div>
-              <label class="block text-[11px] font-bold text-slate-600 mb-1">Nama Lengkap</label>
-              <input type="text" id="inv-nama" class="w-full px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg outline-none" placeholder="Pilih karyawan di atas..." readonly>
+              <label class="block text-[11px] font-bold text-slate-600 mb-1">Nama Lengkap *</label>
+              <input type="text" id="inv-nama" class="w-full px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg outline-none focus:border-emerald-500" placeholder="Pilih karyawan atau ketik nama...">
             </div>
             <div>
               <label class="block text-[11px] font-bold text-slate-600 mb-1">Username Login *</label>
@@ -2682,8 +2682,8 @@ export async function openInviteEmployeeModal(defaultEmpNikOrName = "") {
         }
 
         selectEmp.onchange = () => {
-          const nikVal = selectEmp.value;
-          if (!nikVal) {
+          const idxVal = selectEmp.value;
+          if (idxVal === "" || idxVal === undefined) {
             inputNama.value = "";
             inputUser.value = "";
             inputPhone.value = "";
@@ -2692,26 +2692,29 @@ export async function openInviteEmployeeModal(defaultEmpNikOrName = "") {
             return;
           }
 
-          const k = activeEmp.find(x => (x.nik_karyawan || x.nik) === nikVal);
-          if (!k) return;
+          const k = activeEmp[Number(idxVal)];
+          const selectedOpt = selectEmp.options[selectEmp.selectedIndex];
+          const namaOpt = selectedOpt?.dataset?.nama || (selectedOpt?.textContent || "").split("(")[0].trim();
+          const nikOpt = selectedOpt?.dataset?.nik || k?.nik_karyawan || k?.nik || "";
 
           const matchedUser = allUsers.find(u => 
-            (u.nik && String(u.nik) === String(nikVal)) ||
-            (u.nama && String(u.nama).toLowerCase().trim() === String(k.nama_karyawan || k.nama).toLowerCase().trim()) ||
-            (u.username && k.username && String(u.username).toLowerCase() === String(k.username).toLowerCase())
+            (u.nik && String(u.nik) !== "-" && nikOpt && String(u.nik) === String(nikOpt)) ||
+            (u.nama && String(u.nama).toLowerCase().trim() === String(namaOpt).toLowerCase().trim()) ||
+            (u.username && k?.username && String(u.username).toLowerCase() === String(k.username).toLowerCase())
           );
 
-          inputNama.value = k.nama_karyawan || k.nama || "";
+          inputNama.value = k?.nama_karyawan || k?.nama || matchedUser?.nama || namaOpt || "";
           
-          let calculatedUsername = matchedUser?.username || k.username || k.nik_karyawan || k.nik || "";
+          let calculatedUsername = matchedUser?.username || k?.username || (nikOpt && nikOpt !== "-" ? nikOpt : "");
           if (!calculatedUsername) {
-            calculatedUsername = String(k.nama_karyawan || k.nama || "USER").split(" ")[0].toUpperCase();
+            const firstName = String(inputNama.value || "USER").trim().split(" ")[0].replace(/[^a-zA-Z0-9]/g, "");
+            calculatedUsername = firstName.toUpperCase() || "USER";
           }
           inputUser.value = String(calculatedUsername).toUpperCase();
 
           if (matchedUser?.role) {
             inputRole.value = matchedUser.role.toUpperCase();
-          } else if (k.jabatan || k.posisi) {
+          } else if (k?.jabatan || k?.posisi) {
             const jUpper = (k.jabatan || k.posisi || "").toUpperCase();
             if (jUpper.includes("MANAGER")) inputRole.value = "MANAGER";
             else if (jUpper.includes("SUPERVISOR") || jUpper.includes("SPV")) inputRole.value = "SPV";
@@ -2721,10 +2724,10 @@ export async function openInviteEmployeeModal(defaultEmpNikOrName = "") {
             else inputRole.value = "STAFF";
           }
 
-          const rawPhone = k.no_hp_aktif || k.no_telepon || k.no_hp || k.hp || k.whatsapp || matchedUser?.no_hp || matchedUser?.no_telepon || "";
+          const rawPhone = k?.no_hp_aktif || k?.no_telepon || k?.no_hp || k?.hp || k?.whatsapp || matchedUser?.no_hp || matchedUser?.no_telepon || "";
           inputPhone.value = formatPhoneNumberForWa(rawPhone);
 
-          inputEmail.value = k.email || k.email_perusahaan || matchedUser?.email || "";
+          inputEmail.value = k?.email || k?.email_perusahaan || matchedUser?.email || "";
 
           updatePreview();
         };
@@ -2735,8 +2738,9 @@ export async function openInviteEmployeeModal(defaultEmpNikOrName = "") {
 
         if (defaultEmpNikOrName) {
           const matchOpt = Array.from(selectEmp.options).find(opt => 
-            opt.value === defaultEmpNikOrName || 
-            opt.dataset.nama?.toLowerCase().includes(defaultEmpNikOrName.toLowerCase())
+            opt.dataset.nik === defaultEmpNikOrName || 
+            opt.dataset.nama?.toLowerCase().includes(defaultEmpNikOrName.toLowerCase()) ||
+            opt.textContent.toLowerCase().includes(defaultEmpNikOrName.toLowerCase())
           );
           if (matchOpt) {
             selectEmp.value = matchOpt.value;
@@ -2751,7 +2755,8 @@ export async function openInviteEmployeeModal(defaultEmpNikOrName = "") {
           const role = inputRole.value;
           const email = inputEmail.value.trim();
           const phone = inputPhone.value.trim();
-          const nik = selectEmp.value;
+          const selectedOpt = selectEmp.options[selectEmp.selectedIndex];
+          const nik = selectedOpt?.dataset?.nik || "-";
 
           if (!uname || !pword || !nama) {
             toast("Nama, Username, dan Password wajib diisi!", "warning");
