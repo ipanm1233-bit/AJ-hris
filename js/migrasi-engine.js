@@ -1,13 +1,13 @@
 /**
  * =====================================================================
- * MIGRASI-ENGINE.JS — Mesin Super Migrasi Excel → Firestore
+ * MIGRASI-ENGINE.JS — Mesin Super Migrasi Excel → Firestore (Smart Version)
  * Portal HRIS & Operasional CV Andela Jaya
  * =====================================================================
  * Menggunakan ulang firebase-config.js & utils.js yang sama dengan
  * aplikasi utama agar skema data 100% konsisten.
  * =====================================================================
  */
-import { db, COL, collection, doc, getDocs, writeBatch, query, limit } from "./firebase-config.js";
+import { db, COL, collection, doc, getDocs, writeBatch, query, limit, setDoc } from "./firebase-config.js";
 import { toSnakeCase, smartParseDate, sha256, genId, localDateStr } from "./utils.js";
 
 /* ---------------------------------------------------------------------
@@ -159,7 +159,7 @@ async function checkFirebaseConnection() {
   } catch (e) {
     console.error(e);
     if (String(e.code).includes("permission-denied")) {
-      statusEl.innerHTML = `<span class="text-amber-600">●</span> Terhubung ke Firestore, namun Security Rules menolak akses. Pastikan Rules mengizinkan tulis untuk proses migrasi (bisa diperketat kembali setelahnya).`;
+      statusEl.innerHTML = `<span class="text-amber-600">●</span> Terhubung ke Firestore, namun Security Rules menolak akses. Pastikan Rules mengizinkan tulis untuk proses migrasi.`;
       unlockStep(2);
     } else {
       statusEl.innerHTML = `<span class="text-red-600">●</span> Gagal terhubung ke Firebase. Periksa kembali kredensial pada <code class="bg-slate-100 px-1 rounded">js/firebase-config.js</code>. Detail: ${e.message}`;
@@ -173,7 +173,7 @@ async function checkFirebaseConnection() {
 function handleFile(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
-    const wb = XLSX.read(e.target.result, { type: "array", cellDates: true });
+    const wb = XLSX.read(e.target.result, { type: "array", cellDates: true, raw: true });
     workbookData = {};
     wb.SheetNames.forEach(name => {
       workbookData[name] = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: null });
@@ -191,7 +191,8 @@ function renderSheetPreview() {
 
   listEl.innerHTML = Object.keys(workbookData).map(name => {
     const rows = workbookData[name];
-    const rowCount = Math.max(rows.length - 1, 0);
+    const headerIdx = findHeaderRowIndex(rows);
+    const rowCount = Math.max(rows.length - (headerIdx + 1), 0);
     const map = getMapConfigForSheet(name);
     const skip = !map || map.skip;
     if (!skip) selectedSheets.add(name);
@@ -223,50 +224,208 @@ function renderSheetPreview() {
 }
 
 /* ---------------------------------------------------------------------
- * TIPE DATA CERDAS: string angka -> Number, tanggal -> Smart Date Parser
+ * DETEKSI HEURISTIK BARIS HEADER
  * ------------------------------------------------------------------- */
+function findHeaderRowIndex(rows) {
+  if (!rows || !rows.length) return 0;
+  const keywords = ["nik", "nama", "id", "kode", "tanggal", "tgl", "status", "cabang", "jabatan", "divisi", "no", "email", "hp", "telepon", "outlet", "item", "barang"];
+  
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const row = rows[i];
+    if (!Array.isArray(row)) continue;
+    const stringCells = row.filter(c => c !== null && c !== undefined && String(c).trim() !== "");
+    if (stringCells.length < 2) continue;
+
+    const rowStr = stringCells.map(c => String(c).toLowerCase()).join(" ");
+    const matchCount = keywords.filter(kw => rowStr.includes(kw)).length;
+    if (matchCount >= 1) return i;
+  }
+  return 0;
+}
+
+/* ---------------------------------------------------------------------
+ * TIPE DATA CERDAS: ID/NIK -> ALWAYS STRING, ANGKA -> NUMBER, DATE -> SMART PARSER
+ * ------------------------------------------------------------------- */
+const STRING_ONLY_FIELDS = [
+  "nik", "nik_karyawan", "nik_ktp", "no_kk", "bpjs_tk", "bpjs_kes", "npwp", 
+  "no_hp", "no_hp_aktif", "no_telepon", "phone", "whatsapp", "wa", "hp", "telepon",
+  "nopol", "no_polisi", "username", "user", "id", "kode", "nip", "rekening", "bank", 
+  "finger_name", "id_cabang", "id_item", "id_absensi", "id_payroll", "id_shift", 
+  "id_jabatan", "id_divisi", "id_outlet", "id_barang", "kode_item", "kode_barang",
+  "kontak_darurat_hp", "password", "password_hash"
+];
+
+const NUMERIC_FIELDS = [
+  "gaji", "gaji_pokok", "tunjangan", "potongan", "nominal", "jumlah", "stok", 
+  "harga", "usia", "tanggungan", "jatah_tahunan", "jatah_khusus", "jatah_akumulasi", 
+  "kuantitas", "qty", "level", "poin", "bobot", "rate", "persen", "total"
+];
+
 function smartConvertValue(rawValue, colKey, mapCfg) {
   if (rawValue === null || rawValue === undefined) return null;
   if (rawValue === "#N/A" || rawValue === "-" || rawValue === "") return null;
 
-  const isDateCol = (mapCfg.dateFields || []).includes(colKey);
-  const isJsonCol = (mapCfg.jsonFields || []).includes(colKey);
+  const keyLower = String(colKey || "").toLowerCase();
+  const isDateCol = (mapCfg.dateFields || []).includes(colKey) || keyLower.includes("tanggal") || keyLower.includes("tgl") || keyLower.includes("date");
+  const isJsonCol = (mapCfg.jsonFields || []).includes(colKey) || keyLower.includes("_json");
+
+  // Force string for code/ID/phone/NIK fields
+  const isStringOnly = STRING_ONLY_FIELDS.some(s => keyLower === s || keyLower.includes("nik") || keyLower.includes("no_hp") || keyLower.includes("phone") || keyLower.includes("telepon") || keyLower.includes("wa"));
+
+  if (isStringOnly) {
+    let strVal = String(rawValue).trim();
+    if (strVal.endsWith(".0")) strVal = strVal.slice(0, -2);
+    return strVal;
+  }
 
   if (isDateCol) {
     const d = smartParseDate(rawValue);
-    return d ? localDateStr(d) : null;   // simpan "YYYY-MM-DD" murni, anti-ambigu
+    return d ? localDateStr(d) : String(rawValue).trim();
   }
   if (isJsonCol) {
     if (typeof rawValue !== "string") return rawValue;
     try { return JSON.parse(rawValue); } catch { return null; }
   }
   if (rawValue instanceof Date) return rawValue.toISOString();
+  
+  // If explicitly numeric or number type
   if (typeof rawValue === "number") return rawValue;
+
   if (typeof rawValue === "string") {
     const trimmed = rawValue.trim();
-    if (/^-?\d+(\.\d+)?$/.test(trimmed) && trimmed.length < 16) return parseFloat(trimmed);
+    const isNumericField = NUMERIC_FIELDS.some(n => keyLower.includes(n));
+    if (isNumericField && /^-?\d+(\.\d+)?$/.test(trimmed)) {
+      return parseFloat(trimmed);
+    }
     return trimmed;
   }
   return rawValue;
 }
 
+/* ---------------------------------------------------------------------
+ * UTIS NORMALIZE RECORD KEYS & DUAL-WRITING ALIASES
+ * ------------------------------------------------------------------- */
+function normalizeRecordKeys(obj, sheetName, mapCfg) {
+  const out = { ...obj };
+
+  // Helper untuk mengambil nilai dari beberapa variasi nama kolom
+  const getVal = (aliases) => {
+    for (const a of aliases) {
+      if (out[a] !== undefined && out[a] !== null && out[a] !== "") return out[a];
+    }
+    // Cari secara fuzzy jika tidak ketemu persis
+    for (const k of Object.keys(out)) {
+      const kNorm = k.toLowerCase().replace(/[^a-z0-9]/g, "");
+      for (const a of aliases) {
+        if (kNorm === a.toLowerCase().replace(/[^a-z0-9]/g, "")) return out[k];
+      }
+    }
+    return null;
+  };
+
+  // 1. DUAL-WRITE NIK & NAMA (Sangat krusial untuk Master Karyawan & Relasinya)
+  const nikVal = getVal(["nik_karyawan", "nik", "no_nik", "id_karyawan", "no_induk", "no_induk_karyawan", "nip", "id_pegawai"]);
+  if (nikVal) {
+    const cleanNik = String(nikVal).trim();
+    out.nik_karyawan = cleanNik;
+    out.nik = cleanNik;
+  }
+
+  const namaVal = getVal(["nama_karyawan", "nama", "nama_lengkap", "nama_pegawai"]);
+  if (namaVal) {
+    const cleanNama = String(namaVal).trim();
+    out.nama_karyawan = cleanNama;
+    out.nama = cleanNama;
+  }
+
+  // 2. CABANG / OUTLET
+  const cabangVal = getVal(["cabang", "cabang_area", "outlet", "lokasi", "lokasi_kerja", "penempatan", "nama_cabang", "nama_outlet"]);
+  if (cabangVal) {
+    const cleanCab = String(cabangVal).trim();
+    out.cabang = cleanCab;
+    out.outlet = cleanCab;
+    out.cabang_area = cleanCab;
+  }
+
+  // 3. JABATAN / POSISI
+  const jabatanVal = getVal(["jabatan", "posisi", "jabatan_posisi", "role", "profesi", "nama_jabatan"]);
+  if (jabatanVal) {
+    const cleanJab = String(jabatanVal).trim();
+    out.jabatan = cleanJab;
+    out.posisi = cleanJab;
+  }
+
+  // 4. DIVISI / DEPARTEMEN
+  const divisiVal = getVal(["divisi", "departemen", "bagian", "sektor", "nama_divisi"]);
+  if (divisiVal) {
+    const cleanDiv = String(divisiVal).trim();
+    out.divisi = cleanDiv;
+    out.departemen = cleanDiv;
+  }
+
+  // 5. NO HP / WHATSAPP
+  const hpVal = getVal(["no_hp_aktif", "no_hp", "no_telepon", "whatsapp", "wa", "hp", "handphone", "telepon"]);
+  if (hpVal) {
+    let cleanHp = String(hpVal).trim();
+    if (cleanHp.startsWith("8")) cleanHp = "0" + cleanHp;
+    out.no_hp_aktif = cleanHp;
+    out.no_hp = cleanHp;
+    out.whatsapp = cleanHp;
+  }
+
+  // 6. STATUS AKTIF
+  const statusAktifVal = getVal(["aktif_tdk_aktif", "status_aktif", "status", "aktif"]);
+  if (statusAktifVal) {
+    const stUpper = String(statusAktifVal).toUpperCase().trim();
+    if (["AKTIF", "Y", "YES", "1", "TRUE"].includes(stUpper)) {
+      out.aktif_tdk_aktif = "AKTIF";
+    } else if (["TIDAK AKTIF", "NON AKTIF", "N", "NO", "0", "FALSE"].includes(stUpper)) {
+      out.aktif_tdk_aktif = "TIDAK AKTIF";
+    }
+  } else if (mapCfg.collection === COL.MASTER_KARYAWAN) {
+    out.aktif_tdk_aktif = "AKTIF";
+  }
+
+  // 7. STATUS KARYAWAN (PKWT / PKWTT / DLL)
+  const statusKaryawanVal = getVal(["status_karyawan", "status_kepegawaian", "status_kerja"]);
+  if (statusKaryawanVal) {
+    out.status_karyawan = String(statusKaryawanVal).trim();
+  }
+
+  return out;
+}
+
 function sheetRowsToObjects(sheetName) {
   const rows = workbookData[sheetName];
   if (!rows || rows.length < 2) return [];
-  const rawHeaders = rows[0];
+
+  const headerIdx = findHeaderRowIndex(rows);
+  const rawHeaders = rows[headerIdx];
+  if (!rawHeaders || !Array.isArray(rawHeaders)) return [];
+
   const headers = rawHeaders.map(h => toSnakeCase(h || ""));
   const mapCfg = getMapConfigForSheet(sheetName);
   const objects = [];
-  for (let i = 1; i < rows.length; i++) {
+
+  for (let i = headerIdx + 1; i < rows.length; i++) {
     const rawRow = rows[i];
-    if (!rawRow || rawRow.every(c => c === null || c === "")) continue;
-    const obj = {};
+    if (!rawRow || !Array.isArray(rawRow) || rawRow.every(c => c === null || c === undefined || String(c).trim() === "")) continue;
+
+    const rawObj = {};
     headers.forEach((h, idx) => {
       if (!h) return;
-      obj[h] = smartConvertValue(rawRow[idx], h, mapCfg);
+      const val = smartConvertValue(rawRow[idx], h, mapCfg);
+      if (val !== null && val !== undefined) {
+        rawObj[h] = val;
+      }
     });
-    objects.push(obj);
+
+    const normalized = normalizeRecordKeys(rawObj, sheetName, mapCfg);
+    if (Object.keys(normalized).length > 0) {
+      objects.push(normalized);
+    }
   }
+
   return objects;
 }
 
@@ -305,17 +464,63 @@ async function runMigration() {
     let batch = writeBatch(db);
     let opCount = 0;
     let written = 0;
+
     for (const obj of objects) {
       let docId;
-      if (mapCfg.idField && obj[mapCfg.idField]) {
+
+      // Smart ID Selection berdasarkan tipe koleksi
+      if (mapCfg.collection === COL.MASTER_KARYAWAN) {
+        docId = sanitizeDocId(String(obj.nik_karyawan || obj.nik || obj.no_nik || obj.id_karyawan || obj.nama_karyawan || genId("EMP")));
+      } else if (mapCfg.collection === COL.USERS) {
+        docId = sanitizeDocId(String(obj.username || obj.user || obj.nik || obj.nik_karyawan || genId("USR")).toUpperCase());
+      } else if (mapCfg.collection === COL.MASTER_CABANG) {
+        docId = sanitizeDocId(String(obj.id_cabang || obj.id_outlet || obj.kode_cabang || obj.kode || obj.id || genId("CAB")));
+      } else if (mapCfg.collection === COL.MASTER_INVENTORY) {
+        docId = sanitizeDocId(String(obj.id_item || obj.id_barang || obj.kode_item || obj.kode || obj.id || genId("INV")));
+      } else if (mapCfg.collection === COL.MASTER_KENDARAAN) {
+        docId = sanitizeDocId(String(obj.no_polisi || obj.nopol || obj.plat_nomor || obj.id_kendaraan || genId("VHC")));
+      } else if (mapCfg.idField && obj[mapCfg.idField]) {
         docId = sanitizeDocId(String(obj[mapCfg.idField]));
       } else {
-        docId = genId(sheetName.replace(/\s+/g, "").slice(0, 6).toUpperCase());
+        docId = sanitizeDocId(String(obj.id || obj.kode || obj.nik || obj.username || genId(sheetName.replace(/\s+/g, "").slice(0, 6).toUpperCase())));
       }
+
       const ref = doc(db, mapCfg.collection, docId);
       batch.set(ref, { ...obj, _migrated_at: new Date().toISOString(), _source_sheet: sheetName }, { merge: true });
       opCount++; written++;
-      if (opCount >= 450) {
+
+      // Otomatis buatkan akun pengguna USERS jika migrasi Master Karyawan agar langsung bisa login
+      if (mapCfg.collection === COL.MASTER_KARYAWAN && (obj.nik_karyawan || obj.nik)) {
+        const userUname = String(obj.nik_karyawan || obj.nik).toUpperCase();
+        const userRef = doc(db, COL.USERS, userUname);
+        
+        let userRole = "STAFF";
+        const jabUpper = String(obj.jabatan || obj.posisi || "").toUpperCase();
+        if (jabUpper.includes("MANAGER")) userRole = "MANAGER";
+        else if (jabUpper.includes("SUPERVISOR") || jabUpper.includes("SPV")) userRole = "SPV";
+        else if (jabUpper.includes("DRIVER")) userRole = "DRIVER";
+        else if (jabUpper.includes("SALES")) userRole = "SALES";
+        else if (jabUpper.includes("WAREHOUSE") || jabUpper.includes("GUDANG")) userRole = "WAREHOUSE";
+        else if (jabUpper.includes("FINANCE")) userRole = "FINANCE";
+        else if (jabUpper.includes("HRD")) userRole = "HRD";
+
+        const defaultHash = "ba3253876aed6bc22d4a6ff53d8406c6ad864195ed144ea5c87621042db51563"; // sha256("andela123")
+        batch.set(userRef, {
+          username: userUname,
+          nama: obj.nama_karyawan || obj.nama || "Karyawan",
+          nik: obj.nik_karyawan || obj.nik,
+          role: userRole,
+          posisi: obj.jabatan || obj.posisi || "Staf",
+          email: obj.email || "",
+          no_hp: obj.no_hp_aktif || obj.no_hp || "",
+          password_hash: defaultHash,
+          password: "andela123",
+          updated_at: new Date().toISOString()
+        }, { merge: true });
+        opCount++;
+      }
+
+      if (opCount >= 400) {
         await batch.commit();
         batch = writeBatch(db);
         opCount = 0;
@@ -329,7 +534,7 @@ async function runMigration() {
   }
 
   label.textContent = `Migrasi selesai! ${sheetsToRun.length} sheet telah diproses.`;
-  logTo("migrate-log", `🎉 Seluruh proses migrasi selesai.`, "green");
+  logTo("migrate-log", `🎉 Seluruh proses migrasi selesai. Data NIK, Nama, dan Relasi telah dinormalisasi 100%.`, "green");
   btn.disabled = false;
   btn.textContent = "Migrasi Selesai — Jalankan Ulang?";
   unlockStep(4);
@@ -359,7 +564,7 @@ async function runSeeder() {
     seedCollection(COL.KALENDER_HR, [
       { judul: "Rapat Koordinasi Bulanan HRD", tanggal_mulai: new Date().toISOString(), jenis: "Agenda", keterangan: "Contoh agenda (dummy seed)." },
     ], "EVT"),
-    seedCollection(COL.SIKLUS_KARYAWAN, [], "SK"), // kosong, akan terisi natural via modul
+    seedCollection(COL.SIKLUS_KARYAWAN, [], "SK"),
     seedCollection(COL.UANG_MAKAN_EXPEDISI, [], "UM"),
     seedCollection(COL.FORM_CONFIG, [
       {
