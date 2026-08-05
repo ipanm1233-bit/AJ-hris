@@ -218,6 +218,7 @@ export async function renderCrudModule(container, cfg) {
  }
 
  function cellValue(row, col) {
+ if (col.format) return col.format(row[col.key], row);
  let v = row[col.key];
  if (col.type === "date") return fmtDateShort(v);
  if (col.type === "currency") return fmtRupiah(v);
