@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, getDoc, setDoc, doc, limit } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan, downloadXlsx, ensureXlsxLoaded } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan, downloadXlsx, ensureXlsxLoaded, formatPhoneNumberForWa, openWhatsAppMessage, getEmployeePhoneByName, buildKpiTaskWaMessage } from "../utils.js";
 import { renderCrudModule, badge, emptyState, skeletonRows, avatar } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
@@ -2342,6 +2342,9 @@ export async function mount(container, { session, params }) {
  ${t.status === 'DONE' ? 'Lihat / Edit Nilai' : ' Nilai Sekarang'}
  </button>
  ` : ''}
+ <button data-wa-kpi="${t.id}" class="px-2.5 py-1.5 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg inline-flex items-center gap-1 transition shadow-2xs" title="${t.status === 'DONE' ? 'Kirim Hasil via WhatsApp' : 'Kirim Tugas / Pengingat via WhatsApp'}">
+ <svg class="w-3.5 h-3.5 text-emerald-600" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg> WA
+ </button>
  ${isHrd ? `
  <button data-input-manual="${t.id}" class="px-2.5 py-1.5 text-xs font-semibold ${t.status === 'DONE' ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200' : 'bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs'} rounded-lg inline-flex items-center gap-1 transition">
  ${t.status === 'DONE' ? ' Input HRD' : ' Input Fisik'}
@@ -2380,6 +2383,67 @@ export async function mount(container, { session, params }) {
  btn.onclick = () => {
  const task = tasks.find(x => x.id === btn.dataset.isiKpi);
  if (task) openIsiKpiModal(task);
+ };
+ });
+
+ wrap.querySelectorAll("[data-wa-kpi]").forEach(btn => {
+ btn.onclick = async () => {
+ const tId = btn.dataset.waKpi;
+ const task = tasks.find(x => x.id === tId);
+ if (!task) return;
+
+ const isDone = task.status === "DONE";
+ const recipientName = isDone ? task.nama_dinilai : task.nama_penilai;
+ const msgType = isDone ? "RESULT" : "ASSIGNMENT";
+
+ toast(`Mencari kontak WhatsApp ${recipientName}...`, "info");
+ const phone = await getEmployeePhoneByName(recipientName);
+ const textMsg = buildKpiTaskWaMessage(task, msgType);
+
+ openModal({
+ title: `Kirim WhatsApp Penilaian KPI (${escapeHtml(recipientName)})`,
+ bodyHtml: `
+ <div class="space-y-3 text-left">
+ <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2">
+ <span class="text-xl">💬</span>
+ <div class="text-xs text-emerald-900 font-medium">
+ Kirim notifikasi ${isDone ? "Hasil Evaluasi KPI" : "Tugas Penilaian KPI 360"} langsung ke WhatsApp <strong>${escapeHtml(recipientName)}</strong>.
+ </div>
+ </div>
+ <div>
+ <label class="block text-xs font-bold text-slate-700 mb-1">Nomor WhatsApp Recipient</label>
+ <input type="text" id="wa-recipient-phone" value="${escapeHtml(phone || '')}" placeholder="Contoh: 08123456789" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl outline-none focus:border-emerald-500 font-mono">
+ <p class="text-[10px] text-slate-400 mt-1">*Nomor otomatis diformat ke format internasional (628...)</p>
+ </div>
+ <div>
+ <label class="block text-xs font-bold text-slate-700 mb-1">Pratinjau Pesan WhatsApp</label>
+ <textarea id="wa-message-preview" rows="9" class="w-full px-3 py-2 text-xs font-mono bg-slate-50 border border-slate-200 rounded-xl outline-none">${escapeHtml(textMsg)}</textarea>
+ </div>
+ </div>
+ `,
+ footerHtml: `
+ <div class="flex items-center justify-between w-full">
+ <button id="btn-close-wa-modal" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition">Batal</button>
+ <button id="btn-send-wa-now" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-md flex items-center gap-1.5">
+ <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+ Buka WhatsApp & Kirim
+ </button>
+ </div>
+ `,
+ onMount: (m2) => {
+ m2.querySelector("#btn-close-wa-modal").onclick = closeModal;
+ m2.querySelector("#btn-send-wa-now").onclick = () => {
+ const pVal = m2.querySelector("#wa-recipient-phone").value.trim();
+ const msgVal = m2.querySelector("#wa-message-preview").value;
+ if (!pVal) {
+ toast("Mohon isi nomor WhatsApp tujuan!", "warning");
+ return;
+ }
+ openWhatsAppMessage(pVal, msgVal);
+ closeModal();
+ };
+ }
+ });
  };
  });
 
@@ -2633,6 +2697,50 @@ export async function mount(container, { session, params }) {
  toast("Penilaian KPI & Rekomendasi berhasil disimpan!", "success");
  closeModal();
  await loadKpi360();
+
+ const doneTask = {
+ ...task,
+ skor_akhir: finalScore,
+ rekomendasi: rekomendasiVal,
+ catatan_baik: catatanBaik,
+ catatan_perbaikan: catatanPerbaikan,
+ catatan_penilai: catatanPenilai
+ };
+
+ openModal({
+ title: "Penilaian Berhasil Disimpan",
+ bodyHtml: `
+ <div class="text-center py-4 space-y-3">
+ <div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold">✓</div>
+ <h3 class="text-sm font-bold text-slate-800">Evaluasi KPI untuk ${escapeHtml(task.nama_dinilai)} Selesai</h3>
+ <p class="text-xs text-slate-600 max-w-md mx-auto">
+ Skor Akhir: <strong class="text-maroon-700 font-extrabold text-sm">${finalScore}</strong> (${escapeHtml(rekomendasiVal)}).
+ </p>
+ <p class="text-[11px] text-slate-500 bg-emerald-50/50 p-2.5 rounded-xl border border-emerald-200">
+ Anda dapat langsung mengirimkan ringkasan hasil penilaian ini kepada karyawan ybs melalui WhatsApp.
+ </p>
+ </div>
+ `,
+ footerHtml: `
+ <div class="flex items-center justify-between w-full">
+ <button id="btn-done-save-kpi" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition">Selesai</button>
+ <button id="btn-wa-result-direct" class="px-5 py-2.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition shadow-md flex items-center gap-1.5">
+ <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+ Kirim Hasil via WhatsApp
+ </button>
+ </div>
+ `,
+ onMount: (m2) => {
+ m2.querySelector("#btn-done-save-kpi").onclick = closeModal;
+ m2.querySelector("#btn-wa-result-direct").onclick = async () => {
+ toast(`Mencari kontak WhatsApp ${task.nama_dinilai}...`, "info");
+ const phone = await getEmployeePhoneByName(task.nama_dinilai);
+ const msgText = buildKpiTaskWaMessage(doneTask, "RESULT");
+ openWhatsAppMessage(phone, msgText);
+ closeModal();
+ };
+ }
+ });
  } catch (err) {
  toast("Gagal menyimpan: " + err.message, "error");
  btn.disabled = false; btn.textContent = "Simpan & Kirim Penilaian";
@@ -4155,9 +4263,15 @@ export async function mount(container, { session, params }) {
  </div>
  `,
  footerHtml: `
- <div class="flex items-center justify-between w-full">
+ <div class="flex items-center justify-between w-full flex-wrap gap-2">
  <button id="btn-done-distribusi" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition">Selesai</button>
- <button id="btn-print-fisik-now" class="px-5 py-2.5 bg-maroon-700 text-white rounded-lg text-xs font-bold hover:bg-maroon-800 transition shadow-md flex items-center gap-1.5"> Cetak / Download Form Fisik (${createdTasks.length} Karyawan)</button>
+ <div class="flex items-center gap-2">
+ <button id="btn-wa-penilai-now" class="px-4 py-2.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition shadow-md flex items-center gap-1.5">
+ <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+ Kirim WA Penugasan
+ </button>
+ <button id="btn-print-fisik-now" class="px-4 py-2.5 bg-maroon-700 text-white rounded-lg text-xs font-bold hover:bg-maroon-800 transition shadow-md flex items-center gap-1.5"> Cetak Form Fisik (${createdTasks.length})</button>
+ </div>
  </div>
  `,
  onMount: (m2) => {
@@ -4166,6 +4280,29 @@ export async function mount(container, { session, params }) {
  closeModal();
  printBatchFormKpiFisik(createdTasks);
  };
+ if (m2.querySelector("#btn-wa-penilai-now")) {
+ m2.querySelector("#btn-wa-penilai-now").onclick = async () => {
+ const token = await createLoginToken(penilaiUsername);
+ const baseUrl = window.location.origin + window.location.pathname;
+ const magicLink = `${baseUrl}#penilaian-kontrak?tab=kpi360&token=${token}`;
+
+ const sampleTask = createdTasks[0] || {
+ nama_penilai: penilai,
+ nama_dinilai: dinilaiList.join(", "),
+ periode,
+ deadline: deadlineISO
+ };
+
+ toast(`Mencari kontak WhatsApp ${penilai}...`, "info");
+ const phone = await getEmployeePhoneByName(penilai);
+ const msgText = buildKpiTaskWaMessage(sampleTask, "ASSIGNMENT", {
+ magicLink,
+ penilaiUsername
+ });
+
+ openWhatsAppMessage(phone, msgText);
+ };
+ }
  }
  }); 
  } catch (e) { toast("Gagal: " + e.message, "error"); btn.disabled = false; }
@@ -4204,6 +4341,10 @@ export async function mount(container, { session, params }) {
  </td>
  <td class="px-4 py-3 text-right">
  <div class="flex items-center justify-end gap-1.5">
+ <button data-wa-hasil="${r.id}" class="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 border border-emerald-200 transition" title="Kirim Hasil Penilaian KPI ke WhatsApp Karyawan">
+ <svg class="w-3.5 h-3.5 text-emerald-600" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+ WA
+ </button>
  <button data-print="${r.id}" class="text-xs bg-slate-800 hover:bg-slate-900 text-white font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 shadow-2xs transition"> Cetak PDF</button>
  <button data-del-hasil="${r.id}" class="text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 border border-rose-200 transition">Hapus</button>
  </div>
@@ -4214,6 +4355,63 @@ export async function mount(container, { session, params }) {
  </table>
  </div>
  </div>`;
+
+ wrap.querySelectorAll("[data-wa-hasil]").forEach(btn => {
+ btn.onclick = async () => {
+ const id = btn.dataset.waHasil;
+ const row = logs.find(x => x.id === id);
+ if (!row) return;
+
+ toast(`Mencari kontak WhatsApp ${row.nama_dinilai}...`, "info");
+ const phone = await getEmployeePhoneByName(row.nama_dinilai);
+ const textMsg = buildKpiTaskWaMessage(row, "RESULT");
+
+ openModal({
+ title: `Kirim Hasil Penilaian KPI (${escapeHtml(row.nama_dinilai)})`,
+ bodyHtml: `
+ <div class="space-y-3 text-left">
+ <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2">
+ <span class="text-xl">💬</span>
+ <div class="text-xs text-emerald-900 font-medium">
+ Kirim ringkasan hasil penilaian KPI 360 langsung ke WhatsApp <strong>${escapeHtml(row.nama_dinilai)}</strong>.
+ </div>
+ </div>
+ <div>
+ <label class="block text-xs font-bold text-slate-700 mb-1">Nomor WhatsApp Recipient</label>
+ <input type="text" id="wa-hasil-phone" value="${escapeHtml(phone || '')}" placeholder="Contoh: 08123456789" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl outline-none focus:border-emerald-500 font-mono">
+ <p class="text-[10px] text-slate-400 mt-1">*Nomor otomatis diformat ke format internasional (628...)</p>
+ </div>
+ <div>
+ <label class="block text-xs font-bold text-slate-700 mb-1">Pratinjau Pesan WhatsApp</label>
+ <textarea id="wa-hasil-preview" rows="9" class="w-full px-3 py-2 text-xs font-mono bg-slate-50 border border-slate-200 rounded-xl outline-none">${escapeHtml(textMsg)}</textarea>
+ </div>
+ </div>
+ `,
+ footerHtml: `
+ <div class="flex items-center justify-between w-full">
+ <button id="btn-close-wa-hasil" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition">Batal</button>
+ <button id="btn-send-wa-hasil-now" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-md flex items-center gap-1.5">
+ <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+ Buka WhatsApp & Kirim
+ </button>
+ </div>
+ `,
+ onMount: (m2) => {
+ m2.querySelector("#btn-close-wa-hasil").onclick = closeModal;
+ m2.querySelector("#btn-send-wa-hasil-now").onclick = () => {
+ const pVal = m2.querySelector("#wa-hasil-phone").value.trim();
+ const msgVal = m2.querySelector("#wa-hasil-preview").value;
+ if (!pVal) {
+ toast("Mohon isi nomor WhatsApp tujuan!", "warning");
+ return;
+ }
+ openWhatsAppMessage(pVal, msgVal);
+ closeModal();
+ };
+ }
+ });
+ };
+ });
 
  wrap.querySelectorAll("[data-print]").forEach(btn => {
  btn.onclick = () => printKpiToHtml(logs.find(x => x.id === btn.dataset.print));

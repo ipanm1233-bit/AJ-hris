@@ -281,8 +281,41 @@ export async function mount(container, { session }) {
  </select>
  </div>
 
- <!-- DYNAMIC CONDITIONAL SECTION (Sub-Category & File Upload) -->
+ <!-- DYNAMIC CONDITIONAL SECTION (Sub-Category, Half-Day & File Upload) -->
  <div id="fc-dynamic-wrap" class="space-y-3 p-3.5 bg-amber-50/80 border border-amber-200/80 rounded-xl hidden">
+ <!-- HALF-DAY LEAVE INPUTS -->
+ <div id="fc-halfday-wrap" class="hidden space-y-3 border-b border-amber-200/60 pb-3">
+ <div>
+ <label class="block text-xs font-bold text-amber-900 mb-1.5">Pilihan Sesi Cuti Setengah Hari *</label>
+ <div class="grid grid-cols-2 gap-2">
+ <label class="flex items-center gap-2 p-2.5 bg-white border border-amber-300 rounded-xl cursor-pointer hover:bg-amber-100/50 transition">
+ <input type="radio" name="fc_halfday_session" value="Cuti Pagi" checked class="text-maroon-700 focus:ring-maroon-500">
+ <div>
+ <span class="block text-xs font-bold text-slate-800">Cuti Pagi</span>
+ <span class="block text-[10px] text-slate-500">Masuk Siang (08:00 - 12:00)</span>
+ </div>
+ </label>
+ <label class="flex items-center gap-2 p-2.5 bg-white border border-amber-300 rounded-xl cursor-pointer hover:bg-amber-100/50 transition">
+ <input type="radio" name="fc_halfday_session" value="Cuti Siang" class="text-maroon-700 focus:ring-maroon-500">
+ <div>
+ <span class="block text-xs font-bold text-slate-800">Cuti Siang</span>
+ <span class="block text-[10px] text-slate-500">Pulang Awal (12:00 - 17:00)</span>
+ </div>
+ </label>
+ </div>
+ </div>
+ <div class="grid grid-cols-2 gap-3">
+ <div>
+ <label class="block text-xs font-bold text-amber-900 mb-1">Waktu Keluar / Jam Absen Cuti *</label>
+ <input type="time" id="fc-jam-keluar" value="08:00" class="w-full px-3 py-2 text-xs border border-amber-300 rounded-xl outline-none bg-white font-semibold text-slate-800 focus:border-maroon-500">
+ </div>
+ <div>
+ <label class="block text-xs font-bold text-amber-900 mb-1">Waktu Masuk / Jam Kembali Kerja *</label>
+ <input type="time" id="fc-jam-masuk" value="12:00" class="w-full px-3 py-2 text-xs border border-amber-300 rounded-xl outline-none bg-white font-semibold text-slate-800 focus:border-maroon-500">
+ </div>
+ </div>
+ </div>
+
  <div id="fc-subcat-wrap" class="hidden">
  <label class="block text-xs font-bold text-amber-900 mb-1" id="fc-subcat-label">Pilih Sub-Kategori Cuti *</label>
  <select id="fc-subcat" class="w-full px-3 py-2 text-xs border border-amber-300 rounded-lg outline-none bg-white font-medium text-slate-800">
@@ -345,6 +378,7 @@ export async function mount(container, { session }) {
 
  const catSelect = document.getElementById("fc-kategori");
  const dynWrap = document.getElementById("fc-dynamic-wrap");
+ const halfdayWrap = document.getElementById("fc-halfday-wrap");
  const subcatWrap = document.getElementById("fc-subcat-wrap");
  const subcatLabel = document.getElementById("fc-subcat-label");
  const subcatSelect = document.getElementById("fc-subcat");
@@ -353,22 +387,42 @@ export async function mount(container, { session }) {
  const uploadHint = document.getElementById("fc-upload-hint");
  const fileInput = document.getElementById("fc-file");
 
+ const jamKeluar = document.getElementById("fc-jam-keluar");
+ const jamMasuk = document.getElementById("fc-jam-masuk");
+
  const tglMulai = document.getElementById("fc-tgl-mulai");
  const tglSelesai = document.getElementById("fc-tgl-selesai");
  const txtDurasi = document.getElementById("fc-durasi");
 
+ function syncHalfdayTimes() {
+ const selectedSesi = document.querySelector('input[name="fc_halfday_session"]:checked')?.value || "Cuti Pagi";
+ if (selectedSesi === "Cuti Pagi") {
+ if (!jamKeluar.value || jamKeluar.value === "12:00") jamKeluar.value = "08:00";
+ if (!jamMasuk.value || jamMasuk.value === "17:00") jamMasuk.value = "12:00";
+ } else {
+ if (!jamKeluar.value || jamKeluar.value === "08:00") jamKeluar.value = "12:00";
+ if (!jamMasuk.value || jamMasuk.value === "12:00") jamMasuk.value = "17:00";
+ }
+ }
+
+ document.querySelectorAll('input[name="fc_halfday_session"]').forEach(radio => {
+ radio.onchange = syncHalfdayTimes;
+ });
+
  // Dynamic Date Calculation
  function calcDays() {
- if (!tglMulai.value || !tglSelesai.value) return;
+ if (!tglMulai.value) return;
+ const val = catSelect.value || "";
+ if (val.includes("Setengah Hari") || val.includes("1/2")) {
+ tglSelesai.value = tglMulai.value;
+ txtDurasi.value = "0.5 Hari Kerja";
+ return;
+ }
+ if (!tglSelesai.value) return;
  const d1 = new Date(tglMulai.value);
  const d2 = new Date(tglSelesai.value);
  if (d2 < d1) {
  txtDurasi.value = "Tanggal Tidak Valid";
- return;
- }
- const val = catSelect.value || "";
- if (val.includes("Setengah Hari") || val.includes("1/2")) {
- txtDurasi.value = "0.5 Hari Kerja";
  return;
  }
 
@@ -388,11 +442,20 @@ export async function mount(container, { session }) {
  catSelect.onchange = () => {
  const val = catSelect.value || "";
  dynWrap.classList.add("hidden");
+ halfdayWrap.classList.add("hidden");
  subcatWrap.classList.add("hidden");
  uploadWrap.classList.add("hidden");
  fileInput.required = false;
 
  calcDays();
+
+ const isHalfDay = val.includes("Setengah Hari") || val.includes("1/2");
+ if (isHalfDay) {
+ dynWrap.classList.remove("hidden");
+ halfdayWrap.classList.remove("hidden");
+ if (tglMulai.value) tglSelesai.value = tglMulai.value;
+ syncHalfdayTimes();
+ }
 
  if (val.includes("Sakit dgn Surat Dokter") || val.includes("SAKIT_DOKTER") || val.startsWith("S -")) {
  dynWrap.classList.remove("hidden");
@@ -468,10 +531,12 @@ export async function mount(container, { session }) {
  const uploadedUrl = uploadedUrls.join(", ");
 
  const d1 = new Date(tglMulai.value);
- const d2 = new Date(tglSelesai.value);
+ const isHalfDay = catName.includes("Setengah Hari") || catName.includes("1/2");
+ const d2 = isHalfDay ? d1 : new Date(tglSelesai.value);
  let count = 0;
- if (catName.includes("Setengah Hari") || catName.includes("1/2")) {
+ if (isHalfDay) {
  count = 0.5;
+ tglSelesai.value = tglMulai.value;
  } else {
  let cur = new Date(d1);
  while (cur <= d2) {
@@ -480,6 +545,10 @@ export async function mount(container, { session }) {
  }
  if (count === 0) count = 1;
  }
+
+ const selectedSesi = isHalfDay ? (document.querySelector('input[name="fc_halfday_session"]:checked')?.value || "Cuti Pagi") : "";
+ const waktuKeluar = isHalfDay ? (jamKeluar.value || "08:00") : "";
+ const waktuMasuk = isHalfDay ? (jamMasuk.value || "12:00") : "";
 
  const refNo = genId("CUTI");
  const nowIso = new Date().toISOString();
@@ -501,8 +570,14 @@ export async function mount(container, { session }) {
  kategori_cuti: catName,
  jenis_cuti: catVal,
  sub_kategori: subCat,
+ sesi_cuti: selectedSesi,
+ jam_keluar: waktuKeluar,
+ jam_masuk: waktuMasuk,
+ jam_kembali: waktuMasuk,
+ waktu_keluar: waktuKeluar,
+ waktu_masuk: waktuMasuk,
  tanggal_mulai: tglMulai.value,
- tanggal_selesai: tglSelesai.value,
+ tanggal_selesai: isHalfDay ? tglMulai.value : tglSelesai.value,
  jumlah_hari: count,
  pejabat_pengganti: document.getElementById("fc-pengganti").value,
  no_telepon: document.getElementById("fc-phone").value.trim(),
@@ -514,8 +589,14 @@ export async function mount(container, { session }) {
  detail: {
  jenis_cuti: catVal,
  sub_kategori: subCat,
+ sesi_cuti: selectedSesi,
+ jam_keluar: waktuKeluar,
+ jam_masuk: waktuMasuk,
+ jam_kembali: waktuMasuk,
+ waktu_keluar: waktuKeluar,
+ waktu_masuk: waktuMasuk,
  tanggal_mulai: tglMulai.value,
- tanggal_akhir: tglSelesai.value,
+ tanggal_akhir: isHalfDay ? tglMulai.value : tglSelesai.value,
  jumlah_hari: count,
  alasan: document.getElementById("fc-alasan").value.trim(),
  pejabat_pengganti: document.getElementById("fc-pengganti").value,
@@ -534,17 +615,21 @@ export async function mount(container, { session }) {
 
  await setDoc(doc(db, COL.DATA_PENGAJUAN, refNo), payload);
 
- // Notify first approver (ATASAN / HRD)
+ // Notify first approver (ATASAN / HRD) without duplicates
  try {
  let targets = await getTargetsForRole("ATASAN", session.nama);
  if (!targets || targets.length === 0) {
  targets = await getTargetsForRole("HRD", session.nama);
  }
+ const sentKeys = new Set();
  for (const target of targets) {
+ const key = typeof target === 'object' ? (target.email || target.username || target.nama) : target;
+ if (!key || sentKeys.has(key)) continue;
+ sentKeys.add(key);
  await notifyUser(
  target,
  `Persetujuan Cuti Dibutuhkan`,
- `Pengajuan Cuti baru dari ${session.nama} (${catName}) sebanyak ${count} hari (${tglMulai.value} s/d ${tglSelesai.value}). Membutuhkan verifikasi Anda.`,
+ `Pengajuan Cuti baru dari ${session.nama} (${catName}${selectedSesi ? ' - ' + selectedSesi : ''}) sebanyak ${count} hari (${tglMulai.value}). Membutuhkan verifikasi Anda.`,
  `/#approval?id=${refNo}`
  );
  }

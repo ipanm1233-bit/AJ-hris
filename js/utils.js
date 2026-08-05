@@ -1584,12 +1584,16 @@ export function renderPengajuanDetailHtml(row, session, options = {}) {
  const isCutiForm = row.form_id === "F-ISO-CUTI" || (row.nama_form || "").toLowerCase().includes("cuti") || !!row.kategori_cuti;
  if (isCutiForm && (row.status_final || "").includes("APPROVED")) {
  const rowJson = escapeHtml(JSON.stringify(row));
+ const sesi = row.sesi_cuti || detail.sesi_cuti || "";
+ const jamOut = row.waktu_keluar || detail.jam_keluar || "";
+ const jamIn = row.waktu_masuk || detail.jam_masuk || detail.jam_kembali || "";
  return `
  <div class="space-y-4">
  <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
  <div class="flex justify-between items-center"><span class="text-slate-500 font-medium">Pemohon:</span><span class="font-bold text-slate-800">${escapeHtml(row.nama_pemohon)}</span></div>
- <div class="flex justify-between items-center"><span class="text-slate-500 font-medium">Jenis Cuti:</span><span class="font-bold text-slate-800">${escapeHtml(row.kategori_cuti || row.jenis_cuti || detail.jenis_cuti || "Cuti")}</span></div>
+ <div class="flex justify-between items-center"><span class="text-slate-500 font-medium">Jenis Cuti:</span><span class="font-bold text-slate-800">${escapeHtml(row.kategori_cuti || row.jenis_cuti || detail.jenis_cuti || "Cuti")}${sesi ? ` (${escapeHtml(sesi)})` : ''}</span></div>
  <div class="flex justify-between items-center"><span class="text-slate-500 font-medium">Tanggal:</span><span class="font-bold text-slate-800">${fmtDateShort(row.tanggal_mulai || detail.tanggal_mulai || row.tgl)} s/d ${fmtDateShort(row.tanggal_selesai || detail.tanggal_akhir || row.tgl)} (${row.jumlah_hari || detail.jumlah_hari || 1} Hari)</span></div>
+ ${jamOut ? `<div class="flex justify-between items-center"><span class="text-slate-500 font-medium">Jam Cuti:</span><span class="font-bold text-slate-800">${escapeHtml(jamOut)} s/d ${escapeHtml(jamIn)}</span></div>` : ''}
  <div class="flex justify-between items-center"><span class="text-slate-500 font-medium">Alasan:</span><span class="font-semibold text-slate-700">${escapeHtml(row.alasan || detail.alasan || "-")}</span></div>
  </div>
 
@@ -1817,6 +1821,29 @@ export async function sendFCMNotif(tokens, title, body, link = "") {
  }
 }
 
+/* ---------------------------------------------------------------------
+ * NOTIFICATION DEDUPARATION ENGINE & PUSH/EMAIL NOTIFIERS
+ * Prevent double/duplicate notifications across all modules
+ * ------------------------------------------------------------------- */
+const recentNotifsMap = new Map();
+
+function isDuplicateNotification(targetKey, judul, pesan, link = "") {
+ const now = Date.now();
+ for (const [k, time] of recentNotifsMap.entries()) {
+ if (now - time > 15000) recentNotifsMap.delete(k);
+ }
+ const cleanTarget = String(targetKey || "").trim().toLowerCase();
+ const cleanJudul = String(judul || "").trim().toLowerCase();
+ const cleanPesan = String(pesan || "").trim().toLowerCase();
+ const cleanLink = String(link || "").trim().toLowerCase();
+ const hashKey = `${cleanTarget}::${cleanJudul}::${cleanPesan}::${cleanLink}`;
+ if (recentNotifsMap.has(hashKey)) {
+ return true;
+ }
+ recentNotifsMap.set(hashKey, now);
+ return false;
+}
+
 /**
  * Helper terpadu utk 1 target user: menulis notif lonceng (in-app) +
  * mengirim push ke HP-nya sekaligus, berdasar fcm_token yg tersimpan
@@ -1836,6 +1863,12 @@ export async function notifyUser(username, judul, pesan, link = "") {
  targetEmail = targetStr;
  }
  if (!targetName) targetName = targetStr;
+
+ const dedupKey = targetEmail || targetStr || targetName;
+ if (isDuplicateNotification(dedupKey, judul, pesan, link)) {
+ console.warn("[notifyUser] Notifikasi terdeteksi duplikat, dilewati:", dedupKey, judul);
+ return;
+ }
 
  try {
  const tokens = new Set();
@@ -2191,21 +2224,85 @@ export function getCalculatedJatahCuti(emp) {
 
 /** Render satu <input>/<select>/<textarea> untuk definisi field dinamis `f`. */
 export function dynFieldInputHtml(f) {
- const base = "w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100 outline-none transition";
+ const base = "w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100 outline-none transition bg-white";
  const req = f.required ? "required" : "";
- if (f.formula) return `<input type="text" name="${f.name}" data-formula="${escapeHtml(f.formula)}" readonly class="${base} bg-slate-50 text-slate-500 cursor-not-allowed" value="0">`;
+ if (f.formula) return `<input type="text" name="${f.name}" data-formula="${escapeHtml(f.formula)}" readonly class="${base} bg-slate-50 text-slate-500 cursor-not-allowed font-semibold" value="0">`;
 
  switch (f.type) {
- case "textarea": return `<textarea name="${f.name}" rows="3" class="${base}" ${req}></textarea>`;
+ case "textarea": return `<textarea name="${f.name}" rows="3" class="${base}" placeholder="Tulis rincian..." ${req}></textarea>`;
  case "select": return `<select name="${f.name}" class="${base}" ${req}>
  <option value="">Pilih ${escapeHtml(f.label || "")}</option>
  ${(f.options || []).map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join("")}
  </select>`;
  case "date": return `<input type="date" name="${f.name}" class="${base}" ${req}>`;
- case "number": return `<input type="number" step="any" name="${f.name}" class="${base}" ${req}>`;
+ case "time": return `<input type="time" name="${f.name}" class="${base}" ${req}>`;
+ case "datetime-local": return `<input type="datetime-local" name="${f.name}" class="${base}" ${req}>`;
+ case "scale": {
+ const min = parseInt(f.min_scale) || 1;
+ const max = parseInt(f.max_scale) || 5;
+ const minLbl = f.min_label || "Sangat Kurang";
+ const maxLbl = f.max_label || "Sangat Baik";
+ const items = [];
+ for (let val = min; val <= max; val++) {
+ items.push(`
+ <label class="flex-1 min-w-[36px] sm:min-w-[42px] text-center cursor-pointer">
+ <input type="radio" name="${f.name}" value="${val}" ${req} class="peer sr-only">
+ <div class="py-2 px-1 sm:px-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold text-xs peer-checked:bg-maroon-700 peer-checked:text-white peer-checked:border-maroon-700 hover:border-maroon-300 transition shadow-sm text-center">
+ ${val}
+ </div>
+ </label>
+ `);
+ }
+ return `
+ <div class="space-y-2 p-3 bg-slate-50/70 border border-slate-200 rounded-xl">
+ <div class="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1">
+ ${items.join("")}
+ </div>
+ <div class="flex items-center justify-between text-[11px] font-semibold text-slate-500 px-1">
+ <span class="text-slate-600">① ${escapeHtml(minLbl)}</span>
+ <span class="text-slate-600">⑤ ${escapeHtml(maxLbl)}</span>
+ </div>
+ </div>
+ `;
+ }
+ case "radio": {
+ const opts = f.options && f.options.length ? f.options : ["Ya", "Tidak"];
+ return `
+ <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+ ${opts.map(o => `
+ <label class="flex items-center gap-2.5 p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer transition">
+ <input type="radio" name="${f.name}" value="${escapeHtml(o)}" ${req} class="text-maroon-700 focus:ring-maroon-500">
+ <span class="text-xs font-semibold text-slate-700">${escapeHtml(o)}</span>
+ </label>
+ `).join("")}
+ </div>
+ `;
+ }
+ case "checkbox": {
+ const opts = f.options || [];
+ if (opts.length > 0) {
+ return `
+ <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+ ${opts.map(o => `
+ <label class="flex items-center gap-2.5 p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer transition">
+ <input type="checkbox" name="${f.name}" value="${escapeHtml(o)}" class="rounded border-slate-300 text-maroon-700 focus:ring-maroon-500">
+ <span class="text-xs font-semibold text-slate-700">${escapeHtml(o)}</span>
+ </label>
+ `).join("")}
+ </div>
+ `;
+ }
+ return `
+ <label class="flex items-center gap-2.5 p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer transition">
+ <input type="checkbox" name="${f.name}" value="Ya" ${req} class="rounded border-slate-300 text-maroon-700 focus:ring-maroon-500">
+ <span class="text-xs font-semibold text-slate-700">${escapeHtml(f.label || "Ya / Setuju")}</span>
+ </label>
+ `;
+ }
+ case "number": return `<input type="number" step="any" name="${f.name}" class="${base}" placeholder="0" ${req}>`;
  case "file": return `<input type="file" name="${f.name}" accept="image/*,.pdf" class="${base} bg-white" ${req}>
  <p class="text-[11px] text-slate-400 mt-1">Upload foto/dokumen (JPG, PNG, atau PDF, maks 5MB).</p>`;
- default: return `<input type="text" name="${f.name}" class="${base}" ${req}>`;
+ default: return `<input type="text" name="${f.name}" class="${base}" placeholder="Isi ${escapeHtml(f.label || "")}" ${req}>`;
  }
 }
 
@@ -2273,6 +2370,9 @@ export async function collectDynFormDetail(form, fields, pathPrefix) {
  } else {
  detail[f.name] = "";
  }
+ } else if (f.type === "checkbox") {
+ const vals = fd.getAll(f.name).filter(Boolean);
+ detail[f.name] = vals.length > 1 ? vals.join(", ") : (vals[0] ?? "");
  } else {
  detail[f.name] = fd.get(f.name) ?? "";
  }
@@ -2299,4 +2399,507 @@ export function localDateStr(value) {
  const d = v && typeof v.toDate === "function" ? v.toDate() : new Date(v);
  if (isNaN(d)) return null;
  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+}
+
+/**
+ * Format nomor telepon ke format internasional WhatsApp (628xxx)
+ */
+export function formatPhoneNumberForWa(phone) {
+ if (!phone) return "";
+ let clean = String(phone).replace(/[^0-9]/g, "");
+ if (!clean) return "";
+ if (clean.startsWith("0")) {
+ clean = "62" + clean.substring(1);
+ } else if (clean.startsWith("8")) {
+ clean = "62" + clean;
+ } else if (!clean.startsWith("62")) {
+ clean = "62" + clean;
+ }
+ return clean;
+}
+
+/**
+ * Membuka link WhatsApp (wa.me atau api.whatsapp.com) dengan pesan yang di-encode
+ */
+export function openWhatsAppMessage(phone, message) {
+ const cleanPhone = formatPhoneNumberForWa(phone);
+ const encodedMsg = encodeURIComponent(message);
+ let url = "";
+ if (cleanPhone) {
+ url = `https://wa.me/${cleanPhone}?text=${encodedMsg}`;
+ } else {
+ url = `https://api.whatsapp.com/send?text=${encodedMsg}`;
+ }
+ window.open(url, "_blank");
+}
+
+/**
+ * Mencari nomor HP/WA karyawan dari MASTER_KARYAWAN berdasarkan nama karyawan
+ * dan mengembalikan dalam format kode negara Indonesia (62xxx).
+ */
+export async function getEmployeePhoneByName(namaKaryawan) {
+ if (!namaKaryawan) return "";
+ try {
+ const list = await fsGetAll(COL.MASTER_KARYAWAN);
+ const targetName = String(namaKaryawan).toLowerCase().trim();
+ const found = list.find(k => {
+ const n = String(k.nama_karyawan || k.nama || k.nama_lengkap || "").toLowerCase().trim();
+ return n === targetName || (n && targetName && (n.includes(targetName) || targetName.includes(n)));
+ });
+ const rawPhone = found ? (found.no_hp_aktif || found.no_telepon || found.no_hp || found.hp || found.whatsapp || "") : "";
+ return formatPhoneNumberForWa(rawPhone);
+ } catch (err) {
+ console.warn("Gagal mengambil no_hp karyawan:", err);
+ return "";
+ }
+}
+
+/**
+ * Menyusun template pesan WhatsApp untuk Tugas / Hasil Penilaian KPI 360
+ */
+export function buildKpiTaskWaMessage(task, type = "ASSIGNMENT", extra = {}) {
+ const baseUrl = window.location.origin + window.location.pathname;
+ const deadlineStr = task.deadline ? fmtDateShort(task.deadline) : "-";
+ const catLabel = task.kategori_penilaian ? task.kategori_penilaian.replace(/_/g, " ") : "KPI 360";
+
+ if (type === "ASSIGNMENT") {
+ const magicLink = extra.magicLink || `${baseUrl}#penilaian-kontrak?tab=kpi360`;
+ let msg = `*TUGAS PENILAIAN KPI 360 - CV ANDELA JAYA*\n\n`;
+ msg += `Halo *${task.nama_penilai || "Bapak/Ibu"}*,\n`;
+ msg += `Anda telah ditugaskan untuk melakukan Penilaian KPI 360 pada periode *${task.periode || "-"}* terhadap karyawan berikut:\n`;
+ msg += `👤 *${task.nama_dinilai || "-"}*\n\n`;
+ msg += `📋 *Detail Penugasan:*\n`;
+ msg += `• Periode: ${task.periode || "-"}\n`;
+ msg += `• Kategori: ${catLabel}\n`;
+ msg += `• Batas Waktu: ${deadlineStr}\n\n`;
+ msg += `Silakan klik link berikut untuk login & mengisi penilaian:\n`;
+ msg += `${magicLink}\n\n`;
+ if (extra.penilaiUsername) {
+ msg += `_Kredensial Akses_:\n`;
+ msg += `• Username: \`${extra.penilaiUsername}\`\n\n`;
+ }
+ msg += `Terima kasih,\n*Tim HRD CV Andela Jaya*`;
+ return msg;
+ } else if (type === "RESULT") {
+ const portalLink = `${baseUrl}#penilaian-kontrak?tab=grafik`;
+ let msg = `*HASIL PENILAIAN KPI - CV ANDELA JAYA*\n\n`;
+ msg += `Halo *${task.nama_dinilai || "Karyawan"}*,\n`;
+ msg += `Hasil Penilaian Kinerja (KPI 360) Anda untuk periode *${task.periode || "-"}* telah selesai dievaluasi.\n\n`;
+ msg += `📊 *Ringkasan Hasil Penilaian:*\n`;
+ msg += `• Kategori: ${catLabel}\n`;
+ msg += `• Skor Akhir: *${task.skor_akhir ?? task.total_skor ?? 0}*\n`;
+ if (task.rekomendasi || task.keputusan) {
+ msg += `• Rekomendasi/Keputusan: *${task.rekomendasi || task.keputusan}*\n`;
+ }
+ msg += `• Penilai: ${task.nama_penilai || "-"}\n\n`;
+ if (task.catatan_baik) {
+ msg += `✅ *Hal yang Sudah Baik:*\n${task.catatan_baik}\n\n`;
+ }
+ if (task.catatan_perbaikan) {
+ msg += `🎯 *Area Peningkatan:*\n${task.catatan_perbaikan}\n\n`;
+ }
+ msg += `Rincian lengkap & grafik evaluasi dapat Anda akses di Portal HRIS:\n`;
+ msg += `${portalLink}\n\n`;
+ msg += `Terima kasih dan tetap tingkatkan kinerja terbaik Anda! 🙏\n`;
+ msg += `*Tim HRD CV Andela Jaya*`;
+ return msg;
+ }
+ return "";
+}
+
+
+/**
+ * Menyusun template pesan undangan login untuk Karyawan
+ */
+export function buildEmployeeInviteMessage(empData, username, password, portalUrl) {
+  const nama = empData?.nama_karyawan || empData?.nama || "Karyawan";
+  const url = portalUrl || (window.location.origin + window.location.pathname);
+  
+  let msg = `*UNDANGAN AKSES SISTEM HRIS - ${COMPANY_NAME}*
+
+`;
+  msg += `Halo *${nama}*,
+
+`;
+  msg += `Anda diundang untuk mengakses Portal Sistem Informasi SDM & HRIS *${COMPANY_NAME}*.
+
+`;
+  msg += `Berikut kredensial login akun Anda:
+`;
+  msg += `🌐 *Link Portal*: ${url}
+`;
+  msg += `👤 *Username*: \`${username}\`
+`;
+  msg += `🔑 *Password Default*: \`${password}\`
+
+`;
+  msg += `*Petunjuk Login*:
+`;
+  msg += `1. Buka link portal di atas.
+`;
+  msg += `2. Masukkan Username dan Password Default di atas.
+`;
+  msg += `3. Setelah berhasil masuk, Anda dapat mengubah password demi keamanan melalui menu Pengaturan Akun.
+
+`;
+  msg += `Apabila membutuhkan bantuan atau kendala login, silakan hubungi Tim HRD.
+
+`;
+  msg += `Terima kasih,
+`;
+  msg += `_*Tim HRD ${COMPANY_NAME}*_`;
+  return msg;
+}
+
+/**
+ * Membuka Modal "Undang Karyawan" untuk mengirim kredensial login (Username & Default Password)
+ * via WhatsApp dan/atau Email.
+ */
+export async function openInviteEmployeeModal(defaultEmpNikOrName = "") {
+  try {
+    toast("Memuat data karyawan & akun pengguna...", "info");
+    const [allKaryawan, allUsers] = await Promise.all([
+      fsGetAll(COL.MASTER_KARYAWAN).catch(() => []),
+      fsGetAll(COL.USERS).catch(() => [])
+    ]);
+
+    const activeEmp = allKaryawan.filter(k => {
+      const st = String(k.aktif_tdk_aktif || k.status || "AKTIF").toUpperCase();
+      return st === "AKTIF";
+    }).sort((a, b) => (a.nama_karyawan || a.nama || "").localeCompare(b.nama_karyawan || b.nama || ""));
+
+    if (!activeEmp.length) {
+      toast("Tidak ada karyawan aktif ditemukan di Master Karyawan.", "warning");
+      return;
+    }
+
+    const defaultPasswordVal = "andela123";
+    const baseUrl = window.location.origin + window.location.pathname;
+
+    openModal({
+      title: " Undangan Akses Sistem HRIS Karyawan",
+      size: "lg",
+      bodyHtml: `
+        <div class="space-y-4 text-left">
+          <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2.5">
+            <span class="text-2xl">✉️</span>
+            <div>
+              <h4 class="text-xs font-bold text-emerald-900">Kirim Kredensial Login Karyawan</h4>
+              <p class="text-[11px] text-emerald-700">Undang karyawan baru atau reset kredensial untuk memberikan akses ke portal HRIS. Undangan dilengkapi Username, Password Default, dan link portal (otomatis diawali kode negara 62 untuk WhatsApp).</p>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Pilih Karyawan Ybs *</label>
+            <select id="inv-emp-select" class="w-full px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl outline-none focus:border-emerald-500 bg-white">
+              <option value="">-- Pilih Karyawan Aktif --</option>
+              ${activeEmp.map(k => {
+                const nik = k.nik_karyawan || k.nik || "-";
+                const nama = k.nama_karyawan || k.nama || "Karyawan";
+                const dept = k.departemen || k.jabatan || k.cabang || "-";
+                return `<option value="${escapeHtml(nik)}" data-nama="${escapeHtml(nama)}">${escapeHtml(nama)} (${escapeHtml(nik)}) - ${escapeHtml(dept)}</option>`;
+              }).join("")}
+            </select>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+            <div>
+              <label class="block text-[11px] font-bold text-slate-600 mb-1">Nama Lengkap</label>
+              <input type="text" id="inv-nama" class="w-full px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg outline-none" placeholder="Pilih karyawan di atas..." readonly>
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-slate-600 mb-1">Username Login *</label>
+              <input type="text" id="inv-username" class="w-full px-3 py-1.5 text-xs font-mono font-bold uppercase bg-white border border-slate-200 rounded-lg outline-none focus:border-emerald-500" placeholder="Contoh: AHMAD123">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-slate-600 mb-1">Password Default *</label>
+              <input type="text" id="inv-password" value="${defaultPasswordVal}" class="w-full px-3 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg outline-none focus:border-emerald-500">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-slate-600 mb-1">Role / Hak Akses *</label>
+              <select id="inv-role" class="w-full px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg outline-none focus:border-emerald-500">
+                <option value="STAFF">STAFF</option>
+                <option value="SPV">SPV / ATASAN</option>
+                <option value="MANAGER">MANAGER</option>
+                <option value="DRIVER">DRIVER</option>
+                <option value="HELPER">HELPER</option>
+                <option value="SALES">SALES</option>
+                <option value="WAREHOUSE">WAREHOUSE</option>
+                <option value="FINANCE">FINANCE</option>
+                <option value="HRD">HRD</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-slate-600 mb-1">Nomor WhatsApp (62...)</label>
+              <input type="text" id="inv-phone" class="w-full px-3 py-1.5 text-xs font-mono bg-white border border-slate-200 rounded-lg outline-none focus:border-emerald-500" placeholder="08123456789">
+              <p class="text-[10px] text-slate-400 mt-0.5">*Otomatis diawali kode negara +62 Indonesia</p>
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-slate-600 mb-1">Alamat Email Karyawan</label>
+              <input type="email" id="inv-email" class="w-full px-3 py-1.5 text-xs font-mono bg-white border border-slate-200 rounded-lg outline-none focus:border-emerald-500" placeholder="nama@email.com">
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Pratinjau Pesan Undangan (WhatsApp & Email)</label>
+            <textarea id="inv-preview-msg" rows="7" class="w-full px-3 py-2 text-xs font-mono bg-slate-900 text-emerald-300 rounded-xl outline-none border border-slate-700 focus:border-emerald-500 leading-relaxed"></textarea>
+          </div>
+        </div>
+      `,
+      footerHtml: `
+        <div class="flex items-center justify-between w-full flex-wrap gap-2">
+          <button id="btn-inv-close" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition">Tutup</button>
+          <div class="flex items-center gap-2">
+            <button id="btn-inv-email" class="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition shadow-md flex items-center gap-1.5">
+              📧 Kirim Email
+            </button>
+            <button id="btn-inv-wa" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-md flex items-center gap-1.5">
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+              Kirim WhatsApp
+            </button>
+            <button id="btn-inv-both" class="px-5 py-2.5 bg-maroon-700 hover:bg-maroon-800 text-white rounded-lg text-xs font-bold transition shadow-md flex items-center gap-1.5">
+              🚀 Kirim WA & Email
+            </button>
+          </div>
+        </div>
+      `,
+      onMount: (modalEl) => {
+        const selectEmp = modalEl.querySelector("#inv-emp-select");
+        const inputNama = modalEl.querySelector("#inv-nama");
+        const inputUser = modalEl.querySelector("#inv-username");
+        const inputPass = modalEl.querySelector("#inv-password");
+        const inputRole = modalEl.querySelector("#inv-role");
+        const inputPhone = modalEl.querySelector("#inv-phone");
+        const inputEmail = modalEl.querySelector("#inv-email");
+        const previewMsg = modalEl.querySelector("#inv-preview-msg");
+
+        function updatePreview() {
+          const empName = inputNama.value.trim() || "Karyawan";
+          const uName = inputUser.value.trim().toUpperCase() || "[USERNAME]";
+          const pWord = inputPass.value || "[PASSWORD]";
+          
+          previewMsg.value = buildEmployeeInviteMessage({ nama_karyawan: empName }, uName, pWord, baseUrl);
+        }
+
+        selectEmp.onchange = () => {
+          const nikVal = selectEmp.value;
+          if (!nikVal) {
+            inputNama.value = "";
+            inputUser.value = "";
+            inputPhone.value = "";
+            inputEmail.value = "";
+            updatePreview();
+            return;
+          }
+
+          const k = activeEmp.find(x => (x.nik_karyawan || x.nik) === nikVal);
+          if (!k) return;
+
+          const matchedUser = allUsers.find(u => 
+            (u.nik && String(u.nik) === String(nikVal)) ||
+            (u.nama && String(u.nama).toLowerCase().trim() === String(k.nama_karyawan || k.nama).toLowerCase().trim()) ||
+            (u.username && k.username && String(u.username).toLowerCase() === String(k.username).toLowerCase())
+          );
+
+          inputNama.value = k.nama_karyawan || k.nama || "";
+          
+          let calculatedUsername = matchedUser?.username || k.username || k.nik_karyawan || k.nik || "";
+          if (!calculatedUsername) {
+            calculatedUsername = String(k.nama_karyawan || k.nama || "USER").split(" ")[0].toUpperCase();
+          }
+          inputUser.value = String(calculatedUsername).toUpperCase();
+
+          if (matchedUser?.role) {
+            inputRole.value = matchedUser.role.toUpperCase();
+          } else if (k.jabatan || k.posisi) {
+            const jUpper = (k.jabatan || k.posisi || "").toUpperCase();
+            if (jUpper.includes("MANAGER")) inputRole.value = "MANAGER";
+            else if (jUpper.includes("SUPERVISOR") || jUpper.includes("SPV")) inputRole.value = "SPV";
+            else if (jUpper.includes("DRIVER")) inputRole.value = "DRIVER";
+            else if (jUpper.includes("SALES")) inputRole.value = "SALES";
+            else if (jUpper.includes("WAREHOUSE") || jUpper.includes("GUDANG")) inputRole.value = "WAREHOUSE";
+            else inputRole.value = "STAFF";
+          }
+
+          const rawPhone = k.no_hp_aktif || k.no_telepon || k.no_hp || k.hp || k.whatsapp || matchedUser?.no_hp || matchedUser?.no_telepon || "";
+          inputPhone.value = formatPhoneNumberForWa(rawPhone);
+
+          inputEmail.value = k.email || k.email_perusahaan || matchedUser?.email || "";
+
+          updatePreview();
+        };
+
+        inputNama.oninput = updatePreview;
+        inputUser.oninput = updatePreview;
+        inputPass.oninput = updatePreview;
+
+        if (defaultEmpNikOrName) {
+          const matchOpt = Array.from(selectEmp.options).find(opt => 
+            opt.value === defaultEmpNikOrName || 
+            opt.dataset.nama?.toLowerCase().includes(defaultEmpNikOrName.toLowerCase())
+          );
+          if (matchOpt) {
+            selectEmp.value = matchOpt.value;
+            selectEmp.dispatchEvent(new Event("change"));
+          }
+        }
+
+        async function ensureUserAccount() {
+          const uname = inputUser.value.trim().toUpperCase();
+          const pword = inputPass.value;
+          const nama = inputNama.value.trim();
+          const role = inputRole.value;
+          const email = inputEmail.value.trim();
+          const phone = inputPhone.value.trim();
+          const nik = selectEmp.value;
+
+          if (!uname || !pword || !nama) {
+            toast("Nama, Username, dan Password wajib diisi!", "warning");
+            return false;
+          }
+
+          try {
+            const pHash = await sha256(pword);
+            await setDoc(doc(db, COL.USERS, uname), {
+              username: uname,
+              nama: nama,
+              nik: nik || "-",
+              role: role,
+              email: email || "",
+              no_hp: phone || "",
+              password_hash: pHash,
+              password: pword,
+              updated_at: new Date().toISOString()
+            }, { merge: true });
+            
+            toast(`Akun pengguna ${uname} berhasil diperbarui di database!`, "success");
+            return true;
+          } catch (err) {
+            console.error("Gagal update akun USERS:", err);
+            toast("Gagal menyimpan akun: " + err.message, "error");
+            return false;
+          }
+        }
+
+        modalEl.querySelector("#btn-inv-close").onclick = closeModal;
+
+        modalEl.querySelector("#btn-inv-wa").onclick = async () => {
+          const phone = formatPhoneNumberForWa(inputPhone.value.trim());
+          if (!phone) {
+            toast("Mohon isi nomor WhatsApp karyawan tujuan!", "warning");
+            return;
+          }
+          const saved = await ensureUserAccount();
+          if (!saved) return;
+
+          openWhatsAppMessage(phone, previewMsg.value);
+          closeModal();
+        };
+
+        modalEl.querySelector("#btn-inv-email").onclick = async () => {
+          const email = inputEmail.value.trim();
+          if (!email) {
+            toast("Mohon isi alamat email karyawan tujuan!", "warning");
+            return;
+          }
+          const saved = await ensureUserAccount();
+          if (!saved) return;
+
+          toast(`Mengirim email undangan ke ${email}...`, "info");
+          
+          const htmlEmail = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background: #ffffff;">
+              <div style="background-color: #800000; padding: 20px; text-align: center; color: #ffffff;">
+                <h2 style="margin: 0; font-size: 20px;">${COMPANY_NAME}</h2>
+                <p style="margin: 5px 0 0 0; font-size: 13px; opacity: 0.9;">Undangan Akses Portal HRIS & Kepegawaian</p>
+              </div>
+              <div style="padding: 24px; color: #334155; font-size: 14px; line-height: 1.6;">
+                <p>Halo <strong>${escapeHtml(inputNama.value)}</strong>,</p>
+                <p>Anda telah diundang untuk mengakses Portal Sistem Informasi SDM (HRIS) <strong>${COMPANY_NAME}</strong>. Berikut adalah informasi akun login Anda:</p>
+                
+                <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px; margin: 20px 0;">
+                  <table style="width: 100%; text-align: left; font-size: 13px; border-collapse: collapse;">
+                    <tr><td style="padding: 4px 0; font-weight: bold; width: 140px;">URL Portal HRIS:</td><td><a href="${baseUrl}" style="color: #800000; text-decoration: underline; font-weight: bold;">${baseUrl}</a></td></tr>
+                    <tr><td style="padding: 4px 0; font-weight: bold;">Username:</td><td style="font-family: monospace; font-weight: bold; color: #0f172a;">${escapeHtml(inputUser.value.toUpperCase())}</td></tr>
+                    <tr><td style="padding: 4px 0; font-weight: bold;">Password Default:</td><td style="font-family: monospace; font-weight: bold; color: #0f172a;">${escapeHtml(inputPass.value)}</td></tr>
+                    <tr><td style="padding: 4px 0; font-weight: bold;">Role Akses:</td><td><span style="background: #e2e8f0; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">${escapeHtml(inputRole.value)}</span></td></tr>
+                  </table>
+                </div>
+
+                <p><strong>Langkah Login:</strong></p>
+                <ol style="padding-left: 20px; margin: 10px 0;">
+                  <li>Buka link portal HRIS di atas.</li>
+                  <li>Masukkan Username dan Password Default yang tertera.</li>
+                  <li>Disarankan untuk segera memperbarui password akun Anda setelah login pertama kali.</li>
+                </ol>
+
+                <p style="margin-top: 24px;">Jika Anda memiliki pertanyaan atau kendala, silakan hubungi tim HRD.</p>
+                <p style="margin-bottom: 0;">Terima kasih,<br><strong>Tim HRD - ${COMPANY_NAME}</strong></p>
+              </div>
+            </div>
+          `;
+
+          const sent = await sendEmailNotif(email, `[Undangan HRIS] Kredensial Login - ${COMPANY_NAME}`, htmlEmail);
+          if (sent) {
+            toast(`Email undangan berhasil dikirim ke ${email}!`, "success");
+            closeModal();
+          } else {
+            toast("Gagal mengirim email undangan. Silakan periksa jaringan / gunakan WhatsApp.", "error");
+          }
+        };
+
+        modalEl.querySelector("#btn-inv-both").onclick = async () => {
+          const phone = formatPhoneNumberForWa(inputPhone.value.trim());
+          const email = inputEmail.value.trim();
+
+          if (!phone && !email) {
+            toast("Mohon isi nomor WA atau email karyawan tujuan!", "warning");
+            return;
+          }
+
+          const saved = await ensureUserAccount();
+          if (!saved) return;
+
+          if (email) {
+            toast(`Mengirim email undangan ke ${email}...`, "info");
+            const htmlEmail = `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background: #ffffff;">
+                <div style="background-color: #800000; padding: 20px; text-align: center; color: #ffffff;">
+                  <h2 style="margin: 0; font-size: 20px;">${COMPANY_NAME}</h2>
+                  <p style="margin: 5px 0 0 0; font-size: 13px; opacity: 0.9;">Undangan Akses Portal HRIS & Kepegawaian</p>
+                </div>
+                <div style="padding: 24px; color: #334155; font-size: 14px; line-height: 1.6;">
+                  <p>Halo <strong>${escapeHtml(inputNama.value)}</strong>,</p>
+                  <p>Anda telah diundang untuk mengakses Portal Sistem Informasi SDM (HRIS) <strong>${COMPANY_NAME}</strong>. Berikut adalah informasi akun login Anda:</p>
+                  
+                  <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px; margin: 20px 0;">
+                    <table style="width: 100%; text-align: left; font-size: 13px; border-collapse: collapse;">
+                      <tr><td style="padding: 4px 0; font-weight: bold; width: 140px;">URL Portal HRIS:</td><td><a href="${baseUrl}" style="color: #800000; text-decoration: underline; font-weight: bold;">${baseUrl}</a></td></tr>
+                      <tr><td style="padding: 4px 0; font-weight: bold;">Username:</td><td style="font-family: monospace; font-weight: bold; color: #0f172a;">${escapeHtml(inputUser.value.toUpperCase())}</td></tr>
+                      <tr><td style="padding: 4px 0; font-weight: bold;">Password Default:</td><td style="font-family: monospace; font-weight: bold; color: #0f172a;">${escapeHtml(inputPass.value)}</td></tr>
+                    </table>
+                  </div>
+
+                  <p>Terima kasih,<br><strong>Tim HRD - ${COMPANY_NAME}</strong></p>
+                </div>
+              </div>
+            `;
+            await sendEmailNotif(email, `[Undangan HRIS] Kredensial Login - ${COMPANY_NAME}`, htmlEmail);
+          }
+
+          if (phone) {
+            openWhatsAppMessage(phone, previewMsg.value);
+          } else {
+            toast("Email berhasil dikirim!", "success");
+          }
+
+          closeModal();
+        };
+      }
+    });
+
+  } catch (err) {
+    console.error("Gagal membuka modal undang karyawan:", err);
+    toast("Terjadi kesalahan: " + err.message, "error");
+  }
 }

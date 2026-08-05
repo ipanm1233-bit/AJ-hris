@@ -173,32 +173,49 @@ function ensureToolbar(container) {
  }
  tb.innerHTML = `
  <p class="text-xs font-bold text-slate-700 mb-2 uppercase tracking-wider">Tambahkan Kolom Baru:</p>
- <div class="flex flex-wrap gap-2 mb-4 bg-slate-50 p-2 border border-slate-200 rounded-lg">
- <button type="button" class="btn-add-field text-xs bg-white text-slate-700 px-3 py-1.5 rounded border border-slate-200 hover:border-blue-400 hover:text-blue-600 transition shadow-sm" data-type="text">+ Teks Singkat</button>
- <button type="button" class="btn-add-field text-xs bg-white text-slate-700 px-3 py-1.5 rounded border border-slate-200 hover:border-blue-400 hover:text-blue-600 transition shadow-sm" data-type="textarea">+ Paragraf</button>
- <button type="button" class="btn-add-field text-xs bg-white text-slate-700 px-3 py-1.5 rounded border border-slate-200 hover:border-blue-400 hover:text-blue-600 transition shadow-sm" data-type="number">+ Angka</button>
- <button type="button" class="btn-add-field text-xs bg-white text-slate-700 px-3 py-1.5 rounded border border-slate-200 hover:border-blue-400 hover:text-blue-600 transition shadow-sm" data-type="date">+ Tanggal</button>
- <button type="button" class="btn-add-field text-xs bg-white text-slate-700 px-3 py-1.5 rounded border border-slate-200 hover:border-blue-400 hover:text-blue-600 transition shadow-sm" data-type="select">+ Dropdown Manual</button>
- <button type="button" class="btn-add-field text-xs bg-emerald-50 font-bold text-emerald-700 px-3 py-1.5 rounded border border-emerald-200 hover:bg-emerald-100 transition shadow-sm" data-type="db_select">+ Dropdown Database</button>
- <button type="button" class="btn-add-field text-xs bg-amber-50 font-bold text-amber-700 px-3 py-1.5 rounded border border-amber-200 hover:bg-amber-100 transition shadow-sm" data-type="formula">+ Formula Kalkulasi</button>
- <button type="button" class="btn-add-field text-xs bg-indigo-50 font-bold text-indigo-700 px-3 py-1.5 rounded border border-indigo-200 hover:bg-indigo-100 transition shadow-sm" data-type="file">+ Upload Foto/File</button>
+ <div class="flex flex-wrap gap-2 mb-4 bg-slate-50 p-2.5 border border-slate-200 rounded-xl">
+ <button type="button" class="btn-add-field text-xs font-medium bg-white text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-blue-400 hover:text-blue-600 transition shadow-sm" data-type="text">+ Teks Singkat</button>
+ <button type="button" class="btn-add-field text-xs font-medium bg-white text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-blue-400 hover:text-blue-600 transition shadow-sm" data-type="textarea">+ Paragraf</button>
+ <button type="button" class="btn-add-field text-xs font-medium bg-white text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-blue-400 hover:text-blue-600 transition shadow-sm" data-type="number">+ Angka</button>
+ <button type="button" class="btn-add-field text-xs font-medium bg-white text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-blue-400 hover:text-blue-600 transition shadow-sm" data-type="date">+ Tanggal</button>
+ <button type="button" class="btn-add-field text-xs font-semibold bg-sky-50 text-sky-800 px-3 py-1.5 rounded-lg border border-sky-200 hover:bg-sky-100 transition shadow-sm" data-type="time">+ Waktu / Jam</button>
+ <button type="button" class="btn-add-field text-xs font-semibold bg-sky-50 text-sky-800 px-3 py-1.5 rounded-lg border border-sky-200 hover:bg-sky-100 transition shadow-sm" data-type="datetime-local">+ Tgl & Waktu</button>
+ <button type="button" class="btn-add-field text-xs font-semibold bg-purple-50 text-purple-800 px-3 py-1.5 rounded-lg border border-purple-200 hover:bg-purple-100 transition shadow-sm" data-type="scale">+ Skala Penilaian</button>
+ <button type="button" class="btn-add-field text-xs font-medium bg-white text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-blue-400 hover:text-blue-600 transition shadow-sm" data-type="radio">+ Radio (Pilihan Tunggal)</button>
+ <button type="button" class="btn-add-field text-xs font-medium bg-white text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-blue-400 hover:text-blue-600 transition shadow-sm" data-type="checkbox">+ Checkbox (Banyak Pilihan)</button>
+ <button type="button" class="btn-add-field text-xs font-medium bg-white text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-blue-400 hover:text-blue-600 transition shadow-sm" data-type="select">+ Dropdown Manual</button>
+ <button type="button" class="btn-add-field text-xs bg-emerald-50 font-bold text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-100 transition shadow-sm" data-type="db_select">+ Dropdown Database</button>
+ <button type="button" class="btn-add-field text-xs bg-amber-50 font-bold text-amber-700 px-3 py-1.5 rounded-lg border border-amber-200 hover:bg-amber-100 transition shadow-sm" data-type="formula">+ Formula Kalkulasi</button>
+ <button type="button" class="btn-add-field text-xs bg-indigo-50 font-bold text-indigo-700 px-3 py-1.5 rounded-lg border border-indigo-200 hover:bg-indigo-100 transition shadow-sm" data-type="file">+ Upload Foto/File</button>
  </div>
  `;
  tb.querySelectorAll(".btn-add-field").forEach(btn => {
  btn.onclick = () => {
  const type = btn.dataset.type;
- currentFields.push({
+ const newField = {
  name: `kolom_${currentFields.length + 1}`,
  label: `Kolom Baru ${currentFields.length + 1}`,
  type: type,
  required: false,
- options: type === "select" ? ["Opsi 1", "Opsi 2"] : undefined,
- db_source: type === "db_select" ? "master_karyawan" : undefined,
- formula: type === "formula" ? "([harga]*[jumlah])" : undefined,
  is_quiz: false,
  correct_answer: "",
  score_value: 0
- });
+ };
+
+ if (type === "select" || type === "radio" || type === "checkbox") {
+ newField.options = ["Opsi 1", "Opsi 2"];
+ } else if (type === "scale") {
+ newField.min_scale = 1;
+ newField.max_scale = 5;
+ newField.min_label = "Sangat Kurang";
+ newField.max_label = "Sangat Baik";
+ } else if (type === "db_select") {
+ newField.db_source = "master_karyawan";
+ } else if (type === "formula") {
+ newField.formula = "([harga]*[jumlah])";
+ }
+
+ currentFields.push(newField);
  renderFields(container);
  };
  });
@@ -209,13 +226,25 @@ function renderFields(container) {
  if (!currentFields.length) { el.innerHTML = `<p class="text-sm text-slate-400 text-center py-8 border-2 border-dashed border-slate-100 rounded-xl bg-slate-50">Belum ada kolom. Klik tombol penambahan di atas.</p>`; return; }
 
  el.innerHTML = currentFields.map((f, i) => `
- <div draggable="true" data-idx="${i}" class="fb-field bg-white border border-slate-200 rounded-xl p-4 shadow-sm mb-3">
+ <div draggable="true" data-idx="${i}" class="fb-field bg-white border border-slate-200 rounded-2xl p-4 shadow-sm mb-3">
  <div class="flex items-start gap-3">
- <div class="cursor-grab text-slate-300 pt-2 hover:text-maroon-700 transition" title="Seret untuk urutkan">${icon("menu", "w-5 h-5")}</div>
+ <!-- Reorder Control Box (Drag Handle + Up / Down Buttons) -->
+ <div class="flex flex-col items-center gap-1 shrink-0 pt-0.5 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+ <button type="button" data-move-up="${i}" ${i === 0 ? "disabled class='text-slate-200 cursor-not-allowed p-1'" : "class='text-slate-600 hover:text-maroon-700 hover:bg-white p-1 rounded transition shadow-sm'"} title="Pindahkan Urutan ke Atas">
+ <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"/></svg>
+ </button>
+ <div class="cursor-grab text-slate-400 hover:text-maroon-700 transition my-0.5" title="Seret untuk urutkan">${icon("menu", "w-4 h-4")}</div>
+ <button type="button" data-move-down="${i}" ${i === currentFields.length - 1 ? "disabled class='text-slate-200 cursor-not-allowed p-1'" : "class='text-slate-600 hover:text-maroon-700 hover:bg-white p-1 rounded transition shadow-sm'"} title="Pindahkan Urutan ke Bawah">
+ <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
+ </button>
+ </div>
+
  <div class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
  <div class="sm:col-span-2 flex items-center justify-between">
- <span class="text-[10px] font-bold px-2 py-1 bg-slate-100 text-slate-600 rounded uppercase tracking-wider border border-slate-200">Tipe: ${f.type.replace('_', ' ')}</span>
+ <span class="text-[10px] font-bold px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg uppercase tracking-wider border border-slate-200">Tipe: ${f.type.replace('_', ' ')}</span>
+ <span class="text-[10px] font-mono text-slate-400">Urutan #${i + 1}</span>
  </div>
+
  <div>
  <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Label Kolom (Pertanyaan)</label>
  <input data-f="label" value="${escapeHtml(f.label)}" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none">
@@ -225,21 +254,44 @@ function renderFields(container) {
  <input data-f="name" value="${escapeHtml(f.name)}" readonly class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 bg-slate-100 text-slate-500 outline-none font-mono">
  </div>
  
+ ${f.type === "scale" ? `
+ <div class="sm:col-span-2 bg-purple-50/80 p-3 rounded-xl border border-purple-200 grid grid-cols-2 sm:grid-cols-4 gap-2">
+ <div>
+ <label class="text-[10px] font-bold text-purple-900 uppercase">Batas Min</label>
+ <input type="number" data-f="min_scale" value="${f.min_scale ?? 1}" readonly class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-purple-200 bg-white text-slate-600 outline-none">
+ </div>
+ <div>
+ <label class="text-[10px] font-bold text-purple-900 uppercase">Batas Maks</label>
+ <select data-f="max_scale" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-purple-300 bg-white outline-none">
+ <option value="5" ${(f.max_scale == 5 || !f.max_scale) ? 'selected' : ''}>5 (1 s/d 5)</option>
+ <option value="10" ${f.max_scale == 10 ? 'selected' : ''}>10 (1 s/d 10)</option>
+ </select>
+ </div>
+ <div>
+ <label class="text-[10px] font-bold text-purple-900 uppercase">Label Nilai Min</label>
+ <input data-f="min_label" value="${escapeHtml(f.min_label || "Sangat Kurang")}" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-purple-300 bg-white outline-none">
+ </div>
+ <div>
+ <label class="text-[10px] font-bold text-purple-900 uppercase">Label Nilai Maks</label>
+ <input data-f="max_label" value="${escapeHtml(f.max_label || "Sangat Baik")}" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-purple-300 bg-white outline-none">
+ </div>
+ </div>` : ""}
+
  ${f.type === "formula" ? `
- <div class="sm:col-span-2 bg-amber-50 p-3 rounded-lg border border-amber-200">
+ <div class="sm:col-span-2 bg-amber-50 p-3 rounded-xl border border-amber-200">
  <label class="text-[10px] font-bold text-amber-800 uppercase">Rumus Matematika</label>
  <p class="text-[10px] text-amber-700 mb-1">Gunakan nama <b>Variabel Sistem</b> di dalam kurung siku. Contoh: <code>([qty] * [harga]) / 100</code></p>
  <input data-f="formula" value="${escapeHtml(f.formula || "")}" placeholder="([field_a]+[field_b])" class="w-full px-3 py-2 text-sm rounded-lg border border-amber-300 focus:border-amber-500 outline-none font-mono bg-white">
  </div>` : ""}
 
- ${f.type === "select" ? `
+ ${(f.type === "select" || f.type === "radio" || f.type === "checkbox") ? `
  <div class="sm:col-span-2">
- <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Opsi Pilihan Manual (Pisahkan dg koma)</label>
- <input data-f="options" value="${escapeHtml((f.options || []).join(", "))}" placeholder="Laki-laki, Perempuan" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none">
+ <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Opsi Pilihan (Pisahkan dg koma)</label>
+ <input data-f="options" value="${escapeHtml((f.options || []).join(", "))}" placeholder="Opsi 1, Opsi 2, Opsi 3" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none">
  </div>` : ""}
 
  ${f.type === "db_select" ? `
- <div class="sm:col-span-2 bg-emerald-50 p-3 rounded-lg border border-emerald-200">
+ <div class="sm:col-span-2 bg-emerald-50 p-3 rounded-xl border border-emerald-200">
  <label class="text-[10px] font-bold text-emerald-800 uppercase tracking-wide">Sumber Database Otomatis</label>
  <select data-f="db_source" class="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-emerald-300 focus:border-emerald-500 outline-none bg-white">
  <option value="master_karyawan" ${f.db_source === 'master_karyawan' ? 'selected' : ''}>Tarik Data Nama Karyawan</option>
@@ -259,7 +311,7 @@ function renderFields(container) {
  </div>
 
  ${f.is_quiz ? `
- <div class="sm:col-span-2 grid grid-cols-2 gap-3 mt-1 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+ <div class="sm:col-span-2 grid grid-cols-2 gap-3 mt-1 p-3 bg-blue-50 border border-blue-200 rounded-xl">
  <div>
  <label class="text-[10px] font-bold text-blue-800 uppercase">Kunci Jawaban Benar</label>
  <input data-f="correct_answer" value="${escapeHtml(f.correct_answer || "")}" placeholder="Tulis jawaban pasti..." class="w-full mt-1 px-3 py-1.5 text-sm rounded-lg border border-blue-300 focus:border-blue-500 outline-none">
@@ -272,7 +324,7 @@ function renderFields(container) {
  ` : ""}
 
  ${f.type !== "formula" ? `
- <div class="sm:col-span-2 mt-1 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+ <div class="sm:col-span-2 mt-1 p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
  <label class="flex items-center gap-2 text-xs font-bold text-indigo-800 cursor-pointer mb-2">
  <input type="checkbox" data-f="show_if_enabled" ${f.show_if ? "checked" : ""} class="rounded border-indigo-300 text-indigo-700 w-4 h-4">
  Tampilkan Kolom Ini Hanya Jika... (kondisional)
@@ -289,13 +341,36 @@ function renderFields(container) {
  ` : ""}
  </div>` : ""}
  </div>
+
  <button data-remove="${i}" class="text-slate-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition" title="Hapus Kolom">${icon("trash", "w-5 h-5")}</button>
  </div>
  </div>`).join("");
 
+ // Event Listener Move Up & Move Down
+ el.querySelectorAll("[data-move-up]").forEach(btn => {
+ btn.addEventListener("click", () => {
+ const idx = parseInt(btn.dataset.moveUp, 10);
+ if (idx <= 0) return;
+ const temp = currentFields[idx];
+ currentFields[idx] = currentFields[idx - 1];
+ currentFields[idx - 1] = temp;
+ renderFields(container);
+ });
+ });
+
+ el.querySelectorAll("[data-move-down]").forEach(btn => {
+ btn.addEventListener("click", () => {
+ const idx = parseInt(btn.dataset.moveDown, 10);
+ if (idx >= currentFields.length - 1) return;
+ const temp = currentFields[idx];
+ currentFields[idx] = currentFields[idx + 1];
+ currentFields[idx + 1] = temp;
+ renderFields(container);
+ });
+ });
+
  // Event Listener Inputs
  el.querySelectorAll("[data-f]").forEach(input => {
- // Gunakan 'change' untuk checkbox/select agar langsung render ulang UI jika struktur berubah
  const eventType = (input.type === 'checkbox' || input.tagName === 'SELECT') ? 'change' : 'input';
  
  input.addEventListener(eventType, (e) => {
@@ -307,7 +382,7 @@ function renderFields(container) {
  } 
  else if (key === "is_quiz") { 
  currentFields[idx].is_quiz = input.checked; 
- renderFields(container); // Render ulang untuk memunculkan kolom skor
+ renderFields(container);
  } 
  else if (key === "show_if_enabled") {
  if (input.checked) currentFields[idx].show_if = { field: "", value: "" };
@@ -326,12 +401,14 @@ function renderFields(container) {
  else if (key === "label") { 
  currentFields[idx].label = input.value; 
  currentFields[idx].name = toSnakeCase(input.value) || `kolom_${idx + 1}`; 
- // Update visual name tanpa memicu render ulang keseluruhan (mencegah kursor hilang)
  const nameInput = input.closest('.fb-field').querySelector('[data-f="name"]');
  if (nameInput) nameInput.value = currentFields[idx].name;
  } 
  else if (key === "score_value") {
  currentFields[idx].score_value = parseFloat(input.value) || 0;
+ }
+ else if (key === "max_scale") {
+ currentFields[idx].max_scale = parseInt(input.value) || 5;
  }
  else {
  currentFields[idx][key] = input.value; 
@@ -365,16 +442,26 @@ function ensureLpjToolbar(container) {
  <button type="button" class="btn-add-lpj-field text-xs bg-white text-amber-800 px-2.5 py-1 rounded border border-amber-300 hover:bg-amber-100 transition" data-type="text">+ Teks</button>
  <button type="button" class="btn-add-lpj-field text-xs bg-white text-amber-800 px-2.5 py-1 rounded border border-amber-300 hover:bg-amber-100 transition" data-type="textarea">+ Paragraf</button>
  <button type="button" class="btn-add-lpj-field text-xs bg-white text-amber-800 px-2.5 py-1 rounded border border-amber-300 hover:bg-amber-100 transition" data-type="number">+ Angka</button>
+ <button type="button" class="btn-add-lpj-field text-xs bg-sky-50 text-sky-800 px-2.5 py-1 rounded border border-sky-300 hover:bg-sky-100 transition" data-type="time">+ Waktu</button>
+ <button type="button" class="btn-add-lpj-field text-xs bg-purple-50 text-purple-800 px-2.5 py-1 rounded border border-purple-300 hover:bg-purple-100 transition" data-type="scale">+ Skala</button>
  <button type="button" class="btn-add-lpj-field text-xs bg-indigo-100 font-bold text-indigo-700 px-2.5 py-1 rounded border border-indigo-300 hover:bg-indigo-200 transition" data-type="file">+ Upload Bukti</button>
  `;
  tb.querySelectorAll(".btn-add-lpj-field").forEach(btn => {
  btn.onclick = () => {
- currentLpjFields.push({
+ const type = btn.dataset.type;
+ const newField = {
  name: `lpj_kolom_${currentLpjFields.length + 1}`,
  label: `Kolom LPJ Baru ${currentLpjFields.length + 1}`,
- type: btn.dataset.type,
+ type: type,
  required: true
- });
+ };
+ if (type === "scale") {
+ newField.min_scale = 1;
+ newField.max_scale = 5;
+ newField.min_label = "Sangat Kurang";
+ newField.max_label = "Sangat Baik";
+ }
+ currentLpjFields.push(newField);
  renderLpjFields(container);
  };
  });
@@ -385,11 +472,24 @@ function renderLpjFields(container) {
  if (!currentLpjFields.length) { el.innerHTML = `<p class="text-xs text-amber-700 text-center py-4 border-2 border-dashed border-amber-200 rounded-lg bg-white">Belum ada kolom LPJ. Contoh: "Foto Bukti Penggunaan" (Upload Bukti), "Nominal Realisasi" (Angka), "Catatan Realisasi" (Paragraf).</p>`; return; }
 
  el.innerHTML = currentLpjFields.map((f, i) => `
- <div draggable="true" data-lpj-idx="${i}" class="fb-lpj-field bg-white border border-amber-200 rounded-lg p-3">
+ <div draggable="true" data-lpj-idx="${i}" class="fb-lpj-field bg-white border border-amber-200 rounded-xl p-3 shadow-sm">
  <div class="flex items-start gap-2">
- <div class="cursor-grab text-amber-300 pt-2" title="Seret untuk urutkan">${icon("menu", "w-4 h-4")}</div>
+ <!-- Reorder Control Box for LPJ -->
+ <div class="flex flex-col items-center gap-0.5 shrink-0 pt-0.5 bg-amber-50/70 p-1 rounded-lg border border-amber-200">
+ <button type="button" data-move-lpj-up="${i}" ${i === 0 ? "disabled class='text-amber-200 cursor-not-allowed p-0.5'" : "class='text-amber-700 hover:bg-white p-0.5 rounded transition shadow-sm'"} title="Naikkan Urutan">
+ <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"/></svg>
+ </button>
+ <div class="cursor-grab text-amber-400 hover:text-amber-800 transition" title="Seret untuk urutkan">${icon("menu", "w-3.5 h-3.5")}</div>
+ <button type="button" data-move-lpj-down="${i}" ${i === currentLpjFields.length - 1 ? "disabled class='text-amber-200 cursor-not-allowed p-0.5'" : "class='text-amber-700 hover:bg-white p-0.5 rounded transition shadow-sm'"} title="Turunkan Urutan">
+ <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
+ </button>
+ </div>
+
  <div class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
- <div class="sm:col-span-2 text-[10px] font-bold px-2 py-0.5 bg-amber-100 text-amber-700 rounded uppercase w-fit">Tipe: ${f.type}</div>
+ <div class="sm:col-span-2 flex items-center justify-between">
+ <span class="text-[10px] font-bold px-2 py-0.5 bg-amber-100 text-amber-700 rounded uppercase w-fit">Tipe: ${f.type}</span>
+ <span class="text-[10px] font-mono text-amber-600">Urutan #${i + 1}</span>
+ </div>
  <div>
  <label class="text-[10px] font-bold text-amber-700 uppercase">Label</label>
  <input data-lf="label" value="${escapeHtml(f.label)}" class="w-full px-2 py-1.5 text-sm rounded border border-amber-200 outline-none">
@@ -402,6 +502,28 @@ function renderLpjFields(container) {
  <button data-remove-lpj="${i}" class="text-amber-400 hover:text-red-600 p-1.5 rounded transition" title="Hapus">${icon("trash", "w-4 h-4")}</button>
  </div>
  </div>`).join("");
+
+ el.querySelectorAll("[data-move-lpj-up]").forEach(btn => {
+ btn.addEventListener("click", () => {
+ const idx = parseInt(btn.dataset.moveLpjUp, 10);
+ if (idx <= 0) return;
+ const temp = currentLpjFields[idx];
+ currentLpjFields[idx] = currentLpjFields[idx - 1];
+ currentLpjFields[idx - 1] = temp;
+ renderLpjFields(container);
+ });
+ });
+
+ el.querySelectorAll("[data-move-lpj-down]").forEach(btn => {
+ btn.addEventListener("click", () => {
+ const idx = parseInt(btn.dataset.moveLpjDown, 10);
+ if (idx >= currentLpjFields.length - 1) return;
+ const temp = currentLpjFields[idx];
+ currentLpjFields[idx] = currentLpjFields[idx + 1];
+ currentLpjFields[idx + 1] = temp;
+ renderLpjFields(container);
+ });
+ });
 
  el.querySelectorAll("[data-lf]").forEach(input => {
  input.addEventListener("input", (e) => {

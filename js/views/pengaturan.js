@@ -1,72 +1,82 @@
 import { COL } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, sha256, toast, escapeHtml } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, sha256, toast, escapeHtml, openInviteEmployeeModal } from "../utils.js";
 import { renderCrudModule, emptyState } from "../components.js";
 import { MENU_CONFIG, loadPermissionOverrides } from "../auth.js";
 
 export async function mount(container, { session }) {
- const isHrd = session.role === "HRD";
- container.querySelector("#tab-btn-users").classList.toggle("hidden", !isHrd);
- if (!isHrd) container.querySelector("#st-panel-users").innerHTML = `<div class="bg-white rounded-2xl border border-slate-100 p-6">${emptyState("Hanya HRD yang dapat mengelola akun pengguna", "Anda tetap dapat mengatur hak akses menu & formulir pada tab lain.")}</div>`;
- else await loadUsersTab(container);
+	const isHrd = session.role === "HRD";
+	container.querySelector("#tab-btn-users").classList.toggle("hidden", !isHrd);
+	if (!isHrd) container.querySelector("#st-panel-users").innerHTML = `<div class="bg-white rounded-2xl border border-slate-100 p-6">${emptyState("Hanya HRD yang dapat mengelola akun pengguna", "Anda tetap dapat mengatur hak akses menu & formulir pada tab lain.")}</div>`;
+	else await loadUsersTab(container);
 
- const users = await fsGetAll(COL.USERS);
- await setupRbacMenuTab(container, users);
- await setupRbacFormTab(container, users);
- await loadKanalTab(container);
+	const users = await fsGetAll(COL.USERS);
+	await setupRbacMenuTab(container, users);
+	await setupRbacFormTab(container, users);
+	await loadKanalTab(container);
 
- container.querySelectorAll(".st-tab").forEach(btn => {
- btn.addEventListener("click", () => {
- const tab = btn.dataset.stab;
- ["users", "menu", "forms", "kanal"].forEach(t => container.querySelector(`#st-panel-${t}`)?.classList.toggle("hidden", t !== tab));
- container.querySelectorAll(".st-tab").forEach(b => {
- b.classList.toggle("border-maroon-700", b === btn);
- b.classList.toggle("text-maroon-700", b === btn);
- b.classList.toggle("border-transparent", b !== btn);
- b.classList.toggle("text-slate-500", b !== btn);
- });
- });
- });
+	container.querySelectorAll(".st-tab").forEach(btn => {
+		btn.addEventListener("click", () => {
+			const tab = btn.dataset.stab;
+			["users", "menu", "forms", "kanal"].forEach(t => container.querySelector(`#st-panel-${t}`)?.classList.toggle("hidden", t !== tab));
+			container.querySelectorAll(".st-tab").forEach(b => {
+				b.classList.toggle("border-maroon-700", b === btn);
+				b.classList.toggle("text-maroon-700", b === btn);
+				b.classList.toggle("border-transparent", b !== btn);
+				b.classList.toggle("text-slate-500", b !== btn);
+			});
+		});
+	});
 
- return { unmount() {} };
+	return { unmount() {} };
 }
 
 async function loadUsersTab(container) {
- await renderCrudModule(container.querySelector("#st-panel-users"), {
- title: "Manajemen Pengguna",
- subtitle: "Kelola akun login karyawan. Password otomatis dienkripsi (SHA-256).",
- collectionName: COL.USERS,
- idPrefix: "USR",
- orderByField: "nama",
- searchFields: ["nama", "username", "role"],
- columns: [
- { key: "username", label: "Username" },
- { key: "nama", label: "Nama" },
- { key: "role", label: "Role", type: "badge" },
- { key: "posisi", label: "Posisi" },
- { key: "email", label: "Email" },
- ],
- formFields: (() => {
- const f = [
- { name: "username", label: "Username", type: "text", required: true },
- { name: "password", label: "Password Baru (kosongkan jika tidak diubah)", type: "text" },
- { name: "nama", label: "Nama Lengkap", type: "text", required: true },
- { name: "role", label: "Role", type: "select", required: true, options: ["HRD", "GM", "FINANCE", "SPV", "MANAGER", "SALES", "STAFF", "DRIVER", "WAREHOUSE"] },
- { name: "posisi", label: "Posisi / Jabatan", type: "text" },
- { name: "email", label: "Email", type: "text" },
- { name: "nik", label: "NIK (tautkan ke Master Karyawan)", type: "text", full: true },
- ];
- f.idFromField = "username";
- return f;
- })(),
- beforeSave: async (data, existing) => {
- const out = { ...data };
- if (data.password) { out.password_hash = await sha256(data.password); }
- delete out.password;
- if (!out.password_hash && existing) delete out.password_hash; // keep old hash on update if left blank
- out.username = String(out.username).toUpperCase();
- return out;
- }
- });
+	await renderCrudModule(container.querySelector("#st-panel-users"), {
+		title: "Manajemen Pengguna",
+		subtitle: "Kelola akun login karyawan. Password otomatis dienkripsi (SHA-256).",
+		collectionName: COL.USERS,
+		idPrefix: "USR",
+		orderByField: "nama",
+		searchFields: ["nama", "username", "role"],
+		extraToolbarHtml: `
+			<button id="btn-invite-emp" class="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold px-3.5 py-2 rounded-lg transition shadow-sm">
+				<span class="text-sm sm:text-base">✉️</span>Undang Karyawan
+			</button>
+		`,
+		columns: [
+			{ key: "username", label: "Username" },
+			{ key: "nama", label: "Nama" },
+			{ key: "role", label: "Role", type: "badge" },
+			{ key: "posisi", label: "Posisi" },
+			{ key: "email", label: "Email" },
+		],
+		formFields: (() => {
+			const f = [
+				{ name: "username", label: "Username", type: "text", required: true },
+				{ name: "password", label: "Password Baru (kosongkan jika tidak diubah)", type: "text" },
+				{ name: "nama", label: "Nama Lengkap", type: "text", required: true },
+				{ name: "role", label: "Role", type: "select", required: true, options: ["HRD", "GM", "FINANCE", "SPV", "MANAGER", "SALES", "STAFF", "DRIVER", "WAREHOUSE"] },
+				{ name: "posisi", label: "Posisi / Jabatan", type: "text" },
+				{ name: "email", label: "Email", type: "text" },
+				{ name: "nik", label: "NIK (tautkan ke Master Karyawan)", type: "text", full: true },
+			];
+			f.idFromField = "username";
+			return f;
+		})(),
+		beforeSave: async (data, existing) => {
+			const out = { ...data };
+			if (data.password) { out.password_hash = await sha256(data.password); }
+			delete out.password;
+			if (!out.password_hash && existing) delete out.password_hash; // keep old hash on update if left blank
+			out.username = String(out.username).toUpperCase();
+			return out;
+		}
+	});
+
+	const inviteBtn = container.querySelector("#btn-invite-emp");
+	if (inviteBtn) {
+		inviteBtn.onclick = () => openInviteEmployeeModal();
+	}
 }
 
 async function setupRbacMenuTab(container, users) {

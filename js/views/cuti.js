@@ -685,14 +685,23 @@ export async function mount(container, { session }) {
  </div>
  </div>
 
- <div class="grid grid-cols-2 gap-4 hidden" id="wrap-jam">
+ <div class="space-y-3 hidden" id="wrap-jam">
  <div>
- <label class="block text-xs font-bold text-slate-600 mb-1">Jam Keluar</label>
- <input type="time" id="inp-jam-keluar" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+ <label class="block text-xs font-bold text-slate-600 mb-1">Pilihan Sesi Cuti Setengah Hari</label>
+ <select id="inp-sesi-cuti" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400 bg-white">
+ <option value="Cuti Pagi">Cuti Pagi (Masuk Siang: 08:00 - 12:00)</option>
+ <option value="Cuti Siang">Cuti Siang (Pulang Awal: 12:00 - 17:00)</option>
+ </select>
+ </div>
+ <div class="grid grid-cols-2 gap-4">
+ <div>
+ <label class="block text-xs font-bold text-slate-600 mb-1">Jam Keluar / Absen Cuti</label>
+ <input type="time" id="inp-jam-keluar" value="08:00" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
  </div>
  <div>
- <label class="block text-xs font-bold text-slate-600 mb-1">Jam Kembali</label>
- <input type="time" id="inp-jam-kembali" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+ <label class="block text-xs font-bold text-slate-600 mb-1">Jam Kembali / Masuk Kerja</label>
+ <input type="time" id="inp-jam-kembali" value="12:00" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+ </div>
  </div>
  </div>
 
@@ -756,10 +765,26 @@ export async function mount(container, { session }) {
  const selJenis = m.querySelector("#inp-jenis");
  const wrapTglAkhir = m.querySelector("#wrap-tgl-akhir");
  const wrapJam = m.querySelector("#wrap-jam");
+ const selSesi = m.querySelector("#inp-sesi-cuti");
+ const inJamKeluar = m.querySelector("#inp-jam-keluar");
+ const inJamKembali = m.querySelector("#inp-jam-kembali");
+
  const inMulai = m.querySelector("#inp-tgl-mulai");
  const inAkhir = m.querySelector("#inp-tgl-akhir");
  const inHari = m.querySelector("#inp-hari");
  const lblPotong = m.querySelector("#lbl-potong-tipe");
+
+ if (selSesi) {
+ selSesi.onchange = () => {
+ if (selSesi.value === "Cuti Pagi") {
+ if (inJamKeluar) inJamKeluar.value = "08:00";
+ if (inJamKembali) inJamKembali.value = "12:00";
+ } else {
+ if (inJamKeluar) inJamKeluar.value = "12:00";
+ if (inJamKembali) inJamKembali.value = "17:00";
+ }
+ };
+ }
 
  function calcDays() {
  const opt = selJenis.options[selJenis.selectedIndex];
@@ -815,6 +840,10 @@ export async function mount(container, { session }) {
  potong_jatah: tipePotong,
  count: parseFloat(inHari.value) || 0,
  keterangan_cuti: m.querySelector("#inp-alasan").value.trim(),
+ sesi_cuti: isHalfDay ? (selSesi?.value || "Cuti Pagi") : "",
+ jam_keluar: isHalfDay ? (inJamKeluar?.value || "08:00") : "",
+ jam_kembali: isHalfDay ? (inJamKembali?.value || "12:00") : "",
+ jam_masuk: isHalfDay ? (inJamKembali?.value || "12:00") : "",
  tahun: new Date(tglMulai).getFullYear(),
  bulan: new Date(tglMulai).toLocaleString('id-ID', { month: 'long' })
  };

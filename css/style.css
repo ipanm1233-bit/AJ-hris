@@ -192,15 +192,22 @@ body {
 /* =====================================================================
    MOBILE UI OPTIMIZATION & SYMMETRICAL ASPECT RATIOS
    ===================================================================== */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0.75rem);
+}
+
 @media (max-width: 640px) {
-  body { overflow-x: hidden; }
+  body { 
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
 
   /* Ensure main content container fits mobile screen padding symmetrically */
   #main-content {
     padding-left: 0.75rem !important;
     padding-right: 0.75rem !important;
     padding-top: 4.25rem !important;
-    padding-bottom: 5.5rem !important;
+    padding-bottom: 5.75rem !important;
   }
 
   /* Touch horizontal scrolling for tables */
@@ -213,6 +220,11 @@ body {
   input, select, textarea {
     font-size: 14px !important;
     max-width: 100%;
+  }
+
+  /* Mobile touch target size for primary actions */
+  button, .btn, a.btn {
+    min-height: 40px;
   }
 
   /* Symmetrical padding on cards for mobile screens */
@@ -228,12 +240,14 @@ body {
     align-items: center !important;
   }
 
-  /* Make stacked modal dialogs fill 92% screen width symmetrically */
+  /* Make stacked modal dialogs fill 94% screen width symmetrically */
   .modal-dialog, [id^="modal-"] > div {
     width: 94% !important;
     max-width: 94vw !important;
     margin: auto !important;
     border-radius: 1.5rem !important;
+    max-height: 90vh !important;
+    overflow-y: auto !important;
   }
 }
 
