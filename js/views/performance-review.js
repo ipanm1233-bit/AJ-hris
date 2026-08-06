@@ -1,6 +1,6 @@
 import { db, COL, collection, query, where, getDocs, orderBy, limit, addDoc } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, fmtDateShort, escapeHtml, genId } from "../utils.js";
-import { avatar, badge, emptyState } from "../components.js";
+import { avatar, badge, icon, emptyState } from "../components.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
 
 export async function mount(container, { session }) {

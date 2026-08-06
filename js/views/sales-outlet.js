@@ -15,7 +15,6 @@ const DEFAULT_OUTLETS = [
 ];
 
 export async function mount(container, { session }) {
- const userRole = (session?.role || "").toUpperCase();
  const isHrdOrAdmin = ["HRD", "SUPERADMIN", "ADMIN", "GM", "MANAGER", "SPV"].includes(userRole);
 
  const headerTitle = container.querySelector("h1");
@@ -600,6 +599,7 @@ export async function mount(container, { session }) {
  };
  }
 
+}
  await loadOutlets();
  return { unmount() {} };
 }

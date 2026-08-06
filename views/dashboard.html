@@ -1,26 +1,10 @@
-<div class="space-y-6">
+<div class="space-y-4 sm:space-y-6">
 
-  <!-- GREETING & QUICK ACTIONS -->
-  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+  <!-- GREETING -->
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
     <div>
-      <h1 id="dash-greeting" class="text-2xl font-extrabold text-slate-800 tracking-tight">Selamat Datang</h1>
-      <p class="text-xs sm:text-sm text-slate-500 mt-1">Berikut ringkasan aktivitas dan status kepegawaian Anda hari ini.</p>
-    </div>
-    <div class="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
-      <a href="#absensi" class="px-3.5 py-2 rounded-xl bg-maroon-700 text-white font-bold text-xs hover:bg-maroon-800 transition shrink-0 flex items-center gap-1.5 shadow-xs">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-        <span>Absen Masuk</span>
-      </a>
-      <a href="#reimbursement" class="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs transition shrink-0 flex items-center gap-1.5 shadow-xs">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-        <span>Reimbursement</span>
-      </a>
-      <a href="#pengajuan-cuti" class="px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs transition shrink-0 flex items-center gap-1.5 shadow-xs">
-        <span>Ajukan Cuti</span>
-      </a>
-      <a href="#klaim-bensin" class="px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs transition shrink-0 flex items-center gap-1.5 shadow-xs">
-        <span>Klaim Bensin</span>
-      </a>
+      <h1 id="dash-greeting" class="text-xl sm:text-2xl font-extrabold text-slate-800 tracking-tight">Selamat Datang</h1>
+      <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Berikut ringkasan aktivitas dan status kepegawaian Anda hari ini.</p>
     </div>
   </div>
 
@@ -135,8 +119,8 @@
     </div>
   </div>
 
-  <!-- PROFILE CARD -->
-  <div id="dash-profile-card" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex items-center gap-4 cursor-pointer card-hover">
+  <!-- PROFILE CARD (DESKTOP ONLY - HIDDEN ON MOBILE) -->
+  <div id="dash-profile-card" class="hidden sm:flex bg-white rounded-2xl border border-slate-100 shadow-sm p-5 items-center gap-4 cursor-pointer card-hover">
     <div id="dash-profile-avatar"></div>
     <div class="flex-1 min-w-0">
       <p id="dash-profile-nama" class="font-bold text-lg text-slate-800 truncate">-</p>
@@ -149,7 +133,7 @@
   </div>
 
   <!-- CUTI HARI INI (DI ATAS, TEPAT DI BAWAH CARD IDENTITAS KARYAWAN) -->
-  <div id="dash-widget-cuti-hari-ini" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+  <div id="dash-widget-cuti-hari-ini" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-5">
     <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2.5">
       <h3 class="font-bold text-slate-800 text-xs sm:text-sm flex items-center gap-2">
         <span class="p-1 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
@@ -166,7 +150,7 @@
   <div id="dash-personal-banner"></div>
 
   <!-- CONTRACT EXPIRY REMINDER WIDGET -->
-  <div id="dash-contract-widget-wrap" class="hidden bg-gradient-to-r from-amber-50/90 via-orange-50/40 to-white rounded-2xl border border-amber-200/90 shadow-sm p-5 space-y-3">
+  <div id="dash-contract-widget-wrap" class="hidden bg-gradient-to-r from-amber-50/90 via-orange-50/40 to-white rounded-2xl border border-amber-200/90 shadow-sm p-4 sm:p-5 space-y-3">
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-200/60 pb-3">
       <div class="flex items-start sm:items-center gap-3">
         <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold text-lg shrink-0 shadow-sm">
@@ -194,7 +178,7 @@
   </div>
 
   <!-- 3 LEAVE BALANCE CARDS -->
-  <div id="dash-widget-leave" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+  <div id="dash-widget-leave" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-5">
     <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2.5">
       <h3 class="font-bold text-slate-800 text-xs sm:text-sm flex items-center gap-2">
         <span class="p-1 bg-maroon-50 text-maroon-700 rounded-lg flex items-center justify-center">
@@ -211,11 +195,11 @@
   </div>
 
   <!-- PERFORMANCE & ATTENDANCE ANALYTICS SECTION -->
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
     <!-- ATTENDANCE ANALYTICS WIDGET -->
-    <div id="dash-widget-attendance" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+    <div id="dash-widget-attendance" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-5">
       <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-2.5">
-        <h3 class="font-bold text-slate-800 flex items-center gap-2">
+        <h3 class="font-bold text-slate-800 flex items-center gap-2 text-xs sm:text-sm">
           <span class="p-1.5 bg-rose-50 text-rose-600 rounded-lg flex items-center justify-center">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
           </span>
@@ -229,10 +213,10 @@
     </div>
 
     <!-- EMPLOYEE PERFORMANCE & TRAINING HISTORY WIDGET -->
-    <div id="dash-widget-performance" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex flex-col justify-between">
+    <div id="dash-widget-performance" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-5 flex flex-col justify-between">
       <div>
         <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-2.5">
-          <h3 class="font-bold text-slate-800 flex items-center gap-2">
+          <h3 class="font-bold text-slate-800 flex items-center gap-2 text-xs sm:text-sm">
             <span class="p-1.5 bg-amber-50 text-amber-600 rounded-lg flex items-center justify-center">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
             </span>
@@ -262,22 +246,22 @@
   </div>
 
   <!-- MAIN GRID -->
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <div class="lg:col-span-2 space-y-6">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+    <div class="lg:col-span-2 space-y-4 sm:space-y-6">
 
       <!-- KPI 360 TASKS -->
-      <div id="dash-widget-kpi" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+      <div id="dash-widget-kpi" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-5">
         <div class="flex items-center justify-between mb-4">
-          <h3 class="font-bold text-slate-800">Daftar Tugas Penilaian 360° Saya</h3>
+          <h3 class="font-bold text-slate-800 text-xs sm:text-sm">Daftar Tugas Penilaian 360° Saya</h3>
           <a href="#penilaian-kontrak" class="text-xs text-maroon-700 font-medium hover:underline">Lihat semua</a>
         </div>
         <div id="dash-kpi-tasks" class="space-y-2"></div>
       </div>
 
       <!-- INVENTARIS & ASET TANGGUNG JAWAB SAYA -->
-      <div id="dash-widget-assets" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+      <div id="dash-widget-assets" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-5">
         <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-2.5">
-          <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+          <h3 class="font-bold text-slate-800 text-xs sm:text-sm flex items-center gap-2">
             <span class="p-1.5 bg-red-50 text-maroon-700 rounded-lg flex items-center justify-center">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
             </span>
@@ -292,10 +276,10 @@
 
     </div>
 
-    <div class="space-y-6">
+    <div class="space-y-4 sm:space-y-6">
       <!-- ANNOUNCEMENTS -->
-      <div id="dash-widget-pengumuman" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-        <h3 class="font-bold text-slate-800 mb-4">Pengumuman & Aktivitas Terakhir</h3>
+      <div id="dash-widget-pengumuman" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-5">
+        <h3 class="font-bold text-slate-800 text-xs sm:text-sm mb-4">Pengumuman & Aktivitas Terakhir</h3>
         <div id="dash-announcements" class="space-y-3"></div>
       </div>
     </div>

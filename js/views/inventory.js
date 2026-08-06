@@ -1,5 +1,5 @@
 import { COL } from "../firebase-config.js";
-import { fsGetAll, fsUpdate, fsAdd, toNumber, escapeHtml, fmtDateShort, openModal, closeModal, toast, notifyUser } from "../utils.js";
+import { fsGetAll, fsUpdate, fsAdd, toNumber, escapeHtml, fmtDateShort, openModal, closeModal, toast, notifyUser, genId } from "../utils.js";
 import { renderCrudModule } from "../components.js";
 import { isoDocHeaderTable } from "../branding.js";
 

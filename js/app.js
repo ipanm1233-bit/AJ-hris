@@ -412,6 +412,9 @@ function highlightActive(route) {
  });
 
  // Mobile bottom tab active indicator mapping
+ let activeIndex = -1;
+ let activeIconSvg = "";
+
  document.querySelectorAll("[data-mobile-tab]").forEach(tab => {
  const tabRoute = tab.getAttribute("data-mobile-tab");
  let isActive = false;
@@ -422,9 +425,9 @@ function highlightActive(route) {
  isActive = true;
  } else if (tabRoute === "absensi" && (route === "absensi" || route === "klaim-bensin" || route === "lembur-kasbon" || route === "manajemen-cuti" || route === "cuti" || route === "izin")) {
  isActive = true;
- } else if (tabRoute === "pengajuan" && route === "pengajuan") {
+ } else if (tabRoute === "pengajuan" && (route === "pengajuan" || route === "reimbursement" || route === "pengajuan-cuti" || route === "pengajuan-kasbon" || route === "form-builder")) {
  isActive = true;
- } else if (tabRoute === "riwayat" && (route === "riwayat" || route === "performance-review" || route === "penilaian-kontrak" || route === "training" || route === "siklus-karyawan" || route === "broadcast")) {
+ } else if ((tabRoute === "penilaian-kontrak" || tabRoute === "riwayat") && (route === "penilaian-kontrak" || route === "riwayat" || route === "performance-review" || route === "training" || route === "siklus-karyawan" || route === "broadcast")) {
  isActive = true;
  } else if (tabRoute === "profile" && route === "profile") {
  isActive = true;
@@ -432,15 +435,40 @@ function highlightActive(route) {
 
  if (isActive) {
  tab.classList.add("active");
+ const idx = tab.getAttribute("data-tab-index");
+ if (idx !== null && idx !== undefined) {
+ activeIndex = parseInt(idx, 10);
+ const iconWrap = tab.querySelector(".nav-icon-wrap");
+ if (iconWrap) {
+ activeIconSvg = iconWrap.innerHTML;
+ }
+ }
  } else {
  tab.classList.remove("active");
  }
  });
 
+ // Dynamic sliding mobile tab indicator & icon
+ const indicator = document.getElementById("mobile-nav-indicator");
+ const indicatorIcon = document.getElementById("mobile-indicator-icon");
+ if (indicator) {
+ if (activeIndex >= 0 && activeIndex < 5) {
+ indicator.style.opacity = "1";
+ indicator.style.visibility = "visible";
+ indicator.style.transform = `translate3d(${activeIndex * 100}%, 0, 0)`;
+ if (indicatorIcon && activeIconSvg) {
+ indicatorIcon.innerHTML = activeIconSvg;
+ }
+ } else {
+ indicator.style.opacity = "0";
+ indicator.style.visibility = "hidden";
+ }
+ }
+
  // Toggle mobile header back button
  const backBtn = document.getElementById("mobile-back-btn");
  if (backBtn) {
- if (["dashboard", "absensi", "pengajuan", "riwayat", "profile"].includes(route)) {
+ if (["dashboard", "absensi", "pengajuan", "riwayat", "penilaian-kontrak", "profile"].includes(route)) {
  backBtn.classList.add("hidden");
  } else {
  backBtn.classList.remove("hidden");

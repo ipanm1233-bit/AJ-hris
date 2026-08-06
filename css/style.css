@@ -106,56 +106,36 @@ body {
 .fb-field.dragging { opacity: .4; }
 .fb-dropline { height: 3px; background: #7a1f2b; border-radius: 3px; margin: 2px 0; }
 
-/* --- Glassmorphism Mobile Bottom Navigation --- */
+/* --- Curved Mobile Bottom Navigation --- */
 .mobile-nav-bar {
-  background: rgba(110, 18, 30, 0.88);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 -8px 28px rgba(90, 10, 20, 0.4);
+  background: linear-gradient(135deg, #2b0509 0%, #580000 50%, #8e0000 100%);
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 -10px 32px rgba(43, 5, 9, 0.4);
+  border-top-left-radius: 1.25rem;
+  border-top-right-radius: 1.25rem;
+  padding-top: 0.5rem;
+  padding-bottom: max(0.65rem, env(safe-area-inset-bottom, 14px));
+  min-height: 4rem;
 }
 
 .mobile-nav-item {
-  color: rgba(254, 205, 211, 0.75);
-  transition: all 0.2s ease;
+  color: rgba(254, 205, 211, 0.7);
+  position: relative;
+  transition: color 0.2s ease, transform 0.2s ease;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
 }
 .mobile-nav-item:hover {
   color: #ffffff;
 }
 .mobile-nav-item.active {
   color: #ffffff !important;
-  font-weight: 700;
-}
-.mobile-nav-item .active-dot {
-  display: none;
-  width: 5px;
-  height: 5px;
-  border-radius: 9999px;
-  background-color: #ffffff;
-  margin-top: 2px;
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.9);
-}
-.mobile-nav-item.active .active-dot {
-  display: block;
 }
 
-/* Elevated Circular Red Request Button */
-.btn-request-floating {
-  width: 3.25rem;
-  height: 3.25rem;
-  border-radius: 9999px;
-  background: linear-gradient(135deg, #e11d48, #be123c, #881337);
-  color: #ffffff;
-  border: 2px solid rgba(255, 255, 255, 0.9);
-  box-shadow: 0 8px 20px rgba(180, 15, 50, 0.65), inset 0 1px 2px rgba(255, 255, 255, 0.6);
-  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
-}
-.btn-request-floating:active {
-  transform: scale(0.92);
-}
-.mobile-nav-item.active .btn-request-floating {
-  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.35), 0 10px 25px rgba(225, 29, 72, 0.85);
-  transform: scale(1.08);
+#mobile-nav-indicator {
+  will-change: transform;
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform: translate3d(0, 0, 0);
 }
 
 /* --- Print-friendly (untuk slip/laporan) --- */

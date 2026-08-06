@@ -474,6 +474,7 @@ export async function mount(container, { session }) {
  };
  }
 
- await loadItems();
+ }
+await loadItems();
  return { unmount() {} };
 }
