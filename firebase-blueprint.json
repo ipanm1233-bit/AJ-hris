@@ -42,6 +42,48 @@
         "tanggal": { "type": "string" }
       },
       "required": ["username_target", "judul", "pesan"]
+    },
+    "MasterReimbursementType": {
+      "title": "MasterReimbursementType",
+      "description": "Reimbursement type configuration and limits",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nama_jenis": { "type": "string" },
+        "plafon_mingguan": { "type": "number" },
+        "plafon_bulanan": { "type": "number" },
+        "plafon_tahunan": { "type": "number" },
+        "hak_akses": { "type": "array", "items": { "type": "string" } },
+        "wajib_bukti": { "type": "boolean" },
+        "keterangan": { "type": "string" },
+        "aktif": { "type": "boolean" }
+      },
+      "required": ["nama_jenis"]
+    },
+    "DataReimbursement": {
+      "title": "DataReimbursement",
+      "description": "Employee financial reimbursement claims",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nama_karyawan": { "type": "string" },
+        "nik": { "type": "string" },
+        "cabang": { "type": "string" },
+        "divisi": { "type": "string" },
+        "jabatan": { "type": "string" },
+        "id_jenis": { "type": "string" },
+        "nama_jenis": { "type": "string" },
+        "nominal": { "type": "number" },
+        "tanggal_pengeluaran": { "type": "string" },
+        "keterangan": { "type": "string" },
+        "bukti_url": { "type": "string" },
+        "status": { "type": "string" },
+        "approved_by": { "type": "string" },
+        "approved_at": { "type": "string" },
+        "paid_at": { "type": "string" },
+        "catatan_approval": { "type": "string" }
+      },
+      "required": ["nama_karyawan", "nama_jenis", "nominal", "status"]
     }
   },
   "firestore": {
@@ -56,6 +98,14 @@
     "/notifications/{notifId}": {
       "schema": { "$ref": "#/entities/Notification" },
       "description": "Notifications"
+    },
+    "/master_reimbursement_type/{typeId}": {
+      "schema": { "$ref": "#/entities/MasterReimbursementType" },
+      "description": "Reimbursement type configurations"
+    },
+    "/data_reimbursement/{reimbursementId}": {
+      "schema": { "$ref": "#/entities/DataReimbursement" },
+      "description": "Employee reimbursement claims"
     },
     "/master_karyawan/{karyawanId}": {
       "schema": "object",
