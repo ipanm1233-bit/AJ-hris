@@ -24,52 +24,55 @@ const SESSION_KEY = "andela_hris_session";
  * ------------------------------------------------------------------- */
 // Pengelompokan & Penyesuaian Icon Menu
 export const MENU_CONFIG = [
- // KATEGORI: MENU UTAMA (Personal)
- { id: "dashboard", label: "Home & Dashboard", icon: "home", kategori: "Menu Utama", roles: ["ALL"] },
- { id: "pengajuan-cuti", label: "Pengajuan Cuti", icon: "calendar", kategori: "Menu Utama", roles: ["ALL"] },
- { id: "pengajuan-kasbon", label: "Pengajuan Kasbon", icon: "wallet", kategori: "Menu Utama", roles: ["ALL"] },
- { id: "pengajuan", label: "Buat Pengajuan (Lainnya)", icon: "doc-plus", kategori: "Menu Utama", roles: ["ALL"] },
- { id: "klaim-bensin", label: "Klaim Bensin", icon: "wallet", kategori: "Menu Utama", roles: ["ALL"] },
- { id: "riwayat", label: "Riwayat Pengajuan", icon: "clock", kategori: "Menu Utama", roles: ["ALL"] },
+ // KATEGORI: MENU UTAMA & PERSONAL
+ { id: "dashboard", label: "Home & Dashboard", icon: "home", kategori: "Menu Utama & Personal", roles: ["ALL"] },
+ { id: "pengajuan", label: "Buat Pengajuan (Form ISO)", icon: "doc-plus", kategori: "Menu Utama & Personal", roles: ["ALL"] },
+ { id: "riwayat", label: "Riwayat Pengajuan Saya", icon: "clock", kategori: "Menu Utama & Personal", roles: ["ALL"] },
 
- // KATEGORI: MANAJEMEN & PERSETUJUAN
- { id: "approval", label: "Antrean Persetujuan", icon: "alert", kategori: "Manajemen & Persetujuan", roles: ["HRD", "FINANCE", "SUPERADMIN", "ATASAN"] },
- { id: "broadcast", label: "Broadcast Memo", icon: "book", kategori: "Manajemen & Persetujuan", roles: ["HRD", "SUPERADMIN"] },
+ // KATEGORI: PERSETUJUAN & MEMO
+ { id: "approval", label: "Antrean Persetujuan", icon: "alert", kategori: "Persetujuan & Memo", roles: ["HRD", "FINANCE", "SUPERADMIN", "ATASAN"] },
+ { id: "broadcast", label: "Broadcast & Memo Perusahaan", icon: "book", kategori: "Persetujuan & Memo", roles: ["HRD", "SUPERADMIN"] },
 
- // KATEGORI: KEHADIRAN & CUTI
- { id: "absensi", label: "Manajemen Absensi", icon: "clock", kategori: "Kehadiran & Cuti", roles: ["HRD", "SUPERADMIN"] },
- { id: "cuti", label: "Manajemen Cuti", icon: "calendar", kategori: "Kehadiran & Cuti", roles: ["HRD", "SUPERADMIN"] },
- { id: "izin", label: "Pengajuan & Surat Izin", icon: "doc-plus", kategori: "Kehadiran & Cuti", roles: ["ALL"] },
- { id: "lembur-kasbon", label: "Lembur & Kasbon", icon: "wallet", kategori: "Kehadiran & Cuti", roles: ["HRD", "FINANCE", "SUPERADMIN"] },
- { id: "kalender-hr", label: "Kalender HR", icon: "calendar", kategori: "Kehadiran & Cuti", roles: ["HRD", "SUPERADMIN"] },
+ // KATEGORI: KEHADIRAN & PERIZINAN
+ { id: "absensi", label: "Manajemen Absensi", icon: "clock", kategori: "Kehadiran & Perizinan", roles: ["HRD", "SUPERADMIN"] },
+ { id: "pengajuan-cuti", label: "Pengajuan Cuti Personal", icon: "calendar", kategori: "Kehadiran & Perizinan", roles: ["ALL"] },
+ { id: "cuti", label: "Manajemen Cuti Karyawan", icon: "calendar", kategori: "Kehadiran & Perizinan", roles: ["HRD", "SUPERADMIN"] },
+ { id: "izin", label: "Pengajuan & Surat Izin", icon: "doc-plus", kategori: "Kehadiran & Perizinan", roles: ["ALL"] },
+ { id: "kalender-hr", label: "Kalender HR & Hari Libur", icon: "calendar", kategori: "Kehadiran & Perizinan", roles: ["HRD", "SUPERADMIN"] },
 
- // KATEGORI: KINERJA & KEDISIPLINAN
- { id: "rekrutmen", label: "Rekrutmen (ATS)", icon: "user-plus", kategori: "Kinerja & Karyawan", roles: ["HRD", "SUPERADMIN"] },
- { id: "siklus-karyawan", label: "Siklus Karyawan", icon: "refresh", kategori: "Kinerja & Karyawan", roles: ["HRD", "SUPERADMIN"] },
- { id: "penilaian-kontrak", label: "Penilaian & Kontrak", icon: "doc-plus", kategori: "Kinerja & Karyawan", roles: ["ALL"] },
- { id: "training", label: "Pelatihan & TNA", icon: "book", kategori: "Kinerja & Karyawan", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"] },
- { id: "performance-review", label: "Review Kinerja", icon: "gauge", kategori: "Kinerja & Karyawan", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"] },
- { id: "pemanggilan", label: "Kedisiplinan & SP", icon: "alert", kategori: "Kinerja & Karyawan", roles: ["HRD", "SUPERADMIN"] }, 
- { id: "dokumen", label: "Draft & Builder Dokumen", icon: "doc-plus", kategori: "Kinerja & Karyawan", roles: ["HRD", "SUPERADMIN"] },
+ // KATEGORI: KARYAWAN & KINERJA
+ { id: "siklus-karyawan", label: "Siklus & Master Karyawan", icon: "refresh", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN"] },
+ { id: "rekrutmen", label: "Rekrutmen (ATS)", icon: "user-plus", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN"] },
+ { id: "penilaian-kontrak", label: "Penilaian & Kontrak (SPK)", icon: "doc-plus", kategori: "Karyawan & Kinerja", roles: ["ALL"] },
+ { id: "performance-review", label: "Review Kinerja & KPI", icon: "gauge", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"] },
+ { id: "training", label: "Pelatihan & TNA", icon: "book", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"] },
+ { id: "pemanggilan", label: "Kedisiplinan & SP", icon: "alert", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN"] },
+ { id: "dokumen", label: "Draft & Builder Dokumen", icon: "doc-plus", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN"] },
+
+ // KATEGORI: KEUANGAN & KLAIM
+ { id: "reimbursement", label: "Manajemen Reimbursement", icon: "wallet", kategori: "Keuangan & Klaim", roles: ["ALL"] },
+ { id: "pengajuan-kasbon", label: "Pengajuan Kasbon Personal", icon: "wallet", kategori: "Keuangan & Klaim", roles: ["ALL"] },
+ { id: "klaim-bensin", label: "Klaim Bensin Operasional", icon: "wallet", kategori: "Keuangan & Klaim", roles: ["ALL"] },
+ { id: "lembur-kasbon", label: "Lembur & Kasbon Operasional", icon: "wallet", kategori: "Keuangan & Klaim", roles: ["HRD", "FINANCE", "SUPERADMIN"] },
+ { id: "uang-makan", label: "Uang Makan Expedisi", icon: "utensils", kategori: "Keuangan & Klaim", roles: ["HRD", "FINANCE", "SUPERADMIN"] },
 
  // KATEGORI: OPERASIONAL & ASET
+ { id: "inventory", label: "Inventaris & Belanja ATK", icon: "box", kategori: "Operasional & Aset", roles: ["HRD", "GA", "SUPERADMIN"] },
  { id: "kendaraan", label: "Manajemen Kendaraan", icon: "truck", kategori: "Operasional & Aset", roles: ["HRD", "GA", "SUPERADMIN"] },
- { id: "inventory", label: "Manajemen Inventory & ATK", icon: "box", kategori: "Operasional & Aset", roles: ["HRD", "GA", "SUPERADMIN"] },
- { id: "uang-makan", label: "Uang Makan Expedisi", icon: "utensils", kategori: "Operasional & Aset", roles: ["HRD", "FINANCE", "SUPERADMIN"] },
  { id: "gimmick-sop", label: "Gimmick & SOP", icon: "book", kategori: "Operasional & Aset", roles: ["HRD", "SUPERADMIN"] },
 
  // KATEGORI: MODUL SALES
  { id: "sales-order", label: "Order Penjualan", icon: "wallet", kategori: "Modul Sales", roles: ["ALL"] },
  { id: "sales-outlet", label: "Master Outlet", icon: "user-plus", kategori: "Modul Sales", roles: ["ALL"] },
- { id: "sales-item", label: "Master Item", icon: "box", kategori: "Modul Sales", roles: ["ALL"] },
- { id: "sales-task", label: "Tugas Sales", icon: "clock", kategori: "Modul Sales", roles: ["ALL"] },
- { id: "sales-track", label: "Summary Track", icon: "layers", kategori: "Modul Sales", roles: ["ALL"] },
+ { id: "sales-item", label: "Master Item Sales", icon: "box", kategori: "Modul Sales", roles: ["ALL"] },
+ { id: "sales-task", label: "Tugas & Kunjungan Sales", icon: "clock", kategori: "Modul Sales", roles: ["ALL"] },
+ { id: "sales-track", label: "Summary & Tracking Sales", icon: "layers", kategori: "Modul Sales", roles: ["ALL"] },
 
  // KATEGORI: PENGATURAN SISTEM
- { id: "manajemen-data", label: "Manajemen Data", icon: "database", kategori: "Pengaturan Sistem", roles: ["HRD", "SUPERADMIN"] },
- { id: "pengaturan", label: "Akses & Pengguna", icon: "user-plus", kategori: "Pengaturan Sistem", roles: ["HRD", "SUPERADMIN"] },
- { id: "konfigurasi", label: "Konfigurasi Sistem & Aturan Bisnis", icon: "layers", kategori: "Pengaturan Sistem", roles: ["HRD", "SUPERADMIN"] },
- { id: "form-builder", label: "Form Builder", icon: "doc-plus", kategori: "Pengaturan Sistem", roles: ["HRD", "SUPERADMIN"] }
+ { id: "manajemen-data", label: "Manajemen Data & Backup", icon: "database", kategori: "Pengaturan Sistem", roles: ["HRD", "SUPERADMIN"] },
+ { id: "pengaturan", label: "Hak Akses & Pengguna", icon: "user-plus", kategori: "Pengaturan Sistem", roles: ["HRD", "SUPERADMIN"] },
+ { id: "konfigurasi", label: "Konfigurasi Aturan Bisnis", icon: "layers", kategori: "Pengaturan Sistem", roles: ["HRD", "SUPERADMIN"] },
+ { id: "form-builder", label: "Form Builder ISO", icon: "doc-plus", kategori: "Pengaturan Sistem", roles: ["HRD", "SUPERADMIN"] }
 ];
 
 const MANAJEMEN_ROLES = ["SPV", "HRD", "GM", "FINANCE", "MANAGER", "BRANCH MANAGER"];
@@ -262,11 +265,12 @@ export async function computeVisibleMenus(session) {
  const isAtasanRole = await isAtasan(session.nama);
  const isManagementOrHrd = ["HRD", "SUPERADMIN", "DIREKTUR", "MANAGER", "SPV", "KOORDINATOR", "GM", "FINANCE", "GA", "BRANCH MANAGER"].includes(role) || isAtasanRole;
 
- // Sesuai instruksi: Untuk role karyawan default (tanpa custom override HRD), menu yang tertampil HANYA Dashboard dan Penilaian
+ // Sesuai instruksi: Untuk role karyawan default (tanpa custom override HRD), menu yang tertampil HANYA Dashboard, Penilaian, dan Reimbursement
  if (!isManagementOrHrd || role === "KARYAWAN" || role === "STAFF") {
  return [
  MENU_CONFIG.find(m => m.id === "dashboard") || { id: "dashboard", label: "Home & Dashboard", icon: "home", kategori: "Menu Utama" },
- { id: "penilaian-kontrak", route: "penilaian-kontrak", label: "Penilaian & Kontrak", icon: "doc-plus", kategori: "Menu Utama" }
+ { id: "penilaian-kontrak", route: "penilaian-kontrak", label: "Penilaian & Kontrak", icon: "doc-plus", kategori: "Menu Utama" },
+ { id: "reimbursement", route: "reimbursement", label: "Reimbursement", icon: "wallet", kategori: "Keuangan & Operasional" }
  ];
  }
 
@@ -290,8 +294,8 @@ export async function canAccessRoute(routeId, session) {
  if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi"].includes(targetId)) {
  targetId = "penilaian-kontrak";
  }
- // Semua role berhak mengakses route absensi & penilaian/kontrak
- if (targetId === "absensi" || targetId === "absensi-saya" || targetId === "penilaian" || targetId === "penilaian-kontrak" || targetId === "kontrak") return true;
+ // Semua role berhak mengakses route absensi, penilaian/kontrak & reimbursement
+ if (targetId === "absensi" || targetId === "absensi-saya" || targetId === "penilaian" || targetId === "penilaian-kontrak" || targetId === "kontrak" || targetId === "reimbursement") return true;
 
  const menus = await computeVisibleMenus(session);
  // route yang tidak ada di MENU_CONFIG (mis. sub-halaman) dianggap boleh selama login

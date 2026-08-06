@@ -3,6 +3,182 @@ import { fsGetAll, fsUpdate, fsAdd, toNumber, escapeHtml, fmtDateShort, openModa
 import { renderCrudModule } from "../components.js";
 import { isoDocHeaderTable } from "../branding.js";
 
+// HELPER URL DIRECT DEEP LINKING FOR QR CODES
+export function getAssetQrTargetUrl(assetId) {
+ const origin = window.location.origin && window.location.origin !== "null" ? window.location.origin : "";
+ const pathname = window.location.pathname ? window.location.pathname.replace(/\/$/, '') : "";
+ return `${origin}${pathname}#inventory?id=${encodeURIComponent(assetId)}`;
+}
+
+export function getAssetQrCodeImageUrl(assetId, size = "180x180") {
+ const targetUrl = getAssetQrTargetUrl(assetId);
+ return `https://api.qrserver.com/v1/create-qr-code/?size=${size}&data=${encodeURIComponent(targetUrl)}`;
+}
+
+export function parseAssetIdFromQuery(rawQuery = "") {
+ if (!rawQuery) return "";
+ let clean = String(rawQuery).trim();
+
+ // Extract id from URL query parameters (e.g. ?id=AST-001 or #inventory?id=AST-001)
+ if (clean.includes("id=")) {
+  try {
+   const match = clean.match(/id=([a-zA-Z0-9_\-%]+)/);
+   if (match && match[1]) return decodeURIComponent(match[1]);
+  } catch (e) {}
+ }
+
+ // Extract id from JSON if JSON string
+ if (clean.startsWith("{") && clean.endsWith("}")) {
+  try {
+   const parsed = JSON.parse(clean);
+   if (parsed.id) return parsed.id;
+  } catch (e) {}
+ }
+
+ return "";
+}
+
+// MODAL DETAIL ASET & UPDATE STOK FISIK / OPNAME
+export function openAssetDetailAndUpdateStockModal(found, activeEmpNames = [], session = null, container = null) {
+ const assetId = found.id_item || found.id;
+ const qrUrl = getAssetQrCodeImageUrl(assetId, "180x180");
+ const currentStok = toNumber(found.stok_saat_ini);
+ const minStok = toNumber(found.min_stok) || 5;
+ const defaultPetugas = session?.nama || (activeEmpNames[0] || "Petugas GA");
+
+ openModal({
+  title: `Detail Aset & Audit Stok Fisik — ${escapeHtml(assetId)}`,
+  size: "lg",
+  bodyHtml: `
+   <div class="space-y-4 text-xs text-left">
+    <!-- Header Card Info Aset -->
+    <div class="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-center gap-4">
+     <div class="p-2 bg-white border border-slate-200 rounded-xl shadow-xs shrink-0 text-center">
+      <img src="${qrUrl}" alt="QR ${escapeHtml(assetId)}" class="w-28 h-28 mx-auto rounded-lg">
+      <span class="text-[9px] font-mono text-slate-400 block mt-1">Direct Web URL QR</span>
+     </div>
+     <div class="min-w-0 flex-1 space-y-1.5 w-full">
+      <div class="flex items-center gap-2 flex-wrap">
+       <span class="px-2.5 py-1 text-xs font-mono font-bold text-maroon-800 bg-red-50 border border-red-100 rounded-lg">${escapeHtml(assetId)}</span>
+       <span class="px-2.5 py-1 text-xs font-bold text-slate-700 bg-slate-200 rounded-lg">${escapeHtml(found.kategori || "Aset")}</span>
+       <span class="px-2.5 py-1 text-xs font-bold ${found.kondisi?.includes("Good") || found.kondisi === "Good" ? "text-emerald-800 bg-emerald-50 border border-emerald-200" : "text-amber-800 bg-amber-50 border border-amber-200"} rounded-lg">${escapeHtml(found.kondisi || "Good")}</span>
+      </div>
+      <h3 class="text-base font-black text-slate-800 leading-tight">${escapeHtml(found.nama_barang)}</h3>
+      <div class="grid grid-cols-2 gap-2 pt-1 text-slate-600 font-medium text-[11px]">
+       <p>Lokasi: <b class="text-slate-800">${escapeHtml(found.lokasi || "Kantor Pusat")}</b></p>
+       <p>No Seri/Plat: <b class="text-slate-800">${escapeHtml(found.serial_number || "-")}</b></p>
+       <p>Penanggung Jawab: <b class="text-slate-800">${escapeHtml(found.assigned_to || "Unassigned")}</b></p>
+       <p>Stok Aman Minimal: <b class="text-slate-800">${minStok} ${escapeHtml(found.satuan || 'Unit')}</b></p>
+      </div>
+     </div>
+    </div>
+
+    <!-- Panel Form Update Stok Fisik -->
+    <div class="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
+     <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+      <h4 class="font-black text-slate-800 text-sm flex items-center gap-2">
+       <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-maroon-700" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 012-2h2a2 2 0 012-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+       Perbarui Stok Fisik & Stock Opname
+      </h4>
+      <span class="text-[11px] font-bold text-slate-500">Stok Sistem: <b class="text-blue-700 font-mono text-xs">${currentStok} ${escapeHtml(found.satuan || 'Unit')}</b></span>
+     </div>
+
+     <form id="form-update-stock-opname" class="space-y-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+       <div>
+        <label class="block font-bold text-slate-700 mb-1">Jumlah Hasil Cek Stok Fisik (${escapeHtml(found.satuan || 'Unit')}) <span class="text-red-500">*</span></label>
+        <input type="number" id="stock-real-qty" value="${currentStok}" min="0" required class="w-full p-2.5 text-xs rounded-xl border border-slate-300 font-black text-slate-800 outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition">
+       </div>
+       <div>
+        <label class="block font-bold text-slate-700 mb-1">Kondisi Fisik Barang Terkini</label>
+        <select id="stock-real-cond" class="w-full p-2.5 text-xs rounded-xl border border-slate-300 font-medium outline-none focus:border-maroon-500 bg-white">
+         <option value="Good (Baik)" ${found.kondisi?.includes("Good") ? "selected" : ""}>Good (Baik & Layak Pakai)</option>
+         <option value="Maintenance (Perlu Servis)" ${found.kondisi?.includes("Maintenance") ? "selected" : ""}>Maintenance (Perlu Servis / Perbaikan)</option>
+         <option value="Damaged (Rusak)" ${found.kondisi?.includes("Damaged") || found.kondisi?.includes("Rusak") ? "selected" : ""}>Damaged (Rusak / Afkir)</option>
+        </select>
+       </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+       <div>
+        <label class="block font-bold text-slate-700 mb-1">Petugas Pemeriksa / Audit</label>
+        <select id="stock-real-emp" class="w-full p-2.5 text-xs rounded-xl border border-slate-300 font-medium outline-none focus:border-maroon-500 bg-white">
+         ${(activeEmpNames.length ? activeEmpNames : [defaultPetugas]).map(e => `<option value="${escapeHtml(e)}" ${e === defaultPetugas ? "selected" : ""}>${escapeHtml(e)}</option>`).join("")}
+        </select>
+       </div>
+       <div>
+        <label class="block font-bold text-slate-700 mb-1">Tanggal Cek Fisik</label>
+        <input type="date" id="stock-real-date" value="${new Date().toISOString().substring(0,10)}" required class="w-full p-2.5 text-xs rounded-xl border border-slate-300 outline-none focus:border-maroon-500">
+       </div>
+      </div>
+
+      <div>
+       <label class="block font-bold text-slate-700 mb-1">Catatan Opname / Kondisi Fisik</label>
+       <textarea id="stock-real-notes" rows="2" placeholder="Cth: Cek fisik via QR Code direct scan. Barang lengkap dan stok telah disesuaikan." class="w-full p-2.5 text-xs rounded-xl border border-slate-300 outline-none focus:border-maroon-500"></textarea>
+      </div>
+     </form>
+    </div>
+   </div>`,
+  footerHtml: `
+   <div class="flex items-center justify-between w-full">
+    <button id="btn-stock-update-close" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl">Batal</button>
+    <button id="btn-stock-update-save" class="px-5 py-2.5 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-xl transition shadow flex items-center gap-1.5">
+     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+     Simpan & Perbarui Stok Fisik
+    </button>
+   </div>`,
+  onMount: m => {
+   m.querySelector("#btn-stock-update-close").onclick = closeModal;
+   m.querySelector("#btn-stock-update-save").onclick = async () => {
+    const qtyInput = m.querySelector("#stock-real-qty");
+    const newQty = toNumber(qtyInput.value);
+    const newCond = m.querySelector("#stock-real-cond").value;
+    const empName = m.querySelector("#stock-real-emp").value;
+    const dateVal = m.querySelector("#stock-real-date").value;
+    const notesVal = m.querySelector("#stock-real-notes").value.trim();
+
+    if (isNaN(newQty) || newQty < 0) {
+     return toast("Jumlah stok fisik harus berupa angka yang valid (>= 0)", "warning");
+    }
+
+    try {
+     toast("Sedang menyimpan pembaruan stok fisik...", "info");
+     
+     // 1. Update Master Inventory
+     await fsUpdate(COL.MASTER_INVENTORY, found.id, {
+      stok_saat_ini: newQty,
+      kondisi: newCond,
+      terakhir_diaudit: dateVal
+     });
+
+     // 2. Add Stock Opname Record
+     const diff = newQty - currentStok;
+     await fsAdd(COL.STOCK_OPNAME, {
+      tanggal: dateVal,
+      nama_barang: found.nama_barang,
+      id_barang: assetId,
+      jumlah_ambil: newQty,
+      stok_sebelumnya: currentStok,
+      selisih: diff,
+      nama_karyawan: empName,
+      keperluan: notesVal || `Update stok fisik via QR Code direct scan (Stok diubah dari ${currentStok} menjadi ${newQty} ${found.satuan || 'Unit'}).`
+     });
+
+     toast(`Stok fisik ${found.nama_barang} (${assetId}) berhasil diperbarui menjadi ${newQty} ${found.satuan || 'Unit'}!`, "success");
+     closeModal();
+
+     if (container) {
+      updateKpiSummary(container);
+     }
+    } catch (err) {
+     console.error("Gagal update stok fisik:", err);
+     toast("Gagal memperbarui stok fisik: " + err.message, "error");
+    }
+   };
+  }
+ });
+}
+
 // FUNGSI UPDATE KPI CARDS
 async function updateKpiSummary(container) {
  try {
@@ -12,10 +188,17 @@ async function updateKpiSummary(container) {
  let maintenanceCount = 0;
  let assignedCount = 0;
  let readyCount = 0;
+ let restockCount = 0;
 
  items.forEach(i => {
  const cond = (i.kondisi || "Good").toUpperCase();
  const assigned = (i.assigned_to || "").trim();
+ const stok = toNumber(i.stok_saat_ini);
+ const minStok = toNumber(i.min_stok) || 5;
+
+ if (stok <= minStok) {
+ restockCount++;
+ }
 
  if (cond.includes("MAINTENANCE") || cond.includes("PERBAIKAN") || cond.includes("RUSAK")) {
  maintenanceCount++;
@@ -32,11 +215,21 @@ async function updateKpiSummary(container) {
  const elMaint = container.querySelector("#inv-kpi-maintenance");
  const elAssigned = container.querySelector("#inv-kpi-assigned");
  const elReady = container.querySelector("#inv-kpi-ready");
+ const elBadgeRestock = container.querySelector("#inv-badge-restock-count");
 
  if (elTotal) elTotal.textContent = totalCount.toLocaleString("id-ID");
  if (elMaint) elMaint.textContent = maintenanceCount.toLocaleString("id-ID");
  if (elAssigned) elAssigned.textContent = assignedCount.toLocaleString("id-ID");
  if (elReady) elReady.textContent = readyCount.toLocaleString("id-ID");
+
+ if (elBadgeRestock) {
+ elBadgeRestock.textContent = restockCount;
+ if (restockCount > 0) {
+ elBadgeRestock.classList.remove("hidden");
+ } else {
+ elBadgeRestock.classList.add("hidden");
+ }
+ }
  } catch (e) {
  console.warn("Error updating inventory KPI:", e);
  }
@@ -106,7 +299,7 @@ async function openBatchQrCodeModal() {
 
  previewBox.innerHTML = filtered.map(row => {
  const assetId = row.id_item || row.id || "AST-001";
- const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(JSON.stringify({ id: assetId, name: row.nama_barang, cat: row.kategori }))}`;
+ const qrUrl = getAssetQrCodeImageUrl(assetId, "150x150");
  return `
  <div class="p-3 bg-white border border-slate-200 rounded-xl text-center shadow-sm hover:border-maroon-300 transition">
  <img src="${qrUrl}" class="w-20 h-20 mx-auto rounded-lg mb-1 border border-slate-100 p-1 bg-slate-50">
@@ -132,7 +325,7 @@ async function openBatchQrCodeModal() {
  const win = window.open('', '_blank');
  const gridItems = filtered.map(row => {
  const assetId = row.id_item || row.id || "AST-001";
- const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(JSON.stringify({ id: assetId, name: row.nama_barang, cat: row.kategori }))}`;
+ const qrUrl = getAssetQrCodeImageUrl(assetId, "180x180");
  return `
  <div class="sticker">
  <img src="${qrUrl}" />
@@ -682,48 +875,100 @@ async function openMultiAssignModal(container, activeEmpNames) {
 // FUNGSI CETAK BLANKO STOCK OPNAME
 async function printBlankoOpname() {
  const { downloadHtmlAsPdf, toast } = await import("../utils.js");
- toast("Sedang memproses PDF...", "info");
- const items = await fsGetAll(COL.MASTER_INVENTORY);
- items.sort((a,b) => (a.nama_barang || "").localeCompare(b.nama_barang || ""));
  
- let tableRows = items.map(i => `
- <tr>
- <td style="border: 1px solid #000; padding: 6px;">${escapeHtml(i.id_item || i.id)}</td>
- <td style="border: 1px solid #000; padding: 6px;">${escapeHtml(i.nama_barang)}</td>
- <td style="border: 1px solid #000; padding: 6px;">${escapeHtml(i.kategori)}</td>
- <td style="border: 1px solid #000; padding: 6px;">${escapeHtml(i.assigned_to || "Unassigned")}</td>
- <td style="border: 1px solid #000; padding: 6px; text-align:center;">${i.stok_saat_ini ?? 1}</td>
- <td style="border: 1px solid #000; padding: 6px;"></td>
- <td style="border: 1px solid #000; padding: 6px;"></td>
- </tr>`).join("");
+ try {
+  const items = await fsGetAll(COL.MASTER_INVENTORY) || [];
+  items.sort((a,b) => (a.nama_barang || "").localeCompare(b.nama_barang || ""));
+  
+  let tableRows = "";
+  if (!items || items.length === 0) {
+   tableRows = Array.from({ length: 12 }).map((_, idx) => `
+    <tr>
+     <td style="border: 1px solid #000; padding: 8px; text-align:center;">${idx + 1}</td>
+     <td style="border: 1px solid #000; padding: 8px;"></td>
+     <td style="border: 1px solid #000; padding: 8px;"></td>
+     <td style="border: 1px solid #000; padding: 8px;"></td>
+     <td style="border: 1px solid #000; padding: 8px; text-align:center;">-</td>
+     <td style="border: 1px solid #000; padding: 8px;"></td>
+     <td style="border: 1px solid #000; padding: 8px;"></td>
+    </tr>`).join("");
+  } else {
+   tableRows = items.map(i => `
+    <tr>
+     <td style="border: 1px solid #000; padding: 6px;">${escapeHtml(i.id_item || i.id || "-")}</td>
+     <td style="border: 1px solid #000; padding: 6px;">${escapeHtml(i.nama_barang || "-")}</td>
+     <td style="border: 1px solid #000; padding: 6px;">${escapeHtml(i.kategori || "Aset/ATK")}</td>
+     <td style="border: 1px solid #000; padding: 6px;">${escapeHtml(i.assigned_to || "Unassigned")}</td>
+     <td style="border: 1px solid #000; padding: 6px; text-align:center;">${i.stok_saat_ini ?? 1}</td>
+     <td style="border: 1px solid #000; padding: 6px;"></td>
+     <td style="border: 1px solid #000; padding: 6px;"></td>
+    </tr>`).join("");
+  }
 
- const html = `
- <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff;">
- <div style="page-break-inside:avoid; margin-bottom:15px;">
- ${isoDocHeaderTable({ judul: "BLANKO PEMERIKSAAN FISIK ASET & INVENTARIS (STOCK OPNAME)", noDok: "GA-OPNAME", terbitRevisi: "1/1", hal: "1 dari 1" })}
- </div>
- <table style="width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #000;">
- <thead>
- <tr style="background: #f1f5f9;">
- <th style="border: 1px solid #000; padding: 6px; text-align: left;">ID Aset</th>
- <th style="border: 1px solid #000; padding: 6px; text-align: left;">Nama Barang / Aset</th>
- <th style="border: 1px solid #000; padding: 6px; text-align: left;">Kategori</th>
- <th style="border: 1px solid #000; padding: 6px; text-align: left;">Penanggung Jawab</th>
- <th style="border: 1px solid #000; padding: 6px; width: 10%; text-align: center;">Qty Sistem</th>
- <th style="border: 1px solid #000; padding: 6px; width: 15%; text-align: center;">Cek Fisik</th>
- <th style="border: 1px solid #000; padding: 6px; width: 20%; text-align: left;">Catatan Kondisi</th>
- </tr>
- </thead>
- <tbody>${tableRows}</tbody>
- </table>
- <table style="width:100%; text-align:center; margin-top:35px; page-break-inside:avoid; font-size:11px;">
- <tr><td width="50%">Petugas Pemeriksa,</td><td width="50%">Mengetahui HRD / GA,</td></tr>
- <tr><td height="60"></td><td></td></tr>
- <tr><td>( ................................... )</td><td>( ................................... )</td></tr>
- </table>
- </div>`;
- await downloadHtmlAsPdf(html, `Blanko_Stock_Opname_Aset.pdf`);
- toast("PDF berhasil diunduh!", "success");
+  const html = `
+  <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff;">
+   <div style="page-break-inside:avoid; margin-bottom:15px;">
+    ${isoDocHeaderTable({ judul: "BLANKO PEMERIKSAAN FISIK ASET & INVENTARIS (STOCK OPNAME)", noDok: "GA-OPNAME", terbitRevisi: "1/1", hal: "1 dari 1" })}
+   </div>
+   <table style="width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #000;">
+    <thead>
+     <tr style="background: #f1f5f9;">
+      <th style="border: 1px solid #000; padding: 6px; text-align: left;">ID Aset</th>
+      <th style="border: 1px solid #000; padding: 6px; text-align: left;">Nama Barang / Aset</th>
+      <th style="border: 1px solid #000; padding: 6px; text-align: left;">Kategori</th>
+      <th style="border: 1px solid #000; padding: 6px; text-align: left;">Penanggung Jawab</th>
+      <th style="border: 1px solid #000; padding: 6px; width: 10%; text-align: center;">Qty Sistem</th>
+      <th style="border: 1px solid #000; padding: 6px; width: 15%; text-align: center;">Cek Fisik</th>
+      <th style="border: 1px solid #000; padding: 6px; width: 20%; text-align: left;">Catatan Kondisi</th>
+     </tr>
+    </thead>
+    <tbody>${tableRows}</tbody>
+   </table>
+   <table style="width:100%; text-align:center; margin-top:35px; page-break-inside:avoid; font-size:11px;">
+    <tr><td width="50%">Petugas Pemeriksa,</td><td width="50%">Mengetahui HRD / GA,</td></tr>
+    <tr><td height="60"></td><td></td></tr>
+    <tr><td>( ................................... )</td><td>( ................................... )</td></tr>
+   </table>
+  </div>`;
+
+  openModal({
+   title: "Pratinjau Dokumen - Blanko Stock Opname Aset",
+   size: "lg",
+   bodyHtml: `
+    <div class="space-y-3 text-xs">
+     <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 leading-relaxed flex items-center justify-between">
+      <div>
+       <b>Pratinjau Dokumen Blanko Stock Opname</b><br/>
+       Periksa tampilan isi dokumen di bawah ini sebelum mengunduh atau mencetak file PDF.
+      </div>
+     </div>
+     <div class="bg-slate-100 p-4 rounded-2xl border border-slate-200 overflow-y-auto max-h-[500px]">
+      <div class="bg-white p-6 shadow-sm rounded-lg mx-auto border border-slate-200" style="max-width: 760px;">
+       ${html}
+      </div>
+     </div>
+    </div>`,
+   footerHtml: `
+    <div class="flex items-center justify-between w-full">
+     <button id="btn-modal-close-opname" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl">Tutup</button>
+     <button id="btn-modal-download-opname-pdf" class="px-5 py-2.5 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-xl transition shadow flex items-center gap-1.5">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+      Cetak / Unduh PDF Dokumen
+     </button>
+    </div>`,
+   onMount: (m) => {
+    m.querySelector("#btn-modal-close-opname").onclick = closeModal;
+    m.querySelector("#btn-modal-download-opname-pdf").onclick = async () => {
+     toast("Sedang memproses dan mengunduh PDF...", "info");
+     await downloadHtmlAsPdf(html, `Blanko_Stock_Opname_Aset.pdf`);
+     toast("PDF Blanko Opname berhasil diunduh!", "success");
+    };
+   }
+  });
+ } catch (err) {
+  console.error("Gagal membuat pratinjau blanko opname:", err);
+  toast("Gagal memuat dokumen: " + err.message, "error");
+ }
 }
 
 async function printTandaTerimaBarang(row) {
@@ -762,13 +1007,487 @@ async function printTandaTerimaBarang(row) {
  toast("Berita Acara Penyerahan Aset (PDF) berhasil diunduh!", "success");
 }
 
-export async function mount(container) {
+// =====================================================================
+// MODUL RESTOCK & BELANJA ATK (STOK AMAN MINIMAL + EXPORT GAMBAR PNG/JPG)
+// =====================================================================
+async function loadRestockPanel(panelEl, container) {
+  const items = await fsGetAll(COL.MASTER_INVENTORY);
+  const restockItems = items.filter(i => {
+    const stok = toNumber(i.stok_saat_ini);
+    const minStok = toNumber(i.min_stok) || 5;
+    return stok <= minStok;
+  });
+
+  const totalHabis = restockItems.filter(i => toNumber(i.stok_saat_ini) === 0).length;
+  const totalEstimasiUnit = restockItems.reduce((acc, i) => {
+    const minStok = toNumber(i.min_stok) || 5;
+    const stok = toNumber(i.stok_saat_ini);
+    const usulan = Math.max(1, (minStok * 2) - stok);
+    return acc + usulan;
+  }, 0);
+
+  panelEl.innerHTML = `
+    <div class="space-y-5">
+      <!-- HEADER SUMMARY & ACTION TOOLBAR -->
+      <div class="p-5 bg-gradient-to-r from-slate-900 via-slate-800 to-maroon-900 rounded-2xl text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <span class="px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-extrabold text-[11px] border border-rose-500/30">Restock & Belanja ATK</span>
+            <span class="text-xs text-slate-300">CV ANDELA JAYA</span>
+          </div>
+          <h2 class="text-lg font-black tracking-tight">Daftar Barang Harus Dibeli (Stok Menipis / Kritis)</h2>
+          <p class="text-xs text-slate-300 mt-1 max-w-xl leading-relaxed">
+            Menampilkan barang & ATK dengan stok saat ini &le; <b>Stok Aman Minimal</b>. Generate daftar belanja ini menjadi gambar PNG/JPG siap unduh.
+          </p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0 flex-wrap">
+          <button id="btn-gen-image-png" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            Export Gambar PNG / JPG
+          </button>
+          <button id="btn-refresh-restock" class="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI METRICS RESTOCK -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="p-4 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+          <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">TOTAL BARANG PERLU DIBELI</p>
+          <div class="flex items-baseline gap-2 mt-1">
+            <span class="text-2xl font-black text-rose-600">${restockItems.length}</span>
+            <span class="text-xs text-slate-500 font-medium">Jenis Barang</span>
+          </div>
+        </div>
+        <div class="p-4 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+          <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">STOK HABIS TOTAL (0 UNIT)</p>
+          <div class="flex items-baseline gap-2 mt-1">
+            <span class="text-2xl font-black text-rose-700">${totalHabis}</span>
+            <span class="text-xs text-rose-600 font-bold">Kritis Segera Restock</span>
+          </div>
+        </div>
+        <div class="p-4 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+          <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ESTIMASI TOTAL KEBUTUHAN UNIT</p>
+          <div class="flex items-baseline gap-2 mt-1">
+            <span class="text-2xl font-black text-slate-800">${totalEstimasiUnit.toLocaleString("id-ID")}</span>
+            <span class="text-xs text-slate-500 font-medium">Unit Keseluruhan</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- TABEL DAFTAR BELANJA RESTOCK -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+        <div class="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
+          <div>
+            <h3 class="font-bold text-slate-800 text-sm">Daftar Barang & Stok Aman Minimal</h3>
+            <p class="text-xs text-slate-500">Admin/GA dapat mengupdate stok saat barang habis/di-restock secara langsung.</p>
+          </div>
+          <input type="text" id="restock-search" placeholder="Cari nama barang / kategori..." class="p-2 text-xs rounded-xl border border-slate-300 w-full sm:w-64 outline-none focus:border-maroon-500 bg-white">
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-left text-slate-700">
+            <thead class="bg-slate-100 text-slate-600 font-bold uppercase tracking-wider border-b border-slate-200 text-[11px]">
+              <tr>
+                <th class="py-3 px-4">No</th>
+                <th class="py-3 px-4">Kode / ID</th>
+                <th class="py-3 px-4">Nama Barang / ATK</th>
+                <th class="py-3 px-4">Kategori</th>
+                <th class="py-3 px-4 text-center">Stok Saat Ini</th>
+                <th class="py-3 px-4 text-center">Stok Aman</th>
+                <th class="py-3 px-4 text-center">Usulan Beli</th>
+                <th class="py-3 px-4 text-center">Status</th>
+                <th class="py-3 px-4 text-center">Aksi / Restock</th>
+              </tr>
+            </thead>
+            <tbody id="restock-tbody" class="divide-y divide-slate-100 font-medium">
+              ${renderRestockRows(restockItems)}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // BIND SEARCH & EVENTS
+  const searchInput = panelEl.querySelector("#restock-search");
+  const tbody = panelEl.querySelector("#restock-tbody");
+  if (searchInput && tbody) {
+    searchInput.oninput = () => {
+      const q = searchInput.value.toLowerCase().trim();
+      const filtered = restockItems.filter(i => 
+        (i.nama_barang || "").toLowerCase().includes(q) ||
+        (i.id_item || i.id || "").toLowerCase().includes(q) ||
+        (i.kategori || "").toLowerCase().includes(q)
+      );
+      tbody.innerHTML = renderRestockRows(filtered);
+      bindRowRestockEvents(panelEl, container, filtered);
+    };
+  }
+
+  bindRowRestockEvents(panelEl, container, restockItems);
+
+  // EVENT EXPORT GAMBAR
+  const btnExport = panelEl.querySelector("#btn-gen-image-png");
+  if (btnExport) {
+    btnExport.onclick = () => openExportRestockImageModal(restockItems);
+  }
+
+  const btnRefresh = panelEl.querySelector("#btn-refresh-restock");
+  if (btnRefresh) {
+    btnRefresh.onclick = () => {
+      toast("Sistem menyegarkan daftar restock...", "info");
+      loadRestockPanel(panelEl, container);
+      updateKpiSummary(container);
+    };
+  }
+}
+
+function renderRestockRows(items) {
+  if (!items || items.length === 0) {
+    return `
+      <tr>
+        <td colspan="9" class="py-12 text-center text-slate-400 bg-slate-50/50 font-semibold">
+          🎉 Luar biasa! Seluruh stok barang & ATK saat ini dalam kondisi AMAN di atas batas minimal.
+        </td>
+      </tr>`;
+  }
+
+  return items.map((row, idx) => {
+    const stok = toNumber(row.stok_saat_ini);
+    const minStok = toNumber(row.min_stok) || 5;
+    const usulanBeli = Math.max(1, (minStok * 2) - stok);
+    const isZero = stok === 0;
+
+    const statusBadge = isZero 
+      ? `<span class="px-2.5 py-1 text-[10px] font-black rounded-lg bg-rose-100 text-rose-800 border border-rose-200 inline-block">HABIS TOTAL</span>`
+      : `<span class="px-2.5 py-1 text-[10px] font-black rounded-lg bg-amber-100 text-amber-800 border border-amber-200 inline-block">MENIPIS</span>`;
+
+    const stokBadge = isZero
+      ? `<span class="px-2.5 py-1 font-black text-rose-700 bg-rose-50 rounded-lg text-xs border border-rose-200">0 ${escapeHtml(row.satuan || "Unit")}</span>`
+      : `<span class="px-2.5 py-1 font-bold text-amber-800 bg-amber-50 rounded-lg text-xs border border-amber-200">${stok} ${escapeHtml(row.satuan || "Unit")}</span>`;
+
+    return `
+      <tr class="hover:bg-slate-50 transition">
+        <td class="py-3 px-4 font-bold text-slate-400">${idx + 1}</td>
+        <td class="py-3 px-4 font-mono font-bold text-slate-800">${escapeHtml(row.id_item || row.id || "-")}</td>
+        <td class="py-3 px-4">
+          <p class="font-bold text-slate-800 text-xs">${escapeHtml(row.nama_barang)}</p>
+          <p class="text-[10px] text-slate-400">${escapeHtml(row.lokasi || "Gudang Utama")}</p>
+        </td>
+        <td class="py-3 px-4">
+          <span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold text-[10px]">${escapeHtml(row.kategori || "ATK")}</span>
+        </td>
+        <td class="py-3 px-4 text-center">${stokBadge}</td>
+        <td class="py-3 px-4 text-center font-bold text-slate-600">${minStok} ${escapeHtml(row.satuan || "Unit")}</td>
+        <td class="py-3 px-4 text-center font-black text-blue-700 bg-blue-50/50">+${usulanBeli} ${escapeHtml(row.satuan || "Unit")}</td>
+        <td class="py-3 px-4 text-center">${statusBadge}</td>
+        <td class="py-3 px-4 text-center">
+          <button data-restock-id="${escapeHtml(row.id)}" class="btn-restock-item px-3 py-1.5 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-xl transition shadow flex items-center justify-center gap-1 mx-auto">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            Update / Tambah Stok
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function bindRowRestockEvents(panelEl, container, items) {
+  panelEl.querySelectorAll(".btn-restock-item").forEach(btn => {
+    btn.onclick = () => {
+      const itemId = btn.dataset.restockId;
+      const targetItem = items.find(i => i.id === itemId || i.id_item === itemId);
+      if (!targetItem) return;
+
+      const currentStok = toNumber(targetItem.stok_saat_ini);
+      const minStok = toNumber(targetItem.min_stok) || 5;
+
+      openModal({
+        title: "Penambahan / Restock Stok Barang",
+        size: "md",
+        bodyHtml: `
+          <form id="form-restock-update" class="space-y-4 text-xs text-left">
+            <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 leading-relaxed">
+              <b>Update Penambahan Stok:</b><br/>
+              Masukkan jumlah unit barang baru yang dibeli untuk menambahkan stok barang di database Master Inventory.
+            </div>
+
+            <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+              <p><span class="text-slate-400">Nama Barang:</span> <b class="text-slate-800">${escapeHtml(targetItem.nama_barang)}</b></p>
+              <p><span class="text-slate-400">ID / Kode:</span> <b class="text-slate-800 font-mono">${escapeHtml(targetItem.id_item || targetItem.id)}</b></p>
+              <div class="flex items-center gap-4 mt-2 pt-2 border-t border-slate-200">
+                <div>
+                  <span class="text-slate-400 block text-[10px]">Stok Saat Ini:</span>
+                  <b class="text-sm text-slate-800">${currentStok} ${escapeHtml(targetItem.satuan || "Unit")}</b>
+                </div>
+                <div>
+                  <span class="text-slate-400 block text-[10px]">Batas Stok Aman:</span>
+                  <b class="text-sm text-emerald-700">${minStok} ${escapeHtml(targetItem.satuan || "Unit")}</b>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">Jumlah Penambahan Stok (+ Unit)</label>
+              <input type="number" id="restock-qty-add" value="${Math.max(1, (minStok * 2) - currentStok)}" min="1" required class="w-full p-2.5 border border-slate-300 rounded-xl font-bold text-sm text-slate-800 outline-none focus:border-maroon-500">
+            </div>
+
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">Nomor Nota / Supplier / Catatan Pembelian (Opsional)</label>
+              <input type="text" id="restock-notes" placeholder="Cth: Pembelian Nota #1092 dari Toko ATK Jaya" class="w-full p-2.5 border border-slate-300 rounded-xl outline-none focus:border-maroon-500">
+            </div>
+          </form>`,
+        footerHtml: `
+          <div class="flex items-center justify-between w-full">
+            <button id="btn-restock-cancel" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl">Batal</button>
+            <button id="btn-restock-save" class="px-5 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition shadow">Simpan & Tambahkan Stok</button>
+          </div>`,
+        onMount: m => {
+          m.querySelector("#btn-restock-cancel").onclick = closeModal;
+          m.querySelector("#btn-restock-save").onclick = async () => {
+            const qtyAdd = toNumber(m.querySelector("#restock-qty-add").value);
+            const notes = m.querySelector("#restock-notes").value.trim();
+
+            if (qtyAdd <= 0) return toast("Jumlah penambahan stok harus lebih dari 0", "warning");
+
+            const newStokTotal = currentStok + qtyAdd;
+
+            try {
+              await fsUpdate(COL.MASTER_INVENTORY, targetItem.id, {
+                stok_saat_ini: newStokTotal,
+                catatan_restock_terakhir: notes ? `${notes} (+${qtyAdd} unit tgl ${new Date().toLocaleDateString('id-ID')})` : undefined
+              });
+
+              toast(`Berhasil menambahkan +${qtyAdd} unit! Stok total ${targetItem.nama_barang} kini menjadi ${newStokTotal}.`, "success");
+              closeModal();
+
+              // Reload
+              loadRestockPanel(panelEl, container);
+              updateKpiSummary(container);
+            } catch (err) {
+              toast("Gagal memperbarui stok: " + err.message, "error");
+            }
+          };
+        }
+      });
+    };
+  });
+}
+
+function openExportRestockImageModal(itemsToBuy) {
+  if (!itemsToBuy || itemsToBuy.length === 0) {
+    return toast("Tidak ada barang dalam daftar belanja untuk diexport", "warning");
+  }
+
+  const { dataUrlPng, dataUrlJpg } = generateRestockCanvasData(itemsToBuy);
+
+  openModal({
+    title: "Generate Gambar Daftar Belanja & Restock ATK",
+    size: "lg",
+    bodyHtml: `
+      <div class="space-y-4 text-xs">
+        <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 leading-relaxed">
+          <b>Gambar Format PNG / JPG Berhasil Digenerate:</b><br/>
+          Pratinjau gambar daftar belanja resmi di bawah ini. Anda dapat mengunduh file gambar dalam format <b>PNG</b> atau <b>JPG</b> untuk dikirimkan via WA/Email ke bagian Pengadaan & Manajemen.
+        </div>
+
+        <div class="bg-slate-100 p-2 rounded-2xl border border-slate-200 overflow-x-auto max-h-[420px] text-center">
+          <img id="restock-preview-img" src="${dataUrlPng}" class="max-w-full h-auto mx-auto rounded-xl shadow border border-slate-300">
+        </div>
+      </div>`,
+    footerHtml: `
+      <div class="flex items-center justify-between w-full flex-wrap gap-2">
+        <button id="btn-export-close" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl">Tutup</button>
+        <div class="flex items-center gap-2">
+          <button id="btn-download-jpg" class="px-4 py-2.5 text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl transition flex items-center gap-1.5 shadow-2xs">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            Download Gambar JPG
+          </button>
+          <button id="btn-download-png" class="px-5 py-2.5 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-xl transition shadow flex items-center gap-1.5">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            Download Gambar PNG (HD)
+          </button>
+        </div>
+      </div>`,
+    onMount: m => {
+      m.querySelector("#btn-export-close").onclick = closeModal;
+
+      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+
+      m.querySelector("#btn-download-png").onclick = () => {
+        downloadDataUrl(dataUrlPng, `Daftar_Belanja_ATK_Andela_${dateStr}.png`);
+        toast("Gambar PNG berhasil diunduh!", "success");
+      };
+
+      m.querySelector("#btn-download-jpg").onclick = () => {
+        downloadDataUrl(dataUrlJpg, `Daftar_Belanja_ATK_Andela_${dateStr}.jpg`);
+        toast("Gambar JPG berhasil diunduh!", "success");
+      };
+    }
+  });
+}
+
+function downloadDataUrl(dataUrl, fileName) {
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function generateRestockCanvasData(itemsToBuy) {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+
+  const width = 1200;
+  const rowHeight = 50;
+  const headerHeight = 220;
+  const footerHeight = 160;
+  const height = headerHeight + (itemsToBuy.length * rowHeight) + footerHeight;
+
+  canvas.width = width;
+  canvas.height = height;
+
+  // 1. Fill Background
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, width, height);
+
+  // 2. Top Red Accent Header
+  ctx.fillStyle = "#800000";
+  ctx.fillRect(0, 0, width, 18);
+
+  // 3. Company Title & Header Info
+  ctx.fillStyle = "#1E293B";
+  ctx.font = "bold 26px sans-serif";
+  ctx.fillText("CV ANDELA JAYA", 50, 65);
+
+  ctx.fillStyle = "#64748B";
+  ctx.font = "bold 13px sans-serif";
+  ctx.fillText("GENERAL AFFAIRS & INVENTORY MANAGEMENT PORTAL", 50, 88);
+
+  ctx.fillStyle = "#800000";
+  ctx.font = "bold 20px sans-serif";
+  ctx.fillText("DAFTAR BELANJA & RESTOCK ATK / ASET KANTOR", 50, 130);
+
+  const todayStr = new Date().toLocaleDateString("id-ID", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  ctx.fillStyle = "#475569";
+  ctx.font = "12px sans-serif";
+  ctx.fillText(`Tanggal Dokumen: ${todayStr}  |  Total Kebutuhan: ${itemsToBuy.length} Jenis Barang`, 50, 155);
+
+  // Divider Line
+  ctx.strokeStyle = "#CBD5E1";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(50, 175);
+  ctx.lineTo(width - 50, 175);
+  ctx.stroke();
+
+  // 4. Table Header
+  const startY = 190;
+  ctx.fillStyle = "#1E293B";
+  ctx.fillRect(50, startY, width - 100, 36);
+
+  ctx.fillStyle = "#FFFFFF";
+  ctx.font = "bold 11px sans-serif";
+  ctx.fillText("NO", 65, startY + 23);
+  ctx.fillText("KODE ASET", 110, startY + 23);
+  ctx.fillText("NAMA BARANG / DESKRIPSI ATK", 240, startY + 23);
+  ctx.fillText("KATEGORI", 620, startY + 23);
+  ctx.fillText("STOK SAAT INI", 770, startY + 23);
+  ctx.fillText("STOK AMAN", 890, startY + 23);
+  ctx.fillText("USULAN BELI", 1000, startY + 23);
+
+  // 5. Table Rows
+  let currentY = startY + 36;
+  itemsToBuy.forEach((row, idx) => {
+    ctx.fillStyle = idx % 2 === 0 ? "#FFFFFF" : "#F8FAFC";
+    ctx.fillRect(50, currentY, width - 100, rowHeight);
+
+    ctx.strokeStyle = "#E2E8F0";
+    ctx.beginPath();
+    ctx.moveTo(50, currentY + rowHeight);
+    ctx.lineTo(width - 50, currentY + rowHeight);
+    ctx.stroke();
+
+    const stok = toNumber(row.stok_saat_ini);
+    const minStok = toNumber(row.min_stok) || 5;
+    const usulan = Math.max(1, (minStok * 2) - stok);
+
+    ctx.fillStyle = "#64748B";
+    ctx.font = "12px sans-serif";
+    ctx.fillText(`${idx + 1}`, 68, currentY + 30);
+
+    ctx.fillStyle = "#0F172A";
+    ctx.font = "bold 12px monospace";
+    ctx.fillText(`${row.id_item || row.id || "-"}`, 110, currentY + 30);
+
+    ctx.fillStyle = "#0F172A";
+    ctx.font = "bold 12px sans-serif";
+    let nameText = row.nama_barang || "ATK Item";
+    if (nameText.length > 40) nameText = nameText.substring(0, 37) + "...";
+    ctx.fillText(nameText, 240, currentY + 30);
+
+    ctx.fillStyle = "#475569";
+    ctx.font = "11px sans-serif";
+    ctx.fillText(`${row.kategori || "ATK"}`, 620, currentY + 30);
+
+    if (stok === 0) {
+      ctx.fillStyle = "#DC2626";
+      ctx.font = "bold 12px sans-serif";
+      ctx.fillText(`0 ${row.satuan || "Unit"} (HABIS)`, 770, currentY + 30);
+    } else {
+      ctx.fillStyle = "#D97706";
+      ctx.font = "bold 12px sans-serif";
+      ctx.fillText(`${stok} ${row.satuan || "Unit"}`, 770, currentY + 30);
+    }
+
+    ctx.fillStyle = "#334155";
+    ctx.font = "12px sans-serif";
+    ctx.fillText(`${minStok} ${row.satuan || "Unit"}`, 890, currentY + 30);
+
+    ctx.fillStyle = "#1D4ED8";
+    ctx.font = "bold 13px sans-serif";
+    ctx.fillText(`+${usulan} ${row.satuan || "Unit"}`, 1000, currentY + 30);
+
+    currentY += rowHeight;
+  });
+
+  // 6. Footer Signature
+  const footY = currentY + 30;
+  ctx.fillStyle = "#64748B";
+  ctx.font = "11px sans-serif";
+  ctx.fillText("Catatan: Batas stok aman dihitung otomatis untuk menjaga ketersediaan barang operasional.", 50, footY);
+  ctx.fillText("Di-generate otomatis oleh Portal HRIS & GA CV Andela Jaya", 50, footY + 18);
+
+  const sigY = footY + 10;
+  ctx.fillStyle = "#1E293B";
+  ctx.font = "bold 12px sans-serif";
+  ctx.fillText("Dibuat Oleh (GA / HRD)", 750, sigY);
+  ctx.fillText("( .................................................... )", 750, sigY + 65);
+
+  ctx.fillText("Disetujui Oleh (Manajemen / Finance)", 950, sigY);
+  ctx.fillText("( .................................................... )", 950, sigY + 65);
+
+  const dataUrlPng = canvas.toDataURL("image/png");
+  const dataUrlJpg = canvas.toDataURL("image/jpeg", 0.95);
+
+  return { dataUrlPng, dataUrlJpg };
+}
+
+export async function mount(container, options = {}) {
+ const params = options?.params;
+ const session = options?.session;
  const karyawan = await fsGetAll(COL.MASTER_KARYAWAN);
  const activeEmpNames = karyawan.filter(k => (k.aktif_tdk_aktif||"AKTIF").toUpperCase() === "AKTIF").map(k => k.nama_karyawan).sort();
  const empOptions = ["Unassigned", ...activeEmpNames];
 
  const panels = {
  barang: container.querySelector("#inv-panel-barang"),
+ restock: container.querySelector("#inv-panel-restock"),
  ambil: container.querySelector("#inv-panel-ambil"),
  opname: container.querySelector("#inv-panel-opname"),
  };
@@ -802,9 +1521,10 @@ export async function mount(container) {
  { key: "id_item", label: "ID ASET" },
  { key: "nama_barang", label: "Nama Barang / Aset" },
  { key: "kategori", label: "Kategori", type: "badge" },
- { key: "assigned_to", label: "Tanggung Jawab (Assigned To)" },
+ { key: "stok_saat_ini", label: "Stok Saat Ini", type: "number" },
+ { key: "min_stok", label: "Stok Aman Minimal", type: "number" },
+ { key: "assigned_to", label: "Tanggung Jawab" },
  { key: "kondisi", label: "Kondisi", type: "badge" },
- { key: "stok_saat_ini", label: "Qty / Stok", type: "number" },
  { key: "lokasi", label: "Lokasi" },
  ],
  formFields: Object.assign([
@@ -825,7 +1545,8 @@ export async function mount(container) {
  { name: "serial_number", label: "No. Seri / No. Plat / No. Dokumen", type: "text" },
  { name: "lokasi", label: "Lokasi Penyimpanan / Cabang", type: "text" },
  { name: "satuan", label: "Satuan", type: "text", default: "Unit" },
- { name: "stok_saat_ini", label: "Jumlah Stok / Qty", type: "number", default: 1 },
+ { name: "stok_saat_ini", label: "Jumlah Stok Saat Ini", type: "number", default: 1 },
+ { name: "min_stok", label: "Stok Aman Minimal (Batas Alert Restock)", type: "number", default: 5 },
  { name: "catatan", label: "Catatan Kelengkapan", type: "textarea", full: true }
  ], { idFromField: "id_item" }),
  afterSave: async (data) => {
@@ -1048,6 +1769,22 @@ export async function mount(container) {
  }
 
  await loadBarang(); loaded.barang = true;
+
+ const rawTargetId = (params && typeof params.get === "function" ? params.get("id") : null) || parseAssetIdFromQuery(window.location.hash);
+ if (rawTargetId) {
+  try {
+   const allItems = await fsGetAll(COL.MASTER_INVENTORY);
+   const found = allItems.find(i => (i.id_item || i.id || "").toLowerCase() === rawTargetId.toLowerCase());
+   if (found) {
+    openAssetDetailAndUpdateStockModal(found, activeEmpNames, session, container);
+   } else {
+    toast(`Aset dengan ID "${rawTargetId}" tidak ditemukan.`, "warning");
+   }
+  } catch(err) {
+   console.warn("Auto open asset detail error:", err);
+  }
+ }
+
  container.querySelectorAll(".inv-tab").forEach(btn => {
  btn.addEventListener("click", async () => {
  const tab = btn.dataset.itab;
@@ -1058,8 +1795,11 @@ export async function mount(container) {
  });
  if (!loaded[tab]) {
  loaded[tab] = true;
+ if (tab === "restock") await loadRestockPanel(panels.restock, container);
  if (tab === "ambil") await loadAmbil();
  if (tab === "opname") await loadOpname();
+ } else if (tab === "restock") {
+ await loadRestockPanel(panels.restock, container);
  }
  });
  });

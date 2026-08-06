@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, getDoc, setDoc, doc, limit } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan, downloadXlsx, ensureXlsxLoaded, formatPhoneNumberForWa, openWhatsAppMessage, getEmployeePhoneByName, buildKpiTaskWaMessage } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, confirmDialog, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan, downloadXlsx, ensureXlsxLoaded, formatPhoneNumberForWa, openWhatsAppMessage, getEmployeePhoneByName, buildKpiTaskWaMessage } from "../utils.js";
 import { renderCrudModule, badge, emptyState, skeletonRows, avatar } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
@@ -205,7 +205,9 @@ export function openGradeRulesModal(session, rulesMap, onSaveCallback) {
  <input type="text" data-idx="${idx}" data-field="rekomendasi" value="${escapeHtml(r.rekomendasi || '')}" class="rule-inp w-full px-2 py-1 text-xs border border-slate-200 rounded font-medium text-slate-700" placeholder="Contoh: Lulus Masa Percobaan / Tidak Lulus">
  </td>
  <td class="p-2 text-center">
- <button data-del-rule="${idx}" class="p-1 text-slate-400 hover:text-rose-600 transition" title="Hapus Aturan Tier Ini"></button>
+ <button data-del-rule="${idx}" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition" title="Hapus Aturan Tier Ini">
+ <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+ </button>
  </td>
  </tr>
  `).join("");
@@ -329,8 +331,8 @@ export function openGradeRulesModal(session, rulesMap, onSaveCallback) {
 
  bindRuleEvents();
 
- m.querySelector("#btn-reset-default-rules").onclick = () => {
- if (confirm("Reset seluruh standar grade dan keputusan ke bawaan default perusahaan?")) {
+ m.querySelector("#btn-reset-default-rules").onclick = async () => {
+ if (await confirmDialog("Reset seluruh standar grade dan keputusan ke bawaan default perusahaan?")) {
  workingRules = JSON.parse(JSON.stringify(DEFAULT_GRADE_RULES));
  updateCategoryView();
  toast("Aturan di-reset ke default perusahaan.", "info");
@@ -1180,7 +1182,7 @@ export async function mount(container, { session, params }) {
  btn.onclick = async () => {
  const kId = btn.dataset.kontrakId;
  if (!kId) return;
- if (!confirm("Apakah Anda yakin ingin menghapus catatan kontrak ini?")) return;
+ if (!await confirmDialog("Apakah Anda yakin ingin menghapus catatan kontrak ini?")) return;
 
  try {
  await fsDelete(COL.MASTER_KONTRAK, kId);
@@ -1688,7 +1690,7 @@ export async function mount(container, { session, params }) {
  btn.onclick = async (e) => {
  e.stopPropagation();
  const tplId = btn.dataset.delTpl;
- if (confirm("Apakah Anda yakin ingin menghapus template KPI ini?")) {
+ if (await confirmDialog("Apakah Anda yakin ingin menghapus template KPI ini?")) {
  const currentY = window.scrollY || document.documentElement.scrollTop || 0;
  await fsDelete(COL.MASTER_SOAL_KPI, tplId);
  toast("Template berhasil dihapus", "success");
@@ -2336,24 +2338,40 @@ export async function mount(container, { session, params }) {
  </td>
  <td class="px-4 py-3 font-semibold">${t.skor_akhir ? t.skor_akhir : "-"}</td>
  <td class="px-4 py-3 text-right">
- <div class="flex items-center justify-end gap-1.5 flex-wrap">
+ <div class="flex items-center justify-end gap-1.5 flex-nowrap whitespace-nowrap">
  ${canFill ? `
- <button data-isi-kpi="${t.id}" class="px-3 py-1.5 text-xs font-bold ${t.status === 'DONE' ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200' : 'bg-maroon-700 hover:bg-maroon-800 text-white shadow-xs'} rounded-lg inline-flex items-center gap-1 transition">
- ${t.status === 'DONE' ? 'Lihat / Edit Nilai' : ' Nilai Sekarang'}
+ <button data-isi-kpi="${t.id}" class="px-3 py-1.5 text-xs font-bold ${t.status === 'DONE' ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200' : 'bg-maroon-700 hover:bg-maroon-800 text-white shadow-xs'} rounded-lg inline-flex items-center gap-1.5 transition">
+ ${t.status === 'DONE' ? `
+ <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+ Lihat / Edit
+ ` : `
+ <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+ Nilai Sekarang
+ `}
  </button>
  ` : ''}
+
  <button data-wa-kpi="${t.id}" class="px-2.5 py-1.5 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg inline-flex items-center gap-1 transition shadow-2xs" title="${t.status === 'DONE' ? 'Kirim Hasil via WhatsApp' : 'Kirim Tugas / Pengingat via WhatsApp'}">
- <svg class="w-3.5 h-3.5 text-emerald-600" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg> WA
+ <svg class="w-3.5 h-3.5 text-emerald-600" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+ WA
  </button>
+
  ${isHrd ? `
- <button data-input-manual="${t.id}" class="px-2.5 py-1.5 text-xs font-semibold ${t.status === 'DONE' ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200' : 'bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs'} rounded-lg inline-flex items-center gap-1 transition">
- ${t.status === 'DONE' ? ' Input HRD' : ' Input Fisik'}
- </button>
- <button data-del-tugas="${t.id}" class="px-2 py-1.5 text-xs font-semibold bg-red-50 hover:bg-red-100 text-red-600 rounded-lg inline-flex items-center gap-1 border border-red-200 transition" title="Cabut / Hapus Penugasan ini">
- 
+ <button data-input-manual="${t.id}" class="px-2.5 py-1.5 text-xs font-semibold ${t.status === 'DONE' ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'} rounded-lg inline-flex items-center gap-1 transition" title="Input Hasil Form Fisik">
+ <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+ ${t.status === 'DONE' ? 'Input HRD' : 'Input Fisik'}
  </button>
  ` : ''}
- <button data-print-fisik="${t.id}" class="px-2.5 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg inline-flex items-center gap-1 border border-slate-200 transition" title="Cetak Form Fisik"></button>
+
+ <button data-print-fisik="${t.id}" class="p-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg inline-flex items-center justify-center border border-slate-200 transition" title="Cetak Form Fisik">
+ <svg class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+ </button>
+
+ ${isHrd ? `
+ <button data-del-tugas="${t.id}" class="p-1.5 text-xs font-semibold bg-red-50 hover:bg-red-100 text-red-600 rounded-lg inline-flex items-center justify-center border border-red-200 transition" title="Cabut / Hapus Penugasan ini">
+ <svg class="w-4 h-4 text-red-600 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+ </button>
+ ` : ''}
  </div>
  </td>
  </tr>`;
@@ -2369,7 +2387,7 @@ export async function mount(container, { session, params }) {
  if (isHrd && wrap.querySelector("#btn-revoke-batch-kpi")) {
  wrap.querySelector("#btn-revoke-batch-kpi").onclick = async () => {
  if (!tasks || !tasks.length) return;
- if (confirm(`Apakah Anda yakin ingin MENCABUT / MENGHAPUS SELURUH (${tasks.length}) pendistribusian penugasan penilaian KPI? Penilai tidak akan dapat mengisi tugas ini lagi.`)) {
+ if (await confirmDialog(`Apakah Anda yakin ingin MENCABUT / MENGHAPUS SELURUH (${tasks.length}) pendistribusian penugasan penilaian KPI? Penilai tidak akan dapat mengisi tugas ini lagi.`)) {
  for (const t of tasks) {
  await fsDelete(COL.TUGAS_KPI_360, t.id);
  }
@@ -2452,7 +2470,7 @@ export async function mount(container, { session, params }) {
  const tId = btn.dataset.delTugas;
  const task = tasks.find(x => x.id === tId);
  if (!task) return;
- if (confirm(`Apakah Anda yakin ingin mencabut / menghapus penugasan penilaian KPI untuk "${task.nama_dinilai}" oleh "${task.nama_penilai}" (Periode: ${task.periode})?`)) {
+ if (await confirmDialog(`Apakah Anda yakin ingin mencabut / menghapus penugasan penilaian KPI untuk "${task.nama_dinilai}" oleh "${task.nama_penilai}" (Periode: ${task.periode})?`)) {
  await fsDelete(COL.TUGAS_KPI_360, tId);
  toast("Pendistribusian penugasan KPI berhasil dicabut", "success");
  loadKpi360();
@@ -4422,7 +4440,7 @@ export async function mount(container, { session, params }) {
  const id = btn.dataset.delHasil;
  const row = logs.find(x => x.id === id);
  if (!row) return;
- if (confirm(`Apakah Anda yakin ingin menghapus data hasil penilaian untuk "${row.nama_dinilai}"?`)) {
+ if (await confirmDialog(`Apakah Anda yakin ingin menghapus data hasil penilaian untuk "${row.nama_dinilai}"?`)) {
  await fsDelete(COL.LOG_PENILAIAN_KPI, id);
  toast("Data hasil penilaian berhasil dihapus!", "success");
  await loadHasil();

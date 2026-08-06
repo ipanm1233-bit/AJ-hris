@@ -74,6 +74,10 @@
     <button data-itab="barang" class="inv-tab px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-maroon-700 text-maroon-700 whitespace-nowrap flex items-center gap-1.5">
       Master Aset & Inventaris
     </button>
+    <button data-itab="restock" class="inv-tab px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap flex items-center gap-2">
+      <span>Daftar Belanja & Restock ATK</span>
+      <span id="inv-badge-restock-count" class="px-2 py-0.5 text-[10px] font-black rounded-full bg-rose-600 text-white hidden">0</span>
+    </button>
     <button data-itab="ambil" class="inv-tab px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap flex items-center gap-1.5">
       Log Penyerahan & Pengembalian
     </button>
@@ -84,6 +88,7 @@
 
   <!-- PANELS -->
   <div id="inv-panel-barang"></div>
+  <div id="inv-panel-restock" class="hidden"></div>
   <div id="inv-panel-ambil" class="hidden"></div>
   <div id="inv-panel-opname" class="hidden"></div>
 </div>

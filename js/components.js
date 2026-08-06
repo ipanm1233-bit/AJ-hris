@@ -271,8 +271,16 @@ export async function renderCrudModule(container, cfg) {
  if (f.type === "textarea") return `<textarea name="${f.name}" rows="3" class="${base}" ${f.required ? "required" : ""}>${escapeHtml(val)}</textarea>`;
  if (f.type === "select") return `<select name="${f.name}" class="${base}" ${f.required ? "required" : ""}>
  <option value="">Pilih ${f.label}</option>
- ${(f.options || []).map(o => `<option value="${o}" ${o === val ? "selected" : ""}>${o}</option>`).join("")}
+ ${(f.options || []).map(o => `<option value="${escapeHtml(o)}" ${String(o).trim() === String(val).trim() ? "selected" : ""}>${escapeHtml(o)}</option>`).join("")}
  </select>`;
+ if (f.type === "datalist" || f.type === "combobox") {
+ const listId = `dl-${f.name}-${Math.random().toString(36).substring(2, 7)}`;
+ return `
+ <input type="text" name="${f.name}" list="${listId}" value="${escapeHtml(val)}" placeholder="Pilih / ketik ${f.label}" class="${base}" ${f.required ? "required" : ""}>
+ <datalist id="${listId}">
+ ${(f.options || []).map(o => `<option value="${escapeHtml(o)}"></option>`).join("")}
+ </datalist>`;
+ }
  if (f.type === "date") {
  let dv = "";
  if (val) { const dv2 = localDateStr(val); if (dv2) dv = dv2; }
@@ -281,7 +289,18 @@ export async function renderCrudModule(container, cfg) {
  return `<input type="${f.type === "number" ? "number" : "text"}" name="${f.name}" value="${escapeHtml(val)}" class="${base}" ${f.required ? "required" : ""}>`;
  }
 
- function openForm(existing = null) {
+ async function openForm(existing = null) {
+ if (formFields && formFields.length) {
+ for (const f of formFields) {
+ if (typeof f.getOptions === "function") {
+ try {
+ f.options = await f.getOptions();
+ } catch (e) {
+ console.warn("Gagal memuat opsi untuk field", f.name, e);
+ }
+ }
+ }
+ }
  openModal({
  title: existing ? `Edit ${title}` : `Tambah ${title}`,
  size: cfg.size || (formFields.length > 15 ? "2xl" : formFields.length > 8 ? "xl" : "lg"),
@@ -411,6 +430,14 @@ export function renderKanban(container, { columns, items, onCardClick, onDrop })
 /** Versi teks-polos dari cellValue() — dipakai untuk export, bukan tampilan tabel (tanpa tag HTML). */
 function plainCellValue(row, col) {
  let v = row[col.key];
+ if (col.format && typeof col.format === "function") {
+  try {
+   const res = col.format(v, row);
+   if (res !== undefined && res !== null && typeof res !== "object") {
+    return String(res).replace(/<[^>]*>/g, "").trim();
+   }
+  } catch (e) {}
+ }
  if (v && typeof v === "object" && typeof v.toDate === "function") v = v.toDate();
  if (col.type === "date" || v instanceof Date) return v ? fmtDateShort(v) : "";
  if (col.type === "currency") return v ? fmtRupiah(v) : 0;
@@ -422,15 +449,28 @@ function plainCellValue(row, col) {
  return v;
 }
 
-/** Menggabungkan kolom tampilan (label rapi) dengan SEMUA field lain yang ada di data (label otomatis). */
+/** Menggunakan daftar kolom tampilan jika ditentukan, atau secara otomatis menyusun daftar kolom dari data tanpa memasukkan kunci internal. */
 function buildFullColumnList(columns, rows) {
- const seen = new Set(columns.map(c => c.key));
- const extra = [];
- rows.forEach(row => {
- Object.keys(row).forEach(k => { if (!seen.has(k)) { seen.add(k); extra.push(k); } });
- });
+ if (columns && columns.length > 0) {
+  return [...columns];
+ }
+ const EXCLUDE_KEYS = new Set([
+  "id", "fcm_tokens", "fcmTokens", "search_index", "password", "token", "_id", "updated_at", "created_at"
+ ]);
+ const seen = new Set();
+ const autoCols = [];
  const autoLabel = (k) => k.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
- return [...columns, ...extra.map(k => ({ key: k, label: autoLabel(k) }))];
+ (rows || []).forEach(row => {
+  if (row && typeof row === "object") {
+   Object.keys(row).forEach(k => {
+    if (!seen.has(k) && !EXCLUDE_KEYS.has(k)) {
+     seen.add(k);
+     autoCols.push({ key: k, label: autoLabel(k) });
+    }
+   });
+  }
+ });
+ return autoCols;
 }
 
 /**

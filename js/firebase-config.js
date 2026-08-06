@@ -126,5 +126,7 @@ export const COL = {
  PERFORMANCE_REVIEW: "performance_review",
  SIGN_DOCUMENTS: "sign_documents",
  TARGET_BULANAN_KPI: "target_bulanan_kpi",
- LOG_PENILAIAN_HARIAN: "log_penilaian_harian"
+ LOG_PENILAIAN_HARIAN: "log_penilaian_harian",
+ MASTER_REIMBURSEMENT_TYPE: "master_reimbursement_type",
+ DATA_REIMBURSEMENT: "data_reimbursement"
 };

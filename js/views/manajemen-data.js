@@ -14,15 +14,47 @@ export async function mount(container) {
  const loaded = {};
 
  async function loadKaryawanTab() {
+ const getEmpList = async () => {
+ try {
+ const emps = await fsGetAll(COL.MASTER_KARYAWAN);
+ return [...new Set(emps.map(e => e.nama_karyawan).filter(Boolean))].sort();
+ } catch (e) { return []; }
+ };
+
  const fields = [
  { name: "nik_karyawan", label: "NIK Karyawan", type: "text", required: true },
  { name: "nama_karyawan", label: "Nama Karyawan", type: "text", required: true },
- { name: "cabang", label: "Cabang", type: "text" },
- { name: "jabatan", label: "Jabatan", type: "text", required: true },
- { name: "divisi", label: "Divisi", type: "text" },
+ { 
+ name: "cabang", label: "Cabang", type: "datalist",
+ getOptions: async () => {
+ const emps = await fsGetAll(COL.MASTER_KARYAWAN);
+ const defaults = ["HEAD OFFICE", "CABANG BANDUNG", "CABANG SURABAYA", "CABANG SEMARANG", "CABANG BALI", "WORKSHOP"];
+ const existing = emps.map(e => e.cabang).filter(Boolean);
+ return [...new Set([...defaults, ...existing])].sort();
+ }
+ },
+ { 
+ name: "jabatan", label: "Jabatan", type: "datalist", required: true,
+ getOptions: async () => {
+ const emps = await fsGetAll(COL.MASTER_KARYAWAN);
+ const defaults = ["DIREKTUR", "MANAGER HRD", "SUPERVISOR", "STAFF HRD", "STAFF FINANCE", "STAFF OPERASIONAL", "DRIVER", "SECURITY", "HEAD STORE", "STORE ASSOCIATE"];
+ const existing = emps.map(e => e.jabatan).filter(Boolean);
+ return [...new Set([...defaults, ...existing])].sort();
+ }
+ },
+ { 
+ name: "divisi", label: "Divisi", type: "datalist",
+ getOptions: async () => {
+ const emps = await fsGetAll(COL.MASTER_KARYAWAN);
+ const defaults = ["HRD & GA", "FINANCE & ACCOUNTING", "OPERASIONAL", "MARKETING & SALES", "IT & DIGITAL", "LOGISTIK", "PRODUKSI"];
+ const existing = emps.map(e => e.divisi).filter(Boolean);
+ return [...new Set([...defaults, ...existing])].sort();
+ }
+ },
  { name: "jenis_kelamin", label: "Jenis Kelamin", type: "select", options: ["LAKI-LAKI", "PEREMPUAN"] },
  { name: "nik_ktp", label: "NIK KTP", type: "text" },
  { name: "no_kk", label: "No Kartu Keluarga", type: "text" },
+ { name: "npwp", label: "NPWP", type: "text" },
  { name: "bpjs_tk", label: "No BPJS TK", type: "text" },
  { name: "bpjs_kes", label: "No BPJS KES", type: "text" },
  { name: "status_karyawan", label: "Status Karyawan", type: "select", options: ["PKWTT (Karyawan Tetap)", "PKWT (Karyawan Kontrak)", "Probation (Masa Percobaan)", "Magang", "Buruh Harian", "Outsourcing", "Lainnya"] },
@@ -36,15 +68,14 @@ export async function mount(container) {
  { name: "golongan_darah", label: "Golongan Darah", type: "select", options: ["A", "B", "AB", "O", "-"] },
  { name: "no_hp_aktif", label: "No HP Aktif", type: "text" },
  { name: "email", label: "Email Aktif", type: "text" },
+ { name: "atasan", label: "Nama Atasan Langsung", type: "datalist", getOptions: getEmpList },
  { name: "kontak_darurat_nama", label: "Nama Kontak Darurat", type: "text" },
  { name: "kontak_darurat_hp", label: "Kontak Darurat (No HP)", type: "text" },
- { name: "npwp", label: "NPWP", type: "text" },
  { name: "status_pajak", label: "Status Pajak", type: "select", options: ["TK/0", "TK/1", "TK/2", "TK/3", "K/0", "K/1", "K/2", "K/3", "K/I/0", "K/I/1", "K/I/2", "K/I/3"] },
  { name: "tanggungan", label: "Anak / Tanggungan", type: "number", default: 0 },
  { name: "jam_kerja", label: "Jam Kerja", type: "text", default: "08:00 - 17:00" },
  { name: "aktif_tdk_aktif", label: "Aktif / Tdk Aktif", type: "select", options: ["AKTIF", "TIDAK AKTIF"], default: "AKTIF" },
  { name: "finger_name", label: "Finger Name", type: "text" },
- { name: "atasan", label: "Nama Atasan Langsung", type: "text" },
  { name: "jatah_tahunan", label: "Jatah Cuti Tahunan", type: "number", default: 12 },
  { name: "jatah_khusus", label: "Jatah Cuti Khusus", type: "number", default: 4 },
  { name: "jatah_akumulasi", label: "Jatah Cuti Akumulasi", type: "number", default: 0 },
@@ -58,7 +89,7 @@ export async function mount(container) {
  collectionName: COL.MASTER_KARYAWAN,
  orderByField: "nama_karyawan",
  size: "2xl",
- searchFields: ["nama_karyawan", "nik_karyawan", "jabatan", "cabang", "divisi", "status_karyawan", "finger_name", "nik_ktp", "no_kk", "bpjs_tk", "bpjs_kes", "npwp"],
+ searchFields: ["nama_karyawan", "nik_karyawan", "jabatan", "cabang", "divisi", "status_karyawan", "finger_name", "nik_ktp", "no_kk", "bpjs_tk", "bpjs_kes", "npwp", "atasan"],
  beforeSave: (data) => {
  if (data.tanggal_lahir) {
  const age = calculateAge(data.tanggal_lahir);
@@ -68,25 +99,66 @@ export async function mount(container) {
  const tenure = calculateTenure(data.tanggal_join);
  if (tenure) data.masa_kerja = tenure;
  }
+ if (data.no_kk) data.no_kartu_keluarga = data.no_kk;
+ if (data.no_kartu_keluarga) data.no_kk = data.no_kartu_keluarga;
+ if (data.bpjs_tk) data.no_bpjs_tk = data.bpjs_tk;
+ if (data.no_bpjs_tk) data.bpjs_tk = data.no_bpjs_tk;
+ if (data.bpjs_kes) data.no_bpjs_kes = data.bpjs_kes;
+ if (data.no_bpjs_kes) data.bpjs_kes = data.no_bpjs_kes;
+ if (data.kontak_darurat_hp) data.kontak_darurat = data.kontak_darurat_hp;
+ if (data.kontak_darurat) data.kontak_darurat_hp = data.kontak_darurat;
+ if (data.kontak_darurat_nama) data.nama_kontak_darurat = data.kontak_darurat_nama;
+ if (data.nama_kontak_darurat) data.kontak_darurat_nama = data.nama_kontak_darurat;
+ if (data.tanggungan !== undefined) data.anak = data.tanggungan;
+ if (data.anak !== undefined) data.tanggungan = data.anak;
+ if (data.aktif_tdk_aktif) data["aktif/tidak_aktif"] = data.aktif_tdk_aktif;
+ if (data["aktif/tidak_aktif"]) data.aktif_tdk_aktif = data["aktif/tidak_aktif"];
  return data;
  },
  columns: [
- { key: "nik_karyawan", label: "NIK" },
- { key: "nama_karyawan", label: "Nama" },
- { key: "cabang", label: "Cabang" },
- { key: "divisi", label: "Divisi" },
- { key: "jabatan", label: "Jabatan" },
- { key: "nik_ktp", label: "NIK KTP", format: (v, r) => r.nik_ktp || r.no_ktp || v || "-" },
- { key: "no_kk", label: "No. KK", format: (v, r) => r.no_kk || r.no_kartu_keluarga || v || "-" },
- { key: "bpjs_tk", label: "BPJS TK", format: (v, r) => r.bpjs_tk || r.no_bpjs_tk || r.bpjs_ketenagakerjaan || v || "-" },
- { key: "bpjs_kes", label: "BPJS KES", format: (v, r) => r.bpjs_kes || r.no_bpjs_kes || r.bpjs_kesehatan || v || "-" },
- { key: "status_karyawan", label: "Status", type: "badge" },
- { key: "tanggal_lahir", label: "Tgl Lahir" },
- { key: "usia", label: "Usia", format: (v, r) => (r.tanggal_lahir ? `${calculateAge(r.tanggal_lahir) ?? v ?? "-"} Thn` : (v ? `${v} Thn` : "-")) },
- { key: "tanggal_join", label: "Join" },
- { key: "masa_kerja", label: "Masa Kerja", format: (v, r) => (r.tanggal_join ? calculateTenure(r.tanggal_join) : (v || "-")) },
- { key: "no_hp_aktif", label: "No HP" },
- { key: "aktif_tdk_aktif", label: "Aktif", type: "badge", badgeTone: (v) => v === "AKTIF" ? "green" : "red" },
+ { key: "nik_karyawan", label: "nik_karyawan" },
+ { key: "nama_karyawan", label: "nama_karyawan" },
+ { key: "cabang", label: "cabang" },
+ { key: "jabatan", label: "jabatan" },
+ { key: "divisi", label: "divisi" },
+ { key: "jenis_kelamin", label: "jenis_kelamin" },
+ { key: "nik_ktp", label: "nik_ktp", format: (v, r) => r.nik_ktp || r.no_ktp || v || "-" },
+ { key: "no_kartu_keluarga", label: "no_kartu_keluarga", format: (v, r) => r.no_kartu_keluarga || r.no_kk || v || "-" },
+ { key: "no_bpjs_tk", label: "no_bpjs_tk", format: (v, r) => r.no_bpjs_tk || r.bpjs_tk || r.bpjs_ketenagakerjaan || v || "-" },
+ { key: "no_bpjs_kes", label: "no_bpjs_kes", format: (v, r) => r.no_bpjs_kes || r.bpjs_kes || r.bpjs_kesehatan || v || "-" },
+ { key: "status_karyawan", label: "status_karyawan", type: "badge" },
+ { key: "tanggal_lahir", label: "tanggal_lahir" },
+ { key: "usia", label: "usia", format: (v, r) => (r.tanggal_lahir ? (calculateAge(r.tanggal_lahir) ?? v ?? "-") : (v ?? "-")) },
+ { key: "tanggal_join", label: "tanggal_join" },
+ { key: "kontrak_habis", label: "kontrak_habis", format: (v, r) => r.kontrak_habis || "-" },
+ { key: "masa_kerja", label: "masa_kerja", format: (v, r) => (r.tanggal_join ? calculateTenure(r.tanggal_join) : (v || "-")) },
+ { key: "pendidikan", label: "pendidikan" },
+ { key: "alamat", label: "alamat" },
+ { key: "agama", label: "agama" },
+ { key: "golongan_darah", label: "golongan_darah" },
+ { key: "no_hp_aktif", label: "no_hp_aktif" },
+ { key: "email", label: "email" },
+ { key: "kontak_darurat", label: "kontak_darurat", format: (v, r) => r.kontak_darurat || r.kontak_darurat_hp || v || "-" },
+ { key: "nama_kontak_darurat", label: "nama_kontak_darurat", format: (v, r) => r.nama_kontak_darurat || r.kontak_darurat_nama || v || "-" },
+ { key: "npwp", label: "npwp", format: (v, r) => r.npwp || v || "-" },
+ { key: "status_pajak", label: "status_pajak" },
+ { key: "anak", label: "anak", format: (v, r) => r.anak ?? r.tanggungan ?? v ?? 0 },
+ { key: "jam_kerja", label: "jam_kerja" },
+ { key: "aktif/tidak_aktif", label: "aktif/tidak_aktif", format: (v, r) => r["aktif/tidak_aktif"] || r.aktif_tdk_aktif || v || "AKTIF", type: "badge", badgeTone: (v) => (v === "AKTIF" || v === "Active") ? "green" : "red" },
+ { key: "finger_name", label: "finger_name" },
+ { key: "jatah_tahunan", label: "jatah_tahunan", format: (v, r) => r.jatah_tahunan ?? 12 },
+ { key: "jatah_khusus", label: "jatah_khusus", format: (v, r) => r.jatah_khusus ?? 4 },
+ { key: "jatah_akumulasi", label: "jatah_akumulasi", format: (v, r) => r.jatah_akumulasi ?? 0 },
+ { key: "terpakai_tahunan", label: "terpakai_tahunan", format: (v, r) => r.terpakai_tahunan ?? r.cuti_terpakai_tahunan ?? 0 },
+ { key: "terpakai_khusus", label: "terpakai_khusus", format: (v, r) => r.terpakai_khusus ?? r.cuti_terpakai_khusus ?? 0 },
+ { key: "terpakai_akumulasi", label: "terpakai_akumulasi", format: (v, r) => r.terpakai_akumulasi ?? r.cuti_terpakai_akumulasi ?? 0 },
+ { key: "dokumen_ktp", label: "dokumen_ktp", format: (v, r) => r.dokumen_ktp ? "Ada" : "-" },
+ { key: "dokumen_kk", label: "dokumen_kk", format: (v, r) => r.dokumen_kk ? "Ada" : "-" },
+ { key: "dokumen_bpjs", label: "dokumen_bpjs", format: (v, r) => r.dokumen_bpjs ? "Ada" : "-" },
+ { key: "dokumen_npwp", label: "dokumen_npwp", format: (v, r) => r.dokumen_npwp ? "Ada" : "-" },
+ { key: "atasan", label: "atasan" },
+ { key: "template_kpi", label: "template_kpi", format: (v, r) => r.template_kpi || "-" },
+ { key: "akses_menu", label: "akses_menu", format: (v, r) => r.akses_menu || "-" }
  ],
  formFields: fields
  });

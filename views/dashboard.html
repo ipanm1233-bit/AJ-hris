@@ -6,17 +6,132 @@
       <h1 id="dash-greeting" class="text-2xl font-extrabold text-slate-800 tracking-tight">Selamat Datang</h1>
       <p class="text-xs sm:text-sm text-slate-500 mt-1">Berikut ringkasan aktivitas dan status kepegawaian Anda hari ini.</p>
     </div>
-    <div class="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
-      <a href="#absensi" class="px-4 py-2 rounded-xl bg-maroon-700 text-white font-bold text-xs hover:bg-maroon-800 transition shrink-0 flex items-center gap-1.5 shadow-sm">
+    <div class="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+      <a href="#absensi" class="px-3.5 py-2 rounded-xl bg-maroon-700 text-white font-bold text-xs hover:bg-maroon-800 transition shrink-0 flex items-center gap-1.5 shadow-xs">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
         <span>Absen Masuk</span>
       </a>
-      <a href="#pengajuan-cuti" class="px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs transition shrink-0 flex items-center gap-1.5 shadow-xs">
+      <a href="#reimbursement" class="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs transition shrink-0 flex items-center gap-1.5 shadow-xs">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+        <span>Reimbursement</span>
+      </a>
+      <a href="#pengajuan-cuti" class="px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs transition shrink-0 flex items-center gap-1.5 shadow-xs">
         <span>Ajukan Cuti</span>
       </a>
-      <a href="#klaim-bensin" class="px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs transition shrink-0 flex items-center gap-1.5 shadow-xs">
+      <a href="#klaim-bensin" class="px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs transition shrink-0 flex items-center gap-1.5 shadow-xs">
         <span>Klaim Bensin</span>
       </a>
+    </div>
+  </div>
+
+  <!-- MOBILE QUICK ACCESS & SERVICE GRID (Compact 4-column Menu Grid for Mobile) -->
+  <div class="block sm:hidden space-y-3">
+    <!-- Card Container Fast Menu -->
+    <div class="bg-white rounded-3xl p-4 border border-slate-100 shadow-2xs space-y-3">
+      <!-- Search & Header Bar -->
+      <div class="space-y-2">
+        <div class="flex items-center justify-between px-1">
+          <span class="text-xs font-black text-slate-800 flex items-center gap-1.5">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-maroon-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h7"/></svg>
+            Fast Menu & Layanan HR
+          </span>
+          <span class="text-[10px] font-extrabold text-maroon-700 bg-red-50 border border-red-100 px-2 py-0.5 rounded-full">12 Menu</span>
+        </div>
+
+        <div class="relative">
+          <input type="text" id="mobile-dash-search" placeholder="Cari layanan, reimbursement, cuti..." class="w-full pl-9 pr-4 py-2 bg-slate-50 text-xs font-medium rounded-2xl border border-slate-200 focus:bg-white focus:border-maroon-400 outline-none transition">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        </div>
+      </div>
+
+      <!-- Mobile Compact 4-Column Icon Grid (Fit 12 Menus cleanly) -->
+      <div id="mobile-services-grid" class="grid grid-cols-4 gap-y-3.5 gap-x-1.5 text-center pt-1">
+        
+        <a href="#absensi" class="mobile-menu-item group p-1.5 rounded-2xl hover:bg-slate-50 transition flex flex-col items-center">
+          <div class="w-11 h-11 rounded-2xl bg-rose-50 border border-rose-100/80 text-rose-700 flex items-center justify-center shadow-2xs group-active:scale-95 transition-transform mb-1 shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <span class="text-[10.5px] font-extrabold text-slate-800 leading-tight block truncate w-full">Presensi</span>
+        </a>
+
+        <a href="#reimbursement" class="mobile-menu-item group p-1.5 rounded-2xl hover:bg-slate-50 transition flex flex-col items-center">
+          <div class="w-11 h-11 rounded-2xl bg-amber-50 border border-amber-100/80 text-amber-700 flex items-center justify-center shadow-2xs group-active:scale-95 transition-transform mb-1 shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+          </div>
+          <span class="text-[10.5px] font-extrabold text-slate-800 leading-tight block truncate w-full">Reimburse</span>
+        </a>
+
+        <a href="#pengajuan-cuti" class="mobile-menu-item group p-1.5 rounded-2xl hover:bg-slate-50 transition flex flex-col items-center">
+          <div class="w-11 h-11 rounded-2xl bg-blue-50 border border-blue-100/80 text-blue-700 flex items-center justify-center shadow-2xs group-active:scale-95 transition-transform mb-1 shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          </div>
+          <span class="text-[10.5px] font-extrabold text-slate-800 leading-tight block truncate w-full">Cuti/Izin</span>
+        </a>
+
+        <a href="#penilaian-kontrak" class="mobile-menu-item group p-1.5 rounded-2xl hover:bg-slate-50 transition flex flex-col items-center">
+          <div class="w-11 h-11 rounded-2xl bg-emerald-50 border border-emerald-100/80 text-emerald-700 flex items-center justify-center shadow-2xs group-active:scale-95 transition-transform mb-1 shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <span class="text-[10.5px] font-extrabold text-slate-800 leading-tight block truncate w-full">Evaluasi SPK</span>
+        </a>
+
+        <a href="#inventory" class="mobile-menu-item group p-1.5 rounded-2xl hover:bg-slate-50 transition flex flex-col items-center">
+          <div class="w-11 h-11 rounded-2xl bg-red-50 border border-red-100/80 text-maroon-700 flex items-center justify-center shadow-2xs group-active:scale-95 transition-transform mb-1 shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+          </div>
+          <span class="text-[10.5px] font-extrabold text-slate-800 leading-tight block truncate w-full">Aset GA</span>
+        </a>
+
+        <a href="#klaim-bensin" class="mobile-menu-item group p-1.5 rounded-2xl hover:bg-slate-50 transition flex flex-col items-center">
+          <div class="w-11 h-11 rounded-2xl bg-orange-50 border border-orange-100/80 text-orange-700 flex items-center justify-center shadow-2xs group-active:scale-95 transition-transform mb-1 shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          </div>
+          <span class="text-[10.5px] font-extrabold text-slate-800 leading-tight block truncate w-full">Klaim Bensin</span>
+        </a>
+
+        <a href="#lembur-kasbon" class="mobile-menu-item group p-1.5 rounded-2xl hover:bg-slate-50 transition flex flex-col items-center">
+          <div class="w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-100/80 text-indigo-700 flex items-center justify-center shadow-2xs group-active:scale-95 transition-transform mb-1 shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <span class="text-[10.5px] font-extrabold text-slate-800 leading-tight block truncate w-full">Lembur</span>
+        </a>
+
+        <a href="#riwayat" class="mobile-menu-item group p-1.5 rounded-2xl hover:bg-slate-50 transition flex flex-col items-center">
+          <div class="w-11 h-11 rounded-2xl bg-purple-50 border border-purple-100/80 text-purple-700 flex items-center justify-center shadow-2xs group-active:scale-95 transition-transform mb-1 shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          </div>
+          <span class="text-[10.5px] font-extrabold text-slate-800 leading-tight block truncate w-full">Log Presensi</span>
+        </a>
+
+        <a href="#training" class="mobile-menu-item group p-1.5 rounded-2xl hover:bg-slate-50 transition flex flex-col items-center">
+          <div class="w-11 h-11 rounded-2xl bg-cyan-50 border border-cyan-100/80 text-cyan-700 flex items-center justify-center shadow-2xs group-active:scale-95 transition-transform mb-1 shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 14l9-5-9-5-9 5 9 5z"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0112 20.055a11.952 11.952 0 01-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"/></svg>
+          </div>
+          <span class="text-[10.5px] font-extrabold text-slate-800 leading-tight block truncate w-full">Pelatihan</span>
+        </a>
+
+        <a href="#performance-review" class="mobile-menu-item group p-1.5 rounded-2xl hover:bg-slate-50 transition flex flex-col items-center">
+          <div class="w-11 h-11 rounded-2xl bg-teal-50 border border-teal-100/80 text-teal-700 flex items-center justify-center shadow-2xs group-active:scale-95 transition-transform mb-1 shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+          </div>
+          <span class="text-[10.5px] font-extrabold text-slate-800 leading-tight block truncate w-full">Review KPI</span>
+        </a>
+
+        <a href="#broadcast" class="mobile-menu-item group p-1.5 rounded-2xl hover:bg-slate-50 transition flex flex-col items-center">
+          <div class="w-11 h-11 rounded-2xl bg-violet-50 border border-violet-100/80 text-violet-700 flex items-center justify-center shadow-2xs group-active:scale-95 transition-transform mb-1 shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c.41 0 .789.231.977.6l2.19 4.38a1 1 0 00.895.553H14a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-.894.553L8.914 8.93a1 1 0 01-.895.553H6.182a4.001 4.001 0 00-3.882 3.02l-.126.505a4.001 4.001 0 003.262 4.675z"/></svg>
+          </div>
+          <span class="text-[10.5px] font-extrabold text-slate-800 leading-tight block truncate w-full">Broadcast</span>
+        </a>
+
+        <a href="#profile" class="mobile-menu-item group p-1.5 rounded-2xl hover:bg-slate-50 transition flex flex-col items-center">
+          <div class="w-11 h-11 rounded-2xl bg-slate-100 border border-slate-200/80 text-slate-700 flex items-center justify-center shadow-2xs group-active:scale-95 transition-transform mb-1 shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+          </div>
+          <span class="text-[10.5px] font-extrabold text-slate-800 leading-tight block truncate w-full">Profil Saya</span>
+        </a>
+
+      </div>
     </div>
   </div>
 

@@ -61,6 +61,22 @@ export async function mount(container, { session }) {
  // Tombol "Tes Notif" kini berada di Header Atas (sebelah Lonceng Notifikasi)
  // dan dihandle secara global oleh bindShellEvents di app.js.
  
+ const mobileSearchInput = container.querySelector("#mobile-dash-search");
+ if (mobileSearchInput) {
+  mobileSearchInput.addEventListener("input", (e) => {
+   const q = (e.target.value || "").toLowerCase().trim();
+   container.querySelectorAll(".mobile-menu-item").forEach(item => {
+    const txt = (item.textContent || "").toLowerCase();
+    const href = (item.getAttribute("href") || "").toLowerCase();
+    if (!q || txt.includes(q) || href.includes(q)) {
+     item.classList.remove("hidden");
+    } else {
+     item.classList.add("hidden");
+    }
+   });
+  });
+ }
+
  return { unmount() {} };
 }
 

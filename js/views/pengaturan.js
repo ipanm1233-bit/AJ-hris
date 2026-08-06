@@ -92,7 +92,7 @@ async function setupRbacMenuTab(container, users) {
  <label class="flex items-center gap-2 p-2.5 rounded-lg border border-slate-100 hover:bg-slate-50 text-sm cursor-pointer">
  <input type="checkbox" data-menu="${m.id}" class="rounded border-slate-300 text-maroon-700 focus:ring-maroon-400">
  <span class="text-slate-700">${m.label}</span>
- <span class="text-[10px] text-slate-400 ml-auto">${groupLabel[m.group]}</span>
+ <span class="text-[10px] text-slate-400 ml-auto">${m.kategori || groupLabel[m.group] || "Umum"}</span>
  </label>`).join("");
 
  async function loadForUser(userKey) {

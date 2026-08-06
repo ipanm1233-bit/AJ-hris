@@ -1,0 +1,147 @@
+<div class="space-y-6">
+  <!-- HEADER & TOP ACTIONS -->
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2.5">
+        <span class="w-9 h-9 rounded-xl bg-maroon-700 text-white flex items-center justify-center shrink-0 shadow-xs">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+        </span>
+        <span>Manajemen Reimbursement</span>
+      </h1>
+      <p class="text-xs sm:text-sm text-slate-500 mt-1">Kelola pengajuan klaim keuangan karyawan, persetujuan (approval), dan atur plafon mingguan/bulanan/tahunan.</p>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+      <button id="rmb-btn-add-submission" class="px-4 py-2.5 bg-maroon-700 hover:bg-maroon-800 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+        <span>Buat Pengajuan Reimbursement</span>
+      </button>
+      <button id="rmb-btn-refresh" class="px-3 py-2.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        <span>Refresh</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- SUBMENU TABS -->
+  <div class="border-b border-slate-200 flex items-center gap-2 overflow-x-auto">
+    <button id="rmb-tab-pengajuan" class="rmb-nav-tab px-4 py-3 text-sm font-bold border-b-2 border-maroon-700 text-maroon-800 flex items-center gap-2 transition whitespace-nowrap">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+      <span>Daftar Pengajuan</span>
+      <span id="rmb-badge-pending-count" class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 hidden">0</span>
+    </button>
+    <button id="rmb-tab-pengaturan" class="rmb-nav-tab px-4 py-3 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2 transition whitespace-nowrap">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      <span>Pengaturan Jenis & Plafon</span>
+    </button>
+  </div>
+
+  <!-- TAB CONTENT 1: PENGAJUAN REIMBURSEMENT -->
+  <div id="rmb-content-pengajuan" class="space-y-6">
+    <!-- STATS CARDS -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div class="bg-white rounded-2xl border border-slate-100 p-4 shadow-2xs flex flex-col justify-between">
+        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Pengajuan Bulan Ini</span>
+        <div class="mt-2">
+          <p id="rmb-stat-total-nominal" class="text-lg sm:text-xl font-black text-slate-800 font-mono">Rp 0</p>
+          <p id="rmb-stat-total-count" class="text-[11px] text-slate-500 font-medium mt-0.5">0 klaim terdaftar</p>
+        </div>
+      </div>
+      <div class="bg-amber-50/50 rounded-2xl border border-amber-100 p-4 shadow-2xs flex flex-col justify-between">
+        <span class="text-[11px] font-bold text-amber-800 uppercase tracking-wide">Menunggu Review</span>
+        <div class="mt-2">
+          <p id="rmb-stat-pending-nominal" class="text-lg sm:text-xl font-black text-amber-900 font-mono">Rp 0</p>
+          <p id="rmb-stat-pending-count" class="text-[11px] text-amber-700 font-medium mt-0.5">0 perlu persetujuan</p>
+        </div>
+      </div>
+      <div class="bg-emerald-50/50 rounded-2xl border border-emerald-100 p-4 shadow-2xs flex flex-col justify-between">
+        <span class="text-[11px] font-bold text-emerald-800 uppercase tracking-wide">Telah Disetujui</span>
+        <div class="mt-2">
+          <p id="rmb-stat-approved-nominal" class="text-lg sm:text-xl font-black text-emerald-800 font-mono">Rp 0</p>
+          <p id="rmb-stat-approved-count" class="text-[11px] text-emerald-700 font-medium mt-0.5">0 klaim disetujui</p>
+        </div>
+      </div>
+      <div class="bg-blue-50/50 rounded-2xl border border-blue-100 p-4 shadow-2xs flex flex-col justify-between">
+        <span class="text-[11px] font-bold text-blue-800 uppercase tracking-wide">Sudah Dicairkan / Paid</span>
+        <div class="mt-2">
+          <p id="rmb-stat-paid-nominal" class="text-lg sm:text-xl font-black text-blue-900 font-mono">Rp 0</p>
+          <p id="rmb-stat-paid-count" class="text-[11px] text-blue-700 font-medium mt-0.5">0 ditransfer ke karyawan</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- FILTERS BAR -->
+    <div class="bg-white rounded-2xl border border-slate-100 p-4 shadow-2xs space-y-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="relative">
+          <input type="text" id="rmb-filter-search" placeholder="Cari nama karyawan / NIK / keperluan..." class="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:border-maroon-400 outline-none">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        </div>
+        <div>
+          <select id="rmb-filter-status" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:border-maroon-400 outline-none bg-white">
+            <option value="ALL">Semua Status</option>
+            <option value="PENDING">PENDING (Menunggu Review)</option>
+            <option value="APPROVED">DISETUJUI (Approved)</option>
+            <option value="PAID">DICAIRKAN (Paid/Transfer)</option>
+            <option value="REJECTED">DITOLAK (Rejected)</option>
+          </select>
+        </div>
+        <div>
+          <select id="rmb-filter-jenis" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:border-maroon-400 outline-none bg-white">
+            <option value="ALL">Semua Jenis Reimbursement</option>
+          </select>
+        </div>
+        <div>
+          <select id="rmb-filter-cabang" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:border-maroon-400 outline-none bg-white">
+            <option value="ALL">Semua Cabang / Penempatan</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- TABLE LIST -->
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+      <div class="flex items-center justify-between px-5 pt-4 pb-2 border-b border-slate-100 flex-wrap gap-2">
+        <h3 class="font-bold text-slate-800 text-sm">Daftar Klaim Reimbursement</h3>
+        <span id="rmb-table-count" class="text-xs text-slate-400">0 data ditemukan</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs text-left">
+          <thead class="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold">
+            <tr>
+              <th class="px-4 py-3">Tanggal Exp</th>
+              <th class="px-4 py-3">Karyawan</th>
+              <th class="px-4 py-3">Jenis Reimbursement</th>
+              <th class="px-4 py-3">Nominal (Rp)</th>
+              <th class="px-4 py-3">Keterangan / Keperluan</th>
+              <th class="px-4 py-3">Bukti Nota</th>
+              <th class="px-4 py-3">Status</th>
+              <th class="px-4 py-3 text-right">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="rmb-tbody-pengajuan" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+      <div id="rmb-empty-pengajuan"></div>
+    </div>
+  </div>
+
+  <!-- TAB CONTENT 2: PENGATURAN JENIS & PLAFON -->
+  <div id="rmb-content-pengaturan" class="hidden space-y-6">
+    <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm space-y-4">
+      <div class="flex items-center justify-between flex-wrap gap-3 border-b border-slate-100 pb-3">
+        <div>
+          <h3 class="font-bold text-slate-800 text-base">Pengaturan Jenis Reimbursement & Plafon Limits</h3>
+          <p class="text-xs text-slate-500 mt-0.5">Atur daftar kategori klaim, pembatasan plafon mingguan/bulanan/tahunan, dan hak akses karyawan.</p>
+        </div>
+        <button id="rmb-btn-add-type" class="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+          <span>Tambah Jenis Reimbursement</span>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="rmb-type-cards-grid">
+        <!-- populated by JS -->
+      </div>
+    </div>
+  </div>
+</div>
