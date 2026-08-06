@@ -265,35 +265,51 @@
   </main>
 
   <!-- BOTTOM NAVIGATION FOR MOBILE -->
-  <nav class="fixed bottom-0 left-0 right-0 h-16 mobile-nav-bar z-40 flex lg:hidden items-center justify-around px-2 pb-safe">
-    <a href="#dashboard" data-mobile-tab="dashboard" class="mobile-nav-item active flex flex-col items-center justify-center flex-1 h-full transition">
-      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
-      <span class="text-[10px] font-medium font-sans">Home</span>
-      <span class="active-dot"></span>
-    </a>
-    <a href="#absensi" data-mobile-tab="absensi" class="mobile-nav-item flex flex-col items-center justify-center flex-1 h-full transition">
-      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-      <span class="text-[10px] font-medium font-sans">Presensi</span>
-      <span class="active-dot"></span>
-    </a>
+  <nav id="mobile-bottom-nav" class="fixed bottom-0 left-0 right-0 mobile-nav-bar z-40 flex lg:hidden items-center justify-around px-1 select-none shadow-2xl overflow-hidden">
+    
+    <!-- DYNAMIC SLIDING HIGHLIGHT PILL -->
+    <div id="mobile-nav-indicator" class="absolute top-0 left-0 w-[20%] h-full pointer-events-none z-10 flex items-center justify-center p-1.5">
+      <div class="w-full h-[78%] rounded-xl bg-white/20 border border-white/30 backdrop-blur-xs shadow-xs"></div>
+    </div>
 
-    <!-- TOMBOL REQUEST BULAT MERAH FLOATING (CENTER) -->
-    <a href="#reimbursement" data-mobile-tab="reimbursement" class="mobile-nav-item flex flex-col items-center justify-center flex-1 relative -mt-5 transition group">
-      <div class="btn-request-floating flex items-center justify-center shrink-0 shadow-md">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+    <!-- TAB 0: HOME -->
+    <a href="#dashboard" data-mobile-tab="dashboard" data-tab-index="0" class="mobile-nav-item active flex flex-col items-center justify-center flex-1 h-full z-20 group transition-all duration-300">
+      <div class="nav-icon-wrap w-5 h-5 flex items-center justify-center mb-0.5 text-rose-200/70 group-[.active]:text-white group-[.active]:scale-110 transition-all duration-200">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
       </div>
-      <span class="text-[10px] font-bold text-slate-700 mt-1">Reimburse</span>
+      <span class="text-[10px] font-medium text-rose-200/70 group-[.active]:text-white group-[.active]:font-extrabold transition-colors duration-200">Home</span>
     </a>
 
-    <a href="#penilaian-kontrak" data-mobile-tab="penilaian-kontrak" class="mobile-nav-item flex flex-col items-center justify-center flex-1 h-full transition">
-      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
-      <span class="text-[10px] font-medium font-sans">Evaluasi</span>
-      <span class="active-dot"></span>
+    <!-- TAB 1: PRESENSI -->
+    <a href="#absensi" data-mobile-tab="absensi" data-tab-index="1" class="mobile-nav-item flex flex-col items-center justify-center flex-1 h-full z-20 group transition-all duration-300">
+      <div class="nav-icon-wrap w-5 h-5 flex items-center justify-center mb-0.5 text-rose-200/70 group-[.active]:text-white group-[.active]:scale-110 transition-all duration-200">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      </div>
+      <span class="text-[10px] font-medium text-rose-200/70 group-[.active]:text-white group-[.active]:font-extrabold transition-colors duration-200">Presensi</span>
     </a>
-    <a href="#profile" data-mobile-tab="profile" class="mobile-nav-item flex flex-col items-center justify-center flex-1 h-full transition">
-      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-      <span class="text-[10px] font-medium font-sans">Profile</span>
-      <span class="active-dot"></span>
+
+    <!-- TAB 2: PENGAJUAN (CENTER) -->
+    <a href="#pengajuan" data-mobile-tab="pengajuan" data-tab-index="2" class="mobile-nav-item flex flex-col items-center justify-center flex-1 h-full z-20 group transition-all duration-300">
+      <div class="nav-icon-wrap w-5 h-5 flex items-center justify-center mb-0.5 text-rose-200/70 group-[.active]:text-white group-[.active]:scale-110 transition-all duration-200">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+      </div>
+      <span class="text-[10px] font-medium text-rose-200/70 group-[.active]:text-white group-[.active]:font-extrabold transition-colors duration-200 truncate max-w-[68px] text-center" title="Pengajuan Lainnya...">Pengajuan</span>
+    </a>
+
+    <!-- TAB 3: EVALUASI -->
+    <a href="#penilaian-kontrak" data-mobile-tab="penilaian-kontrak" data-tab-index="3" class="mobile-nav-item flex flex-col items-center justify-center flex-1 h-full z-20 group transition-all duration-300">
+      <div class="nav-icon-wrap w-5 h-5 flex items-center justify-center mb-0.5 text-rose-200/70 group-[.active]:text-white group-[.active]:scale-110 transition-all duration-200">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+      </div>
+      <span class="text-[10px] font-medium text-rose-200/70 group-[.active]:text-white group-[.active]:font-extrabold transition-colors duration-200">Evaluasi</span>
+    </a>
+
+    <!-- TAB 4: PROFILE -->
+    <a href="#profile" data-mobile-tab="profile" data-tab-index="4" class="mobile-nav-item flex flex-col items-center justify-center flex-1 h-full z-20 group transition-all duration-300">
+      <div class="nav-icon-wrap w-5 h-5 flex items-center justify-center mb-0.5 text-rose-200/70 group-[.active]:text-white group-[.active]:scale-110 transition-all duration-200">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+      </div>
+      <span class="text-[10px] font-medium text-rose-200/70 group-[.active]:text-white group-[.active]:font-extrabold transition-colors duration-200">Profil</span>
     </a>
   </nav>
 </div>
