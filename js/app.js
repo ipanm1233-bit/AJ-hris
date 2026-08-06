@@ -739,24 +739,24 @@ async function openChangePasswordModal(session) {
  title: "Ganti Password",
  size: "md",
  bodyHtml: `
- <form id="form-ganti-pw" class="space-y-4">
+ <form id="form-ganti-pw" class="space-y-4 text-left">
  <div>
- <label class="block text-xs font-medium text-slate-500 mb-1.5">Password Lama</label>
- <input type="password" id="pw-lama" required class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none">
+ <label class="block text-xs font-semibold text-slate-700 mb-1.5">Password Lama</label>
+ <input type="password" id="pw-lama" required class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 focus:border-maroon-500 focus:ring-2 focus:ring-maroon-100 outline-none transition">
  </div>
  <div>
- <label class="block text-xs font-medium text-slate-500 mb-1.5">Password Baru</label>
- <input type="password" id="pw-baru" required class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none">
+ <label class="block text-xs font-semibold text-slate-700 mb-1.5">Password Baru</label>
+ <input type="password" id="pw-baru" required class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 focus:border-maroon-500 focus:ring-2 focus:ring-maroon-100 outline-none transition">
  </div>
  <div>
- <label class="block text-xs font-medium text-slate-500 mb-1.5">Konfirmasi Password Baru</label>
- <input type="password" id="pw-konfirm" required class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none">
+ <label class="block text-xs font-semibold text-slate-700 mb-1.5">Konfirmasi Password Baru</label>
+ <input type="password" id="pw-konfirm" required class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 focus:border-maroon-500 focus:ring-2 focus:ring-maroon-100 outline-none transition">
  </div>
  </form>
  `,
  footerHtml: `
- <button id="btn-cancel-pw" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
- <button id="btn-save-pw" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-md">Simpan Password</button>`,
+ <button id="btn-cancel-pw" class="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition border border-slate-200">Batal</button>
+ <button id="btn-save-pw" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-md">Simpan Password</button>`,
  onMount: (m) => {
  m.querySelector("#btn-cancel-pw").onclick = closeModal;
  m.querySelector("#btn-save-pw").onclick = async () => {
