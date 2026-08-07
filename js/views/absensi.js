@@ -126,24 +126,24 @@ export async function mount(container, { session } = {}) {
  <p class="${hasOld ? 'text-amber-700' : 'text-slate-500'} mt-0.5">
  ${hasOld
  ? 'Sistem menjaga data di Firebase maksimal 60 hari per karyawan agar database tetap ringan. Klik tombol di kanan untuk memindahkan data usang ini ke Google Spreadsheet. Data tetap aman dan dapat ditarik kembali kapan saja.'
- : 'Belum ada data yang lewat 60 hari saat ini. Tombol ini tetap bisa dipakai kapan saja untuk memindahkan data absensi manapun ke Google Spreadsheet secara manual.'}
+ : 'Belum ada data yang lewat 60 hari saat ini. Tombol ini HANYA akan mengarsipkan data >60 hari kapan pun itu muncul -- 2 bulan terakhir (termasuk bulan berjalan) tidak akan pernah ikut terarsip.'}
  </p>
  </div>
  </div>
- <button id="btn-archive-now" class="shrink-0 ${hasOld ? 'bg-amber-700 hover:bg-amber-800' : 'bg-slate-600 hover:bg-slate-700'} text-white font-semibold px-3.5 py-2 rounded-lg shadow-sm transition flex items-center gap-1.5" ${hasOld ? '' : 'title="Belum ada data >60 hari -- klik untuk arsipkan manual dari hasil filter periode saat ini"'}>
+ <button id="btn-archive-now" class="shrink-0 ${hasOld ? 'bg-amber-700 hover:bg-amber-800' : 'bg-slate-300 text-slate-500 cursor-not-allowed'} text-white font-semibold px-3.5 py-2 rounded-lg shadow-sm transition flex items-center gap-1.5" ${hasOld ? '' : 'disabled title="Belum ada data >60 hari untuk diarsipkan"'}>
  Arsipkan ke Spreadsheet
  </button>
  `;
  archiveAlertBox.querySelector("#btn-archive-now").onclick = async () => {
- // Kalau belum ada data >60 hari, arsipkan data hasil FILTER PERIODE
- // yang sedang aktif di tabel (biar tombol tetap berguna kapan saja,
- // bukan cuma menunggu ada data lama otomatis).
- const rowsToArchive = hasOld ? oldRecords : applyFiltersAbsen();
- if (!rowsToArchive || rowsToArchive.length === 0) {
- toast("Tidak ada data untuk diarsipkan. Pilih periode/filter dulu di atas.", "warning");
+ // PENTING: SELALU pakai oldRecords (data >60 hari) yang dihitung ulang
+ // dari listAbsensiGlobal -- JANGAN PERNAH pakai data hasil filter/tampilan
+ // layar saat ini, supaya data 2 bulan terakhir/bulan berjalan tidak
+ // pernah ikut kearsip walau apapun filter yang sedang aktif di tabel.
+ if (!hasOld || oldRecords.length === 0) {
+ toast("Tidak ada data >60 hari untuk diarsipkan.", "warning");
  return;
  }
- const btn = archiveAlertBox.querySelector("#btn-archive-now");
+ const rowsToArchive = oldRecords; const btn = archiveAlertBox.querySelector("#btn-archive-now");
  btn.disabled = true; btn.textContent = "Mengarsipkan...";
  try {
  // Call Apps Script web app (project GAS Arsip Absensi, terpisah)
@@ -555,21 +555,32 @@ export async function mount(container, { session } = {}) {
  // -------------------------------------------------------------
  if (btnPullArchive) {
  btnPullArchive.onclick = async () => {
+ const periodStart = filterStart?.value || "";
+ const periodEnd = filterEnd?.value || "";
+ if (!periodStart || !periodEnd) {
+ toast("Pilih Periode (dari & sampai tanggal) dulu di atas sebelum menarik arsip.", "warning");
+ return;
+ }
+
  btnPullArchive.disabled = true;
  const origText = btnPullArchive.innerHTML;
  btnPullArchive.innerHTML = `<span>⏳ Menarik...</span>`;
  try {
- toast("Menghubungkan ke Google Spreadsheet...", "info");
- const res = await callGasArchiveWebApp({ action: "get_archived_attendance" });
+ toast(`Menghubungkan ke Google Spreadsheet untuk periode ${periodStart} s/d ${periodEnd}...`, "info");
+ const res = await callGasArchiveWebApp({
+ action: "get_archived_attendance",
+ start: periodStart,
+ end: periodEnd
+ });
  if (res && res.rows && res.rows.length > 0) {
  // Merge with global list (excluding duplicates)
  const existingIds = new Set(listAbsensiGlobal.map(x => x.id));
  const newRows = res.rows.filter(x => !existingIds.has(x.id));
  listAbsensiGlobal = [...listAbsensiGlobal, ...newRows];
  applyFiltersAbsen();
- toast(`Sukses memuat ${newRows.length} data arsip tambahan ke memori tabel!`, "success");
+ toast(`Sukses memuat ${newRows.length} data arsip untuk periode terpilih!`, "success");
  } else {
- toast("Tidak ada data arsip yang ditemukan di Google Spreadsheet.", "warning");
+ toast("Tidak ada data arsip pada periode tersebut di Google Spreadsheet.", "warning");
  }
  } catch (err) {
  toast("Gagal menarik data arsip: " + err.message, "error");
