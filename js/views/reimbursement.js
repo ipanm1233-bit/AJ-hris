@@ -5,6 +5,7 @@ import {
   openModal, closeModal
 } from "../utils.js";
 import { icon, emptyState, badge, avatar } from "../components.js";
+import { uploadFileToDrive } from "../gas-integration.js";
 
 // Default seed categories if master_reimbursement_type is empty
 const DEFAULT_TYPES = [
@@ -62,9 +63,19 @@ export async function mount(container, { session }) {
   const tabPengaturan = container.querySelector("#rmb-tab-pengaturan");
   const contentPengajuan = container.querySelector("#rmb-content-pengajuan");
   const contentPengaturan = container.querySelector("#rmb-content-pengaturan");
+  const mgmtDashboard = container.querySelector("#rmb-mgmt-dashboard");
+  const employeeView = container.querySelector("#rmb-employee-view");
+  const tabBar = tabPengajuan?.closest("div.border-b");
 
   if (!isManagement) {
+    // Karyawan biasa: sembunyikan tab bar (cuma 1 tampilan, tidak perlu tab),
+    // sembunyikan dashboard admin (stats+filter+tabel semua karyawan),
+    // tampilkan cuma tombol ajukan + riwayat pengajuan singkat milik sendiri.
+    if (tabBar) tabBar.classList.add("hidden");
     if (tabPengaturan) tabPengaturan.classList.add("hidden");
+    if (mgmtDashboard) mgmtDashboard.classList.add("hidden");
+    if (employeeView) employeeView.classList.remove("hidden");
+    if (contentPengaturan) contentPengaturan.classList.add("hidden");
   }
 
   function switchTab(target) {
@@ -230,7 +241,39 @@ export async function mount(container, { session }) {
   /* ---------------------------------------------------------------------
    * RENDER CLAIMS TABLE
    * ------------------------------------------------------------------- */
+  function renderEmployeeMiniList() {
+    const wrap = container.querySelector("#rmb-employee-mini-list");
+    if (!wrap) return;
+    const myClaims = claims
+      .filter(c => c.nama_karyawan === session.nama || c.nik === session.nik)
+      .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))
+      .slice(0, 5);
+
+    if (!myClaims.length) {
+      wrap.innerHTML = `<p class="text-xs text-slate-400 italic">Belum ada pengajuan.</p>`;
+      return;
+    }
+
+    wrap.innerHTML = myClaims.map(c => {
+      let statusBadge = badge("PENDING", "amber");
+      if (c.status === "APPROVED") statusBadge = badge("DISETUJUI", "green");
+      if (c.status === "PAID") statusBadge = badge("DICAIRKAN", "blue");
+      if (c.status === "REJECTED") statusBadge = badge("DITOLAK", "red");
+      return `
+        <div class="flex items-center justify-between gap-2 bg-slate-50 rounded-xl px-3 py-2.5">
+          <div class="min-w-0">
+            <p class="font-bold text-slate-700 text-xs truncate">${escapeHtml(c.nama_jenis || "-")}</p>
+            <p class="text-[11px] text-slate-400">${fmtDateShort(c.tanggal_pengeluaran || c.created_at)} • ${fmtRupiah(c.nominal || 0)}</p>
+          </div>
+          ${statusBadge}
+        </div>
+      `;
+    }).join("");
+  }
+
   function renderClaimsTable() {
+    if (!isManagement) renderEmployeeMiniList();
+
     const tbody = container.querySelector("#rmb-tbody-pengajuan");
     const emptyEl = container.querySelector("#rmb-empty-pengajuan");
     const countEl = container.querySelector("#rmb-table-count");
@@ -540,6 +583,7 @@ export async function mount(container, { session }) {
   function openSubmissionModal() {
     let selectedType = types.find(t => t.aktif) || types[0];
     let fileBase64 = "";
+    let fileToUpload = null;
 
     // Filter active types eligible for user
     const userRole = (session.role || "").toUpperCase();
@@ -676,6 +720,7 @@ export async function mount(container, { session }) {
             fileInput.value = "";
             return;
           }
+          fileToUpload = file;
 
           const reader = new FileReader();
           reader.onload = (evt) => {
@@ -733,8 +778,15 @@ export async function mount(container, { session }) {
           btnSave.textContent = "Mengirim...";
 
           try {
+            const claimId = genId("RMB");
+            let buktiUrl = "";
+            if (fileToUpload) {
+              btnSave.textContent = "Mengunggah bukti...";
+              buktiUrl = await uploadFileToDrive(fileToUpload, `Reimbursement/${claimId}`);
+            }
+
             const payload = {
-              id: genId("RMB"),
+              id: claimId,
               nama_karyawan: session.nama,
               nik: session.nik || session.username,
               cabang: session.cabang || "-",
@@ -745,7 +797,7 @@ export async function mount(container, { session }) {
               nominal: nominal,
               tanggal_pengeluaran: tanggal,
               keterangan: keterangan,
-              bukti_url: fileBase64,
+              bukti_url: buktiUrl,
               status: "PENDING",
               created_at: new Date().toISOString()
             };
@@ -1126,6 +1178,7 @@ export async function mount(container, { session }) {
 
   // Bind top action buttons
   container.querySelector("#rmb-btn-add-submission")?.addEventListener("click", openSubmissionModal);
+ container.querySelector("#rmb-btn-employee-submit")?.addEventListener("click", openSubmissionModal);
   container.querySelector("#rmb-btn-add-type")?.addEventListener("click", () => openTypeFormModal());
   container.querySelector("#rmb-btn-refresh")?.addEventListener("click", async () => {
     toast("Menyegarkan data reimbursement...", "info");
