@@ -1,7 +1,7 @@
 import { db, COL, collection, getDocs, writeBatch, doc, query, where, updateDoc, deleteDoc } from "../firebase-config.js";
 import { toast, genId, fsGetAll, escapeHtml, openModal, closeModal, formatUangJalanEkspedisiRows } from "../utils.js";
 import { skeletonRows, emptyState } from "../components.js";
-import { callGasWebApp } from "../gas-integration.js";
+import { callGasWebApp, callGasArchiveWebApp } from "../gas-integration.js";
 
 function getTwoRunningMonthsRange() {
  const now = new Date();
@@ -130,8 +130,8 @@ export async function mount(container, { session } = {}) {
  const btn = archiveAlertBox.querySelector("#btn-archive-now");
  btn.disabled = true; btn.textContent = "Mengarsipkan...";
  try {
- // Call Apps Script web app
- await callGasWebApp({
+ // Call Apps Script web app (project GAS Arsip Absensi, terpisah)
+ await callGasArchiveWebApp({
  action: "archive_attendance",
  rows: oldRecords
  });
@@ -546,7 +546,7 @@ export async function mount(container, { session } = {}) {
  btnPullArchive.innerHTML = `<span>⏳ Menarik...</span>`;
  try {
  toast("Menghubungkan ke Google Spreadsheet...", "info");
- const res = await callGasWebApp({ action: "get_archived_attendance" });
+ const res = await callGasArchiveWebApp({ action: "get_archived_attendance" });
  if (res && res.rows && res.rows.length > 0) {
  // Merge with global list (excluding duplicates)
  const existingIds = new Set(listAbsensiGlobal.map(x => x.id));
