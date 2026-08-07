@@ -88,17 +88,33 @@ async function setupRbacMenuTab(container, users) {
  const grid = container.querySelector("#rbac-menu-grid");
 
  const groupLabel = { all: "Menu Utama", hrd: "Modul HRD", manajemen: "Modul Manajemen" };
- grid.innerHTML = MENU_CONFIG.map(m => `
- <label class="flex items-center gap-2 p-2.5 rounded-lg border border-slate-100 hover:bg-slate-50 text-sm cursor-pointer">
+ grid.innerHTML = `
+ <label class="flex items-center gap-2 p-3 rounded-lg border border-amber-200 bg-amber-50 text-sm cursor-pointer mb-1">
+ <input type="checkbox" id="rbac-readonly-toggle" class="rounded border-amber-400 text-amber-700 focus:ring-amber-400">
+ <span class="text-amber-900 font-bold">Mode Hanya-Lihat (Read-Only)</span>
+ <span class="text-[10px] text-amber-700 ml-auto">User tidak bisa Edit/Hapus data di modul manapun, hanya bisa lihat & buat pengajuan baru</span>
+ </label>
+ ` + MENU_CONFIG.map(m => `
+ <div class="rounded-lg border border-slate-100 hover:bg-slate-50">
+ <label class="flex items-center gap-2 p-2.5 text-sm cursor-pointer">
  <input type="checkbox" data-menu="${m.id}" class="rounded border-slate-300 text-maroon-700 focus:ring-maroon-400">
  <span class="text-slate-700">${m.label}</span>
  <span class="text-[10px] text-slate-400 ml-auto">${m.kategori || groupLabel[m.group] || "Umum"}</span>
- </label>`).join("");
+ </label>
+ ${Array.isArray(m.subMenus) && m.subMenus.length > 0 ? `
+ <div class="pl-8 pb-2 space-y-1">
+ ${m.subMenus.map(sm => `
+ <label class="flex items-center gap-2 py-1 text-xs cursor-pointer text-slate-600">
+ <input type="checkbox" data-submenu-parent="${m.id}" data-submenu="${sm.id}" class="rounded border-slate-300 text-maroon-600 focus:ring-maroon-400 w-3.5 h-3.5">
+ <span>${sm.label}</span>
+ </label>
+ `).join("")}
+ </div>
+ ` : ""}
+ </div>`).join("");
 
- async function loadForUser(userKey) {
- const overrides = await loadPermissionOverrides(true);
- const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey || u.username === userKey);
- const keysToSearch = [
+ function keysFor(userKey, userObj) {
+ return [
  userKey,
  String(userKey).toLowerCase(),
  String(userKey).toUpperCase(),
@@ -113,6 +129,12 @@ async function setupRbacMenuTab(container, users) {
  userObj?.nama ? String(userObj.nama).toUpperCase() : null,
  userObj?.nik ? String(userObj.nik) : null
  ].filter(Boolean);
+ }
+
+ async function loadForUser(userKey) {
+ const overrides = await loadPermissionOverrides(true);
+ const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey || u.username === userKey);
+ const keysToSearch = keysFor(userKey, userObj);
 
  let ov = null;
  for (const k of keysToSearch) {
@@ -120,6 +142,16 @@ async function setupRbacMenuTab(container, users) {
  }
  const current = ov?.allowed_menus || [];
  grid.querySelectorAll("[data-menu]").forEach(cb => { cb.checked = current.includes(cb.dataset.menu); });
+
+ const currentSub = ov?.allowed_submenus || {};
+ grid.querySelectorAll("[data-submenu]").forEach(cb => {
+ const parentId = cb.dataset.submenuParent;
+ const subId = cb.dataset.submenu;
+ cb.checked = Array.isArray(currentSub[parentId]) && currentSub[parentId].includes(subId);
+ });
+
+ const readonlyToggle = container.querySelector("#rbac-readonly-toggle");
+ if (readonlyToggle) readonlyToggle.checked = ov?.read_only === true;
  }
  await loadForUser(select.value);
  select.addEventListener("change", () => loadForUser(select.value));
@@ -128,26 +160,31 @@ async function setupRbacMenuTab(container, users) {
  const userKey = select.value;
  const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey || u.username === userKey);
  const checked = Array.from(grid.querySelectorAll("[data-menu]:checked")).map(cb => cb.dataset.menu);
- try {
- const keysToSave = new Set([
- userKey,
- String(userKey).toLowerCase(),
- String(userKey).toUpperCase(),
- userObj?.username,
- userObj?.username ? String(userObj.username).toLowerCase() : null,
- userObj?.username ? String(userObj.username).toUpperCase() : null,
- userObj?.id,
- userObj?.id ? String(userObj.id).toLowerCase() : null,
- userObj?.id ? String(userObj.id).toUpperCase() : null,
- userObj?.nama,
- userObj?.nama ? String(userObj.nama).toLowerCase() : null,
- userObj?.nama ? String(userObj.nama).toUpperCase() : null,
- userObj?.nik ? String(userObj.nik) : null
- ].filter(Boolean));
 
+ const allowedSubmenus = {};
+ grid.querySelectorAll("[data-submenu]:checked").forEach(cb => {
+ const parentId = cb.dataset.submenuParent;
+ const subId = cb.dataset.submenu;
+ if (!allowedSubmenus[parentId]) allowedSubmenus[parentId] = [];
+ allowedSubmenus[parentId].push(subId);
+ });
+ // Pastikan setiap modul yang punya subMenus tetap tercatat sebagai array
+ // kosong kalau semua sub-checkbox-nya di-uncheck (supaya whitelist tetap
+ // berlaku "tidak ada satupun sub-menu admin", bukan "belum diset").
+ MENU_CONFIG.forEach(m => {
+ if (Array.isArray(m.subMenus) && m.subMenus.length > 0 && !allowedSubmenus[m.id]) {
+ allowedSubmenus[m.id] = [];
+ }
+ });
+
+ const readOnly = container.querySelector("#rbac-readonly-toggle")?.checked === true;
+
+ try {
+ const keysToSave = new Set(keysFor(userKey, userObj));
  for (const k of keysToSave) {
- await fsUpdate(COL.USER_PERMISSIONS, String(k), { allowed_menus: checked, allowed_menus_set: true }).catch(async () => {
- await fsAdd(COL.USER_PERMISSIONS, { allowed_menus: checked, allowed_forms: [], allowed_menus_set: true }, String(k));
+ const payload = { allowed_menus: checked, allowed_menus_set: true, allowed_submenus: allowedSubmenus, read_only: readOnly };
+ await fsUpdate(COL.USER_PERMISSIONS, String(k), payload).catch(async () => {
+ await fsAdd(COL.USER_PERMISSIONS, { ...payload, allowed_forms: [] }, String(k));
  });
  }
  toast(`Hak akses menu untuk ${userObj?.nama || userKey} berhasil disimpan`, "success");
