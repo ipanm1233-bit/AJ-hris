@@ -2121,11 +2121,12 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
  }
  }
 
+ // Kalau atasan spesifik tidak ditemukan, JANGAN broadcast ke siapa saja
+ // yang kebetulan jabatannya mengandung kata manajerial (bisa kena banyak
+ // orang tak terkait & bocorkan pengajuan pribadi). Fallback aman: HRD saja.
  const fallbackApprovers = allUsers.filter(u => {
  const r = (u.role || "").toUpperCase();
- const p = (u.posisi || u.jabatan || "").toUpperCase();
- return r.includes("ATASAN") || r.includes("MANAGER") || r.includes("SUPERVISOR") || r.includes("HEAD") || r.includes("HRD") || r.includes("ADMIN") || r.includes("GM") ||
- p.includes("ATASAN") || p.includes("MANAGER") || p.includes("SUPERVISOR") || p.includes("HEAD") || p.includes("HRD") || p.includes("ADMIN") || p.includes("GM");
+ return r === "HRD" || r.includes("HRD");
  });
 
  if (fallbackApprovers.length > 0) {
@@ -2185,12 +2186,10 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
  return targets.filter((v, i, a) => a.findIndex(v2 => (v2.username && v2.username === v.username) || (v2.email && v2.email === v.email)) === i);
  }
 
- let fallbackUsers = allUsers.filter(u => {
- const r = (u.role || "").toUpperCase();
- const p = (u.posisi || u.jabatan || "").toUpperCase();
- return r.includes("HRD") || r.includes("ADMIN") || r.includes("DIREKTUR") || r.includes("MANAGER") || r.includes("GM") ||
- p.includes("HRD") || p.includes("ADMIN") || p.includes("DIREKTUR") || p.includes("MANAGER") || p.includes("GM");
- });
+ // Sama seperti fallback ATASAN di atas: kalau role spesifik (GM/Finance/
+ // Manager/dst) tidak ketemu siapa pun, jangan sasar banyak role sekaligus.
+ // Fallback aman: HRD saja.
+ let fallbackUsers = allUsers.filter(u => (u.role || "").toUpperCase().includes("HRD"));
 
  return fallbackUsers.map(enrichTarget).filter(Boolean);
 
