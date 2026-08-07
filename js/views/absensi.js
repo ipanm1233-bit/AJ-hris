@@ -112,33 +112,49 @@ export async function mount(container, { session } = {}) {
  // Select records older than 60 days from today
  const oldRecords = listAbsensiGlobal.filter(x => x.tanggal && x.tanggal < thresholdStr);
 
- if (oldRecords.length > 0 && archiveAlertBox) {
- archiveAlertBox.className = "bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between gap-4 mb-4 text-xs";
+ if (archiveAlertBox) {
+ const hasOld = oldRecords.length > 0;
+ archiveAlertBox.className = hasOld
+ ? "bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between gap-4 mb-4 text-xs"
+ : "bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center justify-between gap-4 mb-4 text-xs";
  archiveAlertBox.innerHTML = `
  <div class="flex items-start gap-3 text-left">
- 
  <div>
- <p class="font-bold text-amber-900">Penyimpanan Firebase Hemat: Ditemukan ${oldRecords.length} data absensi >60 hari</p>
- <p class="text-amber-700 mt-0.5">Sistem menjaga data di Firebase maksimal 60 hari per karyawan agar database tetap ringan. Klik tombol di kanan untuk memindahkan data usang ini ke Google Spreadsheet. Data tetap aman dan dapat ditarik kembali kapan saja.</p>
+ <p class="font-bold ${hasOld ? 'text-amber-900' : 'text-slate-700'}">
+ ${hasOld ? `Penyimpanan Firebase Hemat: Ditemukan ${oldRecords.length} data absensi >60 hari` : 'Arsip Absensi ke Spreadsheet'}
+ </p>
+ <p class="${hasOld ? 'text-amber-700' : 'text-slate-500'} mt-0.5">
+ ${hasOld
+ ? 'Sistem menjaga data di Firebase maksimal 60 hari per karyawan agar database tetap ringan. Klik tombol di kanan untuk memindahkan data usang ini ke Google Spreadsheet. Data tetap aman dan dapat ditarik kembali kapan saja.'
+ : 'Belum ada data yang lewat 60 hari saat ini. Tombol ini tetap bisa dipakai kapan saja untuk memindahkan data absensi manapun ke Google Spreadsheet secara manual.'}
+ </p>
  </div>
  </div>
- <button id="btn-archive-now" class="shrink-0 bg-amber-700 hover:bg-amber-800 text-white font-semibold px-3.5 py-2 rounded-lg shadow-sm transition flex items-center gap-1.5">
+ <button id="btn-archive-now" class="shrink-0 ${hasOld ? 'bg-amber-700 hover:bg-amber-800' : 'bg-slate-600 hover:bg-slate-700'} text-white font-semibold px-3.5 py-2 rounded-lg shadow-sm transition flex items-center gap-1.5" ${hasOld ? '' : 'title="Belum ada data >60 hari -- klik untuk arsipkan manual dari hasil filter periode saat ini"'}>
  Arsipkan ke Spreadsheet
  </button>
  `;
  archiveAlertBox.querySelector("#btn-archive-now").onclick = async () => {
+ // Kalau belum ada data >60 hari, arsipkan data hasil FILTER PERIODE
+ // yang sedang aktif di tabel (biar tombol tetap berguna kapan saja,
+ // bukan cuma menunggu ada data lama otomatis).
+ const rowsToArchive = hasOld ? oldRecords : applyFiltersAbsen();
+ if (!rowsToArchive || rowsToArchive.length === 0) {
+ toast("Tidak ada data untuk diarsipkan. Pilih periode/filter dulu di atas.", "warning");
+ return;
+ }
  const btn = archiveAlertBox.querySelector("#btn-archive-now");
  btn.disabled = true; btn.textContent = "Mengarsipkan...";
  try {
  // Call Apps Script web app (project GAS Arsip Absensi, terpisah)
  await callGasArchiveWebApp({
  action: "archive_attendance",
- rows: oldRecords
+ rows: rowsToArchive
  });
  
  // Delete from Firebase in batches
  const chunks = []; let tempArr = [];
- oldRecords.forEach(r => {
+ rowsToArchive.forEach(r => {
  tempArr.push(r.id);
  if (tempArr.length === 400) { chunks.push(tempArr); tempArr = []; }
  });
@@ -150,16 +166,13 @@ export async function mount(container, { session } = {}) {
  await batch.commit();
  }
 
- toast(`Berhasil memindahkan ${oldRecords.length} data absensi ke Google Spreadsheet! Database Firebase tetap efisien.`, "success");
+ toast(`Berhasil memindahkan ${rowsToArchive.length} data absensi ke Google Spreadsheet! Database Firebase tetap efisien.`, "success");
  loadRawAbsensiTable();
  } catch (err) {
  toast("Gagal mengarsipkan: " + err.message, "error");
  btn.disabled = false; btn.textContent = "Arsipkan ke Spreadsheet";
  }
  };
- } else if (archiveAlertBox) {
- archiveAlertBox.className = "hidden";
- archiveAlertBox.innerHTML = "";
  }
 
  applyFiltersAbsen();
@@ -205,6 +218,7 @@ export async function mount(container, { session } = {}) {
  }
 
  renderRawTable(data);
+ return data;
  }
 
  function renderRawTable(data) {
