@@ -372,7 +372,8 @@ function openComposeModal(container, session, karyawan, users, reload) {
  const matched = isMatch(u.nama, u.username, u.nik);
  if (matched) {
  if (u.id || u.username) targetUserIdsSet.add(u.id || u.username);
- if (u.fcm_token) fcmTokensSet.add(u.fcm_token);
+ if (Array.isArray(u.fcm_tokens)) u.fcm_tokens.forEach(t => t && fcmTokensSet.add(t));
+ if (u.fcm_token) fcmTokensSet.add(u.fcm_token); // kompatibilitas data lama
  if (u.email) targetEmailsSet.add(u.email);
  }
  });
@@ -381,7 +382,8 @@ function openComposeModal(container, session, karyawan, users, reload) {
  const matched = isMatch(k.nama_karyawan || k.nama, k.username, k.nik_karyawan || k.nik);
  if (matched) {
  if (k.username || k.nik) targetUserIdsSet.add(k.username || k.nik);
- if (k.fcm_token) fcmTokensSet.add(k.fcm_token);
+ if (Array.isArray(k.fcm_tokens)) k.fcm_tokens.forEach(t => t && fcmTokensSet.add(t));
+ if (k.fcm_token) fcmTokensSet.add(k.fcm_token); // kompatibilitas data lama
  if (k.email) targetEmailsSet.add(k.email);
 
  // Cross-match dengan user doc
@@ -391,7 +393,8 @@ function openComposeModal(container, session, karyawan, users, reload) {
  (k.nama_karyawan && u.nama && u.nama.toLowerCase() === k.nama_karyawan.toLowerCase())
  );
  if (matchingUser) {
- if (matchingUser.fcm_token) fcmTokensSet.add(matchingUser.fcm_token);
+ if (Array.isArray(matchingUser.fcm_tokens)) matchingUser.fcm_tokens.forEach(t => t && fcmTokensSet.add(t));
+ if (matchingUser.fcm_token) fcmTokensSet.add(matchingUser.fcm_token); // kompatibilitas data lama
  if (matchingUser.id || matchingUser.username) targetUserIdsSet.add(matchingUser.id || matchingUser.username);
  }
  }
