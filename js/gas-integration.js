@@ -26,13 +26,13 @@
  * ------------------------------------------------------------------- */
 
 // GANTI dengan URL Web App hasil Deploy Apps Script Anda (harus diakhiri "/exec")
-export const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbzwQhnaoe7PlQZC-T6IOe-cBr55wTCekKKG-XHC8Fw-1jAdEDKfkgbdgo0HLVEl-bWt/exec";
+export const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyFJVxJPFh39wBBEu5h98O2oGFCV7l3moeN18jiZ6zhdzVL83V6Evn7PZ_dJiKFB3GqqA/exec";
 
 // URL Web App TERPISAH khusus untuk Arsip Absensi -- ini project Apps
 // Script yang BERBEDA dari GAS_WEBAPP_URL di atas (yang menangani
 // generate_cuti_doc & upload_file). Jangan digabung jadi satu project;
 // biarkan terpisah supaya tidak ada risiko bentrok nama fungsi doPost.
-export const GAS_ARCHIVE_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbx2Vbx1AOy9BCEfTTkhWiq2JHOBPzYpWsje-IHxnxQE0bnjZjqDoxFD9_8E7LvIx3U2/exec";
+export const GAS_ARCHIVE_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwJ1Z99x0p3G9vL566tLH1j7yD6vqSzQtXSDSkIKIhdr34h7wlJLivgju0rRk46_1wS/exec";
 
 function isConfigured() {
  return !!GAS_WEBAPP_URL && !GAS_WEBAPP_URL.includes("GANTI_DENGAN");
