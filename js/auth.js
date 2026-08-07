@@ -50,7 +50,10 @@ export const MENU_CONFIG = [
  { id: "dokumen", label: "Draft & Builder Dokumen", icon: "doc-plus", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN"] },
 
  // KATEGORI: KEUANGAN & KLAIM
- { id: "reimbursement", label: "Manajemen Reimbursement", icon: "wallet", kategori: "Keuangan & Klaim", roles: ["ALL"] },
+ { id: "reimbursement", label: "Manajemen Reimbursement", icon: "wallet", kategori: "Keuangan & Klaim", roles: ["ALL"], subMenus: [
+ { id: "daftar_semua", label: "Daftar Pengajuan (Semua Karyawan)" },
+ { id: "pengaturan_jenis", label: "Pengaturan Jenis & Plafon" }
+ ] },
  { id: "pengajuan-kasbon", label: "Pengajuan Kasbon Personal", icon: "wallet", kategori: "Keuangan & Klaim", roles: ["ALL"] },
  { id: "klaim-bensin", label: "Klaim Bensin Operasional", icon: "wallet", kategori: "Keuangan & Klaim", roles: ["ALL"] },
  { id: "lembur-kasbon", label: "Lembur & Kasbon Operasional", icon: "wallet", kategori: "Keuangan & Klaim", roles: ["HRD", "FINANCE", "SUPERADMIN"] },
@@ -298,6 +301,68 @@ export async function computeVisibleMenus(session) {
  if (isAtasanRole && m.roles.includes("ATASAN")) return true;
  return false;
  });
+}
+
+const _MANAGEMENT_ROLES = ["HRD", "SUPERADMIN", "DIREKTUR", "MANAGER", "SPV", "KOORDINATOR", "GM", "FINANCE", "GA", "BRANCH MANAGER"];
+
+function _permOverrideSearchKeys(session) {
+ return [
+ session.username,
+ session.username ? String(session.username).toLowerCase() : null,
+ session.username ? String(session.username).toUpperCase() : null,
+ session.id,
+ session.id ? String(session.id).toLowerCase() : null,
+ session.id ? String(session.id).toUpperCase() : null,
+ session.nik ? String(session.nik) : null,
+ session.nama,
+ session.nama ? String(session.nama).toLowerCase() : null,
+ session.nama ? String(session.nama).toUpperCase() : null
+ ].filter(Boolean);
+}
+
+async function _findUserOverride(session) {
+ const overrides = await loadPermissionOverrides(true);
+ const keys = _permOverrideSearchKeys(session);
+ for (const k of keys) { if (overrides[k]) return overrides[k]; }
+ return null;
+}
+
+/**
+ * Cek apakah `session` boleh melihat sub-menu tertentu di dalam sebuah
+ * modul (lihat MENU_CONFIG[x].subMenus). Kalau HRD sudah menyetel daftar
+ * sub-menu spesifik untuk user ini (allowed_submenus[menuId]), itu jadi
+ * whitelist mutlak. Kalau belum diset sama sekali, default-nya: role
+ * management/HRD dapat semua sub-menu, role karyawan biasa TIDAK dapat
+ * sub-menu admin manapun (cuma lihat tampilan dasar modulnya).
+ */
+export async function hasSubMenuAccess(menuId, subMenuId, session) {
+ if (!session) return false;
+ const role = (session.role || "").toUpperCase();
+ const isManagementOrHrd = _MANAGEMENT_ROLES.includes(role) || await isAtasan(session.nama);
+
+ const userOverride = await _findUserOverride(session);
+ if (userOverride && userOverride.allowed_submenus && Array.isArray(userOverride.allowed_submenus[menuId])) {
+ return userOverride.allowed_submenus[menuId].includes(subMenuId);
+ }
+ return isManagementOrHrd;
+}
+
+/**
+ * Cek apakah `session` boleh mengedit/menghapus data di modul (bukan
+ * cuma lihat). Kalau HRD sudah menyetel eksplisit read_only untuk user
+ * ini, itu yang dipakai. Kalau belum diset, default-nya: role
+ * management/HRD boleh edit, karyawan biasa hanya boleh lihat & buat
+ * pengajuan sendiri (tidak boleh edit/hapus data siapa pun termasuk
+ * miliknya sendiri yang sudah diproses).
+ */
+export async function canEditModuleData(session) {
+ if (!session) return false;
+ const role = (session.role || "").toUpperCase();
+ const userOverride = await _findUserOverride(session);
+ if (userOverride && typeof userOverride.read_only === "boolean") {
+ return !userOverride.read_only;
+ }
+ return _MANAGEMENT_ROLES.includes(role);
 }
 
 export async function canAccessRoute(routeId, session) {
