@@ -26,7 +26,13 @@
  * ------------------------------------------------------------------- */
 
 // GANTI dengan URL Web App hasil Deploy Apps Script Anda (harus diakhiri "/exec")
-export const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbz0H0nC8QXzgPABT0kVjFf3N9zny8pHnu0yYNooUm_SrIQg-qwywKtvtpdOMia78ZGHFQ/exec";
+export const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbzwQhnaoe7PlQZC-T6IOe-cBr55wTCekKKG-XHC8Fw-1jAdEDKfkgbdgo0HLVEl-bWt/exec";
+
+// URL Web App TERPISAH khusus untuk Arsip Absensi -- ini project Apps
+// Script yang BERBEDA dari GAS_WEBAPP_URL di atas (yang menangani
+// generate_cuti_doc & upload_file). Jangan digabung jadi satu project;
+// biarkan terpisah supaya tidak ada risiko bentrok nama fungsi doPost.
+export const GAS_ARCHIVE_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbx2Vbx1AOy9BCEfTTkhWiq2JHOBPzYpWsje-IHxnxQE0bnjZjqDoxFD9_8E7LvIx3U2/exec";
 
 function isConfigured() {
  return !!GAS_WEBAPP_URL && !GAS_WEBAPP_URL.includes("GANTI_DENGAN");
@@ -72,6 +78,39 @@ export async function callGasWebApp(payload) {
  msg += " — Kemungkinan besar scope izin Apps Script belum diatur penuh, atau ID folder/template salah. Buka Code.gs di script.google.com, cek ulang appsscript.json (lihat komentar di bagian bawah Code.gs), lalu jalankan fungsi testSetup() secara manual untuk memicu ulang layar izin akses & mendiagnosa ID folder/template.";
  }
  throw new Error(msg);
+ }
+ return json;
+}
+
+/**
+ * Sama seperti callGasWebApp(), tapi menargetkan project GAS Arsip
+ * Absensi yang terpisah (GAS_ARCHIVE_WEBAPP_URL). Dipakai khusus untuk
+ * action "archive_attendance" dan "get_archived_attendance".
+ */
+export async function callGasArchiveWebApp(payload) {
+ if (!GAS_ARCHIVE_WEBAPP_URL || GAS_ARCHIVE_WEBAPP_URL.includes("GANTI_DENGAN")) {
+ throw new Error("URL Google Apps Script Arsip Absensi belum dikonfigurasi (GAS_ARCHIVE_WEBAPP_URL).");
+ }
+
+ let response;
+ try {
+ response = await fetch(GAS_ARCHIVE_WEBAPP_URL, {
+ method: "POST",
+ body: JSON.stringify(payload)
+ });
+ } catch (networkErr) {
+ throw new Error("Gagal menghubungi Google Apps Script Arsip Absensi. Cek koneksi internet, atau pastikan Web App masih ter-deploy.");
+ }
+
+ let json;
+ try {
+ json = await response.json();
+ } catch {
+ throw new Error("Respons dari Apps Script Arsip Absensi tidak valid (bukan JSON).");
+ }
+
+ if (!json || json.success !== true) {
+ throw new Error((json && json.error) || "Apps Script Arsip Absensi mengembalikan error yang tidak diketahui.");
  }
  return json;
 }
