@@ -6,6 +6,7 @@ import {
 } from "../utils.js";
 import { icon, emptyState, badge, avatar } from "../components.js";
 import { uploadFileToDrive } from "../gas-integration.js";
+import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
 
 // Default seed categories if master_reimbursement_type is empty
 const DEFAULT_TYPES = [
@@ -56,7 +57,13 @@ const DEFAULT_TYPES = [
 ];
 
 export async function mount(container, { session }) {
-  const isManagement = ["HRD", "SUPERADMIN", "FINANCE", "MANAGER", "SPV", "GM", "DIREKTUR"].includes((session.role || "").toUpperCase());
+  const roleIsManagement = ["HRD", "SUPERADMIN", "FINANCE", "MANAGER", "SPV", "GM", "DIREKTUR"].includes((session.role || "").toUpperCase());
+  // "isManagement" sekarang final ditentukan oleh hak akses sub-menu HRD
+  // (Pengaturan > Akses Menu), bukan cuma role statis -- HRD bisa override
+  // per-user lewat sub-menu "Daftar Pengajuan (Semua Karyawan)".
+  const isManagement = roleIsManagement && await hasSubMenuAccess("reimbursement", "daftar_semua", session);
+  const canManageSettings = roleIsManagement && await hasSubMenuAccess("reimbursement", "pengaturan_jenis", session);
+  const canEdit = await canEditModuleData(session);
 
   // Initialize view tabs
   const tabPengajuan = container.querySelector("#rmb-tab-pengajuan");
@@ -72,9 +79,13 @@ export async function mount(container, { session }) {
     // sembunyikan dashboard admin (stats+filter+tabel semua karyawan),
     // tampilkan cuma tombol ajukan + riwayat pengajuan singkat milik sendiri.
     if (tabBar) tabBar.classList.add("hidden");
-    if (tabPengaturan) tabPengaturan.classList.add("hidden");
     if (mgmtDashboard) mgmtDashboard.classList.add("hidden");
     if (employeeView) employeeView.classList.remove("hidden");
+  }
+  if (!canManageSettings) {
+    // Sub-menu terpisah: walau punya akses "Daftar Pengajuan", HRD bisa
+    // cabut akses "Pengaturan Jenis & Plafon" ini secara independen.
+    if (tabPengaturan) tabPengaturan.classList.add("hidden");
     if (contentPengaturan) contentPengaturan.classList.add("hidden");
   }
 
@@ -493,7 +504,7 @@ export async function mount(container, { session }) {
       footerHtml: `
         <div class="w-full flex items-center justify-between gap-2 flex-wrap">
           <div>
-            ${isManagement ? `
+            ${isManagement && canEdit ? `
               <button id="rmb-btn-delete-claim" class="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition">
                 Hapus Klaim
               </button>
@@ -501,11 +512,11 @@ export async function mount(container, { session }) {
           </div>
           <div class="flex items-center gap-2 flex-wrap">
             <button id="rmb-btn-close-modal" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">Tutup</button>
-            ${isManagement && claim.status === "PENDING" ? `
+            ${isManagement && canEdit && claim.status === "PENDING" ? `
               <button id="rmb-btn-reject" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs transition">Tolak Klaim</button>
               <button id="rmb-btn-approve" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition">Setujui Klaim</button>
             ` : ''}
-            ${isManagement && claim.status === "APPROVED" ? `
+            ${isManagement && canEdit && claim.status === "APPROVED" ? `
               <button id="rmb-btn-mark-paid" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition">Tandai Sudah Cair / Transfer</button>
             ` : ''}
           </div>
