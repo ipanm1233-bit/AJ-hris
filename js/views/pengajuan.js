@@ -270,6 +270,7 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
  if (container) await loadRecent(container, session);
  
  // Memicu Notifikasi (Email + Lonceng App + Push HP) ke APPROVER PERTAMA
+ const alreadyNotifiedSet = new Set();
  if (approvalFlow.length > 0) {
  const nextRole = approvalFlow[0];
  let targets = await getTargetsForRole(nextRole, payload.nama_pemohon);
@@ -285,6 +286,11 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
  `Ada pengajuan ${payload.nama_form} baru dari ${payload.nama_pemohon}. Membutuhkan verifikasi Anda.`,
  `/#approval?id=${payload.id}`
  ).catch(e => console.warn("Push gagal:", e));
+
+ const uname = (typeof target === "object" ? (target.username || target.nama) : target);
+ if (uname) alreadyNotifiedSet.add(String(uname).trim().toUpperCase());
+ const nmVal = (typeof target === "object" ? target.nama : null);
+ if (nmVal) alreadyNotifiedSet.add(String(nmVal).trim().toUpperCase());
  }
  }
  }
@@ -293,14 +299,19 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
  const specificTargets = formCfg.notify_specific_users || formCfg.notify_targets?.specific_users || [];
  if (Array.isArray(specificTargets) && specificTargets.length > 0) {
  for (const targetName of specificTargets) {
- if (targetName && targetName.trim() && targetName.toUpperCase() !== (session.nama || "").toUpperCase()) {
+ if (!targetName || !targetName.trim()) continue;
+ const targetNameUpper = targetName.trim().toUpperCase();
+ if (targetNameUpper === (session.nama || "").toUpperCase()) continue;
+ // Lewati kalau sudah dinotif di blok approval flow di atas, supaya
+ // 1 orang tidak dapat 2 email berbeda teks untuk pengajuan yang sama.
+ if (alreadyNotifiedSet.has(targetNameUpper)) continue;
+
  await notifyUser(
  targetName,
  `Notifikasi Pengajuan Baru: ${payload.nama_form}`,
  `Formulir ${payload.nama_form} baru telah diajukan oleh ${payload.nama_pemohon}.`,
  `/#approval?id=${payload.id}`
  ).catch(e => console.warn("Notif target khusus pengajuan gagal:", e));
- }
  }
  }
  } catch (e) {
