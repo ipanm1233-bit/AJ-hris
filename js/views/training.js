@@ -1,12 +1,15 @@
 import { db, COL, collection, query, where, getDocs, orderBy, limit, doc, setDoc, updateDoc } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, fmtDateShort, escapeHtml, genId, notifyUser } from "../utils.js";
 import { avatar, badge, emptyState } from "../components.js";
+import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
 
 const PLAN_COLL = "training_plans";
 const PROGRESS_COLL = "training_progress";
 
 export async function mount(container, { session }) {
- const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
+ const roleIsHrd = session.role === "HRD" || session.role === "SUPERADMIN";
+ const isHrd = roleIsHrd || await hasSubMenuAccess("training", "tna_dashboard", session);
+ const canEdit = await canEditModuleData(session);
  const isGm = session.role === "GM" || session.role === "SUPERADMIN";
  const isFinance = session.role === "FINANCE" || session.role === "SUPERADMIN";
  const tabHeader = container.querySelector("#training-tab-header");
