@@ -1,9 +1,11 @@
 import { db, COL, doc, deleteDoc, setDoc } from "../firebase-config.js";
 import { fsGetAll, smartParseDate, escapeHtml, fmtDateShort, fmtRupiah, openModal, closeModal, toast, confirmDialog, genId } from "../utils.js";
 import { renderCrudModule, badge, emptyState, icon } from "../components.js";
+import { canEditModuleData } from "../auth.js";
 
 export async function mount(container, { session }) {
  const isHrd = ["HRD", "SUPERADMIN", "GA"].includes((session.role || "").toUpperCase());
+ const canEdit = await canEditModuleData(session);
  
  const alertWrap = container.querySelector("#kend-alert-wrap");
  const cardsGrid = container.querySelector("#kend-cards-grid");
@@ -368,7 +370,7 @@ export async function mount(container, { session }) {
  <p class="text-slate-700 leading-relaxed">${escapeHtml(vDoc.alamat || 'Tidak ada catatan khusus.')}</p>
  </div>
 
- ${isHrd ? `
+ ${isHrd && canEdit ? `
  <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
  <button id="btn-edit-veh-${vDoc.id}" class="px-3.5 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white rounded-xl transition">
  Edit Data Kendaraan
@@ -920,7 +922,11 @@ export async function mount(container, { session }) {
  // -------------------------------------------------------------
  // 5. EVENT BINDINGS & TAB SWITCHING
  // -------------------------------------------------------------
+ if (canEdit) {
  btnAdd.onclick = () => openVehicleFormModal();
+ } else if (btnAdd) {
+ btnAdd.classList.add("hidden");
+ }
  searchInput.oninput = () => renderVehicleCards();
  statusFilter.onchange = () => renderVehicleCards();
 
