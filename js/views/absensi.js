@@ -346,6 +346,52 @@ export async function mount(container, { session } = {}) {
  const sheet = workbook.Sheets[workbook.SheetNames[0]];
  const rows = window.XLSX.utils.sheet_to_json(sheet, { raw: false });
 
+ // Konversi berbagai kemungkinan format tanggal (ISO, dd/mm/yyyy,
+ // dd-mm-yyyy, ATAU angka serial Excel mentah seperti "46240" yang
+ // muncul kalau file sumber tidak memformat kolom tanggalnya sebagai
+ // Date -- SheetJS pun tidak bisa menebak konversinya tanpa itu) jadi
+ // SATU format baku "yyyy-MM-dd".
+ function parseTanggalImport(raw) {
+ if (!raw) return null;
+ const s = String(raw).trim();
+ if (!s) return null;
+
+ // Sudah format ISO yyyy-MM-dd
+ if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+
+ // Format dd/mm/yyyy atau d/m/yyyy
+ let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+ if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+
+ // Format dd-mm-yyyy atau d-m-yyyy
+ m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+ if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+
+ // Angka serial Excel mentah (mis. "46240") -- terjadi kalau kolom
+ // tanggal di file sumber TIDAK diformat sebagai Date, cuma General/
+ // Number, sehingga SheetJS ikut membaca apa adanya sebagai angka.
+ if (/^\d{4,6}$/.test(s)) {
+ const serial = parseInt(s, 10);
+ // Epoch Excel (dengan bug tahun kabisat 1900): 30 Des 1899.
+ // 25569 = jumlah hari antara 1899-12-30 dan 1970-01-01 (epoch JS).
+ const utcMs = Math.round((serial - 25569) * 86400 * 1000);
+ const d = new Date(utcMs);
+ if (!isNaN(d.getTime()) && d.getFullYear() > 1990 && d.getFullYear() < 2100) {
+ const yyyy = d.getUTCFullYear();
+ const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+ const dd = String(d.getUTCDate()).padStart(2, '0');
+ return `${yyyy}-${mm}-${dd}`;
+ }
+ }
+
+ // Fallback terakhir: coba parse umum
+ const d2 = new Date(s);
+ if (!isNaN(d2.getTime())) {
+ return `${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,'0')}-${String(d2.getDate()).padStart(2,'0')}`;
+ }
+ return s; // tidak bisa dikenali -- kembalikan apa adanya, jangan gagalkan baris
+ }
+
  const chunks = []; let tempArr = [];
  rows.forEach(r => {
  const getVal = (keys) => {
@@ -353,11 +399,7 @@ export async function mount(container, { session } = {}) {
  return null;
  };
 
- let tglStr = getVal(["TANGGAL", "DATE"]);
- if(tglStr && tglStr.includes('/')) {
- const [d,m,y] = tglStr.split('/');
- tglStr = `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
- }
+ const tglStr = parseTanggalImport(getVal(["TANGGAL", "DATE"]));
 
  const uid = genId("ABS");
  const payload = {
