@@ -2,6 +2,7 @@ import { db, COL, doc, getDoc, setDoc, query, collection, where, getDocs } from 
 import { fsGetAll, openModal, closeModal, toast, fmtDateShort, fmtRupiah, escapeHtml, genId, notifyUser, getTargetsForRole } from "../utils.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 import { badge } from "../components.js";
+import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
 
 const DEFAULT_KASBON_CATEGORIES = [
  {
@@ -53,7 +54,8 @@ const DEFAULT_KASBON_CATEGORIES = [
 ];
 
 export async function mount(container, { session }) {
- const isHrd = ["HRD", "SUPERADMIN", "FINANCE"].includes((session.role || "").toUpperCase());
+ const roleIsHrd = ["HRD", "SUPERADMIN", "FINANCE"].includes((session.role || "").toUpperCase());
+ const isHrd = roleIsHrd || await hasSubMenuAccess("pengajuan-kasbon", "pengaturan_kategori", session);
  
  const btnSettings = container.querySelector("#btn-kasbon-settings");
  const btnOpen = container.querySelector("#btn-open-kasbon-modal");
