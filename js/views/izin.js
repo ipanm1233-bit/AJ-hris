@@ -3,6 +3,7 @@ import { fsGetAll, fsAdd, fsUpdate, fsDelete, genId, openModal, closeModal, toas
 import { badge, emptyState, skeletonRows } from "../components.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 import { isoDocHeaderTable, letterheadHtml, COMPANY_NAME, logoImgTag, LOGO_DATA_URI } from "../branding.js";
+import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
 
 export const JENIS_IZIN_MAP = {
  IZIN_TERLAMBAT: {
@@ -27,8 +28,13 @@ export const JENIS_IZIN_MAP = {
 
 export async function mount(container, { session }) {
  const userRole = (session.role || "").toUpperCase();
- const isHrdOrAdmin = ["HRD", "SUPERADMIN", "ADMIN", "ADMINISTRATOR", "DIREKTUR", "GM"].includes(userRole);
+ const roleIsHrdOrAdmin = ["HRD", "SUPERADMIN", "ADMIN", "ADMINISTRATOR", "DIREKTUR", "GM"].includes(userRole);
+ // "isHrdOrAdmin" di sini berarti "boleh lihat semua pengajuan izin" --
+ // default-nya sama seperti sebelumnya untuk role manajemen, TAPI HRD
+ // sekarang bisa memberi akses ini ke karyawan lain lewat Akses Menu.
+ const isHrdOrAdmin = roleIsHrdOrAdmin || await hasSubMenuAccess("izin", "lihat_semua", session);
  const isAtasan = isHrdOrAdmin || ["MANAGER", "SPV", "KOORDINATOR", "BRANCH MANAGER"].includes(userRole);
+ const canEdit = await canEditModuleData(session);
 
  let allIzinRecords = [];
  let filterJenis = "ALL";
@@ -129,7 +135,7 @@ export async function mount(container, { session }) {
  }
 
  const isMyRecord = (r.nama_pemohon || "").toLowerCase() === (session.nama || "").toLowerCase();
- const canApprove = (isAtasan || isHrdOrAdmin) && (st === "PENDING" || st === "MENUNGGU PERSETUJUAN");
+ const canApprove = (isAtasan || isHrdOrAdmin) && canEdit && (st === "PENDING" || st === "MENUNGGU PERSETUJUAN");
 
  return `
  <tr class="hover:bg-slate-50 transition">
@@ -168,7 +174,7 @@ export async function mount(container, { session }) {
  [X]
  </button>
  ` : ''}
- ${(isMyRecord || isHrdOrAdmin) ? `
+ ${(isMyRecord || (isHrdOrAdmin && canEdit)) ? `
  <button data-del-izin="${r.id}" class="px-2 py-1 bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 rounded-lg font-bold text-[11px] border border-slate-200 transition" title="Hapus">
  
  </button>
