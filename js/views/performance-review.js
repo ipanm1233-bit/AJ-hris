@@ -2,9 +2,12 @@ import { db, COL, collection, query, where, getDocs, orderBy, limit, addDoc } fr
 import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, fmtDateShort, escapeHtml, genId } from "../utils.js";
 import { avatar, badge, icon, emptyState } from "../components.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
+import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
 
 export async function mount(container, { session }) {
- const isHrd = session.role === "HRD" || session.role === "SUPERADMIN" || session.role === "DIREKTUR" || session.role === "MANAGER" || session.role === "ATASAN";
+ const roleIsHrd = session.role === "HRD" || session.role === "SUPERADMIN" || session.role === "DIREKTUR" || session.role === "MANAGER" || session.role === "ATASAN";
+ const isHrd = roleIsHrd || await hasSubMenuAccess("performance-review", "semua_review", session);
+ const canEdit = await canEditModuleData(session);
  const tabHeader = container.querySelector("#review-tab-header");
  const contentWrap = container.querySelector("#review-content");
 
@@ -330,7 +333,7 @@ async function renderAllReviews(wrap, session) {
  <h3 class="font-bold text-slate-800 text-base">Master Penilaian Kinerja Karyawan</h3>
  <p class="text-xs text-slate-400 mt-0.5">Berisi daftar seluruh review kinerja formal yang dikeluarkan oleh Manajemen.</p>
  </div>
- <button id="btn-create-review" class="px-4 py-2 bg-maroon-700 hover:bg-maroon-800 text-white text-sm font-semibold rounded-lg shadow-sm transition flex items-center gap-2">
+ <button id="btn-create-review" ${canEdit ? '' : 'style="display:none"'} class="px-4 py-2 bg-maroon-700 hover:bg-maroon-800 text-white text-sm font-semibold rounded-lg shadow-sm transition flex items-center gap-2">
  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
  Buat Review Kinerja Baru
  </button>
