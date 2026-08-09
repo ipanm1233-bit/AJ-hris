@@ -34,18 +34,30 @@ export const MENU_CONFIG = [
  { id: "broadcast", label: "Broadcast & Memo Perusahaan", icon: "book", kategori: "Persetujuan & Memo", roles: ["HRD", "SUPERADMIN"] },
 
  // KATEGORI: KEHADIRAN & PERIZINAN
- { id: "absensi", label: "Manajemen Absensi", icon: "clock", kategori: "Kehadiran & Perizinan", roles: ["HRD", "SUPERADMIN"] },
+ { id: "absensi", label: "Manajemen Absensi", icon: "clock", kategori: "Kehadiran & Perizinan", roles: ["HRD", "SUPERADMIN"], subMenus: [
+ { id: "proses_tarif", label: "Proses & Tarif Laporan (Import/Export/Arsip)" }
+ ] },
  { id: "pengajuan-cuti", label: "Pengajuan Cuti Personal", icon: "calendar", kategori: "Kehadiran & Perizinan", roles: ["ALL"] },
  { id: "cuti", label: "Manajemen Cuti Karyawan", icon: "calendar", kategori: "Kehadiran & Perizinan", roles: ["HRD", "SUPERADMIN"] },
- { id: "izin", label: "Pengajuan & Surat Izin", icon: "doc-plus", kategori: "Kehadiran & Perizinan", roles: ["ALL"] },
+ { id: "izin", label: "Pengajuan & Surat Izin", icon: "doc-plus", kategori: "Kehadiran & Perizinan", roles: ["ALL"], subMenus: [
+ { id: "lihat_semua", label: "Lihat Semua Pengajuan Izin (Bukan Cuma Punya Sendiri)" }
+ ] },
  { id: "kalender-hr", label: "Kalender HR & Hari Libur", icon: "calendar", kategori: "Kehadiran & Perizinan", roles: ["HRD", "SUPERADMIN"] },
 
  // KATEGORI: KARYAWAN & KINERJA
  { id: "siklus-karyawan", label: "Siklus & Master Karyawan", icon: "refresh", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN"] },
  { id: "rekrutmen", label: "Rekrutmen (ATS)", icon: "user-plus", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN"] },
- { id: "penilaian-kontrak", label: "Penilaian & Kontrak (SPK)", icon: "doc-plus", kategori: "Karyawan & Kinerja", roles: ["ALL"] },
- { id: "performance-review", label: "Review Kinerja & KPI", icon: "gauge", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"] },
- { id: "training", label: "Pelatihan & TNA", icon: "book", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"] },
+ { id: "penilaian-kontrak", label: "Penilaian & Kontrak (SPK)", icon: "doc-plus", kategori: "Karyawan & Kinerja", roles: ["ALL"], subMenus: [
+ { id: "standar_grade", label: "Standar Grade & Keputusan HRD" },
+ { id: "template_soal", label: "Template Soal KPI" },
+ { id: "distribusi_kpi360", label: "Distribusi & Kelola Tugas KPI 360 (Admin)" }
+ ] },
+ { id: "performance-review", label: "Review Kinerja & KPI", icon: "gauge", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"], subMenus: [
+ { id: "semua_review", label: "Semua Review Kinerja (Lintas Karyawan)" }
+ ] },
+ { id: "training", label: "Pelatihan & TNA", icon: "book", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"], subMenus: [
+ { id: "tna_dashboard", label: "TNA Dashboard & Kelas (Kelola Program Pelatihan)" }
+ ] },
  { id: "pemanggilan", label: "Kedisiplinan & SP", icon: "alert", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN"] },
  { id: "dokumen", label: "Draft & Builder Dokumen", icon: "doc-plus", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN"] },
 
@@ -54,8 +66,12 @@ export const MENU_CONFIG = [
  { id: "daftar_semua", label: "Daftar Pengajuan (Semua Karyawan)" },
  { id: "pengaturan_jenis", label: "Pengaturan Jenis & Plafon" }
  ] },
- { id: "pengajuan-kasbon", label: "Pengajuan Kasbon Personal", icon: "wallet", kategori: "Keuangan & Klaim", roles: ["ALL"] },
- { id: "klaim-bensin", label: "Klaim Bensin Operasional", icon: "wallet", kategori: "Keuangan & Klaim", roles: ["ALL"] },
+ { id: "pengajuan-kasbon", label: "Pengajuan Kasbon Personal", icon: "wallet", kategori: "Keuangan & Klaim", roles: ["ALL"], subMenus: [
+ { id: "pengaturan_kategori", label: "Pengaturan Kategori Kasbon" }
+ ] },
+ { id: "klaim-bensin", label: "Klaim Bensin Operasional", icon: "wallet", kategori: "Keuangan & Klaim", roles: ["ALL"], subMenus: [
+ { id: "admin_cabang", label: "Manajemen Admin Cabang" }
+ ] },
  { id: "lembur-kasbon", label: "Lembur & Kasbon Operasional", icon: "wallet", kategori: "Keuangan & Klaim", roles: ["HRD", "FINANCE", "SUPERADMIN"] },
  { id: "uang-makan", label: "Uang Makan Expedisi", icon: "utensils", kategori: "Keuangan & Klaim", roles: ["HRD", "FINANCE", "SUPERADMIN"] },
 
@@ -66,7 +82,10 @@ export const MENU_CONFIG = [
 
  // KATEGORI: MODUL SALES
  { id: "sales-order", label: "Order Penjualan", icon: "wallet", kategori: "Modul Sales", roles: ["ALL"] },
- { id: "sales-outlet", label: "Master Outlet", icon: "user-plus", kategori: "Modul Sales", roles: ["ALL"] },
+ { id: "sales-outlet", label: "Master Outlet", icon: "user-plus", kategori: "Modul Sales", roles: ["ALL"], subMenus: [
+ { id: "lihat_semua", label: "Lihat Semua Outlet (Bukan Cuma Binaan Sendiri)" },
+ { id: "import_excel", label: "Import Data Outlet dari Excel" }
+ ] },
  { id: "sales-item", label: "Master Item Sales", icon: "box", kategori: "Modul Sales", roles: ["ALL"] },
  { id: "sales-task", label: "Tugas & Kunjungan Sales", icon: "clock", kategori: "Modul Sales", roles: ["ALL"] },
  { id: "sales-track", label: "Summary & Tracking Sales", icon: "layers", kategori: "Modul Sales", roles: ["ALL"] },
