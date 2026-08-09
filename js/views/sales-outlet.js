@@ -1,6 +1,7 @@
 import { db, collection, getDocs, addDoc, doc, updateDoc, query, where } from "../firebase-config.js";
 import { openModal, closeModal, toast, genId, escapeHtml } from "../utils.js";
 import { emptyState, skeletonRows } from "../components.js";
+import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
 
 const COLLECTION_NAME = "sales_outlets";
 
@@ -15,7 +16,10 @@ const DEFAULT_OUTLETS = [
 ];
 
 export async function mount(container, { session }) {
- const isHrdOrAdmin = ["HRD", "SUPERADMIN", "ADMIN", "GM", "MANAGER", "SPV"].includes(userRole);
+ const userRole = (session?.role || "").toUpperCase();
+ const roleIsHrdOrAdmin = ["HRD", "SUPERADMIN", "ADMIN", "GM", "MANAGER", "SPV"].includes(userRole);
+ const isHrdOrAdmin = roleIsHrdOrAdmin || await hasSubMenuAccess("sales-outlet", "lihat_semua", session);
+ const canEdit = await canEditModuleData(session);
 
  const headerTitle = container.querySelector("h1");
  const headerSubtitle = container.querySelector("p");
@@ -131,7 +135,7 @@ export async function mount(container, { session }) {
  <button data-id="${o.id}" class="btn-detail text-maroon-700 hover:text-maroon-900 font-semibold text-xs transition">
  Detail
  </button>
- ${isHrdOrAdmin ? `
+ ${isHrdOrAdmin && canEdit ? `
  <button data-id="${o.id}" class="btn-edit-sales text-indigo-600 hover:text-indigo-800 font-semibold text-xs transition">
  Assign Sales
  </button>
@@ -350,8 +354,7 @@ export async function mount(container, { session }) {
  searchInput.addEventListener("input", renderList);
  regionFilter.addEventListener("change", renderList);
 
- const userRole = (session?.role || "").toUpperCase();
- const isHrdRole = ["HRD", "SUPERADMIN", "ADMIN"].includes(userRole);
+ const isHrdRole = isHrdOrAdmin || await hasSubMenuAccess("sales-outlet", "import_excel", session);
  const btnImportExcel = container.querySelector("#btn-import-outlet-excel");
  if (btnImportExcel) {
  if (!isHrdRole) {
