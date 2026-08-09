@@ -1,6 +1,7 @@
 import { COL } from "../firebase-config.js";
 import { fsAdd, fsGetAll, fsUpdate, genId, toast, sendEmailNotif, getTargetsForRole, createLoginToken, escapeHtml, openModal, closeModal, printSalesKlaimForm } from "../utils.js";
 import { letterheadHtml } from "../branding.js";
+import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
 
 export async function mount(container, { session }) {
  const tbody = container.querySelector("#kb-tbody");
@@ -12,6 +13,14 @@ export async function mount(container, { session }) {
  const tabAdminBtn = container.querySelector("#tab-kb-admin");
  const panelForm = container.querySelector("#panel-kb-form");
  const panelAdmin = container.querySelector("#panel-kb-admin");
+
+ // Hak akses: tab "Manajemen Admin Cabang" cuma untuk yang diizinkan lewat
+ // Pengaturan > Akses Menu > Klaim Bensin Operasional > Manajemen Admin Cabang.
+ const canAccessAdminCabang = await hasSubMenuAccess("klaim-bensin", "admin_cabang", session);
+ const canEdit = await canEditModuleData(session);
+ if (!canAccessAdminCabang && tabAdminBtn) {
+ tabAdminBtn.classList.add("hidden");
+ }
 
  const btnAdminCirebon = container.querySelector("#admin-tab-cirebon");
  const btnAdminMalang = container.querySelector("#admin-tab-malang");
@@ -393,6 +402,7 @@ export async function mount(container, { session }) {
  <td class="p-3 text-right font-mono font-bold text-slate-800">Rp ${total.toLocaleString("id-ID")}</td>
  <td class="p-3 text-center">${statusBadge}</td>
  <td class="p-3 text-center">
+ ${canEdit ? `
  <div class="flex items-center justify-center gap-1.5">
  <button data-admin-act="approve" data-id="${item.id}" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-sm transition">
  Setujui
@@ -401,6 +411,7 @@ export async function mount(container, { session }) {
  Tolak
  </button>
  </div>
+ ` : `<span class="text-[10px] text-slate-400 italic">Tidak ada akses</span>`}
  </td>
  <td class="p-3 text-center">
  <button data-print-single="${item.id}" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-[11px] rounded-lg transition border border-slate-200 flex items-center gap-1 mx-auto">
