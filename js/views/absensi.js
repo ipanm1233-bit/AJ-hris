@@ -2,6 +2,7 @@ import { db, COL, collection, getDocs, writeBatch, doc, query, where, updateDoc,
 import { toast, genId, fsGetAll, escapeHtml, openModal, closeModal, formatUangJalanEkspedisiRows } from "../utils.js";
 import { skeletonRows, emptyState } from "../components.js";
 import { callGasWebApp, callGasArchiveWebApp } from "../gas-integration.js";
+import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
 
 function getTwoRunningMonthsRange() {
  const now = new Date();
@@ -23,7 +24,13 @@ function getTwoRunningMonthsRange() {
 
 export async function mount(container, { session } = {}) {
  const userRole = (session?.role || "").toUpperCase();
- const isHrdOrAdmin = ["HRD", "SUPERADMIN", "ADMIN"].includes(userRole);
+ const roleIsHrdOrAdmin = ["HRD", "SUPERADMIN", "ADMIN"].includes(userRole);
+ // "isHrdOrAdmin" sekarang final ditentukan lewat Pengaturan > Akses Menu >
+ // Manajemen Absensi > Proses & Tarif Laporan -- default-nya tetap sama
+ // seperti sebelumnya (role HRD/SUPERADMIN/ADMIN dapat akses penuh), tapi
+ // HRD bisa memberi/mencabut akses ini per-karyawan secara individual.
+ const isHrdOrAdmin = roleIsHrdOrAdmin || await hasSubMenuAccess("absensi", "proses_tarif", session);
+ const canEdit = await canEditModuleData(session);
 
  const btnImport = container.querySelector("#btn-import-absen");
  const inputUpload = container.querySelector("#absen-upload");
@@ -234,7 +241,7 @@ export async function mount(container, { session } = {}) {
  <td class="px-4 py-3 text-center font-mono ${r.scan_masuk ? 'text-slate-700':'text-red-400 font-bold'}">${r.scan_masuk || "-"}</td>
  <td class="px-4 py-3 text-center font-mono ${r.scan_keluar ? 'text-slate-700':'text-red-400 font-bold'}">${r.scan_keluar || "-"}</td>
  <td class="px-4 py-3 text-right">
- ${isHrdOrAdmin ? `
+ ${isHrdOrAdmin && canEdit ? `
  <button data-edit-id="${r.id}" class="text-maroon-700 font-medium hover:underline mr-3">Koreksi</button>
  <button data-del-id="${r.id}" class="text-red-500 hover:underline">Hapus</button>
  ` : `<span class="text-slate-300">-</span>`}
