@@ -1920,7 +1920,11 @@ function isDuplicateNotification(targetKey, judul, pesan, link = "") {
  * mengirim push ke HP-nya sekaligus, berdasar fcm_token yg tersimpan
  * di dokumen Users. Dipakai di seluruh modul yg butuh notif per-orang.
  */
-export async function notifyUser(username, judul, pesan, link = "") {
+export async function notifyUser(username, judul, pesan, link = "", opts = {}) {
+ // opts.sendEmail (default true): dipakai HRD untuk menonaktifkan email
+ // pada kasus tertentu (mis. pengambilan ATK) tanpa menghilangkan
+ // notifikasi in-app (lonceng) & push HP yang tetap perlu tampil.
+ const sendEmail = opts.sendEmail !== false;
  if (!username) return;
  let targetEmail = (typeof username === "object" && username.email) ? username.email : null;
  let targetName = (typeof username === "object" && username.nama) ? username.nama : null;
@@ -2034,8 +2038,9 @@ export async function notifyUser(username, judul, pesan, link = "") {
  await sendFCMNotif(tokenList, judul, pesan, link).catch(e => console.warn("FCM push error:", e));
  }
 
- // 3. Send Email
- if (targetEmail) {
+ // 3. Send Email (bisa dinonaktifkan lewat opts.sendEmail = false,
+ // mis. untuk pengambilan ATK yang tidak perlu notifikasi email)
+ if (targetEmail && sendEmail) {
  const appUrl = window.location.origin;
  let magicToken = "";
  if (resolvedUsername) {
