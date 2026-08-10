@@ -1799,8 +1799,43 @@ export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf", 
  
  document.body.appendChild(element);
 
- // Give browser time to process font/layout rendering
- await new Promise((resolve) => setTimeout(resolve, 350));
+ // PENTING: penyebab paling umum PDF kosong/blank adalah html2canvas
+ // "memotret" elemen SEBELUM semua <img> di dalamnya (logo kop surat,
+ // foto karyawan, tanda tangan hasil upload dari Google Drive, dll)
+ // selesai dimuat -- terutama gambar dari URL luar yang lambat.
+ // Sebelumnya cuma menunggu 350ms tetap (cukup untuk dokumen ringan,
+ // TIDAK cukup untuk dokumen dengan gambar besar/lambat). Sekarang kita
+ // tunggu SEMUA gambar benar-benar selesai (berhasil ATAU gagal dimuat),
+ // dengan batas waktu aman 8 detik supaya tidak menggantung selamanya
+ // kalau ada gambar yang memang tidak bisa diakses.
+ async function waitForImages(container, timeoutMs = 8000) {
+ const imgs = Array.from(container.querySelectorAll("img"));
+ if (imgs.length === 0) return;
+
+ const perImage = imgs.map((img) => new Promise((resolve) => {
+ if (img.complete && img.naturalWidth > 0) { resolve(); return; }
+ const done = () => resolve();
+ img.addEventListener("load", done, { once: true });
+ img.addEventListener("error", () => {
+ // Gambar gagal dimuat (mis. link Drive tidak lagi bisa diakses) --
+ // jangan gagalkan seluruh PDF karena ini, cukup lanjut tanpa gambar
+ // itu supaya sisa dokumen tetap tercetak.
+ console.warn("Gambar gagal dimuat saat generate PDF:", img.src);
+ resolve();
+ }, { once: true });
+ }));
+
+ await Promise.race([
+ Promise.all(perImage),
+ new Promise((resolve) => setTimeout(resolve, timeoutMs))
+ ]);
+ }
+
+ await waitForImages(element);
+ // Jeda kecil tambahan untuk memberi waktu browser menyelesaikan layout/
+ // reflow setelah gambar dimuat (terutama kalau ukuran gambar mengubah
+ // tinggi elemen di sekitarnya).
+ await new Promise((resolve) => setTimeout(resolve, 150));
 
  const opt = {
  margin: isLandscape ? [6, 6, 6, 6] : [6, 6, 6, 6], // top, left, bottom, right in mm
