@@ -1389,6 +1389,14 @@ function previewDocumentModal(docData) {
  m.querySelector("#btn-preview-print").onclick = () => {
  const printContent = m.querySelector("#print-doc-area").innerHTML;
  const win = window.open('', '_blank');
+ // PENTING: jika popup diblokir browser, window.open() mengembalikan
+ // null. Sebelumnya kode langsung memanggil win.document.write() tanpa
+ // cek ini, yang menyebabkan error diam-diam (dan HRD melihat dokumen
+ // gagal tergenerate / tab kosong) tanpa pesan yang jelas.
+ if (!win) {
+ toast("Izin popup diblokir browser. Izinkan popup untuk mencetak/mengunduh dokumen ini.", "error");
+ return;
+ }
  win.document.write(`
  <html>
  <head>
@@ -1402,11 +1410,30 @@ function previewDocumentModal(docData) {
  <body>
  ${printContent}
  <script>
- setTimeout(() => { window.print(); window.close(); }, 800);
+ var _sudahCetak = false;
+ function _cetakSekali() {
+ if (_sudahCetak) return;
+ _sudahCetak = true;
+ window.print();
+ window.close();
+ }
+ window.onload = function () { setTimeout(_cetakSekali, 300); };
+ // Jaring pengaman: kalau event 'load' tidak pernah terpicu (mis. CDN
+ // Tailwind lambat/gagal dimuat), tetap cetak setelah 1.5 detik supaya
+ // dokumen tidak nyangkut sebagai halaman kosong selamanya.
+ setTimeout(_cetakSekali, 1500);
  </script>
  </body>
  </html>
  `);
+ // PENTING: document.write() HARUS ditutup dengan document.close(),
+ // atau dokumen dianggap browser masih "loading" -- inilah penyebab
+ // utama dokumen dari modul ini kadang tercetak sebagai halaman blank
+ // (skrip/print sempat jalan sebelum konten benar-benar selesai
+ // di-parse & di-render). Semua fungsi cetak sejenis lain di file
+ // lain (siklus-karyawan.js, klaim-bensin.js, dll) sudah menutup
+ // dokumennya; fungsi ini sebelumnya terlewat.
+ win.document.close();
  };
  }
  });
