@@ -1,5 +1,5 @@
 import { COL } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, sha256, toast, escapeHtml, openInviteEmployeeModal } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, sha256, toast, escapeHtml, openInviteEmployeeModal, geocodeAddressSmart } from "../utils.js";
 import { renderCrudModule, emptyState } from "../components.js";
 import { MENU_CONFIG, loadPermissionOverrides } from "../auth.js";
 
@@ -508,15 +508,19 @@ async function loadKanalTab(container) {
 
  // If live API returned real items, process live items directly
  if (isLiveSuccess && liveItems.length > 0) {
- liveItems.forEach((item, idx) => {
+ for (let idx = 0; idx < liveItems.length; idx++) {
+ const item = liveItems[idx];
  const chkId = item.id || item.checkin_id || `CHK-LIVE-${idx}-${Date.now()}`;
+ const rawAddr = item.alamat || item.address || item.toko || "Cirebon";
+ const geoRes = await geocodeAddressSmart(rawAddr, idx);
+
  fetchedCheckins.push({
  id: String(chkId),
  sales_nik: item.nik || item.sales_nik || item.user_id || "SLS-KNL",
  sales_nama: item.nama || item.sales_nama || item.user_name || "Sales Kanal",
  toko_outlet: item.toko || item.outlet_name || item.store_name || "Outlet Mitra Kanal",
- alamat_toko: item.alamat || item.address || "Cirebon",
- koordinat_gps: item.gps || item.lat_long || item.coordinates || "-6.7321, 108.5523",
+ alamat_toko: rawAddr,
+ koordinat_gps: item.gps || item.lat_long || `${geoRes.lat}, ${geoRes.lng}`,
  waktu_checkin: item.checkin_time || item.waktu || "08:30 WIB",
  waktu_checkout: item.checkout_time || "09:05 WIB",
  tanggal: item.tanggal || item.date || todayStr,
@@ -524,18 +528,21 @@ async function loadKanalTab(container) {
  catatan: item.catatan || "Live check-in toko via API Kanal",
  sumber: `API Kanal (${company})`,
  perusahaan: company,
+ geocoded_at: timestamp,
  updated_at: timestamp
  });
- });
+ }
  } else {
  // Process sales checkins based on active team
  const datesToProcess = [todayStr, yesterdayStr];
  for (const dStr of datesToProcess) {
- salesList.forEach((s, idx) => {
+ for (let idx = 0; idx < salesList.length; idx++) {
+ const s = salesList[idx];
  const nik = String(s.nik_karyawan || s.nik || "SLS-" + (idx + 1)).trim();
  const nama = s.nama_karyawan || s.nama || "Salesman";
  const outlet = sampleOutlets[idx % sampleOutlets.length];
  const visitStatus = sampleStatuses[idx % sampleStatuses.length];
+ const geoRes = await geocodeAddressSmart(outlet.alamat, idx);
 
  const checkinItem = {
  id: `CHK-${nik}-${dStr}`,
@@ -543,7 +550,7 @@ async function loadKanalTab(container) {
  sales_nama: nama,
  toko_outlet: outlet.nama,
  alamat_toko: outlet.alamat,
- koordinat_gps: outlet.gps,
+ koordinat_gps: outlet.gps || `${geoRes.lat}, ${geoRes.lng}`,
  waktu_checkin: idx === 0 ? "08:30 WIB" : (idx === 1 ? "10:15 WIB" : "13:40 WIB"),
  waktu_checkout: idx === 0 ? "09:05 WIB" : (idx === 1 ? "10:50 WIB" : "14:15 WIB"),
  tanggal: dStr,
@@ -551,11 +558,12 @@ async function loadKanalTab(container) {
  catatan: "Check-in kunjungan sales di toko via API Kanal",
  sumber: `API Kanal (${company})`,
  perusahaan: company,
+ geocoded_at: timestamp,
  updated_at: timestamp
  };
 
  fetchedCheckins.push(checkinItem);
- });
+ }
  }
  }
 
@@ -565,14 +573,6 @@ async function loadKanalTab(container) {
  await fsAdd("kanal_checkins", chk, chk.id);
  });
  }
-
- // If live API items were retrieved, append them
- if (liveItems.length > 0) {
- liveItems.forEach(item => {
- fetchedCheckins.push(item);
- });
- }
-
  // Save batch sync log in kanal_data collection
  const logRecord = {
  id: batchId,

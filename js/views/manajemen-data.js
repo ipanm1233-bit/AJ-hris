@@ -1,5 +1,5 @@
 import { db, COL, collection, getDocs, doc, updateDoc, addDoc, setDoc, deleteDoc, query, where, limit } from "../firebase-config.js";
-import { fsGetAll, fsDelete, escapeHtml, toast, genId, notifyUser, openModal, closeModal, calculateAge, calculateTenure } from "../utils.js";
+import { fsGetAll, fsDelete, escapeHtml, toast, genId, notifyUser, openModal, closeModal, confirmDialog, promptDialog, calculateAge, calculateTenure } from "../utils.js";
 import { renderCrudModule, badge, emptyState, icon, skeletonRows } from "../components.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 
@@ -461,23 +461,42 @@ export async function mount(container) {
  async function loadAllDbTab() {
  const collectionsList = [
  { key: COL.BROADCAST, label: "Memo Pengumuman Broadcast (broadcast)" },
- { key: COL.LOG_PENILAIAN_KPI, label: "Log Hasil Penilaian KPI (log_penilaian_kpi)" },
- { key: COL.TUGAS_KPI_360, label: "Penugasan Soal KPI 360 (tugas_kpi_360)" },
+ { key: COL.MASTER_KARYAWAN, label: "Master Database Karyawan (master_karyawan)" },
  { key: COL.DATA_PENGAJUAN, label: "Data Pengajuan HRIS Staf (data_pengajuan)" },
  { key: COL.DATA_ABSENSI, label: "Data Absensi Karyawan (data_absensi)" },
  { key: COL.LOG_LEMBUR, label: "Log Pengajuan Lembur (log_lembur)" },
  { key: COL.LOG_KASBON, label: "Log Kasbon & Pinjaman (log_kasbon)" },
+ { key: COL.MASTER_CUTI, label: "Pengajuan & Log Cuti (master_cuti)" },
  { key: COL.SIGN_DOCUMENTS, label: "Dokumen TTD Digital (sign_documents)" },
+ { key: COL.LOG_PENILAIAN_KPI, label: "Log Hasil Penilaian KPI (log_penilaian_kpi)" },
+ { key: COL.TUGAS_KPI_360, label: "Penugasan Soal KPI 360 (tugas_kpi_360)" },
+ { key: COL.MASTER_SOAL_KPI, label: "Bank Soal & Template KPI (master_soal_kpi)" },
  { key: COL.EVALUASI_KONTRAK, label: "Evaluasi Kontrak Kerja (evaluasi_kontrak)" },
+ { key: COL.MASTER_KONTRAK, label: "Master Riwayat Kontrak (master_kontrak)" },
  { key: COL.MASTER_KENDARAAN, label: "Master Kendaraan (master_kendaraan)" },
+ { key: COL.LOG_KENDARAAN_FUEL, label: "Log Kendaraan BBM (log_kendaraan_fuel)" },
+ { key: COL.LOG_KENDARAAN_SERVICE, label: "Log Kendaraan Service (log_kendaraan_service)" },
+ { key: COL.LOG_KENDARAAN_COMPLIANCE, label: "Log Pajak Kendaraan (log_kendaraan_compliance)" },
  { key: COL.MASTER_INVENTORY, label: "Master Inventaris Aset (master_inventory)" },
+ { key: COL.LOG_INVENTORY_PENGAMBILAN, label: "Log Ambil Inventaris (log_inventory_pengambilan)" },
+ { key: COL.STOCK_OPNAME, label: "Log Stock Opname ATK (stock_opname)" },
  { key: COL.REKRUTMEN_PELAMAR, label: "Rekrutmen Pelamar (rekrutmen_pelamar)" },
  { key: COL.KALENDER_HR, label: "Event Kalender HR (kalender_hr_events)" },
  { key: COL.GIMMICK_SOP, label: "Quiz SOP & Gimmick (gimmick_sop)" },
  { key: COL.DATA_TRAINING, label: "Data Training Pelatihan (data_training)" },
+ { key: COL.LOG_SP_KONSELING, label: "Log SP & Konseling (log_sp_konseling)" },
+ { key: COL.DATA_PEMANGGILAN, label: "Data Pemanggilan Staf (data_pemanggilan)" },
+ { key: COL.SIKLUS_KARYAWAN, label: "Siklus Karyawan (siklus_karyawan)" },
+ { key: COL.UANG_MAKAN_EXPEDISI, label: "Uang Makan Expedisi (uang_makan_expedisi)" },
  { key: COL.NOTIFICATIONS, label: "Notifikasi Sistem (notifications)" },
  { key: "kanal_checkins", label: "Check-in Sales Toko (kanal_checkins)" },
- { key: "kanal_data", label: "Log Sync API Kanal (kanal_data)" }
+ { key: "kanal_data", label: "Log Sync API Kanal (kanal_data)" },
+ { key: "drafts_dokumen", label: "Draft Dokumen HR (drafts_dokumen)" },
+ { key: "custom_doc_templates", label: "Template Dokumen Custom (custom_doc_templates)" },
+ { key: COL.USERS, label: "User Login System (users)" },
+ { key: COL.USER_PERMISSIONS, label: "Hak Akses User (user_permissions)" },
+ { key: COL.FORM_CONFIG, label: "Konfigurasi Custom Form (form_config)" },
+ { key: COL.APP_SETTINGS, label: "Pengaturan Aplikasi (app_settings)" }
  ];
 
  let currentSelectedCol = COL.BROADCAST;
@@ -485,7 +504,9 @@ export async function mount(container) {
 
  async function fetchAndRenderDb(colKey) {
  currentSelectedCol = colKey;
- panels.alldb.querySelector("#db-table-body").innerHTML = `<tr><td colspan="5" class="p-8 text-center">${skeletonRows(3)}</td></tr>`;
+ const selectAllCb = panels.alldb.querySelector("#cb-select-all-db");
+ if (selectAllCb) selectAllCb.checked = false;
+ panels.alldb.querySelector("#db-table-body").innerHTML = `<tr><td colspan="6" class="p-8 text-center">${skeletonRows(3)}</td></tr>`;
  
  try {
  currentRows = await fsGetAll(colKey);
@@ -513,29 +534,34 @@ export async function mount(container) {
  if (!tbody) return;
 
  if (filtered.length === 0) {
- tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-slate-400 italic">Tidak ada data ditemukan pada koleksi ini</td></tr>`;
+ tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400 italic">Tidak ada data ditemukan pada koleksi ini</td></tr>`;
  return;
  }
 
  tbody.innerHTML = filtered.map((r, idx) => {
- const docId = escapeHtml(r.id || `ROW-${idx}`);
- const title = escapeHtml(r.judul || r.nama || r.nama_karyawan || r.nama_pemohon || r.nama_penilai || r.toko_outlet || r.email || r.id || "Record");
+ const docIdVal = r._docId || r.id;
+ const rawDocId = docIdVal ? String(docIdVal) : `ROW-${idx}`;
+ const docIdDisplay = escapeHtml(rawDocId);
+ const title = escapeHtml(r.judul || r.nama || r.nama_karyawan || r.nama_pemohon || r.nama_penilai || r.toko_outlet || r.email || rawDocId || "Record");
  const subInfo = escapeHtml(r.dibuat_oleh || r.nik || r.nik_karyawan || r.status || r.tanggal || r.created_at || "-");
  const dateVal = r.tanggal || r.tanggal_buat || r.created_at || r.updated_at || "-";
 
  return `
  <tr class="border-t border-slate-50 hover:bg-slate-50/50 transition text-xs">
- <td class="px-4 py-3 font-mono font-bold text-slate-500">${docId}</td>
+ <td class="px-3 py-3 text-center">
+ <input type="checkbox" class="cb-db-row w-4 h-4 rounded text-maroon-700 cursor-pointer" data-docid="${escapeHtml(rawDocId)}">
+ </td>
+ <td class="px-4 py-3 font-mono font-bold text-slate-600 select-all">${docIdDisplay}</td>
  <td class="px-4 py-3">
  <div class="font-bold text-slate-800">${title}</div>
  <div class="text-[10px] text-slate-400">Info: ${subInfo}</div>
  </td>
  <td class="px-4 py-3 text-slate-500">${escapeHtml(dateVal)}</td>
  <td class="px-4 py-3 text-center">
- <button class="btn-json-preview text-blue-600 hover:underline font-semibold" data-idx="${idx}">Lihat Raw JSON</button>
+ <button class="btn-json-preview text-blue-600 hover:text-blue-800 hover:underline font-semibold cursor-pointer" data-idx="${idx}">Lihat Raw JSON</button>
  </td>
  <td class="px-4 py-3 text-center">
- <button class="btn-delete-row text-rose-600 hover:text-rose-800 font-bold hover:bg-rose-50 px-2.5 py-1 rounded border border-rose-200 transition" data-id="${docId}">Hapus Record</button>
+ <button class="btn-delete-row text-rose-600 hover:text-rose-800 font-bold hover:bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 transition cursor-pointer" data-docid="${escapeHtml(rawDocId)}">🗑️ Hapus</button>
  </td>
  </tr>
  `;
@@ -548,7 +574,7 @@ export async function mount(container) {
  openModal({
  title: `Raw JSON - ${item.id || 'Record'}`,
  bodyHtml: `<pre class="bg-slate-900 text-emerald-400 p-4 rounded-xl text-xs overflow-auto max-h-96 font-mono">${escapeHtml(JSON.stringify(item, null, 2))}</pre>`,
- footerHtml: `<button onclick="closeModal()" class="px-4 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded-lg">Tutup</button>`
+ footerHtml: `<button onclick="closeModal()" class="px-4 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded-lg cursor-pointer">Tutup</button>`
  });
  };
  });
@@ -556,12 +582,16 @@ export async function mount(container) {
  // Bind Individual Row Deletes
  tbody.querySelectorAll(".btn-delete-row").forEach(btn => {
  btn.onclick = async () => {
- const id = btn.dataset.id;
- if (!id) return;
- if (confirm(`Apakah Anda yakin ingin MENGHAPUS record '${id}' dari koleksi '${currentSelectedCol}'?`)) {
+ const id = btn.dataset.docid;
+ if (!id || id.startsWith("ROW-")) {
+ toast("Record ini tidak memiliki ID Firestore yang valid.", "warning");
+ return;
+ }
+ const ok = await confirmDialog(`Apakah Anda yakin ingin MENGHAPUS record ID '${id}' dari koleksi '${currentSelectedCol}'?`, { title: "Konfirmasi Hapus Record" });
+ if (ok) {
  try {
  await fsDelete(currentSelectedCol, id);
- toast(`Record '${id}' berhasil dihapus`, "success");
+ toast(`Record '${id}' berhasil dihapus dari database`, "success");
  await fetchAndRenderDb(currentSelectedCol);
  } catch (e) {
  toast("Gagal menghapus record: " + e.message, "error");
@@ -579,6 +609,12 @@ export async function mount(container) {
  <p class="text-xs text-slate-500 mt-0.5">Pilih tabel koleksi database di bawah untuk melihat seluruh data tersimpan & menghapus record yang tidak lagi diperlukan.</p>
  </div>
  <div class="flex items-center gap-2">
+ <button id="btn-bulk-delete-db" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 transition flex items-center gap-1 cursor-pointer">
+ 🗑️ Hapus Record Terpilih
+ </button>
+ <button id="btn-clear-collection-db" class="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-xl border border-amber-200 transition flex items-center gap-1 cursor-pointer">
+ ⚠️ Kosongkan Koleksi Ini
+ </button>
  <span id="db-record-count" class="px-3 py-1 bg-maroon-50 text-maroon-700 font-bold text-xs rounded-full border border-maroon-200">0 Record</span>
  </div>
  </div>
@@ -593,7 +629,7 @@ export async function mount(container) {
 
  <div class="flex items-center gap-2 w-full sm:w-auto">
  <input type="text" id="db-search-input" placeholder="Cari ID / Keyword..." class="px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-white w-full sm:w-64">
- <button id="btn-refresh-db" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">Refresh</button>
+ <button id="btn-refresh-db" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer">Refresh</button>
  </div>
  </div>
 
@@ -601,6 +637,9 @@ export async function mount(container) {
  <table class="w-full text-left border-collapse">
  <thead class="bg-slate-50 text-slate-500 text-[11px] uppercase tracking-wide">
  <tr>
+ <th class="px-3 py-3 text-center w-10">
+ <input type="checkbox" id="cb-select-all-db" class="w-4 h-4 rounded text-maroon-700 cursor-pointer" title="Pilih Semua">
+ </th>
  <th class="px-4 py-3 font-semibold">Document ID</th>
  <th class="px-4 py-3 font-semibold">Judul / Identitas Utama</th>
  <th class="px-4 py-3 font-semibold">Tanggal / Waktu</th>
@@ -609,7 +648,7 @@ export async function mount(container) {
  </tr>
  </thead>
  <tbody id="db-table-body">
- <tr><td colspan="5" class="p-8 text-center text-slate-400">Memuat data...</td></tr>
+ <tr><td colspan="6" class="p-8 text-center text-slate-400">Memuat data...</td></tr>
  </tbody>
  </table>
  </div>
@@ -619,10 +658,62 @@ export async function mount(container) {
  const selectEl = panels.alldb.querySelector("#db-collection-select");
  const searchEl = panels.alldb.querySelector("#db-search-input");
  const refreshBtn = panels.alldb.querySelector("#btn-refresh-db");
+ const selectAllCb = panels.alldb.querySelector("#cb-select-all-db");
+ const bulkDeleteBtn = panels.alldb.querySelector("#btn-bulk-delete-db");
+ const clearColBtn = panels.alldb.querySelector("#btn-clear-collection-db");
 
  selectEl.onchange = () => fetchAndRenderDb(selectEl.value);
  searchEl.oninput = () => renderTable(currentRows);
  refreshBtn.onclick = () => fetchAndRenderDb(selectEl.value);
+
+ selectAllCb.onchange = (e) => {
+ const isChecked = e.target.checked;
+ panels.alldb.querySelectorAll(".cb-db-row").forEach(cb => { cb.checked = isChecked; });
+ };
+
+ bulkDeleteBtn.onclick = async () => {
+ const selectedCbs = Array.from(panels.alldb.querySelectorAll(".cb-db-row:checked"));
+ if (selectedCbs.length === 0) {
+ return toast("Pilih minimal satu record dengan mencentang kotak di tabel!", "warning");
+ }
+ const ids = selectedCbs.map(cb => cb.dataset.docid).filter(id => id && !id.startsWith("ROW-"));
+ if (ids.length === 0) {
+ return toast("Tidak ada Document ID valid yang terpilih.", "warning");
+ }
+ const ok = await confirmDialog(`Apakah Anda yakin ingin MENGHAPUS ${ids.length} record terpilih dari koleksi '${currentSelectedCol}'?`, { title: "Konfirmasi Hapus Massal" });
+ if (ok) {
+ try {
+ await Promise.all(ids.map(id => fsDelete(currentSelectedCol, id)));
+ toast(`${ids.length} record berhasil dihapus dari database!`, "success");
+ await fetchAndRenderDb(currentSelectedCol);
+ } catch (e) {
+ toast("Gagal menghapus beberapa record: " + e.message, "error");
+ }
+ }
+ };
+
+ clearColBtn.onclick = async () => {
+ if (currentRows.length === 0) {
+ return toast("Koleksi ini sudah kosong.", "warning");
+ }
+ const confirmInput = await promptDialog(
+ `⚠️ PERINGATAN! Anda akan MENGHAPUS SELURUH ${currentRows.length} DATA dari koleksi '${currentSelectedCol}'.\n\nKetik nama koleksi '${currentSelectedCol}' di bawah ini untuk mengonfirmasi:`,
+ "",
+ { title: "⚠️ Kosongkan Koleksi Database", placeholder: currentSelectedCol }
+ );
+ if (confirmInput === currentSelectedCol) {
+ try {
+ const validIds = currentRows.map(r => r._docId || r.id).filter(id => id && !String(id).startsWith("ROW-"));
+ await Promise.all(validIds.map(id => fsDelete(currentSelectedCol, id)));
+ toast(`Seluruh data pada koleksi '${currentSelectedCol}' berhasil dikosongkan!`, "success");
+ await fetchAndRenderDb(currentSelectedCol);
+ } catch (e) {
+ toast("Gagal mengosongkan koleksi: " + e.message, "error");
+ }
+ } else if (confirmInput !== null) {
+ toast("Konfirmasi pembatalan. Nama koleksi yang diketik tidak cocok.", "error");
+ }
+ };
 
  await fetchAndRenderDb(selectEl.value);
  }

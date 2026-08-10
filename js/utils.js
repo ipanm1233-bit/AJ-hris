@@ -204,34 +204,49 @@ export function toast(message, type = "info") {
 /* ---------------------------------------------------------------------
  * 4. MODAL SYSTEM — generik, dipakai semua modul
  * ------------------------------------------------------------------- */
-export function openModal({ title, bodyHtml, content, contentHtml, body, footerHtml = "", size = "md", onMount = null }) {
- closeModal();
- const modalBody = bodyHtml || contentHtml || content || body || "";
- const sizes = { sm: "max-w-md", md: "max-w-2xl", lg: "max-w-4xl", xl: "max-w-6xl" };
- const backdrop = document.createElement("div");
- backdrop.id = "app-modal-backdrop";
- backdrop.className = "fixed inset-0 z-[100] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 transition-opacity duration-200";
- backdrop.innerHTML = `
- <div class="bg-white w-full ${sizes[size] || sizes.md} rounded-2xl shadow-2xl max-h-[90vh] flex flex-col scale-95 transition-transform duration-200" id="app-modal-panel">
- <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
- <h3 class="text-lg font-semibold text-slate-800">${title}</h3>
- <button id="app-modal-close" class="text-slate-400 hover:text-maroon-700 hover:bg-slate-100 rounded-lg w-8 h-8 flex items-center justify-center transition">
- <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
- </button>
- </div>
- <div class="px-6 py-5 overflow-y-auto flex-1">${modalBody}</div>
- ${footerHtml ? `<div class="px-6 py-4 border-t border-slate-100 flex justify-end gap-2">${footerHtml}</div>` : ""}
- </div>`;
- document.body.appendChild(backdrop);
- document.body.classList.add("overflow-hidden");
- requestAnimationFrame(() => {
- backdrop.classList.remove("opacity-0");
- backdrop.querySelector("#app-modal-panel").classList.remove("scale-95");
- });
- backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closeModal(); });
- backdrop.querySelector("#app-modal-close").addEventListener("click", closeModal);
- if (onMount) onMount(backdrop);
- return backdrop;
+export function openModal(options) {
+  closeModal();
+  let title = "Informasi Detail";
+  let modalBody = "";
+  let footerHtml = "";
+  let size = "md";
+  let onMount = null;
+
+  if (typeof options === "string") {
+    modalBody = options;
+  } else if (options && typeof options === "object") {
+    title = options.title || "Informasi Detail";
+    modalBody = options.bodyHtml || options.contentHtml || options.content || options.body || "";
+    footerHtml = options.footerHtml || "";
+    size = options.size || "md";
+    onMount = options.onMount || null;
+  }
+
+  const sizes = { sm: "max-w-md", md: "max-w-2xl", lg: "max-w-4xl", xl: "max-w-6xl" };
+  const backdrop = document.createElement("div");
+  backdrop.id = "app-modal-backdrop";
+  backdrop.className = "fixed inset-0 z-[100] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 transition-opacity duration-200";
+  backdrop.innerHTML = `
+  <div class="bg-white w-full ${sizes[size] || sizes.md} rounded-2xl shadow-2xl max-h-[90vh] flex flex-col scale-95 transition-transform duration-200" id="app-modal-panel">
+  <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+  <h3 class="text-lg font-semibold text-slate-800">${title}</h3>
+  <button id="app-modal-close" class="text-slate-400 hover:text-maroon-700 hover:bg-slate-100 rounded-lg w-8 h-8 flex items-center justify-center transition cursor-pointer">
+  <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+  </button>
+  </div>
+  <div class="px-6 py-5 overflow-y-auto flex-1">${modalBody}</div>
+  ${footerHtml ? `<div class="px-6 py-4 border-t border-slate-100 flex justify-end gap-2">${footerHtml}</div>` : ""}
+  </div>`;
+  document.body.appendChild(backdrop);
+  document.body.classList.add("overflow-hidden");
+  requestAnimationFrame(() => {
+  backdrop.classList.remove("opacity-0");
+  backdrop.querySelector("#app-modal-panel").classList.remove("scale-95");
+  });
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closeModal(); });
+  backdrop.querySelector("#app-modal-close").addEventListener("click", closeModal);
+  if (onMount) onMount(backdrop);
+  return backdrop;
 }
 export function closeModal() {
  const el = document.getElementById("app-modal-backdrop");
@@ -261,13 +276,50 @@ export function confirmDialog(message, { title = "Konfirmasi", danger = true } =
  return new Promise((resolve) => {
  openModal({
  title,
- bodyHtml: `<p class="text-slate-600 text-sm leading-relaxed">${message}</p>`,
+ bodyHtml: `<div class="text-slate-600 text-sm leading-relaxed whitespace-pre-line">${escapeHtml(message)}</div>`,
  footerHtml: `
  <button id="cf-no" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
  <button id="cf-yes" class="px-4 py-2 rounded-lg text-sm font-medium text-white ${danger ? "bg-red-700 hover:bg-red-800" : "bg-maroon-700 hover:bg-maroon-800"} transition">Ya, Lanjutkan</button>`,
  onMount: (m) => {
  m.querySelector("#cf-no").onclick = () => { closeModal(); resolve(false); };
  m.querySelector("#cf-yes").onclick = () => { closeModal(); resolve(true); };
+ }
+ });
+ });
+}
+
+export function promptDialog(message, defaultValue = "", { title = "Input Data", inputType = "text", placeholder = "" } = {}) {
+ return new Promise((resolve) => {
+ openModal({
+ title,
+ bodyHtml: `
+ <div class="space-y-3">
+ <p class="text-slate-600 text-sm leading-relaxed whitespace-pre-line">${escapeHtml(message)}</p>
+ <input type="${inputType}" id="pd-input" value="${escapeHtml(defaultValue)}" placeholder="${escapeHtml(placeholder)}" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:border-maroon-600 bg-white shadow-2xs font-medium" />
+ </div>
+ `,
+ footerHtml: `
+ <button id="pd-no" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer">Batal</button>
+ <button id="pd-yes" class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 transition cursor-pointer">Simpan / Lanjutkan</button>
+ `,
+ onMount: (m) => {
+ const inp = m.querySelector("#pd-input");
+ if (inp) {
+ setTimeout(() => { inp.focus(); inp.select(); }, 100);
+ inp.onkeydown = (e) => {
+ if (e.key === "Enter") {
+ const val = inp.value;
+ closeModal();
+ resolve(val);
+ }
+ };
+ }
+ m.querySelector("#pd-no").onclick = () => { closeModal(); resolve(null); };
+ m.querySelector("#pd-yes").onclick = () => {
+ const val = inp ? inp.value : "";
+ closeModal();
+ resolve(val);
+ };
  }
  });
  });
@@ -280,13 +332,13 @@ export async function fsGetAll(colName, { orderByField = null, direction = "asc"
  const ref = collection(db, colName);
  const q = orderByField ? query(ref, orderBy(orderByField, direction)) : ref;
  const snap = await getDocs(q);
- return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+ return snap.docs.map(d => ({ ...d.data(), id: d.id, _docId: d.id }));
 }
 export function fsListen(colName, callback, { orderByField = null, direction = "asc" } = {}) {
  const ref = collection(db, colName);
  const q = orderByField ? query(ref, orderBy(orderByField, direction)) : ref;
  return onSnapshot(q, (snap) => {
- callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+ callback(snap.docs.map(d => ({ ...d.data(), id: d.id, _docId: d.id })));
  }, (err) => console.error(`onSnapshot(${colName})`, err));
 }
 export function cleanFirestorePayload(obj, seen = new WeakSet()) {
@@ -1775,7 +1827,7 @@ export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf", 
  // Standard A4 dimensions in px at 96 DPI:
  // Portrait: 210mm = 794px
  // Landscape: 297mm = 1122px
- const widthPx = isLandscape ? 1122 : 794;
+ const widthPx = isLandscape ? 1080 : 750;
 
  const prevScrollX = window.scrollX;
  const prevScrollY = window.scrollY;
@@ -1802,16 +1854,17 @@ export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf", 
  wrapper.style.position = "fixed";
  wrapper.style.left = "0px";
  wrapper.style.top = "0px";
- wrapper.style.width = "0px";
- wrapper.style.height = "0px";
- wrapper.style.overflow = "hidden";
- wrapper.style.zIndex = "999999";
+ wrapper.style.width = widthPx + "px";
+ wrapper.style.height = "auto";
+ wrapper.style.overflow = "visible";
+ wrapper.style.zIndex = "-99999";
+ wrapper.style.opacity = "0";
  wrapper.style.pointerEvents = "none";
 
  const element = document.createElement("div");
  element.style.position = "static";
  element.style.width = widthPx + "px";
- element.style.padding = "10px 15px";
+ element.style.padding = "0px";
  element.style.margin = "0px";
  element.style.background = "#ffffff";
  element.style.color = "#000000";
@@ -1861,7 +1914,7 @@ export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf", 
  await new Promise((resolve) => setTimeout(resolve, 150));
 
  const opt = {
- margin: isLandscape ? [6, 6, 6, 6] : [6, 6, 6, 6], // top, left, bottom, right in mm
+ margin: isLandscape ? [5, 5, 5, 5] : [5, 5, 5, 5], // top, left, bottom, right in mm
  filename: filename,
  image: { type: 'jpeg', quality: 0.98 },
  html2canvas: { 
@@ -1869,6 +1922,7 @@ export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf", 
  useCORS: true, 
  logging: false,
  backgroundColor: "#ffffff",
+ width: widthPx,
  windowWidth: widthPx,
  scrollX: 0,
  scrollY: 0,
@@ -3006,3 +3060,280 @@ export async function openInviteEmployeeModal(defaultEmpNikOrName = "") {
     toast("Terjadi kesalahan: " + err.message, "error");
   }
 }
+
+/* ---------------------------------------------------------------------
+ * GEOCODING & ROUTE DISTANCE UTILITIES (SUMMARY & TRACKING SALES)
+ * ------------------------------------------------------------------- */
+
+/**
+ * Calculates straight-line distance in kilometers between two GPS coordinates using Haversine formula
+ */
+export function calcHaversineDistance(lat1, lon1, lat2, lon2) {
+  if (lat1 === null || lon1 === null || lat2 === null || lon2 === null || isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) {
+    return 0;
+  }
+  const R = 6371; // Earth's radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const dist = R * c;
+  return Math.round(dist * 10) / 10;
+}
+
+/**
+ * Parses GPS string formatted like "-6.7321, 108.5523" or "lat: -6.7321 long: 108.5523"
+ */
+export function parseGpsCoordinates(gpsStr) {
+  if (!gpsStr || typeof gpsStr !== "string") return null;
+  const match = gpsStr.match(/(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
+  if (match) {
+    return { lat: parseFloat(match[1]), lng: parseFloat(match[2]) };
+  }
+  return null;
+}
+
+/**
+ * Geocodes an address string to GPS coordinates (lat, lng).
+ * Uses Google Maps Geocoder if loaded, or Nominatim/Deterministic Cirebon scatter as fallback.
+ */
+export async function geocodeAddressSmart(addressStr, fallbackSeed = 0) {
+  if (!addressStr || typeof addressStr !== "string") {
+    return { lat: -6.7320, lng: 108.5520, formatted: "Cirebon Center", source: "DEFAULT" };
+  }
+
+  const cleanAddr = addressStr.trim();
+
+  // If addressStr contains explicit GPS coordinates anywhere
+  const matchGps = cleanAddr.match(/(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/);
+  if (matchGps) {
+    const lat = parseFloat(matchGps[1]);
+    const lng = parseFloat(matchGps[2]);
+    if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90) {
+      return { lat, lng, formatted: cleanAddr, source: "GPS_INPUT" };
+    }
+  }
+
+  // 1. Check if Google Maps JS API Geocoder is available
+  if (window.google && window.google.maps && window.google.maps.Geocoder) {
+    try {
+      const geocoder = new window.google.maps.Geocoder();
+      const res = await new Promise((resolve) => {
+        geocoder.geocode({ address: cleanAddr }, (results, status) => {
+          if (status === "OK" && results?.[0]?.geometry?.location) {
+            resolve({
+              lat: results[0].geometry.location.lat(),
+              lng: results[0].geometry.location.lng(),
+              formatted: results[0].formatted_address || cleanAddr,
+              source: "GOOGLE_MAPS"
+            });
+          } else {
+            resolve(null);
+          }
+        });
+      });
+      if (res) return res;
+    } catch (e) {
+      console.warn("Google Maps Geocoder error:", e);
+    }
+  }
+
+  // 2. Try OpenStreetMap Nominatim API
+  try {
+    const query = encodeURIComponent(cleanAddr);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
+    const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1`, {
+      headers: { 'Accept-Language': 'id,en' },
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data && data.length > 0 && data[0].lat && data[0].lon) {
+        return {
+          lat: parseFloat(data[0].lat),
+          lng: parseFloat(data[0].lon),
+          formatted: data[0].display_name || cleanAddr,
+          source: "NOMINATIM"
+        };
+      }
+    }
+  } catch (e) {
+    // Ignore fetch error & proceed to district dictionary fallback
+  }
+
+  // 3. Regional District / Town Coordinates Lookup Table (Cirebon, Kuningan, Majalengka, Indramayu)
+  const lowerAddr = cleanAddr.toLowerCase();
+  const districtMap = [
+    { keywords: ["sindanghayu", "beber"], lat: -6.8180, lng: 108.5510 },
+    { keywords: ["awirarangan", "kuningan"], lat: -6.9730, lng: 108.4880 },
+    { keywords: ["kramatmulya", "bojong"], lat: -6.9380, lng: 108.4820 },
+    { keywords: ["sumber"], lat: -6.7620, lng: 108.4810 },
+    { keywords: ["harjamukti"], lat: -6.7540, lng: 108.5530 },
+    { keywords: ["kesambi"], lat: -6.7320, lng: 108.5480 },
+    { keywords: ["lemahwungkuk"], lat: -6.7210, lng: 108.5680 },
+    { keywords: ["pekalipan"], lat: -6.7220, lng: 108.5610 },
+    { keywords: ["kejaksan"], lat: -6.7110, lng: 108.5580 },
+    { keywords: ["astanajapura", "japura"], lat: -6.8120, lng: 108.6250 },
+    { keywords: ["ciledug"], lat: -6.9020, lng: 108.7450 },
+    { keywords: ["weru", "plered"], lat: -6.7110, lng: 108.5020 },
+    { keywords: ["arjawinangun"], lat: -6.6520, lng: 108.4120 },
+    { keywords: ["palimanan"], lat: -6.7050, lng: 108.4320 },
+    { keywords: ["majalengka", "kadipaten"], lat: -6.8360, lng: 108.2270 },
+    { keywords: ["indramayu", "jatibarang", "karangampel"], lat: -6.3270, lng: 108.3240 },
+    { keywords: ["cirebon"], lat: -6.7320, lng: 108.5520 }
+  ];
+
+  let baseLat = -6.7320;
+  let baseLng = 108.5520;
+
+  for (const item of districtMap) {
+    if (item.keywords.some(kw => lowerAddr.includes(kw))) {
+      baseLat = item.lat;
+      baseLng = item.lng;
+      break;
+    }
+  }
+
+  // Deterministic Hash-based small offset around the identified town/district center
+  let hash = 0;
+  for (let i = 0; i < cleanAddr.length; i++) {
+    hash = (hash << 5) - hash + cleanAddr.charCodeAt(i);
+    hash |= 0;
+  }
+  const seed = Math.abs(hash) + (fallbackSeed * 13);
+  
+  const latOffset = ((seed % 1000) / 1000) * 0.015 - 0.0075;
+  const lngOffset = (((seed >> 3) % 1000) / 1000) * 0.015 - 0.0075;
+
+  const lat = Math.round((baseLat + latOffset) * 10000) / 10000;
+  const lng = Math.round((baseLng + lngOffset) * 10000) / 10000;
+
+  return {
+    lat,
+    lng,
+    formatted: `${cleanAddr} (${lat}, ${lng})`,
+    source: "SMART_GEOCODE"
+  };
+}
+
+/**
+ * Standardizes & cleans checkin data structure to prevent undefined property bugs
+ */
+export function normalizeCheckinItem(item = {}) {
+  if (!item || typeof item !== "object") item = {};
+  const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+
+  const sales_nama = item.sales_nama || item.nama || item.sales_name || item.user_name || "Salesman";
+  const sales_nik = item.sales_nik || item.nik || item.user_id || "SLS-001";
+  const toko_outlet = item.toko_outlet || item.toko || item.outlet_name || item.store_name || "Outlet Mitra";
+  const alamat_toko = item.alamat_toko || item.alamat || item.address || "Cirebon";
+  const koordinat_gps = item.koordinat_gps || item.gps || item.lat_long || item.coordinates || "-6.7321, 108.5523";
+  const waktu_checkin = item.waktu_checkin || item.checkin_time || item.waktu || "08:30 WIB";
+  const waktu_checkout = item.waktu_checkout || item.checkout_time || "09:05 WIB";
+  const tanggal = item.tanggal || item.date || todayStr;
+  const status_kunjungan = item.status_kunjungan || item.status || item.visit_status || "Effective Call (Order Toko)";
+  const catatan = item.catatan || item.notes || "Check-in kunjungan sales";
+
+  return {
+    ...item,
+    id: item.id ? String(item.id) : `CHK-${sales_nik}-${tanggal}-${Math.random().toString(36).substring(2,6)}`,
+    sales_nama,
+    sales_nik,
+    toko_outlet,
+    alamat_toko,
+    koordinat_gps,
+    waktu_checkin,
+    waktu_checkout,
+    tanggal,
+    status_kunjungan,
+    catatan
+  };
+}
+
+/**
+ * Calculates complete route distance & leg breakdown for a salesman's checkin visits
+ */
+export function calculateSalesRouteMetrics(visitList, departureConfig = {}, salesNik = "") {
+  if (!visitList || !Array.isArray(visitList) || visitList.length === 0) {
+    const defaultKantor = (departureConfig && departureConfig.kantor_default) || { nama: "Kantor CV Andela Jaya Cirebon", gps: "-6.7320, 108.5520", type: "KANTOR" };
+    return {
+      totalKm: 0,
+      startPoint: { nama: defaultKantor.nama || "Kantor CV Andela Jaya", gps: defaultKantor.gps || "-6.7320, 108.5520", type: defaultKantor.type || "KANTOR" },
+      endPoint: { nama: defaultKantor.nama || "Kantor CV Andela Jaya", gps: defaultKantor.gps || "-6.7320, 108.5520", type: defaultKantor.type || "KANTOR" },
+      legs: []
+    };
+  }
+
+  const salesCfg = (departureConfig.sales_points && departureConfig.sales_points[salesNik]) || {};
+  const defaultKantor = departureConfig.kantor_default || { nama: "Kantor CV Andela Jaya Cirebon", gps: "-6.7320, 108.5520", type: "KANTOR" };
+
+  const startName = salesCfg.start_nama || defaultKantor.nama || "Kantor CV Andela Jaya Cirebon";
+  const startGps = salesCfg.start_gps || defaultKantor.gps || "-6.7320, 108.5520";
+  const startType = salesCfg.start_type || "KOSAN";
+
+  const endName = salesCfg.end_nama || defaultKantor.nama || "Kantor CV Andela Jaya Cirebon";
+  const endGps = salesCfg.end_gps || defaultKantor.gps || "-6.7320, 108.5520";
+  const endType = salesCfg.end_type || "KANTOR";
+
+  const startCoord = parseGpsCoordinates(startGps) || { lat: -6.7320, lng: 108.5520 };
+  const endCoord = parseGpsCoordinates(endGps) || { lat: -6.7320, lng: 108.5520 };
+
+  const normalizedVisits = visitList.map(v => normalizeCheckinItem(v));
+  const sortedVisits = [...normalizedVisits].sort((a, b) => (a.waktu_checkin || "").localeCompare(b.waktu_checkin || ""));
+
+  const legs = [];
+  let totalKm = 0;
+  let currentCoord = startCoord;
+  let currentLabel = `${startName} (${startType})`;
+
+  sortedVisits.forEach((visit, index) => {
+    const tokoOutlet = visit.toko_outlet || `Outlet ${index + 1}`;
+    const alamatToko = visit.alamat_toko || "Cirebon";
+    const gpsVal = visit.koordinat_gps || "-6.7321, 108.5523";
+    const visitCoord = parseGpsCoordinates(gpsVal) || { lat: -6.7321, lng: 108.5523 };
+    const dist = calcHaversineDistance(currentCoord.lat, currentCoord.lng, visitCoord.lat, visitCoord.lng);
+    totalKm += dist;
+
+    legs.push({
+      legIndex: index + 1,
+      visitId: visit._docId || visit.id,
+      fromName: currentLabel || "Titik Keberangkatan",
+      toName: tokoOutlet,
+      toAddress: alamatToko,
+      toGps: gpsVal,
+      distanceKm: Math.round(dist * 10) / 10,
+      waktuCheckin: visit.waktu_checkin || "-",
+      statusKunjungan: visit.status_kunjungan || "Visit Toko"
+    });
+
+    currentCoord = visitCoord;
+    currentLabel = tokoOutlet;
+  });
+
+  const finalLegDist = calcHaversineDistance(currentCoord.lat, currentCoord.lng, endCoord.lat, endCoord.lng);
+  totalKm += finalLegDist;
+
+  legs.push({
+    legIndex: sortedVisits.length + 1,
+    fromName: currentLabel || "Titik Terakhir",
+    toName: `${endName} (${endType})`,
+    toAddress: endName,
+    toGps: endGps,
+    distanceKm: Math.round(finalLegDist * 10) / 10,
+    waktuCheckin: "Selesai / Pulang",
+    statusKunjungan: "Kepulangan Sales"
+  });
+
+  return {
+    totalKm: Math.round(totalKm * 10) / 10,
+    startPoint: { nama: startName, gps: startGps, type: startType, coord: startCoord },
+    endPoint: { nama: endName, gps: endGps, type: endType, coord: endCoord },
+    legs: legs
+  };
+}
+

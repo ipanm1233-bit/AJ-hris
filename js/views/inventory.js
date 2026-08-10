@@ -884,7 +884,7 @@ async function openMultiAssignModal(container, activeEmpNames) {
 
 // FUNGSI CETAK BLANKO STOCK OPNAME
 async function printBlankoOpname() {
- const { downloadHtmlAsPdf, toast } = await import("../utils.js");
+ const { downloadHtmlAsPdf, toast, escapeHtml: esc } = await import("../utils.js");
  
  try {
   const items = await fsGetAll(COL.MASTER_INVENTORY) || [];
@@ -894,49 +894,62 @@ async function printBlankoOpname() {
   if (!items || items.length === 0) {
    tableRows = Array.from({ length: 12 }).map((_, idx) => `
     <tr>
-     <td style="border: 1px solid #000; padding: 8px; text-align:center;">${idx + 1}</td>
-     <td style="border: 1px solid #000; padding: 8px;"></td>
-     <td style="border: 1px solid #000; padding: 8px;"></td>
-     <td style="border: 1px solid #000; padding: 8px;"></td>
-     <td style="border: 1px solid #000; padding: 8px; text-align:center;">-</td>
-     <td style="border: 1px solid #000; padding: 8px;"></td>
-     <td style="border: 1px solid #000; padding: 8px;"></td>
+     <td style="border: 1px solid #000; padding: 6px 5px; text-align:center; font-size:10px; box-sizing:border-box;">${idx + 1}</td>
+     <td style="border: 1px solid #000; padding: 6px 5px; font-size:10px; box-sizing:border-box;"></td>
+     <td style="border: 1px solid #000; padding: 6px 5px; font-size:10px; box-sizing:border-box;"></td>
+     <td style="border: 1px solid #000; padding: 6px 5px; font-size:10px; box-sizing:border-box;"></td>
+     <td style="border: 1px solid #000; padding: 6px 5px; text-align:center; font-size:10px; box-sizing:border-box;">-</td>
+     <td style="border: 1px solid #000; padding: 6px 5px; font-size:10px; box-sizing:border-box;"></td>
+     <td style="border: 1px solid #000; padding: 6px 5px; font-size:10px; box-sizing:border-box;"></td>
     </tr>`).join("");
   } else {
    tableRows = items.map(i => `
     <tr>
-     <td style="border: 1px solid #000; padding: 6px;">${escapeHtml(i.id_item || i.id || "-")}</td>
-     <td style="border: 1px solid #000; padding: 6px;">${escapeHtml(i.nama_barang || "-")}</td>
-     <td style="border: 1px solid #000; padding: 6px;">${escapeHtml(i.kategori || "Aset/ATK")}</td>
-     <td style="border: 1px solid #000; padding: 6px;">${escapeHtml(i.assigned_to || "Unassigned")}</td>
-     <td style="border: 1px solid #000; padding: 6px; text-align:center;">${i.stok_saat_ini ?? 1}</td>
-     <td style="border: 1px solid #000; padding: 6px;"></td>
-     <td style="border: 1px solid #000; padding: 6px;"></td>
+     <td style="border: 1px solid #000; padding: 5px 6px; font-family: monospace, sans-serif; font-size: 10px; font-weight: bold; word-wrap: break-word; overflow-wrap: break-word; word-break: break-word; box-sizing: border-box;">${esc(i.id_item || i.id || "-")}</td>
+     <td style="border: 1px solid #000; padding: 5px 6px; font-size: 10px; word-wrap: break-word; overflow-wrap: break-word; word-break: break-word; box-sizing: border-box;"><strong>${esc(i.nama_barang || "-")}</strong></td>
+     <td style="border: 1px solid #000; padding: 5px 6px; font-size: 10px; word-wrap: break-word; overflow-wrap: break-word; word-break: break-word; box-sizing: border-box;">${esc(i.kategori || "Aset/ATK")}</td>
+     <td style="border: 1px solid #000; padding: 5px 6px; font-size: 10px; word-wrap: break-word; overflow-wrap: break-word; word-break: break-word; box-sizing: border-box;">${esc(i.assigned_to || "Unassigned")}</td>
+     <td style="border: 1px solid #000; padding: 5px 6px; text-align: center; font-size: 10px; font-weight: bold; box-sizing: border-box;">${i.stok_saat_ini ?? 1}</td>
+     <td style="border: 1px solid #000; padding: 5px 6px; box-sizing: border-box;"></td>
+     <td style="border: 1px solid #000; padding: 5px 6px; box-sizing: border-box;"></td>
     </tr>`).join("");
   }
 
   const html = `
-  <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff;">
-   <div style="page-break-inside:avoid; margin-bottom:15px;">
-    ${isoDocHeaderTable({ judul: "BLANKO PEMERIKSAAN FISIK ASET & INVENTARIS (STOCK OPNAME)", noDok: "GA-OPNAME", terbitRevisi: "1/1", hal: "1 dari 1" })}
+  <style>
+   thead { display: table-header-group !important; }
+   tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+  </style>
+  <div style="width:100%; max-width:100%; margin:0; padding:0; font-family:'Times New Roman', Times, serif; font-size:10.5px; line-height:1.35; color:#000; background:#ffffff; box-sizing:border-box;">
+   <div style="page-break-inside:avoid; margin-bottom:12px;">
+    ${isoDocHeaderTable({ judul: "BLANKO PEMERIKSAAN FISIK ASET & INVENTARIS (STOCK OPNAME)", noDok: "GA-OPNAME", terbitRevisi: "1/1", tglTerbit: "1 September 2025", hal: "1 dari 1" })}
    </div>
-   <table style="width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #000;">
+   <table style="width: 100%; border-collapse: collapse; margin-top: 10px; border: 1.5px solid #000; table-layout: fixed; box-sizing: border-box;">
+    <colgroup>
+     <col style="width: 13%;" />
+     <col style="width: 31%;" />
+     <col style="width: 14%;" />
+     <col style="width: 16%;" />
+     <col style="width: 8%;" />
+     <col style="width: 8%;" />
+     <col style="width: 10%;" />
+    </colgroup>
     <thead>
-     <tr style="background: #f1f5f9;">
-      <th style="border: 1px solid #000; padding: 6px; text-align: left;">ID Aset</th>
-      <th style="border: 1px solid #000; padding: 6px; text-align: left;">Nama Barang / Aset</th>
-      <th style="border: 1px solid #000; padding: 6px; text-align: left;">Kategori</th>
-      <th style="border: 1px solid #000; padding: 6px; text-align: left;">Penanggung Jawab</th>
-      <th style="border: 1px solid #000; padding: 6px; width: 10%; text-align: center;">Qty Sistem</th>
-      <th style="border: 1px solid #000; padding: 6px; width: 15%; text-align: center;">Cek Fisik</th>
-      <th style="border: 1px solid #000; padding: 6px; width: 20%; text-align: left;">Catatan Kondisi</th>
+     <tr style="background: #f1f5f9; page-break-inside: avoid;">
+      <th style="border: 1px solid #000; padding: 6px 4px; text-align: center; font-weight: bold; font-size: 10px; vertical-align: middle;">ID Aset</th>
+      <th style="border: 1px solid #000; padding: 6px 4px; text-align: left; font-weight: bold; font-size: 10px; vertical-align: middle;">Nama Barang / Aset</th>
+      <th style="border: 1px solid #000; padding: 6px 4px; text-align: left; font-weight: bold; font-size: 10px; vertical-align: middle;">Kategori</th>
+      <th style="border: 1px solid #000; padding: 6px 4px; text-align: left; font-weight: bold; font-size: 10px; vertical-align: middle;">Penanggung Jawab</th>
+      <th style="border: 1px solid #000; padding: 6px 2px; text-align: center; font-weight: bold; font-size: 9.5px; vertical-align: middle;">Qty Sistem</th>
+      <th style="border: 1px solid #000; padding: 6px 2px; text-align: center; font-weight: bold; font-size: 9.5px; vertical-align: middle;">Cek Fisik</th>
+      <th style="border: 1px solid #000; padding: 6px 4px; text-align: left; font-weight: bold; font-size: 9.5px; vertical-align: middle;">Catatan Kondisi</th>
      </tr>
     </thead>
     <tbody>${tableRows}</tbody>
    </table>
    <table style="width:100%; text-align:center; margin-top:35px; page-break-inside:avoid; font-size:11px;">
     <tr><td width="50%">Petugas Pemeriksa,</td><td width="50%">Mengetahui HRD / GA,</td></tr>
-    <tr><td height="60"></td><td></td></tr>
+    <tr><td height="55"></td><td></td></tr>
     <tr><td>( ................................... )</td><td>( ................................... )</td></tr>
    </table>
   </div>`;
@@ -983,77 +996,127 @@ async function printBlankoOpname() {
 
 async function printTandaTerimaBarang(row) {
  const { downloadHtmlAsPdf, toast, fsGetAll: fsGetAllUtil, escapeHtml: esc, fmtDateShort: fmtDS } = await import("../utils.js");
- toast("Sedang memproses PDF Berita Acara...", "info");
-
- // PENTING: gabungkan SEMUA item yang diserahkan ke karyawan yang sama
- // pada TANGGAL yang sama (jenis transaksi yang sama) jadi SATU dokumen
- // berita acara berisi tabel banyak barang -- bukan 1 dokumen terpisah
- // per baris log, supaya HRD tidak perlu cetak berkali-kali untuk satu
- // kali serah terima yang sebenarnya mencakup banyak barang sekaligus.
- let allLogs = [];
+ 
  try {
- allLogs = await fsGetAllUtil(COL.LOG_INVENTORY_PENGAMBILAN) || [];
- } catch (e) {
- allLogs = [row];
+  let allLogs = [];
+  try {
+   allLogs = await fsGetAllUtil(COL.LOG_INVENTORY_PENGAMBILAN) || [];
+  } catch (e) {
+   allLogs = [row];
+  }
+  const sameBatch = allLogs.filter(r =>
+   String(r.nama_karyawan || "").trim().toLowerCase() === String(row.nama_karyawan || "").trim().toLowerCase() &&
+   String(r.tanggal || "") === String(row.tanggal || "") &&
+   String(r.jenis_aksi || "") === String(row.jenis_aksi || "")
+  );
+  const items = sameBatch.length > 0 ? sameBatch : [row];
+
+  const itemsTableRows = items.map((it, idx) => `
+   <tr>
+    <td style="border: 1px solid #000; padding: 5px 4px; text-align:center; font-size:10px; box-sizing:border-box;">${idx + 1}</td>
+    <td style="border: 1px solid #000; padding: 5px 6px; font-family: monospace, sans-serif; font-size: 10px; font-weight: bold; word-wrap: break-word; overflow-wrap: break-word; word-break: break-word; box-sizing: border-box;">${esc(it.id_barang || it.id || "-")}</td>
+    <td style="border: 1px solid #000; padding: 5px 6px; font-size: 10px; word-wrap: break-word; overflow-wrap: break-word; word-break: break-word; box-sizing: border-box;"><strong>${esc(it.nama_barang || "-")}</strong></td>
+    <td style="border: 1px solid #000; padding: 5px 6px; font-size: 10px; word-wrap: break-word; overflow-wrap: break-word; word-break: break-word; box-sizing: border-box;">${esc(it.kategori || "Aset")}</td>
+    <td style="border: 1px solid #000; padding: 5px 4px; text-align:center; font-size: 10px; font-weight: bold; box-sizing: border-box;">${esc(String(it.jumlah_ambil ?? 1))}</td>
+    <td style="border: 1px solid #000; padding: 5px 6px; font-size: 10px; word-wrap: break-word; overflow-wrap: break-word; word-break: break-word; box-sizing: border-box;">${esc(it.keperluan || it.catatan || "-")}</td>
+   </tr>`).join("");
+
+  const html = `
+  <div style="width:100%; max-width:100%; margin:0; padding:0; font-family:'Times New Roman', Times, serif; font-size:10.5px; line-height:1.35; color:#000; background:#ffffff; box-sizing:border-box;">
+   <div style="page-break-inside:avoid; margin-bottom:12px;">
+    ${isoDocHeaderTable({ judul: "BERITA ACARA PENYERAHAN / PEMINJAMAN ASET PERUSAHAAN", noDok: "GA-BA-AST-01", terbitRevisi: "1/1", tglTerbit: "1 September 2025", hal: "1 dari 1" })}
+   </div>
+   <p style="text-align:justify; margin-bottom:10px; font-size:10.5px; line-height:1.4;">
+    Pada hari ini, <b>${fmtDS(row.tanggal)}</b>, telah dilakukan penyerahan / peminjaman hak guna aset dan fasilitas perusahaan dari General Affair (GA) / HRD CV Andela Jaya kepada Karyawan penerima tanggung jawab dengan rincian sebagai berikut:
+   </p>
+   <table style="width: 100%; border-collapse: collapse; margin-top: 5px; border: 1.5px solid #000; table-layout: fixed; box-sizing: border-box;">
+    <colgroup>
+     <col style="width: 35%;" />
+     <col style="width: 65%;" />
+    </colgroup>
+    <tr>
+     <td style="border: 1px solid #000; padding: 6px 10px; font-weight:bold; background:#f8fafc; font-size:10.5px; box-sizing:border-box;">Tanggal Serah Terima</td>
+     <td style="border: 1px solid #000; padding: 6px 10px; font-size:10.5px; box-sizing:border-box;">${fmtDS(row.tanggal)}</td>
+    </tr>
+    <tr>
+     <td style="border: 1px solid #000; padding: 6px 10px; font-weight:bold; background:#f8fafc; font-size:10.5px; box-sizing:border-box;">Penanggung Jawab / Penerima</td>
+     <td style="border: 1px solid #000; padding: 6px 10px; font-size:10.5px; box-sizing:border-box;"><strong>${esc(row.nama_karyawan || "-")}</strong></td>
+    </tr>
+   </table>
+   <table style="width: 100%; border-collapse: collapse; margin-top: 12px; border: 1.5px solid #000; table-layout: fixed; box-sizing: border-box;">
+    <colgroup>
+     <col style="width: 6%;" />
+     <col style="width: 18%;" />
+     <col style="width: 36%;" />
+     <col style="width: 14%;" />
+     <col style="width: 8%;" />
+     <col style="width: 18%;" />
+    </colgroup>
+    <thead>
+     <tr style="background: #f1f5f9; page-break-inside: avoid;">
+      <th style="border: 1px solid #000; padding: 6px 4px; text-align:center; font-weight:bold; font-size:10px; vertical-align:middle;">No</th>
+      <th style="border: 1px solid #000; padding: 6px 4px; text-align:left; font-weight:bold; font-size:10px; vertical-align:middle;">Kode / ID</th>
+      <th style="border: 1px solid #000; padding: 6px 4px; text-align:left; font-weight:bold; font-size:10px; vertical-align:middle;">Nama Aset / Inventaris</th>
+      <th style="border: 1px solid #000; padding: 6px 4px; text-align:left; font-weight:bold; font-size:10px; vertical-align:middle;">Kategori</th>
+      <th style="border: 1px solid #000; padding: 6px 2px; text-align:center; font-weight:bold; font-size:10px; vertical-align:middle;">Qty</th>
+      <th style="border: 1px solid #000; padding: 6px 4px; text-align:left; font-weight:bold; font-size:10px; vertical-align:middle;">Catatan / Kelengkapan</th>
+     </tr>
+    </thead>
+    <tbody>${itemsTableRows}</tbody>
+   </table>
+   <div style="margin-top: 12px; font-size: 10px; line-height: 1.5; page-break-inside: avoid; border: 1px solid #000; padding: 8px 10px; background: #fafafa;">
+    <strong>Ketentuan Tanggung Jawab Aset:</strong><br/>
+    1. Penerima berkewajiban menjaga, merawat, dan menggunakan seluruh unit fisik di atas hanya untuk mendukung operasional kerja perusahaan.<br/>
+    2. Dalam hal terdapat kerusakan akibat kelalaian atau kehilangan, Penerima berkewajiban melaporkan segera kepada unit GA/HRD.<br/>
+    3. Saat pemutusan hubungan kerja (Resign / Offboarding / Rotasi), seluruh barang/aset dalam Berita Acara ini <u>WAJIB dikembalikan</u> secara utuh dalam kondisi baik.
+   </div>
+   <table style="width:100%; text-align:center; margin-top:28px; page-break-inside:avoid; font-size:11px;">
+    <tr><td width="50%">Yang Menyerahkan (GA / HRD),</td><td width="50%">Yang Menerima Tanggung Jawab,</td></tr>
+    <tr><td height="55"></td><td></td></tr>
+    <tr><td>( ................................... )</td><td>( <strong>${esc(row.nama_karyawan || "")}</strong> )</td></tr>
+   </table>
+  </div>`;
+
+  openModal({
+   title: "Pratinjau Dokumen - Berita Acara Penyerahan Aset",
+   size: "lg",
+   bodyHtml: `
+    <div class="space-y-3 text-xs">
+     <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 leading-relaxed flex items-center justify-between">
+      <div>
+       <b>Pratinjau Dokumen Berita Acara Penyerahan Aset</b><br/>
+       Dokumen mencakup <b>${items.length} item</b> penyerahan untuk <b>${esc(row.nama_karyawan || "-")}</b>.
+      </div>
+     </div>
+     <div class="bg-slate-100 p-4 rounded-2xl border border-slate-200 overflow-y-auto max-h-[500px]">
+      <div class="bg-white p-6 shadow-sm rounded-lg mx-auto border border-slate-200" style="max-width: 760px;">
+       ${html}
+      </div>
+     </div>
+    </div>`,
+   footerHtml: `
+    <div class="flex items-center justify-between w-full">
+     <button id="btn-modal-close-ba" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl">Tutup</button>
+     <button id="btn-modal-download-ba-pdf" class="px-5 py-2.5 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-xl transition shadow flex items-center gap-1.5">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+      Cetak / Unduh PDF Dokumen
+     </button>
+    </div>`,
+   onMount: (m) => {
+    m.querySelector("#btn-modal-close-ba").onclick = closeModal;
+    m.querySelector("#btn-modal-download-ba-pdf").onclick = async () => {
+     toast("Sedang memproses dan mengunduh PDF...", "info");
+     await downloadHtmlAsPdf(html, `Berita_Acara_Penyerahan_${esc(row.nama_karyawan || "").replace(/\s+/g, "_")}_${esc(row.tanggal || "")}.pdf`);
+     toast(items.length > 1
+      ? `Berita Acara berhasil diunduh, mencakup ${items.length} barang dalam 1 dokumen!`
+      : "Berita Acara Penyerahan Aset (PDF) berhasil diunduh!", "success");
+    };
+   }
+  });
+ } catch (err) {
+  console.error("Gagal membuat pratinjau berita acara:", err);
+  toast("Gagal memuat dokumen: " + err.message, "error");
  }
- const sameBatch = allLogs.filter(r =>
- String(r.nama_karyawan || "").trim().toLowerCase() === String(row.nama_karyawan || "").trim().toLowerCase() &&
- String(r.tanggal || "") === String(row.tanggal || "") &&
- String(r.jenis_aksi || "") === String(row.jenis_aksi || "")
- );
- const items = sameBatch.length > 0 ? sameBatch : [row];
-
- const itemsTableRows = items.map((it, idx) => `
- <tr>
- <td style="border: 1px solid #000; padding: 6px; text-align:center;">${idx + 1}</td>
- <td style="border: 1px solid #000; padding: 6px;">${esc(it.id_barang || it.id || "-")}</td>
- <td style="border: 1px solid #000; padding: 6px;"><strong>${esc(it.nama_barang || "-")}</strong></td>
- <td style="border: 1px solid #000; padding: 6px;">${esc(it.kategori || "Aset")}</td>
- <td style="border: 1px solid #000; padding: 6px; text-align:center;">${esc(String(it.jumlah_ambil ?? 1))}</td>
- <td style="border: 1px solid #000; padding: 6px;">${esc(it.keperluan || "-")}</td>
- </tr>`).join("");
-
- const html = `
- <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff;">
- <div style="page-break-inside:avoid; margin-bottom:15px;">
- ${isoDocHeaderTable({ judul: "BERITA ACARA PENYERAHAN / PEMINJAMAN ASET PERUSAHAAN", noDok: "GA-BA-AST-01", terbitRevisi: "1/1", hal: "1 dari 1" })}
- </div>
- <p style="text-align:justify; margin-bottom:12px;">
- Pada hari ini, <b>${fmtDS(row.tanggal)}</b>, telah dilakukan penyerahan / peminjaman hak guna aset dan fasilitas perusahaan dari General Affair (GA) / HRD CV Andela Jaya kepada Karyawan penerima tanggung jawab dengan rincian sebagai berikut:
- </p>
- <table style="width: 100%; border-collapse: collapse; margin-top: 5px; border: 1px solid #000;">
- <tr><td width="35%" style="border: 1px solid #000; padding: 6px 10px; font-weight:bold; background:#f8fafc;">Tanggal Serah Terima</td><td style="border: 1px solid #000; padding: 6px 10px;">${fmtDS(row.tanggal)}</td></tr>
- <tr><td style="border: 1px solid #000; padding: 6px 10px; font-weight:bold; background:#f8fafc;">Penanggung Jawab / Penerima</td><td style="border: 1px solid #000; padding: 6px 10px;"><strong>${esc(row.nama_karyawan || "-")}</strong></td></tr>
- </table>
- <table style="width: 100%; border-collapse: collapse; margin-top: 12px; border: 1px solid #000;">
- <thead>
- <tr style="background: #f1f5f9;">
- <th style="border: 1px solid #000; padding: 6px; width:6%;">No</th>
- <th style="border: 1px solid #000; padding: 6px; text-align:left;">Kode / ID</th>
- <th style="border: 1px solid #000; padding: 6px; text-align:left;">Nama Aset / Inventaris</th>
- <th style="border: 1px solid #000; padding: 6px; text-align:left;">Kategori</th>
- <th style="border: 1px solid #000; padding: 6px; width:8%;">Qty</th>
- <th style="border: 1px solid #000; padding: 6px; text-align:left;">Catatan / Kelengkapan</th>
- </tr>
- </thead>
- <tbody>${itemsTableRows}</tbody>
- </table>
- <div style="margin-top: 15px; font-size: 10px; line-height: 1.5; page-break-inside: avoid; border: 1px solid #cbd5e1; padding: 8px; background: #fafafa;">
- <strong>Ketentuan Tanggung Jawab Aset:</strong><br/>
- 1. Penerima berkewajiban menjaga, merawat, dan menggunakan seluruh unit fisik di atas hanya untuk mendukung operasional kerja perusahaan.<br/>
- 2. Dalam hal terdapat kerusakan akibat kelalaian atau kehilangan, Penerima berkewajiban melaporkan segera kepada unit GA/HRD.<br/>
- 3. Saat pemutusan hubungan kerja (Resign / Offboarding / Rotasi), seluruh barang/aset dalam Berita Acara ini <u>WAJIB dikembalikan</u> secara utuh dalam kondisi baik.
- </div>
- <table style="width:100%; text-align:center; margin-top:30px; page-break-inside:avoid; font-size:11px;">
- <tr><td width="50%">Yang Menyerahkan (GA / HRD),</td><td width="50%">Yang Menerima Tanggung Jawab,</td></tr>
- <tr><td height="55"></td><td></td></tr>
- <tr><td>( ................................... )</td><td>( <strong>${esc(row.nama_karyawan || "")}</strong> )</td></tr>
- </table>
- </div>`;
- await downloadHtmlAsPdf(html, `Berita_Acara_Penyerahan_${esc(row.nama_karyawan || "").replace(/\s+/g, "_")}_${esc(row.tanggal || "")}.pdf`);
- toast(items.length > 1
- ? `Berita Acara berhasil diunduh, mencakup ${items.length} barang dalam 1 dokumen!`
- : "Berita Acara Penyerahan Aset (PDF) berhasil diunduh!", "success");
 }
 
 // =====================================================================

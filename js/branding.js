@@ -80,10 +80,10 @@ export function isoDocHeaderTable(opts = {}) {
  <td colspan="4" style="border:1px solid #000;background:#d7ecf3 !important;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;font-size:11px;font-weight:bold;text-align:center;padding:4px;vertical-align:middle;">${COMPANY_NAME}</td>
  </tr>
  <tr>
- <td style="border:1px solid #000;font-size:9px;text-align:left;padding:3px 4px;vertical-align:middle;white-space:nowrap;">Hal: ${hal}</td>
- <td style="border:1px solid #000;font-size:9px;text-align:left;padding:3px 4px;vertical-align:middle;white-space:nowrap;">No Dok: ${noDok}</td>
- <td style="border:1px solid #000;font-size:9px;text-align:left;padding:3px 4px;vertical-align:middle;white-space:nowrap;">Terbit/Rev: ${terbitRevisi}</td>
- <td style="border:1px solid #000;font-size:9px;text-align:left;padding:3px 4px;vertical-align:middle;white-space:nowrap;">Tgl: ${tglTerbit}</td>
+ <td style="border:1px solid #000;font-size:8.5px;text-align:left;padding:3px 3px;vertical-align:middle;box-sizing:border-box;">Hal: ${hal}</td>
+ <td style="border:1px solid #000;font-size:8.5px;text-align:left;padding:3px 3px;vertical-align:middle;box-sizing:border-box;">No Dok: ${noDok}</td>
+ <td style="border:1px solid #000;font-size:8.5px;text-align:left;padding:3px 3px;vertical-align:middle;box-sizing:border-box;">Terbit/Rev: ${terbitRevisi}</td>
+ <td style="border:1px solid #000;font-size:8.5px;text-align:left;padding:3px 3px;vertical-align:middle;box-sizing:border-box;">Tgl: ${tglTerbit}</td>
  </tr>
  </table>
  `;
