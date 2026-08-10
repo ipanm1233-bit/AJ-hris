@@ -972,39 +972,78 @@ async function printBlankoOpname() {
 }
 
 async function printTandaTerimaBarang(row) {
- const { downloadHtmlAsPdf, toast } = await import("../utils.js");
+ const { downloadHtmlAsPdf, toast, fsGetAll: fsGetAllUtil, escapeHtml: esc, fmtDateShort: fmtDS } = await import("../utils.js");
  toast("Sedang memproses PDF Berita Acara...", "info");
+
+ // PENTING: gabungkan SEMUA item yang diserahkan ke karyawan yang sama
+ // pada TANGGAL yang sama (jenis transaksi yang sama) jadi SATU dokumen
+ // berita acara berisi tabel banyak barang -- bukan 1 dokumen terpisah
+ // per baris log, supaya HRD tidak perlu cetak berkali-kali untuk satu
+ // kali serah terima yang sebenarnya mencakup banyak barang sekaligus.
+ let allLogs = [];
+ try {
+ allLogs = await fsGetAllUtil(COL.LOG_INVENTORY_PENGAMBILAN) || [];
+ } catch (e) {
+ allLogs = [row];
+ }
+ const sameBatch = allLogs.filter(r =>
+ String(r.nama_karyawan || "").trim().toLowerCase() === String(row.nama_karyawan || "").trim().toLowerCase() &&
+ String(r.tanggal || "") === String(row.tanggal || "") &&
+ String(r.jenis_aksi || "") === String(row.jenis_aksi || "")
+ );
+ const items = sameBatch.length > 0 ? sameBatch : [row];
+
+ const itemsTableRows = items.map((it, idx) => `
+ <tr>
+ <td style="border: 1px solid #000; padding: 6px; text-align:center;">${idx + 1}</td>
+ <td style="border: 1px solid #000; padding: 6px;">${esc(it.id_barang || it.id || "-")}</td>
+ <td style="border: 1px solid #000; padding: 6px;"><strong>${esc(it.nama_barang || "-")}</strong></td>
+ <td style="border: 1px solid #000; padding: 6px;">${esc(it.kategori || "Aset")}</td>
+ <td style="border: 1px solid #000; padding: 6px; text-align:center;">${esc(String(it.jumlah_ambil ?? 1))}</td>
+ <td style="border: 1px solid #000; padding: 6px;">${esc(it.keperluan || "-")}</td>
+ </tr>`).join("");
+
  const html = `
  <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff;">
  <div style="page-break-inside:avoid; margin-bottom:15px;">
  ${isoDocHeaderTable({ judul: "BERITA ACARA PENYERAHAN / PEMINJAMAN ASET PERUSAHAAN", noDok: "GA-BA-AST-01", terbitRevisi: "1/1", hal: "1 dari 1" })}
  </div>
  <p style="text-align:justify; margin-bottom:12px;">
- Pada hari ini, <b>${fmtDateShort(row.tanggal)}</b>, telah dilakukan penyerahan / peminjaman hak guna aset dan fasilitas perusahaan dari General Affair (GA) / HRD CV Andela Jaya kepada Karyawan penerima tanggung jawab dengan rincian sebagai berikut:
+ Pada hari ini, <b>${fmtDS(row.tanggal)}</b>, telah dilakukan penyerahan / peminjaman hak guna aset dan fasilitas perusahaan dari General Affair (GA) / HRD CV Andela Jaya kepada Karyawan penerima tanggung jawab dengan rincian sebagai berikut:
  </p>
  <table style="width: 100%; border-collapse: collapse; margin-top: 5px; border: 1px solid #000;">
- <tr><td width="35%" style="border: 1px solid #000; padding: 6px 10px; font-weight:bold; background:#f8fafc;">Tanggal Serah Terima</td><td style="border: 1px solid #000; padding: 6px 10px;">${fmtDateShort(row.tanggal)}</td></tr>
- <tr><td style="border: 1px solid #000; padding: 6px 10px; font-weight:bold; background:#f8fafc;">Kode / ID Barang Aset</td><td style="border: 1px solid #000; padding: 6px 10px;">${escapeHtml(row.id_barang || row.id || "-")}</td></tr>
- <tr><td style="border: 1px solid #000; padding: 6px 10px; font-weight:bold; background:#f8fafc;">Nama Aset / Inventaris</td><td style="border: 1px solid #000; padding: 6px 10px;"><strong>${escapeHtml(row.nama_barang || "-")}</strong></td></tr>
- <tr><td style="border: 1px solid #000; padding: 6px 10px; font-weight:bold; background:#f8fafc;">Kategori Barang</td><td style="border: 1px solid #000; padding: 6px 10px;">${escapeHtml(row.kategori || "Aset")}</td></tr>
- <tr><td style="border: 1px solid #000; padding: 6px 10px; font-weight:bold; background:#f8fafc;">Jumlah Unit / Qty</td><td style="border: 1px solid #000; padding: 6px 10px;">${escapeHtml(String(row.jumlah_ambil ?? 1))} Unit</td></tr>
- <tr><td style="border: 1px solid #000; padding: 6px 10px; font-weight:bold; background:#f8fafc;">Penanggung Jawab / Penerima</td><td style="border: 1px solid #000; padding: 6px 10px;"><strong>${escapeHtml(row.nama_karyawan || "-")}</strong></td></tr>
- <tr><td style="border: 1px solid #000; padding: 6px 10px; font-weight:bold; background:#f8fafc;">Catatan Kelengkapan / Kunci / Seri</td><td style="border: 1px solid #000; padding: 6px 10px;">${escapeHtml(row.keperluan || "-")}</td></tr>
+ <tr><td width="35%" style="border: 1px solid #000; padding: 6px 10px; font-weight:bold; background:#f8fafc;">Tanggal Serah Terima</td><td style="border: 1px solid #000; padding: 6px 10px;">${fmtDS(row.tanggal)}</td></tr>
+ <tr><td style="border: 1px solid #000; padding: 6px 10px; font-weight:bold; background:#f8fafc;">Penanggung Jawab / Penerima</td><td style="border: 1px solid #000; padding: 6px 10px;"><strong>${esc(row.nama_karyawan || "-")}</strong></td></tr>
  </table>
- <div style="margin-top: 15px; font-size: 10px; line-height: 1.5; page-break-inside: avoid; border: 1px border-slate-300; padding: 8px; background: #fafafa;">
+ <table style="width: 100%; border-collapse: collapse; margin-top: 12px; border: 1px solid #000;">
+ <thead>
+ <tr style="background: #f1f5f9;">
+ <th style="border: 1px solid #000; padding: 6px; width:6%;">No</th>
+ <th style="border: 1px solid #000; padding: 6px; text-align:left;">Kode / ID</th>
+ <th style="border: 1px solid #000; padding: 6px; text-align:left;">Nama Aset / Inventaris</th>
+ <th style="border: 1px solid #000; padding: 6px; text-align:left;">Kategori</th>
+ <th style="border: 1px solid #000; padding: 6px; width:8%;">Qty</th>
+ <th style="border: 1px solid #000; padding: 6px; text-align:left;">Catatan / Kelengkapan</th>
+ </tr>
+ </thead>
+ <tbody>${itemsTableRows}</tbody>
+ </table>
+ <div style="margin-top: 15px; font-size: 10px; line-height: 1.5; page-break-inside: avoid; border: 1px solid #cbd5e1; padding: 8px; background: #fafafa;">
  <strong>Ketentuan Tanggung Jawab Aset:</strong><br/>
- 1. Penerima berkewajiban menjaga, merawat, dan menggunakan unit fisik tersebut hanya untuk mendukung operasional kerja perusahaan.<br/>
+ 1. Penerima berkewajiban menjaga, merawat, dan menggunakan seluruh unit fisik di atas hanya untuk mendukung operasional kerja perusahaan.<br/>
  2. Dalam hal terdapat kerusakan akibat kelalaian atau kehilangan, Penerima berkewajiban melaporkan segera kepada unit GA/HRD.<br/>
  3. Saat pemutusan hubungan kerja (Resign / Offboarding / Rotasi), seluruh barang/aset dalam Berita Acara ini <u>WAJIB dikembalikan</u> secara utuh dalam kondisi baik.
  </div>
  <table style="width:100%; text-align:center; margin-top:30px; page-break-inside:avoid; font-size:11px;">
  <tr><td width="50%">Yang Menyerahkan (GA / HRD),</td><td width="50%">Yang Menerima Tanggung Jawab,</td></tr>
  <tr><td height="55"></td><td></td></tr>
- <tr><td>( ................................... )</td><td>( <strong>${escapeHtml(row.nama_karyawan || "")}</strong> )</td></tr>
+ <tr><td>( ................................... )</td><td>( <strong>${esc(row.nama_karyawan || "")}</strong> )</td></tr>
  </table>
  </div>`;
- await downloadHtmlAsPdf(html, `Berita_Acara_Penyerahan_Aset_${escapeHtml(row.nama_barang || "").replace(/\s+/g, "_")}.pdf`);
- toast("Berita Acara Penyerahan Aset (PDF) berhasil diunduh!", "success");
+ await downloadHtmlAsPdf(html, `Berita_Acara_Penyerahan_${esc(row.nama_karyawan || "").replace(/\s+/g, "_")}_${esc(row.tanggal || "")}.pdf`);
+ toast(items.length > 1
+ ? `Berita Acara berhasil diunduh, mencakup ${items.length} barang dalam 1 dokumen!`
+ : "Berita Acara Penyerahan Aset (PDF) berhasil diunduh!", "success");
 }
 
 // =====================================================================
@@ -1806,4 +1845,3 @@ export async function mount(container, options = {}) {
 
  return { unmount() {} };
 }
-
