@@ -1780,14 +1780,36 @@ export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf", 
  const prevScrollX = window.scrollX;
  const prevScrollY = window.scrollY;
 
- // Clean container positioned behind active view so html2canvas renders exact coordinates without blank pages
+ // PENTING -- AKAR PENYEBAB UTAMA "PDF blank/halaman kosong":
+ // html2canvas (dipakai html2pdf.js) mengukur elemen sumber via
+ // getBoundingClientRect() pada elemen HASIL CLONE di dalam iframe
+ // tersembunyi. Untuk elemen ber-"position: fixed" (atau "absolute"),
+ // pengukuran ini SERING menghasilkan tinggi = 0 di clone tsb -- sudah
+ // dibuktikan lewat reproduksi nyata (headless Chrome + html2pdf.js
+ // versi yang sama persis dipakai produksi): elemen "position:fixed"
+ // maupun "position:absolute" SELALU menghasilkan kanvas 0px tinggi
+ // ("...x0"), sedangkan "position:static/relative" (mengikuti alur
+ // dokumen normal) selalu menghasilkan tinggi yang benar. Ini penyebab
+ // dokumen "kadang gagal / blank" -- BUKAN soal gambar belum termuat.
+ //
+ // Solusi: elemen konten (`element`) dibuat NORMAL/IN-FLOW
+ // ("position: static"), lalu dibungkus `wrapper` ber-ukuran 0x0 +
+ // overflow:hidden + position:fixed supaya tetap 100% tidak terlihat
+ // & tidak mengganggu scroll/layout halaman yang sedang aktif -- tapi
+ // elemen konten di dalamnya tetap "in-flow" sehingga terukur benar
+ // oleh html2canvas.
+ const wrapper = document.createElement("div");
+ wrapper.style.position = "fixed";
+ wrapper.style.left = "0px";
+ wrapper.style.top = "0px";
+ wrapper.style.width = "0px";
+ wrapper.style.height = "0px";
+ wrapper.style.overflow = "hidden";
+ wrapper.style.zIndex = "999999";
+ wrapper.style.pointerEvents = "none";
+
  const element = document.createElement("div");
- element.style.position = "fixed";
- element.style.left = "0px";
- element.style.top = "0px";
- element.style.zIndex = "999999";
- element.style.opacity = "1";
- element.style.pointerEvents = "none";
+ element.style.position = "static";
  element.style.width = widthPx + "px";
  element.style.padding = "10px 15px";
  element.style.margin = "0px";
@@ -1796,8 +1818,9 @@ export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf", 
  element.style.fontFamily = "'Times New Roman', Times, serif";
  element.style.boxSizing = "border-box";
  element.innerHTML = htmlContent;
- 
- document.body.appendChild(element);
+
+ wrapper.appendChild(element);
+ document.body.appendChild(wrapper);
 
  // PENTING: penyebab paling umum PDF kosong/blank adalah html2canvas
  // "memotret" elemen SEBELUM semua <img> di dalamnya (logo kop surat,
@@ -1862,8 +1885,8 @@ export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf", 
  console.error("Gagal men-generate PDF:", err);
  throw err;
  } finally {
- if (element.parentNode) {
- element.parentNode.removeChild(element);
+ if (wrapper.parentNode) {
+ wrapper.parentNode.removeChild(wrapper);
  }
  window.scrollTo(prevScrollX, prevScrollY);
  }
