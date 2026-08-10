@@ -632,12 +632,15 @@ async function openQuickAssignModal(container, activeEmpNames) {
  };
  await fsAdd(COL.LOG_INVENTORY_PENGAMBILAN, logData);
 
- // 3. Notify Employee
+ // 3. Notify Employee (email di-skip khusus kategori ATK, sama
+ // seperti aturan pada input multi-baris ATK/Barang)
+ const isAtkAsset = String(targetAsset.kategori || "").toLowerCase().includes("atk");
  await notifyUser(
  empName,
  "Penyerahan Aset Tanggung Jawab",
  `Anda telah diserahkan aset/inventaris: ${targetAsset.nama_barang} (${targetAsset.id_item || ''}). Buka dashboard untuk melihat detailnya.`,
- "#inventory"
+ "#inventory",
+ { sendEmail: !isAtkAsset }
  );
 
  toast(`Berhasil menyerahkan aset ${targetAsset.nama_barang} kepada ${empName}! Terbit Berita Acara Penyerahan.`, "success");
@@ -845,12 +848,19 @@ async function openMultiAssignModal(container, activeEmpNames) {
  await fsUpdate(COL.MASTER_INVENTORY, itemDocId, updates);
  }
 
- // 3. Notify Recipient (App + Push + Email)
+ // 3. Notify Recipient (App lonceng + Push selalu jalan; Email
+ // KHUSUS di-skip untuk kategori "ATK & Office Supplies" sesuai
+ // permintaan HRD -- ATK dianggap barang habis pakai kecil yang
+ // tidak perlu email formal, sedangkan Aset/Inventaris/Seragam
+ // tetap dikirimi email seperti biasa).
+ const kategoriRow = (item ? (item.kategori || "") : "ATK").toLowerCase();
+ const isATK = kategoriRow.includes("atk");
  await notifyUser(
  empName,
  "Penyerahan / Pengambilan ATK",
  `Anda tercatat menerima/mengambil ${qtyVal} unit ${item ? item.nama_barang : 'ATK'} pada tanggal ${fmtDateShort(dateVal)}.`,
- "#inventory"
+ "#inventory",
+ { sendEmail: !isATK }
  );
  }
 
@@ -1674,12 +1684,14 @@ export async function mount(container, options = {}) {
  await fsUpdate(COL.MASTER_INVENTORY, targetMaster.id, updates);
  }
 
- // 3. Notify Employee
+ // 3. Notify Employee (email di-skip khusus kategori ATK)
+ const isAtkReturn = String(row.kategori || "").toLowerCase().includes("atk");
  await notifyUser(
  row.nama_karyawan,
  "Pengembalian Aset Berhasil",
  `Pengembalian aset ${row.nama_barang} tanggal ${fmtDateShort(retDate)} telah diverifikasi dan dicatat oleh HRD/GA.`,
- "#inventory"
+ "#inventory",
+ { sendEmail: !isAtkReturn }
  );
 
  toast(`Status aset ${row.nama_barang} berhasil diubah menjadi DIKEMBALIKAN!`, "success");
