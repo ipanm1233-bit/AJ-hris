@@ -542,7 +542,9 @@ function openQrCodeModal(row) {
 // FUNGSI MODAL PENYERAHAN ASET CEPAT
 async function openQuickAssignModal(container, activeEmpNames) {
  const items = await fsGetAll(COL.MASTER_INVENTORY);
- const unassignedItems = items.filter(i => !i.assigned_to || i.assigned_to === "Unassigned" || i.assigned_to === "-");
+ const unassignedItems = items
+ .filter(i => !i.assigned_to || i.assigned_to === "Unassigned" || i.assigned_to === "-")
+ .sort((a, b) => (a.nama_barang || "").toLowerCase().localeCompare((b.nama_barang || "").toLowerCase(), 'id'));
 
  openModal({
  title: "Penyerahan & Serah Terima Aset Ke Karyawan",
@@ -555,10 +557,10 @@ async function openQuickAssignModal(container, activeEmpNames) {
  </div>
 
  <div>
- <label class="block font-bold text-slate-700 mb-1">Pilih Aset / Inventaris</label>
+ <label class="block font-bold text-slate-700 mb-1">Pilih Aset / Inventaris (Urut Nama)</label>
  <select id="qa-asset" required class="w-full p-2.5 text-xs rounded-xl border border-slate-300 font-medium outline-none focus:border-maroon-500 bg-white">
  <option value="">-- Pilih Barang / Aset Tersedia --</option>
- ${unassignedItems.map(i => `<option value="${escapeHtml(i.id)}">${escapeHtml(i.id_item || i.id)} - ${escapeHtml(i.nama_barang)} (${escapeHtml(i.kategori || "Aset")})</option>`).join("")}
+ ${unassignedItems.map(i => `<option value="${escapeHtml(i.id)}">${escapeHtml(i.nama_barang)} - [${escapeHtml(i.id_item || i.id)}] (${escapeHtml(i.kategori || "Aset")})</option>`).join("")}
  </select>
  </div>
 
@@ -666,8 +668,20 @@ async function openMultiAssignModal(container, activeEmpNames) {
  const items = await fsGetAll(COL.MASTER_INVENTORY);
  if (!items.length) return toast("Belum ada master barang / ATK.", "warning");
 
- const itemOptionsHtml = items
- .map(i => `<option value="${escapeHtml(i.id)}">${escapeHtml(i.id_item || i.id)} - ${escapeHtml(i.nama_barang)} (${escapeHtml(i.kategori || 'ATK')})</option>`)
+ const sortedItems = items.slice().sort((a, b) => {
+   const nameA = (a.nama_barang || "").toLowerCase();
+   const nameB = (b.nama_barang || "").toLowerCase();
+   return nameA.localeCompare(nameB, 'id', { sensitivity: 'base' });
+ });
+
+ const itemOptionsHtml = sortedItems
+ .map(i => {
+   const codeStr = i.id_item || i.id ? ` - [${i.id_item || i.id}]` : "";
+   const catStr = i.kategori ? ` (${i.kategori})` : " (ATK)";
+   const stokStr = typeof i.stok_saat_ini === "number" ? ` | Stok: ${i.stok_saat_ini}` : "";
+   const nameAttr = (i.nama_barang || "").toLowerCase();
+   return `<option value="${escapeHtml(i.id)}" data-nama="${escapeHtml(nameAttr)}">${escapeHtml(i.nama_barang)}${escapeHtml(codeStr)}${escapeHtml(catStr)}${escapeHtml(stokStr)}</option>`;
+ })
  .join("");
 
  const empOptionsHtml = activeEmpNames
@@ -689,9 +703,18 @@ async function openMultiAssignModal(container, activeEmpNames) {
  </button>
  </div>
 
- <div class="flex items-center gap-3">
- <label class="font-bold text-slate-700">Tanggal Penyerahan Batch:</label>
- <input type="date" id="multi-date" value="${new Date().toISOString().substring(0,10)}" class="p-2 border border-slate-300 rounded-xl font-bold text-slate-800 outline-none focus:border-maroon-500">
+ <div class="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
+ <div class="flex items-center gap-2">
+ <label class="font-bold text-slate-700 shrink-0">Tanggal Penyerahan:</label>
+ <input type="date" id="multi-date" value="${new Date().toISOString().substring(0,10)}" class="p-2 border border-slate-300 rounded-xl font-bold text-slate-800 outline-none focus:border-maroon-500 w-full">
+ </div>
+
+ <div class="flex items-center gap-2 bg-slate-50 p-2 border border-slate-200 rounded-xl">
+ <span class="font-bold text-slate-700 shrink-0">🔍 Cari Nama ATK:</span>
+ <input type="text" id="filter-atk-name" placeholder="Ketik nama barang untuk menyaring..." 
+ class="w-full p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-maroon-500 bg-white">
+ <button type="button" id="btn-clear-atk-filter" class="px-2.5 py-1.5 text-xs text-slate-600 font-semibold bg-slate-200 hover:bg-slate-300 rounded-lg shrink-0">Reset</button>
+ </div>
  </div>
 
  <div class="overflow-x-auto border border-slate-200 rounded-xl bg-white">
@@ -699,7 +722,7 @@ async function openMultiAssignModal(container, activeEmpNames) {
  <thead>
  <tr class="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
  <th class="p-2.5 w-8 text-center">#</th>
- <th class="p-2.5 min-w-[220px]">Pilih Barang / ATK</th>
+ <th class="p-2.5 min-w-[240px]">Pilih Barang / ATK (Berdasarkan Nama)</th>
  <th class="p-2.5 min-w-[180px]">Karyawan Penerima</th>
  <th class="p-2.5 w-28">Jenis Transaksi</th>
  <th class="p-2.5 w-20">Qty</th>
@@ -722,6 +745,38 @@ async function openMultiAssignModal(container, activeEmpNames) {
  </div>`,
  onMount: m => {
  const tbody = m.querySelector("#multi-atk-rows");
+ const filterInput = m.querySelector("#filter-atk-name");
+ const btnClearFilter = m.querySelector("#btn-clear-atk-filter");
+
+ function applyFilterToSelect(selectEl) {
+ if (!filterInput) return;
+ const q = filterInput.value.trim().toLowerCase();
+ Array.from(selectEl.options).forEach(opt => {
+ if (!opt.value) return;
+ const nameText = opt.getAttribute("data-nama") || opt.textContent.toLowerCase();
+ if (!q || nameText.includes(q)) {
+ opt.hidden = false;
+ opt.style.display = "";
+ } else {
+ opt.hidden = true;
+ opt.style.display = "none";
+ }
+ });
+ }
+
+ function applyFilterAll() {
+ tbody.querySelectorAll(".m-item").forEach(select => applyFilterToSelect(select));
+ }
+
+ if (filterInput) {
+ filterInput.oninput = applyFilterAll;
+ }
+ if (btnClearFilter) {
+ btnClearFilter.onclick = () => {
+ if (filterInput) filterInput.value = "";
+ applyFilterAll();
+ };
+ }
 
  function addRow() {
  const tr = document.createElement("tr");
@@ -729,8 +784,8 @@ async function openMultiAssignModal(container, activeEmpNames) {
  tr.innerHTML = `
  <td class="p-2.5 text-center font-bold text-slate-400 row-num">1</td>
  <td class="p-2">
- <select class="m-item w-full p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-maroon-500 bg-white" required>
- <option value="">-- Pilih Barang / ATK --</option>
+ <select class="m-item w-full p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-maroon-500 bg-white font-medium" required>
+ <option value="">-- Pilih Barang / ATK (Urut Nama) --</option>
  ${itemOptionsHtml}
  </select>
  </td>
@@ -758,6 +813,9 @@ async function openMultiAssignModal(container, activeEmpNames) {
  </button>
  </td>
  `;
+
+ const selectEl = tr.querySelector(".m-item");
+ applyFilterToSelect(selectEl);
 
  tr.querySelector(".btn-del-row").onclick = () => {
  if (tbody.querySelectorAll(".multi-row-item").length <= 1) {
@@ -1817,7 +1875,7 @@ export async function mount(container, options = {}) {
  },
  formFields: [
  { name: "tanggal", label: "Tanggal", type: "date", required: true },
- { name: "nama_barang_pilihan", label: "Pilih Barang / Aset", type: "select", required: true, options: items.map(i => `${i.id_item || i.id} - ${i.nama_barang}`) },
+ { name: "nama_barang_pilihan", label: "Pilih Barang / Aset (Urut Nama)", type: "select", required: true, options: items.slice().sort((a,b) => (a.nama_barang || "").toLowerCase().localeCompare((b.nama_barang || "").toLowerCase(), 'id')).map(i => `${i.nama_barang} - [${i.id_item || i.id}]`) },
  { name: "nama_karyawan", label: "Penanggung Jawab Karyawan", type: "select", options: activeEmpNames, required: true },
  { name: "jenis_aksi", label: "Jenis Aksi", type: "select", options: ["PENYERAHAN", "PENGEMBALIAN"], default: "PENYERAHAN" },
  { name: "jumlah_ambil", label: "Jumlah Unit", type: "number", required: true, default: 1 },
@@ -1825,7 +1883,7 @@ export async function mount(container, options = {}) {
  ],
  beforeSave: async (data) => {
  const selectedStr = data.nama_barang_pilihan || "";
- const item = items.find(i => `${i.id_item || i.id} - ${i.nama_barang}` === selectedStr || i.nama_barang === selectedStr);
+ const item = items.find(i => `${i.nama_barang} - [${i.id_item || i.id}]` === selectedStr || `${i.id_item || i.id} - ${i.nama_barang}` === selectedStr || i.nama_barang === selectedStr);
  if (!item) throw new Error("Aset tidak ditemukan.");
 
  if (data.jenis_aksi === "PENYERAHAN") {

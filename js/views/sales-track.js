@@ -1,7 +1,7 @@
 import {
   openModal, closeModal, toast, escapeHtml, fsGetAll, fsAdd, fsUpdate, downloadXlsx,
   geocodeAddressSmart, parseGpsCoordinates, calcHaversineDistance, calculateSalesRouteMetrics,
-  normalizeCheckinItem, smartParseDate, confirmDialog, promptDialog, downloadHtmlAsPdf
+  normalizeCheckinItem, smartParseDate, confirmDialog, promptDialog, downloadHtmlAsPdf, isValidOperationalCoordinate
 } from "../utils.js";
 import { COL } from "../firebase-config.js";
 
@@ -273,6 +273,18 @@ export async function mount(container, { session }) {
         allCheckinsList = reRaw.map(c => normalizeCheckinItem(c));
       }
 
+      // Auto-correct invalid or non-operational GPS coordinates (e.g. Bali coordinates) by geocoding address text
+      for (let i = 0; i < allCheckinsList.length; i++) {
+        const item = allCheckinsList[i];
+        const parsed = parseGpsCoordinates(item.koordinat_gps);
+        if (!parsed || !isValidOperationalCoordinate(parsed.lat, parsed.lng)) {
+          const queryAddr = [item.alamat_toko, item.toko_outlet].filter(Boolean).join(", ");
+          const geoRes = await geocodeAddressSmart(queryAddr || "Klampok Wanasari Brebes Tegal", i);
+          item.koordinat_gps = `${geoRes.lat}, ${geoRes.lng}`;
+          fsUpdate("kanal_checkins", item.id, { koordinat_gps: item.koordinat_gps }).catch(() => {});
+        }
+      }
+
       // Populate Salesman Dropdown
       populateSalesmanOptions();
 
@@ -300,15 +312,21 @@ export async function mount(container, { session }) {
     filterSalesmanSelect.value = currentVal;
   }
 
-  function getFilteredCheckins() {
+  function applyAndRenderDashboard() {
     const salesmanFilter = filterSalesmanSelect ? filterSalesmanSelect.value : "ALL";
     const periodFilter = filterPeriodSelect ? filterPeriodSelect.value : "ALL";
     const statusFilter = filterStatusSelect ? filterStatusSelect.value : "ALL";
     const searchFilter = (filterSearchInput ? filterSearchInput.value : "").toLowerCase().trim();
 
-    return allCheckinsList.filter(item => {
+    // Check if active filter
+    const isFiltered = salesmanFilter !== "ALL" || periodFilter !== "ALL" || statusFilter !== "ALL" || searchFilter !== "";
+    if (activeFilterBadge) activeFilterBadge.classList.toggle("hidden", !isFiltered);
+
+    const filteredRecords = allCheckinsList.filter(item => {
+      // Salesman filter
       if (salesmanFilter !== "ALL" && item.sales_nama !== salesmanFilter) return false;
 
+      // Status filter
       if (statusFilter === "EC") {
         if (!(item.status_kunjungan || "").toLowerCase().includes("effective")) return false;
       } else if (statusFilter === "STOK") {
@@ -317,6 +335,7 @@ export async function mount(container, { session }) {
         if (!(item.status_kunjungan || "").toLowerCase().includes("penawaran")) return false;
       }
 
+      // Period filter
       if (periodFilter === "TODAY") {
         if (item.tanggal !== todayStr) return false;
       } else if (periodFilter === "WEEK") {
@@ -329,6 +348,7 @@ export async function mount(container, { session }) {
         if (itemMonth !== currentMonth) return false;
       }
 
+      // Search term
       if (searchFilter) {
         const text = `${item.sales_nama} ${item.toko_outlet} ${item.alamat_toko} ${item.catatan} ${item.status_kunjungan}`.toLowerCase();
         if (!text.includes(searchFilter)) return false;
@@ -336,19 +356,6 @@ export async function mount(container, { session }) {
 
       return true;
     });
-  }
-
-  function applyAndRenderDashboard() {
-    const salesmanFilter = filterSalesmanSelect ? filterSalesmanSelect.value : "ALL";
-    const periodFilter = filterPeriodSelect ? filterPeriodSelect.value : "ALL";
-    const statusFilter = filterStatusSelect ? filterStatusSelect.value : "ALL";
-    const searchFilter = (filterSearchInput ? filterSearchInput.value : "").toLowerCase().trim();
-
-    // Check if active filter
-    const isFiltered = salesmanFilter !== "ALL" || periodFilter !== "ALL" || statusFilter !== "ALL" || searchFilter !== "";
-    if (activeFilterBadge) activeFilterBadge.classList.toggle("hidden", !isFiltered);
-
-    const filteredRecords = getFilteredCheckins();
 
     // Calculate Route Distances for Filtered Sales Routes
     const salesGroup = new Map();
@@ -704,6 +711,7 @@ export async function mount(container, { session }) {
       const gpsPos = t.koordinat_gps || "-6.7321, 108.5523";
       const dateVal = t.tanggal || todayStr;
       const mapsUrl = `https://www.google.com/maps?q=${encodeURIComponent(gpsPos)}`;
+      const visitId = t._docId || t.id;
 
       return `
       <div class="bg-slate-50 border border-slate-100 p-3.5 rounded-xl hover:bg-white hover:border-maroon-200 transition shadow-2xs">
@@ -711,20 +719,26 @@ export async function mount(container, { session }) {
           <div>
             <p class="text-xs font-bold text-slate-800">${escapeHtml(salesName)} <span class="font-normal text-slate-400">(${escapeHtml(salesNik)})</span> <span class="text-maroon-700 font-bold">@ ${escapeHtml(tokoName)}</span></p>
             <p class="text-[11px] text-slate-500 mt-0.5">${escapeHtml(alamatToko)}</p>
-            <div class="flex items-center gap-1.5 mt-1">
-              <span class="text-[10px] text-indigo-600 font-mono">GPS:</span>
-              <input type="text" class="gps-inline-input text-[10px] font-mono px-1.5 py-0.5 border border-slate-200 rounded w-44 focus:border-maroon-400 outline-none bg-amber-50/40"
-                value="${escapeHtml(gpsPos)}"
-                data-visitid="${escapeHtml(t._docId || t.id)}"
-                data-storename="${escapeHtml(tokoName)}"
-                title="Ketik koordinat baru lalu tekan Enter atau klik di luar kolom untuk menyimpan">
-            </div>
           </div>
-          <div class="flex items-center gap-1.5">
-            <a href="${mapsUrl}" target="_blank" class="px-2.5 py-1 bg-blue-50 text-blue-700 font-bold text-[10px] rounded-lg border border-blue-200 hover:bg-blue-100 transition inline-flex items-center gap-1">
-              📍 Maps
-            </a>
-          </div>
+          <a href="${mapsUrl}" target="_blank" class="px-2.5 py-1 bg-blue-50 text-blue-700 font-bold text-[10px] rounded-lg border border-blue-200 hover:bg-blue-100 transition inline-flex items-center gap-1">
+            📍 Maps
+          </a>
+        </div>
+
+        <!-- Kolom Pengeditan Langsung Titik Koordinat GPS -->
+        <div class="flex items-center gap-1.5 mt-2 pt-2 border-t border-slate-200/60 flex-wrap">
+          <span class="text-[10px] font-bold text-slate-600 flex items-center gap-0.5">📍 Koordinat GPS:</span>
+          <input type="text" 
+            class="input-feed-inline-gps px-2.5 py-1 text-[11px] font-mono border border-slate-300 rounded-lg w-44 bg-white focus:border-maroon-600 focus:ring-1 focus:ring-maroon-600 outline-none text-slate-800"
+            value="${escapeHtml(gpsPos)}"
+            placeholder="-6.732042, 108.552190"
+            data-visitid="${escapeHtml(visitId)}"
+            data-storename="${escapeHtml(tokoName)}" />
+          <button class="btn-feed-save-inline-gps px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] rounded-lg transition cursor-pointer shadow-2xs flex items-center gap-1"
+            data-visitid="${escapeHtml(visitId)}"
+            data-storename="${escapeHtml(tokoName)}">
+            💾 Simpan
+          </button>
         </div>
 
         <div class="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-slate-200/60 text-[10px] text-slate-500 flex-wrap">
@@ -749,22 +763,25 @@ export async function mount(container, { session }) {
       `;
     }).join("");
 
-    timelineEl.querySelectorAll(".gps-inline-input").forEach(input => {
-      const commitEdit = async () => {
-        const visitId = input.dataset.visitid;
-        const storeName = input.dataset.storename;
-        const newVal = input.value;
-        const originalVal = input.defaultValue;
-        if (newVal.trim() === originalVal.trim()) return;
-        input.disabled = true;
-        const ok = await saveVisitGpsValue(visitId, storeName, newVal);
-        input.disabled = false;
-        if (!ok) input.value = originalVal;
+    timelineEl.querySelectorAll(".btn-feed-save-inline-gps").forEach(btn => {
+      btn.onclick = () => {
+        const visitId = btn.dataset.visitid;
+        const storeName = btn.dataset.storename;
+        const inputEl = timelineEl.querySelector(`.input-feed-inline-gps[data-visitid="${visitId}"]`);
+        const newGps = inputEl ? inputEl.value : "";
+        saveVisitGpsDirectly(visitId, storeName, newGps);
       };
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") { e.preventDefault(); input.blur(); }
-      });
-      input.addEventListener("blur", commitEdit);
+    });
+
+    timelineEl.querySelectorAll(".input-feed-inline-gps").forEach(input => {
+      input.onkeydown = (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          const visitId = input.dataset.visitid;
+          const storeName = input.dataset.storename;
+          saveVisitGpsDirectly(visitId, storeName, input.value);
+        }
+      };
     });
   }
 
@@ -941,7 +958,16 @@ export async function mount(container, { session }) {
         btnGeocode.textContent = "Processing...";
         
         const geoRes = await geocodeAddressSmart(addr);
-        resGeocode.innerHTML = `✅ Hasil Geocoding: <b>${geoRes.lat}, ${geoRes.lng}</b> (${escapeHtml(geoRes.formatted)})`;
+        resGeocode.innerHTML = `
+          <div class="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl mt-1 space-y-1 text-xs">
+            <div class="font-bold text-emerald-900">✅ Hasil Geocoding (${geoRes.source || 'OSM'}):</div>
+            <div class="font-mono text-emerald-800 text-sm font-bold">${geoRes.lat}, ${geoRes.lng}</div>
+            <div class="text-[11px] text-slate-600">${escapeHtml(geoRes.formatted || addr)}</div>
+            <a href="https://www.google.com/maps?q=${geoRes.lat},${geoRes.lng}" target="_blank" class="inline-block mt-1 px-2 py-0.5 bg-blue-600 text-white font-bold text-[10px] rounded hover:bg-blue-700 transition">
+              📍 Buka di Google Maps
+            </a>
+          </div>
+        `;
         inpStartGps.value = `${geoRes.lat}, ${geoRes.lng}`;
         btnGeocode.disabled = false;
         btnGeocode.textContent = "Generate GPS";
@@ -980,14 +1006,14 @@ export async function mount(container, { session }) {
     });
   }
 
-  // Validasi & simpan koordinat GPS baru -- TANPA popup, dipanggil
-  // langsung dari input inline di kolom tabel/kartu.
-  async function saveVisitGpsValue(visitId, storeName, rawInput) {
+  // HRD Direct Edit GPS Coordinates for Check-in Record (No popup dialog)
+  async function saveVisitGpsDirectly(visitId, storeName, rawGpsInput) {
     if (!visitId) {
       toast("ID Check-in tidak ditemukan.", "warning");
       return false;
     }
-    const trimmed = (rawInput || "").trim();
+
+    const trimmed = (rawGpsInput || "").trim();
     if (!trimmed) {
       toast("Koordinat GPS tidak boleh kosong!", "warning");
       return false;
@@ -995,7 +1021,7 @@ export async function mount(container, { session }) {
 
     const coords = parseGpsCoordinates(trimmed);
     if (!coords || isNaN(coords.lat) || isNaN(coords.lng) || Math.abs(coords.lat) > 90 || Math.abs(coords.lng) > 180) {
-      toast("Format GPS tidak valid! Pastikan format: Latitude, Longitude (contoh: -6.732042, 108.552190)", "error");
+      toast("Format GPS tidak valid! Gunakan format: Latitude, Longitude (contoh: -6.732042, 108.552190)", "error");
       return false;
     }
 
@@ -1010,14 +1036,15 @@ export async function mount(container, { session }) {
         updated_at: new Date().toISOString()
       });
 
-      const found = allCheckinsList.find(c => (c._docId || c.id) === visitId);
-      if (found) {
-        found.koordinat_gps = validGpsStr;
-        found.lat = coords.lat;
-        found.lng = coords.lng;
+      const foundInAll = allCheckinsList.find(c => (c._docId || c.id) === visitId);
+      if (foundInAll) {
+        foundInAll.koordinat_gps = validGpsStr;
+        foundInAll.lat = coords.lat;
+        foundInAll.lng = coords.lng;
       }
 
-      toast(`✅ Titik koordinat '${storeName}' berhasil diperbarui! (${validGpsStr})`, "success");
+      toast(`✅ Koordinat GPS '${storeName}' diperbarui (${validGpsStr})`, "success");
+      applyAndRenderDashboard();
       return true;
     } catch (err) {
       console.error("Gagal memperbarui GPS:", err);
@@ -1026,7 +1053,6 @@ export async function mount(container, { session }) {
     }
   }
 
-  // HRD Edit GPS Coordinates for Check-in Record
   // MODAL: Detail Rute Itinerary & Jarak Tempuh Sales
   function openSalesRouteDetailModal(salesName, salesNik, allSalesVisits = [], initialMetrics = null) {
     const dateSet = new Set(allSalesVisits.map(v => v.tanggal).filter(Boolean));
@@ -1042,37 +1068,117 @@ export async function mount(container, { session }) {
 
       const metrics = calculateSalesRouteMetrics(filteredVisits, departureConfig, salesNik);
 
-      const legsHtml = metrics.legs.map((leg, idx) => {
+      const startRowHtml = `
+      <tr class="bg-indigo-50/70 border-b border-indigo-100 text-xs font-bold">
+        <td class="p-2.5 text-center">
+          <span class="px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-black tracking-wide">🚀 AWAL</span>
+        </td>
+        <td class="p-2.5 text-slate-500 font-medium italic">- (Keberangkatan)</td>
+        <td class="p-2.5 text-indigo-950 font-black">
+          🏠 ${escapeHtml(metrics.startPoint.nama)}
+          <span class="text-[10px] text-indigo-600 font-semibold block">(${escapeHtml(metrics.startPoint.type || 'Kosan/Base')})</span>
+        </td>
+        <td class="p-2.5 text-slate-600">
+          <div class="text-[11px] text-slate-500">Titik Awal Keberangkatan Salesman (Kosan/Base)</div>
+          <div class="flex items-center gap-1.5 mt-1">
+            <span class="text-[10px] text-indigo-700 font-bold">GPS Awal:</span>
+            <input type="text" 
+              id="input-modal-start-base-gps"
+              class="px-2 py-0.5 text-[10px] font-mono border border-indigo-300 rounded w-36 bg-white focus:border-indigo-600 outline-none text-slate-800"
+              value="${escapeHtml(metrics.startPoint.gps)}"
+              placeholder="-6.728000, 108.545000" />
+            <button id="btn-modal-save-start-base-gps"
+              class="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] rounded transition cursor-pointer shadow-2xs">
+              💾 Simpan Awal
+            </button>
+          </div>
+        </td>
+        <td class="p-2.5 text-right font-black text-indigo-700">0 KM</td>
+        <td class="p-2.5 text-center text-indigo-800 font-bold text-[11px]">Start Hari</td>
+        <td class="p-2.5 text-center">
+          <a href="https://www.google.com/maps?q=${encodeURIComponent(metrics.startPoint.gps)}" target="_blank" class="px-2 py-1 bg-indigo-100 text-indigo-800 font-bold text-[10px] rounded border border-indigo-200 hover:bg-indigo-200 transition inline-block">
+            📍 Map Awal
+          </a>
+        </td>
+      </tr>
+      `;
+
+      const visitLegsHtml = metrics.legs.map((leg, idx) => {
         const mapsUrl = `https://www.google.com/maps?q=${encodeURIComponent(leg.toGps)}`;
-        const isStartEnd = idx === 0 || idx === metrics.legs.length - 1;
 
         return `
-        <tr class="${isStartEnd ? 'bg-indigo-50/40 font-bold' : 'hover:bg-slate-50'} border-b border-slate-100 text-xs">
-          <td class="p-2.5 text-center text-slate-500 font-mono">${leg.legIndex}</td>
+        <tr class="hover:bg-slate-50 border-b border-slate-100 text-xs">
+          <td class="p-2.5 text-center text-slate-500 font-mono font-bold">Leg #${leg.legIndex}</td>
           <td class="p-2.5 text-slate-800 font-medium">${escapeHtml(leg.fromName)}</td>
-          <td class="p-2.5 text-slate-800 font-bold">${escapeHtml(leg.toName)}</td>
+          <td class="p-2.5 text-slate-800 font-bold">🛒 ${escapeHtml(leg.toName)}</td>
           <td class="p-2.5 text-slate-500">
             <div>${escapeHtml(leg.toAddress)}</div>
             ${leg.visitId ? `
-              <input type="text" class="gps-inline-input text-[10px] font-mono mt-1 px-1.5 py-0.5 border border-slate-200 rounded w-44 focus:border-maroon-400 outline-none bg-amber-50/40"
-                value="${escapeHtml(leg.toGps)}"
-                data-visitid="${escapeHtml(leg.visitId)}"
-                data-storename="${escapeHtml(leg.toName)}"
-                title="Ketik koordinat baru lalu tekan Enter atau klik di luar kolom untuk menyimpan">
-            ` : `<div class="text-[10px] text-indigo-600 font-mono mt-0.5">GPS: ${escapeHtml(leg.toGps)}</div>`}
+              <div class="flex items-center gap-1.5 mt-1">
+                <span class="text-[10px] text-slate-500 font-bold">GPS:</span>
+                <input type="text" 
+                  class="input-modal-inline-gps px-2 py-0.5 text-[10px] font-mono border border-slate-300 rounded w-36 bg-white focus:border-indigo-600 outline-none text-slate-800"
+                  value="${escapeHtml(leg.toGps)}"
+                  placeholder="-6.732042, 108.552190"
+                  data-visitid="${escapeHtml(leg.visitId)}"
+                  data-toname="${escapeHtml(leg.toName)}" />
+                <button class="btn-modal-save-inline-gps px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] rounded transition cursor-pointer shadow-2xs"
+                  data-visitid="${escapeHtml(leg.visitId)}"
+                  data-toname="${escapeHtml(leg.toName)}">
+                  💾 Simpan
+                </button>
+              </div>
+            ` : `
+              <div class="text-[10px] text-indigo-600 font-mono mt-0.5">GPS: ${escapeHtml(leg.toGps)}</div>
+            `}
           </td>
           <td class="p-2.5 text-right font-black text-indigo-700">${leg.distanceKm} KM</td>
           <td class="p-2.5 text-center text-slate-600">${escapeHtml(leg.waktuCheckin)}</td>
           <td class="p-2.5 text-center">
-            <div class="flex items-center justify-center gap-1.5">
-              <a href="${mapsUrl}" target="_blank" class="px-2 py-1 bg-blue-50 text-blue-700 font-bold text-[10px] rounded border border-blue-200 hover:bg-blue-100 transition inline-block">
-                📍 Map
-              </a>
-            </div>
+            <a href="${mapsUrl}" target="_blank" class="px-2 py-1 bg-blue-50 text-blue-700 font-bold text-[10px] rounded border border-blue-200 hover:bg-blue-100 transition inline-block">
+              📍 Map
+            </a>
           </td>
         </tr>
         `;
       }).join("");
+
+      const endRowHtml = `
+      <tr class="bg-slate-100 border-b border-slate-200 text-xs font-bold">
+        <td class="p-2.5 text-center">
+          <span class="px-2 py-0.5 bg-slate-800 text-white rounded text-[10px] font-black tracking-wide">🏁 AKHIR</span>
+        </td>
+        <td class="p-2.5 text-slate-800 font-medium">Outlet Terakhir</td>
+        <td class="p-2.5 text-slate-900 font-black">
+          🏢 ${escapeHtml(metrics.endPoint.nama)}
+          <span class="text-[10px] text-slate-600 font-semibold block">(${escapeHtml(metrics.endPoint.type || 'Kantor/Base')})</span>
+        </td>
+        <td class="p-2.5 text-slate-600">
+          <div class="text-[11px] text-slate-500">Titik Kepulangan Salesman (Kantor/Base)</div>
+          <div class="flex items-center gap-1.5 mt-1">
+            <span class="text-[10px] text-slate-700 font-bold">GPS Akhir:</span>
+            <input type="text" 
+              id="input-modal-end-base-gps"
+              class="px-2 py-0.5 text-[10px] font-mono border border-slate-300 rounded w-36 bg-white focus:border-indigo-600 outline-none text-slate-800"
+              value="${escapeHtml(metrics.endPoint.gps)}"
+              placeholder="-6.732000, 108.552000" />
+            <button id="btn-modal-save-end-base-gps"
+              class="px-2 py-0.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-[10px] rounded transition cursor-pointer shadow-2xs">
+              💾 Simpan Akhir
+            </button>
+          </div>
+        </td>
+        <td class="p-2.5 text-right font-black text-indigo-700">${metrics.legs.length > 0 ? metrics.legs[metrics.legs.length - 1].distanceKm : 0} KM</td>
+        <td class="p-2.5 text-center text-slate-800 font-bold text-[11px]">Selesai / Pulang</td>
+        <td class="p-2.5 text-center">
+          <a href="https://www.google.com/maps?q=${encodeURIComponent(metrics.endPoint.gps)}" target="_blank" class="px-2 py-1 bg-slate-200 text-slate-800 font-bold text-[10px] rounded border border-slate-300 hover:bg-slate-300 transition inline-block">
+            📍 Map Akhir
+          </a>
+        </td>
+      </tr>
+      `;
+
+      const legsHtml = startRowHtml + visitLegsHtml + endRowHtml;
 
       const originStr = encodeURIComponent(metrics.startPoint.gps);
       const destStr = encodeURIComponent(metrics.endPoint.gps);
@@ -1182,27 +1288,72 @@ export async function mount(container, { session }) {
         refreshModalView();
       });
 
-      modalEl.querySelectorAll(".gps-inline-input").forEach(input => {
-        const commitEdit = async () => {
-          const visitId = input.dataset.visitid;
-          const storeName = input.dataset.storename;
-          const newVal = input.value;
-          const originalVal = input.defaultValue;
-          if (newVal.trim() === originalVal.trim()) return; // tidak berubah, tidak perlu simpan
-          input.disabled = true;
-          const ok = await saveVisitGpsValue(visitId, storeName, newVal);
-          input.disabled = false;
-          if (ok) {
+      modalEl.querySelectorAll(".btn-modal-save-inline-gps").forEach(btn => {
+        btn.onclick = async () => {
+          const visitId = btn.dataset.visitid;
+          const storeName = btn.dataset.toname;
+          const inputEl = modalEl.querySelector(`.input-modal-inline-gps[data-visitid="${visitId}"]`);
+          const newGps = inputEl ? inputEl.value : "";
+          const success = await saveVisitGpsDirectly(visitId, storeName, newGps);
+          if (success) {
             refreshModalView();
-          } else {
-            input.value = originalVal; // gagal validasi -- kembalikan ke nilai semula
           }
         };
-        input.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") { e.preventDefault(); input.blur(); }
-        });
-        input.addEventListener("blur", commitEdit);
       });
+
+      modalEl.querySelectorAll(".input-modal-inline-gps").forEach(input => {
+        input.onkeydown = async (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            const visitId = input.dataset.visitid;
+            const storeName = input.dataset.toname;
+            const success = await saveVisitGpsDirectly(visitId, storeName, input.value);
+            if (success) {
+              refreshModalView();
+            }
+          }
+        };
+      });
+
+      const saveBaseGps = async (isStart) => {
+        const inputEl = modalEl.querySelector(isStart ? "#input-modal-start-base-gps" : "#input-modal-end-base-gps");
+        const rawVal = inputEl ? inputEl.value.trim() : "";
+        const coords = parseGpsCoordinates(rawVal);
+        if (!coords) {
+          toast("Format GPS tidak valid! Gunakan format: Latitude, Longitude (contoh: -6.728000, 108.545000)", "error");
+          return;
+        }
+        const validGps = `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`;
+        if (!departureConfig.sales_points) departureConfig.sales_points = {};
+        if (!departureConfig.sales_points[salesNik]) departureConfig.sales_points[salesNik] = {};
+
+        if (isStart) {
+          departureConfig.sales_points[salesNik].start_gps = validGps;
+          if (!departureConfig.sales_points[salesNik].start_nama) {
+            departureConfig.sales_points[salesNik].start_nama = `Kosan Sales (${salesNik})`;
+          }
+          toast("✅ Titik Awal Keberangkatan Sales berhasil diperbarui!", "success");
+        } else {
+          departureConfig.sales_points[salesNik].end_gps = validGps;
+          if (!departureConfig.sales_points[salesNik].end_nama) {
+            departureConfig.sales_points[salesNik].end_nama = "Kantor CV Andela Jaya Cirebon";
+          }
+          toast("✅ Titik Akhir Kepulangan Sales berhasil diperbarui!", "success");
+        }
+
+        await fsUpdate(COL.APP_SETTINGS, "sales_departure_config", departureConfig).catch(async () => {
+          await fsAdd(COL.APP_SETTINGS, { id: "sales_departure_config", ...departureConfig }, "sales_departure_config");
+        });
+
+        applyAndRenderDashboard();
+        refreshModalView();
+      };
+
+      const btnSaveStart = modalEl.querySelector("#btn-modal-save-start-base-gps");
+      if (btnSaveStart) btnSaveStart.onclick = () => saveBaseGps(true);
+
+      const btnSaveEnd = modalEl.querySelector("#btn-modal-save-end-base-gps");
+      if (btnSaveEnd) btnSaveEnd.onclick = () => saveBaseGps(false);
     }
 
     function refreshModalView() {
@@ -1295,46 +1446,52 @@ export async function mount(container, { session }) {
   }
 
   // PDF Report Export Function
-  async function exportSalesVisitsPdf() {
+  async function exportSalesVisitsPdf(recordsOverride = null) {
     if (allCheckinsList.length === 0) {
       return toast("Tidak ada data kunjungan sales untuk dibuatkan PDF.", "warning");
     }
 
     toast("Membuat Laporan PDF Rekapan Jarak Tempuh & Detail Kunjungan Sales...", "info");
 
-    const salesmanFilter = filterSalesmanSelect ? filterSalesmanSelect.value : "ALL";
-    const periodFilter = filterPeriodSelect ? filterPeriodSelect.value : "ALL";
-    const statusFilter = filterStatusSelect ? filterStatusSelect.value : "ALL";
-    const searchFilter = (filterSearchInput ? filterSearchInput.value : "").toLowerCase().trim();
+    let filteredRecords = [];
 
-    const now = new Date();
+    if (recordsOverride && Array.isArray(recordsOverride)) {
+      filteredRecords = recordsOverride;
+    } else {
+      const salesmanFilter = filterSalesmanSelect ? filterSalesmanSelect.value : "ALL";
+      const periodFilter = filterPeriodSelect ? filterPeriodSelect.value : "ALL";
+      const statusFilter = filterStatusSelect ? filterStatusSelect.value : "ALL";
+      const searchFilter = (filterSearchInput ? filterSearchInput.value : "").toLowerCase().trim();
 
-    // Filter records according to active filter
-    const filteredRecords = allCheckinsList.filter(item => {
-      if (salesmanFilter !== "ALL" && item.sales_nama !== salesmanFilter) return false;
-      if (statusFilter === "EC" && !(item.status_kunjungan || "").toLowerCase().includes("effective")) return false;
-      if (statusFilter === "STOK" && !(item.status_kunjungan || "").toLowerCase().includes("stok")) return false;
-      if (statusFilter === "PENAWARAN" && !(item.status_kunjungan || "").toLowerCase().includes("penawaran")) return false;
+      const now = new Date();
 
-      if (periodFilter === "TODAY") {
-        if (item.tanggal !== todayStr) return false;
-      } else if (periodFilter === "WEEK") {
-        const itemDate = new Date(item.tanggal);
-        const diffDays = (now - itemDate) / (1000 * 3600 * 24);
-        if (isNaN(diffDays) || diffDays > 7) return false;
-      } else if (periodFilter === "MONTH") {
-        const itemMonth = (item.tanggal || "").substring(0, 7);
-        const currentMonth = todayStr.substring(0, 7);
-        if (itemMonth !== currentMonth) return false;
-      }
+      // Filter records according to active filter
+      filteredRecords = allCheckinsList.filter(item => {
+        if (salesmanFilter !== "ALL" && item.sales_nama !== salesmanFilter && item.sales_nik !== salesmanFilter) return false;
+        if (statusFilter === "EC" && !(item.status_kunjungan || "").toLowerCase().includes("effective")) return false;
+        if (statusFilter === "STOK" && !(item.status_kunjungan || "").toLowerCase().includes("stok")) return false;
+        if (statusFilter === "PENAWARAN" && !(item.status_kunjungan || "").toLowerCase().includes("penawaran")) return false;
 
-      if (searchFilter) {
-        const text = `${item.sales_nama} ${item.toko_outlet} ${item.alamat_toko} ${item.catatan} ${item.status_kunjungan}`.toLowerCase();
-        if (!text.includes(searchFilter)) return false;
-      }
+        if (periodFilter === "TODAY") {
+          if (item.tanggal !== todayStr) return false;
+        } else if (periodFilter === "WEEK") {
+          const itemDate = new Date(item.tanggal);
+          const diffDays = (now - itemDate) / (1000 * 3600 * 24);
+          if (isNaN(diffDays) || diffDays > 7) return false;
+        } else if (periodFilter === "MONTH") {
+          const itemMonth = (item.tanggal || "").substring(0, 7);
+          const currentMonth = todayStr.substring(0, 7);
+          if (itemMonth !== currentMonth) return false;
+        }
 
-      return true;
-    });
+        if (searchFilter) {
+          const text = `${item.sales_nama} ${item.toko_outlet} ${item.alamat_toko} ${item.catatan} ${item.status_kunjungan}`.toLowerCase();
+          if (!text.includes(searchFilter)) return false;
+        }
+
+        return true;
+      });
+    }
 
     if (filteredRecords.length === 0) {
       return toast("Tidak ada data kunjungan yang cocok dengan filter aktif.", "warning");
@@ -1439,13 +1596,25 @@ export async function mount(container, { session }) {
         const visits = s.byDate.get(dStr);
         const metrics = calculateSalesRouteMetrics(visits, departureConfig, s.nik);
 
-        const legsRows = metrics.legs.map((leg, idx) => {
-          const isStartEnd = idx === 0 || idx === metrics.legs.length - 1;
+        const pdfStartRow = `
+          <tr style="border-bottom: 1px solid #e2e8f0; font-size: 10px; background-color: #e0e7ff; font-weight: bold;">
+            <td style="padding: 5px 6px; text-align: center; color: #3730a3;">🚀 AWAL</td>
+            <td style="padding: 5px 6px; text-align: center; color: #4338ca;">Start</td>
+            <td style="padding: 5px 6px; font-weight: bold; color: #1e1b4b;">🏠 ${escapeHtml(metrics.startPoint.nama)} (${escapeHtml(metrics.startPoint.type || 'Kosan/Base')})</td>
+            <td style="padding: 5px 6px; color: #475569;">
+              <div>Titik Keberangkatan Salesman (Kosan/Base)</div>
+              <div style="font-size: 8.5px; color: #4338ca; font-family: monospace;">GPS: ${escapeHtml(metrics.startPoint.gps)}</div>
+            </td>
+            <td style="padding: 5px 6px; text-align: right; font-weight: bold; color: #4338ca;">0 KM</td>
+          </tr>
+        `;
+
+        const pdfVisitRows = metrics.legs.map((leg) => {
           return `
-            <tr style="border-bottom: 1px solid #f1f5f9; font-size: 10px; ${isStartEnd ? 'background-color: #f8fafc; font-weight: bold;' : ''}">
+            <tr style="border-bottom: 1px solid #f1f5f9; font-size: 10px;">
               <td style="padding: 5px 6px; text-align: center; font-family: monospace;">Leg #${leg.legIndex}</td>
               <td style="padding: 5px 6px; text-align: center;">${escapeHtml(leg.waktuCheckin)}</td>
-              <td style="padding: 5px 6px; font-weight: bold; color: #0f172a;">${escapeHtml(leg.toName)}</td>
+              <td style="padding: 5px 6px; font-weight: bold; color: #0f172a;">🛒 ${escapeHtml(leg.toName)}</td>
               <td style="padding: 5px 6px; color: #475569;">
                 <div>${escapeHtml(leg.toAddress)}</div>
                 <div style="font-size: 8.5px; color: #4f46e5; font-family: monospace;">GPS: ${escapeHtml(leg.toGps)}</div>
@@ -1454,6 +1623,21 @@ export async function mount(container, { session }) {
             </tr>
           `;
         }).join("");
+
+        const pdfEndRow = `
+          <tr style="border-bottom: 1px solid #e2e8f0; font-size: 10px; background-color: #f1f5f9; font-weight: bold;">
+            <td style="padding: 5px 6px; text-align: center; color: #1e293b;">🏁 AKHIR</td>
+            <td style="padding: 5px 6px; text-align: center; color: #475569;">Selesai</td>
+            <td style="padding: 5px 6px; font-weight: bold; color: #0f172a;">🏢 ${escapeHtml(metrics.endPoint.nama)} (${escapeHtml(metrics.endPoint.type || 'Kantor/Base')})</td>
+            <td style="padding: 5px 6px; color: #475569;">
+              <div>Titik Kepulangan Salesman (Kantor/Base)</div>
+              <div style="font-size: 8.5px; color: #334155; font-family: monospace;">GPS: ${escapeHtml(metrics.endPoint.gps)}</div>
+            </td>
+            <td style="padding: 5px 6px; text-align: right; font-weight: bold; color: #4338ca;">${metrics.legs.length > 0 ? metrics.legs[metrics.legs.length - 1].distanceKm : 0} KM</td>
+          </tr>
+        `;
+
+        const legsRows = pdfStartRow + pdfVisitRows + pdfEndRow;
 
         detailedHtml += `
           <div style="margin-top: 8px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
@@ -1574,47 +1758,225 @@ export async function mount(container, { session }) {
     }
   }
 
-  // Bind Export Excel
-  if (btnExport) {
-    btnExport.onclick = async () => {
-      const periodFilter = filterPeriodSelect ? filterPeriodSelect.value : "ALL";
-      if (periodFilter === "ALL") {
-        toast("Pilih Periode Kunjungan dulu (Hari Ini/7 Hari/Bulan Ini) sebelum export, supaya data yang diunduh tidak terlalu besar/tercampur.", "warning");
-        filterPeriodSelect?.focus();
+  // MODAL Export Data Kunjungan dengan Pemilihan Periode & Filter
+  function openExportPeriodModal(defaultFormat = "EXCEL") {
+    if (allCheckinsList.length === 0) {
+      return toast("Belum ada data kunjungan sales yang tersimpan di sistem.", "warning");
+    }
+
+    // Build salesman list options
+    const salesMap = new Map();
+    allCheckinsList.forEach(c => {
+      if (c.sales_nik && !salesMap.has(c.sales_nik)) {
+        salesMap.set(c.sales_nik, c.sales_nama || c.sales_nik);
+      }
+    });
+
+    let salesOptionsHtml = `<option value="ALL">-- Semua Salesman --</option>`;
+    salesMap.forEach((nama, nik) => {
+      salesOptionsHtml += `<option value="${escapeHtml(nik)}">${escapeHtml(nama)} (NIK: ${escapeHtml(nik)})</option>`;
+    });
+
+    const currentYearMonth = todayStr.substring(0, 7);
+
+    const modalOverlay = document.createElement("div");
+    modalOverlay.className = "fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4";
+
+    modalOverlay.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div class="bg-gradient-to-r from-maroon-800 to-slate-900 text-white p-5 flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <div class="p-2 bg-white/10 rounded-xl">
+              <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            </div>
+            <div>
+              <h3 class="font-bold text-base text-white">📥 Export Data Kunjungan Sales</h3>
+              <p class="text-xs text-slate-300">Pilih periode tarikan data & format file sebelum export</p>
+            </div>
+          </div>
+          <button id="btn-close-export-modal" class="text-slate-300 hover:text-white text-xl font-bold cursor-pointer transition">✕</button>
+        </div>
+
+        <div class="p-6 space-y-4 text-xs text-slate-700">
+          <!-- 1. PERIODE TARIKAN DATA -->
+          <div>
+            <label class="block font-bold text-slate-800 mb-1.5 text-xs">🗓️ Periode Tarikan Data:</label>
+            <select id="export-period-select" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-800 focus:bg-white focus:border-maroon-600 outline-none cursor-pointer">
+              <option value="TODAY">Hari Ini (${escapeHtml(todayStr)})</option>
+              <option value="YESTERDAY">Kemarin (${escapeHtml(yesterdayStr)})</option>
+              <option value="WEEK">7 Hari Terakhir</option>
+              <option value="MONTH" selected>Bulan Ini (${escapeHtml(currentYearMonth)})</option>
+              <option value="CUSTOM">Rentang Tanggal Spesifik...</option>
+              <option value="ALL">Semua Data (${allCheckinsList.length} Visit)</option>
+            </select>
+          </div>
+
+          <!-- CUSTOM DATE RANGE -->
+          <div id="export-custom-date-container" class="hidden grid grid-cols-2 gap-3 p-3 bg-amber-50/60 border border-amber-200 rounded-xl">
+            <div>
+              <label class="block font-bold text-amber-900 mb-1 text-[11px]">Tanggal Mulai:</label>
+              <input type="date" id="export-date-from" value="${escapeHtml(todayStr)}" class="w-full px-2.5 py-1.5 bg-white border border-amber-300 rounded-lg text-xs font-mono outline-none focus:border-maroon-600" />
+            </div>
+            <div>
+              <label class="block font-bold text-amber-900 mb-1 text-[11px]">Tanggal Selesai:</label>
+              <input type="date" id="export-date-to" value="${escapeHtml(todayStr)}" class="w-full px-2.5 py-1.5 bg-white border border-amber-300 rounded-lg text-xs font-mono outline-none focus:border-maroon-600" />
+            </div>
+          </div>
+
+          <!-- 2. FILTER SALESMAN -->
+          <div>
+            <label class="block font-bold text-slate-800 mb-1.5 text-xs">👤 Filter Salesman:</label>
+            <select id="export-salesman-select" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-800 focus:bg-white focus:border-maroon-600 outline-none cursor-pointer">
+              ${salesOptionsHtml}
+            </select>
+          </div>
+
+          <!-- 3. FORMAT FILE -->
+          <div>
+            <label class="block font-bold text-slate-800 mb-1.5 text-xs">📄 Format Laporan Export:</label>
+            <div class="grid grid-cols-2 gap-3">
+              <label class="flex items-center gap-2 p-3 border rounded-xl cursor-pointer hover:bg-slate-50 border-slate-200 has-[:checked]:border-emerald-600 has-[:checked]:bg-emerald-50/50 transition">
+                <input type="radio" name="export-format" value="EXCEL" ${defaultFormat === "EXCEL" ? "checked" : ""} class="accent-emerald-600" />
+                <div>
+                  <p class="font-bold text-slate-800">Excel (.xlsx)</p>
+                  <p class="text-[10px] text-slate-500">Tabel Rekapan Data Visit</p>
+                </div>
+              </label>
+              <label class="flex items-center gap-2 p-3 border rounded-xl cursor-pointer hover:bg-slate-50 border-slate-200 has-[:checked]:border-red-600 has-[:checked]:bg-red-50/50 transition">
+                <input type="radio" name="export-format" value="PDF" ${defaultFormat === "PDF" ? "checked" : ""} class="accent-red-600" />
+                <div>
+                  <p class="font-bold text-slate-800">PDF Report (.pdf)</p>
+                  <p class="text-[10px] text-slate-500">Laporan Visual & Rute Jarak</p>
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+          <span id="export-preview-count" class="text-[11px] font-bold text-slate-600 bg-slate-200 px-2.5 py-1 rounded-lg">
+            Estimasi: 0 Visit Data
+          </span>
+          <div class="flex items-center gap-2">
+            <button id="btn-cancel-export" class="px-4 py-2 bg-slate-200 text-slate-700 font-bold rounded-xl text-xs hover:bg-slate-300 transition cursor-pointer">Batal</button>
+            <button id="btn-confirm-export" class="px-5 py-2 bg-maroon-700 text-white font-bold rounded-xl text-xs hover:bg-maroon-800 transition cursor-pointer flex items-center gap-1.5 shadow-sm">
+              🚀 Unduh Laporan
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modalOverlay);
+
+    const periodSelect = modalOverlay.querySelector("#export-period-select");
+    const customContainer = modalOverlay.querySelector("#export-custom-date-container");
+    const dateFromEl = modalOverlay.querySelector("#export-date-from");
+    const dateToEl = modalOverlay.querySelector("#export-date-to");
+    const salesmanSelect = modalOverlay.querySelector("#export-salesman-select");
+    const countEl = modalOverlay.querySelector("#export-preview-count");
+
+    const getFilteredRecords = () => {
+      const period = periodSelect.value;
+      const salesNik = salesmanSelect.value;
+      const dateFrom = dateFromEl.value;
+      const dateTo = dateToEl.value;
+
+      return allCheckinsList.filter(item => {
+        // Salesman filter
+        if (salesNik !== "ALL" && item.sales_nik !== salesNik) {
+          return false;
+        }
+
+        // Date period filter
+        const d = item.tanggal || "";
+        if (period === "TODAY") {
+          if (d !== todayStr) return false;
+        } else if (period === "YESTERDAY") {
+          if (d !== yesterdayStr) return false;
+        } else if (period === "WEEK") {
+          const itemDate = new Date(d);
+          const diffDays = (now - itemDate) / (1000 * 3600 * 24);
+          if (isNaN(diffDays) || diffDays > 7 || diffDays < -1) return false;
+        } else if (period === "MONTH") {
+          if (!d.startsWith(currentYearMonth)) return false;
+        } else if (period === "CUSTOM") {
+          if (dateFrom && d < dateFrom) return false;
+          if (dateTo && d > dateTo) return false;
+        }
+        return true;
+      });
+    };
+
+    const updatePreviewCount = () => {
+      const list = getFilteredRecords();
+      countEl.textContent = `Estimasi: ${list.length} Data Visit`;
+    };
+
+    periodSelect.onchange = () => {
+      if (periodSelect.value === "CUSTOM") {
+        customContainer.classList.remove("hidden");
+      } else {
+        customContainer.classList.add("hidden");
+      }
+      updatePreviewCount();
+    };
+
+    salesmanSelect.onchange = () => updatePreviewCount();
+    dateFromEl.onchange = () => updatePreviewCount();
+    dateToEl.onchange = () => updatePreviewCount();
+
+    // Initial update
+    updatePreviewCount();
+
+    const closeModal = () => modalOverlay.remove();
+    modalOverlay.querySelector("#btn-close-export-modal").onclick = closeModal;
+    modalOverlay.querySelector("#btn-cancel-export").onclick = closeModal;
+
+    modalOverlay.querySelector("#btn-confirm-export").onclick = async () => {
+      const targetRecords = getFilteredRecords();
+      if (targetRecords.length === 0) {
+        toast("Tidak ada data kunjungan pada periode/filter yang dipilih.", "warning");
         return;
       }
 
-      const dataToExport = getFilteredCheckins();
-      if (dataToExport.length === 0) {
-        return toast("Tidak ada data kunjungan pada periode/filter yang dipilih untuk diexport", "warning");
+      const selectedFormat = modalOverlay.querySelector('input[name="export-format"]:checked')?.value || "EXCEL";
+      closeModal();
+
+      if (selectedFormat === "EXCEL") {
+        toast(`Mengeksport ${targetRecords.length} data kunjungan ke Excel...`, "info");
+        const headers = ["ID Checkin", "Salesman", "NIK Sales", "Nama Toko / Outlet", "Alamat Toko", "Status Kunjungan", "Waktu Check-in", "Waktu Check-out", "Tanggal", "Koordinat GPS", "Gambar Check In", "Catatan"];
+        const matrix = targetRecords.map(item => [
+          item.id || "-",
+          item.sales_nama || "-",
+          item.sales_nik || "-",
+          item.toko_outlet || "-",
+          item.alamat_toko || "-",
+          item.status_kunjungan || "-",
+          item.waktu_checkin || "-",
+          item.waktu_checkout || "-",
+          item.tanggal || "-",
+          item.koordinat_gps || "-",
+          item.gambar_checkin || item.foto_checkin || "-",
+          item.catatan || "-"
+        ]);
+
+        await downloadXlsx(`Data_Kunjungan_Sales_${todayStr}.xlsx`, headers, matrix, "Data_Kunjungan");
+        toast(`✅ File Excel (${targetRecords.length} data) berhasil diunduh!`, "success");
+      } else {
+        await exportSalesVisitsPdf(targetRecords);
       }
-
-      toast(`Mengeksport ${dataToExport.length} data kunjungan & jarak tempuh sales ke Excel...`, "info");
-
-      const headers = ["ID Checkin", "Salesman", "NIK Sales", "Nama Toko / Outlet", "Alamat Toko", "Status Kunjungan", "Waktu Check-in", "Waktu Check-out", "Tanggal", "Koordinat GPS", "Gambar Check In", "Catatan"];
-      const matrix = dataToExport.map(item => [
-        item.id || "-",
-        item.sales_nama || "-",
-        item.sales_nik || "-",
-        item.toko_outlet || "-",
-        item.alamat_toko || "-",
-        item.status_kunjungan || "-",
-        item.waktu_checkin || "-",
-        item.waktu_checkout || "-",
-        item.tanggal || "-",
-        item.koordinat_gps || "-",
-        item.gambar_checkin || item.foto_checkin || "-",
-        item.catatan || "-"
-      ]);
-
-      await downloadXlsx(`Summary_Kunjungan_Rute_Sales_${todayStr}.xlsx`, headers, matrix, "Data_Kunjungan_Sales");
-      toast("File Excel Summary Kunjungan & GPS Rute Sales berhasil diunduh!", "success");
     };
+  }
+
+  // Bind Export Excel
+  if (btnExport) {
+    btnExport.onclick = () => openExportPeriodModal("EXCEL");
   }
 
   // Bind Export PDF
   if (btnExportPdf) {
-    btnExportPdf.onclick = () => exportSalesVisitsPdf();
+    btnExportPdf.onclick = () => openExportPeriodModal("PDF");
   }
 
   // Bind Import Excel
@@ -1682,10 +2044,19 @@ export async function mount(container, { session }) {
           const rawCustomer = getRowVal(row, ["Nama Pelanggan", "Pelanggan", "Nama Toko", "Toko", "Outlet"]);
           const rawImage = getRowVal(row, ["Gambar Check In", "Gambar", "Foto", "Foto Check In", "Image", "Url"]);
 
-          if (!namaSales && !rawCustomer && !rawAddress) continue;
+          // GPS Column Reading from Excel
+          const rawGps = getRowVal(row, [
+            "Koordinat GPS", "GPS", "Koordinat", "Lat, Lng", "Lat/Lng",
+            "Lokasi GPS", "Titik GPS", "Position GPS", "Coordinat", "GPS Pos",
+            "Lat Long", "Latitude/Longitude", "Geo", "Google Map", "Maps", "Koordinat_GPS", "KoordinatGps"
+          ]);
+          const rawLat = getRowVal(row, ["Latitude", "Lat", "Lattitude"]);
+          const rawLng = getRowVal(row, ["Longitude", "Lng", "Long", "Longtitude"]);
+
+          if (!namaSales && !rawCustomer && !rawAddress && !rawGps) continue;
 
           if (progressStatus) {
-            progressStatus.textContent = `[${idx + 1}/${rows.length}] Processing ${escapeHtml(rawCustomer || namaSales || "Outlet")} (${escapeHtml(rawAddress.substring(0, 30))}...)`;
+            progressStatus.textContent = `[${idx + 1}/${rows.length}] Processing ${escapeHtml(rawCustomer || namaSales || "Outlet")} (${escapeHtml((rawAddress || rawGps || "").substring(0, 30))}...)`;
           }
 
           const dateStr = parseIndonesianTextDate(rawDate) || todayStr;
@@ -1699,8 +2070,39 @@ export async function mount(container, { session }) {
             timeStr = `${hh}:${mm}:${ss}`;
           }
 
-          // Automatic Geocoding
-          const geoRes = await geocodeAddressSmart(rawAddress || "Cirebon", idx);
+          // Determine GPS Coordinates: Prioritize converting address from Excel into GPS coordinates
+          let finalGpsStr = "";
+          const queryAddr = [rawAddress, rawCustomer].filter(Boolean).join(", ");
+
+          if (queryAddr) {
+            if (idx > 0) {
+              await new Promise(r => setTimeout(r, 200));
+            }
+            const geoRes = await geocodeAddressSmart(queryAddr, idx);
+            if (geoRes && isValidOperationalCoordinate(geoRes.lat, geoRes.lng)) {
+              finalGpsStr = `${geoRes.lat}, ${geoRes.lng}`;
+            }
+          }
+
+          // Fallback to raw GPS from Excel if address geocoding produced no valid operational result
+          if (!finalGpsStr) {
+            let parsedGps = null;
+            if (rawGps) {
+              parsedGps = parseGpsCoordinates(String(rawGps));
+            }
+            if (!parsedGps && rawLat && rawLng) {
+              parsedGps = parseGpsCoordinates(`${rawLat}, ${rawLng}`);
+            }
+            if (parsedGps && isValidOperationalCoordinate(parsedGps.lat, parsedGps.lng)) {
+              finalGpsStr = `${parsedGps.lat}, ${parsedGps.lng}`;
+            }
+          }
+
+          // Ultimate fallback if still no valid GPS
+          if (!finalGpsStr) {
+            const fallbackRes = await geocodeAddressSmart(queryAddr || rawCustomer || rawAddress || "Klampok Wanasari Brebes Tegal", idx);
+            finalGpsStr = `${fallbackRes.lat}, ${fallbackRes.lng}`;
+          }
 
           // Find Salesman NIK match
           let salesNik = "SLS-IMP";
@@ -1723,7 +2125,7 @@ export async function mount(container, { session }) {
             sales_jabatan: jabatanSales || "Sales Canvassing",
             toko_outlet: rawCustomer || "Pelanggan / Toko",
             alamat_toko: rawAddress || "Cirebon",
-            koordinat_gps: `${geoRes.lat}, ${geoRes.lng}`,
+            koordinat_gps: finalGpsStr,
             waktu_checkin: timeStr,
             waktu_checkout: timeStr,
             tanggal: dateStr,

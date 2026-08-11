@@ -3085,20 +3085,197 @@ export function calcHaversineDistance(lat1, lon1, lat2, lon2) {
 }
 
 /**
- * Parses GPS string formatted like "-6.7321, 108.5523" or "lat: -6.7321 long: 108.5523"
+ * Parses GPS string formatted like "-6.7321, 108.5523", "-6.7321 108.5523", or "lat: -6.7321 long: 108.5523"
  */
 export function parseGpsCoordinates(gpsStr) {
-  if (!gpsStr || typeof gpsStr !== "string") return null;
-  const match = gpsStr.match(/(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
+  if (gpsStr === null || gpsStr === undefined) return null;
+  if (typeof gpsStr !== "string") gpsStr = String(gpsStr);
+  const trimmed = gpsStr.trim();
+  if (!trimmed) return null;
+
+  // Replace Indonesian comma decimal notation if surrounded by digits (e.g. -6,732042 -> -6.732042)
+  const normalized = trimmed.replace(/(\d+),(\d+)/g, "$1.$2");
+
+  // 1. Standard pattern: two floating point numbers separated by comma, semicolon, or whitespace
+  const match = normalized.match(/(-?\d{1,2}\.\d+)\s*[,;\s]\s*(-?\d{1,3}\.\d+)/);
   if (match) {
-    return { lat: parseFloat(match[1]), lng: parseFloat(match[2]) };
+    const lat = parseFloat(match[1]);
+    const lng = parseFloat(match[2]);
+    if (!isNaN(lat) && !isNaN(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+      return { lat, lng };
+    }
+  }
+
+  // 2. Generic numeric pair (floats or ints)
+  const altMatch = normalized.match(/(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)/);
+  if (altMatch) {
+    const lat = parseFloat(altMatch[1]);
+    const lng = parseFloat(altMatch[2]);
+    if (!isNaN(lat) && !isNaN(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && (lat !== 0 || lng !== 0)) {
+      return { lat, lng };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Validates if coordinates are within Java island coverage area
+ * Lat: -8.0 to -5.8, Lng: 106.5 to 110.8
+ */
+export function isValidOperationalCoordinate(lat, lng) {
+  if (isNaN(lat) || isNaN(lng)) return false;
+  return lat >= -8.0 && lat <= -5.8 && lng >= 106.5 && lng <= 110.8;
+}
+
+/**
+ * Helper to query Photon Komoot OSM Geocoding Service (bounded to West/Central Java)
+ */
+async function fetchPhotonQuery(queryString) {
+  try {
+    const query = encodeURIComponent(queryString);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    // Lat/Lon bias centered at Cirebon-Tegal, BBox minLon,minLat,maxLon,maxLat
+    const url = `https://photon.komoot.io/api/?q=${query}&limit=1&lat=-6.86&lon=108.8&bbox=107.0,-7.8,110.5,-6.0`;
+    const resp = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data && data.features && data.features.length > 0) {
+        const feat = data.features[0];
+        const coords = feat.geometry?.coordinates;
+        if (coords && coords.length >= 2) {
+          const lng = parseFloat(coords[0]);
+          const lat = parseFloat(coords[1]);
+          if (isValidOperationalCoordinate(lat, lng)) {
+            return {
+              lat,
+              lng,
+              formatted: feat.properties?.name ? `${feat.properties.name}, ${feat.properties.city || feat.properties.state || ''}` : queryString,
+              source: "PHOTON_OSM"
+            };
+          }
+        }
+      }
+    }
+  } catch (e) {
+    // Ignore fetch error
   }
   return null;
 }
 
 /**
- * Geocodes an address string to GPS coordinates (lat, lng).
- * Uses Google Maps Geocoder if loaded, or Nominatim/Deterministic Cirebon scatter as fallback.
+ * Helper to query OpenStreetMap Nominatim Geocoding Service (bounded to West/Central Java)
+ */
+async function fetchNominatimQuery(queryString) {
+  try {
+    const query = encodeURIComponent(queryString);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    // Viewbox bounded to Cirebon-Tegal coverage (minLon, minLat, maxLon, maxLat)
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1&addressdetails=1&countrycodes=id&viewbox=107.0,-6.0,110.5,-7.8&bounded=1`;
+    const resp = await fetch(url, {
+      headers: {
+        'Accept-Language': 'id,en',
+        'User-Agent': 'AndelaHRIS-SalesApp/1.0 (contact@andelahris.com)'
+      },
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data && data.length > 0 && data[0].lat && data[0].lon) {
+        const lat = parseFloat(data[0].lat);
+        const lng = parseFloat(data[0].lon);
+        if (isValidOperationalCoordinate(lat, lng)) {
+          return {
+            lat,
+            lng,
+            formatted: data[0].display_name || queryString,
+            source: "NOMINATIM_OSM"
+          };
+        }
+      }
+    }
+  } catch (e) {
+    // Abort or network error
+  }
+  return null;
+}
+
+/**
+ * Generates search query variations from raw address string
+ */
+function generateAddressCandidates(rawAddr) {
+  if (!rawAddr || typeof rawAddr !== "string") return [];
+  const clean = rawAddr.trim();
+  if (!clean) return [];
+
+  const candidates = [];
+
+  // 1. Full address string with Jawa Tengah / Jawa Barat, Indonesia
+  candidates.push(clean.includes("Indonesia") ? clean : `${clean}, Indonesia`);
+
+  // 2. Strip store / business name prefixes
+  const strippedPrefix = clean.replace(/^(toko|tb|ud|cv|pt|outlet|warung|kios|depot|apotek|swalayan|minimarket|resto|rm|rumah makan|bengkel|grosir|toko manisan|agen|distributor|koperasi)\s+/i, "");
+  if (strippedPrefix !== clean) {
+    candidates.push(strippedPrefix.includes("Indonesia") ? strippedPrefix : `${strippedPrefix}, Indonesia`);
+  }
+
+  // 3. Split by comma (remove store name or leading segment)
+  const parts = clean.split(",").map(p => p.trim()).filter(Boolean);
+  if (parts.length > 1) {
+    const withoutStore = parts.slice(1).join(", ");
+    candidates.push(withoutStore.includes("Indonesia") ? withoutStore : `${withoutStore}, Indonesia`);
+
+    const withoutNo = withoutStore.replace(/no\.?\s*\d+/gi, "").replace(/\s+/g, " ").trim();
+    if (withoutNo !== withoutStore && withoutNo.length > 3) {
+      candidates.push(withoutNo.includes("Indonesia") ? withoutNo : `${withoutNo}, Indonesia`);
+    }
+
+    if (parts.length >= 3) {
+      const cityRegion = parts.slice(-2).join(", ");
+      candidates.push(cityRegion.includes("Indonesia") ? cityRegion : `${cityRegion}, Indonesia`);
+    }
+  }
+
+  // 4. Street pattern match ("Jl", "Jalan", "Gg", "Gang")
+  const streetMatch = clean.match(/(jl\b|jalan\b|jln\b|gg\b|gang\b).*/i);
+  if (streetMatch && streetMatch[0]) {
+    const streetAddr = streetMatch[0].trim();
+    candidates.push(streetAddr.includes("Indonesia") ? streetAddr : `${streetAddr}, Indonesia`);
+  }
+
+  // Deduplicate candidates
+  return [...new Set(candidates)];
+}
+
+/**
+ * Multi-pass OpenStreetMap geocoder using Nominatim and Photon APIs
+ */
+async function geocodeWithOSM(rawAddr) {
+  const candidates = generateAddressCandidates(rawAddr);
+  if (candidates.length === 0) return null;
+
+  // Pass 1: Try Nominatim on top candidates
+  for (const candidate of candidates.slice(0, 3)) {
+    const res = await fetchNominatimQuery(candidate);
+    if (res) return res;
+  }
+
+  // Pass 2: Try Photon Komoot API on candidates
+  for (const candidate of candidates) {
+    const res = await fetchPhotonQuery(candidate);
+    if (res) return res;
+  }
+
+  return null;
+}
+
+/**
+ * Geocodes an address string to precise GPS coordinates (lat, lng).
+ * Primary: Nominatim OpenStreetMap & Photon APIs
  */
 export async function geocodeAddressSmart(addressStr, fallbackSeed = 0) {
   if (!addressStr || typeof addressStr !== "string") {
@@ -3112,84 +3289,88 @@ export async function geocodeAddressSmart(addressStr, fallbackSeed = 0) {
   if (matchGps) {
     const lat = parseFloat(matchGps[1]);
     const lng = parseFloat(matchGps[2]);
-    if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90) {
+    if (isValidOperationalCoordinate(lat, lng)) {
       return { lat, lng, formatted: cleanAddr, source: "GPS_INPUT" };
     }
   }
 
-  // 1. Check if Google Maps JS API Geocoder is available
+  // 1. OpenStreetMap Nominatim & Photon APIs (Primary Geocoding Services)
+  const osmRes = await geocodeWithOSM(cleanAddr);
+  if (osmRes) {
+    return osmRes;
+  }
+
+  // 2. Check if Google Maps JS API Geocoder is available
   if (window.google && window.google.maps && window.google.maps.Geocoder) {
     try {
+      const candidates = generateAddressCandidates(cleanAddr);
       const geocoder = new window.google.maps.Geocoder();
-      const res = await new Promise((resolve) => {
-        geocoder.geocode({ address: cleanAddr }, (results, status) => {
-          if (status === "OK" && results?.[0]?.geometry?.location) {
-            resolve({
-              lat: results[0].geometry.location.lat(),
-              lng: results[0].geometry.location.lng(),
-              formatted: results[0].formatted_address || cleanAddr,
-              source: "GOOGLE_MAPS"
-            });
-          } else {
-            resolve(null);
-          }
+      for (const candidate of candidates.slice(0, 2)) {
+        const res = await new Promise((resolve) => {
+          geocoder.geocode({ address: candidate }, (results, status) => {
+            if (status === "OK" && results?.[0]?.geometry?.location) {
+              const lat = results[0].geometry.location.lat();
+              const lng = results[0].geometry.location.lng();
+              if (isValidOperationalCoordinate(lat, lng)) {
+                resolve({
+                  lat,
+                  lng,
+                  formatted: results[0].formatted_address || candidate,
+                  source: "GOOGLE_MAPS"
+                });
+              } else {
+                resolve(null);
+              }
+            } else {
+              resolve(null);
+            }
+          });
         });
-      });
-      if (res) return res;
+        if (res) return res;
+      }
     } catch (e) {
       console.warn("Google Maps Geocoder error:", e);
     }
   }
 
-  // 2. Try OpenStreetMap Nominatim API
-  try {
-    const query = encodeURIComponent(cleanAddr);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
-    const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1`, {
-      headers: { 'Accept-Language': 'id,en' },
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-    if (resp.ok) {
-      const data = await resp.json();
-      if (data && data.length > 0 && data[0].lat && data[0].lon) {
-        return {
-          lat: parseFloat(data[0].lat),
-          lng: parseFloat(data[0].lon),
-          formatted: data[0].display_name || cleanAddr,
-          source: "NOMINATIM"
-        };
-      }
-    }
-  } catch (e) {
-    // Ignore fetch error & proceed to district dictionary fallback
-  }
-
-  // 3. Regional District / Town Coordinates Lookup Table (Cirebon, Kuningan, Majalengka, Indramayu)
+  // 3. Extensive Indonesian Cities & Regencies District Lookup Table
   const lowerAddr = cleanAddr.toLowerCase();
   const districtMap = [
+    // Brebes, Wanasari, Klampok
+    { keywords: ["klampok", "wanasari", "bulakamba", "losari brebes", "tanjung brebes", "jatibarang brebes", "ketanggungan", "songgom", "larangan brebes"], lat: -6.8850, lng: 109.0250 },
+    // Tegal Kabupaten (Slawi, Margasari, Pagerbarang, Adiwerna, Kramat)
+    { keywords: ["pagerbarang", "margasari", "slawi", "adiwerna", "dukuhturi", "talang", "kramat tegal", "suradadi", "warureja", "lebaksiu", "pangkah", "balapulang", "bumiawa", "tarub"], lat: -6.9800, lng: 109.1200 },
+    // Tegal Kota
+    { keywords: ["tegal", "margadana", "procot", "dudukati", "sumurpanggang", "tegal barat", "tegal timur", "tegal selatan", "kramat tegal"], lat: -6.8694, lng: 109.1357 },
+    // Brebes Kota
+    { keywords: ["brebes", "bumiayu", "banjarharjo"], lat: -6.8705, lng: 109.0410 },
+    // Pemalang & Pekalongan
+    { keywords: ["pemalang", "comal", "randudongkal", "petarukan", "ulujami"], lat: -6.8906, lng: 109.3807 },
+    { keywords: ["pekalongan", "kedungwuni", "wiradesa", "kajen"], lat: -6.8898, lng: 109.6753 },
+    // Cirebon Timur
+    { keywords: ["ciledug", "pabuaran", "waled", "babakan", "gebang", "karangwareng", "karangsembung", "lemahabang", "susukan lebak", "astanajapura", "mundu", "pangenan", "losari cirebon", "cirebon timur"], lat: -6.8300, lng: 108.6800 },
+    // Cirebon Barat
+    { keywords: ["arjawinangun", "ciwaringin", "gempol", "palimanan", "dukupuntang", "depok cirebon", "kembangpasetan", "susukan cirebon", "panguragan", "kaliwedi", "gegesik", "kapetakan", "surananggala", "cirebon barat"], lat: -6.6800, lng: 108.4200 },
+    // Cirebon Kota & Kabupaten Cirebon
     { keywords: ["sindanghayu", "beber"], lat: -6.8180, lng: 108.5510 },
-    { keywords: ["awirarangan", "kuningan"], lat: -6.9730, lng: 108.4880 },
-    { keywords: ["kramatmulya", "bojong"], lat: -6.9380, lng: 108.4820 },
     { keywords: ["sumber"], lat: -6.7620, lng: 108.4810 },
     { keywords: ["harjamukti"], lat: -6.7540, lng: 108.5530 },
     { keywords: ["kesambi"], lat: -6.7320, lng: 108.5480 },
     { keywords: ["lemahwungkuk"], lat: -6.7210, lng: 108.5680 },
     { keywords: ["pekalipan"], lat: -6.7220, lng: 108.5610 },
     { keywords: ["kejaksan"], lat: -6.7110, lng: 108.5580 },
-    { keywords: ["astanajapura", "japura"], lat: -6.8120, lng: 108.6250 },
-    { keywords: ["ciledug"], lat: -6.9020, lng: 108.7450 },
     { keywords: ["weru", "plered"], lat: -6.7110, lng: 108.5020 },
-    { keywords: ["arjawinangun"], lat: -6.6520, lng: 108.4120 },
-    { keywords: ["palimanan"], lat: -6.7050, lng: 108.4320 },
-    { keywords: ["majalengka", "kadipaten"], lat: -6.8360, lng: 108.2270 },
-    { keywords: ["indramayu", "jatibarang", "karangampel"], lat: -6.3270, lng: 108.3240 },
-    { keywords: ["cirebon"], lat: -6.7320, lng: 108.5520 }
+    { keywords: ["cirebon kota", "cirebon"], lat: -6.7320, lng: 108.5520 },
+    // Kuningan
+    { keywords: ["awirarangan", "kuningan", "cilimus", "kadugede", "jalaksana", "kramatmulya", "luragung", "cidahu", "ciawigebang", "darma", "pasawahan", "mandirancan", "pancalang"], lat: -6.9730, lng: 108.4880 },
+    // Majalengka
+    { keywords: ["majalengka", "kadipaten", "jatiwangi", "dawuan", "kasokandel", "panyingkiran", "cigasong", "sukahaji", "rajagaluk", "sindangwangi", "leuwimunding", "palasah", "kertajati"], lat: -6.8360, lng: 108.2270 },
+    // Indramayu
+    { keywords: ["indramayu", "jatibarang indramayu", "karangampel", "haurgeulis", "kandanghaur", "losarang", "lohbener", "balongan", "krangkeng", "sliyeg", "juntinyuat", "anjatan", "patrol", "sukra"], lat: -6.3270, lng: 108.3240 }
   ];
 
-  let baseLat = -6.7320;
-  let baseLng = 108.5520;
+  let baseLat = null;
+  let baseLng = null;
 
   for (const item of districtMap) {
     if (item.keywords.some(kw => lowerAddr.includes(kw))) {
@@ -3199,7 +3380,13 @@ export async function geocodeAddressSmart(addressStr, fallbackSeed = 0) {
     }
   }
 
-  // Deterministic Hash-based small offset around the identified town/district center
+  // Fallback to Cirebon center only if no city keyword matched at all
+  if (baseLat === null || baseLng === null) {
+    baseLat = -6.7320;
+    baseLng = 108.5520;
+  }
+
+  // Deterministic Hash-based small offset around the identified town/city center
   let hash = 0;
   for (let i = 0; i < cleanAddr.length; i++) {
     hash = (hash << 5) - hash + cleanAddr.charCodeAt(i);
@@ -3217,7 +3404,7 @@ export async function geocodeAddressSmart(addressStr, fallbackSeed = 0) {
     lat,
     lng,
     formatted: `${cleanAddr} (${lat}, ${lng})`,
-    source: "SMART_GEOCODE"
+    source: "CITY_LOOKUP"
   };
 }
 
@@ -3295,7 +3482,10 @@ export function calculateSalesRouteMetrics(visitList, departureConfig = {}, sale
     const tokoOutlet = visit.toko_outlet || `Outlet ${index + 1}`;
     const alamatToko = visit.alamat_toko || "Cirebon";
     const gpsVal = visit.koordinat_gps || "-6.7321, 108.5523";
-    const visitCoord = parseGpsCoordinates(gpsVal) || { lat: -6.7321, lng: 108.5523 };
+    let visitCoord = parseGpsCoordinates(gpsVal);
+    if (!visitCoord || !isValidOperationalCoordinate(visitCoord.lat, visitCoord.lng)) {
+      visitCoord = { lat: -6.8850, lng: 109.0250 };
+    }
     const dist = calcHaversineDistance(currentCoord.lat, currentCoord.lng, visitCoord.lat, visitCoord.lng);
     totalKm += dist;
 
