@@ -1254,7 +1254,14 @@ async function loadRestockPanel(panelEl, container) {
             <h3 class="font-bold text-slate-800 text-sm">Daftar Barang & Stok Aman Minimal</h3>
             <p class="text-xs text-slate-500">Admin/GA dapat mengupdate stok saat barang habis/di-restock secara langsung.</p>
           </div>
-          <input type="text" id="restock-search" placeholder="Cari nama barang / kategori..." class="p-2 text-xs rounded-xl border border-slate-300 w-full sm:w-64 outline-none focus:border-maroon-500 bg-white">
+          <div class="flex items-center gap-2 w-full sm:w-auto flex-wrap sm:flex-nowrap">
+            <select id="restock-status-filter" class="p-2 text-xs rounded-xl border border-slate-300 font-semibold outline-none focus:border-maroon-500 bg-white">
+              <option value="">Semua Status</option>
+              <option value="HABIS">Habis Total (0)</option>
+              <option value="MENIPIS">Stok Menipis (>0)</option>
+            </select>
+            <input type="text" id="restock-search" placeholder="Cari nama barang / kategori..." class="p-2 text-xs rounded-xl border border-slate-300 w-full sm:w-64 outline-none focus:border-maroon-500 bg-white">
+          </div>
         </div>
 
         <div class="overflow-x-auto">
@@ -1281,28 +1288,48 @@ async function loadRestockPanel(panelEl, container) {
     </div>
   `;
 
-  // BIND SEARCH & EVENTS
+  // BIND SEARCH & STATUS FILTER & EVENTS
   const searchInput = panelEl.querySelector("#restock-search");
+  const statusSelect = panelEl.querySelector("#restock-status-filter");
   const tbody = panelEl.querySelector("#restock-tbody");
-  if (searchInput && tbody) {
-    searchInput.oninput = () => {
-      const q = searchInput.value.toLowerCase().trim();
-      const filtered = restockItems.filter(i => 
+  let currentFilteredItems = restockItems.slice();
+
+  function applyRestockFilters() {
+    const q = searchInput ? searchInput.value.toLowerCase().trim() : "";
+    const st = statusSelect ? statusSelect.value : "";
+
+    currentFilteredItems = restockItems.filter(i => {
+      const stok = toNumber(i.stok_saat_ini);
+      const matchesSearch = !q || 
         (i.nama_barang || "").toLowerCase().includes(q) ||
         (i.id_item || i.id || "").toLowerCase().includes(q) ||
-        (i.kategori || "").toLowerCase().includes(q)
-      );
-      tbody.innerHTML = renderRestockRows(filtered);
-      bindRowRestockEvents(panelEl, container, filtered);
-    };
+        (i.kategori || "").toLowerCase().includes(q);
+
+      let matchesStatus = true;
+      if (st === "HABIS") matchesStatus = (stok === 0);
+      else if (st === "MENIPIS") matchesStatus = (stok > 0);
+
+      return matchesSearch && matchesStatus;
+    });
+
+    if (tbody) {
+      tbody.innerHTML = renderRestockRows(currentFilteredItems);
+      bindRowRestockEvents(panelEl, container, currentFilteredItems);
+    }
   }
+
+  if (searchInput) searchInput.oninput = applyRestockFilters;
+  if (statusSelect) statusSelect.onchange = applyRestockFilters;
 
   bindRowRestockEvents(panelEl, container, restockItems);
 
   // EVENT EXPORT GAMBAR
   const btnExport = panelEl.querySelector("#btn-gen-image-png");
   if (btnExport) {
-    btnExport.onclick = () => openExportRestockImageModal(restockItems);
+    btnExport.onclick = () => {
+      const activeStatus = statusSelect ? statusSelect.value : "";
+      openExportRestockImageModal(currentFilteredItems, restockItems, activeStatus);
+    };
   }
 
   const btnRefresh = panelEl.querySelector("#btn-refresh-restock");
@@ -1447,24 +1474,44 @@ function bindRowRestockEvents(panelEl, container, items) {
   });
 }
 
-function openExportRestockImageModal(itemsToBuy) {
-  if (!itemsToBuy || itemsToBuy.length === 0) {
+function openExportRestockImageModal(initialItemsToBuy, allRestockItems = [], initialStatus = "") {
+  const sourceItems = (allRestockItems && allRestockItems.length) ? allRestockItems : (initialItemsToBuy || []);
+  if (!sourceItems || sourceItems.length === 0) {
     return toast("Tidak ada barang dalam daftar belanja untuk diexport", "warning");
   }
 
-  const { dataUrlPng, dataUrlJpg } = generateRestockCanvasData(itemsToBuy);
+  let activeStatus = initialStatus || "";
+  let currentItemsToBuy = (initialItemsToBuy && initialItemsToBuy.length) ? initialItemsToBuy : sourceItems;
+
+  function getStatusLabel(st) {
+    if (st === "HABIS") return "Hanya Habis Total (Stok 0)";
+    if (st === "MENIPIS") return "Hanya Stok Menipis (>0)";
+    return "Semua Status (Habis & Menipis)";
+  }
+
+  let { dataUrlPng, dataUrlJpg } = generateRestockCanvasData(currentItemsToBuy, getStatusLabel(activeStatus));
 
   openModal({
     title: "Generate Gambar Daftar Belanja & Restock ATK",
     size: "lg",
     bodyHtml: `
       <div class="space-y-4 text-xs">
-        <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 leading-relaxed">
-          <b>Gambar Format PNG / JPG Berhasil Digenerate:</b><br/>
-          Pratinjau gambar daftar belanja resmi di bawah ini. Anda dapat mengunduh file gambar dalam format <b>PNG</b> atau <b>JPG</b> untuk dikirimkan via WA/Email ke bagian Pengadaan & Manajemen.
+        <div class="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 leading-relaxed flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <b>Filter & Generate Gambar Daftar Belanja:</b><br/>
+            Pilih filter status untuk menyesuaikan daftar barang yang akan ditampilkan pada file gambar PNG / JPG.
+          </div>
+          <div class="shrink-0 flex items-center gap-2 bg-white p-2 rounded-xl border border-emerald-300 shadow-2xs">
+            <label class="font-bold text-slate-700 text-xs shrink-0">Filter Status:</label>
+            <select id="export-status-select" class="p-1.5 text-xs rounded-lg border border-slate-300 font-bold outline-none focus:border-maroon-500 bg-slate-50 text-slate-800">
+              <option value="" ${activeStatus === "" ? "selected" : ""}>Semua Status (${sourceItems.length})</option>
+              <option value="HABIS" ${activeStatus === "HABIS" ? "selected" : ""}>Hanya Habis Total (${sourceItems.filter(i => toNumber(i.stok_saat_ini) === 0).length})</option>
+              <option value="MENIPIS" ${activeStatus === "MENIPIS" ? "selected" : ""}>Hanya Stok Menipis (${sourceItems.filter(i => toNumber(i.stok_saat_ini) > 0).length})</option>
+            </select>
+          </div>
         </div>
 
-        <div class="bg-slate-100 p-2 rounded-2xl border border-slate-200 overflow-x-auto max-h-[420px] text-center">
+        <div class="bg-slate-100 p-2 rounded-2xl border border-slate-200 overflow-x-auto max-h-[420px] text-center relative">
           <img id="restock-preview-img" src="${dataUrlPng}" class="max-w-full h-auto mx-auto rounded-xl shadow border border-slate-300">
         </div>
       </div>`,
@@ -1487,13 +1534,42 @@ function openExportRestockImageModal(itemsToBuy) {
 
       const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
 
+      const statusSelectModal = m.querySelector("#export-status-select");
+      if (statusSelectModal) {
+        statusSelectModal.onchange = () => {
+          activeStatus = statusSelectModal.value;
+          if (activeStatus === "HABIS") {
+            currentItemsToBuy = sourceItems.filter(i => toNumber(i.stok_saat_ini) === 0);
+          } else if (activeStatus === "MENIPIS") {
+            currentItemsToBuy = sourceItems.filter(i => toNumber(i.stok_saat_ini) > 0);
+          } else {
+            currentItemsToBuy = sourceItems.slice();
+          }
+
+          if (currentItemsToBuy.length === 0) {
+            toast("Tidak ada data barang untuk status filter yang dipilih", "warning");
+          }
+
+          const generated = generateRestockCanvasData(currentItemsToBuy, getStatusLabel(activeStatus));
+          dataUrlPng = generated.dataUrlPng;
+          dataUrlJpg = generated.dataUrlJpg;
+
+          const previewImg = m.querySelector("#restock-preview-img");
+          if (previewImg) previewImg.src = dataUrlPng;
+        };
+      }
+
       m.querySelector("#btn-download-png").onclick = () => {
-        downloadDataUrl(dataUrlPng, `Daftar_Belanja_ATK_Andela_${dateStr}.png`);
+        if (!currentItemsToBuy || currentItemsToBuy.length === 0) return toast("Tidak ada data untuk di-download", "warning");
+        const suffix = activeStatus ? `_${activeStatus}` : "";
+        downloadDataUrl(dataUrlPng, `Daftar_Belanja_ATK_Andela${suffix}_${dateStr}.png`);
         toast("Gambar PNG berhasil diunduh!", "success");
       };
 
       m.querySelector("#btn-download-jpg").onclick = () => {
-        downloadDataUrl(dataUrlJpg, `Daftar_Belanja_ATK_Andela_${dateStr}.jpg`);
+        if (!currentItemsToBuy || currentItemsToBuy.length === 0) return toast("Tidak ada data untuk di-download", "warning");
+        const suffix = activeStatus ? `_${activeStatus}` : "";
+        downloadDataUrl(dataUrlJpg, `Daftar_Belanja_ATK_Andela${suffix}_${dateStr}.jpg`);
         toast("Gambar JPG berhasil diunduh!", "success");
       };
     }
@@ -1509,7 +1585,7 @@ function downloadDataUrl(dataUrl, fileName) {
   document.body.removeChild(link);
 }
 
-function generateRestockCanvasData(itemsToBuy) {
+function generateRestockCanvasData(itemsToBuy, statusLabel = "Semua Status (Habis & Menipis)") {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
 
@@ -1546,7 +1622,7 @@ function generateRestockCanvasData(itemsToBuy) {
   const todayStr = new Date().toLocaleDateString("id-ID", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   ctx.fillStyle = "#475569";
   ctx.font = "12px sans-serif";
-  ctx.fillText(`Tanggal Dokumen: ${todayStr}  |  Total Kebutuhan: ${itemsToBuy.length} Jenis Barang`, 50, 155);
+  ctx.fillText(`Tanggal Dokumen: ${todayStr}  |  Filter Status: ${statusLabel}  |  Total Kebutuhan: ${itemsToBuy.length} Jenis Barang`, 50, 155);
 
   // Divider Line
   ctx.strokeStyle = "#CBD5E1";
@@ -1683,6 +1759,7 @@ export async function mount(container, options = {}) {
  await renderCrudModule(panels.barang, {
  title: "Master Aset & Inventaris",
  collectionName: COL.MASTER_INVENTORY,
+ idPrefix: "INV",
  orderByField: "nama_barang", 
  printFn: openQrCodeModal,
  printLabel: "Label QR",
