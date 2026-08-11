@@ -187,7 +187,7 @@ export async function renderCrudModule(container, cfg) {
  <input id="crud-search" type="text" placeholder="Cari..." class="pl-9 pr-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100 outline-none transition w-48">
  <span class="absolute left-2.5 top-2.5 text-slate-400">${icon("search", "w-4 h-4")}</span>
  </div>
- <button id="crud-export" class="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 transition" title="Export CSV">${icon("download", "w-4 h-4")}</button>
+ <button id="crud-export" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition shadow-2xs" title="Export Data ke Excel / CSV">${icon("download", "w-4 h-4 text-slate-500")}Export Excel/CSV</button>
  ${canCreate ? `<button id="crud-add" class="flex items-center gap-1.5 bg-maroon-700 hover:bg-maroon-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition shadow-sm shadow-maroon-900/10">${icon("plus", "w-4 h-4")}Tambah</button>` : ""}
  </div>
  </div>
@@ -597,20 +597,30 @@ export function openExportPicker(title, columns, rows) {
  matrix: rows.map(row => chosenCols.map(c => plainCellValue(row, c)))
  };
  }
- const baseName = title.toLowerCase().replace(/\s+/g, "_");
+ const baseName = title.toLowerCase().replace(/[^a-zA-Z0-9]/g, "_");
  m.querySelector("#exp-csv").onclick = async () => {
- const data = getChosen(); if (!data) return;
- const { downloadCsv } = await import("./utils.js");
- downloadCsv(`${baseName}.csv`, data.headers, data.matrix);
- toast("File CSV berhasil diunduh", "success");
- closeModal();
+ try {
+  const data = getChosen(); if (!data) return;
+  const { downloadCsv } = await import("./utils.js");
+  downloadCsv(`${baseName}.csv`, data.headers, data.matrix);
+  toast("File CSV berhasil diunduh", "success");
+  closeModal();
+ } catch (e) {
+  console.error(e);
+  toast("Gagal mengunduh CSV: " + e.message, "error");
+ }
  };
  m.querySelector("#exp-xlsx").onclick = async () => {
- const data = getChosen(); if (!data) return;
- const { downloadXlsx } = await import("./utils.js");
- await downloadXlsx(`${baseName}.xlsx`, data.headers, data.matrix, title);
- toast("File Excel berhasil diunduh", "success");
- closeModal();
+ try {
+  const data = getChosen(); if (!data) return;
+  const { downloadXlsx } = await import("./utils.js");
+  await downloadXlsx(`${baseName}.xlsx`, data.headers, data.matrix, title);
+  toast("File Excel berhasil diunduh", "success");
+  closeModal();
+ } catch (e) {
+  console.error(e);
+  toast("Gagal mengunduh Excel: " + e.message, "error");
+ }
  };
  }
  });

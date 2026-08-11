@@ -779,50 +779,93 @@ export async function mount(container) {
  }
 
  async function populateOffboardingAssets() {
- if (!offAssetBox) return;
- offAssetBox.innerHTML = `<p class="text-xs text-slate-400 text-center py-2 col-span-12">Memuat data aset karyawan...</p>`;
+    if (!offAssetBox) return;
+    offAssetBox.innerHTML = `<p class="text-xs text-slate-400 text-center py-2 col-span-12">Memuat data aset & ATK karyawan...</p>`;
 
- let assigned = [];
- if (currentSelectedKaryawan) {
- try {
- const allInventory = await fsGetAll(COL.MASTER_INVENTORY);
- const targetName = (currentSelectedKaryawan.nama_karyawan || "").trim().toLowerCase();
- assigned = allInventory.filter(a => (a.assigned_to || "").trim().toLowerCase() === targetName);
- } catch (e) {
- console.warn("Error fetching employee inventory assets:", e);
- }
- }
+    let combinedAssets = [];
+    if (currentSelectedKaryawan) {
+      try {
+        const targetName = (currentSelectedKaryawan.nama_karyawan || "").trim().toLowerCase();
+        
+        // 1. Ambil dari Master Inventaris (Aset / Laptop / Kendaraan)
+        const allInventory = (await fsGetAll(COL.MASTER_INVENTORY)) || [];
+        const invItems = allInventory.filter(a => {
+          const assign = (a.assigned_to || "").trim().toLowerCase();
+          const place = (a.penempatan || "").trim().toLowerCase();
+          const holder = (a.pemegang || "").trim().toLowerCase();
+          return (assign && assign.includes(targetName)) || 
+                 (place && place.includes(targetName)) || 
+                 (holder && holder.includes(targetName));
+        });
 
- offAssetBox.innerHTML = "";
- if (assigned && assigned.length > 0) {
- assigned.forEach(a => addOffAssetRow({
- id_item: a.id_item || a.id,
- nama_barang: a.nama_barang,
- kategori: a.kategori || "Aset Kantor / Laptop",
- status_pengembalian: "Diterima & Lengkap"
- }));
- }
+        // 2. Ambil dari Log Pengambilan & Serah Terima ATK / Barang
+        const allLogs = (await fsGetAll(COL.LOG_INVENTORY_PENGAMBILAN)) || [];
+        const logItems = allLogs.filter(l => {
+          const emp = (l.nama_karyawan || "").trim().toLowerCase();
+          return emp === targetName;
+        });
 
- // Pre-populate standard defaults if not present
- if (!assigned.some(a => (a.nama_barang || "").toLowerCase().includes("id card"))) {
- addOffAssetRow({
- id_item: "IDC-01",
- nama_barang: "ID Card & Lanyard Akses Perusahaan",
- kategori: "ID Card & Akses",
- status_pengembalian: "Diterima & Lengkap"
- });
- }
- if (!assigned.some(a => (a.nama_barang || "").toLowerCase().includes("seragam"))) {
- addOffAssetRow({
- id_item: "SRG-01",
- nama_barang: "Seragam Kerja Kantor (2 Stel)",
- kategori: "Seragam & APD",
- status_pengembalian: "Diterima & Lengkap"
- });
- }
- }
+        const itemMap = new Map();
 
- populateOffboardingAssets();
+        invItems.forEach(a => {
+          const key = (a.id_item || a.id || a.nama_barang).toLowerCase();
+          itemMap.set(key, {
+            id_item: a.id_item || a.id,
+            nama_barang: a.nama_barang,
+            kategori: a.kategori || "Aset Kantor / Laptop",
+            status_pengembalian: "Diterima & Lengkap"
+          });
+        });
+
+        logItems.forEach(l => {
+          const key = (l.id_barang || l.nama_barang).toLowerCase();
+          if (!itemMap.has(key)) {
+            const qtyStr = l.jumlah_ambil ? ` (${l.jumlah_ambil} ${l.satuan || "Pcs"})` : "";
+            itemMap.set(key, {
+              id_item: l.id_barang || ("LOG-" + l.id),
+              nama_barang: l.nama_barang + qtyStr,
+              kategori: l.kategori || "Pengambilan ATK / Barang",
+              status_pengembalian: "Diterima & Lengkap"
+            });
+          }
+        });
+
+        combinedAssets = Array.from(itemMap.values());
+      } catch (e) {
+        console.warn("Error fetching employee inventory & ATK assets:", e);
+      }
+    }
+
+    offAssetBox.innerHTML = "";
+    if (combinedAssets && combinedAssets.length > 0) {
+      combinedAssets.forEach(a => addOffAssetRow({
+        id_item: a.id_item,
+        nama_barang: a.nama_barang,
+        kategori: a.kategori,
+        status_pengembalian: a.status_pengembalian || "Diterima & Lengkap"
+      }));
+    }
+
+    // Pre-populate standard defaults if not present
+    if (!combinedAssets.some(a => (a.nama_barang || "").toLowerCase().includes("id card"))) {
+      addOffAssetRow({
+        id_item: "IDC-01",
+        nama_barang: "ID Card & Lanyard Akses Perusahaan",
+        kategori: "ID Card & Akses",
+        status_pengembalian: "Diterima & Lengkap"
+      });
+    }
+    if (!combinedAssets.some(a => (a.nama_barang || "").toLowerCase().includes("seragam"))) {
+      addOffAssetRow({
+        id_item: "SRG-01",
+        nama_barang: "Seragam Kerja Kantor (2 Stel)",
+        kategori: "Seragam & APD",
+        status_pengembalian: "Diterima & Lengkap"
+      });
+    }
+  }
+
+  populateOffboardingAssets();
 
  // Checklist items container and default loader
  const chkBox = dynFields.querySelector("#offboarding-checklist-container");

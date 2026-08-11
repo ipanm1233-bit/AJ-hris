@@ -501,9 +501,16 @@ export async function downloadXlsx(arg1, arg2, arg3, arg4 = "Data") {
  return;
  }
 
- const wb = window.XLSX.utils.book_new();
- window.XLSX.utils.book_append_sheet(wb, ws, sName);
- window.XLSX.writeFile(wb, filename.endsWith(".xlsx") ? filename : filename + ".xlsx");
+ sName = String(sName || "Data").replace(/[\\/?*:[\]]/g, "").trim().substring(0, 31) || "Data";
+
+ try {
+  const wb = window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(wb, ws, sName);
+  window.XLSX.writeFile(wb, filename.endsWith(".xlsx") ? filename : filename + ".xlsx");
+ } catch (err) {
+  console.error("Gagal menulis file XLSX:", err);
+  throw err;
+ }
 }
 
 /**

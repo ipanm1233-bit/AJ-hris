@@ -1,5 +1,5 @@
 import { COL } from "../firebase-config.js";
-import { fsGetAll, fsUpdate, fsAdd, toNumber, escapeHtml, fmtDateShort, openModal, closeModal, toast, notifyUser, genId } from "../utils.js";
+import { fsGetAll, fsUpdate, fsAdd, toNumber, escapeHtml, fmtDateShort, openModal, closeModal, toast, notifyUser, genId, downloadXlsx } from "../utils.js";
 import { renderCrudModule } from "../components.js";
 import { isoDocHeaderTable } from "../branding.js";
 
@@ -67,7 +67,7 @@ export function openAssetDetailAndUpdateStockModal(found, activeEmpNames = [], s
       <div class="grid grid-cols-2 gap-2 pt-1 text-slate-600 font-medium text-[11px]">
        <p>Lokasi: <b class="text-slate-800">${escapeHtml(found.lokasi || "Kantor Pusat")}</b></p>
        <p>No Seri/Plat: <b class="text-slate-800">${escapeHtml(found.serial_number || "-")}</b></p>
-       <p>Penanggung Jawab: <b class="text-slate-800">${escapeHtml(found.assigned_to || "Unassigned")}</b></p>
+       <p>Penempatan: <b class="text-slate-800">${escapeHtml(found.penempatan || found.lokasi || found.assigned_to || "Gudang Utama")}</b></p>
        <p>Stok Aman Minimal: <b class="text-slate-800">${minStok} ${escapeHtml(found.satuan || 'Unit')}</b></p>
       </div>
      </div>
@@ -331,7 +331,7 @@ async function openBatchQrCodeModal() {
  <img src="${qrUrl}" />
  <div class="code">${escapeHtml(assetId)}</div>
  <div class="title">${escapeHtml(row.nama_barang)}</div>
- <div class="meta">${escapeHtml(row.kategori || "Aset")} • PJ: ${escapeHtml(row.assigned_to || "Unassigned")}</div>
+ <div class="meta">${escapeHtml(row.kategori || "Aset")} • Penempatan: ${escapeHtml(row.penempatan || row.lokasi || row.assigned_to || "Gudang Utama")}</div>
  </div>`;
  }).join("");
 
@@ -495,7 +495,7 @@ function openQrCodeModal(row) {
  <p class="font-bold text-slate-700 text-xs mt-0.5">${escapeHtml(row.nama_barang || "-")}</p>
  <p class="text-[11px] text-slate-500 mt-1">${escapeHtml(row.kategori || "Aset Kantor")} • ${escapeHtml(row.serial_number || "No. Seri N/A")}</p>
  <div class="mt-2 text-[10px] text-maroon-700 font-semibold bg-red-50 p-1.5 rounded-lg border border-red-100">
- Penanggung Jawab: <b>${escapeHtml(row.assigned_to || "Unassigned")}</b>
+ Penempatan: <b>${escapeHtml(row.penempatan || row.lokasi || row.assigned_to || "Gudang Utama")}</b>
  </div>
  </div>
  </div>`,
@@ -527,7 +527,7 @@ function openQrCodeModal(row) {
  <img src="${qrUrl}" />
  <h3>${escapeHtml(assetId)}</h3>
  <p><strong>${escapeHtml(row.nama_barang)}</strong></p>
- <p>PJ: ${escapeHtml(row.assigned_to || "Unassigned")}</p>
+ <p>Penempatan: ${escapeHtml(row.penempatan || row.lokasi || row.assigned_to || "Gudang Utama")}</p>
  </div>
  <script>window.print();</script>
  </body>
@@ -1211,6 +1211,10 @@ async function loadRestockPanel(panelEl, container) {
           </p>
         </div>
         <div class="flex items-center gap-2 shrink-0 flex-wrap">
+          <button id="btn-export-restock-excel" class="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            Export Excel
+          </button>
           <button id="btn-gen-image-png" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center gap-2">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
             Export Gambar PNG / JPG
@@ -1322,6 +1326,47 @@ async function loadRestockPanel(panelEl, container) {
   if (statusSelect) statusSelect.onchange = applyRestockFilters;
 
   bindRowRestockEvents(panelEl, container, restockItems);
+
+  // EVENT EXPORT EXCEL RESTOCK
+  const btnExportExcel = panelEl.querySelector("#btn-export-restock-excel");
+  if (btnExportExcel) {
+    btnExportExcel.onclick = async () => {
+      const itemsToExport = currentFilteredItems && currentFilteredItems.length ? currentFilteredItems : restockItems;
+      if (!itemsToExport || itemsToExport.length === 0) {
+        return toast("Tidak ada data barang restock untuk diexport", "warning");
+      }
+      try {
+        const headers = [
+          "No", "Kode / ID Barang", "Nama Barang / ATK", "Kategori",
+          "Stok Saat Ini", "Stok Aman Minimal", "Usulan Beli", "Satuan", "Status Restock"
+        ];
+        const matrix = itemsToExport.map((item, idx) => {
+          const stok = toNumber(item.stok_saat_ini);
+          const minStok = toNumber(item.min_stok) || 5;
+          const usulan = Math.max(1, (minStok * 2) - stok);
+          const status = stok === 0 ? "HABIS TOTAL" : "STOK MENIPIS";
+          return [
+            idx + 1,
+            item.id_item || item.id || "-",
+            item.nama_barang || "-",
+            item.kategori || "Umum",
+            stok,
+            minStok,
+            usulan,
+            item.satuan || "Unit",
+            status
+          ];
+        });
+        const dateStr = new Date().toISOString().slice(0, 10);
+        const statusSuffix = statusSelect && statusSelect.value ? "_" + statusSelect.value : "";
+        await downloadXlsx("Daftar_Belanja_Restock_ATK" + statusSuffix + "_" + dateStr + ".xlsx", headers, matrix, "Restock_ATK");
+        toast("File Excel daftar restock ATK berhasil diunduh!", "success");
+      } catch (err) {
+        console.error("Gagal export excel restock:", err);
+        toast("Gagal mengunduh file Excel: " + err.message, "error");
+      }
+    };
+  }
 
   // EVENT EXPORT GAMBAR
   const btnExport = panelEl.querySelector("#btn-gen-image-png");
@@ -1519,6 +1564,10 @@ function openExportRestockImageModal(initialItemsToBuy, allRestockItems = [], in
       <div class="flex items-center justify-between w-full flex-wrap gap-2">
         <button id="btn-export-close" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl">Tutup</button>
         <div class="flex items-center gap-2">
+          <button id="btn-download-excel" class="px-4 py-2.5 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl transition flex items-center gap-1.5 shadow-2xs">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-emerald-700" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            Download Data Excel
+          </button>
           <button id="btn-download-jpg" class="px-4 py-2.5 text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl transition flex items-center gap-1.5 shadow-2xs">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
             Download Gambar JPG
@@ -1558,6 +1607,39 @@ function openExportRestockImageModal(initialItemsToBuy, allRestockItems = [], in
           if (previewImg) previewImg.src = dataUrlPng;
         };
       }
+
+      m.querySelector("#btn-download-excel").onclick = async () => {
+        if (!currentItemsToBuy || currentItemsToBuy.length === 0) return toast("Tidak ada data untuk di-download", "warning");
+        try {
+          const headers = [
+            "No", "Kode / ID Barang", "Nama Barang / ATK", "Kategori",
+            "Stok Saat Ini", "Stok Aman Minimal", "Usulan Beli", "Satuan", "Status Restock"
+          ];
+          const matrix = currentItemsToBuy.map((item, idx) => {
+            const stok = toNumber(item.stok_saat_ini);
+            const minStok = toNumber(item.min_stok) || 5;
+            const usulan = Math.max(1, (minStok * 2) - stok);
+            const status = stok === 0 ? "HABIS TOTAL" : "STOK MENIPIS";
+            return [
+              idx + 1,
+              item.id_item || item.id || "-",
+              item.nama_barang || "-",
+              item.kategori || "Umum",
+              stok,
+              minStok,
+              usulan,
+              item.satuan || "Unit",
+              status
+            ];
+          });
+          const suffix = activeStatus ? "_" + activeStatus : "";
+          await downloadXlsx("Daftar_Belanja_Restock_ATK" + suffix + "_" + dateStr + ".xlsx", headers, matrix, "Restock_ATK");
+          toast("File Excel daftar restock ATK berhasil diunduh!", "success");
+        } catch (err) {
+          console.error("Gagal export excel:", err);
+          toast("Gagal mengunduh file Excel: " + err.message, "error");
+        }
+      };
 
       m.querySelector("#btn-download-png").onclick = () => {
         if (!currentItemsToBuy || currentItemsToBuy.length === 0) return toast("Tidak ada data untuk di-download", "warning");
@@ -1763,14 +1845,14 @@ export async function mount(container, options = {}) {
  orderByField: "nama_barang", 
  printFn: openQrCodeModal,
  printLabel: "Label QR",
- searchFields: ["nama_barang", "id_item", "kategori", "assigned_to", "serial_number"],
+ searchFields: ["nama_barang", "id_item", "kategori", "penempatan", "lokasi", "assigned_to", "serial_number"],
  columns: [
  { key: "id_item", label: "ID ASET" },
  { key: "nama_barang", label: "Nama Barang / Aset" },
  { key: "kategori", label: "Kategori", type: "badge" },
  { key: "stok_saat_ini", label: "Stok Saat Ini", type: "number" },
  { key: "min_stok", label: "Stok Aman Minimal", type: "number" },
- { key: "assigned_to", label: "Tanggung Jawab" },
+ { key: "penempatan", label: "Penempatan", format: (v, r) => r.penempatan || r.lokasi || r.assigned_to || "-" },
  { key: "kondisi", label: "Kondisi", type: "badge" },
  { key: "lokasi", label: "Lokasi" },
  ],
@@ -1787,7 +1869,7 @@ export async function mount(container, options = {}) {
  "Furniture & Fasilitas",
  "Lainnya"
  ] },
- { name: "assigned_to", label: "Tanggung Jawab Karyawan", type: "select", options: empOptions, default: "Unassigned" },
+ { name: "penempatan", label: "Penempatan Aset / Ruangan", type: "text", placeholder: "Cth: Ruang IT, Desk HRD, Gudang Utama, Ruang Meeting" },
  { name: "kondisi", label: "Kondisi Aset", type: "select", options: ["Good (Baik)", "Maintenance (Perlu Servis)", "Damaged (Rusak)"], default: "Good (Baik)" },
  { name: "serial_number", label: "No. Seri / No. Plat / No. Dokumen", type: "text" },
  { name: "lokasi", label: "Lokasi Penyimpanan / Cabang", type: "text" },
