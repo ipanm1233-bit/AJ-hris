@@ -300,21 +300,15 @@ export async function mount(container, { session }) {
     filterSalesmanSelect.value = currentVal;
   }
 
-  function applyAndRenderDashboard() {
+  function getFilteredCheckins() {
     const salesmanFilter = filterSalesmanSelect ? filterSalesmanSelect.value : "ALL";
     const periodFilter = filterPeriodSelect ? filterPeriodSelect.value : "ALL";
     const statusFilter = filterStatusSelect ? filterStatusSelect.value : "ALL";
     const searchFilter = (filterSearchInput ? filterSearchInput.value : "").toLowerCase().trim();
 
-    // Check if active filter
-    const isFiltered = salesmanFilter !== "ALL" || periodFilter !== "ALL" || statusFilter !== "ALL" || searchFilter !== "";
-    if (activeFilterBadge) activeFilterBadge.classList.toggle("hidden", !isFiltered);
-
-    const filteredRecords = allCheckinsList.filter(item => {
-      // Salesman filter
+    return allCheckinsList.filter(item => {
       if (salesmanFilter !== "ALL" && item.sales_nama !== salesmanFilter) return false;
 
-      // Status filter
       if (statusFilter === "EC") {
         if (!(item.status_kunjungan || "").toLowerCase().includes("effective")) return false;
       } else if (statusFilter === "STOK") {
@@ -323,7 +317,6 @@ export async function mount(container, { session }) {
         if (!(item.status_kunjungan || "").toLowerCase().includes("penawaran")) return false;
       }
 
-      // Period filter
       if (periodFilter === "TODAY") {
         if (item.tanggal !== todayStr) return false;
       } else if (periodFilter === "WEEK") {
@@ -336,7 +329,6 @@ export async function mount(container, { session }) {
         if (itemMonth !== currentMonth) return false;
       }
 
-      // Search term
       if (searchFilter) {
         const text = `${item.sales_nama} ${item.toko_outlet} ${item.alamat_toko} ${item.catatan} ${item.status_kunjungan}`.toLowerCase();
         if (!text.includes(searchFilter)) return false;
@@ -344,6 +336,19 @@ export async function mount(container, { session }) {
 
       return true;
     });
+  }
+
+  function applyAndRenderDashboard() {
+    const salesmanFilter = filterSalesmanSelect ? filterSalesmanSelect.value : "ALL";
+    const periodFilter = filterPeriodSelect ? filterPeriodSelect.value : "ALL";
+    const statusFilter = filterStatusSelect ? filterStatusSelect.value : "ALL";
+    const searchFilter = (filterSearchInput ? filterSearchInput.value : "").toLowerCase().trim();
+
+    // Check if active filter
+    const isFiltered = salesmanFilter !== "ALL" || periodFilter !== "ALL" || statusFilter !== "ALL" || searchFilter !== "";
+    if (activeFilterBadge) activeFilterBadge.classList.toggle("hidden", !isFiltered);
+
+    const filteredRecords = getFilteredCheckins();
 
     // Calculate Route Distances for Filtered Sales Routes
     const salesGroup = new Map();
@@ -706,19 +711,13 @@ export async function mount(container, { session }) {
           <div>
             <p class="text-xs font-bold text-slate-800">${escapeHtml(salesName)} <span class="font-normal text-slate-400">(${escapeHtml(salesNik)})</span> <span class="text-maroon-700 font-bold">@ ${escapeHtml(tokoName)}</span></p>
             <p class="text-[11px] text-slate-500 mt-0.5">${escapeHtml(alamatToko)}</p>
-            
             <div class="flex items-center gap-1.5 mt-1">
-              <span class="text-[10px] text-slate-500 font-semibold">GPS:</span>
-              <input type="text" class="input-feed-gps px-2 py-0.5 text-[10px] font-mono border border-slate-200 rounded-lg w-40 bg-white text-slate-800 focus:border-maroon-500 focus:ring-1 focus:ring-maroon-100 outline-none transition" 
-                     value="${escapeHtml(gpsPos)}" 
-                     data-visitid="${escapeHtml(t._docId || t.id)}" 
-                     data-storename="${escapeHtml(tokoName)}"
-                     data-oldgps="${escapeHtml(gpsPos)}">
-              <button class="btn-feed-save-gps hidden px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[9px] rounded-lg transition"
-                      data-visitid="${escapeHtml(t._docId || t.id)}"
-                      data-storename="${escapeHtml(tokoName)}">
-                Simpan
-              </button>
+              <span class="text-[10px] text-indigo-600 font-mono">GPS:</span>
+              <input type="text" class="gps-inline-input text-[10px] font-mono px-1.5 py-0.5 border border-slate-200 rounded w-44 focus:border-maroon-400 outline-none bg-amber-50/40"
+                value="${escapeHtml(gpsPos)}"
+                data-visitid="${escapeHtml(t._docId || t.id)}"
+                data-storename="${escapeHtml(tokoName)}"
+                title="Ketik koordinat baru lalu tekan Enter atau klik di luar kolom untuk menyimpan">
             </div>
           </div>
           <div class="flex items-center gap-1.5">
@@ -750,33 +749,22 @@ export async function mount(container, { session }) {
       `;
     }).join("");
 
-    timelineEl.querySelectorAll(".input-feed-gps").forEach(inp => {
-      const visitId = inp.dataset.visitid;
-      const oldGps = inp.dataset.oldgps;
-      const saveBtn = timelineEl.querySelector(`.btn-feed-save-gps[data-visitid="${visitId}"]`);
-
-      inp.addEventListener("input", () => {
-        if (inp.value.trim() !== oldGps) {
-          saveBtn?.classList.remove("hidden");
-        } else {
-          saveBtn?.classList.add("hidden");
-        }
-      });
-    });
-
-    timelineEl.querySelectorAll(".btn-feed-save-gps").forEach(btn => {
-      btn.onclick = async () => {
-        const visitId = btn.dataset.visitid;
-        const storeName = btn.dataset.storename;
-        const inp = timelineEl.querySelector(`.input-feed-gps[data-visitid="${visitId}"]`);
-        if (inp) {
-          const success = await handleEditVisitGps(visitId, storeName, inp.value);
-          if (success) {
-            btn.classList.add("hidden");
-            inp.dataset.oldgps = inp.value;
-          }
-        }
+    timelineEl.querySelectorAll(".gps-inline-input").forEach(input => {
+      const commitEdit = async () => {
+        const visitId = input.dataset.visitid;
+        const storeName = input.dataset.storename;
+        const newVal = input.value;
+        const originalVal = input.defaultValue;
+        if (newVal.trim() === originalVal.trim()) return;
+        input.disabled = true;
+        const ok = await saveVisitGpsValue(visitId, storeName, newVal);
+        input.disabled = false;
+        if (!ok) input.value = originalVal;
       };
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+      });
+      input.addEventListener("blur", commitEdit);
     });
   }
 
@@ -992,14 +980,14 @@ export async function mount(container, { session }) {
     });
   }
 
-  // HRD Edit GPS Coordinates for Check-in Record (Inline version, no prompt)
-  async function handleEditVisitGps(visitId, storeName, inputGps) {
+  // Validasi & simpan koordinat GPS baru -- TANPA popup, dipanggil
+  // langsung dari input inline di kolom tabel/kartu.
+  async function saveVisitGpsValue(visitId, storeName, rawInput) {
     if (!visitId) {
       toast("ID Check-in tidak ditemukan.", "warning");
       return false;
     }
-
-    const trimmed = (inputGps || "").trim();
+    const trimmed = (rawInput || "").trim();
     if (!trimmed) {
       toast("Koordinat GPS tidak boleh kosong!", "warning");
       return false;
@@ -1030,7 +1018,6 @@ export async function mount(container, { session }) {
       }
 
       toast(`✅ Titik koordinat '${storeName}' berhasil diperbarui! (${validGpsStr})`, "success");
-      applyAndRenderDashboard();
       return true;
     } catch (err) {
       console.error("Gagal memperbarui GPS:", err);
@@ -1039,6 +1026,7 @@ export async function mount(container, { session }) {
     }
   }
 
+  // HRD Edit GPS Coordinates for Check-in Record
   // MODAL: Detail Rute Itinerary & Jarak Tempuh Sales
   function openSalesRouteDetailModal(salesName, salesNik, allSalesVisits = [], initialMetrics = null) {
     const dateSet = new Set(allSalesVisits.map(v => v.tanggal).filter(Boolean));
@@ -1066,19 +1054,11 @@ export async function mount(container, { session }) {
           <td class="p-2.5 text-slate-500">
             <div>${escapeHtml(leg.toAddress)}</div>
             ${leg.visitId ? `
-              <div class="flex items-center gap-1 mt-1">
-                <span class="text-[10px] text-slate-500 font-semibold">GPS:</span>
-                <input type="text" class="input-modal-gps px-1.5 py-0.5 text-[10px] font-mono border border-slate-200 rounded w-32 bg-white text-slate-800 outline-none" 
-                       value="${escapeHtml(leg.toGps)}" 
-                       data-visitid="${escapeHtml(leg.visitId)}" 
-                       data-storename="${escapeHtml(leg.toName)}"
-                       data-oldgps="${escapeHtml(leg.toGps)}">
-                <button class="btn-modal-save-gps hidden px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[9px] rounded transition"
-                        data-visitid="${escapeHtml(leg.visitId)}"
-                        data-storename="${escapeHtml(leg.toName)}">
-                  Simpan
-                </button>
-              </div>
+              <input type="text" class="gps-inline-input text-[10px] font-mono mt-1 px-1.5 py-0.5 border border-slate-200 rounded w-44 focus:border-maroon-400 outline-none bg-amber-50/40"
+                value="${escapeHtml(leg.toGps)}"
+                data-visitid="${escapeHtml(leg.visitId)}"
+                data-storename="${escapeHtml(leg.toName)}"
+                title="Ketik koordinat baru lalu tekan Enter atau klik di luar kolom untuk menyimpan">
             ` : `<div class="text-[10px] text-indigo-600 font-mono mt-0.5">GPS: ${escapeHtml(leg.toGps)}</div>`}
           </td>
           <td class="p-2.5 text-right font-black text-indigo-700">${leg.distanceKm} KM</td>
@@ -1202,32 +1182,26 @@ export async function mount(container, { session }) {
         refreshModalView();
       });
 
-      modalEl.querySelectorAll(".input-modal-gps").forEach(inp => {
-        const visitId = inp.dataset.visitid;
-        const oldGps = inp.dataset.oldgps;
-        const saveBtn = modalEl.querySelector(`.btn-modal-save-gps[data-visitid="${visitId}"]`);
-
-        inp.addEventListener("input", () => {
-          if (inp.value.trim() !== oldGps) {
-            saveBtn?.classList.remove("hidden");
+      modalEl.querySelectorAll(".gps-inline-input").forEach(input => {
+        const commitEdit = async () => {
+          const visitId = input.dataset.visitid;
+          const storeName = input.dataset.storename;
+          const newVal = input.value;
+          const originalVal = input.defaultValue;
+          if (newVal.trim() === originalVal.trim()) return; // tidak berubah, tidak perlu simpan
+          input.disabled = true;
+          const ok = await saveVisitGpsValue(visitId, storeName, newVal);
+          input.disabled = false;
+          if (ok) {
+            refreshModalView();
           } else {
-            saveBtn?.classList.add("hidden");
-          }
-        });
-      });
-
-      modalEl.querySelectorAll(".btn-modal-save-gps").forEach(btn => {
-        btn.onclick = async () => {
-          const visitId = btn.dataset.visitid;
-          const storeName = btn.dataset.storename;
-          const inp = modalEl.querySelector(`.input-modal-gps[data-visitid="${visitId}"]`);
-          if (inp) {
-            const success = await handleEditVisitGps(visitId, storeName, inp.value);
-            if (success) {
-              refreshModalView();
-            }
+            input.value = originalVal; // gagal validasi -- kembalikan ke nilai semula
           }
         };
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+        });
+        input.addEventListener("blur", commitEdit);
       });
     }
 
@@ -1600,152 +1574,41 @@ export async function mount(container, { session }) {
     }
   }
 
-  // Bind Export Excel (Dengan Pemilihan Periode)
+  // Bind Export Excel
   if (btnExport) {
-    btnExport.onclick = () => {
-      if (allCheckinsList.length === 0) {
-        return toast("Tidak ada data kunjungan untuk diexport", "warning");
+    btnExport.onclick = async () => {
+      const periodFilter = filterPeriodSelect ? filterPeriodSelect.value : "ALL";
+      if (periodFilter === "ALL") {
+        toast("Pilih Periode Kunjungan dulu (Hari Ini/7 Hari/Bulan Ini) sebelum export, supaya data yang diunduh tidak terlalu besar/tercampur.", "warning");
+        filterPeriodSelect?.focus();
+        return;
       }
 
-      const modalHtml = `
-      <div class="p-6 space-y-4 max-w-md mx-auto text-left">
-        <div class="border-b border-slate-100 pb-3 flex justify-between items-center">
-          <div>
-            <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
-              <span>📥 Pilih Periode Tarikan Data Excel</span>
-            </h3>
-            <p class="text-xs text-slate-500 mt-0.5">Filter data kunjungan sales yang ingin diekspor ke Excel.</p>
-          </div>
-          <button id="modal-close-export" class="text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer">✕</button>
-        </div>
+      const dataToExport = getFilteredCheckins();
+      if (dataToExport.length === 0) {
+        return toast("Tidak ada data kunjungan pada periode/filter yang dipilih untuk diexport", "warning");
+      }
 
-        <div class="space-y-4 text-xs">
-          <div>
-            <label class="block font-bold text-slate-700 mb-1">Periode Tarikan</label>
-            <select id="export-period-select" class="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold bg-slate-50 focus:border-indigo-600 outline-none">
-              <option value="ALL">🗓️ Seluruh Periode Terdaftar</option>
-              <option value="TODAY">📅 Hari Ini (${todayStr})</option>
-              <option value="WEEK">📅 7 Hari Terakhir</option>
-              <option value="MONTH">📅 Bulan Ini</option>
-              <option value="CUSTOM">📅 Custom Range (Pilih Tanggal)</option>
-            </select>
-          </div>
+      toast(`Mengeksport ${dataToExport.length} data kunjungan & jarak tempuh sales ke Excel...`, "info");
 
-          <div id="export-custom-dates" class="hidden grid grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-            <div>
-              <label class="block font-semibold text-slate-600 mb-1">Tanggal Mulai</label>
-              <input type="date" id="export-start-date" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg bg-white">
-            </div>
-            <div>
-              <label class="block font-semibold text-slate-600 mb-1">Tanggal Selesai</label>
-              <input type="date" id="export-end-date" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg bg-white">
-            </div>
-          </div>
-        </div>
+      const headers = ["ID Checkin", "Salesman", "NIK Sales", "Nama Toko / Outlet", "Alamat Toko", "Status Kunjungan", "Waktu Check-in", "Waktu Check-out", "Tanggal", "Koordinat GPS", "Gambar Check In", "Catatan"];
+      const matrix = dataToExport.map(item => [
+        item.id || "-",
+        item.sales_nama || "-",
+        item.sales_nik || "-",
+        item.toko_outlet || "-",
+        item.alamat_toko || "-",
+        item.status_kunjungan || "-",
+        item.waktu_checkin || "-",
+        item.waktu_checkout || "-",
+        item.tanggal || "-",
+        item.koordinat_gps || "-",
+        item.gambar_checkin || item.foto_checkin || "-",
+        item.catatan || "-"
+      ]);
 
-        <div class="flex justify-end gap-2 pt-3 border-t border-slate-100">
-          <button id="btn-cancel-export" class="px-4 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition">
-            Batal
-          </button>
-          <button id="btn-submit-export" class="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow-sm transition">
-            Unduh File Excel
-          </button>
-        </div>
-      </div>
-      `;
-
-      openModal({
-        title: "Export Excel Kunjungan",
-        bodyHtml: modalHtml,
-        size: "sm",
-        onMount: (m) => {
-          const periodSelect = m.querySelector("#export-period-select");
-          const customDiv = m.querySelector("#export-custom-dates");
-          const startDateInp = m.querySelector("#export-start-date");
-          const endDateInp = m.querySelector("#export-end-date");
-          const closeBtn = m.querySelector("#modal-close-export");
-          const cancelBtn = m.querySelector("#btn-cancel-export");
-          const submitBtn = m.querySelector("#btn-submit-export");
-
-          closeBtn.onclick = closeModal;
-          cancelBtn.onclick = closeModal;
-
-          startDateInp.value = todayStr;
-          endDateInp.value = todayStr;
-
-          periodSelect.onchange = () => {
-            if (periodSelect.value === "CUSTOM") {
-              customDiv.classList.remove("hidden");
-            } else {
-              customDiv.classList.add("hidden");
-            }
-          };
-
-          submitBtn.onclick = async () => {
-            const selectedPeriod = periodSelect.value;
-            let filteredExportList = [];
-
-            if (selectedPeriod === "ALL") {
-              filteredExportList = allCheckinsList;
-            } else if (selectedPeriod === "TODAY") {
-              filteredExportList = allCheckinsList.filter(item => item.tanggal === todayStr);
-            } else if (selectedPeriod === "WEEK") {
-              filteredExportList = allCheckinsList.filter(item => {
-                const itemDate = new Date(item.tanggal);
-                const diffDays = (now - itemDate) / (1000 * 3600 * 24);
-                return !isNaN(diffDays) && diffDays <= 7;
-              });
-            } else if (selectedPeriod === "MONTH") {
-              const currentMonth = todayStr.substring(0, 7);
-              filteredExportList = allCheckinsList.filter(item => (item.tanggal || "").substring(0, 7) === currentMonth);
-            } else if (selectedPeriod === "CUSTOM") {
-              const startVal = startDateInp.value;
-              const endVal = endDateInp.value;
-              if (!startVal || !endVal) {
-                return toast("Tanggal mulai dan selesai wajib diisi", "warning");
-              }
-              if (startVal > endVal) {
-                return toast("Tanggal mulai tidak boleh melebihi tanggal selesai", "warning");
-              }
-              filteredExportList = allCheckinsList.filter(item => {
-                const t = item.tanggal || "";
-                return t >= startVal && t <= endVal;
-              });
-            }
-
-            if (filteredExportList.length === 0) {
-              return toast("Tidak ada data kunjungan pada periode yang dipilih", "warning");
-            }
-
-            toast(`Mengeksport ${filteredExportList.length} data kunjungan sales ke Excel...`, "info");
-
-            const headers = ["ID Checkin", "Salesman", "NIK Sales", "Nama Toko / Outlet", "Alamat Toko", "Status Kunjungan", "Waktu Check-in", "Waktu Check-out", "Tanggal", "Koordinat GPS", "Gambar Check In", "Catatan"];
-            const matrix = filteredExportList.map(item => [
-              item.id || "-",
-              item.sales_nama || "-",
-              item.sales_nik || "-",
-              item.toko_outlet || "-",
-              item.alamat_toko || "-",
-              item.status_kunjungan || "-",
-              item.waktu_checkin || "-",
-              item.waktu_checkout || "-",
-              item.tanggal || "-",
-              item.koordinat_gps || "-",
-              item.gambar_checkin || item.foto_checkin || "-",
-              item.catatan || "-"
-            ]);
-
-            let filenameSuffix = selectedPeriod.toLowerCase();
-            if (selectedPeriod === "CUSTOM") {
-              filenameSuffix = `${startDateInp.value}_to_${endDateInp.value}`;
-            }
-
-            await downloadXlsx(`Summary_Kunjungan_Rute_Sales_${filenameSuffix}.xlsx`, headers, matrix, "Data_Kunjungan_Sales");
-            toast("File Excel Summary Kunjungan & GPS Rute Sales berhasil diunduh!", "success");
-            closeModal();
-          };
-        }
-      });
+      await downloadXlsx(`Summary_Kunjungan_Rute_Sales_${todayStr}.xlsx`, headers, matrix, "Data_Kunjungan_Sales");
+      toast("File Excel Summary Kunjungan & GPS Rute Sales berhasil diunduh!", "success");
     };
   }
 
