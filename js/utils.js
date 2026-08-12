@@ -879,7 +879,7 @@ export function openModal(options) {
     onMount = options.onMount || null;
   }
 
-  const sizes = { sm: "max-w-md", md: "max-w-2xl", lg: "max-w-4xl", xl: "max-w-6xl" };
+  const sizes = { sm: "max-w-md", md: "max-w-2xl", lg: "max-w-4xl", xl: "max-w-6xl", "7xl": "max-w-7xl", full: "max-w-[96vw] w-full" };
   const backdrop = document.createElement("div");
   backdrop.id = "app-modal-backdrop";
   backdrop.className = "fixed inset-0 z-[100] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 transition-opacity duration-200";
@@ -4196,6 +4196,14 @@ export function calculateSalesRouteMetrics(visitList, departureConfig = {}, sale
     totalKm: Math.round(totalKm * 10) / 10,
     startPoint: { nama: startName, gps: startGps, type: startType, coord: startCoord },
     endPoint: { nama: endName, gps: endGps, type: endType, coord: endCoord },
+    sortedVisits,
+    waypointsGps: sortedVisits.map(v => {
+      const parsed = parseGpsCoordinates(v.koordinat_gps);
+      if (parsed && isValidOperationalCoordinate(parsed.lat, parsed.lng)) {
+        return `${parsed.lat}, ${parsed.lng}`;
+      }
+      return v.koordinat_gps || "-6.7321, 108.5523";
+    }),
     legs: legs
   };
 }
