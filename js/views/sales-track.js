@@ -1,5 +1,5 @@
 import {
-  openModal, closeModal, toast, escapeHtml, fsGetAll, fsAdd, fsUpdate, downloadXlsx,
+  openModal, closeModal, toast, escapeHtml, fsGetAll, fsAdd, fsUpdate, fsDelete, downloadXlsx,
   geocodeAddressSmart, parseGpsCoordinates, calcHaversineDistance, calculateSalesRouteMetrics,
   normalizeCheckinItem, smartParseDate, confirmDialog, promptDialog, downloadHtmlAsPdf, isValidOperationalCoordinate
 } from "../utils.js";
@@ -58,7 +58,7 @@ export async function mount(container, { session }) {
     const kmAwal = parseFloat(kmAwalInput) || 0;
     const kmAkhir = parseFloat(kmAkhirInput) || 0;
     if (kmAkhir < kmAwal && kmAkhir > 0) {
-      toast("⚠️ KM Akhir tidak boleh lebih kecil dari KM Awal!", "warning");
+      toast("KM Akhir tidak boleh lebih kecil dari KM Awal!", "warning");
       return false;
     }
 
@@ -86,7 +86,7 @@ export async function mount(container, { session }) {
 
       const key = `${salesNik}_${tanggal}`;
       odometerLogsMap.set(key, odmRecord);
-      toast(`✅ Data Odometer ${salesNama} (${tanggal}) berhasil disimpan! Jarak Odometer: ${jarakOdometer.toFixed(1)} KM, Selisih: ${selisih >= 0 ? '+' : ''}${selisih.toFixed(1)} KM`, "success");
+      toast(`Data Odometer ${salesNama} (${tanggal}) berhasil disimpan! Jarak Odometer: ${jarakOdometer.toFixed(1)} KM, Selisih: ${selisih >= 0 ? '+' : ''}${selisih.toFixed(1)} KM`, "success");
       applyAndRenderDashboard();
       return true;
     } catch (e) {
@@ -521,15 +521,15 @@ export async function mount(container, { session }) {
 
           <div class="mt-3 p-2.5 bg-slate-50 rounded-xl border border-slate-100 space-y-1.5 text-xs">
             <div class="flex justify-between items-center text-[11px]">
-              <span class="text-slate-500 font-semibold">📍 Total Jarak GPS:</span>
+              <span class="text-slate-500 font-semibold">Total Jarak GPS:</span>
               <span class="font-black text-indigo-700 text-sm">${routeMetrics.totalKm} KM</span>
             </div>
             <div class="flex justify-between items-center text-[11px]">
-              <span class="text-slate-500 font-semibold">🚗 Odometer Sales:</span>
+              <span class="text-slate-500 font-semibold">Odometer Sales:</span>
               <span class="font-black text-amber-700 text-xs">${jarakOdmStr}</span>
             </div>
             <div class="flex justify-between items-center text-[10px]">
-              <span class="text-slate-500">⚖️ Selisih (Odm - GPS):</span>
+              <span class="text-slate-500">Selisih (Odm - GPS):</span>
               <span class="font-extrabold ${selisihVal !== undefined ? (selisihVal >= 0 ? 'text-emerald-600' : 'text-rose-600') : 'text-slate-400'}">${selisihStr}</span>
             </div>
             <div class="flex justify-between items-center text-[10px] text-slate-500 pt-1 border-t border-slate-200/50">
@@ -555,7 +555,8 @@ export async function mount(container, { session }) {
             ${isSelected ? '● Sedang Dilihat' : 'Filter Sales Ini'}
           </button>
           <button class="btn-route-detail bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer">
-            <span>🗺️ Detail Rute & Jarak</span>
+            <svg class="w-3.5 h-3.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+            <span>Detail Rute & Jarak</span>
           </button>
         </div>
       </div>
@@ -789,14 +790,24 @@ export async function mount(container, { session }) {
             <p class="text-xs font-bold text-slate-800">${escapeHtml(salesName)} <span class="font-normal text-slate-400">(${escapeHtml(salesNik)})</span> <span class="text-maroon-700 font-bold">@ ${escapeHtml(tokoName)}</span></p>
             <p class="text-[11px] text-slate-500 mt-0.5">${escapeHtml(alamatToko)}</p>
           </div>
-          <a href="${mapsUrl}" target="_blank" class="px-2.5 py-1 bg-blue-50 text-blue-700 font-bold text-[10px] rounded-lg border border-blue-200 hover:bg-blue-100 transition inline-flex items-center gap-1">
-            📍 Maps
-          </a>
+          <div class="flex items-center gap-1.5">
+            <a href="${mapsUrl}" target="_blank" class="px-2.5 py-1 bg-blue-50 text-blue-700 font-bold text-[10px] rounded-lg border border-blue-200 hover:bg-blue-100 transition inline-flex items-center gap-1">
+              <svg class="w-3 h-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+              <span>Maps</span>
+            </a>
+            <button class="btn-feed-delete-visit px-2.5 py-1 bg-rose-50 text-rose-700 font-bold text-[10px] rounded-lg border border-rose-200 hover:bg-rose-100 transition inline-flex items-center gap-1 cursor-pointer" data-visitid="${escapeHtml(visitId)}" data-storename="${escapeHtml(tokoName)}">
+              <svg class="w-3 h-3 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+              <span>Hapus</span>
+            </button>
+          </div>
         </div>
 
         <!-- Kolom Pengeditan Langsung Titik Koordinat GPS -->
         <div class="flex items-center gap-1.5 mt-2 pt-2 border-t border-slate-200/60 flex-wrap">
-          <span class="text-[10px] font-bold text-slate-600 flex items-center gap-0.5">📍 Koordinat GPS:</span>
+          <span class="text-[10px] font-bold text-slate-600 flex items-center gap-1">
+            <svg class="w-3 h-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            <span>Koordinat GPS:</span>
+          </span>
           <input type="text" 
             class="input-feed-inline-gps px-2.5 py-1 text-[11px] font-mono border border-slate-300 rounded-lg w-44 bg-white focus:border-maroon-600 focus:ring-1 focus:ring-maroon-600 outline-none text-slate-800"
             value="${escapeHtml(gpsPos)}"
@@ -806,7 +817,8 @@ export async function mount(container, { session }) {
           <button class="btn-feed-save-inline-gps px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] rounded-lg transition cursor-pointer shadow-2xs flex items-center gap-1"
             data-visitid="${escapeHtml(visitId)}"
             data-storename="${escapeHtml(tokoName)}">
-            💾 Simpan
+            <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+            <span>Simpan</span>
           </button>
         </div>
 
@@ -831,6 +843,14 @@ export async function mount(container, { session }) {
       </div>
       `;
     }).join("");
+
+    timelineEl.querySelectorAll(".btn-feed-delete-visit").forEach(btn => {
+      btn.onclick = () => {
+        const visitId = btn.dataset.visitid;
+        const storeName = btn.dataset.storename;
+        deleteVisitDirectly(visitId, storeName);
+      };
+    });
 
     timelineEl.querySelectorAll(".btn-feed-save-inline-gps").forEach(btn => {
       btn.onclick = () => {
@@ -883,7 +903,7 @@ export async function mount(container, { session }) {
       <div class="border-b border-slate-100 pb-3 flex justify-between items-center">
         <div>
           <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
-            <span>📍 Pengaturan Titik Keberangkatan & Kepulangan HRD</span>
+            <span>Pengaturan Titik Keberangkatan & Kepulangan HRD</span>
           </h3>
           <p class="text-xs text-slate-500 mt-0.5">Tentukan lokasi awal (Kosan / Kantor) dan titik akhir keberangkatan sales untuk kalkulasi jarak tempuh.</p>
         </div>
@@ -902,7 +922,7 @@ export async function mount(container, { session }) {
           <!-- TITIK AWAL -->
           <div class="p-3.5 bg-indigo-50/50 rounded-2xl border border-indigo-100 space-y-2.5">
             <h4 class="font-bold text-indigo-900 text-xs flex items-center gap-1.5">
-              <span>🚀 Titik Awal Keberangkatan</span>
+              <span>Titik Awal Keberangkatan</span>
             </h4>
             
             <div>
@@ -928,7 +948,7 @@ export async function mount(container, { session }) {
           <!-- TITIK AKHIR -->
           <div class="p-3.5 bg-emerald-50/50 rounded-2xl border border-emerald-100 space-y-2.5">
             <h4 class="font-bold text-emerald-900 text-xs flex items-center gap-1.5">
-              <span>🏁 Titik Akhir Kepulangan</span>
+              <span>Titik Akhir Kepulangan</span>
             </h4>
             
             <div>
@@ -954,7 +974,7 @@ export async function mount(container, { session }) {
 
         <!-- GEOCODE TESTER -->
         <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-          <p class="font-bold text-slate-700 text-[11px]">⚡ Geocoder Alamat ke Titik Koordinat GPS:</p>
+          <p class="font-bold text-slate-700 text-[11px]">Geocoder Alamat ke Titik Koordinat GPS:</p>
           <div class="flex gap-2">
             <input type="text" id="input-test-geocode" placeholder="Ketik nama jalan/alamat di Cirebon..." class="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white">
             <button id="btn-run-test-geocode" class="px-3 py-1.5 bg-indigo-600 text-white font-bold text-xs rounded-lg hover:bg-indigo-700 transition">
@@ -977,7 +997,7 @@ export async function mount(container, { session }) {
     `;
 
     openModal({
-      title: "📍 Pengaturan Titik Keberangkatan Sales HRD",
+      title: "Pengaturan Titik Keberangkatan Sales HRD",
       bodyHtml: modalHtml,
       size: "lg"
     });
@@ -1029,11 +1049,11 @@ export async function mount(container, { session }) {
         const geoRes = await geocodeAddressSmart(addr);
         resGeocode.innerHTML = `
           <div class="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl mt-1 space-y-1 text-xs">
-            <div class="font-bold text-emerald-900">✅ Hasil Geocoding (${geoRes.source || 'OSM'}):</div>
+            <div class="font-bold text-emerald-900">Hasil Geocoding (${geoRes.source || 'OSM'}):</div>
             <div class="font-mono text-emerald-800 text-sm font-bold">${geoRes.lat}, ${geoRes.lng}</div>
             <div class="text-[11px] text-slate-600">${escapeHtml(geoRes.formatted || addr)}</div>
             <a href="https://www.google.com/maps?q=${geoRes.lat},${geoRes.lng}" target="_blank" class="inline-block mt-1 px-2 py-0.5 bg-blue-600 text-white font-bold text-[10px] rounded hover:bg-blue-700 transition">
-              📍 Buka di Google Maps
+              Buka di Google Maps
             </a>
           </div>
         `;
@@ -1112,12 +1132,44 @@ export async function mount(container, { session }) {
         foundInAll.lng = coords.lng;
       }
 
-      toast(`✅ Koordinat GPS '${storeName}' diperbarui (${validGpsStr})`, "success");
+      toast(`Koordinat GPS '${storeName}' diperbarui (${validGpsStr})`, "success");
       applyAndRenderDashboard();
       return true;
     } catch (err) {
       console.error("Gagal memperbarui GPS:", err);
       toast("Gagal memperbarui titik koordinat: " + err.message, "error");
+      return false;
+    }
+  }
+
+  // HRD Delete Check-in Record (for duplicate/invalid entries)
+  async function deleteVisitDirectly(visitId, storeName) {
+    if (!visitId) {
+      toast("ID Check-in tidak ditemukan.", "warning");
+      return false;
+    }
+
+    const confirmed = await confirmDialog(
+      `Apakah Anda yakin ingin menghapus titik kunjungan '${storeName}'?\n\nPenghapusan ini akan menghapus data kunjungan ganda dari database.`,
+      { title: "Hapus Titik Kunjungan", danger: true }
+    );
+    if (!confirmed) return false;
+
+    try {
+      await fsDelete("kanal_checkins", visitId);
+
+      // Remove from memory list
+      const idx = allCheckinsList.findIndex(c => String(c._docId || c.id) === String(visitId) || String(c.id) === String(visitId));
+      if (idx !== -1) {
+        allCheckinsList.splice(idx, 1);
+      }
+
+      toast(`Titik kunjungan '${storeName}' berhasil dihapus.`, "success");
+      applyAndRenderDashboard();
+      return true;
+    } catch (err) {
+      console.error("Gagal menghapus kunjungan:", err);
+      toast("Gagal menghapus titik kunjungan: " + (err.message || err), "error");
       return false;
     }
   }
@@ -1154,7 +1206,7 @@ export async function mount(container, { session }) {
         : (departureConfig.default_end_gps || "-6.732000, 108.552000");
 
       const dateCardsHtml = datesToRender.length === 0 ? `
-        <div class="bg-white p-8 text-center rounded-2xl border border-slate-200">
+        <div class="bg-white p-8 text-center rounded-2xl border border-slate-200 shadow-2xs">
           <p class="text-slate-400 font-medium text-sm">Tidak ada data rute / visit outlet pada tanggal ini.</p>
         </div>
       ` : datesToRender.map(tgl => {
@@ -1177,35 +1229,32 @@ export async function mount(container, { session }) {
         const dailyMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${originStr}&destination=${destStr}&waypoints=${waypoints}&travelmode=driving`;
 
         const startRowHtml = `
-        <tr class="bg-indigo-50/70 border-b border-indigo-100 text-xs font-bold">
-          <td class="p-2 text-center">
-            <span class="px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-black tracking-wide">🚀 AWAL</span>
+        <tr class="bg-indigo-50/60 border-b border-indigo-100/80 text-xs font-bold">
+          <td class="p-2.5 text-center">
+            <span class="px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-extrabold">START / AWAL</span>
           </td>
-          <td class="p-2 text-slate-500 font-medium italic">- (Keberangkatan)</td>
-          <td class="p-2 text-indigo-950 font-black">
-            🏠 ${escapeHtml(dailyMetrics.startPoint.nama)}
-            <span class="text-[10px] text-indigo-600 font-semibold block">(${escapeHtml(dailyMetrics.startPoint.type || 'Kosan/Base')})</span>
+          <td class="p-2.5 text-slate-800 font-bold">
+            ${escapeHtml(dailyMetrics.startPoint.nama)}
+            <span class="text-[10px] text-indigo-600 font-normal block">(${escapeHtml(dailyMetrics.startPoint.type || 'Kosan/Base')})</span>
           </td>
-          <td class="p-2 text-slate-600">
-            <div class="text-[10px] text-slate-500">Titik Awal Keberangkatan Sales</div>
-            <div class="flex items-center gap-1.5 mt-1">
-              <span class="text-[10px] text-indigo-700 font-bold">GPS:</span>
+          <td class="p-2.5 text-slate-600">
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] text-slate-500 font-bold">GPS:</span>
               <input type="text" 
-                class="input-daily-start-gps px-2 py-0.5 text-[10px] font-mono border border-indigo-300 rounded w-36 bg-white focus:border-indigo-600 outline-none text-slate-800"
+                class="input-daily-start-gps px-2 py-0.5 text-[10px] font-mono border border-indigo-200 rounded w-36 bg-white focus:border-indigo-600 outline-none text-slate-800"
                 value="${escapeHtml(dailyMetrics.startPoint.gps)}"
                 placeholder="-6.728000, 108.545000"
                 data-date="${tgl}" />
-              <button class="btn-save-daily-start-gps px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] rounded transition cursor-pointer shadow-2xs"
+              <button class="btn-save-daily-start-gps px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] rounded transition cursor-pointer shadow-2xs flex items-center gap-1"
                 data-date="${tgl}">
-                💾 Simpan Awal
+                <span>Simpan</span>
               </button>
             </div>
           </td>
-          <td class="p-2 text-right font-black text-indigo-700">0 KM</td>
-          <td class="p-2 text-center text-indigo-800 font-bold text-[10px]">Start Hari</td>
-          <td class="p-2 text-center">
-            <a href="https://www.google.com/maps?q=${encodeURIComponent(dailyMetrics.startPoint.gps)}" target="_blank" class="px-2 py-0.5 bg-indigo-100 text-indigo-800 font-bold text-[10px] rounded border border-indigo-200 hover:bg-indigo-200 transition inline-block">
-              📍 Map Awal
+          <td class="p-2.5 text-right font-black text-indigo-700">0 KM</td>
+          <td class="p-2.5 text-center">
+            <a href="https://www.google.com/maps?q=${encodeURIComponent(dailyMetrics.startPoint.gps)}" target="_blank" class="px-2 py-1 bg-indigo-100 text-indigo-800 font-bold text-[10px] rounded hover:bg-indigo-200 transition inline-block">
+              Map
             </a>
           </td>
         </tr>
@@ -1215,55 +1264,67 @@ export async function mount(container, { session }) {
           const mapsUrl = `https://www.google.com/maps?q=${encodeURIComponent(leg.toGps)}`;
           return `
           <tr class="hover:bg-slate-50 border-b border-slate-100 text-xs">
-            <td class="p-2 text-center text-slate-500 font-mono font-bold">Leg #${leg.legIndex}</td>
-            <td class="p-2 text-slate-800 font-medium">${escapeHtml(leg.fromName)}</td>
-            <td class="p-2 text-slate-800 font-bold">🛒 ${escapeHtml(leg.toName)}</td>
-            <td class="p-2 text-slate-500">
-              <div class="font-medium text-slate-700">${escapeHtml(leg.toAddress)}</div>
+            <td class="p-2.5 text-center text-slate-500 font-mono font-bold">
+              <span>Leg #${leg.legIndex}</span>
+              <span class="block text-[10px] text-slate-400 font-normal">${escapeHtml(leg.waktuCheckin || '')}</span>
+            </td>
+            <td class="p-2.5 text-slate-900 font-bold">
+              ${escapeHtml(leg.toName)}
+              <span class="block text-[10px] text-slate-400 font-normal truncate max-w-[220px]">${escapeHtml(leg.toAddress)}</span>
+            </td>
+            <td class="p-2.5 text-slate-600">
               ${leg.visitId ? `
-                <div class="flex items-center gap-1.5 mt-1">
-                  <span class="text-[10px] text-slate-500 font-bold">GPS:</span>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-[10px] text-slate-400 font-mono">GPS:</span>
                   <input type="text" 
-                    class="input-modal-inline-gps px-2 py-0.5 text-[10px] font-mono border border-slate-300 rounded w-36 bg-white focus:border-indigo-600 outline-none text-slate-800"
+                    class="input-modal-inline-gps px-2 py-0.5 text-[10px] font-mono border border-slate-200 rounded w-36 bg-white focus:border-indigo-600 outline-none text-slate-800"
                     value="${escapeHtml(leg.toGps)}"
                     placeholder="-6.732042, 108.552190"
                     data-visitid="${escapeHtml(leg.visitId)}"
                     data-toname="${escapeHtml(leg.toName)}" />
-                  <button class="btn-modal-save-inline-gps px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] rounded transition cursor-pointer shadow-2xs"
+                  <button class="btn-modal-save-inline-gps px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] rounded transition cursor-pointer shadow-2xs"
                     data-visitid="${escapeHtml(leg.visitId)}"
-                    data-toname="${escapeHtml(leg.toName)}">
-                    💾 Simpan
+                    data-toname="${escapeHtml(leg.toName)}"
+                    title="Simpan Perubahan GPS">
+                    Simpan
                   </button>
                 </div>
               ` : `
-                <div class="text-[10px] text-indigo-600 font-mono mt-0.5">GPS: ${escapeHtml(leg.toGps)}</div>
+                <div class="text-[10px] text-slate-500 font-mono">GPS: ${escapeHtml(leg.toGps)}</div>
               `}
             </td>
-            <td class="p-2 text-right font-black text-indigo-700">${leg.distanceKm} KM</td>
-            <td class="p-2 text-center text-slate-600">${escapeHtml(leg.waktuCheckin)}</td>
-            <td class="p-2 text-center">
-              <a href="${mapsUrl}" target="_blank" class="px-2 py-0.5 bg-blue-50 text-blue-700 font-bold text-[10px] rounded border border-blue-200 hover:bg-blue-100 transition inline-block">
-                📍 Map
-              </a>
+            <td class="p-2.5 text-right font-black text-indigo-700">${leg.distanceKm} KM</td>
+            <td class="p-2.5 text-center">
+              <div class="flex items-center justify-center gap-1.5">
+                <a href="${mapsUrl}" target="_blank" class="px-2 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-[10px] rounded border border-blue-200 transition inline-flex items-center gap-0.5">
+                  Map
+                </a>
+                ${leg.visitId ? `
+                  <button class="btn-modal-delete-visit px-2 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold text-[10px] rounded border border-rose-200 transition cursor-pointer inline-flex items-center gap-0.5"
+                    data-visitid="${escapeHtml(leg.visitId)}"
+                    data-toname="${escapeHtml(leg.toName)}"
+                    title="Hapus titik kunjungan ini (jika ganda)">
+                    Hapus
+                  </button>
+                ` : ''}
+              </div>
             </td>
           </tr>
           `;
         }).join("");
 
         const endRowHtml = `
-        <tr class="bg-slate-100 border-b border-slate-200 text-xs font-bold">
-          <td class="p-2 text-center">
-            <span class="px-2 py-0.5 bg-slate-800 text-white rounded text-[10px] font-black tracking-wide">🏁 AKHIR</span>
+        <tr class="bg-slate-100/80 border-b border-slate-200 text-xs font-bold">
+          <td class="p-2.5 text-center">
+            <span class="px-2 py-0.5 bg-slate-800 text-white rounded text-[10px] font-extrabold">FINISH / AKHIR</span>
           </td>
-          <td class="p-2 text-slate-800 font-medium">Outlet Terakhir</td>
-          <td class="p-2 text-slate-900 font-black">
-            🏢 ${escapeHtml(dailyMetrics.endPoint.nama)}
-            <span class="text-[10px] text-slate-600 font-semibold block">(${escapeHtml(dailyMetrics.endPoint.type || 'Kantor/Base')})</span>
+          <td class="p-2.5 text-slate-900 font-bold">
+            ${escapeHtml(dailyMetrics.endPoint.nama)}
+            <span class="text-[10px] text-slate-500 font-normal block">(${escapeHtml(dailyMetrics.endPoint.type || 'Kantor/Base')})</span>
           </td>
-          <td class="p-2 text-slate-600">
-            <div class="text-[10px] text-slate-500">Titik Kepulangan Sales</div>
-            <div class="flex items-center gap-1.5 mt-1">
-              <span class="text-[10px] text-slate-700 font-bold">GPS:</span>
+          <td class="p-2.5 text-slate-600">
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] text-slate-500 font-bold">GPS:</span>
               <input type="text" 
                 class="input-daily-end-gps px-2 py-0.5 text-[10px] font-mono border border-slate-300 rounded w-36 bg-white focus:border-indigo-600 outline-none text-slate-800"
                 value="${escapeHtml(dailyMetrics.endPoint.gps)}"
@@ -1271,15 +1332,14 @@ export async function mount(container, { session }) {
                 data-date="${tgl}" />
               <button class="btn-save-daily-end-gps px-2 py-0.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-[10px] rounded transition cursor-pointer shadow-2xs"
                 data-date="${tgl}">
-                💾 Simpan Akhir
+                Simpan
               </button>
             </div>
           </td>
-          <td class="p-2 text-right font-black text-indigo-700">${dailyMetrics.legs.length > 0 ? dailyMetrics.legs[dailyMetrics.legs.length - 1].distanceKm : 0} KM</td>
-          <td class="p-2 text-center text-slate-800 font-bold text-[10px]">Selesai / Pulang</td>
-          <td class="p-2 text-center">
-            <a href="https://www.google.com/maps?q=${encodeURIComponent(dailyMetrics.endPoint.gps)}" target="_blank" class="px-2 py-0.5 bg-slate-200 text-slate-800 font-bold text-[10px] rounded border border-slate-300 hover:bg-slate-300 transition inline-block">
-              📍 Map Akhir
+          <td class="p-2.5 text-right font-black text-indigo-700">${dailyMetrics.legs.length > 0 ? dailyMetrics.legs[dailyMetrics.legs.length - 1].distanceKm : 0} KM</td>
+          <td class="p-2.5 text-center">
+            <a href="https://www.google.com/maps?q=${encodeURIComponent(dailyMetrics.endPoint.gps)}" target="_blank" class="px-2 py-1 bg-slate-200 text-slate-800 font-bold text-[10px] rounded border border-slate-300 hover:bg-slate-300 transition inline-block">
+              Map
             </a>
           </td>
         </tr>
@@ -1288,173 +1348,137 @@ export async function mount(container, { session }) {
         const legsTableHtml = startRowHtml + visitLegsHtml + endRowHtml;
 
         return `
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-6 transition hover:border-indigo-300">
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden mb-5 transition hover:border-slate-300">
           <!-- CARD HEADER -->
-          <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 border-b border-indigo-800">
-            <div>
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="px-2.5 py-0.5 bg-amber-500 text-slate-950 text-xs font-black rounded-lg uppercase tracking-wide">📅 Tanggal: ${escapeHtml(tgl)}</span>
-                <span class="text-xs text-indigo-200 font-bold bg-indigo-900/80 px-2.5 py-0.5 rounded-lg border border-indigo-700/50">🛒 ${dailyVisits.length} Outlet Visit</span>
-              </div>
-              <p class="text-xs text-slate-300 mt-1">
-                🚀 Start: <b>${escapeHtml(dailyMetrics.startPoint.nama)}</b> | 🏁 Finish: <b>${escapeHtml(dailyMetrics.endPoint.nama)}</b>
-              </p>
+          <div class="bg-slate-900 text-white p-3.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 border-b border-slate-800">
+            <div class="flex items-center gap-2.5 flex-wrap">
+              <span class="px-3 py-1 bg-amber-500 text-slate-950 text-xs font-black rounded-lg">Tanggal: ${escapeHtml(tgl)}</span>
+              <span class="text-xs text-indigo-200 font-bold bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700">${dailyVisits.length} Outlet Visit</span>
+              <span class="text-xs text-slate-300 hidden sm:inline">${escapeHtml(dailyMetrics.startPoint.nama)} ➔ ${escapeHtml(dailyMetrics.endPoint.nama)}</span>
             </div>
-            <div class="flex items-center gap-4">
+            <div class="flex items-center gap-3">
               <div class="text-right">
-                <span class="text-[10px] text-indigo-300 uppercase font-bold block">Jarak Rute GPS Hari Ini</span>
-                <span class="text-2xl font-black text-indigo-300">${dailyMetrics.totalKm} KM</span>
+                <span class="text-[10px] text-slate-400 uppercase font-bold block">Jarak GPS Hari Ini</span>
+                <span class="text-lg font-black text-amber-400">${dailyMetrics.totalKm} KM</span>
               </div>
-              <a href="${dailyMapsUrl}" target="_blank" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition shadow-sm flex items-center gap-1.5 shrink-0">
-                <span>🗺️ Buka Rute Google Maps Full (${dailyVisits.length} Visit)</span>
+              <a href="${dailyMapsUrl}" target="_blank" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition shadow-2xs flex items-center gap-1.5 shrink-0">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                <span>Rute Google Maps (${dailyVisits.length} Visit)</span>
               </a>
             </div>
           </div>
 
-          <!-- ODOMETER INPUT SECTION ON CARD -->
-          <div class="p-4 bg-slate-50/90 border-b border-slate-200 space-y-3">
-            <div class="flex items-center justify-between flex-wrap gap-2">
-              <div class="flex items-center gap-2">
-                <span class="p-1 bg-indigo-100 text-indigo-700 rounded-lg text-sm">🚗</span>
-                <h5 class="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
-                  <span>Input KM Odometer Kendaraan Sales (Hari ini: ${tgl})</span>
-                  <span class="text-[10px] text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full border border-indigo-200 font-bold">Odometer vs GPS</span>
-                </h5>
+          <!-- ODOMETER INPUT SECTION -->
+          <div class="p-3.5 bg-slate-50 border-b border-slate-200 space-y-2.5">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2 font-bold text-xs text-slate-800">
+                <span>Odometer Kendaraan (${tgl}):</span>
+              </div>
+              
+              <div class="flex items-center gap-2 flex-wrap text-xs">
+                <div class="flex items-center gap-1 bg-white px-2.5 py-1 border border-slate-200 rounded-lg">
+                  <span class="text-[10px] font-bold text-slate-500">KM Awal:</span>
+                  <input type="number" data-date="${tgl}" class="input-daily-km-awal w-20 px-1.5 py-0.5 bg-slate-50 border border-slate-300 rounded font-mono text-slate-900 font-bold text-xs outline-none focus:border-indigo-600" value="${initAwal}" placeholder="0" />
+                </div>
+
+                <div class="flex items-center gap-1 bg-white px-2.5 py-1 border border-slate-200 rounded-lg">
+                  <span class="text-[10px] font-bold text-slate-500">KM Akhir:</span>
+                  <input type="number" data-date="${tgl}" class="input-daily-km-akhir w-20 px-1.5 py-0.5 bg-slate-50 border border-slate-300 rounded font-mono text-slate-900 font-bold text-xs outline-none focus:border-indigo-600" value="${initAkhir}" placeholder="0" />
+                </div>
+
+                <div class="flex items-center gap-1 bg-white px-2.5 py-1 border border-slate-200 rounded-lg">
+                  <span class="text-[10px] font-bold text-slate-500">Jarak Odm:</span>
+                  <span data-date="${tgl}" class="disp-daily-jarak-odm font-black text-amber-700 font-mono text-xs">${initJarakOdm.toFixed(1)} KM</span>
+                </div>
+
+                <div class="flex items-center gap-1 bg-white px-2.5 py-1 border border-slate-200 rounded-lg">
+                  <span class="text-[10px] font-bold text-slate-500">Selisih:</span>
+                  <span data-date="${tgl}" class="disp-daily-selisih-km font-black ${initSelisih >= 0 ? 'text-emerald-600' : 'text-rose-600'} font-mono text-xs">${initSelisih > 0 ? '+' : ''}${initSelisih.toFixed(1)} KM</span>
+                </div>
+
+                <button data-date="${tgl}" data-gpskm="${dailyMetrics.totalKm}" class="btn-save-daily-odometer px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition text-xs shadow-2xs cursor-pointer">
+                  Simpan
+                </button>
               </div>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-              <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-1">
-                <label class="block text-[11px] font-bold text-slate-700">🔢 KM Awal Odometer</label>
-                <input type="number" data-date="${tgl}" class="input-daily-km-awal w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg font-bold font-mono text-slate-900 focus:border-indigo-600 outline-none text-xs" value="${initAwal}" placeholder="e.g. 12450" />
-                <p class="text-[10px] text-slate-400">Angka awal spedometer</p>
-              </div>
-
-              <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-1">
-                <label class="block text-[11px] font-bold text-slate-700">🏁 KM Akhir Odometer</label>
-                <input type="number" data-date="${tgl}" class="input-daily-km-akhir w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg font-bold font-mono text-slate-900 focus:border-indigo-600 outline-none text-xs" value="${initAkhir}" placeholder="e.g. 12530" />
-                <p class="text-[10px] text-slate-400">Angka akhir spedometer</p>
-              </div>
-
-              <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
-                <div>
-                  <span class="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">📐 Jarak Odometer</span>
-                  <span class="text-[10px] text-slate-400 italic">(KM Akhir - KM Awal)</span>
-                </div>
-                <div data-date="${tgl}" class="disp-daily-jarak-odm text-xl font-black text-amber-600 font-mono mt-1">${initJarakOdm.toFixed(1)} KM</div>
-              </div>
-
-              <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
-                <div>
-                  <span class="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">⚖️ Selisih (Odm - GPS)</span>
-                  <span class="text-[10px] text-slate-400 italic">(GPS: ${dailyMetrics.totalKm} KM)</span>
-                </div>
-                <div data-date="${tgl}" class="disp-daily-selisih-km text-xl font-black ${initSelisih >= 0 ? 'text-emerald-600' : 'text-rose-600'} font-mono mt-1">${initSelisih > 0 ? '+' : ''}${initSelisih.toFixed(1)} KM</div>
-              </div>
-            </div>
-
-            <div class="flex items-center justify-between pt-2 border-t border-slate-200/80 text-[11px] flex-wrap gap-2">
-              <div data-date="${tgl}" class="disp-daily-status-badge font-semibold text-slate-700">
-                ${numAkhir > 0 ? (initSelisih >= 0 ? `✅ Jarak Odometer (${initJarakOdm.toFixed(1)} KM) terpaut +${initSelisih.toFixed(1)} KM lebih tinggi dibanding Rute GPS (${dailyMetrics.totalKm} KM).` : `⚠️ Jarak Odometer (${initJarakOdm.toFixed(1)} KM) terpaut ${initSelisih.toFixed(1)} KM lebih rendah dibanding Rute GPS (${dailyMetrics.totalKm} KM).`) : 'Sistem menunggu input KM Awal & KM Akhir kendaraan'}
-              </div>
-              <button data-date="${tgl}" data-gpskm="${dailyMetrics.totalKm}" class="btn-save-daily-odometer px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition text-xs flex items-center gap-1.5 shadow-sm cursor-pointer">
-                💾 Simpan Odometer (${tgl})
-              </button>
+            <div data-date="${tgl}" class="disp-daily-status-badge text-[11px] font-semibold text-slate-600">
+              ${numAkhir > 0 ? (initSelisih >= 0 ? `Jarak Odometer (${initJarakOdm.toFixed(1)} KM) terpaut +${initSelisih.toFixed(1)} KM lebih tinggi dibanding Rute GPS (${dailyMetrics.totalKm} KM).` : `Jarak Odometer (${initJarakOdm.toFixed(1)} KM) terpaut ${initSelisih.toFixed(1)} KM lebih rendah dibanding Rute GPS (${dailyMetrics.totalKm} KM).`) : 'Input KM Awal & KM Akhir untuk menghitung selisih odometer vs rute GPS'}
             </div>
           </div>
 
           <!-- TABLE OF VISIT LEGS FOR THIS DATE -->
-          <div class="p-4">
-            <details class="group" open>
-              <summary class="cursor-pointer font-bold text-xs text-slate-800 flex items-center justify-between p-2.5 bg-slate-100 hover:bg-slate-200/70 rounded-xl transition select-none">
-                <span class="flex items-center gap-1.5">
-                  <span>🗺️ Rincian Urutan Kunjungan & Leg Perjalanan (${dailyVisits.length} Outlet Visit)</span>
-                </span>
-                <span class="text-xs text-slate-500 group-open:rotate-180 transition-transform">▼</span>
-              </summary>
-              <div class="mt-3 overflow-x-auto border border-slate-200 rounded-xl">
-                <table class="w-full text-left border-collapse">
-                  <thead>
-                    <tr class="bg-slate-100 text-slate-600 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200">
-                      <th class="p-2.5 text-center w-12">Leg #</th>
-                      <th class="p-2.5">Titik Asal (From)</th>
-                      <th class="p-2.5">Titik Tujuan (To)</th>
-                      <th class="p-2.5">Alamat & GPS (Edit HRD)</th>
-                      <th class="p-2.5 text-right">Jarak (KM)</th>
-                      <th class="p-2.5 text-center">Waktu</th>
-                      <th class="p-2.5 text-center">Map</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${legsTableHtml}
-                  </tbody>
-                </table>
-              </div>
-            </details>
+          <div class="p-3.5">
+            <div class="overflow-x-auto border border-slate-200 rounded-xl">
+              <table class="w-full text-left border-collapse">
+                <thead>
+                  <tr class="bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
+                    <th class="p-2.5 text-center w-16">Leg / Waktu</th>
+                    <th class="p-2.5">Tujuan Outlet</th>
+                    <th class="p-2.5">Koordinat GPS</th>
+                    <th class="p-2.5 text-right w-20">Jarak</th>
+                    <th class="p-2.5 text-center w-28">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${legsTableHtml}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
         `;
       }).join("");
 
       return `
-      <div class="p-4 md:p-6 space-y-5 w-full mx-auto" id="route-modal-container">
+      <div class="p-4 md:p-6 space-y-4 w-full mx-auto" id="route-modal-container">
         <!-- MODAL TOP BAR -->
-        <div class="border-b border-slate-100 pb-3 flex justify-between items-center flex-wrap gap-2">
+        <div class="border-b border-slate-100 pb-2.5 flex justify-between items-center flex-wrap gap-2">
           <div>
-            <h3 class="text-xl font-extrabold text-slate-900 flex items-center gap-2">
-              <span>🗺️ Rincian Rute, Kunjungan Sales & Odometer Kendaraan</span>
+            <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <span>Detail Rute, Odometer & Kunjungan Sales</span>
             </h3>
-            <p class="text-xs text-slate-500 mt-0.5">Monitoring rute harian, geocoding alamat, edit titik GPS, & input KM odometer per tanggal.</p>
+            <p class="text-xs text-slate-500">Monitoring rute harian, verifikasi jarak tempuh, edit GPS, & hapus data kunjungan ganda.</p>
           </div>
-          <button id="modal-close-route" class="text-slate-400 hover:text-slate-600 text-2xl font-bold cursor-pointer px-2 py-1 rounded-lg hover:bg-slate-100 transition">✕</button>
+          <button id="modal-close-route" class="text-slate-400 hover:text-slate-600 text-xl font-bold cursor-pointer px-2 py-0.5 rounded-lg hover:bg-slate-100 transition">✕</button>
         </div>
 
-        <!-- TOP SUMMARY BANNER & DATE FILTER -->
-        <div class="p-4 bg-slate-900 text-white rounded-2xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 shadow-md">
-          <div class="space-y-1">
-            <div class="flex items-center gap-2">
-              <span class="px-2.5 py-0.5 bg-maroon-600 text-white text-[10px] font-bold rounded-full uppercase tracking-wider">Sales Representative</span>
-              <span class="text-xs text-indigo-300 font-semibold">NIK: ${escapeHtml(salesNik)}</span>
-            </div>
-            <h4 class="text-2xl font-black tracking-tight">${escapeHtml(salesName)}</h4>
+        <!-- SUMMARY BANNER & DATE SELECTOR -->
+        <div class="p-3.5 bg-slate-900 text-white rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div class="space-y-0.5">
+            <p class="text-xs text-slate-300 flex items-center gap-2">
+              <span class="font-bold text-amber-400 text-sm">${escapeHtml(salesName)}</span>
+              <span class="text-slate-400">(NIK: ${escapeHtml(salesNik)})</span>
+            </p>
             <p class="text-xs text-slate-300">
-              📊 Total Kunjungan Rentang Ini: <b>${totalVisitsCount} Visit Outlet</b> | Total Jarak GPS: <b>${totalOverallGpsKm} KM</b> (${sortedDates.length} Hari Kunjungan)
+              Total: <b>${totalVisitsCount} Visit Outlet</b> | Jarak GPS: <b>${totalOverallGpsKm} KM</b> (${sortedDates.length} Hari)
             </p>
           </div>
 
           <!-- DATE SELECT FILTER -->
-          <div class="flex items-center gap-2 flex-wrap bg-slate-800/90 p-2.5 rounded-xl border border-slate-700">
-            <span class="text-xs font-bold text-slate-300 flex items-center gap-1">
-              📅 Filter Kartu Tanggal:
-            </span>
-            <select id="route-modal-date-select" class="px-3 py-1.5 bg-slate-900 border border-slate-600 rounded-lg text-xs font-bold text-white outline-none focus:border-indigo-500 cursor-pointer">
-              <option value="ALL" ${activeDate === 'ALL' ? 'selected' : ''}>🗓️ Semua Tanggal (${sortedDates.length} Hari Cards)</option>
-              ${sortedDates.map(d => `<option value="${escapeHtml(d)}" ${d === activeDate ? 'selected' : ''}>📅 Tanggal ${escapeHtml(d)}</option>`).join("")}
+          <div class="flex items-center gap-2 flex-wrap">
+            <select id="route-modal-date-select" class="px-2.5 py-1 bg-slate-800 border border-slate-700 rounded-lg text-xs font-bold text-white outline-none focus:border-indigo-500 cursor-pointer">
+              <option value="ALL" ${activeDate === 'ALL' ? 'selected' : ''}>Semua Tanggal (${sortedDates.length} Hari)</option>
+              ${sortedDates.map(d => `<option value="${escapeHtml(d)}" ${d === activeDate ? 'selected' : ''}>Tanggal ${escapeHtml(d)}</option>`).join("")}
             </select>
-            <button id="btn-route-modal-today" class="px-3 py-1.5 ${activeDate === todayStr ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-200 hover:bg-slate-600'} rounded-lg text-xs font-bold transition cursor-pointer">
-              Hari Ini
-            </button>
-            <button id="btn-route-modal-all" class="px-3 py-1.5 ${activeDate === 'ALL' ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-200 hover:bg-slate-600'} rounded-lg text-xs font-bold transition cursor-pointer">
-              Semua Card Hari
-            </button>
           </div>
         </div>
 
-        <!-- BASE DEPARTURE CONFIGURATION BAR (KOSAN & KANTOR GPS) -->
-        <div class="p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl flex items-center justify-between gap-3 flex-wrap text-xs">
-          <div class="flex items-center gap-2 font-bold text-indigo-950">
-            <span>🏠 Edit Titik Base Sales (${escapeHtml(salesName)}):</span>
+        <!-- BASE DEPARTURE CONFIGURATION BAR (COMPACT) -->
+        <div class="p-2.5 bg-slate-100 border border-slate-200 rounded-xl flex items-center justify-between gap-3 flex-wrap text-xs">
+          <div class="flex items-center gap-1.5 font-bold text-slate-800">
+            <span>Base Sales:</span>
           </div>
           <div class="flex items-center gap-3 flex-wrap">
-            <div class="flex items-center gap-1.5">
-              <span class="font-bold text-indigo-900 text-[11px]">GPS Kosan/Base Awal:</span>
-              <input type="text" id="input-modal-start-base-gps" class="px-2 py-1 text-xs font-mono border border-indigo-300 rounded-lg w-40 bg-white text-slate-800 outline-none focus:border-indigo-600" value="${escapeHtml(baseStart)}" placeholder="-6.728000, 108.545000" />
-              <button id="btn-modal-save-start-base-gps" class="px-2.5 py-1 bg-indigo-700 hover:bg-indigo-800 text-white font-bold text-xs rounded-lg transition cursor-pointer shadow-2xs">💾 Simpan Awal</button>
+            <div class="flex items-center gap-1">
+              <span class="font-bold text-slate-600 text-[11px]">Kosan:</span>
+              <input type="text" id="input-modal-start-base-gps" class="px-2 py-0.5 text-xs font-mono border border-slate-300 rounded w-36 bg-white text-slate-800 outline-none focus:border-indigo-600" value="${escapeHtml(baseStart)}" placeholder="-6.728000, 108.545000" />
+              <button id="btn-modal-save-start-base-gps" class="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] rounded transition cursor-pointer">Simpan</button>
             </div>
-            <div class="flex items-center gap-1.5">
-              <span class="font-bold text-slate-800 text-[11px]">GPS Kantor Akhir:</span>
-              <input type="text" id="input-modal-end-base-gps" class="px-2 py-1 text-xs font-mono border border-slate-300 rounded-lg w-40 bg-white text-slate-800 outline-none focus:border-indigo-600" value="${escapeHtml(baseEnd)}" placeholder="-6.732000, 108.552000" />
-              <button id="btn-modal-save-end-base-gps" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-lg transition cursor-pointer shadow-2xs">💾 Simpan Akhir</button>
+            <div class="flex items-center gap-1">
+              <span class="font-bold text-slate-600 text-[11px]">Kantor:</span>
+              <input type="text" id="input-modal-end-base-gps" class="px-2 py-0.5 text-xs font-mono border border-slate-300 rounded w-36 bg-white text-slate-800 outline-none focus:border-indigo-600" value="${escapeHtml(baseEnd)}" placeholder="-6.732000, 108.552000" />
+              <button id="btn-modal-save-end-base-gps" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-[10px] rounded transition cursor-pointer">Simpan</button>
             </div>
           </div>
         </div>
@@ -1464,8 +1488,8 @@ export async function mount(container, { session }) {
           ${dateCardsHtml}
         </div>
 
-        <div class="flex justify-end pt-3 border-t border-slate-200">
-          <button id="btn-close-route-modal" class="px-6 py-2.5 bg-slate-900 text-white font-bold rounded-xl text-xs hover:bg-slate-800 transition cursor-pointer shadow-sm">
+        <div class="flex justify-end pt-2 border-t border-slate-200">
+          <button id="btn-close-route-modal" class="px-5 py-2 bg-slate-900 text-white font-bold rounded-xl text-xs hover:bg-slate-800 transition cursor-pointer shadow-xs">
             Tutup Rincian Rute
           </button>
         </div>
@@ -1484,16 +1508,6 @@ export async function mount(container, { session }) {
           refreshModalView();
         };
       }
-
-      modalEl.querySelector("#btn-route-modal-today")?.addEventListener("click", () => {
-        activeDate = todayStr;
-        refreshModalView();
-      });
-
-      modalEl.querySelector("#btn-route-modal-all")?.addEventListener("click", () => {
-        activeDate = "ALL";
-        refreshModalView();
-      });
 
       // Realtime Daily Odometer Calculations
       modalEl.querySelectorAll(".input-daily-km-awal, .input-daily-km-akhir").forEach(input => {
@@ -1518,15 +1532,15 @@ export async function mount(container, { session }) {
           if (dispJarak) dispJarak.textContent = `${jarakOdm.toFixed(1)} KM`;
           if (dispSelisih) {
             dispSelisih.textContent = `${selisih > 0 ? '+' : ''}${selisih.toFixed(1)} KM`;
-            dispSelisih.className = `disp-daily-selisih-km text-xl font-black ${selisih >= 0 ? 'text-emerald-600' : 'text-rose-600'} font-mono mt-1`;
+            dispSelisih.className = `disp-daily-selisih-km font-black ${selisih >= 0 ? 'text-emerald-600' : 'text-rose-600'} font-mono text-xs`;
           }
           if (dispStatus) {
             if (akhir > 0) {
               dispStatus.innerHTML = selisih >= 0
-                ? `<span class="text-emerald-700 font-bold">✅ Jarak Odometer (${jarakOdm.toFixed(1)} KM) terpaut +${selisih.toFixed(1)} KM lebih tinggi dibanding Rute GPS (${gpsKm} KM).</span>`
-                : `<span class="text-rose-700 font-bold">⚠️ Jarak Odometer (${jarakOdm.toFixed(1)} KM) terpaut ${selisih.toFixed(1)} KM lebih rendah dibanding Rute GPS (${gpsKm} KM).</span>`;
+                ? `<span class="text-emerald-700 font-bold">Jarak Odometer (${jarakOdm.toFixed(1)} KM) terpaut +${selisih.toFixed(1)} KM lebih tinggi dibanding Rute GPS (${gpsKm} KM).</span>`
+                : `<span class="text-rose-700 font-bold">Jarak Odometer (${jarakOdm.toFixed(1)} KM) terpaut ${selisih.toFixed(1)} KM lebih rendah dibanding Rute GPS (${gpsKm} KM).</span>`;
             } else {
-              dispStatus.textContent = "Sistem menunggu input KM Awal & KM Akhir kendaraan";
+              dispStatus.textContent = "Input KM Awal & KM Akhir untuk menghitung selisih odometer vs rute GPS";
             }
           }
         };
@@ -1545,6 +1559,19 @@ export async function mount(container, { session }) {
 
           const success = await saveOdometerLog(salesNik, salesName, tgl, awal, akhir, gpsKm);
           if (success) {
+            refreshModalView();
+          }
+        };
+      });
+
+      // Delete visit handlers
+      modalEl.querySelectorAll(".btn-modal-delete-visit").forEach(btn => {
+        btn.onclick = async () => {
+          const visitId = btn.dataset.visitid;
+          const storeName = btn.dataset.toname;
+          const success = await deleteVisitDirectly(visitId, storeName);
+          if (success) {
+            allSalesVisits = allSalesVisits.filter(v => (v._docId || v.id) !== visitId && v.id !== visitId);
             refreshModalView();
           }
         };
@@ -1601,13 +1628,13 @@ export async function mount(container, { session }) {
           if (!departureConfig.sales_points[salesNik].start_nama) {
             departureConfig.sales_points[salesNik].start_nama = `Kosan Sales (${salesNik})`;
           }
-          toast("✅ Titik Awal Keberangkatan Sales berhasil diperbarui!", "success");
+          toast("Titik Awal Keberangkatan Sales berhasil diperbarui!", "success");
         } else {
           departureConfig.sales_points[salesNik].end_gps = validGps;
           if (!departureConfig.sales_points[salesNik].end_nama) {
             departureConfig.sales_points[salesNik].end_nama = "Kantor CV Andela Jaya Cirebon";
           }
-          toast("✅ Titik Akhir Kepulangan Sales berhasil diperbarui!", "success");
+          toast("Titik Akhir Kepulangan Sales berhasil diperbarui!", "success");
         }
 
         await fsUpdate(COL.APP_SETTINGS, "sales_departure_config", departureConfig).catch(async () => {
@@ -1671,7 +1698,7 @@ export async function mount(container, { session }) {
     }
 
     openModal({
-      title: `🗺️ Rincian Rute & Odometer — ${salesName}`,
+      title: `Rincian Rute & Odometer — ${salesName}`,
       bodyHtml: renderModalContent(),
       size: "full",
       onMount: (modalEl) => {
@@ -1902,9 +1929,9 @@ export async function mount(container, { session }) {
 
         const pdfStartRow = `
           <tr style="border-bottom: 1px solid #e2e8f0; font-size: 10px; background-color: #e0e7ff; font-weight: bold;">
-            <td style="padding: 5px 6px; text-align: center; color: #3730a3;">🚀 AWAL</td>
+            <td style="padding: 5px 6px; text-align: center; color: #3730a3;">START / AWAL</td>
             <td style="padding: 5px 6px; text-align: center; color: #4338ca;">Start</td>
-            <td style="padding: 5px 6px; font-weight: bold; color: #1e1b4b;">🏠 ${escapeHtml(metrics.startPoint.nama)} (${escapeHtml(metrics.startPoint.type || 'Kosan/Base')})</td>
+            <td style="padding: 5px 6px; font-weight: bold; color: #1e1b4b;">${escapeHtml(metrics.startPoint.nama)} (${escapeHtml(metrics.startPoint.type || 'Kosan/Base')})</td>
             <td style="padding: 5px 6px; color: #475569;">
               <div>Titik Keberangkatan Salesman (Kosan/Base)</div>
               <div style="font-size: 8.5px; color: #4338ca; font-family: monospace;">GPS: ${escapeHtml(metrics.startPoint.gps)}</div>
@@ -1918,7 +1945,7 @@ export async function mount(container, { session }) {
             <tr style="border-bottom: 1px solid #f1f5f9; font-size: 10px;">
               <td style="padding: 5px 6px; text-align: center; font-family: monospace;">Leg #${leg.legIndex}</td>
               <td style="padding: 5px 6px; text-align: center;">${escapeHtml(leg.waktuCheckin)}</td>
-              <td style="padding: 5px 6px; font-weight: bold; color: #0f172a;">🛒 ${escapeHtml(leg.toName)}</td>
+              <td style="padding: 5px 6px; font-weight: bold; color: #0f172a;">${escapeHtml(leg.toName)}</td>
               <td style="padding: 5px 6px; color: #475569;">
                 <div>${escapeHtml(leg.toAddress)}</div>
                 <div style="font-size: 8.5px; color: #4f46e5; font-family: monospace;">GPS: ${escapeHtml(leg.toGps)}</div>
@@ -1930,9 +1957,9 @@ export async function mount(container, { session }) {
 
         const pdfEndRow = `
           <tr style="border-bottom: 1px solid #e2e8f0; font-size: 10px; background-color: #f1f5f9; font-weight: bold;">
-            <td style="padding: 5px 6px; text-align: center; color: #1e293b;">🏁 AKHIR</td>
+            <td style="padding: 5px 6px; text-align: center; color: #1e293b;">FINISH / AKHIR</td>
             <td style="padding: 5px 6px; text-align: center; color: #475569;">Selesai</td>
-            <td style="padding: 5px 6px; font-weight: bold; color: #0f172a;">🏢 ${escapeHtml(metrics.endPoint.nama)} (${escapeHtml(metrics.endPoint.type || 'Kantor/Base')})</td>
+            <td style="padding: 5px 6px; font-weight: bold; color: #0f172a;">${escapeHtml(metrics.endPoint.nama)} (${escapeHtml(metrics.endPoint.type || 'Kantor/Base')})</td>
             <td style="padding: 5px 6px; color: #475569;">
               <div>Titik Kepulangan Salesman (Kantor/Base)</div>
               <div style="font-size: 8.5px; color: #334155; font-family: monospace;">GPS: ${escapeHtml(metrics.endPoint.gps)}</div>
@@ -1946,8 +1973,8 @@ export async function mount(container, { session }) {
         detailedHtml += `
           <div style="margin-top: 8px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
             <div style="background-color: #f1f5f9; padding: 6px 10px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; font-size: 10.5px;">
-              <span style="font-weight: bold; color: #1e293b;">📅 Tanggal: ${escapeHtml(dStr)}</span>
-              <span style="font-size: 9.5px; color: #475569;">🚀 Keberangkatan: <b>${escapeHtml(metrics.startPoint.nama)}</b> | 🏁 Total: <b style="color:#4338ca;">${metrics.totalKm} KM</b></span>
+              <span style="font-weight: bold; color: #1e293b;">Tanggal: ${escapeHtml(dStr)}</span>
+              <span style="font-size: 9.5px; color: #475569;">Keberangkatan: <b>${escapeHtml(metrics.startPoint.nama)}</b> | Total: <b style="color:#4338ca;">${metrics.totalKm} KM</b></span>
             </div>
             <table style="width: 100%; border-collapse: collapse; text-align: left;">
               <thead>
@@ -2094,7 +2121,7 @@ export async function mount(container, { session }) {
               <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
             </div>
             <div>
-              <h3 class="font-bold text-base text-white">📥 Export Data Kunjungan Sales</h3>
+              <h3 class="font-bold text-base text-white">Export Data Kunjungan Sales</h3>
               <p class="text-xs text-slate-300">Pilih periode tarikan data & format file sebelum export</p>
             </div>
           </div>
@@ -2104,7 +2131,7 @@ export async function mount(container, { session }) {
         <div class="p-6 space-y-4 text-xs text-slate-700">
           <!-- 1. PERIODE TARIKAN DATA -->
           <div>
-            <label class="block font-bold text-slate-800 mb-1.5 text-xs">🗓️ Periode Tarikan Data:</label>
+            <label class="block font-bold text-slate-800 mb-1.5 text-xs">Periode Tarikan Data:</label>
             <select id="export-period-select" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-800 focus:bg-white focus:border-maroon-600 outline-none cursor-pointer">
               <option value="TODAY">Hari Ini (${escapeHtml(todayStr)})</option>
               <option value="YESTERDAY">Kemarin (${escapeHtml(yesterdayStr)})</option>
@@ -2129,7 +2156,7 @@ export async function mount(container, { session }) {
 
           <!-- 2. FILTER SALESMAN -->
           <div>
-            <label class="block font-bold text-slate-800 mb-1.5 text-xs">👤 Filter Salesman:</label>
+            <label class="block font-bold text-slate-800 mb-1.5 text-xs">Filter Salesman:</label>
             <select id="export-salesman-select" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-800 focus:bg-white focus:border-maroon-600 outline-none cursor-pointer">
               ${salesOptionsHtml}
             </select>
@@ -2137,7 +2164,7 @@ export async function mount(container, { session }) {
 
           <!-- 3. FORMAT FILE -->
           <div>
-            <label class="block font-bold text-slate-800 mb-1.5 text-xs">📄 Format Laporan Export:</label>
+            <label class="block font-bold text-slate-800 mb-1.5 text-xs">Format Laporan Export:</label>
             <div class="grid grid-cols-2 gap-3">
               <label class="flex items-center gap-2 p-3 border rounded-xl cursor-pointer hover:bg-slate-50 border-slate-200 has-[:checked]:border-emerald-600 has-[:checked]:bg-emerald-50/50 transition">
                 <input type="radio" name="export-format" value="EXCEL" ${defaultFormat === "EXCEL" ? "checked" : ""} class="accent-emerald-600" />
@@ -2164,7 +2191,7 @@ export async function mount(container, { session }) {
           <div class="flex items-center gap-2">
             <button id="btn-cancel-export" class="px-4 py-2 bg-slate-200 text-slate-700 font-bold rounded-xl text-xs hover:bg-slate-300 transition cursor-pointer">Batal</button>
             <button id="btn-confirm-export" class="px-5 py-2 bg-maroon-700 text-white font-bold rounded-xl text-xs hover:bg-maroon-800 transition cursor-pointer flex items-center gap-1.5 shadow-sm">
-              🚀 Unduh Laporan
+              Unduh Laporan
             </button>
           </div>
         </div>
@@ -2266,7 +2293,7 @@ export async function mount(container, { session }) {
         ]);
 
         await downloadXlsx(`Data_Kunjungan_Sales_${todayStr}.xlsx`, headers, matrix, "Data_Kunjungan");
-        toast(`✅ File Excel (${targetRecords.length} data) berhasil diunduh!`, "success");
+        toast(`File Excel (${targetRecords.length} data) berhasil diunduh!`, "success");
       } else {
         await exportSalesVisitsPdf(targetRecords);
       }
@@ -2312,7 +2339,7 @@ export async function mount(container, { session }) {
         }
 
         openModal({
-          title: "📥 Proses Import Kunjungan Sales",
+          title: "Proses Import Kunjungan Sales",
           bodyHtml: `
             <div class="space-y-4 p-2">
               <div class="p-4 bg-blue-50 border border-blue-200 rounded-xl">
@@ -2450,7 +2477,7 @@ export async function mount(container, { session }) {
         }
 
         closeModal();
-        toast(`[v] Sukses mengimpor ${successCount} data kunjungan sales dari Excel!`, "success");
+        toast(`Sukses mengimpor ${successCount} data kunjungan sales dari Excel!`, "success");
         
         fileImportInput.value = "";
         
@@ -2500,7 +2527,7 @@ export async function mount(container, { session }) {
     try {
       await doKanalSync();
       await loadAndRenderTrack();
-      toast(`[v] Sukses mengsinkronkan data check-in Kanal & geocoding rute untuk ${companyName}!`, "success");
+      toast(`Sukses mengsinkronkan data check-in Kanal & geocoding rute untuk ${companyName}!`, "success");
     } catch (e) {
       toast("Gagal melakukan sinkronisasi Kanal: " + e.message, "error");
     } finally {

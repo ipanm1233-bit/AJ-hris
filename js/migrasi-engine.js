@@ -635,7 +635,7 @@ async function runMigration() {
   }
 
   label.textContent = `Migrasi selesai! ${sheetsToRun.length} sheet telah diproses.`;
-  logTo("migrate-log", `🎉 Seluruh proses migrasi selesai. Data NIK, Nama, dan Relasi telah dinormalisasi 100%.`, "green");
+  logTo("migrate-log", `Seluruh proses migrasi selesai. Data NIK, Nama, dan Relasi telah dinormalisasi 100%.`, "green");
   btn.disabled = false;
   btn.textContent = "Migrasi Selesai — Jalankan Ulang?";
   unlockStep(4);
@@ -691,7 +691,7 @@ async function runSeeder() {
   ];
 
   await Promise.all(tasks);
-  logTo("seed-log", `🎉 Seluruh data dummy modul baru berhasil dibuat / dipastikan tersedia.`, "green");
+  logTo("seed-log", `Seluruh data dummy modul baru berhasil dibuat / dipastikan tersedia.`, "green");
   btn.disabled = false;
   btn.textContent = "Seeder Selesai — Jalankan Ulang?";
 }

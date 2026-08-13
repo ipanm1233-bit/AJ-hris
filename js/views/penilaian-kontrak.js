@@ -1756,7 +1756,7 @@ export async function mount(container, { session, params }) {
  const importY = window.scrollY || document.documentElement.scrollTop || 0;
  const btn = panels.template ? panels.template.querySelector("#btn-import-template") : null;
  const originalText = btn ? btn.innerHTML : "Import Excel";
- if (btn) { btn.innerHTML = `⏳ Membaca File...`; btn.disabled = true; }
+ if (btn) { btn.innerHTML = `Membaca File...`; btn.disabled = true; }
 
  try {
  await ensureXlsxLoaded();

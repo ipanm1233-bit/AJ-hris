@@ -3276,8 +3276,8 @@ export function buildKpiTaskWaMessage(task, type = "ASSIGNMENT", extra = {}) {
  let msg = `*TUGAS PENILAIAN KPI 360 - CV ANDELA JAYA*\n\n`;
  msg += `Halo *${task.nama_penilai || "Bapak/Ibu"}*,\n`;
  msg += `Anda telah ditugaskan untuk melakukan Penilaian KPI 360 pada periode *${task.periode || "-"}* terhadap karyawan berikut:\n`;
- msg += `👤 *${task.nama_dinilai || "-"}*\n\n`;
- msg += `📋 *Detail Penugasan:*\n`;
+ msg += `*${task.nama_dinilai || "-"}*\n\n`;
+ msg += `*Detail Penugasan:*\n`;
  msg += `• Periode: ${task.periode || "-"}\n`;
  msg += `• Kategori: ${catLabel}\n`;
  msg += `• Batas Waktu: ${deadlineStr}\n\n`;
@@ -3294,7 +3294,7 @@ export function buildKpiTaskWaMessage(task, type = "ASSIGNMENT", extra = {}) {
  let msg = `*HASIL PENILAIAN KPI - CV ANDELA JAYA*\n\n`;
  msg += `Halo *${task.nama_dinilai || "Karyawan"}*,\n`;
  msg += `Hasil Penilaian Kinerja (KPI 360) Anda untuk periode *${task.periode || "-"}* telah selesai dievaluasi.\n\n`;
- msg += `📊 *Ringkasan Hasil Penilaian:*\n`;
+ msg += `*Ringkasan Hasil Penilaian:*\n`;
  msg += `• Kategori: ${catLabel}\n`;
  msg += `• Skor Akhir: *${task.skor_akhir ?? task.total_skor ?? 0}*\n`;
  if (task.rekomendasi || task.keputusan) {
@@ -3302,14 +3302,14 @@ export function buildKpiTaskWaMessage(task, type = "ASSIGNMENT", extra = {}) {
  }
  msg += `• Penilai: ${task.nama_penilai || "-"}\n\n`;
  if (task.catatan_baik) {
- msg += `✅ *Hal yang Sudah Baik:*\n${task.catatan_baik}\n\n`;
+ msg += `*Hal yang Sudah Baik:*\n${task.catatan_baik}\n\n`;
  }
  if (task.catatan_perbaikan) {
- msg += `🎯 *Area Peningkatan:*\n${task.catatan_perbaikan}\n\n`;
+ msg += `*Area Peningkatan:*\n${task.catatan_perbaikan}\n\n`;
  }
  msg += `Rincian lengkap & grafik evaluasi dapat Anda akses di Portal HRIS:\n`;
  msg += `${portalLink}\n\n`;
- msg += `Terima kasih dan tetap tingkatkan kinerja terbaik Anda! 🙏\n`;
+ msg += `Terima kasih dan tetap tingkatkan kinerja terbaik Anda!\n`;
  msg += `*Tim HRD CV Andela Jaya*`;
  return msg;
  }
@@ -3335,11 +3335,11 @@ export function buildEmployeeInviteMessage(empData, username, password, portalUr
 `;
   msg += `Berikut kredensial login akun Anda:
 `;
-  msg += `🌐 *Link Portal*: ${url}
+  msg += `*Link Portal*: ${url}
 `;
-  msg += `👤 *Username*: \`${username}\`
+  msg += `*Username*: \`${username}\`
 `;
-  msg += `🔑 *Password Default*: \`${password}\`
+  msg += `*Password Default*: \`${password}\`
 
 `;
   msg += `*Petunjuk Login*:
@@ -3391,7 +3391,6 @@ export async function openInviteEmployeeModal(defaultEmpNikOrName = "") {
       bodyHtml: `
         <div class="space-y-4 text-left">
           <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2.5">
-            <span class="text-2xl">✉️</span>
             <div>
               <h4 class="text-xs font-bold text-emerald-900">Kirim Kredensial Login Karyawan</h4>
               <p class="text-[11px] text-emerald-700">Undang karyawan baru atau reset kredensial untuk memberikan akses ke portal HRIS. Undangan dilengkapi Username, Password Default, dan link portal (otomatis diawali kode negara 62 untuk WhatsApp).</p>
@@ -3460,14 +3459,14 @@ export async function openInviteEmployeeModal(defaultEmpNikOrName = "") {
           <button id="btn-inv-close" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition">Tutup</button>
           <div class="flex items-center gap-2">
             <button id="btn-inv-email" class="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition shadow-md flex items-center gap-1.5">
-              📧 Kirim Email
+              Kirim Email
             </button>
             <button id="btn-inv-wa" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-md flex items-center gap-1.5">
               <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
               Kirim WhatsApp
             </button>
             <button id="btn-inv-both" class="px-5 py-2.5 bg-maroon-700 hover:bg-maroon-800 text-white rounded-lg text-xs font-bold transition shadow-md flex items-center gap-1.5">
-              🚀 Kirim WA & Email
+              Kirim WA & Email
             </button>
           </div>
         </div>

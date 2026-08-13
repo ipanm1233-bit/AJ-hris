@@ -573,7 +573,7 @@ function openQuizModal(type, planId, planJudul, kategori, session, onDone) {
 
 function openFeedbackModal(planId, planJudul, session, onDone) {
  openModal({
- title: `⭐ Feedback Pelatihan — ${escapeHtml(planJudul)}`,
+ title: `Feedback Pelatihan — ${escapeHtml(planJudul)}`,
  size: "md",
  bodyHtml: `
  <form id="feedback-form" class="space-y-4 text-left">
@@ -581,11 +581,11 @@ function openFeedbackModal(planId, planJudul, session, onDone) {
  <div>
  <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">1. Bagaimana Anda menilai kinerja Trainer / Pembicara?</label>
  <select id="fb-rating" required class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:border-maroon-500">
- <option value="5">Sangat Puas (⭐⭐⭐⭐⭐)</option>
- <option value="4">Puas (⭐⭐⭐⭐)</option>
- <option value="3">Cukup (⭐⭐⭐)</option>
- <option value="2">Kurang Puas (⭐⭐)</option>
- <option value="1">Sangat Kurang (⭐)</option>
+ <option value="5">Sangat Puas (5/5)</option>
+ <option value="4">Puas (4/5)</option>
+ <option value="3">Cukup (3/5)</option>
+ <option value="2">Kurang Puas (2/5)</option>
+ <option value="1">Sangat Kurang (1/5)</option>
  </select>
  </div>
  <div>
@@ -615,7 +615,7 @@ function openFeedbackModal(planId, planJudul, session, onDone) {
  const comments = m.querySelector("#fb-comments").value.trim();
 
  const btn = m.querySelector("#btn-fb-submit");
- btn.disabled = true; btn.textContent = "⏳ Menyimpan...";
+ btn.disabled = true; btn.textContent = "Menyimpan...";
 
  try {
  const docId = `${planId}_${session.nik}`;
@@ -934,7 +934,7 @@ async function openParticipantsProgressModal(planId, planJudul) {
 
  const preText = prog.pretest_score !== null ? `${prog.pretest_score}/100` : "-";
  const postText = prog.posttest_score !== null ? `${prog.posttest_score}/100` : "-";
- const ratingText = prog.feedback ? `${"⭐".repeat(prog.feedback.rating)}` : "-";
+ const ratingText = prog.feedback ? `${prog.feedback.rating}/5` : "-";
  const commentsText = prog.feedback ? escapeHtml(prog.feedback.comments) : "-";
 
  return `

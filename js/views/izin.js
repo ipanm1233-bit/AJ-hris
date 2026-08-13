@@ -9,7 +9,7 @@ export const JENIS_IZIN_MAP = {
  IZIN_TERLAMBAT: {
  key: "IZIN_TERLAMBAT",
  label: "Izin Datang Terlambat",
- icon: "⏰",
+ icon: "",
  badgeClass: "bg-amber-100 text-amber-800 border-amber-200"
  },
  IZIN_PULANG_CEPAT: {
@@ -127,7 +127,7 @@ export async function mount(container, { session }) {
  const jCfg = JENIS_IZIN_MAP[r.jenis_izin] || JENIS_IZIN_MAP.IZIN_TERLAMBAT;
  const st = (r.status_final || r.status || "PENDING").toUpperCase();
 
- let stBadge = `<span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">⏳ PENDING</span>`;
+ let stBadge = `<span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">PENDING</span>`;
  if (st.includes("APPROVED") || st.includes("DISETUJUI")) {
  stBadge = `<span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">APPROVED</span>`;
  } else if (st.includes("REJECTED") || st.includes("DITOLAK")) {
@@ -279,7 +279,7 @@ export async function mount(container, { session }) {
  <div>
  <label class="block text-xs font-bold text-slate-700 mb-1">Jenis Izin <span class="text-rose-500">*</span></label>
  <select id="f-jenis-izin" required class="w-full px-3 py-2 text-xs font-bold border border-slate-200 rounded-xl outline-none focus:border-maroon-500 bg-white">
- <option value="IZIN_TERLAMBAT">⏰ Izin Datang Terlambat</option>
+ <option value="IZIN_TERLAMBAT">Izin Datang Terlambat</option>
  <option value="IZIN_PULANG_CEPAT">Izin Pulang Cepat</option>
  <option value="IZIN_KELUAR_KANTOR">Izin Keluar Kantor / Dinas Samping</option>
  </select>

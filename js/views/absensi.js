@@ -613,7 +613,7 @@ export async function mount(container, { session } = {}) {
 
  btnPullArchive.disabled = true;
  const origText = btnPullArchive.innerHTML;
- btnPullArchive.innerHTML = `<span>⏳ Menarik...</span>`;
+ btnPullArchive.innerHTML = `<span>Menarik...</span>`;
  try {
  toast(`Menghubungkan ke Google Spreadsheet untuk periode ${periodStart} s/d ${periodEnd}...`, "info");
  const res = await callGasArchiveWebApp({

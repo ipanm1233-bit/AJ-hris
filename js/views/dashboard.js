@@ -241,10 +241,16 @@ async function loadLeaveBalances(container, session) {
  const q = query(collection(db, COL.MASTER_CUTI), where("nama_karyawan", "==", session.nama));
  const snap = await getDocs(q);
  const currentYear = new Date().getFullYear();
+ const seenMap = new Set();
  snap.docs.forEach(d => {
  const row = d.data();
  const rowYear = parseInt(row.tahun) || (row.tanggal ? new Date(row.tanggal).getFullYear() : currentYear);
  if (rowYear !== currentYear) return; // hanya hitung transaksi tahun berjalan (lihat cuti.js)
+ 
+ const dedupKey = row.no_referensi || `${(row.nama_karyawan||"").trim()}_${row.tanggal}_${row.type_cuti}_${row.count}`;
+ if (seenMap.has(dedupKey)) return;
+ seenMap.add(dedupKey);
+
  if (row.potong_jatah && terpakai[row.potong_jatah] !== undefined) {
  let hitung = parseFloat(row.count);
  if (isNaN(hitung)) hitung = 1; 
@@ -439,11 +445,19 @@ async function loadCutiHariIni(container) {
  // di dalam rentang [tanggal, tanggal_selesai] masing-masing baris.
  const q = query(collection(db, COL.MASTER_CUTI), where("tahun", "==", now.getFullYear()));
  const snap = await getDocs(q);
- const todayRows = snap.docs.map(d => d.data()).filter(r => {
+ const rawRows = snap.docs.map(d => d.data()).filter(r => {
  const start = (r.tanggal || "").toString().substring(0, 10);
  const end = (r.tanggal_selesai || r.tanggal || "").toString().substring(0, 10);
  return start && todayStr >= start && todayStr <= end;
  });
+ const uniqueMap = new Map();
+ rawRows.forEach(r => {
+ const key = `${(r.nama_karyawan || "").trim().toLowerCase()}_${r.tanggal || ""}_${r.type_cuti || ""}`;
+ if (!uniqueMap.has(key)) {
+ uniqueMap.set(key, r);
+ }
+ });
+ const todayRows = Array.from(uniqueMap.values());
  if (!todayRows.length) { 
  wrap.innerHTML = `<div class="col-span-full py-2 px-3 text-center text-xs text-slate-400 italic bg-slate-50/80 rounded-lg border border-dashed border-slate-200">Tidak ada karyawan yang cuti / izin hari ini</div>`; 
  return; 

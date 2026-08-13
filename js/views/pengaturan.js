@@ -40,7 +40,7 @@ async function loadUsersTab(container) {
 		searchFields: ["nama", "username", "role"],
 		extraToolbarHtml: `
 			<button id="btn-invite-emp" class="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold px-3.5 py-2 rounded-lg transition shadow-sm">
-				<span class="text-sm sm:text-base">✉️</span>Undang Karyawan
+				Undang Karyawan
 			</button>
 		`,
 		columns: [
@@ -335,7 +335,7 @@ async function loadKanalTab(container) {
 
  statusBox.classList.remove("hidden", "bg-emerald-50", "border-emerald-200", "text-emerald-800", "bg-rose-50", "border-rose-200", "text-rose-800");
  statusBox.classList.add("bg-slate-50", "border-slate-200", "text-slate-700");
- statusBox.innerHTML = `⏳ Menghubungi Server API Kanal (${escapeHtml(company)})...`;
+ statusBox.innerHTML = `Menghubungi Server API Kanal (${escapeHtml(company)})...`;
 
  try {
  const proxyResp = await fetch("/api/kanal-proxy", {
@@ -411,7 +411,7 @@ async function loadKanalTab(container) {
  container.querySelector("#btn-pull-kanal-data")?.addEventListener("click", async () => {
  const btn = container.querySelector("#btn-pull-kanal-data");
  btn.disabled = true;
- btn.innerHTML = `⏳ Menarik Data Check-in Kanal...`;
+ btn.innerHTML = `Menarik Data Check-in Kanal...`;
 
  try {
  const company = inpCompany ? inpCompany.value.trim() : defaultCompany;

@@ -710,7 +710,7 @@ async function openMultiAssignModal(container, activeEmpNames) {
  </div>
 
  <div class="flex items-center gap-2 bg-slate-50 p-2 border border-slate-200 rounded-xl">
- <span class="font-bold text-slate-700 shrink-0">🔍 Cari Nama ATK:</span>
+ <span class="font-bold text-slate-700 shrink-0">Cari Nama ATK:</span>
  <input type="text" id="filter-atk-name" placeholder="Ketik nama barang untuk menyaring..." 
  class="w-full p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-maroon-500 bg-white">
  <button type="button" id="btn-clear-atk-filter" class="px-2.5 py-1.5 text-xs text-slate-600 font-semibold bg-slate-200 hover:bg-slate-300 rounded-lg shrink-0">Reset</button>
@@ -1392,7 +1392,7 @@ function renderRestockRows(items) {
     return `
       <tr>
         <td colspan="9" class="py-12 text-center text-slate-400 bg-slate-50/50 font-semibold">
-          🎉 Luar biasa! Seluruh stok barang & ATK saat ini dalam kondisi AMAN di atas batas minimal.
+          Seluruh stok barang & ATK saat ini dalam kondisi AMAN di atas batas minimal.
         </td>
       </tr>`;
   }

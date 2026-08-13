@@ -398,17 +398,23 @@ async function processAction(row, action, note, session) {
  }
  const totalDeduction = rule.count * multiplier;
  
+ const cutiDocId = `CUTI_${row.no_referensi || row.id}`;
+ const tMulai = row.detail.tanggal_mulai || row.tgl;
+ const tAkhir = row.detail.tanggal_akhir || tMulai;
  await fsAdd(COL.MASTER_CUTI, {
- tanggal: row.detail.tanggal_mulai || row.tgl,
+ id: cutiDocId,
+ no_referensi: row.no_referensi || row.id,
+ tanggal: tMulai,
+ tanggal_selesai: tAkhir,
  nama_karyawan: row.nama_pemohon,
  cabang: row.detail.cabang || "-", 
  type_cuti: jenisVal,
  potong_jatah: rule.jenis, 
  keterangan_cuti: row.detail.alasan || row.detail.keterangan || "Disetujui by System",
  count: totalDeduction,
- tahun: new Date(row.tgl).getFullYear(),
- bulan: BULAN_ID[new Date(row.tgl).getMonth()]
- }, genId("CUTI"));
+ tahun: new Date(tMulai).getFullYear(),
+ bulan: BULAN_ID[new Date(tMulai).getMonth()]
+ }, cutiDocId);
  }
 
  // GENERATE DOKUMEN FORM CUTI FISIK SECARA OTOMATIS

@@ -561,7 +561,7 @@ export async function mount(container) {
  <button class="btn-json-preview text-blue-600 hover:text-blue-800 hover:underline font-semibold cursor-pointer" data-idx="${idx}">Lihat Raw JSON</button>
  </td>
  <td class="px-4 py-3 text-center">
- <button class="btn-delete-row text-rose-600 hover:text-rose-800 font-bold hover:bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 transition cursor-pointer" data-docid="${escapeHtml(rawDocId)}">🗑️ Hapus</button>
+ <button class="btn-delete-row text-rose-600 hover:text-rose-800 font-bold hover:bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 transition cursor-pointer" data-docid="${escapeHtml(rawDocId)}">Hapus</button>
  </td>
  </tr>
  `;
@@ -610,10 +610,10 @@ export async function mount(container) {
  </div>
  <div class="flex items-center gap-2">
  <button id="btn-bulk-delete-db" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 transition flex items-center gap-1 cursor-pointer">
- 🗑️ Hapus Record Terpilih
+ Hapus Record Terpilih
  </button>
  <button id="btn-clear-collection-db" class="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-xl border border-amber-200 transition flex items-center gap-1 cursor-pointer">
- ⚠️ Kosongkan Koleksi Ini
+ Kosongkan Koleksi Ini
  </button>
  <span id="db-record-count" class="px-3 py-1 bg-maroon-50 text-maroon-700 font-bold text-xs rounded-full border border-maroon-200">0 Record</span>
  </div>
@@ -697,9 +697,9 @@ export async function mount(container) {
  return toast("Koleksi ini sudah kosong.", "warning");
  }
  const confirmInput = await promptDialog(
- `⚠️ PERINGATAN! Anda akan MENGHAPUS SELURUH ${currentRows.length} DATA dari koleksi '${currentSelectedCol}'.\n\nKetik nama koleksi '${currentSelectedCol}' di bawah ini untuk mengonfirmasi:`,
+ `PERINGATAN! Anda akan MENGHAPUS SELURUH ${currentRows.length} DATA dari koleksi '${currentSelectedCol}'.\n\nKetik nama koleksi '${currentSelectedCol}' di bawah ini untuk mengonfirmasi:`,
  "",
- { title: "⚠️ Kosongkan Koleksi Database", placeholder: currentSelectedCol }
+ { title: "Kosongkan Koleksi Database", placeholder: currentSelectedCol }
  );
  if (confirmInput === currentSelectedCol) {
  try {
