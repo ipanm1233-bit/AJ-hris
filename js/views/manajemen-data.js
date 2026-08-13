@@ -111,8 +111,10 @@ export async function mount(container) {
  if (data.nama_kontak_darurat) data.kontak_darurat_nama = data.nama_kontak_darurat;
  if (data.tanggungan !== undefined) data.anak = data.tanggungan;
  if (data.anak !== undefined) data.tanggungan = data.anak;
- if (data.aktif_tdk_aktif) data["aktif/tidak_aktif"] = data.aktif_tdk_aktif;
- if (data["aktif/tidak_aktif"]) data.aktif_tdk_aktif = data["aktif/tidak_aktif"];
+ if (data["aktif/tidak_aktif"] && !data.aktif_tdk_aktif) {
+   data.aktif_tdk_aktif = data["aktif/tidak_aktif"];
+ }
+ delete data["aktif/tidak_aktif"];
  return data;
  },
  columns: [
@@ -144,7 +146,7 @@ export async function mount(container) {
  { key: "status_pajak", label: "status_pajak" },
  { key: "anak", label: "anak", format: (v, r) => r.anak ?? r.tanggungan ?? v ?? 0 },
  { key: "jam_kerja", label: "jam_kerja" },
- { key: "aktif/tidak_aktif", label: "aktif/tidak_aktif", format: (v, r) => r["aktif/tidak_aktif"] || r.aktif_tdk_aktif || v || "AKTIF", type: "badge", badgeTone: (v) => (v === "AKTIF" || v === "Active") ? "green" : "red" },
+ { key: "aktif_tdk_aktif", label: "aktif/tidak_aktif", format: (v, r) => r.aktif_tdk_aktif || r["aktif/tidak_aktif"] || v || "AKTIF", type: "badge", badgeTone: (v) => (v === "AKTIF" || v === "Active") ? "green" : "red" },
  { key: "finger_name", label: "finger_name" },
  { key: "jatah_tahunan", label: "jatah_tahunan", format: (v, r) => r.jatah_tahunan ?? 12 },
  { key: "jatah_khusus", label: "jatah_khusus", format: (v, r) => r.jatah_khusus ?? 4 },

@@ -61,6 +61,56 @@ export async function mount(container, { session }) {
  // Tombol "Tes Notif" kini berada di Header Atas (sebelah Lonceng Notifikasi)
  // dan dihandle secara global oleh bindShellEvents di app.js.
  
+ const SHORT_MENU_LABELS = {
+  "pengajuan-cuti": "CUTI",
+  "manajemen-cuti": "CUTI",
+  "cuti": "CUTI",
+  "izin": "IZIN / SAKIT",
+  "pengajuan-kasbon": "KASBON",
+  "lembur-kasbon": "LEMBUR",
+  "lembur": "LEMBUR",
+  "klaim-bensin": "BENSIN",
+  "reimbursement": "REIMBURSE",
+  "absensi": "PRESENSI",
+  "form-builder": "FORMULIR",
+  "uang-makan": "UANG MAKAN",
+  "inventory": "ASET GA",
+  "kendaraan": "KENDARAAN",
+  "gimmick-sop": "SOP & GIMMICK",
+  "training": "PELATIHAN",
+  "performance-review": "REVIEW KPI",
+  "penilaian-kontrak": "SPK & KPI",
+  "pemanggilan": "SP DISIPLIN",
+  "dokumen": "DRAFT DOC",
+  "sales-order": "ORDER SALES",
+  "sales-outlet": "OUTLET",
+  "sales-item": "ITEM SALES",
+  "sales-task": "KUNJUNGAN",
+  "sales-track": "TRACK SALES",
+  "manajemen-data": "DATA BACKUP",
+  "pengaturan": "HAK AKSES",
+  "konfigurasi": "ATURAN HRD",
+  "broadcast": "BROADCAST",
+  "profile": "PROFIL",
+  "riwayat": "LOG ABSEN"
+ };
+
+ const MENU_THEMES = {
+  "absensi": "bg-rose-50 border-rose-100/80 text-rose-700",
+  "pengajuan-cuti": "bg-blue-50 border-blue-100/80 text-blue-700",
+  "manajemen-cuti": "bg-blue-50 border-blue-100/80 text-blue-700",
+  "pengajuan-kasbon": "bg-amber-50 border-amber-100/80 text-amber-700",
+  "lembur-kasbon": "bg-indigo-50 border-indigo-100/80 text-indigo-700",
+  "lembur": "bg-indigo-50 border-indigo-100/80 text-indigo-700",
+  "klaim-bensin": "bg-orange-50 border-orange-100/80 text-orange-700",
+  "reimbursement": "bg-emerald-50 border-emerald-100/80 text-emerald-700",
+  "form-builder": "bg-purple-50 border-purple-100/80 text-purple-700",
+  "training": "bg-cyan-50 border-cyan-100/80 text-cyan-700",
+  "performance-review": "bg-teal-50 border-teal-100/80 text-teal-700",
+  "penilaian-kontrak": "bg-green-50 border-green-100/80 text-green-700",
+  "inventory": "bg-red-50 border-red-100/80 text-maroon-700"
+ };
+
  const visibleMenus = await computeVisibleMenus(session);
  const gridEl = container.querySelector("#mobile-services-grid");
  if (gridEl && visibleMenus && visibleMenus.length > 0) {
@@ -68,16 +118,19 @@ export async function mount(container, { session }) {
    if (m.id === "dashboard") return "";
    const route = m.route || m.id;
    const iconName = m.icon || "file-text";
+   const shortLabel = SHORT_MENU_LABELS[route] || SHORT_MENU_LABELS[m.id] || (m.label || m.id).substring(0, 10).toUpperCase();
+   const themeClass = MENU_THEMES[route] || MENU_THEMES[m.id] || "bg-slate-50 border-slate-200/80 text-slate-700";
+
    return `
     <a href="#${escapeHtml(route)}" class="mobile-menu-item group p-1.5 rounded-2xl hover:bg-slate-50 transition flex flex-col items-center">
-     <div class="w-11 h-11 rounded-2xl bg-slate-100 border border-slate-200/80 text-maroon-700 flex items-center justify-center shadow-2xs group-active:scale-95 transition-transform mb-1 shrink-0">
+     <div class="w-11 h-11 rounded-2xl ${themeClass} border flex items-center justify-center shadow-2xs group-active:scale-95 transition-transform mb-1 shrink-0">
       ${icon(iconName, "w-5 h-5")}
      </div>
-     <span class="text-[10.5px] font-extrabold text-slate-800 leading-tight block truncate w-full text-center">${escapeHtml(m.label || m.id)}</span>
+     <span class="text-[10px] font-black tracking-wider text-slate-800 uppercase leading-none block truncate w-full text-center mt-0.5">${escapeHtml(shortLabel)}</span>
     </a>
    `;
   }).filter(Boolean).join("");
-  if (itemsHtml) gridEl.innerHTML = itemsHtml;
+  if (gridEl && itemsHtml) gridEl.innerHTML = itemsHtml;
  }
 
  const mobileSearchInput = container.querySelector("#mobile-dash-search");
@@ -771,33 +824,195 @@ function formatMonthYearLabel(prefix) {
   return prefix;
 }
 
+function parseTimeToMinutes(timeStr) {
+  if (!timeStr) return null;
+  const s = String(timeStr).trim();
+  const m = s.match(/^(\d{1,2})[:\.](\d{2})/);
+  if (!m) return null;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+function getShiftForEmployee(empObjectOrJabatan, cfgJadwal = []) {
+  let jab = "";
+  let nama = "";
+
+  if (typeof empObjectOrJabatan === "string") {
+    jab = empObjectOrJabatan.trim().toLowerCase();
+  } else if (empObjectOrJabatan && typeof empObjectOrJabatan === "object") {
+    jab = String(empObjectOrJabatan.jabatan || empObjectOrJabatan.posisi || "").trim().toLowerCase();
+    nama = String(empObjectOrJabatan.nama_karyawan || empObjectOrJabatan.nama || "").trim().toLowerCase();
+  }
+
+  const isCashier = jab.includes("cashier") || jab.includes("kasir") || nama.includes("jannah") || nama.includes("amaliatul");
+
+  if (jab && cfgJadwal && cfgJadwal.length) {
+    const match = cfgJadwal.find(j => {
+      const jJab = String(j.jabatan || "").trim().toLowerCase();
+      return jJab && (jJab === jab || jab.includes(jJab) || jJab.includes(jab));
+    });
+    if (match && match.masuk) {
+      return { masuk: match.masuk, pulang: match.pulang || "17:00" };
+    }
+  }
+
+  if (isCashier) {
+    return { masuk: "09:00", pulang: "18:00" };
+  }
+
+  if (cfgJadwal && cfgJadwal.length) {
+    const defaultShift = cfgJadwal.find(j => {
+      const jJab = String(j.jabatan || "").trim().toLowerCase();
+      return !jJab || jJab === "all" || jJab === "semua jabatan" || jJab === "semua";
+    });
+    if (defaultShift && defaultShift.masuk) {
+      return { masuk: defaultShift.masuk, pulang: defaultShift.pulang || "17:00" };
+    }
+  }
+
+  return { masuk: "08:00", pulang: "17:00" };
+}
+
+function checkIsLate(scanMasuk, jadwalMasuk = "08:00", tolTelatMins = 0) {
+  const scanMins = parseTimeToMinutes(scanMasuk);
+  if (scanMins === null) return false;
+  const targetMins = parseTimeToMinutes(jadwalMasuk) ?? 480; // 08:00 WIB = 480
+  const tol = parseInt(tolTelatMins, 10) || 0;
+  return scanMins > (targetMins + tol);
+}
+
+function getLateDurationMinutes(scanMasuk, jadwalMasuk = "08:00") {
+  const scanMins = parseTimeToMinutes(scanMasuk);
+  if (scanMins === null) return 0;
+  const targetMins = parseTimeToMinutes(jadwalMasuk) ?? 480;
+  return Math.max(0, scanMins - targetMins);
+}
+
+function isRecordMatchingUser(record, userSession, userEmpObj = null) {
+  if (!record || !userSession) return false;
+  const uNik = String(userSession.nik || "").trim().toLowerCase();
+  const uNama = String(userSession.nama || "").trim().toLowerCase();
+  const uUser = String(userSession.username || "").trim().toLowerCase();
+
+  const rNik = String(record.nik || "").trim().toLowerCase();
+  const rNama = String(record.nama || "").trim().toLowerCase();
+
+  if (uNik && rNik && uNik === rNik) return true;
+  if (uUser && (rNik === uUser || rNama === uUser || rNama.includes(uUser))) return true;
+  if (uNama && rNama) {
+    if (uNama === rNama || uNama.includes(rNama) || rNama.includes(uNama)) return true;
+    if ((uNama.includes("jannah") || uNama.includes("amaliatul")) && (rNama.includes("jannah") || rNama.includes("amaliatul"))) return true;
+  }
+
+  if (userEmpObj) {
+    const eNik = String(userEmpObj.nik || userEmpObj.nik_karyawan || "").trim().toLowerCase();
+    const eNama = String(userEmpObj.nama_karyawan || userEmpObj.nama || "").trim().toLowerCase();
+    const eUser = String(userEmpObj.username || "").trim().toLowerCase();
+
+    if (eNik && rNik && eNik === rNik) return true;
+    if (eNama && rNama && (eNama === rNama || eNama.includes(rNama) || rNama.includes(eNama))) return true;
+    if (eUser && (rNik === eUser || rNama === eUser)) return true;
+  }
+
+  if (record._empObj) {
+    const reNik = String(record._empObj.nik || record._empObj.nik_karyawan || "").trim().toLowerCase();
+    const reNama = String(record._empObj.nama_karyawan || record._empObj.nama || "").trim().toLowerCase();
+
+    if (uNik && reNik && uNik === reNik) return true;
+    if (uNama && reNama && (uNama === reNama || uNama.includes(reNama) || reNama.includes(uNama))) return true;
+    if (uUser && (reNik === uUser || reNama === uUser)) return true;
+
+    if (userEmpObj) {
+      const eNik = String(userEmpObj.nik || userEmpObj.nik_karyawan || "").trim().toLowerCase();
+      const eNama = String(userEmpObj.nama_karyawan || userEmpObj.nama || "").trim().toLowerCase();
+      if (eNik && reNik && eNik === reNik) return true;
+      if (eNama && reNama && (eNama === reNama || eNama.includes(reNama) || reNama.includes(eNama))) return true;
+    }
+  }
+
+  return false;
+}
+
 async function loadAttendanceAnalytics(container, session) {
   const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
   const titleEl = container.querySelector("#dash-attendance-title");
   const bodyEl = container.querySelector("#dash-attendance-body");
 
   try {
-    const rawAllAbsen = await fsGetAll(COL.DATA_ABSENSI);
+    const [rawAllAbsen, allKaryawan, cfgSnap] = await Promise.all([
+      fsGetAll(COL.DATA_ABSENSI),
+      fsGetAll(COL.MASTER_KARYAWAN).catch(() => []),
+      getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(() => null)
+    ]);
 
-    // Annotate with normalized dates & filter for user if regular employee
-    let userAbsen = rawAllAbsen;
-    if (!isHrd) {
-      const userNik = (session.nik || "").toLowerCase().trim();
-      const userNama = (session.nama || "").toLowerCase().trim();
-      userAbsen = rawAllAbsen.filter(x => 
-        (x.nik && x.nik.toLowerCase().trim() === userNik) ||
-        (x.nama && x.nama.toLowerCase().trim() === userNama)
-      );
-    }
+    const cfgData = (cfgSnap && cfgSnap.exists()) ? cfgSnap.data() : {};
+    const cfgJadwal = cfgData?.jadwal || [];
+    const tolTelatMins = parseInt(cfgData?.tarif?.tol_telat, 10) || 0;
 
-    const annotatedAbsen = userAbsen.map(item => {
+    // Resolve user's employee record in MASTER_KARYAWAN
+    const userEmpObj = (allKaryawan || []).find(k => {
+      const kNik = String(k.nik || k.nik_karyawan || "").trim().toLowerCase();
+      const kNama = String(k.nama_karyawan || k.nama || "").trim().toLowerCase();
+      const kUser = String(k.username || "").trim().toLowerCase();
+
+      const sNik = String(session.nik || "").trim().toLowerCase();
+      const sNama = String(session.nama || "").trim().toLowerCase();
+      const sUser = String(session.username || "").trim().toLowerCase();
+
+      if (sNik && kNik && sNik === kNik) return true;
+      if (sUser && (kUser === sUser || kNik === sUser)) return true;
+      if (sNama && kNama && (sNama === kNama || sNama.includes(kNama) || kNama.includes(sNama))) return true;
+      if (sNama && (sNama.includes("jannah") || sNama.includes("amaliatul")) && (kNama.includes("jannah") || kNama.includes("amaliatul"))) return true;
+      return false;
+    });
+
+    // Annotate with normalized dates & month prefixes
+    const annotatedAll = rawAllAbsen.map(item => {
       const normDate = parseDateStringToYMD(item.tanggal) || parseDateStringToYMD(item.created_at) || "";
       const monthPrefix = normDate ? normDate.substring(0, 7) : "";
-      return { ...item, _normDate: normDate, _monthPrefix: monthPrefix };
+      
+      // Resolve employee object from master karyawan
+      const empObj = (allKaryawan || []).find(k => {
+        const kNik = String(k.nik || k.nik_karyawan || "").trim();
+        const kNama = String(k.nama_karyawan || k.nama || "").trim().toLowerCase();
+        const rNik = String(item.nik || "").trim();
+        const rNama = String(item.nama || "").trim().toLowerCase();
+        if (kNik && rNik && kNik === rNik) return true;
+        if (kNama && rNama && kNama === rNama) return true;
+        if (rNama && (rNama.includes("jannah") || rNama.includes("amaliatul")) && (kNama.includes("jannah") || kNama.includes("amaliatul"))) return true;
+        return false;
+      });
+
+      const shiftInput = empObj || { nama: item.nama, jabatan: item.jabatan || "" };
+      const shift = getShiftForEmployee(shiftInput, cfgJadwal);
+
+      const empNameStr = String(item.nama || empObj?.nama_karyawan || empObj?.nama || "").toLowerCase();
+      const empJabStr = String(item.jabatan || empObj?.jabatan || empObj?.posisi || "").toLowerCase();
+      const isCashierOrJannah = empNameStr.includes("jannah") || empNameStr.includes("amaliatul") || empJabStr.includes("cashier") || empJabStr.includes("kasir");
+
+      let effectiveJadwalMasuk = shift.masuk;
+      if (!isCashierOrJannah && item.jadwal_masuk && item.jadwal_masuk !== "08:00") {
+        effectiveJadwalMasuk = item.jadwal_masuk;
+      }
+
+      let effectiveJadwalKeluar = shift.pulang;
+      if (!isCashierOrJannah && item.jadwal_keluar && item.jadwal_keluar !== "17:00") {
+        effectiveJadwalKeluar = item.jadwal_keluar;
+      }
+
+      return { 
+        ...item, 
+        jadwal_masuk: effectiveJadwalMasuk,
+        jadwal_keluar: effectiveJadwalKeluar,
+        _normDate: normDate, 
+        _monthPrefix: monthPrefix,
+        _nikStr: String(item.nik || "").trim(),
+        _namaStr: String(item.nama || "").trim(),
+        _empObj: empObj
+      };
     }).filter(x => x._normDate !== "");
 
-    if (annotatedAbsen.length === 0) {
-      titleEl.textContent = isHrd ? "Analitik Kehadiran Perusahaan" : "Analitik Kehadiran Saya";
+    if (annotatedAll.length === 0) {
+      if (titleEl) titleEl.textContent = isHrd ? "Analitik Kehadiran Perusahaan" : "Analitik Kehadiran Saya";
       bodyEl.innerHTML = emptyState(
         isHrd ? "Belum ada data absensi tercatat di sistem" : "Belum ada data absensi Anda tercatat di sistem",
         "Data absensi harian yang diinput melalui menu Manajemen Absensi atau penarikan LAN akan otomatis dianalisis di sini."
@@ -805,198 +1020,351 @@ async function loadAttendanceAnalytics(container, session) {
       return;
     }
 
+    // Determine default base records for regular user vs HRD
+    let baseUserAbsen = annotatedAll;
+    if (!isHrd) {
+      baseUserAbsen = annotatedAll.filter(x => isRecordMatchingUser(x, session, userEmpObj));
+      if (baseUserAbsen.length === 0) {
+        if (titleEl) titleEl.textContent = "Analitik Kehadiran Saya";
+        bodyEl.innerHTML = emptyState(
+          "Belum ada data absensi Anda tercatat di sistem",
+          "Data absensi Anda akan otomatis dianalisis di sini setelah diinput atau disinkronkan."
+        );
+        return;
+      }
+    }
+
     const now = new Date();
     const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const availableMonths = Array.from(new Set(annotatedAbsen.map(x => x._monthPrefix))).filter(Boolean).sort().reverse();
+    const availableMonths = Array.from(new Set(baseUserAbsen.map(x => x._monthPrefix))).filter(Boolean).sort().reverse();
 
     let selectedMonthPrefix = currentMonthPrefix;
     if (!availableMonths.includes(currentMonthPrefix) && availableMonths.length > 0) {
-      selectedMonthPrefix = availableMonths[0]; // fallback to most recent month present in DB
+      selectedMonthPrefix = availableMonths[0];
     }
 
-    const filteredAbsen = annotatedAbsen.filter(x => x._monthPrefix === selectedMonthPrefix);
-    const totalPresent = filteredAbsen.length;
-
-    titleEl.textContent = isHrd ? "Analitik Kehadiran Perusahaan" : "Analitik Kehadiran Saya";
-
-    if (totalPresent === 0) {
-      bodyEl.innerHTML = emptyState(`Belum ada data absensi untuk periode ${formatMonthYearLabel(selectedMonthPrefix)}`);
-      return;
-    }
-
-    // Standard start time is "08:00"
-    const lateLogs = filteredAbsen.filter(x => x.scan_masuk && x.scan_masuk > "08:00");
-    const lateCount = lateLogs.length;
-    const onTimeCount = totalPresent - lateCount;
-    const onTimeRateVal = ((onTimeCount / totalPresent) * 100);
-    const onTimeRateStr = onTimeRateVal.toFixed(1);
-    const skorKedisiplinan = Math.round(onTimeRateVal);
-
-    let grade = "A";
-    let gradeClass = "text-emerald-400";
-    let gradeLabel = "SANGAT DISIPLIN";
-    if (skorKedisiplinan < 60) {
-      grade = "D"; gradeClass = "text-rose-400"; gradeLabel = "PERLU PEMBINAAN";
-    } else if (skorKedisiplinan < 75) {
-      grade = "C"; gradeClass = "text-amber-400"; gradeLabel = "CUKUP DISIPLIN";
-    } else if (skorKedisiplinan < 90) {
-      grade = "B"; gradeClass = "text-blue-400"; gradeLabel = "DISIPLIN BAIK";
-    }
-
-    // Daily Bar Chart Data Preparation
-    const dayMap = {};
-    filteredAbsen.forEach(x => {
-      const dStr = x._normDate;
-      if (!dayMap[dStr]) dayMap[dStr] = { onTime: 0, late: 0, total: 0 };
-      const isLate = x.scan_masuk && x.scan_masuk > "08:00";
-      if (isLate) dayMap[dStr].late++;
-      else dayMap[dStr].onTime++;
-      dayMap[dStr].total++;
-    });
-
-    const sortedDays = Object.keys(dayMap).sort();
-    const maxDayCount = Math.max(1, ...sortedDays.map(d => dayMap[d].total));
-
-    const dailyBarsHtml = sortedDays.length === 0 ? `
-      <div class="w-full text-center py-6 text-xs text-slate-400 italic">Belum ada grafik rincian harian.</div>
-    ` : sortedDays.map(dStr => {
-      const dayData = dayMap[dStr];
-      const dayNum = dStr.split("-")[2] || dStr;
-      const onTimePct = Math.round((dayData.onTime / maxDayCount) * 100);
-      const latePct = Math.round((dayData.late / maxDayCount) * 100);
-
-      const lateBar = latePct > 0 ? `<div class="w-full bg-rose-500 transition-all duration-300" style="height: ${latePct}%"></div>` : "";
-      const onTimeBar = onTimePct > 0 ? `<div class="w-full bg-emerald-500 transition-all duration-300" style="height: ${onTimePct}%"></div>` : "";
-
-      return `
-        <div class="flex-1 min-w-[20px] max-w-[36px] flex flex-col items-center gap-1 group relative cursor-pointer" title="Tanggal ${dStr}: Total ${dayData.total} Presensi (${dayData.onTime} Tepat Waktu, ${dayData.late} Terlambat)">
-          <div class="w-full bg-slate-100 rounded-t-md flex flex-col justify-end overflow-hidden h-24 border border-slate-200/60 shadow-2xs">
-            ${lateBar}
-            ${onTimeBar}
-          </div>
-          <span class="text-[9.5px] font-bold text-slate-500 group-hover:text-slate-900 transition">${dayNum}</span>
-        </div>
-      `;
-    }).join("");
-
-    // HRD Top Late Employees
-    const employeeLates = {};
-    lateLogs.forEach(log => {
-      const nameKey = log.nama || "Karyawan";
-      employeeLates[nameKey] = (employeeLates[nameKey] || 0) + 1;
-    });
-    const topLates = Object.entries(employeeLates)
-      .map(([nama, count]) => ({ nama, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 3);
-
-    const strokeDash = 201.06 - (201.06 * skorKedisiplinan / 100);
-
-    let hrdSectionHtml = "";
+    // Prepare list of employees for HRD filter dropdown
+    let selectedEmpKey = "ALL"; // "ALL" or specific NIK/Nama key
+    const employeeList = [];
     if (isHrd) {
-      if (topLates.length > 0) {
-        const topLatesRows = topLates.map(tl => `
-          <div class="flex items-center justify-between text-xs text-slate-600 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-100">
-            <span class="font-bold text-slate-800">${escapeHtml(tl.nama)}</span>
-            <span class="font-extrabold text-rose-600">${tl.count} kali terlambat</span>
+      const empMap = new Map();
+      // Add active karyawan from MASTER_KARYAWAN first
+      (allKaryawan || []).forEach(k => {
+        const nik = String(k.nik || k.nik_karyawan || "").trim();
+        const nama = String(k.nama_karyawan || k.nama || "").trim();
+        if (nama) {
+          const key = nik || nama.toLowerCase();
+          empMap.set(key, { key, nik, nama, label: nik ? `${nama} (NIK: ${nik})` : nama });
+        }
+      });
+      // Add any unique employees from attendance logs if not in master
+      annotatedAll.forEach(a => {
+        const nik = a._nikStr;
+        const nama = a._namaStr;
+        if (nama) {
+          const key = nik || nama.toLowerCase();
+          if (!empMap.has(key)) {
+            empMap.set(key, { key, nik, nama, label: nik ? `${nama} (NIK: ${nik})` : nama });
+          }
+        }
+      });
+      employeeList.push(...Array.from(empMap.values()).sort((a, b) => a.nama.localeCompare(b.nama)));
+    }
+
+    function renderAnalytics() {
+      // 1. Filter by month
+      let monthFiltered = baseUserAbsen.filter(x => x._monthPrefix === selectedMonthPrefix);
+
+      // 2. Filter by selected employee (for HRD)
+      let selectedEmpObj = null;
+      if (isHrd && selectedEmpKey !== "ALL") {
+        selectedEmpObj = employeeList.find(e => e.key === selectedEmpKey);
+        monthFiltered = monthFiltered.filter(x => {
+          if (selectedEmpObj?.nik && x._nikStr) return x._nikStr === selectedEmpObj.nik;
+          return x._namaStr.toLowerCase() === (selectedEmpObj?.nama || "").toLowerCase();
+        });
+      }
+
+      // Update widget header title & selectors
+      if (titleEl) {
+        if (!isHrd) {
+          titleEl.textContent = "Analitik Kehadiran Saya";
+        } else if (selectedEmpKey === "ALL") {
+          titleEl.textContent = "Analitik Kehadiran Perusahaan";
+        } else {
+          titleEl.textContent = `Analitik Kehadiran: ${selectedEmpObj?.nama || "Karyawan"}`;
+        }
+      }
+
+      const totalPresent = monthFiltered.length;
+
+      // Month dropdown options
+      const monthOptionsHtml = availableMonths.map(m => 
+        `<option value="${m}" ${m === selectedMonthPrefix ? "selected" : ""}>${formatMonthYearLabel(m)}</option>`
+      ).join("");
+
+      // Employee dropdown options for HRD
+      let empSelectorHtml = "";
+      if (isHrd) {
+        const empOptionsHtml = [
+          `<option value="ALL" ${selectedEmpKey === "ALL" ? "selected" : ""}>👥 Seluruh Karyawan (Perusahaan)</option>`,
+          ...employeeList.map(e => `<option value="${escapeHtml(e.key)}" ${e.key === selectedEmpKey ? "selected" : ""}>👤 ${escapeHtml(e.label)}</option>`)
+        ].join("");
+
+        empSelectorHtml = `
+          <div class="flex items-center gap-1.5 shrink-0">
+            <span class="text-[11px] text-slate-500 font-medium hidden sm:inline">Karyawan:</span>
+            <select id="dash-attendance-emp-select" class="text-xs bg-white border border-slate-200 rounded-lg px-2 py-1 font-bold text-slate-700 outline-none focus:border-maroon-600 max-w-[180px] sm:max-w-[220px] truncate shadow-2xs">
+              ${empOptionsHtml}
+            </select>
           </div>
-        `).join("");
-        hrdSectionHtml = `
-          <div class="pt-1 space-y-2">
-            <h4 class="text-xs font-bold text-slate-700">Karyawan Sering Terlambat Periode Ini:</h4>
-            <div class="space-y-1.5">
-              ${topLatesRows}
-            </div>
-          </div>
-        `;
-      } else {
-        hrdSectionHtml = `
-          <p class="text-xs text-emerald-700 font-bold text-center py-2 bg-emerald-50/80 rounded-xl border border-emerald-100">Luar biasa! Tidak ada keterlambatan tercatat pada periode ini.</p>
         `;
       }
-    } else {
-      hrdSectionHtml = `
-        <div class="text-xs bg-slate-50 border border-slate-100 rounded-xl p-3 text-slate-500 leading-relaxed">
-          <p>Jam masuk kantor standar CV Andela Jaya adalah <b>08:00 WIB</b>. Kedisiplinan kehadiran harian Anda mempengaruhi nilai review kinerja dan poin KPI periodik.</p>
-        </div>
-      `;
-    }
 
-    bodyEl.innerHTML = `
-      <div class="space-y-4">
-        <!-- Header Info Periode & Total Log -->
-        <div class="flex items-center justify-between bg-slate-50 border border-slate-100 p-2.5 rounded-xl text-xs">
+      const topControlsHtml = `
+        <div class="flex flex-wrap items-center justify-between gap-2 bg-slate-50 border border-slate-200/80 p-2.5 rounded-xl text-xs">
           <div class="flex items-center gap-2">
             <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span class="font-bold text-slate-700">Periode: ${formatMonthYearLabel(selectedMonthPrefix)}</span>
+            <span class="font-bold text-slate-700 hidden sm:inline">Periode:</span>
+            <select id="dash-attendance-month-select" class="text-xs bg-white border border-slate-200 rounded-lg px-2 py-1 font-bold text-slate-700 outline-none focus:border-maroon-600 shadow-2xs">
+              ${monthOptionsHtml}
+            </select>
           </div>
-          <span class="font-bold text-slate-600 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 text-[11px] shadow-2xs">${totalPresent} Log Presensi</span>
-        </div>
-
-        <!-- Donut Score Widget & Stats Grid -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <!-- Donut Score Widget -->
-          <div class="sm:col-span-1 bg-slate-900 text-white p-3.5 rounded-xl flex flex-col items-center justify-center text-center shadow-xs relative overflow-hidden">
-            <span class="text-[10px] font-bold tracking-wider uppercase text-slate-300 mb-1">Skor Kedisiplinan</span>
-            <div class="relative w-20 h-20 my-1 flex items-center justify-center">
-              <svg class="w-full h-full transform -rotate-90" viewBox="0 0 80 80">
-                <circle cx="40" cy="40" r="32" stroke="currentColor" stroke-width="8" class="text-slate-800" fill="transparent" />
-                <circle cx="40" cy="40" r="32" stroke="currentColor" stroke-width="8" class="${gradeClass}" fill="transparent" stroke-dasharray="201.06" stroke-dashoffset="${strokeDash}" stroke-linecap="round" />
-              </svg>
-              <div class="absolute flex flex-col items-center justify-center text-center">
-                <span class="text-xl font-black text-white leading-none">${skorKedisiplinan}</span>
-                <span class="text-[9px] text-slate-300 font-bold">/ 100</span>
-              </div>
-            </div>
-            <span class="mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-white/10 text-white backdrop-blur-xs border border-white/20">
-              Grade ${grade} • ${gradeLabel}
-            </span>
-          </div>
-
-          <!-- On-Time & Late Summary Cards -->
-          <div class="sm:col-span-2 grid grid-cols-2 gap-2.5">
-            <div class="bg-emerald-50/60 border border-emerald-100 p-3 rounded-xl flex flex-col justify-between shadow-2xs">
-              <div>
-                <span class="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">Tepat Waktu (&lt;= 08:00)</span>
-                <span class="text-2xl font-black text-emerald-700 mt-1 block">${onTimeCount}</span>
-              </div>
-              <span class="text-[10.5px] text-emerald-600 font-semibold">${onTimeRateStr}% dari presensi</span>
-            </div>
-            <div class="bg-rose-50/60 border border-rose-100 p-3 rounded-xl flex flex-col justify-between shadow-2xs">
-              <div>
-                <span class="text-[10px] font-bold text-rose-800 uppercase tracking-wider block">Terlambat (&gt; 08:00)</span>
-                <span class="text-2xl font-black text-rose-700 mt-1 block">${lateCount} Kali</span>
-              </div>
-              <span class="text-[10.5px] text-rose-600 font-semibold">${(100 - parseFloat(onTimeRateStr)).toFixed(1)}% keterlambatan</span>
-            </div>
+          ${empSelectorHtml}
+          <div class="flex items-center gap-1.5">
+            <span class="font-semibold text-slate-500 bg-white px-2 py-1 rounded-lg border border-slate-200 text-[10.5px] shadow-2xs">Toleransi: ${tolTelatMins} Menit</span>
+            <span class="font-bold text-slate-600 bg-white px-2.5 py-1 rounded-lg border border-slate-200 text-[11px] shadow-2xs">${totalPresent} Log Presensi</span>
           </div>
         </div>
+      `;
 
-        <!-- GRAFIK BATANG TREN PRESENSI HARIAN -->
-        <div class="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200/70 space-y-2">
-          <div class="flex items-center justify-between flex-wrap gap-2">
-            <h4 class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-              <span>📊 Grafik Tren Presensi Harian</span>
-            </h4>
-            <div class="flex items-center gap-3 text-[10px] font-bold">
-              <span class="flex items-center gap-1 text-emerald-700"><span class="w-2.5 h-2.5 bg-emerald-500 rounded-xs inline-block"></span> Tepat Waktu</span>
-              <span class="flex items-center gap-1 text-rose-700"><span class="w-2.5 h-2.5 bg-rose-500 rounded-xs inline-block"></span> Terlambat</span>
+      if (totalPresent === 0) {
+        bodyEl.innerHTML = `
+          <div class="space-y-3">
+            ${topControlsHtml}
+            ${emptyState(
+              `Belum ada data absensi ${isHrd && selectedEmpKey !== "ALL" ? `untuk ${selectedEmpObj?.nama}` : ""} pada periode ${formatMonthYearLabel(selectedMonthPrefix)}`
+            )}
+          </div>
+        `;
+        bindControls();
+        return;
+      }
+
+      // Calculate Late Logs accurately using configured tolerance
+      const lateLogs = monthFiltered.filter(x => checkIsLate(x.scan_masuk, x.jadwal_masuk, tolTelatMins));
+      const lateCount = lateLogs.length;
+      const onTimeCount = totalPresent - lateCount;
+      const onTimeRateVal = ((onTimeCount / totalPresent) * 100);
+      const onTimeRateStr = onTimeRateVal.toFixed(1);
+      const skorKedisiplinan = Math.round(onTimeRateVal);
+
+      let grade = "A";
+      let gradeClass = "text-emerald-400";
+      let gradeLabel = "SANGAT DISIPLIN";
+      if (skorKedisiplinan < 60) {
+        grade = "D"; gradeClass = "text-rose-400"; gradeLabel = "PERLU PEMBINAAN";
+      } else if (skorKedisiplinan < 75) {
+        grade = "C"; gradeClass = "text-amber-400"; gradeLabel = "CUKUP DISIPLIN";
+      } else if (skorKedisiplinan < 90) {
+        grade = "B"; gradeClass = "text-blue-400"; gradeLabel = "DISIPLIN BAIK";
+      }
+
+      // Daily Bar Chart Data Preparation
+      const dayMap = {};
+      monthFiltered.forEach(x => {
+        const dStr = x._normDate;
+        if (!dayMap[dStr]) dayMap[dStr] = { onTime: 0, late: 0, total: 0 };
+        const isLate = checkIsLate(x.scan_masuk, x.jadwal_masuk, tolTelatMins);
+        if (isLate) dayMap[dStr].late++;
+        else dayMap[dStr].onTime++;
+        dayMap[dStr].total++;
+      });
+
+      const sortedDays = Object.keys(dayMap).sort();
+      const maxDayCount = Math.max(1, ...sortedDays.map(d => dayMap[d].total));
+
+      const dailyBarsHtml = sortedDays.length === 0 ? `
+        <div class="w-full text-center py-6 text-xs text-slate-400 italic">Belum ada grafik rincian harian.</div>
+      ` : sortedDays.map(dStr => {
+        const dayData = dayMap[dStr];
+        const dayNum = dStr.split("-")[2] || dStr;
+        const onTimePct = Math.round((dayData.onTime / maxDayCount) * 100);
+        const latePct = Math.round((dayData.late / maxDayCount) * 100);
+
+        const lateBar = latePct > 0 ? `<div class="w-full bg-rose-500 transition-all duration-300" style="height: ${latePct}%"></div>` : "";
+        const onTimeBar = onTimePct > 0 ? `<div class="w-full bg-emerald-500 transition-all duration-300" style="height: ${onTimePct}%"></div>` : "";
+
+        return `
+          <div class="flex-1 min-w-[20px] max-w-[36px] flex flex-col items-center gap-1 group relative cursor-pointer" title="Tanggal ${dStr}: Total ${dayData.total} Presensi (${dayData.onTime} Tepat Waktu, ${dayData.late} Terlambat)">
+            <div class="w-full bg-slate-100 rounded-t-md flex flex-col justify-end overflow-hidden h-24 border border-slate-200/60 shadow-2xs">
+              ${lateBar}
+              ${onTimeBar}
+            </div>
+            <span class="text-[9.5px] font-bold text-slate-500 group-hover:text-slate-900 transition">${dayNum}</span>
+          </div>
+        `;
+      }).join("");
+
+      // Detail section for late records
+      let lateDetailSectionHtml = "";
+      if (isHrd && selectedEmpKey === "ALL") {
+        const employeeLates = {};
+        lateLogs.forEach(log => {
+          const nameKey = log._namaStr || "Karyawan";
+          employeeLates[nameKey] = (employeeLates[nameKey] || 0) + 1;
+        });
+        const topLates = Object.entries(employeeLates)
+          .map(([nama, count]) => ({ nama, count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 4);
+
+        if (topLates.length > 0) {
+          const topLatesRows = topLates.map(tl => `
+            <div class="flex items-center justify-between text-xs text-slate-600 bg-rose-50/80 px-3 py-1.5 rounded-lg border border-rose-100">
+              <span class="font-bold text-slate-800">${escapeHtml(tl.nama)}</span>
+              <span class="font-extrabold text-rose-600">${tl.count} kali keterlambatan</span>
+            </div>
+          `).join("");
+          lateDetailSectionHtml = `
+            <div class="pt-1 space-y-2">
+              <h4 class="text-xs font-bold text-slate-700">Daftar Karyawan Terlambat Periode Ini:</h4>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                ${topLatesRows}
+              </div>
+            </div>
+          `;
+        } else {
+          lateDetailSectionHtml = `
+            <p class="text-xs text-emerald-700 font-bold text-center py-2 bg-emerald-50/80 rounded-xl border border-emerald-100">Luar biasa! Tidak ada keterlambatan tercatat pada seluruh perusahaan periode ini.</p>
+          `;
+        }
+      } else {
+        // Individual Employee Late History Logs
+        if (lateLogs.length > 0) {
+          const lateItemRows = lateLogs.slice(0, 5).map(l => {
+            const minsLate = getLateDurationMinutes(l.scan_masuk, l.jadwal_masuk);
+            const durText = minsLate > 0 ? `+${minsLate} menit` : "Terlambat";
+            return `
+              <div class="flex items-center justify-between text-xs bg-rose-50/70 border border-rose-100 p-2 rounded-lg">
+                <span class="font-bold text-slate-700">${fmtDateShort(l._normDate)}</span>
+                <span class="font-mono text-slate-600">Jam Scan: <b class="text-rose-700">${escapeHtml(l.scan_masuk)}</b> (Shift: ${escapeHtml(l.jadwal_masuk || "08:00")})</span>
+                <span class="font-extrabold text-rose-600 bg-rose-100/80 px-2 py-0.5 rounded text-[10px]">${durText}</span>
+              </div>
+            `;
+          }).join("");
+
+          lateDetailSectionHtml = `
+            <div class="pt-1 space-y-1.5">
+              <h4 class="text-xs font-bold text-slate-700">Catatan Keterlambatan (${lateLogs.length} Kali):</h4>
+              <div class="space-y-1">
+                ${lateItemRows}
+              </div>
+            </div>
+          `;
+        } else {
+          lateDetailSectionHtml = `
+            <div class="text-xs bg-emerald-50/80 border border-emerald-100 rounded-xl p-3 text-emerald-800 font-medium flex items-center gap-2">
+              <span class="text-base">🎉</span>
+              <span>Luar biasa! Selalu tepat waktu dan tidak pernah keterlambatan pada periode ini.</span>
+            </div>
+          `;
+        }
+      }
+
+      const strokeDash = 201.06 - (201.06 * skorKedisiplinan / 100);
+
+      bodyEl.innerHTML = `
+        <div class="space-y-4">
+          ${topControlsHtml}
+
+          <!-- Donut Score Widget & Stats Grid -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <!-- Donut Score Widget -->
+            <div class="sm:col-span-1 bg-slate-900 text-white p-3.5 rounded-xl flex flex-col items-center justify-center text-center shadow-xs relative overflow-hidden">
+              <span class="text-[10px] font-bold tracking-wider uppercase text-slate-300 mb-1">Skor Kedisiplinan</span>
+              <div class="relative w-20 h-20 my-1 flex items-center justify-center">
+                <svg class="w-full h-full transform -rotate-90" viewBox="0 0 80 80">
+                  <circle cx="40" cy="40" r="32" stroke="currentColor" stroke-width="8" class="text-slate-800" fill="transparent" />
+                  <circle cx="40" cy="40" r="32" stroke="currentColor" stroke-width="8" class="${gradeClass}" fill="transparent" stroke-dasharray="201.06" stroke-dashoffset="${strokeDash}" stroke-linecap="round" />
+                </svg>
+                <div class="absolute flex flex-col items-center justify-center text-center">
+                  <span class="text-xl font-black text-white leading-none">${skorKedisiplinan}</span>
+                  <span class="text-[9px] text-slate-300 font-bold">/ 100</span>
+                </div>
+              </div>
+              <span class="mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-white/10 text-white backdrop-blur-xs border border-white/20">
+                Grade ${grade} • ${gradeLabel}
+              </span>
+            </div>
+
+            <!-- On-Time & Late Summary Cards -->
+            <div class="sm:col-span-2 grid grid-cols-2 gap-2.5">
+              <div class="bg-emerald-50/60 border border-emerald-100 p-3 rounded-xl flex flex-col justify-between shadow-2xs">
+                <div>
+                  <span class="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">Tepat Waktu (&lt;= Shift)</span>
+                  <span class="text-2xl font-black text-emerald-700 mt-1 block">${onTimeCount}</span>
+                </div>
+                <span class="text-[10.5px] text-emerald-600 font-semibold">${onTimeRateStr}% dari presensi</span>
+              </div>
+              <div class="bg-rose-50/60 border border-rose-100 p-3 rounded-xl flex flex-col justify-between shadow-2xs">
+                <div>
+                  <span class="text-[10px] font-bold text-rose-800 uppercase tracking-wider block">Terlambat (&gt; Shift)</span>
+                  <span class="text-2xl font-black text-rose-700 mt-1 block">${lateCount} Kali</span>
+                </div>
+                <span class="text-[10.5px] text-rose-600 font-semibold">${(100 - parseFloat(onTimeRateStr)).toFixed(1)}% keterlambatan</span>
+              </div>
             </div>
           </div>
 
-          <div class="pt-1">
-            <div class="flex items-end justify-center gap-1.5 h-28 w-full overflow-x-auto pb-1.5 border-b border-slate-200 px-1">
-              ${dailyBarsHtml}
+          <!-- GRAFIK BATANG TREN PRESENSI HARIAN -->
+          <div class="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200/70 space-y-2">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <h4 class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <span>📊 Grafik Tren Presensi Harian</span>
+              </h4>
+              <div class="flex items-center gap-3 text-[10px] font-bold">
+                <span class="flex items-center gap-1 text-emerald-700"><span class="w-2.5 h-2.5 bg-emerald-500 rounded-xs inline-block"></span> Tepat Waktu</span>
+                <span class="flex items-center gap-1 text-rose-700"><span class="w-2.5 h-2.5 bg-rose-500 rounded-xs inline-block"></span> Terlambat</span>
+              </div>
+            </div>
+
+            <div class="pt-1">
+              <div class="flex items-end justify-center gap-1.5 h-28 w-full overflow-x-auto pb-1.5 border-b border-slate-200 px-1">
+                ${dailyBarsHtml}
+              </div>
             </div>
           </div>
+
+          ${lateDetailSectionHtml}
         </div>
+      `;
 
-        ${hrdSectionHtml}
-      </div>
-    `;
+      bindControls();
+    }
+
+    function bindControls() {
+      const monthSelect = bodyEl.querySelector("#dash-attendance-month-select");
+      if (monthSelect) {
+        monthSelect.onchange = (e) => {
+          selectedMonthPrefix = e.target.value;
+          renderAnalytics();
+        };
+      }
+      const empSelect = bodyEl.querySelector("#dash-attendance-emp-select");
+      if (empSelect) {
+        empSelect.onchange = (e) => {
+          selectedEmpKey = e.target.value;
+          renderAnalytics();
+        };
+      }
+    }
+
+    renderAnalytics();
+
   } catch (err) {
     console.error(err);
-    bodyEl.innerHTML = `<p class="text-xs text-rose-500">Gagal memuat analitik kehadiran: ${escapeHtml(err.message)}</p>`;
+    bodyEl.innerHTML = `<p class="text-xs text-rose-500 p-4">Gagal memuat analitik kehadiran: ${escapeHtml(err.message)}</p>`;
   }
 }
 

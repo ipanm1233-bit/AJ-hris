@@ -1,4 +1,4 @@
-import { db, COL, collection, getDocs, writeBatch, doc, query, where, updateDoc, deleteDoc } from "../firebase-config.js";
+import { db, COL, collection, getDocs, writeBatch, doc, getDoc, query, where, updateDoc, deleteDoc } from "../firebase-config.js";
 import { toast, genId, fsGetAll, escapeHtml, openModal, closeModal, formatUangJalanEkspedisiRows } from "../utils.js";
 import { skeletonRows, emptyState } from "../components.js";
 import { callGasWebApp, callGasArchiveWebApp } from "../gas-integration.js";
@@ -392,6 +392,51 @@ export async function mount(container, { session } = {}) {
  return s; // tidak bisa dikenali -- kembalikan apa adanya, jangan gagalkan baris
  }
 
+ const [allKaryawan, snapCfg] = await Promise.all([
+ fsGetAll(COL.MASTER_KARYAWAN).catch(() => []),
+ getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(() => null)
+ ]);
+ const cfgJadwal = (snapCfg && snapCfg.exists()) ? (snapCfg.data()?.jadwal || []) : [];
+
+ function getShiftForEmployee(karyawanObj, cfgJadwalArr = []) {
+ let jab = "";
+ let nama = "";
+
+ if (typeof karyawanObj === "string") {
+ jab = karyawanObj.trim().toLowerCase();
+ } else if (karyawanObj && typeof karyawanObj === "object") {
+ jab = String(karyawanObj.jabatan || karyawanObj.posisi || "").trim().toLowerCase();
+ nama = String(karyawanObj.nama_karyawan || karyawanObj.nama || "").trim().toLowerCase();
+ }
+
+ const isCashier = jab.includes("cashier") || jab.includes("kasir") || nama.includes("jannah") || nama.includes("amaliatul");
+
+ if (jab && cfgJadwalArr && cfgJadwalArr.length) {
+ const match = cfgJadwalArr.find(j => {
+ const jJab = String(j.jabatan || "").trim().toLowerCase();
+ return jJab && (jJab === jab || jab.includes(jJab) || jJab.includes(jab));
+ });
+ if (match && match.masuk) {
+ return { masuk: match.masuk, pulang: match.pulang || "17:00" };
+ }
+ }
+
+ if (isCashier) {
+ return { masuk: "09:00", pulang: "18:00" };
+ }
+
+ if (cfgJadwalArr && cfgJadwalArr.length) {
+ const defaultShift = cfgJadwalArr.find(j => {
+ const jJab = String(j.jabatan || "").trim().toLowerCase();
+ return !jJab || jJab === "all" || jJab === "semua jabatan" || jJab === "semua";
+ });
+ if (defaultShift && defaultShift.masuk) {
+ return { masuk: defaultShift.masuk, pulang: defaultShift.pulang || "17:00" };
+ }
+ }
+ return { masuk: "08:00", pulang: "17:00" };
+ }
+
  const chunks = []; let tempArr = [];
  rows.forEach(r => {
  const getVal = (keys) => {
@@ -400,15 +445,26 @@ export async function mount(container, { session } = {}) {
  };
 
  const tglStr = parseTanggalImport(getVal(["TANGGAL", "DATE"]));
+ const empNama = getVal(["NAMA", "NAME"]);
+ const empNik = getVal(["NIK", "ID"]);
+
+ const empObj = (allKaryawan || []).find(k => {
+ const kNik = String(k.nik || k.nik_karyawan || "").trim();
+ const kNama = String(k.nama_karyawan || k.nama || "").trim().toLowerCase();
+ if (kNik && empNik && kNik === String(empNik).trim()) return true;
+ if (kNama && empNama && kNama === String(empNama).trim().toLowerCase()) return true;
+ return false;
+ });
+ const shift = getShiftForEmployee(empObj, cfgJadwal);
 
  const uid = genId("ABS");
  const payload = {
  id: uid,
- nik: getVal(["NIK", "ID"]),
- nama: getVal(["NAMA", "NAME"]),
+ nik: empNik,
+ nama: empNama,
  tanggal: tglStr,
- jadwal_masuk: getVal(["JAM KERJA MASUK"]) || "08:00",
- jadwal_keluar: getVal(["JAM KERJA KELUAR"]) || "17:00",
+ jadwal_masuk: getVal(["JAM KERJA MASUK"]) || shift.masuk,
+ jadwal_keluar: getVal(["JAM KERJA KELUAR"]) || shift.pulang,
  scan_masuk: getVal(["JAM MASUK", "SCAN MASUK"]),
  scan_keluar: getVal(["JAM KELUAR", "SCAN KELUAR"])
  };
@@ -682,8 +738,51 @@ export async function mount(container, { session } = {}) {
  });
  } else {
  // Fallback: Generate log sinkronisasi dari data karyawan aktif kantor
+ const snapCfg = await getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(() => null);
+ const cfgJadwal = (snapCfg && snapCfg.exists()) ? (snapCfg.data()?.jadwal || []) : [];
+
+ function getShiftForEmployee(karyawanObj, cfgJadwalArr = []) {
+ let jab = "";
+ let nama = "";
+
+ if (typeof karyawanObj === "string") {
+ jab = karyawanObj.trim().toLowerCase();
+ } else if (karyawanObj && typeof karyawanObj === "object") {
+ jab = String(karyawanObj.jabatan || karyawanObj.posisi || "").trim().toLowerCase();
+ nama = String(karyawanObj.nama_karyawan || karyawanObj.nama || "").trim().toLowerCase();
+ }
+
+ const isCashier = jab.includes("cashier") || jab.includes("kasir") || nama.includes("jannah") || nama.includes("amaliatul");
+
+ if (jab && cfgJadwalArr && cfgJadwalArr.length) {
+ const match = cfgJadwalArr.find(j => {
+ const jJab = String(j.jabatan || "").trim().toLowerCase();
+ return jJab && (jJab === jab || jab.includes(jJab) || jJab.includes(jab));
+ });
+ if (match && match.masuk) {
+ return { masuk: match.masuk, pulang: match.pulang || "17:00" };
+ }
+ }
+
+ if (isCashier) {
+ return { masuk: "09:00", pulang: "18:00" };
+ }
+
+ if (cfgJadwalArr && cfgJadwalArr.length) {
+ const defaultShift = cfgJadwalArr.find(j => {
+ const jJab = String(j.jabatan || "").trim().toLowerCase();
+ return !jJab || jJab === "all" || jJab === "semua jabatan" || jJab === "semua";
+ });
+ if (defaultShift && defaultShift.masuk) {
+ return { masuk: defaultShift.masuk, pulang: defaultShift.pulang || "17:00" };
+ }
+ }
+ return { masuk: "08:00", pulang: "17:00" };
+ }
+
  activeKaryawan.forEach(k => {
  const nikVal = k.nik || k.nik_karyawan || "10001";
+ const shift = getShiftForEmployee(k, cfgJadwal);
  // kemarin
  if (!existingDates.has(`${nikVal}_${yesterdayStr}`)) {
  newRecords.push({
@@ -691,8 +790,8 @@ export async function mount(container, { session } = {}) {
  nik: nikVal,
  nama: k.nama_karyawan,
  tanggal: yesterdayStr,
- jadwal_masuk: "08:00",
- jadwal_keluar: "17:00",
+ jadwal_masuk: shift.masuk,
+ jadwal_keluar: shift.pulang,
  scan_masuk: "07:51",
  scan_keluar: "17:04"
  });
@@ -704,8 +803,8 @@ export async function mount(container, { session } = {}) {
  nik: nikVal,
  nama: k.nama_karyawan,
  tanggal: todayStr,
- jadwal_masuk: "08:00",
- jadwal_keluar: "17:00",
+ jadwal_masuk: shift.masuk,
+ jadwal_keluar: shift.pulang,
  scan_masuk: "07:45",
  scan_keluar: null
  });

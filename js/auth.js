@@ -72,7 +72,7 @@ export const MENU_CONFIG = [
  { id: "klaim-bensin", label: "Klaim Bensin Operasional", icon: "wallet", kategori: "Keuangan & Klaim", roles: ["ALL"], subMenus: [
  { id: "admin_cabang", label: "Manajemen Admin Cabang" }
  ] },
- { id: "lembur-kasbon", label: "Lembur & Kasbon Operasional", icon: "wallet", kategori: "Keuangan & Klaim", roles: ["HRD", "FINANCE", "SUPERADMIN"] },
+ { id: "lembur-kasbon", label: "Lembur Operasional", icon: "clock", kategori: "Keuangan & Klaim", roles: ["HRD", "FINANCE", "SUPERADMIN"] },
  { id: "uang-makan", label: "Uang Makan Expedisi", icon: "utensils", kategori: "Keuangan & Klaim", roles: ["HRD", "FINANCE", "SUPERADMIN"] },
 
  // KATEGORI: OPERASIONAL & ASET

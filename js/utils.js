@@ -1032,11 +1032,22 @@ export function cleanFirestorePayload(obj, seen = new WeakSet()) {
  const result = {};
  for (const key of Object.keys(obj)) {
  if (key.startsWith("_") && key !== "_methodName") continue;
+
+ let cleanKey = key;
+ if (/[\/~*\[\]]/.test(key)) {
+   if (key === "aktif/tidak_aktif") {
+     cleanKey = "aktif_tdk_aktif";
+   } else {
+     cleanKey = key.replace(/[\/~*\[\]]/g, "_");
+   }
+ }
+
  const val = obj[key];
  if (val === undefined || typeof val === "function") continue;
  const cleaned = cleanFirestorePayload(val, seen);
  if (cleaned !== undefined) {
- result[key] = cleaned;
+   if (result[cleanKey] !== undefined && (cleaned === "" || cleaned === null)) continue;
+   result[cleanKey] = cleaned;
  }
  }
  return result;
@@ -4081,6 +4092,32 @@ export async function geocodeAddressSmart(addressStr, fallbackSeed = 0) {
 }
 
 /**
+ * Helper to normalize and obtain direct image URL for display (handles Google Drive, base64, etc.)
+ */
+export function getDirectImageUrl(url) {
+  if (!url || typeof url !== "string") return "";
+  const s = url.trim();
+  if (!s || s === "-" || s.toLowerCase() === "null" || s.toLowerCase() === "undefined") return "";
+  if (s.startsWith("data:image/") || s.startsWith("blob:")) return s;
+
+  // Normalisasi URL Google Drive file
+  const driveFileIdMatch = s.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || 
+                           s.match(/id=([a-zA-Z0-9_-]+)/) ||
+                           s.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (driveFileIdMatch && driveFileIdMatch[1]) {
+    const fileId = driveFileIdMatch[1];
+    return `https://lh3.googleusercontent.com/d/${fileId}`;
+  }
+
+  if (/^[a-zA-Z0-9_-]{25,100}$/.test(s)) {
+    return `https://lh3.googleusercontent.com/d/${s}`;
+  }
+
+  if (/^https?:\/\//i.test(s)) return s;
+  return `https://${s}`;
+}
+
+/**
  * Standardizes & cleans checkin data structure to prevent undefined property bugs
  */
 export function normalizeCheckinItem(item = {}) {
@@ -4097,8 +4134,10 @@ export function normalizeCheckinItem(item = {}) {
   const tanggal = item.tanggal || item.date || todayStr;
   const status_kunjungan = item.status_kunjungan || item.status || item.visit_status || "Effective Call (Order Toko)";
   const catatan = item.catatan || item.notes || "Check-in kunjungan sales";
-  const gambar_checkin = item.gambar_checkin || item.foto_checkin || item.foto || item.checkin_photo || item.image || item.image_url || "";
-  const foto_checkin = item.foto_checkin || item.gambar_checkin || item.foto || item.checkin_photo || item.image || item.image_url || "";
+  
+  const rawPhoto = item.gambar_checkin || item.foto_checkin || item.foto_checkout || item.foto || item.foto_url || item.url_foto || item.lampiran_url || item.bukti_foto || item.checkin_photo || item.checkout_photo || item.image || item.image_url || item.photo_url || item.photo || item.url || item.gambar || "";
+  const gambar_checkin = getDirectImageUrl(rawPhoto);
+  const foto_checkin = gambar_checkin;
 
   return {
     ...item,
@@ -4174,7 +4213,11 @@ export function calculateSalesRouteMetrics(visitList, departureConfig = {}, sale
       toGps: gpsVal,
       distanceKm: Math.round(dist * 10) / 10,
       waktuCheckin: visit.waktu_checkin || "-",
-      statusKunjungan: visit.status_kunjungan || "Visit Toko"
+      waktuCheckout: visit.waktu_checkout || "-",
+      statusKunjungan: visit.status_kunjungan || "Visit Toko",
+      isEffectiveCall: (visit.status_kunjungan || "").toLowerCase().includes("effective") || visit.is_effective_call === true,
+      catatan: visit.catatan || "-",
+      photoUrl: visit.gambar_checkin || visit.foto_checkin || ""
     });
 
     currentCoord = visitCoord;

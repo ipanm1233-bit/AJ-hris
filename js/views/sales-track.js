@@ -1,9 +1,10 @@
 import {
   openModal, closeModal, toast, escapeHtml, fsGetAll, fsAdd, fsUpdate, fsDelete, downloadXlsx,
   geocodeAddressSmart, parseGpsCoordinates, calcHaversineDistance, calculateSalesRouteMetrics,
-  normalizeCheckinItem, smartParseDate, confirmDialog, promptDialog, downloadHtmlAsPdf, isValidOperationalCoordinate
+  normalizeCheckinItem, smartParseDate, confirmDialog, promptDialog, downloadHtmlAsPdf, isValidOperationalCoordinate, getDirectImageUrl
 } from "../utils.js";
 import { COL } from "../firebase-config.js";
+import { isoDocHeaderTable, COMPANY_NAME, logoImgTag } from "../branding.js";
 
 // Beautiful SVG D3 visualization loaded from ESM
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
@@ -783,7 +784,9 @@ export async function mount(container, { session }) {
       const mapsUrl = `https://www.google.com/maps?q=${encodeURIComponent(gpsPos)}`;
       const visitId = t._docId || t.id;
 
-      const photoUrl = t.gambar_checkin || t.foto_checkin || t.foto || t.checkin_photo || t.image || t.image_url || "";
+      const rawPhoto = t.gambar_checkin || t.foto_checkin || t.foto || t.checkin_photo || t.image || t.image_url || "";
+      const photoUrl = getDirectImageUrl(rawPhoto);
+      const isEc = (statusText || "").toLowerCase().includes("effective") || t.is_effective_call === true;
 
       return `
       <div class="bg-slate-50 border border-slate-100 p-3.5 rounded-xl hover:bg-white hover:border-maroon-200 transition shadow-2xs">
@@ -826,9 +829,14 @@ export async function mount(container, { session }) {
 
         <div class="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-slate-200/60 text-[10px] text-slate-500 flex-wrap">
           <div class="flex items-center gap-2 flex-wrap">
-            <span class="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-emerald-50 text-emerald-800 border border-emerald-200">
-              ● ${escapeHtml(statusText)}
-            </span>
+            <label class="inline-flex items-center gap-1.5 cursor-pointer select-none px-2.5 py-1 rounded-lg border transition shadow-2xs ${isEc ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-slate-100 border-slate-200 text-slate-600'}" title="Centang jika kunjungan ini menghasilkan Order (Effective Call)">
+              <input type="checkbox"
+                     class="chk-feed-effective-call accent-emerald-600 rounded cursor-pointer w-3.5 h-3.5"
+                     data-visitid="${escapeHtml(visitId)}"
+                     data-storename="${escapeHtml(tokoName)}"
+                     ${isEc ? "checked" : ""} />
+              <span class="text-[10px] font-extrabold">${isEc ? "✓ Effective Call (Order Toko)" : "○ Visit Toko (Tanpa Order)"}</span>
+            </label>
             <span>Check-in: <b>${escapeHtml(checkinTime)}</b> - <b>${escapeHtml(checkoutTime)}</b></span>
           </div>
           <span class="font-mono font-bold text-slate-600">${escapeHtml(dateVal)}</span>
@@ -867,6 +875,14 @@ export async function mount(container, { session }) {
         const visitId = btn.dataset.visitid;
         const storeName = btn.dataset.storename;
         deleteVisitDirectly(visitId, storeName);
+      };
+    });
+
+    timelineEl.querySelectorAll(".chk-feed-effective-call").forEach(chk => {
+      chk.onchange = (e) => {
+        const visitId = chk.dataset.visitid;
+        const storeName = chk.dataset.storename;
+        toggleVisitEffectiveCallDirectly(visitId, storeName, e.target.checked);
       };
     });
 
@@ -1192,6 +1208,38 @@ export async function mount(container, { session }) {
     }
   }
 
+  // HRD Toggle Effective Call (Order Toko) Status
+  async function toggleVisitEffectiveCallDirectly(visitId, storeName, isChecked) {
+    if (!visitId) {
+      toast("ID Check-in tidak ditemukan.", "warning");
+      return false;
+    }
+
+    const newStatus = isChecked ? "Effective Call (Order Toko)" : "Visit Toko (Tanpa Order)";
+
+    try {
+      await fsUpdate("kanal_checkins", visitId, {
+        status_kunjungan: newStatus,
+        is_effective_call: isChecked,
+        updated_at: new Date().toISOString()
+      });
+
+      const foundInAll = allCheckinsList.find(c => String(c._docId || c.id) === String(visitId) || String(c.id) === String(visitId));
+      if (foundInAll) {
+        foundInAll.status_kunjungan = newStatus;
+        foundInAll.is_effective_call = isChecked;
+      }
+
+      toast(`Status '${storeName}' diubah: ${isChecked ? "✓ Effective Call (Order Toko)" : "○ Visit biasa (Tanpa Order)"}`, "success");
+      applyAndRenderDashboard();
+      return true;
+    } catch (err) {
+      console.error("Gagal memperbarui Effective Call:", err);
+      toast("Gagal memperbarui status kunjungan: " + err.message, "error");
+      return false;
+    }
+  }
+
   // MODAL: Detail Rute Itinerary & Jarak Tempuh Sales
   function openSalesRouteDetailModal(salesName, salesNik, allSalesVisits = [], initialMetrics = null) {
     const dateSet = new Set(allSalesVisits.map(v => v.tanggal).filter(Boolean));
@@ -1280,6 +1328,9 @@ export async function mount(container, { session }) {
 
         const visitLegsHtml = dailyMetrics.legs.map((leg) => {
           const mapsUrl = `https://www.google.com/maps?q=${encodeURIComponent(leg.toGps)}`;
+          const legPhoto = leg.photoUrl ? getDirectImageUrl(leg.photoUrl) : "";
+          const isLegEc = (leg.statusKunjungan || "").toLowerCase().includes("effective") || leg.isEffectiveCall === true;
+
           return `
           <tr class="hover:bg-slate-50 border-b border-slate-100 text-xs">
             <td class="p-2.5 text-center text-slate-500 font-mono font-bold">
@@ -1287,8 +1338,31 @@ export async function mount(container, { session }) {
               <span class="block text-[10px] text-slate-400 font-normal">${escapeHtml(leg.waktuCheckin || '')}</span>
             </td>
             <td class="p-2.5 text-slate-900 font-bold">
-              ${escapeHtml(leg.toName)}
-              <span class="block text-[10px] text-slate-400 font-normal truncate max-w-[220px]">${escapeHtml(leg.toAddress)}</span>
+              <div class="flex items-start gap-2.5">
+                ${legPhoto ? `
+                  <a href="${escapeHtml(legPhoto)}" target="_blank" rel="noopener" class="shrink-0 relative group block" title="Klik untuk lihat foto full">
+                    <img src="${escapeHtml(legPhoto)}" 
+                         alt="Foto ${escapeHtml(leg.toName)}" 
+                         onerror="this.onerror=null; this.src='https://placehold.co/100x100/f1f5f9/475569?text=Foto';"
+                         class="w-12 h-12 object-cover rounded-lg border border-slate-200 shadow-2xs group-hover:scale-105 transition-transform" />
+                    <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center text-white text-[8px] font-bold">Zoom</div>
+                  </a>
+                ` : ''}
+                <div class="min-w-0 flex-1">
+                  <div class="font-bold text-slate-900">${escapeHtml(leg.toName)}</div>
+                  <div class="text-[10px] text-slate-500 font-normal truncate max-w-[220px]">${escapeHtml(leg.toAddress)}</div>
+                  ${leg.visitId ? `
+                    <label class="inline-flex items-center gap-1.5 cursor-pointer mt-1 px-2 py-0.5 rounded border transition select-none ${isLegEc ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-slate-100 border-slate-200 text-slate-600'}" title="Tandai HRD: Kunjungan ini menghasilkan Order (Effective Call)">
+                      <input type="checkbox"
+                             class="chk-modal-effective-call accent-emerald-600 rounded cursor-pointer w-3.5 h-3.5"
+                             data-visitid="${escapeHtml(leg.visitId)}"
+                             data-toname="${escapeHtml(leg.toName)}"
+                             ${isLegEc ? "checked" : ""} />
+                      <span class="text-[9.5px] font-extrabold">${isLegEc ? '✓ Effective Call (Order)' : '○ Tanpa Order'}</span>
+                    </label>
+                  ` : (leg.statusKunjungan ? `<span class="inline-block px-1.5 py-0.5 mt-0.5 bg-emerald-50 text-emerald-800 text-[9px] font-bold rounded border border-emerald-200">${escapeHtml(leg.statusKunjungan)}</span>` : '')}
+                </div>
+              </div>
             </td>
             <td class="p-2.5 text-slate-600">
               ${leg.visitId ? `
@@ -1595,6 +1669,24 @@ export async function mount(container, { session }) {
         };
       });
 
+      // Toggle Effective Call checkbox inside Modal
+      modalEl.querySelectorAll(".chk-modal-effective-call").forEach(chk => {
+        chk.onchange = async (e) => {
+          const visitId = chk.dataset.visitid;
+          const storeName = chk.dataset.toname;
+          const isChecked = e.target.checked;
+          const success = await toggleVisitEffectiveCallDirectly(visitId, storeName, isChecked);
+          if (success) {
+            const vItem = allSalesVisits.find(v => (v._docId || v.id) === visitId || v.id === visitId);
+            if (vItem) {
+              vItem.status_kunjungan = isChecked ? "Effective Call (Order Toko)" : "Visit Toko (Tanpa Order)";
+              vItem.is_effective_call = isChecked;
+            }
+            refreshModalView();
+          }
+        };
+      });
+
       // Inline Visit GPS Edits
       modalEl.querySelectorAll(".btn-modal-save-inline-gps").forEach(btn => {
         btn.onclick = async () => {
@@ -1794,24 +1886,24 @@ export async function mount(container, { session }) {
     return null;
   }
 
-  // PDF Report Export Function
-  async function exportSalesVisitsPdf(recordsOverride = null) {
+  // PDF Report Export Function (2 Versi: SUMMARY vs FULL)
+  async function exportSalesVisitsPdf(recordsOverride = null, pdfVersion = "FULL") {
     if (allCheckinsList.length === 0) {
       return toast("Tidak ada data kunjungan sales untuk dibuatkan PDF.", "warning");
     }
 
-    toast("Membuat Laporan PDF Rekapan Jarak Tempuh & Detail Kunjungan Sales...", "info");
+    const versionLabel = pdfVersion === "SUMMARY" ? "Rekapan & Analitik Simple" : "Lengkap Detail & Foto";
+    toast(`Membuat PDF Laporan Sales (${versionLabel})...`, "info");
 
     let filteredRecords = [];
+    const salesmanFilter = filterSalesmanSelect ? filterSalesmanSelect.value : "ALL";
+    const periodFilter = filterPeriodSelect ? filterPeriodSelect.value : "ALL";
+    const statusFilter = filterStatusSelect ? filterStatusSelect.value : "ALL";
+    const searchFilter = (filterSearchInput ? filterSearchInput.value : "").toLowerCase().trim();
 
     if (recordsOverride && Array.isArray(recordsOverride)) {
       filteredRecords = recordsOverride;
     } else {
-      const salesmanFilter = filterSalesmanSelect ? filterSalesmanSelect.value : "ALL";
-      const periodFilter = filterPeriodSelect ? filterPeriodSelect.value : "ALL";
-      const statusFilter = filterStatusSelect ? filterStatusSelect.value : "ALL";
-      const searchFilter = (filterSearchInput ? filterSearchInput.value : "").toLowerCase().trim();
-
       const now = new Date();
 
       // Filter records according to active filter
@@ -1870,6 +1962,7 @@ export async function mount(container, { session }) {
     const salesmanSummaries = [];
     let grandTotalKm = 0;
     let grandTotalVisits = 0;
+    let grandTotalEc = 0;
 
     salesGroup.forEach((sData, sName) => {
       let salesTotalKm = 0;
@@ -1889,6 +1982,7 @@ export async function mount(container, { session }) {
 
       grandTotalKm += salesTotalKm;
       grandTotalVisits += salesTotalVisits;
+      grandTotalEc += salesEcCount;
 
       salesmanSummaries.push({
         nama: sName,
@@ -1897,11 +1991,13 @@ export async function mount(container, { session }) {
         totalVisits: salesTotalVisits,
         totalKm: Number(salesTotalKm.toFixed(1)),
         avgKmPerDay: dates.length > 0 ? Number((salesTotalKm / dates.length).toFixed(1)) : 0,
+        ecCount: salesEcCount,
         ecPct: salesTotalVisits > 0 ? Math.round((salesEcCount / salesTotalVisits) * 100) : 0,
         byDate: sData.byDate
       });
     });
 
+    const grandEcPct = grandTotalVisits > 0 ? Math.round((grandTotalEc / grandTotalVisits) * 100) : 0;
     const reportDateStr = new Intl.DateTimeFormat("id-ID", { dateStyle: "full", timeZone: "Asia/Jakarta" }).format(new Date());
 
     const periodLabel = periodFilter === "TODAY" ? `Hari Ini (${todayStr})`
@@ -1909,9 +2005,26 @@ export async function mount(container, { session }) {
       : periodFilter === "MONTH" ? `Bulan ${todayStr.substring(0, 7)}`
       : "Seluruh Periode Terdaftar";
 
+    // Build SVG Bar Chart for PDF Analitik Visual
+    const maxKm = Math.max(...salesmanSummaries.map(s => s.totalKm), 1);
+    const chartBarsHtml = salesmanSummaries.map(s => {
+      const pct = Math.max(8, Math.round((s.totalKm / maxKm) * 100));
+      return `
+        <div style="margin-bottom: 7px;">
+          <div style="display: flex; justify-content: space-between; font-size: 9.5px; font-weight: bold; margin-bottom: 2px;">
+            <span>${escapeHtml(s.nama)} (${escapeHtml(s.nik)})</span>
+            <span style="color: #4338ca;">${s.totalKm} KM | ${s.totalVisits} Visit (${s.ecPct}% EC)</span>
+          </div>
+          <div style="background-color: #e2e8f0; height: 12px; border-radius: 6px; overflow: hidden; border: 1px solid #cbd5e1;">
+            <div style="width: ${pct}%; background: linear-gradient(90deg, #4f46e5, #0284c7); height: 100%; border-radius: 6px;"></div>
+          </div>
+        </div>
+      `;
+    }).join("");
+
     // Summary Table Rows
     const summaryRowsHtml = salesmanSummaries.map((s, idx) => `
-      <tr style="border-bottom: 1px solid #e2e8f0; font-size: 11px;">
+      <tr style="border-bottom: 1px solid #e2e8f0; font-size: 10.5px;">
         <td style="padding: 6px 8px; text-align: center; font-weight: bold;">${idx + 1}</td>
         <td style="padding: 6px 8px; font-family: monospace;">${escapeHtml(s.nik)}</td>
         <td style="padding: 6px 8px; font-weight: bold; color: #1e293b;">${escapeHtml(s.nama)}</td>
@@ -1923,141 +2036,187 @@ export async function mount(container, { session }) {
       </tr>
     `).join("");
 
-    // Detailed Breakdown per Salesman
+    // Detailed Breakdown per Salesman (HANYA UNTUK VERSI "FULL")
     let detailedHtml = "";
-    salesmanSummaries.forEach(s => {
-      detailedHtml += `
-        <div style="margin-top: 18px; page-break-inside: avoid;">
-          <div style="background-color: #0f172a; color: #ffffff; padding: 10px 14px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
-            <div>
-              <div style="font-size: 10px; font-weight: bold; color: #818cf8; text-transform: uppercase;">SALES REPRESENTATIVE</div>
-              <div style="font-size: 13px; font-weight: 900; margin-top: 2px;">${escapeHtml(s.nama)} <span style="font-size: 10px; font-weight: normal; color: #94a3b8;">(NIK: ${escapeHtml(s.nik)})</span></div>
+    if (pdfVersion === "FULL") {
+      salesmanSummaries.forEach(s => {
+        detailedHtml += `
+          <div style="margin-top: 18px; page-break-inside: avoid;">
+            <div style="background-color: #0f172a; color: #ffffff; padding: 10px 14px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-size: 10px; font-weight: bold; color: #818cf8; text-transform: uppercase;">SALES REPRESENTATIVE</div>
+                <div style="font-size: 13px; font-weight: 900; margin-top: 2px;">${escapeHtml(s.nama)} <span style="font-size: 10px; font-weight: normal; color: #94a3b8;">(NIK: ${escapeHtml(s.nik)})</span></div>
+              </div>
+              <div style="text-align: right;">
+                <div style="font-size: 9px; color: #cbd5e1;">Total Jarak Periode</div>
+                <div style="font-size: 15px; font-weight: 900; color: #818cf8;">${s.totalKm} KM</div>
+              </div>
             </div>
-            <div style="text-align: right;">
-              <div style="font-size: 9px; color: #cbd5e1;">Total Jarak Periode</div>
-              <div style="font-size: 15px; font-weight: 900; color: #818cf8;">${s.totalKm} KM</div>
-            </div>
-          </div>
-      `;
-
-      const dates = Array.from(s.byDate.keys()).sort((a,b) => b.localeCompare(a));
-      dates.forEach(dStr => {
-        const visits = s.byDate.get(dStr);
-        const metrics = calculateSalesRouteMetrics(visits, departureConfig, s.nik);
-
-        const pdfStartRow = `
-          <tr style="border-bottom: 1px solid #e2e8f0; font-size: 10px; background-color: #e0e7ff; font-weight: bold;">
-            <td style="padding: 5px 6px; text-align: center; color: #3730a3;">START / AWAL</td>
-            <td style="padding: 5px 6px; text-align: center; color: #4338ca;">Start</td>
-            <td style="padding: 5px 6px; font-weight: bold; color: #1e1b4b;">${escapeHtml(metrics.startPoint.nama)} (${escapeHtml(metrics.startPoint.type || 'Kosan/Base')})</td>
-            <td style="padding: 5px 6px; color: #475569;">
-              <div>Titik Keberangkatan Salesman (Kosan/Base)</div>
-              <div style="font-size: 8.5px; color: #4338ca; font-family: monospace;">GPS: ${escapeHtml(metrics.startPoint.gps)}</div>
-            </td>
-            <td style="padding: 5px 6px; text-align: right; font-weight: bold; color: #4338ca;">0 KM</td>
-          </tr>
         `;
 
-        const pdfVisitRows = metrics.legs.map((leg) => {
-          return `
-            <tr style="border-bottom: 1px solid #f1f5f9; font-size: 10px;">
-              <td style="padding: 5px 6px; text-align: center; font-family: monospace;">Leg #${leg.legIndex}</td>
-              <td style="padding: 5px 6px; text-align: center;">${escapeHtml(leg.waktuCheckin)}</td>
-              <td style="padding: 5px 6px; font-weight: bold; color: #0f172a;">${escapeHtml(leg.toName)}</td>
+        const dates = Array.from(s.byDate.keys()).sort((a,b) => b.localeCompare(a));
+        dates.forEach(dStr => {
+          const visits = s.byDate.get(dStr);
+          const metrics = calculateSalesRouteMetrics(visits, departureConfig, s.nik);
+
+          const pdfStartRow = `
+            <tr style="border-bottom: 1px solid #e2e8f0; font-size: 10px; background-color: #e0e7ff; font-weight: bold;">
+              <td style="padding: 5px 6px; text-align: center; color: #3730a3;">START</td>
+              <td style="padding: 5px 6px; text-align: center; color: #4338ca;">Start</td>
+              <td style="padding: 5px 6px; font-weight: bold; color: #1e1b4b;">${escapeHtml(metrics.startPoint.nama)} (${escapeHtml(metrics.startPoint.type || 'Kosan/Base')})</td>
               <td style="padding: 5px 6px; color: #475569;">
-                <div>${escapeHtml(leg.toAddress)}</div>
-                <div style="font-size: 8.5px; color: #4f46e5; font-family: monospace;">GPS: ${escapeHtml(leg.toGps)}</div>
+                <div>Titik Keberangkatan Salesman</div>
+                <div style="font-size: 8.5px; color: #4338ca; font-family: monospace;">GPS: ${escapeHtml(metrics.startPoint.gps)}</div>
               </td>
-              <td style="padding: 5px 6px; text-align: right; font-weight: bold; color: #4338ca;">${leg.distanceKm} KM</td>
+              <td style="padding: 5px 6px; text-align: center; color: #94a3b8; font-style: italic;">Base Point</td>
+              <td style="padding: 5px 6px; text-align: right; font-weight: bold; color: #4338ca;">0 KM</td>
             </tr>
           `;
-        }).join("");
 
-        const pdfEndRow = `
-          <tr style="border-bottom: 1px solid #e2e8f0; font-size: 10px; background-color: #f1f5f9; font-weight: bold;">
-            <td style="padding: 5px 6px; text-align: center; color: #1e293b;">FINISH / AKHIR</td>
-            <td style="padding: 5px 6px; text-align: center; color: #475569;">Selesai</td>
-            <td style="padding: 5px 6px; font-weight: bold; color: #0f172a;">${escapeHtml(metrics.endPoint.nama)} (${escapeHtml(metrics.endPoint.type || 'Kantor/Base')})</td>
-            <td style="padding: 5px 6px; color: #475569;">
-              <div>Titik Kepulangan Salesman (Kantor/Base)</div>
-              <div style="font-size: 8.5px; color: #334155; font-family: monospace;">GPS: ${escapeHtml(metrics.endPoint.gps)}</div>
-            </td>
-            <td style="padding: 5px 6px; text-align: right; font-weight: bold; color: #4338ca;">${metrics.legs.length > 0 ? metrics.legs[metrics.legs.length - 1].distanceKm : 0} KM</td>
-          </tr>
-        `;
+          const pdfVisitRows = metrics.legs.map((leg) => {
+            if (leg.legIndex > visits.length) return ""; // end leg handled separately
 
-        const legsRows = pdfStartRow + pdfVisitRows + pdfEndRow;
+            const legPhoto = leg.photoUrl ? getDirectImageUrl(leg.photoUrl) : "";
+            const isLegEc = (leg.statusKunjungan || "").toLowerCase().includes("effective") || leg.isEffectiveCall === true;
+            const statusBadgeHtml = isLegEc
+              ? `<span style="display: inline-block; padding: 1px 5px; background-color: #dcfce7; color: #15803d; border: 1px solid #86efac; border-radius: 4px; font-size: 8px; font-weight: bold; margin-top: 2px;">✓ Effective Call (Order)</span>`
+              : `<span style="display: inline-block; padding: 1px 5px; background-color: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 8px; font-weight: bold; margin-top: 2px;">○ Visit Toko (Tanpa Order)</span>`;
 
-        detailedHtml += `
-          <div style="margin-top: 8px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
-            <div style="background-color: #f1f5f9; padding: 6px 10px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; font-size: 10.5px;">
-              <span style="font-weight: bold; color: #1e293b;">Tanggal: ${escapeHtml(dStr)}</span>
-              <span style="font-size: 9.5px; color: #475569;">Keberangkatan: <b>${escapeHtml(metrics.startPoint.nama)}</b> | Total: <b style="color:#4338ca;">${metrics.totalKm} KM</b></span>
+            return `
+              <tr style="border-bottom: 1px solid #f1f5f9; font-size: 10px;">
+                <td style="padding: 5px 6px; text-align: center; font-family: monospace; font-weight: bold; color: #4338ca;">Leg #${leg.legIndex}</td>
+                <td style="padding: 5px 6px; text-align: center;">
+                  <div style="font-weight: bold; color: #0f172a;">${escapeHtml(leg.waktuCheckin)}</div>
+                  <div style="font-size: 8.5px; color: #64748b;">Out: ${escapeHtml(leg.waktuCheckout)}</div>
+                </td>
+                <td style="padding: 5px 6px;">
+                  <div style="font-weight: bold; color: #0f172a;">${escapeHtml(leg.toName)}</div>
+                  <div>${statusBadgeHtml}</div>
+                </td>
+                <td style="padding: 5px 6px; color: #475569;">
+                  <div>${escapeHtml(leg.toAddress)}</div>
+                  <div style="font-size: 8.5px; color: #4f46e5; font-family: monospace;">GPS: ${escapeHtml(leg.toGps)}</div>
+                  ${leg.catatan && leg.catatan !== '-' ? `<div style="font-size: 8.5px; color: #0f172a; font-style: italic; margin-top: 1px;">Catatan: ${escapeHtml(leg.catatan)}</div>` : ''}
+                </td>
+                <td style="padding: 5px 6px; text-align: center;">
+                  ${legPhoto ? `
+                    <div style="display: inline-block; text-align: center;">
+                      <img src="${escapeHtml(legPhoto)}" 
+                           crossorigin="anonymous"
+                           onerror="this.onerror=null; this.src='https://placehold.co/100x100/f1f5f9/475569?text=Foto';"
+                           style="width: 55px; height: 55px; object-fit: cover; border-radius: 6px; border: 1px solid #cbd5e1; display: block; margin: 0 auto;" />
+                      <span style="font-size: 7.5px; color: #16a34a; font-weight: bold; display: block; margin-top: 1px;">Foto Field</span>
+                    </div>
+                  ` : `
+                    <span style="font-size: 8px; color: #94a3b8; font-style: italic;">No Photo</span>
+                  `}
+                </td>
+                <td style="padding: 5px 6px; text-align: right; font-weight: bold; color: #4338ca;">${leg.distanceKm} KM</td>
+              </tr>
+            `;
+          }).join("");
+
+          const pdfEndRow = `
+            <tr style="border-bottom: 1px solid #e2e8f0; font-size: 10px; background-color: #f1f5f9; font-weight: bold;">
+              <td style="padding: 5px 6px; text-align: center; color: #1e293b;">FINISH</td>
+              <td style="padding: 5px 6px; text-align: center; color: #475569;">Selesai</td>
+              <td style="padding: 5px 6px; font-weight: bold; color: #0f172a;">${escapeHtml(metrics.endPoint.nama)} (${escapeHtml(metrics.endPoint.type || 'Kantor/Base')})</td>
+              <td style="padding: 5px 6px; color: #475569;">
+                <div>Titik Kepulangan Salesman</div>
+                <div style="font-size: 8.5px; color: #334155; font-family: monospace;">GPS: ${escapeHtml(metrics.endPoint.gps)}</div>
+              </td>
+              <td style="padding: 5px 6px; text-align: center; color: #94a3b8; font-style: italic;">End Point</td>
+              <td style="padding: 5px 6px; text-align: right; font-weight: bold; color: #4338ca;">${metrics.legs.length > 0 ? metrics.legs[metrics.legs.length - 1].distanceKm : 0} KM</td>
+            </tr>
+          `;
+
+          const legsRows = pdfStartRow + pdfVisitRows + pdfEndRow;
+
+          detailedHtml += `
+            <div style="margin-top: 8px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
+              <div style="background-color: #f1f5f9; padding: 6px 10px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; font-size: 10.5px;">
+                <span style="font-weight: bold; color: #1e293b;">Tanggal: ${escapeHtml(dStr)}</span>
+                <span style="font-size: 9.5px; color: #475569;">Keberangkatan: <b>${escapeHtml(metrics.startPoint.nama)}</b> | Total: <b style="color:#4338ca;">${metrics.totalKm} KM</b></span>
+              </div>
+              <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                <thead>
+                  <tr style="background-color: #f8fafc; color: #64748b; font-size: 8.5px; text-transform: uppercase; border-bottom: 1px solid #e2e8f0;">
+                    <th style="padding: 5px; text-align: center; width: 45px;">Leg</th>
+                    <th style="padding: 5px; text-align: center; width: 65px;">Waktu</th>
+                    <th style="padding: 5px; width: 140px;">Toko / Outlet Target</th>
+                    <th style="padding: 5px;">Alamat & Koordinat GPS</th>
+                    <th style="padding: 5px; text-align: center; width: 65px;">Foto Bukti</th>
+                    <th style="padding: 5px; text-align: right; width: 60px;">Jarak (KM)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${legsRows}
+                </tbody>
+              </table>
             </div>
-            <table style="width: 100%; border-collapse: collapse; text-align: left;">
-              <thead>
-                <tr style="background-color: #f8fafc; color: #64748b; font-size: 8.5px; text-transform: uppercase; border-bottom: 1px solid #e2e8f0;">
-                  <th style="padding: 5px; text-align: center; width: 45px;">Leg</th>
-                  <th style="padding: 5px; text-align: center; width: 60px;">Waktu</th>
-                  <th style="padding: 5px;">Toko / Outlet Target</th>
-                  <th style="padding: 5px;">Alamat & Koordinat GPS</th>
-                  <th style="padding: 5px; text-align: right; width: 65px;">Jarak (KM)</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${legsRows}
-              </tbody>
-            </table>
-          </div>
-        `;
-      });
+          `;
+        });
 
-      detailedHtml += `</div>`;
-    });
+        detailedHtml += `</div>`;
+      });
+    }
 
     const fullPdfHtml = `
-      <div style="font-family: Arial, Helvetica, sans-serif; color: #1e293b; padding: 16px; background-color: #ffffff;">
-        <!-- KOP SURAT PERUSAHAAN -->
-        <div style="border-bottom: 3px double #800000; padding-bottom: 10px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
-          <div>
-            <h2 style="margin: 0; font-size: 17px; font-weight: 900; color: #800000; letter-spacing: 0.5px;">${escapeHtml(companyName)}</h2>
-            <p style="margin: 2px 0 0 0; font-size: 10.5px; color: #475569;">Portal HRIS & Sales Movement Tracking System</p>
-            <p style="margin: 1px 0 0 0; font-size: 9.5px; color: #64748b;">Jl. Pegambiran No. 12, Cirebon, Jawa Barat | Telp: (0231) 884-219</p>
-          </div>
-          <div style="text-align: right; font-size: 9.5px; color: #475569;">
-            <div style="font-weight: bold; color: #0f172a; font-size: 10.5px;">LAPORAN REKAPAN SALES</div>
-            <div>Dicetak: ${reportDateStr}</div>
-            <div>Filter Periode: <b>${periodLabel}</b></div>
-          </div>
+      <div style="font-family: Arial, Helvetica, sans-serif; color: #1e293b; padding: 16px; background-color: #ffffff; max-width: 800px; margin: 0 auto;">
+        <!-- KOP DOKUMEN RESMI STANDAR ISO CV ANDELA JAYA -->
+        <div style="margin-bottom: 12px; page-break-inside: avoid;">
+          ${isoDocHeaderTable({
+            judul: pdfVersion === "SUMMARY" 
+              ? "LAPORAN REKAPAN PERFORMANCE & JARAK TEMPUH SALES" 
+              : "LAPORAN LENGKAP DETAIL RUTE & FOTO BUKTI KUNJUNGAN SALES",
+            noDok: "SL-TRK/01",
+            terbitRevisi: "1/0",
+            tglTerbit: reportDateStr || "13 Agustus 2026",
+            hal: "1 dari 1"
+          })}
         </div>
 
-        <div style="text-align: center; margin-bottom: 14px;">
-          <h3 style="margin: 0; font-size: 14px; font-weight: bold; color: #0f172a; text-transform: uppercase;">LAPORAN REKAPAN JARAK TEMPUH & DETAIL KUNJUNGAN SALESMAN</h3>
-          <p style="margin: 3px 0 0 0; font-size: 10px; color: #64748b;">Laporan Pergerakan Sales, Geocoding GPS, dan Kalkulasi Jarak Rute</p>
+        <!-- METADATA DOKUMEN PERUSAHAAN -->
+        <div style="border: 1px solid #cbd5e1; background-color: #f8fafc; padding: 6px 10px; border-radius: 4px; margin-bottom: 12px; font-size: 9.5px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+          <div><b>Periode Laporan:</b> <span style="color: #0f172a;">${escapeHtml(periodLabel)}</span></div>
+          <div><b>Tipe Dokumen:</b> <span style="color: #7a1f2b; font-weight: bold;">${pdfVersion === "SUMMARY" ? "Versi 1: Rekapan & Grafik Analitik" : "Versi 2: Lengkap Detail & Foto Field"}</span></div>
+          <div><b>Tanggal Cetak:</b> ${reportDateStr}</div>
         </div>
 
         <!-- STATS HIGHLIGHT -->
-        <div style="display: flex; gap: 10px; margin-bottom: 14px;">
-          <div style="flex: 1; background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 8px 10px; border-radius: 6px;">
-            <div style="font-size: 9px; color: #64748b; font-weight: bold; text-transform: uppercase;">Total Salesman</div>
-            <div style="font-size: 14px; font-weight: 900; color: #0f172a;">${salesmanSummaries.length} Orang</div>
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+          <div style="flex: 1; background-color: #ffffff; border: 1px solid #cbd5e1; padding: 6px 8px; border-radius: 4px; text-align: center;">
+            <div style="font-size: 8.5px; color: #64748b; font-weight: bold; text-transform: uppercase;">Total Salesman</div>
+            <div style="font-size: 13px; font-weight: 900; color: #0f172a;">${salesmanSummaries.length} Orang</div>
           </div>
-          <div style="flex: 1; background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 8px 10px; border-radius: 6px;">
-            <div style="font-size: 9px; color: #64748b; font-weight: bold; text-transform: uppercase;">Total Kunjungan Outlet</div>
-            <div style="font-size: 14px; font-weight: 900; color: #0f172a;">${grandTotalVisits} Visit</div>
+          <div style="flex: 1; background-color: #ffffff; border: 1px solid #cbd5e1; padding: 6px 8px; border-radius: 4px; text-align: center;">
+            <div style="font-size: 8.5px; color: #64748b; font-weight: bold; text-transform: uppercase;">Total Visit Outlet</div>
+            <div style="font-size: 13px; font-weight: 900; color: #0f172a;">${grandTotalVisits} Visit</div>
           </div>
-          <div style="flex: 1; background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 8px 10px; border-radius: 6px;">
-            <div style="font-size: 9px; color: #64748b; font-weight: bold; text-transform: uppercase;">Total Jarak Keseluruhan</div>
-            <div style="font-size: 14px; font-weight: 900; color: #4338ca;">${grandTotalKm.toFixed(1)} KM</div>
+          <div style="flex: 1; background-color: #ffffff; border: 1px solid #cbd5e1; padding: 6px 8px; border-radius: 4px; text-align: center;">
+            <div style="font-size: 8.5px; color: #64748b; font-weight: bold; text-transform: uppercase;">Total Jarak Tempuh</div>
+            <div style="font-size: 13px; font-weight: 900; color: #4338ca;">${grandTotalKm.toFixed(1)} KM</div>
+          </div>
+          <div style="flex: 1; background-color: #ffffff; border: 1px solid #cbd5e1; padding: 6px 8px; border-radius: 4px; text-align: center;">
+            <div style="font-size: 8.5px; color: #64748b; font-weight: bold; text-transform: uppercase;">Overall EC Rate</div>
+            <div style="font-size: 13px; font-weight: 900; color: ${grandEcPct >= 70 ? '#15803d' : '#b45309'};">${grandEcPct}% EC</div>
           </div>
         </div>
 
+        <!-- GRAFIK ANALITIK VISUAL (BAR CHART) -->
+        <div style="margin-bottom: 14px; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 8px 10px;">
+          <h4 style="font-size: 9.5px; font-weight: bold; color: #7a1f2b; margin: 0 0 6px 0; text-transform: uppercase;">
+            📊 Grafik Visual Akumulasi Jarak Tempuh (KM) Per Salesman
+          </h4>
+          ${chartBarsHtml}
+        </div>
+
         <!-- BAGIAN 1: TABEL REKAPAN -->
-        <div style="margin-bottom: 16px;">
-          <h4 style="font-size: 11px; font-weight: bold; color: #800000; margin: 0 0 6px 0; border-bottom: 1px solid #800000; padding-bottom: 3px;">1. REKAPAN AKUMULASI JARAK TEMPUH PER SALESMAN</h4>
+        <div style="margin-bottom: 14px;">
+          <h4 style="font-size: 10px; font-weight: bold; color: #7a1f2b; margin: 0 0 5px 0; border-bottom: 1.5px solid #7a1f2b; padding-bottom: 2px;">1. REKAPAN AKUMULASI PERFORMA & JARAK TEMPUH PER SALESMAN</h4>
           <table style="width: 100%; border-collapse: collapse; text-align: left; border: 1px solid #cbd5e1;">
             <thead>
-              <tr style="background-color: #f1f5f9; color: #334155; font-size: 9.5px; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #cbd5e1;">
+              <tr style="background-color: #f1f5f9; color: #1e293b; font-size: 9px; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #cbd5e1;">
                 <th style="padding: 5px 6px; text-align: center; width: 25px;">#</th>
                 <th style="padding: 5px 6px; width: 65px;">NIK</th>
                 <th style="padding: 5px 6px;">Nama Salesman</th>
@@ -2074,33 +2233,36 @@ export async function mount(container, { session }) {
           </table>
         </div>
 
-        <!-- BAGIAN 2: DETAIL HARIAN PER SALES -->
-        <div>
-          <h4 style="font-size: 11px; font-weight: bold; color: #800000; margin: 0 0 6px 0; border-bottom: 1px solid #800000; padding-bottom: 3px;">2. DETAIL RINCIAN KUNJUNGAN HARI DEMI HARI PER SALESMAN</h4>
+        ${pdfVersion === "FULL" ? `
+        <!-- BAGIAN 2: DETAIL HARIAN PER SALES & FOTO BUKTI FIELD -->
+        <div style="margin-bottom: 14px;">
+          <h4 style="font-size: 10px; font-weight: bold; color: #7a1f2b; margin: 0 0 5px 0; border-bottom: 1.5px solid #7a1f2b; padding-bottom: 2px;">2. DETAIL RINCIAN KUNJUNGAN HARI DEMI HARI & FOTO BUKTI FIELD</h4>
           ${detailedHtml}
         </div>
+        ` : ''}
 
-        <!-- LEMBAR TANDA TANGAN HRD -->
-        <div style="margin-top: 24px; page-break-inside: avoid; display: flex; justify-content: space-between; text-align: center; font-size: 10px;">
-          <div style="width: 180px;">
-            <p style="margin: 0; font-weight: bold; color: #475569;">Dibuat Oleh,</p>
-            <p style="margin: 0; color: #64748b; font-size: 9px;">HRD Administrator</p>
-            <div style="height: 40px;"></div>
-            <p style="margin: 0; font-weight: bold; text-decoration: underline; color: #0f172a;">( Tim HRD Cirebon )</p>
+        <!-- LEMBAR TANDA TANGAN HRD & MANAJEMEN CV ANDELA JAYA -->
+        <div style="margin-top: 24px; page-break-inside: avoid; display: flex; justify-content: space-between; text-align: center; font-size: 9.5px;">
+          <div style="width: 200px;">
+            <p style="margin: 0; font-weight: bold; color: #334155;">Dibuat Oleh,</p>
+            <p style="margin: 0; color: #64748b; font-size: 8.5px;">Administrator HRD & Operasional</p>
+            <div style="height: 45px;"></div>
+            <p style="margin: 0; font-weight: bold; text-decoration: underline; color: #0f172a;">( Tim HRD CV Andela Jaya )</p>
           </div>
-          <div style="width: 180px;">
-            <p style="margin: 0; font-weight: bold; color: #475569;">Disetujui Oleh,</p>
-            <p style="margin: 0; color: #64748b; font-size: 9px;">Manager Penjualan & HRGA</p>
-            <div style="height: 40px;"></div>
-            <p style="margin: 0; font-weight: bold; text-decoration: underline; color: #0f172a;">( Management CV Andela )</p>
+          <div style="width: 200px;">
+            <p style="margin: 0; font-weight: bold; color: #334155;">Disetujui Oleh,</p>
+            <p style="margin: 0; color: #64748b; font-size: 8.5px;">Manager Penjualan & HRGA</p>
+            <div style="height: 45px;"></div>
+            <p style="margin: 0; font-weight: bold; text-decoration: underline; color: #0f172a;">( Manajemen CV Andela Jaya )</p>
           </div>
         </div>
       </div>
     `;
 
     try {
-      await downloadHtmlAsPdf(fullPdfHtml, `Laporan_Rute_Kunjungan_Sales_${todayStr}.pdf`, "portrait");
-      toast("File PDF Laporan Rekapan Kunjungan & Jarak Sales berhasil diunduh!", "success");
+      const fileNameSuffix = pdfVersion === "SUMMARY" ? "Rekapan" : "Detail_Foto";
+      await downloadHtmlAsPdf(fullPdfHtml, `Laporan_Rute_Sales_${fileNameSuffix}_${todayStr}.pdf`, "portrait");
+      toast(`File PDF Laporan Sales (${versionLabel}) berhasil diunduh!`, "success");
     } catch (err) {
       console.error("Gagal cetak PDF Sales:", err);
       toast("Gagal men-generate PDF Laporan Sales: " + err.message, "error");
@@ -2180,22 +2342,31 @@ export async function mount(container, { session }) {
             </select>
           </div>
 
-          <!-- 3. FORMAT FILE -->
+          <!-- 3. FORMAT LAPORAN & VERSI EXPORT -->
           <div>
-            <label class="block font-bold text-slate-800 mb-1.5 text-xs">Format Laporan Export:</label>
-            <div class="grid grid-cols-2 gap-3">
-              <label class="flex items-center gap-2 p-3 border rounded-xl cursor-pointer hover:bg-slate-50 border-slate-200 has-[:checked]:border-emerald-600 has-[:checked]:bg-emerald-50/50 transition">
-                <input type="radio" name="export-format" value="EXCEL" ${defaultFormat === "EXCEL" ? "checked" : ""} class="accent-emerald-600" />
+            <label class="block font-bold text-slate-800 mb-1.5 text-xs">Format & Versi Laporan Export:</label>
+            <div class="space-y-2">
+              <label class="flex items-start gap-3 p-2.5 border rounded-xl cursor-pointer hover:bg-slate-50 border-slate-200 has-[:checked]:border-emerald-600 has-[:checked]:bg-emerald-50/50 transition">
+                <input type="radio" name="export-format" value="EXCEL" ${defaultFormat === "EXCEL" ? "checked" : ""} class="accent-emerald-600 mt-1" />
                 <div>
-                  <p class="font-bold text-slate-800">Excel (.xlsx)</p>
-                  <p class="text-[10px] text-slate-500">Tabel Rekapan Data Visit</p>
+                  <p class="font-bold text-slate-800">File Spreadsheet Excel (.xlsx)</p>
+                  <p class="text-[10.5px] text-slate-500">Tabel raw data kunjungan, koordinat GPS, & catatan untuk olah data spreadsheet.</p>
                 </div>
               </label>
-              <label class="flex items-center gap-2 p-3 border rounded-xl cursor-pointer hover:bg-slate-50 border-slate-200 has-[:checked]:border-red-600 has-[:checked]:bg-red-50/50 transition">
-                <input type="radio" name="export-format" value="PDF" ${defaultFormat === "PDF" ? "checked" : ""} class="accent-red-600" />
+
+              <label class="flex items-start gap-3 p-2.5 border rounded-xl cursor-pointer hover:bg-slate-50 border-slate-200 has-[:checked]:border-red-600 has-[:checked]:bg-red-50/50 transition">
+                <input type="radio" name="export-format" value="PDF_SUMMARY" ${defaultFormat === "PDF" ? "checked" : ""} class="accent-red-600 mt-1" />
                 <div>
-                  <p class="font-bold text-slate-800">PDF Report (.pdf)</p>
-                  <p class="text-[10px] text-slate-500">Laporan Visual & Rute Jarak</p>
+                  <p class="font-bold text-slate-800">📄 PDF Versi 1: Rekapan & Analitik (Ringkas / Simple)</p>
+                  <p class="text-[10.5px] text-slate-500">Rangkuman statistik 1-2 halaman, grafik visual jarak sales, dan tabel akumulasi (tanpa rincian toko per toko).</p>
+                </div>
+              </label>
+
+              <label class="flex items-start gap-3 p-2.5 border rounded-xl cursor-pointer hover:bg-slate-50 border-slate-200 has-[:checked]:border-indigo-600 has-[:checked]:bg-indigo-50/50 transition">
+                <input type="radio" name="export-format" value="PDF_FULL" class="accent-indigo-600 mt-1" />
+                <div>
+                  <p class="font-bold text-slate-800">📋 PDF Versi 2: Lengkap Detail Rute + Foto Kunjungan</p>
+                  <p class="text-[10.5px] text-slate-500">Laporan lengkap berisi ringkasan, grafik, rincian rute harian, koordinat GPS, dan foto bukti check-in tiap toko.</p>
                 </div>
               </label>
             </div>
@@ -2312,8 +2483,12 @@ export async function mount(container, { session }) {
 
         await downloadXlsx(`Data_Kunjungan_Sales_${todayStr}.xlsx`, headers, matrix, "Data_Kunjungan");
         toast(`File Excel (${targetRecords.length} data) berhasil diunduh!`, "success");
+      } else if (selectedFormat === "PDF_SUMMARY") {
+        await exportSalesVisitsPdf(targetRecords, "SUMMARY");
+      } else if (selectedFormat === "PDF_FULL") {
+        await exportSalesVisitsPdf(targetRecords, "FULL");
       } else {
-        await exportSalesVisitsPdf(targetRecords);
+        await exportSalesVisitsPdf(targetRecords, "FULL");
       }
     };
   }
