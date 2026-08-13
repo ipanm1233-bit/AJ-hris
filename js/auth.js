@@ -264,38 +264,17 @@ export async function getBawahanNames(namaAtasan) {
 export async function computeVisibleMenus(session) {
  if (!session) return [];
  const role = (session.role || "").toUpperCase();
- const overrides = await loadPermissionOverrides(true);
- 
- const searchKeys = [
- session.username,
- session.username ? String(session.username).toLowerCase() : null,
- session.username ? String(session.username).toUpperCase() : null,
- session.id,
- session.id ? String(session.id).toLowerCase() : null,
- session.id ? String(session.id).toUpperCase() : null,
- session.nik ? String(session.nik) : null,
- session.nama,
- session.nama ? String(session.nama).toLowerCase() : null,
- session.nama ? String(session.nama).toUpperCase() : null
- ].filter(Boolean);
-
- let userOverride = null;
- for (const k of searchKeys) {
- if (overrides[k]) {
- userOverride = overrides[k];
- break;
- }
- }
+ const userOverride = await _findUserOverride(session);
 
  // Jika HRD sudah menetapkan daftar menu spesifik untuk user ini -> pakai itu (whitelist absolut)
  if (userOverride && (userOverride.allowed_menus_set || (Array.isArray(userOverride.allowed_menus) && userOverride.allowed_menus.length > 0))) {
- const allowed = userOverride.allowed_menus || [];
- const list = MENU_CONFIG.filter(m => allowed.includes(m.id));
- if (!list.some(m => m.id === "dashboard")) {
- const dash = MENU_CONFIG.find(m => m.id === "dashboard");
- if (dash) list.unshift(dash);
- }
- return list;
+  const allowed = userOverride.allowed_menus || [];
+  const list = MENU_CONFIG.filter(m => allowed.includes(m.id));
+  if (!list.some(m => m.id === "dashboard")) {
+   const dash = MENU_CONFIG.find(m => m.id === "dashboard");
+   if (dash) list.unshift(dash);
+  }
+  return list;
  }
 
  const isAtasanRole = await isAtasan(session.nama);
@@ -325,18 +304,17 @@ export async function computeVisibleMenus(session) {
 const _MANAGEMENT_ROLES = ["HRD", "SUPERADMIN", "DIREKTUR", "MANAGER", "SPV", "KOORDINATOR", "GM", "FINANCE", "GA", "BRANCH MANAGER"];
 
 function _permOverrideSearchKeys(session) {
- return [
- session.username,
- session.username ? String(session.username).toLowerCase() : null,
- session.username ? String(session.username).toUpperCase() : null,
- session.id,
- session.id ? String(session.id).toLowerCase() : null,
- session.id ? String(session.id).toUpperCase() : null,
- session.nik ? String(session.nik) : null,
- session.nama,
- session.nama ? String(session.nama).toLowerCase() : null,
- session.nama ? String(session.nama).toUpperCase() : null
- ].filter(Boolean);
+ if (!session) return [];
+ const raw = [session.username, session.id, session.nik, session.nama].filter(Boolean);
+ const keysSet = new Set();
+ raw.forEach(k => {
+  const s = String(k).trim();
+  if (!s) return;
+  keysSet.add(s);
+  keysSet.add(s.toLowerCase());
+  keysSet.add(s.toUpperCase());
+ });
+ return Array.from(keysSet);
 }
 
 async function _findUserOverride(session) {

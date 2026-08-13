@@ -4097,6 +4097,8 @@ export function normalizeCheckinItem(item = {}) {
   const tanggal = item.tanggal || item.date || todayStr;
   const status_kunjungan = item.status_kunjungan || item.status || item.visit_status || "Effective Call (Order Toko)";
   const catatan = item.catatan || item.notes || "Check-in kunjungan sales";
+  const gambar_checkin = item.gambar_checkin || item.foto_checkin || item.foto || item.checkin_photo || item.image || item.image_url || "";
+  const foto_checkin = item.foto_checkin || item.gambar_checkin || item.foto || item.checkin_photo || item.image || item.image_url || "";
 
   return {
     ...item,
@@ -4110,7 +4112,9 @@ export function normalizeCheckinItem(item = {}) {
     waktu_checkout,
     tanggal,
     status_kunjungan,
-    catatan
+    catatan,
+    gambar_checkin,
+    foto_checkin
   };
 }
 

@@ -1,6 +1,6 @@
 import { db, COL, collection, query, where, getDocs, getDoc, setDoc, doc, limit } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, confirmDialog, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan, downloadXlsx, ensureXlsxLoaded, formatPhoneNumberForWa, openWhatsAppMessage, getEmployeePhoneByName, buildKpiTaskWaMessage } from "../utils.js";
-import { renderCrudModule, badge, emptyState, skeletonRows, avatar } from "../components.js";
+import { renderCrudModule, badge, emptyState, skeletonRows, avatar, openPenilaianFormFromNotif } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames, hasSubMenuAccess, canEditModuleData } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
 import { uploadFileToDrive } from "../gas-integration.js";
@@ -2265,12 +2265,543 @@ export async function mount(container, { session, params }) {
  });
  }
 
- async function loadKpi360() {
- const wrap = panels.kpi360;
- wrap.innerHTML = `<div class="space-y-2">${skeletonRows(4)}</div>`;
- const tasks = await fsGetAll(COL.TUGAS_KPI_360);
- const isHrd = canDistribusiKpi360;
+  async function loadKpi360() {
+  const wrap = panels.kpi360;
+  wrap.innerHTML = `<div class="space-y-2">${skeletonRows(4)}</div>`;
+  const tasks = await fsGetAll(COL.TUGAS_KPI_360);
+  const isHrd = canDistribusiKpi360;
 
- const userNamaLower = (session.nama || "").toLowerCase().trim();
- const myTasks = tasks.filter(t => (t.nama_penilai || "").toLowerCase().trim() === userNamaLower);
- const pendingMyTasks = myT
+  const userNamaLower = (session.nama || "").toLowerCase().trim();
+  const myTasks = tasks.filter(t => (t.nama_penilai || "").toLowerCase().trim() === userNamaLower);
+
+  wrap.innerHTML = `
+    <div class="space-y-6">
+      <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm space-y-4">
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h3 class="font-bold text-slate-800 text-base">Tugas Penilaian 360° Saya</h3>
+            <p class="text-xs text-slate-400 mt-0.5">Daftar evaluasi KPI karyawan lain yang ditugaskan kepada Anda.</p>
+          </div>
+          ${isHrd ? `
+            <button id="btn-distribusi-kpi-global" class="px-3.5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-semibold rounded-xl transition shadow-sm flex items-center gap-1.5">
+              + Distribusi Tugas KPI 360°
+            </button>
+          ` : ''}
+        </div>
+
+        ${myTasks.length === 0 ? `
+          <div class="p-8 text-center text-slate-400 italic text-sm bg-slate-50 rounded-xl border border-dashed border-slate-200">
+            Tidak ada tugas penilaian 360° yang ditugaskan kepada Anda saat ini.
+          </div>
+        ` : `
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            ${myTasks.map(t => {
+              const isDone = t.status === "DONE";
+              return `
+                <div class="p-4 rounded-xl border ${isDone ? 'border-slate-200 bg-slate-50/50' : 'border-amber-200 bg-amber-50/30'} flex flex-col justify-between space-y-3">
+                  <div class="flex items-start justify-between gap-2">
+                    <div>
+                      <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">${escapeHtml(t.periode || "Periode")}</span>
+                      <h4 class="font-bold text-slate-800 text-sm mt-0.5">${escapeHtml(t.nama_dinilai)}</h4>
+                      <p class="text-xs text-slate-500">${escapeHtml(t.jabatan_dinilai || "-")}</p>
+                    </div>
+                    ${badge(isDone ? "Selesai" : "Pending", isDone ? "emerald" : "amber")}
+                  </div>
+                  <div class="flex items-center justify-between border-t border-slate-100 pt-3 text-xs">
+                    <span class="text-slate-400">Batas Waktu: ${t.deadline ? fmtDateShort(t.deadline) : '-'}</span>
+                    ${!isDone ? `
+                      <button data-task-id="${t.id}" class="btn-fill-kpi-item px-3 py-1.5 bg-maroon-700 hover:bg-maroon-800 text-white font-semibold rounded-lg text-xs transition">
+                        Isi Penilaian
+                      </button>
+                    ` : `
+                      <span class="font-bold text-emerald-700">Skor: ${t.skor_akhir || 0}</span>
+                    `}
+                  </div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        `}
+      </div>
+    </div>
+  `;
+
+  wrap.querySelectorAll(".btn-fill-kpi-item").forEach(btn => {
+    btn.onclick = () => {
+      const tid = btn.dataset.taskId;
+      const taskObj = myTasks.find(t => t.id === tid);
+      if (taskObj) {
+        openPenilaianFormFromNotif(taskObj, myTasks, session);
+      }
+    };
+  });
+
+  if (isHrd) {
+    const btnDist = wrap.querySelector("#btn-distribusi-kpi-global");
+    if (btnDist) {
+      btnDist.onclick = () => openDistribusiModal(null);
+    }
+  }
+  }
+
+  async function openDistribusiModal(preselectedTplId = null) {
+  const [templates, employees] = await Promise.all([
+    fsGetAll(COL.MASTER_SOAL_KPI),
+    fsGetAll(COL.MASTER_KARYAWAN)
+  ]);
+
+  const activeEmps = employees.filter(e => (e.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF");
+
+  openModal({
+    title: "Distribusi Tugas Penilaian KPI 360°",
+    size: "lg",
+    bodyHtml: `
+      <form id="form-distribusi-kpi" class="space-y-4 text-left">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Pilih Template Soal KPI <span class="text-rose-500">*</span></label>
+          <select id="dist-tpl-id" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-medium" required>
+            <option value="">-- Pilih Template KPI --</option>
+            ${templates.map(t => `<option value="${t.id}" ${preselectedTplId === t.id ? 'selected' : ''}>${escapeHtml(t.nama_template)} (${(t.soal_json || []).length} Indikator)</option>`).join("")}
+          </select>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Karyawan yang Dinilai <span class="text-rose-500">*</span></label>
+            <select id="dist-emp-dinilai" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-medium" required>
+              <option value="">-- Pilih Karyawan --</option>
+              ${activeEmps.map(e => `<option value="${escapeHtml(e.nama_karyawan)}">${escapeHtml(e.nama_karyawan)} (${escapeHtml(e.jabatan || "-")})</option>`).join("")}
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Penilai / Evaluator <span class="text-rose-500">*</span></label>
+            <select id="dist-emp-penilai" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-medium" required>
+              <option value="">-- Pilih Penilai --</option>
+              ${activeEmps.map(e => `<option value="${escapeHtml(e.nama_karyawan)}">${escapeHtml(e.nama_karyawan)} (${escapeHtml(e.jabatan || "-")})</option>`).join("")}
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Periode Penilaian <span class="text-rose-500">*</span></label>
+            <input type="text" id="dist-periode" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-medium" placeholder="Misal: Semester 1 2026" value="Semester 1 ${new Date().getFullYear()}" required>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Batas Waktu Pengumpulan (Deadline)</label>
+            <input type="date" id="dist-deadline" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-medium">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Catatan HRD untuk Evaluator (Opsional)</label>
+          <textarea id="dist-catatan-hrd" rows="2" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-medium" placeholder="Instruksi atau catatan khusus untuk penilai..."></textarea>
+        </div>
+      </form>
+    `,
+    footerHtml: `
+      <div class="flex items-center justify-end gap-2 w-full">
+        <button id="btn-dist-batal" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition">Batal</button>
+        <button id="btn-dist-simpan" class="px-5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold rounded-lg transition shadow-md">Distribusikan Tugas</button>
+      </div>
+    `,
+    onMount: (m) => {
+      m.querySelector("#btn-dist-batal").onclick = closeModal;
+      m.querySelector("#btn-dist-simpan").onclick = async () => {
+        const form = m.querySelector("#form-distribusi-kpi");
+        if (!form.reportValidity()) return;
+
+        const tplId = m.querySelector("#dist-tpl-id").value;
+        const namaDinilai = m.querySelector("#dist-emp-dinilai").value;
+        const namaPenilai = m.querySelector("#dist-emp-penilai").value;
+        const periode = m.querySelector("#dist-periode").value.trim();
+        const deadline = m.querySelector("#dist-deadline").value;
+        const catatanHrd = m.querySelector("#dist-catatan-hrd").value.trim();
+
+        const selectedTpl = templates.find(t => t.id === tplId);
+        if (!selectedTpl) return toast("Template KPI tidak ditemukan!", "warning");
+
+        const empDinilaiObj = activeEmps.find(e => e.nama_karyawan === namaDinilai) || {};
+        const empPenilaiObj = activeEmps.find(e => e.nama_karyawan === namaPenilai) || {};
+
+        const btnSave = m.querySelector("#btn-dist-simpan");
+        btnSave.disabled = true;
+        btnSave.textContent = "Mengirim...";
+
+        try {
+          const taskId = genId("TGS-360");
+          await fsAdd(COL.TUGAS_KPI_360, {
+            nama_template: selectedTpl.nama_template || "Template KPI",
+            nama_dinilai: namaDinilai,
+            jabatan_dinilai: empDinilaiObj.jabatan || "",
+            nik_dinilai: empDinilaiObj.nik_karyawan || empDinilaiObj.nik || "",
+            nama_penilai: namaPenilai,
+            nik_penilai: empPenilaiObj.nik_karyawan || empPenilaiObj.nik || "",
+            periode: periode,
+            deadline: deadline,
+            soal_json: selectedTpl.soal_json || [],
+            catatan_hrd: catatanHrd,
+            status: "PENDING",
+            created_at: new Date().toISOString()
+          }, taskId);
+
+          toast("Tugas Penilaian KPI 360° berhasil didistribusikan!", "success");
+          closeModal();
+          loadKpi360();
+        } catch (e) {
+          toast("Gagal mendistribusikan: " + e.message, "error");
+          btnSave.disabled = false;
+          btnSave.textContent = "Distribusikan Tugas";
+        }
+      };
+    }
+  });
+  }
+
+  async function loadHasilPenilaian() {
+  const wrap = panels.hasil;
+  if (!wrap) return;
+  wrap.innerHTML = `<div class="p-6">${skeletonRows(4)}</div>`;
+
+  const logs = await fsGetAll(COL.LOG_PENILAIAN_KPI);
+  let filteredLogs = logs;
+
+  if (isAtasanView && bawahanNames) {
+    const bset = new Set(bawahanNames);
+    filteredLogs = logs.filter(l => bset.has(l.nama_dinilai));
+  } else if (isRegularEmployee) {
+    filteredLogs = logs.filter(l => (l.nama_dinilai || "").toLowerCase() === (session.nama || "").toLowerCase());
+  }
+
+  filteredLogs.sort((a, b) => new Date(b.tanggal || b.created_at || 0) - new Date(a.tanggal || a.created_at || 0));
+
+  const canManageLog = isHrdOrAdmin || canEdit;
+
+  wrap.innerHTML = `
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
+      <div class="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h3 class="font-bold text-slate-800 text-base">Hasil & Log Penilaian KPI</h3>
+          <p class="text-xs text-slate-400 mt-0.5">Daftar rekapan evaluasi KPI yang telah diselesaikan oleh Penilai / Atasan.</p>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wide">
+              <th class="py-3 px-4">Karyawan Dinilai</th>
+              <th class="py-3 px-4">Penilai</th>
+              <th class="py-3 px-4">Periode</th>
+              <th class="py-3 px-4 text-center">Skor Akhir</th>
+              <th class="py-3 px-4 text-center">Predikat</th>
+              <th class="py-3 px-4">Tanggal Evaluasi</th>
+              ${canManageLog ? `<th class="py-3 px-4 text-center">Aksi (HRD)</th>` : ''}
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-50 text-sm">
+            ${filteredLogs.length === 0 ? `
+              <tr><td colspan="${canManageLog ? 7 : 6}" class="py-12 text-center text-slate-400 italic">Belum ada data log penilaian KPI.</td></tr>
+            ` : filteredLogs.map(l => `
+              <tr class="hover:bg-slate-50/80 transition">
+                <td class="py-3 px-4 font-bold text-slate-800">${escapeHtml(l.nama_dinilai)}</td>
+                <td class="py-3 px-4 text-xs text-slate-600">${escapeHtml(l.penilai || "-")}</td>
+                <td class="py-3 px-4 text-xs font-semibold text-slate-700">${escapeHtml(l.periode || "-")}</td>
+                <td class="py-3 px-4 text-center font-black text-maroon-700 text-base">${l.total_skor || 0}</td>
+                <td class="py-3 px-4 text-center">${badge(l.keputusan || "Selesai", (l.total_skor || 0) >= 80 ? "emerald" : (l.total_skor || 0) >= 60 ? "blue" : "amber")}</td>
+                <td class="py-3 px-4 text-xs text-slate-400">${fmtDateShort(l.tanggal)}</td>
+                ${canManageLog ? `
+                  <td class="py-3 px-4 text-center">
+                    <div class="flex items-center justify-center gap-1.5">
+                      <button data-action="edit-log" data-log-id="${l.id}" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs transition shadow-xs">
+                        ✏️ Edit
+                      </button>
+                      <button data-action="delete-log" data-log-id="${l.id}" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-lg text-xs transition shadow-xs">
+                        🗑️ Hapus
+                      </button>
+                    </div>
+                  </td>
+                ` : ''}
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  if (canManageLog) {
+    wrap.querySelectorAll('[data-action="edit-log"]').forEach(btn => {
+      btn.onclick = () => {
+        const lid = btn.dataset.logId;
+        const logObj = filteredLogs.find(x => x.id === lid);
+        if (logObj) openEditLogKpiModal(logObj);
+      };
+    });
+
+    wrap.querySelectorAll('[data-action="delete-log"]').forEach(btn => {
+      btn.onclick = () => {
+        const lid = btn.dataset.logId;
+        const logObj = filteredLogs.find(x => x.id === lid);
+        if (!logObj) return;
+
+        confirmDialog(
+          `Apakah Anda yakin ingin menghapus log penilaian KPI untuk <b>${escapeHtml(logObj.nama_dinilai)}</b> (Periode: ${escapeHtml(logObj.periode || "-")})?<br/><br/><span class="text-xs text-rose-500 font-semibold">Data yang dihapus tidak dapat dikembalikan.</span>`,
+          async () => {
+            try {
+              await fsDelete(COL.LOG_PENILAIAN_KPI, logObj.id);
+              toast("Log hasil penilaian KPI berhasil dihapus!", "success");
+              loadHasilPenilaian();
+            } catch (err) {
+              toast("Gagal menghapus log: " + err.message, "error");
+            }
+          }
+        );
+      };
+    });
+  }
+  }
+
+  function openEditLogKpiModal(logObj) {
+  openModal({
+    title: "Edit Hasil & Log Penilaian KPI",
+    size: "lg",
+    bodyHtml: `
+      <form id="form-edit-log-kpi" class="space-y-4 text-left">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Nama Karyawan Dinilai <span class="text-rose-500">*</span></label>
+            <input type="text" id="edit-log-dinilai" value="${escapeHtml(logObj.nama_dinilai || '')}" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-medium" required>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Nama Penilai / Evaluator <span class="text-rose-500">*</span></label>
+            <input type="text" id="edit-log-penilai" value="${escapeHtml(logObj.penilai || '')}" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-medium" required>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Periode Penilaian <span class="text-rose-500">*</span></label>
+            <input type="text" id="edit-log-periode" value="${escapeHtml(logObj.periode || '')}" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-medium" required>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Skor Akhir (0 - 100) <span class="text-rose-500">*</span></label>
+            <input type="number" step="0.01" min="0" max="100" id="edit-log-skor" value="${logObj.total_skor || 0}" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-bold text-maroon-700" required>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Keputusan / Predikat <span class="text-rose-500">*</span></label>
+            <input type="text" id="edit-log-keputusan" value="${escapeHtml(logObj.keputusan || 'Selesai')}" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-medium" placeholder="Misal: SANGAT BAIK, BAIK, CUKUP" required>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Tanggal Evaluasi</label>
+            <input type="date" id="edit-log-tanggal" value="${logObj.tanggal ? logObj.tanggal.slice(0, 10) : new Date().toISOString().slice(0, 10)}" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-medium">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Catatan Kelebihan / Prestasi (Opsional)</label>
+          <textarea id="edit-log-catatan-baik" rows="2" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-medium">${escapeHtml(logObj.catatan_baik || '')}</textarea>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Catatan Area Perbaikan (Opsional)</label>
+          <textarea id="edit-log-catatan-perbaikan" rows="2" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-medium">${escapeHtml(logObj.catatan_perbaikan || '')}</textarea>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Catatan Penilai (Opsional)</label>
+          <textarea id="edit-log-catatan-penilai" rows="2" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-medium">${escapeHtml(logObj.catatan_penilai || '')}</textarea>
+        </div>
+      </form>
+    `,
+    footerHtml: `
+      <div class="flex items-center justify-between w-full">
+        <button id="btn-edit-log-delete" class="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-lg transition border border-rose-200">Hapus Log Ini</button>
+        <div class="flex items-center gap-2">
+          <button id="btn-edit-log-batal" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition">Batal</button>
+          <button id="btn-edit-log-simpan" class="px-5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold rounded-lg transition shadow-md">Simpan Perubahan</button>
+        </div>
+      </div>
+    `,
+    onMount: (m) => {
+      m.querySelector("#btn-edit-log-batal").onclick = closeModal;
+      m.querySelector("#btn-edit-log-delete").onclick = () => {
+        closeModal();
+        confirmDialog(
+          `Apakah Anda yakin ingin menghapus log penilaian KPI untuk <b>${escapeHtml(logObj.nama_dinilai)}</b>?`,
+          async () => {
+            try {
+              await fsDelete(COL.LOG_PENILAIAN_KPI, logObj.id);
+              toast("Log penilaian KPI berhasil dihapus!", "success");
+              loadHasilPenilaian();
+            } catch (err) {
+              toast("Gagal menghapus: " + err.message, "error");
+            }
+          }
+        );
+      };
+
+      m.querySelector("#btn-edit-log-simpan").onclick = async () => {
+        const form = m.querySelector("#form-edit-log-kpi");
+        if (!form.reportValidity()) return;
+
+        const namaDinilai = m.querySelector("#edit-log-dinilai").value.trim();
+        const penilai = m.querySelector("#edit-log-penilai").value.trim();
+        const periode = m.querySelector("#edit-log-periode").value.trim();
+        const totalSkor = parseFloat(m.querySelector("#edit-log-skor").value) || 0;
+        const keputusan = m.querySelector("#edit-log-keputusan").value.trim();
+        const tglStr = m.querySelector("#edit-log-tanggal").value;
+        const catatanBaik = m.querySelector("#edit-log-catatan-baik").value.trim();
+        const catatanPerbaikan = m.querySelector("#edit-log-catatan-perbaikan").value.trim();
+        const catatanPenilai = m.querySelector("#edit-log-catatan-penilai").value.trim();
+
+        const btnSave = m.querySelector("#btn-edit-log-simpan");
+        btnSave.disabled = true;
+        btnSave.textContent = "Menyimpan...";
+
+        try {
+          await fsUpdate(COL.LOG_PENILAIAN_KPI, logObj.id, {
+            nama_dinilai: namaDinilai,
+            penilai: penilai,
+            periode: periode,
+            total_skor: totalSkor,
+            keputusan: keputusan,
+            tanggal: tglStr ? new Date(tglStr).toISOString() : (logObj.tanggal || new Date().toISOString()),
+            catatan_baik: catatanBaik,
+            catatan_perbaikan: catatanPerbaikan,
+            catatan_penilai: catatanPenilai,
+            updated_at: new Date().toISOString()
+          });
+
+          toast("Log hasil penilaian KPI berhasil diperbarui!", "success");
+          closeModal();
+          loadHasilPenilaian();
+        } catch (err) {
+          toast("Gagal memperbarui log: " + err.message, "error");
+          btnSave.disabled = false;
+          btnSave.textContent = "Simpan Perubahan";
+        }
+      };
+    }
+  });
+  }
+
+  async function loadEvaluasiKontrak() {
+  const wrap = panels.evaluasi;
+  if (!wrap) return;
+  wrap.innerHTML = `<div class="p-6">${skeletonRows(4)}</div>`;
+
+  const allKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
+  const activeEmp = allKaryawan.filter(e => (e.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF");
+
+  wrap.innerHTML = `
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
+      <div>
+        <h3 class="font-bold text-slate-800 text-base">Evaluasi Kontrak Kerja Karyawan</h3>
+        <p class="text-xs text-slate-400 mt-0.5">Monitoring perpanjangan dan sisa masa berlaku kontrak kerja staff.</p>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wide">
+              <th class="py-3 px-4">Nama Karyawan</th>
+              <th class="py-3 px-4">Jabatan & Cabang</th>
+              <th class="py-3 px-4">Status Karyawan</th>
+              <th class="py-3 px-4">Akhir Kontrak</th>
+              <th class="py-3 px-4 text-center">Sisa Hari</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-50 text-sm">
+            ${activeEmp.length === 0 ? `
+              <tr><td colspan="5" class="py-12 text-center text-slate-400 italic">Tidak ada karyawan aktif.</td></tr>
+            ` : activeEmp.map(e => {
+              const tglAkhir = e.tgl_akhir_kontrak || "-";
+              let daysLeft = "-";
+              let colorClass = "text-slate-600";
+              if (tglAkhir !== "-") {
+                const d = Math.ceil((new Date(tglAkhir) - new Date()) / (1000 * 3600 * 24));
+                daysLeft = isNaN(d) ? "-" : `${d} hari`;
+                if (d <= 30) colorClass = "text-rose-600 font-bold bg-rose-50 px-2 py-0.5 rounded-md";
+                else if (d <= 60) colorClass = "text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-md";
+              }
+              return `
+                <tr class="hover:bg-slate-50/80 transition">
+                  <td class="py-3 px-4 font-bold text-slate-800">${escapeHtml(e.nama_karyawan)}</td>
+                  <td class="py-3 px-4 text-xs text-slate-500">${escapeHtml(e.jabatan || "-")} (${escapeHtml(e.cabang || "Pusat")})</td>
+                  <td class="py-3 px-4 text-xs font-medium">${escapeHtml(formatStatusKaryawan(e.status_karyawan))}</td>
+                  <td class="py-3 px-4 text-xs font-semibold text-slate-700">${fmtDateShort(tglAkhir)}</td>
+                  <td class="py-3 px-4 text-center text-xs"><span class="${colorClass}">${daysLeft}</span></td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  }
+
+  async function loadDailyTarget() {
+  const wrap = panels.daily;
+  if (!wrap) return;
+  wrap.innerHTML = `<div class="p-6">${skeletonRows(4)}</div>`;
+
+  wrap.innerHTML = `
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
+      <div>
+        <h3 class="font-bold text-slate-800 text-base">Penilaian Harian & Target Sales / Operasional</h3>
+        <p class="text-xs text-slate-400 mt-0.5">Monitoring target pencapaian harian berdasarkan indikator KPI Sales & Operasional.</p>
+      </div>
+
+      <div class="p-8 text-center text-slate-400 text-sm bg-slate-50 rounded-xl border border-dashed border-slate-200">
+        Penilaian harian dan pencapaian target terintegrasi langsung dengan modul Sales & Operasional.
+      </div>
+    </div>
+  `;
+  }
+
+  function switchTab(tabKey) {
+  Object.keys(panels).forEach(k => {
+    if (panels[k]) {
+      if (k === tabKey) panels[k].classList.remove("hidden");
+      else panels[k].classList.add("hidden");
+    }
+  });
+
+  container.querySelectorAll(".pk-tab").forEach(btn => {
+    const ntab = btn.dataset.ntab;
+    if (ntab === tabKey) {
+      btn.className = "pk-tab px-4 py-2.5 text-sm font-medium border-b-2 border-maroon-700 text-maroon-700 whitespace-nowrap";
+    } else {
+      btn.className = "pk-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap";
+    }
+  });
+
+  if (tabKey === "kontrak" && !loaded.kontrak) { loaded.kontrak = true; loadKontrak(); }
+  if (tabKey === "kpi360" && !loaded.kpi360) { loaded.kpi360 = true; loadKpi360(); }
+  if (tabKey === "template" && !loaded.template) { loaded.template = true; loadTemplateKpi(); }
+  if (tabKey === "grafik" && !loaded.grafik) { loaded.grafik = true; loadEmployeeGrafik(); }
+  if (tabKey === "hasil" && !loaded.hasil) { loaded.hasil = true; loadHasilPenilaian(); }
+  if (tabKey === "evaluasi" && !loaded.evaluasi) { loaded.evaluasi = true; loadEvaluasiKontrak(); }
+  if (tabKey === "daily" && !loaded.daily) { loaded.daily = true; loadDailyTarget(); }
+  }
+
+  container.querySelectorAll(".pk-tab").forEach(btn => {
+  btn.onclick = () => {
+    const tab = btn.dataset.ntab;
+    if (tab) switchTab(tab);
+  };
+  });
+
+  if (isRegularEmployee) {
+  switchTab("grafik");
+  } else {
+  switchTab("kontrak");
+  }
+}

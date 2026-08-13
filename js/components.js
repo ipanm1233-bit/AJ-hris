@@ -1541,7 +1541,7 @@ function openKpiTasksModal(kpis, session) {
  });
 }
 
-function openPenilaianFormFromNotif(task, kpis, session) {
+export function openPenilaianFormFromNotif(task, kpis, session) {
  const soalHtml = (task.soal_json || []).map((s, i) => `
  <div class="border-b border-slate-100 pb-4 mb-4 text-left">
  <div class="flex items-center gap-2 mb-1.5">

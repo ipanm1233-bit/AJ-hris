@@ -9,7 +9,45 @@ export async function mount(container, { session }) {
 	if (!isHrd) container.querySelector("#st-panel-users").innerHTML = `<div class="bg-white rounded-2xl border border-slate-100 p-6">${emptyState("Hanya HRD yang dapat mengelola akun pengguna", "Anda tetap dapat mengatur hak akses menu & formulir pada tab lain.")}</div>`;
 	else await loadUsersTab(container);
 
-	const users = await fsGetAll(COL.USERS);
+	const [allUsers, allKaryawan] = await Promise.all([
+		fsGetAll(COL.USERS).catch(() => []),
+		fsGetAll(COL.MASTER_KARYAWAN).catch(() => [])
+	]);
+
+	const userMap = new Map();
+	allUsers.forEach(u => {
+		const key = (u.username || u.id || u.nik || u.nama || "").trim();
+		if (key) userMap.set(key, { ...u });
+	});
+	allKaryawan.forEach(k => {
+		const nameKey = (k.nama_karyawan || k.nama || "").trim();
+		const nikKey = (k.nik_karyawan || k.nik || "").trim();
+		const unameKey = (k.username || "").trim();
+		let foundKey = null;
+		if (unameKey && userMap.has(unameKey)) foundKey = unameKey;
+		else if (nikKey && userMap.has(nikKey)) foundKey = nikKey;
+		else if (nameKey && userMap.has(nameKey)) foundKey = nameKey;
+
+		if (foundKey) {
+			const existing = userMap.get(foundKey);
+			if (!existing.nik && nikKey) existing.nik = nikKey;
+			if (!existing.nama && nameKey) existing.nama = nameKey;
+		} else {
+			const newKey = unameKey || nikKey || nameKey;
+			if (newKey) {
+				userMap.set(newKey, {
+					id: newKey,
+					username: unameKey || (nameKey ? nameKey.toLowerCase().replace(/\s+/g, ".") : newKey),
+					nama: nameKey || unameKey || newKey,
+					nik: nikKey,
+					role: k.jabatan || "KARYAWAN",
+					posisi: k.jabatan || "-"
+				});
+			}
+		}
+	});
+
+	const users = Array.from(userMap.values()).sort((a, b) => (a.nama || "").localeCompare(b.nama || ""));
 	await setupRbacMenuTab(container, users);
 	await setupRbacFormTab(container, users);
 	await loadKanalTab(container);

@@ -783,6 +783,8 @@ export async function mount(container, { session }) {
       const mapsUrl = `https://www.google.com/maps?q=${encodeURIComponent(gpsPos)}`;
       const visitId = t._docId || t.id;
 
+      const photoUrl = t.gambar_checkin || t.foto_checkin || t.foto || t.checkin_photo || t.image || t.image_url || "";
+
       return `
       <div class="bg-slate-50 border border-slate-100 p-3.5 rounded-xl hover:bg-white hover:border-maroon-200 transition shadow-2xs">
         <div class="flex items-start justify-between gap-2 flex-wrap">
@@ -831,15 +833,31 @@ export async function mount(container, { session }) {
           </div>
           <span class="font-mono font-bold text-slate-600">${escapeHtml(dateVal)}</span>
         </div>
-        ${(t.gambar_checkin || t.foto_checkin) ? `
-        <div class="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between">
-          <a href="${escapeHtml(t.gambar_checkin || t.foto_checkin)}" target="_blank" class="inline-flex items-center gap-1.5 text-[10px] font-bold text-blue-700 hover:text-blue-900 bg-blue-50/80 px-2.5 py-1 rounded-md border border-blue-200/60 transition">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-            <span>Lihat Foto Check In</span>
-          </a>
-          <span class="text-[9px] text-slate-400 font-mono">Kanal Work Media</span>
+        ${photoUrl ? `
+        <div class="mt-2.5 pt-2 border-t border-slate-200/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white/60 p-2 rounded-xl border border-slate-100">
+          <div class="flex items-center gap-3">
+            <a href="${escapeHtml(photoUrl)}" target="_blank" rel="noopener" class="block shrink-0 relative group">
+              <img src="${escapeHtml(photoUrl)}" alt="Foto Check In" class="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded-xl border border-slate-200 shadow-2xs group-hover:scale-105 transition-transform" />
+              <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center text-white text-[9px] font-bold">Zoom</div>
+            </a>
+            <div>
+              <span class="text-[11px] font-bold text-slate-800 flex items-center gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                <span>Foto Check-in Field</span>
+              </span>
+              <a href="${escapeHtml(photoUrl)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-[10.5px] font-bold text-blue-700 hover:text-blue-900 hover:underline mt-1">
+                <span>Lihat Foto Full-Size &rarr;</span>
+              </a>
+            </div>
+          </div>
+          <span class="text-[9px] text-slate-400 font-mono self-end sm:self-center">Kanal Work Media</span>
         </div>
-        ` : ''}
+        ` : `
+        <div class="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 italic">
+          <span>Foto check-in tidak dilampirkan</span>
+          <span class="text-[9px] font-mono text-slate-300">No Photo</span>
+        </div>
+        `}
       </div>
       `;
     }).join("");

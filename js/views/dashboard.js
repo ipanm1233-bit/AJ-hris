@@ -1,7 +1,7 @@
 import { db, COL, collection, query, where, getDocs, orderBy, limit, getDoc, doc, updateDoc, messaging } from "../firebase-config.js";
 import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, getTargetsForRole, toast, fsUpdate, fsAdd, fsGetAll, fsDelete, deleteBroadcastMemoAndNotifs, genId, localDateStr, getCalculatedJatahCuti, calculateAge, calculateTenure } from "../utils.js";
 import { avatar, badge, icon, emptyState, skeletonRows, getDismissedAnnouncements, dismissAnnouncementForUser } from "../components.js";
-import { MANAJEMEN_ROLES } from "../auth.js";
+import { MANAJEMEN_ROLES, computeVisibleMenus } from "../auth.js";
 // IMPORT BARU UNTUK MENDAPATKAN TOKEN HP (FCM)
 import { getToken } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js";
 
@@ -61,6 +61,25 @@ export async function mount(container, { session }) {
  // Tombol "Tes Notif" kini berada di Header Atas (sebelah Lonceng Notifikasi)
  // dan dihandle secara global oleh bindShellEvents di app.js.
  
+ const visibleMenus = await computeVisibleMenus(session);
+ const gridEl = container.querySelector("#mobile-services-grid");
+ if (gridEl && visibleMenus && visibleMenus.length > 0) {
+  const itemsHtml = visibleMenus.map(m => {
+   if (m.id === "dashboard") return "";
+   const route = m.route || m.id;
+   const iconName = m.icon || "file-text";
+   return `
+    <a href="#${escapeHtml(route)}" class="mobile-menu-item group p-1.5 rounded-2xl hover:bg-slate-50 transition flex flex-col items-center">
+     <div class="w-11 h-11 rounded-2xl bg-slate-100 border border-slate-200/80 text-maroon-700 flex items-center justify-center shadow-2xs group-active:scale-95 transition-transform mb-1 shrink-0">
+      ${icon(iconName, "w-5 h-5")}
+     </div>
+     <span class="text-[10.5px] font-extrabold text-slate-800 leading-tight block truncate w-full text-center">${escapeHtml(m.label || m.id)}</span>
+    </a>
+   `;
+  }).filter(Boolean).join("");
+  if (itemsHtml) gridEl.innerHTML = itemsHtml;
+ }
+
  const mobileSearchInput = container.querySelector("#mobile-dash-search");
  if (mobileSearchInput) {
   mobileSearchInput.addEventListener("input", (e) => {
@@ -717,116 +736,268 @@ async function loadContractExpiry(container, session) {
 }
 
 /* ------------------------ g. ATTENDANCE ANALYTICS ------------------------ */
+function parseDateStringToYMD(raw) {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return null;
+}
+
+function formatMonthYearLabel(prefix) {
+  if (!prefix || prefix.length < 7) return "Bulan Ini";
+  const [yyyy, mm] = prefix.split("-");
+  const monthNames = [
+    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+    "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+  ];
+  const idx = parseInt(mm, 10) - 1;
+  if (idx >= 0 && idx < 12) {
+    return `${monthNames[idx]} ${yyyy}`;
+  }
+  return prefix;
+}
+
 async function loadAttendanceAnalytics(container, session) {
- const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
- const titleEl = container.querySelector("#dash-attendance-title");
- const bodyEl = container.querySelector("#dash-attendance-body");
+  const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
+  const titleEl = container.querySelector("#dash-attendance-title");
+  const bodyEl = container.querySelector("#dash-attendance-body");
 
- try {
- const allAbsen = await fsGetAll(COL.DATA_ABSENSI);
- const now = new Date();
- const curYear = now.getFullYear();
- const curMonth = String(now.getMonth() + 1).padStart(2, '0');
- const monthPrefix = `${curYear}-${curMonth}`;
+  try {
+    const rawAllAbsen = await fsGetAll(COL.DATA_ABSENSI);
 
- // Filter this month's attendance
- const thisMonthAbsen = allAbsen.filter(x => (x.tanggal || "").startsWith(monthPrefix));
+    // Annotate with normalized dates & filter for user if regular employee
+    let userAbsen = rawAllAbsen;
+    if (!isHrd) {
+      const userNik = (session.nik || "").toLowerCase().trim();
+      const userNama = (session.nama || "").toLowerCase().trim();
+      userAbsen = rawAllAbsen.filter(x => 
+        (x.nik && x.nik.toLowerCase().trim() === userNik) ||
+        (x.nama && x.nama.toLowerCase().trim() === userNama)
+      );
+    }
 
- if (isHrd) {
- titleEl.textContent = "Analitik Kehadiran Perusahaan";
- 
- const totalPresent = thisMonthAbsen.length;
- if (totalPresent === 0) {
- bodyEl.innerHTML = emptyState("Belum ada data absensi bulan ini");
- return;
- }
+    const annotatedAbsen = userAbsen.map(item => {
+      const normDate = parseDateStringToYMD(item.tanggal) || parseDateStringToYMD(item.created_at) || "";
+      const monthPrefix = normDate ? normDate.substring(0, 7) : "";
+      return { ...item, _normDate: normDate, _monthPrefix: monthPrefix };
+    }).filter(x => x._normDate !== "");
 
- // Calculate Late Rate
- // Standard start time is "08:00"
- const lateLogs = thisMonthAbsen.filter(x => x.scan_masuk && x.scan_masuk > "08:00");
- const lateCount = lateLogs.length;
- const onTimeCount = totalPresent - lateCount;
- const onTimeRate = ((onTimeCount / totalPresent) * 100).toFixed(0);
+    if (annotatedAbsen.length === 0) {
+      titleEl.textContent = isHrd ? "Analitik Kehadiran Perusahaan" : "Analitik Kehadiran Saya";
+      bodyEl.innerHTML = emptyState(
+        isHrd ? "Belum ada data absensi tercatat di sistem" : "Belum ada data absensi Anda tercatat di sistem",
+        "Data absensi harian yang diinput melalui menu Manajemen Absensi atau penarikan LAN akan otomatis dianalisis di sini."
+      );
+      return;
+    }
 
- // Group by Employee to see top lates
- const employeeLates = {};
- lateLogs.forEach(log => {
- employeeLates[log.nama] = (employeeLates[log.nama] || 0) + 1;
- });
- const topLates = Object.entries(employeeLates)
- .map(([nama, count]) => ({ nama, count }))
- .sort((a, b) => b.count - a.count)
- .slice(0, 3);
+    const now = new Date();
+    const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const availableMonths = Array.from(new Set(annotatedAbsen.map(x => x._monthPrefix))).filter(Boolean).sort().reverse();
 
- bodyEl.innerHTML = `
- <div class="grid grid-cols-2 gap-4">
- <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
- <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Rasio Tepat Waktu</span>
- <span class="text-2xl font-black text-emerald-600">${onTimeRate}%</span>
- <span class="text-[10px] text-slate-400 mt-0.5">${onTimeCount} dari ${totalPresent} scan masuk</span>
- </div>
- <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
- <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Keterlambatan (> 08:00)</span>
- <span class="text-2xl font-black text-rose-600">${lateCount} Kali</span>
- <span class="text-[10px] text-slate-400 mt-0.5">Seluruh Karyawan</span>
- </div>
- </div>
+    let selectedMonthPrefix = currentMonthPrefix;
+    if (!availableMonths.includes(currentMonthPrefix) && availableMonths.length > 0) {
+      selectedMonthPrefix = availableMonths[0]; // fallback to most recent month present in DB
+    }
 
- ${topLates.length > 0 ? `
- <div class="pt-2 space-y-2">
- <h4 class="text-xs font-bold text-slate-700">Karyawan Sering Terlambat Bulan Ini:</h4>
- <div class="space-y-1.5">
- ${topLates.map(tl => `
- <div class="flex items-center justify-between text-xs text-slate-600 bg-rose-50/50 px-3 py-1.5 rounded-lg border border-rose-100/30">
- <span class="font-semibold text-slate-800">${escapeHtml(tl.nama)}</span>
- <span class="font-bold text-rose-600">${tl.count} kali terlambat</span>
- </div>
- `).join("")}
- </div>
- </div>
- ` : `
- <p class="text-xs text-emerald-600 font-semibold text-center py-2 bg-emerald-50 rounded-lg">Luar biasa! Tidak ada keterlambatan tercatat bulan ini.</p>
- `}
- `;
- } else {
- titleEl.textContent = "Analitik Kehadiran Saya";
- 
- const myAbsen = thisMonthAbsen.filter(x => x.nik === session.nik || x.nama === session.nama);
- const totalPresent = myAbsen.length;
- 
- if (totalPresent === 0) {
- bodyEl.innerHTML = emptyState("Belum ada data absensi Anda bulan ini");
- return;
- }
+    const filteredAbsen = annotatedAbsen.filter(x => x._monthPrefix === selectedMonthPrefix);
+    const totalPresent = filteredAbsen.length;
 
- const lateLogs = myAbsen.filter(x => x.scan_masuk && x.scan_masuk > "08:00");
- const lateCount = lateLogs.length;
- const onTimeCount = totalPresent - lateCount;
- const onTimeRate = ((onTimeCount / totalPresent) * 100).toFixed(0);
+    titleEl.textContent = isHrd ? "Analitik Kehadiran Perusahaan" : "Analitik Kehadiran Saya";
 
- bodyEl.innerHTML = `
- <div class="grid grid-cols-2 gap-4">
- <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
- <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Rasio Tepat Waktu</span>
- <span class="text-2xl font-black text-emerald-600">${onTimeRate}%</span>
- <span class="text-[10px] text-slate-400 mt-0.5">${onTimeCount} kali tepat waktu</span>
- </div>
- <div class="bg-[#faf8ff] p-4 rounded-xl border border-slate-100 flex flex-col justify-center shadow-xs">
- <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Keterlambatan</span>
- <span class="text-2xl font-black text-rose-600">${lateCount} Hari</span>
- <span class="text-[10px] text-slate-400 mt-0.5">Scan masuk > 08:00 WIB</span>
- </div>
- </div>
+    if (totalPresent === 0) {
+      bodyEl.innerHTML = emptyState(`Belum ada data absensi untuk periode ${formatMonthYearLabel(selectedMonthPrefix)}`);
+      return;
+    }
 
- <div class="text-xs bg-slate-50 border border-slate-100 rounded-xl p-3 text-slate-500 leading-relaxed">
- <p>Jam masuk kantor standar CV Andela Jaya adalah <b>08:00 WIB</b>. Keterlambatan berulang dapat mempengaruhi nilai review kedisiplinan dan poin KPI Anda secara periodik.</p>
- </div>
- `;
- }
- } catch (err) {
- console.error(err);
- bodyEl.innerHTML = `<p class="text-xs text-rose-500">Gagal memuat analitik kehadiran: ${err.message}</p>`;
- }
+    // Standard start time is "08:00"
+    const lateLogs = filteredAbsen.filter(x => x.scan_masuk && x.scan_masuk > "08:00");
+    const lateCount = lateLogs.length;
+    const onTimeCount = totalPresent - lateCount;
+    const onTimeRateVal = ((onTimeCount / totalPresent) * 100);
+    const onTimeRateStr = onTimeRateVal.toFixed(1);
+    const skorKedisiplinan = Math.round(onTimeRateVal);
+
+    let grade = "A";
+    let gradeClass = "text-emerald-400";
+    let gradeLabel = "SANGAT DISIPLIN";
+    if (skorKedisiplinan < 60) {
+      grade = "D"; gradeClass = "text-rose-400"; gradeLabel = "PERLU PEMBINAAN";
+    } else if (skorKedisiplinan < 75) {
+      grade = "C"; gradeClass = "text-amber-400"; gradeLabel = "CUKUP DISIPLIN";
+    } else if (skorKedisiplinan < 90) {
+      grade = "B"; gradeClass = "text-blue-400"; gradeLabel = "DISIPLIN BAIK";
+    }
+
+    // Daily Bar Chart Data Preparation
+    const dayMap = {};
+    filteredAbsen.forEach(x => {
+      const dStr = x._normDate;
+      if (!dayMap[dStr]) dayMap[dStr] = { onTime: 0, late: 0, total: 0 };
+      const isLate = x.scan_masuk && x.scan_masuk > "08:00";
+      if (isLate) dayMap[dStr].late++;
+      else dayMap[dStr].onTime++;
+      dayMap[dStr].total++;
+    });
+
+    const sortedDays = Object.keys(dayMap).sort();
+    const maxDayCount = Math.max(1, ...sortedDays.map(d => dayMap[d].total));
+
+    const dailyBarsHtml = sortedDays.length === 0 ? `
+      <div class="w-full text-center py-6 text-xs text-slate-400 italic">Belum ada grafik rincian harian.</div>
+    ` : sortedDays.map(dStr => {
+      const dayData = dayMap[dStr];
+      const dayNum = dStr.split("-")[2] || dStr;
+      const onTimePct = Math.round((dayData.onTime / maxDayCount) * 100);
+      const latePct = Math.round((dayData.late / maxDayCount) * 100);
+
+      const lateBar = latePct > 0 ? `<div class="w-full bg-rose-500 transition-all duration-300" style="height: ${latePct}%"></div>` : "";
+      const onTimeBar = onTimePct > 0 ? `<div class="w-full bg-emerald-500 transition-all duration-300" style="height: ${onTimePct}%"></div>` : "";
+
+      return `
+        <div class="flex-1 min-w-[20px] max-w-[36px] flex flex-col items-center gap-1 group relative cursor-pointer" title="Tanggal ${dStr}: Total ${dayData.total} Presensi (${dayData.onTime} Tepat Waktu, ${dayData.late} Terlambat)">
+          <div class="w-full bg-slate-100 rounded-t-md flex flex-col justify-end overflow-hidden h-24 border border-slate-200/60 shadow-2xs">
+            ${lateBar}
+            ${onTimeBar}
+          </div>
+          <span class="text-[9.5px] font-bold text-slate-500 group-hover:text-slate-900 transition">${dayNum}</span>
+        </div>
+      `;
+    }).join("");
+
+    // HRD Top Late Employees
+    const employeeLates = {};
+    lateLogs.forEach(log => {
+      const nameKey = log.nama || "Karyawan";
+      employeeLates[nameKey] = (employeeLates[nameKey] || 0) + 1;
+    });
+    const topLates = Object.entries(employeeLates)
+      .map(([nama, count]) => ({ nama, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
+
+    const strokeDash = 201.06 - (201.06 * skorKedisiplinan / 100);
+
+    let hrdSectionHtml = "";
+    if (isHrd) {
+      if (topLates.length > 0) {
+        const topLatesRows = topLates.map(tl => `
+          <div class="flex items-center justify-between text-xs text-slate-600 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-100">
+            <span class="font-bold text-slate-800">${escapeHtml(tl.nama)}</span>
+            <span class="font-extrabold text-rose-600">${tl.count} kali terlambat</span>
+          </div>
+        `).join("");
+        hrdSectionHtml = `
+          <div class="pt-1 space-y-2">
+            <h4 class="text-xs font-bold text-slate-700">Karyawan Sering Terlambat Periode Ini:</h4>
+            <div class="space-y-1.5">
+              ${topLatesRows}
+            </div>
+          </div>
+        `;
+      } else {
+        hrdSectionHtml = `
+          <p class="text-xs text-emerald-700 font-bold text-center py-2 bg-emerald-50/80 rounded-xl border border-emerald-100">Luar biasa! Tidak ada keterlambatan tercatat pada periode ini.</p>
+        `;
+      }
+    } else {
+      hrdSectionHtml = `
+        <div class="text-xs bg-slate-50 border border-slate-100 rounded-xl p-3 text-slate-500 leading-relaxed">
+          <p>Jam masuk kantor standar CV Andela Jaya adalah <b>08:00 WIB</b>. Kedisiplinan kehadiran harian Anda mempengaruhi nilai review kinerja dan poin KPI periodik.</p>
+        </div>
+      `;
+    }
+
+    bodyEl.innerHTML = `
+      <div class="space-y-4">
+        <!-- Header Info Periode & Total Log -->
+        <div class="flex items-center justify-between bg-slate-50 border border-slate-100 p-2.5 rounded-xl text-xs">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span class="font-bold text-slate-700">Periode: ${formatMonthYearLabel(selectedMonthPrefix)}</span>
+          </div>
+          <span class="font-bold text-slate-600 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 text-[11px] shadow-2xs">${totalPresent} Log Presensi</span>
+        </div>
+
+        <!-- Donut Score Widget & Stats Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <!-- Donut Score Widget -->
+          <div class="sm:col-span-1 bg-slate-900 text-white p-3.5 rounded-xl flex flex-col items-center justify-center text-center shadow-xs relative overflow-hidden">
+            <span class="text-[10px] font-bold tracking-wider uppercase text-slate-300 mb-1">Skor Kedisiplinan</span>
+            <div class="relative w-20 h-20 my-1 flex items-center justify-center">
+              <svg class="w-full h-full transform -rotate-90" viewBox="0 0 80 80">
+                <circle cx="40" cy="40" r="32" stroke="currentColor" stroke-width="8" class="text-slate-800" fill="transparent" />
+                <circle cx="40" cy="40" r="32" stroke="currentColor" stroke-width="8" class="${gradeClass}" fill="transparent" stroke-dasharray="201.06" stroke-dashoffset="${strokeDash}" stroke-linecap="round" />
+              </svg>
+              <div class="absolute flex flex-col items-center justify-center text-center">
+                <span class="text-xl font-black text-white leading-none">${skorKedisiplinan}</span>
+                <span class="text-[9px] text-slate-300 font-bold">/ 100</span>
+              </div>
+            </div>
+            <span class="mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-white/10 text-white backdrop-blur-xs border border-white/20">
+              Grade ${grade} • ${gradeLabel}
+            </span>
+          </div>
+
+          <!-- On-Time & Late Summary Cards -->
+          <div class="sm:col-span-2 grid grid-cols-2 gap-2.5">
+            <div class="bg-emerald-50/60 border border-emerald-100 p-3 rounded-xl flex flex-col justify-between shadow-2xs">
+              <div>
+                <span class="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">Tepat Waktu (&lt;= 08:00)</span>
+                <span class="text-2xl font-black text-emerald-700 mt-1 block">${onTimeCount}</span>
+              </div>
+              <span class="text-[10.5px] text-emerald-600 font-semibold">${onTimeRateStr}% dari presensi</span>
+            </div>
+            <div class="bg-rose-50/60 border border-rose-100 p-3 rounded-xl flex flex-col justify-between shadow-2xs">
+              <div>
+                <span class="text-[10px] font-bold text-rose-800 uppercase tracking-wider block">Terlambat (&gt; 08:00)</span>
+                <span class="text-2xl font-black text-rose-700 mt-1 block">${lateCount} Kali</span>
+              </div>
+              <span class="text-[10.5px] text-rose-600 font-semibold">${(100 - parseFloat(onTimeRateStr)).toFixed(1)}% keterlambatan</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- GRAFIK BATANG TREN PRESENSI HARIAN -->
+        <div class="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200/70 space-y-2">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h4 class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <span>📊 Grafik Tren Presensi Harian</span>
+            </h4>
+            <div class="flex items-center gap-3 text-[10px] font-bold">
+              <span class="flex items-center gap-1 text-emerald-700"><span class="w-2.5 h-2.5 bg-emerald-500 rounded-xs inline-block"></span> Tepat Waktu</span>
+              <span class="flex items-center gap-1 text-rose-700"><span class="w-2.5 h-2.5 bg-rose-500 rounded-xs inline-block"></span> Terlambat</span>
+            </div>
+          </div>
+
+          <div class="pt-1">
+            <div class="flex items-end justify-center gap-1.5 h-28 w-full overflow-x-auto pb-1.5 border-b border-slate-200 px-1">
+              ${dailyBarsHtml}
+            </div>
+          </div>
+        </div>
+
+        ${hrdSectionHtml}
+      </div>
+    `;
+  } catch (err) {
+    console.error(err);
+    bodyEl.innerHTML = `<p class="text-xs text-rose-500">Gagal memuat analitik kehadiran: ${escapeHtml(err.message)}</p>`;
+  }
 }
 
 /* ------------------------ h. PERFORMANCE WIDGET ------------------------ */

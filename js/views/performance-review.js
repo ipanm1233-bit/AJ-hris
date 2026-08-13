@@ -322,7 +322,8 @@ async function renderMyReviews(wrap, session) {
  * 3. MANAGEMENT WORKSPACE: ALL EMPLOYEE REVIEWS
  * ------------------------------------------------------------------- */
 async function renderAllReviews(wrap, session) {
- const allReviews = await fsGetAll(COL.PERFORMANCE_REVIEW);
+  const canEdit = await canEditModuleData(session);
+  const allReviews = await fsGetAll(COL.PERFORMANCE_REVIEW);
  const employees = await fsGetAll(COL.MASTER_KARYAWAN);
 
  wrap.innerHTML = `
@@ -674,111 +675,116 @@ function toSnakeCase(str) {
 }
 
 function generateReviewHtml(r) {
- return `
- <div style="font-family: 'Times New Roman', serif; font-size: 14px; padding: 20px; line-height: 1.5; color: #000; background: #fff; max-width: 800px; margin: 0 auto;">
- <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; border: 1px solid #000;">
- <tr>
- <td style="border: 1px solid #000; padding: 10px; text-align: center; font-weight: bold; font-size: 16px;" colspan="4">
- CV ANDELA JAYA<br/>
- <span style="font-size: 12px; font-weight: normal;">Jl. Raya Solo-Sragen KM 12, Karanganyar</span>
- </td>
- </tr>
- <tr>
- <td style="border: 1px solid #000; padding: 6px; font-weight: bold; width: 25%;">JUDUL DOKUMEN</td>
- <td style="border: 1px solid #000; padding: 6px; width: 35%; text-align: center;" colspan="3"><strong>LAPORAN EVALUASI & REVIEW KINERJA</strong></td>
- </tr>
- <tr>
- <td style="border: 1px solid #000; padding: 6px; font-weight: bold;">NO. DOKUMEN</td>
- <td style="border: 1px solid #000; padding: 6px; width: 25%;">HR-EVAL-PERF</td>
- <td style="border: 1px solid #000; padding: 6px; font-weight: bold; width: 20%;">PERIODE</td>
- <td style="border: 1px solid #000; padding: 6px; width: 30%;">${escapeHtml(r.periode)}</td>
- </tr>
- </table>
+  return `
+  <div style="font-family: Arial, Helvetica, sans-serif; font-size: 13px; padding: 20px; line-height: 1.5; color: #000; background: #fff; max-width: 800px; margin: 0 auto;">
+    ${isoDocHeaderTable({
+      judul: "LAPORAN EVALUASI & REVIEW KINERJA KARYAWAN",
+      noDok: "HR-EVAL-PERF",
+      terbitRevisi: "1/0",
+      tglTerbit: fmtDateShort(r.tanggal),
+      hal: "1 dari 1"
+    })}
 
- <h3 style="text-align: center; margin-bottom: 20px; font-size: 18px; text-decoration: underline;">SURAT HASIL PENILAIAN KINERJA</h3>
- 
- <table style="width: 100%; margin-bottom: 20px;">
- <tr><td style="width: 25%; font-weight: bold;">Nama Karyawan</td><td style="width: 2%;">:</td><td><strong>${escapeHtml(r.nama_karyawan)}</strong></td></tr>
- <tr><td style="font-weight: bold;">NIK</td><td>:</td><td>${escapeHtml(r.nik || "-")}</td></tr>
- <tr><td style="font-weight: bold;">Tanggal Review</td><td>:</td><td>${fmtDateShort(r.tanggal)}</td></tr>
- <tr><td style="font-weight: bold;">Reviewer</td><td>:</td><td>${escapeHtml(r.reviewer)}</td></tr>
- </table>
+    <div style="text-align: center; margin-top: 15px; margin-bottom: 20px;">
+      <h3 style="font-size: 16px; font-weight: bold; margin: 0; text-transform: uppercase; text-decoration: underline;">SURAT HASIL PENILAIAN & REVIEW KINERJA</h3>
+    </div>
 
- <h4 style="border-bottom: 1px solid #000; padding-bottom: 4px; margin-top: 25px; font-size: 14px;">I. HASIL PENILAIAN KOMPETENSI</h4>
- <table style="width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 20px;">
- <thead>
- <tr style="background: #f5f5f5;">
- <th style="border: 1px solid #000; padding: 8px; text-align: left; width: 60%;">Kompetensi Utama</th>
- <th style="border: 1px solid #000; padding: 8px; text-align: center; width: 20%;">Skor Maksimal</th>
- <th style="border: 1px solid #000; padding: 8px; text-align: center; width: 20%;">Skor Penilaian</th>
- </tr>
- </thead>
- <tbody>
- <tr>
- <td style="border: 1px solid #000; padding: 8px;">Kualitas Kerja (Quality of Work)</td>
- <td style="border: 1px solid #000; padding: 8px; text-align: center;">100</td>
- <td style="border: 1px solid #000; padding: 8px; text-align: center; font-weight: bold;">${r.kualitas_kerja}</td>
- </tr>
- <tr>
- <td style="border: 1px solid #000; padding: 8px;">Produktivitas & Efisiensi Kerja</td>
- <td style="border: 1px solid #000; padding: 8px; text-align: center;">100</td>
- <td style="border: 1px solid #000; padding: 8px; text-align: center; font-weight: bold;">${r.produktivitas}</td>
- </tr>
- <tr>
- <td style="border: 1px solid #000; padding: 8px;">Kerja Sama Tim (Teamwork)</td>
- <td style="border: 1px solid #000; padding: 8px; text-align: center;">100</td>
- <td style="border: 1px solid #000; padding: 8px; text-align: center; font-weight: bold;">${r.kerja_sama}</td>
- </tr>
- <tr>
- <td style="border: 1px solid #000; padding: 8px;">Kedisiplinan & Sikap (Discipline)</td>
- <td style="border: 1px solid #000; padding: 8px; text-align: center;">100</td>
- <td style="border: 1px solid #000; padding: 8px; text-align: center; font-weight: bold;">${r.kedisiplinan}</td>
- </tr>
- <tr>
- <td style="border: 1px solid #000; padding: 8px;">Keahlian Komunikasi</td>
- <td style="border: 1px solid #000; padding: 8px; text-align: center;">100</td>
- <td style="border: 1px solid #000; padding: 8px; text-align: center; font-weight: bold;">${r.komunikasi}</td>
- </tr>
- <tr style="background: #f9f9f9; font-weight: bold;">
- <td style="border: 1px solid #000; padding: 8px; text-align: right;">SKOR AKHIR RATA-RATA</td>
- <td style="border: 1px solid #000; padding: 8px; text-align: center;">100</td>
- <td style="border: 1px solid #000; padding: 8px; text-align: center; font-size: 16px; color: #a70000;">${r.skor_akhir}</td>
- </tr>
- <tr style="background: #f9f9f9; font-weight: bold;">
- <td style="border: 1px solid #000; padding: 8px; text-align: right;">PREDIKAT GRADE</td>
- <td style="border: 1px solid #000; padding: 8px; text-align: center;" colspan="2">${r.grade}</td>
- </tr>
- </tbody>
- </table>
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; border: 1px solid #000;">
+      <tr style="background-color: #f8fafc;">
+        <td style="width: 25%; font-weight: bold; padding: 6px; border: 1px solid #000;">Nama Karyawan</td>
+        <td style="width: 25%; padding: 6px; border: 1px solid #000;"><strong>${escapeHtml(r.nama_karyawan)}</strong></td>
+        <td style="width: 25%; font-weight: bold; padding: 6px; border: 1px solid #000;">Reviewer / Evaluator</td>
+        <td style="width: 25%; padding: 6px; border: 1px solid #000;">${escapeHtml(r.reviewer)}</td>
+      </tr>
+      <tr>
+        <td style="font-weight: bold; padding: 6px; border: 1px solid #000;">NIK / ID Karyawan</td>
+        <td style="padding: 6px; border: 1px solid #000;">${escapeHtml(r.nik || "-")}</td>
+        <td style="font-weight: bold; padding: 6px; border: 1px solid #000;">Periode Evaluation</td>
+        <td style="padding: 6px; border: 1px solid #000;">${escapeHtml(r.periode)}</td>
+      </tr>
+      <tr style="background-color: #f8fafc;">
+        <td style="font-weight: bold; padding: 6px; border: 1px solid #000;">Jabatan / Posisi</td>
+        <td style="padding: 6px; border: 1px solid #000;">${escapeHtml(r.jabatan || "-")}</td>
+        <td style="font-weight: bold; padding: 6px; border: 1px solid #000;">Tanggal Penilaian</td>
+        <td style="padding: 6px; border: 1px solid #000;">${fmtDateShort(r.tanggal)}</td>
+      </tr>
+    </table>
 
- <h4 style="border-bottom: 1px solid #000; padding-bottom: 4px; margin-top: 25px; font-size: 14px;">II. ULASAN KUALITATIF & REKOMENDASI</h4>
- <div style="margin-top: 10px; margin-bottom: 15px; padding: 10px; border: 1px solid #000;">
- <strong>Kelebihan / Kekuatan Utama:</strong><br/>
- <p style="margin: 5px 0 0 0; text-align: justify;">${escapeHtml(r.kelebihan || "-")}</p>
- </div>
- <div style="margin-bottom: 15px; padding: 10px; border: 1px solid #000;">
- <strong>Area Pengembangan / Kekurangan:</strong><br/>
- <p style="margin: 5px 0 0 0; text-align: justify;">${escapeHtml(r.area_pengembangan || "-")}</p>
- </div>
- <div style="margin-bottom: 25px; padding: 10px; border: 1px solid #000; background-color: #f9f9f9;">
- <strong>Usulan & Rekomendasi Karir:</strong><br/>
- <p style="margin: 5px 0 0 0; font-weight: bold;">${escapeHtml(r.rekomendasi || "-")}</p>
- </div>
+    <h4 style="border-bottom: 2px solid #000; padding-bottom: 4px; margin-top: 20px; margin-bottom: 10px; font-size: 13px; font-weight: bold;">I. HASIL PENILAIAN KOMPETENSI</h4>
+    <table style="width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 20px;">
+      <thead>
+        <tr style="background: #f1f5f9;">
+          <th style="border: 1px solid #000; padding: 8px; text-align: left; width: 60%;">Kompetensi Utama</th>
+          <th style="border: 1px solid #000; padding: 8px; text-align: center; width: 20%;">Skor Maksimal</th>
+          <th style="border: 1px solid #000; padding: 8px; text-align: center; width: 20%;">Skor Penilaian</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="border: 1px solid #000; padding: 8px;">Kualitas Kerja (Quality of Work)</td>
+          <td style="border: 1px solid #000; padding: 8px; text-align: center;">100</td>
+          <td style="border: 1px solid #000; padding: 8px; text-align: center; font-weight: bold;">${r.kualitas_kerja}</td>
+        </tr>
+        <tr>
+          <td style="border: 1px solid #000; padding: 8px;">Produktivitas & Efisiensi Kerja</td>
+          <td style="border: 1px solid #000; padding: 8px; text-align: center;">100</td>
+          <td style="border: 1px solid #000; padding: 8px; text-align: center; font-weight: bold;">${r.produktivitas}</td>
+        </tr>
+        <tr>
+          <td style="border: 1px solid #000; padding: 8px;">Kerja Sama Tim (Teamwork)</td>
+          <td style="border: 1px solid #000; padding: 8px; text-align: center;">100</td>
+          <td style="border: 1px solid #000; padding: 8px; text-align: center; font-weight: bold;">${r.kerja_sama}</td>
+        </tr>
+        <tr>
+          <td style="border: 1px solid #000; padding: 8px;">Kedisiplinan & Sikap (Discipline)</td>
+          <td style="border: 1px solid #000; padding: 8px; text-align: center;">100</td>
+          <td style="border: 1px solid #000; padding: 8px; text-align: center; font-weight: bold;">${r.kedisiplinan}</td>
+        </tr>
+        <tr>
+          <td style="border: 1px solid #000; padding: 8px;">Keahlian Komunikasi</td>
+          <td style="border: 1px solid #000; padding: 8px; text-align: center;">100</td>
+          <td style="border: 1px solid #000; padding: 8px; text-align: center; font-weight: bold;">${r.komunikasi}</td>
+        </tr>
+        <tr style="background: #f8fafc; font-weight: bold;">
+          <td style="border: 1px solid #000; padding: 8px; text-align: right;">SKOR AKHIR RATA-RATA</td>
+          <td style="border: 1px solid #000; padding: 8px; text-align: center;">100</td>
+          <td style="border: 1px solid #000; padding: 8px; text-align: center; font-size: 15px; color: #800000;">${r.skor_akhir}</td>
+        </tr>
+        <tr style="background: #f8fafc; font-weight: bold;">
+          <td style="border: 1px solid #000; padding: 8px; text-align: right;">PREDIKAT GRADE</td>
+          <td style="border: 1px solid #000; padding: 8px; text-align: center;" colspan="2">${r.grade}</td>
+        </tr>
+      </tbody>
+    </table>
 
- <table style="width: 100%; text-align: center; margin-top: 50px;">
- <tr>
- <td style="width: 50%;">Karyawan Bersangkutan,</td>
- <td style="width: 50%;">Reviewer / Atasan,</td>
- </tr>
- <tr>
- <td style="height: 70px;"></td>
- <td></td>
- </tr>
- <tr>
- <td>( <strong>${escapeHtml(r.nama_karyawan)}</strong> )</td>
- <td>( <strong>${escapeHtml(r.reviewer)}</strong> )</td>
- </tr>
- </table>
- </div>
- `;
+    <h4 style="border-bottom: 2px solid #000; padding-bottom: 4px; margin-top: 20px; margin-bottom: 10px; font-size: 13px; font-weight: bold;">II. ULASAN KUALITATIF & REKOMENDASI</h4>
+    <div style="margin-top: 10px; margin-bottom: 12px; padding: 10px; border: 1px solid #000;">
+      <strong>Kelebihan / Kekuatan Utama:</strong><br/>
+      <p style="margin: 5px 0 0 0; text-align: justify;">${escapeHtml(r.kelebihan || "-")}</p>
+    </div>
+    <div style="margin-bottom: 12px; padding: 10px; border: 1px solid #000;">
+      <strong>Area Pengembangan / Kekurangan:</strong><br/>
+      <p style="margin: 5px 0 0 0; text-align: justify;">${escapeHtml(r.area_pengembangan || "-")}</p>
+    </div>
+    <div style="margin-bottom: 25px; padding: 10px; border: 1px solid #000; background-color: #f8fafc;">
+      <strong>Usulan & Rekomendasi Karir:</strong><br/>
+      <p style="margin: 5px 0 0 0; font-weight: bold;">${escapeHtml(r.rekomendasi || "-")}</p>
+    </div>
+
+    <table style="width: 100%; text-align: center; margin-top: 40px; border-collapse: collapse;">
+      <tr>
+        <td style="width: 50%;">Karyawan Bersangkutan,</td>
+        <td style="width: 50%;">Reviewer / Atasan,</td>
+      </tr>
+      <tr>
+        <td style="height: 60px;"></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>( <strong>${escapeHtml(r.nama_karyawan)}</strong> )</td>
+        <td>( <strong>${escapeHtml(r.reviewer)}</strong> )</td>
+      </tr>
+    </table>
+  </div>
+  `;
 }
