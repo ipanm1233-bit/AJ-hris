@@ -15,6 +15,7 @@ export async function mount(container, { session }) {
   const btnExportPdf = container.querySelector("#btn-export-sales-pdf");
   const btnImport = container.querySelector("#btn-import-sales-visits");
   const fileImportInput = container.querySelector("#file-import-sales-visits");
+  const btnPurgeDummy = container.querySelector("#btn-purge-dummy-sales");
   const btnConfigDeparture = container.querySelector("#btn-config-departure");
   const timelineEl = container.querySelector("#live-timeline");
 
@@ -48,6 +49,45 @@ export async function mount(container, { session }) {
   let allCheckinsList = [];
   let karyawanList = [];
   let odometerLogsMap = new Map();
+
+  // Function to purge all dummy/mock checkin visits from the database
+  async function purgeDummyVisits() {
+    try {
+      const rawCheckins = await fsGetAll("kanal_checkins").catch(() => []);
+      const dummyIds = [];
+      for (const c of rawCheckins) {
+        const id = String(c.id || "");
+        const outlet = String(c.toko_outlet || "").trim();
+        const cat = String(c.catatan || "").trim();
+        const sumber = String(c.sumber || "").trim();
+
+        // Check if this record is a dummy/mock entry
+        const isDummy = 
+          id.startsWith("CHK-SLS-") || 
+          id.startsWith("CHK-LIVE-") ||
+          sumber.includes("API Kanal") ||
+          cat.includes("via API Kanal") ||
+          cat.includes("Check-in kunjungan sales") ||
+          ["Toko Kelontong Berkah", "Minimarket Harapan Jaya", "Swalayan Surya Cirebon", "Toko Rejeki Makmur", "Outlet Mitra Kanal"].includes(outlet) ||
+          (!sumber.includes("Import Excel") && !id.startsWith("CHK-IMP-") && !cat.startsWith("Import Excel:"));
+
+        if (isDummy && !id.startsWith("CHK-IMP-") && !sumber.includes("Import Excel")) {
+          dummyIds.push(c.id);
+        }
+      }
+
+      if (dummyIds.length > 0) {
+        for (const dId of dummyIds) {
+          await fsDelete("kanal_checkins", dId).catch(() => {});
+        }
+        console.log(`[SALES TRACK] Purged ${dummyIds.length} dummy visit records.`);
+      }
+      return dummyIds.length;
+    } catch (e) {
+      console.warn("Error purging dummy visits:", e);
+      return 0;
+    }
+  }
 
   // Helper: Save/Update Sales Odometer log to Firestore
   async function saveOdometerLog(salesNik, salesNama, tanggal, kmAwalInput, kmAkhirInput, jarakGps) {
@@ -204,13 +244,6 @@ export async function mount(container, { session }) {
       { nama: "Toko Rejeki Makmur", alamat: "Jl. Kartini No. 105, Cirebon", gps: "-6.7255, 108.5590" }
     ];
 
-    const sampleStatuses = [
-      "Effective Call (Order Toko)",
-      "Effective Call (Order Toko)",
-      "Cek Stok & Display Produk",
-      "Penawaran Produk Baru"
-    ];
-
     const timestamp = new Date().toISOString();
     const batchId = "KNL-SLS-" + Date.now().toString(36).toUpperCase();
     const fetchedCheckins = [];
@@ -243,39 +276,8 @@ export async function mount(container, { session }) {
         });
       }
     } else {
-      const datesToProcess = [todayStr, yesterdayStr];
-      for (const dStr of datesToProcess) {
-        for (let idx = 0; idx < salesList.length; idx++) {
-          const s = salesList[idx];
-          const nik = String(s.nik_karyawan || s.nik || "SLS-" + (idx + 1)).trim();
-          const nama = s.nama_karyawan || s.nama || "Salesman";
-          const outlet = sampleOutlets[idx % sampleOutlets.length];
-          const visitStatus = sampleStatuses[idx % sampleStatuses.length];
-
-          // Automatic Geocoding to ensure accuracy
-          const geoRes = await geocodeAddressSmart(outlet.alamat, idx);
-
-          const checkinItem = {
-            id: `CHK-${nik}-${dStr}`,
-            sales_nik: nik,
-            sales_nama: nama,
-            toko_outlet: outlet.nama,
-            alamat_toko: outlet.alamat,
-            koordinat_gps: outlet.gps || `${geoRes.lat}, ${geoRes.lng}`,
-            waktu_checkin: idx === 0 ? "08:30 WIB" : (idx === 1 ? "10:15 WIB" : "13:40 WIB"),
-            waktu_checkout: idx === 0 ? "09:05 WIB" : (idx === 1 ? "10:50 WIB" : "14:15 WIB"),
-            tanggal: dStr,
-            status_kunjungan: visitStatus,
-            catatan: "Check-in kunjungan sales di toko via API Kanal",
-            sumber: `API Kanal (${companyName})`,
-            perusahaan: companyName,
-            geocoded_at: timestamp,
-            updated_at: timestamp
-          };
-
-          fetchedCheckins.push(checkinItem);
-        }
-      }
+      // User directive: DO NOT generate dummy checkin visits!
+      console.log("[SALES TRACK] Tidak ada data live checkin dari server Kanal.work API. Tidak menambahkan data dummy.");
     }
 
     for (const chk of fetchedCheckins) {
@@ -284,17 +286,19 @@ export async function mount(container, { session }) {
       });
     }
 
-    const logRecord = {
-      id: batchId,
-      company: companyName,
-      data_type: "CHECKIN_SALES_TOKO",
-      total_records: fetchedCheckins.length,
-      items: fetchedCheckins,
-      status: "SUCCESS",
-      synced_at: timestamp
-    };
+    if (fetchedCheckins.length > 0) {
+      const logRecord = {
+        id: batchId,
+        company: companyName,
+        data_type: "CHECKIN_SALES_TOKO",
+        total_records: fetchedCheckins.length,
+        items: fetchedCheckins,
+        status: "SUCCESS",
+        synced_at: timestamp
+      };
 
-    await fsAdd("kanal_data", logRecord, batchId);
+      await fsAdd("kanal_data", logRecord, batchId);
+    }
   }
 
   // Load and populate full dashboard
@@ -314,14 +318,11 @@ export async function mount(container, { session }) {
       if (subtitleEl) subtitleEl.innerHTML = `Terhubung ke cloud server <b>API Kanal (${escapeHtml(companyName)})</b>. Geocoding alamat otomatis & kalkulasi jarak tempuh sales aktif.`;
       if (companyBadgeEl) companyBadgeEl.textContent = companyName;
 
+      // Automatically purge leftover dummy visits so only Excel imported records remain
+      await purgeDummyVisits();
+
       const rawCheckins = await fsGetAll("kanal_checkins").catch(() => []);
       allCheckinsList = rawCheckins.map(c => normalizeCheckinItem(c));
-
-      if (allCheckinsList.length === 0) {
-        await doKanalSync();
-        const reRaw = await fsGetAll("kanal_checkins").catch(() => []);
-        allCheckinsList = reRaw.map(c => normalizeCheckinItem(c));
-      }
 
       // Auto-correct invalid or non-operational GPS coordinates (e.g. Bali coordinates) by geocoding address text
       for (let i = 0; i < allCheckinsList.length; i++) {
@@ -845,7 +846,11 @@ export async function mount(container, { session }) {
         <div class="mt-2.5 pt-2 border-t border-slate-200/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white/60 p-2 rounded-xl border border-slate-100">
           <div class="flex items-center gap-3">
             <a href="${escapeHtml(photoUrl)}" target="_blank" rel="noopener" class="block shrink-0 relative group">
-              <img src="${escapeHtml(photoUrl)}" alt="Foto Check In" class="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded-xl border border-slate-200 shadow-2xs group-hover:scale-105 transition-transform" />
+              <img src="${escapeHtml(photoUrl)}" 
+                   alt="Foto Check In" 
+                   loading="lazy"
+                   onerror="if(!this.dataset.retry){this.dataset.retry=1;this.src='/api/proxy-image?url='+encodeURIComponent(this.src);}"
+                   class="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded-xl border border-slate-200 shadow-2xs group-hover:scale-105 transition-transform" />
               <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center text-white text-[9px] font-bold">Zoom</div>
             </a>
             <div>
@@ -1343,7 +1348,8 @@ export async function mount(container, { session }) {
                   <a href="${escapeHtml(legPhoto)}" target="_blank" rel="noopener" class="shrink-0 relative group block" title="Klik untuk lihat foto full">
                     <img src="${escapeHtml(legPhoto)}" 
                          alt="Foto ${escapeHtml(leg.toName)}" 
-                         onerror="this.onerror=null; this.src='https://placehold.co/100x100/f1f5f9/475569?text=Foto';"
+                         loading="lazy"
+                         onerror="if(!this.dataset.retry){this.dataset.retry=1;this.src='/api/proxy-image?url='+encodeURIComponent(this.src);}"
                          class="w-12 h-12 object-cover rounded-lg border border-slate-200 shadow-2xs group-hover:scale-105 transition-transform" />
                     <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center text-white text-[8px] font-bold">Zoom</div>
                   </a>
@@ -2102,8 +2108,9 @@ export async function mount(container, { session }) {
                   ${legPhoto ? `
                     <div style="display: inline-block; text-align: center;">
                       <img src="${escapeHtml(legPhoto)}" 
-                           crossorigin="anonymous"
-                           onerror="this.onerror=null; this.src='https://placehold.co/100x100/f1f5f9/475569?text=Foto';"
+                           alt="Foto ${escapeHtml(leg.toName)}"
+                           loading="eager"
+                           onerror="if(!this.dataset.retry){this.dataset.retry=1;this.src='/api/proxy-image?url='+encodeURIComponent(this.src);}"
                            style="width: 55px; height: 55px; object-fit: cover; border-radius: 6px; border: 1px solid #cbd5e1; display: block; margin: 0 auto;" />
                       <span style="font-size: 7.5px; color: #16a34a; font-weight: bold; display: block; margin-top: 1px;">Foto Field</span>
                     </div>
@@ -2551,6 +2558,9 @@ export async function mount(container, { session }) {
         const progressBar = document.getElementById("import-progress-bar");
         const progressStatus = document.getElementById("import-progress-status");
 
+        // Clean out any dummy/mock records before importing
+        await purgeDummyVisits();
+
         let successCount = 0;
 
         for (let idx = 0; idx < rows.length; idx++) {
@@ -2566,7 +2576,7 @@ export async function mount(container, { session }) {
           const rawAddress = getRowVal(row, ["Alamat Check In", "Alamat", "Alamat Toko", "Address", "Lokasi"]);
           const rawStatus = getRowVal(row, ["Keterangan Check In", "Keterangan", "Status", "Status Kunjungan"]);
           const rawCustomer = getRowVal(row, ["Nama Pelanggan", "Pelanggan", "Nama Toko", "Toko", "Outlet"]);
-          const rawImage = getRowVal(row, ["Gambar Check In", "Gambar", "Foto", "Foto Check In", "Image", "Url"]);
+          const rawImage = getRowVal(row, ["Gambar Check In", "Gambar", "Foto", "Foto Check In", "Image", "Url", "Link Foto", "Photo", "Foto Kunjungan", "Bukti Foto", "Lampiran", "Link", "Foto Toko", "Foto Pelanggan"]);
 
           // GPS Column Reading from Excel
           const rawGps = getRowVal(row, [
@@ -2704,6 +2714,21 @@ export async function mount(container, { session }) {
       if (filterSearchInput) filterSearchInput.value = "";
       applyAndRenderDashboard();
       toast("Filter berhasil direset", "info");
+    };
+  }
+
+  if (btnPurgeDummy) {
+    btnPurgeDummy.onclick = async () => {
+      const ok = await confirmDialog("Hapus seluruh data kunjungan dummy / contoh dan hanya menyisakan data kunjungan hasil import Excel?", { title: "Konfirmasi Hapus Kunjungan Dummy" });
+      if (!ok) return;
+      try {
+        toast("Sedang membersihkan kunjungan dummy...", "info");
+        const count = await purgeDummyVisits();
+        await loadAndRenderTrack();
+        toast(`Berhasil menghapus ${count} data kunjungan dummy! Hanya menyisakan data hasil import Excel.`, "success");
+      } catch (e) {
+        toast("Gagal menghapus data dummy: " + e.message, "error");
+      }
     };
   }
 

@@ -65,9 +65,9 @@ body {
 
 /* --- Sidebar nav item --- */
 .sidebar-item {
-  display: flex; align-items: center; gap: .75rem;
-  padding: .6rem .75rem; border-radius: .65rem;
-  color: #475569; font-size: .875rem; font-weight: 500;
+  display: flex; align-items: center; gap: .6rem;
+  padding: .45rem .65rem; border-radius: .5rem;
+  color: #475569; font-size: .8125rem; font-weight: 500;
   transition: background-color .15s ease, color .15s ease, transform .1s ease;
   cursor: pointer; white-space: nowrap;
 }

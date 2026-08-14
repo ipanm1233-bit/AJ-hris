@@ -386,7 +386,7 @@ export async function renderCrudModule(container, cfg) {
 							savedId = (formFields.idFromField && data[formFields.idFromField]) ? data[formFields.idFromField] : (idFieldName && data[idFieldName]) ? data[idFieldName] : genId(idPrefix);
 							await fsAdd(collectionName, data, savedId);
 						}
-						if (afterSave) { try { await afterSave(data, !existing, savedId); } catch (e) { console.warn("afterSave error:", e); } }
+						if (afterSave) { try { await afterSave(data, !existing, savedId, existing); } catch (e) { console.warn("afterSave error:", e); } }
 						toast(existing ? "Data berhasil diperbarui" : "Data baru berhasil ditambahkan", "success");
 						closeModal();
 						load();
@@ -1542,81 +1542,214 @@ function openKpiTasksModal(kpis, session) {
 }
 
 export function openPenilaianFormFromNotif(task, kpis, session) {
- const soalHtml = (task.soal_json || []).map((s, i) => `
- <div class="border-b border-slate-100 pb-4 mb-4 text-left">
- <div class="flex items-center gap-2 mb-1.5">
- <span class="bg-maroon-50 text-maroon-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">${escapeHtml(s.aspek)}</span>
- <span class="text-[10px] text-slate-400 font-medium">Bobot: ${s.bobot}%</span>
+ const soalList = task.soal_json || [];
+ const totalSoalCount = soalList.length;
+
+ const soalHtml = soalList.map((s, i) => `
+ <div class="p-4 bg-white rounded-xl border border-slate-200/80 shadow-2xs space-y-3 text-left">
+ <div class="flex items-center justify-between flex-wrap gap-2">
+ <div class="flex items-center gap-2">
+ <span class="w-6 h-6 rounded-lg bg-maroon-700 text-white font-black text-xs flex items-center justify-center">${i + 1}</span>
+ <span class="bg-maroon-50 text-maroon-800 border border-maroon-200/70 px-2.5 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider">${escapeHtml(s.aspek || "Kompetensi")}</span>
  </div>
- <p class="text-sm text-slate-800 mb-3">${escapeHtml(s.indikator)}</p>
- <div class="relative">
- <input type="number" data-idx="${i}" data-bobot="${s.bobot}" class="kpi-nilai-input w-full pl-3 pr-10 py-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100 transition" placeholder="Berikan Skor (0-100)" required min="0" max="100">
- <span class="absolute right-3 top-2.5 text-slate-300 font-medium text-sm">/ 100</span>
+ <span class="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-md border border-slate-200">Bobot: <strong class="text-maroon-700 font-black">${s.bobot || 0}%</strong></span>
+ </div>
+ <p class="text-sm font-semibold text-slate-800 leading-snug">${escapeHtml(s.indikator || "-")}</p>
+ <div class="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+ <div class="flex items-center gap-1.5 flex-wrap">
+ <span class="text-[11px] text-slate-400 font-medium mr-1">Nilai Cepat:</span>
+ <button type="button" class="btn-quick-score px-2 py-1 bg-slate-50 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded-md border border-slate-200 text-xs font-bold transition" data-target-idx="${i}" data-val="100">100</button>
+ <button type="button" class="btn-quick-score px-2 py-1 bg-slate-50 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded-md border border-slate-200 text-xs font-bold transition" data-target-idx="${i}" data-val="90">90</button>
+ <button type="button" class="btn-quick-score px-2 py-1 bg-slate-50 hover:bg-blue-50 text-slate-600 hover:text-blue-700 rounded-md border border-slate-200 text-xs font-bold transition" data-target-idx="${i}" data-val="80">80</button>
+ <button type="button" class="btn-quick-score px-2 py-1 bg-slate-50 hover:bg-amber-50 text-slate-600 hover:text-amber-700 rounded-md border border-slate-200 text-xs font-bold transition" data-target-idx="${i}" data-val="70">70</button>
+ <button type="button" class="btn-quick-score px-2 py-1 bg-slate-50 hover:bg-rose-50 text-slate-600 hover:text-rose-700 rounded-md border border-slate-200 text-xs font-bold transition" data-target-idx="${i}" data-val="60">60</button>
+ </div>
+ <div class="flex items-center gap-2">
+ <div class="relative w-32">
+ <input type="number" data-idx="${i}" data-bobot="${s.bobot || 0}" class="kpi-nilai-input w-full pl-3 pr-10 py-2 text-sm font-black text-slate-800 border border-slate-200 rounded-lg outline-none focus:border-maroon-500 focus:ring-2 focus:ring-maroon-100 transition bg-slate-50 focus:bg-white text-right" placeholder="0" required min="0" max="100" step="any">
+ <span class="absolute right-3 top-2 text-slate-400 font-semibold text-xs">/ 100</span>
+ </div>
+ </div>
  </div>
  </div>
  `).join("");
 
- const catatanHrdHtml = task.catatan_hrd ? `<div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 text-left"><span class="font-bold block mb-1">Catatan HRD untuk Evaluasi ini:</span>${escapeHtml(task.catatan_hrd)}</div>` : '';
+ const catatanHrdHtml = task.catatan_hrd ? `
+ <div class="p-3.5 bg-blue-50/80 border border-blue-200 rounded-xl text-xs text-blue-900 text-left space-y-1">
+ <span class="font-bold flex items-center gap-1 text-blue-800">
+ <span>📌</span> Instruksi Khusus HRD untuk Evaluasi ini:
+ </span>
+ <p class="font-medium pl-5">${escapeHtml(task.catatan_hrd)}</p>
+ </div>
+ ` : '';
 
  openModal({
- title: `Evaluasi: ${escapeHtml(task.nama_dinilai)}`, size: "md",
+ title: `Form Evaluasi Kinerja Karyawan`,
+ size: "lg",
  bodyHtml: `
- <form id="form-isi-kpi" class="text-left">
- <div class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2 text-left">
- <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-amber-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
- <p class="text-xs text-amber-800 leading-relaxed">Dihitung otomatis berdasar bobot. Batas pengumpulan: <strong>${task.deadline ? fmtDateShort(task.deadline) : '-'}</strong>.</p>
+ <form id="form-isi-kpi" class="text-left space-y-4">
+ <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+ <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/70 pb-3">
+ <div>
+ <span class="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider block">Karyawan yang Dinilai</span>
+ <h3 class="text-base font-black text-slate-800">${escapeHtml(task.nama_dinilai)}</h3>
+ <p class="text-xs text-slate-500 font-medium">${escapeHtml(task.jabatan_dinilai || "-")}</p>
  </div>
- ${catatanHrdHtml} ${soalHtml}
- <div class="mt-5 text-left">
- <label class="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">Ulasan Karyawan (Opsional)</label>
- <textarea id="kpi-catatan-baik" rows="2" class="w-full px-3 py-2 text-xs border border-emerald-200 bg-emerald-50/30 rounded-lg outline-none focus:border-emerald-500 font-medium mb-2" placeholder="Hal-hal yang sudah baik (Kelebihan / Prestasi)..."></textarea>
- <textarea id="kpi-catatan-perbaikan" rows="2" class="w-full px-3 py-2 text-xs border border-red-200 bg-red-50/30 rounded-lg outline-none focus:border-red-500 font-medium mb-2" placeholder="Hal-hal yang harus diperbaiki (Area Peningkatan)..."></textarea>
- <textarea id="kpi-catatan-penilai" rows="2" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-400 font-medium" placeholder="Catatan & rekomendasi tambahan penilai..."></textarea>
+ <div class="text-left sm:text-right">
+ <span class="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider block">Periode Evaluasi</span>
+ <span class="text-xs font-bold text-maroon-800 bg-maroon-50 px-2.5 py-1 rounded-md border border-maroon-200 inline-block mt-0.5">${escapeHtml(task.periode || "-")}</span>
+ </div>
+ </div>
+ <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-600">
+ <div><span class="text-slate-400">Template Soal:</span> <strong>${escapeHtml(task.nama_template || "Template Standar")}</strong></div>
+ <div><span class="text-slate-400">Batas Waktu:</span> <strong class="text-amber-700">${task.deadline ? fmtDateShort(task.deadline) : 'Segera'}</strong></div>
+ </div>
+ </div>
+ ${catatanHrdHtml}
+ <div class="space-y-3 pt-1">
+ <div class="flex items-center justify-between">
+ <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500">Butir Pertanyaan & Indikator Kinerja (${totalSoalCount} Soal)</h4>
+ <span class="text-xs text-slate-400 font-medium" id="kpi-filled-count">0 / ${totalSoalCount} Terisi</span>
+ </div>
+ ${soalHtml}
+ </div>
+ <div class="p-4 bg-slate-50/60 rounded-xl border border-slate-200/80 space-y-3 pt-4">
+ <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700">Ulasan Deskriptif Penilai (Opsional / Dianjurkan)</h4>
+ <div>
+ <label class="block text-[11px] font-bold text-emerald-800 mb-1">🌟 Hal-Hal yang Sudah Baik (Kelebihan / Pencapaian):</label>
+ <textarea id="kpi-catatan-baik" rows="2" class="w-full px-3 py-2 text-xs border border-emerald-200 bg-white rounded-lg outline-none focus:border-emerald-500 font-medium focus:ring-1 focus:ring-emerald-200" placeholder="Tuliskan aspek positif atau prestasi kerja yang menonjol..."></textarea>
+ </div>
+ <div>
+ <label class="block text-[11px] font-bold text-rose-800 mb-1">🎯 Area yang Perlu Ditingkatkan (Evaluasi Peningkatan):</label>
+ <textarea id="kpi-catatan-perbaikan" rows="2" class="w-full px-3 py-2 text-xs border border-rose-200 bg-white rounded-lg outline-none focus:border-rose-500 font-medium focus:ring-1 focus:ring-rose-200" placeholder="Tuliskan hal-hal yang perlu diperbaiki atau target peningkatan..."></textarea>
+ </div>
+ <div>
+ <label class="block text-[11px] font-bold text-slate-700 mb-1">📝 Catatan & Rekomendasi Tambahan:</label>
+ <textarea id="kpi-catatan-penilai" rows="2" class="w-full px-3 py-2 text-xs border border-slate-200 bg-white rounded-lg outline-none focus:border-maroon-400 font-medium focus:ring-1 focus:ring-maroon-200" placeholder="Catatan tambahan lainnya untuk HRD atau rekomendasi karir..."></textarea>
+ </div>
  </div>
  </form>
  `,
  footerHtml: `
- <div class="w-full flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-200 mb-3"><span class="text-sm font-bold text-slate-600">Skor Akhir Sementara:</span><span id="kpi-live-score" class="text-lg font-black text-maroon-700">0.00</span></div>
- <div class="flex gap-2 justify-end w-full">
- <button id="btn-back-to-kpi-list" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition mr-auto">Kembali</button>
- <button id="btn-submit-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2 rounded-lg text-sm font-medium transition shadow-md">Kirim Penilaian</button>
+ <div class="w-full flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200 mb-3">
+ <div class="flex items-center gap-3">
+ <div>
+ <span class="text-xs font-bold text-slate-500 block">Akumulasi Skor Akhir:</span>
+ <div class="flex items-center gap-2 mt-0.5">
+ <span id="kpi-live-score" class="text-2xl font-black text-maroon-700">0.00</span>
+ <span class="text-xs text-slate-400 font-bold">/ 100</span>
+ </div>
+ </div>
+ <div class="border-l border-slate-200 pl-3">
+ <span class="text-[10.5px] font-bold text-slate-400 block uppercase tracking-wide">Predikat:</span>
+ <span id="kpi-live-predikat" class="inline-block mt-0.5 text-xs font-bold px-2.5 py-0.5 rounded-md bg-slate-200 text-slate-600 border border-slate-300">Belum Diisi</span>
+ </div>
+ </div>
+ <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+ <button type="button" id="btn-back-to-kpi-list" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">Kembali</button>
+ <button type="button" id="btn-submit-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2 rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5">
+ <span>✓</span> Kirim Penilaian Kinerja
+ </button>
+ </div>
  </div>
  `,
  onMount: (m) => {
  const liveScore = m.querySelector("#kpi-live-score");
- m.querySelector("#form-isi-kpi").addEventListener("input", () => {
+ const livePredikat = m.querySelector("#kpi-live-predikat");
+ const filledCountEl = m.querySelector("#kpi-filled-count");
+
+ function updateScoreAndPredikat() {
  let calcTotal = 0;
- m.querySelectorAll(".kpi-nilai-input").forEach(input => {
- const bbt = parseFloat(input.dataset.bobot) || 0; const val = parseFloat(input.value) || 0;
+ let filled = 0;
+ const inputs = m.querySelectorAll(".kpi-nilai-input");
+ inputs.forEach(input => {
+ const bbt = parseFloat(input.dataset.bobot) || 0;
+ const valStr = input.value.trim();
+ if (valStr !== "") {
+ filled++;
+ const val = Math.min(100, Math.max(0, parseFloat(valStr) || 0));
  calcTotal += val * (bbt / 100);
- });
- liveScore.textContent = calcTotal.toFixed(2);
+ }
  });
 
- m.querySelector("#btn-back-to-kpi-list").onclick = () => openKpiTasksModal(kpis, session);
+ const roundedScore = Math.round(calcTotal * 100) / 100;
+ liveScore.textContent = roundedScore.toFixed(2);
+ if (filledCountEl) filledCountEl.textContent = `${filled} / ${totalSoalCount} Terisi`;
+
+ if (livePredikat) {
+ if (filled === 0) {
+ livePredikat.className = "inline-block mt-0.5 text-xs font-bold px-2.5 py-0.5 rounded-md bg-slate-200 text-slate-600 border border-slate-300";
+ livePredikat.textContent = "Belum Diisi";
+ } else if (roundedScore >= 85) {
+ livePredikat.className = "inline-block mt-0.5 text-xs font-bold px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300";
+ livePredikat.textContent = "Sangat Baik (A)";
+ } else if (roundedScore >= 70) {
+ livePredikat.className = "inline-block mt-0.5 text-xs font-bold px-2.5 py-0.5 rounded-md bg-blue-100 text-blue-800 border border-blue-300";
+ livePredikat.textContent = "Baik (B)";
+ } else if (roundedScore >= 55) {
+ livePredikat.className = "inline-block mt-0.5 text-xs font-bold px-2.5 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300";
+ livePredikat.textContent = "Cukup (C)";
+ } else {
+ livePredikat.className = "inline-block mt-0.5 text-xs font-bold px-2.5 py-0.5 rounded-md bg-rose-100 text-rose-800 border border-rose-300";
+ livePredikat.textContent = "Kurang (D)";
+ }
+ }
+ }
+
+ m.querySelector("#form-isi-kpi").addEventListener("input", updateScoreAndPredikat);
+
+ m.querySelectorAll(".btn-quick-score").forEach(btn => {
+ btn.onclick = () => {
+ const tIdx = btn.dataset.targetIdx;
+ const val = btn.dataset.val;
+ const targetInput = m.querySelector(`.kpi-nilai-input[data-idx="${tIdx}"]`);
+ if (targetInput) {
+ targetInput.value = val;
+ updateScoreAndPredikat();
+ }
+ };
+ });
+
+ const btnBack = m.querySelector("#btn-back-to-kpi-list");
+ if (btnBack) {
+ btnBack.onclick = () => {
+ if (Array.isArray(kpis) && kpis.length > 0) {
+ openKpiTasksModal(kpis, session);
+ } else {
+ closeModal();
+ }
+ };
+ }
+
  m.querySelector("#btn-submit-kpi").onclick = async () => {
  const form = m.querySelector("#form-isi-kpi");
  if(!form.reportValidity()) return;
 
  let totalSkorBobot = 0;
- const answeredSoal = [...task.soal_json];
+ const answeredSoal = [...soalList];
  const catatanBaik = m.querySelector("#kpi-catatan-baik") ? m.querySelector("#kpi-catatan-baik").value.trim() : "";
  const catatanPerbaikan = m.querySelector("#kpi-catatan-perbaikan") ? m.querySelector("#kpi-catatan-perbaikan").value.trim() : "";
  const catatanPenilai = m.querySelector("#kpi-catatan-penilai") ? m.querySelector("#kpi-catatan-penilai").value.trim() : "";
 
  m.querySelectorAll(".kpi-nilai-input").forEach(input => {
- const idx = parseInt(input.dataset.idx, 10); const nilai = parseFloat(input.value) || 0; const bobot = parseFloat(answeredSoal[idx].bobot) || 0;
- answeredSoal[idx].nilai_diberikan = nilai; totalSkorBobot += (nilai * (bobot / 100));
+ const idx = parseInt(input.dataset.idx, 10);
+ const rawVal = parseFloat(input.value) || 0;
+ const nilai = Math.min(100, Math.max(0, rawVal));
+ const bobot = parseFloat(answeredSoal[idx]?.bobot) || 0;
+ if (answeredSoal[idx]) {
+ answeredSoal[idx].nilai_diberikan = nilai;
+ }
+ totalSkorBobot += (nilai * (bobot / 100));
  });
 
  let finalScore = Math.round(totalSkorBobot * 100) / 100;
- let keputusan = finalScore >= 80 ? "Sangat Baik" : finalScore >= 60 ? "Baik" : "Kurang";
+ let keputusan = finalScore >= 85 ? "Sangat Baik" : finalScore >= 70 ? "Baik" : finalScore >= 55 ? "Cukup" : "Kurang";
 
  const btn = m.querySelector("#btn-submit-kpi");
- btn.disabled = true; btn.textContent = "Merekap Nilai...";
+ btn.disabled = true;
+ btn.textContent = "Merekap Nilai...";
 
  try {
- // Update database
  await fsUpdate(COL.TUGAS_KPI_360, task.id, {
  status: "DONE",
  skor_akhir: finalScore,
@@ -1639,9 +1772,8 @@ export function openPenilaianFormFromNotif(task, kpis, session) {
  catatan_penilai: catatanPenilai
  }, genId("KPI-LOG"));
 
- toast("Evaluasi diselesaikan!", "success");
+ toast("Evaluasi kinerja berhasil disimpan & diselesaikan!", "success");
  
- // Refresh dashboard widgets if present
  const dashKpiTasks = document.querySelector("#dash-kpi-tasks");
  if (dashKpiTasks) {
  const itemEl = dashKpiTasks.querySelector(`[data-kpi-id="${task.id}"]`);
@@ -1651,7 +1783,6 @@ export function openPenilaianFormFromNotif(task, kpis, session) {
  }
  }
 
- // Filter out the completed task from the local kpis list
  const remainingKpis = kpis.filter(x => x.id !== task.id);
  if (remainingKpis.length > 0) {
  openKpiTasksModal(remainingKpis, session);

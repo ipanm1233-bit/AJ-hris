@@ -1,5 +1,5 @@
 import { db, COL, collection, getDocs, doc, updateDoc, addDoc, setDoc, deleteDoc, query, where, limit } from "../firebase-config.js";
-import { fsGetAll, fsDelete, escapeHtml, toast, genId, notifyUser, openModal, closeModal, confirmDialog, promptDialog, calculateAge, calculateTenure } from "../utils.js";
+import { fsGetAll, fsDelete, escapeHtml, toast, genId, notifyUser, openModal, closeModal, confirmDialog, promptDialog, calculateAge, calculateTenure, cascadeEmployeeChanges, syncAllEmployeesAcrossCollections } from "../utils.js";
 import { renderCrudModule, badge, emptyState, icon, skeletonRows } from "../components.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 
@@ -83,13 +83,26 @@ export async function mount(container) {
  ];
  fields.idFromField = "nik_karyawan";
 
- await renderCrudModule(panels.karyawan, {
+ const crudRes = await renderCrudModule(panels.karyawan, {
  title: "Database Induk Karyawan",
- subtitle: "Sumber data utama seluruh karyawan CV Andela Jaya.",
+ subtitle: "Sumber data utama seluruh karyawan CV Andela Jaya. Perubahan nama & profil di sini otomatis memperbarui seluruh modul.",
  collectionName: COL.MASTER_KARYAWAN,
  orderByField: "nama_karyawan",
  size: "2xl",
  searchFields: ["nama_karyawan", "nik_karyawan", "jabatan", "cabang", "divisi", "status_karyawan", "finger_name", "nik_ktp", "no_kk", "bpjs_tk", "bpjs_kes", "npwp", "atasan"],
+ extraToolbarHtml: `
+ <button id="btn-sync-all-karyawan" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg border border-maroon-300 text-maroon-700 bg-maroon-50 hover:bg-maroon-100 transition shadow-2xs cursor-pointer" title="Sinkronkan nama seluruh karyawan ke semua modul HRD & Operasional">
+ ${icon("refresh", "w-4 h-4 text-maroon-600")}
+ Sinkronkan Seluruh Modul
+ </button>
+ `,
+ afterSave: async (data, isNew, savedId, existing) => {
+ try {
+ await cascadeEmployeeChanges(existing, data);
+ } catch (err) {
+ console.warn("Cascade error:", err);
+ }
+ },
  beforeSave: (data) => {
  if (data.tanggal_lahir) {
  const age = calculateAge(data.tanggal_lahir);
@@ -163,6 +176,19 @@ export async function mount(container) {
  { key: "akses_menu", label: "akses_menu", format: (v, r) => r.akses_menu || "-" }
  ],
  formFields: fields
+ });
+
+ panels.karyawan.querySelector("#btn-sync-all-karyawan")?.addEventListener("click", async () => {
+ const ok = await confirmDialog("Sinkronkan seluruh nama & data karyawan dari Master Database ke seluruh modul (Absensi, Pengajuan, Tracking Sales, KPI, dsb)?", { title: "Sinkronisasi Master Karyawan Global" });
+ if (!ok) return;
+ try {
+ toast("Sedang menyinkronkan data karyawan ke seluruh modul...", "info");
+ const count = await syncAllEmployeesAcrossCollections();
+ toast(`Sukses menyinkronkan ${count} data karyawan ke seluruh modul sistem!`, "success");
+ crudRes.reload();
+ } catch (e) {
+ toast("Gagal sinkronisasi: " + e.message, "error");
+ }
  });
  }
 

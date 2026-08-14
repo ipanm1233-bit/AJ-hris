@@ -2540,46 +2540,86 @@ export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf", 
  element.style.boxSizing = "border-box";
  element.innerHTML = htmlContent;
 
- wrapper.appendChild(element);
- document.body.appendChild(wrapper);
+  wrapper.appendChild(element);
+  document.body.appendChild(wrapper);
 
- // PENTING: penyebab paling umum PDF kosong/blank adalah html2canvas
- // "memotret" elemen SEBELUM semua <img> di dalamnya (logo kop surat,
- // foto karyawan, tanda tangan hasil upload dari Google Drive, dll)
- // selesai dimuat -- terutama gambar dari URL luar yang lambat.
- // Sebelumnya cuma menunggu 350ms tetap (cukup untuk dokumen ringan,
- // TIDAK cukup untuk dokumen dengan gambar besar/lambat). Sekarang kita
- // tunggu SEMUA gambar benar-benar selesai (berhasil ATAU gagal dimuat),
- // dengan batas waktu aman 8 detik supaya tidak menggantung selamanya
- // kalau ada gambar yang memang tidak bisa diakses.
- async function waitForImages(container, timeoutMs = 8000) {
- const imgs = Array.from(container.querySelectorAll("img"));
- if (imgs.length === 0) return;
+  // 1. Konversi semua URL gambar (Google Drive, HTTPS, dll.) ke Base64 Data URL
+  // agar html2canvas dapat merender gambar ke PDF tanpa terhalang CORS & onerror
+  async function convertImagesToDataUrls(container, timeoutMs = 8000) {
+    const imgs = Array.from(container.querySelectorAll("img"));
+    if (imgs.length === 0) return;
 
- const perImage = imgs.map((img) => new Promise((resolve) => {
- if (img.complete && img.naturalWidth > 0) { resolve(); return; }
- const done = () => resolve();
- img.addEventListener("load", done, { once: true });
- img.addEventListener("error", () => {
- // Gambar gagal dimuat (mis. link Drive tidak lagi bisa diakses) --
- // jangan gagalkan seluruh PDF karena ini, cukup lanjut tanpa gambar
- // itu supaya sisa dokumen tetap tercetak.
- console.warn("Gambar gagal dimuat saat generate PDF:", img.src);
- resolve();
- }, { once: true });
- }));
+    const tasks = imgs.map(async (img) => {
+      const rawSrc = img.getAttribute("src") || img.src || "";
+      if (!rawSrc || rawSrc.startsWith("data:image/") || rawSrc.startsWith("blob:")) return;
 
- await Promise.race([
- Promise.all(perImage),
- new Promise((resolve) => setTimeout(resolve, timeoutMs))
- ]);
- }
+      try {
+        // Coba proxy server lokal yang mem-bypass CORS & mendukung link Google Drive
+        const proxyUrl = `/api/proxy-image?format=base64&url=${encodeURIComponent(rawSrc)}`;
+        const res = await fetch(proxyUrl);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.dataUrl) {
+            img.src = data.dataUrl;
+            img.removeAttribute("crossorigin");
+            img.removeAttribute("onerror");
+            return;
+          }
+        }
+      } catch (e) {
+        // Fallback jika fetch proxy gagal
+      }
 
- await waitForImages(element);
- // Jeda kecil tambahan untuk memberi waktu browser menyelesaikan layout/
- // reflow setelah gambar dimuat (terutama kalau ukuran gambar mengubah
- // tinggi elemen di sekitarnya).
- await new Promise((resolve) => setTimeout(resolve, 150));
+      try {
+        // Coba direct CORS fetch -> blob -> Base64
+        const directRes = await fetch(rawSrc, { mode: "cors" });
+        if (directRes.ok) {
+          const blob = await directRes.blob();
+          const b64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+          });
+          if (b64) {
+            img.src = b64;
+            img.removeAttribute("crossorigin");
+            img.removeAttribute("onerror");
+          }
+        }
+      } catch (e) {}
+    });
+
+    await Promise.race([
+      Promise.all(tasks),
+      new Promise((resolve) => setTimeout(resolve, timeoutMs))
+    ]);
+  }
+
+  await convertImagesToDataUrls(element);
+
+  // 2. Tunggu semua gambar siap dimuat
+  async function waitForImages(container, timeoutMs = 8000) {
+    const imgs = Array.from(container.querySelectorAll("img"));
+    if (imgs.length === 0) return;
+
+    const perImage = imgs.map((img) => new Promise((resolve) => {
+      if (img.complete && img.naturalWidth > 0) { resolve(); return; }
+      const done = () => resolve();
+      img.addEventListener("load", done, { once: true });
+      img.addEventListener("error", () => {
+        console.warn("Gambar gagal dimuat saat generate PDF:", img.src);
+        resolve();
+      }, { once: true });
+    }));
+
+    await Promise.race([
+      Promise.all(perImage),
+      new Promise((resolve) => setTimeout(resolve, timeoutMs))
+    ]);
+  }
+
+  await waitForImages(element);
+  await new Promise((resolve) => setTimeout(resolve, 200));
 
  const opt = {
  margin: isLandscape ? [5, 5, 5, 5] : [5, 5, 5, 5], // top, left, bottom, right in mm
@@ -2666,6 +2706,19 @@ function isDuplicateNotification(targetKey, judul, pesan, link = "") {
  * di dokumen Users. Dipakai di seluruh modul yg butuh notif per-orang.
  */
 export async function notifyUser(username, judul, pesan, link = "", opts = {}) {
+ // Normalize if 2nd argument was passed as an options/payload object
+ if (typeof judul === "object" && judul !== null) {
+  const payload = judul;
+  opts = Object.assign({}, payload, opts);
+  judul = payload.judul || payload.title || payload.subject || "Pemberitahuan HRIS";
+  pesan = payload.pesan || payload.message || payload.body || "";
+  link = payload.link || payload.url || link || "";
+ } else {
+  judul = String(judul || "Pemberitahuan HRIS");
+  pesan = String(pesan || "");
+  link = String(link || "");
+ }
+
  // opts.sendEmail (default true): dipakai HRD untuk menonaktifkan email
  // pada kasus tertentu (mis. pengambilan ATK) tanpa menghilangkan
  // notifikasi in-app (lonceng) & push HP yang tetap perlu tampil.
@@ -4095,22 +4148,42 @@ export async function geocodeAddressSmart(addressStr, fallbackSeed = 0) {
  * Helper to normalize and obtain direct image URL for display (handles Google Drive, base64, etc.)
  */
 export function getDirectImageUrl(url) {
-  if (!url || typeof url !== "string") return "";
-  const s = url.trim();
+  if (!url) return "";
+  let s = String(url).trim();
   if (!s || s === "-" || s.toLowerCase() === "null" || s.toLowerCase() === "undefined") return "";
+
+  // Handle HYPERLINK formula from Excel if imported as formula string e.g. =HYPERLINK("https://...", "...")
+  const hyperlinkMatch = s.match(/HYPERLINK\s*\(\s*["']([^"']+)["']/i);
+  if (hyperlinkMatch && hyperlinkMatch[1]) {
+    s = hyperlinkMatch[1].trim();
+  }
+
+  // Strip leading/trailing quotes or brackets
+  s = s.replace(/^["'(\[]+|["')\]]+$/g, "").trim();
+
+  // If multiple URLs separated by comma or semicolon or newline, pick the first
+  if (s.includes(",") || s.includes(";") || s.includes("\n")) {
+    const parts = s.split(/[,;\n]/).map(p => p.trim()).filter(Boolean);
+    if (parts.length > 0) s = parts[0];
+  }
+
   if (s.startsWith("data:image/") || s.startsWith("blob:")) return s;
 
-  // Normalisasi URL Google Drive file
-  const driveFileIdMatch = s.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || 
-                           s.match(/id=([a-zA-Z0-9_-]+)/) ||
-                           s.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  // Normalisasi URL Google Drive file (file/d, open?id, uc?id, thumbnail, d/, dll.)
+  const driveFileIdMatch = s.match(/\/file\/d\/([a-zA-Z0-9_-]{20,})/i) || 
+                           s.match(/[?&]id=([a-zA-Z0-9_-]{20,})/i) ||
+                           s.match(/\/d\/([a-zA-Z0-9_-]{20,})/i) ||
+                           s.match(/lh3\.googleusercontent\.com\/d\/([a-zA-Z0-9_-]{20,})/i) ||
+                           s.match(/drive\.usercontent\.google\.com\/download\?id=([a-zA-Z0-9_-]{20,})/i) ||
+                           s.match(/drive\.google\.com\/uc\?.*?id=([a-zA-Z0-9_-]{20,})/i);
+
   if (driveFileIdMatch && driveFileIdMatch[1]) {
     const fileId = driveFileIdMatch[1];
-    return `https://lh3.googleusercontent.com/d/${fileId}`;
+    return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
   }
 
   if (/^[a-zA-Z0-9_-]{25,100}$/.test(s)) {
-    return `https://lh3.googleusercontent.com/d/${s}`;
+    return `https://drive.google.com/thumbnail?id=${s}&sz=w1000`;
   }
 
   if (/^https?:\/\//i.test(s)) return s;
@@ -4135,7 +4208,7 @@ export function normalizeCheckinItem(item = {}) {
   const status_kunjungan = item.status_kunjungan || item.status || item.visit_status || "Effective Call (Order Toko)";
   const catatan = item.catatan || item.notes || "Check-in kunjungan sales";
   
-  const rawPhoto = item.gambar_checkin || item.foto_checkin || item.foto_checkout || item.foto || item.foto_url || item.url_foto || item.lampiran_url || item.bukti_foto || item.checkin_photo || item.checkout_photo || item.image || item.image_url || item.photo_url || item.photo || item.url || item.gambar || "";
+  const rawPhoto = item.gambar_checkin || item.foto_checkin || item.foto_checkout || item.foto || item.foto_url || item.url_foto || item.lampiran_url || item.bukti_foto || item.checkin_photo || item.checkout_photo || item.image || item.image_url || item.photo_url || item.photo || item.url || item.gambar || item["Gambar Check In"] || item["Foto"] || item["Foto Check In"] || item["Bukti Foto"] || "";
   const gambar_checkin = getDirectImageUrl(rawPhoto);
   const foto_checkin = gambar_checkin;
 
@@ -4253,3 +4326,170 @@ export function calculateSalesRouteMetrics(visitList, departureConfig = {}, sale
     legs: legs
   };
 }
+
+/**
+ * Cascades employee data changes (name, nik, jabatan, divisi, cabang, email, status)
+ * across ALL Firestore collections and modules in the system.
+ */
+export async function cascadeEmployeeChanges(oldRecord = {}, newRecord = {}) {
+  if (!oldRecord && !newRecord) return;
+  const oldNik = String(oldRecord?.nik_karyawan || oldRecord?.nik || newRecord?.nik_karyawan || newRecord?.nik || "").trim();
+  const newNik = String(newRecord?.nik_karyawan || newRecord?.nik || oldNik).trim();
+  const oldName = String(oldRecord?.nama_karyawan || oldRecord?.nama || "").trim();
+  const newName = String(newRecord?.nama_karyawan || newRecord?.nama || oldName).trim();
+  const newJabatan = String(newRecord?.jabatan || "").trim();
+  const newDivisi = String(newRecord?.divisi || "").trim();
+  const newCabang = String(newRecord?.cabang || "").trim();
+  const newEmail = String(newRecord?.email || "").trim();
+  const newStatus = String(newRecord?.aktif_tdk_aktif || newRecord?.status_karyawan || "").trim();
+
+  if (!oldNik && !newNik && !oldName && !newName) return;
+
+  console.log(`[CASCADE] Propagating employee update: "${oldName}" (${oldNik}) -> "${newName}" (${newNik})`);
+
+  const promises = [];
+
+  // 1. Sync COL.USERS (users)
+  promises.push((async () => {
+    try {
+      const users = await fsGetAll(COL.USERS).catch(() => []);
+      for (const u of users) {
+        const uNik = String(u.nik || u.username || u.id || "").trim();
+        const uNama = String(u.nama || "").trim();
+        const isMatch = (oldNik && (uNik === oldNik || u.username === oldNik)) ||
+                        (oldName && uNama.toLowerCase() === oldName.toLowerCase());
+        if (isMatch) {
+          const patch = {};
+          if (newName && u.nama !== newName) patch.nama = newName;
+          if (newNik && u.nik !== newNik) patch.nik = newNik;
+          if (newJabatan && u.jabatan !== newJabatan) patch.jabatan = newJabatan;
+          if (newDivisi && u.divisi !== newDivisi) patch.divisi = newDivisi;
+          if (newCabang && u.cabang !== newCabang) patch.cabang = newCabang;
+          if (newEmail && u.email !== newEmail) patch.email = newEmail;
+          if (newStatus && u.status !== newStatus) patch.status = newStatus;
+          if (Object.keys(patch).length > 0) {
+            await fsUpdate(COL.USERS, u.id, patch).catch(() => {});
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Cascade USERS err:", e);
+    }
+  })());
+
+  // 2. Sync atasan in COL.MASTER_KARYAWAN
+  if (oldName && newName && oldName.toLowerCase() !== newName.toLowerCase()) {
+    promises.push((async () => {
+      try {
+        const emps = await fsGetAll(COL.MASTER_KARYAWAN).catch(() => []);
+        for (const e of emps) {
+          if (e.atasan && String(e.atasan).trim().toLowerCase() === oldName.toLowerCase()) {
+            await fsUpdate(COL.MASTER_KARYAWAN, e.id, { atasan: newName }).catch(() => {});
+          }
+        }
+      } catch (e) {
+        console.warn("Cascade atasan err:", e);
+      }
+    })());
+  }
+
+  // 3. Generic helper for collections with employee records
+  const updateCollectionMatching = async (colName, nikFields, nameFields, extraFields = {}) => {
+    try {
+      const rows = await fsGetAll(colName).catch(() => []);
+      for (const r of rows) {
+        let matched = false;
+        const patch = {};
+
+        for (const nf of nikFields) {
+          const val = String(r[nf] || "").trim();
+          if (oldNik && val === oldNik) {
+            matched = true;
+            if (newNik && val !== newNik) patch[nf] = newNik;
+          }
+        }
+        for (const nmf of nameFields) {
+          const val = String(r[nmf] || "").trim();
+          if (oldName && val.toLowerCase() === oldName.toLowerCase()) {
+            matched = true;
+            if (newName && val !== newName) patch[nmf] = newName;
+          }
+        }
+
+        if (matched) {
+          for (const [k, v] of Object.entries(extraFields)) {
+            if (v && r[k] !== v && r[k] !== undefined) patch[k] = v;
+          }
+          if (Object.keys(patch).length > 0) {
+            await fsUpdate(colName, r.id, patch).catch(() => {});
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`Cascade ${colName} err:`, e);
+    }
+  };
+
+  // 4. Update across all HR and operational modules
+  promises.push(updateCollectionMatching(COL.DATA_PENGAJUAN, ["nik_pemohon", "nik_karyawan", "nik"], ["nama_pemohon", "nama_karyawan", "nama", "nama_staf"], { jabatan: newJabatan, divisi: newDivisi, cabang: newCabang }));
+  promises.push(updateCollectionMatching(COL.DATA_ABSENSI, ["nik_karyawan", "nik"], ["nama_karyawan", "nama", "nama_staf"], { jabatan: newJabatan, divisi: newDivisi, cabang: newCabang }));
+  promises.push(updateCollectionMatching(COL.LOG_LEMBUR, ["nik_karyawan", "nik"], ["nama_karyawan", "nama"], { jabatan: newJabatan, divisi: newDivisi }));
+  promises.push(updateCollectionMatching(COL.LOG_KASBON, ["nik_karyawan", "nik"], ["nama_karyawan", "nama"], { jabatan: newJabatan, divisi: newDivisi }));
+  promises.push(updateCollectionMatching(COL.MASTER_CUTI, ["nik_karyawan", "nik"], ["nama_karyawan", "nama"]));
+  promises.push(updateCollectionMatching(COL.DATA_REIMBURSEMENT, ["nik_pemohon", "nik_karyawan", "nik"], ["nama_pemohon", "nama_karyawan", "nama"]));
+  promises.push(updateCollectionMatching(COL.SIGN_DOCUMENTS, ["nik_penerima", "nik"], ["nama_penerima", "nama_karyawan", "nama"]));
+  promises.push(updateCollectionMatching(COL.LOG_PENILAIAN_KPI, ["nik_karyawan", "nik"], ["nama_karyawan", "nama", "nama_penilai"]));
+  promises.push(updateCollectionMatching(COL.TUGAS_KPI_360, ["nik_karyawan", "nik_penilai"], ["nama_karyawan", "nama_penilai"]));
+  promises.push(updateCollectionMatching(COL.LOG_PENILAIAN_HARIAN, ["nik_karyawan", "nik"], ["nama_karyawan", "nama"]));
+  promises.push(updateCollectionMatching(COL.TARGET_BULANAN_KPI, ["nik_karyawan", "nik"], ["nama_karyawan", "nama"]));
+  promises.push(updateCollectionMatching(COL.EVALUASI_KONTRAK, ["nik_karyawan", "nik"], ["nama_karyawan", "nama"]));
+  promises.push(updateCollectionMatching(COL.MASTER_KONTRAK, ["nik_karyawan", "nik"], ["nama_karyawan", "nama"]));
+  promises.push(updateCollectionMatching(COL.PERFORMANCE_REVIEW, ["nik_karyawan", "nik"], ["employee_name", "nama_karyawan", "nama"]));
+  promises.push(updateCollectionMatching(COL.DATA_PEMANGGILAN, ["nik_karyawan", "nik"], ["nama_karyawan", "nama"]));
+  promises.push(updateCollectionMatching(COL.LOG_SP_KONSELING, ["nik_karyawan", "nik"], ["nama_karyawan", "nama"]));
+  promises.push(updateCollectionMatching(COL.SIKLUS_KARYAWAN, ["nik_karyawan", "nik"], ["nama_karyawan", "nama"]));
+  promises.push(updateCollectionMatching(COL.UANG_MAKAN_EXPEDISI, ["nik_karyawan", "nik"], ["nama_karyawan", "nama_driver", "nama"]));
+  promises.push(updateCollectionMatching(COL.MASTER_KENDARAAN, [], ["pemegang_kendaraan", "driver", "nama_driver"]));
+  promises.push(updateCollectionMatching(COL.LOG_INVENTORY_PENGAMBILAN, ["nik_peminjam"], ["nama_peminjam", "nama_karyawan"]));
+  promises.push(updateCollectionMatching("sales_order", ["sales_nik", "nik_sales"], ["sales_nama", "nama_sales", "salesman"]));
+  promises.push(updateCollectionMatching("sales_outlet", ["sales_nik", "nik_sales"], ["sales_nama", "nama_sales"]));
+  promises.push(updateCollectionMatching("sales_task", ["sales_nik", "nik_sales"], ["sales_nama", "nama_sales"]));
+  promises.push(updateCollectionMatching("kanal_checkins", ["sales_nik"], ["sales_nama"], { sales_jabatan: newJabatan }));
+  promises.push(updateCollectionMatching("sales_odometer", ["sales_nik"], ["sales_nama"]));
+  promises.push(updateCollectionMatching("klaim_bensin", ["nik_pemohon", "nik_karyawan", "nik"], ["nama_pemohon", "nama_karyawan", "nama"]));
+
+  // 5. Update local session storage if current user
+  try {
+    const rawSession = localStorage.getItem("aj_session");
+    if (rawSession) {
+      const sess = JSON.parse(rawSession);
+      const isSess = (oldNik && (sess.nik === oldNik || sess.username === oldNik)) ||
+                     (oldName && sess.nama && sess.nama.toLowerCase() === oldName.toLowerCase());
+      if (isSess) {
+        if (newName) sess.nama = newName;
+        if (newNik) sess.nik = newNik;
+        if (newJabatan) sess.jabatan = newJabatan;
+        if (newDivisi) sess.divisi = newDivisi;
+        if (newCabang) sess.cabang = newCabang;
+        if (newEmail) sess.email = newEmail;
+        localStorage.setItem("aj_session", JSON.stringify(sess));
+      }
+    }
+  } catch (e) {}
+
+  await Promise.all(promises);
+  console.log(`[CASCADE] Successfully synchronized "${newName}" across all modules.`);
+}
+
+/**
+ * Performs a global synchronization of all Master Karyawan records into all related modules.
+ */
+export async function syncAllEmployeesAcrossCollections() {
+  const emps = await fsGetAll(COL.MASTER_KARYAWAN).catch(() => []);
+  if (!emps.length) return 0;
+  for (const emp of emps) {
+    await cascadeEmployeeChanges(emp, emp);
+  }
+  return emps.length;
+}
+
