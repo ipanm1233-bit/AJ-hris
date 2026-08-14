@@ -15,6 +15,7 @@ const sendPush = require('./api/send-push.js');
 const syncAbsen = require('./api/sync-absen.js');
 const kanalProxy = require('./api/kanal-proxy.js');
 const sendEmail = require('./api/send-email.js');
+const proxyImage = require('./api/proxy-image.js');
 
 // Map the API paths to the handlers
 app.all('/api/cron-check-kontrak', async (req, res, next) => {
@@ -58,6 +59,15 @@ app.all('/api/send-email', async (req, res, next) => {
     await sendEmail(req, res);
   } catch (error) {
     console.error("Error in send-email:", error);
+    next(error);
+  }
+});
+
+app.all('/api/proxy-image', async (req, res, next) => {
+  try {
+    await proxyImage(req, res);
+  } catch (error) {
+    console.error("Error in proxy-image:", error);
     next(error);
   }
 });
