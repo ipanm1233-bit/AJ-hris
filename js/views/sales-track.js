@@ -89,6 +89,89 @@ export async function mount(container, { session }) {
     }
   }
 
+  // Helper: Get effective daily GPS distance (custom manual override or auto calculated)
+  function getEffectiveDailyGpsDistance(salesNik, tanggal, calculatedKm = 0) {
+    const key = `${salesNik}_${tanggal}`;
+    const odm = odometerLogsMap.get(key);
+    if (odm && odm.manual_jarak_gps !== undefined && odm.manual_jarak_gps !== null && Number(odm.manual_jarak_gps) > 0) {
+      return {
+        totalKm: Math.round(Number(odm.manual_jarak_gps) * 10) / 10,
+        isManual: true,
+        calculatedKm: Math.round(Number(calculatedKm) * 10) / 10
+      };
+    }
+    return {
+      totalKm: Math.round(Number(calculatedKm) * 10) / 10,
+      isManual: false,
+      calculatedKm: Math.round(Number(calculatedKm) * 10) / 10
+    };
+  }
+
+  // Helper: Save/Update Custom Daily GPS Distance (e.g. from Google Maps route discrepancy)
+  async function saveCustomDailyGpsKm(salesNik, salesNama, tanggal, customKmInput, calculatedKm = 0) {
+    if (!salesNik || !tanggal) {
+      toast("Data sales / tanggal tidak valid.", "warning");
+      return false;
+    }
+
+    const key = `${salesNik}_${tanggal}`;
+    const docId = `ODM-${salesNik}-${tanggal}`;
+    const existingOdm = odometerLogsMap.get(key) || {};
+
+    let manualGpsVal = null;
+    if (customKmInput !== null && customKmInput !== undefined && String(customKmInput).trim() !== "") {
+      const parsed = parseFloat(String(customKmInput).replace(",", "."));
+      if (isNaN(parsed) || parsed <= 0) {
+        toast("Nilai jarak GPS harus berupa angka positif!", "error");
+        return false;
+      }
+      manualGpsVal = Math.round(parsed * 10) / 10;
+    }
+
+    const effectiveGps = (manualGpsVal !== null && manualGpsVal > 0) ? manualGpsVal : (calculatedKm || 0);
+    const kmAwal = existingOdm.km_awal !== undefined ? existingOdm.km_awal : 0;
+    const kmAkhir = existingOdm.km_akhir !== undefined ? existingOdm.km_akhir : 0;
+    const jarakOdm = (kmAkhir >= kmAwal) ? (kmAkhir - kmAwal) : 0;
+    const selisih = Math.round((jarakOdm - effectiveGps) * 10) / 10;
+
+    const odmRecord = {
+      ...existingOdm,
+      id: docId,
+      sales_nik: salesNik,
+      sales_nama: salesNama || existingOdm.sales_nama || "Salesman",
+      tanggal: tanggal,
+      km_awal: kmAwal,
+      km_akhir: kmAkhir,
+      jarak_odometer: Math.round(jarakOdm * 10) / 10,
+      jarak_gps: Math.round(effectiveGps * 10) / 10,
+      manual_jarak_gps: manualGpsVal,
+      is_manual_gps: manualGpsVal !== null,
+      selisih: selisih,
+      updated_at: new Date().toISOString()
+    };
+
+    try {
+      await fsUpdate("sales_odometer", docId, odmRecord).catch(async () => {
+        await fsAdd("sales_odometer", odmRecord, docId);
+      });
+
+      odometerLogsMap.set(key, odmRecord);
+
+      if (manualGpsVal !== null) {
+        toast(`Jarak GPS Hari Ini (${tanggal}) berhasil disesuaikan menjadi ${manualGpsVal.toFixed(1)} KM (Google Maps)!`, "success");
+      } else {
+        toast(`Jarak GPS Hari Ini (${tanggal}) dikembalikan ke kalkulasi sistem (${Number(calculatedKm).toFixed(1)} KM).`, "info");
+      }
+
+      applyAndRenderDashboard();
+      return true;
+    } catch (e) {
+      console.error("Gagal simpan penyesuaian jarak GPS:", e);
+      toast("Gagal menyimpan penyesuaian jarak GPS: " + e.message, "error");
+      return false;
+    }
+  }
+
   // Helper: Save/Update Sales Odometer log to Firestore
   async function saveOdometerLog(salesNik, salesNama, tanggal, kmAwalInput, kmAkhirInput, jarakGps) {
     if (!salesNik || !tanggal) {
@@ -104,18 +187,27 @@ export async function mount(container, { session }) {
     }
 
     const jarakOdometer = (kmAkhir >= kmAwal) ? (kmAkhir - kmAwal) : 0;
-    const selisih = Math.round((jarakOdometer - jarakGps) * 10) / 10;
+    const key = `${salesNik}_${tanggal}`;
+    const existingOdm = odometerLogsMap.get(key) || {};
+    const effectiveGps = (existingOdm.manual_jarak_gps !== undefined && existingOdm.manual_jarak_gps !== null && existingOdm.manual_jarak_gps > 0)
+      ? Number(existingOdm.manual_jarak_gps)
+      : Number(jarakGps);
+
+    const selisih = Math.round((jarakOdometer - effectiveGps) * 10) / 10;
     const docId = `ODM-${salesNik}-${tanggal}`;
 
     const odmRecord = {
+      ...existingOdm,
       id: docId,
       sales_nik: salesNik,
-      sales_nama: salesNama || "Salesman",
+      sales_nama: salesNama || existingOdm.sales_nama || "Salesman",
       tanggal: tanggal,
       km_awal: kmAwal,
       km_akhir: kmAkhir,
       jarak_odometer: Math.round(jarakOdometer * 10) / 10,
-      jarak_gps: Math.round(jarakGps * 10) / 10,
+      jarak_gps: Math.round(effectiveGps * 10) / 10,
+      manual_jarak_gps: existingOdm.manual_jarak_gps || null,
+      is_manual_gps: !!existingOdm.manual_jarak_gps,
       selisih: selisih,
       updated_at: new Date().toISOString()
     };
@@ -125,7 +217,6 @@ export async function mount(container, { session }) {
         await fsAdd("sales_odometer", odmRecord, docId);
       });
 
-      const key = `${salesNik}_${tanggal}`;
       odometerLogsMap.set(key, odmRecord);
       toast(`Data Odometer ${salesNama} (${tanggal}) berhasil disimpan! Jarak Odometer: ${jarakOdometer.toFixed(1)} KM, Selisih: ${selisih >= 0 ? '+' : ''}${selisih.toFixed(1)} KM`, "success");
       applyAndRenderDashboard();
@@ -426,9 +517,11 @@ export async function mount(container, { session }) {
     });
 
     let cumulativeKm = 0;
-    salesGroup.forEach((grp) => {
+    salesGroup.forEach((grp, key) => {
       const metrics = calculateSalesRouteMetrics(grp.visits, departureConfig, grp.nik);
-      cumulativeKm += metrics.totalKm;
+      const sampleTgl = grp.visits[0]?.tanggal || todayStr;
+      const eff = getEffectiveDailyGpsDistance(grp.nik, sampleTgl, metrics.totalKm);
+      cumulativeKm += eff.totalKm;
     });
 
     // Update Top Summary Cards
@@ -493,15 +586,31 @@ export async function mount(container, { session }) {
       const isSelected = activeSalesman === s.nama;
       const topStore = s.visits[0]?.toko_outlet || "Outlet Utama";
 
-      // Compute route distance for this salesman
-      const routeMetrics = calculateSalesRouteMetrics(s.visits, departureConfig, s.nik);
+      // Compute effective route distance for this salesman across his visit dates
+      const salesDates = Array.from(new Set(s.visits.map(v => v.tanggal).filter(Boolean)));
+      let salesmanEffectiveTotalKm = 0;
+      let hasCustomGps = false;
+      if (salesDates.length > 0) {
+        salesDates.forEach(d => {
+          const dVisits = s.visits.filter(v => v.tanggal === d);
+          const dMet = calculateSalesRouteMetrics(dVisits, departureConfig, s.nik);
+          const eff = getEffectiveDailyGpsDistance(s.nik, d, dMet.totalKm);
+          salesmanEffectiveTotalKm += eff.totalKm;
+          if (eff.isManual) hasCustomGps = true;
+        });
+      } else {
+        const routeMetrics = calculateSalesRouteMetrics(s.visits, departureConfig, s.nik);
+        salesmanEffectiveTotalKm = routeMetrics.totalKm;
+      }
+      salesmanEffectiveTotalKm = Math.round(salesmanEffectiveTotalKm * 10) / 10;
+      const baseRouteMetrics = calculateSalesRouteMetrics(s.visits, departureConfig, s.nik);
 
       // Check recorded odometer for sales & today/filtered date
       const sampleVisitDate = s.visits[0]?.tanggal || todayStr;
       const savedOdm = odometerLogsMap.get(`${s.nik}_${sampleVisitDate}`) || {};
-      const jarakOdmStr = (savedOdm.jarak_odometer !== undefined) ? `${savedOdm.jarak_odometer.toFixed(1)} KM` : "-";
+      const jarakOdmStr = (savedOdm.jarak_odometer !== undefined && savedOdm.jarak_odometer !== null) ? `${savedOdm.jarak_odometer.toFixed(1)} KM` : "-";
       const selisihVal = savedOdm.selisih;
-      const selisihStr = (selisihVal !== undefined) ? `${selisihVal > 0 ? '+' : ''}${selisihVal.toFixed(1)} KM` : "-";
+      const selisihStr = (selisihVal !== undefined && selisihVal !== null) ? `${selisihVal > 0 ? '+' : ''}${selisihVal.toFixed(1)} KM` : "-";
 
       return `
       <div class="salesman-card bg-white rounded-2xl border ${isSelected ? 'border-maroon-600 ring-2 ring-maroon-100 bg-maroon-50/20' : 'border-slate-100 hover:border-slate-300'} p-4 shadow-sm transition flex flex-col justify-between" data-salesman="${escapeHtml(s.nama)}">
@@ -524,7 +633,10 @@ export async function mount(container, { session }) {
           <div class="mt-3 p-2.5 bg-slate-50 rounded-xl border border-slate-100 space-y-1.5 text-xs">
             <div class="flex justify-between items-center text-[11px]">
               <span class="text-slate-500 font-semibold">Total Jarak GPS:</span>
-              <span class="font-black text-indigo-700 text-sm">${routeMetrics.totalKm} KM</span>
+              <span class="font-black text-indigo-700 text-sm flex items-center gap-1">
+                ${salesmanEffectiveTotalKm} KM
+                ${hasCustomGps ? `<span class="px-1.5 py-0.2 bg-amber-100 text-amber-800 border border-amber-300 rounded text-[8.5px] font-bold" title="Memiliki nilai jarak GPS yang disesuaikan">Custom</span>` : ''}
+              </span>
             </div>
             <div class="flex justify-between items-center text-[11px]">
               <span class="text-slate-500 font-semibold">Odometer Sales:</span>
@@ -536,7 +648,7 @@ export async function mount(container, { session }) {
             </div>
             <div class="flex justify-between items-center text-[10px] text-slate-500 pt-1 border-t border-slate-200/50">
               <span>Keberangkatan:</span>
-              <span class="font-bold text-slate-700 truncate max-w-[150px]">${escapeHtml(routeMetrics.startPoint.nama)}</span>
+              <span class="font-bold text-slate-700 truncate max-w-[150px]">${escapeHtml(baseRouteMetrics.startPoint.nama)}</span>
             </div>
           </div>
 
@@ -1264,7 +1376,8 @@ export async function mount(container, { session }) {
       sortedDates.forEach(d => {
         const dVisits = allSalesVisits.filter(v => v.tanggal === d);
         const dMet = calculateSalesRouteMetrics(dVisits, departureConfig, salesNik);
-        totalOverallGpsKm += dMet.totalKm;
+        const eff = getEffectiveDailyGpsDistance(salesNik, d, dMet.totalKm);
+        totalOverallGpsKm += eff.totalKm;
       });
       totalOverallGpsKm = Math.round(totalOverallGpsKm * 10) / 10;
 
@@ -1283,6 +1396,9 @@ export async function mount(container, { session }) {
       ` : datesToRender.map(tgl => {
         const dailyVisits = allSalesVisits.filter(v => v.tanggal === tgl);
         const dailyMetrics = calculateSalesRouteMetrics(dailyVisits, departureConfig, salesNik);
+        const effectiveGps = getEffectiveDailyGpsDistance(salesNik, tgl, dailyMetrics.totalKm);
+        const effectiveGpsKm = effectiveGps.totalKm;
+        const isCustomGps = effectiveGps.isManual;
 
         const savedOdm = odometerLogsMap.get(`${salesNik}_${tgl}`) || {};
         const initAwal = (savedOdm.km_awal !== undefined && savedOdm.km_awal !== null) ? savedOdm.km_awal : "";
@@ -1290,7 +1406,7 @@ export async function mount(container, { session }) {
         const numAwal = parseFloat(initAwal) || 0;
         const numAkhir = parseFloat(initAkhir) || 0;
         const initJarakOdm = (numAkhir >= numAwal) ? (numAkhir - numAwal) : 0;
-        const initSelisih = Math.round((initJarakOdm - dailyMetrics.totalKm) * 10) / 10;
+        const initSelisih = Math.round((initJarakOdm - effectiveGpsKm) * 10) / 10;
 
         const originStr = encodeURIComponent(dailyMetrics.startPoint.gps);
         const destStr = encodeURIComponent(dailyMetrics.endPoint.gps);
@@ -1448,18 +1564,82 @@ export async function mount(container, { session }) {
         return `
         <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden mb-5 transition hover:border-slate-300">
           <!-- CARD HEADER -->
-          <div class="bg-slate-900 text-white p-3.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 border-b border-slate-800">
+          <div class="bg-slate-900 text-white p-3.5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 border-b border-slate-800">
             <div class="flex items-center gap-2.5 flex-wrap">
               <span class="px-3 py-1 bg-amber-500 text-slate-950 text-xs font-black rounded-lg">Tanggal: ${escapeHtml(tgl)}</span>
               <span class="text-xs text-indigo-200 font-bold bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700">${dailyVisits.length} Outlet Visit</span>
               <span class="text-xs text-slate-300 hidden sm:inline">${escapeHtml(dailyMetrics.startPoint.nama)} ➔ ${escapeHtml(dailyMetrics.endPoint.nama)}</span>
             </div>
-            <div class="flex items-center gap-3">
-              <div class="text-right">
-                <span class="text-[10px] text-slate-400 uppercase font-bold block">Jarak GPS Hari Ini</span>
-                <span class="text-lg font-black text-amber-400">${dailyMetrics.totalKm} KM</span>
+
+            <!-- RIGHT HEADER: EDITABLE DAILY GPS & MAPS LINK -->
+            <div class="flex items-center gap-2.5 flex-wrap">
+              <!-- BOX JARAK GPS HARI INI DENGAN FITUR UBAH / SESUAIKAN -->
+              <div class="bg-slate-800 border border-slate-700 rounded-xl p-2 sm:px-3 sm:py-1.5 flex items-center gap-2 shadow-2xs">
+                <div class="text-right">
+                  <div class="flex items-center justify-end gap-1.5">
+                    <span class="text-[10px] text-slate-400 uppercase font-bold">Jarak GPS Hari Ini</span>
+                    ${isCustomGps ? `<span class="px-1.5 py-0.2 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded text-[9px] font-extrabold" title="Jarak telah disesuaikan manual sesuai Google Maps">✏️ Custom</span>` : ''}
+                  </div>
+                  <div class="flex items-center justify-end gap-1.5">
+                    <span class="text-base font-black text-amber-400 font-mono">${effectiveGpsKm} KM</span>
+                    ${isCustomGps ? `<span class="text-[10px] text-slate-400 line-through" title="Kalkulasi otomatis sistem: ${dailyMetrics.totalKm} KM">(${dailyMetrics.totalKm} KM)</span>` : ''}
+                  </div>
+                </div>
+
+                <!-- Inline Edit GPS Controls -->
+                <div class="flex items-center gap-1 pl-2 border-l border-slate-700">
+                  <div class="view-gps-controls flex items-center gap-1" data-date="${tgl}">
+                    <button type="button" 
+                            class="btn-toggle-edit-daily-gps px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/40 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer"
+                            data-date="${tgl}"
+                            title="Ubah nilai jarak GPS hari ini sesuai rute Google Maps">
+                      <span>✏️ Ubah</span>
+                    </button>
+                    ${isCustomGps ? `
+                    <button type="button" 
+                            class="btn-reset-daily-gps px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg text-[10px] font-bold transition cursor-pointer"
+                            data-date="${tgl}"
+                            data-salesnik="${salesNik}"
+                            data-salesnama="${escapeHtml(salesName)}"
+                            data-calcgps="${dailyMetrics.totalKm}"
+                            title="Kembalikan ke jarak kalkulasi sistem (${dailyMetrics.totalKm} KM)">
+                      <span>🔄 Reset</span>
+                    </button>
+                    ` : ''}
+                  </div>
+
+                  <div class="form-inline-edit-gps hidden flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-amber-500/60 shadow-lg" data-date="${tgl}">
+                    <div class="flex items-center gap-0.5">
+                      <input type="number" 
+                             step="0.1" 
+                             min="0.1" 
+                             max="9999" 
+                             class="input-custom-daily-gps-val w-20 px-2 py-1 bg-slate-900 border border-amber-400 rounded text-xs font-mono font-bold text-amber-300 outline-none focus:ring-1 focus:ring-amber-400" 
+                             value="${effectiveGpsKm}" 
+                             placeholder="KM" 
+                             data-date="${tgl}" />
+                      <span class="text-[10px] font-bold text-slate-400 pr-1">KM</span>
+                    </div>
+                    <button type="button" 
+                            class="btn-save-inline-daily-gps px-2 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[10px] rounded transition cursor-pointer shadow-2xs"
+                            data-date="${tgl}"
+                            data-salesnik="${salesNik}"
+                            data-salesnama="${escapeHtml(salesName)}"
+                            data-calcgps="${dailyMetrics.totalKm}"
+                            title="Simpan Jarak GPS Baru">
+                      Simpan
+                    </button>
+                    <button type="button" 
+                            class="btn-cancel-inline-daily-gps px-1.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-[10px] font-bold rounded cursor-pointer"
+                            data-date="${tgl}"
+                            title="Batal">
+                      ✕
+                    </button>
+                  </div>
+                </div>
               </div>
-              <a href="${dailyMapsUrl}" target="_blank" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition shadow-2xs flex items-center gap-1.5 shrink-0">
+
+              <a href="${dailyMapsUrl}" target="_blank" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition shadow-2xs flex items-center gap-1.5 shrink-0" title="Buka rute Google Maps untuk verifikasi rute sesungguhnya">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                 <span>Rute Google Maps (${dailyVisits.length} Visit)</span>
               </a>
@@ -1471,6 +1651,7 @@ export async function mount(container, { session }) {
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div class="flex items-center gap-2 font-bold text-xs text-slate-800">
                 <span>Odometer Kendaraan (${tgl}):</span>
+                <span class="text-[11px] font-normal text-slate-500">(GPS Terpakai: <b class="text-indigo-700 font-mono">${effectiveGpsKm} KM</b>)</span>
               </div>
               
               <div class="flex items-center gap-2 flex-wrap text-xs">
@@ -1494,14 +1675,14 @@ export async function mount(container, { session }) {
                   <span data-date="${tgl}" class="disp-daily-selisih-km font-black ${initSelisih >= 0 ? 'text-emerald-600' : 'text-rose-600'} font-mono text-xs">${initSelisih > 0 ? '+' : ''}${initSelisih.toFixed(1)} KM</span>
                 </div>
 
-                <button data-date="${tgl}" data-gpskm="${dailyMetrics.totalKm}" class="btn-save-daily-odometer px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition text-xs shadow-2xs cursor-pointer">
-                  Simpan
+                <button data-date="${tgl}" data-gpskm="${effectiveGpsKm}" class="btn-save-daily-odometer px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition text-xs shadow-2xs cursor-pointer">
+                  Simpan Odometer
                 </button>
               </div>
             </div>
 
             <div data-date="${tgl}" class="disp-daily-status-badge text-[11px] font-semibold text-slate-600">
-              ${numAkhir > 0 ? (initSelisih >= 0 ? `Jarak Odometer (${initJarakOdm.toFixed(1)} KM) terpaut +${initSelisih.toFixed(1)} KM lebih tinggi dibanding Rute GPS (${dailyMetrics.totalKm} KM).` : `Jarak Odometer (${initJarakOdm.toFixed(1)} KM) terpaut ${initSelisih.toFixed(1)} KM lebih rendah dibanding Rute GPS (${dailyMetrics.totalKm} KM).`) : 'Input KM Awal & KM Akhir untuk menghitung selisih odometer vs rute GPS'}
+              ${numAkhir > 0 ? (initSelisih >= 0 ? `Jarak Odometer (${initJarakOdm.toFixed(1)} KM) terpaut +${initSelisih.toFixed(1)} KM lebih tinggi dibanding Rute GPS (${effectiveGpsKm} KM).` : `Jarak Odometer (${initJarakOdm.toFixed(1)} KM) terpaut ${initSelisih.toFixed(1)} KM lebih rendah dibanding Rute GPS (${effectiveGpsKm} KM).`) : 'Input KM Awal & KM Akhir untuk menghitung selisih odometer vs rute GPS'}
             </div>
           </div>
 
@@ -1640,6 +1821,93 @@ export async function mount(container, { session }) {
             } else {
               dispStatus.textContent = "Input KM Awal & KM Akhir untuk menghitung selisih odometer vs rute GPS";
             }
+          }
+        };
+      });
+
+      // Toggle Custom Daily GPS Distance Edit Form
+      modalEl.querySelectorAll(".btn-toggle-edit-daily-gps").forEach(btn => {
+        btn.onclick = () => {
+          const tgl = btn.dataset.date;
+          if (!tgl) return;
+          const viewBox = modalEl.querySelector(`.view-gps-controls[data-date="${tgl}"]`);
+          const formBox = modalEl.querySelector(`.form-inline-edit-gps[data-date="${tgl}"]`);
+          const inputEl = modalEl.querySelector(`.input-custom-daily-gps-val[data-date="${tgl}"]`);
+          if (viewBox) viewBox.classList.add("hidden");
+          if (formBox) formBox.classList.remove("hidden");
+          if (inputEl) {
+            inputEl.focus();
+            inputEl.select();
+          }
+        };
+      });
+
+      // Cancel Custom Daily GPS Edit
+      modalEl.querySelectorAll(".btn-cancel-inline-daily-gps").forEach(btn => {
+        btn.onclick = () => {
+          const tgl = btn.dataset.date;
+          if (!tgl) return;
+          const viewBox = modalEl.querySelector(`.view-gps-controls[data-date="${tgl}"]`);
+          const formBox = modalEl.querySelector(`.form-inline-edit-gps[data-date="${tgl}"]`);
+          if (formBox) formBox.classList.add("hidden");
+          if (viewBox) viewBox.classList.remove("hidden");
+        };
+      });
+
+      // Save Custom Daily GPS Distance
+      modalEl.querySelectorAll(".btn-save-inline-daily-gps").forEach(btn => {
+        btn.onclick = async () => {
+          const tgl = btn.dataset.date;
+          const sNik = btn.dataset.salesnik || salesNik;
+          const sNama = btn.dataset.salesnama || salesName;
+          const calcGps = parseFloat(btn.dataset.calcgps) || 0;
+          const inputEl = modalEl.querySelector(`.input-custom-daily-gps-val[data-date="${tgl}"]`);
+          const customVal = inputEl ? inputEl.value : "";
+
+          const success = await saveCustomDailyGpsKm(sNik, sNama, tgl, customVal, calcGps);
+          if (success) {
+            refreshModalView();
+          }
+        };
+      });
+
+      modalEl.querySelectorAll(".input-custom-daily-gps-val").forEach(input => {
+        input.onkeydown = async (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            const tgl = input.dataset.date;
+            const saveBtn = modalEl.querySelector(`.btn-save-inline-daily-gps[data-date="${tgl}"]`);
+            if (saveBtn) {
+              saveBtn.click();
+            }
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            const tgl = input.dataset.date;
+            const cancelBtn = modalEl.querySelector(`.btn-cancel-inline-daily-gps[data-date="${tgl}"]`);
+            if (cancelBtn) {
+              cancelBtn.click();
+            }
+          }
+        };
+      });
+
+      // Reset Custom Daily GPS Distance to Auto Calculation
+      modalEl.querySelectorAll(".btn-reset-daily-gps").forEach(btn => {
+        btn.onclick = async () => {
+          const tgl = btn.dataset.date;
+          const sNik = btn.dataset.salesnik || salesNik;
+          const sNama = btn.dataset.salesnama || salesName;
+          const calcGps = parseFloat(btn.dataset.calcgps) || 0;
+
+          const confirmed = await confirmDialog(
+            `Kembalikan jarak GPS tanggal ${tgl} ke kalkulasi otomatis sistem (${calcGps} KM)?`,
+            { title: "Reset Jarak GPS" }
+          );
+          if (!confirmed) return;
+
+          const success = await saveCustomDailyGpsKm(sNik, sNama, tgl, null, calcGps);
+          if (success) {
+            refreshModalView();
           }
         };
       });
@@ -1979,7 +2247,8 @@ export async function mount(container, { session }) {
       dates.forEach(dStr => {
         const visits = sData.byDate.get(dStr);
         const metrics = calculateSalesRouteMetrics(visits, departureConfig, sData.nik);
-        salesTotalKm += metrics.totalKm;
+        const eff = getEffectiveDailyGpsDistance(sData.nik, dStr, metrics.totalKm);
+        salesTotalKm += eff.totalKm;
         salesTotalVisits += visits.length;
         visits.forEach(v => {
           if ((v.status_kunjungan || "").toLowerCase().includes("effective")) salesEcCount++;
@@ -2064,6 +2333,7 @@ export async function mount(container, { session }) {
         dates.forEach(dStr => {
           const visits = s.byDate.get(dStr);
           const metrics = calculateSalesRouteMetrics(visits, departureConfig, s.nik);
+          const effGps = getEffectiveDailyGpsDistance(s.nik, dStr, metrics.totalKm);
 
           const pdfStartRow = `
             <tr style="border-bottom: 1px solid #e2e8f0; font-size: 10px; background-color: #e0e7ff; font-weight: bold;">
@@ -2143,7 +2413,7 @@ export async function mount(container, { session }) {
             <div style="margin-top: 8px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
               <div style="background-color: #f1f5f9; padding: 6px 10px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; font-size: 10.5px;">
                 <span style="font-weight: bold; color: #1e293b;">Tanggal: ${escapeHtml(dStr)}</span>
-                <span style="font-size: 9.5px; color: #475569;">Keberangkatan: <b>${escapeHtml(metrics.startPoint.nama)}</b> | Total: <b style="color:#4338ca;">${metrics.totalKm} KM</b></span>
+                <span style="font-size: 9.5px; color: #475569;">Keberangkatan: <b>${escapeHtml(metrics.startPoint.nama)}</b> | Total Jarak GPS: <b style="color:#4338ca;">${effGps.totalKm} KM</b> ${effGps.isManual ? '<span style="color:#d97706;font-weight:bold;">(Custom Google Maps)</span>' : ''}</span>
               </div>
               <table style="width: 100%; border-collapse: collapse; text-align: left;">
                 <thead>
