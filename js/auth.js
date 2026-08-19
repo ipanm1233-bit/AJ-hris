@@ -362,6 +362,24 @@ export async function canEditModuleData(session) {
  return _MANAGEMENT_ROLES.includes(role);
 }
 
+/**
+ * Cek apakah `session` boleh menghapus data di sistem.
+ * SPV, Koordinator Sales, Salesman, dan Karyawan biasa TIDAK memiliki izin menghapus data apapun di sistem.
+ * Hanya SUPERADMIN, HRD, DIREKTUR, dan GM yang berhak menghapus data.
+ */
+export function canDeleteModuleData(session) {
+ if (!session) return false;
+ const role = (session.role || "").toUpperCase();
+ const posisi = (session.posisi || session.jabatan || "").toUpperCase();
+ if (
+  role === "SPV" || role === "KOORDINATOR" || role === "SALES" || role === "STAFF" || role === "KARYAWAN" ||
+  posisi.includes("SPV") || posisi.includes("SUPERVISOR") || posisi.includes("KOORDINATOR") || posisi.includes("KORLAP") || posisi.includes("SALES")
+ ) {
+  return false;
+ }
+ return ["SUPERADMIN", "HRD", "DIREKTUR", "DIRECTOR", "GM"].includes(role);
+}
+
 export async function canAccessRoute(routeId, session) {
  let targetId = routeId;
  if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(targetId)) {

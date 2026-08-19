@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, orderBy, limit, getDoc, doc, updateDoc, messaging } from "../firebase-config.js";
-import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, getTargetsForRole, toast, fsUpdate, fsAdd, fsGetAll, fsDelete, deleteBroadcastMemoAndNotifs, genId, localDateStr, getCalculatedJatahCuti, calculateAge, calculateTenure } from "../utils.js";
+import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, getTargetsForRole, toast, fsUpdate, fsAdd, fsGetAll, fsDelete, deleteBroadcastMemoAndNotifs, genId, localDateStr, getCalculatedJatahCuti, calculateAge, calculateTenure, cleanSalesName, calculateSalesRouteMetrics, normalizeCheckinItem, getDirectImageUrl } from "../utils.js";
 import { avatar, badge, icon, emptyState, skeletonRows, getDismissedAnnouncements, dismissAnnouncementForUser } from "../components.js";
 import { MANAJEMEN_ROLES, computeVisibleMenus } from "../auth.js";
 // IMPORT BARU UNTUK MENDAPATKAN TOKEN HP (FCM)
@@ -16,7 +16,7 @@ export async function mount(container, { session }) {
 
  // Widget dashboard karyawan bisa diatur HRD per-karyawan (user_dashboard_widgets)
  // atau secara global (dashboard_widgets). Default: semua widget aktif jika belum diatur.
- const WIDGET_IDS = ["dash-widget-leave", "dash-widget-kpi", "dash-widget-cuti-hari-ini", "dash-widget-pengumuman", "dash-widget-attendance", "dash-widget-performance", "dash-widget-assets", "dash-contract-widget-wrap"];
+ const WIDGET_IDS = ["dash-widget-leave", "dash-widget-kpi", "dash-widget-cuti-hari-ini", "dash-widget-pengumuman", "dash-widget-attendance", "dash-widget-performance", "dash-widget-assets", "dash-contract-widget-wrap", "dash-widget-sales-performance"];
  try {
  const cfgSnap = await getDoc(doc(db, COL.APP_SETTINGS, "main"));
  if (cfgSnap.exists()) {
@@ -44,6 +44,7 @@ export async function mount(container, { session }) {
 
  await Promise.all([
  loadPersonalBanner(container, session, karyawanProfile),
+ loadSalesPerformanceWidget(container, session, karyawanProfile),
  loadLeaveBalances(container, session),
  loadKpiTasks(container, session),
  loadAssignedAssets(container, session, karyawanProfile),
@@ -1718,4 +1719,358 @@ async function loadAssignedAssets(container, session, userEmpProfile = null) {
   console.warn("Gagal memuat aset & ATK karyawan:", err);
   wrap.innerHTML = `<p class="text-xs text-slate-400">Gagal memuat daftar aset dan log pengambilan ATK.</p>`;
  }
+}
+
+/* ------------------------ k. REKAPAN PENCAPAIAN KUNJUNGAN SALES WIDGET ------------------------ */
+async function loadSalesPerformanceWidget(container, session, karyawanProfile = null) {
+  const widgetWrap = container.querySelector("#dash-widget-sales-performance");
+  const contentEl = container.querySelector("#dash-sales-performance-content");
+  const badgeNamaEl = container.querySelector("#dash-sales-badge-nama");
+  if (!widgetWrap || !contentEl) return;
+
+  const empJabatan = (karyawanProfile?.jabatan || session.posisi || session.jabatan || "").trim();
+  const empDivisi = (karyawanProfile?.divisi || session.divisi || "").trim();
+  const empRole = (session.role || "").trim();
+  const empNik = (session.nik || karyawanProfile?.nik_karyawan || session.username || "").trim();
+  const empNama = (session.nama || karyawanProfile?.nama_karyawan || "").trim();
+  const normEmpNama = cleanSalesName(empNama);
+
+  const isSalesPerson = /sales|kanvas|canvas|motoris|spv sales|supervisor sales|account executive/i.test(empJabatan) ||
+                        /sales/i.test(empDivisi) ||
+                        /sales/i.test(empRole);
+
+  try {
+    // 1. Ambil data checkin kunjungan sales, odometer, dan departure config
+    const [rawCheckins, rawOdo, rawDep] = await Promise.all([
+      fsGetAll("kanal_checkins").catch(() => []),
+      fsGetAll("sales_odometer").catch(() => []),
+      fsGetAll("departure_config").catch(() => [])
+    ]);
+
+    const departureConfig = (rawDep && rawDep.length > 0) ? rawDep[0] : null;
+
+    // Filter data kunjungan untuk sales yang sedang login (berdasarkan NIK atau nama terseragamkan)
+    const userCheckins = (rawCheckins || []).map(normalizeCheckinItem).filter(c => {
+      const cNik = (c.sales_nik || "").trim();
+      const cName = cleanSalesName(c.sales_nama);
+      if (empNik && cNik && (cNik === empNik || cNik === session.username)) return true;
+      if (normEmpNama && cName && (cName === normEmpNama || normEmpNama.includes(cName) || cName.includes(normEmpNama))) return true;
+      return false;
+    });
+
+    // Jika bukan karyawan jabatan sales dan tidak memiliki data kunjungan di sistem, sembunyikan widget
+    if (!isSalesPerson && userCheckins.length === 0) {
+      widgetWrap.classList.add("hidden");
+      return;
+    }
+
+    // Tampilkan widget untuk karyawan sales
+    widgetWrap.classList.remove("hidden");
+
+    if (badgeNamaEl) {
+      badgeNamaEl.textContent = normEmpNama || empNama || "Salesman";
+    }
+
+    const now = new Date();
+    const todayStr = localDateStr(now);
+    const currentYearMonth = todayStr.substring(0, 7);
+
+    // Map log odometer sales
+    const odoMap = new Map();
+    (rawOdo || []).forEach(o => {
+      const oNik = (o.sales_nik || "").trim();
+      const oName = cleanSalesName(o.sales_nama);
+      const isMatch = (empNik && oNik && oNik === empNik) || (normEmpNama && oName && oName === normEmpNama);
+      if (isMatch && o.tanggal) {
+        odoMap.set(o.tanggal, o);
+      }
+    });
+
+    let currentPeriod = "MONTH";
+
+    const renderData = () => {
+      // Filter berdasarkan periode yang aktif
+      let filtered = [];
+      if (currentPeriod === "TODAY") {
+        filtered = userCheckins.filter(c => c.tanggal === todayStr);
+      } else if (currentPeriod === "WEEK") {
+        filtered = userCheckins.filter(c => {
+          if (!c.tanggal) return false;
+          const dt = new Date(c.tanggal);
+          const diff = (now - dt) / (1000 * 3600 * 24);
+          return !isNaN(diff) && diff <= 7 && diff >= -1;
+        });
+      } else if (currentPeriod === "MONTH") {
+        filtered = userCheckins.filter(c => (c.tanggal || "").startsWith(currentYearMonth));
+      } else {
+        filtered = [...userCheckins];
+      }
+
+      // Urutkan kunjungan dari yang terbaru (tanggal & waktu)
+      filtered.sort((a, b) => {
+        const dComp = (b.tanggal || "").localeCompare(a.tanggal || "");
+        if (dComp !== 0) return dComp;
+        return (b.waktu_checkin || "").localeCompare(a.waktu_checkin || "");
+      });
+
+      const totalVisits = filtered.length;
+      const todayVisitsCount = userCheckins.filter(c => c.tanggal === todayStr).length;
+      const monthVisitsCount = userCheckins.filter(c => (c.tanggal || "").startsWith(currentYearMonth)).length;
+
+      const ecVisits = filtered.filter(c => {
+        const st = (c.status_kunjungan || "").toLowerCase();
+        return st.includes("effective") || c.is_effective_call === true;
+      }).length;
+
+      const stokVisits = filtered.filter(c => (c.status_kunjungan || "").toLowerCase().includes("stok")).length;
+      const penawaranVisits = filtered.filter(c => (c.status_kunjungan || "").toLowerCase().includes("penawaran")).length;
+      const lainnyaVisits = Math.max(0, totalVisits - ecVisits - stokVisits - penawaranVisits);
+
+      const ecRate = totalVisits > 0 ? Math.round((ecVisits / totalVisits) * 100) : 0;
+      const stokRate = totalVisits > 0 ? Math.round((stokVisits / totalVisits) * 100) : 0;
+      const penawaranRate = totalVisits > 0 ? Math.round((penawaranVisits / totalVisits) * 100) : 0;
+      const lainnyaRate = totalVisits > 0 ? Math.max(0, 100 - ecRate - stokRate - penawaranRate) : 0;
+
+      const uniqueOutlets = new Set(filtered.map(c => (c.toko_outlet || "").trim().toLowerCase()).filter(Boolean));
+
+      // Hitung total jarak tempuh GPS berdasarkan rute kunjungan
+      const dateGroups = new Map();
+      filtered.forEach(c => {
+        const d = c.tanggal || todayStr;
+        if (!dateGroups.has(d)) dateGroups.set(d, []);
+        dateGroups.get(d).push(c);
+      });
+
+      let totalKm = 0;
+      dateGroups.forEach((visitsOnDate, dateKey) => {
+        const odo = odoMap.get(dateKey);
+        if (odo && odo.manual_jarak_gps !== undefined && odo.manual_jarak_gps !== null && odo.manual_jarak_gps !== "") {
+          totalKm += parseFloat(odo.manual_jarak_gps) || 0;
+        } else if (visitsOnDate.length > 0) {
+          const metrics = calculateSalesRouteMetrics(visitsOnDate, departureConfig);
+          totalKm += (metrics.totalKm || 0);
+        }
+      });
+      totalKm = Math.round(totalKm * 10) / 10;
+
+      if (totalVisits === 0) {
+        contentEl.innerHTML = `
+          <div class="p-6 bg-slate-50/70 border border-dashed border-slate-200 rounded-2xl text-center">
+            <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 border border-amber-200/60 flex items-center justify-center mx-auto mb-2.5">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            </div>
+            <p class="text-sm font-bold text-slate-700">Belum ada kunjungan pada periode ini</p>
+            <p class="text-xs text-slate-500 mt-1 max-w-md mx-auto">Riwayat rute outlet, status order/stok, dan pencapaian target kunjungan akan otomatis muncul di sini setelah sinkronisasi data lapangan.</p>
+            <div class="mt-3 flex items-center justify-center gap-2">
+              <a href="#sales-track" class="px-4 py-2 bg-maroon-700 hover:bg-maroon-800 text-white rounded-xl text-xs font-bold transition">Lihat Peta Sales Track</a>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      // Daftar 5 kunjungan terakhir
+      const recentVisits = filtered.slice(0, 5);
+
+      contentEl.innerHTML = `
+        <!-- KPI METRICS GRID -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <!-- Total Kunjungan -->
+          <div class="p-3.5 bg-gradient-to-br from-slate-50 to-slate-100/70 border border-slate-200/80 rounded-2xl">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Kunjungan</span>
+              <span class="p-1 bg-maroon-50 text-maroon-700 rounded-lg text-xs font-bold">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+              </span>
+            </div>
+            <div class="mt-2 flex items-baseline gap-1.5">
+              <span class="text-2xl font-black text-slate-900 tracking-tight">${totalVisits}</span>
+              <span class="text-xs font-semibold text-slate-500">Visit</span>
+            </div>
+            <p class="text-[10px] text-slate-500 mt-1 font-medium">Hari ini: <strong class="text-slate-800">${todayVisitsCount}</strong> • Bulan ini: <strong class="text-slate-800">${monthVisitsCount}</strong></p>
+          </div>
+
+          <!-- Effective Call (EC) -->
+          <div class="p-3.5 bg-gradient-to-br from-emerald-50/70 to-emerald-100/40 border border-emerald-200/80 rounded-2xl">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold text-emerald-900 uppercase tracking-wider">Effective Call (EC)</span>
+              <span class="px-1.5 py-0.5 bg-emerald-600 text-white rounded-md text-[10px] font-extrabold shadow-2xs">${ecRate}%</span>
+            </div>
+            <div class="mt-2 flex items-baseline gap-1.5">
+              <span class="text-2xl font-black text-emerald-950 tracking-tight">${ecVisits}</span>
+              <span class="text-xs font-semibold text-emerald-800">Toko Closing</span>
+            </div>
+            <p class="text-[10px] text-emerald-800 mt-1 font-medium">Tingkat keberhasilan pesanan outlet</p>
+          </div>
+
+          <!-- Outlet Unik -->
+          <div class="p-3.5 bg-gradient-to-br from-blue-50/70 to-indigo-50/50 border border-blue-200/80 rounded-2xl">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold text-blue-900 uppercase tracking-wider">Outlet Terlayani</span>
+              <span class="p-1 bg-blue-100 text-blue-800 rounded-lg text-xs font-bold">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+              </span>
+            </div>
+            <div class="mt-2 flex items-baseline gap-1.5">
+              <span class="text-2xl font-black text-blue-950 tracking-tight">${uniqueOutlets.size}</span>
+              <span class="text-xs font-semibold text-blue-800">Toko Unik</span>
+            </div>
+            <p class="text-[10px] text-blue-800 mt-1 font-medium">Cakupan pelanggan & sebaran toko</p>
+          </div>
+
+          <!-- Total Jarak GPS -->
+          <div class="p-3.5 bg-gradient-to-br from-amber-50/70 to-orange-50/50 border border-amber-200/80 rounded-2xl">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold text-amber-900 uppercase tracking-wider">Jarak Tempuh GPS</span>
+              <span class="p-1 bg-amber-100 text-amber-800 rounded-lg text-xs font-bold">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              </span>
+            </div>
+            <div class="mt-2 flex items-baseline gap-1.5">
+              <span class="text-2xl font-black text-amber-950 tracking-tight">${totalKm}</span>
+              <span class="text-xs font-semibold text-amber-800">KM</span>
+            </div>
+            <p class="text-[10px] text-amber-800 mt-1 font-medium">Akumulasi rute perjalanan sales</p>
+          </div>
+        </div>
+
+        <!-- VISUAL COMPOSITION BAR -->
+        <div class="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-2.5">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold text-slate-700">Komposisi Hasil Kunjungan:</span>
+            <div class="flex items-center gap-3 text-[11px] font-semibold flex-wrap">
+              <span class="flex items-center gap-1.5 text-emerald-700">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> EC: <strong>${ecVisits} (${ecRate}%)</strong>
+              </span>
+              <span class="flex items-center gap-1.5 text-blue-700">
+                <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span> Cek Stok: <strong>${stokVisits}</strong>
+              </span>
+              <span class="flex items-center gap-1.5 text-amber-700">
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Penawaran: <strong>${penawaranVisits}</strong>
+              </span>
+              ${lainnyaVisits > 0 ? `
+              <span class="flex items-center gap-1.5 text-slate-600">
+                <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span> Lainnya: <strong>${lainnyaVisits}</strong>
+              </span>` : ''}
+            </div>
+          </div>
+
+          <!-- Multi-Color Progress Bar -->
+          <div class="w-full h-3 bg-slate-200 rounded-full overflow-hidden flex shadow-inner">
+            <div style="width: ${ecRate}%" class="bg-emerald-500 h-full transition-all duration-500" title="Effective Call: ${ecRate}%"></div>
+            <div style="width: ${stokRate}%" class="bg-blue-500 h-full transition-all duration-500" title="Cek Stok: ${stokRate}%"></div>
+            <div style="width: ${penawaranRate}%" class="bg-amber-500 h-full transition-all duration-500" title="Penawaran: ${penawaranRate}%"></div>
+            <div style="width: ${lainnyaRate}%" class="bg-slate-400 h-full transition-all duration-500" title="Lainnya: ${lainnyaRate}%"></div>
+          </div>
+        </div>
+
+        <!-- RECENT VISITS TIMELINE -->
+        <div class="space-y-2.5">
+          <div class="flex items-center justify-between">
+            <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-maroon-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <span>Aktivitas Kunjungan Lapangan Terkini</span>
+            </h4>
+            <a href="#sales-track" class="text-[11px] font-bold text-maroon-700 hover:underline">Lihat Semua di Sales Track &rarr;</a>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+            ${recentVisits.map((v) => {
+              const isEc = (v.status_kunjungan || "").toLowerCase().includes("effective") || v.is_effective_call === true;
+              const isStok = (v.status_kunjungan || "").toLowerCase().includes("stok");
+              const isPenawaran = (v.status_kunjungan || "").toLowerCase().includes("penawaran");
+
+              let statusBadgeHtml = `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200">${escapeHtml(v.status_kunjungan || "Kunjungan")}</span>`;
+              if (isEc) {
+                statusBadgeHtml = `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">✓ Effective Call</span>`;
+              } else if (isStok) {
+                statusBadgeHtml = `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-blue-50 text-blue-800 border border-blue-200">Cek Stok</span>`;
+              } else if (isPenawaran) {
+                statusBadgeHtml = `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-50 text-amber-800 border border-amber-200">Penawaran Baru</span>`;
+              }
+
+              const photoUrl = v.gambar_checkin || v.foto_checkin || "";
+              const formattedPhoto = photoUrl ? getDirectImageUrl(photoUrl) : "";
+
+              return `
+                <div class="p-3 bg-white border border-slate-200/90 rounded-2xl shadow-2xs hover:border-slate-300 transition flex items-start gap-3">
+                  ${formattedPhoto ? `
+                    <div class="relative shrink-0 cursor-pointer group/img btn-preview-visit-photo" data-img="${escapeHtml(formattedPhoto)}" data-toko="${escapeHtml(v.toko_outlet || '')}">
+                      <img src="${escapeHtml(formattedPhoto)}" alt="Foto Checkin" class="w-12 h-12 rounded-xl object-cover border border-slate-200 group-hover/img:scale-105 transition" loading="lazy" />
+                      <div class="absolute inset-0 bg-black/20 rounded-xl flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition">
+                        <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"/></svg>
+                      </div>
+                    </div>
+                  ` : `
+                    <div class="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 text-slate-400 flex items-center justify-center shrink-0">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                    </div>
+                  `}
+
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between gap-1 flex-wrap">
+                      <h5 class="font-bold text-slate-800 text-xs truncate max-w-[180px]">${escapeHtml(v.toko_outlet || "Outlet")}</h5>
+                      ${statusBadgeHtml}
+                    </div>
+                    <p class="text-[11px] text-slate-500 truncate mt-0.5">${escapeHtml(v.alamat_toko || "Alamat outlet")}</p>
+                    <div class="flex items-center justify-between gap-2 mt-1.5 pt-1.5 border-t border-slate-100 text-[10.5px]">
+                      <span class="text-slate-400 flex items-center gap-1">
+                        <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                        ${v.tanggal ? fmtDateShort(v.tanggal) : "-"} ${v.waktu_checkin ? `• ${escapeHtml(v.waktu_checkin)}` : ''}
+                      </span>
+                      ${v.catatan && v.catatan !== "-" ? `
+                        <span class="text-slate-600 italic truncate max-w-[140px]" title="${escapeHtml(v.catatan)}">"${escapeHtml(v.catatan)}"</span>
+                      ` : ''}
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        </div>
+      `;
+
+      // Event listener modal preview foto kunjungan
+      contentEl.querySelectorAll(".btn-preview-visit-photo").forEach(btn => {
+        btn.onclick = () => {
+          const imgUrl = btn.getAttribute("data-img");
+          const toko = btn.getAttribute("data-toko");
+          openModal({
+            title: `Foto Kunjungan: ${escapeHtml(toko || 'Outlet')}`,
+            bodyHtml: `
+              <div class="text-center p-2">
+                <img src="${escapeHtml(imgUrl)}" alt="Foto Checkin" class="max-h-[70vh] w-auto mx-auto rounded-2xl shadow-lg border border-slate-200" />
+              </div>
+            `
+          });
+        };
+      });
+    };
+
+    // Event listener tombol tab filter periode
+    const tabButtons = widgetWrap.querySelectorAll(".dash-sales-tab");
+    tabButtons.forEach(btn => {
+      btn.onclick = () => {
+        tabButtons.forEach(b => {
+          b.classList.remove("bg-white", "text-maroon-700", "shadow-2xs", "font-bold");
+          b.classList.add("text-slate-600");
+        });
+        btn.classList.add("bg-white", "text-maroon-700", "shadow-2xs", "font-bold");
+        btn.classList.remove("text-slate-600");
+
+        currentPeriod = btn.getAttribute("data-period");
+        renderData();
+      };
+    });
+
+    renderData();
+
+  } catch (err) {
+    console.warn("Gagal memuat widget pencapaian sales:", err);
+    if (!isSalesPerson) {
+      widgetWrap.classList.add("hidden");
+    } else {
+      contentEl.innerHTML = `<p class="text-xs text-slate-400">Gagal memuat rekapan pencapaian sales.</p>`;
+    }
+  }
 }

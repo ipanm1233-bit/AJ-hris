@@ -1,15 +1,36 @@
 import {
   openModal, closeModal, toast, escapeHtml, fsGetAll, fsAdd, fsUpdate, fsDelete, downloadXlsx,
   geocodeAddressSmart, parseGpsCoordinates, calcHaversineDistance, calculateSalesRouteMetrics,
-  normalizeCheckinItem, smartParseDate, confirmDialog, promptDialog, downloadHtmlAsPdf, isValidOperationalCoordinate, getDirectImageUrl
+  normalizeCheckinItem, cleanSalesName, smartParseDate, confirmDialog, promptDialog, downloadHtmlAsPdf,
+  isValidOperationalCoordinate, getDirectImageUrl, findMatchingMasterOutlet, hasExplicitGpsOrPlusCode, cleanStoreName
 } from "../utils.js";
 import { COL } from "../firebase-config.js";
 import { isoDocHeaderTable, COMPANY_NAME, logoImgTag } from "../branding.js";
+import { getSession } from "../auth.js";
 
 // Beautiful SVG D3 visualization loaded from ESM
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
 
-export async function mount(container, { session }) {
+export async function mount(container, { session } = {}) {
+  const activeSession = session || getSession() || {};
+  const userRole = (activeSession.role || "").toUpperCase();
+  const userPosisi = (activeSession.posisi || activeSession.jabatan || "").toUpperCase();
+  const userNama = (activeSession.nama || "").trim();
+  const userNik = (activeSession.nik || "").trim();
+  const userCabang = (activeSession.cabang || "").trim().toUpperCase();
+
+  // Role Access Levels
+  const isSuperOrHrd = ["SUPERADMIN", "HRD", "DIREKTUR", "DIRECTOR", "GM"].includes(userRole);
+  const isSpvOrKoordinatorSales = !isSuperOrHrd && (
+    ["SPV", "KOORDINATOR", "MANAGER", "BRANCH MANAGER"].includes(userRole) ||
+    userPosisi.includes("SPV") ||
+    userPosisi.includes("SUPERVISOR") ||
+    userPosisi.includes("KOORDINATOR") ||
+    userPosisi.includes("KORLAP") ||
+    userPosisi.includes("MANAGER")
+  );
+  const isStandardKaryawan = !isSuperOrHrd && !isSpvOrKoordinatorSales;
+
   const btnSync = container.querySelector("#btn-sync-kanal");
   const btnExport = container.querySelector("#btn-export-sales-visits");
   const btnExportPdf = container.querySelector("#btn-export-sales-pdf");
@@ -18,6 +39,17 @@ export async function mount(container, { session }) {
   const btnPurgeDummy = container.querySelector("#btn-purge-dummy-sales");
   const btnConfigDeparture = container.querySelector("#btn-config-departure");
   const timelineEl = container.querySelector("#live-timeline");
+
+  // Apply RBAC UI Restrictions immediately
+  if (isStandardKaryawan) {
+    if (btnImport) btnImport.classList.add("hidden");
+    if (btnPurgeDummy) btnPurgeDummy.classList.add("hidden");
+    if (btnConfigDeparture) btnConfigDeparture.classList.add("hidden");
+    if (btnSync) btnSync.classList.add("hidden");
+  } else if (isSpvOrKoordinatorSales) {
+    if (btnImport) btnImport.classList.add("hidden");
+    if (btnPurgeDummy) btnPurgeDummy.classList.add("hidden");
+  }
 
   const subtitleEl = container.querySelector("#kanal-status-subtitle");
   const distEl = container.querySelector("#track-dist");
@@ -89,6 +121,38 @@ export async function mount(container, { session }) {
     }
   }
 
+  // Helper: Resolve & standardize salesman name in UPPERCASE and link with Master Karyawan
+  function resolveSalesmanInfo(rawName, rawNik = "") {
+    const normName = cleanSalesName(rawName);
+    let resolvedNik = (rawNik || "").trim();
+    let resolvedName = normName;
+
+    if (karyawanList && karyawanList.length > 0) {
+      // 1. Case-insensitive & trimmed match with Master Karyawan
+      const matchedByName = karyawanList.find(k => {
+        const kName = cleanSalesName(k.nama_karyawan || "");
+        return kName && (kName === normName || kName.includes(normName) || normName.includes(kName));
+      });
+
+      const matchedByNik = (resolvedNik && resolvedNik !== "SLS-IMP" && resolvedNik !== "SLS-001" && resolvedNik !== "-")
+        ? karyawanList.find(k => (k.nik_karyawan || "").trim() === resolvedNik)
+        : null;
+
+      const matched = matchedByName || matchedByNik;
+      if (matched) {
+        resolvedName = cleanSalesName(matched.nama_karyawan);
+        if (matched.nik_karyawan) resolvedNik = matched.nik_karyawan.trim();
+      }
+    }
+
+    if (!resolvedNik || resolvedNik === "SLS-IMP" || resolvedNik === "-") {
+      const acronym = normName.replace(/[^A-Z]/g, "").substring(0, 3) || "SLS";
+      resolvedNik = "SLS-" + acronym;
+    }
+
+    return { name: resolvedName, nik: resolvedNik };
+  }
+
   // Helper: Get effective daily GPS distance (custom manual override or auto calculated)
   function getEffectiveDailyGpsDistance(salesNik, tanggal, calculatedKm = 0) {
     const key = `${salesNik}_${tanggal}`;
@@ -109,6 +173,10 @@ export async function mount(container, { session }) {
 
   // Helper: Save/Update Custom Daily GPS Distance (e.g. from Google Maps route discrepancy)
   async function saveCustomDailyGpsKm(salesNik, salesNama, tanggal, customKmInput, calculatedKm = 0) {
+    if (isStandardKaryawan) {
+      toast("Akses terbatas: Karyawan hanya memiliki akses melihat data rute.", "warning");
+      return false;
+    }
     if (!salesNik || !tanggal) {
       toast("Data sales / tanggal tidak valid.", "warning");
       return false;
@@ -174,6 +242,10 @@ export async function mount(container, { session }) {
 
   // Helper: Save/Update Sales Odometer log to Firestore
   async function saveOdometerLog(salesNik, salesNama, tanggal, kmAwalInput, kmAkhirInput, jarakGps) {
+    if (isStandardKaryawan) {
+      toast("Akses terbatas: Karyawan hanya memiliki akses melihat data rute.", "warning");
+      return false;
+    }
     if (!salesNik || !tanggal) {
       toast("Data sales/tanggal tidak valid.", "warning");
       return false;
@@ -339,22 +411,38 @@ export async function mount(container, { session }) {
     const batchId = "KNL-SLS-" + Date.now().toString(36).toUpperCase();
     const fetchedCheckins = [];
 
+    // Preload Master Outlets for coordinate fallback
+    const masterOutlets = await fsGetAll("sales_outlets").catch(() => []);
+
     if (isLiveSuccess && liveItems.length > 0) {
       for (let idx = 0; idx < liveItems.length; idx++) {
         const item = liveItems[idx];
         const chkId = item.id || item.checkin_id || `CHK-LIVE-${idx}-${Date.now()}`;
         const rawAddr = item.alamat || item.address || item.toko || "Cirebon";
+        const storeName = item.toko || item.outlet_name || item.store_name || "Outlet Mitra Kanal";
         
-        // Automatic Geocoding
-        const geoResult = await geocodeAddressSmart(rawAddr, idx);
+        let finalGps = item.gps || item.lat_long || "";
+        const matchMaster = findMatchingMasterOutlet(storeName || rawAddr, masterOutlets);
+
+        if (hasExplicitGpsOrPlusCode(rawAddr) || hasExplicitGpsOrPlusCode(finalGps)) {
+          const geoResult = await geocodeAddressSmart(rawAddr || finalGps, idx);
+          if (geoResult && isValidOperationalCoordinate(geoResult.lat, geoResult.lng)) {
+            finalGps = `${geoResult.lat}, ${geoResult.lng}`;
+          }
+        } else if (matchMaster && matchMaster.koordinat_gps) {
+          finalGps = matchMaster.koordinat_gps;
+        } else {
+          const geoResult = await geocodeAddressSmart(rawAddr, idx);
+          finalGps = `${geoResult.lat}, ${geoResult.lng}`;
+        }
 
         fetchedCheckins.push({
           id: String(chkId),
           sales_nik: item.nik || item.sales_nik || item.user_id || "SLS-KNL",
           sales_nama: item.nama || item.sales_nama || item.user_name || "Sales Kanal",
-          toko_outlet: item.toko || item.outlet_name || item.store_name || "Outlet Mitra Kanal",
+          toko_outlet: storeName,
           alamat_toko: rawAddr,
-          koordinat_gps: item.gps || item.lat_long || `${geoResult.lat}, ${geoResult.lng}`,
+          koordinat_gps: finalGps,
           waktu_checkin: item.checkin_time || item.waktu || "08:30 WIB",
           waktu_checkout: item.checkout_time || "09:05 WIB",
           tanggal: item.tanggal || item.date || todayStr,
@@ -413,17 +501,54 @@ export async function mount(container, { session }) {
       await purgeDummyVisits();
 
       const rawCheckins = await fsGetAll("kanal_checkins").catch(() => []);
-      allCheckinsList = rawCheckins.map(c => normalizeCheckinItem(c));
+      allCheckinsList = rawCheckins.map(c => {
+        const item = normalizeCheckinItem(c);
+        const sInfo = resolveSalesmanInfo(item.sales_nama, item.sales_nik);
+        item.sales_nama = sInfo.name;
+        if (sInfo.nik && (!item.sales_nik || item.sales_nik === "SLS-IMP" || item.sales_nik === "SLS-001" || item.sales_nik === "-")) {
+          item.sales_nik = sInfo.nik;
+        }
+        return item;
+      });
 
-      // Auto-correct invalid or non-operational GPS coordinates (e.g. Bali coordinates) by geocoding address text
+      // Preload Master Outlets to prioritize coordinates registered in Master Outlet database
+      const masterOutlets = await fsGetAll("sales_outlets").catch(() => []);
+
+      // Auto-correct invalid or non-operational GPS coordinates, prioritizing Master Outlet coordinates
       for (let i = 0; i < allCheckinsList.length; i++) {
         const item = allCheckinsList[i];
         const parsed = parseGpsCoordinates(item.koordinat_gps);
+        const matchOutlet = findMatchingMasterOutlet(item.toko_outlet || item.alamat_toko, masterOutlets);
+
+        // If master outlet has registered coordinates and visit has not been explicitly custom-edited:
+        if (matchOutlet && matchOutlet.koordinat_gps && !item.manual_gps_edited) {
+          const matchParsed = parseGpsCoordinates(matchOutlet.koordinat_gps);
+          if (matchParsed && isValidOperationalCoordinate(matchParsed.lat, matchParsed.lng)) {
+            if (item.koordinat_gps !== matchOutlet.koordinat_gps) {
+              item.koordinat_gps = matchOutlet.koordinat_gps;
+              item.lat = matchParsed.lat;
+              item.lng = matchParsed.lng;
+              fsUpdate("kanal_checkins", item.id, { koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng }).catch(() => {});
+              continue;
+            }
+          }
+        }
+
         if (!parsed || !isValidOperationalCoordinate(parsed.lat, parsed.lng)) {
-          const queryAddr = [item.alamat_toko, item.toko_outlet].filter(Boolean).join(", ");
-          const geoRes = await geocodeAddressSmart(queryAddr || "Klampok Wanasari Brebes Tegal", i);
-          item.koordinat_gps = `${geoRes.lat}, ${geoRes.lng}`;
-          fsUpdate("kanal_checkins", item.id, { koordinat_gps: item.koordinat_gps }).catch(() => {});
+          if (matchOutlet && matchOutlet.koordinat_gps) {
+            item.koordinat_gps = matchOutlet.koordinat_gps;
+            const mp = parseGpsCoordinates(matchOutlet.koordinat_gps);
+            item.lat = mp?.lat;
+            item.lng = mp?.lng;
+            fsUpdate("kanal_checkins", item.id, { koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng }).catch(() => {});
+          } else {
+            const queryAddr = [item.alamat_toko, item.toko_outlet].filter(Boolean).join(", ");
+            const geoRes = await geocodeAddressSmart(queryAddr || "Klampok Wanasari Brebes Tegal", i);
+            item.koordinat_gps = `${geoRes.lat}, ${geoRes.lng}`;
+            item.lat = geoRes.lat;
+            item.lng = geoRes.lng;
+            fsUpdate("kanal_checkins", item.id, { koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng }).catch(() => {});
+          }
         }
       }
 
@@ -435,6 +560,54 @@ export async function mount(container, { session }) {
           odometerLogsMap.set(`${o.sales_nik}_${o.tanggal}`, o);
         }
       });
+
+      // Role-Based Scope & Branch Filtering
+      if (isStandardKaryawan) {
+        const normUserNama = cleanSalesName(userNama);
+        const myEmp = (karyawanList || []).find(k => (userNik && (k.nik_karyawan || "").trim() === userNik) || cleanSalesName(k.nama_karyawan || "") === normUserNama);
+        const effectiveNik = myEmp?.nik_karyawan?.trim() || userNik;
+        const effectiveName = myEmp?.nama_karyawan ? cleanSalesName(myEmp.nama_karyawan) : normUserNama;
+
+        allCheckinsList = allCheckinsList.filter(c => {
+          const cName = cleanSalesName(c.sales_nama);
+          const cNik = (c.sales_nik || "").trim();
+          return (
+            (effectiveName && cName === effectiveName) ||
+            (effectiveNik && cNik === effectiveNik) ||
+            (userNik && cNik === userNik) ||
+            (normUserNama && (cName.includes(normUserNama) || normUserNama.includes(cName)))
+          );
+        });
+
+        if (subtitleEl) {
+          subtitleEl.innerHTML = `Rekapan Kunjungan Sales Mandiri: <b>${escapeHtml(effectiveName || userNama)}</b> ${effectiveNik ? `(${escapeHtml(effectiveNik)})` : ''}. Tampilan Read-Only.`;
+        }
+      } else if (isSpvOrKoordinatorSales) {
+        if (userCabang && userCabang !== "-" && userCabang !== "ALL" && userCabang !== "PUSAT") {
+          const branchEmployees = (karyawanList || []).filter(k => (k.cabang || "").trim().toUpperCase() === userCabang);
+          const branchNames = new Set(branchEmployees.map(k => cleanSalesName(k.nama_karyawan || "")));
+          const branchNiks = new Set(branchEmployees.map(k => (k.nik_karyawan || "").trim()).filter(Boolean));
+
+          allCheckinsList = allCheckinsList.filter(c => {
+            const cName = cleanSalesName(c.sales_nama);
+            const cNik = (c.sales_nik || "").trim();
+            const cCabang = (c.cabang || "").trim().toUpperCase();
+            if (cCabang === userCabang) return true;
+            if (branchNames.has(cName)) return true;
+            if (cNik && branchNiks.has(cNik)) return true;
+            for (const bName of branchNames) {
+              if (bName && cName && (bName.includes(cName) || cName.includes(bName))) return true;
+            }
+            const fullAddr = `${c.alamat_toko || ""} ${c.toko_outlet || ""} ${c.perusahaan || ""}`.toUpperCase();
+            if (fullAddr.includes(userCabang)) return true;
+            return false;
+          });
+
+          if (subtitleEl) {
+            subtitleEl.innerHTML = `Monitoring Kunjungan & Rute Tim Sales Wilayah/Cabang <b>${escapeHtml(userCabang)}</b> (${allCheckinsList.length} kunjungan terdata).`;
+          }
+        }
+      }
 
       // Populate Salesman Dropdown
       populateSalesmanOptions();
@@ -451,20 +624,42 @@ export async function mount(container, { session }) {
     if (!filterSalesmanSelect) return;
     const salesMap = new Map();
     allCheckinsList.forEach(c => {
-      if (c.sales_nama) salesMap.set(c.sales_nama, c.sales_nik || "");
+      const name = cleanSalesName(c.sales_nama);
+      if (name) {
+        if (!salesMap.has(name)) {
+          salesMap.set(name, c.sales_nik || "");
+        } else if (!salesMap.get(name) && c.sales_nik) {
+          salesMap.set(name, c.sales_nik);
+        }
+      }
     });
 
-    const currentVal = filterSalesmanSelect.value || "ALL";
-    filterSalesmanSelect.innerHTML = `<option value="ALL">Semua Salesman (${salesMap.size})</option>` + 
+    if (isStandardKaryawan) {
+      const normUserNama = cleanSalesName(userNama);
+      const displayName = salesMap.size > 0 ? Array.from(salesMap.keys())[0] : (normUserNama || "Saya");
+      const displayNik = salesMap.size > 0 ? Array.from(salesMap.values())[0] : userNik;
+      filterSalesmanSelect.innerHTML = `<option value="${escapeHtml(displayName)}">${escapeHtml(displayName)} ${displayNik ? `(${escapeHtml(displayNik)})` : ''}</option>`;
+      filterSalesmanSelect.value = displayName;
+      filterSalesmanSelect.disabled = true;
+      return;
+    }
+
+    const currentVal = (filterSalesmanSelect.value || "ALL").trim().toUpperCase();
+    const allLabel = isSpvOrKoordinatorSales && userCabang
+      ? `Semua Salesman Cabang ${escapeHtml(userCabang)} (${salesMap.size})`
+      : `Semua Salesman (${salesMap.size})`;
+
+    filterSalesmanSelect.disabled = false;
+    filterSalesmanSelect.innerHTML = `<option value="ALL">${allLabel}</option>` + 
       Array.from(salesMap.entries()).map(([nama, nik]) => 
         `<option value="${escapeHtml(nama)}">${escapeHtml(nama)} ${nik ? `(${escapeHtml(nik)})` : ''}</option>`
       ).join("");
 
-    filterSalesmanSelect.value = currentVal;
+    filterSalesmanSelect.value = salesMap.has(currentVal) ? currentVal : "ALL";
   }
 
   function applyAndRenderDashboard() {
-    const salesmanFilter = filterSalesmanSelect ? filterSalesmanSelect.value : "ALL";
+    const salesmanFilter = (filterSalesmanSelect ? filterSalesmanSelect.value : "ALL").trim().toUpperCase();
     const periodFilter = filterPeriodSelect ? filterPeriodSelect.value : "ALL";
     const statusFilter = filterStatusSelect ? filterStatusSelect.value : "ALL";
     const searchFilter = (filterSearchInput ? filterSearchInput.value : "").toLowerCase().trim();
@@ -474,12 +669,15 @@ export async function mount(container, { session }) {
     if (activeFilterBadge) activeFilterBadge.classList.toggle("hidden", !isFiltered);
 
     const filteredRecords = allCheckinsList.filter(item => {
-      // Salesman filter
-      if (salesmanFilter !== "ALL" && item.sales_nama !== salesmanFilter) return false;
+      // Salesman filter (Case-insensitive & whitespace normalized)
+      if (salesmanFilter !== "ALL") {
+        const itemSales = cleanSalesName(item.sales_nama);
+        if (itemSales !== salesmanFilter) return false;
+      }
 
       // Status filter
       if (statusFilter === "EC") {
-        if (!(item.status_kunjungan || "").toLowerCase().includes("effective")) return false;
+        if (!(item.status_kunjungan || "").toLowerCase().includes("effective") && !item.is_effective_call) return false;
       } else if (statusFilter === "STOK") {
         if (!(item.status_kunjungan || "").toLowerCase().includes("stok")) return false;
       } else if (statusFilter === "PENAWARAN") {
@@ -529,7 +727,7 @@ export async function mount(container, { session }) {
     if (totalKmEl) totalKmEl.textContent = `${cumulativeKm.toFixed(1)} KM`;
 
     if (ecEl) {
-      const ecCount = filteredRecords.filter(a => (a.status_kunjungan || "").toLowerCase().includes("effective")).length;
+      const ecCount = filteredRecords.filter(a => (a.status_kunjungan || "").toLowerCase().includes("effective") || a.is_effective_call === true).length;
       const pct = filteredRecords.length > 0 ? Math.round((ecCount / filteredRecords.length) * 100) : 100;
       ecEl.textContent = `${pct}%`;
     }
@@ -556,10 +754,12 @@ export async function mount(container, { session }) {
   function renderSalesmanCards(allRecords, activeSalesman) {
     if (!salesmanGridEl) return;
 
-    // Group records by salesman
+    const normalizedActive = (activeSalesman || "ALL").trim().toUpperCase();
+
+    // Group records by standardized uppercase salesman name
     const salesMap = new Map();
     allRecords.forEach(r => {
-      const name = r.sales_nama || "Salesman";
+      const name = cleanSalesName(r.sales_nama);
       if (!salesMap.has(name)) {
         salesMap.set(name, {
           nama: name,
@@ -570,7 +770,10 @@ export async function mount(container, { session }) {
       }
       const data = salesMap.get(name);
       data.visits.push(r);
-      if ((r.status_kunjungan || "").toLowerCase().includes("effective")) {
+      if (r.sales_nik && (!data.nik || data.nik === "-" || data.nik === "SLS-IMP")) {
+        data.nik = r.sales_nik;
+      }
+      if ((r.status_kunjungan || "").toLowerCase().includes("effective") || r.is_effective_call === true) {
         data.ecCount++;
       }
     });
@@ -583,7 +786,7 @@ export async function mount(container, { session }) {
     salesmanGridEl.innerHTML = Array.from(salesMap.values()).map(s => {
       const total = s.visits.length;
       const ecPct = total > 0 ? Math.round((s.ecCount / total) * 100) : 0;
-      const isSelected = activeSalesman === s.nama;
+      const isSelected = normalizedActive === s.nama;
       const topStore = s.visits[0]?.toko_outlet || "Outlet Utama";
 
       // Compute effective route distance for this salesman across his visit dates
@@ -613,7 +816,7 @@ export async function mount(container, { session }) {
       const selisihStr = (selisihVal !== undefined && selisihVal !== null) ? `${selisihVal > 0 ? '+' : ''}${selisihVal.toFixed(1)} KM` : "-";
 
       return `
-      <div class="salesman-card bg-white rounded-2xl border ${isSelected ? 'border-maroon-600 ring-2 ring-maroon-100 bg-maroon-50/20' : 'border-slate-100 hover:border-slate-300'} p-4 shadow-sm transition flex flex-col justify-between" data-salesman="${escapeHtml(s.nama)}">
+      <div class="salesman-card bg-white rounded-2xl border ${isSelected ? 'border-maroon-600 ring-2 ring-maroon-100 bg-maroon-50/20 shadow-md' : 'border-slate-100 hover:border-slate-300'} p-4 shadow-sm transition flex flex-col justify-between cursor-pointer" data-salesman="${escapeHtml(s.nama)}">
         <div>
           <div class="flex items-center justify-between gap-2">
             <div class="flex items-center gap-2.5">
@@ -666,7 +869,7 @@ export async function mount(container, { session }) {
 
         <div class="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
           <button class="btn-filter-sales text-[11px] font-bold text-maroon-700 hover:underline cursor-pointer">
-            ${isSelected ? '● Sedang Dilihat' : 'Filter Sales Ini'}
+            ${isSelected ? '● Sedang Dilihat (Reset)' : 'Filter Sales Ini'}
           </button>
           <button class="btn-route-detail bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer">
             <svg class="w-3.5 h-3.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
@@ -681,12 +884,41 @@ export async function mount(container, { session }) {
       const name = card.dataset.salesman;
       const salesObj = Array.from(salesMap.values()).find(s => s.nama === name);
       
+      const triggerFilter = () => {
+        if (!filterSalesmanSelect) return;
+        const isCurrent = (filterSalesmanSelect.value || "ALL").trim().toUpperCase() === name.trim().toUpperCase();
+        filterSalesmanSelect.value = isCurrent ? "ALL" : name;
+
+        // If filtering by this specific salesman and current period filter yields 0 records, auto switch period dropdown to ALL
+        if (!isCurrent && filterPeriodSelect && filterPeriodSelect.value !== "ALL") {
+          const matchingVisits = allCheckinsList.filter(item => cleanSalesName(item.sales_nama) === name.trim().toUpperCase());
+          let countInCurrentPeriod = 0;
+          matchingVisits.forEach(item => {
+            if (filterPeriodSelect.value === "TODAY" && item.tanggal === todayStr) countInCurrentPeriod++;
+            else if (filterPeriodSelect.value === "WEEK") {
+              const diffDays = (now - new Date(item.tanggal)) / (1000 * 3600 * 24);
+              if (!isNaN(diffDays) && diffDays <= 7) countInCurrentPeriod++;
+            } else if (filterPeriodSelect.value === "MONTH") {
+              if ((item.tanggal || "").substring(0, 7) === todayStr.substring(0, 7)) countInCurrentPeriod++;
+            }
+          });
+
+          if (countInCurrentPeriod === 0) {
+            filterPeriodSelect.value = "ALL";
+          }
+        }
+
+        applyAndRenderDashboard();
+      };
+
       card.querySelector(".btn-filter-sales")?.addEventListener("click", (e) => {
         e.stopPropagation();
-        if (filterSalesmanSelect) {
-          filterSalesmanSelect.value = (filterSalesmanSelect.value === name) ? "ALL" : name;
-          applyAndRenderDashboard();
-        }
+        triggerFilter();
+      });
+
+      card.addEventListener("click", (e) => {
+        if (e.target.closest("button") || e.target.closest("a") || e.target.closest("input")) return;
+        triggerFilter();
       });
 
       card.querySelector(".btn-route-detail")?.addEventListener("click", (e) => {
@@ -913,19 +1145,22 @@ export async function mount(container, { session }) {
               <svg class="w-3 h-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
               <span>Maps</span>
             </a>
+            ${isSuperOrHrd ? `
             <button class="btn-feed-delete-visit px-2.5 py-1 bg-rose-50 text-rose-700 font-bold text-[10px] rounded-lg border border-rose-200 hover:bg-rose-100 transition inline-flex items-center gap-1 cursor-pointer" data-visitid="${escapeHtml(visitId)}" data-storename="${escapeHtml(tokoName)}">
               <svg class="w-3 h-3 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
               <span>Hapus</span>
             </button>
+            ` : ''}
           </div>
         </div>
 
-        <!-- Kolom Pengeditan Langsung Titik Koordinat GPS -->
+        <!-- Kolom Titik Koordinat GPS -->
         <div class="flex items-center gap-1.5 mt-2 pt-2 border-t border-slate-200/60 flex-wrap">
           <span class="text-[10px] font-bold text-slate-600 flex items-center gap-1">
             <svg class="w-3 h-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
             <span>Koordinat GPS:</span>
           </span>
+          ${!isStandardKaryawan ? `
           <input type="text" 
             class="input-feed-inline-gps px-2.5 py-1 text-[11px] font-mono border border-slate-300 rounded-lg w-44 bg-white focus:border-maroon-600 focus:ring-1 focus:ring-maroon-600 outline-none text-slate-800"
             value="${escapeHtml(gpsPos)}"
@@ -938,15 +1173,19 @@ export async function mount(container, { session }) {
             <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
             <span>Simpan</span>
           </button>
+          ` : `
+          <span class="px-2.5 py-1 text-[11px] font-mono border border-slate-200 rounded-lg bg-slate-100 text-slate-700 font-semibold select-all">${escapeHtml(gpsPos)}</span>
+          `}
         </div>
 
         <div class="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-slate-200/60 text-[10px] text-slate-500 flex-wrap">
           <div class="flex items-center gap-2 flex-wrap">
-            <label class="inline-flex items-center gap-1.5 cursor-pointer select-none px-2.5 py-1 rounded-lg border transition shadow-2xs ${isEc ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-slate-100 border-slate-200 text-slate-600'}" title="Centang jika kunjungan ini menghasilkan Order (Effective Call)">
+            <label class="inline-flex items-center gap-1.5 ${isStandardKaryawan ? 'cursor-default' : 'cursor-pointer'} select-none px-2.5 py-1 rounded-lg border transition shadow-2xs ${isEc ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-slate-100 border-slate-200 text-slate-600'}" title="${isStandardKaryawan ? (isEc ? 'Status: Effective Call (Order Toko)' : 'Status: Visit Biasa') : 'Centang jika kunjungan ini menghasilkan Order (Effective Call)'}">
               <input type="checkbox"
-                     class="chk-feed-effective-call accent-emerald-600 rounded cursor-pointer w-3.5 h-3.5"
+                     class="chk-feed-effective-call accent-emerald-600 rounded ${isStandardKaryawan ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'} w-3.5 h-3.5"
                      data-visitid="${escapeHtml(visitId)}"
                      data-storename="${escapeHtml(tokoName)}"
+                     ${isStandardKaryawan ? "disabled" : ""}
                      ${isEc ? "checked" : ""} />
               <span class="text-[10px] font-extrabold">${isEc ? "✓ Effective Call (Order Toko)" : "○ Visit Toko (Tanpa Order)"}</span>
             </label>
@@ -1248,6 +1487,10 @@ export async function mount(container, { session }) {
 
   // HRD Direct Edit GPS Coordinates for Check-in Record (No popup dialog)
   async function saveVisitGpsDirectly(visitId, storeName, rawGpsInput) {
+    if (isStandardKaryawan) {
+      toast("Akses terbatas: Karyawan hanya memiliki akses melihat data rute.", "warning");
+      return false;
+    }
     if (!visitId) {
       toast("ID Check-in tidak ditemukan.", "warning");
       return false;
@@ -1281,9 +1524,69 @@ export async function mount(container, { session }) {
         foundInAll.koordinat_gps = validGpsStr;
         foundInAll.lat = coords.lat;
         foundInAll.lng = coords.lng;
+        foundInAll.manual_gps_edited = true;
       }
 
-      toast(`Koordinat GPS '${storeName}' diperbarui (${validGpsStr})`, "success");
+      // Propagate to all visits of the same store in current list & database
+      const cleanTarget = cleanStoreName(storeName);
+      if (cleanTarget) {
+        for (const chk of allCheckinsList) {
+          const chkClean = cleanStoreName(chk.toko_outlet);
+          if (chkClean === cleanTarget && (chk._docId || chk.id) !== visitId) {
+            chk.koordinat_gps = validGpsStr;
+            chk.lat = coords.lat;
+            chk.lng = coords.lng;
+            chk.manual_gps_edited = true;
+            fsUpdate("kanal_checkins", chk._docId || chk.id, {
+              koordinat_gps: validGpsStr,
+              lat: coords.lat,
+              lng: coords.lng,
+              manual_gps_edited: true,
+              updated_at: new Date().toISOString()
+            }).catch(() => {});
+          }
+        }
+      }
+
+      // CRITICAL: Synchronize / update Master Outlet database (sales_outlets)
+      try {
+        const allOutlets = await fsGetAll("sales_outlets").catch(() => []);
+        const matchingOutlet = findMatchingMasterOutlet(storeName, allOutlets);
+
+        if (matchingOutlet) {
+          await fsUpdate("sales_outlets", matchingOutlet.id, {
+            koordinat_gps: validGpsStr,
+            lat: coords.lat,
+            lng: coords.lng,
+            updated_at: new Date().toISOString()
+          });
+        } else {
+          // If not in Master Outlet database, auto-register it so future imports will use this coordinate
+          const nextIdx = allOutlets.length + 1;
+          const newOutlet = {
+            id: `OT-${String(nextIdx).padStart(3, '0')}`,
+            kode: `OT-${String(nextIdx).padStart(3, '0')}`,
+            nama: storeName,
+            wilayah: "Cirebon",
+            alamat: foundInAll?.alamat_toko || storeName,
+            telepon: "-",
+            tipe: "Retail",
+            koordinat_gps: validGpsStr,
+            lat: coords.lat,
+            lng: coords.lng,
+            assigned_sales_nama: foundInAll?.sales_nama || "",
+            assigned_sales_nik: foundInAll?.sales_nik || "",
+            salesperson: foundInAll?.sales_nama || "",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+          await fsAdd("sales_outlets", newOutlet, newOutlet.id);
+        }
+      } catch (outletSyncErr) {
+        console.warn("Gagal update master outlet database:", outletSyncErr);
+      }
+
+      toast(`Koordinat GPS '${storeName}' diperbarui (${validGpsStr}) & otomatis tersimpan ke Master Outlet!`, "success");
       applyAndRenderDashboard();
       return true;
     } catch (err) {
@@ -1295,6 +1598,10 @@ export async function mount(container, { session }) {
 
   // HRD Delete Check-in Record (for duplicate/invalid entries)
   async function deleteVisitDirectly(visitId, storeName) {
+    if (!isSuperOrHrd) {
+      toast("Akses terbatas: Hanya Superadmin dan HRD yang memiliki wewenang untuk menghapus data kunjungan.", "warning");
+      return false;
+    }
     if (!visitId) {
       toast("ID Check-in tidak ditemukan.", "warning");
       return false;
@@ -1327,6 +1634,10 @@ export async function mount(container, { session }) {
 
   // HRD Toggle Effective Call (Order Toko) Status
   async function toggleVisitEffectiveCallDirectly(visitId, storeName, isChecked) {
+    if (isStandardKaryawan) {
+      toast("Akses terbatas: Karyawan hanya memiliki akses melihat data rute.", "warning");
+      return false;
+    }
     if (!visitId) {
       toast("ID Check-in tidak ditemukan.", "warning");
       return false;
@@ -1427,6 +1738,7 @@ export async function mount(container, { session }) {
           <td class="p-2.5 text-slate-600">
             <div class="flex items-center gap-1.5">
               <span class="text-[10px] text-slate-500 font-bold">GPS:</span>
+              ${!isStandardKaryawan ? `
               <input type="text" 
                 class="input-daily-start-gps px-2 py-0.5 text-[10px] font-mono border border-indigo-200 rounded w-36 bg-white focus:border-indigo-600 outline-none text-slate-800"
                 value="${escapeHtml(dailyMetrics.startPoint.gps)}"
@@ -1436,6 +1748,9 @@ export async function mount(container, { session }) {
                 data-date="${tgl}">
                 <span>Simpan</span>
               </button>
+              ` : `
+              <span class="px-2 py-0.5 text-[10px] font-mono border border-indigo-200 rounded bg-white text-slate-800">${escapeHtml(dailyMetrics.startPoint.gps)}</span>
+              `}
             </div>
           </td>
           <td class="p-2.5 text-right font-black text-indigo-700">0 KM</td>
@@ -1474,11 +1789,12 @@ export async function mount(container, { session }) {
                   <div class="font-bold text-slate-900">${escapeHtml(leg.toName)}</div>
                   <div class="text-[10px] text-slate-500 font-normal truncate max-w-[220px]">${escapeHtml(leg.toAddress)}</div>
                   ${leg.visitId ? `
-                    <label class="inline-flex items-center gap-1.5 cursor-pointer mt-1 px-2 py-0.5 rounded border transition select-none ${isLegEc ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-slate-100 border-slate-200 text-slate-600'}" title="Tandai HRD: Kunjungan ini menghasilkan Order (Effective Call)">
+                    <label class="inline-flex items-center gap-1.5 ${isStandardKaryawan ? 'cursor-default' : 'cursor-pointer'} mt-1 px-2 py-0.5 rounded border transition select-none ${isLegEc ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-slate-100 border-slate-200 text-slate-600'}" title="${isStandardKaryawan ? (isLegEc ? 'Status: Effective Call (Order)' : 'Status: Tanpa Order') : 'Tandai HRD: Kunjungan ini menghasilkan Order (Effective Call)'}">
                       <input type="checkbox"
-                             class="chk-modal-effective-call accent-emerald-600 rounded cursor-pointer w-3.5 h-3.5"
+                             class="chk-modal-effective-call accent-emerald-600 rounded ${isStandardKaryawan ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'} w-3.5 h-3.5"
                              data-visitid="${escapeHtml(leg.visitId)}"
                              data-toname="${escapeHtml(leg.toName)}"
+                             ${isStandardKaryawan ? "disabled" : ""}
                              ${isLegEc ? "checked" : ""} />
                       <span class="text-[9.5px] font-extrabold">${isLegEc ? '✓ Effective Call (Order)' : '○ Tanpa Order'}</span>
                     </label>
@@ -1487,7 +1803,7 @@ export async function mount(container, { session }) {
               </div>
             </td>
             <td class="p-2.5 text-slate-600">
-              ${leg.visitId ? `
+              ${leg.visitId && !isStandardKaryawan ? `
                 <div class="flex items-center gap-1.5">
                   <span class="text-[10px] text-slate-400 font-mono">GPS:</span>
                   <input type="text" 
@@ -1504,7 +1820,7 @@ export async function mount(container, { session }) {
                   </button>
                 </div>
               ` : `
-                <div class="text-[10px] text-slate-500 font-mono">GPS: ${escapeHtml(leg.toGps)}</div>
+                <div class="text-[10px] text-slate-700 font-mono font-semibold">GPS: ${escapeHtml(leg.toGps)}</div>
               `}
             </td>
             <td class="p-2.5 text-right font-black text-indigo-700">${leg.distanceKm} KM</td>
@@ -1513,7 +1829,7 @@ export async function mount(container, { session }) {
                 <a href="${mapsUrl}" target="_blank" class="px-2 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-[10px] rounded border border-blue-200 transition inline-flex items-center gap-0.5">
                   Map
                 </a>
-                ${leg.visitId ? `
+                ${leg.visitId && isSuperOrHrd ? `
                   <button class="btn-modal-delete-visit px-2 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold text-[10px] rounded border border-rose-200 transition cursor-pointer inline-flex items-center gap-0.5"
                     data-visitid="${escapeHtml(leg.visitId)}"
                     data-toname="${escapeHtml(leg.toName)}"
@@ -1539,6 +1855,7 @@ export async function mount(container, { session }) {
           <td class="p-2.5 text-slate-600">
             <div class="flex items-center gap-1.5">
               <span class="text-[10px] text-slate-500 font-bold">GPS:</span>
+              ${!isStandardKaryawan ? `
               <input type="text" 
                 class="input-daily-end-gps px-2 py-0.5 text-[10px] font-mono border border-slate-300 rounded w-36 bg-white focus:border-indigo-600 outline-none text-slate-800"
                 value="${escapeHtml(dailyMetrics.endPoint.gps)}"
@@ -1548,6 +1865,9 @@ export async function mount(container, { session }) {
                 data-date="${tgl}">
                 Simpan
               </button>
+              ` : `
+              <span class="px-2 py-0.5 text-[10px] font-mono border border-slate-300 rounded bg-white text-slate-800">${escapeHtml(dailyMetrics.endPoint.gps)}</span>
+              `}
             </div>
           </td>
           <td class="p-2.5 text-right font-black text-indigo-700">${dailyMetrics.legs.length > 0 ? dailyMetrics.legs[dailyMetrics.legs.length - 1].distanceKm : 0} KM</td>
@@ -1586,6 +1906,7 @@ export async function mount(container, { session }) {
                   </div>
                 </div>
 
+                ${!isStandardKaryawan ? `
                 <!-- Inline Edit GPS Controls -->
                 <div class="flex items-center gap-1 pl-2 border-l border-slate-700">
                   <div class="view-gps-controls flex items-center gap-1" data-date="${tgl}">
@@ -1637,6 +1958,7 @@ export async function mount(container, { session }) {
                     </button>
                   </div>
                 </div>
+                ` : ''}
               </div>
 
               <a href="${dailyMapsUrl}" target="_blank" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition shadow-2xs flex items-center gap-1.5 shrink-0" title="Buka rute Google Maps untuk verifikasi rute sesungguhnya">
@@ -1657,12 +1979,12 @@ export async function mount(container, { session }) {
               <div class="flex items-center gap-2 flex-wrap text-xs">
                 <div class="flex items-center gap-1 bg-white px-2.5 py-1 border border-slate-200 rounded-lg">
                   <span class="text-[10px] font-bold text-slate-500">KM Awal:</span>
-                  <input type="number" data-date="${tgl}" class="input-daily-km-awal w-20 px-1.5 py-0.5 bg-slate-50 border border-slate-300 rounded font-mono text-slate-900 font-bold text-xs outline-none focus:border-indigo-600" value="${initAwal}" placeholder="0" />
+                  <input type="number" data-date="${tgl}" class="input-daily-km-awal w-20 px-1.5 py-0.5 bg-slate-50 border border-slate-300 rounded font-mono text-slate-900 font-bold text-xs outline-none focus:border-indigo-600 ${isStandardKaryawan ? 'cursor-not-allowed bg-slate-100' : ''}" value="${initAwal}" placeholder="0" ${isStandardKaryawan ? 'disabled readonly' : ''} />
                 </div>
 
                 <div class="flex items-center gap-1 bg-white px-2.5 py-1 border border-slate-200 rounded-lg">
                   <span class="text-[10px] font-bold text-slate-500">KM Akhir:</span>
-                  <input type="number" data-date="${tgl}" class="input-daily-km-akhir w-20 px-1.5 py-0.5 bg-slate-50 border border-slate-300 rounded font-mono text-slate-900 font-bold text-xs outline-none focus:border-indigo-600" value="${initAkhir}" placeholder="0" />
+                  <input type="number" data-date="${tgl}" class="input-daily-km-akhir w-20 px-1.5 py-0.5 bg-slate-50 border border-slate-300 rounded font-mono text-slate-900 font-bold text-xs outline-none focus:border-indigo-600 ${isStandardKaryawan ? 'cursor-not-allowed bg-slate-100' : ''}" value="${initAkhir}" placeholder="0" ${isStandardKaryawan ? 'disabled readonly' : ''} />
                 </div>
 
                 <div class="flex items-center gap-1 bg-white px-2.5 py-1 border border-slate-200 rounded-lg">
@@ -1675,9 +1997,11 @@ export async function mount(container, { session }) {
                   <span data-date="${tgl}" class="disp-daily-selisih-km font-black ${initSelisih >= 0 ? 'text-emerald-600' : 'text-rose-600'} font-mono text-xs">${initSelisih > 0 ? '+' : ''}${initSelisih.toFixed(1)} KM</span>
                 </div>
 
+                ${!isStandardKaryawan ? `
                 <button data-date="${tgl}" data-gpskm="${effectiveGpsKm}" class="btn-save-daily-odometer px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition text-xs shadow-2xs cursor-pointer">
                   Simpan Odometer
                 </button>
+                ` : ''}
               </div>
             </div>
 
@@ -1717,7 +2041,7 @@ export async function mount(container, { session }) {
             <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
               <span>Detail Rute, Odometer & Kunjungan Sales</span>
             </h3>
-            <p class="text-xs text-slate-500">Monitoring rute harian, verifikasi jarak tempuh, edit GPS, & hapus data kunjungan ganda.</p>
+            <p class="text-xs text-slate-500">${isStandardKaryawan ? 'Rekapan rute harian, riwayat kunjungan outlet, & jarak tempuh sales.' : 'Monitoring rute harian, verifikasi jarak tempuh, edit GPS, & hapus data kunjungan ganda.'}</p>
           </div>
           <button id="modal-close-route" class="text-slate-400 hover:text-slate-600 text-xl font-bold cursor-pointer px-2 py-0.5 rounded-lg hover:bg-slate-100 transition">✕</button>
         </div>
@@ -1743,6 +2067,7 @@ export async function mount(container, { session }) {
           </div>
         </div>
 
+        ${!isStandardKaryawan ? `
         <!-- BASE DEPARTURE CONFIGURATION BAR (COMPACT) -->
         <div class="p-2.5 bg-slate-100 border border-slate-200 rounded-xl flex items-center justify-between gap-3 flex-wrap text-xs">
           <div class="flex items-center gap-1.5 font-bold text-slate-800">
@@ -1761,6 +2086,7 @@ export async function mount(container, { session }) {
             </div>
           </div>
         </div>
+        ` : ''}
 
         <!-- CARDS CONTAINER PER TANGGAL KUNJUNGAN -->
         <div class="space-y-4">
@@ -2182,8 +2508,11 @@ export async function mount(container, { session }) {
 
       // Filter records according to active filter
       filteredRecords = allCheckinsList.filter(item => {
-        if (salesmanFilter !== "ALL" && item.sales_nama !== salesmanFilter && item.sales_nik !== salesmanFilter) return false;
-        if (statusFilter === "EC" && !(item.status_kunjungan || "").toLowerCase().includes("effective")) return false;
+        if (salesmanFilter !== "ALL") {
+          const itemSales = cleanSalesName(item.sales_nama);
+          if (itemSales !== cleanSalesName(salesmanFilter) && item.sales_nik !== salesmanFilter) return false;
+        }
+        if (statusFilter === "EC" && !(item.status_kunjungan || "").toLowerCase().includes("effective") && !item.is_effective_call) return false;
         if (statusFilter === "STOK" && !(item.status_kunjungan || "").toLowerCase().includes("stok")) return false;
         if (statusFilter === "PENAWARAN" && !(item.status_kunjungan || "").toLowerCase().includes("penawaran")) return false;
 
@@ -2215,8 +2544,8 @@ export async function mount(container, { session }) {
     // Group records by Salesman -> then Date
     const salesGroup = new Map();
     filteredRecords.forEach(r => {
-      const salesName = r.sales_nama || "Salesman";
-      const salesNik = r.sales_nik || "-";
+      const salesName = cleanSalesName(r.sales_nama);
+      const salesNik = (r.sales_nik || "-").trim();
       if (!salesGroup.has(salesName)) {
         salesGroup.set(salesName, {
           nama: salesName,
@@ -2225,6 +2554,9 @@ export async function mount(container, { session }) {
         });
       }
       const sObj = salesGroup.get(salesName);
+      if (salesNik && salesNik !== "-" && (!sObj.nik || sObj.nik === "-")) {
+        sObj.nik = salesNik;
+      }
       const dStr = r.tanggal || todayStr;
       if (!sObj.byDate.has(dStr)) {
         sObj.byDate.set(dStr, []);
@@ -2555,14 +2887,17 @@ export async function mount(container, { session }) {
     // Build salesman list options
     const salesMap = new Map();
     allCheckinsList.forEach(c => {
-      if (c.sales_nik && !salesMap.has(c.sales_nik)) {
-        salesMap.set(c.sales_nik, c.sales_nama || c.sales_nik);
+      const name = cleanSalesName(c.sales_nama);
+      const nik = (c.sales_nik || "").trim();
+      const key = (nik && nik !== "-" && nik !== "SLS-IMP") ? nik : name;
+      if (name && !salesMap.has(key)) {
+        salesMap.set(key, { nama: name, nik: (nik && nik !== "SLS-IMP") ? nik : "" });
       }
     });
 
     let salesOptionsHtml = `<option value="ALL">-- Semua Salesman --</option>`;
-    salesMap.forEach((nama, nik) => {
-      salesOptionsHtml += `<option value="${escapeHtml(nik)}">${escapeHtml(nama)} (NIK: ${escapeHtml(nik)})</option>`;
+    salesMap.forEach((sData, key) => {
+      salesOptionsHtml += `<option value="${escapeHtml(key)}">${escapeHtml(sData.nama)} ${sData.nik ? `(NIK: ${escapeHtml(sData.nik)})` : ''}</option>`;
     });
 
     const currentYearMonth = todayStr.substring(0, 7);
@@ -2681,8 +3016,12 @@ export async function mount(container, { session }) {
 
       return allCheckinsList.filter(item => {
         // Salesman filter
-        if (salesNik !== "ALL" && item.sales_nik !== salesNik) {
-          return false;
+        if (salesNik !== "ALL") {
+          const itemNik = (item.sales_nik || "").trim();
+          const itemName = cleanSalesName(item.sales_nama);
+          if (itemNik !== salesNik && itemName !== cleanSalesName(salesNik)) {
+            return false;
+          }
         }
 
         // Date period filter
@@ -2831,6 +3170,9 @@ export async function mount(container, { session }) {
         // Clean out any dummy/mock records before importing
         await purgeDummyVisits();
 
+        // Preload Master Outlets to use registered coordinates when raw address lacks Plus code or GPS
+        const masterOutlets = await fsGetAll("sales_outlets").catch(() => []);
+
         let successCount = 0;
 
         for (let idx = 0; idx < rows.length; idx++) {
@@ -2874,21 +3216,54 @@ export async function mount(container, { session }) {
             timeStr = `${hh}:${mm}:${ss}`;
           }
 
-          // Determine GPS Coordinates: Prioritize converting address from Excel into GPS coordinates
+          // SMART GPS RESOLUTION HIERARCHY:
+          // 1. If raw address has explicit Plus Code or explicit GPS coordinates, decode/geocode directly with high precision
           let finalGpsStr = "";
           const queryAddr = [rawAddress, rawCustomer].filter(Boolean).join(", ");
+          const matchMaster = findMatchingMasterOutlet(rawCustomer || rawAddress, masterOutlets);
 
-          if (queryAddr) {
-            if (idx > 0) {
-              await new Promise(r => setTimeout(r, 200));
-            }
-            const geoRes = await geocodeAddressSmart(queryAddr, idx);
+          const hasExplicit = hasExplicitGpsOrPlusCode(rawAddress) || hasExplicitGpsOrPlusCode(rawGps);
+
+          if (hasExplicit) {
+            const geoRes = await geocodeAddressSmart(rawAddress || rawGps, idx);
             if (geoRes && isValidOperationalCoordinate(geoRes.lat, geoRes.lng)) {
-              finalGpsStr = `${geoRes.lat}, ${geoRes.lng}`;
+              finalGpsStr = `${geoRes.lat.toFixed(6)}, ${geoRes.lng.toFixed(6)}`;
+              // Auto-update master outlet if coordinates were missing
+              if (matchMaster && !matchMaster.koordinat_gps) {
+                matchMaster.koordinat_gps = finalGpsStr;
+                matchMaster.lat = geoRes.lat;
+                matchMaster.lng = geoRes.lng;
+                fsUpdate("sales_outlets", matchMaster.id, {
+                  koordinat_gps: finalGpsStr,
+                  lat: geoRes.lat,
+                  lng: geoRes.lng,
+                  updated_at: new Date().toISOString()
+                }).catch(() => {});
+              }
             }
           }
 
-          // Fallback to raw GPS from Excel if address geocoding produced no valid operational result
+          // 2. If raw data lacks explicit Plus Code / GPS, fallback to Master Outlet database registered coordinates!
+          if (!finalGpsStr && matchMaster && matchMaster.koordinat_gps) {
+            const parsedMaster = parseGpsCoordinates(matchMaster.koordinat_gps);
+            if (parsedMaster && isValidOperationalCoordinate(parsedMaster.lat, parsedMaster.lng)) {
+              finalGpsStr = `${parsedMaster.lat.toFixed(6)}, ${parsedMaster.lng.toFixed(6)}`;
+              console.log(`[EXCEL IMPORT] Menggunakan titik koordinat terdaftar di Master Outlet untuk '${rawCustomer}': ${finalGpsStr}`);
+            }
+          }
+
+          // 3. Fallback to smart geocoding (OpenStreetMap / City lookup)
+          if (!finalGpsStr && queryAddr) {
+            if (idx > 0) {
+              await new Promise(r => setTimeout(r, 150));
+            }
+            const geoRes = await geocodeAddressSmart(queryAddr, idx);
+            if (geoRes && isValidOperationalCoordinate(geoRes.lat, geoRes.lng)) {
+              finalGpsStr = `${geoRes.lat.toFixed(6)}, ${geoRes.lng.toFixed(6)}`;
+            }
+          }
+
+          // 4. Fallback to raw GPS from Excel columns if available
           if (!finalGpsStr) {
             let parsedGps = null;
             if (rawGps) {
@@ -2898,34 +3273,27 @@ export async function mount(container, { session }) {
               parsedGps = parseGpsCoordinates(`${rawLat}, ${rawLng}`);
             }
             if (parsedGps && isValidOperationalCoordinate(parsedGps.lat, parsedGps.lng)) {
-              finalGpsStr = `${parsedGps.lat}, ${parsedGps.lng}`;
+              finalGpsStr = `${parsedGps.lat.toFixed(6)}, ${parsedGps.lng.toFixed(6)}`;
             }
           }
 
-          // Ultimate fallback if still no valid GPS
+          // 5. Ultimate fallback if still no valid GPS
           if (!finalGpsStr) {
             const fallbackRes = await geocodeAddressSmart(queryAddr || rawCustomer || rawAddress || "Klampok Wanasari Brebes Tegal", idx);
-            finalGpsStr = `${fallbackRes.lat}, ${fallbackRes.lng}`;
+            finalGpsStr = `${fallbackRes.lat.toFixed(6)}, ${fallbackRes.lng.toFixed(6)}`;
           }
 
-          // Find Salesman NIK match
-          let salesNik = "SLS-IMP";
-          if (karyawanList && karyawanList.length > 0 && namaSales) {
-            const matchedKaryawan = karyawanList.find(k => 
-              (k.nama_karyawan || "").toLowerCase().includes(namaSales.toLowerCase()) ||
-              namaSales.toLowerCase().includes((k.nama_karyawan || "").toLowerCase())
-            );
-            if (matchedKaryawan && matchedKaryawan.nik_karyawan) {
-              salesNik = matchedKaryawan.nik_karyawan;
-            }
-          }
+          // Find Salesman NIK match & standardized uppercase name
+          const sInfo = resolveSalesmanInfo(namaSales, "");
+          const finalSalesName = sInfo.name;
+          const salesNik = sInfo.nik;
 
           const checkinId = `CHK-IMP-${salesNik}-${dateStr}-${idx}-${Date.now().toString(36)}`;
           
           const checkinDoc = normalizeCheckinItem({
             id: checkinId,
             sales_nik: salesNik,
-            sales_nama: namaSales || "Salesman",
+            sales_nama: finalSalesName,
             sales_jabatan: jabatanSales || "Sales Canvassing",
             toko_outlet: rawCustomer || "Pelanggan / Toko",
             alamat_toko: rawAddress || "Cirebon",

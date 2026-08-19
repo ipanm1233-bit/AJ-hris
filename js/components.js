@@ -8,6 +8,7 @@ import {
  fsGetAll, fsAdd, fsUpdate, fsDelete, deleteBroadcastMemoAndNotifs, openModal, closeModal, confirmDialog,
  toast, fmtDateShort, fmtRupiah, toNumber, genId, escapeHtml, localDateStr
 } from "./utils.js";
+import { getSession, canDeleteModuleData } from "./auth.js";
 
 /* ---------------------------------------------------------------------
  * ICON SET (inline SVG, mengikuti aksen warna via currentColor)
@@ -174,6 +175,8 @@ export async function renderCrudModule(container, cfg) {
  beforeSave = null, afterSave = null, orderByField = null, filterFn = null, emptyMessage = null
  } = cfg;
 
+ const userCanDelete = canDelete !== false && canDeleteModuleData(getSession());
+
  container.innerHTML = `
  <div class="flex flex-col gap-4">
  <div class="flex flex-wrap items-center justify-between gap-3">
@@ -241,7 +244,7 @@ export async function renderCrudModule(container, cfg) {
  <td class="px-4 py-3 text-right whitespace-nowrap">
  ${printFn ? `<button data-print="${row.id}" title="${escapeHtml(printLabel)}" class="text-slate-400 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50 transition">${icon("printer", "w-4 h-4")}</button>` : ""}
  ${canEdit ? `<button data-edit="${row.id}" class="text-slate-400 hover:text-maroon-700 p-1.5 rounded-lg hover:bg-maroon-50 transition">${icon("edit", "w-4 h-4")}</button>` : ""}
- ${canDelete ? `<button data-del="${row.id}" class="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition">${icon("trash", "w-4 h-4")}</button>` : ""}
+ ${userCanDelete ? `<button data-del="${row.id}" class="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition">${icon("trash", "w-4 h-4")}</button>` : ""}
  </td>
  </tr>`).join("");
 
@@ -255,6 +258,10 @@ export async function renderCrudModule(container, cfg) {
  });
  tbody.querySelectorAll("[data-del]").forEach(btn => {
  btn.onclick = async () => {
+ if (!canDeleteModuleData(getSession())) {
+ toast("Akses ditolak: Hanya Superadmin dan HRD yang memiliki wewenang untuk menghapus data.", "warning");
+ return;
+ }
  const ok = await confirmDialog("Data yang dihapus tidak dapat dikembalikan. Lanjutkan hapus data ini?");
  if (!ok) return;
  await fsDelete(collectionName, btn.dataset.del);

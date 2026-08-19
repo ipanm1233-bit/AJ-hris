@@ -3997,6 +3997,71 @@ async function geocodeWithOSM(rawAddr) {
  * Geocodes an address string to precise GPS coordinates (lat, lng).
  * Primary: Nominatim OpenStreetMap & Photon APIs
  */
+/**
+ * Checks if an address string contains explicit GPS coordinates or a valid Plus Code
+ */
+export function hasExplicitGpsOrPlusCode(addressStr) {
+  if (!addressStr || typeof addressStr !== "string") return false;
+  const s = addressStr.trim();
+  // Plus code format e.g. "8Q28+XX" or "4GVJ+2JJ, ..." or "76W3+G8"
+  if (/([23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3})\b/i.test(s)) {
+    return true;
+  }
+  // GPS format e.g. "-6.732042, 108.552190"
+  if (/(-?\d{1,2}\.\d+)\s*[,;\s]\s*(-?\d{1,3}\.\d+)/.test(s)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Normalizes store/outlet names for robust cross-matching between checkins and master outlets
+ */
+export function cleanStoreName(name) {
+  if (!name || typeof name !== "string") return "";
+  let clean = name.toLowerCase().trim();
+  // Remove common store prefixes and special punctuation
+  clean = clean.replace(/^(toko|tb|ud|cv|pt|outlet|warung|kios|depot|apotek|swalayan|minimarket|grosir|agen|distributor|mitra)\s+/i, "");
+  clean = clean.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+  return clean;
+}
+
+/**
+ * Finds a matching outlet in the master outlet list by name, kode, or clean name
+ */
+export function findMatchingMasterOutlet(storeQuery, masterOutlets = []) {
+  if (!storeQuery || !Array.isArray(masterOutlets) || masterOutlets.length === 0) return null;
+  const rawQ = String(storeQuery).trim().toLowerCase();
+  const cleanQ = cleanStoreName(storeQuery);
+
+  // 1. Exact match on nama or kode
+  let match = masterOutlets.find(o => 
+    (o.nama && o.nama.toLowerCase().trim() === rawQ) ||
+    (o.kode && o.kode.toLowerCase().trim() === rawQ)
+  );
+  if (match) return match;
+
+  // 2. Cleaned name exact match
+  if (cleanQ && cleanQ.length >= 3) {
+    match = masterOutlets.find(o => {
+      const oClean = cleanStoreName(o.nama);
+      return oClean === cleanQ;
+    });
+    if (match) return match;
+  }
+
+  // 3. Substring inclusion match (if query is significant length)
+  if (cleanQ && cleanQ.length >= 4) {
+    match = masterOutlets.find(o => {
+      const oClean = cleanStoreName(o.nama);
+      return oClean && (oClean.includes(cleanQ) || cleanQ.includes(oClean));
+    });
+    if (match) return match;
+  }
+
+  return null;
+}
+
 // Tabel referensi wilayah (dipakai baik sebagai fallback terakhir geocoding
 // MAUPUN sebagai titik referensi untuk mendekode Plus Code).
 const _DISTRICT_MAP = [
@@ -4191,14 +4256,23 @@ export function getDirectImageUrl(url) {
 }
 
 /**
+ * Standardizes salesman names to UPPERCASE and cleans irregular whitespaces
+ */
+export function cleanSalesName(name) {
+  if (!name) return "SALESMAN";
+  return String(name).trim().replace(/\s+/g, " ").toUpperCase();
+}
+
+/**
  * Standardizes & cleans checkin data structure to prevent undefined property bugs
  */
 export function normalizeCheckinItem(item = {}) {
   if (!item || typeof item !== "object") item = {};
   const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
-  const sales_nama = item.sales_nama || item.nama || item.sales_name || item.user_name || "Salesman";
-  const sales_nik = item.sales_nik || item.nik || item.user_id || "SLS-001";
+  const rawSalesNama = item.sales_nama || item.nama || item.sales_name || item.user_name || "SALESMAN";
+  const sales_nama = cleanSalesName(rawSalesNama);
+  const sales_nik = (item.sales_nik || item.nik || item.user_id || "SLS-001").trim();
   const toko_outlet = item.toko_outlet || item.toko || item.outlet_name || item.store_name || "Outlet Mitra";
   const alamat_toko = item.alamat_toko || item.alamat || item.address || "Cirebon";
   const koordinat_gps = item.koordinat_gps || item.gps || item.lat_long || item.coordinates || "-6.7321, 108.5523";

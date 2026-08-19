@@ -177,6 +177,42 @@
     </div>
   </div>
 
+  <!-- SALES VISIT PERFORMANCE WIDGET (REKAPAN PENCAPAIAN KUNJUNGAN SALES) -->
+  <div id="dash-widget-sales-performance" class="hidden bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-5 space-y-4">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-red-50 to-amber-50 border border-red-100/80 text-maroon-700 flex items-center justify-center shrink-0 shadow-2xs">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-maroon-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+        </div>
+        <div>
+          <h3 class="font-extrabold text-slate-800 text-sm sm:text-base flex items-center gap-2">
+            <span>Rekapan Pencapaian Kunjungan Sales</span>
+            <span id="dash-sales-badge-nama" class="px-2 py-0.5 bg-maroon-50 text-maroon-700 border border-maroon-100 rounded-full text-[10.5px] font-bold">Salesman</span>
+          </h3>
+          <p class="text-xs text-slate-500 mt-0.5">Performa kunjungan outlet, rasio Effective Call (EC), dan jarak tempuh lapangan.</p>
+        </div>
+      </div>
+
+      <!-- Quick Actions & Period Filter Tabs -->
+      <div class="flex items-center flex-wrap gap-2">
+        <div class="inline-flex p-1 bg-slate-100 rounded-xl text-xs font-semibold" id="dash-sales-period-tabs">
+          <button type="button" data-period="MONTH" class="dash-sales-tab px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 transition bg-white text-maroon-700 shadow-2xs font-bold cursor-pointer">Bulan Ini</button>
+          <button type="button" data-period="TODAY" class="dash-sales-tab px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 transition cursor-pointer">Hari Ini</button>
+          <button type="button" data-period="WEEK" class="dash-sales-tab px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 transition cursor-pointer">7 Hari</button>
+          <button type="button" data-period="ALL" class="dash-sales-tab px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 transition cursor-pointer">Semua</button>
+        </div>
+        <a href="#sales-track" class="px-3 py-1.5 bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold rounded-xl shadow-2xs transition flex items-center gap-1.5">
+          <span>Buka Track Sales</span>
+          <span>&rarr;</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Content Container -->
+    <div id="dash-sales-performance-content" class="space-y-4"></div>
+  </div>
+
   <!-- 3 LEAVE BALANCE CARDS -->
   <div id="dash-widget-leave" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-5">
     <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2.5">
