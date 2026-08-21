@@ -1,5 +1,5 @@
 import { db, COL, collection, getDocs, doc, setDoc, getDoc, updateDoc } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort, confirmDialog, sendEmailNotif, notifyUser, getTargetsForRole, generateAndSaveCutiDocument, printFormCutiFisik, downloadFormCutiPdf, generateStandardFormCutiHtml, smartParseDate, getCalculatedJatahCuti, getCarryoverPercentage, calculateCarryoverJatah, ensureXlsxLoaded } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort, confirmDialog, sendEmailNotif, notifyUser, getTargetsForRole, generateAndSaveCutiDocument, printFormCutiFisik, downloadFormCutiPdf, generateStandardFormCutiHtml, smartParseDate, getCalculatedJatahCuti, getCarryoverPercentage, calculateCarryoverJatah, ensureXlsxLoaded, getCutiDeductionCategory } from "../utils.js";
 import { avatar, emptyState, skeletonRows, badge } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
@@ -14,7 +14,7 @@ const DEFAULT_LEAVE_TYPES = [
  { id: "S-", name: "Sakit tanpa Surat Dokter", potong: "Tahunan", count: 1 },
  { id: "CB", name: "Cuti Bersama", potong: "Tahunan", count: 1 },
  { id: "C-", name: "Cuti Potong Gaji", potong: "Potong Gaji", count: 1 },
- { id: "CS", name: "Cuti Sisa", potong: "Tahunan", count: 1 },
+ { id: "CS", name: "Cuti Sisa", potong: "Akumulasi", count: 1 },
  { id: "C+1/2", name: "Cuti Khusus Setengah Hari", potong: "Khusus", count: 0.5 },
  { id: "D", name: "Dinas Luar Kota", potong: "Tidak Dipotong", count: 0 },
  { id: "C-BESAR", name: "Cuti Besar", potong: "Tidak Dipotong", count: 0 }
@@ -331,35 +331,31 @@ export async function mount(container, { session }) {
  }
  }
 
- function calculateBalances() {
- terpakaiMap = {};
- const currentYear = new Date().getFullYear();
- allCuti.forEach(r => {
- const key = r.nama_karyawan;
- if(!key) return;
- const st = (r.status_final || r.status || "").toUpperCase();
- if (st.includes("REJECT") || st.includes("TOLAK")) return;
+  function calculateBalances() {
+    terpakaiMap = {};
+    const currentYear = new Date().getFullYear();
+    allCuti.forEach(r => {
+      const key = r.nama_karyawan;
+      if (!key) return;
+      const st = (r.status_final || r.status || "").toUpperCase();
+      if (st.includes("REJECT") || st.includes("TOLAK")) return;
 
- const rowYear = parseInt(r.tahun) || (r.tanggal ? new Date(r.tanggal).getFullYear() : currentYear);
- if (rowYear !== currentYear) return;
- if (!terpakaiMap[key]) terpakaiMap[key] = { Tahunan: 0, Khusus: 0, Akumulasi: 0 };
- 
- const isPotongGaji = r.is_potong_gaji || (r.potong_jatah || "").toLowerCase().includes("gaji") || (r.type_cuti || "").toLowerCase().includes("potong gaji");
- if (isPotongGaji) return;
+      const rowYear = parseInt(r.tahun) || (r.tanggal ? new Date(r.tanggal).getFullYear() : currentYear);
+      if (rowYear !== currentYear) return;
+      if (!terpakaiMap[key]) terpakaiMap[key] = { Tahunan: 0, Khusus: 0, Akumulasi: 0 };
+      
+      const deduction = getCutiDeductionCategory(r);
+      if (!deduction.isDeducted || deduction.count <= 0) return;
 
- const potong = (r.potong_jatah || "").toLowerCase();
- const typeStr = (r.type_cuti || "").toLowerCase();
- const count = parseFloat(r.count || r.jumlah_hari) || 0;
-
- if (potong.includes("tahunan") || potong === "tahunan" || typeStr.startsWith("c -") || typeStr.startsWith("c1/2") || typeStr.startsWith("cb -") || typeStr.startsWith("s- -")) {
-   terpakaiMap[key].Tahunan += count;
- } else if (potong.includes("khusus") || potong === "khusus" || typeStr.startsWith("c+")) {
-   terpakaiMap[key].Khusus += count;
- } else if (potong.includes("akumulasi") || potong.includes("sisa") || typeStr.startsWith("cs -")) {
-   terpakaiMap[key].Akumulasi += count;
- }
- });
- }
+      if (deduction.category === "Tahunan") {
+        terpakaiMap[key].Tahunan += deduction.count;
+      } else if (deduction.category === "Khusus") {
+        terpakaiMap[key].Khusus += deduction.count;
+      } else if (deduction.category === "Akumulasi") {
+        terpakaiMap[key].Akumulasi += deduction.count;
+      }
+    });
+  }
 
  function getSisa(k) {
  const empCuti = allCuti.filter(c => c.nama_karyawan === k.nama_karyawan || (k.nik && c.nik === k.nik));
@@ -646,7 +642,7 @@ export async function mount(container, { session }) {
  "Jabatan": emp.jabatan || c.jabatan || "-",
  "Divisi": emp.divisi || c.divisi || "-",
  "Jenis Cuti / Izin": c.type_cuti || c.kategori_cuti || "-",
- "Kategori Pemotongan": c.potong_jatah || (c.is_potong_gaji ? "Potong Gaji" : "Tidak Dipotong"),
+ "Kategori Pemotongan": getCutiDeductionCategory(c).category,
  "Tanggal Mulai": tglMulai,
  "Tanggal Selesai": tglSelesai,
  "Sesi Cuti": c.sesi || (c.type_cuti && c.type_cuti.includes("1/2") ? "Setengah Hari" : "Full Day"),
@@ -893,9 +889,10 @@ export async function mount(container, { session }) {
           if (!key) return;
           const rowYear = parseInt(r.tahun) || (r.tanggal ? new Date(r.tanggal).getFullYear() : null);
           if (rowYear !== tahunLalu) return;
-          if (!terpakaiTahunLalu[key]) terpakaiTahunLalu[key] = { Tahunan: 0, Akumulasi: 0 };
-          if (r.potong_jatah === "Tahunan" || r.potong_jatah === "Akumulasi") {
-            terpakaiTahunLalu[key][r.potong_jatah] += parseFloat(r.count) || 0;
+          if (!terpakaiTahunLalu[key]) terpakaiTahunLalu[key] = { Tahunan: 0, Akumulasi: 0, Khusus: 0 };
+          const deduction = getCutiDeductionCategory(r);
+          if (deduction.isDeducted && deduction.category) {
+            terpakaiTahunLalu[key][deduction.category] = (terpakaiTahunLalu[key][deduction.category] || 0) + deduction.count;
           }
         });
 
@@ -970,28 +967,48 @@ export async function mount(container, { session }) {
  };
  }
 
- function renderRiwayatRows(myLeaves) {
- if (!myLeaves.length) return `<tr><td colspan="5" class="p-6 text-center text-slate-400">Belum ada riwayat cuti.</td></tr>`;
- return myLeaves.map(c => `
- <tr class="hover:bg-slate-50" data-cuti-id="${c.id}">
- <td class="p-3 font-medium">${fmtDateShort(c.tanggal)}</td>
- <td class="p-3">${escapeHtml(c.type_cuti)}</td>
- <td class="p-3">${escapeHtml(c.keterangan_cuti || "-")}</td>
- <td class="p-3 text-center"><span class="bg-red-50 text-red-600 px-2 py-0.5 rounded font-bold">${c.count} ${c.potong_jatah !== 'Tidak Dipotong' ? c.potong_jatah : ''}</span></td>
- <td class="p-3 text-right whitespace-nowrap">
- <button type="button" data-pdf-cuti="${c.id}" class="text-emerald-700 hover:underline font-bold mr-3 inline-flex items-center gap-1">
-  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-  Download PDF
-</button>
-<button type="button" data-print-cuti="${c.id}" class="text-slate-600 hover:underline font-medium mr-3">Cetak</button>
- ${canManage ? `
- <button type="button" data-edit-cuti="${c.id}" class="text-blue-600 hover:underline font-medium mr-3">Edit</button>
- <button type="button" data-del-cuti="${c.id}" class="text-red-600 hover:underline font-medium">Hapus</button>
- ` : ''}
- </td>
- </tr>
- `).join("");
- }
+  function renderRiwayatRows(myLeaves) {
+    if (!myLeaves.length) return `<tr><td colspan="5" class="p-6 text-center text-slate-400">Belum ada riwayat cuti.</td></tr>`;
+    return myLeaves.map(c => {
+      const ded = getCutiDeductionCategory(c);
+      let badgeClass = "bg-blue-50 text-blue-700 border-blue-200";
+      let badgeLabel = `${c.count} Hari (Tahunan)`;
+
+      if (ded.category === "Khusus") {
+        badgeClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
+        badgeLabel = `${c.count} Hari (Khusus)`;
+      } else if (ded.category === "Akumulasi") {
+        badgeClass = "bg-amber-50 text-amber-800 border-amber-200";
+        badgeLabel = `${c.count} Hari (Akumulasi)`;
+      } else if (ded.category === "Potong Gaji") {
+        badgeClass = "bg-rose-50 text-rose-700 border-rose-200";
+        badgeLabel = `${c.count} Hari (Potong Gaji)`;
+      } else if (ded.category === "Tidak Dipotong") {
+        badgeClass = "bg-slate-100 text-slate-600 border-slate-200";
+        badgeLabel = `Bebas Potongan`;
+      }
+
+      return `
+  <tr class="hover:bg-slate-50" data-cuti-id="${c.id}">
+  <td class="p-3 font-medium">${fmtDateShort(c.tanggal)}</td>
+  <td class="p-3">${escapeHtml(c.type_cuti)}</td>
+  <td class="p-3">${escapeHtml(c.keterangan_cuti || "-")}</td>
+  <td class="p-3 text-center"><span class="inline-block border px-2.5 py-0.5 rounded-full text-[11px] font-bold ${badgeClass}">${badgeLabel}</span></td>
+  <td class="p-3 text-right whitespace-nowrap">
+  <button type="button" data-pdf-cuti="${c.id}" class="text-emerald-700 hover:underline font-bold mr-3 inline-flex items-center gap-1">
+   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+   Download PDF
+ </button>
+ <button type="button" data-print-cuti="${c.id}" class="text-slate-600 hover:underline font-medium mr-3">Cetak</button>
+  ${canManage ? `
+  <button type="button" data-edit-cuti="${c.id}" class="text-blue-600 hover:underline font-medium mr-3">Edit</button>
+  <button type="button" data-del-cuti="${c.id}" class="text-red-600 hover:underline font-medium">Hapus</button>
+  ` : ''}
+  </td>
+  </tr>
+  `;
+    }).join("");
+  }
 
  function wireRiwayatActions(m, k) {
     const tbody = m.querySelector("#tbody-riwayat-cuti");
@@ -1546,6 +1563,14 @@ export async function mount(container, { session }) {
 
             if (curCfg.potong === "Tahunan" && sisa.Tahunan < countVal) {
               toast(`Sisa cuti tahunan tidak mencukupi (${sisa.Tahunan} hari tersisa)`, "error");
+              return;
+            }
+            if (curCfg.potong === "Khusus" && sisa.Khusus < countVal) {
+              toast(`Sisa cuti khusus tidak mencukupi (${sisa.Khusus} hari tersisa)`, "error");
+              return;
+            }
+            if (curCfg.potong === "Akumulasi" && sisa.Akumulasi < countVal) {
+              toast(`Sisa cuti akumulasi tidak mencukupi (${sisa.Akumulasi} hari tersisa)`, "error");
               return;
             }
 
