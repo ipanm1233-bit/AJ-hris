@@ -3221,7 +3221,7 @@ export function calculateCarryoverJatah(sisaCutiTahunLalu, tanggalJoin, refDate 
 }
 
 export function getCalculatedJatahCuti(emp, cutiRecords = null) {
-  if (!emp) return { jatahTahunan: 12, jatahKhusus: 4, jatahAkumulasi: 0, usedTahunan: 0, usedKhusus: 0, usedAkumulasi: 0, sisaTahunan: 12, sisaKhusus: 4, sisaAkumulasi: 0 };
+  if (!emp) return { jatahTahunan: 12, jatahKhusus: 4, jatahAkumulasi: 0, usedTahunan: 0, usedKhusus: 0, usedAkumulasi: 0, terpakaiTahunan: 0, terpakaiKhusus: 0, terpakaiAkumulasi: 0, sisaTahunan: 12, sisaKhusus: 4, sisaAkumulasi: 0 };
 
   const explicitTahunan = emp.jatah_cuti_tahunan ?? emp.jatah_tahunan;
   const explicitKhusus = emp.jatah_cuti_khusus ?? emp.jatah_khusus;
@@ -3249,13 +3249,17 @@ export function getCalculatedJatahCuti(emp, cutiRecords = null) {
 
       if (diffMonths >= 12) {
         let base = 12;
-        if (tenureYears >= 11) base += 4; // > 10 thn (>= 11 thn): +4 (total 16)
-        else if (tenureYears >= 10) base += 3; // 10 thn: +3 (total 15)
-        else if (tenureYears >= 8) base += 2; // 8 thn: +2 (total 14)
-        else if (tenureYears >= 6) base += 1; // 6 thn: +1 (total 13)
+        // SK Bagian B: Cuti Penghargaan Masa Kerja
+        // - Masa kerja 6 s/d < 8 tahun (72-95 bln): +1 hari (total 13)
+        // - Masa kerja 8 s/d < 10 tahun (96-119 bln): +2 hari (total 14)
+        // - Masa kerja 10 tahun ke atas (>= 120 bln / >= 10 thn): +4 hari (total 16)
+        if (tenureYears >= 10 || diffMonths >= 120) base = 16;
+        else if (tenureYears >= 8 || diffMonths >= 96) base = 14;
+        else if (tenureYears >= 6 || diffMonths >= 72) base = 13;
+        else base = 12;
         
-        // Auto-heal if jatahTahunan was set to 0 by an accidental broken reset
-        if (jatahTahunan === null || (jatahTahunan === 0 && tenureYears >= 1)) {
+        // Auto-heal if jatahTahunan was set to 0 or capped at 15 due to legacy calculation
+        if (jatahTahunan === null || (jatahTahunan === 0 && tenureYears >= 1) || (base === 16 && (jatahTahunan === 15 || jatahTahunan === 12))) {
           jatahTahunan = base;
         }
       } else if (diffMonths >= 3) {
@@ -3281,18 +3285,16 @@ export function getCalculatedJatahCuti(emp, cutiRecords = null) {
   // - 0 s/d di bawah 3 tahun: 0%
   // - 3 s/d di bawah 5 tahun: 50%
   // - 5 tahun ke atas: 100%
-  // Jika terdapat sisa_cuti_tahun_lalu (input manual / import), hitung langsung sesuai ketentuan
   if (emp.sisa_cuti_tahun_lalu !== undefined && emp.sisa_cuti_tahun_lalu !== null && emp.sisa_cuti_tahun_lalu !== "") {
     const sisaLalu = parseFloat(emp.sisa_cuti_tahun_lalu) || 0;
-    if (tenureYears >= 5) {
+    if (tenureYears >= 5 || diffMonths >= 60) {
       jatahAkumulasi = Math.floor(sisaLalu * 1.0);
-    } else if (tenureYears >= 3) {
+    } else if (tenureYears >= 3 || diffMonths >= 36) {
       jatahAkumulasi = Math.floor(sisaLalu * 0.5);
     } else {
       jatahAkumulasi = 0;
     }
-  } else if (emp.tanggal_join && tenureYears < 3) {
-    // Masa kerja 0 s/d di bawah 3 tahun tidak berhak atas cuti akumulasi (0%)
+  } else if (emp.tanggal_join && (tenureYears < 3 && diffMonths < 36)) {
     jatahAkumulasi = 0;
   }
 
@@ -3303,13 +3305,34 @@ export function getCalculatedJatahCuti(emp, cutiRecords = null) {
   if (Array.isArray(cutiRecords) && cutiRecords.length > 0) {
     const currentYear = new Date().getFullYear();
     cutiRecords.forEach(r => {
+      const st = (r.status_final || r.status || "").toUpperCase();
+      if (st.includes("REJECT") || st.includes("TOLAK")) return;
+
       const rowYear = parseInt(r.tahun) || (r.tanggal ? new Date(r.tanggal).getFullYear() : currentYear);
       if (rowYear !== currentYear) return;
-      const count = parseFloat(r.count) || 0;
-      const potong = r.potong_jatah || (r.type_cuti === "C+" ? "Khusus" : "Tahunan");
-      if (potong === "Tahunan") usedTahunan += count;
-      else if (potong === "Khusus") usedKhusus += count;
-      else if (potong === "Akumulasi") usedAkumulasi += count;
+
+      const count = parseFloat(r.count || r.jumlah_hari) || 0;
+      if (count <= 0) return;
+
+      const isPotongGaji = r.is_potong_gaji || (r.potong_jatah || "").toLowerCase().includes("gaji") || (r.type_cuti || "").toLowerCase().includes("potong gaji");
+      if (isPotongGaji) return;
+
+      const potong = (r.potong_jatah || "").toLowerCase();
+      const typeStr = (r.type_cuti || "").toLowerCase();
+
+      if (potong.includes("tahunan") || potong === "tahunan" || typeStr.startsWith("c -") || typeStr.startsWith("c1/2") || typeStr.startsWith("cb -") || typeStr.startsWith("s- -")) {
+        usedTahunan += count;
+      } else if (potong.includes("khusus") || potong === "khusus" || typeStr.startsWith("c+")) {
+        usedKhusus += count;
+      } else if (potong.includes("akumulasi") || potong.includes("sisa") || typeStr.startsWith("cs -")) {
+        usedAkumulasi += count;
+      } else if (!r.potong_jatah) {
+        if (typeStr.includes("khusus")) usedKhusus += count;
+        else if (typeStr.includes("sisa") || typeStr.includes("akumulasi")) usedAkumulasi += count;
+        else if (!typeStr.includes("tidak dipotong") && !typeStr.includes("surat dokter") && !typeStr.includes("dinas") && !typeStr.includes("besar")) {
+          usedTahunan += count;
+        }
+      }
     });
   }
 
@@ -3324,6 +3347,9 @@ export function getCalculatedJatahCuti(emp, cutiRecords = null) {
     usedTahunan,
     usedKhusus,
     usedAkumulasi,
+    terpakaiTahunan: usedTahunan,
+    terpakaiKhusus: usedKhusus,
+    terpakaiAkumulasi: usedAkumulasi,
     sisaTahunan,
     sisaKhusus,
     sisaAkumulasi
