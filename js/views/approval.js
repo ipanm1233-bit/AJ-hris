@@ -1,19 +1,19 @@
 import { db, COL, collection, query, where, getDocs } from "../firebase-config.js";
-import { fsGetAll, fsUpdate, fsAdd, genId, openModal, closeModal, toast, fmtDateTime, escapeHtml, sendEmailNotif, getTargetsForRole, createLoginToken, notifyUser, renderPengajuanDetailHtml, printSalesKlaimForm, generateAndSaveCutiDocument, printFormCutiFisik } from "../utils.js";
+import { fsGetAll, fsUpdate, fsAdd, genId, openModal, closeModal, toast, fmtDateTime, escapeHtml, sendEmailNotif, getTargetsForRole, createLoginToken, notifyUser, renderPengajuanDetailHtml, printSalesKlaimForm, generateAndSaveCutiDocument, printFormCutiFisik, getCutiDeductionCategory } from "../utils.js";
 import { badge, emptyState, skeletonRows } from "../components.js";
 
 const CUTI_RULES = {
- "C - Cuti Tahunan": { jenis: "Tahunan", count: 1 },
- "C1/2 - Cuti Setengah Hari": { jenis: "Tahunan", count: 0.5 },
- "C+ - Cuti Khusus": { jenis: "Khusus", count: 1 },
- "S - Sakit dgn Surat Dokter": { jenis: "Khusus", count: 0 }, 
- "S- - Sakit tanpa Surat Dokter": { jenis: "Tahunan", count: 1 },
- "CB - Cuti Bersama": { jenis: "Tahunan", count: 1 },
- "C- - Potong Gaji": { jenis: "Potong Gaji", count: 1 },
- "CS - Cuti Sisa": { jenis: "Tahunan", count: 1 },
- "C+1/2 - Cuti Khusus Setengah Hari": { jenis: "Khusus", count: 0.5 },
- "D - Dinas Luar Kota": { jenis: "Dinas", count: 0 },
- "C-BESAR - Cuti Besar": { jenis: "Cuti Besar", count: 0 }
+  "C - Cuti Tahunan": { jenis: "Tahunan", count: 1 },
+  "C1/2 - Cuti Setengah Hari": { jenis: "Tahunan", count: 0.5 },
+  "C+ - Cuti Khusus": { jenis: "Khusus", count: 1 },
+  "S - Sakit dgn Surat Dokter": { jenis: "Tidak Dipotong", count: 0 }, 
+  "S- - Sakit tanpa Surat Dokter": { jenis: "Tahunan", count: 1 },
+  "CB - Cuti Bersama": { jenis: "Tahunan", count: 1 },
+  "C- - Potong Gaji": { jenis: "Potong Gaji", count: 1 },
+  "CS - Cuti Sisa": { jenis: "Akumulasi", count: 1 },
+  "C+1/2 - Cuti Khusus Setengah Hari": { jenis: "Khusus", count: 0.5 },
+  "D - Dinas Luar Kota": { jenis: "Tidak Dipotong", count: 0 },
+  "C-BESAR - Cuti Besar": { jenis: "Tidak Dipotong", count: 0 }
 };
 
 const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
@@ -418,7 +418,7 @@ async function processAction(row, action, note, session) {
         nama_karyawan: row.nama_pemohon,
         cabang: row.detail.cabang || "-", 
         type_cuti: jenisVal,
-        potong_jatah: isPotongGaji ? "Potong Gaji" : rule.jenis,
+        potong_jatah: isPotongGaji ? "Potong Gaji" : (rule ? rule.jenis : getCutiDeductionCategory({ type_cuti: jenisVal }).category),
         is_potong_gaji: isPotongGaji,
         potong_gaji_hari: isPotongGaji ? potongGajiHari : 0,
         keterangan_cuti: row.detail.alasan || row.detail.keterangan || (isPotongGaji ? "Cuti Potong Gaji (Unpaid Leave)" : "Disetujui by System"),
