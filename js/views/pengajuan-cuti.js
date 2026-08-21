@@ -75,25 +75,25 @@ export async function mount(container, { session }) {
       userBalances = getCalculatedJatahCuti(curEmp, myCutiDocs);
 
       // Update Mini Dashboard Cards
-      if (elTahunanJatah) elTahunanJatah.textContent = `${userBalances.jatahTahunan || 0} Hari`;
-      if (elTahunanTerpakai) elTahunanTerpakai.textContent = `${userBalances.terpakaiTahunan || 0} Hari`;
+      if (elTahunanJatah) elTahunanJatah.textContent = `${userBalances.jatahTahunan ?? 0}`;
+      if (elTahunanTerpakai) elTahunanTerpakai.textContent = `${userBalances.terpakaiTahunan ?? 0} Hari`;
       if (elTahunanSisa) {
-        elTahunanSisa.textContent = `${userBalances.sisaTahunan || 0} Hari`;
-        elTahunanSisa.className = `text-2xl font-black font-mono ${userBalances.sisaTahunan <= 0 ? 'text-rose-600' : 'text-maroon-700'}`;
+        elTahunanSisa.textContent = `${userBalances.sisaTahunan ?? 0}`;
+        elTahunanSisa.className = `text-2xl font-black font-mono ${userBalances.sisaTahunan <= 0 ? 'text-rose-600' : 'text-blue-700'}`;
       }
 
-      if (elAkumulasiJatah) elAkumulasiJatah.textContent = `${userBalances.jatahAkumulasi || 0} Hari`;
-      if (elAkumulasiTerpakai) elAkumulasiTerpakai.textContent = `${userBalances.terpakaiAkumulasi || 0} Hari`;
+      if (elAkumulasiJatah) elAkumulasiJatah.textContent = `${userBalances.jatahAkumulasi ?? 0}`;
+      if (elAkumulasiTerpakai) elAkumulasiTerpakai.textContent = `${userBalances.terpakaiAkumulasi ?? 0} Hari`;
       if (elAkumulasiSisa) {
-        elAkumulasiSisa.textContent = `${userBalances.sisaAkumulasi || 0} Hari`;
-        elAkumulasiSisa.className = `text-2xl font-black font-mono ${userBalances.sisaAkumulasi <= 0 ? 'text-rose-600' : 'text-blue-700'}`;
+        elAkumulasiSisa.textContent = `${userBalances.sisaAkumulasi ?? 0}`;
+        elAkumulasiSisa.className = `text-2xl font-black font-mono ${userBalances.sisaAkumulasi <= 0 ? 'text-rose-600' : 'text-sky-700'}`;
       }
 
-      if (elKhususJatah) elKhususJatah.textContent = `${userBalances.jatahKhusus || 0} Hari`;
-      if (elKhususTerpakai) elKhususTerpakai.textContent = `${userBalances.terpakaiKhusus || 0} Hari`;
+      if (elKhususJatah) elKhususJatah.textContent = `${userBalances.jatahKhusus ?? 0}`;
+      if (elKhususTerpakai) elKhususTerpakai.textContent = `${userBalances.terpakaiKhusus ?? 0} Hari`;
       if (elKhususSisa) {
-        elKhususSisa.textContent = `${userBalances.sisaKhusus || 0} Hari`;
-        elKhususSisa.className = `text-2xl font-black font-mono ${userBalances.sisaKhusus <= 0 ? 'text-rose-600' : 'text-amber-700'}`;
+        elKhususSisa.textContent = `${userBalances.sisaKhusus ?? 0}`;
+        elKhususSisa.className = `text-2xl font-black font-mono ${userBalances.sisaKhusus <= 0 ? 'text-rose-600' : 'text-purple-700'}`;
       }
 
       // 4. Fetch My Leave Submissions
