@@ -1,5 +1,5 @@
 import { db, COL, collection, getDocs, doc, setDoc, getDoc, updateDoc } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort, confirmDialog, sendEmailNotif, notifyUser, getTargetsForRole, generateAndSaveCutiDocument, printFormCutiFisik, downloadFormCutiPdf, generateStandardFormCutiHtml, smartParseDate, getCalculatedJatahCuti, getCarryoverPercentage, calculateCarryoverJatah } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort, confirmDialog, sendEmailNotif, notifyUser, getTargetsForRole, generateAndSaveCutiDocument, printFormCutiFisik, downloadFormCutiPdf, generateStandardFormCutiHtml, smartParseDate, getCalculatedJatahCuti, getCarryoverPercentage, calculateCarryoverJatah, ensureXlsxLoaded } from "../utils.js";
 import { avatar, emptyState, skeletonRows, badge } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
@@ -38,7 +38,7 @@ export async function mount(container, { session }) {
  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
  <div>
  <h1 class="text-2xl font-bold text-slate-800">Manajemen Cuti</h1>
- <p class="text-sm text-slate-500 mt-1">${canManage ? "Kelola jatah cuti, input izin manual, cetak form fisik, serta kalkulasi reset & import Excel." : "Mode lihat saja — hanya menampilkan karyawan yang menjadi bawahan Anda."}</p>
+ <p class="text-sm text-slate-500 mt-1">${canManage ? "Kelola jatah cuti, input izin manual, cetak form fisik, ekspor data Excel, serta kalkulasi reset & import." : "Mode lihat saja — hanya menampilkan karyawan yang menjadi bawahan Anda."}</p>
  </div>
  <div class="flex flex-wrap items-center gap-2">
  ${canManage ? `
@@ -47,6 +47,56 @@ export async function mount(container, { session }) {
  Atur Jenis Cuti
  </button>` : ""}
  </div>
+ </div>
+
+ <!-- FILTER & EXPORT BAR (TARIK RIWAYAT & JATAH EXCEL SESUAI FILTER CABANG & PERIODE TANGGAL) -->
+ <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
+   <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+     <!-- FILTER CONTROLS -->
+     <div class="flex flex-wrap items-end gap-3">
+       <div>
+         <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+           <i class="fa-solid fa-building-user text-slate-400 mr-1"></i> Filter Cabang
+         </label>
+         <select id="cuti-filter-cabang" class="bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-700 pl-3 pr-8 py-2 rounded-xl border border-slate-200 focus:border-maroon-500 outline-none transition cursor-pointer min-w-[170px]">
+           <option value="">Semua Cabang</option>
+         </select>
+       </div>
+
+       <div>
+         <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+           <i class="fa-solid fa-calendar-days text-slate-400 mr-1"></i> Dari Tanggal
+         </label>
+         <input type="date" id="cuti-filter-start-date" class="bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-700 px-3 py-2 rounded-xl border border-slate-200 focus:border-maroon-500 outline-none transition cursor-pointer">
+       </div>
+
+       <div>
+         <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+           <i class="fa-solid fa-calendar-days text-slate-400 mr-1"></i> Sampai Tanggal
+         </label>
+         <input type="date" id="cuti-filter-end-date" class="bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-700 px-3 py-2 rounded-xl border border-slate-200 focus:border-maroon-500 outline-none transition cursor-pointer">
+       </div>
+
+       <button id="btn-reset-filter" class="px-3 py-2 text-xs font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition flex items-center gap-1.5" title="Reset filter cabang dan tanggal">
+         <i class="fa-solid fa-rotate-left"></i> Reset
+       </button>
+     </div>
+
+     <!-- TOMBOL EXPORT EXCEL -->
+     <div class="flex flex-wrap items-center gap-2.5 pt-2 xl:pt-0 border-t xl:border-t-0 border-slate-100">
+       <!-- TARIK RIWAYAT CUTI EXCEL -->
+       <button id="btn-export-riwayat-excel" class="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-2" title="Tarik seluruh data riwayat cuti karyawan format Excel (.xlsx) berdasarkan filter cabang dan periode tanggal">
+         <i class="fa-solid fa-file-excel text-sm"></i>
+         <span>Tarik Riwayat Cuti (Excel)</span>
+       </button>
+
+       <!-- TARIK JATAH CUTI TERAKHIR EXCEL -->
+       <button id="btn-export-jatah-excel" class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-2" title="Tarik data jatah dan saldo cuti karyawan terakhir format Excel (.xlsx) berdasarkan filter cabang">
+         <i class="fa-solid fa-table-list text-sm"></i>
+         <span>Tarik Jatah Cuti (Excel)</span>
+       </button>
+     </div>
+   </div>
  </div>
 
  ${canManage ? `
@@ -145,7 +195,103 @@ export async function mount(container, { session }) {
  const wrap = container.querySelector("#cuti-cards-wrap");
  const searchInput = container.querySelector("#cuti-search");
  const searchTableInput = container.querySelector("#cuti-table-search");
- 
+ const filterCabang = container.querySelector("#cuti-filter-cabang");
+ const filterStartDate = container.querySelector("#cuti-filter-start-date");
+ const filterEndDate = container.querySelector("#cuti-filter-end-date");
+ const btnResetFilter = container.querySelector("#btn-reset-filter");
+ const btnExportRiwayat = container.querySelector("#btn-export-riwayat-excel");
+ const btnExportJatah = container.querySelector("#btn-export-jatah-excel");
+
+ // Default tanggal filter
+ const curYear = new Date().getFullYear();
+ if (filterStartDate && !filterStartDate.value) {
+   filterStartDate.value = `${curYear}-01-01`;
+ }
+ if (filterEndDate && !filterEndDate.value) {
+   const today = new Date();
+   const mm = String(today.getMonth() + 1).padStart(2, '0');
+   const dd = String(today.getDate()).padStart(2, '0');
+   filterEndDate.value = `${curYear}-${mm}-${dd}`;
+ }
+
+ function toDateYmd(val) {
+   if (!val) return null;
+   if (typeof val === "string") {
+     const trimmed = val.trim();
+     const m = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+     if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+     const d = smartParseDate(trimmed);
+     if (d && !isNaN(d.getTime())) {
+       const y = d.getFullYear();
+       const mm = String(d.getMonth() + 1).padStart(2, '0');
+       const dd = String(d.getDate()).padStart(2, '0');
+       return `${y}-${mm}-${dd}`;
+     }
+     return trimmed.substring(0, 10);
+   }
+   if (typeof val === "object") {
+     if (val.toDate && typeof val.toDate === "function") {
+       const d = val.toDate();
+       if (!isNaN(d.getTime())) {
+         const y = d.getFullYear();
+         const mm = String(d.getMonth() + 1).padStart(2, '0');
+         const dd = String(d.getDate()).padStart(2, '0');
+         return `${y}-${mm}-${dd}`;
+       }
+     }
+     if (val instanceof Date && !isNaN(val.getTime())) {
+       const y = val.getFullYear();
+       const mm = String(val.getMonth() + 1).padStart(2, '0');
+       const dd = String(val.getDate()).padStart(2, '0');
+       return `${y}-${mm}-${dd}`;
+     }
+   }
+   return null;
+ }
+
+ function populateCabangDropdown() {
+   if (!filterCabang) return;
+   const currentVal = filterCabang.value;
+   const branches = [...new Set(allKaryawan.map(k => (k.cabang || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "id", { sensitivity: "base" }));
+   
+   filterCabang.innerHTML = `<option value="">Semua Cabang (${allKaryawan.length} Karyawan)</option>` + 
+     branches.map(b => {
+       const count = allKaryawan.filter(k => (k.cabang || "").trim().toUpperCase() === b.toUpperCase()).length;
+       return `<option value="${escapeHtml(b)}">${escapeHtml(b)} (${count} Karyawan)</option>`;
+     }).join("");
+   
+   if (currentVal && branches.includes(currentVal)) {
+     filterCabang.value = currentVal;
+   }
+ }
+
+ function applyFilters() {
+   const selectedCabang = (filterCabang?.value || "").trim().toUpperCase();
+   const cardTerm = (searchInput?.value || "").trim().toLowerCase();
+   const tableTerm = (searchTableInput?.value || "").trim().toLowerCase();
+
+   const filteredForCards = allKaryawan.filter(k => {
+     const matchCabang = !selectedCabang || (k.cabang || "").trim().toUpperCase() === selectedCabang;
+     const matchSearch = !cardTerm || 
+       (k.nama_karyawan || "").toLowerCase().includes(cardTerm) || 
+       (k.jabatan || "").toLowerCase().includes(cardTerm) || 
+       (k.nik || k.nik_karyawan || "").toLowerCase().includes(cardTerm);
+     return matchCabang && matchSearch;
+   });
+
+   const filteredForTable = allKaryawan.filter(k => {
+     const matchCabang = !selectedCabang || (k.cabang || "").trim().toUpperCase() === selectedCabang;
+     const matchSearch = !tableTerm || 
+       (k.nama_karyawan || "").toLowerCase().includes(tableTerm) || 
+       (k.nik || k.nik_karyawan || "").toLowerCase().includes(tableTerm) ||
+       (k.jabatan || "").toLowerCase().includes(tableTerm);
+     return matchCabang && matchSearch;
+   });
+
+   renderCards(filteredForCards);
+   renderTable(filteredForTable);
+ }
+
  let allKaryawan = [], allCuti = [], leaveConfig = [];
  let terpakaiMap = {};
  let bawahanNames = null;
@@ -177,9 +323,9 @@ export async function mount(container, { session }) {
  leaveConfig = [...DEFAULT_LEAVE_TYPES];
  }
 
+ populateCabangDropdown();
  calculateBalances();
- renderCards(allKaryawan);
- renderTable(allKaryawan);
+ applyFilters();
  } catch(e) { 
  if (wrap) wrap.innerHTML = `<div class="col-span-full text-red-500">Error: ${e.message}</div>`; 
  }
@@ -407,18 +553,246 @@ export async function mount(container, { session }) {
     });
  }
 
+ if (filterCabang) {
+ filterCabang.onchange = applyFilters;
+ }
+
  if (searchInput) {
- searchInput.oninput = (e) => {
- const term = e.target.value.toLowerCase();
- renderCards(allKaryawan.filter(k => (k.nama_karyawan||"").toLowerCase().includes(term) || (k.jabatan||"").toLowerCase().includes(term)));
- };
+ searchInput.oninput = applyFilters;
  }
 
  if (searchTableInput) {
- searchTableInput.oninput = (e) => {
- const term = e.target.value.toLowerCase();
- renderTable(allKaryawan.filter(k => (k.nama_karyawan||"").toLowerCase().includes(term) || (k.nik||k.nik_karyawan||"").toLowerCase().includes(term)));
+ searchTableInput.oninput = applyFilters;
+ }
+
+ if (btnResetFilter) {
+ btnResetFilter.onclick = () => {
+ if (filterCabang) filterCabang.value = "";
+ if (filterStartDate) filterStartDate.value = `${curYear}-01-01`;
+ if (filterEndDate) {
+ const today = new Date();
+ const mm = String(today.getMonth() + 1).padStart(2, '0');
+ const dd = String(today.getDate()).padStart(2, '0');
+ filterEndDate.value = `${curYear}-${mm}-${dd}`;
+ }
+ if (searchInput) searchInput.value = "";
+ if (searchTableInput) searchTableInput.value = "";
+ applyFilters();
+ toast("Filter telah direset", "info");
  };
+ }
+
+ // EKSPOR RIWAYAT CUTI (EXCEL)
+ async function exportRiwayatCutiExcel() {
+ try {
+ await ensureXlsxLoaded();
+ if (!window.XLSX) throw new Error("Library Excel (SheetJS) belum siap. Silakan coba beberapa detik lagi.");
+
+ const selectedCabang = (filterCabang?.value || "").trim();
+ const startDate = (filterStartDate?.value || "").trim();
+ const endDate = (filterEndDate?.value || "").trim();
+
+ // Saring riwayat cuti
+ const filtered = allCuti.filter(c => {
+ // Mode bawahan untuk atasan
+ if (isAtasanView && bawahanNames && !bawahanNames.includes(c.nama_karyawan)) {
+ return false;
+ }
+
+ // Filter Cabang
+ const emp = allKaryawan.find(k => k.nama_karyawan === c.nama_karyawan || (k.nik && c.nik === k.nik));
+ if (selectedCabang) {
+ const empCabang = (emp?.cabang || c.cabang || "").trim().toUpperCase();
+ if (empCabang !== selectedCabang.toUpperCase()) return false;
+ }
+
+ // Filter Rentang Tanggal
+ const cStart = toDateYmd(c.tanggal || c.tanggal_mulai || c.tgl_mulai) || toDateYmd(c.createdAt || c.created_at);
+ const cEnd = toDateYmd(c.tanggal_selesai || c.tgl_selesai || c.tanggal || c.tanggal_mulai) || cStart;
+
+ if (startDate) {
+ if (cEnd && cEnd < startDate && cStart && cStart < startDate) return false;
+ }
+ if (endDate) {
+ if (cStart && cStart > endDate && cEnd && cEnd > endDate) return false;
+ }
+
+ return true;
+ });
+
+ if (filtered.length === 0) {
+ toast("Tidak ada data riwayat cuti yang sesuai dengan filter cabang dan periode tanggal yang dipilih.", "warning");
+ return;
+ }
+
+ // Urutkan data berdasarkan tanggal terbaru
+ filtered.sort((a, b) => {
+ const da = toDateYmd(a.tanggal || a.tanggal_mulai || a.createdAt) || "";
+ const db = toDateYmd(b.tanggal || b.tanggal_mulai || b.createdAt) || "";
+ return db.localeCompare(da);
+ });
+
+ const exportRows = filtered.map((c, idx) => {
+ const emp = allKaryawan.find(k => k.nama_karyawan === c.nama_karyawan || (k.nik && c.nik === k.nik)) || {};
+ const tglMulai = toDateYmd(c.tanggal || c.tanggal_mulai || c.tgl_mulai) || c.tanggal || "-";
+ const tglSelesai = toDateYmd(c.tanggal_selesai || c.tgl_selesai) || tglMulai;
+ const tglPengajuan = c.createdAt ? (typeof c.createdAt === 'object' && c.createdAt.toDate ? fmtDateShort(c.createdAt) : String(c.createdAt).substring(0, 10)) : (c.created_at ? (typeof c.created_at === 'object' && c.created_at.toDate ? fmtDateShort(c.created_at) : String(c.created_at).substring(0, 10)) : "-");
+
+ return {
+ "No": idx + 1,
+ "NIK": emp.nik || emp.nik_karyawan || c.nik || "-",
+ "Nama Karyawan": c.nama_karyawan || emp.nama_karyawan || "-",
+ "Cabang": emp.cabang || c.cabang || "-",
+ "Jabatan": emp.jabatan || c.jabatan || "-",
+ "Divisi": emp.divisi || c.divisi || "-",
+ "Jenis Cuti / Izin": c.type_cuti || c.kategori_cuti || "-",
+ "Kategori Pemotongan": c.potong_jatah || (c.is_potong_gaji ? "Potong Gaji" : "Tidak Dipotong"),
+ "Tanggal Mulai": tglMulai,
+ "Tanggal Selesai": tglSelesai,
+ "Sesi Cuti": c.sesi || (c.type_cuti && c.type_cuti.includes("1/2") ? "Setengah Hari" : "Full Day"),
+ "Durasi (Hari)": parseFloat(c.count || c.jumlah_hari) || 0,
+ "Keterangan / Alasan": c.keterangan_cuti || c.alasan || "-",
+ "Status Pengajuan": c.status_final || c.status || "APPROVED",
+ "Tanggal Pengajuan": tglPengajuan,
+ "Disetujui Oleh": c.disetujui_oleh || c.atasan || "-"
+ };
+ });
+
+ const ws = window.XLSX.utils.json_to_sheet(exportRows);
+ ws['!cols'] = [
+ { wch: 6 },  // No
+ { wch: 15 }, // NIK
+ { wch: 28 }, // Nama Karyawan
+ { wch: 18 }, // Cabang
+ { wch: 22 }, // Jabatan
+ { wch: 16 }, // Divisi
+ { wch: 26 }, // Jenis Cuti / Izin
+ { wch: 20 }, // Kategori Pemotongan
+ { wch: 15 }, // Tanggal Mulai
+ { wch: 15 }, // Tanggal Selesai
+ { wch: 15 }, // Sesi Cuti
+ { wch: 14 }, // Durasi (Hari)
+ { wch: 36 }, // Keterangan / Alasan
+ { wch: 18 }, // Status Pengajuan
+ { wch: 18 }, // Tanggal Pengajuan
+ { wch: 24 }  // Disetujui Oleh
+ ];
+
+ const wb = window.XLSX.utils.book_new();
+ window.XLSX.utils.book_append_sheet(wb, ws, "Riwayat Cuti");
+
+ const cabangTag = (selectedCabang || "SEMUA_CABANG").replace(/[^a-zA-Z0-9_-]/g, '_');
+ const startTag = startDate || "AWAL";
+ const endTag = endDate || "AKHIR";
+ const filename = `Riwayat_Cuti_${cabangTag}_${startTag}_sd_${endTag}.xlsx`;
+
+ window.XLSX.writeFile(wb, filename);
+ toast(`Berhasil menarik ${exportRows.length} data riwayat cuti (${filename})`, "success");
+ } catch (err) {
+ console.error(err);
+ toast("Gagal mengekspor riwayat cuti: " + err.message, "error");
+ }
+ }
+
+ // EKSPOR JATAH CUTI TERAKHIR (EXCEL)
+ async function exportJatahCutiExcel() {
+ try {
+ await ensureXlsxLoaded();
+ if (!window.XLSX) throw new Error("Library Excel (SheetJS) belum siap. Silakan coba beberapa detik lagi.");
+
+ const selectedCabang = (filterCabang?.value || "").trim();
+
+ let targetEmployees = allKaryawan;
+ if (selectedCabang) {
+ targetEmployees = targetEmployees.filter(k => (k.cabang || "").trim().toUpperCase() === selectedCabang.toUpperCase());
+ }
+
+ if (targetEmployees.length === 0) {
+ toast("Tidak ada data karyawan pada cabang yang dipilih.", "warning");
+ return;
+ }
+
+ const now = new Date();
+ const exportRows = targetEmployees.map((k, idx) => {
+ const sisa = getSisa(k);
+ let masaKerjaStr = "-";
+ if (k.tanggal_join) {
+ const join = smartParseDate(k.tanggal_join);
+ if (join) {
+ const diffMonths = (now.getFullYear() - join.getFullYear()) * 12 + (now.getMonth() - join.getMonth());
+ const yrs = Math.floor(diffMonths / 12);
+ const mths = diffMonths % 12;
+ masaKerjaStr = yrs > 0 ? `${yrs} Thn ${mths} Bln` : `${mths} Bln`;
+ }
+ }
+ const totalSisa = (sisa.Tahunan || 0) + (sisa.Khusus || 0) + (sisa.Akumulasi || 0);
+
+ return {
+ "No": idx + 1,
+ "NIK": k.nik || k.nik_karyawan || "-",
+ "Nama Karyawan": k.nama_karyawan || "-",
+ "Cabang": k.cabang || "-",
+ "Jabatan": k.jabatan || "-",
+ "Divisi": k.divisi || "-",
+ "Tanggal Join": k.tanggal_join || "-",
+ "Masa Kerja": masaKerjaStr,
+ "Jatah Tahunan (Awal)": sisa.jatahTahunan ?? 0,
+ "Cuti Tahunan Terpakai": sisa.used.Tahunan ?? 0,
+ "Sisa Cuti Tahunan": sisa.Tahunan ?? 0,
+ "Jatah Khusus (Awal)": sisa.jatahKhusus ?? 0,
+ "Cuti Khusus Terpakai": sisa.used.Khusus ?? 0,
+ "Sisa Cuti Khusus": sisa.Khusus ?? 0,
+ "Jatah Akumulasi (Carryover)": sisa.jatahAkumulasi ?? 0,
+ "Akumulasi Terpakai": sisa.used.Akumulasi ?? 0,
+ "Sisa Cuti Akumulasi": sisa.Akumulasi ?? 0,
+ "Sisa Cuti Tahun Lalu (Manual HRD)": k.sisa_cuti_tahun_lalu ?? "-",
+ "Total Sisa Cuti Aktif": totalSisa
+ };
+ });
+
+ const ws = window.XLSX.utils.json_to_sheet(exportRows);
+ ws['!cols'] = [
+ { wch: 6 },  // No
+ { wch: 15 }, // NIK
+ { wch: 28 }, // Nama Karyawan
+ { wch: 18 }, // Cabang
+ { wch: 22 }, // Jabatan
+ { wch: 16 }, // Divisi
+ { wch: 15 }, // Tanggal Join
+ { wch: 16 }, // Masa Kerja
+ { wch: 20 }, // Jatah Tahunan (Awal)
+ { wch: 20 }, // Cuti Tahunan Terpakai
+ { wch: 18 }, // Sisa Cuti Tahunan
+ { wch: 18 }, // Jatah Khusus (Awal)
+ { wch: 18 }, // Cuti Khusus Terpakai
+ { wch: 16 }, // Sisa Cuti Khusus
+ { wch: 26 }, // Jatah Akumulasi (Carryover)
+ { wch: 18 }, // Akumulasi Terpakai
+ { wch: 18 }, // Sisa Cuti Akumulasi
+ { wch: 30 }, // Sisa Cuti Tahun Lalu (Manual HRD)
+ { wch: 20 }  // Total Sisa Cuti Aktif
+ ];
+
+ const wb = window.XLSX.utils.book_new();
+ window.XLSX.utils.book_append_sheet(wb, ws, "Jatah & Sisa Cuti");
+
+ const cabangTag = (selectedCabang || "SEMUA_CABANG").replace(/[^a-zA-Z0-9_-]/g, '_');
+ const filename = `Rekap_Jatah_Cuti_${cabangTag}_${now.getFullYear()}.xlsx`;
+
+ window.XLSX.writeFile(wb, filename);
+ toast(`Berhasil menarik ${exportRows.length} data jatah cuti karyawan (${filename})`, "success");
+ } catch (err) {
+ console.error(err);
+ toast("Gagal mengekspor data jatah cuti: " + err.message, "error");
+ }
+ }
+
+ if (btnExportRiwayat) {
+ btnExportRiwayat.onclick = exportRiwayatCutiExcel;
+ }
+
+ if (btnExportJatah) {
+ btnExportJatah.onclick = exportJatahCutiExcel;
  }
 
  // WIRING EXCEL IMPORT & RESET OTOMATIS
