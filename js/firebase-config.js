@@ -128,5 +128,9 @@ export const COL = {
  TARGET_BULANAN_KPI: "target_bulanan_kpi",
  LOG_PENILAIAN_HARIAN: "log_penilaian_harian",
  MASTER_REIMBURSEMENT_TYPE: "master_reimbursement_type",
- DATA_REIMBURSEMENT: "data_reimbursement"
+ DATA_REIMBURSEMENT: "data_reimbursement",
+  HR_CASES: "hr_cases",
+  HR_CASE_ACTION_PLANS: "hr_case_action_plans",
+  HR_CASE_FOLLOWUPS: "hr_case_followups",
+  HR_CASE_AUDIT_LOGS: "hr_case_audit_logs"
 };

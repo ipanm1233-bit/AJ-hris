@@ -1,5 +1,5 @@
 import { db, COL, collection, getDocs, doc, setDoc, getDoc, updateDoc } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort, confirmDialog, sendEmailNotif, notifyUser, getTargetsForRole, generateAndSaveCutiDocument, printFormCutiFisik, generateStandardFormCutiHtml, smartParseDate, getCalculatedJatahCuti } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort, confirmDialog, sendEmailNotif, notifyUser, getTargetsForRole, generateAndSaveCutiDocument, printFormCutiFisik, downloadFormCutiPdf, generateStandardFormCutiHtml, smartParseDate, getCalculatedJatahCuti } from "../utils.js";
 import { avatar, emptyState, skeletonRows, badge } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
@@ -201,11 +201,12 @@ export async function mount(container, { session }) {
  }
 
  function getSisa(k) {
+ const calc = getCalculatedJatahCuti(k);
  const used = terpakaiMap[k.nama_karyawan] || { Tahunan: 0, Khusus: 0, Akumulasi: 0 };
  return {
- Tahunan: Math.max(toNumber(k.jatah_tahunan) - used.Tahunan, 0),
- Khusus: Math.max(toNumber(k.jatah_khusus) - used.Khusus, 0),
- Akumulasi: Math.max(toNumber(k.jatah_akumulasi) - used.Akumulasi, 0),
+ Tahunan: Math.max(calc.jatahTahunan - used.Tahunan, 0),
+ Khusus: Math.max(calc.jatahKhusus - used.Khusus, 0),
+ Akumulasi: Math.max(calc.jatahAkumulasi - used.Akumulasi, 0),
  used
  };
  }
@@ -418,12 +419,12 @@ export async function mount(container, { session }) {
  });
 
  for (const emp of allKaryawan) {
- let jTahunanBaru = 0;
+ let jTahunanBaru = 12;
  let jKhusus = 4;
  let jAkumulasiBaru = 0;
 
- const jatahTahunanLama = toNumber(emp.jatah_cuti_tahunan ?? emp.jatah_tahunan);
- const jatahAkumulasiLama = toNumber(emp.jatah_cuti_akumulasi ?? emp.jatah_akumulasi);
+ const jatahTahunanLama = toNumber(emp.jatah_cuti_tahunan ?? emp.jatah_tahunan ?? 12);
+ const jatahAkumulasiLama = toNumber(emp.jatah_cuti_akumulasi ?? emp.jatah_akumulasi ?? 0);
  const used = terpakaiTahunLalu[emp.nama_karyawan] || { Tahunan: 0, Akumulasi: 0 };
 
  const sisaLaluManual = emp.sisa_cuti_tahun_lalu;
@@ -457,7 +458,13 @@ export async function mount(container, { session }) {
  } else {
  jAkumulasiBaru = 0;
  }
+ } else {
+ jTahunanBaru = 12;
+ jAkumulasiBaru = Math.floor(totalSisaUntukCarry * 1.0);
  }
+ } else {
+ jTahunanBaru = 12;
+ jAkumulasiBaru = Math.floor(totalSisaUntukCarry * 1.0);
  }
 
  await updateDoc(doc(db, COL.MASTER_KARYAWAN, emp.id), {
@@ -490,7 +497,11 @@ export async function mount(container, { session }) {
  <td class="p-3">${escapeHtml(c.keterangan_cuti || "-")}</td>
  <td class="p-3 text-center"><span class="bg-red-50 text-red-600 px-2 py-0.5 rounded font-bold">${c.count} ${c.potong_jatah !== 'Tidak Dipotong' ? c.potong_jatah : ''}</span></td>
  <td class="p-3 text-right whitespace-nowrap">
- <button type="button" data-print-cuti="${c.id}" class="text-emerald-700 hover:underline font-bold mr-3"> Form Cuti</button>
+ <button type="button" data-pdf-cuti="${c.id}" class="text-emerald-700 hover:underline font-bold mr-3 inline-flex items-center gap-1">
+  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+  Download PDF
+</button>
+<button type="button" data-print-cuti="${c.id}" class="text-slate-600 hover:underline font-medium mr-3">Cetak</button>
  ${canManage ? `
  <button type="button" data-edit-cuti="${c.id}" class="text-blue-600 hover:underline font-medium mr-3">Edit</button>
  <button type="button" data-del-cuti="${c.id}" class="text-red-600 hover:underline font-medium">Hapus</button>
@@ -501,385 +512,520 @@ export async function mount(container, { session }) {
  }
 
  function wireRiwayatActions(m, k) {
- const tbody = m.querySelector("#tbody-riwayat-cuti");
- if (!tbody) return;
+    const tbody = m.querySelector("#tbody-riwayat-cuti");
+    if (!tbody) return;
 
- tbody.querySelectorAll("[data-print-cuti]").forEach(btn => {
- btn.onclick = () => {
- const row = allCuti.find(c => c.id === btn.dataset.printCuti);
- if (row) {
- printFormCutiFisik({
- ...row,
- nama_pemohon: k.nama_karyawan,
- nik: k.nik || "-",
- jabatan: k.jabatan || "-",
- cabang: k.cabang || "-",
- kategori_cuti: row.type_cuti,
- tanggal_mulai: row.tanggal,
- tanggal_selesai: row.tanggal_selesai || row.tanggal,
- jumlah_hari: row.count,
- alasan: row.keterangan_cuti,
- status_final: "APPROVED FINAL"
- });
- }
- };
- });
+    tbody.querySelectorAll("[data-pdf-cuti]").forEach(btn => {
+      btn.onclick = () => {
+        const rowId = btn.dataset.pdfCuti;
+        const row = allCuti.find(c => String(c.id) === String(rowId));
+        if (row) {
+          downloadFormCutiPdf({
+            ...row,
+            nama_pemohon: k.nama_karyawan,
+            nik: k.nik || "-",
+            jabatan: k.jabatan || "-",
+            cabang: k.cabang || "-",
+            kategori_cuti: row.type_cuti,
+            tanggal_mulai: row.tanggal,
+            tanggal_selesai: row.tanggal_selesai || row.tanggal,
+            jumlah_hari: row.count,
+            alasan: row.keterangan_cuti,
+            status_final: "APPROVED FINAL"
+          });
+        } else {
+          toast("Data riwayat cuti tidak ditemukan", "error");
+        }
+      };
+    });
 
- if (!canManage) return;
+    tbody.querySelectorAll("[data-print-cuti]").forEach(btn => {
+      btn.onclick = () => {
+        const rowId = btn.dataset.printCuti;
+        const row = allCuti.find(c => String(c.id) === String(rowId));
+        if (row) {
+          printFormCutiFisik({
+            ...row,
+            nama_pemohon: k.nama_karyawan,
+            nik: k.nik || "-",
+            jabatan: k.jabatan || "-",
+            cabang: k.cabang || "-",
+            kategori_cuti: row.type_cuti,
+            tanggal_mulai: row.tanggal,
+            tanggal_selesai: row.tanggal_selesai || row.tanggal,
+            jumlah_hari: row.count,
+            alasan: row.keterangan_cuti,
+            status_final: "APPROVED FINAL"
+          });
+        } else {
+          toast("Data riwayat cuti tidak ditemukan", "error");
+        }
+      };
+    });
 
- tbody.querySelectorAll("[data-del-cuti]").forEach(btn => {
- btn.onclick = async () => {
- const id = btn.dataset.delCuti;
- const ok = await confirmDialog("Hapus data cuti ini secara permanen? Saldo cuti karyawan akan otomatis terhitung ulang.", { title: "Hapus Riwayat Cuti" });
- if (!ok) return;
- try {
- await fsDelete(COL.MASTER_CUTI, id);
- toast("Riwayat cuti berhasil dihapus", "success");
- allCuti = allCuti.filter(c => c.id !== id);
- calculateBalances();
- renderCards(allKaryawan);
- renderTable(allKaryawan);
- closeModal();
- const refreshed = allKaryawan.find(x => x.id === k.id);
- if (refreshed) openEmployeeModal(refreshed);
- } catch (e) {
- toast("Gagal menghapus: " + e.message, "error");
- }
- };
- });
+    if (!canManage) return;
 
- tbody.querySelectorAll("[data-edit-cuti]").forEach(btn => {
- btn.onclick = () => {
- const row = allCuti.find(c => c.id === btn.dataset.editCuti);
- if (row) openEditCutiModal(row, k);
- };
- });
- }
+    tbody.querySelectorAll("[data-del-cuti]").forEach(btn => {
+      btn.onclick = async () => {
+        const id = btn.dataset.delCuti;
+        const ok = await confirmDialog("Hapus data cuti ini secara permanen? Saldo cuti karyawan akan otomatis terhitung ulang.", { title: "Hapus Riwayat Cuti" });
+        if (!ok) return;
+        try {
+          await fsDelete(COL.MASTER_CUTI, id);
+          toast("Riwayat cuti berhasil dihapus", "success");
+          allCuti = allCuti.filter(c => String(c.id) !== String(id));
+          calculateBalances();
+          renderCards(allKaryawan);
+          renderTable(allKaryawan);
+          closeModal();
+          const refreshed = allKaryawan.find(x => x.id === k.id);
+          if (refreshed) openEmployeeModal(refreshed, { defaultTab: "riwayat" });
+        } catch (e) {
+          toast("Gagal menghapus: " + e.message, "error");
+        }
+      };
+    });
 
- function openEditCutiModal(row, k) {
- const optLeaveTypes = leaveConfig.map(c => `<option value="${c.id}" ${row.type_cuti && row.type_cuti.startsWith(c.id + " ") ? "selected" : ""} data-potong="${c.potong}">${c.id} - ${c.name}</option>`).join("");
- openModal({
- title: "Edit Riwayat Cuti",
- size: "md",
- bodyHtml: `
- <form id="form-edit-cuti" class="space-y-4">
- <div>
- <label class="block text-xs font-bold text-slate-600 mb-1">Tanggal Mulai</label>
- <input type="date" id="edit-tanggal" required value="${row.tanggal || ""}" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
- </div>
- <div>
- <label class="block text-xs font-bold text-slate-600 mb-1">Tanggal Selesai</label>
- <input type="date" id="edit-tanggal-selesai" value="${row.tanggal_selesai || row.tanggal || ""}" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
- <p class="text-[11px] text-slate-400 mt-1">Dipakai laporan absensi utk menandai SEMUA hari dalam rentang cuti ini.</p>
- </div>
- <div>
- <label class="block text-xs font-bold text-slate-600 mb-1">Jenis Cuti</label>
- <select id="edit-jenis" class="w-full px-3 py-2 text-sm border rounded-lg outline-none bg-white">${optLeaveTypes}</select>
- </div>
- <div>
- <label class="block text-xs font-bold text-slate-600 mb-1">Keterangan / Alasan</label>
- <input type="text" id="edit-keterangan" value="${escapeHtml(row.keterangan_cuti || "")}" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
- </div>
- <div>
- <label class="block text-xs font-bold text-slate-600 mb-1">Potong Saldo (Hari)</label>
- <input type="number" step="0.5" id="edit-count" required value="${row.count}" class="w-full px-3 py-2 text-sm border rounded-lg outline-none text-center font-bold">
- </div>
- </form>
- `,
- footerHtml: `
- <button id="btn-edit-cuti-batal" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
- <button id="btn-edit-cuti-simpan" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2 rounded-lg text-sm font-bold shadow transition">Simpan Perubahan</button>
- `,
- onMount: (m2) => {
- m2.querySelector("#btn-edit-cuti-batal").onclick = () => openEmployeeModal(k);
- m2.querySelector("#btn-edit-cuti-simpan").onclick = async () => {
- const form = m2.querySelector("#form-edit-cuti");
- if (!form.reportValidity()) return;
- const selEl = m2.querySelector("#edit-jenis");
- const opt = selEl.options[selEl.selectedIndex];
- const payload = {
- tanggal: m2.querySelector("#edit-tanggal").value,
- tanggal_selesai: m2.querySelector("#edit-tanggal-selesai").value || m2.querySelector("#edit-tanggal").value,
- type_cuti: opt.text,
- potong_jatah: opt.dataset.potong,
- keterangan_cuti: m2.querySelector("#edit-keterangan").value.trim(),
- count: parseFloat(m2.querySelector("#edit-count").value) || 0
- };
- try {
- await fsUpdate(COL.MASTER_CUTI, row.id, payload);
- toast("Riwayat cuti berhasil diperbarui", "success");
- Object.assign(row, payload);
- calculateBalances();
- renderCards(allKaryawan);
- renderTable(allKaryawan);
- const refreshed = allKaryawan.find(x => x.id === k.id);
- openEmployeeModal(refreshed || k);
- } catch (e) {
- toast("Gagal menyimpan perubahan: " + e.message, "error");
- }
- };
- }
- });
- }
+    tbody.querySelectorAll("[data-edit-cuti]").forEach(btn => {
+      btn.onclick = () => {
+        const rowId = btn.dataset.editCuti;
+        const row = allCuti.find(c => String(c.id) === String(rowId));
+        if (row) {
+          openEditCutiModal(row, k);
+        } else {
+          toast("Data cuti tidak ditemukan", "error");
+        }
+      };
+    });
+  }
 
- function openEmployeeModal(k) {
- const sisa = getSisa(k);
- const myLeaves = allCuti.filter(c => c.nama_karyawan === k.nama_karyawan).sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
- const optLeaveTypes = leaveConfig.map(c => `<option value="${c.id}" data-potong="${c.potong}" data-count="${c.count}">${c.id} - ${c.name}</option>`).join("");
+  function openEditCutiModal(row, k) {
+    if (!row) {
+      toast("Data cuti tidak ditemukan", "error");
+      return;
+    }
 
- openModal({
- title: "Manajemen Cuti Karyawan",
- size: "lg",
- bodyHtml: `
- <div class="flex items-center gap-4 mb-5 pb-4 border-b border-slate-100">
- ${avatar(k.nama_karyawan, "w-14 h-14 text-base")}
- <div class="flex-1">
- <h3 class="font-bold text-lg text-slate-800">${escapeHtml(k.nama_karyawan)}</h3>
- <p class="text-sm text-slate-500">${escapeHtml(k.jabatan || "-")} • ${escapeHtml(k.cabang || "-")}</p>
- </div>
- <div class="flex gap-3 text-center">
- <div><p class="text-[10px] font-bold text-slate-400 uppercase">Tahunan</p><p class="text-xl font-black text-blue-600">${sisa.Tahunan}</p></div>
- <div><p class="text-[10px] font-bold text-slate-400 uppercase">Khusus</p><p class="text-xl font-black text-emerald-600">${sisa.Khusus}</p></div>
- <div><p class="text-[10px] font-bold text-slate-400 uppercase">Akumulasi</p><p class="text-xl font-black text-amber-600">${sisa.Akumulasi}</p></div>
- </div>
- </div>
+    const currentConfigs = (leaveConfig && leaveConfig.length ? leaveConfig : DEFAULT_LEAVE_TYPES);
+    let matched = false;
+    let optLeaveTypes = currentConfigs.map(c => {
+      const isSelected = row.type_cuti && (
+        row.type_cuti === `${c.id} - ${c.name}` ||
+        row.type_cuti === c.name ||
+        row.type_cuti.startsWith(c.id + " ") ||
+        row.type_cuti.startsWith(c.id + " -") ||
+        (row.potong_jatah && row.potong_jatah === c.potong && row.type_cuti.toLowerCase().includes(c.name.toLowerCase()))
+      );
+      if (isSelected) matched = true;
+      return `<option value="${c.id}" ${isSelected ? "selected" : ""} data-potong="${c.potong}" data-count="${c.count || 1}">${c.id} - ${c.name}</option>`;
+    }).join("");
 
- ${canManage ? `
- <div class="flex border-b border-slate-200 mb-4">
- <button id="tab-input-cuti" class="px-4 py-2 text-sm font-bold text-maroon-700 border-b-2 border-maroon-700">Input Cuti Baru</button>
- <button id="tab-riwayat-cuti" class="px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700">Riwayat Cuti</button>
- </div>` : `
- <div class="flex border-b border-slate-200 mb-4">
- <span class="px-4 py-2 text-sm font-bold text-maroon-700 border-b-2 border-maroon-700">Riwayat Cuti</span>
- <span class="ml-auto self-center text-[11px] text-slate-400 pr-1">Mode lihat saja</span>
- </div>`}
+    if (!matched && row.type_cuti) {
+      optLeaveTypes = `<option value="CUSTOM" selected data-potong="${row.potong_jatah || 'Tahunan'}" data-count="${row.count || 1}">${escapeHtml(row.type_cuti)}</option>` + optLeaveTypes;
+    }
 
- <div id="panel-input-cuti" class="${canManage ? "" : "hidden"}">
- <form id="form-input-cuti" class="space-y-4">
- <div class="bg-blue-50 p-3 rounded-lg border border-blue-100 mb-2">
- <p class="text-xs text-blue-800 font-medium">*Formulir pengajuan ini akan otomatis dicetak ke PDF untuk ditandatangani setelah disimpan.</p>
- </div>
- 
- <div class="grid grid-cols-2 gap-4">
- <div class="col-span-2 sm:col-span-1">
- <label class="block text-xs font-bold text-slate-600 mb-1">Jenis Cuti</label>
- <select id="inp-jenis" required class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400 bg-white">
- <option value="">Pilih Jenis Cuti...</option>
- ${optLeaveTypes}
- </select>
- </div>
- <div class="col-span-2 sm:col-span-1">
- <label class="block text-xs font-bold text-slate-600 mb-1">Alamat / No HP Saat Cuti</label>
- <input type="text" id="inp-kontak" value="${escapeHtml(k.alamat || '')} / ${escapeHtml(k.no_hp_aktif || '')}" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
- </div>
- </div>
+    openModal({
+      title: `Edit Riwayat Cuti — ${escapeHtml(k.nama_karyawan)}`,
+      size: "md",
+      bodyHtml: `
+        <form id="form-edit-cuti" class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">Tanggal Mulai</label>
+            <input type="date" id="edit-tanggal" required value="${row.tanggal || ""}" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">Tanggal Selesai</label>
+            <input type="date" id="edit-tanggal-selesai" value="${row.tanggal_selesai || row.tanggal || ""}" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+            <p class="text-[11px] text-slate-400 mt-1">Dipakai laporan absensi utk menandai SEMUA hari dalam rentang cuti ini.</p>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">Jenis Cuti</label>
+            <select id="edit-jenis" required class="w-full px-3 py-2 text-sm border rounded-lg outline-none bg-white focus:border-maroon-400">${optLeaveTypes}</select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">Keterangan / Alasan</label>
+            <input type="text" id="edit-keterangan" value="${escapeHtml(row.keterangan_cuti || "")}" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400" placeholder="Keterangan cuti...">
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-600 mb-1">Potong Saldo (Hari)</label>
+              <input type="number" step="0.5" id="edit-count" required value="${row.count ?? 1}" class="w-full px-3 py-2 text-sm border rounded-lg outline-none text-center font-bold focus:border-maroon-400">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-600 mb-1">Tipe Pemotongan</label>
+              <select id="edit-potong-jatah" class="w-full px-3 py-2 text-sm border rounded-lg outline-none bg-white focus:border-maroon-400">
+                <option value="Tahunan" ${(row.potong_jatah || "Tahunan") === "Tahunan" ? "selected" : ""}>Tahunan</option>
+                <option value="Khusus" ${row.potong_jatah === "Khusus" ? "selected" : ""}>Khusus</option>
+                <option value="Akumulasi" ${row.potong_jatah === "Akumulasi" ? "selected" : ""}>Akumulasi</option>
+                <option value="Tidak Dipotong" ${row.potong_jatah === "Tidak Dipotong" ? "selected" : ""}>Tidak Dipotong</option>
+              </select>
+            </div>
+          </div>
+        </form>
+      `,
+      footerHtml: `
+        <button type="button" id="btn-edit-cuti-batal" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
+        <button type="button" id="btn-edit-cuti-simpan" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2 rounded-lg text-sm font-bold shadow transition">Simpan Perubahan</button>
+      `,
+      onMount: (m2) => {
+        const selJenis = m2.querySelector("#edit-jenis");
+        const selPotong = m2.querySelector("#edit-potong-jatah");
+        const inMulai = m2.querySelector("#edit-tanggal");
+        const inAkhir = m2.querySelector("#edit-tanggal-selesai");
+        const inCount = m2.querySelector("#edit-count");
 
- <div class="grid grid-cols-2 gap-4" id="wrap-tgl">
- <div>
- <label class="block text-xs font-bold text-slate-600 mb-1">Mulai Tanggal</label>
- <input type="date" id="inp-tgl-mulai" required class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
- </div>
- <div id="wrap-tgl-akhir">
- <label class="block text-xs font-bold text-slate-600 mb-1">Sampai Tanggal</label>
- <input type="date" id="inp-tgl-akhir" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
- </div>
- </div>
+        if (selJenis && selPotong) {
+          selJenis.onchange = () => {
+            const opt = selJenis.options[selJenis.selectedIndex];
+            if (opt && opt.dataset.potong) {
+              selPotong.value = opt.dataset.potong;
+            }
+          };
+        }
 
- <div class="space-y-3 hidden" id="wrap-jam">
- <div>
- <label class="block text-xs font-bold text-slate-600 mb-1">Pilihan Sesi Cuti Setengah Hari</label>
- <select id="inp-sesi-cuti" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400 bg-white">
- <option value="Cuti Pagi">Cuti Pagi (Masuk Siang: 08:00 - 12:00)</option>
- <option value="Cuti Siang">Cuti Siang (Pulang Awal: 12:00 - 17:00)</option>
- </select>
- </div>
- <div class="grid grid-cols-2 gap-4">
- <div>
- <label class="block text-xs font-bold text-slate-600 mb-1">Jam Keluar / Absen Cuti</label>
- <input type="time" id="inp-jam-keluar" value="08:00" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
- </div>
- <div>
- <label class="block text-xs font-bold text-slate-600 mb-1">Jam Kembali / Masuk Kerja</label>
- <input type="time" id="inp-jam-kembali" value="12:00" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
- </div>
- </div>
- </div>
+        m2.querySelector("#btn-edit-cuti-batal").onclick = () => {
+          closeModal();
+          const refreshed = allKaryawan.find(x => x.id === k.id);
+          openEmployeeModal(refreshed || k, { defaultTab: "riwayat" });
+        };
 
- <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
- <div class="col-span-2">
- <label class="block text-xs font-bold text-slate-600 mb-1">Keterangan / Alasan</label>
- <input type="text" id="inp-alasan" required class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400" placeholder="Keperluan keluarga, sakit, dll...">
- </div>
- <div>
- <label class="block text-xs font-bold text-slate-600 mb-1">Potong Saldo (Hari)</label>
- <input type="number" id="inp-hari" required step="0.5" class="w-full px-3 py-2 text-sm border rounded-lg outline-none bg-slate-50 font-bold text-maroon-700 text-center">
- <p id="lbl-potong-tipe" class="text-[10px] text-center text-slate-400 mt-1 uppercase">-</p>
- </div>
- </div>
- </form>
- </div>
+        m2.querySelector("#btn-edit-cuti-simpan").onclick = async () => {
+          const form = m2.querySelector("#form-edit-cuti");
+          if (!form.reportValidity()) return;
+          const opt = selJenis ? selJenis.options[selJenis.selectedIndex] : null;
+          const typeCutiVal = opt ? opt.text : (row.type_cuti || "Cuti");
+          const potongJatahVal = selPotong ? selPotong.value : (opt?.dataset.potong || row.potong_jatah || "Tahunan");
+          const tglMulai = inMulai.value;
+          const tglSelesai = inAkhir.value || tglMulai;
+          const jmlHari = parseFloat(inCount.value) || 0;
+          const keterangan = m2.querySelector("#edit-keterangan").value.trim();
 
- <div id="panel-riwayat-cuti" class="${canManage ? "hidden" : ""}">
- <div class="max-h-80 overflow-y-auto border border-slate-100 rounded-lg">
- <table class="w-full text-xs text-left">
- <thead class="bg-slate-50 text-slate-500 border-b border-slate-100">
- <tr><th class="p-3">Tanggal</th><th class="p-3">Jenis</th><th class="p-3">Keterangan</th><th class="p-3 text-center">Potongan</th>${canManage ? '<th class="p-3 text-right">Aksi</th>' : ''}</tr>
- </thead>
- <tbody id="tbody-riwayat-cuti" class="divide-y divide-slate-100">
- ${renderRiwayatRows(myLeaves)}
- </tbody>
- </table>
- </div>
- </div>
- `,
- footerHtml: canManage ? `
- <button id="btn-modal-batal" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
- <button id="btn-modal-simpan" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2 rounded-lg text-sm font-bold shadow transition">Simpan & Cetak PDF</button>
- ` : `
- <button id="btn-modal-batal" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Tutup</button>
- `,
- onMount: (m) => {
- const tabInput = m.querySelector("#tab-input-cuti");
- const tabRiwayat = m.querySelector("#tab-riwayat-cuti");
- const pnlInput = m.querySelector("#panel-input-cuti");
- const pnlRiwayat = m.querySelector("#panel-riwayat-cuti");
- const btnSimpan = m.querySelector("#btn-modal-simpan");
+          const btnSimpan = m2.querySelector("#btn-edit-cuti-simpan");
+          btnSimpan.disabled = true;
+          btnSimpan.textContent = "Menyimpan...";
 
- if (tabInput && tabRiwayat) {
- tabInput.onclick = () => {
- tabInput.className = "px-4 py-2 text-sm font-bold text-maroon-700 border-b-2 border-maroon-700";
- tabRiwayat.className = "px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700";
- pnlInput.classList.remove("hidden"); pnlRiwayat.classList.add("hidden");
- if (btnSimpan) btnSimpan.classList.remove("hidden");
- };
- tabRiwayat.onclick = () => {
- tabRiwayat.className = "px-4 py-2 text-sm font-bold text-maroon-700 border-b-2 border-maroon-700";
- tabInput.className = "px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700";
- pnlRiwayat.classList.remove("hidden"); pnlInput.classList.add("hidden");
- if (btnSimpan) btnSimpan.classList.add("hidden");
- };
- }
+          const payload = {
+            tanggal: tglMulai,
+            tanggal_selesai: tglSelesai,
+            type_cuti: typeCutiVal,
+            potong_jatah: potongJatahVal,
+            keterangan_cuti: keterangan,
+            count: jmlHari,
+            tahun: new Date(tglMulai).getFullYear(),
+            bulan: new Date(tglMulai).toLocaleString('id-ID', { month: 'long' })
+          };
 
- wireRiwayatActions(m, k);
+          try {
+            const docId = row.id || row.doc_id || row.record_id_cuti;
+            if (!docId) throw new Error("ID dokumen cuti tidak ditemukan.");
+            await fsUpdate(COL.MASTER_CUTI, docId, payload);
+            toast("Riwayat cuti berhasil diperbarui", "success");
+            Object.assign(row, payload);
+            calculateBalances();
+            renderCards(allKaryawan);
+            renderTable(allKaryawan);
+            closeModal();
+            const refreshed = allKaryawan.find(x => x.id === k.id);
+            openEmployeeModal(refreshed || k, { defaultTab: "riwayat" });
+          } catch (e) {
+            toast("Gagal menyimpan perubahan: " + e.message, "error");
+            btnSimpan.disabled = false;
+            btnSimpan.textContent = "Simpan Perubahan";
+          }
+        };
+      }
+    });
+  }
 
- const selJenis = m.querySelector("#inp-jenis");
- const wrapTglAkhir = m.querySelector("#wrap-tgl-akhir");
- const wrapJam = m.querySelector("#wrap-jam");
- const selSesi = m.querySelector("#inp-sesi-cuti");
- const inJamKeluar = m.querySelector("#inp-jam-keluar");
- const inJamKembali = m.querySelector("#inp-jam-kembali");
+  function openEmployeeModal(k, options = {}) {
+    const sisa = getSisa(k);
+    const myLeaves = allCuti.filter(c => c.nama_karyawan === k.nama_karyawan).sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
+    const optLeaveTypes = leaveConfig.map(c => `<option value="${c.id}" data-potong="${c.potong}" data-count="${c.count}">${c.id} - ${c.name}</option>`).join("");
 
- const inMulai = m.querySelector("#inp-tgl-mulai");
- const inAkhir = m.querySelector("#inp-tgl-akhir");
- const inHari = m.querySelector("#inp-hari");
- const lblPotong = m.querySelector("#lbl-potong-tipe");
+    openModal({
+      title: "Manajemen Cuti Karyawan",
+      size: "lg",
+      bodyHtml: `
+        <div class="flex items-center gap-4 mb-5 pb-4 border-b border-slate-100">
+          ${avatar(k.nama_karyawan, "w-14 h-14 text-base")}
+          <div class="flex-1">
+            <h3 class="font-bold text-lg text-slate-800">${escapeHtml(k.nama_karyawan)}</h3>
+            <p class="text-sm text-slate-500">${escapeHtml(k.jabatan || "-")} • ${escapeHtml(k.cabang || "-")}</p>
+          </div>
+          <div class="flex gap-3 text-center">
+            <div><p class="text-[10px] font-bold text-slate-400 uppercase">Tahunan</p><p class="text-xl font-black text-blue-600">${sisa.Tahunan}</p></div>
+            <div><p class="text-[10px] font-bold text-slate-400 uppercase">Khusus</p><p class="text-xl font-black text-emerald-600">${sisa.Khusus}</p></div>
+            <div><p class="text-[10px] font-bold text-slate-400 uppercase">Akumulasi</p><p class="text-xl font-black text-amber-600">${sisa.Akumulasi}</p></div>
+          </div>
+        </div>
 
- if (selSesi) {
- selSesi.onchange = () => {
- if (selSesi.value === "Cuti Pagi") {
- if (inJamKeluar) inJamKeluar.value = "08:00";
- if (inJamKembali) inJamKembali.value = "12:00";
- } else {
- if (inJamKeluar) inJamKeluar.value = "12:00";
- if (inJamKembali) inJamKembali.value = "17:00";
- }
- };
- }
+        ${canManage ? `
+        <div class="flex border-b border-slate-200 mb-4">
+          <button id="tab-input-cuti" class="px-4 py-2 text-sm font-bold text-maroon-700 border-b-2 border-maroon-700">Input Cuti Baru</button>
+          <button id="tab-riwayat-cuti" class="px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700">Riwayat Cuti</button>
+        </div>` : `
+        <div class="flex border-b border-slate-200 mb-4">
+          <span class="px-4 py-2 text-sm font-bold text-maroon-700 border-b-2 border-maroon-700">Riwayat Cuti</span>
+          <span class="ml-auto self-center text-[11px] text-slate-400 pr-1">Mode lihat saja</span>
+        </div>`}
 
- function calcDays() {
- const opt = selJenis.options[selJenis.selectedIndex];
- if(!opt || !opt.value) return;
- const baseCount = parseFloat(opt.dataset.count);
- const potongTipe = opt.dataset.potong;
+        <div id="panel-input-cuti" class="${canManage ? "" : "hidden"}">
+          <form id="form-input-cuti" class="space-y-4">
+            <div class="bg-blue-50 p-3 rounded-lg border border-blue-100 mb-2">
+              <p class="text-xs text-blue-800 font-medium">*Formulir pengajuan ini akan otomatis dicetak ke PDF untuk ditandatangani setelah disimpan.</p>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-4">
+              <div class="col-span-2 sm:col-span-1">
+                <label class="block text-xs font-bold text-slate-600 mb-1">Jenis Cuti</label>
+                <select id="inp-jenis" required class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400 bg-white">
+                  <option value="">Pilih Jenis Cuti...</option>
+                  ${optLeaveTypes}
+                </select>
+              </div>
+              <div class="col-span-2 sm:col-span-1">
+                <label class="block text-xs font-bold text-slate-600 mb-1">Alamat / No HP Saat Cuti</label>
+                <input type="text" id="inp-kontak" value="${escapeHtml(k.alamat || '')} / ${escapeHtml(k.no_hp_aktif || '')}" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+              </div>
+            </div>
 
- lblPotong.textContent = potongTipe;
+            <div class="grid grid-cols-2 gap-4" id="wrap-tgl">
+              <div>
+                <label class="block text-xs font-bold text-slate-600 mb-1">Mulai Tanggal</label>
+                <input type="date" id="inp-tgl-mulai" required class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+              </div>
+              <div id="wrap-tgl-akhir">
+                <label class="block text-xs font-bold text-slate-600 mb-1">Sampai Tanggal</label>
+                <input type="date" id="inp-tgl-akhir" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+              </div>
+            </div>
 
- if (baseCount === 0.5) { 
- wrapTglAkhir.classList.add("hidden");
- wrapJam.classList.remove("hidden");
- inHari.value = 0.5;
- } else { 
- wrapTglAkhir.classList.remove("hidden");
- wrapJam.classList.add("hidden");
- 
- if (inMulai.value && inAkhir.value) {
- const d1 = new Date(inMulai.value); const d2 = new Date(inAkhir.value);
- let diff = Math.round((d2-d1)/86400000) + 1;
- if(diff < 1) diff = 1;
- inHari.value = diff * baseCount; 
- } else {
- inHari.value = baseCount;
- }
- }
- }
+            <div class="space-y-3 hidden" id="wrap-jam">
+              <div>
+                <label class="block text-xs font-bold text-slate-600 mb-1">Pilihan Sesi Cuti Setengah Hari</label>
+                <select id="inp-sesi-cuti" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400 bg-white">
+                  <option value="Cuti Pagi">Cuti Pagi (Masuk Siang: 08:00 - 12:00)</option>
+                  <option value="Cuti Siang">Cuti Siang (Pulang Awal: 12:00 - 17:00)</option>
+                </select>
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-bold text-slate-600 mb-1">Jam Keluar / Absen Cuti</label>
+                  <input type="time" id="inp-jam-keluar" value="08:00" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-600 mb-1">Jam Kembali / Masuk Kerja</label>
+                  <input type="time" id="inp-jam-kembali" value="12:00" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+                </div>
+              </div>
+            </div>
 
- selJenis.onchange = calcDays;
- inMulai.onchange = () => { if(!inAkhir.value) inAkhir.value = inMulai.value; calcDays(); };
- inAkhir.onchange = calcDays;
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div class="col-span-2">
+                <label class="block text-xs font-bold text-slate-600 mb-1">Keterangan / Alasan</label>
+                <input type="text" id="inp-alasan" required class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400" placeholder="Keperluan keluarga, sakit, dll...">
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-600 mb-1">Potong Saldo (Hari)</label>
+                <input type="number" id="inp-hari" required step="0.5" class="w-full px-3 py-2 text-sm border rounded-lg outline-none bg-slate-50 font-bold text-maroon-700 text-center">
+                <p id="lbl-potong-tipe" class="text-[10px] text-center text-slate-400 mt-1 uppercase">-</p>
+              </div>
+            </div>
+          </form>
+        </div>
 
- m.querySelector("#btn-modal-batal").onclick = closeModal;
- if (btnSimpan) btnSimpan.onclick = async () => {
- const form = m.querySelector("#form-input-cuti");
- if (!form.reportValidity()) return;
- 
- const jenisVal = selJenis.value;
- const opt = selJenis.options[selJenis.selectedIndex];
- const tipePotong = opt.dataset.potong;
- const isHalfDay = parseFloat(opt.dataset.count) === 0.5;
+        <div id="panel-riwayat-cuti" class="${canManage ? "hidden" : ""}">
+          <div class="max-h-80 overflow-y-auto border border-slate-100 rounded-lg">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-50 text-slate-500 border-b border-slate-100">
+                <tr><th class="p-3">Tanggal</th><th class="p-3">Jenis</th><th class="p-3">Keterangan</th><th class="p-3 text-center">Potongan</th>${canManage ? '<th class="p-3 text-right">Aksi</th>' : ''}</tr>
+              </thead>
+              <tbody id="tbody-riwayat-cuti" class="divide-y divide-slate-100">
+                ${renderRiwayatRows(myLeaves)}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `,
+      footerHtml: canManage ? `
+        <button id="btn-modal-batal" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
+        <button id="btn-modal-simpan" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2 rounded-lg text-sm font-bold shadow transition">Simpan & Cetak PDF</button>
+      ` : `
+        <button id="btn-modal-batal" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Tutup</button>
+      `,
+      onMount: (m) => {
+        const tabInput = m.querySelector("#tab-input-cuti");
+        const tabRiwayat = m.querySelector("#tab-riwayat-cuti");
+        const pnlInput = m.querySelector("#panel-input-cuti");
+        const pnlRiwayat = m.querySelector("#panel-riwayat-cuti");
+        const btnSimpan = m.querySelector("#btn-modal-simpan");
 
- btnSimpan.disabled = true; btnSimpan.textContent = "Menyimpan & Membuat Dokumen...";
+        const switchTab = (tab) => {
+          if (tab === "riwayat") {
+            if (tabRiwayat) tabRiwayat.className = "px-4 py-2 text-sm font-bold text-maroon-700 border-b-2 border-maroon-700";
+            if (tabInput) tabInput.className = "px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700";
+            if (pnlRiwayat) pnlRiwayat.classList.remove("hidden");
+            if (pnlInput) pnlInput.classList.add("hidden");
+            if (btnSimpan) btnSimpan.classList.add("hidden");
+          } else {
+            if (tabInput) tabInput.className = "px-4 py-2 text-sm font-bold text-maroon-700 border-b-2 border-maroon-700";
+            if (tabRiwayat) tabRiwayat.className = "px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700";
+            if (pnlInput) pnlInput.classList.remove("hidden");
+            if (pnlRiwayat) pnlRiwayat.classList.add("hidden");
+            if (btnSimpan) btnSimpan.classList.remove("hidden");
+          }
+        };
 
- const tglMulai = inMulai.value;
- const tglAkhir = isHalfDay ? tglMulai : inAkhir.value;
- const payload = {
- tanggal: tglMulai,
- tanggal_selesai: tglAkhir,
- nama_karyawan: k.nama_karyawan,
- cabang: k.cabang || "-",
- type_cuti: jenisVal + " - " + opt.text.split(" - ")[1],
- potong_jatah: tipePotong,
- count: parseFloat(inHari.value) || 0,
- keterangan_cuti: m.querySelector("#inp-alasan").value.trim(),
- sesi_cuti: isHalfDay ? (selSesi?.value || "Cuti Pagi") : "",
- jam_keluar: isHalfDay ? (inJamKeluar?.value || "08:00") : "",
- jam_kembali: isHalfDay ? (inJamKembali?.value || "12:00") : "",
- jam_masuk: isHalfDay ? (inJamKembali?.value || "12:00") : "",
- tahun: new Date(tglMulai).getFullYear(),
- bulan: new Date(tglMulai).toLocaleString('id-ID', { month: 'long' })
- };
+        if (tabInput && tabRiwayat) {
+          tabInput.onclick = () => switchTab("input");
+          tabRiwayat.onclick = () => switchTab("riwayat");
+        }
 
- try {
- await fsAdd(COL.MASTER_CUTI, payload, genId("CUTI"));
- toast("Cuti berhasil diinput", "success");
- 
- allCuti.push(payload);
- calculateBalances();
- renderCards(allKaryawan);
- renderTable(allKaryawan);
- closeModal();
+        if (options && options.defaultTab === "riwayat") {
+          switchTab("riwayat");
+        }
 
- const pdfData = {
- ...payload,
- isHalfDay,
- tgl_akhir: tglAkhir,
- jam_keluar: m.querySelector("#inp-jam-keluar").value,
- jam_kembali: m.querySelector("#inp-jam-kembali").value,
- kontak: m.querySelector("#inp-kontak").value
- };
- const currentSisa = getSisa(k);
+        wireRiwayatActions(m, k);
 
- await generateCutiDocument(k, pdfData, currentSisa);
+        const selJenis = m.querySelector("#inp-jenis");
+        const wrapTglAkhir = m.querySelector("#wrap-tgl-akhir");
+        const wrapJam = m.querySelector("#wrap-jam");
+        const selSesi = m.querySelector("#inp-sesi-cuti");
+        const inJamKeluar = m.querySelector("#inp-jam-keluar");
+        const inJamKembali = m.querySelector("#inp-jam-kembali");
 
- } catch (e) {
- toast("Gagal menyimpan: " + e.message, "error");
- btnSimpan.disabled = false; btnSimpan.textContent = "Simpan & Cetak PDF";
- }
- };
- }
- });
- }
+        const inMulai = m.querySelector("#inp-tgl-mulai");
+        const inAkhir = m.querySelector("#inp-tgl-akhir");
+        const inHari = m.querySelector("#inp-hari");
+        const inAlasan = m.querySelector("#inp-alasan");
+        const lblPotong = m.querySelector("#lbl-potong-tipe");
 
- async function generateCutiDocument(k, pdfData, sisa) {
+        let curCfg = null;
+
+        const updateCalculations = () => {
+          if (!curCfg) return;
+          const isHalf = curCfg.id === "CT-02";
+          if (isHalf) {
+            inHari.value = 0.5;
+            if (inAkhir) inAkhir.value = inMulai.value;
+          } else {
+            if (inMulai.value && inAkhir.value) {
+              const d1 = new Date(inMulai.value);
+              const d2 = new Date(inAkhir.value);
+              if (d2 >= d1) {
+                const diffTime = Math.abs(d2 - d1);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                inHari.value = diffDays;
+              } else {
+                inHari.value = 1;
+              }
+            } else {
+              inHari.value = curCfg.count || 1;
+            }
+          }
+        };
+
+        if (selJenis) {
+          selJenis.onchange = () => {
+            curCfg = leaveConfig.find(c => c.id === selJenis.value);
+            if (!curCfg) return;
+            const isHalf = curCfg.id === "CT-02";
+            if (isHalf) {
+              wrapTglAkhir.classList.add("hidden");
+              wrapJam.classList.remove("hidden");
+            } else {
+              wrapTglAkhir.classList.remove("hidden");
+              wrapJam.classList.add("hidden");
+            }
+            lblPotong.textContent = "Potong Jatah: " + curCfg.potong;
+            updateCalculations();
+          };
+        }
+
+        if (inMulai) inMulai.onchange = updateCalculations;
+        if (inAkhir) inAkhir.onchange = updateCalculations;
+
+        if (selSesi) {
+          selSesi.onchange = () => {
+            if (selSesi.value === "Cuti Pagi") {
+              inJamKeluar.value = "08:00";
+              inJamKembali.value = "12:00";
+            } else {
+              inJamKeluar.value = "12:00";
+              inJamKembali.value = "17:00";
+            }
+          };
+        }
+
+        m.querySelector("#btn-modal-batal").onclick = closeModal;
+
+        if (btnSimpan) {
+          btnSimpan.onclick = async () => {
+            const form = m.querySelector("#form-input-cuti");
+            if (!form.reportValidity()) return;
+            if (!curCfg) {
+              toast("Pilih jenis cuti terlebih dahulu", "error");
+              return;
+            }
+
+            const tglAwal = inMulai.value;
+            const tglAkhirVal = curCfg.id === "CT-02" ? tglAwal : (inAkhir.value || tglAwal);
+            const countVal = parseFloat(inHari.value) || 1;
+
+            if (curCfg.potong === "Tahunan" && sisa.Tahunan < countVal) {
+              toast(`Sisa cuti tahunan tidak mencukupi (${sisa.Tahunan} hari tersisa)`, "error");
+              return;
+            }
+
+            btnSimpan.disabled = true;
+            btnSimpan.textContent = "Menyimpan & Mencetak...";
+
+            const payload = {
+              nama_karyawan: k.nama_karyawan,
+              tanggal: tglAwal,
+              tanggal_selesai: tglAkhirVal,
+              tahun: new Date(tglAwal).getFullYear(),
+              bulan: new Date(tglAwal).toLocaleString('id-ID', { month: 'long' }),
+              type_cuti: `${curCfg.id} - ${curCfg.name}`,
+              potong_jatah: curCfg.potong,
+              count: countVal,
+              keterangan_cuti: inAlasan.value,
+              nik: k.nik || "-",
+              cabang: k.cabang || "-",
+              jabatan: k.jabatan || "-",
+              createdAt: new Date().toISOString()
+            };
+
+            const pdfData = {
+              ...payload,
+              tgl_akhir: tglAkhirVal,
+              isHalfDay: curCfg.id === "CT-02",
+              kontak: m.querySelector("#inp-kontak").value,
+              jam_keluar: inJamKeluar ? inJamKeluar.value : "-",
+              jam_kembali: inJamKembali ? inJamKembali.value : "-"
+            };
+
+            try {
+              const res = await fsAdd(COL.MASTER_CUTI, payload);
+              toast("Pengajuan cuti berhasil disimpan", "success");
+              payload.id = res.id;
+              allCuti.push(payload);
+              calculateBalances();
+              renderCards(allKaryawan);
+              renderTable(allKaryawan);
+              closeModal();
+              await generateCutiDocument(k, pdfData, sisa);
+            } catch (e) {
+              toast("Gagal menyimpan: " + e.message, "error");
+              btnSimpan.disabled = false;
+              btnSimpan.textContent = "Simpan & Cetak PDF";
+            }
+          };
+        }
+      }
+    });
+  }
+
+  async function generateCutiDocument(k, pdfData, sisa) {
  toast("Membuat dokumen di Google Drive...", "info");
  try {
  const result = await generateCutiDocViaGAS({

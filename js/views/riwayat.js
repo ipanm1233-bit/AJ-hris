@@ -2,7 +2,7 @@ import { db, COL } from "../firebase-config.js";
 import {
  fsGetAll, fsUpdate, fmtDateTime, escapeHtml, openModal, closeModal, toast,
  dynFieldWrapperHtml, wireDynFormLogic, collectDynFormDetail, sendEmailNotif, getTargetsForRole,
- renderPengajuanDetailHtml, printSalesKlaimForm, printFormCutiFisik
+ renderPengajuanDetailHtml, printSalesKlaimForm, printFormCutiFisik, downloadFormCutiPdf
 } from "../utils.js";
 import { badge, emptyState, skeletonRows } from "../components.js";
 
@@ -45,7 +45,13 @@ export async function mount(container, { session }) {
  <div class="flex items-center gap-2">${badge(r.status_final, tone)}${lpjBadgeHtml}</div>
  <div class="flex items-center gap-3">
  ${isKlaimBensin ? `<button data-print-klaim="${r.id}" class="text-xs font-bold text-emerald-700 hover:underline flex items-center gap-1">Cetak Form</button>` : ""}
- ${isCutiForm && isApproved ? `<button data-print-cuti="${r.id}" class="text-xs font-bold text-maroon-700 hover:underline flex items-center gap-1">Form Cuti Fisik</button>` : ""}
+ ${isCutiForm && isApproved ? `
+  <button data-pdf-cuti="${r.id}" class="text-xs font-bold text-maroon-700 hover:underline flex items-center gap-1">
+    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+    Download PDF
+  </button>
+  <button data-print-cuti="${r.id}" class="text-xs font-medium text-slate-500 hover:underline flex items-center gap-1">Cetak Form</button>
+` : ""}
  ${showFillBtn ? `<button data-lpj="${r.id}" class="text-xs font-bold text-amber-700 hover:underline">Isi LPJ</button>` : ""}
  <button data-id="${r.id}" class="text-xs font-medium text-maroon-700 hover:underline">Lihat Detail</button>
  </div>
@@ -60,7 +66,14 @@ export async function mount(container, { session }) {
  };
  });
 
- listEl.querySelectorAll("button[data-print-cuti]").forEach(btn => {
+ listEl.querySelectorAll("button[data-pdf-cuti]").forEach(btn => {
+    btn.onclick = () => {
+      const row = myReq.find(x => x.id === btn.dataset.pdfCuti);
+      if (row) downloadFormCutiPdf(row);
+    };
+  });
+
+  listEl.querySelectorAll("button[data-print-cuti]").forEach(btn => {
  btn.onclick = () => {
  const row = myReq.find(x => x.id === btn.dataset.printCuti);
  if (row) printFormCutiFisik(row);

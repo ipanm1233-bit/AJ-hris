@@ -1366,12 +1366,12 @@ export async function mount(container, { session } = {}) {
         <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
           <p class="font-bold text-slate-700 text-[11px]">Geocoder Alamat ke Titik Koordinat GPS:</p>
           <div class="flex gap-2">
-            <input type="text" id="input-test-geocode" placeholder="Ketik nama jalan/alamat di Cirebon..." class="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white">
+            <input type="text" id="input-test-geocode" placeholder="Ketik nama jalan/alamat di Malang, Batu, Cirebon, dll..." class="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white">
             <button id="btn-run-test-geocode" class="px-3 py-1.5 bg-indigo-600 text-white font-bold text-xs rounded-lg hover:bg-indigo-700 transition">
               Generate GPS
             </button>
           </div>
-          <p id="test-geocode-result" class="text-[11px] text-slate-500 italic">Masukkan alamat di atas untuk mengkonversi ke titik koordinat GPS.</p>
+          <p id="test-geocode-result" class="text-[11px] text-slate-500 italic">Masukkan alamat (contoh: "Jl. Soekarno Hatta Malang", "Batu Town Square", "Jl. Pemuda Cirebon") untuk mengkonversi ke GPS.</p>
         </div>
       </div>
 
@@ -1413,11 +1413,15 @@ export async function mount(container, { session } = {}) {
 
     function updateFormForSales(nik) {
       const salesPt = departureConfig.sales_points?.[nik] || {};
-      const kantorDef = departureConfig.kantor_default || { nama: "Kantor CV Andela Jaya Cirebon", gps: "-6.7320, 108.5520" };
+      const matchedSales = (karyawanList || []).find(k => (k.nik_karyawan || k.nik) === nik);
+      const isMalang = matchedSales && ((matchedSales.cabang || "").toLowerCase().includes("malang") || (matchedSales.cabang || "").toLowerCase().includes("batu") || (matchedSales.alamat || "").toLowerCase().includes("malang") || (matchedSales.alamat || "").toLowerCase().includes("batu"));
+      const kantorDef = departureConfig.kantor_default || (isMalang 
+        ? { nama: "Kantor Hub Malang - CV Andela Jaya", gps: "-7.9520, 112.6320" }
+        : { nama: "Kantor CV Andela Jaya Cirebon", gps: "-6.7320, 108.5520" });
 
       inpStartType.value = salesPt.start_type || "KOSAN";
       inpStartNama.value = salesPt.start_nama || `Kosan Sales (${nik})`;
-      inpStartGps.value = salesPt.start_gps || "-6.7280, 108.5450";
+      inpStartGps.value = salesPt.start_gps || (isMalang ? "-7.9650, 112.6250" : "-6.7280, 108.5450");
 
       inpEndType.value = salesPt.end_type || "KANTOR";
       inpEndNama.value = salesPt.end_nama || kantorDef.nama;

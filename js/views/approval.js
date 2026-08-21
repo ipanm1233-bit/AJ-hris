@@ -138,11 +138,17 @@ function renderList(container, session, tab) {
  return "<span class=\"px-2.5 py-1 rounded-full text-xs font-medium " + cls + "\">" + (i + 1) + ". " + escapeHtml(step) + "</span>";
  }).join('<span class="text-slate-300"> </span>');
  
- return `
- <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
- <div class="flex flex-wrap items-start justify-between gap-3">
- <div>
- <p class="font-semibold text-slate-800">${escapeHtml(r.nama_form)}</p>
+ const isPotongGaji = r.is_potong_gaji || r.potong_gaji || (r.detail && (r.detail.is_potong_gaji || r.detail.potong_gaji)) || (r.kategori_cuti || "").includes("Potong Gaji");
+    const potongHari = r.potong_gaji_hari || (r.detail && r.detail.potong_gaji_hari) || r.jumlah_hari || 1;
+
+    return `
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 ${isPotongGaji ? "ring-2 ring-rose-300 bg-rose-50/20" : ""}">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <p class="font-semibold text-slate-800">${escapeHtml(r.nama_form)}</p>
+            ${isPotongGaji ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">⚠️ POTONG GAJI (${potongHari} HARI)</span>` : ""}
+          </div>
  <p class="text-sm text-slate-500 mt-0.5">Diajukan oleh <span class="font-medium text-slate-700">${escapeHtml(r.nama_pemohon)}</span> • ${fmtDateTime(r.tgl)}</p>
  </div>
  ${badge(r.status_final, tone)}
@@ -398,23 +404,28 @@ async function processAction(row, action, note, session) {
  }
  const totalDeduction = rule.count * multiplier;
  
- const cutiDocId = `CUTI_${row.no_referensi || row.id}`;
- const tMulai = row.detail.tanggal_mulai || row.tgl;
- const tAkhir = row.detail.tanggal_akhir || tMulai;
- await fsAdd(COL.MASTER_CUTI, {
- id: cutiDocId,
- no_referensi: row.no_referensi || row.id,
- tanggal: tMulai,
- tanggal_selesai: tAkhir,
- nama_karyawan: row.nama_pemohon,
- cabang: row.detail.cabang || "-", 
- type_cuti: jenisVal,
- potong_jatah: rule.jenis, 
- keterangan_cuti: row.detail.alasan || row.detail.keterangan || "Disetujui by System",
- count: totalDeduction,
- tahun: new Date(tMulai).getFullYear(),
- bulan: BULAN_ID[new Date(tMulai).getMonth()]
- }, cutiDocId);
+ const isPotongGaji = row.is_potong_gaji || row.potong_gaji || (row.detail && (row.detail.is_potong_gaji || row.detail.potong_gaji)) || (row.kategori_cuti || "").includes("Potong Gaji");
+      const potongGajiHari = row.potong_gaji_hari || (row.detail && row.detail.potong_gaji_hari) || multiplier;
+
+      const cutiDocId = `CUTI_${row.no_referensi || row.id}`;
+      const tMulai = row.detail.tanggal_mulai || row.tgl;
+      const tAkhir = row.detail.tanggal_akhir || tMulai;
+      await fsAdd(COL.MASTER_CUTI, {
+        id: cutiDocId,
+        no_referensi: row.no_referensi || row.id,
+        tanggal: tMulai,
+        tanggal_selesai: tAkhir,
+        nama_karyawan: row.nama_pemohon,
+        cabang: row.detail.cabang || "-", 
+        type_cuti: jenisVal,
+        potong_jatah: isPotongGaji ? "Potong Gaji" : rule.jenis,
+        is_potong_gaji: isPotongGaji,
+        potong_gaji_hari: isPotongGaji ? potongGajiHari : 0,
+        keterangan_cuti: row.detail.alasan || row.detail.keterangan || (isPotongGaji ? "Cuti Potong Gaji (Unpaid Leave)" : "Disetujui by System"),
+        count: totalDeduction,
+        tahun: new Date(tMulai).getFullYear(),
+        bulan: BULAN_ID[new Date(tMulai).getMonth()]
+      }, cutiDocId);
  }
 
  // GENERATE DOKUMEN FORM CUTI FISIK SECARA OTOMATIS

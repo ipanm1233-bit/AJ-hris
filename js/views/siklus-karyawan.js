@@ -735,16 +735,20 @@ export async function mount(container) {
  const row = document.createElement("div");
  row.className = "off-asset-item-row grid grid-cols-12 gap-2 items-center p-2 bg-white border border-slate-200 rounded-lg shadow-sm";
 
- const namaVal = item.nama_barang || item.nama || "";
- const katVal = item.kategori || "Seragam & APD";
- const statusVal = item.status_pengembalian || "Diterima & Lengkap";
- const itemIdVal = item.id_item || item.id || "";
+    const namaVal = item.nama_barang || item.nama || "";
+    const katVal = item.kategori || "Seragam & APD";
+    const statusVal = item.status_pengembalian || "Diterima & Lengkap";
+    const itemIdVal = item.id_item || item.id || "";
+    const docIdVal = item.id_doc || (item.is_master_inventory ? item.id : "") || "";
+    const isMasterVal = item.is_master_inventory ? "1" : "0";
 
- row.innerHTML = `
- <div class="col-span-5">
- <input type="text" class="asset-item-nama w-full px-2 py-1 text-xs border border-slate-300 rounded-md outline-none focus:border-maroon-400 font-medium text-slate-800" placeholder="Cth: Seragam Kerja 2 Stel / ID Card" value="${escapeHtml(namaVal)}">
- ${itemIdVal ? `<input type="hidden" class="asset-item-id" value="${escapeHtml(itemIdVal)}">` : ''}
- </div>
+    row.innerHTML = `
+      <div class="col-span-5">
+        <input type="text" class="asset-item-nama w-full px-2 py-1 text-xs border border-slate-300 rounded-md outline-none focus:border-maroon-400 font-medium text-slate-800" placeholder="Cth: Seragam Kerja 2 Stel / ID Card" value="${escapeHtml(namaVal)}">
+        ${itemIdVal ? `<input type="hidden" class="asset-item-id" value="${escapeHtml(itemIdVal)}">` : ""}
+        <input type="hidden" class="asset-item-doc-id" value="${escapeHtml(docIdVal)}">
+        <input type="hidden" class="asset-item-is-master" value="${isMasterVal}">
+      </div>
  <div class="col-span-3">
  <select class="asset-item-kategori w-full px-1.5 py-1 text-xs border border-slate-300 rounded-md outline-none bg-white font-medium text-slate-700">
  <option value="Seragam & APD" ${katVal === "Seragam & APD" ? "selected" : ""}>Seragam & APD</option>
@@ -810,7 +814,9 @@ export async function mount(container) {
         invItems.forEach(a => {
           const key = (a.id_item || a.id || a.nama_barang).toLowerCase();
           itemMap.set(key, {
+            id_doc: a.id,
             id_item: a.id_item || a.id,
+            is_master_inventory: true,
             nama_barang: a.nama_barang,
             kategori: a.kategori || "Aset Kantor / Laptop",
             status_pengembalian: "Diterima & Lengkap"
@@ -822,7 +828,9 @@ export async function mount(container) {
           if (!itemMap.has(key)) {
             const qtyStr = l.jumlah_ambil ? ` (${l.jumlah_ambil} ${l.satuan || "Pcs"})` : "";
             itemMap.set(key, {
+              id_doc: "",
               id_item: l.id_barang || ("LOG-" + l.id),
+              is_master_inventory: false,
               nama_barang: l.nama_barang + qtyStr,
               kategori: l.kategori || "Pengambilan ATK / Barang",
               status_pengembalian: "Diterima & Lengkap"
@@ -839,7 +847,9 @@ export async function mount(container) {
     offAssetBox.innerHTML = "";
     if (combinedAssets && combinedAssets.length > 0) {
       combinedAssets.forEach(a => addOffAssetRow({
+        id_doc: a.id_doc,
         id_item: a.id_item,
+        is_master_inventory: a.is_master_inventory,
         nama_barang: a.nama_barang,
         kategori: a.kategori,
         status_pengembalian: a.status_pengembalian || "Diterima & Lengkap"
@@ -849,7 +859,9 @@ export async function mount(container) {
     // Pre-populate standard defaults if not present
     if (!combinedAssets.some(a => (a.nama_barang || "").toLowerCase().includes("id card"))) {
       addOffAssetRow({
+        id_doc: "",
         id_item: "IDC-01",
+        is_master_inventory: false,
         nama_barang: "ID Card & Lanyard Akses Perusahaan",
         kategori: "ID Card & Akses",
         status_pengembalian: "Diterima & Lengkap"
@@ -857,7 +869,9 @@ export async function mount(container) {
     }
     if (!combinedAssets.some(a => (a.nama_barang || "").toLowerCase().includes("seragam"))) {
       addOffAssetRow({
+        id_doc: "",
         id_item: "SRG-01",
+        is_master_inventory: false,
         nama_barang: "Seragam Kerja Kantor (2 Stel)",
         kategori: "Seragam & APD",
         status_pengembalian: "Diterima & Lengkap"
@@ -1211,20 +1225,24 @@ if (btnKalkulasi) {
  }
 
  // Collect custom assets / uniforms / equipment rows from form inputs
- const offAssetRows = Array.from(dynFields.querySelectorAll(".off-asset-item-row"));
- let assignedAssets = offAssetRows.map(row => {
- const nama = row.querySelector(".asset-item-nama")?.value.trim();
- const kat = row.querySelector(".asset-item-kategori")?.value || "Seragam & APD";
- const stat = row.querySelector(".asset-item-status")?.value || "Diterima & Lengkap";
- const idVal = row.querySelector(".asset-item-id")?.value || "";
- return nama ? {
- id: idVal,
- id_item: idVal,
- nama_barang: nama,
- kategori: kat,
- status_pengembalian: stat
- } : null;
- }).filter(Boolean);
+    const offAssetRows = Array.from(dynFields.querySelectorAll(".off-asset-item-row"));
+    let assignedAssets = offAssetRows.map(row => {
+      const nama = row.querySelector(".asset-item-nama")?.value.trim();
+      const kat = row.querySelector(".asset-item-kategori")?.value || "Seragam & APD";
+      const stat = row.querySelector(".asset-item-status")?.value || "Diterima & Lengkap";
+      const idVal = row.querySelector(".asset-item-id")?.value || "";
+      const docIdVal = row.querySelector(".asset-item-doc-id")?.value || "";
+      const isMaster = row.querySelector(".asset-item-is-master")?.value === "1";
+      return nama ? {
+        id: docIdVal || idVal,
+        id_item: idVal,
+        id_doc: docIdVal,
+        is_master_inventory: isMaster,
+        nama_barang: nama,
+        kategori: kat,
+        status_pengembalian: stat
+      } : null;
+    }).filter(Boolean);
 
  payloadLog.tanggal_efektif = out.toISOString();
  payloadLog.keterangan = `Alasan: ${alasan}${penggantiVal ? ` | Pengganti: ${penggantiVal}` : ''}`;
@@ -1552,25 +1570,38 @@ if (btnKalkulasi) {
  targetEmail = currentSelectedKaryawan.email;
  }
 
- if (jenis === "Offboarding" && payloadLog.detail_offboarding?.assigned_assets?.length) {
- const newOwner = payloadLog.detail_offboarding.karyawan_pengganti || "Unassigned";
- for (const asset of payloadLog.detail_offboarding.assigned_assets) {
- await fsUpdate(COL.MASTER_INVENTORY, asset.id, {
- assigned_to: newOwner
- });
- await fsAdd(COL.LOG_INVENTORY_PENGAMBILAN, {
- id_barang: asset.id_item || asset.id,
- nama_barang: asset.nama_barang,
- kategori: asset.kategori || "Aset",
- nama_karyawan: payloadLog.nama_karyawan,
- tanggal: new Date().toISOString().substring(0, 10),
- jumlah_ambil: 1,
- jenis_aksi: "PENGEMBALIAN",
- status_pengembalian: "DIKEMBALIKAN (CLEARANCE RESIGN)",
- keperluan: `Pengembalian asset clearance resign. Handover pengganti: ${newOwner}`
- });
- }
- }
+    if (jenis === "Offboarding" && payloadLog.detail_offboarding?.assigned_assets?.length) {
+      const newOwner = payloadLog.detail_offboarding.karyawan_pengganti || "Unassigned";
+      for (const asset of payloadLog.detail_offboarding.assigned_assets) {
+        // 1. Update status kepemilikan di master_inventory HANYA jika dokumen item memang ada di master_inventory
+        if (asset.is_master_inventory && asset.id_doc) {
+          try {
+            await fsUpdate(COL.MASTER_INVENTORY, asset.id_doc, {
+              assigned_to: newOwner
+            });
+          } catch (errInv) {
+            console.warn(`Catatan: Dokumen master_inventory ${asset.id_doc} tidak ditemukan atau gagal diupdate:`, errInv);
+          }
+        }
+
+        // 2. Catat riwayat serah terima / pengembalian ke log inventory
+        try {
+          await fsAdd(COL.LOG_INVENTORY_PENGAMBILAN, {
+            id_barang: asset.id_item || asset.id || "ASSET-CLR",
+            nama_barang: asset.nama_barang,
+            kategori: asset.kategori || "Aset",
+            nama_karyawan: payloadLog.nama_karyawan,
+            tanggal: new Date().toISOString().substring(0, 10),
+            jumlah_ambil: 1,
+            jenis_aksi: "PENGEMBALIAN",
+            status_pengembalian: asset.status_pengembalian || "DIKEMBALIKAN (CLEARANCE RESIGN)",
+            keperluan: `Pengembalian asset clearance resign. Handover pengganti: ${newOwner}`
+          });
+        } catch (errLog) {
+          console.warn("Gagal mencatat log inventory:", errLog);
+        }
+      }
+    }
 
  await fsAdd(COL.SIKLUS_KARYAWAN, payloadLog, genId("SKL"));
 

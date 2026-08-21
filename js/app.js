@@ -496,7 +496,10 @@ async function router(session) {
  if (["manajemen-cuti"].includes(cleanPath)) {
  mappedPath = "cuti";
  }
- if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(cleanPath)) {
+ if (["konseling", "coaching", "counseling", "case-management", "hr-case", "hr-cases"].includes(cleanPath)) {
+    mappedPath = "konseling-coaching";
+  }
+  if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(cleanPath)) {
  mappedPath = "pemanggilan";
  }
  if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi", "penilaian-kontrak"].includes(cleanPath)) {

@@ -879,6 +879,10 @@ export function openModal(options) {
     onMount = options.onMount || null;
   }
 
+  // Remove existing backdrops if any to avoid DOM stacking collisions
+  const existingBackdrops = document.querySelectorAll("#app-modal-backdrop");
+  existingBackdrops.forEach(b => b.remove());
+
   const sizes = { sm: "max-w-md", md: "max-w-2xl", lg: "max-w-4xl", xl: "max-w-6xl", "7xl": "max-w-7xl", full: "max-w-[96vw] w-full" };
   const backdrop = document.createElement("div");
   backdrop.id = "app-modal-backdrop";
@@ -897,8 +901,9 @@ export function openModal(options) {
   document.body.appendChild(backdrop);
   document.body.classList.add("overflow-hidden");
   requestAnimationFrame(() => {
-  backdrop.classList.remove("opacity-0");
-  backdrop.querySelector("#app-modal-panel").classList.remove("scale-95");
+    backdrop.classList.remove("opacity-0");
+    const panel = backdrop.querySelector("#app-modal-panel");
+    if (panel) panel.classList.remove("scale-95");
   });
   backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closeModal(); });
   backdrop.querySelector("#app-modal-close").addEventListener("click", closeModal);
@@ -906,11 +911,13 @@ export function openModal(options) {
   return backdrop;
 }
 export function closeModal() {
- const el = document.getElementById("app-modal-backdrop");
- if (!el) return;
- el.classList.add("opacity-0");
- document.body.classList.remove("overflow-hidden");
- setTimeout(() => el.remove(), 200);
+  const backdrops = document.querySelectorAll("#app-modal-backdrop");
+  if (!backdrops.length) return;
+  backdrops.forEach(el => {
+    el.classList.add("opacity-0");
+    setTimeout(() => el.remove(), 200);
+  });
+  document.body.classList.remove("overflow-hidden");
 }
 if (typeof window !== "undefined") {
  window.openModal = openModal;
@@ -1869,9 +1876,17 @@ export function generateStandardFormCutiHtml(opts = {}) {
  </style>
 </head>
 <body>
- <div class="no-print-bar">
- <button onclick="window.print()" class="btn-cetak">Cetak Dokumen</button>
- </div>
+ ${opts.forPdf ? "" : `
+  <div class="no-print-bar">
+    <button onclick="downloadThisPdf()" class="btn-download-pdf">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download PDF
+    </button>
+    <button onclick="window.print()" class="btn-cetak">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+      Cetak (Print)
+    </button>
+  </div>`}
 
  <div class="cuti-box">
  <table class="hdr-table">
@@ -2015,111 +2030,224 @@ export function generateStandardFormCutiHtml(opts = {}) {
 </html>`;
 }
 
+export async function downloadFormCutiPdf(item) {
+	if (!item) return;
+	if (typeof item === 'string') {
+		try { item = JSON.parse(item); } catch (e) {}
+	}
+
+	try {
+		if (typeof toast === "function") toast("Sedang memproses unduhan Form Cuti PDF...", "info");
+
+		const detail = item.detail || {};
+		const namaKaryawan = item.nama_pemohon || item.nama_karyawan || item.pemohon || detail.nama_karyawan || "Karyawan";
+		const nik = item.nik || item.nik_pemohon || detail.nik || "-";
+		const cabang = item.cabang || detail.cabang || "-";
+		const jabatan = detail.jabatan || item.jabatan || detail.divisi || "-";
+		const divisi = detail.divisi || item.divisi || detail.jabatan || item.jabatan || "-";
+		const jenisCuti = item.kategori_cuti || item.jenis_cuti || detail.jenis_cuti || item.type_cuti || "Cuti";
+		const isHalfDay = (jenisCuti || "").toLowerCase().includes("setengah hari") || (jenisCuti || "").includes("1/2");
+		
+		const tglMulai = item.tanggal_mulai || detail.tanggal_mulai || item.tanggal || item.tgl || new Date().toISOString();
+		const tglSelesai = item.tanggal_selesai || detail.tanggal_akhir || detail.tanggal_selesai || tglMulai;
+		const alasan = item.alasan || detail.alasan || detail.keterangan || item.keterangan_cuti || "Pengajuan Cuti";
+		const kontak = item.no_telepon || detail.no_telepon || detail.kontak || item.alamat_dan_hp || detail.alamat_dan_hp || "-";
+		const jamKeluar = detail.jam_keluar || "-";
+		const jamKembali = detail.jam_kembali || "-";
+		const pejabatPengganti = item.pejabat_pengganti || detail.pejabat_pengganti || "-";
+		const tglPengajuan = item.tgl || item.createdAt || new Date().toISOString();
+
+		let sisaTahunan = item.sisa_tahunan ?? detail.sisa_tahunan ?? item.sisa_tahunan_display ?? null;
+		let sisaKhusus = item.sisa_khusus ?? detail.sisa_khusus ?? item.sisa_khusus_display ?? null;
+		let sisaAkumulasi = item.sisa_akumulasi ?? detail.sisa_akumulasi ?? item.sisa_akumulasi_display ?? null;
+
+		if (sisaTahunan === null || sisaTahunan === undefined) {
+			try {
+				const allEmp = await fsGetAll(COL.MASTER_KARYAWAN);
+				const kData = allEmp.find(k => 
+					(k.nama_karyawan || "").trim().toLowerCase() === (namaKaryawan || "").trim().toLowerCase() ||
+					(nik !== "-" && String(k.nik || k.nik_karyawan) === String(nik))
+				);
+
+				const calc = getCalculatedJatahCuti(kData);
+				let jatahTahunan = calc.jatahTahunan;
+				let jatahAkumulasi = calc.jatahAkumulasi;
+				let jatahKhusus = calc.jatahKhusus;
+
+				let terpakaiTahunan = 0, terpakaiAkumulasi = 0, terpakaiKhusus = 0;
+				const currentYear = new Date().getFullYear();
+				const allMasterCuti = await fsGetAll(COL.MASTER_CUTI);
+
+				allMasterCuti.forEach(d => {
+					if ((d.nama_karyawan || "").trim().toLowerCase() !== (namaKaryawan || "").trim().toLowerCase()) return;
+					const rowYear = parseInt(d.tahun) || (d.tanggal ? new Date(d.tanggal).getFullYear() : currentYear);
+					if (rowYear !== currentYear) return;
+					const p = d.potong_jatah || "Tahunan";
+					const cnt = parseFloat(d.count) || 1;
+					if (p === "Tahunan") terpakaiTahunan += cnt;
+					else if (p === "Akumulasi") terpakaiAkumulasi += cnt;
+					else if (p === "Khusus") terpakaiKhusus += cnt;
+				});
+
+				sisaTahunan = Math.max(0, jatahTahunan - terpakaiTahunan);
+				sisaKhusus = Math.max(0, jatahKhusus - terpakaiKhusus);
+				sisaAkumulasi = Math.max(0, jatahAkumulasi - terpakaiAkumulasi);
+			} catch (errCalc) {
+				sisaTahunan = 0;
+				sisaKhusus = 0;
+				sisaAkumulasi = 0;
+			}
+		}
+
+		const html = generateStandardFormCutiHtml({
+			namaKaryawan,
+			divisi,
+			jabatan,
+			cabang,
+			jenisCuti,
+			isHalfDay,
+			tglMulai,
+			tglSelesai,
+			jamKeluar,
+			jamKembali,
+			kontak,
+			alasan,
+			sisaTahunan: sisaTahunan ?? 0,
+			sisaKhusus: sisaKhusus ?? 0,
+			sisaAkumulasi: sisaAkumulasi ?? 0,
+			tglPengajuan,
+			pejabatPengganti,
+			catatanAtasan: item.catatan_atasan || detail.catatan_atasan || "",
+			forPdf: true
+		});
+
+		const cleanFileName = "Form_Cuti_" + (namaKaryawan || "Karyawan").replace(/[^a-zA-Z0-9_-]/g, "_") + ".pdf";
+		await downloadHtmlAsPdf(html, cleanFileName);
+		if (typeof toast === "function") toast("Dokumen Form Cuti PDF berhasil diunduh!", "success");
+	} catch (err) {
+		console.error("Error downloadFormCutiPdf:", err);
+		if (typeof toast === "function") toast("Gagal mengunduh form cuti: " + err.message, "error");
+	}
+}
+
 export async function printFormCutiFisik(item) {
- if (!item) return;
- if (typeof item === 'string') {
- try { item = JSON.parse(item); } catch (e) {}
- }
+	if (!item) return;
+	if (typeof item === 'string') {
+		try { item = JSON.parse(item); } catch (e) {}
+	}
 
- // Open window immediately to prevent browser popup block
- const printWin = window.open("", "_blank", "width=850,height=900");
- if (!printWin) {
- if (typeof toast === "function") toast("Izin popup diblokir browser. Izinkan popup untuk membuka form cuti.", "error");
- return;
- }
- printWin.document.write("<html><body style='font-family:sans-serif;padding:40px;text-align:center;'><h3>Memuat Form Cuti Fisik...</h3><p style='color:#64748b;font-size:13px;'>Mengambil data saldo cuti dari database...</p></body></html>");
+	try {
+		const detail = item.detail || {};
+		const namaKaryawan = item.nama_pemohon || item.nama_karyawan || item.pemohon || detail.nama_karyawan || "Karyawan";
+		const nik = item.nik || item.nik_pemohon || detail.nik || "-";
+		const cabang = item.cabang || detail.cabang || "-";
+		const jabatan = detail.jabatan || item.jabatan || detail.divisi || "-";
+		const divisi = detail.divisi || item.divisi || detail.jabatan || item.jabatan || "-";
+		const jenisCuti = item.kategori_cuti || item.jenis_cuti || detail.jenis_cuti || item.type_cuti || "Cuti";
+		const isHalfDay = (jenisCuti || "").toLowerCase().includes("setengah hari") || (jenisCuti || "").includes("1/2");
+		
+		const tglMulai = item.tanggal_mulai || detail.tanggal_mulai || item.tanggal || item.tgl || new Date().toISOString();
+		const tglSelesai = item.tanggal_selesai || detail.tanggal_akhir || detail.tanggal_selesai || tglMulai;
+		const alasan = item.alasan || detail.alasan || detail.keterangan || item.keterangan_cuti || "Pengajuan Cuti";
+		const kontak = item.no_telepon || detail.no_telepon || detail.kontak || item.alamat_dan_hp || detail.alamat_dan_hp || "-";
+		const jamKeluar = detail.jam_keluar || "-";
+		const jamKembali = detail.jam_kembali || "-";
+		const pejabatPengganti = item.pejabat_pengganti || detail.pejabat_pengganti || "-";
+		const tglPengajuan = item.tgl || item.createdAt || new Date().toISOString();
 
- try {
- const detail = item.detail || {};
- const namaKaryawan = item.nama_pemohon || item.nama_karyawan || item.pemohon || detail.nama_karyawan || "Karyawan";
- const nik = item.nik || item.nik_pemohon || detail.nik || "-";
- const cabang = item.cabang || detail.cabang || "-";
- const jabatan = detail.jabatan || item.jabatan || detail.divisi || "-";
- const divisi = detail.divisi || item.divisi || detail.jabatan || item.jabatan || "-";
- const jenisCuti = item.kategori_cuti || item.jenis_cuti || detail.jenis_cuti || item.type_cuti || "Cuti";
- const isHalfDay = (jenisCuti || "").toLowerCase().includes("setengah hari") || (jenisCuti || "").includes("1/2");
- 
- const tglMulai = item.tanggal_mulai || detail.tanggal_mulai || item.tanggal || item.tgl || new Date().toISOString();
- const tglSelesai = item.tanggal_selesai || detail.tanggal_akhir || detail.tanggal_selesai || tglMulai;
- const alasan = item.alasan || detail.alasan || detail.keterangan || item.keterangan_cuti || "Pengajuan Cuti";
- const kontak = item.no_telepon || detail.no_telepon || detail.kontak || item.alamat_dan_hp || detail.alamat_dan_hp || "-";
- const jamKeluar = detail.jam_keluar || "-";
- const jamKembali = detail.jam_kembali || "-";
- const pejabatPengganti = item.pejabat_pengganti || detail.pejabat_pengganti || "-";
- const tglPengajuan = item.tgl || item.createdAt || new Date().toISOString();
+		// Dynamically calculate accurate sisa cuti from database if not explicitly attached
+		let sisaTahunan = item.sisa_tahunan ?? detail.sisa_tahunan ?? item.sisa_tahunan_display ?? null;
+		let sisaKhusus = item.sisa_khusus ?? detail.sisa_khusus ?? item.sisa_khusus_display ?? null;
+		let sisaAkumulasi = item.sisa_akumulasi ?? detail.sisa_akumulasi ?? item.sisa_akumulasi_display ?? null;
 
- // Dynamically calculate accurate sisa cuti from database if not explicitly attached
- let sisaTahunan = item.sisa_tahunan ?? detail.sisa_tahunan ?? item.sisa_tahunan_display ?? null;
- let sisaKhusus = item.sisa_khusus ?? detail.sisa_khusus ?? item.sisa_khusus_display ?? null;
- let sisaAkumulasi = item.sisa_akumulasi ?? detail.sisa_akumulasi ?? item.sisa_akumulasi_display ?? null;
+		if (sisaTahunan === null || sisaTahunan === undefined) {
+			try {
+				const allEmp = await fsGetAll(COL.MASTER_KARYAWAN);
+				const kData = allEmp.find(k => 
+					(k.nama_karyawan || "").trim().toLowerCase() === (namaKaryawan || "").trim().toLowerCase() ||
+					(nik !== "-" && String(k.nik || k.nik_karyawan) === String(nik))
+				);
 
- if (sisaTahunan === null || sisaTahunan === undefined) {
- try {
- const allEmp = await fsGetAll(COL.MASTER_KARYAWAN);
- const kData = allEmp.find(k => 
- (k.nama_karyawan || "").trim().toLowerCase() === (namaKaryawan || "").trim().toLowerCase() ||
- (nik !== "-" && String(k.nik || k.nik_karyawan) === String(nik))
- );
+				const calc = getCalculatedJatahCuti(kData);
+				let jatahTahunan = calc.jatahTahunan;
+				let jatahAkumulasi = calc.jatahAkumulasi;
+				let jatahKhusus = calc.jatahKhusus;
 
- const calc = getCalculatedJatahCuti(kData);
- let jatahTahunan = calc.jatahTahunan;
- let jatahAkumulasi = calc.jatahAkumulasi;
- let jatahKhusus = calc.jatahKhusus;
+				let terpakaiTahunan = 0, terpakaiAkumulasi = 0, terpakaiKhusus = 0;
+				const currentYear = new Date().getFullYear();
+				const allMasterCuti = await fsGetAll(COL.MASTER_CUTI);
 
- let terpakaiTahunan = 0, terpakaiAkumulasi = 0, terpakaiKhusus = 0;
- const currentYear = new Date().getFullYear();
- const allMasterCuti = await fsGetAll(COL.MASTER_CUTI);
+				allMasterCuti.forEach(d => {
+					if ((d.nama_karyawan || "").trim().toLowerCase() !== (namaKaryawan || "").trim().toLowerCase()) return;
+					const rowYear = parseInt(d.tahun) || (d.tanggal ? new Date(d.tanggal).getFullYear() : currentYear);
+					if (rowYear !== currentYear) return;
+					const p = d.potong_jatah || "Tahunan";
+					const cnt = parseFloat(d.count) || 1;
+					if (p === "Tahunan") terpakaiTahunan += cnt;
+					else if (p === "Akumulasi") terpakaiAkumulasi += cnt;
+					else if (p === "Khusus") terpakaiKhusus += cnt;
+				});
 
- allMasterCuti.forEach(d => {
- if ((d.nama_karyawan || "").trim().toLowerCase() !== (namaKaryawan || "").trim().toLowerCase()) return;
- const rowYear = parseInt(d.tahun) || (d.tanggal ? new Date(d.tanggal).getFullYear() : currentYear);
- if (rowYear !== currentYear) return;
- const p = d.potong_jatah || "Tahunan";
- const cnt = parseFloat(d.count) || 1;
- if (p === "Tahunan") terpakaiTahunan += cnt;
- else if (p === "Akumulasi") terpakaiAkumulasi += cnt;
- else if (p === "Khusus") terpakaiKhusus += cnt;
- });
+				sisaTahunan = Math.max(0, jatahTahunan - terpakaiTahunan);
+				sisaKhusus = Math.max(0, jatahKhusus - terpakaiKhusus);
+				sisaAkumulasi = Math.max(0, jatahAkumulasi - terpakaiAkumulasi);
+			} catch (errCalc) {
+				console.warn("Could not calculate dynamic sisa cuti:", errCalc);
+				sisaTahunan = 0;
+				sisaKhusus = 0;
+				sisaAkumulasi = 0;
+			}
+		}
 
- sisaTahunan = Math.max(0, jatahTahunan - terpakaiTahunan);
- sisaKhusus = Math.max(0, jatahKhusus - terpakaiKhusus);
- sisaAkumulasi = Math.max(0, jatahAkumulasi - terpakaiAkumulasi);
- } catch (errCalc) {
- console.warn("Could not calculate dynamic sisa cuti:", errCalc);
- sisaTahunan = 0;
- sisaKhusus = 0;
- sisaAkumulasi = 0;
- }
- }
+		const html = generateStandardFormCutiHtml({
+			namaKaryawan,
+			divisi,
+			jabatan,
+			cabang,
+			jenisCuti,
+			isHalfDay,
+			tglMulai,
+			tglSelesai,
+			jamKeluar,
+			jamKembali,
+			kontak,
+			alasan,
+			sisaTahunan: sisaTahunan ?? 0,
+			sisaKhusus: sisaKhusus ?? 0,
+			sisaAkumulasi: sisaAkumulasi ?? 0,
+			tglPengajuan,
+			pejabatPengganti,
+			catatanAtasan: item.catatan_atasan || detail.catatan_atasan || "",
+			forPdf: false
+		});
 
- const html = generateStandardFormCutiHtml({
- namaKaryawan,
- divisi,
- jabatan,
- cabang,
- jenisCuti,
- isHalfDay,
- tglMulai,
- tglSelesai,
- jamKeluar,
- jamKembali,
- kontak,
- alasan,
- sisaTahunan: sisaTahunan ?? 0,
- sisaKhusus: sisaKhusus ?? 0,
- sisaAkumulasi: sisaAkumulasi ?? 0,
- tglPengajuan,
- pejabatPengganti,
- catatanAtasan: item.catatan_atasan || detail.catatan_atasan || ""
- });
+		let printWin = null;
+		try {
+			printWin = window.open("", "_blank", "width=850,height=900");
+		} catch (e) {
+			printWin = null;
+		}
 
- printWin.document.open();
- printWin.document.write(html);
- printWin.document.close();
- } catch (errWin) {
- console.error("Error writing cuti form window:", errWin);
- printWin.document.write(`<html><body style='font-family:sans-serif;padding:40px;color:red;'><h3>Gagal Memuat Form Cuti</h3><p>${escapeHtml(errWin.message)}</p></body></html>`);
- }
+		if (printWin) {
+			try {
+				printWin.document.open();
+				printWin.document.write(html);
+				printWin.document.close();
+				return;
+			} catch (e) {
+				console.warn("Writing to popup window failed:", e);
+			}
+		}
+
+		// Fallback jika popup diblokir / sandbox: langsung download PDF
+		if (typeof toast === "function") toast("Mengunduh Form Cuti PDF...", "info");
+		const cleanFileName = "Form_Cuti_" + (namaKaryawan || "Karyawan").replace(/\s+/g, "_") + ".pdf";
+		await downloadHtmlAsPdf(html, cleanFileName);
+		if (typeof toast === "function") toast("Dokumen Form Cuti berhasil diunduh!", "success");
+	} catch (err) {
+		console.error("Error printFormCutiFisik:", err);
+		if (typeof toast === "function") toast("Gagal memproses dokumen form cuti: " + err.message, "error");
+	}
 }
 
 export async function generateAndSaveCutiDocument(row) {
@@ -2220,6 +2348,7 @@ export async function generateAndSaveCutiDocument(row) {
 if (typeof window !== "undefined") {
  window.printSalesKlaimForm = printSalesKlaimForm;
  window.printFormCutiFisik = printFormCutiFisik;
+  window.downloadFormCutiPdf = downloadFormCutiPdf;
 }
 
 export function renderPengajuanDetailHtml(row, session, options = {}) {
@@ -2337,34 +2466,56 @@ export function renderPengajuanDetailHtml(row, session, options = {}) {
  `;
  }
 
- const isCutiForm = row.form_id === "F-ISO-CUTI" || (row.nama_form || "").toLowerCase().includes("cuti") || !!row.kategori_cuti;
- if (isCutiForm && (row.status_final || "").includes("APPROVED")) {
- const rowJson = escapeHtml(JSON.stringify(row));
- const sesi = row.sesi_cuti || detail.sesi_cuti || "";
- const jamOut = row.waktu_keluar || detail.jam_keluar || "";
- const jamIn = row.waktu_masuk || detail.jam_masuk || detail.jam_kembali || "";
- return `
- <div class="space-y-4">
- <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
- <div class="flex justify-between items-center"><span class="text-slate-500 font-medium">Pemohon:</span><span class="font-bold text-slate-800">${escapeHtml(row.nama_pemohon)}</span></div>
- <div class="flex justify-between items-center"><span class="text-slate-500 font-medium">Jenis Cuti:</span><span class="font-bold text-slate-800">${escapeHtml(row.kategori_cuti || row.jenis_cuti || detail.jenis_cuti || "Cuti")}${sesi ? ` (${escapeHtml(sesi)})` : ''}</span></div>
- <div class="flex justify-between items-center"><span class="text-slate-500 font-medium">Tanggal:</span><span class="font-bold text-slate-800">${fmtDateShort(row.tanggal_mulai || detail.tanggal_mulai || row.tgl)} s/d ${fmtDateShort(row.tanggal_selesai || detail.tanggal_akhir || row.tgl)} (${row.jumlah_hari || detail.jumlah_hari || 1} Hari)</span></div>
- ${jamOut ? `<div class="flex justify-between items-center"><span class="text-slate-500 font-medium">Jam Cuti:</span><span class="font-bold text-slate-800">${escapeHtml(jamOut)} s/d ${escapeHtml(jamIn)}</span></div>` : ''}
- <div class="flex justify-between items-center"><span class="text-slate-500 font-medium">Alasan:</span><span class="font-semibold text-slate-700">${escapeHtml(row.alasan || detail.alasan || "-")}</span></div>
- </div>
+   const isCutiForm = row.form_id === "F-ISO-CUTI" || (row.nama_form || "").toLowerCase().includes("cuti") || !!row.kategori_cuti;
+  const isPotongGaji = row.is_potong_gaji || row.potong_gaji || detail.is_potong_gaji || (row.kategori_cuti || "").includes("Potong Gaji");
+  const potongHari = row.potong_gaji_hari || detail.potong_gaji_hari || row.jumlah_hari || 1;
 
- <div class="flex items-center justify-between p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl">
- <div class="text-xs text-emerald-900">
- <p class="font-bold">Formulir Cuti Fisik Resmi (Form HR4)</p>
- <p class="text-[11px] text-emerald-700">Pengajuan ini telah Full Approved. Cetak / unduh dokumen fisik resmi untuk arsip HRD.</p>
- </div>
- <button type="button" onclick="window.printFormCutiFisik(${rowJson})" class="px-4 py-2 bg-maroon-700 hover:bg-maroon-800 text-white font-bold text-xs rounded-lg shadow-sm transition flex items-center gap-1.5 shrink-0">
- <span>Cetak / Download Form Cuti Fisik</span>
- </button>
- </div>
- </div>
- `;
- }
+  if (isCutiForm && (row.status_final || "").includes("APPROVED")) {
+    const rowJson = escapeHtml(JSON.stringify(row));
+    const sesi = row.sesi_cuti || detail.sesi_cuti || "";
+    const jamOut = row.waktu_keluar || detail.jam_keluar || "";
+    const jamIn = row.waktu_masuk || detail.jam_masuk || detail.jam_kembali || "";
+    return `
+    <div class="space-y-4">
+      ${isPotongGaji ? `
+      <div class="p-3 bg-rose-50 border border-rose-300 rounded-xl flex items-start gap-2.5 text-rose-950">
+        <div class="p-1.5 bg-rose-100 rounded-lg text-rose-700 shrink-0 mt-0.5">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        </div>
+        <div>
+          <span class="font-bold uppercase block text-rose-900">Perhatian: Cuti Potong Gaji (Unpaid Leave)</span>
+          <span class="text-[11px] block mt-0.5 text-rose-800 font-medium leading-relaxed">
+            Pengajuan cuti ini memotong gaji sebanyak <b>${potongHari} Hari Kerja</b> karena jatah cuti habis/tidak mencukupi.
+          </span>
+        </div>
+      </div>` : ""}
+
+      <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
+        <div class="flex justify-between items-center"><span class="text-slate-500 font-medium">Pemohon:</span><span class="font-bold text-slate-800">${escapeHtml(row.nama_pemohon)}</span></div>
+        <div class="flex justify-between items-center"><span class="text-slate-500 font-medium">Jenis Cuti:</span><span class="font-bold text-slate-800">${escapeHtml(row.kategori_cuti || row.jenis_cuti || detail.jenis_cuti || "Cuti")}${sesi ? ` (${escapeHtml(sesi)})` : ""}</span></div>
+        <div class="flex justify-between items-center"><span class="text-slate-500 font-medium">Tanggal:</span><span class="font-bold text-slate-800">${fmtDateShort(row.tanggal_mulai || detail.tanggal_mulai || row.tgl)} s/d ${fmtDateShort(row.tanggal_selesai || detail.tanggal_akhir || row.tgl)} (${row.jumlah_hari || detail.jumlah_hari || 1} Hari)</span></div>
+        ${jamOut ? `<div class="flex justify-between items-center"><span class="text-slate-500 font-medium">Jam Cuti:</span><span class="font-bold text-slate-800">${escapeHtml(jamOut)} s/d ${escapeHtml(jamIn)}</span></div>` : ""}
+        <div class="flex justify-between items-center"><span class="text-slate-500 font-medium">Alasan:</span><span class="font-semibold text-slate-700">${escapeHtml(row.alasan || detail.alasan || "-")}</span></div>
+      </div>
+
+      <div class="flex items-center justify-between p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+        <div class="text-xs text-emerald-900">
+          <p class="font-bold">Formulir Cuti Fisik Resmi (Form HR4)</p>
+          <p class="text-[11px] text-emerald-700">Pengajuan ini telah Full Approved. Cetak / unduh dokumen fisik resmi untuk arsip HRD.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="window.downloadFormCutiPdf(${rowJson})" class="px-3.5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white font-bold text-xs rounded-lg shadow-sm transition flex items-center gap-1.5 shrink-0">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            <span>Download PDF</span>
+          </button>
+          <button type="button" onclick="window.printFormCutiFisik(${rowJson})" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs rounded-lg shadow-sm transition flex items-center gap-1 shrink-0">
+            <span>Cetak</span>
+          </button>
+        </div>
+      </div>
+    </div>
+    `;
+  }
 
  // Generic detail formatter
  const itemsHtml = Object.entries(detail).map(([k, v]) => {
@@ -2539,6 +2690,7 @@ export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf", 
  element.style.fontFamily = "'Times New Roman', Times, serif";
  element.style.boxSizing = "border-box";
  element.innerHTML = htmlContent;
+	element.querySelectorAll(".no-print-bar, .no-print, button.btn-cetak, [data-no-print]").forEach(el => el.remove());
 
   wrapper.appendChild(element);
   document.body.appendChild(wrapper);
@@ -3040,51 +3192,91 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
 /* ---------------------------------------------------------------------
  * PERHITUNGAN JATAH CUTI SESUAI SK No.018/HRGA-AJ/XII/2024
  * ------------------------------------------------------------------- */
-export function getCalculatedJatahCuti(emp) {
- if (!emp) return { jatahTahunan: 12, jatahKhusus: 4, jatahAkumulasi: 0 };
+export function getCalculatedJatahCuti(emp, cutiRecords = null) {
+  if (!emp) return { jatahTahunan: 12, jatahKhusus: 4, jatahAkumulasi: 0, usedTahunan: 0, usedKhusus: 0, usedAkumulasi: 0, sisaTahunan: 12, sisaKhusus: 4, sisaAkumulasi: 0 };
 
- const explicitTahunan = emp.jatah_cuti_tahunan ?? emp.jatah_tahunan;
- const explicitKhusus = emp.jatah_cuti_khusus ?? emp.jatah_khusus;
- const explicitAkumulasi = emp.jatah_cuti_akumulasi ?? emp.jatah_akumulasi;
+  const explicitTahunan = emp.jatah_cuti_tahunan ?? emp.jatah_tahunan;
+  const explicitKhusus = emp.jatah_cuti_khusus ?? emp.jatah_khusus;
+  const explicitAkumulasi = emp.jatah_cuti_akumulasi ?? emp.jatah_akumulasi;
 
- let jatahTahunan = (explicitTahunan !== undefined && explicitTahunan !== null && explicitTahunan !== "") 
- ? toNumber(explicitTahunan) 
- : null;
- let jatahKhusus = (explicitKhusus !== undefined && explicitKhusus !== null && explicitKhusus !== "") 
- ? toNumber(explicitKhusus) 
- : 4;
- let jatahAkumulasi = (explicitAkumulasi !== undefined && explicitAkumulasi !== null && explicitAkumulasi !== "") 
- ? toNumber(explicitAkumulasi) 
- : 0;
+  let jatahTahunan = (explicitTahunan !== undefined && explicitTahunan !== null && explicitTahunan !== "") 
+    ? toNumber(explicitTahunan) 
+    : null;
+  let jatahKhusus = (explicitKhusus !== undefined && explicitKhusus !== null && explicitKhusus !== "") 
+    ? toNumber(explicitKhusus) 
+    : 4;
+  let jatahAkumulasi = (explicitAkumulasi !== undefined && explicitAkumulasi !== null && explicitAkumulasi !== "") 
+    ? toNumber(explicitAkumulasi) 
+    : 0;
 
- if (jatahTahunan === null && emp.tanggal_join) {
- const join = smartParseDate(emp.tanggal_join);
- if (join) {
- const now = new Date();
- const diffMonths = (now.getFullYear() - join.getFullYear()) * 12 + (now.getMonth() - join.getMonth());
- const tenureYears = diffMonths / 12;
+  if (emp.tanggal_join) {
+    const join = smartParseDate(emp.tanggal_join);
+    if (join) {
+      const now = new Date();
+      const diffMonths = (now.getFullYear() - join.getFullYear()) * 12 + (now.getMonth() - join.getMonth());
+      const tenureYears = diffMonths / 12;
 
- if (diffMonths >= 12) {
- jatahTahunan = 12;
- if (tenureYears >= 11) jatahTahunan += 4; // > 10 thn (>= 11 thn): +4 (total 16)
- else if (tenureYears >= 10) jatahTahunan += 3; // 10 thn: +3 (total 15)
- else if (tenureYears >= 8) jatahTahunan += 2; // 8 thn: +2 (total 14)
- else if (tenureYears >= 6) jatahTahunan += 1; // 6 thn: +1 (total 13)
- } else if (diffMonths >= 3) {
- // Masa kerja < 1 tahun (3-11 bulan): Cuti tahunan proporsional (1 hari/bulan)
- jatahTahunan = diffMonths;
- } else {
- // Masa kerja < 3 bulan: belum berhak cuti tahunan
- jatahTahunan = 0;
- }
- }
- }
+      if (diffMonths >= 12) {
+        let base = 12;
+        if (tenureYears >= 11) base += 4; // > 10 thn (>= 11 thn): +4 (total 16)
+        else if (tenureYears >= 10) base += 3; // 10 thn: +3 (total 15)
+        else if (tenureYears >= 8) base += 2; // 8 thn: +2 (total 14)
+        else if (tenureYears >= 6) base += 1; // 6 thn: +1 (total 13)
+        
+        // Auto-heal if jatahTahunan was set to 0 by an accidental broken reset
+        if (jatahTahunan === null || (jatahTahunan === 0 && tenureYears >= 1)) {
+          jatahTahunan = base;
+        }
+      } else if (diffMonths >= 3) {
+        // Masa kerja < 1 tahun (3-11 bulan): Cuti tahunan proporsional (1 hari/bulan)
+        if (jatahTahunan === null || jatahTahunan === 0) {
+          jatahTahunan = diffMonths;
+        }
+      } else {
+        // Masa kerja < 3 bulan: belum berhak cuti tahunan
+        if (jatahTahunan === null) {
+          jatahTahunan = 0;
+        }
+      }
+    }
+  }
 
- if (jatahTahunan === null || jatahTahunan === undefined) {
- jatahTahunan = 12;
- }
+  if (jatahTahunan === null || jatahTahunan === undefined) {
+    jatahTahunan = 12;
+  }
 
- return { jatahTahunan, jatahKhusus, jatahAkumulasi };
+  let usedTahunan = 0;
+  let usedKhusus = 0;
+  let usedAkumulasi = 0;
+
+  if (Array.isArray(cutiRecords) && cutiRecords.length > 0) {
+    const currentYear = new Date().getFullYear();
+    cutiRecords.forEach(r => {
+      const rowYear = parseInt(r.tahun) || (r.tanggal ? new Date(r.tanggal).getFullYear() : currentYear);
+      if (rowYear !== currentYear) return;
+      const count = parseFloat(r.count) || 0;
+      const potong = r.potong_jatah || (r.type_cuti === "C+" ? "Khusus" : "Tahunan");
+      if (potong === "Tahunan") usedTahunan += count;
+      else if (potong === "Khusus") usedKhusus += count;
+      else if (potong === "Akumulasi") usedAkumulasi += count;
+    });
+  }
+
+  const sisaTahunan = Math.max(0, jatahTahunan - usedTahunan);
+  const sisaKhusus = Math.max(0, jatahKhusus - usedKhusus);
+  const sisaAkumulasi = Math.max(0, jatahAkumulasi - usedAkumulasi);
+
+  return {
+    jatahTahunan,
+    jatahKhusus,
+    jatahAkumulasi,
+    usedTahunan,
+    usedKhusus,
+    usedAkumulasi,
+    sisaTahunan,
+    sisaKhusus,
+    sisaAkumulasi
+  };
 }
 
 /* ---------------------------------------------------------------------
@@ -3844,20 +4036,37 @@ export function parseGpsCoordinates(gpsStr) {
  * Lat: -8.0 to -5.8, Lng: 106.5 to 110.8
  */
 export function isValidOperationalCoordinate(lat, lng) {
-  if (isNaN(lat) || isNaN(lng)) return false;
-  return lat >= -8.0 && lat <= -5.8 && lng >= 106.5 && lng <= 110.8;
+  if (typeof lat !== "number" || typeof lng !== "number" || isNaN(lat) || isNaN(lng)) return false;
+  // Valid coordinate boundary for Indonesia (covers West Java Cirebon, East Java Malang & Batu, and entire Indonesia)
+  return lat >= -11.5 && lat <= 6.5 && lng >= 95.0 && lng <= 141.5;
 }
 
 /**
- * Helper to query Photon Komoot OSM Geocoding Service (bounded to West/Central Java)
+ * Helper to query Photon Komoot OSM Geocoding Service (with dynamic bias for Malang/Batu & Cirebon)
  */
 async function fetchPhotonQuery(queryString) {
   try {
     const query = encodeURIComponent(queryString);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
-    // Lat/Lon bias centered at Cirebon-Tegal, BBox minLon,minLat,maxLon,maxLat
-    const url = `https://photon.komoot.io/api/?q=${query}&limit=1&lat=-6.86&lon=108.8&bbox=107.0,-7.8,110.5,-6.0`;
+    const qLower = queryString.toLowerCase();
+    
+    // Determine coordinate bias: Malang/Batu vs Cirebon/Tegal
+    let latBias = -6.86;
+    let lonBias = 108.8;
+    let bbox = "105.0,-9.0,115.5,-5.5"; // Covering West, Central, and East Java
+    
+    if (qLower.includes("malang") || qLower.includes("batu") || qLower.includes("singosari") || qLower.includes("lawang") || qLower.includes("kepanjen") || qLower.includes("pujon") || qLower.includes("jatim") || qLower.includes("jawa timur")) {
+      latBias = -7.98;
+      lonBias = 112.63;
+      bbox = "111.0,-8.6,113.8,-7.4";
+    } else if (qLower.includes("cirebon") || qLower.includes("kuningan") || qLower.includes("majalengka") || qLower.includes("indramayu") || qLower.includes("brebes") || qLower.includes("tegal")) {
+      latBias = -6.86;
+      lonBias = 108.8;
+      bbox = "107.0,-7.8,110.5,-6.0";
+    }
+
+    const url = `https://photon.komoot.io/api/?q=${query}&limit=1&lat=${latBias}&lon=${lonBias}&bbox=${bbox}`;
     const resp = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
     if (resp.ok) {
@@ -3886,15 +4095,23 @@ async function fetchPhotonQuery(queryString) {
 }
 
 /**
- * Helper to query OpenStreetMap Nominatim Geocoding Service (bounded to West/Central Java)
+ * Helper to query OpenStreetMap Nominatim Geocoding Service (covering Malang/Batu & Cirebon)
  */
 async function fetchNominatimQuery(queryString) {
   try {
     const query = encodeURIComponent(queryString);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 6000);
-    // Viewbox bounded to Cirebon-Tegal coverage (minLon, minLat, maxLon, maxLat)
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1&addressdetails=1&countrycodes=id&viewbox=107.0,-6.0,110.5,-7.8&bounded=1`;
+    const qLower = queryString.toLowerCase();
+    
+    let viewboxParam = "&viewbox=105.0,-5.5,115.5,-9.0";
+    if (qLower.includes("malang") || qLower.includes("batu") || qLower.includes("singosari") || qLower.includes("kepanjen") || qLower.includes("pujon")) {
+      viewboxParam = "&viewbox=111.0,-7.4,113.8,-8.6";
+    } else if (qLower.includes("cirebon") || qLower.includes("kuningan") || qLower.includes("tegal") || qLower.includes("brebes")) {
+      viewboxParam = "&viewbox=107.0,-6.0,110.5,-7.8";
+    }
+
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1&addressdetails=1&countrycodes=id${viewboxParam}`;
     const resp = await fetch(url, {
       headers: {
         'Accept-Language': 'id,en',
@@ -3933,6 +4150,17 @@ function generateAddressCandidates(rawAddr) {
   if (!clean) return [];
 
   const candidates = [];
+
+  // Strip Plus Code if present (e.g. "6W6C+7GP, Sei Pinang..." -> "Sei Pinang...")
+  const withoutPlusCode = clean.replace(/\b[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3}\b/ig, "").replace(/^[,\s]+|[,\s]+$/g, "").trim();
+  if (withoutPlusCode && withoutPlusCode !== clean) {
+    candidates.push(withoutPlusCode.includes("Indonesia") ? withoutPlusCode : `${withoutPlusCode}, Indonesia`);
+    const subParts = withoutPlusCode.split(",").map(p => p.trim()).filter(Boolean);
+    if (subParts.length > 1) {
+      const subEnd = subParts.slice(-2).join(", ");
+      candidates.push(subEnd.includes("Indonesia") ? subEnd : `${subEnd}, Indonesia`);
+    }
+  }
 
   // 1. Full address string with Jawa Tengah / Jawa Barat, Indonesia
   candidates.push(clean.includes("Indonesia") ? clean : `${clean}, Indonesia`);
@@ -4065,6 +4293,26 @@ export function findMatchingMasterOutlet(storeQuery, masterOutlets = []) {
 // Tabel referensi wilayah (dipakai baik sebagai fallback terakhir geocoding
 // MAUPUN sebagai titik referensi untuk mendekode Plus Code).
 const _DISTRICT_MAP = [
+  // --- KOTA BATU & KABUPATEN MALANG BARAT ---
+  { keywords: ["bumiaji", "punten", "tulungrejo", "selecta", "sumbergondo", "bulukerto", "giripurno", "pandanrejo", "gunungsari"], lat: -7.8170, lng: 112.5350 },
+  { keywords: ["junrejo", "beji", "mojorejo", "pendem", "torongrejo", "tlekung", "dadaprejo"], lat: -7.8920, lng: 112.5650 },
+  { keywords: ["batu", "sisir", "temas", "songgokerto", "oro-oro ombo", "pesanggrahan", "sumberejo", "sidomulyo", "ngaglik", "kota batu", "alun-alun batu", "wisata batu", "batos", "museum angkut", "jatim park", "bns"], lat: -7.8705, lng: 112.5271 },
+  { keywords: ["pujon", "ngantang", "kasembon", "coban rondo", "santerra"], lat: -7.8400, lng: 112.4400 },
+
+  // --- KOTA MALANG ---
+  { keywords: ["lowokwaru", "dinoyo", "jatimulyo", "mojolangu", "sumbersari", "tasikmadu", "tunggulwulung", "tlogomas", "merjosari", "ketawanggede", "soekarno hatta", "suhat", "soeta", "borobudur malang", "bunga coklat", "kalpataru"], lat: -7.9430, lng: 112.6150 },
+  { keywords: ["blimbing", "arjosari", "balearjosari", "polowijen", "purwantoro", "purwodadi", "bunulrejo", "pandanwangi", "kesatrian", "jodipan", "raden intan", "sulfat", "ciliwung malang"], lat: -7.9380, lng: 112.6450 },
+  { keywords: ["sukun", "bandulan", "karangbesuki", "pisangcandi", "mulyorejo", "bakalankrajan", "bandungrejosari", "kebonsari", "gadang", "tanjungrejo", "ciptomulyo", "pasar besar malang", "kotalama"], lat: -7.9950, lng: 112.6150 },
+  { keywords: ["kedungkandang", "sawojajar", "lesanpuro", "madyopuro", "cemorokandang", "arjowinangun", "tlogowaru", "bumiayu", "wonokoyo", "buring", "danau toba", "danau ranau", "ranugrati"], lat: -7.9900, lng: 112.6650 },
+  { keywords: ["klojen", "kauman", "kiduldalem", "oro-oro dowo", "bareng", "gadingkasri", "kasin", "sukoharjo", "rampal celaket", "samaan", "penanggungan", "ijen", "alun-alun malang", "kayutangan", "kawi", "semeru", "kahuripan", "malang kota", "kota malang"], lat: -7.9797, lng: 112.6304 },
+
+  // --- KABUPATEN MALANG ---
+  { keywords: ["singosari", "lawang", "karangploso", "kepuharjo", "candirenggo", "girimoyo", "donowarih", "losari singosari", "tunjungtirto", "araya malang", "mondoroko", "bedali", "batu karangploso"], lat: -7.8920, lng: 112.6650 },
+  { keywords: ["dau", "mulyoagung", "landungsari", "wagir", "pakisaji", "kebonagung", "genengan", "sengkaling", "tlogomas barat"], lat: -7.9650, lng: 112.5750 },
+  { keywords: ["kepanjen", "pakis", "tumpang", "bululawang", "tajinan", "gondanglegi", "turen", "dampit", "sumberpucung", "pagelaran", "kromengan", "ngajum", "bantur", "tirtoyudo", "ampelgading", "kabupaten malang", "malang selatan"], lat: -8.1300, lng: 112.5700 },
+  { keywords: ["malang", "ngalam", "arema", "malang raya"], lat: -7.9797, lng: 112.6304 },
+
+  // --- CIREBON, BREBES, TEGAL & WEST/CENTRAL JAVA COVERAGE ---
   { keywords: ["klampok", "wanasari", "bulakamba", "losari brebes", "tanjung brebes", "jatibarang brebes", "ketanggungan", "songgom", "larangan brebes"], lat: -6.8850, lng: 109.0250 },
   { keywords: ["pagerbarang", "margasari", "slawi", "adiwerna", "dukuhturi", "talang", "kramat tegal", "suradadi", "warureja", "lebaksiu", "pangkah", "balapulang", "bumiawa", "tarub"], lat: -6.9800, lng: 109.1200 },
   { keywords: ["tegal", "margadana", "procot", "dudukati", "sumurpanggang", "tegal barat", "tegal timur", "tegal selatan", "kramat tegal"], lat: -6.8694, lng: 109.1357 },
@@ -4113,19 +4361,48 @@ export async function geocodeAddressSmart(addressStr, fallbackSeed = 0) {
     }
   }
 
-  // 0. Deteksi PLUS CODE (mis. "4GVJ+2JJ, Sindanghayu, Kecamatan Beber, ...")
-  // -- format ini sering muncul di export aplikasi Kanal. Plus Code bisa
-  // didekode jadi koordinat PRESISI murni pakai matematika (tanpa API sama
-  // sekali), asal ada "titik referensi" perkiraan wilayah untuk merekonstruksi
-  // kode pendeknya -- diambil dari nama Kecamatan/Kabupaten yang menyertai
-  // kode itu di teks yang sama, dicocokkan ke tabel wilayah di bawah.
-  const plusCodeMatch = cleanAddr.match(/^([23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3})\b/i);
+  // 0. Deteksi PLUS CODE (mis. "4GVJ+2JJ, Sindanghayu, ..." atau "6W6C+7GP, Sei Pinang, Mandau...")
+  // -- format ini sering muncul di export aplikasi Kanal & Google Maps. Plus Code bisa
+  // didekode jadi koordinat PRESISI murni pakai matematika (tanpa API), asal ada
+  // "titik referensi" perkiraan wilayah untuk merekonstruksi kode pendeknya.
+  const plusCodeMatch = cleanAddr.match(/\b([23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3})\b/i);
   if (plusCodeMatch) {
     try {
       const rawCode = plusCodeMatch[1].toUpperCase();
-      const restOfAddress = cleanAddr.substring(plusCodeMatch[0].length).replace(/^[,\s]+/, "").toLowerCase();
-      const ref = findDistrictReferencePoint(restOfAddress) || { lat: -6.7320, lng: 108.5520 };
-      const fullCode = OpenLocationCode.isFull(rawCode) ? rawCode : OpenLocationCode.recoverNearest(rawCode, ref.lat, ref.lng);
+      
+      // Jika Plus Code sudah merupakan Full Code (8+ karakter, misal "6PJX6W6C+7GP"), langsung decode presisi tinggi
+      if (OpenLocationCode.isFull(rawCode)) {
+        const decoded = OpenLocationCode.decode(rawCode);
+        if (decoded && isValidOperationalCoordinate(decoded.latitudeCenter, decoded.longitudeCenter)) {
+          return {
+            lat: decoded.latitudeCenter,
+            lng: decoded.longitudeCenter,
+            formatted: cleanAddr,
+            source: "PLUS_CODE"
+          };
+        }
+      }
+
+      // Jika short code (contoh: "6W6C+7GP"), ambil bagian sisa alamatnya
+      const restOfAddress = cleanAddr.replace(plusCodeMatch[0], "").replace(/^[,\s]+|[,\s]+$/g, "").trim();
+      let ref = findDistrictReferencePoint(restOfAddress.toLowerCase());
+
+      // Jika belum ketemu di kamus lokal, coba cari titik koordinat area via geocoder OSM/Nominatim/Photon
+      if (!ref && restOfAddress.length >= 3) {
+        const areaRes = await geocodeWithOSM(restOfAddress);
+        if (areaRes && isValidOperationalCoordinate(areaRes.lat, areaRes.lng)) {
+          ref = { lat: areaRes.lat, lng: areaRes.lng };
+        }
+      }
+
+      // Fallback default jika tidak ada info wilayah sama sekali
+      if (!ref) {
+        // Cek apakah ada hint Malang/Batu di string alamat
+        const isMlg = /malang|batu|singosari|lawang|kepanjen|pujon|bumiaji|junrejo|dau/i.test(cleanAddr);
+        ref = isMlg ? { lat: -7.9797, lng: 112.6304 } : { lat: -6.7320, lng: 108.5520 };
+      }
+
+      const fullCode = OpenLocationCode.recoverNearest(rawCode, ref.lat, ref.lng);
       const decoded = OpenLocationCode.decode(fullCode);
       if (decoded && isValidOperationalCoordinate(decoded.latitudeCenter, decoded.longitudeCenter)) {
         return {
@@ -4308,32 +4585,44 @@ export function normalizeCheckinItem(item = {}) {
  * Calculates complete route distance & leg breakdown for a salesman's checkin visits
  */
 export function calculateSalesRouteMetrics(visitList, departureConfig = {}, salesNik = "") {
-  if (!visitList || !Array.isArray(visitList) || visitList.length === 0) {
-    const defaultKantor = (departureConfig && departureConfig.kantor_default) || { nama: "Kantor CV Andela Jaya Cirebon", gps: "-6.7320, 108.5520", type: "KANTOR" };
+  const normalizedVisits = (visitList && Array.isArray(visitList)) ? visitList.map(v => normalizeCheckinItem(v)) : [];
+  const sortedVisits = [...normalizedVisits].sort((a, b) => (a.waktu_checkin || "").localeCompare(b.waktu_checkin || ""));
+
+  // Check if salesman's visits are located in Malang / Batu region
+  const isMalangBatuRoute = sortedVisits.some(v => {
+    const gps = parseGpsCoordinates(v.koordinat_gps);
+    if (gps && gps.lng > 111.5 && gps.lat < -7.0 && gps.lat > -9.0) return true;
+    const txt = ((v.alamat_toko || "") + " " + (v.toko_outlet || "")).toLowerCase();
+    return /malang|batu|singosari|lawang|kepanjen|pujon|bumiaji|junrejo|dau|suhat|klojen|sukun|blimbing|sawojajar/i.test(txt);
+  });
+
+  const defaultKantorCirebon = { nama: "Kantor CV Andela Jaya Cirebon", gps: "-6.7320, 108.5520", type: "KANTOR" };
+  const defaultKantorMalang = { nama: "Kantor Hub Malang - CV Andela Jaya", gps: "-7.9520, 112.6320", type: "KANTOR" };
+  const regionalDefault = isMalangBatuRoute ? defaultKantorMalang : defaultKantorCirebon;
+  const defaultKantor = departureConfig.kantor_default || regionalDefault;
+
+  if (sortedVisits.length === 0) {
+    const fallbackPoint = { nama: defaultKantor.nama || regionalDefault.nama, gps: defaultKantor.gps || regionalDefault.gps, type: defaultKantor.type || "KANTOR" };
     return {
       totalKm: 0,
-      startPoint: { nama: defaultKantor.nama || "Kantor CV Andela Jaya", gps: defaultKantor.gps || "-6.7320, 108.5520", type: defaultKantor.type || "KANTOR" },
-      endPoint: { nama: defaultKantor.nama || "Kantor CV Andela Jaya", gps: defaultKantor.gps || "-6.7320, 108.5520", type: defaultKantor.type || "KANTOR" },
+      startPoint: fallbackPoint,
+      endPoint: fallbackPoint,
       legs: []
     };
   }
 
   const salesCfg = (departureConfig.sales_points && departureConfig.sales_points[salesNik]) || {};
-  const defaultKantor = departureConfig.kantor_default || { nama: "Kantor CV Andela Jaya Cirebon", gps: "-6.7320, 108.5520", type: "KANTOR" };
 
-  const startName = salesCfg.start_nama || defaultKantor.nama || "Kantor CV Andela Jaya Cirebon";
-  const startGps = salesCfg.start_gps || defaultKantor.gps || "-6.7320, 108.5520";
+  const startName = salesCfg.start_nama || (isMalangBatuRoute && !salesCfg.start_gps ? defaultKantorMalang.nama : defaultKantor.nama);
+  const startGps = salesCfg.start_gps || (isMalangBatuRoute && !salesCfg.start_gps ? defaultKantorMalang.gps : defaultKantor.gps);
   const startType = salesCfg.start_type || "KOSAN";
 
-  const endName = salesCfg.end_nama || defaultKantor.nama || "Kantor CV Andela Jaya Cirebon";
-  const endGps = salesCfg.end_gps || defaultKantor.gps || "-6.7320, 108.5520";
+  const endName = salesCfg.end_nama || (isMalangBatuRoute && !salesCfg.end_gps ? defaultKantorMalang.nama : defaultKantor.nama);
+  const endGps = salesCfg.end_gps || (isMalangBatuRoute && !salesCfg.end_gps ? defaultKantorMalang.gps : defaultKantor.gps);
   const endType = salesCfg.end_type || "KANTOR";
 
-  const startCoord = parseGpsCoordinates(startGps) || { lat: -6.7320, lng: 108.5520 };
-  const endCoord = parseGpsCoordinates(endGps) || { lat: -6.7320, lng: 108.5520 };
-
-  const normalizedVisits = visitList.map(v => normalizeCheckinItem(v));
-  const sortedVisits = [...normalizedVisits].sort((a, b) => (a.waktu_checkin || "").localeCompare(b.waktu_checkin || ""));
+  const startCoord = parseGpsCoordinates(startGps) || (isMalangBatuRoute ? { lat: -7.9520, lng: 112.6320 } : { lat: -6.7320, lng: 108.5520 });
+  const endCoord = parseGpsCoordinates(endGps) || (isMalangBatuRoute ? { lat: -7.9520, lng: 112.6320 } : { lat: -6.7320, lng: 108.5520 });
 
   const legs = [];
   let totalKm = 0;
@@ -4342,11 +4631,11 @@ export function calculateSalesRouteMetrics(visitList, departureConfig = {}, sale
 
   sortedVisits.forEach((visit, index) => {
     const tokoOutlet = visit.toko_outlet || `Outlet ${index + 1}`;
-    const alamatToko = visit.alamat_toko || "Cirebon";
-    const gpsVal = visit.koordinat_gps || "-6.7321, 108.5523";
+    const alamatToko = visit.alamat_toko || (isMalangBatuRoute ? "Malang/Batu" : "Cirebon");
+    const gpsVal = visit.koordinat_gps || (isMalangBatuRoute ? "-7.9797, 112.6304" : "-6.7321, 108.5523");
     let visitCoord = parseGpsCoordinates(gpsVal);
     if (!visitCoord || !isValidOperationalCoordinate(visitCoord.lat, visitCoord.lng)) {
-      visitCoord = { lat: -6.8850, lng: 109.0250 };
+      visitCoord = isMalangBatuRoute ? { lat: -7.9797, lng: 112.6304 } : { lat: -6.8850, lng: 109.0250 };
     }
     const dist = calcHaversineDistance(currentCoord.lat, currentCoord.lng, visitCoord.lat, visitCoord.lng);
     totalKm += dist;
@@ -4395,7 +4684,7 @@ export function calculateSalesRouteMetrics(visitList, departureConfig = {}, sale
       if (parsed && isValidOperationalCoordinate(parsed.lat, parsed.lng)) {
         return `${parsed.lat}, ${parsed.lng}`;
       }
-      return v.koordinat_gps || "-6.7321, 108.5523";
+      return v.koordinat_gps || (isMalangBatuRoute ? "-7.9797, 112.6304" : "-6.7321, 108.5523");
     }),
     legs: legs
   };

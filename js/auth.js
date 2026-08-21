@@ -58,7 +58,14 @@ export const MENU_CONFIG = [
  { id: "training", label: "Pelatihan", icon: "book", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"], subMenus: [
   { id: "tna_dashboard", label: "Program Pelatihan" }
  ] },
- { id: "pemanggilan", label: "Disiplin & SP", icon: "alert", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN"] },
+ { id: "konseling-coaching", label: "Konseling & Coaching", icon: "user-plus", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"], subMenus: [
+    { id: "dashboard", label: "Dashboard Kasus" },
+    { id: "case_management", label: "Manajemen Kasus" },
+    { id: "action_plan", label: "Action Plan" },
+    { id: "follow_up", label: "Jadwal Follow-up" },
+    { id: "reports", label: "Laporan & Rekap" }
+  ] },
+  { id: "pemanggilan", label: "Disiplin & SP", icon: "alert", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN"] },
  { id: "dokumen", label: "Dokumen", icon: "doc-plus", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN"] },
 
  // KATEGORI: KEUANGAN
