@@ -27,14 +27,19 @@ export async function mount(container, { session }) {
  }
 
  let allKaryawan = [];
+ let allCuti = [];
 
  // ==========================================
  // 1. MEMUAT & MENAMPILKAN DATA KARYAWAN
  // ==========================================
  async function loadData() {
- const data = await fsGetAll(COL.MASTER_KARYAWAN);
- allKaryawan = data.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF");
+ const [dataKaryawan, dataCuti] = await Promise.all([
+   fsGetAll(COL.MASTER_KARYAWAN),
+   fsGetAll(COL.MASTER_CUTI)
+ ]);
+ allKaryawan = dataKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF");
  allKaryawan.sort((a,b) => (a.nama_karyawan||"").localeCompare(b.nama_karyawan||""));
+ allCuti = dataCuti || [];
 
  if (allKaryawan.length === 0) {
  tbody.innerHTML = `<tr><td colspan="6">${emptyState("Belum ada data karyawan aktif.")}</td></tr>`;
@@ -55,10 +60,8 @@ export async function mount(container, { session }) {
  }
  }
 
- const calc = getCalculatedJatahCuti(k);
- const jTahunan = calc.jatahTahunan;
- const jKhusus = calc.jatahKhusus;
- const jAkumulasi = calc.jatahAkumulasi;
+ const empCuti = allCuti.filter(c => c.nama_karyawan === k.nama_karyawan || (k.nik && c.nik === k.nik));
+ const calc = getCalculatedJatahCuti(k, empCuti);
 
  return `
  <tr class="hover:bg-slate-50/50 transition">
@@ -66,13 +69,34 @@ export async function mount(container, { session }) {
  <p class="font-bold text-slate-800">${escapeHtml(k.nama_karyawan)}</p>
  <p class="text-[11px] text-slate-400 font-medium">${escapeHtml(k.nik || k.nik_karyawan || "-")}</p>
  </td>
- <td class="py-3 px-4 text-slate-600 font-medium">${masaKerjaStr}</td>
- <td class="py-3 px-4 text-center"><span class="bg-blue-100 text-blue-800 font-bold px-3 py-1 rounded-lg">${jTahunan}</span></td>
- <td class="py-3 px-4 text-center"><span class="bg-purple-100 text-purple-800 font-bold px-3 py-1 rounded-lg">${jKhusus}</span></td>
+ <td class="py-3 px-4 text-slate-600 font-medium text-xs">${masaKerjaStr}</td>
+ 
+ <!-- CUTI TAHUNAN -->
  <td class="py-3 px-4 text-center">
- <span class="bg-amber-100 text-amber-800 font-bold px-3 py-1 rounded-lg">${jAkumulasi}</span>
- ${k.cuti_akumulasi_expired ? `<p class="text-[10px] text-amber-600 mt-1">Hangus stlh ${escapeHtml(k.cuti_akumulasi_expired)}</p>` : ""}
+ <div class="inline-flex flex-col items-center">
+ <span class="bg-blue-100 text-blue-800 font-bold px-2.5 py-0.5 rounded-lg text-xs">Sisa: ${calc.sisaTahunan} Hari</span>
+ <span class="text-[10px] text-slate-500 mt-1">Awal: <strong>${calc.jatahTahunan}</strong> • Pakai: <strong class="text-amber-700">${calc.usedTahunan}</strong></span>
+ </div>
  </td>
+
+ <!-- CUTI KHUSUS -->
+ <td class="py-3 px-4 text-center">
+ <div class="inline-flex flex-col items-center">
+ <span class="bg-purple-100 text-purple-800 font-bold px-2.5 py-0.5 rounded-lg text-xs">Sisa: ${calc.sisaKhusus} Hari</span>
+ <span class="text-[10px] text-slate-500 mt-1">Awal: <strong>${calc.jatahKhusus}</strong> • Pakai: <strong class="text-amber-700">${calc.usedKhusus}</strong></span>
+ </div>
+ </td>
+
+ <!-- CARRYOVER AKUMULASI -->
+ <td class="py-3 px-4 text-center">
+ <div class="inline-flex flex-col items-center">
+ <span class="bg-amber-100 text-amber-800 font-bold px-2.5 py-0.5 rounded-lg text-xs">Sisa: ${calc.sisaAkumulasi} Hari</span>
+ <span class="text-[10px] text-slate-500 mt-1">Awal: <strong>${calc.jatahAkumulasi}</strong> • Pakai: <strong class="text-amber-700">${calc.usedAkumulasi}</strong></span>
+ ${k.cuti_akumulasi_expired ? `<p class="text-[9px] text-amber-600 mt-0.5 font-medium">Hangus stlh ${escapeHtml(k.cuti_akumulasi_expired)}</p>` : ""}
+ </div>
+ </td>
+
+ <!-- SISA CUTI TAHUN LALU (INPUT MANUAL) -->
  <td class="py-3 px-4 text-center">
  <input type="number" step="0.5" min="0" data-sisa-lalu="${k.id}"
  value="${k.sisa_cuti_tahun_lalu ?? ""}" placeholder="Belum diisi"
@@ -243,27 +267,26 @@ export async function mount(container, { session }) {
 
   // A. LOGIKA CUTI TAHUNAN
   if (diffMonths >= 12) {
-  jTahunanBaru = 12;
-  if (tenureYears >= 11) jTahunanBaru += 4;
-  else if (tenureYears >= 10) jTahunanBaru += 3;
-  else if (tenureYears >= 8) jTahunanBaru += 2;
-  else if (tenureYears >= 6) jTahunanBaru += 1;
+    if (tenureYears >= 10 || diffMonths >= 120) jTahunanBaru = 16;
+    else if (tenureYears >= 8 || diffMonths >= 96) jTahunanBaru = 14;
+    else if (tenureYears >= 6 || diffMonths >= 72) jTahunanBaru = 13;
+    else jTahunanBaru = 12;
   } else if (diffMonths >= 3) {
-  jTahunanBaru = diffMonths;
+    jTahunanBaru = diffMonths;
   } else {
-  jTahunanBaru = 0;
+    jTahunanBaru = 0;
   }
 
   // B. LOGIKA PERSENTASE CARRYOVER SISA CUTI TAHUNAN
   // - 0 s/d < 3 tahun: 0%
   // - 3 s/d < 5 tahun: 50%
   // - 5 tahun ke atas: 100%
-  if (tenureYears >= 5) {
-  jAkumulasiBaru = Math.floor(totalSisaUntukCarry * 1.0);
-  } else if (tenureYears >= 3) {
-  jAkumulasiBaru = Math.floor(totalSisaUntukCarry * 0.5);
+  if (tenureYears >= 5 || diffMonths >= 60) {
+    jAkumulasiBaru = Math.floor(totalSisaUntukCarry * 1.0);
+  } else if (tenureYears >= 3 || diffMonths >= 36) {
+    jAkumulasiBaru = Math.floor(totalSisaUntukCarry * 0.5);
   } else {
-  jAkumulasiBaru = 0;
+    jAkumulasiBaru = 0;
   }
   } else {
   jTahunanBaru = 12;
