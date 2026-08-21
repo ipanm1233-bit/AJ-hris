@@ -5,106 +5,320 @@
       "description": "User account profile",
       "type": "object",
       "properties": {
-        "username": { "type": "string" },
-        "nama": { "type": "string" },
-        "email": { "type": "string" },
-        "role": { "type": "string" },
-        "cabang": { "type": "string" },
-        "fcm_token": { "type": "string" }
+        "username": {
+          "type": "string"
+        },
+        "nama": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "cabang": {
+          "type": "string"
+        },
+        "fcm_token": {
+          "type": "string"
+        }
       },
-      "required": ["username", "nama", "role"]
+      "required": [
+        "username",
+        "nama",
+        "role"
+      ]
     },
     "DataPengajuan": {
       "title": "DataPengajuan",
       "description": "Employee requests and claim submissions",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "nama_pemohon": { "type": "string" },
-        "nik": { "type": "string" },
-        "cabang": { "type": "string" },
-        "form_id": { "type": "string" },
-        "nama_form": { "type": "string" },
-        "status_final": { "type": "string" },
-        "tgl": { "type": "string" }
+        "id": {
+          "type": "string"
+        },
+        "nama_pemohon": {
+          "type": "string"
+        },
+        "nik": {
+          "type": "string"
+        },
+        "cabang": {
+          "type": "string"
+        },
+        "form_id": {
+          "type": "string"
+        },
+        "nama_form": {
+          "type": "string"
+        },
+        "status_final": {
+          "type": "string"
+        },
+        "tgl": {
+          "type": "string"
+        }
       },
-      "required": ["id", "nama_pemohon", "form_id"]
+      "required": [
+        "id",
+        "nama_pemohon",
+        "form_id"
+      ]
     },
     "Notification": {
       "title": "Notification",
       "description": "In-app notifications",
       "type": "object",
       "properties": {
-        "username_target": { "type": "string" },
-        "judul": { "type": "string" },
-        "pesan": { "type": "string" },
-        "dibaca": { "type": "boolean" },
-        "tanggal": { "type": "string" }
+        "username_target": {
+          "type": "string"
+        },
+        "judul": {
+          "type": "string"
+        },
+        "pesan": {
+          "type": "string"
+        },
+        "dibaca": {
+          "type": "boolean"
+        },
+        "tanggal": {
+          "type": "string"
+        }
       },
-      "required": ["username_target", "judul", "pesan"]
+      "required": [
+        "username_target",
+        "judul",
+        "pesan"
+      ]
     },
     "MasterReimbursementType": {
       "title": "MasterReimbursementType",
       "description": "Reimbursement type configuration and limits",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "nama_jenis": { "type": "string" },
-        "plafon_mingguan": { "type": "number" },
-        "plafon_bulanan": { "type": "number" },
-        "plafon_tahunan": { "type": "number" },
-        "hak_akses": { "type": "array", "items": { "type": "string" } },
-        "wajib_bukti": { "type": "boolean" },
-        "keterangan": { "type": "string" },
-        "aktif": { "type": "boolean" }
+        "id": {
+          "type": "string"
+        },
+        "nama_jenis": {
+          "type": "string"
+        },
+        "plafon_mingguan": {
+          "type": "number"
+        },
+        "plafon_bulanan": {
+          "type": "number"
+        },
+        "plafon_tahunan": {
+          "type": "number"
+        },
+        "hak_akses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "wajib_bukti": {
+          "type": "boolean"
+        },
+        "keterangan": {
+          "type": "string"
+        },
+        "aktif": {
+          "type": "boolean"
+        }
       },
-      "required": ["nama_jenis"]
+      "required": [
+        "nama_jenis"
+      ]
     },
     "DataReimbursement": {
       "title": "DataReimbursement",
       "description": "Employee financial reimbursement claims",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "nama_karyawan": { "type": "string" },
-        "nik": { "type": "string" },
-        "cabang": { "type": "string" },
-        "divisi": { "type": "string" },
-        "jabatan": { "type": "string" },
-        "id_jenis": { "type": "string" },
-        "nama_jenis": { "type": "string" },
-        "nominal": { "type": "number" },
-        "tanggal_pengeluaran": { "type": "string" },
-        "keterangan": { "type": "string" },
-        "bukti_url": { "type": "string" },
-        "status": { "type": "string" },
-        "approved_by": { "type": "string" },
-        "approved_at": { "type": "string" },
-        "paid_at": { "type": "string" },
-        "catatan_approval": { "type": "string" }
+        "id": {
+          "type": "string"
+        },
+        "nama_karyawan": {
+          "type": "string"
+        },
+        "nik": {
+          "type": "string"
+        },
+        "cabang": {
+          "type": "string"
+        },
+        "divisi": {
+          "type": "string"
+        },
+        "jabatan": {
+          "type": "string"
+        },
+        "id_jenis": {
+          "type": "string"
+        },
+        "nama_jenis": {
+          "type": "string"
+        },
+        "nominal": {
+          "type": "number"
+        },
+        "tanggal_pengeluaran": {
+          "type": "string"
+        },
+        "keterangan": {
+          "type": "string"
+        },
+        "bukti_url": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "approved_by": {
+          "type": "string"
+        },
+        "approved_at": {
+          "type": "string"
+        },
+        "paid_at": {
+          "type": "string"
+        },
+        "catatan_approval": {
+          "type": "string"
+        }
       },
-      "required": ["nama_karyawan", "nama_jenis", "nominal", "status"]
+      "required": [
+        "nama_karyawan",
+        "nama_jenis",
+        "nominal",
+        "status"
+      ]
+    },
+    "HRCase": {
+      "title": "HRCase",
+      "description": "Employee counseling and coaching case records",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "case_number": {
+          "type": "string"
+        },
+        "nama_karyawan": {
+          "type": "string"
+        },
+        "nik": {
+          "type": "string"
+        },
+        "case_type": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "incident_date": {
+          "type": "string"
+        },
+        "report_date": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "nama_karyawan",
+        "case_type",
+        "status"
+      ]
+    },
+    "HRCaseActionPlan": {
+      "title": "HRCaseActionPlan",
+      "description": "Action plan items for employee development and coaching cases",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "case_id": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "target_date": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "description",
+        "target_date"
+      ]
+    },
+    "HRCaseFollowup": {
+      "title": "HRCaseFollowup",
+      "description": "Followup monitoring and progress evaluations for employee coaching cases",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "case_id": {
+          "type": "string"
+        },
+        "followup_date": {
+          "type": "string"
+        },
+        "improvement_status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "followup_date"
+      ]
     }
   },
   "firestore": {
     "/users/{userId}": {
-      "schema": { "$ref": "#/entities/User" },
+      "schema": {
+        "$ref": "#/entities/User"
+      },
       "description": "User accounts"
     },
     "/data_pengajuan/{pengajuanId}": {
-      "schema": { "$ref": "#/entities/DataPengajuan" },
+      "schema": {
+        "$ref": "#/entities/DataPengajuan"
+      },
       "description": "Submissions and claims"
     },
     "/notifications/{notifId}": {
-      "schema": { "$ref": "#/entities/Notification" },
+      "schema": {
+        "$ref": "#/entities/Notification"
+      },
       "description": "Notifications"
     },
     "/master_reimbursement_type/{typeId}": {
-      "schema": { "$ref": "#/entities/MasterReimbursementType" },
+      "schema": {
+        "$ref": "#/entities/MasterReimbursementType"
+      },
       "description": "Reimbursement type configurations"
     },
     "/data_reimbursement/{reimbursementId}": {
-      "schema": { "$ref": "#/entities/DataReimbursement" },
+      "schema": {
+        "$ref": "#/entities/DataReimbursement"
+      },
       "description": "Employee reimbursement claims"
     },
     "/master_karyawan/{karyawanId}": {
@@ -122,6 +336,24 @@
     "/login_tokens/{tokenId}": {
       "schema": "object",
       "description": "One-time login tokens"
+    },
+    "/hr_cases/{caseId}": {
+      "schema": {
+        "": "#/entities/HRCase"
+      },
+      "description": "HR counseling, coaching, and disciplinary cases"
+    },
+    "/hr_case_action_plans/{planId}": {
+      "schema": {
+        "": "#/entities/HRCaseActionPlan"
+      },
+      "description": "Action plans associated with HR cases"
+    },
+    "/hr_case_followups/{followupId}": {
+      "schema": {
+        "": "#/entities/HRCaseFollowup"
+      },
+      "description": "Follow-up logs for HR cases"
     }
   }
 }
