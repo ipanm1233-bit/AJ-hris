@@ -2063,35 +2063,23 @@ export async function downloadFormCutiPdf(item) {
 
 		if (sisaTahunan === null || sisaTahunan === undefined) {
 			try {
-				const allEmp = await fsGetAll(COL.MASTER_KARYAWAN);
+				const [allEmp, allMasterCuti] = await Promise.all([
+					fsGetAll(COL.MASTER_KARYAWAN),
+					fsGetAll(COL.MASTER_CUTI)
+				]);
 				const kData = allEmp.find(k => 
 					(k.nama_karyawan || "").trim().toLowerCase() === (namaKaryawan || "").trim().toLowerCase() ||
 					(nik !== "-" && String(k.nik || k.nik_karyawan) === String(nik))
 				);
+				const empCuti = allMasterCuti.filter(d => 
+					(d.nama_karyawan || "").trim().toLowerCase() === (namaKaryawan || "").trim().toLowerCase() ||
+					(nik !== "-" && String(d.nik || d.nik_karyawan) === String(nik))
+				);
 
-				const calc = getCalculatedJatahCuti(kData);
-				let jatahTahunan = calc.jatahTahunan;
-				let jatahAkumulasi = calc.jatahAkumulasi;
-				let jatahKhusus = calc.jatahKhusus;
-
-				let terpakaiTahunan = 0, terpakaiAkumulasi = 0, terpakaiKhusus = 0;
-				const currentYear = new Date().getFullYear();
-				const allMasterCuti = await fsGetAll(COL.MASTER_CUTI);
-
-				allMasterCuti.forEach(d => {
-					if ((d.nama_karyawan || "").trim().toLowerCase() !== (namaKaryawan || "").trim().toLowerCase()) return;
-					const rowYear = parseInt(d.tahun) || (d.tanggal ? new Date(d.tanggal).getFullYear() : currentYear);
-					if (rowYear !== currentYear) return;
-					const p = d.potong_jatah || "Tahunan";
-					const cnt = parseFloat(d.count) || 1;
-					if (p === "Tahunan") terpakaiTahunan += cnt;
-					else if (p === "Akumulasi") terpakaiAkumulasi += cnt;
-					else if (p === "Khusus") terpakaiKhusus += cnt;
-				});
-
-				sisaTahunan = Math.max(0, jatahTahunan - terpakaiTahunan);
-				sisaKhusus = Math.max(0, jatahKhusus - terpakaiKhusus);
-				sisaAkumulasi = Math.max(0, jatahAkumulasi - terpakaiAkumulasi);
+				const calc = getCalculatedJatahCuti(kData, empCuti);
+				sisaTahunan = calc.sisaTahunan;
+				sisaKhusus = calc.sisaKhusus;
+				sisaAkumulasi = calc.sisaAkumulasi;
 			} catch (errCalc) {
 				sisaTahunan = 0;
 				sisaKhusus = 0;
@@ -2162,35 +2150,23 @@ export async function printFormCutiFisik(item) {
 
 		if (sisaTahunan === null || sisaTahunan === undefined) {
 			try {
-				const allEmp = await fsGetAll(COL.MASTER_KARYAWAN);
+				const [allEmp, allMasterCuti] = await Promise.all([
+					fsGetAll(COL.MASTER_KARYAWAN),
+					fsGetAll(COL.MASTER_CUTI)
+				]);
 				const kData = allEmp.find(k => 
 					(k.nama_karyawan || "").trim().toLowerCase() === (namaKaryawan || "").trim().toLowerCase() ||
 					(nik !== "-" && String(k.nik || k.nik_karyawan) === String(nik))
 				);
+				const empCuti = allMasterCuti.filter(d => 
+					(d.nama_karyawan || "").trim().toLowerCase() === (namaKaryawan || "").trim().toLowerCase() ||
+					(nik !== "-" && String(d.nik || d.nik_karyawan) === String(nik))
+				);
 
-				const calc = getCalculatedJatahCuti(kData);
-				let jatahTahunan = calc.jatahTahunan;
-				let jatahAkumulasi = calc.jatahAkumulasi;
-				let jatahKhusus = calc.jatahKhusus;
-
-				let terpakaiTahunan = 0, terpakaiAkumulasi = 0, terpakaiKhusus = 0;
-				const currentYear = new Date().getFullYear();
-				const allMasterCuti = await fsGetAll(COL.MASTER_CUTI);
-
-				allMasterCuti.forEach(d => {
-					if ((d.nama_karyawan || "").trim().toLowerCase() !== (namaKaryawan || "").trim().toLowerCase()) return;
-					const rowYear = parseInt(d.tahun) || (d.tanggal ? new Date(d.tanggal).getFullYear() : currentYear);
-					if (rowYear !== currentYear) return;
-					const p = d.potong_jatah || "Tahunan";
-					const cnt = parseFloat(d.count) || 1;
-					if (p === "Tahunan") terpakaiTahunan += cnt;
-					else if (p === "Akumulasi") terpakaiAkumulasi += cnt;
-					else if (p === "Khusus") terpakaiKhusus += cnt;
-				});
-
-				sisaTahunan = Math.max(0, jatahTahunan - terpakaiTahunan);
-				sisaKhusus = Math.max(0, jatahKhusus - terpakaiKhusus);
-				sisaAkumulasi = Math.max(0, jatahAkumulasi - terpakaiAkumulasi);
+				const calc = getCalculatedJatahCuti(kData, empCuti);
+				sisaTahunan = calc.sisaTahunan;
+				sisaKhusus = calc.sisaKhusus;
+				sisaAkumulasi = calc.sisaAkumulasi;
 			} catch (errCalc) {
 				console.warn("Could not calculate dynamic sisa cuti:", errCalc);
 				sisaTahunan = 0;
@@ -3220,6 +3196,109 @@ export function calculateCarryoverJatah(sisaCutiTahunLalu, tanggalJoin, refDate 
   return Math.floor(sisa * pct);
 }
 
+/**
+ * Mengklasifikasikan transaksi riwayat cuti ke kategori pemotongan jatah yang tepat:
+ * - "Tahunan" (Cuti Tahunan, Cuti Setengah Hari, Cuti Bersama, Sakit tanpa surat dokter)
+ * - "Khusus" (Cuti Khusus / Alasan Penting, e.g. Pernikahan, Melahirkan, Kematian, Khitanan)
+ * - "Akumulasi" (Cuti Sisa / Carryover akumulasi tahun lalu)
+ * - "Tidak Dipotong" (Sakit dgn Surat Dokter, Dinas Luar Kota, Cuti Besar)
+ * - "Potong Gaji" (Unpaid Leave / Cuti Potong Gaji)
+ */
+export function getCutiDeductionCategory(r) {
+  if (!r) return { category: "Tahunan", isDeducted: true, count: 1 };
+
+  // 1. Deteksi Cuti Potong Gaji (Unpaid Leave)
+  const isPotongGaji = Boolean(
+    r.is_potong_gaji || 
+    r.potong_gaji || 
+    (r.detail && (r.detail.is_potong_gaji || r.detail.potong_gaji)) ||
+    (r.potong_jatah && String(r.potong_jatah).toLowerCase().includes("gaji")) ||
+    (r.tipe_potong && String(r.tipe_potong).toLowerCase().includes("gaji")) ||
+    (r.type_cuti && String(r.type_cuti).toLowerCase().includes("potong gaji")) ||
+    (r.kategori_cuti && String(r.kategori_cuti).toLowerCase().includes("potong gaji")) ||
+    (r.jenis_cuti && String(r.jenis_cuti).toLowerCase().includes("potong gaji"))
+  );
+  if (isPotongGaji) {
+    return { category: "Potong Gaji", isDeducted: false, count: 0 };
+  }
+
+  const potongRaw = String(r.potong_jatah || r.tipe_potong || "").trim().toLowerCase();
+  const typeStr = String(
+    r.type_cuti || 
+    r.kategori_cuti || 
+    r.jenis_cuti || 
+    (r.detail && (r.detail.jenis_cuti || r.detail.kategori_cuti || r.detail.type_cuti)) || 
+    ""
+  ).trim().toLowerCase();
+
+  // 2. Deteksi Tidak Dipotong (Sakit Surat Dokter, Dinas Luar Kota, Cuti Besar)
+  if (
+    potongRaw === "tidak dipotong" || 
+    potongRaw.includes("tidak") || 
+    potongRaw.includes("bebas") ||
+    typeStr.startsWith("s -") || 
+    typeStr.startsWith("s - ") ||
+    (typeStr.includes("surat dokter") && !typeStr.includes("tanpa surat dokter")) ||
+    typeStr.startsWith("d -") ||
+    typeStr.startsWith("d - ") ||
+    typeStr.includes("dinas") ||
+    typeStr.startsWith("c-besar") ||
+    typeStr.includes("cuti besar") ||
+    typeStr.includes("umroh") ||
+    typeStr.includes("haji")
+  ) {
+    return { category: "Tidak Dipotong", isDeducted: false, count: 0 };
+  }
+
+  // 3. Deteksi Cuti Khusus / Alasan Penting
+  if (
+    potongRaw === "khusus" || 
+    potongRaw.includes("khusus") ||
+    typeStr.startsWith("c+") || 
+    typeStr.startsWith("c +") ||
+    typeStr.includes("cuti khusus") ||
+    typeStr.includes("alasan penting") ||
+    typeStr.includes("pernikahan") ||
+    typeStr.includes("melahirkan") ||
+    typeStr.includes("keguguran") ||
+    typeStr.includes("kematian") ||
+    typeStr.includes("khitanan") ||
+    typeStr.includes("baptis")
+  ) {
+    let count = parseFloat(r.count || r.jumlah_hari || (r.detail && r.detail.jumlah_hari)) || 1;
+    if (typeStr.includes("1/2") || typeStr.includes("setengah hari")) count = 0.5;
+    return { category: "Khusus", isDeducted: true, count };
+  }
+
+  // 4. Deteksi Cuti Akumulasi / Carryover / Cuti Sisa Tahun Lalu
+  if (
+    potongRaw === "akumulasi" || 
+    potongRaw.includes("akumulasi") ||
+    potongRaw === "sisa" ||
+    potongRaw.includes("carry") ||
+    typeStr.startsWith("cs -") || 
+    typeStr.startsWith("cs-") ||
+    typeStr.startsWith("cs ") ||
+    typeStr === "cs" ||
+    typeStr.includes("cuti sisa") ||
+    typeStr.includes("akumulasi") ||
+    typeStr.includes("carryover") ||
+    typeStr.includes("carry over") ||
+    typeStr.includes("tahun lalu")
+  ) {
+    let count = parseFloat(r.count || r.jumlah_hari || (r.detail && r.detail.jumlah_hari)) || 1;
+    if (typeStr.includes("1/2") || typeStr.includes("setengah hari")) count = 0.5;
+    return { category: "Akumulasi", isDeducted: true, count };
+  }
+
+  // 5. Standar Cuti Tahunan (Cuti Tahunan, Setengah Hari, Cuti Bersama, Sakit Tanpa Surat Dokter)
+  let count = parseFloat(r.count || r.jumlah_hari || (r.detail && r.detail.jumlah_hari)) || 1;
+  if (typeStr.includes("1/2") || typeStr.includes("setengah hari") || typeStr.startsWith("c1/2")) {
+    count = 0.5;
+  }
+  return { category: "Tahunan", isDeducted: true, count };
+}
+
 export function getCalculatedJatahCuti(emp, cutiRecords = null) {
   if (!emp) return { jatahTahunan: 12, jatahKhusus: 4, jatahAkumulasi: 0, usedTahunan: 0, usedKhusus: 0, usedAkumulasi: 0, terpakaiTahunan: 0, terpakaiKhusus: 0, terpakaiAkumulasi: 0, sisaTahunan: 12, sisaKhusus: 4, sisaAkumulasi: 0 };
 
@@ -3311,27 +3390,15 @@ export function getCalculatedJatahCuti(emp, cutiRecords = null) {
       const rowYear = parseInt(r.tahun) || (r.tanggal ? new Date(r.tanggal).getFullYear() : currentYear);
       if (rowYear !== currentYear) return;
 
-      const count = parseFloat(r.count || r.jumlah_hari) || 0;
-      if (count <= 0) return;
+      const deduction = getCutiDeductionCategory(r);
+      if (!deduction.isDeducted || deduction.count <= 0) return;
 
-      const isPotongGaji = r.is_potong_gaji || (r.potong_jatah || "").toLowerCase().includes("gaji") || (r.type_cuti || "").toLowerCase().includes("potong gaji");
-      if (isPotongGaji) return;
-
-      const potong = (r.potong_jatah || "").toLowerCase();
-      const typeStr = (r.type_cuti || "").toLowerCase();
-
-      if (potong.includes("tahunan") || potong === "tahunan" || typeStr.startsWith("c -") || typeStr.startsWith("c1/2") || typeStr.startsWith("cb -") || typeStr.startsWith("s- -")) {
-        usedTahunan += count;
-      } else if (potong.includes("khusus") || potong === "khusus" || typeStr.startsWith("c+")) {
-        usedKhusus += count;
-      } else if (potong.includes("akumulasi") || potong.includes("sisa") || typeStr.startsWith("cs -")) {
-        usedAkumulasi += count;
-      } else if (!r.potong_jatah) {
-        if (typeStr.includes("khusus")) usedKhusus += count;
-        else if (typeStr.includes("sisa") || typeStr.includes("akumulasi")) usedAkumulasi += count;
-        else if (!typeStr.includes("tidak dipotong") && !typeStr.includes("surat dokter") && !typeStr.includes("dinas") && !typeStr.includes("besar")) {
-          usedTahunan += count;
-        }
+      if (deduction.category === "Tahunan") {
+        usedTahunan += deduction.count;
+      } else if (deduction.category === "Khusus") {
+        usedKhusus += deduction.count;
+      } else if (deduction.category === "Akumulasi") {
+        usedAkumulasi += deduction.count;
       }
     });
   }
