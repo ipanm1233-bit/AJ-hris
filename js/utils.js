@@ -3192,6 +3192,34 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
 /* ---------------------------------------------------------------------
  * PERHITUNGAN JATAH CUTI SESUAI SK No.018/HRGA-AJ/XII/2024
  * ------------------------------------------------------------------- */
+export function getCarryoverPercentage(tanggalJoin, refDate = new Date()) {
+  if (!tanggalJoin) return 0;
+  const join = smartParseDate(tanggalJoin);
+  if (!join || isNaN(join.getTime())) return 0;
+  const ref = refDate instanceof Date ? refDate : new Date(refDate);
+  const diffMonths = (ref.getFullYear() - join.getFullYear()) * 12 + (ref.getMonth() - join.getMonth());
+  const tenureYears = diffMonths / 12;
+
+  // Ketentuan Persentase Carryover Cuti Akumulasi berdasarkan Masa Kerja:
+  // - 0 s/d di bawah 3 tahun (< 3 tahun): 0%
+  // - 3 tahun s/d di bawah 5 tahun (3 <= tenure < 5): 50%
+  // - 5 tahun ke atas (tenure >= 5): 100%
+  if (tenureYears >= 5) {
+    return 1.0;
+  } else if (tenureYears >= 3) {
+    return 0.5;
+  } else {
+    return 0;
+  }
+}
+
+export function calculateCarryoverJatah(sisaCutiTahunLalu, tanggalJoin, refDate = new Date()) {
+  const sisa = parseFloat(sisaCutiTahunLalu);
+  if (isNaN(sisa) || sisa <= 0) return 0;
+  const pct = getCarryoverPercentage(tanggalJoin, refDate);
+  return Math.floor(sisa * pct);
+}
+
 export function getCalculatedJatahCuti(emp, cutiRecords = null) {
   if (!emp) return { jatahTahunan: 12, jatahKhusus: 4, jatahAkumulasi: 0, usedTahunan: 0, usedKhusus: 0, usedAkumulasi: 0, sisaTahunan: 12, sisaKhusus: 4, sisaAkumulasi: 0 };
 
@@ -3209,12 +3237,15 @@ export function getCalculatedJatahCuti(emp, cutiRecords = null) {
     ? toNumber(explicitAkumulasi) 
     : 0;
 
+  let tenureYears = 0;
+  let diffMonths = 0;
+
   if (emp.tanggal_join) {
     const join = smartParseDate(emp.tanggal_join);
     if (join) {
       const now = new Date();
-      const diffMonths = (now.getFullYear() - join.getFullYear()) * 12 + (now.getMonth() - join.getMonth());
-      const tenureYears = diffMonths / 12;
+      diffMonths = (now.getFullYear() - join.getFullYear()) * 12 + (now.getMonth() - join.getMonth());
+      tenureYears = diffMonths / 12;
 
       if (diffMonths >= 12) {
         let base = 12;
@@ -3243,6 +3274,26 @@ export function getCalculatedJatahCuti(emp, cutiRecords = null) {
 
   if (jatahTahunan === null || jatahTahunan === undefined) {
     jatahTahunan = 12;
+  }
+
+  // LOGIKA CUTI AKUMULASI (CARRYOVER):
+  // Dihitung dari sisa cuti tahun lalu dikalikan persentase masa kerja:
+  // - 0 s/d di bawah 3 tahun: 0%
+  // - 3 s/d di bawah 5 tahun: 50%
+  // - 5 tahun ke atas: 100%
+  // Jika terdapat sisa_cuti_tahun_lalu (input manual / import), hitung langsung sesuai ketentuan
+  if (emp.sisa_cuti_tahun_lalu !== undefined && emp.sisa_cuti_tahun_lalu !== null && emp.sisa_cuti_tahun_lalu !== "") {
+    const sisaLalu = parseFloat(emp.sisa_cuti_tahun_lalu) || 0;
+    if (tenureYears >= 5) {
+      jatahAkumulasi = Math.floor(sisaLalu * 1.0);
+    } else if (tenureYears >= 3) {
+      jatahAkumulasi = Math.floor(sisaLalu * 0.5);
+    } else {
+      jatahAkumulasi = 0;
+    }
+  } else if (emp.tanggal_join && tenureYears < 3) {
+    // Masa kerja 0 s/d di bawah 3 tahun tidak berhak atas cuti akumulasi (0%)
+    jatahAkumulasi = 0;
   }
 
   let usedTahunan = 0;

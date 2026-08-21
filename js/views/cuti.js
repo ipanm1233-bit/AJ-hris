@@ -1,5 +1,5 @@
 import { db, COL, collection, getDocs, doc, setDoc, getDoc, updateDoc } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort, confirmDialog, sendEmailNotif, notifyUser, getTargetsForRole, generateAndSaveCutiDocument, printFormCutiFisik, downloadFormCutiPdf, generateStandardFormCutiHtml, smartParseDate, getCalculatedJatahCuti } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort, confirmDialog, sendEmailNotif, notifyUser, getTargetsForRole, generateAndSaveCutiDocument, printFormCutiFisik, downloadFormCutiPdf, generateStandardFormCutiHtml, smartParseDate, getCalculatedJatahCuti, getCarryoverPercentage, calculateCarryoverJatah } from "../utils.js";
 import { avatar, emptyState, skeletonRows, badge } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
@@ -299,20 +299,34 @@ export async function mount(container, { session }) {
  `;
  }).join("");
 
- tbody.querySelectorAll("[data-sisa-lalu]").forEach(inp => {
- inp.addEventListener("change", async () => {
- const id = inp.dataset.sisaLalu;
- const val = inp.value === "" ? null : (parseFloat(inp.value) || 0);
- try {
- await updateDoc(doc(db, COL.MASTER_KARYAWAN, id), { sisa_cuti_tahun_lalu: val });
- const emp = allKaryawan.find(k => k.id === id);
- if (emp) emp.sisa_cuti_tahun_lalu = val;
- toast("Sisa cuti tahun lalu tersimpan", "success");
- } catch (e) {
- toast("Gagal menyimpan: " + e.message, "error");
- }
- });
- });
+    tbody.querySelectorAll("[data-sisa-lalu]").forEach(inp => {
+      inp.addEventListener("change", async () => {
+        const id = inp.dataset.sisaLalu;
+        const val = inp.value === "" ? null : (parseFloat(inp.value) || 0);
+        try {
+          const emp = allKaryawan.find(k => k.id === id);
+          let jAkumulasiBaru = 0;
+          if (val !== null && val > 0 && emp) {
+            jAkumulasiBaru = calculateCarryoverJatah(val, emp.tanggal_join);
+          }
+          await updateDoc(doc(db, COL.MASTER_KARYAWAN, id), { 
+            sisa_cuti_tahun_lalu: val,
+            jatah_cuti_akumulasi: jAkumulasiBaru,
+            jatah_akumulasi: jAkumulasiBaru
+          });
+          if (emp) {
+            emp.sisa_cuti_tahun_lalu = val;
+            emp.jatah_cuti_akumulasi = jAkumulasiBaru;
+            emp.jatah_akumulasi = jAkumulasiBaru;
+          }
+          toast("Sisa cuti tahun lalu dan jatah akumulasi berhasil diperbarui", "success");
+          renderTable(allKaryawan);
+          renderCards(allKaryawan);
+        } catch (e) {
+          toast("Gagal menyimpan: " + e.message, "error");
+        }
+      });
+    });
  }
 
  if (searchInput) {
@@ -352,129 +366,146 @@ export async function mount(container, { session }) {
  btnImport.disabled = true;
  btnImport.textContent = "Memproses...";
 
- let updateCount = 0;
- for (const row of json) {
- const nik = row["NIK"];
- const nama = row["Nama Karyawan"];
- if (!nik && !nama) continue;
+          let updateCount = 0;
+          for (const row of json) {
+            const nik = row["NIK"];
+            const nama = row["Nama Karyawan"];
+            if (!nik && !nama) continue;
 
- const targetEmp = allKaryawan.find(k => k.nik == nik || k.nik_karyawan == nik || (k.nama_karyawan || "").toLowerCase() === (nama || "").toLowerCase());
- if (targetEmp) {
- const payload = {
- jatah_cuti_tahunan: parseInt(row["Jatah Cuti Tahunan"]) || 0,
- jatah_tahunan: parseInt(row["Jatah Cuti Tahunan"]) || 0,
- jatah_cuti_khusus: parseInt(row["Jatah Cuti Khusus"]) || 0,
- jatah_khusus: parseInt(row["Jatah Cuti Khusus"]) || 0,
- jatah_cuti_akumulasi: parseInt(row["Jatah Cuti Akumulasi"]) || 0,
- jatah_akumulasi: parseInt(row["Jatah Cuti Akumulasi"]) || 0
- };
- const sisaLaluRaw = row["Sisa Cuti Tahun Lalu"];
- if (sisaLaluRaw !== undefined && sisaLaluRaw !== "") {
- payload.sisa_cuti_tahun_lalu = parseFloat(sisaLaluRaw) || 0;
- }
- await updateDoc(doc(db, COL.MASTER_KARYAWAN, targetEmp.id), payload);
- updateCount++;
- }
- }
+            const targetEmp = allKaryawan.find(k => k.nik == nik || k.nik_karyawan == nik || (k.nama_karyawan || "").toLowerCase() === (nama || "").toLowerCase());
+            if (targetEmp) {
+              const sisaLaluRaw = row["Sisa Cuti Tahun Lalu"];
+              let sisaLalu = null;
+              if (sisaLaluRaw !== undefined && sisaLaluRaw !== null && sisaLaluRaw !== "") {
+                sisaLalu = parseFloat(sisaLaluRaw) || 0;
+              }
 
- toast(`Berhasil mengupdate jatah cuti ${updateCount} karyawan!`, "success");
- await loadData();
- } catch (err) {
- console.error(err);
- toast("Gagal membaca Excel: " + err.message, "error");
- } finally {
- btnImport.disabled = false;
- btnImport.innerHTML = `<i class="fa-solid fa-file-import"></i> Import Excel`;
- fileInput.value = ""; 
- }
- };
- reader.readAsArrayBuffer(file);
- };
- }
+              let jAkumulasiVal = 0;
+              if (sisaLalu !== null) {
+                // Basis carryover adalah sisa cuti tahun lalu dikalikan persentase masa kerja
+                jAkumulasiVal = calculateCarryoverJatah(sisaLalu, targetEmp.tanggal_join);
+              } else if (row["Jatah Cuti Akumulasi"] !== undefined && row["Jatah Cuti Akumulasi"] !== null && row["Jatah Cuti Akumulasi"] !== "") {
+                const rawAkumulasi = parseInt(row["Jatah Cuti Akumulasi"]) || 0;
+                const pct = getCarryoverPercentage(targetEmp.tanggal_join);
+                jAkumulasiVal = pct > 0 ? rawAkumulasi : 0;
+              }
 
- const btnReset = container.querySelector("#btn-reset-tahunan");
- if (btnReset) {
- btnReset.onclick = async () => {
- if (!confirm("Apakah Anda yakin ingin me-reset jatah cuti seluruh karyawan aktif?\n\nSistem akan MEMPRIORITASKAN kolom 'Sisa Cuti Tahun Lalu' yang sudah Anda isi manual sebagai basis carryover (sesuai SK No.018/HRGA-AJ/XII/2024).\n\nLanjutkan?")) return;
+              const payload = {
+                jatah_cuti_tahunan: parseInt(row["Jatah Cuti Tahunan"]) || 0,
+                jatah_tahunan: parseInt(row["Jatah Cuti Tahunan"]) || 0,
+                jatah_cuti_khusus: parseInt(row["Jatah Cuti Khusus"]) || 0,
+                jatah_khusus: parseInt(row["Jatah Cuti Khusus"]) || 0,
+                jatah_cuti_akumulasi: jAkumulasiVal,
+                jatah_akumulasi: jAkumulasiVal
+              };
+              if (sisaLalu !== null) {
+                payload.sisa_cuti_tahun_lalu = sisaLalu;
+              }
+              await updateDoc(doc(db, COL.MASTER_KARYAWAN, targetEmp.id), payload);
+              updateCount++;
+            }
+          }
 
- btnReset.disabled = true;
- btnReset.textContent = "Mengkalkulasi...";
+          toast(`Berhasil mengupdate jatah cuti ${updateCount} karyawan!`, "success");
+          await loadData();
+        } catch (err) {
+          console.error(err);
+          toast("Gagal membaca Excel: " + err.message, "error");
+        } finally {
+          btnImport.disabled = false;
+          btnImport.innerHTML = `<i class="fa-solid fa-file-import"></i> Import Excel`;
+          fileInput.value = ""; 
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    };
+  }
 
- try {
- const now = new Date();
- const nextYear = now.getFullYear() + 1;
+  const btnReset = container.querySelector("#btn-reset-tahunan");
+  if (btnReset) {
+    btnReset.onclick = async () => {
+      if (!confirm("Apakah Anda yakin ingin me-reset jatah cuti seluruh karyawan aktif?\n\nSistem akan menggunakan 'Sisa Cuti Tahun Lalu' (input manual HRD / Import Excel) dikalikan persentase masa kerja sebagai basis carryover cuti akumulasi (sesuai SK No.018/HRGA-AJ/XII/2024):\n- 0 s/d < 3 tahun: 0%\n- 3 s/d < 5 tahun: 50%\n- 5 tahun ke atas: 100%\n\nLanjutkan?")) return;
 
- const allCutiLog = await fsGetAll(COL.MASTER_CUTI);
- const tahunLalu = now.getFullYear() - 1;
- const terpakaiTahunLalu = {};
- allCutiLog.forEach(r => {
- const key = r.nama_karyawan;
- if (!key) return;
- const rowYear = parseInt(r.tahun) || (r.tanggal ? new Date(r.tanggal).getFullYear() : null);
- if (rowYear !== tahunLalu) return;
- if (!terpakaiTahunLalu[key]) terpakaiTahunLalu[key] = { Tahunan: 0, Akumulasi: 0 };
- if (r.potong_jatah === "Tahunan" || r.potong_jatah === "Akumulasi") {
- terpakaiTahunLalu[key][r.potong_jatah] += parseFloat(r.count) || 0;
- }
- });
+      btnReset.disabled = true;
+      btnReset.textContent = "Mengkalkulasi...";
 
- for (const emp of allKaryawan) {
- let jTahunanBaru = 12;
- let jKhusus = 4;
- let jAkumulasiBaru = 0;
+      try {
+        const now = new Date();
+        const nextYear = now.getFullYear() + 1;
 
- const jatahTahunanLama = toNumber(emp.jatah_cuti_tahunan ?? emp.jatah_tahunan ?? 12);
- const jatahAkumulasiLama = toNumber(emp.jatah_cuti_akumulasi ?? emp.jatah_akumulasi ?? 0);
- const used = terpakaiTahunLalu[emp.nama_karyawan] || { Tahunan: 0, Akumulasi: 0 };
+        const allCutiLog = await fsGetAll(COL.MASTER_CUTI);
+        const tahunLalu = now.getFullYear() - 1;
+        const terpakaiTahunLalu = {};
+        allCutiLog.forEach(r => {
+          const key = r.nama_karyawan;
+          if (!key) return;
+          const rowYear = parseInt(r.tahun) || (r.tanggal ? new Date(r.tanggal).getFullYear() : null);
+          if (rowYear !== tahunLalu) return;
+          if (!terpakaiTahunLalu[key]) terpakaiTahunLalu[key] = { Tahunan: 0, Akumulasi: 0 };
+          if (r.potong_jatah === "Tahunan" || r.potong_jatah === "Akumulasi") {
+            terpakaiTahunLalu[key][r.potong_jatah] += parseFloat(r.count) || 0;
+          }
+        });
 
- const sisaLaluManual = emp.sisa_cuti_tahun_lalu;
- const adaInputManual = sisaLaluManual !== undefined && sisaLaluManual !== null && sisaLaluManual !== "";
- const sisaTahunanAktual = Math.max(jatahTahunanLama - used.Tahunan, 0);
- const sisaAkumulasiAktual = Math.max(jatahAkumulasiLama - used.Akumulasi, 0);
- const totalSisaUntukCarry = adaInputManual ? toNumber(sisaLaluManual) : (sisaTahunanAktual + sisaAkumulasiAktual);
+        for (const emp of allKaryawan) {
+          let jTahunanBaru = 12;
+          let jKhusus = 4;
+          let jAkumulasiBaru = 0;
 
- if (emp.tanggal_join) {
- const join = smartParseDate(emp.tanggal_join);
- if (join) {
- const diffMonths = (now.getFullYear() - join.getFullYear()) * 12 + (now.getMonth() - join.getMonth());
- const tenureYears = diffMonths / 12;
+          const jatahTahunanLama = toNumber(emp.jatah_cuti_tahunan ?? emp.jatah_tahunan ?? 12);
+          const used = terpakaiTahunLalu[emp.nama_karyawan] || { Tahunan: 0, Akumulasi: 0 };
 
- if (diffMonths >= 12) {
- jTahunanBaru = 12;
- if (tenureYears >= 11) jTahunanBaru += 4;
- else if (tenureYears >= 10) jTahunanBaru += 3;
- else if (tenureYears >= 8) jTahunanBaru += 2;
- else if (tenureYears >= 6) jTahunanBaru += 1;
- } else if (diffMonths >= 3) {
- jTahunanBaru = diffMonths;
- } else {
- jTahunanBaru = 0;
- }
+          const sisaLaluManual = emp.sisa_cuti_tahun_lalu;
+          const adaInputManual = sisaLaluManual !== undefined && sisaLaluManual !== null && sisaLaluManual !== "";
+          const sisaTahunanAktual = Math.max(jatahTahunanLama - used.Tahunan, 0);
+          const totalSisaUntukCarry = adaInputManual ? toNumber(sisaLaluManual) : sisaTahunanAktual;
 
- if (tenureYears >= 5) {
- jAkumulasiBaru = Math.floor(totalSisaUntukCarry * 1.0);
- } else if (tenureYears >= 3) {
- jAkumulasiBaru = Math.floor(totalSisaUntukCarry * 0.5);
- } else {
- jAkumulasiBaru = 0;
- }
- } else {
- jTahunanBaru = 12;
- jAkumulasiBaru = Math.floor(totalSisaUntukCarry * 1.0);
- }
- } else {
- jTahunanBaru = 12;
- jAkumulasiBaru = Math.floor(totalSisaUntukCarry * 1.0);
- }
+          if (emp.tanggal_join) {
+            const join = smartParseDate(emp.tanggal_join);
+            if (join) {
+              const diffMonths = (now.getFullYear() - join.getFullYear()) * 12 + (now.getMonth() - join.getMonth());
+              const tenureYears = diffMonths / 12;
 
- await updateDoc(doc(db, COL.MASTER_KARYAWAN, emp.id), {
- jatah_cuti_tahunan: jTahunanBaru, jatah_tahunan: jTahunanBaru,
- jatah_cuti_khusus: jKhusus, jatah_khusus: jKhusus,
- jatah_cuti_akumulasi: jAkumulasiBaru, jatah_akumulasi: jAkumulasiBaru,
- sisa_cuti_tahun_lalu: null,
- cuti_akumulasi_expired: `30 Juni ${nextYear}`
- });
- }
+              if (diffMonths >= 12) {
+                jTahunanBaru = 12;
+                if (tenureYears >= 11) jTahunanBaru += 4;
+                else if (tenureYears >= 10) jTahunanBaru += 3;
+                else if (tenureYears >= 8) jTahunanBaru += 2;
+                else if (tenureYears >= 6) jTahunanBaru += 1;
+              } else if (diffMonths >= 3) {
+                jTahunanBaru = diffMonths;
+              } else {
+                jTahunanBaru = 0;
+              }
+
+              // Ketentuan carryover cuti akumulasi:
+              // - 0 s/d < 3 tahun: 0%
+              // - 3 s/d < 5 tahun: 50%
+              // - 5 tahun ke atas: 100%
+              if (tenureYears >= 5) {
+                jAkumulasiBaru = Math.floor(totalSisaUntukCarry * 1.0);
+              } else if (tenureYears >= 3) {
+                jAkumulasiBaru = Math.floor(totalSisaUntukCarry * 0.5);
+              } else {
+                jAkumulasiBaru = 0;
+              }
+            } else {
+              jTahunanBaru = 12;
+              jAkumulasiBaru = 0;
+            }
+          } else {
+            jTahunanBaru = 12;
+            jAkumulasiBaru = 0;
+          }
+
+          await updateDoc(doc(db, COL.MASTER_KARYAWAN, emp.id), {
+            jatah_cuti_tahunan: jTahunanBaru, jatah_tahunan: jTahunanBaru,
+            jatah_cuti_khusus: jKhusus, jatah_khusus: jKhusus,
+            jatah_cuti_akumulasi: jAkumulasiBaru, jatah_akumulasi: jAkumulasiBaru,
+            sisa_cuti_tahun_lalu: null,
+            cuti_akumulasi_expired: `30 Juni ${nextYear}`
+          });
+        }
 
  toast("Kalkulasi & Reset Tahunan Selesai Berhasil (mengacu SK No.018/HRGA-AJ/XII/2024)!", "success");
  await loadData();

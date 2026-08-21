@@ -1,5 +1,5 @@
 import { db, COL, doc, updateDoc } from "../firebase-config.js";
-import { fsGetAll, toast, escapeHtml, smartParseDate, toNumber, getCalculatedJatahCuti } from "../utils.js";
+import { fsGetAll, toast, escapeHtml, smartParseDate, toNumber, getCalculatedJatahCuti, getCarryoverPercentage, calculateCarryoverJatah } from "../utils.js";
 import { emptyState } from "../components.js";
 
 export async function mount(container, { session }) {
@@ -87,20 +87,33 @@ export async function mount(container, { session }) {
  // (sesuai SK bagian C: "sisa cuti tahunan yang MASIH TERSISA" di tahun
  // lalu), bukan dihitung otomatis dari jatah tahun ini. HRD mengisi
  // langsung di sini (atau lewat Import Excel) sebelum menekan Reset Otomatis.
- tbody.querySelectorAll("[data-sisa-lalu]").forEach(inp => {
- inp.addEventListener("change", async () => {
- const id = inp.dataset.sisaLalu;
- const val = inp.value === "" ? null : (parseFloat(inp.value) || 0);
- try {
- await updateDoc(doc(db, COL.MASTER_KARYAWAN, id), { sisa_cuti_tahun_lalu: val });
- const emp = allKaryawan.find(k => k.id === id);
- if (emp) emp.sisa_cuti_tahun_lalu = val;
- toast("Sisa cuti tahun lalu tersimpan", "success");
- } catch (e) {
- toast("Gagal menyimpan: " + e.message, "error");
- }
- });
- });
+  tbody.querySelectorAll("[data-sisa-lalu]").forEach(inp => {
+    inp.addEventListener("change", async () => {
+      const id = inp.dataset.sisaLalu;
+      const val = inp.value === "" ? null : (parseFloat(inp.value) || 0);
+      try {
+        const emp = allKaryawan.find(k => k.id === id);
+        let jAkumulasiBaru = 0;
+        if (val !== null && val > 0 && emp) {
+          jAkumulasiBaru = calculateCarryoverJatah(val, emp.tanggal_join);
+        }
+        await updateDoc(doc(db, COL.MASTER_KARYAWAN, id), { 
+          sisa_cuti_tahun_lalu: val,
+          jatah_cuti_akumulasi: jAkumulasiBaru,
+          jatah_akumulasi: jAkumulasiBaru
+        });
+        if (emp) {
+          emp.sisa_cuti_tahun_lalu = val;
+          emp.jatah_cuti_akumulasi = jAkumulasiBaru;
+          emp.jatah_akumulasi = jAkumulasiBaru;
+        }
+        toast("Sisa cuti tahun lalu dan jatah akumulasi berhasil diperbarui", "success");
+        await loadData();
+      } catch (e) {
+        toast("Gagal menyimpan: " + e.message, "error");
+      }
+    });
+  });
  }
 
  // ==========================================
@@ -125,143 +138,141 @@ export async function mount(container, { session }) {
  btnImport.disabled = true;
  btnImport.textContent = "Memproses...";
 
- let updateCount = 0;
- 
- for (const row of json) {
- const nik = row["NIK"];
- const nama = row["Nama Karyawan"];
- if (!nik && !nama) continue;
+  let updateCount = 0;
+  
+  for (const row of json) {
+    const nik = row["NIK"];
+    const nama = row["Nama Karyawan"];
+    if (!nik && !nama) continue;
 
- const targetEmp = allKaryawan.find(k => k.nik == nik || k.nik_karyawan == nik || (k.nama_karyawan || "").toLowerCase() === (nama || "").toLowerCase());
- 
- if (targetEmp) {
- const payload = {
- jatah_cuti_tahunan: parseInt(row["Jatah Cuti Tahunan"]) || 0,
- jatah_tahunan: parseInt(row["Jatah Cuti Tahunan"]) || 0,
- jatah_cuti_khusus: parseInt(row["Jatah Cuti Khusus"]) || 0,
- jatah_khusus: parseInt(row["Jatah Cuti Khusus"]) || 0,
- jatah_cuti_akumulasi: parseInt(row["Jatah Cuti Akumulasi"]) || 0,
- jatah_akumulasi: parseInt(row["Jatah Cuti Akumulasi"]) || 0
- };
- // Kolom baru (opsional): kalau HRD isi lewat Excel, dipakai sebagai basis
- // carryover otomatis saat Reset Otomatis dijalankan (lihat langkah 3 di bawah).
- const sisaLaluRaw = row["Sisa Cuti Tahun Lalu"];
- if (sisaLaluRaw !== undefined && sisaLaluRaw !== "") {
- payload.sisa_cuti_tahun_lalu = parseFloat(sisaLaluRaw) || 0;
- }
- await updateDoc(doc(db, COL.MASTER_KARYAWAN, targetEmp.id), payload);
- updateCount++;
- }
- }
+    const targetEmp = allKaryawan.find(k => k.nik == nik || k.nik_karyawan == nik || (k.nama_karyawan || "").toLowerCase() === (nama || "").toLowerCase());
+    
+    if (targetEmp) {
+      const sisaLaluRaw = row["Sisa Cuti Tahun Lalu"];
+      let sisaLalu = null;
+      if (sisaLaluRaw !== undefined && sisaLaluRaw !== null && sisaLaluRaw !== "") {
+        sisaLalu = parseFloat(sisaLaluRaw) || 0;
+      }
 
- toast(`Berhasil mengupdate jatah cuti ${updateCount} karyawan!`, "success");
- await loadData();
- } catch (err) {
- console.error(err);
- toast("Gagal membaca Excel. Pastikan format kolom sesuai.", "error");
- } finally {
- btnImport.disabled = false;
- btnImport.innerHTML = `<i class="fa-solid fa-file-import opacity-80"></i> Import Excel`;
- fileInput.value = ""; 
- }
- };
- reader.readAsArrayBuffer(file);
- };
+      let jAkumulasiVal = 0;
+      if (sisaLalu !== null) {
+        // Basis carryover adalah sisa cuti tahun lalu dikalikan persentase masa kerja
+        jAkumulasiVal = calculateCarryoverJatah(sisaLalu, targetEmp.tanggal_join);
+      } else if (row["Jatah Cuti Akumulasi"] !== undefined && row["Jatah Cuti Akumulasi"] !== null && row["Jatah Cuti Akumulasi"] !== "") {
+        const rawAkumulasi = parseInt(row["Jatah Cuti Akumulasi"]) || 0;
+        const pct = getCarryoverPercentage(targetEmp.tanggal_join);
+        jAkumulasiVal = pct > 0 ? rawAkumulasi : 0;
+      }
 
- // ==========================================
- // 3. KALKULASI & RESET OTOMATIS BERDASARKAN SK No.018/HRGA-AJ/XII/2024
- // (Surat Keputusan Kebijakan Cuti Karyawan CV Andela Jaya)
- // ==========================================
- btnReset.onclick = async () => {
- if (!confirm("Apakah Anda yakin ingin me-reset jatah cuti seluruh karyawan aktif?\n\nSistem akan MEMPRIORITASKAN kolom 'Sisa Cuti Tahun Lalu' yang sudah Anda isi manual sebagai basis carryover (sesuai SK No.018/HRGA-AJ/XII/2024). Karyawan yang kolomnya masih kosong akan dihitung otomatis dari log transaksi sebagai cadangan.\n\nPastikan kolom tsb sudah diisi HRD untuk hasil yang paling akurat. Lanjutkan?")) return;
+      const payload = {
+        jatah_cuti_tahunan: parseInt(row["Jatah Cuti Tahunan"]) || 0,
+        jatah_tahunan: parseInt(row["Jatah Cuti Tahunan"]) || 0,
+        jatah_cuti_khusus: parseInt(row["Jatah Cuti Khusus"]) || 0,
+        jatah_khusus: parseInt(row["Jatah Cuti Khusus"]) || 0,
+        jatah_cuti_akumulasi: jAkumulasiVal,
+        jatah_akumulasi: jAkumulasiVal
+      };
+      if (sisaLalu !== null) {
+        payload.sisa_cuti_tahun_lalu = sisaLalu;
+      }
+      await updateDoc(doc(db, COL.MASTER_KARYAWAN, targetEmp.id), payload);
+      updateCount++;
+    }
+  }
 
- btnReset.disabled = true;
- btnReset.textContent = "Mengkalkulasi...";
+  toast(`Berhasil mengupdate jatah cuti ${updateCount} karyawan!`, "success");
+  await loadData();
+  } catch (err) {
+  console.error(err);
+  toast("Gagal membaca Excel. Pastikan format kolom sesuai.", "error");
+  } finally {
+  btnImport.disabled = false;
+  btnImport.innerHTML = `<i class="fa-solid fa-file-import opacity-80"></i> Import Excel`;
+  fileInput.value = ""; 
+  }
+  };
+  reader.readAsArrayBuffer(file);
+  };
 
- try {
- const now = new Date();
- const nextYear = now.getFullYear() + 1;
+  // ==========================================
+  // 3. KALKULASI & RESET OTOMATIS BERDASARKAN SK No.018/HRGA-AJ/XII/2024
+  // (Surat Keputusan Kebijakan Cuti Karyawan CV Andela Jaya)
+  // ==========================================
+  btnReset.onclick = async () => {
+  if (!confirm("Apakah Anda yakin ingin me-reset jatah cuti seluruh karyawan aktif?\n\nSistem akan menggunakan 'Sisa Cuti Tahun Lalu' (input manual HRD / Import Excel) dikalikan persentase masa kerja sebagai basis carryover cuti akumulasi (sesuai SK No.018/HRGA-AJ/XII/2024):\n- 0 s/d < 3 tahun: 0%\n- 3 s/d < 5 tahun: 50%\n- 5 tahun ke atas: 100%\n\nLanjutkan?")) return;
 
- // Muat seluruh riwayat cuti agar SISA AKTUAL (bukan jatah kotor) yang dipakai
- // sebagai basis carryover -- sebelumnya bug ini memakai jatah_tahunan mentah
- // (total alokasi tahun lalu) padahal SK bagian C menyebut "sisa cuti tahunan
- // yang MASIH TERSISA", yaitu jatah dikurangi yang sudah terpakai.
- const allCutiLog = await fsGetAll(COL.MASTER_CUTI);
- const tahunLalu = now.getFullYear() - 1;
- const terpakaiTahunLalu = {};
- allCutiLog.forEach(r => {
- const key = r.nama_karyawan;
- if (!key) return;
- const rowYear = parseInt(r.tahun) || (r.tanggal ? new Date(r.tanggal).getFullYear() : null);
- if (rowYear !== tahunLalu) return; // hanya transaksi tahun yang baru saja ditutup
- if (!terpakaiTahunLalu[key]) terpakaiTahunLalu[key] = { Tahunan: 0, Akumulasi: 0 };
- if (r.potong_jatah === "Tahunan" || r.potong_jatah === "Akumulasi") {
- terpakaiTahunLalu[key][r.potong_jatah] += parseFloat(r.count) || 0;
- }
- });
+  btnReset.disabled = true;
+  btnReset.textContent = "Mengkalkulasi...";
 
- for (const emp of allKaryawan) {
- let jTahunanBaru = 0;
- let jKhusus = 4; // SK bagian A.e: jatah Cuti Khusus = 4 hari/tahun
- let jAkumulasiBaru = 0;
+  try {
+  const now = new Date();
+  const nextYear = now.getFullYear() + 1;
 
- const jatahTahunanLama = toNumber(emp.jatah_cuti_tahunan ?? emp.jatah_tahunan);
- const jatahAkumulasiLama = toNumber(emp.jatah_cuti_akumulasi ?? emp.jatah_akumulasi);
- const used = terpakaiTahunLalu[emp.nama_karyawan] || { Tahunan: 0, Akumulasi: 0 };
+  const allCutiLog = await fsGetAll(COL.MASTER_CUTI);
+  const tahunLalu = now.getFullYear() - 1;
+  const terpakaiTahunLalu = {};
+  allCutiLog.forEach(r => {
+  const key = r.nama_karyawan;
+  if (!key) return;
+  const rowYear = parseInt(r.tahun) || (r.tanggal ? new Date(r.tanggal).getFullYear() : null);
+  if (rowYear !== tahunLalu) return;
+  if (!terpakaiTahunLalu[key]) terpakaiTahunLalu[key] = { Tahunan: 0, Akumulasi: 0 };
+  if (r.potong_jatah === "Tahunan" || r.potong_jatah === "Akumulasi") {
+  terpakaiTahunLalu[key][r.potong_jatah] += parseFloat(r.count) || 0;
+  }
+  });
 
- // PERBAIKAN UTAMA: basis carryover sekarang MEMPRIORITASKAN input manual
- // HRD ("Sisa Cuti Tahun Lalu" di kolom tabel / Import Excel) -- sesuai SK
- // bagian C ("sisa cuti tahunan yang MASIH TERSISA" di tahun lalu). Ini
- // penting karena perhitungan otomatis dari log transaksi bisa saja tidak
- // akurat/tidak lengkap (mis. ada cuti lama yang dicatat manual di luar
- // sistem sebelum migrasi ke HRIS ini). Kalau HRD belum sempat mengisi
- // kolom manual untuk karyawan tsb, sistem tetap fallback ke perhitungan
- // otomatis dari log (jatah dikurangi realisasi pemakaian tahun berjalan)
- // supaya proses reset tidak terhambat -- tapi hasilnya sebaiknya dicek
- // ulang oleh HRD.
- const sisaLaluManual = emp.sisa_cuti_tahun_lalu;
- const adaInputManual = sisaLaluManual !== undefined && sisaLaluManual !== null && sisaLaluManual !== "";
- const sisaTahunanAktual = Math.max(jatahTahunanLama - used.Tahunan, 0);
- const sisaAkumulasiAktual = Math.max(jatahAkumulasiLama - used.Akumulasi, 0);
- const totalSisaUntukCarry = adaInputManual ? toNumber(sisaLaluManual) : (sisaTahunanAktual + sisaAkumulasiAktual);
+  for (const emp of allKaryawan) {
+  let jTahunanBaru = 12;
+  let jKhusus = 4;
+  let jAkumulasiBaru = 0;
 
- if (emp.tanggal_join) {
- const join = smartParseDate(emp.tanggal_join);
- if (join) {
- const diffMonths = (now.getFullYear() - join.getFullYear()) * 12 + (now.getMonth() - join.getMonth());
- const tenureYears = diffMonths / 12;
+  const jatahTahunanLama = toNumber(emp.jatah_cuti_tahunan ?? emp.jatah_tahunan ?? 12);
+  const used = terpakaiTahunLalu[emp.nama_karyawan] || { Tahunan: 0, Akumulasi: 0 };
 
- // A. LOGIKA CUTI TAHUNAN
- if (diffMonths >= 12) {
- // SK bagian A.a poin 1: 12 hari kerja setelah 12 bulan kerja berturut-turut
- jTahunanBaru = 12;
+  const sisaLaluManual = emp.sisa_cuti_tahun_lalu;
+  const adaInputManual = sisaLaluManual !== undefined && sisaLaluManual !== null && sisaLaluManual !== "";
+  const sisaTahunanAktual = Math.max(jatahTahunanLama - used.Tahunan, 0);
+  const totalSisaUntukCarry = adaInputManual ? toNumber(sisaLaluManual) : sisaTahunanAktual;
 
- // SK bagian B: Cuti Penghargaan Masa Kerja (tambahan di atas 12 hari dasar)
- if (tenureYears >= 11) jTahunanBaru += 4; // > 10 tahun: +4
- else if (tenureYears >= 10) jTahunanBaru += 3; // 10 tahun: +3
- else if (tenureYears >= 8) jTahunanBaru += 2; // 8 tahun: +2
- else if (tenureYears >= 6) jTahunanBaru += 1; // 6 tahun: +1
- } else if (diffMonths >= 3) {
- // SK bagian A.a poin 2: masa kerja < 1 tahun -> cuti tahunan PROPORSIONAL
- // sesuai masa kerja (1 hari/bulan), baru bisa dipakai setelah masa kerja 3 bulan.
- jTahunanBaru = diffMonths;
- } else {
- // Masa kerja < 3 bulan: belum berhak cuti tahunan sama sekali.
- jTahunanBaru = 0;
- }
+  if (emp.tanggal_join) {
+  const join = smartParseDate(emp.tanggal_join);
+  if (join) {
+  const diffMonths = (now.getFullYear() - join.getFullYear()) * 12 + (now.getMonth() - join.getMonth());
+  const tenureYears = diffMonths / 12;
 
- // B. LOGIKA PERSENTASE CARRYOVER SISA CUTI TAHUNAN (SK bagian C)
- // PERBAIKAN: basis carryover sekarang SISA AKTUAL (sisaTahunanAktual +
- // sisaAkumulasiAktual), bukan jatah_tahunan kotor tahun lalu.
- if (tenureYears >= 5) {
- jAkumulasiBaru = Math.floor(totalSisaUntukCarry * 1.0); // > 5 tahun: 100% carryover
- } else if (tenureYears >= 3) {
- jAkumulasiBaru = Math.floor(totalSisaUntukCarry * 0.5); // 3-5 tahun: 50% carryover
- } else {
- jAkumulasiBaru = 0; // < 3 tahun: tidak ada carryover
- }
- }
- }
+  // A. LOGIKA CUTI TAHUNAN
+  if (diffMonths >= 12) {
+  jTahunanBaru = 12;
+  if (tenureYears >= 11) jTahunanBaru += 4;
+  else if (tenureYears >= 10) jTahunanBaru += 3;
+  else if (tenureYears >= 8) jTahunanBaru += 2;
+  else if (tenureYears >= 6) jTahunanBaru += 1;
+  } else if (diffMonths >= 3) {
+  jTahunanBaru = diffMonths;
+  } else {
+  jTahunanBaru = 0;
+  }
+
+  // B. LOGIKA PERSENTASE CARRYOVER SISA CUTI TAHUNAN
+  // - 0 s/d < 3 tahun: 0%
+  // - 3 s/d < 5 tahun: 50%
+  // - 5 tahun ke atas: 100%
+  if (tenureYears >= 5) {
+  jAkumulasiBaru = Math.floor(totalSisaUntukCarry * 1.0);
+  } else if (tenureYears >= 3) {
+  jAkumulasiBaru = Math.floor(totalSisaUntukCarry * 0.5);
+  } else {
+  jAkumulasiBaru = 0;
+  }
+  } else {
+  jTahunanBaru = 12;
+  jAkumulasiBaru = 0;
+  }
+  } else {
+  jTahunanBaru = 12;
+  jAkumulasiBaru = 0;
+  }
 
  // Simpan ganda ke field snake_case baru dan format lama agar kompatibel di semua widget.
  // `cuti_akumulasi_expired` mencatat batas pemakaian carryover sesuai SK bagian C:
