@@ -105,9 +105,9 @@ export async function mount(container, { session }) {
  <tr>
  <th class="py-3 px-4">Karyawan</th>
  <th class="py-3 px-4">Masa Kerja</th>
- <th class="py-3 px-4 text-center">Cuti Tahunan</th>
- <th class="py-3 px-4 text-center">Cuti Khusus</th>
- <th class="py-3 px-4 text-center">Carryover (Akumulasi)</th>
+ <th class="py-3 px-4 text-center">Cuti Tahunan<br><span class="font-normal normal-case text-[10px] text-slate-400">(Awal / Pakai / Sisa)</span></th>
+ <th class="py-3 px-4 text-center">Cuti Khusus<br><span class="font-normal normal-case text-[10px] text-slate-400">(Awal / Pakai / Sisa)</span></th>
+ <th class="py-3 px-4 text-center">Carryover (Akumulasi)<br><span class="font-normal normal-case text-[10px] text-slate-400">(Awal / Pakai / Sisa)</span></th>
  <th class="py-3 px-4 text-center">Sisa Cuti Tahun Lalu<br><span class="font-normal normal-case text-[10px] text-slate-400">(input manual HRD)</span></th>
  </tr>
  </thead>
@@ -191,23 +191,45 @@ export async function mount(container, { session }) {
  allCuti.forEach(r => {
  const key = r.nama_karyawan;
  if(!key) return;
+ const st = (r.status_final || r.status || "").toUpperCase();
+ if (st.includes("REJECT") || st.includes("TOLAK")) return;
+
  const rowYear = parseInt(r.tahun) || (r.tanggal ? new Date(r.tanggal).getFullYear() : currentYear);
  if (rowYear !== currentYear) return;
  if (!terpakaiMap[key]) terpakaiMap[key] = { Tahunan: 0, Khusus: 0, Akumulasi: 0 };
- if (r.potong_jatah && terpakaiMap[key][r.potong_jatah] !== undefined) {
- terpakaiMap[key][r.potong_jatah] += parseFloat(r.count) || 0;
+ 
+ const isPotongGaji = r.is_potong_gaji || (r.potong_jatah || "").toLowerCase().includes("gaji") || (r.type_cuti || "").toLowerCase().includes("potong gaji");
+ if (isPotongGaji) return;
+
+ const potong = (r.potong_jatah || "").toLowerCase();
+ const typeStr = (r.type_cuti || "").toLowerCase();
+ const count = parseFloat(r.count || r.jumlah_hari) || 0;
+
+ if (potong.includes("tahunan") || potong === "tahunan" || typeStr.startsWith("c -") || typeStr.startsWith("c1/2") || typeStr.startsWith("cb -") || typeStr.startsWith("s- -")) {
+   terpakaiMap[key].Tahunan += count;
+ } else if (potong.includes("khusus") || potong === "khusus" || typeStr.startsWith("c+")) {
+   terpakaiMap[key].Khusus += count;
+ } else if (potong.includes("akumulasi") || potong.includes("sisa") || typeStr.startsWith("cs -")) {
+   terpakaiMap[key].Akumulasi += count;
  }
  });
  }
 
  function getSisa(k) {
- const calc = getCalculatedJatahCuti(k);
- const used = terpakaiMap[k.nama_karyawan] || { Tahunan: 0, Khusus: 0, Akumulasi: 0 };
+ const empCuti = allCuti.filter(c => c.nama_karyawan === k.nama_karyawan || (k.nik && c.nik === k.nik));
+ const calc = getCalculatedJatahCuti(k, empCuti);
  return {
- Tahunan: Math.max(calc.jatahTahunan - used.Tahunan, 0),
- Khusus: Math.max(calc.jatahKhusus - used.Khusus, 0),
- Akumulasi: Math.max(calc.jatahAkumulasi - used.Akumulasi, 0),
- used
+ jatahTahunan: calc.jatahTahunan,
+ jatahKhusus: calc.jatahKhusus,
+ jatahAkumulasi: calc.jatahAkumulasi,
+ Tahunan: calc.sisaTahunan,
+ Khusus: calc.sisaKhusus,
+ Akumulasi: calc.sisaAkumulasi,
+ used: {
+   Tahunan: calc.usedTahunan,
+   Khusus: calc.usedKhusus,
+   Akumulasi: calc.usedAkumulasi
+ }
  };
  }
 
@@ -219,26 +241,64 @@ export async function mount(container, { session }) {
  const sisa = getSisa(k);
  return `
  <div data-karyawan-id="${k.id}" class="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-maroon-300 transition cursor-pointer overflow-hidden flex flex-col">
- <div class="p-4 flex items-center gap-3 border-b border-slate-50 bg-slate-50/50">
+ <div class="p-4 flex items-center gap-3 border-b border-slate-100 bg-slate-50/50">
  ${avatar(k.nama_karyawan, "w-12 h-12 text-sm")}
  <div class="flex-1 min-w-0">
  <p class="font-bold text-slate-800 truncate">${escapeHtml(k.nama_karyawan)}</p>
  <p class="text-[11px] text-slate-500 truncate">${escapeHtml(k.jabatan || "-")} • ${escapeHtml(k.cabang || "-")}</p>
  </div>
  </div>
- <div class="p-4 bg-white grid grid-cols-3 gap-2 text-center flex-1">
- <div class="p-2 bg-blue-50 rounded-lg border border-blue-100">
- <p class="text-[10px] text-slate-400 uppercase font-semibold mb-1">Tahunan</p>
- <p class="text-lg font-black text-blue-700">${sisa.Tahunan}</p>
+ 
+ <div class="p-3 bg-white grid grid-cols-3 gap-2 text-center flex-1">
+ <!-- TAHUNAN -->
+ <div class="p-2 bg-blue-50/80 rounded-xl border border-blue-100 flex flex-col justify-between">
+ <div>
+ <p class="text-[9px] text-blue-900 font-bold uppercase tracking-wider mb-1">Tahunan</p>
+ <div class="text-[10px] text-slate-500 flex justify-between px-1 mb-1">
+ <span>Awal: <strong>${sisa.jatahTahunan}</strong></span>
+ <span>Pakai: <strong class="text-amber-700">${sisa.used.Tahunan}</strong></span>
  </div>
- <div class="p-2 bg-emerald-50 rounded-lg border border-emerald-100">
- <p class="text-[10px] text-slate-400 uppercase font-semibold mb-1">Khusus</p>
- <p class="text-lg font-black text-emerald-700">${sisa.Khusus}</p>
  </div>
- <div class="p-2 bg-amber-50 rounded-lg border border-amber-100">
- <p class="text-[10px] text-slate-400 uppercase font-semibold mb-1">Akumulasi</p>
- <p class="text-lg font-black text-amber-700">${sisa.Akumulasi}</p>
+ <div class="pt-1 border-t border-blue-200/60">
+ <p class="text-[9px] text-slate-400 font-medium">Sisa Saldo</p>
+ <p class="text-base font-black text-blue-700">${sisa.Tahunan} <span class="text-[10px] font-normal text-slate-500">Hari</span></p>
  </div>
+ </div>
+
+ <!-- KHUSUS -->
+ <div class="p-2 bg-emerald-50/80 rounded-xl border border-emerald-100 flex flex-col justify-between">
+ <div>
+ <p class="text-[9px] text-emerald-900 font-bold uppercase tracking-wider mb-1">Khusus</p>
+ <div class="text-[10px] text-slate-500 flex justify-between px-1 mb-1">
+ <span>Awal: <strong>${sisa.jatahKhusus}</strong></span>
+ <span>Pakai: <strong class="text-amber-700">${sisa.used.Khusus}</strong></span>
+ </div>
+ </div>
+ <div class="pt-1 border-t border-emerald-200/60">
+ <p class="text-[9px] text-slate-400 font-medium">Sisa Saldo</p>
+ <p class="text-base font-black text-emerald-700">${sisa.Khusus} <span class="text-[10px] font-normal text-slate-500">Hari</span></p>
+ </div>
+ </div>
+
+ <!-- AKUMULASI -->
+ <div class="p-2 bg-amber-50/80 rounded-xl border border-amber-100 flex flex-col justify-between">
+ <div>
+ <p class="text-[9px] text-amber-900 font-bold uppercase tracking-wider mb-1">Akumulasi</p>
+ <div class="text-[10px] text-slate-500 flex justify-between px-1 mb-1">
+ <span>Awal: <strong>${sisa.jatahAkumulasi}</strong></span>
+ <span>Pakai: <strong class="text-amber-700">${sisa.used.Akumulasi}</strong></span>
+ </div>
+ </div>
+ <div class="pt-1 border-t border-amber-200/60">
+ <p class="text-[9px] text-slate-400 font-medium">Sisa Saldo</p>
+ <p class="text-base font-black text-amber-700">${sisa.Akumulasi} <span class="text-[10px] font-normal text-slate-500">Hari</span></p>
+ </div>
+ </div>
+ </div>
+
+ <div class="px-3.5 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+ <span>Kelola Cuti & Izin</span>
+ <span class="font-bold text-maroon-700">Detail &rarr;</span>
  </div>
  </div>
  `;
@@ -271,10 +331,7 @@ export async function mount(container, { session }) {
  }
  }
 
- const calc = getCalculatedJatahCuti(k);
- const jTahunan = calc.jatahTahunan;
- const jKhusus = calc.jatahKhusus;
- const jAkumulasi = calc.jatahAkumulasi;
+ const sisa = getSisa(k);
 
  return `
  <tr class="hover:bg-slate-50/50 transition">
@@ -282,13 +339,34 @@ export async function mount(container, { session }) {
  <p class="font-bold text-slate-800">${escapeHtml(k.nama_karyawan)}</p>
  <p class="text-[11px] text-slate-400 font-medium">${escapeHtml(k.nik || k.nik_karyawan || "-")}</p>
  </td>
- <td class="py-3 px-4 text-slate-600 font-medium">${masaKerjaStr}</td>
- <td class="py-3 px-4 text-center"><span class="bg-blue-100 text-blue-800 font-bold px-3 py-1 rounded-lg">${jTahunan}</span></td>
- <td class="py-3 px-4 text-center"><span class="bg-emerald-100 text-emerald-800 font-bold px-3 py-1 rounded-lg">${jKhusus}</span></td>
+ <td class="py-3 px-4 text-slate-600 font-medium text-xs">${masaKerjaStr}</td>
+ 
+ <!-- CUTI TAHUNAN -->
  <td class="py-3 px-4 text-center">
- <span class="bg-amber-100 text-amber-800 font-bold px-3 py-1 rounded-lg">${jAkumulasi}</span>
- ${k.cuti_akumulasi_expired ? `<p class="text-[10px] text-amber-600 mt-1">Hangus stlh ${escapeHtml(k.cuti_akumulasi_expired)}</p>` : ""}
+ <div class="inline-flex flex-col items-center">
+ <span class="bg-blue-100 text-blue-800 font-black px-2.5 py-0.5 rounded-lg text-xs">Sisa: ${sisa.Tahunan} Hari</span>
+ <span class="text-[10px] text-slate-500 mt-1">Awal: <strong>${sisa.jatahTahunan}</strong> • Pakai: <strong class="text-amber-700">${sisa.used.Tahunan}</strong></span>
+ </div>
  </td>
+
+ <!-- CUTI KHUSUS -->
+ <td class="py-3 px-4 text-center">
+ <div class="inline-flex flex-col items-center">
+ <span class="bg-emerald-100 text-emerald-800 font-black px-2.5 py-0.5 rounded-lg text-xs">Sisa: ${sisa.Khusus} Hari</span>
+ <span class="text-[10px] text-slate-500 mt-1">Awal: <strong>${sisa.jatahKhusus}</strong> • Pakai: <strong class="text-amber-700">${sisa.used.Khusus}</strong></span>
+ </div>
+ </td>
+
+ <!-- CARRYOVER AKUMULASI -->
+ <td class="py-3 px-4 text-center">
+ <div class="inline-flex flex-col items-center">
+ <span class="bg-amber-100 text-amber-800 font-black px-2.5 py-0.5 rounded-lg text-xs">Sisa: ${sisa.Akumulasi} Hari</span>
+ <span class="text-[10px] text-slate-500 mt-1">Awal: <strong>${sisa.jatahAkumulasi}</strong> • Pakai: <strong class="text-amber-700">${sisa.used.Akumulasi}</strong></span>
+ ${k.cuti_akumulasi_expired ? `<p class="text-[9px] text-amber-600 mt-0.5 font-medium">Hangus stlh ${escapeHtml(k.cuti_akumulasi_expired)}</p>` : ""}
+ </div>
+ </td>
+
+ <!-- SISA CUTI TAHUN LALU (INPUT MANUAL) -->
  <td class="py-3 px-4 text-center">
  <input type="number" step="0.5" min="0" data-sisa-lalu="${k.id}"
  value="${k.sisa_cuti_tahun_lalu ?? ""}" placeholder="Belum diisi"
@@ -467,11 +545,10 @@ export async function mount(container, { session }) {
               const tenureYears = diffMonths / 12;
 
               if (diffMonths >= 12) {
-                jTahunanBaru = 12;
-                if (tenureYears >= 11) jTahunanBaru += 4;
-                else if (tenureYears >= 10) jTahunanBaru += 3;
-                else if (tenureYears >= 8) jTahunanBaru += 2;
-                else if (tenureYears >= 6) jTahunanBaru += 1;
+                if (tenureYears >= 10 || diffMonths >= 120) jTahunanBaru = 16;
+                else if (tenureYears >= 8 || diffMonths >= 96) jTahunanBaru = 14;
+                else if (tenureYears >= 6 || diffMonths >= 72) jTahunanBaru = 13;
+                else jTahunanBaru = 12;
               } else if (diffMonths >= 3) {
                 jTahunanBaru = diffMonths;
               } else {
@@ -482,9 +559,9 @@ export async function mount(container, { session }) {
               // - 0 s/d < 3 tahun: 0%
               // - 3 s/d < 5 tahun: 50%
               // - 5 tahun ke atas: 100%
-              if (tenureYears >= 5) {
+              if (tenureYears >= 5 || diffMonths >= 60) {
                 jAkumulasiBaru = Math.floor(totalSisaUntukCarry * 1.0);
-              } else if (tenureYears >= 3) {
+              } else if (tenureYears >= 3 || diffMonths >= 36) {
                 jAkumulasiBaru = Math.floor(totalSisaUntukCarry * 0.5);
               } else {
                 jAkumulasiBaru = 0;
@@ -776,16 +853,73 @@ export async function mount(container, { session }) {
       title: "Manajemen Cuti Karyawan",
       size: "lg",
       bodyHtml: `
-        <div class="flex items-center gap-4 mb-5 pb-4 border-b border-slate-100">
-          ${avatar(k.nama_karyawan, "w-14 h-14 text-base")}
-          <div class="flex-1">
-            <h3 class="font-bold text-lg text-slate-800">${escapeHtml(k.nama_karyawan)}</h3>
-            <p class="text-sm text-slate-500">${escapeHtml(k.jabatan || "-")} • ${escapeHtml(k.cabang || "-")}</p>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-4 border-b border-slate-100">
+          <div class="flex items-center gap-3">
+            ${avatar(k.nama_karyawan, "w-12 h-12 text-sm")}
+            <div>
+              <h3 class="font-bold text-base text-slate-800">${escapeHtml(k.nama_karyawan)}</h3>
+              <p class="text-xs text-slate-500">${escapeHtml(k.nik || "-")} • ${escapeHtml(k.jabatan || "-")} • ${escapeHtml(k.cabang || "-")}</p>
+            </div>
           </div>
-          <div class="flex gap-3 text-center">
-            <div><p class="text-[10px] font-bold text-slate-400 uppercase">Tahunan</p><p class="text-xl font-black text-blue-600">${sisa.Tahunan}</p></div>
-            <div><p class="text-[10px] font-bold text-slate-400 uppercase">Khusus</p><p class="text-xl font-black text-emerald-600">${sisa.Khusus}</p></div>
-            <div><p class="text-[10px] font-bold text-slate-400 uppercase">Akumulasi</p><p class="text-xl font-black text-amber-600">${sisa.Akumulasi}</p></div>
+        </div>
+
+        <!-- RINCIAN SALDO CUTI: SALDO AWAL, TERPAKAI & SISA SALDO -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3 bg-slate-50 rounded-xl border border-slate-200 mb-4">
+          <!-- Tahunan -->
+          <div class="bg-white p-2.5 rounded-lg border border-blue-100 shadow-xs flex flex-col justify-between">
+            <div class="flex items-center justify-between pb-1 mb-1 border-b border-slate-100">
+              <span class="text-[10px] font-bold text-blue-900 uppercase">Cuti Tahunan</span>
+              <span class="text-[10px] font-semibold text-slate-600 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-100">Awal: <strong>${sisa.jatahTahunan}</strong></span>
+            </div>
+            <div class="flex justify-between items-baseline pt-1">
+              <div>
+                <span class="text-[9px] uppercase font-semibold text-slate-400 block">Terpakai</span>
+                <span class="text-xs font-bold text-amber-700 font-mono">${sisa.used.Tahunan} Hari</span>
+              </div>
+              <div class="text-right">
+                <span class="text-[9px] uppercase font-semibold text-slate-400 block">Sisa Saldo</span>
+                <span class="text-lg font-black text-blue-700 font-mono">${sisa.Tahunan}</span>
+                <span class="text-[10px] font-medium text-slate-500">Hari</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Khusus -->
+          <div class="bg-white p-2.5 rounded-lg border border-emerald-100 shadow-xs flex flex-col justify-between">
+            <div class="flex items-center justify-between pb-1 mb-1 border-b border-slate-100">
+              <span class="text-[10px] font-bold text-emerald-900 uppercase">Cuti Khusus</span>
+              <span class="text-[10px] font-semibold text-slate-600 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-100">Awal: <strong>${sisa.jatahKhusus}</strong></span>
+            </div>
+            <div class="flex justify-between items-baseline pt-1">
+              <div>
+                <span class="text-[9px] uppercase font-semibold text-slate-400 block">Terpakai</span>
+                <span class="text-xs font-bold text-amber-700 font-mono">${sisa.used.Khusus} Hari</span>
+              </div>
+              <div class="text-right">
+                <span class="text-[9px] uppercase font-semibold text-slate-400 block">Sisa Saldo</span>
+                <span class="text-lg font-black text-emerald-700 font-mono">${sisa.Khusus}</span>
+                <span class="text-[10px] font-medium text-slate-500">Hari</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Akumulasi -->
+          <div class="bg-white p-2.5 rounded-lg border border-amber-100 shadow-xs flex flex-col justify-between">
+            <div class="flex items-center justify-between pb-1 mb-1 border-b border-slate-100">
+              <span class="text-[10px] font-bold text-amber-900 uppercase">Carryover (Akumulasi)</span>
+              <span class="text-[10px] font-semibold text-slate-600 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-100">Awal: <strong>${sisa.jatahAkumulasi}</strong></span>
+            </div>
+            <div class="flex justify-between items-baseline pt-1">
+              <div>
+                <span class="text-[9px] uppercase font-semibold text-slate-400 block">Terpakai</span>
+                <span class="text-xs font-bold text-amber-700 font-mono">${sisa.used.Akumulasi} Hari</span>
+              </div>
+              <div class="text-right">
+                <span class="text-[9px] uppercase font-semibold text-slate-400 block">Sisa Saldo</span>
+                <span class="text-lg font-black text-amber-700 font-mono">${sisa.Akumulasi}</span>
+                <span class="text-[10px] font-medium text-slate-500">Hari</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -861,6 +995,15 @@ export async function mount(container, { session }) {
                 <p id="lbl-potong-tipe" class="text-[10px] text-center text-slate-400 mt-1 uppercase">-</p>
               </div>
             </div>
+
+            <!-- LIVE PRATINJAU PEMOTONGAN SALDO -->
+            <div id="box-preview-potong" class="bg-amber-50/80 border border-amber-200 p-3 rounded-xl flex items-center justify-between text-xs text-amber-950">
+              <div class="flex items-center gap-2">
+                <i class="fa-solid fa-calculator text-amber-600"></i>
+                <span id="txt-preview-info">Pilih jenis cuti untuk melihat estimasi saldo setelah pemotongan.</span>
+              </div>
+              <span id="txt-preview-hasil" class="font-mono font-bold text-xs text-amber-900"></span>
+            </div>
           </form>
         </div>
 
@@ -929,11 +1072,17 @@ export async function mount(container, { session }) {
         const inHari = m.querySelector("#inp-hari");
         const inAlasan = m.querySelector("#inp-alasan");
         const lblPotong = m.querySelector("#lbl-potong-tipe");
+        const txtPreviewInfo = m.querySelector("#txt-preview-info");
+        const txtPreviewHasil = m.querySelector("#txt-preview-hasil");
 
         let curCfg = null;
 
         const updateCalculations = () => {
-          if (!curCfg) return;
+          if (!curCfg) {
+            if (txtPreviewInfo) txtPreviewInfo.textContent = "Pilih jenis cuti untuk melihat estimasi saldo setelah pemotongan.";
+            if (txtPreviewHasil) txtPreviewHasil.textContent = "";
+            return;
+          }
           const isHalf = curCfg.id === "CT-02";
           if (isHalf) {
             inHari.value = 0.5;
@@ -952,6 +1101,24 @@ export async function mount(container, { session }) {
             } else {
               inHari.value = curCfg.count || 1;
             }
+          }
+
+          const countVal = parseFloat(inHari.value) || 0;
+          if (curCfg.potong === "Tahunan") {
+            const estimasiSisa = sisa.Tahunan - countVal;
+            if (txtPreviewInfo) txtPreviewInfo.innerHTML = `Potong Jatah: <b>Cuti Tahunan</b> | Saldo Awal: <b>${sisa.jatahTahunan}</b> Hari, Terpakai: <b>${sisa.used.Tahunan}</b> Hari, Pengajuan Ini: <b>${countVal}</b> Hari`;
+            if (txtPreviewHasil) txtPreviewHasil.innerHTML = `Estimasi Sisa: <span class="${estimasiSisa < 0 ? 'text-rose-600' : 'text-blue-700'} font-bold text-sm">${estimasiSisa} Hari</span>`;
+          } else if (curCfg.potong === "Khusus") {
+            const estimasiSisa = sisa.Khusus - countVal;
+            if (txtPreviewInfo) txtPreviewInfo.innerHTML = `Potong Jatah: <b>Cuti Khusus</b> | Saldo Awal: <b>${sisa.jatahKhusus}</b> Hari, Terpakai: <b>${sisa.used.Khusus}</b> Hari, Pengajuan Ini: <b>${countVal}</b> Hari`;
+            if (txtPreviewHasil) txtPreviewHasil.innerHTML = `Estimasi Sisa: <span class="${estimasiSisa < 0 ? 'text-rose-600' : 'text-emerald-700'} font-bold text-sm">${estimasiSisa} Hari</span>`;
+          } else if (curCfg.potong === "Akumulasi") {
+            const estimasiSisa = sisa.Akumulasi - countVal;
+            if (txtPreviewInfo) txtPreviewInfo.innerHTML = `Potong Jatah: <b>Carryover Akumulasi</b> | Saldo Awal: <b>${sisa.jatahAkumulasi}</b> Hari, Terpakai: <b>${sisa.used.Akumulasi}</b> Hari, Pengajuan Ini: <b>${countVal}</b> Hari`;
+            if (txtPreviewHasil) txtPreviewHasil.innerHTML = `Estimasi Sisa: <span class="${estimasiSisa < 0 ? 'text-rose-600' : 'text-amber-700'} font-bold text-sm">${estimasiSisa} Hari</span>`;
+          } else {
+            if (txtPreviewInfo) txtPreviewInfo.innerHTML = `Tidak memotong saldo cuti tahunan/khusus/akumulasi (${curCfg.potong || 'Izin'})`;
+            if (txtPreviewHasil) txtPreviewHasil.innerHTML = `<span class="text-slate-600 font-semibold">Bebas Potongan</span>`;
           }
         };
 
@@ -974,6 +1141,7 @@ export async function mount(container, { session }) {
 
         if (inMulai) inMulai.onchange = updateCalculations;
         if (inAkhir) inAkhir.onchange = updateCalculations;
+        if (inHari) inHari.oninput = updateCalculations;
 
         if (selSesi) {
           selSesi.onchange = () => {
