@@ -166,14 +166,20 @@ async function loadProfileCard(container, session) {
  }
 
  const profileCard = container.querySelector("#dash-profile-card");
- container.querySelector("#dash-profile-avatar").innerHTML = avatar(karyawan?.foto_url || session.foto_url || session.nama, "w-14 h-14 text-base");
- container.querySelector("#dash-profile-nama").textContent = session.nama;
- container.querySelector("#dash-profile-jabatan").textContent = `${session.posisi || "-"} • ${karyawan?.cabang || session.cabang || "-"}`;
- container.querySelector("#dash-profile-badges").innerHTML = `
+ const avatarEl = container.querySelector("#dash-profile-avatar");
+ if (avatarEl) avatarEl.innerHTML = avatar(karyawan?.foto_url || session.foto_url || session.nama, "w-14 h-14 text-base");
+ const namaEl = container.querySelector("#dash-profile-nama");
+ if (namaEl) namaEl.textContent = session.nama;
+ const jabatanEl = container.querySelector("#dash-profile-jabatan");
+ if (jabatanEl) jabatanEl.textContent = `${session.posisi || "-"} • ${karyawan?.cabang || session.cabang || "-"}`;
+ const badgesEl = container.querySelector("#dash-profile-badges");
+ if (badgesEl) {
+ badgesEl.innerHTML = `
  ${badge(session.role, "maroon")}
  ${karyawan?.status_karyawan ? badge(karyawan.status_karyawan, "blue") : ""}
  ${karyawan?.aktif_tdk_aktif ? badge(karyawan.aktif_tdk_aktif, karyawan.aktif_tdk_aktif === "AKTIF" ? "green" : "red") : ""}
  `;
+ }
 
  if (profileCard) profileCard.onclick = () => openProfileModal(session, karyawan);
  return karyawan;
@@ -1506,45 +1512,156 @@ async function loadTrainingHistory(container, session) {
 }
 
 /* ------------------------ j. INVENTARIS, ASET & PENGAMBILAN ATK WIDGET ------------------------ */
+function cleanPersonName(raw = "") {
+ return String(raw || "")
+  .toLowerCase()
+  .replace(/\b(s\.kom|s\.t|s\.e|s\.pd|s\.sos|s\.farm|s\.ked|m\.kom|m\.m|m\.t|dr\.|dra\.|drs\.|h\.|hj\.)\b/gi, "")
+  .replace(/[^a-z0-9\s]/g, " ")
+  .replace(/\s+/g, " ")
+  .trim();
+}
+
+function cleanPersonNik(raw = "") {
+ return String(raw || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().trim();
+}
+
+function isAtkCategory(catStr = "", namaStr = "") {
+ const s = (String(catStr || "") + " " + String(namaStr || "")).toLowerCase();
+ return /atk|office supplies|supplies|alat tulis|habis pakai|stationery|kertas|tinta|spidol|ballpoint|pulpen|buku tulis|lakban|amplop|buku|stapler|penghapus|pensil|binder/i.test(s);
+}
+
 function isAssetRecordMatchingUser(record, session, userEmp = null) {
  if (!record || !session) return false;
 
- const userTerms = [
-  session.nama,
-  session.username,
-  session.nik,
-  userEmp?.nama_karyawan,
-  userEmp?.nama,
-  userEmp?.nik,
-  userEmp?.nik_karyawan,
-  userEmp?.username
- ].filter(Boolean).map(s => String(s).trim().toLowerCase());
+ const INVALID_TERMS = new Set([
+  "", "-", "--", "none", "null", "undefined", "unassigned", "tersedia", "ready",
+  "gudang", "gudang utama", "kantor", "kantor pusat", "stok", "stock", "n/a", "na",
+  "belum ada", "belum diserahkan", "semua", "all", "general affair", "ga", "hrd", "hr",
+  "admin", "petugas ga", "pembelian", "penjualan", "bengkel", "pos satpam"
+ ]);
 
- const recordTerms = [
+ // 1. User NIK identifiers
+ const userNiks = new Set(
+  [session.nik, userEmp?.nik, userEmp?.nik_karyawan, session.username]
+   .filter(Boolean)
+   .map(cleanPersonNik)
+   .filter(n => n.length >= 3 && !INVALID_TERMS.has(n))
+ );
+
+ // 2. User Name identifiers
+ const userRawNames = [session.nama, userEmp?.nama_karyawan, userEmp?.nama].filter(Boolean);
+ const userCleanNames = userRawNames.map(cleanPersonName).filter(n => n.length >= 3 && !INVALID_TERMS.has(n));
+ const userWordsList = userCleanNames.map(cn => cn.split(" ").filter(w => w.length >= 3));
+
+ const userUsername = cleanPersonNik(session.username);
+
+ // 3. Record terms
+ const recordNikTerms = [record.assigned_nik, record.nik, record.nik_karyawan].filter(Boolean).map(cleanPersonNik);
+ const recordNameTerms = [
   record.assigned_to,
-  record.assigned_nik,
   record.pemegang,
   record.nama_karyawan,
   record.nama,
-  record.nik,
-  record.nik_karyawan,
   record.penerima,
   record.penanggung_jawab,
   record.user
- ].filter(Boolean).map(s => String(s).trim().toLowerCase());
+ ].filter(Boolean);
 
- if (!recordTerms.length) return false;
+ // Check NIK match
+ for (const rNik of recordNikTerms) {
+  if (!rNik || INVALID_TERMS.has(rNik)) continue;
+  if (userNiks.has(rNik)) return true;
+ }
 
- for (const rTerm of recordTerms) {
-  if (!rTerm || rTerm === "unassigned" || rTerm === "-" || rTerm === "none" || rTerm === "null") continue;
-  for (const uTerm of userTerms) {
-   if (!uTerm) continue;
-   if (rTerm === uTerm) return true;
-   if (uTerm.length >= 3 && (rTerm.includes(uTerm) || uTerm.includes(rTerm))) return true;
-   if ((uTerm.includes("jannah") || uTerm.includes("amaliatul")) && (rTerm.includes("jannah") || rTerm.includes("amaliatul"))) return true;
+ // Check Name & Username match
+ for (const rRaw of recordNameTerms) {
+  const rClean = cleanPersonName(rRaw);
+  if (!rClean || INVALID_TERMS.has(rClean)) continue;
+
+  const rNikCandidate = cleanPersonNik(rRaw);
+  if (rNikCandidate && userNiks.has(rNikCandidate)) return true;
+
+  // Exact clean name match
+  if (userCleanNames.includes(rClean)) return true;
+
+  // Match username if exact
+  if (userUsername && userUsername.length >= 4 && !INVALID_TERMS.has(userUsername) && cleanPersonNik(rRaw) === userUsername) {
+   return true;
+  }
+
+  // Token / Substring word match (word by word)
+  const rWords = rClean.split(" ").filter(w => w.length >= 3);
+  if (rWords.length > 0) {
+   for (const uWords of userWordsList) {
+    if (!uWords.length) continue;
+    const shorter = rWords.length <= uWords.length ? rWords : uWords;
+    const longer = rWords.length > uWords.length ? rWords : uWords;
+    const allMatch = shorter.every(sw => longer.some(lw => lw === sw || (lw.length >= 4 && lw.startsWith(sw))));
+    if (allMatch && shorter.length >= 1) return true;
+   }
   }
  }
+
  return false;
+}
+
+function openDashboardAssetDetailModal(item) {
+ const assetId = item.id_item || item.id || "-";
+ const isAtk = item.jenis === "ATK";
+ const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(JSON.stringify({ id: assetId, name: item.nama_barang, cat: item.kategori }))}`;
+ const isReturned = (item.status_pengembalian || "").toUpperCase() === "DIKEMBALIKAN";
+
+ openModal({
+  title: isAtk ? `Detail Pengambilan ATK — ${escapeHtml(item.nama_barang)}` : `Detail Aset & Tanggung Jawab — ${escapeHtml(assetId)}`,
+  size: "md",
+  bodyHtml: `
+   <div class="space-y-4 text-xs text-left">
+    <div class="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-center gap-4">
+     ${!isAtk ? `
+     <div class="p-2 bg-white border border-slate-200 rounded-xl shadow-2xs shrink-0 text-center">
+      <img src="${qrUrl}" alt="QR ${escapeHtml(assetId)}" class="w-24 h-24 mx-auto rounded-lg">
+      <span class="text-[9px] font-mono text-slate-400 block mt-1">QR Identitas</span>
+     </div>` : `
+     <div class="w-16 h-16 rounded-2xl bg-red-50 text-maroon-700 flex items-center justify-center shrink-0 border border-red-100">
+      ${icon("box", "w-8 h-8")}
+     </div>`}
+     <div class="min-w-0 flex-1 space-y-1.5 w-full">
+      <div class="flex items-center gap-2 flex-wrap">
+       <span class="px-2.5 py-0.5 text-xs font-mono font-bold text-maroon-800 bg-red-50 border border-red-100 rounded-lg">${escapeHtml(assetId)}</span>
+       <span class="px-2.5 py-0.5 text-xs font-bold text-slate-700 bg-slate-200 rounded-lg">${escapeHtml(item.kategori || (isAtk ? "ATK" : "Aset"))}</span>
+       <span class="px-2.5 py-0.5 text-xs font-bold ${isReturned ? 'text-slate-700 bg-slate-100 border border-slate-200' : 'text-emerald-800 bg-emerald-50 border border-emerald-200'} rounded-lg">
+        ${isReturned ? 'Dikembalikan' : (isAtk ? `Diterima (${item.qty} ${item.satuan || 'Pcs'})` : (item.kondisi || 'Baik (Good)'))}
+       </span>
+      </div>
+      <h3 class="text-base font-black text-slate-800 leading-tight">${escapeHtml(item.nama_barang)}</h3>
+      <div class="grid grid-cols-2 gap-2 pt-1 text-slate-600 font-medium text-[11px]">
+       <p>Tanggal: <b class="text-slate-800">${item.tanggal ? fmtDateShort(item.tanggal) : '-'}</b></p>
+       <p>Jumlah: <b class="text-slate-800">${item.qty || 1} ${escapeHtml(item.satuan || 'Unit')}</b></p>
+       ${item.serial_number ? `<p>No. Seri / Plat: <b class="text-slate-800 font-mono">${escapeHtml(item.serial_number)}</b></p>` : ''}
+       ${item.lokasi ? `<p>Lokasi / Cabang: <b class="text-slate-800">${escapeHtml(item.lokasi)}</b></p>` : ''}
+      </div>
+     </div>
+    </div>
+
+    ${item.keperluan ? `
+    <div class="p-3.5 bg-white border border-slate-200 rounded-2xl space-y-1">
+     <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Catatan / Keperluan</span>
+     <p class="text-slate-700 font-medium leading-relaxed">${escapeHtml(item.keperluan)}</p>
+    </div>` : ''}
+
+    <div class="p-3 bg-blue-50 border border-blue-200 rounded-2xl text-[11px] text-blue-900 leading-relaxed">
+     <b>Informasi Hak Guna:</b><br/>
+     ${isAtk ? 'Barang ATK/supplies operasional telah tercatat dalam sistem inventory kantor.' : 'Aset fisik ini tercatat resmi sebagai tanggung jawab Anda. Jaga dan rawat unit fisik dengan baik sesuai SOP perusahaan.'}
+    </div>
+   </div>`,
+  footerHtml: `
+   <div class="flex items-center justify-end w-full">
+    <button id="btn-close-asset-detail" class="px-5 py-2.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition">Tutup</button>
+   </div>`,
+  onMount: m => {
+   m.querySelector("#btn-close-asset-detail").onclick = closeModal;
+  }
+ });
 }
 
 async function loadAssignedAssets(container, session, userEmpProfile = null) {
@@ -1559,86 +1676,161 @@ async function loadAssignedAssets(container, session, userEmpProfile = null) {
   ]);
 
   const userEmp = userEmpProfile || (allKaryawan || []).find(k => {
-   const kNik = String(k.nik || k.nik_karyawan || "").trim().toLowerCase();
-   const kNama = String(k.nama_karyawan || k.nama || "").trim().toLowerCase();
-   const kUser = String(k.username || "").trim().toLowerCase();
+   const kNik = cleanPersonNik(k.nik || k.nik_karyawan);
+   const kNama = cleanPersonName(k.nama_karyawan || k.nama);
+   const kUser = cleanPersonNik(k.username);
 
-   const sNik = String(session.nik || "").trim().toLowerCase();
-   const sNama = String(session.nama || "").trim().toLowerCase();
-   const sUser = String(session.username || "").trim().toLowerCase();
+   const sNik = cleanPersonNik(session.nik);
+   const sNama = cleanPersonName(session.nama);
+   const sUser = cleanPersonNik(session.username);
 
    if (sNik && kNik && sNik === kNik) return true;
-   if (sUser && (kUser === sUser || kNik === sUser)) return true;
-   if (sNama && kNama && (sNama === kNama || sNama.includes(kNama) || kNama.includes(sNama))) return true;
-   if (sNama && (sNama.includes("jannah") || sNama.includes("amaliatul")) && (kNama.includes("jannah") || kNama.includes("amaliatul"))) return true;
+   if (sUser && kUser && sUser === kUser) return true;
+   if (sNama && kNama && sNama === kNama) return true;
    return false;
   });
 
-  const combinedList = [];
-  const seenAssetDocIds = new Set();
+  const activeAssets = [];
+  const atkLogs = [];
+  const returnedAssets = [];
+  const activeAssetKeyMap = new Map();
 
-  // 1. Filter dari MASTER_INVENTORY (Aset Fisik, Laptop, Kendaraan, Kunci, dll)
-  const myMasterAssets = (allAssets || []).filter(a => isAssetRecordMatchingUser(a, session, userEmp));
-  myMasterAssets.forEach(a => {
-   seenAssetDocIds.add(a.id);
-   if (a.id_item) seenAssetDocIds.add(String(a.id_item).trim().toLowerCase());
-   combinedList.push({
-    id: a.id,
-    id_item: a.id_item || a.id,
-    nama_barang: a.nama_barang || "Aset Kantor",
-    kategori: a.kategori || "Aset Kantor",
-    serial_number: a.serial_number || "",
-    kondisi: a.kondisi || "Good",
-    tanggal: a.tanggal_serah_terima || a.created_at || "",
-    jenis: "ASET",
-    status_pengembalian: "SEDANG_DIPAKAI",
-    qty: 1,
-    satuan: "Unit",
-    keperluan: a.catatan_penyerahan || ""
-   });
+  // 1. MASTER_INVENTORY (Aset Fisik Aktif)
+  const userMasterItems = (allAssets || []).filter(a => isAssetRecordMatchingUser(a, session, userEmp));
+  userMasterItems.forEach(a => {
+   const isAtk = isAtkCategory(a.kategori, a.nama_barang);
+   if (isAtk) {
+    atkLogs.push({
+     id: a.id,
+     id_item: a.id_item || a.id,
+     nama_barang: a.nama_barang || "ATK Kantor",
+     kategori: a.kategori || "ATK & Office Supplies",
+     serial_number: a.serial_number || "",
+     kondisi: a.kondisi || "Good",
+     tanggal: a.tanggal_serah_terima || a.created_at || "",
+     jenis: "ATK",
+     status_pengembalian: "DITERIMA",
+     qty: parseInt(a.stok_saat_ini, 10) || 1,
+     satuan: a.satuan || "Unit",
+     keperluan: a.catatan || a.catatan_penyerahan || "",
+     lokasi: a.penempatan || a.lokasi || "",
+     raw: a
+    });
+   } else {
+    const itemObj = {
+     id: a.id,
+     id_item: a.id_item || a.id,
+     nama_barang: a.nama_barang || "Aset Kantor",
+     kategori: a.kategori || "Aset Kantor",
+     serial_number: a.serial_number || "",
+     kondisi: a.kondisi || "Good",
+     tanggal: a.tanggal_serah_terima || a.created_at || "",
+     jenis: "ASET",
+     status_pengembalian: "SEDANG_DIPAKAI",
+     qty: 1,
+     satuan: a.satuan || "Unit",
+     keperluan: a.catatan_penyerahan || a.catatan || "",
+     lokasi: a.penempatan || a.lokasi || "",
+     raw: a
+    };
+    activeAssets.push(itemObj);
+
+    if (a.id) activeAssetKeyMap.set(String(a.id).trim().toLowerCase(), itemObj);
+    if (a.id_item) activeAssetKeyMap.set(String(a.id_item).trim().toLowerCase(), itemObj);
+    if (a.nama_barang) activeAssetKeyMap.set(cleanPersonName(a.nama_barang), itemObj);
+   }
   });
 
-  // 2. Filter dari LOG_INVENTORY_PENGAMBILAN (Penyerahan / Pengambilan ATK, Barang Habis Pakai, Seragam, dll)
-  const myLogs = (allLogs || []).filter(l => isAssetRecordMatchingUser(l, session, userEmp));
-  myLogs.forEach(l => {
-   const itemCode = String(l.id_barang || l.id || "").trim().toLowerCase();
-   const isAtk = String(l.kategori || "").toLowerCase().includes("atk");
+  // 2. LOG_INVENTORY_PENGAMBILAN (Penyerahan / Pengambilan ATK & History Aset)
+  const userLogs = (allLogs || []).filter(l => isAssetRecordMatchingUser(l, session, userEmp));
+  userLogs.forEach(l => {
+   const isAtk = isAtkCategory(l.kategori, l.nama_barang);
    const isRet = (l.status_pengembalian || "").toUpperCase() === "DIKEMBALIKAN" || (l.jenis_aksi || "").toUpperCase() === "PENGEMBALIAN";
-   
-   // Jika merupakan penyerahan aset yang sudah masuk di master_inventory, perbarui tanggal/keperluan jika belum ada
-   if (!isAtk && itemCode && seenAssetDocIds.has(itemCode)) {
-    const existing = combinedList.find(c => String(c.id_item || "").trim().toLowerCase() === itemCode || c.id === itemCode);
-    if (existing) {
-     if (!existing.tanggal && l.tanggal) existing.tanggal = l.tanggal;
-     if (!existing.keperluan && l.keperluan) existing.keperluan = l.keperluan;
-     return;
+   const logCode = String(l.id_barang || l.id || "").trim().toLowerCase();
+   const logNameClean = cleanPersonName(l.nama_barang);
+
+   if (isAtk) {
+    const existingAtk = atkLogs.find(x => 
+     (x.id_item && String(x.id_item).trim().toLowerCase() === logCode) ||
+     (cleanPersonName(x.nama_barang) === logNameClean && x.tanggal === l.tanggal)
+    );
+    if (existingAtk) {
+     if (!existingAtk.tanggal && l.tanggal) existingAtk.tanggal = l.tanggal;
+     if (!existingAtk.keperluan && l.keperluan) existingAtk.keperluan = l.keperluan;
+     if (l.jumlah_ambil) existingAtk.qty = parseInt(l.jumlah_ambil, 10);
+    } else {
+     atkLogs.push({
+      id: l.id,
+      id_item: l.id_barang || ("LOG-" + l.id.slice(-4).toUpperCase()),
+      nama_barang: l.nama_barang || "ATK / Barang",
+      kategori: l.kategori || "ATK & Office Supplies",
+      serial_number: "",
+      kondisi: l.kondisi_pengembalian || "",
+      tanggal: l.tanggal || l.created_at || "",
+      jenis: "ATK",
+      status_pengembalian: isRet ? "DIKEMBALIKAN" : (l.status_pengembalian || "DITERIMA"),
+      qty: parseInt(l.jumlah_ambil, 10) || 1,
+      satuan: l.satuan || "Pcs",
+      keperluan: l.keperluan || l.catatan || "",
+      lokasi: "",
+      raw: l
+     });
+    }
+   } else {
+    // Aset log
+    const matchingActive = activeAssetKeyMap.get(logCode) || activeAssetKeyMap.get(logNameClean);
+
+    if (matchingActive) {
+     if (!matchingActive.tanggal && l.tanggal) matchingActive.tanggal = l.tanggal;
+     if (!matchingActive.keperluan && l.keperluan) matchingActive.keperluan = l.keperluan;
+     if (!matchingActive.logId) matchingActive.logId = l.id;
+    } else if (isRet) {
+     const existingRet = returnedAssets.find(r => 
+      String(r.id_item).toLowerCase() === logCode || cleanPersonName(r.nama_barang) === logNameClean
+     );
+     if (!existingRet) {
+      returnedAssets.push({
+       id: l.id,
+       id_item: l.id_barang || ("LOG-" + l.id.slice(-4).toUpperCase()),
+       nama_barang: l.nama_barang || "Aset Kantor",
+       kategori: l.kategori || "Aset Kantor",
+       serial_number: "",
+       kondisi: l.kondisi_pengembalian || "Good",
+       tanggal: l.tanggal || l.created_at || "",
+       jenis: "ASET",
+       status_pengembalian: "DIKEMBALIKAN",
+       qty: 1,
+       satuan: l.satuan || "Unit",
+       keperluan: l.keperluan || l.catatan || "",
+       lokasi: "",
+       raw: l
+      });
+     }
     }
    }
-
-   combinedList.push({
-    id: l.id,
-    id_item: l.id_barang || ("LOG-" + l.id.slice(-4).toUpperCase()),
-    nama_barang: l.nama_barang || "Barang / ATK",
-    kategori: l.kategori || "Pengambilan ATK",
-    serial_number: "",
-    kondisi: l.kondisi_pengembalian || "",
-    tanggal: l.tanggal || l.created_at || "",
-    jenis: isAtk ? "ATK" : (l.jenis_aksi || "PENGAMBILAN"),
-    status_pengembalian: isRet ? "DIKEMBALIKAN" : (l.status_pengembalian || "DITERIMA"),
-    qty: parseInt(l.jumlah_ambil, 10) || 1,
-    satuan: l.satuan || "Pcs",
-    keperluan: l.keperluan || l.catatan || ""
-   });
   });
 
-  // Urutkan dari transaksi terbaru
-  combinedList.sort((a, b) => (b.tanggal || "").localeCompare(a.tanggal || ""));
+  // Sort lists by date descending
+  activeAssets.sort((a, b) => (b.tanggal || "").localeCompare(a.tanggal || ""));
+  atkLogs.sort((a, b) => (b.tanggal || "").localeCompare(a.tanggal || ""));
+  returnedAssets.sort((a, b) => (b.tanggal || "").localeCompare(a.tanggal || ""));
 
-  if (!combinedList.length) {
+  const allItems = [...activeAssets, ...atkLogs, ...returnedAssets];
+  const totalAset = activeAssets.length;
+  const totalAtk = atkLogs.length;
+  const totalRet = returnedAssets.length;
+  const totalAll = allItems.length;
+
+  if (totalAll === 0) {
    wrap.innerHTML = `
-   <div class="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-4 text-center text-slate-400">
-   <p class="text-xs font-semibold">Tidak ada aset atau catatan pengambilan ATK kantor saat ini.</p>
-   <p class="text-[10px] text-slate-400 mt-0.5">Semua barang inventaris, seragam, laptop, kunci, serta riwayat pengambilan/penyerahan ATK akan tercatat di sini.</p>
+   <div class="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-5 text-center text-slate-400">
+    <div class="w-10 h-10 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 shadow-2xs mx-auto mb-2">
+     ${icon("box", "w-5 h-5 text-slate-400")}
+    </div>
+    <p class="text-xs font-bold text-slate-700">Belum Ada Aset atau Pengambilan ATK</p>
+    <p class="text-[11px] text-slate-400 mt-1 max-w-sm mx-auto leading-relaxed">
+     Seluruh barang inventaris, seragam, laptop, kendaraan dinas, kunci kantor, serta riwayat pengambilan ATK akan tercatat di sini secara otomatis.
+    </p>
    </div>`;
    return;
   }
@@ -1665,56 +1857,137 @@ async function loadAssignedAssets(container, session, userEmpProfile = null) {
    "Furniture": "box"
   };
 
-  wrap.innerHTML = combinedList.map(a => {
-   const catKey = Object.keys(categoryIcons).find(k => (a.kategori || "").toLowerCase().includes(k.toLowerCase())) || "ATK";
-   const iconKey = categoryIcons[catKey] || "box";
-   const isReturned = (a.status_pengembalian || "").toUpperCase() === "DIKEMBALIKAN";
-   const isAtk = (a.jenis || "").toUpperCase() === "ATK" || (a.kategori || "").toLowerCase().includes("atk");
-
-   let statusBadge = "";
-   if (isReturned) {
-    statusBadge = `<span class="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">Dikembalikan</span>`;
-   } else if (isAtk) {
-    const qtyLabel = a.qty > 1 ? `${a.qty} ${a.satuan || 'Pcs'}` : (a.satuan ? `1 ${a.satuan}` : 'Diterima');
-    statusBadge = `<span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">${icon("check", "w-3 h-3 text-emerald-600")} Diterima (${qtyLabel})</span>`;
-   } else {
-    const cond = (a.kondisi || "Good").toUpperCase();
-    if (cond.includes("MAINTENANCE") || cond.includes("PERBAIKAN")) {
-     statusBadge = `<span class="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">Perlu Servis</span>`;
-    } else if (cond.includes("RUSAK") || cond.includes("DAMAGED")) {
-     statusBadge = `<span class="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">Rusak</span>`;
-    } else {
-     statusBadge = `<span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">Baik (Good)</span>`;
-    }
+  function renderListItems(list) {
+   if (!list || !list.length) {
+    return `
+    <div class="p-4 bg-slate-50 rounded-xl text-center text-slate-400 text-xs">
+     Tidak ada data untuk kategori ini.
+    </div>`;
    }
 
-   const tglFormatted = a.tanggal ? fmtDateShort(a.tanggal) : "";
+   return list.map((a, idx) => {
+    const catKey = Object.keys(categoryIcons).find(k => (a.kategori || "").toLowerCase().includes(k.toLowerCase())) || "box";
+    const iconKey = categoryIcons[catKey] || "box";
+    const isReturned = (a.status_pengembalian || "").toUpperCase() === "DIKEMBALIKAN";
+    const isAtk = (a.jenis || "").toUpperCase() === "ATK" || isAtkCategory(a.kategori, a.nama_barang);
 
-   return `
-   <div class="p-3.5 bg-slate-50/80 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 hover:bg-slate-100/80 transition group">
-   <div class="flex items-center gap-3 min-w-0">
-   <div class="w-10 h-10 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-600 shadow-sm shrink-0">
-   ${icon(iconKey, "w-5 h-5 text-maroon-700")}
+    let statusBadge = "";
+    if (isReturned) {
+     statusBadge = `<span class="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">Dikembalikan</span>`;
+    } else if (isAtk) {
+     const qtyLabel = a.qty > 1 ? `${a.qty} ${a.satuan || 'Pcs'}` : (a.satuan ? `1 ${a.satuan}` : 'Diterima');
+     statusBadge = `<span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">${icon("check", "w-3 h-3 text-emerald-600")} Diterima (${qtyLabel})</span>`;
+    } else {
+     const cond = (a.kondisi || "Good").toUpperCase();
+     if (cond.includes("MAINTENANCE") || cond.includes("PERBAIKAN")) {
+      statusBadge = `<span class="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">Perlu Servis</span>`;
+     } else if (cond.includes("RUSAK") || cond.includes("DAMAGED")) {
+      statusBadge = `<span class="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">Rusak</span>`;
+     } else {
+      statusBadge = `<span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">Baik (Good)</span>`;
+     }
+    }
+
+    const tglFormatted = a.tanggal ? fmtDateShort(a.tanggal) : "";
+
+    return `
+    <div data-dash-asset-idx="${idx}" class="dash-asset-item-card p-3 bg-slate-50/90 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 hover:bg-white hover:border-maroon-200 hover:shadow-2xs transition cursor-pointer group">
+     <div class="flex items-center gap-3 min-w-0">
+      <div class="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-600 shadow-2xs shrink-0 group-hover:border-maroon-300 group-hover:text-maroon-700 transition">
+       ${icon(iconKey, "w-5 h-5 text-maroon-700")}
+      </div>
+      <div class="min-w-0">
+       <div class="flex items-center gap-2 flex-wrap">
+        <span class="font-bold text-slate-800 text-xs truncate">${escapeHtml(a.nama_barang || "-")}</span>
+        <span class="font-mono text-[10px] font-extrabold text-slate-500 bg-white border border-slate-200 px-1.5 py-0.5 rounded-md">${escapeHtml(a.id_item || a.id)}</span>
+        ${isAtk && a.qty > 1 ? `<span class="text-[10px] font-bold text-maroon-700 bg-red-50 border border-red-100 px-1.5 py-0.5 rounded-md">${a.qty} ${escapeHtml(a.satuan || 'Pcs')}</span>` : ''}
+       </div>
+       <p class="text-[11px] text-slate-500 mt-0.5 truncate">
+        ${escapeHtml(a.kategori || (isAtk ? "Pengambilan ATK" : "Aset Kantor"))}
+        ${tglFormatted ? ` • <span class="text-slate-600 font-medium">Tgl: ${tglFormatted}</span>` : ''}
+        ${a.serial_number ? ` • SN: ${escapeHtml(a.serial_number)}` : ''}
+        ${a.keperluan ? ` • <span class="italic text-slate-400 truncate">${escapeHtml(a.keperluan)}</span>` : ''}
+       </p>
+      </div>
+     </div>
+     <div class="shrink-0 text-right">
+      ${statusBadge}
+     </div>
+    </div>`;
+   }).join("");
+  }
+
+  wrap.innerHTML = `
+   <div class="space-y-3">
+    <!-- FILTER TABS -->
+    <div class="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-100 text-xs">
+     <button data-dash-asset-tab="all" class="dash-asset-tab-btn px-3 py-1.5 rounded-xl font-bold transition text-xs flex items-center gap-1.5 bg-maroon-700 text-white shadow-2xs">
+      <span>Semua</span>
+      <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 text-white">${totalAll}</span>
+     </button>
+     <button data-dash-asset-tab="aset" class="dash-asset-tab-btn px-3 py-1.5 rounded-xl font-bold transition text-xs flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200">
+      <span>Aset Tanggung Jawab</span>
+      <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700">${totalAset}</span>
+     </button>
+     <button data-dash-asset-tab="atk" class="dash-asset-tab-btn px-3 py-1.5 rounded-xl font-bold transition text-xs flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200">
+      <span>Pengambilan ATK</span>
+      <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700">${totalAtk}</span>
+     </button>
+     ${totalRet > 0 ? `
+     <button data-dash-asset-tab="ret" class="dash-asset-tab-btn px-3 py-1.5 rounded-xl font-bold transition text-xs flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200">
+      <span>Dikembalikan</span>
+      <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700">${totalRet}</span>
+     </button>` : ''}
+    </div>
+
+    <!-- LIST CONTAINER -->
+    <div id="dash-asset-items-wrap" class="space-y-2.5">
+     ${renderListItems(allItems)}
+    </div>
    </div>
-   <div class="min-w-0">
-   <div class="flex items-center gap-2 flex-wrap">
-   <span class="font-bold text-slate-800 text-xs truncate">${escapeHtml(a.nama_barang || "-")}</span>
-   <span class="font-mono text-[10px] font-extrabold text-slate-400 bg-white border border-slate-200 px-1.5 py-0.5 rounded-md">${escapeHtml(a.id_item || a.id)}</span>
-   ${isAtk && a.qty > 1 ? `<span class="text-[10px] font-bold text-maroon-700 bg-red-50 border border-red-100 px-1.5 py-0.5 rounded-md">${a.qty} ${escapeHtml(a.satuan || 'Pcs')}</span>` : ''}
-   </div>
-   <p class="text-[11px] text-slate-500 mt-0.5 truncate">
-   ${escapeHtml(a.kategori || (isAtk ? "Pengambilan ATK" : "Aset Kantor"))}
-   ${tglFormatted ? ` • <span class="text-slate-600 font-medium">Tgl: ${tglFormatted}</span>` : ''}
-   ${a.serial_number ? ` • SN: ${escapeHtml(a.serial_number)}` : ''}
-   ${a.keperluan ? ` • <span class="italic text-slate-400 truncate">${escapeHtml(a.keperluan)}</span>` : ''}
-   </p>
-   </div>
-   </div>
-   <div class="shrink-0 text-right">
-   ${statusBadge}
-   </div>
-   </div>`;
-  }).join("");
+  `;
+
+  let currentRenderedList = allItems;
+
+  function bindCardEvents() {
+   wrap.querySelectorAll(".dash-asset-item-card").forEach(card => {
+    card.onclick = () => {
+     const idx = parseInt(card.dataset.dashAssetIdx, 10);
+     const item = currentRenderedList[idx];
+     if (item) openDashboardAssetDetailModal(item);
+    };
+   });
+  }
+
+  bindCardEvents();
+
+  // Bind Tab Filter Switching
+  wrap.querySelectorAll(".dash-asset-tab-btn").forEach(btn => {
+   btn.onclick = () => {
+    const tab = btn.dataset.dashAssetTab;
+
+    wrap.querySelectorAll(".dash-asset-tab-btn").forEach(b => {
+     const isActive = b === btn;
+     b.className = `dash-asset-tab-btn px-3 py-1.5 rounded-xl font-bold transition text-xs flex items-center gap-1.5 ${isActive ? 'bg-maroon-700 text-white shadow-2xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`;
+     const badge = b.querySelector("span:last-child");
+     if (badge) {
+      badge.className = `px-1.5 py-0.2 rounded-full text-[10px] ${isActive ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`;
+     }
+    });
+
+    if (tab === "aset") currentRenderedList = activeAssets;
+    else if (tab === "atk") currentRenderedList = atkLogs;
+    else if (tab === "ret") currentRenderedList = returnedAssets;
+    else currentRenderedList = allItems;
+
+    const listWrap = wrap.querySelector("#dash-asset-items-wrap");
+    if (listWrap) {
+     listWrap.innerHTML = renderListItems(currentRenderedList);
+     bindCardEvents();
+    }
+   };
+  });
+
  } catch (err) {
   console.warn("Gagal memuat aset & ATK karyawan:", err);
   wrap.innerHTML = `<p class="text-xs text-slate-400">Gagal memuat daftar aset dan log pengambilan ATK.</p>`;

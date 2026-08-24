@@ -232,13 +232,14 @@ export async function renderCrudModule(container, cfg) {
  }
 
  function renderRows(list) {
+ const emptyEl = container.querySelector("#crud-empty");
  if (!list.length) {
- tbody.innerHTML = "";
- container.querySelector("#crud-empty").innerHTML = emptyState(emptyMessage || "Belum ada data pada modul ini", "Klik tombol Tambah untuk membuat data baru.");
+ if (tbody) tbody.innerHTML = "";
+ if (emptyEl) emptyEl.innerHTML = emptyState(emptyMessage || "Belum ada data pada modul ini", "Klik tombol Tambah untuk membuat data baru.");
  return;
  }
- container.querySelector("#crud-empty").innerHTML = "";
- tbody.innerHTML = list.map(row => `
+ if (emptyEl) emptyEl.innerHTML = "";
+ if (tbody) tbody.innerHTML = list.map(row => `
  <tr class="border-t border-slate-50 hover:bg-slate-50/60 transition">
  ${columns.map(c => `<td class="px-4 py-3 text-slate-700">${cellValue(row, c)}</td>`).join("")}
  <td class="px-4 py-3 text-right whitespace-nowrap">

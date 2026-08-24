@@ -46,7 +46,16 @@ export const MENU_CONFIG = [
 
  // KATEGORI: KARYAWAN & KINERJA
  { id: "siklus-karyawan", label: "Karyawan", icon: "refresh", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN"] },
- { id: "rekrutmen", label: "Rekrutmen", icon: "user-plus", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN"] },
+ { id: "rekrutmen", label: "Rekrutmen", icon: "user-plus", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN", "GM", "MANAGER"], subMenus: [
+  { id: "dashboard", label: "Dashboard ATS" },
+  { id: "lowongan", label: "Lowongan" },
+  { id: "kandidat", label: "Kandidat" },
+  { id: "screening", label: "Screening ATS" },
+  { id: "pipeline", label: "Pipeline" },
+  { id: "interview", label: "Interview" },
+  { id: "analytics", label: "Analytics" },
+  { id: "rules", label: "Master Rules ATS" }
+ ] },
  { id: "penilaian-kontrak", label: "Penilaian Kontrak", icon: "doc-plus", kategori: "Karyawan & Kinerja", roles: ["ALL"], subMenus: [
   { id: "standar_grade", label: "Standar Grade HRD" },
   { id: "template_soal", label: "Template Soal KPI" },
@@ -395,8 +404,8 @@ export async function canAccessRoute(routeId, session) {
  if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi"].includes(targetId)) {
  targetId = "penilaian-kontrak";
  }
- // Semua role berhak mengakses route absensi, penilaian/kontrak & reimbursement
- if (targetId === "absensi" || targetId === "absensi-saya" || targetId === "penilaian" || targetId === "penilaian-kontrak" || targetId === "kontrak" || targetId === "reimbursement") return true;
+ // Semua role berhak mengakses route publik karir, absensi, penilaian/kontrak & reimbursement
+ if (["karir", "lowongan", "portal-karir", "loker", "absensi", "absensi-saya", "penilaian", "penilaian-kontrak", "kontrak", "reimbursement"].includes(targetId)) return true;
 
  const menus = await computeVisibleMenus(session);
  // route yang tidak ada di MENU_CONFIG (mis. sub-halaman) dianggap boleh selama login

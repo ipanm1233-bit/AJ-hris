@@ -445,6 +445,7 @@ export async function mount(container, { session, params }) {
 
  const panels = {
  kontrak: container.querySelector("#pk-panel-kontrak"),
+ alur_perpanjangan: container.querySelector("#pk-panel-alur-perpanjangan"),
  kpi360: container.querySelector("#pk-panel-kpi360"),
  hasil: container.querySelector("#pk-panel-hasil"),
  evaluasi: container.querySelector("#pk-panel-evaluasi"),
@@ -3788,60 +3789,1285 @@ export async function mount(container, { session, params }) {
   });
   }
 
-  async function loadEvaluasiKontrak() {
-  const wrap = panels.evaluasi;
-  if (!wrap) return;
-  wrap.innerHTML = `<div class="p-6">${skeletonRows(4)}</div>`;
+  // -------------------------------------------------------------
+  // ALUR KOORDINASI PERPANJANGAN KONTRAK (GM & DIREKTUR WORKFLOW)
+  // -------------------------------------------------------------
+  async function loadAlurPerpanjangan() {
+    const wrap = panels.alur_perpanjangan;
+    if (!wrap) return;
+    wrap.innerHTML = `<div class="p-6">${skeletonRows(5)}</div>`;
 
-  const allKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
-  const activeEmp = allKaryawan.filter(e => (e.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF");
+    let allKaryawan = [];
+    let allKontrak = [];
+    let allEvaluasi = [];
+    let allUsers = [];
 
-  wrap.innerHTML = `
-    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
-      <div>
-        <h3 class="font-bold text-slate-800 text-base">Evaluasi Kontrak Kerja Karyawan</h3>
-        <p class="text-xs text-slate-400 mt-0.5">Monitoring perpanjangan dan sisa masa berlaku kontrak kerja staff.</p>
-      </div>
+    try {
+      [allKaryawan, allKontrak, allEvaluasi, allUsers] = await Promise.all([
+        fsGetAll(COL.MASTER_KARYAWAN),
+        fsGetAll(COL.MASTER_KONTRAK),
+        fsGetAll(COL.EVALUASI_KONTRAK).catch(() => []),
+        fsGetAll(COL.USERS).catch(() => [])
+      ]);
+    } catch (e) {
+      console.error("Gagal memuat data alur perpanjangan:", e);
+      wrap.innerHTML = `<div class="p-6 text-center text-rose-500 font-bold">Gagal memuat data: ${escapeHtml(e.message)}</div>`;
+      return;
+    }
 
-      <div class="overflow-x-auto">
-        <table class="w-full text-left border-collapse">
-          <thead>
-            <tr class="border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wide">
-              <th class="py-3 px-4">Nama Karyawan</th>
-              <th class="py-3 px-4">Jabatan & Cabang</th>
-              <th class="py-3 px-4">Status Karyawan</th>
-              <th class="py-3 px-4">Akhir Kontrak</th>
-              <th class="py-3 px-4 text-center">Sisa Hari</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-50 text-sm">
-            ${activeEmp.length === 0 ? `
-              <tr><td colspan="5" class="py-12 text-center text-slate-400 italic">Tidak ada karyawan aktif.</td></tr>
-            ` : activeEmp.map(e => {
-              const tglAkhir = e.tgl_akhir_kontrak || "-";
-              let daysLeft = "-";
-              let colorClass = "text-slate-600";
-              if (tglAkhir !== "-") {
-                const d = Math.ceil((new Date(tglAkhir) - new Date()) / (1000 * 3600 * 24));
-                daysLeft = isNaN(d) ? "-" : `${d} hari`;
-                if (d <= 30) colorClass = "text-rose-600 font-bold bg-rose-50 px-2 py-0.5 rounded-md";
-                else if (d <= 60) colorClass = "text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-md";
-              }
-              return `
-                <tr class="hover:bg-slate-50/80 transition">
-                  <td class="py-3 px-4 font-bold text-slate-800">${escapeHtml(e.nama_karyawan)}</td>
-                  <td class="py-3 px-4 text-xs text-slate-500">${escapeHtml(e.jabatan || "-")} (${escapeHtml(e.cabang || "Pusat")})</td>
-                  <td class="py-3 px-4 text-xs font-medium">${escapeHtml(formatStatusKaryawan(e.status_karyawan))}</td>
-                  <td class="py-3 px-4 text-xs font-semibold text-slate-700">${fmtDateShort(tglAkhir)}</td>
-                  <td class="py-3 px-4 text-center text-xs"><span class="${colorClass}">${daysLeft}</span></td>
+    if (isAtasanView && bawahanNames === null) {
+      bawahanNames = await getBawahanNames(session.nama);
+    }
+    const bset = bawahanNames ? new Set(bawahanNames) : null;
+    if (isAtasanView && bset) {
+      allKaryawan = allKaryawan.filter(k => bset.has(k.nama_karyawan));
+      allKontrak = allKontrak.filter(k => bset.has(k.nama_karyawan));
+    }
+
+    const activeEmp = allKaryawan.filter(e => (e.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF");
+    const evalMap = {};
+    allEvaluasi.forEach(ev => {
+      if (ev.nama_karyawan) evalMap[ev.nama_karyawan] = ev;
+      if (ev.nik_karyawan) evalMap[ev.nik_karyawan] = ev;
+    });
+
+    const pipelineData = activeEmp.map(emp => {
+      const empContracts = allKontrak.filter(k => (k.nama_karyawan || "").trim().toLowerCase() === (emp.nama_karyawan || "").trim().toLowerCase());
+      empContracts.sort((a, b) => new Date(b.tanggal_akhir || 0) - new Date(a.tanggal_akhir || 0));
+      const latestContract = empContracts[0] || null;
+
+      const tglAkhir = (latestContract && latestContract.tanggal_akhir) || emp.tgl_akhir_kontrak || null;
+      const tglMulai = (latestContract && latestContract.tanggal_mulai) || emp.tgl_mulai_kontrak || null;
+      const kontrakKe = (latestContract && latestContract.kontrak_ke) || emp.kontrak_ke || 1;
+
+      let daysLeft = null;
+      let urgency = "AMAN";
+      if (tglAkhir) {
+        const d = Math.ceil((new Date(tglAkhir) - new Date()) / (1000 * 3600 * 24));
+        daysLeft = isNaN(d) ? null : d;
+        if (daysLeft !== null) {
+          if (daysLeft < 0) urgency = "KADALUARSA";
+          else if (daysLeft <= 14) urgency = "KRITIS";
+          else if (daysLeft <= 30) urgency = "WASPADA";
+          else if (daysLeft <= 45) urgency = "PERSIAPAN";
+          else urgency = "AMAN";
+        }
+      }
+
+      const ev = evalMap[emp.nama_karyawan] || evalMap[emp.nik_karyawan] || null;
+      let stage = "REVIEW_HRD";
+      if (ev && ev.tahap) {
+        stage = ev.tahap;
+      } else if (ev && ev.status_final === "SELESAI") {
+        stage = "SELESAI";
+      }
+
+      return {
+        ...emp,
+        contracts: empContracts,
+        latestContract,
+        tglMulai,
+        tglAkhir,
+        kontrakKe,
+        daysLeft,
+        urgency,
+        stage,
+        evalRecord: ev
+      };
+    });
+
+    // We filter for employees that are contract based or expiring or have active evaluation
+    let filteredList = pipelineData.filter(item => {
+      const isPkwt = !String(item.status_karyawan || "").toUpperCase().includes("PKWTT") && String(item.status_karyawan || "").toUpperCase() !== "TETAP";
+      const hasExpiringContract = item.daysLeft !== null && item.daysLeft <= 60;
+      const hasOngoingEval = item.evalRecord && item.evalRecord.status_final !== "SELESAI";
+      return isPkwt || hasExpiringContract || hasOngoingEval;
+    });
+
+    let currentUrgencyFilter = "ALL";
+    let currentStageFilter = "ALL";
+    let currentSearch = "";
+    let currentViewMode = "kanban";
+
+    const STAGES = [
+      { id: "REVIEW_HRD", label: "1. Review HRD", color: "blue", icon: "📋", desc: "Evaluasi performa, absensi, & usulan awal HRD" },
+      { id: "KOORDINASI_GM", label: "2. Koordinasi GM", color: "amber", icon: "👔", desc: "Masukan & rekomendasi General Manager / Atasan" },
+      { id: "APPROVAL_DIREKTUR", label: "3. Approval Direktur", color: "rose", icon: "🏛️", desc: "Persetujuan final & durasi dari Direksi" },
+      { id: "DRAFT_KONTRAK", label: "4. Draf Kontrak", color: "indigo", icon: "✍️", desc: "Penyusunan SK & tanda tangan kontrak baru" },
+      { id: "SELESAI", label: "5. Selesai", color: "emerald", icon: "✅", desc: "Kontrak baru resmi terbit & aktif di sistem" }
+    ];
+
+    function renderPipeline() {
+      const countKritis = filteredList.filter(x => x.urgency === "KRITIS" || x.urgency === "KADALUARSA").length;
+      const countWaspada = filteredList.filter(x => x.urgency === "WASPADA").length;
+      const countPersiapan = filteredList.filter(x => x.urgency === "PERSIAPAN").length;
+      const countSelesai = filteredList.filter(x => (x.evalRecord && x.evalRecord.status_final === "SELESAI") || x.stage === "SELESAI").length;
+
+      let displayList = filteredList;
+      if (currentUrgencyFilter !== "ALL") {
+        if (currentUrgencyFilter === "KRITIS") displayList = displayList.filter(x => x.urgency === "KRITIS" || x.urgency === "KADALUARSA");
+        else displayList = displayList.filter(x => x.urgency === currentUrgencyFilter);
+      }
+      if (currentStageFilter !== "ALL") {
+        displayList = displayList.filter(x => x.stage === currentStageFilter);
+      }
+      if (currentSearch.trim()) {
+        const q = currentSearch.toLowerCase();
+        displayList = displayList.filter(x => 
+          (x.nama_karyawan || "").toLowerCase().includes(q) ||
+          (x.jabatan || "").toLowerCase().includes(q) ||
+          (x.cabang || "").toLowerCase().includes(q) ||
+          (x.divisi || "").toLowerCase().includes(q)
+        );
+      }
+
+      wrap.innerHTML = `
+        <div class="space-y-6">
+          <!-- Header Banner -->
+          <div class="bg-gradient-to-r from-slate-900 via-maroon-900 to-slate-900 p-5 rounded-2xl text-white shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div class="space-y-1.5">
+              <div class="flex items-center gap-2">
+                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950">Disiplin Waktu & Koordinasi</span>
+                <span class="text-xs text-slate-300 font-medium">SLA: Evaluasi dimulai H-45 sebelum jatuh tempo</span>
+              </div>
+              <h2 class="text-lg font-bold">Alur & Pipeline Koordinasi Perpanjangan Kontrak</h2>
+              <p class="text-xs text-slate-300">Pantau proses perpanjangan berjenjang dari Review HRD, Koordinasi GM, hingga Persetujuan Direktur agar tidak terjadi keterlambatan.</p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <button id="btn-toggle-kanban" class="px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${currentViewMode === 'kanban' ? 'bg-white text-slate-900 shadow' : 'bg-white/10 text-white hover:bg-white/20'}">
+                📌 Papan Kanban
+              </button>
+              <button id="btn-toggle-table" class="px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${currentViewMode === 'table' ? 'bg-white text-slate-900 shadow' : 'bg-white/10 text-white hover:bg-white/20'}">
+                📊 Tabel Alur
+              </button>
+            </div>
+          </div>
+
+          <!-- Quick Metrics Bar -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="p-4 rounded-2xl bg-rose-50 border border-rose-200/80 flex items-center justify-between cursor-pointer hover:bg-rose-100/70 transition" id="stat-kritis">
+              <div>
+                <p class="text-[11px] font-bold text-rose-700 uppercase tracking-wide">Kritis (≤14 Hari)</p>
+                <h3 class="text-2xl font-black text-rose-900 mt-0.5">${countKritis} <span class="text-xs font-normal text-rose-600">Staf</span></h3>
+                <p class="text-[10px] text-rose-600 mt-1 font-semibold">Harus diputuskan segera</p>
+              </div>
+              <span class="text-2xl">🚨</span>
+            </div>
+            <div class="p-4 rounded-2xl bg-amber-50 border border-amber-200/80 flex items-center justify-between cursor-pointer hover:bg-amber-100/70 transition" id="stat-waspada">
+              <div>
+                <p class="text-[11px] font-bold text-amber-700 uppercase tracking-wide">Waspada (15-30 Hari)</p>
+                <h3 class="text-2xl font-black text-amber-900 mt-0.5">${countWaspada} <span class="text-xs font-normal text-amber-600">Staf</span></h3>
+                <p class="text-[10px] text-amber-600 mt-1 font-semibold">Butuh Koordinasi GM/Direktur</p>
+              </div>
+              <span class="text-2xl">⏳</span>
+            </div>
+            <div class="p-4 rounded-2xl bg-blue-50 border border-blue-200/80 flex items-center justify-between cursor-pointer hover:bg-blue-100/70 transition" id="stat-persiapan">
+              <div>
+                <p class="text-[11px] font-bold text-blue-700 uppercase tracking-wide">Persiapan (31-45 Hari)</p>
+                <h3 class="text-2xl font-black text-blue-900 mt-0.5">${countPersiapan} <span class="text-xs font-normal text-blue-600">Staf</span></h3>
+                <p class="text-[10px] text-blue-600 mt-1 font-semibold">Mulai Review Kinerja HRD</p>
+              </div>
+              <span class="text-2xl">🔍</span>
+            </div>
+            <div class="p-4 rounded-2xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-between cursor-pointer hover:bg-emerald-100/70 transition" id="stat-selesai">
+              <div>
+                <p class="text-[11px] font-bold text-emerald-700 uppercase tracking-wide">Selesai / Terbit</p>
+                <h3 class="text-2xl font-black text-emerald-900 mt-0.5">${countSelesai} <span class="text-xs font-normal text-emerald-600">Kontrak</span></h3>
+                <p class="text-[10px] text-emerald-600 mt-1 font-semibold">Telah diperpanjang</p>
+              </div>
+              <span class="text-2xl">✅</span>
+            </div>
+          </div>
+
+          <!-- Controls / Filter -->
+          <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
+            <div class="flex items-center gap-2 w-full md:w-auto flex-wrap">
+              <input type="text" id="pk-pipeline-search" placeholder="Cari nama, jabatan, cabang..." value="${escapeHtml(currentSearch)}" class="px-3.5 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 w-full md:w-64 bg-slate-50">
+              <select id="pk-pipeline-urgency" class="px-3 py-2 text-xs font-semibold rounded-xl border border-slate-200 outline-none bg-slate-50">
+                <option value="ALL" ${currentUrgencyFilter === 'ALL' ? 'selected' : ''}>Semua Urgensi</option>
+                <option value="KRITIS" ${currentUrgencyFilter === 'KRITIS' ? 'selected' : ''}>🔴 Kritis (≤14 Hari)</option>
+                <option value="WASPADA" ${currentUrgencyFilter === 'WASPADA' ? 'selected' : ''}>🟠 Waspada (15-30 Hari)</option>
+                <option value="PERSIAPAN" ${currentUrgencyFilter === 'PERSIAPAN' ? 'selected' : ''}>🔵 Persiapan (31-45 Hari)</option>
+                <option value="AMAN" ${currentUrgencyFilter === 'AMAN' ? 'selected' : ''}>🟢 Aman (>45 Hari)</option>
+              </select>
+              <select id="pk-pipeline-stage" class="px-3 py-2 text-xs font-semibold rounded-xl border border-slate-200 outline-none bg-slate-50">
+                <option value="ALL" ${currentStageFilter === 'ALL' ? 'selected' : ''}>Semua Tahapan</option>
+                <option value="REVIEW_HRD" ${currentStageFilter === 'REVIEW_HRD' ? 'selected' : ''}>1. Review HRD</option>
+                <option value="KOORDINASI_GM" ${currentStageFilter === 'KOORDINASI_GM' ? 'selected' : ''}>2. Koordinasi GM</option>
+                <option value="APPROVAL_DIREKTUR" ${currentStageFilter === 'APPROVAL_DIREKTUR' ? 'selected' : ''}>3. Approval Direktur</option>
+                <option value="DRAFT_KONTRAK" ${currentStageFilter === 'DRAFT_KONTRAK' ? 'selected' : ''}>4. Draf Kontrak</option>
+                <option value="SELESAI" ${currentStageFilter === 'SELESAI' ? 'selected' : ''}>5. Selesai</option>
+              </select>
+            </div>
+            <div class="text-xs text-slate-500 font-medium">
+              Menampilkan <strong>${displayList.length}</strong> data staf
+            </div>
+          </div>
+
+          <!-- Main View Body -->
+          <div id="pipeline-content-area">
+            ${currentViewMode === 'kanban' ? renderKanbanView(displayList, STAGES) : renderTableView(displayList)}
+          </div>
+        </div>
+      `;
+
+      // Event bindings
+      wrap.querySelector("#btn-toggle-kanban").onclick = () => { currentViewMode = "kanban"; renderPipeline(); };
+      wrap.querySelector("#btn-toggle-table").onclick = () => { currentViewMode = "table"; renderPipeline(); };
+      wrap.querySelector("#pk-pipeline-search").oninput = (e) => { currentSearch = e.target.value; renderPipeline(); };
+      wrap.querySelector("#pk-pipeline-urgency").onchange = (e) => { currentUrgencyFilter = e.target.value; renderPipeline(); };
+      wrap.querySelector("#pk-pipeline-stage").onchange = (e) => { currentStageFilter = e.target.value; renderPipeline(); };
+
+      const statKritis = wrap.querySelector("#stat-kritis");
+      if (statKritis) statKritis.onclick = () => { currentUrgencyFilter = "KRITIS"; renderPipeline(); };
+      const statWaspada = wrap.querySelector("#stat-waspada");
+      if (statWaspada) statWaspada.onclick = () => { currentUrgencyFilter = "WASPADA"; renderPipeline(); };
+      const statPersiapan = wrap.querySelector("#stat-persiapan");
+      if (statPersiapan) statPersiapan.onclick = () => { currentUrgencyFilter = "PERSIAPAN"; renderPipeline(); };
+      const statSelesai = wrap.querySelector("#stat-selesai");
+      if (statSelesai) statSelesai.onclick = () => { currentStageFilter = "SELESAI"; renderPipeline(); };
+
+      // Bind open modal on all action buttons
+      wrap.querySelectorAll('[data-action="open-koordinasi"]').forEach(btn => {
+        btn.onclick = () => {
+          const empName = btn.dataset.empName;
+          const targetItem = pipelineData.find(x => x.nama_karyawan === empName);
+          if (targetItem) {
+            openModalKoordinasiPerpanjangan(targetItem, targetItem.evalRecord, () => {
+              loadAlurPerpanjangan();
+            });
+          }
+        };
+      });
+    }
+
+    function renderKanbanView(list, stages) {
+      return `
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-start">
+          ${stages.map(st => {
+            const stageItems = list.filter(item => item.stage === st.id);
+            return `
+              <div class="bg-slate-50/90 rounded-2xl border border-slate-200/80 p-3.5 flex flex-col gap-3 min-h-[420px]">
+                <!-- Stage Header -->
+                <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-base">${st.icon}</span>
+                    <h4 class="text-xs font-bold text-slate-800">${st.label}</h4>
+                  </div>
+                  <span class="text-[11px] font-black px-2 py-0.5 rounded-full bg-white text-slate-700 border border-slate-200">
+                    ${stageItems.length}
+                  </span>
+                </div>
+                <p class="text-[10px] text-slate-400 leading-tight">${st.desc}</p>
+
+                <!-- Cards list -->
+                <div class="space-y-3">
+                  ${stageItems.length === 0 ? `
+                    <div class="py-10 text-center text-slate-400 text-xs italic bg-white/50 rounded-xl border border-dashed border-slate-200">
+                      Tidak ada karyawan
+                    </div>
+                  ` : stageItems.map(item => renderKanbanCard(item)).join("")}
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `;
+    }
+
+    function renderKanbanCard(item) {
+      let urgencyBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">Aman</span>`;
+      if (item.urgency === "KRITIS" || item.urgency === "KADALUARSA") {
+        urgencyBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-black bg-rose-500 text-white animate-pulse">🚨 ${item.daysLeft !== null && item.daysLeft < 0 ? 'Kadaluarsa' : `${item.daysLeft} Hari Lagi`}</span>`;
+      } else if (item.urgency === "WASPADA") {
+        urgencyBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500 text-white">⏳ ${item.daysLeft} Hari Lagi</span>`;
+      } else if (item.urgency === "PERSIAPAN") {
+        urgencyBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">🔵 ${item.daysLeft} Hari Lagi</span>`;
+      }
+
+      const ev = item.evalRecord;
+      let notesSnippet = "";
+      if (ev) {
+        if (ev.catatan_direktur) notesSnippet = `<p class="text-[10px] text-purple-700 line-clamp-2 italic bg-purple-50 p-1.5 rounded-lg border border-purple-200"><strong>Direktur:</strong> ${escapeHtml(ev.catatan_direktur)}</p>`;
+        else if (ev.catatan_gm) notesSnippet = `<p class="text-[10px] text-amber-700 line-clamp-2 italic bg-amber-50 p-1.5 rounded-lg border border-amber-200"><strong>GM:</strong> ${escapeHtml(ev.catatan_gm)}</p>`;
+        else if (ev.catatan_hrd) notesSnippet = `<p class="text-[10px] text-blue-700 line-clamp-2 italic bg-blue-50 p-1.5 rounded-lg border border-blue-200"><strong>HRD:</strong> ${escapeHtml(ev.catatan_hrd)}</p>`;
+      }
+
+      return `
+        <div class="bg-white rounded-xl p-3.5 border border-slate-200/80 shadow-2xs hover:shadow-md transition space-y-2.5">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <h5 class="text-xs font-black text-slate-800 leading-snug">${escapeHtml(item.nama_karyawan)}</h5>
+              <p class="text-[11px] text-slate-500 font-medium">${escapeHtml(item.jabatan || "-")} • ${escapeHtml(item.cabang || "Pusat")}</p>
+            </div>
+            ${urgencyBadge}
+          </div>
+
+          <div class="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg space-y-0.5 border border-slate-100">
+            <div class="flex items-center justify-between">
+              <span class="text-slate-400">Kontrak Saat Ini:</span>
+              <strong class="text-slate-700">Ke-${item.kontrakKe}</strong>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-slate-400">Jatuh Tempo:</span>
+              <strong class="text-slate-700">${item.tglAkhir ? fmtDateShort(item.tglAkhir) : '-'}</strong>
+            </div>
+          </div>
+
+          ${notesSnippet}
+
+          <div class="pt-1 flex items-center justify-between gap-1.5">
+            <button type="button" data-action="open-koordinasi" data-emp-name="${escapeHtml(item.nama_karyawan)}" class="w-full py-1.5 px-2 bg-maroon-50 hover:bg-maroon-100 text-maroon-700 text-[11px] font-bold rounded-lg border border-maroon-200 transition flex items-center justify-center gap-1 shadow-2xs">
+              ⚡ Lembar Koordinasi
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderTableView(list) {
+      return `
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
+                  <th class="py-3.5 px-4">Nama & Posisi</th>
+                  <th class="py-3.5 px-4">Status & Cabang</th>
+                  <th class="py-3.5 px-4">Jatuh Tempo</th>
+                  <th class="py-3.5 px-4">Sisa Hari</th>
+                  <th class="py-3.5 px-4">Tahapan Koordinasi</th>
+                  <th class="py-3.5 px-4">Keputusan / Rekomendasi</th>
+                  <th class="py-3.5 px-4 text-center">Aksi Cepat</th>
                 </tr>
-              `;
-            }).join("")}
-          </tbody>
-        </table>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                ${list.length === 0 ? `
+                  <tr><td colspan="7" class="py-12 text-center text-slate-400 italic">Tidak ada data kontrak yang cocok dengan filter.</td></tr>
+                ` : list.map(item => {
+                  let urgencyBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">Aman</span>`;
+                  if (item.urgency === "KRITIS" || item.urgency === "KADALUARSA") {
+                    urgencyBadge = `<span class="px-2.5 py-1 rounded text-[10px] font-black bg-rose-500 text-white">🚨 ${item.daysLeft !== null && item.daysLeft < 0 ? 'Kadaluarsa' : `${item.daysLeft} Hari Lagi`}</span>`;
+                  } else if (item.urgency === "WASPADA") {
+                    urgencyBadge = `<span class="px-2.5 py-1 rounded text-[10px] font-bold bg-amber-500 text-white">⏳ ${item.daysLeft} Hari Lagi</span>`;
+                  } else if (item.urgency === "PERSIAPAN") {
+                    urgencyBadge = `<span class="px-2.5 py-1 rounded text-[10px] font-bold bg-blue-100 text-blue-800">🔵 ${item.daysLeft} Hari Lagi</span>`;
+                  }
+
+                  const ev = item.evalRecord;
+                  let stageBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">1. Review HRD</span>`;
+                  if (item.stage === "KOORDINASI_GM") stageBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">2. Koordinasi GM</span>`;
+                  else if (item.stage === "APPROVAL_DIREKTUR") stageBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">3. Approval Direktur</span>`;
+                  else if (item.stage === "DRAFT_KONTRAK") stageBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">4. Draf Kontrak</span>`;
+                  else if (item.stage === "SELESAI") stageBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">5. Selesai</span>`;
+
+                  let summaryDecision = `<span class="text-slate-400 italic">Belum ada keputusan</span>`;
+                  if (ev && ev.keputusan_direktur) {
+                    summaryDecision = `<span class="font-bold text-slate-800">${escapeHtml(ev.keputusan_direktur)} (${escapeHtml(ev.durasi_perpanjangan_disetujui || "-")})</span>`;
+                  } else if (ev && ev.rekomendasi_gm) {
+                    summaryDecision = `<span class="text-amber-800 font-medium">Masukan GM: ${escapeHtml(ev.rekomendasi_gm)}</span>`;
+                  } else if (ev && ev.rekomendasi_hrd) {
+                    summaryDecision = `<span class="text-blue-800 font-medium">Usulan HRD: ${escapeHtml(ev.rekomendasi_hrd)}</span>`;
+                  }
+
+                  return `
+                    <tr class="hover:bg-slate-50/80 transition">
+                      <td class="py-3 px-4">
+                        <div class="font-bold text-slate-800">${escapeHtml(item.nama_karyawan)}</div>
+                        <div class="text-[11px] text-slate-500">${escapeHtml(item.jabatan || "-")}</div>
+                      </td>
+                      <td class="py-3 px-4 text-slate-600">
+                        <div>${escapeHtml(item.cabang || "Pusat")}</div>
+                        <div class="text-[10px] text-slate-400">${escapeHtml(formatStatusKaryawan(item.status_karyawan))}</div>
+                      </td>
+                      <td class="py-3 px-4 font-semibold text-slate-700">${item.tglAkhir ? fmtDateShort(item.tglAkhir) : '-'}</td>
+                      <td class="py-3 px-4">${urgencyBadge}</td>
+                      <td class="py-3 px-4">${stageBadge}</td>
+                      <td class="py-3 px-4 text-[11px]">${summaryDecision}</td>
+                      <td class="py-3 px-4 text-center">
+                        <button type="button" data-action="open-koordinasi" data-emp-name="${escapeHtml(item.nama_karyawan)}" class="px-3 py-1.5 bg-maroon-700 hover:bg-maroon-800 text-white font-bold rounded-xl text-xs transition shadow-2xs">
+                          ⚡ Lembar Koordinasi
+                        </button>
+                      </td>
+                    </tr>
+                  `;
+                }).join("")}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    renderPipeline();
+  }
+
+  // -------------------------------------------------------------
+  // MODAL LEMBAR KOORDINASI PERPANJANGAN KONTRAK (5 TAHAPAN LENGKAP)
+  // -------------------------------------------------------------
+  async function openModalKoordinasiPerpanjangan(empData, existingEval, onDoneCallback) {
+    // Fetch users for GM & Direktur dropdowns, and KPI logs for performance review
+    let allUsers = [];
+    let kpiLogs = [];
+    let dailyLogs = [];
+
+    try {
+      [allUsers, kpiLogs, dailyLogs] = await Promise.all([
+        fsGetAll(COL.USERS).catch(() => []),
+        fsGetAll(COL.LOG_PENILAIAN_KPI).catch(() => []),
+        fsGetAll(COL.LOG_PENILAIAN_HARIAN).catch(() => [])
+      ]);
+    } catch (e) {
+      console.warn("Error fetching modal metadata:", e);
+    }
+
+    // Filter relevant users
+    const gmUsers = allUsers.filter(u => {
+      const r = (u.role || "").toUpperCase();
+      const j = (u.jabatan || "").toUpperCase();
+      return r === "GM" || r === "SUPERADMIN" || r === "HRD" || j.includes("GM") || j.includes("GENERAL MANAGER") || j.includes("MANAGER");
+    });
+    const dirUsers = allUsers.filter(u => {
+      const r = (u.role || "").toUpperCase();
+      const j = (u.jabatan || "").toUpperCase();
+      return r === "DIREKTUR" || r === "SUPERADMIN" || j.includes("DIREKTUR") || j.includes("DIR");
+    });
+
+    // Employee specific performance logs
+    const empKpi = kpiLogs.filter(k => (k.nama_karyawan || "").toLowerCase() === (empData.nama_karyawan || "").toLowerCase());
+    empKpi.sort((a, b) => new Date(b.created_at || b.tanggal || 0) - new Date(a.created_at || a.tanggal || 0));
+    const latestKpi = empKpi[0] || null;
+
+    const empDaily = dailyLogs.filter(d => (d.nama_karyawan || "").toLowerCase() === (empData.nama_karyawan || "").toLowerCase());
+    empDaily.sort((a, b) => new Date(b.tanggal || 0) - new Date(a.tanggal || 0));
+
+    // Existing evaluation data
+    const ev = existingEval || {};
+    const recordId = ev.id || `KEVL-${(empData.nama_karyawan || "EMP").replace(/[^a-zA-Z0-9]/g, "")}-${Date.now().toString().slice(-4)}`;
+
+    // Default dates for new contract draft
+    const currentEnd = empData.tglAkhir || empData.tgl_akhir_kontrak || "";
+    let defaultNewStart = "";
+    let defaultNewEnd = "";
+    if (currentEnd) {
+      const dt = new Date(currentEnd);
+      dt.setDate(dt.getDate() + 1);
+      defaultNewStart = dt.toISOString().split("T")[0];
+      const endDt = new Date(dt);
+      endDt.setFullYear(endDt.getFullYear() + 1);
+      endDt.setDate(endDt.getDate() - 1);
+      defaultNewEnd = endDt.toISOString().split("T")[0];
+    }
+
+    const initialTahap = ev.tahap || "REVIEW_HRD";
+
+    openModal({
+      title: `⚡ Alur & Lembar Koordinasi Perpanjangan Kontrak: ${escapeHtml(empData.nama_karyawan)}`,
+      size: "xl",
+      bodyHtml: `
+        <div class="space-y-6 text-left">
+          <!-- Top Info Card -->
+          <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+              ${avatar(empData.nama_karyawan || "?", "w-12 h-12 border-2 border-white shadow-xs")}
+              <div>
+                <div class="flex items-center gap-2">
+                  <h3 class="font-bold text-slate-800 text-base leading-snug">${escapeHtml(empData.nama_karyawan)}</h3>
+                  <span class="text-xs px-2 py-0.5 rounded-full font-bold bg-slate-200 text-slate-700">${escapeHtml(empData.nik_karyawan || empData.nik || "-")}</span>
+                </div>
+                <p class="text-xs text-slate-500 font-medium mt-0.5">${escapeHtml(empData.jabatan || "-")} • ${escapeHtml(empData.cabang || "Pusat")} ${empData.divisi ? `(${escapeHtml(empData.divisi)})` : ''}</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 flex-wrap bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs text-xs">
+              <div>
+                <span class="text-slate-400 block text-[10px] font-bold uppercase">Kontrak Saat Ini</span>
+                <strong class="text-slate-800">Ke-${empData.kontrakKe || 1}</strong>
+              </div>
+              <div class="border-l border-slate-200 pl-3">
+                <span class="text-slate-400 block text-[10px] font-bold uppercase">Masa Berlaku</span>
+                <strong class="text-slate-800">${empData.tglAkhir ? fmtDateShort(empData.tglAkhir) : "-"}</strong>
+              </div>
+              <div class="border-l border-slate-200 pl-3">
+                <span class="text-slate-400 block text-[10px] font-bold uppercase">Sisa Waktu</span>
+                <span class="font-black ${empData.daysLeft !== null && empData.daysLeft <= 14 ? 'text-rose-600' : empData.daysLeft <= 30 ? 'text-amber-600' : 'text-blue-600'}">
+                  ${empData.daysLeft !== null ? `${empData.daysLeft} Hari Lagi` : "-"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stepper Progress Tracker -->
+          <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs overflow-x-auto">
+            <div class="flex items-center justify-between min-w-[580px] gap-2 text-xs font-bold">
+              <div class="flex items-center gap-2 cursor-pointer step-indicator ${initialTahap === 'REVIEW_HRD' ? 'text-blue-600' : 'text-slate-600'}" data-step="1">
+                <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs ${ev.tgl_review_hrd ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}">1</span>
+                <span>Review HRD</span>
+              </div>
+              <div class="h-0.5 flex-1 bg-slate-200"></div>
+              <div class="flex items-center gap-2 cursor-pointer step-indicator ${initialTahap === 'KOORDINASI_GM' ? 'text-amber-600' : 'text-slate-600'}" data-step="2">
+                <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs ${ev.tgl_koordinasi_gm ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600'}">2</span>
+                <span>Koordinasi GM</span>
+              </div>
+              <div class="h-0.5 flex-1 bg-slate-200"></div>
+              <div class="flex items-center gap-2 cursor-pointer step-indicator ${initialTahap === 'APPROVAL_DIREKTUR' ? 'text-rose-600' : 'text-slate-600'}" data-step="3">
+                <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs ${ev.tgl_approval_direktur ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-600'}">3</span>
+                <span>Approval Direktur</span>
+              </div>
+              <div class="h-0.5 flex-1 bg-slate-200"></div>
+              <div class="flex items-center gap-2 cursor-pointer step-indicator ${initialTahap === 'DRAFT_KONTRAK' ? 'text-indigo-600' : 'text-slate-600'}" data-step="4">
+                <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs ${ev.no_sk_kontrak_baru ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}">4</span>
+                <span>Draf Dokumen</span>
+              </div>
+              <div class="h-0.5 flex-1 bg-slate-200"></div>
+              <div class="flex items-center gap-2 cursor-pointer step-indicator ${initialTahap === 'SELESAI' ? 'text-emerald-600' : 'text-slate-600'}" data-step="5">
+                <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs ${ev.status_final === 'SELESAI' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'}">5</span>
+                <span>Selesai</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section Tabs -->
+          <div class="flex items-center gap-2 border-b border-slate-200">
+            <button id="modal-tab-workflow" class="px-4 py-2 text-xs font-bold border-b-2 border-maroon-700 text-maroon-700 transition">
+              📋 5 Tahapan Koordinasi & Eksekusi
+            </button>
+            <button id="modal-tab-performance" class="px-4 py-2 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition">
+              📊 Riwayat Nilai KPI & Log Kinerja
+            </button>
+          </div>
+
+          <!-- Panel 1: Workflow Forms -->
+          <div id="modal-panel-workflow" class="space-y-6">
+            <!-- TAHAP 1: REVIEW HRD -->
+            <div class="bg-blue-50/50 p-4 rounded-2xl border border-blue-200/80 space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-black">1</span>
+                  <h4 class="text-xs font-black text-blue-950 uppercase tracking-wide">Tahap 1: Evaluasi & Rekomendasi Awal HRD</h4>
+                </div>
+                <span class="text-[11px] text-blue-700 font-semibold">${ev.tgl_review_hrd ? `Selesai: ${fmtDateShort(ev.tgl_review_hrd)}` : 'Belum Review'}</span>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div>
+                  <label class="block text-slate-600 font-semibold mb-1">Usulan / Rekomendasi HRD</label>
+                  <select id="input-rekomendasi-hrd" class="w-full px-3 py-2 rounded-xl border border-slate-200 outline-none bg-white font-medium">
+                    <option value="Perpanjang Kontrak 12 Bulan (1 Tahun)" ${ev.rekomendasi_hrd === "Perpanjang Kontrak 12 Bulan (1 Tahun)" || !ev.rekomendasi_hrd ? 'selected' : ''}>Perpanjang Kontrak 12 Bulan (1 Tahun)</option>
+                    <option value="Perpanjang Kontrak 6 Bulan" ${ev.rekomendasi_hrd === "Perpanjang Kontrak 6 Bulan" ? 'selected' : ''}>Perpanjang Kontrak 6 Bulan</option>
+                    <option value="Perpanjang Kontrak 3 Bulan" ${ev.rekomendasi_hrd === "Perpanjang Kontrak 3 Bulan" ? 'selected' : ''}>Perpanjang Kontrak 3 Bulan</option>
+                    <option value="Diangkat Karyawan Tetap (PKWTT / Kartap)" ${ev.rekomendasi_hrd === "Diangkat Karyawan Tetap (PKWTT / Kartap)" ? 'selected' : ''}>Diangkat Karyawan Tetap (PKWTT / Kartap)</option>
+                    <option value="Tidak Diperpanjang (Putus Kontrak / Selesai)" ${ev.rekomendasi_hrd === "Tidak Diperpanjang (Putus Kontrak / Selesai)" ? 'selected' : ''}>Tidak Diperpanjang (Putus Kontrak / Selesai)</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-slate-600 font-semibold mb-1">Reviewer HRD & Tanggal</label>
+                  <div class="grid grid-cols-2 gap-2">
+                    <input type="text" id="input-nama-hrd" value="${escapeHtml(ev.nama_reviewer_hrd || session.nama || "HRD Admin")}" class="w-full px-3 py-2 rounded-xl border border-slate-200 outline-none bg-white font-medium">
+                    <input type="date" id="input-tgl-hrd" value="${ev.tgl_review_hrd || new Date().toISOString().split("T")[0]}" class="w-full px-3 py-2 rounded-xl border border-slate-200 outline-none bg-white font-medium">
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-xs text-slate-600 font-semibold mb-1">Catatan & Justifikasi HRD (Kinerja, Absensi, Kedisiplinan)</label>
+                <textarea id="input-catatan-hrd" rows="2" placeholder="Tuliskan ringkasan evaluasi kehadiran, pencapaian target, integritas, dan alasan rekomendasi..." class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none bg-white font-normal">${escapeHtml(ev.catatan_hrd || "")}</textarea>
+              </div>
+            </div>
+
+            <!-- TAHAP 2: KOORDINASI GM -->
+            <div class="bg-amber-50/50 p-4 rounded-2xl border border-amber-200/80 space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-full bg-amber-600 text-white flex items-center justify-center text-xs font-black">2</span>
+                  <h4 class="text-xs font-black text-amber-950 uppercase tracking-wide">Tahap 2: Koordinasi dengan General Manager / Atasan</h4>
+                </div>
+                <span class="text-[11px] text-amber-700 font-semibold">${ev.tgl_koordinasi_gm ? `Koordinasi: ${fmtDateShort(ev.tgl_koordinasi_gm)}` : 'Menunggu Koordinasi'}</span>
+              </div>
+
+              <!-- One click WA Generator -->
+              <div class="bg-white p-3 rounded-xl border border-amber-200 space-y-2">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span class="text-xs font-bold text-slate-800">📱 Format Pesan WhatsApp / Email ke GM:</span>
+                  <div class="flex items-center gap-1.5">
+                    <button type="button" id="btn-copy-wa-gm" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-lg transition flex items-center gap-1">
+                      📋 Salin Teks
+                    </button>
+                    <button type="button" id="btn-open-wa-gm" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg transition flex items-center gap-1 shadow-2xs">
+                      💬 Buka WhatsApp GM
+                    </button>
+                  </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <label class="block text-[10px] text-slate-500 font-semibold mb-0.5">Pilih GM / Atasan:</label>
+                    <select id="select-target-gm" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 font-medium">
+                      ${gmUsers.length ? gmUsers.map(u => `
+                        <option value="${escapeHtml(u.nama)}" data-phone="${escapeHtml(u.no_hp || u.telepon || "")}">${escapeHtml(u.nama)} (${escapeHtml(u.jabatan || u.role)})</option>
+                      `).join("") : `<option value="General Manager">General Manager</option>`}
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-[10px] text-slate-500 font-semibold mb-0.5">Nomor WhatsApp GM:</label>
+                    <input type="text" id="input-phone-gm" placeholder="6812..." value="${escapeHtml((gmUsers[0] && (gmUsers[0].no_hp || gmUsers[0].telepon)) || "")}" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 font-medium">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Input Feedback GM -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div>
+                  <label class="block text-slate-600 font-semibold mb-1">Rekomendasi / Masukan GM</label>
+                  <select id="input-rekomendasi-gm" class="w-full px-3 py-2 rounded-xl border border-slate-200 outline-none bg-white font-medium">
+                    <option value="Setuju Rekomendasi HRD" ${ev.rekomendasi_gm === "Setuju Rekomendasi HRD" || !ev.rekomendasi_gm ? 'selected' : ''}>Setuju Rekomendasi HRD</option>
+                    <option value="Perpanjang Kontrak 12 Bulan (1 Tahun)" ${ev.rekomendasi_gm === "Perpanjang Kontrak 12 Bulan (1 Tahun)" ? 'selected' : ''}>Perpanjang Kontrak 12 Bulan (1 Tahun)</option>
+                    <option value="Perpanjang Kontrak 6 Bulan" ${ev.rekomendasi_gm === "Perpanjang Kontrak 6 Bulan" ? 'selected' : ''}>Perpanjang Kontrak 6 Bulan</option>
+                    <option value="Diangkat Karyawan Tetap (Kartap)" ${ev.rekomendasi_gm === "Diangkat Karyawan Tetap (Kartap)" ? 'selected' : ''}>Diangkat Karyawan Tetap (Kartap)</option>
+                    <option value="Tidak Diperpanjang" ${ev.rekomendasi_gm === "Tidak Diperpanjang" ? 'selected' : ''}>Tidak Diperpanjang</option>
+                    <option value="Perlu Pembahasan Tambahan" ${ev.rekomendasi_gm === "Perlu Pembahasan Tambahan" ? 'selected' : ''}>Perlu Pembahasan Tambahan</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-slate-600 font-semibold mb-1">Nama GM & Tanggal Koordinasi</label>
+                  <div class="grid grid-cols-2 gap-2">
+                    <input type="text" id="input-nama-gm" value="${escapeHtml(ev.nama_gm || (gmUsers[0] && gmUsers[0].nama) || "General Manager")}" class="w-full px-3 py-2 rounded-xl border border-slate-200 outline-none bg-white font-medium">
+                    <input type="date" id="input-tgl-gm" value="${ev.tgl_koordinasi_gm || ""}" class="w-full px-3 py-2 rounded-xl border border-slate-200 outline-none bg-white font-medium">
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-xs text-slate-600 font-semibold mb-1">Catatan / Notulen Feedback GM</label>
+                <textarea id="input-catatan-gm" rows="2" placeholder="Catatan dari GM mengenai kinerja sales / operasional, target pasar, atau sikap kerja..." class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none bg-white font-normal">${escapeHtml(ev.catatan_gm || "")}</textarea>
+              </div>
+            </div>
+
+            <!-- TAHAP 3: APPROVAL DIREKTUR -->
+            <div class="bg-rose-50/50 p-4 rounded-2xl border border-rose-200/80 space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-full bg-rose-600 text-white flex items-center justify-center text-xs font-black">3</span>
+                  <h4 class="text-xs font-black text-rose-950 uppercase tracking-wide">Tahap 3: Pengajuan & Persetujuan Direktur</h4>
+                </div>
+                <span class="text-[11px] text-rose-700 font-semibold">${ev.tgl_approval_direktur ? `ACC Direktur: ${fmtDateShort(ev.tgl_approval_direktur)}` : 'Menunggu Approval'}</span>
+              </div>
+
+              <!-- One click WA to Direktur -->
+              <div class="bg-white p-3 rounded-xl border border-rose-200 space-y-2">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span class="text-xs font-bold text-slate-800">🏛️ Format Pengajuan Ringkasan Eksekutif ke Direktur:</span>
+                  <div class="flex items-center gap-1.5">
+                    <button type="button" id="btn-copy-wa-dir" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-lg transition flex items-center gap-1">
+                      📋 Salin Ringkasan
+                    </button>
+                    <button type="button" id="btn-open-wa-dir" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg transition flex items-center gap-1 shadow-2xs">
+                      💬 Buka WhatsApp Direktur
+                    </button>
+                  </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <label class="block text-[10px] text-slate-500 font-semibold mb-0.5">Pilih Direktur:</label>
+                    <select id="select-target-dir" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 font-medium">
+                      ${dirUsers.length ? dirUsers.map(u => `
+                        <option value="${escapeHtml(u.nama)}" data-phone="${escapeHtml(u.no_hp || u.telepon || "")}">${escapeHtml(u.nama)} (${escapeHtml(u.jabatan || u.role)})</option>
+                      `).join("") : `<option value="Direktur Utama">Direktur Utama</option>`}
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-[10px] text-slate-500 font-semibold mb-0.5">Nomor WhatsApp Direktur:</label>
+                    <input type="text" id="input-phone-dir" placeholder="6812..." value="${escapeHtml((dirUsers[0] && (dirUsers[0].no_hp || dirUsers[0].telepon)) || "")}" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 font-medium">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Input Keputusan Direktur -->
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div>
+                  <label class="block text-slate-600 font-semibold mb-1">Keputusan Final Direktur</label>
+                  <select id="input-keputusan-dir" class="w-full px-3 py-2 rounded-xl border border-slate-200 outline-none bg-white font-bold text-slate-800">
+                    <option value="DISETUJUI_PERPANJANG" ${ev.keputusan_direktur === "DISETUJUI_PERPANJANG" || !ev.keputusan_direktur ? 'selected' : ''}>✅ DISETUJUI - Perpanjang Kontrak</option>
+                    <option value="DISETUJUI_KARTAP" ${ev.keputusan_direktur === "DISETUJUI_KARTAP" ? 'selected' : ''}>🌟 DISETUJUI - Pengangkatan Karyawan Tetap (Kartap)</option>
+                    <option value="TIDAK_DIPERPANJANG" ${ev.keputusan_direktur === "TIDAK_DIPERPANJANG" ? 'selected' : ''}>❌ DITOLAK - Tidak Diperpanjang</option>
+                    <option value="PENDING" ${ev.keputusan_direktur === "PENDING" ? 'selected' : ''}>⏳ PENDING - Perlu Pembahasan Lanjutan</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-slate-600 font-semibold mb-1">Durasi yang Disetujui</label>
+                  <select id="input-durasi-dir" class="w-full px-3 py-2 rounded-xl border border-slate-200 outline-none bg-white font-semibold">
+                    <option value="12 Bulan" ${ev.durasi_perpanjangan_disetujui === "12 Bulan" || !ev.durasi_perpanjangan_disetujui ? 'selected' : ''}>12 Bulan (1 Tahun)</option>
+                    <option value="6 Bulan" ${ev.durasi_perpanjangan_disetujui === "6 Bulan" ? 'selected' : ''}>6 Bulan</option>
+                    <option value="3 Bulan" ${ev.durasi_perpanjangan_disetujui === "3 Bulan" ? 'selected' : ''}>3 Bulan</option>
+                    <option value="Karyawan Tetap" ${ev.durasi_perpanjangan_disetujui === "Karyawan Tetap" ? 'selected' : ''}>Karyawan Tetap (PKWTT)</option>
+                    <option value="Tidak Ada" ${ev.durasi_perpanjangan_disetujui === "Tidak Ada" ? 'selected' : ''}>Tidak Ada (Selesai)</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-slate-600 font-semibold mb-1">Nama Direktur & Tanggal ACC</label>
+                  <div class="grid grid-cols-2 gap-2">
+                    <input type="text" id="input-nama-dir" value="${escapeHtml(ev.nama_direktur || (dirUsers[0] && dirUsers[0].nama) || "Direktur")}" class="w-full px-3 py-2 rounded-xl border border-slate-200 outline-none bg-white font-medium">
+                    <input type="date" id="input-tgl-dir" value="${ev.tgl_approval_direktur || ""}" class="w-full px-3 py-2 rounded-xl border border-slate-200 outline-none bg-white font-medium">
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-xs text-slate-600 font-semibold mb-1">Catatan & Arahan Khusus Direktur</label>
+                <textarea id="input-catatan-dir" rows="2" placeholder="Arahan Direksi mengenai target omzet, disiplin kerja, kompensasi atau penyesuaian gaji..." class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none bg-white font-normal">${escapeHtml(ev.catatan_direktur || "")}</textarea>
+              </div>
+            </div>
+
+            <!-- TAHAP 4: DRAF KONTRAK BARU -->
+            <div class="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-200/80 space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-black">4</span>
+                  <h4 class="text-xs font-black text-indigo-950 uppercase tracking-wide">Tahap 4: Draf Dokumen & Penandatanganan Kontrak Baru</h4>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div>
+                  <label class="block text-slate-600 font-semibold mb-1">Nomor SK / Kontrak Baru</label>
+                  <input type="text" id="input-no-sk" placeholder="Contoh: 042/PKWT-AJ/VIII/2026" value="${escapeHtml(ev.no_sk_kontrak_baru || "")}" class="w-full px-3 py-2 rounded-xl border border-slate-200 outline-none bg-white font-medium">
+                </div>
+                <div>
+                  <label class="block text-slate-600 font-semibold mb-1">Rencana Tanggal Mulai</label>
+                  <input type="date" id="input-tgl-mulai-baru" value="${ev.tgl_mulai_baru || defaultNewStart}" class="w-full px-3 py-2 rounded-xl border border-slate-200 outline-none bg-white font-medium">
+                </div>
+                <div>
+                  <label class="block text-slate-600 font-semibold mb-1">Rencana Tanggal Akhir</label>
+                  <input type="date" id="input-tgl-akhir-baru" value="${ev.tgl_akhir_baru || defaultNewEnd}" class="w-full px-3 py-2 rounded-xl border border-slate-200 outline-none bg-white font-medium">
+                </div>
+              </div>
+            </div>
+
+            <!-- TAHAP 5: EKSEKUSI & PENYELESAIAN -->
+            <div class="bg-emerald-50 p-4 rounded-2xl border border-emerald-200 space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs font-black">5</span>
+                  <h4 class="text-xs font-black text-emerald-950 uppercase tracking-wide">Tahap 5: Terbitkan Kontrak Baru di Sistem</h4>
+                </div>
+              </div>
+              <p class="text-xs text-emerald-800 leading-relaxed">
+                Setelah mendapat persetujuan Direktur dan draf kontrak disiapkan, klik tombol di bawah untuk <strong>menerbitkan kontrak baru (Kontrak Ke-${(empData.kontrakKe || 1) + 1})</strong> secara otomatis ke dalam data riwayat kontrak dan memperbarui masa berlaku kerja karyawan di sistem.
+              </p>
+              <div class="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <button type="button" id="btn-save-progress-eval" class="w-full sm:w-auto px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition shadow-2xs">
+                  💾 Simpan Progres Lembar Kerja
+                </button>
+                <button type="button" id="btn-execute-renewal" class="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl transition shadow-md flex items-center justify-center gap-2">
+                  🚀 Terbitkan Kontrak Baru & Selesaikan Alur
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Panel 2: Performance Review Logs -->
+          <div id="modal-panel-performance" class="hidden space-y-4">
+            <div class="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+              <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wide">Nilai Penilaian KPI Terakhir</h4>
+              ${latestKpi ? `
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-white p-3 rounded-xl border border-slate-200">
+                  <div><span class="text-slate-400 block">Periode:</span> <strong>${escapeHtml(latestKpi.periode || latestKpi.bulan || "-")}</strong></div>
+                  <div><span class="text-slate-400 block">Skor Akhir:</span> <strong class="text-maroon-700 text-sm font-black">${latestKpi.nilai_akhir || latestKpi.skor_akhir || 0}</strong></div>
+                  <div><span class="text-slate-400 block">Predikat:</span> <span class="px-2 py-0.5 rounded font-bold bg-emerald-50 text-emerald-700">${escapeHtml(latestKpi.grade || latestKpi.predikat || "Baik")}</span></div>
+                  <div><span class="text-slate-400 block">Penilai:</span> <strong>${escapeHtml(latestKpi.nama_penilai || latestKpi.evaluator || "-")}</strong></div>
+                </div>
+              ` : `
+                <div class="py-4 text-center text-xs text-slate-400 italic">Belum ada riwayat penilaian KPI tercatat.</div>
+              `}
+            </div>
+
+            <div class="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+              <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wide">Log Capaian & Target Harian Terkini</h4>
+              ${empDaily.length ? `
+                <div class="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  ${empDaily.slice(0, 5).map(dl => `
+                    <div class="bg-white p-3 rounded-xl border border-slate-200 text-xs space-y-1">
+                      <div class="flex items-center justify-between">
+                        <span class="font-bold text-slate-800">${fmtDateShort(dl.tanggal)}</span>
+                        <span class="font-semibold text-blue-700">Skor: ${dl.skor_harian || dl.total_capaian || 100}%</span>
+                      </div>
+                      <p class="text-slate-600 text-[11px]">${escapeHtml(dl.catatan_harian || dl.keterangan || "Aktivitas tercatat normal.")}</p>
+                    </div>
+                  `).join("")}
+                </div>
+              ` : `
+                <div class="py-4 text-center text-xs text-slate-400 italic">Belum ada log capaian harian.</div>
+              `}
+            </div>
+          </div>
+        </div>
+      `,
+      footerHtml: `
+        <div class="flex items-center justify-between w-full">
+          <span class="text-[11px] text-slate-400">ID Koordinasi: ${recordId}</span>
+          <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">Tutup</button>
+        </div>
+      `
+    });
+
+    const modalTabWorkflow = document.getElementById("modal-tab-workflow");
+    const modalTabPerf = document.getElementById("modal-tab-performance");
+    const modalPanelWorkflow = document.getElementById("modal-panel-workflow");
+    const modalPanelPerf = document.getElementById("modal-panel-performance");
+
+    if (modalTabWorkflow && modalTabPerf) {
+      modalTabWorkflow.onclick = () => {
+        modalTabWorkflow.className = "px-4 py-2 text-xs font-bold border-b-2 border-maroon-700 text-maroon-700 transition";
+        modalTabPerf.className = "px-4 py-2 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition";
+        modalPanelWorkflow.classList.remove("hidden");
+        modalPanelPerf.classList.add("hidden");
+      };
+      modalTabPerf.onclick = () => {
+        modalTabPerf.className = "px-4 py-2 text-xs font-bold border-b-2 border-maroon-700 text-maroon-700 transition";
+        modalTabWorkflow.className = "px-4 py-2 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition";
+        modalPanelPerf.classList.remove("hidden");
+        modalPanelWorkflow.classList.add("hidden");
+      };
+    }
+
+    // Select change updates phone numbers
+    const selGm = document.getElementById("select-target-gm");
+    const inPhoneGm = document.getElementById("input-phone-gm");
+    const inNamaGm = document.getElementById("input-nama-gm");
+    if (selGm && inPhoneGm) {
+      selGm.onchange = () => {
+        const opt = selGm.selectedOptions[0];
+        if (opt) {
+          inPhoneGm.value = opt.dataset.phone || "";
+          if (inNamaGm) inNamaGm.value = opt.value;
+        }
+      };
+    }
+
+    const selDir = document.getElementById("select-target-dir");
+    const inPhoneDir = document.getElementById("input-phone-dir");
+    const inNamaDir = document.getElementById("input-nama-dir");
+    if (selDir && inPhoneDir) {
+      selDir.onchange = () => {
+        const opt = selDir.selectedOptions[0];
+        if (opt) {
+          inPhoneDir.value = opt.dataset.phone || "";
+          if (inNamaDir) inNamaDir.value = opt.value;
+        }
+      };
+    }
+
+    // WA Helper function for GM
+    function buildGmWaText() {
+      const recHrd = document.getElementById("input-rekomendasi-hrd")?.value || "Perpanjang Kontrak 12 Bulan";
+      const catHrd = document.getElementById("input-catatan-hrd")?.value || "Kinerja dan kedisiplinan baik.";
+      const gmName = inNamaGm?.value || "Bapak/Ibu GM";
+      return `Yth. ${gmName},\n\nMohon koordinasi dan masukan terkait evaluasi perpanjangan kontrak karyawan:\n- Nama: *${empData.nama_karyawan}*\n- NIK: ${empData.nik_karyawan || empData.nik || "-"}\n- Jabatan: ${empData.jabatan || "-"} (${empData.cabang || "Pusat"})\n- Kontrak Berakhir: *${empData.tglAkhir ? fmtDateShort(empData.tglAkhir) : "-"}* (Sisa ${empData.daysLeft !== null ? empData.daysLeft : '-'} Hari)\n\n*Hasil Review HRD:*\n- Rekomendasi: ${recHrd}\n- Catatan: "${catHrd}"\n\nMohon feedback dan rekomendasi Bapak/Ibu untuk kelanjutan kontrak yang bersangkutan. Terima kasih.`;
+    }
+
+    // WA Helper function for Director
+    function buildDirWaText() {
+      const recHrd = document.getElementById("input-rekomendasi-hrd")?.value || "Perpanjang Kontrak 12 Bulan";
+      const recGm = document.getElementById("input-rekomendasi-gm")?.value || "Setuju Rekomendasi HRD";
+      const catGm = document.getElementById("input-catatan-gm")?.value || "-";
+      const dirName = inNamaDir?.value || "Bapak/Ibu Direktur";
+      return `Yth. ${dirName},\n\nBerikut kami ajukan persetujuan (ACC) perpanjangan kontrak karyawan:\n- Nama: *${empData.nama_karyawan}*\n- Jabatan: ${empData.jabatan || "-"} (${empData.cabang || "Pusat"})\n- Masa Kontrak: Berakhir *${empData.tglAkhir ? fmtDateShort(empData.tglAkhir) : "-"}* (Sisa ${empData.daysLeft !== null ? empData.daysLeft : '-'} Hari)\n\n*Ringkasan Usulan:*\n- Usulan HRD: ${recHrd}\n- Masukan & Rekomendasi GM: *${recGm}*\n- Catatan GM: "${catGm}"\n\nMohon arahan dan persetujuan (ACC) dari Bapak/Ibu Direktur. Terima kasih.`;
+    }
+
+    // Bind WhatsApp buttons
+    const btnCopyWaGm = document.getElementById("btn-copy-wa-gm");
+    if (btnCopyWaGm) {
+      btnCopyWaGm.onclick = async () => {
+        const text = buildGmWaText();
+        await navigator.clipboard.writeText(text).catch(() => {});
+        toast("Format pesan WhatsApp untuk GM berhasil disalin!", "success");
+      };
+    }
+    const btnOpenWaGm = document.getElementById("btn-open-wa-gm");
+    if (btnOpenWaGm) {
+      btnOpenWaGm.onclick = () => {
+        const text = buildGmWaText();
+        const phone = inPhoneGm?.value || "";
+        openWhatsAppMessage(phone, text);
+      };
+    }
+
+    const btnCopyWaDir = document.getElementById("btn-copy-wa-dir");
+    if (btnCopyWaDir) {
+      btnCopyWaDir.onclick = async () => {
+        const text = buildDirWaText();
+        await navigator.clipboard.writeText(text).catch(() => {});
+        toast("Format ringkasan eksekutif untuk Direktur berhasil disalin!", "success");
+      };
+    }
+    const btnOpenWaDir = document.getElementById("btn-open-wa-dir");
+    if (btnOpenWaDir) {
+      btnOpenWaDir.onclick = () => {
+        const text = buildDirWaText();
+        const phone = inPhoneDir?.value || "";
+        openWhatsAppMessage(phone, text);
+      };
+    }
+
+    // Auto-calculate new contract dates when duration changes
+    const selDurasi = document.getElementById("input-durasi-dir");
+    const inMulaiBaru = document.getElementById("input-tgl-mulai-baru");
+    const inAkhirBaru = document.getElementById("input-tgl-akhir-baru");
+
+    if (selDurasi && inMulaiBaru && inAkhirBaru) {
+      selDurasi.onchange = () => {
+        const dur = selDurasi.value;
+        const startStr = inMulaiBaru.value || defaultNewStart;
+        if (startStr && dur) {
+          const sDate = new Date(startStr);
+          const eDate = new Date(sDate);
+          if (dur === "3 Bulan") eDate.setMonth(eDate.getMonth() + 3);
+          else if (dur === "6 Bulan") eDate.setMonth(eDate.getMonth() + 6);
+          else if (dur === "12 Bulan") eDate.setFullYear(eDate.getFullYear() + 1);
+          eDate.setDate(eDate.getDate() - 1);
+          inAkhirBaru.value = eDate.toISOString().split("T")[0];
+        }
+      };
+    }
+
+    // Calculate current Stage from inputs
+    function getCurrentStage() {
+      const hasDirApproval = document.getElementById("input-tgl-dir")?.value || ev.tgl_approval_direktur;
+      const hasSk = document.getElementById("input-no-sk")?.value || ev.no_sk_kontrak_baru;
+      const hasGm = document.getElementById("input-tgl-gm")?.value || ev.tgl_koordinasi_gm;
+      const hasHrd = document.getElementById("input-tgl-hrd")?.value || ev.tgl_review_hrd;
+
+      if (ev.status_final === "SELESAI") return "SELESAI";
+      if (hasSk && hasDirApproval) return "DRAFT_KONTRAK";
+      if (hasDirApproval) return "APPROVAL_DIREKTUR";
+      if (hasGm) return "APPROVAL_DIREKTUR";
+      if (hasHrd) return "KOORDINASI_GM";
+      return "REVIEW_HRD";
+    }
+
+    // Save Progress Handler
+    const btnSaveProgress = document.getElementById("btn-save-progress-eval");
+    if (btnSaveProgress) {
+      btnSaveProgress.onclick = async () => {
+        btnSaveProgress.disabled = true;
+        btnSaveProgress.textContent = "Menyimpan...";
+
+        const calculatedStage = getCurrentStage();
+
+        const payload = {
+          id: recordId,
+          nama_karyawan: empData.nama_karyawan,
+          nik_karyawan: empData.nik_karyawan || empData.nik || "",
+          jabatan: empData.jabatan || "",
+          cabang: empData.cabang || "Pusat",
+          divisi: empData.divisi || "",
+          kontrak_ke: empData.kontrakKe || 1,
+          tgl_mulai_kontrak: empData.tglMulai || "",
+          tgl_akhir_kontrak: empData.tglAkhir || "",
+          tahap: calculatedStage,
+          rekomendasi_hrd: document.getElementById("input-rekomendasi-hrd")?.value || "",
+          catatan_hrd: document.getElementById("input-catatan-hrd")?.value || "",
+          nama_reviewer_hrd: document.getElementById("input-nama-hrd")?.value || "",
+          tgl_review_hrd: document.getElementById("input-tgl-hrd")?.value || "",
+          nama_gm: inNamaGm?.value || "",
+          rekomendasi_gm: document.getElementById("input-rekomendasi-gm")?.value || "",
+          catatan_gm: document.getElementById("input-catatan-gm")?.value || "",
+          tgl_koordinasi_gm: document.getElementById("input-tgl-gm")?.value || "",
+          nama_direktur: inNamaDir?.value || "",
+          keputusan_direktur: document.getElementById("input-keputusan-dir")?.value || "",
+          durasi_perpanjangan_disetujui: selDurasi?.value || "",
+          catatan_direktur: document.getElementById("input-catatan-dir")?.value || "",
+          tgl_approval_direktur: document.getElementById("input-tgl-dir")?.value || "",
+          no_sk_kontrak_baru: document.getElementById("input-no-sk")?.value || "",
+          tgl_mulai_baru: inMulaiBaru?.value || "",
+          tgl_akhir_baru: inAkhirBaru?.value || "",
+          status_final: ev.status_final || "PROSES",
+          updated_at: new Date().toISOString()
+        };
+
+        try {
+          await fsUpdate(COL.EVALUASI_KONTRAK, recordId, payload);
+          toast("Progres lembar koordinasi perpanjangan berhasil disimpan!", "success");
+          closeModal();
+          if (onDoneCallback) onDoneCallback();
+        } catch (e) {
+          toast("Gagal menyimpan: " + e.message, "error");
+          btnSaveProgress.disabled = false;
+          btnSaveProgress.textContent = "💾 Simpan Progres Lembar Kerja";
+        }
+      };
+    }
+
+    // Execute Renewal (1-Click Creation)
+    const btnExecute = document.getElementById("btn-execute-renewal");
+    if (btnExecute) {
+      btnExecute.onclick = () => {
+        const keputusan = document.getElementById("input-keputusan-dir")?.value || "DISETUJUI_PERPANJANG";
+        const durasi = selDurasi?.value || "12 Bulan";
+        const tglMulai = inMulaiBaru?.value;
+        const tglAkhir = inAkhirBaru?.value;
+        const noSk = document.getElementById("input-no-sk")?.value || `SK-KTR-${Date.now().toString().slice(-4)}`;
+
+        if (keputusan === "TIDAK_DIPERPANJANG") {
+          confirmDialog(
+            `Apakah Anda yakin ingin memproses status <b>TIDAK DIPERPANJANG</b> untuk karyawan <b>${escapeHtml(empData.nama_karyawan)}</b>?`,
+            async () => {
+              try {
+                await fsUpdate(COL.EVALUASI_KONTRAK, recordId, {
+                  tahap: "SELESAI",
+                  status_final: "SELESAI",
+                  keputusan_direktur: "TIDAK_DIPERPANJANG",
+                  updated_at: new Date().toISOString()
+                });
+                toast("Status tidak diperpanjang telah disimpan.", "info");
+                closeModal();
+                if (onDoneCallback) onDoneCallback();
+              } catch (e) {
+                toast("Gagal memproses: " + e.message, "error");
+              }
+            }
+          );
+          return;
+        }
+
+        if (!tglMulai || !tglAkhir) {
+          toast("Mohon lengkapi Tanggal Mulai dan Tanggal Akhir Kontrak Baru!", "warning");
+          return;
+        }
+
+        confirmDialog(
+          `Terbitkan Kontrak Baru untuk <b>${escapeHtml(empData.nama_karyawan)}</b>?<br><br>
+           • Keputusan: <b>${keputusan === 'DISETUJUI_KARTAP' ? 'Pengangkatan Karyawan Tetap' : 'Perpanjang Kontrak'} (${durasi})</b><br>
+           • Periode Baru: <b>${fmtDateShort(tglMulai)} s/d ${fmtDateShort(tglAkhir)}</b><br>
+           • Kontrak Baru: <b>Kontrak Ke-${(empData.kontrakKe || 1) + 1}</b>`,
+          async () => {
+            btnExecute.disabled = true;
+            btnExecute.textContent = "Menerbitkan Kontrak...";
+
+            try {
+              const newKontrakKe = (empData.kontrakKe || 1) + 1;
+              const newContractId = `KTR-${(empData.nama_karyawan || "EMP").replace(/[^a-zA-Z0-9]/g, "")}-${Date.now().toString().slice(-4)}`;
+
+              // 1. Add new contract record
+              await fsAdd(COL.MASTER_KONTRAK, {
+                id: newContractId,
+                nama_karyawan: empData.nama_karyawan,
+                nik_karyawan: empData.nik_karyawan || empData.nik || "",
+                jabatan: empData.jabatan || "",
+                cabang: empData.cabang || "Pusat",
+                divisi: empData.divisi || "",
+                kontrak_ke: newKontrakKe,
+                no_kontrak: noSk,
+                tanggal_mulai: tglMulai,
+                tanggal_akhir: tglAkhir,
+                status_kolom_kontrak: "AKTIF",
+                keterangan: `Perpanjangan hasil koordinasi Direksi (${durasi}).`,
+                created_at: new Date().toISOString(),
+                created_by: session.nama || "HRD Admin"
+              });
+
+              // 2. Update employee master record
+              if (empData.id) {
+                const empPatch = {
+                  kontrak_ke: newKontrakKe,
+                  tgl_mulai_kontrak: tglMulai,
+                  tgl_akhir_kontrak: tglAkhir,
+                  status_karyawan: keputusan === "DISETUJUI_KARTAP" ? "PKWTT" : "PKWT",
+                  aktif_tdk_aktif: "AKTIF"
+                };
+                await fsUpdate(COL.MASTER_KARYAWAN, empData.id, empPatch);
+              }
+
+              // 3. Mark evaluation stage as SELESAI
+              await fsUpdate(COL.EVALUASI_KONTRAK, recordId, {
+                tahap: "SELESAI",
+                status_final: "SELESAI",
+                no_sk_kontrak_baru: noSk,
+                tgl_mulai_baru: tglMulai,
+                tgl_akhir_baru: tglAkhir,
+                keputusan_direktur: keputusan,
+                durasi_perpanjangan_disetujui: durasi,
+                updated_at: new Date().toISOString()
+              });
+
+              toast(`Kontrak baru untuk ${empData.nama_karyawan} berhasil diterbitkan dan aktif di sistem!`, "success");
+              closeModal();
+              if (onDoneCallback) onDoneCallback();
+            } catch (e) {
+              toast("Gagal menerbitkan kontrak baru: " + e.message, "error");
+              btnExecute.disabled = false;
+              btnExecute.textContent = "🚀 Terbitkan Kontrak Baru & Selesaikan Alur";
+            }
+          }
+        );
+      };
+    }
+  }
+
+  // -------------------------------------------------------------
+  // EVALUASI KONTRAK (ENHANCED TABLE WITH COORDINATION & SLA)
+  // -------------------------------------------------------------
+  async function loadEvaluasiKontrak() {
+    const wrap = panels.evaluasi;
+    if (!wrap) return;
+    wrap.innerHTML = `<div class="p-6">${skeletonRows(4)}</div>`;
+
+    let allKaryawan = [];
+    let allKontrak = [];
+    let allEvaluasi = [];
+
+    try {
+      [allKaryawan, allKontrak, allEvaluasi] = await Promise.all([
+        fsGetAll(COL.MASTER_KARYAWAN),
+        fsGetAll(COL.MASTER_KONTRAK),
+        fsGetAll(COL.EVALUASI_KONTRAK).catch(() => [])
+      ]);
+    } catch (e) {
+      console.warn("Gagal memuat evaluasi kontrak:", e);
+    }
+
+    if (isAtasanView && bawahanNames === null) {
+      bawahanNames = await getBawahanNames(session.nama);
+    }
+    const bset = bawahanNames ? new Set(bawahanNames) : null;
+    if (isAtasanView && bset) {
+      allKaryawan = allKaryawan.filter(k => bset.has(k.nama_karyawan));
+      allKontrak = allKontrak.filter(k => bset.has(k.nama_karyawan));
+    }
+
+    const activeEmp = allKaryawan.filter(e => (e.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF");
+    const evalMap = {};
+    allEvaluasi.forEach(ev => {
+      if (ev.nama_karyawan) evalMap[ev.nama_karyawan] = ev;
+      if (ev.nik_karyawan) evalMap[ev.nik_karyawan] = ev;
+    });
+
+    const evaluatedList = activeEmp.map(e => {
+      const empContracts = allKontrak.filter(k => (k.nama_karyawan || "").trim().toLowerCase() === (e.nama_karyawan || "").trim().toLowerCase());
+      empContracts.sort((a, b) => new Date(b.tanggal_akhir || 0) - new Date(a.tanggal_akhir || 0));
+      const latestContract = empContracts[0] || null;
+
+      const tglAkhir = (latestContract && latestContract.tanggal_akhir) || e.tgl_akhir_kontrak || "-";
+      let daysLeft = "-";
+      let dVal = null;
+      let colorClass = "text-slate-600";
+      let urgency = "AMAN";
+
+      if (tglAkhir !== "-") {
+        const d = Math.ceil((new Date(tglAkhir) - new Date()) / (1000 * 3600 * 24));
+        dVal = isNaN(d) ? null : d;
+        daysLeft = isNaN(d) ? "-" : `${d} hari`;
+        if (d <= 14) {
+          colorClass = "text-rose-600 font-bold bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200";
+          urgency = "KRITIS";
+        } else if (d <= 30) {
+          colorClass = "text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200";
+          urgency = "WASPADA";
+        } else if (d <= 60) {
+          colorClass = "text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200";
+          urgency = "PERSIAPAN";
+        }
+      }
+
+      const ev = evalMap[e.nama_karyawan] || evalMap[e.nik_karyawan] || null;
+      return {
+        ...e,
+        latestContract,
+        tglAkhir,
+        daysLeft,
+        dVal,
+        colorClass,
+        urgency,
+        evalRecord: ev
+      };
+    });
+
+    wrap.innerHTML = `
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h3 class="font-bold text-slate-800 text-base">Evaluasi & Monitoring Kontrak Kerja Karyawan</h3>
+            <p class="text-xs text-slate-400 mt-0.5">Monitoring perpanjangan, sisa masa berlaku, dan status tahapan koordinasi GM & Direktur.</p>
+          </div>
+          <button id="btn-goto-pipeline" class="px-3.5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-2xs">
+            ⚡ Buka Papan Alur Koordinasi
+          </button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="border-b border-slate-200 bg-slate-50 text-slate-500 font-bold uppercase tracking-wide">
+                <th class="py-3 px-4">Nama Karyawan</th>
+                <th class="py-3 px-4">Jabatan & Cabang</th>
+                <th class="py-3 px-4">Status Karyawan</th>
+                <th class="py-3 px-4">Akhir Kontrak</th>
+                <th class="py-3 px-4 text-center">Sisa Hari</th>
+                <th class="py-3 px-4">Tahap Koordinasi</th>
+                <th class="py-3 px-4">Hasil Keputusan</th>
+                <th class="py-3 px-4 text-center">Aksi</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${evaluatedList.length === 0 ? `
+                <tr><td colspan="8" class="py-12 text-center text-slate-400 italic">Tidak ada karyawan aktif.</td></tr>
+              ` : evaluatedList.map(e => {
+                const ev = e.evalRecord;
+                let stageText = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600">Belum Ada Progres</span>`;
+                if (ev) {
+                  if (ev.status_final === "SELESAI" || ev.tahap === "SELESAI") stageText = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">✅ Selesai</span>`;
+                  else if (ev.tahap === "DRAFT_KONTRAK") stageText = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">4. Draf Kontrak</span>`;
+                  else if (ev.tahap === "APPROVAL_DIREKTUR") stageText = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">3. Approval Direktur</span>`;
+                  else if (ev.tahap === "KOORDINASI_GM") stageText = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">2. Koordinasi GM</span>`;
+                  else stageText = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">1. Review HRD</span>`;
+                }
+
+                let decisionText = `<span class="text-slate-400 italic">-</span>`;
+                if (ev && ev.keputusan_direktur) {
+                  decisionText = `<span class="font-bold text-slate-800">${escapeHtml(ev.keputusan_direktur)} (${escapeHtml(ev.durasi_perpanjangan_disetujui || "-")})</span>`;
+                } else if (ev && ev.rekomendasi_gm) {
+                  decisionText = `<span class="text-amber-700 font-medium">GM: ${escapeHtml(ev.rekomendasi_gm)}</span>`;
+                }
+
+                return `
+                  <tr class="hover:bg-slate-50/80 transition">
+                    <td class="py-3 px-4 font-bold text-slate-800">${escapeHtml(e.nama_karyawan)}</td>
+                    <td class="py-3 px-4 text-slate-500">${escapeHtml(e.jabatan || "-")} (${escapeHtml(e.cabang || "Pusat")})</td>
+                    <td class="py-3 px-4 font-medium">${escapeHtml(formatStatusKaryawan(e.status_karyawan))}</td>
+                    <td class="py-3 px-4 font-semibold text-slate-700">${fmtDateShort(e.tglAkhir)}</td>
+                    <td class="py-3 px-4 text-center"><span class="${e.colorClass}">${e.daysLeft}</span></td>
+                    <td class="py-3 px-4">${stageText}</td>
+                    <td class="py-3 px-4 text-[11px]">${decisionText}</td>
+                    <td class="py-3 px-4 text-center">
+                      <button type="button" data-action="open-eval-coord" data-emp-name="${escapeHtml(e.nama_karyawan)}" class="px-2.5 py-1 bg-maroon-50 hover:bg-maroon-100 text-maroon-700 font-bold rounded-lg transition border border-maroon-200 text-[11px]">
+                        ⚡ Koordinasikan
+                      </button>
+                    </td>
+                  </tr>
+                `;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
-  `;
+    `;
+
+    const btnGoPipeline = wrap.querySelector("#btn-goto-pipeline");
+    if (btnGoPipeline) {
+      btnGoPipeline.onclick = () => {
+        switchTab("alur_perpanjangan");
+      };
+    }
+
+    wrap.querySelectorAll('[data-action="open-eval-coord"]').forEach(btn => {
+      btn.onclick = () => {
+        const empName = btn.dataset.empName;
+        const target = evaluatedList.find(x => x.nama_karyawan === empName);
+        if (target) {
+          openModalKoordinasiPerpanjangan(target, target.evalRecord, () => {
+            loadEvaluasiKontrak();
+          });
+        }
+      };
+    });
   }
 
   async function loadDailyTarget() {
@@ -5794,6 +7020,7 @@ export async function mount(container, { session, params }) {
   });
 
   if (tabKey === "kontrak" && !loaded.kontrak) { loaded.kontrak = true; loadKontrak(); }
+  if (tabKey === "alur_perpanjangan" && !loaded.alur_perpanjangan) { loaded.alur_perpanjangan = true; loadAlurPerpanjangan(); }
   if (tabKey === "kpi360" && !loaded.kpi360) { loaded.kpi360 = true; loadKpi360(); }
   if (tabKey === "template" && !loaded.template) { loaded.template = true; loadTemplateKpi(); }
   if (tabKey === "grafik" && !loaded.grafik) { loaded.grafik = true; loadEmployeeGrafik(); }

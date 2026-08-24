@@ -861,7 +861,7 @@ export function toast(message, type = "info") {
 /* ---------------------------------------------------------------------
  * 4. MODAL SYSTEM — generik, dipakai semua modul
  * ------------------------------------------------------------------- */
-export function openModal(options) {
+export function openModal(options, bodyArg = "", extraArg = {}) {
   closeModal();
   let title = "Informasi Detail";
   let modalBody = "";
@@ -869,7 +869,16 @@ export function openModal(options) {
   let size = "md";
   let onMount = null;
 
-  if (typeof options === "string") {
+  if (typeof options === "string" && (bodyArg || typeof bodyArg === "string")) {
+    // Signature: openModal(title, bodyHtml, optionsObj)
+    title = options;
+    modalBody = bodyArg;
+    if (extraArg && typeof extraArg === "object") {
+      footerHtml = extraArg.footerHtml || "";
+      size = extraArg.size || "md";
+      onMount = extraArg.onMount || null;
+    }
+  } else if (typeof options === "string") {
     modalBody = options;
   } else if (options && typeof options === "object") {
     title = options.title || "Informasi Detail";
@@ -884,11 +893,12 @@ export function openModal(options) {
   existingBackdrops.forEach(b => b.remove());
 
   const sizes = { sm: "max-w-md", md: "max-w-2xl", lg: "max-w-4xl", xl: "max-w-6xl", "7xl": "max-w-7xl", full: "max-w-[96vw] w-full" };
+  const sizeClass = sizes[size] || (typeof size === "string" && size.startsWith("max-w-") ? size : sizes.md);
   const backdrop = document.createElement("div");
   backdrop.id = "app-modal-backdrop";
   backdrop.className = "fixed inset-0 z-[100] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 transition-opacity duration-200";
   backdrop.innerHTML = `
-  <div class="bg-white w-full ${sizes[size] || sizes.md} rounded-2xl shadow-2xl max-h-[90vh] flex flex-col scale-95 transition-transform duration-200" id="app-modal-panel">
+  <div class="bg-white w-full ${sizeClass} rounded-2xl shadow-2xl max-h-[90vh] flex flex-col scale-95 transition-transform duration-200" id="app-modal-panel">
   <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
   <h3 class="text-lg font-semibold text-slate-800">${title}</h3>
   <button id="app-modal-close" class="text-slate-400 hover:text-maroon-700 hover:bg-slate-100 rounded-lg w-8 h-8 flex items-center justify-center transition cursor-pointer">

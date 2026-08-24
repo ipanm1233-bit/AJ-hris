@@ -5,9 +5,14 @@ import { MENU_CONFIG, loadPermissionOverrides } from "../auth.js";
 
 export async function mount(container, { session }) {
 	const isHrd = session.role === "HRD";
-	container.querySelector("#tab-btn-users").classList.toggle("hidden", !isHrd);
-	if (!isHrd) container.querySelector("#st-panel-users").innerHTML = `<div class="bg-white rounded-2xl border border-slate-100 p-6">${emptyState("Hanya HRD yang dapat mengelola akun pengguna", "Anda tetap dapat mengatur hak akses menu & formulir pada tab lain.")}</div>`;
-	else await loadUsersTab(container);
+	const tabBtnUsers = container.querySelector("#tab-btn-users");
+	if (tabBtnUsers) tabBtnUsers.classList.toggle("hidden", !isHrd);
+	const stPanelUsers = container.querySelector("#st-panel-users");
+	if (!isHrd) {
+		if (stPanelUsers) stPanelUsers.innerHTML = `<div class="bg-white rounded-2xl border border-slate-100 p-6">${emptyState("Hanya HRD yang dapat mengelola akun pengguna", "Anda tetap dapat mengatur hak akses menu & formulir pada tab lain.")}</div>`;
+	} else {
+		await loadUsersTab(container);
+	}
 
 	const [allUsers, allKaryawan] = await Promise.all([
 		fsGetAll(COL.USERS).catch(() => []),

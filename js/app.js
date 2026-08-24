@@ -14,6 +14,59 @@ const viewContainer = document.getElementById("view-container");
 let currentUnmount = null;
 let currentRoute = null;
 
+const PUBLIC_CAREER_ROUTES = ["karir", "lowongan", "portal-karir", "loker", "karir-online", "career"];
+
+/* ---------------------------------------------------------------------
+ * PORTAL KARIR PUBLIK (TANPA LOGIN HRIS)
+ * ------------------------------------------------------------------- */
+async function showPublicCareerPortal(params) {
+ document.getElementById("app-shell")?.classList.add("hidden");
+ document.getElementById("login-container")?.classList.add("hidden");
+ const portalContainer = document.getElementById("public-portal-container");
+ if (!portalContainer) return;
+ portalContainer.classList.remove("hidden");
+
+ try {
+ const html = await loadViewHtml("karir");
+ portalContainer.innerHTML = html;
+ } catch (e) {
+ console.warn("Gagal memuat template karir:", e);
+ }
+
+ try {
+ const mod = await import("./views/karir.js");
+ if (mod && typeof mod.mount === "function") {
+ mod.mount(portalContainer, { params, session: getSession() });
+ }
+ } catch (e) {
+ console.error("Gagal memuat modul karir.js:", e);
+ }
+}
+
+async function handleGlobalHashChange() {
+ const { path, params } = parseHash();
+ const cleanPath = String(path || "").toLowerCase().replace(/^[\/#]+/, "").replace(/[\/#]+$/, "").trim();
+
+ if (PUBLIC_CAREER_ROUTES.includes(cleanPath)) {
+ await showPublicCareerPortal(params);
+ return;
+ }
+
+ const session = getSession();
+ if (!session || cleanPath === "login") {
+ document.getElementById("app-shell")?.classList.add("hidden");
+ document.getElementById("public-portal-container")?.classList.add("hidden");
+ await showLogin();
+ return;
+ }
+
+ document.getElementById("login-container")?.classList.add("hidden");
+ document.getElementById("public-portal-container")?.classList.add("hidden");
+ document.getElementById("app-shell")?.classList.remove("hidden");
+
+ await router(session);
+}
+
 /* ---------------------------------------------------------------------
  * BOOTSTRAP
  * ------------------------------------------------------------------- */
@@ -25,7 +78,7 @@ async function boot() {
  // INTERSEP: Jika ada token Magic Link di URL dari Email
  if (token) {
  try {
- const pText = bootLoader.querySelector("p");
+ const pText = bootLoader ? bootLoader.querySelector("p") : null;
  if (pText) pText.textContent = "Memverifikasi login aman sekali pakai...";
  
  await loginWithToken(token);
@@ -40,23 +93,35 @@ async function boot() {
  }
  }
 
- const session = getSession();
+ const cleanPath = String(path || "").toLowerCase().replace(/^[\/#]+/, "").replace(/[\/#]+$/, "").trim();
 
- if (!session) {
- await showLogin();
- bootLoader.classList.add("hidden");
+ // Jika membuka URL portal karir publik
+ if (PUBLIC_CAREER_ROUTES.includes(cleanPath)) {
+ window.addEventListener("hashchange", handleGlobalHashChange);
+ await showPublicCareerPortal(params);
+ if (bootLoader) bootLoader.classList.add("hidden");
  return;
  }
 
- document.getElementById("login-container").classList.add("hidden");
- document.getElementById("app-shell").classList.remove("hidden");
+ const session = getSession();
+
+ if (!session) {
+ window.addEventListener("hashchange", handleGlobalHashChange);
+ await showLogin();
+ if (bootLoader) bootLoader.classList.add("hidden");
+ return;
+ }
+
+ document.getElementById("login-container")?.classList.add("hidden");
+ document.getElementById("public-portal-container")?.classList.add("hidden");
+ document.getElementById("app-shell")?.classList.remove("hidden");
 
  await renderShellForUser(session);
  bindShellEvents(session);
  startClock();
  aktifkanNotifikasiHP(session);
 
- window.addEventListener("hashchange", () => router(session));
+ window.addEventListener("hashchange", handleGlobalHashChange);
  
  if ('serviceWorker' in navigator) {
  navigator.serviceWorker.addEventListener('message', event => {
@@ -79,7 +144,7 @@ async function boot() {
  }
  
  await router(session);
- bootLoader.classList.add("hidden");
+ if (bootLoader) bootLoader.classList.add("hidden");
 }
 
 /* ---------------------------------------------------------------------
@@ -317,8 +382,10 @@ async function loadViewHtml(viewName) {
  * LOGIN SCREEN
  * ------------------------------------------------------------------- */
 async function showLogin() {
- document.getElementById("app-shell").classList.add("hidden");
+ document.getElementById("app-shell")?.classList.add("hidden");
+ document.getElementById("public-portal-container")?.classList.add("hidden");
  const loginContainer = document.getElementById("login-container");
+ if (!loginContainer) return;
  loginContainer.classList.remove("hidden");
 
  try {

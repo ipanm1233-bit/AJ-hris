@@ -534,7 +534,8 @@ export async function mount(container) {
  currentSelectedCol = colKey;
  const selectAllCb = panels.alldb.querySelector("#cb-select-all-db");
  if (selectAllCb) selectAllCb.checked = false;
- panels.alldb.querySelector("#db-table-body").innerHTML = `<tr><td colspan="6" class="p-8 text-center">${skeletonRows(3)}</td></tr>`;
+ const dbTableBody = panels.alldb.querySelector("#db-table-body");
+ if (dbTableBody) dbTableBody.innerHTML = `<tr><td colspan="6" class="p-8 text-center">${skeletonRows(3)}</td></tr>`;
  
  try {
  currentRows = await fsGetAll(colKey);

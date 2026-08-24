@@ -53,42 +53,60 @@ export function isLikelyBrokenKeyFormat(key) {
  * @returns {Promise<string>} teks mentah hasil respons Gemini
  */
 export async function callGemini(prompt) {
- if (isLikelyBrokenKeyFormat(GEMINI_API_KEY)) {
- console.warn("[AI Gemini] Format API key tidak diawali 'AIzaSy' — kemungkinan besar akan ditolak Google (401). Lihat komentar di js/ai-config.js.");
- }
+  // 1. Coba panggil server-side endpoint /api/gemini terlebih dahulu (Paling Aman & Standar AI Studio)
+  try {
+    const serverResp = await fetch("/api/gemini", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, model: "gemini-2.5-flash" })
+    });
+    if (serverResp.ok) {
+      const serverData = await serverResp.json();
+      if (serverData && serverData.text) {
+        return serverData.text;
+      }
+    }
+  } catch (e) {
+    console.warn("[AI Gemini] Server route failed, falling back to direct REST client:", e);
+  }
 
- let response;
- try {
- response = await fetch(`${GEMINI_ENDPOINT}?key=${GEMINI_API_KEY}`, {
- method: "POST",
- headers: { "Content-Type": "application/json" },
- body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
- });
- } catch (networkErr) {
- throw new Error("Gagal menghubungi server Gemini (kemungkinan masalah koneksi internet atau domain generativelanguage.googleapis.com diblokir jaringan Anda).");
- }
+  // 2. Fallback ke Direct Client REST jika server endpoint tidak diset
+  if (isLikelyBrokenKeyFormat(GEMINI_API_KEY)) {
+    console.warn("[AI Gemini] Format API key tidak diawali 'AIzaSy' — kemungkinan besar akan ditolak Google (401). Lihat komentar di js/ai-config.js.");
+  }
 
- if (!response.ok) {
- let errData = null;
- try { errData = await response.json(); } catch { /* ignore */ }
- const rawMsg = errData?.error?.message || `HTTP ${response.status}`;
+  let response;
+  try {
+    response = await fetch(`${GEMINI_ENDPOINT}?key=${GEMINI_API_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+    });
+  } catch (networkErr) {
+    throw new Error("Gagal menghubungi server Gemini (kemungkinan masalah koneksi internet atau domain generativelanguage.googleapis.com diblokir jaringan Anda).");
+  }
 
- if (response.status === 401 || /ACCESS_TOKEN_TYPE_UNSUPPORTED|API key not valid/i.test(rawMsg)) {
- throw new Error(`API Key Gemini ditolak Google (${rawMsg}). Kemungkinan besar API key Anda berformat "AQ." yang sedang bermasalah — buat API key baru di aistudio.google.com/apikey dan pastikan diawali "AIzaSy...". Lihat js/ai-config.js untuk detail.`);
- }
- if (response.status === 404) {
- throw new Error(`Model AI tidak ditemukan (${rawMsg}). Model mungkin sudah dipensiunkan Google — cek js/ai-config.js.`);
- }
- if (response.status === 429) {
- throw new Error("Kuota AI Gemini harian/menit sudah habis (429). Coba lagi beberapa saat lagi.");
- }
- throw new Error(`Gemini error: ${rawMsg}`);
- }
+  if (!response.ok) {
+    let errData = null;
+    try { errData = await response.json(); } catch { /* ignore */ }
+    const rawMsg = errData?.error?.message || `HTTP ${response.status}`;
 
- const data = await response.json();
- const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
- if (!text) throw new Error("Respons AI kosong / tidak terduga. Coba ulangi beberapa saat lagi.");
- return text;
+    if (response.status === 401 || /ACCESS_TOKEN_TYPE_UNSUPPORTED|API key not valid/i.test(rawMsg)) {
+      throw new Error(`API Key Gemini ditolak Google (${rawMsg}). Buat API key baru di aistudio.google.com/apikey dan pastikan diawali "AIzaSy...".`);
+    }
+    if (response.status === 404) {
+      throw new Error(`Model AI tidak ditemukan (${rawMsg}). Model mungkin sudah dipensiunkan Google — cek js/ai-config.js.`);
+    }
+    if (response.status === 429) {
+      throw new Error("Kuota AI Gemini harian/menit sudah habis (429). Coba lagi beberapa saat lagi.");
+    }
+    throw new Error(`Gemini error: ${rawMsg}`);
+  }
+
+  const data = await response.json();
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("Respons AI kosong / tidak terduga. Coba ulangi beberapa saat lagi.");
+  return text;
 }
 
 /** Sama seperti callGemini(), tapi otomatis membersihkan pagar ```json dan parse ke object. */
