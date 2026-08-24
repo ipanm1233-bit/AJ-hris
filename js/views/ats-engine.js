@@ -5,6 +5,8 @@
  * =====================================================================
  */
 
+import { db, doc, getDoc, setDoc } from "../firebase-config.js";
+
 export const DEFAULT_SYNONYMS = {
   "negosiasi": ["negosiasi", "negotiation", "negotiating", "tawar-menawar", "deal maker", "closing deal", "lobbying"],
   "sales": [
@@ -12,15 +14,16 @@ export const DEFAULT_SYNONYMS = {
     "account executive", "canvassing", "canvasser", "penjualan", "selling", "b2b sales",
     "b2c sales", "direct sales", "field sales", "telemarketing", "target sales", "sales force"
   ],
-  "distributor": ["distributor", "distribution", "distribusi", "fmcg", "retail", "grosir", "agen", "dealer", "prinsipal"],
+  "distributor": ["distributor", "distribution", "distribusi", "fmcg", "retail", "grosir", "agen", "dealer", "prinsipal", "pemasok"],
   "excel": ["excel", "microsoft excel", "ms excel", "vlookup", "hlookup", "pivot table", "pivot", "spreadsheet", "rumus excel", "macro", "data analysis"],
-  "admin": ["admin", "administrasi", "administrative", "data entry", "filling", "arsip", "surat-menyurat", "sekretaris", "office administration"],
+  "admin": ["admin", "administrasi", "administrative", "data entry", "filling", "arsip", "surat-menyurat", "sekretaris", "office administration", "input data"],
   "accounting": ["accounting", "akuntansi", "pembukuan", "jurnal", "buku besar", "laporan keuangan", "financial report", "faktur", "invoicing", "pajak", "tax", "pph", "ppn", "accurate", "zahir", "sap"],
-  "driver": ["driver", "sopir", "supir", "pengemudi", "sim a", "sim b1", "sim b2", "sim c", "mengemudi", "kirim barang", "kurir", "delivery"],
+  "driver": ["driver", "sopir", "supir", "pengemudi", "sim a", "sim b1", "sim b2", "sim c", "mengemudi", "kirim barang", "kurir", "delivery", "ekspedisi"],
   "warehouse": ["warehouse", "gudang", "kepala gudang", "staff gudang", "stock opname", "inventaris", "inventory", "bongkar muat", "loading", "unloading", "forklift", "fifo", "fefo"],
-  "komunikasi": ["komunikasi", "communication", "public speaking", "presentasi", "presentation", "interpersonal", "hubungan pelanggan"],
+  "komunikasi": ["komunikasi", "communication", "public speaking", "presentasi", "presentation", "interpersonal", "hubungan pelanggan", "customer service"],
   "leadership": ["leadership", "kepemimpinan", "supervisory", "supervisor", "team leader", "koordinator", "managerial", "manajemen tim"],
-  "problem solving": ["problem solving", "pemecahan masalah", "analitis", "analytical thinking", "decision making", "pengambilan keputusan"]
+  "problem solving": ["problem solving", "pemecahan masalah", "analitis", "analytical thinking", "decision making", "pengambilan keputusan"],
+  "digital marketing": ["digital marketing", "social media", "sosmed", "content creator", "copywriting", "meta ads", "tiktok ads", "seo", "sem", "canva", "photoshop"]
 };
 
 export const DEFAULT_ATS_RULES = [
@@ -38,7 +41,8 @@ export const DEFAULT_INDUSTRY_EXCLUSIONS = {
   rule_title: "Eksklusi Alumni Distributor Cat & Kompetitor",
   affected_positions: [
     "sales", "salesman", "sales executive", "sales force", "canvasser", "canvassing",
-    "admin", "admin sales", "admin gudang", "administrasi", "collector", "penagihan"
+    "admin", "admin sales", "admin gudang", "administrasi", "collector", "penagihan",
+    "staff administrasi", "finance"
   ],
   keywords: [
     "distributor cat", "distribusi cat", "agen cat", "toko cat", "pabrik cat", "industri cat", "cat tembok", "cat kayu",
@@ -46,20 +50,20 @@ export const DEFAULT_INDUSTRY_EXCLUSIONS = {
   ],
   action: "penalty_flag", // 'auto_reject' | 'penalty_flag' | 'warning_only'
   penalty_points: 25,
-  warning_message: "Terindikasi memiliki riwayat kerja di distributor/pabrik cat kompetitor"
+  warning_message: "Terindikasi memiliki riwayat kerja di distributor/pabrik cat kompetitor (Dilarang untuk posisi Sales & Admin CV Andela Jaya)"
 };
 
 export const DEFAULT_INTERVIEW_TEMPLATES = [
   {
     id: "tpl_sales",
     kategori_posisi: "Sales & Marketing",
-    posisi_target: ["Sales", "Sales Executive", "Canvasser", "Sales Force", "Account Executive"],
+    posisi_target: ["Sales", "Sales Executive", "Canvasser", "Sales Force", "Account Executive", "Salesman", "Marketing"],
     aspek: [
       {
         key: "komunikasi",
         label: "Communication & Negotiation",
-        desc: "Kelugasan berbicara, daya persuasif, dan teknik negosiasi dengan toko/outlet retail.",
-        pertanyaan_panduan: "Ceritakan bagaimana teknik Anda meyakinkan pemilik toko baru yang menolak mengambil produk display?",
+        desc: "Kelugasan berbicara, daya persuasif, dan teknik negosiasi dengan pemilik toko/outlet retail.",
+        pertanyaan_panduan: "Ceritakan bagaimana teknik Anda meyakinkan pemilik toko baru yang menolak mengambil produk display Anda?",
         bobot: 20
       },
       {
@@ -73,21 +77,21 @@ export const DEFAULT_INTERVIEW_TEMPLATES = [
         key: "field_knowledge",
         label: "Penguasaan Rute & Karakter Toko",
         desc: "Pemahaman rute area Cirebon/wilayah penempatan dan pengenalan segmentasi toko.",
-        pertanyaan_panduan: "Sebutkan rute toko yang biasa Anda kunjungi dan bagaimana Anda mengatur jadwal kunjungan mingguan?",
+        pertanyaan_panduan: "Sebutkan rute toko yang biasa Anda kunjungi dan bagaimana Anda mengatur jadwal kunjungan mingguan secara efisien?",
         bobot: 20
       },
       {
         key: "target_drive",
         label: "Target Orientation & Daya Juang",
-        desc: "Daya juang dan konsistensi mencapai target omzet penjualan bulanan di bawah tekanan.",
-        pertanyaan_panduan: "Berapa target omzet terbesar yang pernah Anda capai dan bagaimana strategi Anda saat pasar sedang lesu?",
+        desc: "Daya juang dan konsistensi mencapai target omzet penjualan bulanan di bawah tekanan pasar.",
+        pertanyaan_panduan: "Berapa target omzet terbesar yang pernah Anda capai dan bagaimana strategi Anda saat omzet penjualan sedang lesu?",
         bobot: 20
       },
       {
         key: "conflict_check",
-        label: "Pemeriksaan Bebas Konflik Industri (Cat/Kompetitor)",
+        label: "Pemeriksaan Bebas Konflik Industri (Alumni Distributor Cat)",
         desc: "Verifikasi riwayat perusahaan terdahulu agar tidak melanggar ketentuan non-kompetisi CV Andela Jaya.",
-        pertanyaan_panduan: "Apakah Anda memiliki perjanjian non-kompetisi atau keterikatan dengan distributor cat/industri sebelumnya?",
+        pertanyaan_panduan: "Apakah Anda sebelumnya pernah bekerja di distributor cat atau memiliki keterikatan non-kompetisi dengan perusahaan sebelumnya?",
         bobot: 20
       }
     ]
@@ -95,7 +99,7 @@ export const DEFAULT_INTERVIEW_TEMPLATES = [
   {
     id: "tpl_admin",
     kategori_posisi: "Administrasi & Finance",
-    posisi_target: ["Admin", "Admin Sales", "Admin Gudang", "Administrasi", "Finance", "Accounting"],
+    posisi_target: ["Admin", "Admin Sales", "Admin Gudang", "Administrasi", "Finance", "Accounting", "Staff Administrasi", "Kasir"],
     aspek: [
       {
         key: "accuracy",
@@ -108,7 +112,7 @@ export const DEFAULT_INTERVIEW_TEMPLATES = [
         key: "software_skill",
         label: "Penguasaan Excel & Spreadsheet",
         desc: "Kemahiran rumus VLOOKUP, SUMIFS, Pivot Table, dan kecepatan olah data laporan harian.",
-        pertanyaan_panduan: "Sebutkan formula Excel yang biasa Anda pakai untuk mengolah data ribuan baris laporan penjualan?",
+        pertanyaan_panduan: "Sebutkan formula Excel yang biasa Anda pakai untuk mengolah dan merekap ribuan baris data penjualan?",
         bobot: 25
       },
       {
@@ -120,9 +124,9 @@ export const DEFAULT_INTERVIEW_TEMPLATES = [
       },
       {
         key: "conflict_check",
-        label: "Verifikasi Bebas Konflik Industri",
-        desc: "Memastikan kandidat admin tidak berasal dari alumni distributor cat kompetitor sejenis.",
-        pertanyaan_panduan: "Di perusahaan sebelumnya, apa jenis komoditas/produk yang didistribusikan?",
+        label: "Verifikasi Bebas Konflik Industri (Alumni Distributor Cat)",
+        desc: "Memastikan kandidat admin tidak berasal dari alumni distributor cat kompetitor sejenis CV Andela Jaya.",
+        pertanyaan_panduan: "Di perusahaan sebelumnya, apa jenis komoditas/produk yang didistribusikan dan apakah bergerak di bidang distributor cat?",
         bobot: 25
       }
     ]
@@ -130,7 +134,7 @@ export const DEFAULT_INTERVIEW_TEMPLATES = [
   {
     id: "tpl_driver_warehouse",
     kategori_posisi: "Driver & Gudang (Logistik)",
-    posisi_target: ["Driver", "Sopir", "Supir", "Staff Gudang", "Kepala Gudang", "Delivery", "Helper"],
+    posisi_target: ["Driver", "Sopir", "Supir", "Staff Gudang", "Kepala Gudang", "Delivery", "Helper", "Logistik", "Ekspedisi"],
     aspek: [
       {
         key: "safety_driving",
@@ -198,13 +202,124 @@ export const DEFAULT_INTERVIEW_TEMPLATES = [
       {
         key: "culture_fit",
         label: "Culture Fit & Team Work",
-        desc: "Kesesuaian dengan budaya kerja kerja cepat, disiplin, dan gotong royong.",
+        desc: "Kesesuaian dengan budaya kerja cepat, disiplin, dan gotong royong.",
         pertanyaan_panduan: "Bagaimana Anda berkoordinasi saat menghadapi beban kerja tinggi dengan batas waktu ketat?",
         bobot: 20
       }
     ]
   }
 ];
+
+const LOCAL_STORAGE_KEY_PREFIX = "aj_ats_config_";
+
+/**
+ * Memuat Master Konfigurasi ATS (Sinonim, Aturan Bobot, Eksklusi Industri, Template Interview)
+ * dari Firestore dengan fallback ke localStorage / Default
+ */
+export async function loadAtsMasterConfig() {
+  const result = {
+    synonyms: JSON.parse(JSON.stringify(DEFAULT_SYNONYMS)),
+    ats_rules: JSON.parse(JSON.stringify(DEFAULT_ATS_RULES)),
+    industry_exclusions: JSON.parse(JSON.stringify(DEFAULT_INDUSTRY_EXCLUSIONS)),
+    interview_templates: JSON.parse(JSON.stringify(DEFAULT_INTERVIEW_TEMPLATES)),
+    ats_pass_threshold: 70
+  };
+
+  // 1. Coba dari LocalStorage terlebih dahulu (fast cache)
+  try {
+    const localSyn = localStorage.getItem(LOCAL_STORAGE_KEY_PREFIX + "synonyms");
+    if (localSyn) result.synonyms = JSON.parse(localSyn);
+
+    const localRules = localStorage.getItem(LOCAL_STORAGE_KEY_PREFIX + "ats_rules");
+    if (localRules) result.ats_rules = JSON.parse(localRules);
+
+    const localExcl = localStorage.getItem(LOCAL_STORAGE_KEY_PREFIX + "industry_exclusions");
+    if (localExcl) result.industry_exclusions = JSON.parse(localExcl);
+
+    const localTpls = localStorage.getItem(LOCAL_STORAGE_KEY_PREFIX + "interview_templates");
+    if (localTpls) result.interview_templates = JSON.parse(localTpls);
+
+    const localThresh = localStorage.getItem(LOCAL_STORAGE_KEY_PREFIX + "ats_pass_threshold");
+    if (localThresh) result.ats_pass_threshold = parseInt(localThresh, 10) || 70;
+  } catch (e) {
+    console.warn("Gagal membaca ats config dari localStorage:", e);
+  }
+
+  // 2. Coba sync dari Firestore doc `app_settings/ats_config_master`
+  try {
+    if (db) {
+      const docRef = doc(db, "app_settings", "ats_config_master");
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const cloudData = snap.data();
+        if (cloudData.synonyms && typeof cloudData.synonyms === "object") {
+          result.synonyms = cloudData.synonyms;
+          localStorage.setItem(LOCAL_STORAGE_KEY_PREFIX + "synonyms", JSON.stringify(result.synonyms));
+        }
+        if (cloudData.ats_rules && Array.isArray(cloudData.ats_rules)) {
+          result.ats_rules = cloudData.ats_rules;
+          localStorage.setItem(LOCAL_STORAGE_KEY_PREFIX + "ats_rules", JSON.stringify(result.ats_rules));
+        }
+        if (cloudData.industry_exclusions && typeof cloudData.industry_exclusions === "object") {
+          result.industry_exclusions = cloudData.industry_exclusions;
+          localStorage.setItem(LOCAL_STORAGE_KEY_PREFIX + "industry_exclusions", JSON.stringify(result.industry_exclusions));
+        }
+        if (cloudData.interview_templates && Array.isArray(cloudData.interview_templates)) {
+          result.interview_templates = cloudData.interview_templates;
+          localStorage.setItem(LOCAL_STORAGE_KEY_PREFIX + "interview_templates", JSON.stringify(result.interview_templates));
+        }
+        if (typeof cloudData.ats_pass_threshold === "number") {
+          result.ats_pass_threshold = cloudData.ats_pass_threshold;
+          localStorage.setItem(LOCAL_STORAGE_KEY_PREFIX + "ats_pass_threshold", String(result.ats_pass_threshold));
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Sync cloud ats_config_master info:", e.message);
+  }
+
+  return result;
+}
+
+/**
+ * Menyimpan bagian konfigurasi ATS ke Firestore dan LocalStorage
+ */
+export async function saveAtsMasterConfig(configType, payload) {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_KEY_PREFIX + configType, JSON.stringify(payload));
+  } catch (e) {
+    console.warn("Gagal menyimpan ke localStorage:", e);
+  }
+
+  try {
+    if (db) {
+      const docRef = doc(db, "app_settings", "ats_config_master");
+      await setDoc(docRef, {
+        [configType]: payload,
+        updated_at: new Date().toISOString()
+      }, { merge: true });
+    }
+  } catch (e) {
+    console.warn("Gagal update Firestore ats_config_master:", e);
+  }
+}
+
+/**
+ * Reset konfigurasi spesifik ke nilai default
+ */
+export async function resetAtsMasterConfig(configType) {
+  let defaultVal = null;
+  if (configType === "synonyms") defaultVal = DEFAULT_SYNONYMS;
+  else if (configType === "ats_rules") defaultVal = DEFAULT_ATS_RULES;
+  else if (configType === "industry_exclusions") defaultVal = DEFAULT_INDUSTRY_EXCLUSIONS;
+  else if (configType === "interview_templates") defaultVal = DEFAULT_INTERVIEW_TEMPLATES;
+  else if (configType === "ats_pass_threshold") defaultVal = 70;
+
+  if (defaultVal !== null) {
+    await saveAtsMasterConfig(configType, defaultVal);
+  }
+  return defaultVal;
+}
 
 export const CITIES_DICTIONARY = [
   "Cirebon", "Kota Cirebon", "Kabupaten Cirebon", "Kuningan", "Majalengka", "Indramayu",

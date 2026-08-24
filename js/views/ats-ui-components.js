@@ -60,7 +60,7 @@ export async function loadRecruitmentMasterData() {
 /**
  * Modal Detail Kandidat & Evaluasi ATS (Dua Kolom Desktop Sesuai PRD Section 11 & 12)
  */
-export function openCandidateDetailModal(candidate, vacancy, { onStatusChange, onOpenScorecard, onOpenCvViewer, onConvertToEmployee }) {
+export function openCandidateDetailModal(candidate, vacancy, { onStatusChange, onOpenScorecard, onOpenCvViewer, onConvertToEmployee, onDeleteCandidate }) {
   if (!candidate) return;
   const evaluation = candidate.evaluation || evaluateCandidateATS(candidate, vacancy || {});
 
@@ -230,17 +230,24 @@ export function openCandidateDetailModal(candidate, vacancy, { onStatusChange, o
 
   const footerHtml = `
   <div class="flex flex-wrap items-center justify-between gap-3 w-full">
-    <div class="flex items-center gap-2">
-      <label class="text-xs font-bold text-slate-500">Update Status:</label>
-      <select id="modal-select-kandidat-status" class="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 outline-none focus:border-maroon-700 cursor-pointer">
-        <option value="Applied" ${candidate.status === 'Applied' ? 'selected' : ''}>Applied (Masuk)</option>
-        <option value="Screening" ${candidate.status === 'Screening' ? 'selected' : ''}>Screening ATS</option>
-        <option value="Shortlist" ${candidate.status === 'Shortlist' ? 'selected' : ''}>Shortlist HR</option>
-        <option value="Interview" ${candidate.status === 'Interview' ? 'selected' : ''}>Interview</option>
-        <option value="Offered" ${candidate.status === 'Offered' ? 'selected' : ''}>Offering / PKWT</option>
-        <option value="Hired" ${candidate.status === 'Hired' ? 'selected' : ''}>Hired (Diterima)</option>
-        <option value="Rejected" ${candidate.status === 'Rejected' ? 'selected' : ''}>Rejected (Ditolak)</option>
-      </select>
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2">
+        <label class="text-xs font-bold text-slate-500">Status:</label>
+        <select id="modal-select-kandidat-status" class="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 outline-none focus:border-maroon-700 cursor-pointer">
+          <option value="Applied" ${candidate.status === 'Applied' ? 'selected' : ''}>Applied (Masuk)</option>
+          <option value="Screening" ${candidate.status === 'Screening' ? 'selected' : ''}>Screening ATS</option>
+          <option value="Shortlist" ${candidate.status === 'Shortlist' ? 'selected' : ''}>Shortlist HR</option>
+          <option value="Interview" ${candidate.status === 'Interview' ? 'selected' : ''}>Interview</option>
+          <option value="Offered" ${candidate.status === 'Offered' ? 'selected' : ''}>Offering / PKWT</option>
+          <option value="Hired" ${candidate.status === 'Hired' ? 'selected' : ''}>Hired (Diterima)</option>
+          <option value="Rejected" ${candidate.status === 'Rejected' ? 'selected' : ''}>Rejected (Ditolak)</option>
+        </select>
+      </div>
+
+      <button type="button" id="btn-modal-delete-cand" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer" title="Hapus Data Pelamar">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        <span>Hapus Pelamar</span>
+      </button>
     </div>
 
     <div class="flex items-center gap-2">
@@ -276,6 +283,14 @@ export function openCandidateDetailModal(candidate, vacancy, { onStatusChange, o
       if (selStatus && onStatusChange) {
         selStatus.onchange = () => {
           onStatusChange(candidate.id, selStatus.value);
+        };
+      }
+
+      // Delete candidate handler
+      const btnDel = m.querySelector("#btn-modal-delete-cand");
+      if (btnDel && onDeleteCandidate) {
+        btnDel.onclick = () => {
+          onDeleteCandidate(candidate.id);
         };
       }
 
@@ -920,12 +935,6 @@ export function openCreateVacancyWizardModal({ onSaveVacancy, initialData = null
           <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
             <p class="font-bold text-slate-700 mb-1">ATS Rule Configuration</p>
             <p class="text-slate-600 text-[11px]" id="prev-rules-summary">-</p>
-          </div>
-        </div>
-      </div>
-    </div>
-    `;
-  }
           </div>
         </div>
       </div>

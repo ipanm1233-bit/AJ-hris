@@ -6,7 +6,20 @@
  */
 import { db, COL, collection, onSnapshot, doc, updateDoc, setDoc } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, confirmDialog, toast, escapeHtml, genId, fmtDateShort, fmtRupiah } from "../utils.js";
-import { evaluateCandidateATS, extractBasicInfo, extractTextFromPdfFile, extractTextFromDocxFile, DEFAULT_SYNONYMS, CITIES_DICTIONARY } from "./ats-engine.js";
+import { 
+  evaluateCandidateATS, 
+  extractBasicInfo, 
+  extractTextFromPdfFile, 
+  extractTextFromDocxFile, 
+  DEFAULT_SYNONYMS, 
+  DEFAULT_ATS_RULES, 
+  DEFAULT_INDUSTRY_EXCLUSIONS, 
+  DEFAULT_INTERVIEW_TEMPLATES, 
+  CITIES_DICTIONARY,
+  loadAtsMasterConfig,
+  saveAtsMasterConfig,
+  resetAtsMasterConfig
+} from "./ats-engine.js";
 import { openCandidateDetailModal, openCvViewerModal, openInterviewScorecardModal, openCreateVacancyWizardModal, openPublicIntakeModal, loadRecruitmentMasterData } from "./ats-ui-components.js";
 import { renderAtsAnalyticsHtml } from "./ats-analytics.js";
 
@@ -28,10 +41,19 @@ export async function mount(container, { params, session }) {
   }
 
   let activeTab = params?.get("tab") || "dashboard";
+  let activeRulesSubTab = "synonyms"; // 'synonyms' | 'rules' | 'exclusions' | 'interviews'
+  let selectedInterviewTplId = "tpl_sales";
   let allCandidates = [];
   let allVacancies = [];
   let allInterviews = [];
   let masterData = null;
+  let atsMasterConfig = {
+    synonyms: { ...DEFAULT_SYNONYMS },
+    ats_rules: [ ...DEFAULT_ATS_RULES ],
+    industry_exclusions: { ...DEFAULT_INDUSTRY_EXCLUSIONS },
+    interview_templates: [ ...DEFAULT_INTERVIEW_TEMPLATES ],
+    ats_pass_threshold: 70
+  };
   let customSynonyms = {};
   let unsubscribeCands = null;
   let unsubscribeVacancies = null;
@@ -39,9 +61,19 @@ export async function mount(container, { params, session }) {
   // Render tab container layout
   const tabContentEl = container.querySelector("#ats-tab-content") || container;
 
+  function reEvaluateAllCandidates() {
+    allCandidates.forEach(cand => {
+      const v = allVacancies.find(x => x.id === cand.lowongan_id || x.posisi === cand.posisi_dilamar);
+      cand.evaluation = evaluateCandidateATS(cand, v, atsMasterConfig.synonyms, atsMasterConfig);
+      cand.ai_score = cand.evaluation.skor_ats;
+    });
+  }
+
   async function loadInitialData() {
     try {
       masterData = await loadRecruitmentMasterData();
+      atsMasterConfig = await loadAtsMasterConfig();
+      customSynonyms = atsMasterConfig.synonyms;
       allVacancies = await fsGetAll(COL.DATA_REKRUTMEN || "data_rekrutmen").catch(() => []);
       allCandidates = await fsGetAll(COL.PELAMAR || "pelamar_ats").catch(() => []);
       allInterviews = await fsGetAll("interview_scorecards").catch(() => []);
@@ -64,28 +96,17 @@ export async function mount(container, { params, session }) {
           sim_required: ["SIM C"],
           skills: ["Sales", "Negotiation", "Canvassing", "Komunikasi", "Target Sales"],
           industri_relevan: ["Distributor", "FMCG", "Bahan Bangunan", "Retail"],
-          ats_pass_threshold: 70,
-          ats_rules: [
-            { kriteria: "Pendidikan", bobot: 10, mandatory: true, key: "pendidikan" },
-            { kriteria: "Pengalaman Kerja", bobot: 25, mandatory: true, key: "pengalaman" },
-            { kriteria: "SIM C / Mengemudi", bobot: 15, mandatory: true, key: "sim" },
-            { kriteria: "Domisili & Penempatan", bobot: 10, mandatory: false, key: "domisili" },
-            { kriteria: "Keahlian Utama / Sales", bobot: 20, mandatory: false, key: "skills" },
-            { kriteria: "Software & Excel", bobot: 10, mandatory: false, key: "software" },
-            { kriteria: "Pengalaman Industri Relevan", bobot: 10, mandatory: false, key: "industri" }
-          ],
+          ats_pass_threshold: atsMasterConfig.ats_pass_threshold || 70,
+          ats_rules: atsMasterConfig.ats_rules,
+          industry_exclusions: atsMasterConfig.industry_exclusions,
           created_at: new Date().toISOString()
         };
         await fsAdd(COL.DATA_REKRUTMEN || "data_rekrutmen", defaultVac);
         allVacancies.push(defaultVac);
       }
 
-      // Pastikan evaluasi ATS terisi untuk kandidat
-      allCandidates.forEach(cand => {
-        const v = allVacancies.find(x => x.id === cand.lowongan_id || x.posisi === cand.posisi_dilamar);
-        cand.evaluation = evaluateCandidateATS(cand, v, customSynonyms);
-        cand.ai_score = cand.evaluation.skor_ats;
-      });
+      // Re-evaluasi kandidat dengan aturan & sinonim terbaru
+      reEvaluateAllCandidates();
 
       updateBadges();
       renderActiveTab();
@@ -415,7 +436,8 @@ export async function mount(container, { params, session }) {
         openCandidateDetailModal(cand, vac, {
           onStatusChange: handleStatusChange,
           onOpenScorecard: handleOpenScorecard,
-          onConvertToEmployee: handleConvertToEmployee
+          onConvertToEmployee: handleConvertToEmployee,
+          onDeleteCandidate: handleDeleteCandidate
         });
       };
     });
@@ -674,6 +696,9 @@ export async function mount(container, { params, session }) {
             <button data-cand-id="${c.id}" class="px-2.5 py-1 bg-maroon-700 hover:bg-maroon-800 text-white rounded-lg text-xs font-bold btn-open-detail cursor-pointer">
               Evaluasi & Detail
             </button>
+            <button data-cand-id="${c.id}" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 border border-rose-200 rounded-lg text-xs font-bold btn-delete-cand-row cursor-pointer transition" title="Hapus Data Pelamar">
+              Hapus
+            </button>
           </td>
         </tr>
       `).join('');
@@ -685,8 +710,15 @@ export async function mount(container, { params, session }) {
           openCandidateDetailModal(cand, vac, {
             onStatusChange: handleStatusChange,
             onOpenScorecard: handleOpenScorecard,
-            onConvertToEmployee: handleConvertToEmployee
+            onConvertToEmployee: handleConvertToEmployee,
+            onDeleteCandidate: handleDeleteCandidate
           });
+        };
+      });
+
+      tbody.querySelectorAll(".btn-delete-cand-row").forEach(b => {
+        b.onclick = () => {
+          handleDeleteCandidate(b.dataset.candId);
         };
       });
     }
@@ -1000,7 +1032,8 @@ export async function mount(container, { params, session }) {
           openCandidateDetailModal(cand, vac, {
             onStatusChange: handleStatusChange,
             onOpenScorecard: handleOpenScorecard,
-            onConvertToEmployee: handleConvertToEmployee
+            onConvertToEmployee: handleConvertToEmployee,
+            onDeleteCandidate: handleDeleteCandidate
           });
         };
       });
@@ -1022,6 +1055,12 @@ export async function mount(container, { params, session }) {
         <div>
           <h3 class="text-sm font-bold text-slate-800">Riwayat & Scorecard Interview</h3>
           <p class="text-xs text-slate-500">Evaluasi terstruktur aspek kompetensi wawancara kandidat.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" id="btn-goto-interview-templates" class="px-3.5 py-2 bg-maroon-50 hover:bg-maroon-100 text-maroon-800 text-xs font-bold rounded-xl border border-maroon-200 transition inline-flex items-center gap-1.5 cursor-pointer">
+            <svg class="w-4 h-4 text-maroon-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+            <span>Kelola Template & Pertanyaan Wawancara</span>
+          </button>
         </div>
       </div>
 
@@ -1068,6 +1107,13 @@ export async function mount(container, { params, session }) {
     </div>
     `;
 
+    const btnGoToTpls = el.querySelector("#btn-goto-interview-templates");
+    if (btnGoToTpls) {
+      btnGoToTpls.onclick = () => {
+        switchTab("rules", "interviews");
+      };
+    }
+
     el.querySelectorAll(".btn-view-sc").forEach(b => {
       b.onclick = () => {
         const cand = allCandidates.find(x => x.id === b.dataset.scCandId);
@@ -1077,30 +1123,1106 @@ export async function mount(container, { params, session }) {
     });
   }
 
-  /* 7. MASTER RULES & SYNONYM DICTIONARY TAB */
+  /* 7. MASTER RULES, SYNONYMS, INDUSTRY EXCLUSION & INTERVIEW QUESTIONS TAB */
   function renderRulesTab(el) {
-    el.innerHTML = `
-    <div class="space-y-5">
-      <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-        <h3 class="text-sm font-bold text-slate-800">Master Kamus Sinonim & ATS Rule Dictionary</h3>
-        <p class="text-xs text-slate-500">Kamus sinonim yang digunakan oleh sistem ATS untuk mencocokkan kata kunci dalam resume secara cerdas.</p>
+    let synonymFilter = "";
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          ${Object.entries({ ...DEFAULT_SYNONYMS, ...customSynonyms }).map(([keyword, synonyms]) => `
-            <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
-              <div class="flex justify-between items-center">
-                <span class="font-bold text-xs text-maroon-900 uppercase tracking-wide">${escapeHtml(keyword)}</span>
-                <span class="text-[10px] text-slate-400">${synonyms.length} Istilah</span>
+    function renderSubTabNav() {
+      return `
+        <div class="flex items-center gap-2 border-b border-slate-200 pb-3 mb-5 overflow-x-auto">
+          <button type="button" data-rules-subtab="synonyms" class="rules-subtab-btn px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${activeRulesSubTab === 'synonyms' ? 'bg-maroon-700 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
+            📚 Kamus Sinonim ATS (${Object.keys(atsMasterConfig.synonyms || {}).length})
+          </button>
+          <button type="button" data-rules-subtab="rules" class="rules-subtab-btn px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${activeRulesSubTab === 'rules' ? 'bg-maroon-700 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
+            ⚖️ Aturan Bobot ATS (${(atsMasterConfig.ats_rules || []).length})
+          </button>
+          <button type="button" data-rules-subtab="exclusions" class="rules-subtab-btn px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${activeRulesSubTab === 'exclusions' ? 'bg-maroon-700 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
+            🚫 Eksklusi Industri & Anti-Kompetitor
+          </button>
+          <button type="button" data-rules-subtab="interviews" class="rules-subtab-btn px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${activeRulesSubTab === 'interviews' ? 'bg-maroon-700 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
+            🎙️ Master Template & Pertanyaan Wawancara (${(atsMasterConfig.interview_templates || []).length})
+          </button>
+        </div>
+      `;
+    }
+
+    function renderSynonymsContent() {
+      const synEntries = Object.entries(atsMasterConfig.synonyms || {}).filter(([k, terms]) => {
+        if (!synonymFilter) return true;
+        const q = synonymFilter.toLowerCase();
+        return k.toLowerCase().includes(q) || terms.some(t => t.toLowerCase().includes(q));
+      });
+
+      return `
+        <div class="space-y-4">
+          <!-- Top Actions -->
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+            <div class="flex-1 max-w-md">
+              <input type="text" id="syn-search-input" value="${escapeHtml(synonymFilter)}" placeholder="Cari kata kunci atau sinonim..." 
+                class="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl outline-none focus:border-maroon-600 shadow-2xs">
+            </div>
+            <div class="flex items-center flex-wrap gap-2">
+              <button type="button" id="btn-add-syn-keyword" class="px-3.5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer">
+                <span>+ Tambah Kata Kunci Utama</span>
+              </button>
+              <button type="button" id="btn-reset-synonyms" class="px-3 py-2 bg-white hover:bg-slate-100 text-slate-600 text-xs font-bold rounded-xl border border-slate-200 transition cursor-pointer">
+                Reset ke Default
+              </button>
+            </div>
+          </div>
+
+          <!-- Cards Grid -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            ${synEntries.length > 0 ? synEntries.map(([keyword, synonyms]) => `
+              <div class="p-4 bg-white rounded-2xl border border-slate-200 shadow-2xs space-y-2.5 group hover:border-slate-300 transition">
+                <div class="flex justify-between items-center pb-2 border-b border-slate-100">
+                  <div class="flex items-center gap-2">
+                    <span class="font-bold text-xs text-maroon-900 uppercase tracking-wide bg-maroon-50 px-2 py-0.5 rounded-lg border border-maroon-100">${escapeHtml(keyword)}</span>
+                    <span class="text-[10px] text-slate-400 font-semibold">(${synonyms.length} sinonim)</span>
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <button type="button" data-kw="${escapeHtml(keyword)}" class="p-1 text-slate-400 hover:text-maroon-700 rounded hover:bg-slate-50 btn-edit-kw cursor-pointer" title="Edit Kata Kunci">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                    </button>
+                    <button type="button" data-kw="${escapeHtml(keyword)}" class="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 btn-del-kw cursor-pointer" title="Hapus Kata Kunci">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="flex flex-wrap gap-1.5 items-center">
+                  ${synonyms.map((s, sIdx) => `
+                    <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-[11px] text-slate-700 font-medium group/pill">
+                      <span>${escapeHtml(s)}</span>
+                      <button type="button" data-kw="${escapeHtml(keyword)}" data-syn="${escapeHtml(s)}" class="text-slate-400 hover:text-rose-600 font-bold ml-0.5 btn-del-syn-pill cursor-pointer">✕</button>
+                    </span>
+                  `).join('')}
+                  <button type="button" data-kw="${escapeHtml(keyword)}" class="px-2 py-0.5 border border-dashed border-slate-300 hover:border-maroon-700 text-slate-500 hover:text-maroon-700 rounded-lg text-[11px] font-bold transition btn-add-syn-pill cursor-pointer">
+                    + Tambah Sinonim
+                  </button>
+                </div>
               </div>
-              <div class="flex flex-wrap gap-1">
-                ${synonyms.map(s => `<span class="px-2 py-0.5 bg-white border border-slate-200 rounded text-[11px] text-slate-600 font-medium">${escapeHtml(s)}</span>`).join('')}
+            `).join('') : `
+              <div class="col-span-2 p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 text-slate-400 text-xs">
+                Tidak ada kata kunci yang cocok dengan pencarian "${escapeHtml(synonymFilter)}".
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderRulesContent() {
+      const rules = atsMasterConfig.ats_rules || [];
+      const totalWeight = rules.reduce((sum, r) => sum + (parseInt(r.bobot, 10) || 0), 0);
+      const isWeightValid = totalWeight === 100;
+
+      return `
+        <div class="space-y-4">
+          <!-- Weight Warning & Passing Grade Threshold -->
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl border ${isWeightValid ? 'bg-emerald-50/70 border-emerald-200' : 'bg-rose-50/70 border-rose-200'}">
+            <div class="space-y-1">
+              <div class="flex items-center gap-2">
+                <span class="font-bold text-xs ${isWeightValid ? 'text-emerald-900' : 'text-rose-900'}">Status Bobot Penilaian ATS:</span>
+                <span class="px-3 py-0.5 rounded-full text-xs font-black ${isWeightValid ? 'bg-emerald-200 text-emerald-900' : 'bg-rose-200 text-rose-900'}">
+                  Total: ${totalWeight}% ${isWeightValid ? '✓ (Valid)' : '⚠️ (Harus 100%)'}
+                </span>
+              </div>
+              <p class="text-[11px] ${isWeightValid ? 'text-emerald-700' : 'text-rose-700'}">
+                Total penjumlahan bobot semua kriteria penilaian harus persis 100% agar skor terbobot akurat.
+              </p>
+            </div>
+
+            <div class="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shrink-0">
+              <label class="text-xs font-bold text-slate-700">Passing Grade Kelulusan:</label>
+              <input type="number" id="inp-ats-threshold" min="30" max="95" value="${atsMasterConfig.ats_pass_threshold || 70}" 
+                class="w-16 px-2 py-1 text-center font-bold text-xs bg-slate-50 border border-slate-300 rounded-lg outline-none focus:border-maroon-700">
+              <span class="text-xs font-bold text-slate-500">%</span>
+            </div>
+          </div>
+
+          <!-- Rules Table -->
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs">
+                <thead>
+                  <tr class="bg-slate-50 text-slate-600 uppercase font-semibold border-b border-slate-200">
+                    <th class="p-3 text-left">Nama Kriteria Penilaian</th>
+                    <th class="p-3 text-left w-32">Kunci Parameter</th>
+                    <th class="p-3 text-center w-28">Bobot (%)</th>
+                    <th class="p-3 text-center w-28">Wajib Lolos (Mandatory)</th>
+                    <th class="p-3 text-right w-20">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  ${rules.map((rule, idx) => `
+                    <tr class="hover:bg-slate-50/70 transition">
+                      <td class="p-2.5 font-bold text-slate-800">
+                        <input type="text" value="${escapeHtml(rule.kriteria)}" data-idx="${idx}" class="w-full px-2 py-1.5 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-maroon-600 rounded-lg outline-none rule-inp-kriteria">
+                      </td>
+                      <td class="p-2.5 text-slate-500 font-mono text-[11px]">
+                        ${escapeHtml(rule.key || `kriteria_${idx}`)}
+                      </td>
+                      <td class="p-2.5 text-center">
+                        <input type="number" min="0" max="100" value="${rule.bobot}" data-idx="${idx}" class="w-20 px-2 py-1.5 text-center font-mono font-bold bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-maroon-600 rounded-lg outline-none rule-inp-bobot">
+                      </td>
+                      <td class="p-2.5 text-center">
+                        <input type="checkbox" ${rule.mandatory ? 'checked' : ''} data-idx="${idx}" class="w-4 h-4 rounded border-slate-300 text-maroon-700 cursor-pointer rule-chk-mandatory">
+                      </td>
+                      <td class="p-2.5 text-right">
+                        <button type="button" data-idx="${idx}" class="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 btn-del-rule cursor-pointer" title="Hapus Kriteria">
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        </button>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Bottom Actions -->
+            <div class="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+              <button type="button" id="btn-add-new-rule" class="px-3.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer">
+                <span>+ Tambah Kriteria Baru</span>
+              </button>
+
+              <div class="flex items-center gap-2">
+                <button type="button" id="btn-reset-rules" class="px-3 py-2 bg-white hover:bg-slate-100 text-slate-600 text-xs font-bold rounded-xl border border-slate-200 transition cursor-pointer">
+                  Reset Aturan Default
+                </button>
+                <button type="button" id="btn-save-rules" class="px-4 py-2 bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer">
+                  Simpan Aturan Bobot ATS
+                </button>
               </div>
             </div>
-          `).join('')}
+          </div>
         </div>
-      </div>
-    </div>
-    `;
+      `;
+    }
+
+    function renderExclusionsContent() {
+      const excl = atsMasterConfig.industry_exclusions || DEFAULT_INDUSTRY_EXCLUSIONS;
+      const isEnabled = excl.enabled !== false;
+      const positions = excl.affected_positions || [];
+      const keywords = excl.keywords || [];
+
+      return `
+        <div class="space-y-5">
+          <!-- Policy Explanation Banner -->
+          <div class="p-5 bg-gradient-to-r from-rose-900 to-maroon-900 text-white rounded-2xl space-y-2 shadow-xs">
+            <div class="flex items-center justify-between">
+              <span class="px-2.5 py-0.5 rounded-full bg-rose-500/30 text-rose-200 border border-rose-400/40 text-[10px] font-bold uppercase tracking-wider">Anti-Kompetisi & Kebijakan Industri</span>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="excl-enable-toggle" class="sr-only peer" ${isEnabled ? 'checked' : ''}>
+                <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+              </label>
+            </div>
+            <h3 class="text-base font-black">Eksklusi Kandidat Alumni Distributor / Pabrik Cat</h3>
+            <p class="text-xs text-rose-100 leading-relaxed">
+              Kandidat untuk posisi tertentu (seperti <strong>Sales, Canvasser, Admin, Finance, Collector</strong>) yang memiliki rekam jejak kerja di distributor cat, pabrik cat, atau brand kompetitor sejenis akan secara otomatis terdeteksi oleh ATS untuk diberi penalti skor atau diskualifikasi langsung sesuai SOP CV Andela Jaya.
+            </p>
+          </div>
+
+          <!-- Configuration Form -->
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-5">
+            <!-- Aksi & Penalti -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4 border-b border-slate-100">
+              <div class="space-y-1.5">
+                <label class="block text-xs font-bold text-slate-800">Aksi Penanganan ATS Saat Terdeteksi:</label>
+                <select id="excl-action-select" class="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 outline-none focus:border-maroon-700 cursor-pointer">
+                  <option value="penalty_flag" ${excl.action === 'penalty_flag' ? 'selected' : ''}>Peringatan & Penalti Nilai Skor (Direkomendasikan)</option>
+                  <option value="auto_reject" ${excl.action === 'auto_reject' ? 'selected' : ''}>Auto-Reject (Gugur / Diskualifikasi Otomatis)</option>
+                  <option value="warning_only" ${excl.action === 'warning_only' ? 'selected' : ''}>Hanya Catatan Peringatan Review (Tanpa Potong Skor)</option>
+                </select>
+                <p class="text-[11px] text-slate-500">Opsi penalti nilai akan memotong poin ATS kandidat dan memberikan badge peringatan.</p>
+              </div>
+
+              <div class="space-y-1.5">
+                <label class="block text-xs font-bold text-slate-800">Besaran Penalti Skor ATS (Poin):</label>
+                <div class="flex items-center gap-2">
+                  <input type="number" id="excl-penalty-points" min="5" max="60" value="${excl.penalty_points || 25}" 
+                    class="w-24 px-3.5 py-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-maroon-700 text-center font-mono">
+                  <span class="text-xs font-bold text-slate-600">Poin Pelanggaran</span>
+                </div>
+                <p class="text-[11px] text-slate-500">Skor total ATS kandidat akan dikurangi sebesar poin ini jika terdeteksi.</p>
+              </div>
+            </div>
+
+            <!-- Posisi yang Dibatasi -->
+            <div class="space-y-2 pb-4 border-b border-slate-100">
+              <div class="flex items-center justify-between">
+                <label class="block text-xs font-bold text-slate-800">Posisi Lowongan yang Dibatasi (Target Rules):</label>
+                <span class="text-[11px] text-slate-500">${positions.length} Posisi Terdaftar</span>
+              </div>
+              <div class="flex flex-wrap gap-1.5 items-center p-3 bg-slate-50 rounded-xl border border-slate-200 min-h-[50px]">
+                ${positions.map(p => `
+                  <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-800 font-bold shadow-2xs">
+                    <span>${escapeHtml(p)}</span>
+                    <button type="button" data-pos="${escapeHtml(p)}" class="text-slate-400 hover:text-rose-600 font-bold ml-0.5 btn-del-excl-pos cursor-pointer">✕</button>
+                  </span>
+                `).join('')}
+              </div>
+              <div class="flex items-center gap-2 pt-1">
+                <input type="text" id="inp-add-excl-pos" placeholder="Ketik nama posisi (misal: Collector, Sales B2B, Kasir)..." 
+                  class="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl outline-none focus:border-maroon-600">
+                <button type="button" id="btn-add-excl-pos" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition cursor-pointer">
+                  + Tambah Posisi
+                </button>
+              </div>
+            </div>
+
+            <!-- Kata Kunci / Brand Industri Kompetitor Terlarang -->
+            <div class="space-y-2 pb-4 border-b border-slate-100">
+              <div class="flex items-center justify-between">
+                <label class="block text-xs font-bold text-slate-800">Daftar Kata Kunci & Brand Industri Kompetitor Terlarang:</label>
+                <span class="text-[11px] text-slate-500">${keywords.length} Keyword Aktif</span>
+              </div>
+              <div class="flex flex-wrap gap-1.5 items-center p-3 bg-rose-50/50 rounded-xl border border-rose-200 min-h-[60px]">
+                ${keywords.map(kw => `
+                  <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-rose-200 rounded-lg text-[11px] text-rose-900 font-bold shadow-2xs">
+                    <span>${escapeHtml(kw)}</span>
+                    <button type="button" data-kw="${escapeHtml(kw)}" class="text-rose-400 hover:text-rose-700 font-bold ml-0.5 btn-del-excl-kw cursor-pointer">✕</button>
+                  </span>
+                `).join('')}
+              </div>
+              <div class="flex items-center gap-2 pt-1">
+                <input type="text" id="inp-add-excl-kw" placeholder="Ketik keyword terlarang (misal: Toko Cat, Cat Kayu, Mowilex, Propan, dsb)..." 
+                  class="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl outline-none focus:border-maroon-600">
+                <button type="button" id="btn-add-excl-kw" class="px-3 py-1.5 bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold rounded-xl transition cursor-pointer">
+                  + Tambah Keyword
+                </button>
+              </div>
+            </div>
+
+            <!-- Pesan Peringatan Custom -->
+            <div class="space-y-1.5">
+              <label class="block text-xs font-bold text-slate-800">Pesan Peringatan untuk HRD / Hiring Manager:</label>
+              <textarea id="excl-warning-msg" rows="2" class="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-maroon-700 leading-relaxed">${escapeHtml(excl.warning_message || "Terindikasi memiliki riwayat kerja di distributor/pabrik cat kompetitor (Dilarang untuk posisi Sales & Admin CV Andela Jaya)")}</textarea>
+            </div>
+
+            <!-- Save & Reset Action -->
+            <div class="pt-2 flex flex-wrap items-center justify-between gap-3">
+              <button type="button" id="btn-reset-excl" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-xl transition cursor-pointer">
+                Reset Eksklusi ke Default
+              </button>
+              <button type="button" id="btn-save-excl" class="px-5 py-2.5 bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer">
+                Simpan Aturan Eksklusi Industri
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderInterviewsContent() {
+      const templates = atsMasterConfig.interview_templates || DEFAULT_INTERVIEW_TEMPLATES;
+      const currentTpl = templates.find(t => t.id === selectedInterviewTplId) || templates[0] || DEFAULT_INTERVIEW_TEMPLATES[0];
+      const aspects = currentTpl.aspek || [];
+      const totalWeight = aspects.reduce((sum, a) => sum + (parseInt(a.bobot, 10) || 0), 0);
+
+      return `
+        <div class="space-y-5">
+          <!-- Template Selector Tabs -->
+          <div class="flex items-center gap-2 overflow-x-auto pb-1">
+            ${templates.map(tpl => `
+              <button type="button" data-tpl-id="${tpl.id}" class="tpl-tab-btn px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${tpl.id === currentTpl.id ? 'bg-maroon-700 text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}">
+                ${escapeHtml(tpl.kategori_posisi)}
+              </button>
+            `).join('')}
+            <button type="button" id="btn-add-new-tpl" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer">
+              + Tambah Kategori Template
+            </button>
+          </div>
+
+          <!-- Active Template Editor Card -->
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-5">
+            <!-- Header Info -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4 border-b border-slate-100">
+              <div class="space-y-1.5">
+                <label class="block text-xs font-bold text-slate-800">Nama Kategori Template Wawancara:</label>
+                <input type="text" id="tpl-inp-name" value="${escapeHtml(currentTpl.kategori_posisi)}" class="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-maroon-700">
+              </div>
+              <div class="space-y-1.5">
+                <label class="block text-xs font-bold text-slate-800">Target Posisi (Pisahkan Koma atau gunakan * untuk semua):</label>
+                <input type="text" id="tpl-inp-positions" value="${escapeHtml((currentTpl.posisi_target || []).join(', '))}" class="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-maroon-700">
+              </div>
+            </div>
+
+            <!-- Aspects & Interview Questions List -->
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <div>
+                  <h4 class="text-xs font-bold text-slate-800">Daftar Aspek Penilaian & Panduan Pertanyaan Interviewer:</h4>
+                  <p class="text-[11px] text-slate-500">Pertanyaan panduan akan langsung tampil di formulir scorecard pewawancara.</p>
+                </div>
+                <span class="px-3 py-1 rounded-full text-xs font-black ${totalWeight === 100 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+                  Total Bobot: ${totalWeight}%
+                </span>
+              </div>
+
+              <div class="space-y-3.5" id="tpl-aspects-list">
+                ${aspects.map((asp, aIdx) => `
+                  <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3 group hover:border-slate-300 transition" data-aspect-idx="${aIdx}">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div class="flex-1 flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-full bg-maroon-100 text-maroon-800 flex items-center justify-center text-[11px] font-black shrink-0">${aIdx + 1}</span>
+                        <input type="text" value="${escapeHtml(asp.label || '')}" placeholder="Nama Aspek Kompetensi..." class="flex-1 px-2.5 py-1 text-xs font-bold bg-white border border-slate-200 rounded-lg outline-none focus:border-maroon-700 asp-inp-label">
+                      </div>
+                      <div class="flex items-center gap-2 shrink-0">
+                        <label class="text-[11px] font-bold text-slate-600">Bobot:</label>
+                        <input type="number" min="0" max="100" value="${asp.bobot || 20}" class="w-16 px-2 py-1 text-center font-bold font-mono text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-maroon-700 asp-inp-bobot">
+                        <span class="text-xs font-bold text-slate-500">%</span>
+                        <button type="button" data-aspect-idx="${aIdx}" class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 btn-del-aspect cursor-pointer" title="Hapus Aspek Ini">
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div class="space-y-1">
+                      <label class="block text-[11px] font-bold text-slate-600">Deskripsi Indikator Penilaian:</label>
+                      <input type="text" value="${escapeHtml(asp.desc || '')}" placeholder="Uraian apa yang dinilai pada aspek ini..." class="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-maroon-700 asp-inp-desc">
+                    </div>
+
+                    <!-- Pertanyaan Panduan Wawancara (Editable) -->
+                    <div class="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl space-y-1">
+                      <label class="block text-[11px] font-bold text-amber-900 flex items-center gap-1.5">
+                        <span class="px-1.5 py-0.5 bg-amber-200 text-amber-900 rounded font-black text-[10px] uppercase">🎙️ Panduan Pertanyaan Interviewer:</span>
+                      </label>
+                      <textarea rows="2" placeholder="Tuliskan contoh pertanyaan tajam yang harus diajukan pewawancara kepada kandidat..." class="w-full px-2.5 py-1.5 text-xs bg-white border border-amber-300 rounded-lg outline-none focus:border-maroon-700 text-slate-800 leading-relaxed asp-inp-question">${escapeHtml(asp.pertanyaan_panduan || '')}</textarea>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+
+              <button type="button" id="btn-add-aspect-item" class="w-full py-2.5 border-2 border-dashed border-slate-200 hover:border-maroon-600 rounded-xl text-xs font-bold text-slate-600 hover:text-maroon-700 transition flex items-center justify-center gap-1.5 cursor-pointer">
+                <span>+ Tambah Aspek & Pertanyaan Wawancara Baru</span>
+              </button>
+            </div>
+
+            <!-- Bottom Actions -->
+            <div class="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <button type="button" id="btn-reset-tpl" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-xl transition cursor-pointer">
+                  Reset Semua Template ke Default
+                </button>
+                ${templates.length > 1 ? `
+                  <button type="button" id="btn-delete-current-tpl" class="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl border border-rose-200 transition cursor-pointer">
+                    Hapus Kategori Ini
+                  </button>
+                ` : ''}
+              </div>
+
+              <button type="button" id="btn-save-tpl" class="px-5 py-2.5 bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer">
+                Simpan Perubahan Template Wawancara
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderActiveRulesSubTab() {
+      let contentHtml = "";
+      if (activeRulesSubTab === "synonyms") contentHtml = renderSynonymsContent();
+      else if (activeRulesSubTab === "rules") contentHtml = renderRulesContent();
+      else if (activeRulesSubTab === "exclusions") contentHtml = renderExclusionsContent();
+      else if (activeRulesSubTab === "interviews") contentHtml = renderInterviewsContent();
+
+      el.innerHTML = `
+        <div class="space-y-4">
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-1">
+            <h3 class="text-sm font-bold text-slate-800">Master Aturan ATS, Kamus Sinonim, Eksklusi & Wawancara</h3>
+            <p class="text-xs text-slate-500">Konfigurasi cerdas parameter penyaringan CV, aturan pembatasan industri non-kompetisi, dan template pertanyaan interview HRIS Andela Jaya.</p>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+            ${renderSubTabNav()}
+            <div id="rules-subtab-container">
+              ${contentHtml}
+            </div>
+          </div>
+        </div>
+      `;
+
+      bindRulesEvents();
+    }
+
+    function bindRulesEvents() {
+      // Subtab switch
+      el.querySelectorAll(".rules-subtab-btn").forEach(btn => {
+        btn.onclick = () => {
+          activeRulesSubTab = btn.dataset.rulesSubtab;
+          renderActiveRulesSubTab();
+        };
+      });
+
+      // --- 1. SYNONYMS EVENTS ---
+      if (activeRulesSubTab === "synonyms") {
+        const synSearch = el.querySelector("#syn-search-input");
+        if (synSearch) {
+          synSearch.oninput = (e) => {
+            synonymFilter = e.target.value;
+            const container = el.querySelector("#rules-subtab-container");
+            if (container) {
+              container.innerHTML = renderSynonymsContent();
+              bindRulesEvents();
+            }
+          };
+        }
+
+        const btnAddKw = el.querySelector("#btn-add-syn-keyword");
+        if (btnAddKw) {
+          btnAddKw.onclick = () => {
+            openAddSynonymModal();
+          };
+        }
+
+        const btnResetSyn = el.querySelector("#btn-reset-synonyms");
+        if (btnResetSyn) {
+          btnResetSyn.onclick = async () => {
+            const ok = await confirmDialog("Apakah Anda yakin ingin mengembalikan seluruh kamus sinonim ke standar bawaan sistem?", {
+              title: "Reset Kamus Sinonim?",
+              danger: true
+            });
+            if (!ok) return;
+
+            atsMasterConfig.synonyms = await resetAtsMasterConfig("synonyms");
+            customSynonyms = atsMasterConfig.synonyms;
+            reEvaluateAllCandidates();
+            toast("Kamus sinonim berhasil direset ke default!", "success");
+            renderActiveRulesSubTab();
+          };
+        }
+
+        el.querySelectorAll(".btn-del-kw").forEach(btn => {
+          btn.onclick = async () => {
+            const kw = btn.dataset.kw;
+            const ok = await confirmDialog(`Kata kunci "${kw}" dan seluruh daftar sinonimnya akan dihapus dari sistem ATS. Lanjutkan?`, {
+              title: `Hapus Kata Kunci "${kw}"?`,
+              danger: true
+            });
+            if (!ok) return;
+
+            delete atsMasterConfig.synonyms[kw];
+            await saveAtsMasterConfig("synonyms", atsMasterConfig.synonyms);
+            customSynonyms = atsMasterConfig.synonyms;
+            reEvaluateAllCandidates();
+            toast(`Kata kunci "${kw}" berhasil dihapus!`, "success");
+            renderActiveRulesSubTab();
+          };
+        });
+
+        el.querySelectorAll(".btn-edit-kw").forEach(btn => {
+          btn.onclick = () => {
+            const kw = btn.dataset.kw;
+            openEditSynonymModal(kw);
+          };
+        });
+
+        el.querySelectorAll(".btn-add-syn-pill").forEach(btn => {
+          btn.onclick = () => {
+            const kw = btn.dataset.kw;
+            openAddSingleSynonymModal(kw);
+          };
+        });
+
+        el.querySelectorAll(".btn-del-syn-pill").forEach(btn => {
+          btn.onclick = async (e) => {
+            e.stopPropagation();
+            const kw = btn.dataset.kw;
+            const syn = btn.dataset.syn;
+            atsMasterConfig.synonyms[kw] = atsMasterConfig.synonyms[kw].filter(s => s !== syn);
+            await saveAtsMasterConfig("synonyms", atsMasterConfig.synonyms);
+            customSynonyms = atsMasterConfig.synonyms;
+            reEvaluateAllCandidates();
+            renderActiveRulesSubTab();
+          };
+        });
+      }
+
+      // --- 2. RULES EVENTS ---
+      if (activeRulesSubTab === "rules") {
+        const btnAddRule = el.querySelector("#btn-add-new-rule");
+        if (btnAddRule) {
+          btnAddRule.onclick = () => {
+            openAddRuleModal();
+          };
+        }
+
+        el.querySelectorAll(".btn-del-rule").forEach(btn => {
+          btn.onclick = () => {
+            const idx = parseInt(btn.dataset.idx, 10);
+            atsMasterConfig.ats_rules.splice(idx, 1);
+            renderActiveRulesSubTab();
+          };
+        });
+
+        const btnSaveRules = el.querySelector("#btn-save-rules");
+        if (btnSaveRules) {
+          btnSaveRules.onclick = async () => {
+            const updatedRules = [];
+            el.querySelectorAll("tbody tr").forEach((tr, idx) => {
+              const kInp = tr.querySelector(".rule-inp-kriteria");
+              const bInp = tr.querySelector(".rule-inp-bobot");
+              const mChk = tr.querySelector(".rule-chk-mandatory");
+              if (kInp && bInp) {
+                const kriteria = kInp.value.trim() || `Kriteria #${idx+1}`;
+                const bobot = parseInt(bInp.value, 10) || 0;
+                const mandatory = mChk ? mChk.checked : false;
+                const origKey = atsMasterConfig.ats_rules[idx]?.key || kriteria.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+                updatedRules.push({ kriteria, bobot, mandatory, key: origKey });
+              }
+            });
+
+            const thresholdInp = el.querySelector("#inp-ats-threshold");
+            if (thresholdInp) {
+              atsMasterConfig.ats_pass_threshold = parseInt(thresholdInp.value, 10) || 70;
+              await saveAtsMasterConfig("ats_pass_threshold", atsMasterConfig.ats_pass_threshold);
+            }
+
+            atsMasterConfig.ats_rules = updatedRules;
+            await saveAtsMasterConfig("ats_rules", updatedRules);
+            reEvaluateAllCandidates();
+            toast("Aturan bobot & kriteria ATS berhasil disimpan!", "success");
+            renderActiveRulesSubTab();
+          };
+        }
+
+        const btnResetRules = el.querySelector("#btn-reset-rules");
+        if (btnResetRules) {
+          btnResetRules.onclick = async () => {
+            const ok = await confirmDialog("Kembalikan kriteria bobot dan passing threshold ke konfigurasi standar?", {
+              title: "Reset Aturan Bobot ATS?",
+              danger: true
+            });
+            if (!ok) return;
+
+            atsMasterConfig.ats_rules = await resetAtsMasterConfig("ats_rules");
+            atsMasterConfig.ats_pass_threshold = await resetAtsMasterConfig("ats_pass_threshold");
+            reEvaluateAllCandidates();
+            toast("Aturan bobot berhasil direset ke default!", "success");
+            renderActiveRulesSubTab();
+          };
+        }
+      }
+
+      // --- 3. EXCLUSIONS EVENTS ---
+      if (activeRulesSubTab === "exclusions") {
+        const toggle = el.querySelector("#excl-enable-toggle");
+        if (toggle) {
+          toggle.onchange = () => {
+            atsMasterConfig.industry_exclusions.enabled = toggle.checked;
+          };
+        }
+
+        const btnAddPos = el.querySelector("#btn-add-excl-pos");
+        const inpPos = el.querySelector("#inp-add-excl-pos");
+        if (btnAddPos && inpPos) {
+          const doAddPos = () => {
+            const val = inpPos.value.trim().toLowerCase();
+            if (!val) return;
+            if (!atsMasterConfig.industry_exclusions.affected_positions) {
+              atsMasterConfig.industry_exclusions.affected_positions = [];
+            }
+            if (!atsMasterConfig.industry_exclusions.affected_positions.includes(val)) {
+              atsMasterConfig.industry_exclusions.affected_positions.push(val);
+              inpPos.value = "";
+              renderActiveRulesSubTab();
+            }
+          };
+          btnAddPos.onclick = doAddPos;
+          inpPos.onkeydown = (e) => { if (e.key === "Enter") doAddPos(); };
+        }
+
+        el.querySelectorAll(".btn-del-excl-pos").forEach(btn => {
+          btn.onclick = () => {
+            const p = btn.dataset.pos;
+            atsMasterConfig.industry_exclusions.affected_positions = (atsMasterConfig.industry_exclusions.affected_positions || []).filter(x => x !== p);
+            renderActiveRulesSubTab();
+          };
+        });
+
+        const btnAddKw = el.querySelector("#btn-add-excl-kw");
+        const inpKw = el.querySelector("#inp-add-excl-kw");
+        if (btnAddKw && inpKw) {
+          const doAddKw = () => {
+            const val = inpKw.value.trim().toLowerCase();
+            if (!val) return;
+            if (!atsMasterConfig.industry_exclusions.keywords) {
+              atsMasterConfig.industry_exclusions.keywords = [];
+            }
+            if (!atsMasterConfig.industry_exclusions.keywords.includes(val)) {
+              atsMasterConfig.industry_exclusions.keywords.push(val);
+              inpKw.value = "";
+              renderActiveRulesSubTab();
+            }
+          };
+          btnAddKw.onclick = doAddKw;
+          inpKw.onkeydown = (e) => { if (e.key === "Enter") doAddKw(); };
+        }
+
+        el.querySelectorAll(".btn-del-excl-kw").forEach(btn => {
+          btn.onclick = () => {
+            const kw = btn.dataset.kw;
+            atsMasterConfig.industry_exclusions.keywords = (atsMasterConfig.industry_exclusions.keywords || []).filter(x => x !== kw);
+            renderActiveRulesSubTab();
+          };
+        });
+
+        const btnSaveExcl = el.querySelector("#btn-save-excl");
+        if (btnSaveExcl) {
+          btnSaveExcl.onclick = async () => {
+            const actionSel = el.querySelector("#excl-action-select");
+            const ptsInp = el.querySelector("#excl-penalty-points");
+            const warnText = el.querySelector("#excl-warning-msg");
+            const toggle = el.querySelector("#excl-enable-toggle");
+
+            atsMasterConfig.industry_exclusions.enabled = toggle ? toggle.checked : true;
+            atsMasterConfig.industry_exclusions.action = actionSel ? actionSel.value : "penalty_flag";
+            atsMasterConfig.industry_exclusions.penalty_points = ptsInp ? parseInt(ptsInp.value, 10) || 25 : 25;
+            atsMasterConfig.industry_exclusions.warning_message = warnText ? warnText.value.trim() : "";
+
+            await saveAtsMasterConfig("industry_exclusions", atsMasterConfig.industry_exclusions);
+            reEvaluateAllCandidates();
+            toast("Aturan eksklusi industri alumni distributor cat berhasil disimpan!", "success");
+            renderActiveRulesSubTab();
+          };
+        }
+
+        const btnResetExcl = el.querySelector("#btn-reset-excl");
+        if (btnResetExcl) {
+          btnResetExcl.onclick = async () => {
+            const ok = await confirmDialog("Kembalikan parameter eksklusi industri ke pengaturan bawaan CV Andela Jaya?", {
+              title: "Reset Aturan Eksklusi?",
+              danger: true
+            });
+            if (!ok) return;
+
+            atsMasterConfig.industry_exclusions = await resetAtsMasterConfig("industry_exclusions");
+            reEvaluateAllCandidates();
+            toast("Aturan eksklusi berhasil direset!", "success");
+            renderActiveRulesSubTab();
+          };
+        }
+      }
+
+      // --- 4. INTERVIEWS EVENTS ---
+      if (activeRulesSubTab === "interviews") {
+        el.querySelectorAll(".tpl-tab-btn").forEach(btn => {
+          btn.onclick = () => {
+            selectedInterviewTplId = btn.dataset.tplId;
+            renderActiveRulesSubTab();
+          };
+        });
+
+        const btnAddNewTpl = el.querySelector("#btn-add-new-tpl");
+        if (btnAddNewTpl) {
+          btnAddNewTpl.onclick = () => {
+            openAddInterviewTemplateModal();
+          };
+        }
+
+        const btnAddAspect = el.querySelector("#btn-add-aspect-item");
+        if (btnAddAspect) {
+          btnAddAspect.onclick = () => {
+            const tpl = atsMasterConfig.interview_templates.find(t => t.id === selectedInterviewTplId);
+            if (tpl) {
+              if (!tpl.aspek) tpl.aspek = [];
+              tpl.aspek.push({
+                key: "aspek_" + Date.now(),
+                label: "Aspek Penilaian Baru",
+                desc: "Deskripsi indikator penilaian wawancara.",
+                pertanyaan_panduan: "Panduan pertanyaan interviewer...",
+                bobot: 20
+              });
+              renderActiveRulesSubTab();
+            }
+          };
+        }
+
+        el.querySelectorAll(".btn-del-aspect").forEach(btn => {
+          btn.onclick = () => {
+            const aIdx = parseInt(btn.dataset.aspectIdx, 10);
+            const tpl = atsMasterConfig.interview_templates.find(t => t.id === selectedInterviewTplId);
+            if (tpl && tpl.aspek) {
+              tpl.aspek.splice(aIdx, 1);
+              renderActiveRulesSubTab();
+            }
+          };
+        });
+
+        const btnSaveTpl = el.querySelector("#btn-save-tpl");
+        if (btnSaveTpl) {
+          btnSaveTpl.onclick = async () => {
+            const tpl = atsMasterConfig.interview_templates.find(t => t.id === selectedInterviewTplId);
+            if (!tpl) return;
+
+            const nameInp = el.querySelector("#tpl-inp-name");
+            const posInp = el.querySelector("#tpl-inp-positions");
+            if (nameInp) tpl.kategori_posisi = nameInp.value.trim();
+            if (posInp) {
+              tpl.posisi_target = posInp.value.split(",").map(p => p.trim()).filter(Boolean);
+            }
+
+            const updatedAspects = [];
+            el.querySelectorAll("#tpl-aspects-list [data-aspect-idx]").forEach((card, idx) => {
+              const lbl = card.querySelector(".asp-inp-label")?.value.trim() || `Aspek #${idx+1}`;
+              const bbt = parseInt(card.querySelector(".asp-inp-bobot")?.value, 10) || 20;
+              const dsc = card.querySelector(".asp-inp-desc")?.value.trim() || "";
+              const qst = card.querySelector(".asp-inp-question")?.value.trim() || "";
+              const origKey = tpl.aspek[idx]?.key || ("asp_" + idx);
+
+              updatedAspects.push({
+                key: origKey,
+                label: lbl,
+                desc: dsc,
+                pertanyaan_panduan: qst,
+                bobot: bbt
+              });
+            });
+
+            tpl.aspek = updatedAspects;
+            await saveAtsMasterConfig("interview_templates", atsMasterConfig.interview_templates);
+            toast("Template wawancara & pertanyaan interviewer berhasil disimpan!", "success");
+            renderActiveRulesSubTab();
+          };
+        }
+
+        const btnDelCurrentTpl = el.querySelector("#btn-delete-current-tpl");
+        if (btnDelCurrentTpl) {
+          btnDelCurrentTpl.onclick = async () => {
+            const ok = await confirmDialog("Apakah Anda yakin ingin menghapus kategori template ini?", {
+              title: "Hapus Kategori Template?",
+              danger: true
+            });
+            if (!ok) return;
+
+            atsMasterConfig.interview_templates = atsMasterConfig.interview_templates.filter(t => t.id !== selectedInterviewTplId);
+            selectedInterviewTplId = atsMasterConfig.interview_templates[0]?.id || "tpl_sales";
+            await saveAtsMasterConfig("interview_templates", atsMasterConfig.interview_templates);
+            toast("Template berhasil dihapus!", "success");
+            renderActiveRulesSubTab();
+          };
+        }
+
+        const btnResetTpl = el.querySelector("#btn-reset-tpl");
+        if (btnResetTpl) {
+          btnResetTpl.onclick = async () => {
+            const ok = await confirmDialog("Kembalikan seluruh template wawancara dan panduan pertanyaan ke format standar?", {
+              title: "Reset Semua Template Wawancara?",
+              danger: true
+            });
+            if (!ok) return;
+
+            atsMasterConfig.interview_templates = await resetAtsMasterConfig("interview_templates");
+            selectedInterviewTplId = "tpl_sales";
+            toast("Template interview berhasil direset ke default!", "success");
+            renderActiveRulesSubTab();
+          };
+        }
+      }
+    }
+
+    /* ---------------------------------------------------------------------
+     * MODAL BUILDERS UNTUK EDIT RULES & KAMUS SINONIM
+     * ------------------------------------------------------------------- */
+    function openAddSynonymModal() {
+      const modalHtml = `
+        <div class="space-y-4 text-xs">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Kata Kunci Utama <span class="text-red-500">*</span></label>
+            <input type="text" id="inp-add-main-kw" placeholder="Contoh: logistik, supervisor, perpajakan, audit..." class="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-maroon-700 font-bold text-slate-800" />
+            <p class="text-[11px] text-slate-500 mt-1">Kata kunci utama ini menjadi acuan klasifikasi keahlian dalam evaluasi ATS.</p>
+          </div>
+
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Daftar Sinonim / Variasi Kata Terkait</label>
+            <textarea id="inp-add-syn-list" rows="4" placeholder="Contoh: pergudangan, warehouse, gudang, inventaris, stock opname, fifo..." class="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-maroon-700 text-slate-700"></textarea>
+            <p class="text-[11px] text-slate-500 mt-1">Pisahkan setiap kata atau frasa dengan tanda koma ( , ). Kata kunci utama otomatis disertakan.</p>
+          </div>
+        </div>
+      `;
+
+      const footerHtml = `
+        <div class="flex justify-end gap-2 w-full">
+          <button type="button" id="btn-cancel-add-syn" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer">Batal</button>
+          <button type="button" id="btn-save-add-syn" class="px-4 py-2 bg-maroon-700 hover:bg-maroon-800 text-white rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-sm">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            Simpan Kata Kunci
+          </button>
+        </div>
+      `;
+
+      openModal({
+        title: "Tambah Kata Kunci & Sinonim Baru",
+        size: "md",
+        bodyHtml: modalHtml,
+        footerHtml: footerHtml,
+        onMount: (m) => {
+          m.querySelector("#btn-cancel-add-syn").onclick = closeModal;
+          m.querySelector("#btn-save-add-syn").onclick = async () => {
+            const rawKw = (m.querySelector("#inp-add-main-kw").value || "").trim().toLowerCase();
+            if (!rawKw) {
+              toast("Harap masukkan nama kata kunci utama!", "warning");
+              return;
+            }
+
+            const synRaw = (m.querySelector("#inp-add-syn-list").value || "").trim().toLowerCase();
+            let synList = synRaw ? synRaw.split(",").map(s => s.trim()).filter(Boolean) : [];
+            if (!synList.includes(rawKw)) {
+              synList.unshift(rawKw);
+            }
+
+            atsMasterConfig.synonyms[rawKw] = synList;
+            await saveAtsMasterConfig("synonyms", atsMasterConfig.synonyms);
+            customSynonyms = atsMasterConfig.synonyms;
+            reEvaluateAllCandidates();
+            closeModal();
+            toast(`Kata kunci utama "${rawKw}" dan sinonimnya berhasil disimpan!`, "success");
+            renderActiveRulesSubTab();
+          };
+        }
+      });
+    }
+
+    function openEditSynonymModal(kw) {
+      const currentSynonyms = atsMasterConfig.synonyms[kw] || [];
+      const modalHtml = `
+        <div class="space-y-4 text-xs">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Kata Kunci Utama</label>
+            <input type="text" id="inp-edit-main-kw" value="${escapeHtml(kw)}" class="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-maroon-700 font-bold text-slate-800 bg-slate-50" />
+          </div>
+
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Daftar Sinonim / Variasi Kata Terkait</label>
+            <textarea id="inp-edit-syn-list" rows="5" class="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-maroon-700 text-slate-700 leading-relaxed">${escapeHtml(currentSynonyms.join(", "))}</textarea>
+            <p class="text-[11px] text-slate-500 mt-1">Pisahkan setiap kata atau frasa sinonim dengan tanda koma ( , ).</p>
+          </div>
+        </div>
+      `;
+
+      const footerHtml = `
+        <div class="flex justify-end gap-2 w-full">
+          <button type="button" id="btn-cancel-edit-syn" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer">Batal</button>
+          <button type="button" id="btn-save-edit-syn" class="px-4 py-2 bg-maroon-700 hover:bg-maroon-800 text-white rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-sm">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            Simpan Perubahan
+          </button>
+        </div>
+      `;
+
+      openModal({
+        title: `Edit Kata Kunci & Sinonim: "${kw}"`,
+        size: "md",
+        bodyHtml: modalHtml,
+        footerHtml: footerHtml,
+        onMount: (m) => {
+          m.querySelector("#btn-cancel-edit-syn").onclick = closeModal;
+          m.querySelector("#btn-save-edit-syn").onclick = async () => {
+            const newKw = (m.querySelector("#inp-edit-main-kw").value || "").trim().toLowerCase();
+            if (!newKw) {
+              toast("Kata kunci utama tidak boleh kosong!", "warning");
+              return;
+            }
+
+            const synRaw = (m.querySelector("#inp-edit-syn-list").value || "").trim().toLowerCase();
+            let synList = synRaw ? synRaw.split(",").map(s => s.trim()).filter(Boolean) : [];
+            if (!synList.includes(newKw)) {
+              synList.unshift(newKw);
+            }
+
+            if (newKw !== kw) {
+              delete atsMasterConfig.synonyms[kw];
+            }
+            atsMasterConfig.synonyms[newKw] = synList;
+            await saveAtsMasterConfig("synonyms", atsMasterConfig.synonyms);
+            customSynonyms = atsMasterConfig.synonyms;
+            reEvaluateAllCandidates();
+            closeModal();
+            toast(`Kamus sinonim "${newKw}" berhasil diperbarui!`, "success");
+            renderActiveRulesSubTab();
+          };
+        }
+      });
+    }
+
+    function openAddSingleSynonymModal(kw) {
+      const modalHtml = `
+        <div class="space-y-3 text-xs">
+          <p class="text-slate-600">Tambahkan kata atau frasa sinonim baru untuk kata kunci utama <strong class="text-maroon-700">${escapeHtml(kw)}</strong>:</p>
+          <input type="text" id="inp-single-syn" placeholder="Misal: team leader, koordinator lapangan..." class="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-maroon-700 font-medium text-slate-800" />
+        </div>
+      `;
+      const footerHtml = `
+        <div class="flex justify-end gap-2 w-full">
+          <button type="button" id="btn-cancel-single-syn" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition cursor-pointer">Batal</button>
+          <button type="button" id="btn-save-single-syn" class="px-3 py-1.5 bg-maroon-700 hover:bg-maroon-800 text-white rounded-lg text-xs font-bold transition cursor-pointer shadow-sm">+ Tambahkan</button>
+        </div>
+      `;
+      openModal({
+        title: `Tambah Sinonim: "${kw}"`,
+        size: "sm",
+        bodyHtml: modalHtml,
+        footerHtml: footerHtml,
+        onMount: (m) => {
+          const inp = m.querySelector("#inp-single-syn");
+          setTimeout(() => inp?.focus(), 100);
+          m.querySelector("#btn-cancel-single-syn").onclick = closeModal;
+          const doSave = async () => {
+            const val = (inp?.value || "").trim().toLowerCase();
+            if (!val) return;
+            if (!atsMasterConfig.synonyms[kw]) atsMasterConfig.synonyms[kw] = [kw];
+            if (!atsMasterConfig.synonyms[kw].includes(val)) {
+              atsMasterConfig.synonyms[kw].push(val);
+              await saveAtsMasterConfig("synonyms", atsMasterConfig.synonyms);
+              customSynonyms = atsMasterConfig.synonyms;
+              reEvaluateAllCandidates();
+              closeModal();
+              toast(`Sinonim "${val}" berhasil ditambahkan ke "${kw}"!`, "success");
+              renderActiveRulesSubTab();
+            } else {
+              toast(`Sinonim "${val}" sudah ada dalam daftar!`, "warning");
+            }
+          };
+          m.querySelector("#btn-save-single-syn").onclick = doSave;
+          inp.onkeydown = (e) => { if (e.key === "Enter") doSave(); };
+        }
+      });
+    }
+
+    function openAddRuleModal() {
+      const modalHtml = `
+        <div class="space-y-4 text-xs">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Nama Kriteria Penilaian <span class="text-red-500">*</span></label>
+            <input type="text" id="inp-rule-name" placeholder="Contoh: Sertifikasi Keahlian, Usia, Pengalaman Lapangan..." class="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-maroon-700 font-bold text-slate-800" />
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">Bobot Nilai (%)</label>
+              <input type="number" id="inp-rule-bobot" value="15" min="1" max="100" class="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-maroon-700 font-bold text-slate-800" />
+            </div>
+            <div class="flex items-center pt-5">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="chk-rule-mandatory" class="w-4 h-4 rounded text-maroon-700 focus:ring-maroon-700 cursor-pointer" />
+                <span class="font-bold text-slate-700">Wajib Dipenuhi (Mandatory)</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      `;
+      const footerHtml = `
+        <div class="flex justify-end gap-2 w-full">
+          <button type="button" id="btn-cancel-add-rule" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer">Batal</button>
+          <button type="button" id="btn-save-add-rule" class="px-4 py-2 bg-maroon-700 hover:bg-maroon-800 text-white rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-sm">
+            + Tambah Kriteria
+          </button>
+        </div>
+      `;
+      openModal({
+        title: "Tambah Kriteria Bobot ATS",
+        size: "md",
+        bodyHtml: modalHtml,
+        footerHtml: footerHtml,
+        onMount: (m) => {
+          m.querySelector("#btn-cancel-add-rule").onclick = closeModal;
+          m.querySelector("#btn-save-add-rule").onclick = async () => {
+            const name = (m.querySelector("#inp-rule-name").value || "").trim();
+            if (!name) {
+              toast("Harap masukkan nama kriteria penilaian!", "warning");
+              return;
+            }
+            const bobot = parseInt(m.querySelector("#inp-rule-bobot").value, 10) || 10;
+            const mandatory = m.querySelector("#chk-rule-mandatory").checked;
+            const key = name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+
+            atsMasterConfig.ats_rules.push({
+              kriteria: name,
+              bobot,
+              mandatory,
+              key
+            });
+            await saveAtsMasterConfig("ats_rules", atsMasterConfig.ats_rules);
+            reEvaluateAllCandidates();
+            closeModal();
+            toast(`Kriteria "${name}" berhasil ditambahkan!`, "success");
+            renderActiveRulesSubTab();
+          };
+        }
+      });
+    }
+
+    function openAddInterviewTemplateModal() {
+      const modalHtml = `
+        <div class="space-y-4 text-xs">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Nama Kategori Template <span class="text-red-500">*</span></label>
+            <input type="text" id="inp-new-tpl-name" placeholder="Contoh: Staff IT, Legal & Compliance, Teknisi Pabrik..." class="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-maroon-700 font-bold text-slate-800" />
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Posisi Target (pisahkan dengan koma)</label>
+            <input type="text" id="inp-new-tpl-pos" placeholder="Contoh: IT Support, Programmer, Network Engineer..." class="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-maroon-700 text-slate-800" />
+          </div>
+        </div>
+      `;
+      const footerHtml = `
+        <div class="flex justify-end gap-2 w-full">
+          <button type="button" id="btn-cancel-add-tpl" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer">Batal</button>
+          <button type="button" id="btn-save-add-tpl" class="px-4 py-2 bg-maroon-700 hover:bg-maroon-800 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-sm">
+            Buat Kategori Template
+          </button>
+        </div>
+      `;
+      openModal({
+        title: "Buat Kategori Template Wawancara Baru",
+        size: "md",
+        bodyHtml: modalHtml,
+        footerHtml: footerHtml,
+        onMount: (m) => {
+          m.querySelector("#btn-cancel-add-tpl").onclick = closeModal;
+          m.querySelector("#btn-save-add-tpl").onclick = async () => {
+            const name = (m.querySelector("#inp-new-tpl-name").value || "").trim();
+            if (!name) {
+              toast("Harap masukkan nama kategori template!", "warning");
+              return;
+            }
+            const posRaw = (m.querySelector("#inp-new-tpl-pos").value || "").trim();
+            const posList = posRaw ? posRaw.split(",").map(p => p.trim()).filter(Boolean) : [name];
+            const newId = "tpl_" + Date.now();
+
+            atsMasterConfig.interview_templates.push({
+              id: newId,
+              kategori_posisi: name,
+              posisi_target: posList,
+              aspek: [
+                {
+                  key: "kompetensi_teknis",
+                  label: "Kompetensi & Pemahaman Kerja",
+                  desc: "Penguasaan keahlian teknis sesuai posisi yang dilamar.",
+                  pertanyaan_panduan: "Ceritakan proyek atau pekerjaan paling menantang yang pernah Anda selesaikan?",
+                  bobot: 50
+                },
+                {
+                  key: "attitude_kerja",
+                  label: "Attitude, Loyalitas & Kerja Sama Tim",
+                  desc: "Sikap kerja profesional, kejujuran, dan komunikasi tim.",
+                  pertanyaan_panduan: "Bagaimana cara Anda menyelesaikan kendala kerja saat tenggat waktu mendesak?",
+                  bobot: 50
+                }
+              ]
+            });
+            selectedInterviewTplId = newId;
+            await saveAtsMasterConfig("interview_templates", atsMasterConfig.interview_templates);
+            closeModal();
+            toast("Kategori template wawancara baru berhasil dibuat!", "success");
+            renderActiveRulesSubTab();
+          };
+        }
+      });
+    }
+
+    renderActiveRulesSubTab();
   }
 
   /* ---------------------------------------------------------------------
@@ -1116,8 +2238,32 @@ export async function mount(container, { params, session }) {
     renderActiveTab();
   }
 
+  async function handleDeleteCandidate(candId) {
+    const cand = allCandidates.find(c => c.id === candId);
+    if (!cand) return;
+
+    const ok = await confirmDialog(`Apakah Anda yakin ingin menghapus data pelamar "${cand.nama || 'Kandidat'}" secara permanen dari sistem?`, {
+      title: "Hapus Data Pelamar",
+      danger: true
+    });
+    if (!ok) return;
+
+    try {
+      await fsDelete(COL.PELAMAR || "pelamar_ats", candId);
+      allCandidates = allCandidates.filter(c => c.id !== candId);
+      closeModal();
+      toast(`Data pelamar "${cand.nama}" berhasil dihapus`, "success");
+      updateBadges();
+      renderActiveTab();
+    } catch (e) {
+      console.error("Gagal menghapus data pelamar:", e);
+      toast("Gagal menghapus data pelamar", "error");
+    }
+  }
+
   function handleOpenScorecard(cand, vac) {
     openInterviewScorecardModal(cand, vac, {
+      masterTemplates: atsMasterConfig.interview_templates,
       onSaveScorecard: async (scorecardData) => {
         await fsAdd("interview_scorecards", scorecardData);
         allInterviews.unshift(scorecardData);
@@ -1125,39 +2271,39 @@ export async function mount(container, { params, session }) {
         if (scorecardData.rekomendasi === "Hire") {
           await handleStatusChange(cand.id, "Offered");
         }
+        updateBadges();
       }
     });
   }
 
   async function handleConvertToEmployee(cand, vac) {
-    confirmDialog({
+    const ok = await confirmDialog(`Apakah Anda yakin ingin memindahkan kandidat ${cand.nama} ke Master Karyawan CV Andela Jaya? Data profil, jabatan, dan cabang akan disinkronkan secara otomatis.`, {
       title: "Konversi ke Master Karyawan?",
-      message: `Apakah Anda yakin ingin memindahkan kandidat ${cand.nama} ke Master Karyawan CV Andela Jaya? Data profil, jabatan, dan cabang akan disinkronkan secara otomatis.`,
-      confirmLabel: "Ya, Konversi Karyawan",
-      onConfirm: async () => {
-        const newNik = `EMP-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`;
-        const newKaryawan = {
-          nik_karyawan: newNik,
-          nama_karyawan: cand.nama || "",
-          email: cand.email || "",
-          no_hp_aktif: cand.no_hp || "",
-          jabatan: cand.posisi_dilamar || vac?.posisi || "STAFF OPERASIONAL",
-          divisi: vac?.departemen || "HRD & GA",
-          cabang: vac?.cabang || cand.domisili || "HEAD OFFICE",
-          status_karyawan: vac?.tipe_pekerjaan || "PKWT (Karyawan Kontrak)",
-          pendidikan: cand.pendidikan_tertinggi || "SMA/SMK",
-          atasan: vac?.hiring_manager || "MANAGER HRD",
-          tanggal_join: new Date().toISOString().split('T')[0],
-          aktif_tdk_aktif: "AKTIF",
-          alamat: cand.domisili || "",
-          created_at: new Date().toISOString()
-        };
-
-        await fsAdd(COL.MASTER_KARYAWAN || "master_karyawan", newKaryawan);
-        await handleStatusChange(cand.id, "Hired");
-        toast(`Kandidat ${cand.nama} berhasil dikonversi menjadi Karyawan resmi (NIK: ${newNik})!`, "success");
-      }
+      danger: false
     });
+    if (!ok) return;
+
+    const newNik = `EMP-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`;
+    const newKaryawan = {
+      nik_karyawan: newNik,
+      nama_karyawan: cand.nama || "",
+      email: cand.email || "",
+      no_hp_aktif: cand.no_hp || "",
+      jabatan: cand.posisi_dilamar || vac?.posisi || "STAFF OPERASIONAL",
+      divisi: vac?.departemen || "HRD & GA",
+      cabang: vac?.cabang || cand.domisili || "HEAD OFFICE",
+      status_karyawan: vac?.tipe_pekerjaan || "PKWT (Karyawan Kontrak)",
+      pendidikan: cand.pendidikan_tertinggi || "SMA/SMK",
+      atasan: vac?.hiring_manager || "MANAGER HRD",
+      tanggal_join: new Date().toISOString().split('T')[0],
+      aktif_tdk_aktif: "AKTIF",
+      alamat: cand.domisili || "",
+      created_at: new Date().toISOString()
+    };
+
+    await fsAdd(COL.MASTER_KARYAWAN || "master_karyawan", newKaryawan);
+    await handleStatusChange(cand.id, "Hired");
+    toast(`Kandidat ${cand.nama} berhasil dikonversi menjadi Karyawan resmi (NIK: ${newNik})!`, "success");
   }
 
   // Load awal
