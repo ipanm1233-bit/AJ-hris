@@ -1,0 +1,243 @@
+<!-- =====================================================================
+     PORTAL KARIR & REKRUTMEN PUBLIK — CV ANDELA JAYA
+     Halaman publik mandiri untuk pelamar eksternal (Tanpa perlu login HRIS)
+     ===================================================================== -->
+<div class="min-h-screen bg-[#faf8ff] text-slate-800 flex flex-col font-sans selection:bg-maroon-100 selection:text-maroon-800">
+
+  <!-- TOP PUBLIC NAVBAR -->
+  <header class="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-2xs">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-4">
+      
+      <!-- Brand Logo -->
+      <a href="#karir" class="flex items-center gap-3 group">
+        <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-maroon-700 to-maroon-900 flex items-center justify-center text-white font-black text-base shadow-sm group-hover:scale-105 transition-transform">
+          AJ
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-extrabold text-lg text-slate-900 tracking-tight leading-none">CV ANDELA JAYA</span>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-maroon-50 text-maroon-700 border border-maroon-200">Karir</span>
+          </div>
+          <p class="text-[11px] text-slate-400 font-medium">Portal Rekrutmen & Talenta Resmi</p>
+        </div>
+      </a>
+
+      <!-- Navigation Links -->
+      <nav class="hidden md:flex items-center gap-1">
+        <button type="button" id="pub-nav-jobs" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 hover:text-maroon-700 transition">
+          Lowongan Pekerjaan
+        </button>
+        <button type="button" id="pub-nav-culture" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 hover:text-maroon-700 transition">
+          Budaya Kerja
+        </button>
+        <button type="button" id="pub-nav-status" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 hover:text-maroon-700 transition flex items-center gap-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-maroon-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+          <span>Cek Status Lamaran</span>
+        </button>
+      </nav>
+
+      <!-- Right Action: Direct action buttons (Public only, no HRIS link) -->
+      <div class="flex items-center gap-2">
+        <button type="button" id="pub-btn-check-status-top" class="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold transition shadow-xs cursor-pointer">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+          <span>Cek Status Lamaran</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- HERO BANNER -->
+  <section class="relative bg-gradient-to-b from-maroon-950 via-maroon-900 to-maroon-800 text-white py-16 px-4 sm:px-6 lg:px-8 overflow-hidden">
+    <!-- Subtle Grid Background -->
+    <div class="absolute inset-0 opacity-10 pointer-events-none" style="background-image:radial-gradient(circle at 50% 30%, white 1px, transparent 1px);background-size:24px 24px;"></div>
+    
+    <div class="relative max-w-4xl mx-auto text-center space-y-6">
+      <div class="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md border border-white/20 px-4 py-1.5 rounded-full text-xs font-semibold text-rose-100 shadow-inner">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span>Peluang Karir Terbuka — CV Andela Jaya</span>
+      </div>
+
+      <h1 class="text-3xl sm:text-5xl font-black tracking-tight leading-tight sm:leading-tight">
+        Bangun Karir & Wujudkan Potensi Terbaikmu Bersama Kami
+      </h1>
+
+      <p class="text-sm sm:text-base text-rose-100/90 max-w-2xl mx-auto font-normal leading-relaxed">
+        Sebagai perusahaan distribusi dan operasional terkemuka, kami membuka ruang seluas-luasnya bagi talenta yang berintegritas, energik, dan siap bertumbuh bersama.
+      </p>
+
+      <!-- SEARCH & FILTER BAR -->
+      <div class="bg-white rounded-3xl p-3 sm:p-4 shadow-xl border border-slate-100 text-slate-800 text-left mt-8">
+        <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
+          
+          <!-- Search Input -->
+          <div class="sm:col-span-4 relative">
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Posisi / Kata Kunci</label>
+            <div class="relative flex items-center">
+              <input type="text" id="pub-search-kw" placeholder="Contoh: Sales, Admin, Driver..." 
+                class="w-full pl-8 pr-3 py-2 text-xs font-semibold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-maroon-600 focus:bg-white transition">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-400 absolute left-2.5 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            </div>
+          </div>
+
+          <!-- Filter Cabang -->
+          <div class="sm:col-span-3">
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Cabang / Lokasi</label>
+            <select id="pub-filter-cabang" class="w-full px-3 py-2 text-xs font-semibold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-maroon-600 focus:bg-white transition">
+              <option value="">Semua Lokasi</option>
+            </select>
+          </div>
+
+          <!-- Filter Departemen -->
+          <div class="sm:col-span-3">
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Departemen</label>
+            <select id="pub-filter-divisi" class="w-full px-3 py-2 text-xs font-semibold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-maroon-600 focus:bg-white transition">
+              <option value="">Semua Departemen</option>
+            </select>
+          </div>
+
+          <!-- Search Button -->
+          <div class="sm:col-span-2 sm:pt-4">
+            <button type="button" id="pub-btn-search" class="w-full py-2.5 px-4 bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold rounded-xl transition shadow-sm flex items-center justify-center gap-1.5 cursor-pointer">
+              <span>Cari Posisi</span>
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Quick Metrics Pill -->
+      <div class="pt-2 flex flex-wrap items-center justify-center gap-6 text-xs text-rose-200/90 font-medium">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <span id="pub-stat-total-jobs">Memuat data lowongan...</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+          <span>Proses Seleksi Transparan</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+          <span>Respon Cepat HRD</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- MAIN VACANCIES LIST SECTION -->
+  <section id="section-jobs" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 flex-1 w-full space-y-8">
+    
+    <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
+      <div>
+        <h2 class="text-xl font-black text-slate-900 tracking-tight">Daftar Lowongan Pekerjaan Aktif</h2>
+        <p class="text-xs text-slate-500 mt-0.5">Pilih posisi yang sesuai dengan keahlian dan minat karir Anda.</p>
+      </div>
+      
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-bold text-slate-500">Tampilkan:</span>
+        <button type="button" data-filter-type="ALL" class="pub-type-btn active px-3 py-1.5 rounded-xl text-xs font-bold bg-maroon-700 text-white transition">Semua</button>
+        <button type="button" data-filter-type="KONTRAK" class="pub-type-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-white text-slate-600 border border-slate-200 hover:border-maroon-700 transition">PKWT / Kontrak</button>
+        <button type="button" data-filter-type="TETAP" class="pub-type-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-white text-slate-600 border border-slate-200 hover:border-maroon-700 transition">Karyawan Tetap</button>
+      </div>
+    </div>
+
+    <!-- Vacancies Grid Container -->
+    <div id="pub-vacancies-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <!-- Dynamic Job Cards will be rendered here -->
+    </div>
+
+  </section>
+
+  <!-- CULTURE & WHY WORK WITH US SECTION -->
+  <section id="section-culture" class="bg-white border-y border-slate-200 py-16 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-7xl mx-auto space-y-12">
+      <div class="text-center max-w-2xl mx-auto space-y-3">
+        <span class="px-3 py-1 bg-maroon-50 border border-maroon-200 text-maroon-700 text-xs font-bold rounded-full">Budaya & Lingkungan Kerja</span>
+        <h2 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Mengapa Berkarir di CV Andela Jaya?</h2>
+        <p class="text-xs sm:text-sm text-slate-500">Kami menjunjung tinggi rasa saling menghargai, kolaborasi aktif, serta apresiasi nyata atas setiap kontribusi.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        <!-- Card 1 -->
+        <div class="p-6 rounded-3xl bg-slate-50 border border-slate-100 space-y-3 hover:shadow-md transition">
+          <div class="w-12 h-12 rounded-2xl bg-maroon-100 text-maroon-700 flex items-center justify-center font-bold text-xl">
+            📈
+          </div>
+          <h3 class="text-base font-bold text-slate-900">Jenjang Karir & Apresiasi Nyata</h3>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            Evaluasi kinerja transparan berbasis KPI dengan peluang promosi dan peningkatan karir yang objektif untuk setiap karyawan berprestasi.
+          </p>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="p-6 rounded-3xl bg-slate-50 border border-slate-100 space-y-3 hover:shadow-md transition">
+          <div class="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xl">
+            🎓
+          </div>
+          <h3 class="text-base font-bold text-slate-900">Pelatihan & Pengembangan</h3>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            Program pelatihan berkala, mentoring dari atasan langsung, dan pembekalan keahlian teknis maupun kepemimpinan (leadership).
+          </p>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="p-6 rounded-3xl bg-slate-50 border border-slate-100 space-y-3 hover:shadow-md transition">
+          <div class="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xl">
+            🤝
+          </div>
+          <h3 class="text-base font-bold text-slate-900">Lingkungan Suportif & Solid</h3>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            Kultur kekeluargaan profesional di mana setiap ide dihargai, komunikasi terbuka terjaga, dan kesehatan kerja selalu diprioritaskan.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- TRACK APPLICATION STATUS SECTION -->
+  <section id="section-status" class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 w-full space-y-6">
+    <div class="bg-gradient-to-br from-slate-900 via-slate-800 to-maroon-950 rounded-3xl p-6 sm:p-10 text-white shadow-xl space-y-6">
+      
+      <div class="max-w-xl space-y-2">
+        <div class="inline-flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-[11px] font-bold text-rose-200">
+          <span>🔍 Portal Pelacak Pelamar</span>
+        </div>
+        <h2 class="text-xl sm:text-2xl font-black tracking-tight">Cek Status & Perkembangan Lamaran</h2>
+        <p class="text-xs text-slate-300">
+          Sudah pernah mengirimkan berkas lamaran? Masukkan Nomor WhatsApp atau Nomor Registrasi Lamaran Anda di bawah ini untuk melihat tahapan seleksi terkini.
+        </p>
+      </div>
+
+      <div class="flex flex-col sm:flex-row gap-3">
+        <input type="text" id="pub-status-query" placeholder="Nomor WhatsApp (misal 0812xxx) atau No. Registrasi..." 
+          class="flex-1 px-4 py-3 text-xs sm:text-sm font-semibold text-slate-800 bg-white rounded-2xl outline-none focus:ring-2 focus:ring-rose-400 transition shadow-inner">
+        <button type="button" id="pub-btn-check-status" class="px-6 py-3 bg-maroon-600 hover:bg-maroon-700 text-white text-xs sm:text-sm font-bold rounded-2xl transition shadow-md flex items-center justify-center gap-2 shrink-0 cursor-pointer">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <span>Periksa Status</span>
+        </button>
+      </div>
+
+      <div id="pub-status-result" class="hidden"></div>
+
+    </div>
+  </section>
+
+  <!-- PUBLIC FOOTER -->
+  <footer class="bg-white border-t border-slate-200 mt-auto py-8 px-4 sm:px-6 lg:px-8 text-slate-500 text-xs">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-xl bg-maroon-700 flex items-center justify-center text-white font-black text-xs">AJ</div>
+        <div>
+          <p class="font-bold text-slate-800">CV ANDELA JAYA</p>
+          <p class="text-[11px] text-slate-400">Departemen Human Resource & Talent Acquisition</p>
+        </div>
+      </div>
+      <p class="text-center sm:text-right text-[11px] text-slate-400">
+        © 2026 CV Andela Jaya. Hak Cipta Dilindungi Undang-Undang.
+      </p>
+    </div>
+  </footer>
+
+</div>
