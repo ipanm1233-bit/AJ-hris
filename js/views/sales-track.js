@@ -1679,6 +1679,135 @@ export async function mount(container, { session } = {}) {
     
     // Default active date: "ALL" to display all date cards, or specific date if selected
     let activeDate = "ALL";
+    const selectedVisitIds = new Set();
+
+    // Helper: In-Modal Non-Destructive Confirmation Overlay (does not close main modal)
+    function showInModalConfirm(message, { title = "Konfirmasi Hapus", danger = true } = {}) {
+      return new Promise((resolve) => {
+        const modalEl = document.querySelector("#app-modal-backdrop");
+        if (!modalEl) {
+          resolve(window.confirm(message));
+          return;
+        }
+
+        const confirmOverlay = document.createElement("div");
+        confirmOverlay.id = "in-modal-confirm-overlay";
+        confirmOverlay.className = "fixed inset-0 z-[120] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 transition-all duration-150";
+        confirmOverlay.innerHTML = `
+          <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl ${danger ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'} flex items-center justify-center shrink-0">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </div>
+              <div>
+                <h4 class="text-base font-bold text-slate-900">${escapeHtml(title)}</h4>
+                <p class="text-xs text-slate-500">Tindakan ini tidak dapat dibatalkan.</p>
+              </div>
+            </div>
+            <div class="text-xs text-slate-700 leading-relaxed whitespace-pre-line bg-slate-50 p-3 rounded-xl border border-slate-200 font-medium">
+              ${escapeHtml(message)}
+            </div>
+            <div class="flex items-center justify-end gap-2 pt-1">
+              <button type="button" id="inmodal-btn-cancel" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 border border-slate-200 transition cursor-pointer">
+                Batal
+              </button>
+              <button type="button" id="inmodal-btn-confirm" class="px-4 py-2 rounded-xl text-xs font-bold text-white ${danger ? 'bg-rose-600 hover:bg-rose-700' : 'bg-maroon-700 hover:bg-maroon-800'} transition cursor-pointer shadow-sm">
+                Ya, Hapus
+              </button>
+            </div>
+          </div>
+        `;
+
+        modalEl.appendChild(confirmOverlay);
+
+        const closeOverlay = (result) => {
+          confirmOverlay.remove();
+          resolve(result);
+        };
+
+        confirmOverlay.querySelector("#inmodal-btn-cancel").onclick = () => closeOverlay(false);
+        confirmOverlay.querySelector("#inmodal-btn-confirm").onclick = () => closeOverlay(true);
+        confirmOverlay.addEventListener("click", (e) => {
+          if (e.target === confirmOverlay) closeOverlay(false);
+        });
+      });
+    }
+
+    // Single visit deletion without closing modal
+    async function deleteSingleVisitInModal(visitId, storeName) {
+      if (!isSuperOrHrd) {
+        toast("Akses terbatas: Hanya Superadmin dan HRD yang memiliki wewenang untuk menghapus data kunjungan.", "warning");
+        return;
+      }
+      if (!visitId) {
+        toast("ID Kunjungan tidak ditemukan.", "warning");
+        return;
+      }
+
+      const confirmed = await showInModalConfirm(
+        `Apakah Anda yakin ingin menghapus titik kunjungan '${storeName}'?\n\nPenghapusan ini akan menghapus data kunjungan dari database dan memperbarui kalkulasi rute secara otomatis.`,
+        { title: "Hapus Titik Kunjungan", danger: true }
+      );
+      if (!confirmed) return;
+
+      try {
+        await fsDelete("kanal_checkins", visitId);
+
+        const idx = allCheckinsList.findIndex(c => String(c._docId || c.id) === String(visitId) || String(c.id) === String(visitId));
+        if (idx !== -1) allCheckinsList.splice(idx, 1);
+
+        allSalesVisits = allSalesVisits.filter(v => String(v._docId || v.id) !== String(visitId) && String(v.id) !== String(visitId));
+        selectedVisitIds.delete(String(visitId));
+
+        toast(`Titik kunjungan '${storeName}' berhasil dihapus.`, "success");
+        applyAndRenderDashboard();
+        refreshModalView();
+      } catch (err) {
+        console.error("Gagal menghapus kunjungan:", err);
+        toast("Gagal menghapus titik kunjungan: " + (err.message || err), "error");
+      }
+    }
+
+    // Batch visits deletion without closing modal
+    async function deleteBatchVisitsInModal(idsToDelete = []) {
+      if (!isSuperOrHrd) {
+        toast("Akses terbatas: Hanya Superadmin dan HRD yang memiliki wewenang untuk menghapus data kunjungan.", "warning");
+        return;
+      }
+      const list = (idsToDelete && idsToDelete.length > 0) ? idsToDelete : Array.from(selectedVisitIds);
+      if (list.length === 0) {
+        toast("Pilih setidaknya 1 titik kunjungan untuk dihapus.", "warning");
+        return;
+      }
+
+      const confirmed = await showInModalConfirm(
+        `Apakah Anda yakin ingin menghapus ${list.length} titik kunjungan yang dipilih?\n\nData kunjungan yang dipilih akan dihapus secara permanen dan rute GPS akan dikalkulasi ulang secara otomatis.`,
+        { title: `Hapus ${list.length} Titik Kunjungan`, danger: true }
+      );
+      if (!confirmed) return;
+
+      toast(`Menghapus ${list.length} titik kunjungan...`, "info");
+      let deletedCount = 0;
+
+      for (const vid of list) {
+        try {
+          await fsDelete("kanal_checkins", vid);
+          deletedCount++;
+          const idx = allCheckinsList.findIndex(c => String(c._docId || c.id) === String(vid) || String(c.id) === String(vid));
+          if (idx !== -1) allCheckinsList.splice(idx, 1);
+          allSalesVisits = allSalesVisits.filter(v => String(v._docId || v.id) !== String(vid) && String(v.id) !== String(vid));
+          selectedVisitIds.delete(String(vid));
+        } catch (err) {
+          console.error("Gagal menghapus visit id:", vid, err);
+        }
+      }
+
+      toast(`${deletedCount} titik kunjungan berhasil dihapus.`, "success");
+      applyAndRenderDashboard();
+      refreshModalView();
+    }
 
     function renderModalContent() {
       const datesToRender = (activeDate === "ALL") 
@@ -1730,8 +1859,14 @@ export async function mount(container, { session } = {}) {
           : dailyVisits.map(v => encodeURIComponent(v.koordinat_gps || "-6.7321, 108.5523")).join("|");
         const dailyMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${originStr}&destination=${destStr}&waypoints=${waypoints}&travelmode=driving`;
 
+        // Check how many visits for this date are selected
+        const dailyVisitIds = dailyMetrics.legs.map(l => l.visitId).filter(Boolean);
+        const dailySelectedIds = dailyVisitIds.filter(vid => selectedVisitIds.has(String(vid)));
+        const allDateLegsSelected = dailyVisitIds.length > 0 && dailySelectedIds.length === dailyVisitIds.length;
+
         const startRowHtml = `
         <tr class="bg-indigo-50/60 border-b border-indigo-100/80 text-xs font-bold">
+          ${isSuperOrHrd ? `<td class="p-2.5 text-center text-slate-300"></td>` : ''}
           <td class="p-2.5 text-center">
             <span class="px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-extrabold">START / AWAL</span>
           </td>
@@ -1770,9 +1905,23 @@ export async function mount(container, { session } = {}) {
           const mapsUrl = `https://www.google.com/maps?q=${encodeURIComponent(leg.toGps)}`;
           const legPhoto = leg.photoUrl ? getDirectImageUrl(leg.photoUrl) : "";
           const isLegEc = (leg.statusKunjungan || "").toLowerCase().includes("effective") || leg.isEffectiveCall === true;
+          const isLegSelected = leg.visitId ? selectedVisitIds.has(String(leg.visitId)) : false;
 
           return `
-          <tr class="hover:bg-slate-50 border-b border-slate-100 text-xs">
+          <tr class="hover:bg-slate-50 border-b border-slate-100 text-xs ${isLegSelected ? 'bg-rose-50/50' : ''}">
+            ${isSuperOrHrd ? `
+              <td class="p-2.5 text-center">
+                ${leg.visitId ? `
+                  <input type="checkbox"
+                         class="chk-modal-select-visit rounded border-slate-300 text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
+                         data-visitid="${escapeHtml(leg.visitId)}"
+                         data-toname="${escapeHtml(leg.toName)}"
+                         data-date="${tgl}"
+                         ${isLegSelected ? 'checked' : ''}
+                         title="Pilih '${escapeHtml(leg.toName)}' untuk dihapus" />
+                ` : ''}
+              </td>
+            ` : ''}
             <td class="p-2.5 text-center text-slate-500 font-mono font-bold">
               <span>Leg #${leg.legIndex}</span>
               <span class="block text-[10px] text-slate-400 font-normal">${escapeHtml(leg.waktuCheckin || '')}</span>
@@ -1790,7 +1939,10 @@ export async function mount(container, { session } = {}) {
                   </a>
                 ` : ''}
                 <div class="min-w-0 flex-1">
-                  <div class="font-bold text-slate-900">${escapeHtml(leg.toName)}</div>
+                  <div class="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                    <span>${escapeHtml(leg.toName)}</span>
+                    ${isLegSelected ? `<span class="px-1.5 py-0.2 bg-rose-100 text-rose-700 rounded text-[9px] font-bold">Dipilih</span>` : ''}
+                  </div>
                   <div class="text-[10px] text-slate-500 font-normal truncate max-w-[220px]">${escapeHtml(leg.toAddress)}</div>
                   ${leg.visitId ? `
                     <label class="inline-flex items-center gap-1.5 ${isStandardKaryawan ? 'cursor-default' : 'cursor-pointer'} mt-1 px-2 py-0.5 rounded border transition select-none ${isLegEc ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-slate-100 border-slate-200 text-slate-600'}" title="${isStandardKaryawan ? (isLegEc ? 'Status: Effective Call (Order)' : 'Status: Tanpa Order') : 'Tandai HRD: Kunjungan ini menghasilkan Order (Effective Call)'}">
@@ -1837,7 +1989,7 @@ export async function mount(container, { session } = {}) {
                   <button class="btn-modal-delete-visit px-2 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold text-[10px] rounded border border-rose-200 transition cursor-pointer inline-flex items-center gap-0.5"
                     data-visitid="${escapeHtml(leg.visitId)}"
                     data-toname="${escapeHtml(leg.toName)}"
-                    title="Hapus titik kunjungan ini (jika ganda)">
+                    title="Hapus titik kunjungan ini">
                     Hapus
                   </button>
                 ` : ''}
@@ -1849,6 +2001,7 @@ export async function mount(container, { session } = {}) {
 
         const endRowHtml = `
         <tr class="bg-slate-100/80 border-b border-slate-200 text-xs font-bold">
+          ${isSuperOrHrd ? `<td class="p-2.5 text-center text-slate-300"></td>` : ''}
           <td class="p-2.5 text-center">
             <span class="px-2 py-0.5 bg-slate-800 text-white rounded text-[10px] font-extrabold">FINISH / AKHIR</span>
           </td>
@@ -1893,6 +2046,12 @@ export async function mount(container, { session } = {}) {
               <span class="px-3 py-1 bg-amber-500 text-slate-950 text-xs font-black rounded-lg">Tanggal: ${escapeHtml(tgl)}</span>
               <span class="text-xs text-indigo-200 font-bold bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700">${dailyVisits.length} Outlet Visit</span>
               <span class="text-xs text-slate-300 hidden sm:inline">${escapeHtml(dailyMetrics.startPoint.nama)} ➔ ${escapeHtml(dailyMetrics.endPoint.nama)}</span>
+              ${isSuperOrHrd && dailySelectedIds.length > 0 ? `
+                <button type="button" class="btn-delete-date-selected px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold rounded-lg shadow-sm transition flex items-center gap-1 cursor-pointer" data-date="${tgl}">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                  <span>Hapus ${dailySelectedIds.length} Terpilih di Tgl Ini</span>
+                </button>
+              ` : ''}
             </div>
 
             <!-- RIGHT HEADER: EDITABLE DAILY GPS & MAPS LINK -->
@@ -2020,6 +2179,11 @@ export async function mount(container, { session } = {}) {
               <table class="w-full text-left border-collapse">
                 <thead>
                   <tr class="bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
+                    ${isSuperOrHrd ? `
+                      <th class="p-2.5 text-center w-10">
+                        <input type="checkbox" class="chk-select-all-date rounded border-slate-300 text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer" data-date="${tgl}" title="Pilih Semua Kunjungan Tanggal ${tgl}" ${allDateLegsSelected ? 'checked' : ''} />
+                      </th>
+                    ` : ''}
                     <th class="p-2.5 text-center w-16">Leg / Waktu</th>
                     <th class="p-2.5">Tujuan Outlet</th>
                     <th class="p-2.5">Koordinat GPS</th>
@@ -2071,6 +2235,36 @@ export async function mount(container, { session } = {}) {
           </div>
         </div>
 
+        ${isSuperOrHrd ? `
+        <!-- BATCH DELETION ACTION BAR -->
+        <div id="batch-action-bar-container">
+          ${selectedVisitIds.size > 0 ? `
+            <div class="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between gap-3 flex-wrap shadow-2xs animate-in fade-in duration-150">
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 bg-rose-600 text-white rounded text-[11px] font-bold">Terpilih: ${selectedVisitIds.size} Kunjungan</span>
+                <span class="text-xs text-rose-800 font-medium hidden sm:inline">Siap untuk dihapus secara massal tanpa menutup popup</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <button type="button" id="btn-modal-clear-selection" class="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg border border-slate-300 transition cursor-pointer">
+                  Batal Pilih
+                </button>
+                <button type="button" id="btn-modal-delete-selected" class="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold rounded-lg shadow-sm transition flex items-center gap-1.5 cursor-pointer">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                  <span>Hapus ${selectedVisitIds.size} Terpilih</span>
+                </button>
+              </div>
+            </div>
+          ` : `
+            <div class="p-2.5 bg-slate-100/80 border border-slate-200 rounded-xl flex items-center justify-between gap-2 text-xs text-slate-600">
+              <div class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+                <span>Centang kotak pilihan (checkbox) pada tabel untuk memilih dan menghapus titik kunjungan tertentu secara massal.</span>
+              </div>
+            </div>
+          `}
+        </div>
+        ` : ''}
+
         ${!isStandardKaryawan ? `
         <!-- BASE DEPARTURE CONFIGURATION BAR (COMPACT) -->
         <div class="p-2.5 bg-slate-100 border border-slate-200 rounded-xl flex items-center justify-between gap-3 flex-wrap text-xs">
@@ -2117,6 +2311,69 @@ export async function mount(container, { session } = {}) {
           refreshModalView();
         };
       }
+
+      // Checkbox visit select handler
+      modalEl.querySelectorAll(".chk-modal-select-visit").forEach(chk => {
+        chk.onchange = () => {
+          const vid = chk.dataset.visitid;
+          if (vid) {
+            if (chk.checked) {
+              selectedVisitIds.add(String(vid));
+            } else {
+              selectedVisitIds.delete(String(vid));
+            }
+          }
+          refreshModalView();
+        };
+      });
+
+      // Checkbox select all per date
+      modalEl.querySelectorAll(".chk-select-all-date").forEach(chk => {
+        chk.onchange = () => {
+          const tgl = chk.dataset.date;
+          const dateCheckboxes = modalEl.querySelectorAll(`.chk-modal-select-visit[data-date="${tgl}"]`);
+          dateCheckboxes.forEach(vChk => {
+            const vid = vChk.dataset.visitid;
+            if (vid) {
+              if (chk.checked) {
+                selectedVisitIds.add(String(vid));
+              } else {
+                selectedVisitIds.delete(String(vid));
+              }
+            }
+          });
+          refreshModalView();
+        };
+      });
+
+      // Clear selection button
+      modalEl.querySelector("#btn-modal-clear-selection")?.addEventListener("click", () => {
+        selectedVisitIds.clear();
+        refreshModalView();
+      });
+
+      // Batch delete selected button
+      modalEl.querySelector("#btn-modal-delete-selected")?.addEventListener("click", () => {
+        deleteBatchVisitsInModal();
+      });
+
+      // Date-specific batch delete button
+      modalEl.querySelectorAll(".btn-delete-date-selected").forEach(btn => {
+        btn.onclick = () => {
+          const tgl = btn.dataset.date;
+          const dateCheckboxes = modalEl.querySelectorAll(`.chk-modal-select-visit[data-date="${tgl}"]`);
+          const targetIds = [];
+          dateCheckboxes.forEach(vChk => {
+            const vid = vChk.dataset.visitid;
+            if (vid && selectedVisitIds.has(String(vid))) {
+              targetIds.push(String(vid));
+            }
+          });
+          if (targetIds.length > 0) {
+            deleteBatchVisitsInModal(targetIds);
+          }
+        };
+      });
 
       // Realtime Daily Odometer Calculations
       modalEl.querySelectorAll(".input-daily-km-awal, .input-daily-km-akhir").forEach(input => {
@@ -2229,7 +2486,7 @@ export async function mount(container, { session } = {}) {
           const sNama = btn.dataset.salesnama || salesName;
           const calcGps = parseFloat(btn.dataset.calcgps) || 0;
 
-          const confirmed = await confirmDialog(
+          const confirmed = await showInModalConfirm(
             `Kembalikan jarak GPS tanggal ${tgl} ke kalkulasi otomatis sistem (${calcGps} KM)?`,
             { title: "Reset Jarak GPS" }
           );
@@ -2260,16 +2517,12 @@ export async function mount(container, { session } = {}) {
         };
       });
 
-      // Delete visit handlers
+      // Delete single visit handler (stay in modal)
       modalEl.querySelectorAll(".btn-modal-delete-visit").forEach(btn => {
         btn.onclick = async () => {
           const visitId = btn.dataset.visitid;
           const storeName = btn.dataset.toname;
-          const success = await deleteVisitDirectly(visitId, storeName);
-          if (success) {
-            allSalesVisits = allSalesVisits.filter(v => (v._docId || v.id) !== visitId && v.id !== visitId);
-            refreshModalView();
-          }
+          await deleteSingleVisitInModal(visitId, storeName);
         };
       });
 
