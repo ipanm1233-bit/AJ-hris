@@ -662,7 +662,7 @@ export function openCreateVacancyWizardModal({ onSaveVacancy, initialData = null
     pendidikanList: ["SMA/SMK", "D1", "D2", "D3", "S1", "S2", "S3", "SMP", "SD", "Lainnya"]
   };
 
-  const formData = initialData ? { ...initialData } : {
+  const defaultData = {
     posisi: "",
     departemen: md.divisiList[0] || "MARKETING & SALES",
     cabang: md.cabangList[0] || "HEAD OFFICE",
@@ -701,10 +701,7 @@ export function openCreateVacancyWizardModal({ onSaveVacancy, initialData = null
     status: "Open"
   };
 
-  // Merge jika edit lowongan
-  if (initialData) {
-    formData = { ...formData, ...initialData };
-  }
+  let formData = initialData ? { ...defaultData, ...initialData } : { ...defaultData };
 
   function renderWizardBody() {
     return `
@@ -773,6 +770,14 @@ export function openCreateVacancyWizardModal({ onSaveVacancy, initialData = null
             <datalist id="wz-manager-suggestions">
               ${md.managerList.map(mgr => `<option value="${escapeHtml(mgr)}"></option>`).join('')}
             </datalist>
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Status Publikasi Lowongan *</label>
+            <select id="wz-status" class="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-maroon-700 font-medium">
+              <option value="Open" ${(formData.status || 'Open') === 'Open' ? 'selected' : ''}>🚀 Publikasikan (Open - Tampil di Portal Karir)</option>
+              <option value="Draft" ${(formData.status || '') === 'Draft' ? 'selected' : ''}>🔒 Draft / Cabut Publikasi (Hanya Internal)</option>
+              <option value="Closed" ${(formData.status || '') === 'Closed' ? 'selected' : ''}>⛔ Ditutup (Closed)</option>
+            </select>
           </div>
         </div>
 
@@ -944,22 +949,22 @@ export function openCreateVacancyWizardModal({ onSaveVacancy, initialData = null
 
   function getWizardFooter() {
     return `
-    <div class="flex justify-between items-center w-full">
+    <div class="flex flex-wrap justify-between items-center w-full gap-2">
       <button type="button" id="btn-wz-prev" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold transition ${currentStep === 1 ? 'invisible' : ''}">
         ← Kembali
       </button>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <button type="button" id="btn-wz-cancel" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-semibold">Batal</button>
         ${currentStep < 4 ? `
           <button type="button" id="btn-wz-next" class="px-5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white rounded-xl text-xs font-bold shadow-xs">
             Lanjut →
           </button>
         ` : `
-          <button type="button" id="btn-wz-save-draft" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold">
-            Simpan Draft
+          <button type="button" id="btn-wz-save-draft" class="px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer" title="Simpan sebagai draft / cabut publikasi dari portal publik">
+            🔒 Cabut Publikasi (Draft)
           </button>
-          <button type="button" id="btn-wz-publish" class="px-5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white rounded-xl text-xs font-bold shadow-sm">
-            ✓ Publish Lowongan
+          <button type="button" id="btn-wz-publish" class="px-5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1 cursor-pointer" title="Simpan dan publikasikan ke portal publik">
+            🚀 Simpan & Publikasikan (Open)
           </button>
         `}
       </div>
@@ -1045,6 +1050,7 @@ export function openCreateVacancyWizardModal({ onSaveVacancy, initialData = null
           formData.tipe_pekerjaan = m.querySelector("#wz-tipe")?.value || formData.tipe_pekerjaan;
           formData.jumlah_kebutuhan = parseInt(m.querySelector("#wz-jumlah")?.value || 1, 10);
           formData.hiring_manager = m.querySelector("#wz-hiring-manager")?.value.trim() || formData.hiring_manager;
+          formData.status = m.querySelector("#wz-status")?.value || formData.status || "Open";
           formData.deskripsi = m.querySelector("#wz-deskripsi")?.value.trim() || formData.deskripsi;
         } else if (currentStep === 2) {
           formData.pendidikan_min = m.querySelector("#wz-pendidikan-min")?.value || formData.pendidikan_min;

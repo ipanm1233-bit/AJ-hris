@@ -1,5 +1,5 @@
 import { COL } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsDelete, openModal, closeModal, toast, escapeHtml, sendEmailNotif, genId, localDateStr } from "../utils.js";
+import { fsGetAll, fsAdd, fsDelete, openModal, closeModal, toast, escapeHtml, sendEmailNotif, buildStandardEmailHtml, genId, localDateStr } from "../utils.js";
 import { emptyState } from "../components.js";
 
 export async function mount(container, { session }) {
@@ -228,19 +228,45 @@ export async function mount(container, { session }) {
  let subject, htmlBody;
  if (type === 'bday') {
  subject = `Selamat Ulang Tahun, ${name}!`;
- htmlBody = `<div style="font-family: Arial; padding: 30px; text-align: center; border: 1px solid #fbcfe8; background-color: #fdf2f8; border-radius: 10px;">
- <h1 style="color: #be185d; margin-bottom: 10px;">Selamat Ulang Tahun! &#127874;</h1>
- <p style="color: #831843; font-size: 16px;">Segenap jajaran Direksi dan tim HRD mengucapkan selamat ulang tahun untuk <strong>${name}</strong>.</p>
- <p style="color: #831843;">Semoga panjang umur, sehat selalu, dan semakin sukses bersama CV Andela Jaya!</p>
- </div>`;
+ htmlBody = buildStandardEmailHtml({
+   badgeText: "Ulang Tahun",
+   badgeVariant: "rose",
+   title: `Selamat Ulang Tahun, ${name}! 🎂`,
+   recipientName: name,
+   introText: "Segenap jajaran Direksi, Manajemen, dan seluruh keluarga besar CV Andela Jaya mengucapkan selamat ulang tahun!",
+   bodyHtml: `
+     <div style="background: linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%); border: 1px solid #fecdd3; border-radius: 10px; padding: 20px; text-align: center; margin: 16px 0;">
+       <p style="font-size: 15px; color: #9f1239; margin: 0 0 10px 0; font-weight: bold;">
+         Semoga panjang umur, senantiasa diberikan kesehatan, kebahagiaan, dan kelancaran dalam berkarya.
+       </p>
+       <p style="font-size: 13px; color: #be123c; margin: 0;">
+         Terima kasih atas kontribusi terbaik yang telah Anda berikan untuk kemajuan bersama.
+       </p>
+     </div>
+   `,
+   secondaryNote: "Salam hangat dari Divisi Human Resource Development (HRD) CV Andela Jaya."
+ });
  } else {
  const years = btn.dataset.annivYear;
  subject = `Happy Work Anniversary ke-${years}, ${name}!`;
- htmlBody = `<div style="font-family: Arial; padding: 30px; text-align: center; border: 1px solid #e9d5ff; background-color: #faf5ff; border-radius: 10px;">
- <h1 style="color: #7e22ce; margin-bottom: 10px;">Happy Work Anniversary! &#127881;</h1>
- <p style="color: #581c87; font-size: 16px;">Terima kasih atas dedikasi dan kerja keras <strong>${name}</strong> selama <strong>${years} Tahun</strong> ini bersama kami.</p>
- <p style="color: #581c87;">Mari terus tumbuh dan mencapai kesuksesan bersama CV Andela Jaya!</p>
- </div>`;
+ htmlBody = buildStandardEmailHtml({
+   badgeText: "Work Anniversary",
+   badgeVariant: "purple",
+   title: `Happy Work Anniversary ke-${years}! 🎉`,
+   recipientName: name,
+   introText: `Terima kasih atas dedikasi dan komitmen luar biasa <strong>${escapeHtml(name)}</strong> selama <strong>${escapeHtml(years)} Tahun</strong> bersama kami.`,
+   bodyHtml: `
+     <div style="background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%); border: 1px solid #e9d5ff; border-radius: 10px; padding: 20px; text-align: center; margin: 16px 0;">
+       <p style="font-size: 15px; color: #6b21a8; margin: 0 0 10px 0; font-weight: bold;">
+         Mari terus melangkah, bertumbuh, dan meraih pencapaian hebat berikutnya bersama CV Andela Jaya!
+       </p>
+       <p style="font-size: 13px; color: #7e22ce; margin: 0;">
+         Dedikasi dan profesionalisme Anda adalah bagian penting dari perjalanan kesuksesan perusahaan ini.
+       </p>
+     </div>
+   `,
+   secondaryNote: "Salam hangat dari Divisi Human Resource Development (HRD) CV Andela Jaya."
+ });
  }
  await sendEmailNotif(email, subject, htmlBody);
  toast("Ucapan berhasil dikirim ke Email Karyawan!", "success");

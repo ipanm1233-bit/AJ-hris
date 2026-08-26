@@ -2558,7 +2558,186 @@ export function renderPengajuanDetailHtml(row, session, options = {}) {
  return `<div class="space-y-1 text-left">${itemsHtml}</div>`;
 }
 
-// Tambahkan di js/utils.js
+// Standarisasi Template Email HTML untuk Seluruh Notifikasi & Pengingat HRIS CV Andela Jaya
+export function buildStandardEmailHtml(opts = {}) {
+  const compName = opts.headerTitle || COMPANY_NAME || "CV ANDELA JAYA";
+  const subtitle = opts.headerSubtitle || "Human Resource Information System (HRIS)";
+  const badge = opts.badgeText ? String(opts.badgeText).trim() : "";
+  const title = opts.title ? String(opts.title).trim() : "";
+  const recipientName = opts.recipientName ? String(opts.recipientName).trim() : "";
+  const introText = opts.introText ? String(opts.introText).trim() : "";
+  const bodyHtml = opts.bodyHtml || "";
+  const infoList = Array.isArray(opts.infoList) ? opts.infoList.filter(item => item && item.label) : [];
+  const actionUrl = opts.actionUrl ? String(opts.actionUrl).trim() : "";
+  const actionText = opts.actionText || "Buka Portal HRIS →";
+  const secondaryNote = opts.secondaryNote ? String(opts.secondaryNote).trim() : "";
+  const footerCustom = opts.footerText ? String(opts.footerText).trim() : "";
+  const includeTimestamp = opts.includeTimestamp !== false;
+
+  // Badge styling
+  let badgeHtml = "";
+  if (badge) {
+    let bg = "rgba(255, 255, 255, 0.2)";
+    let border = "rgba(255, 255, 255, 0.35)";
+    let color = "#ffffff";
+    const v = (opts.badgeVariant || "maroon").toLowerCase();
+    if (v === "green" || v === "emerald" || v === "approved") {
+      bg = "rgba(16, 185, 129, 0.2)";
+      border = "rgba(16, 185, 129, 0.4)";
+      color = "#6ee7b7";
+    } else if (v === "amber" || v === "yellow" || v === "warning" || v === "pending") {
+      bg = "rgba(245, 158, 11, 0.25)";
+      border = "rgba(245, 158, 11, 0.45)";
+      color = "#fde68a";
+    } else if (v === "rose" || v === "red" || v === "danger" || v === "rejected") {
+      bg = "rgba(244, 63, 94, 0.25)";
+      border = "rgba(244, 63, 94, 0.45)";
+      color = "#fecdd3";
+    } else if (v === "blue" || v === "info") {
+      bg = "rgba(59, 130, 246, 0.25)";
+      border = "rgba(59, 130, 246, 0.45)";
+      color = "#bfdbfe";
+    } else if (v === "purple" || v === "anniv") {
+      bg = "rgba(168, 85, 247, 0.25)";
+      border = "rgba(168, 85, 247, 0.45)";
+      color = "#e9d5ff";
+    }
+    badgeHtml = `
+      <div style="margin-top: 10px;">
+        <span style="display: inline-block; background-color: ${bg}; border: 1px solid ${border}; color: ${color}; font-size: 11px; font-weight: bold; letter-spacing: 0.8px; text-transform: uppercase; padding: 3px 12px; border-radius: 9999px;">
+          ${escapeHtml(badge)}
+        </span>
+      </div>
+    `;
+  }
+
+  // Info list box
+  let infoBoxHtml = "";
+  if (infoList.length > 0) {
+    const rows = infoList.map(item => `
+      <tr style="border-bottom: 1px solid #f1f5f9;">
+        <td style="padding: 8px 10px; color: #64748b; font-size: 12.5px; width: 35%; vertical-align: top; font-weight: 500;">
+          ${escapeHtml(String(item.label))}
+        </td>
+        <td style="padding: 8px 10px; color: #0f172a; font-size: 13px; vertical-align: top; font-weight: 600;">
+          ${item.isHtml ? item.value : escapeHtml(String(item.value ?? "-"))}
+        </td>
+      </tr>
+    `).join("");
+
+    infoBoxHtml = `
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #7a1f2b; border-radius: 8px; padding: 14px 16px; margin: 18px 0;">
+        ${opts.infoBoxTitle ? `<h4 style="margin: 0 0 10px 0; color: #7a1f2b; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">${escapeHtml(opts.infoBoxTitle)}</h4>` : ""}
+        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  // Status Box
+  let statusBoxHtml = "";
+  if (opts.statusBox) {
+    statusBoxHtml = `<div style="margin: 16px 0;">${opts.statusBox}</div>`;
+  }
+
+  // CTA Button
+  let ctaHtml = "";
+  if (actionUrl) {
+    ctaHtml = `
+      <div style="text-align: center; margin: 26px 0 14px 0;">
+        <a href="${actionUrl}" target="_blank" rel="noopener" style="display: inline-block; background-color: #7a1f2b; color: #ffffff; font-weight: bold; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-size: 13.5px; box-shadow: 0 3px 6px -1px rgba(122, 31, 43, 0.3); letter-spacing: 0.3px;">
+          ${escapeHtml(actionText)}
+        </a>
+      </div>
+      ${secondaryNote ? `<p style="font-size: 11px; color: #94a3b8; text-align: center; margin: 6px 0 0 0; line-height: 1.4;">${secondaryNote}</p>` : `
+        <p style="font-size: 11px; color: #94a3b8; text-align: center; margin: 6px 0 0 0; line-height: 1.4;">
+          Jika tombol di atas tidak dapat diklik, salin tautan berikut ke peramban Anda:<br/>
+          <a href="${actionUrl}" style="color: #7a1f2b; text-decoration: underline; word-break: break-all;">${escapeHtml(actionUrl)}</a>
+        </p>
+      `}
+    `;
+  }
+
+  // Timestamp string
+  const timeNow = new Date().toLocaleString("id-ID", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short"
+  });
+
+  return `
+    <div style="background-color: #f1f5f9; padding: 24px 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #334155; line-height: 1.6;">
+      <table role="presentation" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 620px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); border-collapse: separate;">
+        <!-- Header Resmi CV ANDELA JAYA -->
+        <tr>
+          <td style="background: linear-gradient(135deg, #7a1f2b 0%, #4a0e17 100%); color: #ffffff; padding: 26px 24px; text-align: center;">
+            <h2 style="margin: 0; font-size: 20px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase;">
+              ${escapeHtml(compName)}
+            </h2>
+            <p style="margin: 4px 0 0 0; font-size: 12px; opacity: 0.9; letter-spacing: 0.5px; text-transform: uppercase;">
+              ${escapeHtml(subtitle)}
+            </p>
+            ${badgeHtml}
+          </td>
+        </tr>
+
+        <!-- Main Body -->
+        <tr>
+          <td style="padding: 28px 24px; background-color: #ffffff;">
+            ${title ? `
+              <h3 style="margin: 0 0 16px 0; color: #0f172a; font-size: 16.5px; font-weight: 700; line-height: 1.4; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px;">
+                ${escapeHtml(title)}
+              </h3>
+            ` : ""}
+
+            ${recipientName ? `
+              <p style="margin: 0 0 14px 0; font-size: 14px; color: #1e293b; line-height: 1.6;">
+                Halo <strong>${escapeHtml(recipientName)}</strong>,
+              </p>
+            ` : ""}
+
+            ${introText ? `
+              <p style="margin: 0 0 16px 0; font-size: 13.5px; color: #334155; line-height: 1.6;">
+                ${escapeHtml(introText)}
+              </p>
+            ` : ""}
+
+            ${infoBoxHtml}
+            ${statusBoxHtml}
+            ${bodyHtml}
+            ${ctaHtml}
+          </td>
+        </tr>
+
+        <!-- Footer Resmi -->
+        <tr>
+          <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 18px 24px; text-align: center; font-size: 11.5px; color: #64748b; line-height: 1.5;">
+            ${footerCustom ? `<div>${footerCustom}</div>` : `
+              <div style="font-weight: 600; color: #475569; margin-bottom: 2px;">
+                Sistem Informasi Manajemen SDM & Operasional — ${escapeHtml(compName)}
+              </div>
+              <div style="color: #94a3b8;">
+                Email ini dikirim secara otomatis oleh sistem. Harap tidak membalas email ini secara langsung.
+              </div>
+            `}
+            ${includeTimestamp ? `
+              <div style="margin-top: 6px; font-size: 10.5px; color: #cbd5e1;">
+                Waktu Pengiriman: ${escapeHtml(timeNow)}
+              </div>
+            ` : ""}
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
+}
 
 export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
  if (!to) {
@@ -2568,13 +2747,25 @@ export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
  const targetTo = Array.isArray(to) ? to.join(",") : String(to);
  if (!targetTo.trim()) return false;
 
+ // Pastikan email body seragam dengan standard template Andela Jaya jika belum dibungkus
+ let formattedHtml = htmlBody;
+ if (typeof formattedHtml === "string") {
+   const isAlreadyFullTemplate = formattedHtml.includes("linear-gradient(135deg, #7a1f2b") || formattedHtml.includes("CV ANDELA JAYA") || formattedHtml.includes("Header Resmi CV ANDELA JAYA");
+   if (!isAlreadyFullTemplate) {
+     formattedHtml = buildStandardEmailHtml({
+       title: subject,
+       bodyHtml: formattedHtml
+     });
+   }
+ }
+
  // Catat ke Firestore 'mail' collection (opsional, hanya berguna jika
  // extension Firebase "Trigger Email" terpasang di project ini)
  try {
  const toArray = Array.isArray(to) ? to : targetTo.split(",").map(s => s.trim()).filter(Boolean);
  fsAdd("mail", {
  to: toArray,
- message: { subject: subject, html: htmlBody },
+ message: { subject: subject, html: formattedHtml },
  created_at: new Date().toISOString()
  }).catch(err => console.warn("Note: Write to Firebase mail collection queued:", err?.message));
  } catch (e) {}
@@ -2586,7 +2777,7 @@ export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
  const res = await fetch("/api/send-email", {
  method: "POST",
  headers: { "Content-Type": "application/json" },
- body: JSON.stringify({ to: targetTo, subject, htmlBody, cc })
+ body: JSON.stringify({ to: targetTo, subject, htmlBody: formattedHtml, cc })
  });
 
  let json;
@@ -2991,21 +3182,16 @@ export async function notifyUser(username, judul, pesan, link = "", opts = {}) {
  ? `${appUrl}/${routePath}${routePath.includes('?') ? '&' : '?'}token=${magicToken}`
  : `${appUrl}/${routePath}`;
 
- const htmlBody = `
- <div style="font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding:24px; color:#1e293b; max-width:600px; border:1px solid #e2e8f0; border-radius:16px; background-color:#ffffff; margin:0 auto;">
- <div style="border-bottom:2px solid #7a1f2b; padding-bottom:12px; margin-bottom:20px;">
- <h2 style="color:#7a1f2b; margin:0; font-size:18px; font-weight:bold;">HRIS & Operasional CV Andela Jaya</h2>
- </div>
- <h3 style="color:#0f172a; margin-top:0; font-size:16px;">${escapeHtml(judul)}</h3>
- <p style="font-size:14px; line-height:1.6; color:#334155;">Halo <strong>${escapeHtml(targetName)}</strong>,</p>
- <p style="font-size:14px; line-height:1.6; color:#334155; background-color:#f8fafc; padding:14px; border-radius:10px; border:1px solid #f1f5f9;">${escapeHtml(pesan)}</p>
- <div style="margin-top:24px; text-align:center;">
- <a href="${targetLink}" style="background-color:#7a1f2b; color:#ffffff; padding:12px 24px; border-radius:10px; text-decoration:none; font-weight:bold; font-size:13px; display:inline-block; box-shadow:0 2px 4px rgba(0,0,0,0.1);">Buka HRIS & Lihat Rincian</a>
- </div>
- <hr style="margin-top:30px; border:0; border-top:1px solid #e2e8f0;" />
- <p style="font-size:11px; color:#94a3b8; text-align:center;">Pesan ini dikirimkan secara otomatis oleh sistem Portal HRIS CV Andela Jaya.</p>
- </div>
- `;
+ const htmlBody = buildStandardEmailHtml({
+   title: judul,
+   recipientName: targetName,
+   badgeText: "Notifikasi Sistem",
+   badgeVariant: "maroon",
+   introText: pesan,
+   actionUrl: targetLink,
+   actionText: "Buka HRIS & Lihat Rincian →",
+   secondaryNote: "Pesan ini dibuat otomatis oleh Sistem Portal HRIS & Operasional CV Andela Jaya."
+ });
  await sendEmailNotif(targetEmail, `[HRIS Update] ${judul}`, htmlBody);
  }
  } catch (e) {
@@ -4030,37 +4216,32 @@ export async function openInviteEmployeeModal(defaultEmpNikOrName = "") {
 
           toast(`Mengirim email undangan ke ${email}...`, "info");
           
-          const htmlEmail = `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background: #ffffff;">
-              <div style="background-color: #800000; padding: 20px; text-align: center; color: #ffffff;">
-                <h2 style="margin: 0; font-size: 20px;">${COMPANY_NAME}</h2>
-                <p style="margin: 5px 0 0 0; font-size: 13px; opacity: 0.9;">Undangan Akses Portal HRIS & Kepegawaian</p>
-              </div>
-              <div style="padding: 24px; color: #334155; font-size: 14px; line-height: 1.6;">
-                <p>Halo <strong>${escapeHtml(inputNama.value)}</strong>,</p>
-                <p>Anda telah diundang untuk mengakses Portal Sistem Informasi SDM (HRIS) <strong>${COMPANY_NAME}</strong>. Berikut adalah informasi akun login Anda:</p>
-                
-                <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px; margin: 20px 0;">
-                  <table style="width: 100%; text-align: left; font-size: 13px; border-collapse: collapse;">
-                    <tr><td style="padding: 4px 0; font-weight: bold; width: 140px;">URL Portal HRIS:</td><td><a href="${baseUrl}" style="color: #800000; text-decoration: underline; font-weight: bold;">${baseUrl}</a></td></tr>
-                    <tr><td style="padding: 4px 0; font-weight: bold;">Username:</td><td style="font-family: monospace; font-weight: bold; color: #0f172a;">${escapeHtml(inputUser.value.toUpperCase())}</td></tr>
-                    <tr><td style="padding: 4px 0; font-weight: bold;">Password Default:</td><td style="font-family: monospace; font-weight: bold; color: #0f172a;">${escapeHtml(inputPass.value)}</td></tr>
-                    <tr><td style="padding: 4px 0; font-weight: bold;">Role Akses:</td><td><span style="background: #e2e8f0; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">${escapeHtml(inputRole.value)}</span></td></tr>
-                  </table>
-                </div>
-
-                <p><strong>Langkah Login:</strong></p>
-                <ol style="padding-left: 20px; margin: 10px 0;">
-                  <li>Buka link portal HRIS di atas.</li>
-                  <li>Masukkan Username dan Password Default yang tertera.</li>
-                  <li>Disarankan untuk segera memperbarui password akun Anda setelah login pertama kali.</li>
+          const htmlEmail = buildStandardEmailHtml({
+            badgeText: "Akses Akun",
+            badgeVariant: "maroon",
+            title: "Undangan Akses Portal HRIS & Kepegawaian",
+            recipientName: inputNama.value,
+            introText: `Anda telah diundang untuk mengakses Portal Sistem Informasi SDM (HRIS) <strong>${escapeHtml(COMPANY_NAME)}</strong>. Berikut adalah informasi kredensial akun login Anda:`,
+            infoList: [
+              { label: "URL Portal HRIS", value: `<a href="${baseUrl}" style="color: #7a1f2b; font-weight: bold; text-decoration: underline;">${escapeHtml(baseUrl)}</a>`, isHtml: true },
+              { label: "Username", value: inputUser.value.toUpperCase() },
+              { label: "Password Default", value: inputPass.value },
+              { label: "Role Akses", value: inputRole.value }
+            ],
+            bodyHtml: `
+              <div style="margin-top: 18px; padding: 12px 16px; background-color: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 13px;">
+                <strong style="color: #0f172a;">Langkah Login Pertama:</strong>
+                <ol style="padding-left: 20px; margin: 8px 0 0 0; color: #475569; line-height: 1.6;">
+                  <li>Klik tombol atau tautan portal HRIS di bawah.</li>
+                  <li>Masukkan <strong>Username</strong> dan <strong>Password Default</strong> di atas.</li>
+                  <li>Disarankan untuk segera memperbarui password Anda melalui menu Profil setelah berhasil login.</li>
                 </ol>
-
-                <p style="margin-top: 24px;">Jika Anda memiliki pertanyaan atau kendala, silakan hubungi tim HRD.</p>
-                <p style="margin-bottom: 0;">Terima kasih,<br><strong>Tim HRD - ${COMPANY_NAME}</strong></p>
               </div>
-            </div>
-          `;
+            `,
+            actionUrl: baseUrl,
+            actionText: "Login ke Portal HRIS →",
+            secondaryNote: "Jika ada pertanyaan atau kendala akses, silakan hubungi tim HRD CV Andela Jaya."
+          });
 
           const sent = await sendEmailNotif(email, `[Undangan HRIS] Kredensial Login - ${COMPANY_NAME}`, htmlEmail);
           if (sent) {
@@ -4085,28 +4266,32 @@ export async function openInviteEmployeeModal(defaultEmpNikOrName = "") {
 
           if (email) {
             toast(`Mengirim email undangan ke ${email}...`, "info");
-            const htmlEmail = `
-              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background: #ffffff;">
-                <div style="background-color: #800000; padding: 20px; text-align: center; color: #ffffff;">
-                  <h2 style="margin: 0; font-size: 20px;">${COMPANY_NAME}</h2>
-                  <p style="margin: 5px 0 0 0; font-size: 13px; opacity: 0.9;">Undangan Akses Portal HRIS & Kepegawaian</p>
+            const htmlEmail = buildStandardEmailHtml({
+              badgeText: "Akses Akun",
+              badgeVariant: "maroon",
+              title: "Undangan Akses Portal HRIS & Kepegawaian",
+              recipientName: inputNama.value,
+              introText: `Anda telah diundang untuk mengakses Portal Sistem Informasi SDM (HRIS) <strong>${escapeHtml(COMPANY_NAME)}</strong>. Berikut adalah informasi kredensial akun login Anda:`,
+              infoList: [
+                { label: "URL Portal HRIS", value: `<a href="${baseUrl}" style="color: #7a1f2b; font-weight: bold; text-decoration: underline;">${escapeHtml(baseUrl)}</a>`, isHtml: true },
+                { label: "Username", value: inputUser.value.toUpperCase() },
+                { label: "Password Default", value: inputPass.value },
+                { label: "Role Akses", value: inputRole.value }
+              ],
+              bodyHtml: `
+                <div style="margin-top: 18px; padding: 12px 16px; background-color: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 13px;">
+                  <strong style="color: #0f172a;">Langkah Login Pertama:</strong>
+                  <ol style="padding-left: 20px; margin: 8px 0 0 0; color: #475569; line-height: 1.6;">
+                    <li>Klik tombol atau tautan portal HRIS di bawah.</li>
+                    <li>Masukkan <strong>Username</strong> dan <strong>Password Default</strong> di atas.</li>
+                    <li>Disarankan untuk segera memperbarui password Anda melalui menu Profil setelah berhasil login.</li>
+                  </ol>
                 </div>
-                <div style="padding: 24px; color: #334155; font-size: 14px; line-height: 1.6;">
-                  <p>Halo <strong>${escapeHtml(inputNama.value)}</strong>,</p>
-                  <p>Anda telah diundang untuk mengakses Portal Sistem Informasi SDM (HRIS) <strong>${COMPANY_NAME}</strong>. Berikut adalah informasi akun login Anda:</p>
-                  
-                  <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px; margin: 20px 0;">
-                    <table style="width: 100%; text-align: left; font-size: 13px; border-collapse: collapse;">
-                      <tr><td style="padding: 4px 0; font-weight: bold; width: 140px;">URL Portal HRIS:</td><td><a href="${baseUrl}" style="color: #800000; text-decoration: underline; font-weight: bold;">${baseUrl}</a></td></tr>
-                      <tr><td style="padding: 4px 0; font-weight: bold;">Username:</td><td style="font-family: monospace; font-weight: bold; color: #0f172a;">${escapeHtml(inputUser.value.toUpperCase())}</td></tr>
-                      <tr><td style="padding: 4px 0; font-weight: bold;">Password Default:</td><td style="font-family: monospace; font-weight: bold; color: #0f172a;">${escapeHtml(inputPass.value)}</td></tr>
-                    </table>
-                  </div>
-
-                  <p>Terima kasih,<br><strong>Tim HRD - ${COMPANY_NAME}</strong></p>
-                </div>
-              </div>
-            `;
+              `,
+              actionUrl: baseUrl,
+              actionText: "Login ke Portal HRIS →",
+              secondaryNote: "Jika ada pertanyaan atau kendala akses, silakan hubungi tim HRD CV Andela Jaya."
+            });
             await sendEmailNotif(email, `[Undangan HRIS] Kredensial Login - ${COMPANY_NAME}`, htmlEmail);
           }
 

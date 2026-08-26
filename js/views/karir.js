@@ -164,7 +164,12 @@ export async function mount(container, { params, session }) {
       if (deepId) {
         const matched = allVacancies.find(v => v.id === deepId);
         if (matched) {
-          openPublicVacancyDetail(matched);
+          const isOpen = (matched.status || "Open").toLowerCase() === "open" || (matched.status || "").toLowerCase() === "dibuka";
+          if (isOpen) {
+            openPublicVacancyDetail(matched);
+          } else {
+            toast("Publikasi lowongan ini telah dicabut atau sudah tidak aktif.", "warning");
+          }
         }
       }
 

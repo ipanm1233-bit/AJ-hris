@@ -239,8 +239,8 @@ export function renderAtsAnalyticsHtml(candidates = [], vacancies = []) {
                   <td class="p-3 font-bold text-slate-800">${escapeHtml(v.posisi)}</td>
                   <td class="p-3 text-slate-600">${escapeHtml(v.cabang || 'Cirebon')}</td>
                   <td class="p-3 text-center">
-                    <span class="px-2 py-0.5 rounded text-[10px] font-bold ${v.status === 'Open' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}">
-                      ${v.status || 'Open'}
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold ${v.status === 'Open' || v.status === 'Dibuka' ? 'bg-emerald-100 text-emerald-800' : (v.status === 'Draft' || v.status === 'Unpublished' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600')}">
+                      ${v.status === 'Draft' ? 'Draft (Dicabut)' : (v.status || 'Open')}
                     </span>
                   </td>
                   <td class="p-3 text-center font-bold text-slate-800">${vCands.length}</td>

@@ -1,5 +1,5 @@
 import { COL } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fmtDateShort, escapeHtml, notifyUser, sendEmailNotif, getTargetsForRole } from "../utils.js";
+import { fsGetAll, fsAdd, fmtDateShort, escapeHtml, notifyUser, sendEmailNotif, buildStandardEmailHtml, getTargetsForRole } from "../utils.js";
 import { renderCrudModule } from "../components.js";
 import { isoDocHeaderTable } from "../branding.js";
 
@@ -108,7 +108,24 @@ export async function mount(container) {
  `Anda menerima ${data.tingkat_sp || 'Surat Peringatan'}: ${data.pelanggaran || '-'}. Klik untuk membaca & TTD digital.`,
  `#profile?tab=documents&doc_id=${docId}`
  );
- if (t.email) await sendEmailNotif(t.email, "Surat Peringatan dari HRD", `<p>Anda menerima dokumen baru dari HRD: <b>${escapeHtml(docJudul)}</b>. Silakan login ke aplikasi untuk TTD digital.</p>`);
+ if (t.email) {
+   const emailBody = buildStandardEmailHtml({
+     badgeText: data.tingkat_sp || "Surat Peringatan",
+     badgeVariant: "amber",
+     title: "Surat Peringatan Diterbitkan",
+     recipientName: data.nama_karyawan,
+     introText: `Anda menerima dokumen resmi <strong>${escapeHtml(docJudul)}</strong> dari HRD CV Andela Jaya.`,
+     infoList: [
+       { label: "Karyawan", value: data.nama_karyawan },
+       { label: "Tingkat", value: data.tingkat_sp || "SP" },
+       { label: "Pelanggaran", value: data.pelanggaran || "-" }
+     ],
+     actionUrl: `${window.location.origin}/#profile?tab=documents&doc_id=${docId}`,
+     actionText: "Buka Dokumen & Tanda Tangan Digital →",
+     secondaryNote: "Dokumen ini memerlukan konfirmasi dan tanda tangan digital Anda melalui aplikasi HRIS."
+   });
+   await sendEmailNotif(t.email, `[Dokumen HRD] ${docJudul}`, emailBody);
+ }
  }
  }
  });
@@ -155,7 +172,25 @@ export async function mount(container) {
  `Anda menerima Surat Pemanggilan perihal: ${data.perihal || '-'}. Klik untuk membaca & TTD digital.`,
  `#profile?tab=documents&doc_id=${docId}`
  );
- if (t.email) await sendEmailNotif(t.email, "Surat Pemanggilan dari HRD", `<p>Anda menerima Surat Pemanggilan HRD perihal: <b>${escapeHtml(data.perihal || "-")}</b>. Silakan login ke aplikasi untuk TTD digital.</p>`);
+ if (t.email) {
+   const emailBody = buildStandardEmailHtml({
+     badgeText: "Surat Pemanggilan",
+     badgeVariant: "maroon",
+     title: "Surat Pemanggilan HRD",
+     recipientName: data.nama_karyawan,
+     introText: `Anda menerima dokumen resmi <strong>${escapeHtml(docJudul)}</strong> dari HRD CV Andela Jaya.`,
+     infoList: [
+       { label: "Karyawan", value: data.nama_karyawan },
+       { label: "Tanggal Pertemuan", value: fmtDateShort(data.tanggal_panggilan) },
+       { label: "Jam Pertemuan", value: data.waktu || "09:00" },
+       { label: "Perihal", value: data.perihal || "-" }
+     ],
+     actionUrl: `${window.location.origin}/#profile?tab=documents&doc_id=${docId}`,
+     actionText: "Buka Dokumen & Konfirmasi Kehadiran →",
+     secondaryNote: "Harap hadir tepat waktu sesuai dengan jadwal yang telah ditentukan."
+   });
+   await sendEmailNotif(t.email, `[Panggilan HRD] ${docJudul}`, emailBody);
+ }
  }
  }
  });

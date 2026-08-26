@@ -1,5 +1,5 @@
 import { db, COL, collection, getDocs, doc, setDoc, getDoc, updateDoc } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort, confirmDialog, sendEmailNotif, notifyUser, getTargetsForRole, generateAndSaveCutiDocument, printFormCutiFisik, downloadFormCutiPdf, generateStandardFormCutiHtml, smartParseDate, getCalculatedJatahCuti, getCarryoverPercentage, calculateCarryoverJatah, ensureXlsxLoaded, getCutiDeductionCategory } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort, confirmDialog, sendEmailNotif, buildStandardEmailHtml, notifyUser, getTargetsForRole, generateAndSaveCutiDocument, printFormCutiFisik, downloadFormCutiPdf, generateStandardFormCutiHtml, smartParseDate, getCalculatedJatahCuti, getCarryoverPercentage, calculateCarryoverJatah, ensureXlsxLoaded, getCutiDeductionCategory } from "../utils.js";
 import { avatar, emptyState, skeletonRows, badge } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
@@ -1648,7 +1648,24 @@ export async function mount(container, { session }) {
  const targets = await getTargetsForRole("PEMOHON", k.nama_karyawan);
  for (const t of targets) {
  await notifyUser(t.username, "Pengajuan Cuti Tercatat", `Cuti Anda (${pdfData.tanggal_display || pdfData.tanggal}) telah dicatat HRD.`);
- if (t.email) await sendEmailNotif(t.email, "Cuti Anda Telah Dicatat", `<p>Halo ${escapeHtml(k.nama_karyawan)},</p><p>Pengajuan cuti Anda tanggal <b>${fmtDateShort(pdfData.tanggal)}</b> telah dicatat oleh HRD. Dokumen: <a href="${result.pdfUrl}">lihat di sini</a>.</p>`);
+ if (t.email) {
+   const emailBody = buildStandardEmailHtml({
+     badgeText: "Cuti Tercatat",
+     badgeVariant: "green",
+     title: "Pengajuan Cuti Anda Telah Dicatat",
+     recipientName: k.nama_karyawan,
+     introText: `Pengajuan cuti Anda telah berhasil diverifikasi dan dicatat oleh Tim HRD. Dokumen formulir cuti telah diterbitkan secara resmi.`,
+     infoList: [
+       { label: "Nama Karyawan", value: k.nama_karyawan },
+       { label: "Tanggal Cuti", value: fmtDateShort(pdfData.tanggal) },
+       { label: "Keperluan", value: pdfData.alasan || "-" }
+     ],
+     actionUrl: result.pdfUrl,
+     actionText: "Unduh / Lihat Dokumen Cuti (PDF) →",
+     secondaryNote: "Dokumen cuti resmi ini telah tersimpan dalam arsip sistem HRIS."
+   });
+   await sendEmailNotif(t.email, `[HRIS Cuti] Pengajuan Cuti Anda Telah Dicatat`, emailBody);
+ }
  } 
  window.open(result.pdfUrl, "_blank");
  } catch (err) {

@@ -1,5 +1,5 @@
 import { COL } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsDelete, deleteBroadcastMemoAndNotifs, openModal, closeModal, toast, genId, escapeHtml, fmtDateTime, sendEmailNotif, sendFCMNotif } from "../utils.js";
+import { fsGetAll, fsAdd, fsDelete, deleteBroadcastMemoAndNotifs, openModal, closeModal, toast, genId, escapeHtml, fmtDateTime, sendEmailNotif, buildStandardEmailHtml, sendFCMNotif } from "../utils.js";
 // PERUBAHAN: lampiran memo kini diupload ke Google Drive, bukan Firebase Storage.
 import { uploadFileToDrive } from "../gas-integration.js";
 import { avatar, badge, emptyState, skeletonRows } from "../components.js";
@@ -415,11 +415,20 @@ function openComposeModal(container, session, karyawan, users, reload) {
  // Email
  const targetEmails = Array.from(targetEmailsSet);
  if (targetEmails.length > 0) {
- const emailTemplate = `
- <div style="font-family: Arial, sans-serif; background-color: #f8fafc; padding: 20px;">
- <div style="background-color: #7a1f2b; padding: 15px; text-align: center;"><h2 style="color: white; margin: 0;">${escapeHtml(payload.judul)}</h2></div>
- <div style="padding: 20px; background: white;">${htmlContent}</div>
- </div>`;
+ const emailTemplate = buildStandardEmailHtml({
+   badgeText: "Memo Internal",
+   badgeVariant: "maroon",
+   title: payload.judul,
+   introText: `Pengumuman resmi dari <strong>${escapeHtml(session.nama || "Manajemen")}</strong>:`,
+   bodyHtml: `
+     <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; margin: 16px 0; color: #1e293b; font-size: 13.5px; line-height: 1.7;">
+       ${htmlContent}
+     </div>
+   `,
+   actionUrl: `${window.location.origin}/#broadcast?memo_id=${id}`,
+   actionText: "Lihat Memo di Portal HRIS →",
+   secondaryNote: "Memo ini ditujukan kepada karyawan di lingkungan CV Andela Jaya."
+ });
  await Promise.all(targetEmails.map(email => sendEmailNotif(email, `[Memo HRIS] ${payload.judul}`, emailTemplate)));
  }
 

@@ -955,6 +955,8 @@ export async function mount(container, { session }) {
  title: "Seluruh Log Pengisian BBM Armada",
  collectionName: COL.LOG_KENDARAAN_FUEL,
  idPrefix: "FUEL",
+ canCreate: false,
+ canEdit: false,
  searchFields: ["no_polisi", "nama_driver"],
  columns: [
  { key: "tanggal", label: "Tanggal", type: "date" },
@@ -974,6 +976,8 @@ export async function mount(container, { session }) {
  title: "Seluruh Log Service & Perbaikan Armada",
  collectionName: COL.LOG_KENDARAAN_SERVICE,
  idPrefix: "SVC",
+ canCreate: false,
+ canEdit: false,
  searchFields: ["no_polisi", "nama_driver", "vendor"],
  columns: [
  { key: "tanggal", label: "Tanggal", type: "date" },
@@ -991,6 +995,8 @@ export async function mount(container, { session }) {
  title: "Seluruh Log Pajak, STNK & Uji KIR",
  collectionName: COL.LOG_KENDARAAN_COMPLIANCE,
  idPrefix: "CMP",
+ canCreate: false,
+ canEdit: false,
  searchFields: ["no_polisi", "jenis_pajak"],
  columns: [
  { key: "tanggal_bayar", label: "Tgl Bayar", type: "date" },

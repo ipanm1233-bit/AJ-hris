@@ -1,5 +1,5 @@
 import { COL } from "../firebase-config.js";
-import { fsAdd, fsGetAll, fsUpdate, genId, toast, sendEmailNotif, getTargetsForRole, createLoginToken, escapeHtml, openModal, closeModal, printSalesKlaimForm } from "../utils.js";
+import { fsAdd, fsGetAll, fsUpdate, genId, toast, sendEmailNotif, buildStandardEmailHtml, getTargetsForRole, createLoginToken, escapeHtml, openModal, closeModal, printSalesKlaimForm } from "../utils.js";
 import { letterheadHtml } from "../branding.js";
 import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
 
@@ -586,15 +586,21 @@ export async function mount(container, { session }) {
  const token = await createLoginToken(target.username);
  const baseUrl = window.location.origin;
  const magicLink = `${baseUrl}/#approval?token=${token}`;
- const htmlEmail = `
- <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
- <h2 style="color: #7a1f2b;">Pengajuan Baru: ${payload.nama_form}</h2>
- <p><strong>Diajukan Oleh:</strong> ${payload.nama_pemohon} (${selectedCabang})</p>
- <p><strong>Total Klaim:</strong> Rp ${Math.round(totalKlaim).toLocaleString("id-ID")}</p>
- <p>Pengajuan ini membutuhkan persetujuan Anda sebagai <strong>ATASAN</strong>.</p>
- <a href="${magicLink}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Akses Langsung & Setujui</a>
- </div>
- `;
+ const htmlEmail = buildStandardEmailHtml({
+   badgeText: "Approval Dibutuhkan",
+   badgeVariant: "maroon",
+   title: `Pengajuan Baru: ${payload.nama_form}`,
+   recipientName: target.nama || "Bapak/Ibu Atasan",
+   introText: `Pengajuan klaim bensin baru memerlukan verifikasi dan persetujuan Anda sebagai <strong>ATASAN</strong>:`,
+   infoList: [
+     { label: "Nomor Dokumen", value: payload.id },
+     { label: "Nama Pemohon", value: `${payload.nama_pemohon} (${selectedCabang})` },
+     { label: "Total Klaim", value: `Rp ${Math.round(totalKlaim).toLocaleString("id-ID")}` }
+   ],
+   actionUrl: magicLink,
+   actionText: "Akses Langsung & Setujui →",
+   secondaryNote: "Tautan ini aman dan memungkinkan Anda menyetujui langsung tanpa mengetik ulang kata sandi."
+ });
  
  sendEmailNotif(target.email, `Persetujuan Dibutuhkan: ${payload.nama_form}`, htmlEmail).catch(e => console.warn("Email warning:", e));
  }

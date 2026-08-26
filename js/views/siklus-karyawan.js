@@ -1,5 +1,5 @@
 import { COL, db, updateDoc, doc } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, toast, genId, fmtRupiah, fmtDateShort, smartParseDate, sendEmailNotif, openModal, closeModal } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, toast, genId, fmtRupiah, fmtDateShort, smartParseDate, sendEmailNotif, buildStandardEmailHtml, openModal, closeModal } from "../utils.js";
 import { renderCrudModule, icon } from "../components.js";
 import { isoDocHeaderTable } from "../branding.js";
 
@@ -1112,6 +1112,7 @@ export async function mount(container) {
  btnAddTraining.onclick = () => addTrainingRow("", "Atasan Direct", "Selesai & Lulus");
  }
  }
+ }
 
 if (btnKalkulasi) {
  btnKalkulasi.addEventListener("click", async () => {
@@ -1615,35 +1616,58 @@ if (btnKalkulasi) {
  if (jenis === "Onboarding") {
  const d = payloadLog.new_employee_data;
  emailSubject = "Selamat Datang di CV Andela Jaya!";
- emailBody = `
- <div style="font-family:Arial,sans-serif;padding:24px;max-width:560px;margin:0 auto;">
- <h2 style="color:#7f1d1d;">Selamat Bergabung, ${escapeHtml(namaTarget)}!</h2>
- <p>Seluruh keluarga besar <b>CV Andela Jaya</b> mengucapkan selamat datang. Kami sangat senang Anda bergabung sebagai <b>${escapeHtml(d.jabatan || "-")}</b> di ${escapeHtml(d.cabang || "-")}, terhitung mulai <b>${fmtDateShort(d.tanggal_join)}</b>.</p>
- <p>Tim HRD akan menghubungi Anda untuk kelengkapan administrasi (kontrak, ID card, BPJS, dan akun sistem). Selamat bekerja!</p>
- </div>`;
+ emailBody = buildStandardEmailHtml({
+   badgeText: "Selamat Bergabung",
+   badgeVariant: "green",
+   title: "Selamat Datang di CV Andela Jaya!",
+   recipientName: namaTarget,
+   introText: `Seluruh keluarga besar <strong>CV Andela Jaya</strong> mengucapkan selamat datang. Kami sangat senang Anda bergabung bersama kami.`,
+   infoList: [
+     { label: "Nama Karyawan", value: namaTarget },
+     { label: "Posisi / Jabatan", value: d.jabatan || "-" },
+     { label: "Penempatan Cabang", value: d.cabang || "-" },
+     { label: "Tanggal Mulai Kerja", value: fmtDateShort(d.tanggal_join) }
+   ],
+   actionUrl: `${window.location.origin}/#profile`,
+   actionText: "Akses Portal HRIS Karyawan →",
+   secondaryNote: "Tim HRD akan memandu Anda untuk kelengkapan administrasi (kontrak kerja, ID card, BPJS, dan aktivasi akun sistem)."
+ });
  } else if (jenis === "Offboarding") {
  emailSubject = "Pemberitahuan Proses Offboarding";
- emailBody = `
- <div style="font-family:Arial,sans-serif;padding:24px;max-width:560px;margin:0 auto;">
- <h2 style="color:#7f1d1d;">Pemberitahuan Offboarding</h2>
- <p>Yth. <b>${escapeHtml(namaTarget)}</b>, proses offboarding Anda telah diinput oleh HRD dengan tanggal efektif <b>${fmtDateShort(payloadLog.tanggal_efektif)}</b>.</p>
- <p>${escapeHtml(payloadLog.keterangan || "")}</p>
- <p>Silakan koordinasikan serah terima aset & dokumen terkait dengan HRD.</p>
- </div>`;
+ emailBody = buildStandardEmailHtml({
+   badgeText: "Offboarding",
+   badgeVariant: "amber",
+   title: "Pemberitahuan Proses Offboarding",
+   recipientName: namaTarget,
+   introText: `Dengan ini diinformasikan bahwa proses offboarding Anda telah diproses oleh HRD dengan tanggal efektif <strong>${fmtDateShort(payloadLog.tanggal_efektif)}</strong>.`,
+   infoList: [
+     { label: "Karyawan", value: namaTarget },
+     { label: "Tanggal Efektif", value: fmtDateShort(payloadLog.tanggal_efektif) },
+     { label: "Keterangan", value: payloadLog.keterangan || "-" }
+   ],
+   secondaryNote: "Harap segera mengoordinasikan serah terima aset perusahaan, berkas dokumen, dan penyelesaian administrasi dengan HRD."
+ });
  } else if (["Mutasi", "Promosi", "Demosi"].includes(jenis)) {
  const d = payloadLog.detail_mutasi || {};
  emailSubject = `Pemberitahuan ${jenis} Jabatan`;
- emailBody = `
- <div style="font-family:Arial,sans-serif;padding:24px;max-width:560px;margin:0 auto;">
- <h2 style="color:#7f1d1d;">Pemberitahuan ${jenis}</h2>
- <p>Yth. <b>${escapeHtml(namaTarget)}</b>, dengan ini diinformasikan bahwa Anda mengalami <b>${jenis}</b> terhitung efektif <b>${fmtDateShort(payloadLog.tanggal_efektif)}</b>:</p>
- <table style="width:100%; border-collapse:collapse; margin:12px 0;">
- <tr><td style="padding:6px; color:#64748b;">Jabatan</td><td style="padding:6px;">${escapeHtml(d.jabatan_lama || "-")} &rarr; <b>${escapeHtml(d.jabatan_baru || "-")}</b></td></tr>
- <tr><td style="padding:6px; color:#64748b;">Cabang</td><td style="padding:6px;">${escapeHtml(d.cabang_lama || "-")} &rarr; <b>${escapeHtml(d.cabang_baru || "-")}</b></td></tr>
- </table>
- <p>${escapeHtml(payloadLog.keterangan || "")}</p>
- <p>Silakan hubungi HRD apabila ada pertanyaan lebih lanjut.</p>
- </div>`;
+ emailBody = buildStandardEmailHtml({
+   badgeText: jenis,
+   badgeVariant: jenis === "Promosi" ? "green" : "maroon",
+   title: `Pemberitahuan ${jenis} Jabatan`,
+   recipientName: namaTarget,
+   introText: `Dengan ini diinformasikan bahwa Anda mendapatkan penugasan baru berupa <strong>${jenis}</strong> terhitung efektif <strong>${fmtDateShort(payloadLog.tanggal_efektif)}</strong>.`,
+   infoList: [
+     { label: "Karyawan", value: namaTarget },
+     { label: "Jabatan Lama", value: d.jabatan_lama || "-" },
+     { label: "Jabatan Baru", value: d.jabatan_baru || "-" },
+     { label: "Cabang Lama", value: d.cabang_lama || "-" },
+     { label: "Cabang Baru", value: d.cabang_baru || "-" },
+     { label: "Keterangan", value: payloadLog.keterangan || "-" }
+   ],
+   actionUrl: `${window.location.origin}/#profile`,
+   actionText: "Lihat Profil & Riwayat Karir →",
+   secondaryNote: "Silakan hubungi HRD apabila ada pertanyaan lebih lanjut terkait penyesuaian tugas baru."
+ });
  }
 
  if (emailSubject) {
@@ -1684,6 +1708,7 @@ if (btnKalkulasi) {
  });
  }
  });
+ }
 
  const panelInput = container.querySelector("#sk-panel-input");
  const panelRiwayat = container.querySelector("#sk-panel-riwayat");
@@ -1696,6 +1721,7 @@ if (btnKalkulasi) {
  collectionName: COL.SIKLUS_KARYAWAN,
  idPrefix: "SKL",
  canCreate: false, 
+ canEdit: false,
  searchFields: ["nama_karyawan", "jenis_siklus", "keterangan"],
  orderByField: "tanggal_proses",
  printLabel: "Cetak Dokumen (PDF)",
@@ -1771,6 +1797,4 @@ if (btnKalkulasi) {
  });
 
  return { unmount() {} };
-}
-}
 }

@@ -463,9 +463,9 @@ export async function mount(container, { params, session }) {
           </select>
           <select id="vac-filter-status" class="px-3 py-2 border border-slate-200 rounded-xl text-xs outline-none focus:border-maroon-700">
             <option value="">Semua Status</option>
-            <option value="Open">Open</option>
-            <option value="Draft">Draft</option>
-            <option value="Closed">Closed</option>
+            <option value="Open">Open (Dipublikasikan)</option>
+            <option value="Draft">Draft (Dicabut)</option>
+            <option value="Closed">Closed (Ditutup)</option>
           </select>
         </div>
         <button type="button" id="btn-add-vac-tab" class="px-4 py-2 bg-maroon-700 hover:bg-maroon-800 text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 cursor-pointer">
@@ -483,7 +483,7 @@ export async function mount(container, { params, session }) {
                 <th class="p-3 text-left">Departemen / Cabang</th>
                 <th class="p-3 text-center">Pelamar / Target</th>
                 <th class="p-3 text-center">Lolos ATS (≥70)</th>
-                <th class="p-3 text-center">Status</th>
+                <th class="p-3 text-center">Status Publikasi</th>
                 <th class="p-3 text-right">Aksi</th>
               </tr>
             </thead>
@@ -498,9 +498,50 @@ export async function mount(container, { params, session }) {
       const tbody = el.querySelector("#vac-tbody");
       if (!tbody) return;
 
+      if (list.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="p-8 text-center text-slate-400">
+              <div class="max-w-xs mx-auto space-y-2">
+                <div class="text-3xl">📂</div>
+                <p class="font-bold text-slate-600">Tidak ada data lowongan pekerjaan</p>
+                <p class="text-[11px] text-slate-400">Coba sesuaikan kata kunci pencarian atau filter status.</p>
+              </div>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
       tbody.innerHTML = list.map(v => {
         const vCands = allCandidates.filter(c => c.lowongan_id === v.id || c.posisi_dilamar === v.posisi);
         const vLolos = vCands.filter(c => (c.evaluation?.skor_ats || 0) >= 70).length;
+
+        const isOpen = (v.status || "Open").toLowerCase() === "open" || (v.status || "").toLowerCase() === "dibuka";
+        const isDraft = (v.status || "").toLowerCase() === "draft" || (v.status || "").toLowerCase() === "unpublished";
+        const isClosed = (v.status || "").toLowerCase() === "closed" || (v.status || "").toLowerCase() === "ditutup";
+
+        let statusBadgeHtml = `
+          <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
+            Publik (Open)
+          </span>
+        `;
+        if (isDraft) {
+          statusBadgeHtml = `
+            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-600"></span>
+              Draft (Dicabut)
+            </span>
+          `;
+        } else if (isClosed) {
+          statusBadgeHtml = `
+            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+              <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+              Ditutup (Closed)
+            </span>
+          `;
+        }
 
         return `
           <tr class="hover:bg-slate-50/70 transition">
@@ -519,21 +560,97 @@ export async function mount(container, { params, session }) {
               <span class="px-2.5 py-1 rounded-full bg-teal-50 text-teal-800 font-bold">${vLolos} Kandidat</span>
             </td>
             <td class="p-3 text-center">
-              <span class="px-2.5 py-1 rounded-full text-[10px] font-bold ${v.status === 'Open' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}">
-                ${v.status || 'Open'}
-              </span>
+              ${statusBadgeHtml}
             </td>
             <td class="p-3 text-right space-x-1.5 whitespace-nowrap">
-              <button data-vac-id="${v.id}" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold btn-vac-edit cursor-pointer">
+              ${isOpen ? `
+                <button data-vac-id="${v.id}" class="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-xs font-bold btn-vac-unpublish cursor-pointer transition inline-flex items-center gap-1" title="Cabut publikasi dari portal karir">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+                  Cabut Publikasi
+                </button>
+              ` : `
+                <button data-vac-id="${v.id}" class="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold btn-vac-publish cursor-pointer transition inline-flex items-center gap-1" title="Publikasikan lowongan ke portal karir">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
+                  Publikasikan
+                </button>
+              `}
+              <button data-vac-id="${v.id}" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold btn-vac-edit cursor-pointer transition">
                 Edit
               </button>
-              <button data-vac-id="${v.id}" class="px-2.5 py-1 bg-maroon-50 hover:bg-maroon-100 text-maroon-800 rounded-lg text-xs font-bold btn-vac-cands cursor-pointer">
+              <button data-vac-id="${v.id}" class="px-2.5 py-1 bg-maroon-50 hover:bg-maroon-100 text-maroon-800 rounded-lg text-xs font-bold btn-vac-cands cursor-pointer transition">
                 Lihat Pelamar
+              </button>
+              <button data-vac-id="${v.id}" class="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg text-xs font-bold btn-vac-delete cursor-pointer transition inline-flex items-center" title="Hapus Lowongan">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
               </button>
             </td>
           </tr>
         `;
       }).join('');
+
+      tbody.querySelectorAll(".btn-vac-unpublish").forEach(b => {
+        b.onclick = async () => {
+          const v = allVacancies.find(x => x.id === b.dataset.vacId);
+          if (!v) return;
+          const ok = await confirmDialog(
+            `Apakah Anda yakin ingin mencabut publikasi lowongan "${v.posisi}"?\n\n• Lowongan tidak akan lagi tampil di portal karir publik bagi calon pelamar.\n• Calon pelamar baru tidak dapat mengirimkan berkas untuk posisi ini.\n• Status lowongan akan dialihkan menjadi Draft (Internal).`,
+            { title: "Cabut Publikasi Lowongan", danger: true }
+          );
+          if (ok) {
+            try {
+              await fsUpdate(COL.DATA_REKRUTMEN || "data_rekrutmen", v.id, {
+                status: "Draft",
+                unpublished_at: new Date().toISOString()
+              });
+              toast(`Publikasi lowongan "${v.posisi}" berhasil dicabut (status diubah ke Draft)!`, "success");
+              await loadInitialData();
+            } catch (err) {
+              console.error("Gagal mencabut publikasi:", err);
+              toast("Gagal mencabut publikasi lowongan: " + err.message, "danger");
+            }
+          }
+        };
+      });
+
+      tbody.querySelectorAll(".btn-vac-publish").forEach(b => {
+        b.onclick = async () => {
+          const v = allVacancies.find(x => x.id === b.dataset.vacId);
+          if (!v) return;
+          try {
+            await fsUpdate(COL.DATA_REKRUTMEN || "data_rekrutmen", v.id, {
+              status: "Open",
+              published_at: new Date().toISOString()
+            });
+            toast(`Lowongan "${v.posisi}" berhasil dipublikasikan ke portal karir!`, "success");
+            await loadInitialData();
+          } catch (err) {
+            console.error("Gagal mempublikasikan lowongan:", err);
+            toast("Gagal mempublikasikan lowongan: " + err.message, "danger");
+          }
+        };
+      });
+
+      tbody.querySelectorAll(".btn-vac-delete").forEach(b => {
+        b.onclick = async () => {
+          const v = allVacancies.find(x => x.id === b.dataset.vacId);
+          if (!v) return;
+          const count = allCandidates.filter(c => c.lowongan_id === v.id || c.posisi_dilamar === v.posisi).length;
+          const ok = await confirmDialog(
+            `Apakah Anda yakin ingin menghapus data lowongan "${v.posisi}" (${v.id})?${count > 0 ? `\n\nPerhatian: Terdapat ${count} kandidat/pelamar yang terkait dengan lowongan ini.` : ''}`,
+            { title: "Hapus Lowongan", danger: true }
+          );
+          if (ok) {
+            try {
+              await fsDelete(COL.DATA_REKRUTMEN || "data_rekrutmen", v.id);
+              toast(`Lowongan "${v.posisi}" berhasil dihapus.`, "success");
+              await loadInitialData();
+            } catch (err) {
+              console.error("Gagal menghapus lowongan:", err);
+              toast("Gagal menghapus lowongan: " + err.message, "danger");
+            }
+          }
+        };
+      });
 
       tbody.querySelectorAll(".btn-vac-edit").forEach(b => {
         b.onclick = () => {

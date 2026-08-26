@@ -45,7 +45,7 @@
       <button id="btn-save-cfg" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-medium py-3 rounded-xl shadow-md transition">Simpan Semua Konfigurasi</button>
     </div>
 
-    <!-- KOLOM KANAN (Aksi Massal) -->
+    <!-- KOLOM KANAN (Aksi Massal & Widget) -->
     <div class="space-y-6">
       <!-- Widget Dashboard Karyawan & Atasan -->
       <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
@@ -90,6 +90,260 @@
           <button id="btn-eksekusi-cuti" class="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-2.5 rounded shadow mt-2 text-sm transition">EKSEKUSI MASSAL</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- BAGIAN: PENGATURAN EMAIL PENGINGAT OTOMATIS (EMAIL REMINDER SETTINGS)    -->
+  <!-- ========================================================================= -->
+  <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
+      <div>
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-maroon-100 text-maroon-800 flex items-center justify-center font-bold text-sm">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+          </div>
+          <h2 class="text-lg font-bold text-slate-800">Pengaturan Pengiriman Email Pengingat Otomatis</h2>
+        </div>
+        <p class="text-xs text-slate-500 mt-1">Konfigurasikan alamat email penerima notifikasi pengingat jatuh tempo (Pajak Kendaraan, Kontrak PKWT, Evaluasi KPI, LPJ Kasbon, & Kalender HR).</p>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button id="btn-save-email-reminders" class="px-4 py-2 bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold rounded-xl shadow transition flex items-center gap-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+          Simpan Pengaturan Email
+        </button>
+      </div>
+    </div>
+
+    <!-- Grid Kartu Pengaturan Email Reminders -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <!-- 1. KENDARAAN & PAJAK ARMADA -->
+      <div class="bg-slate-50/70 p-5 rounded-2xl border border-slate-200/80 space-y-4 flex flex-col justify-between">
+        <div class="space-y-3">
+          <div class="flex items-center justify-between border-b border-slate-200/60 pb-2">
+            <div class="flex items-center gap-2">
+              <span class="p-1.5 rounded-lg bg-amber-100 text-amber-800 text-xs">🚗</span>
+              <h3 class="font-bold text-slate-800 text-sm">Pengingat Pajak, STNK & Legalitas Kendaraan</h3>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="cfg-em-kendaraan-active" class="sr-only peer" checked>
+              <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-maroon-700"></div>
+            </label>
+          </div>
+
+          <p class="text-[11px] text-slate-500">Kirim email ringkasan perpanjangan STNK tahunan, Pajak 5 Tahunan, Uji KIR, dan servis berkala armada ke General Affair & HRD.</p>
+
+          <div class="space-y-2.5">
+            <div>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">Email Tujuan Penerima Utama (GA / PIC):</label>
+              <input type="email" id="cfg-em-kendaraan-to" class="w-full px-3 py-2 text-xs font-semibold rounded-lg border border-slate-300 bg-white focus:border-maroon-600 outline-none" value="generalaffairhrandelajaya@gmail.com" placeholder="generalaffairhrandelajaya@gmail.com">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">Ambang Peringatan Dokumen:</label>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs text-slate-500 font-bold">H -</span>
+                  <input type="number" id="cfg-em-kendaraan-days" class="w-full px-2 py-1.5 text-xs font-bold rounded-lg border border-slate-300 bg-white focus:border-maroon-600 outline-none" value="30">
+                  <span class="text-xs text-slate-500">Hari</span>
+                </div>
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">Ambang Servis Berkala:</label>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs text-slate-500 font-bold">H -</span>
+                  <input type="number" id="cfg-em-kendaraan-service-days" class="w-full px-2 py-1.5 text-xs font-bold rounded-lg border border-slate-300 bg-white focus:border-maroon-600 outline-none" value="14">
+                  <span class="text-xs text-slate-500">Hari</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">Cakupan Dokumen Legalitas:</label>
+              <div class="grid grid-cols-2 gap-1.5 text-[11px] text-slate-700">
+                <label class="flex items-center gap-1.5"><input type="checkbox" id="cfg-em-kendaraan-stnk" checked class="rounded text-maroon-700"> STNK / Pajak Tahunan</label>
+                <label class="flex items-center gap-1.5"><input type="checkbox" id="cfg-em-kendaraan-pajak5th" checked class="rounded text-maroon-700"> Pajak 5 Tahunan</label>
+                <label class="flex items-center gap-1.5"><input type="checkbox" id="cfg-em-kendaraan-kir" checked class="rounded text-maroon-700"> Uji Berkala KIR</label>
+                <label class="flex items-center gap-1.5"><input type="checkbox" id="cfg-em-kendaraan-service" checked class="rounded text-maroon-700"> Servis Rutin Armada</label>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">Tembusan CC (Opsional, pisahkan koma):</label>
+              <input type="text" id="cfg-em-kendaraan-cc" class="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:border-maroon-600 outline-none" placeholder="cth: operasional@andelajaya.com">
+            </div>
+          </div>
+        </div>
+
+        <div class="pt-3 border-t border-slate-200/60 flex flex-wrap items-center gap-2">
+          <button id="btn-test-em-kendaraan" type="button" class="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg transition shadow-xs flex items-center gap-1">
+            <span>✉️ Uji Coba Kirim</span>
+          </button>
+          <button id="btn-scan-send-kendaraan" type="button" class="px-3 py-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition shadow-xs flex items-center gap-1">
+            <span>🚀 Scan & Kirim Rekap Pajak Sekarang</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 2. KONTRAK KERJA KARYAWAN -->
+      <div class="bg-slate-50/70 p-5 rounded-2xl border border-slate-200/80 space-y-4 flex flex-col justify-between">
+        <div class="space-y-3">
+          <div class="flex items-center justify-between border-b border-slate-200/60 pb-2">
+            <div class="flex items-center gap-2">
+              <span class="p-1.5 rounded-lg bg-blue-100 text-blue-800 text-xs">📄</span>
+              <h3 class="font-bold text-slate-800 text-sm">Pengingat Masa Berlaku Kontrak Karyawan</h3>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="cfg-em-kontrak-active" class="sr-only peer" checked>
+              <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-maroon-700"></div>
+            </label>
+          </div>
+
+          <p class="text-[11px] text-slate-500">Notifikasi berkala kontrak PKWT & masa percobaan (probation) karyawan yang mendekati batas waktu akhir.</p>
+
+          <div class="space-y-2.5">
+            <div>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">Email Tujuan Penerima Utama (HRD / GA):</label>
+              <input type="email" id="cfg-em-kontrak-to" class="w-full px-3 py-2 text-xs font-semibold rounded-lg border border-slate-300 bg-white focus:border-maroon-600 outline-none" value="generalaffairhrandelajaya@gmail.com" placeholder="generalaffairhrandelajaya@gmail.com">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">Ambang Peringatan Kontrak:</label>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs text-slate-500 font-bold">H -</span>
+                  <input type="number" id="cfg-em-kontrak-days" class="w-full px-2 py-1.5 text-xs font-bold rounded-lg border border-slate-300 bg-white focus:border-maroon-600 outline-none" value="30">
+                  <span class="text-xs text-slate-500">Hari</span>
+                </div>
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">Cakupan Kategori:</label>
+                <div class="text-[11px] text-slate-700 pt-1 space-y-1">
+                  <label class="flex items-center gap-1.5"><input type="checkbox" id="cfg-em-kontrak-probation" checked class="rounded text-maroon-700"> Termasuk Probation</label>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">Tembusan CC (Opsional, pisahkan koma):</label>
+              <input type="text" id="cfg-em-kontrak-cc" class="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:border-maroon-600 outline-none" placeholder="cth: hrd@andelajaya.com">
+            </div>
+          </div>
+        </div>
+
+        <div class="pt-3 border-t border-slate-200/60 flex flex-wrap items-center gap-2">
+          <button id="btn-test-em-kontrak" type="button" class="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg transition shadow-xs flex items-center gap-1">
+            <span>✉️ Uji Coba Kirim</span>
+          </button>
+          <button id="btn-scan-send-kontrak" type="button" class="px-3 py-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition shadow-xs flex items-center gap-1">
+            <span>🚀 Scan & Kirim Rekap Kontrak Sekarang</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 3. PENILAIAN KINERJA & KPI 360 -->
+      <div class="bg-slate-50/70 p-5 rounded-2xl border border-slate-200/80 space-y-4 flex flex-col justify-between">
+        <div class="space-y-3">
+          <div class="flex items-center justify-between border-b border-slate-200/60 pb-2">
+            <div class="flex items-center gap-2">
+              <span class="p-1.5 rounded-lg bg-emerald-100 text-emerald-800 text-xs">📊</span>
+              <h3 class="font-bold text-slate-800 text-sm">Pengingat Evaluasi KPI & Penilaian Kinerja</h3>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="cfg-em-kpi-active" class="sr-only peer" checked>
+              <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-maroon-700"></div>
+            </label>
+          </div>
+
+          <p class="text-[11px] text-slate-500">Notifikasi pengingat pengisian evaluasi kinerja 360°, tugas KPI bulanan, & peninjauan berkala oleh atasan.</p>
+
+          <div class="space-y-2.5">
+            <div>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">Email Penerima Ringkasan / Rekap:</label>
+              <input type="email" id="cfg-em-kpi-to" class="w-full px-3 py-2 text-xs font-semibold rounded-lg border border-slate-300 bg-white focus:border-maroon-600 outline-none" value="generalaffairhrandelajaya@gmail.com" placeholder="generalaffairhrandelajaya@gmail.com">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">Ambang Peringatan Deadline:</label>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs text-slate-500 font-bold">H -</span>
+                  <input type="number" id="cfg-em-kpi-days" class="w-full px-2 py-1.5 text-xs font-bold rounded-lg border border-slate-300 bg-white focus:border-maroon-600 outline-none" value="7">
+                  <span class="text-xs text-slate-500">Hari</span>
+                </div>
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">Tembusan CC:</label>
+                <input type="text" id="cfg-em-kpi-cc" class="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:border-maroon-600 outline-none" placeholder="opsional">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="pt-3 border-t border-slate-200/60 flex items-center gap-2">
+          <button id="btn-test-em-kpi" type="button" class="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg transition shadow-xs flex items-center gap-1">
+            <span>✉️ Uji Coba Kirim</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 4. LPJ KASBON & KALENDER HR -->
+      <div class="bg-slate-50/70 p-5 rounded-2xl border border-slate-200/80 space-y-4 flex flex-col justify-between">
+        <div class="space-y-3">
+          <div class="flex items-center justify-between border-b border-slate-200/60 pb-2">
+            <div class="flex items-center gap-2">
+              <span class="p-1.5 rounded-lg bg-purple-100 text-purple-800 text-xs">💰</span>
+              <h3 class="font-bold text-slate-800 text-sm">Pengingat LPJ Kasbon & Kalender Agenda HR</h3>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="cfg-em-kasbon-active" class="sr-only peer" checked>
+              <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-maroon-700"></div>
+            </label>
+          </div>
+
+          <p class="text-[11px] text-slate-500">Notifikasi jatuh tempo pelaporan LPJ pengajuan kasbon operasional & pengingat event penting kalender perusahaan.</p>
+
+          <div class="space-y-2.5">
+            <div>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">Email Penerima (Finance / GA / HRD):</label>
+              <input type="email" id="cfg-em-kasbon-to" class="w-full px-3 py-2 text-xs font-semibold rounded-lg border border-slate-300 bg-white focus:border-maroon-600 outline-none" value="generalaffairhrandelajaya@gmail.com" placeholder="generalaffairhrandelajaya@gmail.com">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">Batas Waktu LPJ (H-):</label>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs text-slate-500 font-bold">H -</span>
+                  <input type="number" id="cfg-em-kasbon-days" class="w-full px-2 py-1.5 text-xs font-bold rounded-lg border border-slate-300 bg-white focus:border-maroon-600 outline-none" value="3">
+                  <span class="text-xs text-slate-500">Hari</span>
+                </div>
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">Event Kalender (H-):</label>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs text-slate-500 font-bold">H -</span>
+                  <input type="number" id="cfg-em-kalender-days" class="w-full px-2 py-1.5 text-xs font-bold rounded-lg border border-slate-300 bg-white focus:border-maroon-600 outline-none" value="1">
+                  <span class="text-xs text-slate-500">Hari</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">Tembusan CC (Opsional):</label>
+              <input type="text" id="cfg-em-kasbon-cc" class="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:border-maroon-600 outline-none" placeholder="cth: finance@andelajaya.com">
+            </div>
+          </div>
+        </div>
+
+        <div class="pt-3 border-t border-slate-200/60 flex items-center gap-2">
+          <button id="btn-test-em-kasbon" type="button" class="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg transition shadow-xs flex items-center gap-1">
+            <span>✉️ Uji Coba Kirim LPJ / Kalender</span>
+          </button>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>

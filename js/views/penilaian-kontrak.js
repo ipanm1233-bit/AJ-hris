@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, getDoc, setDoc, doc, limit } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, confirmDialog, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan, downloadXlsx, ensureXlsxLoaded, formatPhoneNumberForWa, openWhatsAppMessage, getEmployeePhoneByName, buildKpiTaskWaMessage } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, confirmDialog, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, buildStandardEmailHtml, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan, downloadXlsx, ensureXlsxLoaded, formatPhoneNumberForWa, openWhatsAppMessage, getEmployeePhoneByName, buildKpiTaskWaMessage } from "../utils.js";
 import { renderCrudModule, badge, emptyState, skeletonRows, avatar, openPenilaianFormFromNotif } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames, hasSubMenuAccess, canEditModuleData } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
@@ -2733,82 +2733,39 @@ export async function mount(container, { session, params }) {
       </tr>
     `).join("");
 
-    const emailHtml = `
-      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 650px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
-        <!-- Header -->
-        <div style="background: linear-gradient(135deg, #881337 0%, #4c0519 100%); color: #ffffff; padding: 24px; text-align: center;">
-          <h2 style="margin: 0; font-size: 20px; font-weight: 800; letter-spacing: 0.5px;">${escapeHtml(COMPANY_NAME)}</h2>
-          <p style="margin: 6px 0 0 0; font-size: 12px; opacity: 0.9; text-transform: uppercase; letter-spacing: 1px;">Human Resource Information System (HRIS)</p>
-        </div>
-
-        <!-- Body -->
-        <div style="padding: 24px; color: #334155; line-height: 1.6;">
-          <h3 style="margin-top: 0; color: #1e293b; font-size: 16px;">Halo Bapak/Ibu <strong>${escapeHtml(penilaiName)}</strong>,</h3>
-          <p style="font-size: 13.5px; margin-bottom: 16px;">
-            Anda telah ditugaskan oleh <strong>Tim HRD ${escapeHtml(COMPANY_NAME)}</strong> untuk melakukan evaluasi kinerja (<strong>${escapeHtml(catConfig.label)}</strong>) pada periode <strong>${escapeHtml(periode)}</strong>.
-          </p>
-
-          <!-- Info Box -->
-          <div style="background-color: #f8fafc; border-left: 4px solid #881337; padding: 14px 18px; border-radius: 6px; margin-bottom: 20px;">
-            <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
-              <tr>
-                <td style="padding: 4px 0; color: #64748b; width: 140px;">Kategori Penilaian:</td>
-                <td style="padding: 4px 0; font-weight: bold; color: #881337;">${escapeHtml(catConfig.label)}</td>
-              </tr>
-              <tr>
-                <td style="padding: 4px 0; color: #64748b;">Periode Penilaian:</td>
-                <td style="padding: 4px 0; font-weight: bold; color: #1e293b;">${escapeHtml(periode)}</td>
-              </tr>
-              <tr>
-                <td style="padding: 4px 0; color: #64748b;">Batas Waktu (Deadline):</td>
-                <td style="padding: 4px 0; font-weight: bold; color: #b45309;">${deadlineStr}</td>
-              </tr>
-              ${representativeTask.catatan_hrd ? `
-                <tr>
-                  <td style="padding: 4px 0; color: #64748b; vertical-align: top;">Catatan HRD:</td>
-                  <td style="padding: 4px 0; color: #1e293b; font-style: italic;">${escapeHtml(representativeTask.catatan_hrd)}</td>
-                </tr>
-              ` : ''}
-            </table>
-          </div>
-
-          <!-- Evaluatees Table -->
-          <h4 style="margin: 0 0 10px 0; color: #1e293b; font-size: 14px; font-weight: 700;">
-            Daftar Karyawan yang Harus Anda Evaluasi (${allTasksForEvaluator.length} Orang):
-          </h4>
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
-            <thead>
-              <tr style="background-color: #f1f5f9; text-align: left; font-size: 11px; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px;">
-                <th style="padding: 10px 12px;">Nama Karyawan</th>
-                <th style="padding: 10px 12px;">Jabatan</th>
-                <th style="padding: 10px 12px;">Template Soal</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${evaluateesListHtml}
-            </tbody>
-          </table>
-
-          <!-- Action Button -->
-          <div style="text-align: center; margin: 30px 0 20px 0;">
-            <a href="${appUrl}" target="_blank" rel="noopener" style="display: inline-block; background-color: #881337; color: #ffffff; font-weight: bold; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-size: 14px; box-shadow: 0 4px 6px -1px rgba(136, 19, 55, 0.3);">
-              Buka & Isi Penilaian di Portal HRIS →
-            </a>
-          </div>
-
-          <p style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 15px;">
-            Jika tombol di atas tidak dapat diklik, silakan salin tautan berikut ke peramban Anda:<br/>
-            <span style="color: #64748b; word-break: break-all;">${appUrl}</span>
-          </p>
-        </div>
-
-        <!-- Footer -->
-        <div style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 16px; text-align: center; font-size: 11.5px; color: #94a3b8;">
-          Email ini dibuat secara otomatis oleh Sistem HRIS <strong>${escapeHtml(COMPANY_NAME)}</strong>.<br/>
-          Harap tidak membalas email ini secara langsung.
-        </div>
-      </div>
-    `;
+    const emailHtml = buildStandardEmailHtml({
+      badgeText: "Penugasan KPI",
+      badgeVariant: "maroon",
+      title: `Penugasan ${catConfig.label}`,
+      recipientName: penilaiName,
+      introText: `Anda telah ditugaskan oleh <strong>Tim HRD ${escapeHtml(COMPANY_NAME)}</strong> untuk melakukan evaluasi kinerja (<strong>${escapeHtml(catConfig.label)}</strong>) pada periode <strong>${escapeHtml(periode)}</strong>.`,
+      infoList: [
+        { label: "Kategori Penilaian", value: catConfig.label },
+        { label: "Periode", value: periode },
+        { label: "Batas Waktu (Deadline)", value: deadlineStr },
+        ...(representativeTask.catatan_hrd ? [{ label: "Catatan HRD", value: representativeTask.catatan_hrd }] : [])
+      ],
+      bodyHtml: `
+        <h4 style="margin: 20px 0 10px 0; color: #1e293b; font-size: 14px; font-weight: 700;">
+          Daftar Karyawan yang Harus Anda Evaluasi (${allTasksForEvaluator.length} Orang):
+        </h4>
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+          <thead>
+            <tr style="background-color: #f1f5f9; text-align: left; font-size: 11px; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px;">
+              <th style="padding: 10px 12px;">Nama Karyawan</th>
+              <th style="padding: 10px 12px;">Jabatan</th>
+              <th style="padding: 10px 12px;">Template Soal</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${evaluateesListHtml}
+          </tbody>
+        </table>
+      `,
+      actionUrl: appUrl,
+      actionText: "Buka & Isi Penilaian di Portal HRIS →",
+      secondaryNote: "Evaluasi ini bersifat rahasia dan wajib diselesaikan sebelum batas waktu yang telah ditentukan."
+    });
 
     try {
       const emailResult = await sendEmailNotif(targetEmail, emailSubject, emailHtml);

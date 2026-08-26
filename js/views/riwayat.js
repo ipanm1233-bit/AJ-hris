@@ -1,7 +1,7 @@
 import { db, COL } from "../firebase-config.js";
 import {
  fsGetAll, fsUpdate, fmtDateTime, escapeHtml, openModal, closeModal, toast,
- dynFieldWrapperHtml, wireDynFormLogic, collectDynFormDetail, sendEmailNotif, getTargetsForRole,
+ dynFieldWrapperHtml, wireDynFormLogic, collectDynFormDetail, sendEmailNotif, buildStandardEmailHtml, getTargetsForRole,
  renderPengajuanDetailHtml, printSalesKlaimForm, printFormCutiFisik, downloadFormCutiPdf
 } from "../utils.js";
 import { badge, emptyState, skeletonRows } from "../components.js";
@@ -167,9 +167,23 @@ function openLpjModal(row, session, onDone) {
  // Beri tahu HRD bahwa LPJ sudah masuk
  const hrdTargets = await getTargetsForRole("HRD");
  for (const target of hrdTargets) {
- sendEmailNotif(target.email, `[LPJ Masuk] ${row.nama_form} — ${session.nama}`,
- `<div style="font-family:Arial,sans-serif;padding:20px;"><h3>LPJ Baru Diterima</h3><p><b>${escapeHtml(session.nama)}</b> telah mengirimkan LPJ untuk transaksi <b>${escapeHtml(row.id)}</b> (${escapeHtml(row.nama_form)}).</p></div>`
- ).catch(e => console.warn(e));
+ const lpjEmailBody = buildStandardEmailHtml({
+   badgeText: "LPJ Selesai",
+   badgeVariant: "green",
+   title: "Laporan Pertanggungjawaban (LPJ) Diterima",
+   recipientName: target.nama || "Tim HRD & Finance",
+   introText: `Karyawan <strong>${escapeHtml(session.nama)}</strong> telah mengirimkan dokumen Laporan Pertanggungjawaban (LPJ) untuk transaksi berikut:`,
+   infoList: [
+     { label: "Nomor Dokumen", value: row.id },
+     { label: "Nama Form / Pengajuan", value: row.nama_form },
+     { label: "Pengirim LPJ", value: session.nama },
+     { label: "Waktu Pengiriman", value: fmtDateTime(new Date().toISOString()) }
+   ],
+   actionUrl: `${window.location.origin}/#approval`,
+   actionText: "Buka Menu Approval / Riwayat →",
+   secondaryNote: "Silakan periksa lampiran bukti pengeluaran fisik dan laporan terkait di sistem HRIS."
+ });
+ sendEmailNotif(target.email, `[LPJ Masuk] ${row.nama_form} — ${session.nama}`, lpjEmailBody).catch(e => console.warn(e));
  }
  } catch (e) {
  toast(e.message || "Gagal mengirim LPJ", "error");

@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs } from "../firebase-config.js";
-import { fsGetAll, fsUpdate, fsAdd, genId, openModal, closeModal, toast, fmtDateTime, escapeHtml, sendEmailNotif, getTargetsForRole, createLoginToken, notifyUser, renderPengajuanDetailHtml, printSalesKlaimForm, generateAndSaveCutiDocument, printFormCutiFisik, getCutiDeductionCategory } from "../utils.js";
+import { fsGetAll, fsUpdate, fsAdd, genId, openModal, closeModal, toast, fmtDateTime, escapeHtml, sendEmailNotif, buildStandardEmailHtml, getTargetsForRole, createLoginToken, notifyUser, renderPengajuanDetailHtml, printSalesKlaimForm, generateAndSaveCutiDocument, printFormCutiFisik, getCutiDeductionCategory } from "../utils.js";
 import { badge, emptyState, skeletonRows } from "../components.js";
 
 const CUTI_RULES = {
@@ -469,146 +469,72 @@ async function processAction(row, action, note, session) {
  const formatTglSelesai = new Date(row.detail.tanggal_akhir || row.tgl).toLocaleDateString('id-ID');
  
  if (isHalfDay) {
- htmlFinal = `
- <div style="font-family: 'Times New Roman', Times, serif; padding: 30px; border: 2px solid #000; max-width: 650px; margin: auto; background: white; color: black;">
- <h3 style="text-align: center; text-decoration: underline; margin-bottom: 30px; letter-spacing: 1px;">FORM IJIN MENINGGALKAN JAM KERJA</h3>
- <table style="width: 100%; margin-top: 20px; font-size: 14px; line-height: 1.8;">
- <tr><td width="30%">Nama</td><td width="2%">:</td><td><strong>${row.nama_pemohon}</strong></td></tr>
- <tr><td>Departemen</td><td>:</td><td>${row.detail.departemen || row.detail.divisi || "-"}</td></tr>
- <tr><td>Hari/Tanggal</td><td>:</td><td>${formatTglMulai}</td></tr>
- <tr><td>Jam Keluar</td><td>:</td><td>${row.detail.jam_keluar || "-"}</td></tr>
- <tr><td>Jam Kembali</td><td>:</td><td>${row.detail.jam_kembali || "-"}</td></tr>
- <tr><td>Alasan/Keperluan</td><td>:</td><td>${row.detail.alasan || row.detail.keterangan || "-"}</td></tr>
- </table>
- <br/><br/>
- <table style="width: 100%; text-align: center; margin-top: 40px; font-size: 14px;">
- <tr>
- <td width="33%">Pemohon</td>
- <td width="33%">Menyetujui (Atasan)</td>
- <td width="33%">Mengetahui (HRD)</td>
- </tr>
- <tr>
- <td style="padding-top: 50px;"><strong>${row.nama_pemohon}</strong></td>
- <td style="padding-top: 50px; color: #166534; font-style: italic; font-weight: bold;">(Approved by System)</td>
- <td style="padding-top: 50px; color: #166534; font-style: italic; font-weight: bold;">(Approved by System)</td>
- </tr>
- </table>
- </div>
- `;
+ htmlFinal = buildStandardEmailHtml({
+   badgeText: "Disetujui Final",
+   badgeVariant: "green",
+   title: "Ijin Meninggalkan Jam Kerja Disetujui",
+   recipientName: target.nama || row.nama_pemohon,
+   introText: `Pengajuan ijin setengah hari / meninggalkan jam kerja untuk <strong>${escapeHtml(row.nama_pemohon)}</strong> telah disetujui penuh oleh seluruh pihak terkait.`,
+   infoList: [
+     { label: "Nomor Dokumen", value: row.id },
+     { label: "Nama Pemohon", value: row.nama_pemohon },
+     { label: "Departemen / Divisi", value: row.detail.departemen || row.detail.divisi || "-" },
+     { label: "Hari / Tanggal", value: formatTglMulai },
+     { label: "Jam Ijin", value: `${row.detail.jam_keluar || "-"} s/d ${row.detail.jam_kembali || "-"}` },
+     { label: "Alasan / Keperluan", value: row.detail.alasan || row.detail.keterangan || "-" }
+   ],
+   actionUrl: `${window.location.origin}/#riwayat?token=${token}`,
+   actionText: "Lihat Detail di Portal HRIS →",
+   secondaryNote: "Status: Disetujui (Approved by System)."
+ });
  } else {
- htmlFinal = `
- <div style="font-family: 'Times New Roman', Times, serif; padding: 30px; border: 2px solid #000; max-width: 650px; margin: auto; background: white; color: black;">
- <h3 style="text-align: center; text-decoration: underline; margin-bottom: 30px; letter-spacing: 1px;">FORM CUTI KARYAWAN</h3>
- <table style="width: 100%; margin-top: 20px; font-size: 14px; line-height: 1.8;">
- <tr><td width="30%">Nama</td><td width="2%">:</td><td><strong>${row.nama_pemohon}</strong></td></tr>
- <tr><td>Jabatan / Divisi</td><td>:</td><td>${row.detail.jabatan || "-"} / ${row.detail.divisi || "-"}</td></tr>
- <tr><td>Jenis Cuti</td><td>:</td><td><strong>${jenisVal}</strong></td></tr>
- <tr><td>Mulai Tanggal</td><td>:</td><td>${formatTglMulai}</td></tr>
- <tr><td>S/d Tanggal</td><td>:</td><td>${formatTglSelesai}</td></tr>
- <tr><td valign="top">Alasan/Keperluan</td><td valign="top">:</td><td>${row.detail.alasan || row.detail.keterangan || "-"}</td></tr>
- </table>
- <br/><br/>
- <table style="width: 100%; text-align: center; margin-top: 40px; font-size: 14px;">
- <tr>
- <td width="33%">Pemohon</td>
- <td width="33%">Menyetujui (Atasan)</td>
- <td width="33%">Mengetahui (HRD)</td>
- </tr>
- <tr>
- <td style="padding-top: 50px;"><strong>${row.nama_pemohon}</strong></td>
- <td style="padding-top: 50px; color: #166534; font-style: italic; font-weight: bold;">(Approved by System)</td>
- <td style="padding-top: 50px; color: #166534; font-style: italic; font-weight: bold;">(Approved by System)</td>
- </tr>
- </table>
- </div>
- `;
+ htmlFinal = buildStandardEmailHtml({
+   badgeText: "Disetujui Final",
+   badgeVariant: "green",
+   title: "Pengajuan Cuti Disetujui",
+   recipientName: target.nama || row.nama_pemohon,
+   introText: `Pengajuan cuti untuk <strong>${escapeHtml(row.nama_pemohon)}</strong> telah disetujui penuh oleh seluruh pihak terkait.`,
+   infoList: [
+     { label: "Nomor Dokumen", value: row.id },
+     { label: "Nama Pemohon", value: row.nama_pemohon },
+     { label: "Jabatan / Divisi", value: `${row.detail.jabatan || "-"} / ${row.detail.divisi || "-"}` },
+     { label: "Jenis Cuti", value: jenisVal },
+     { label: "Periode Cuti", value: `${formatTglMulai} s/d ${formatTglSelesai}` },
+     { label: "Alasan / Keperluan", value: row.detail.alasan || row.detail.keterangan || "-" }
+   ],
+   actionUrl: `${window.location.origin}/#riwayat?token=${token}`,
+   actionText: "Lihat Detail di Portal HRIS →",
+   secondaryNote: "Status: Disetujui (Approved by System)."
+ });
  }
  } 
  else {
  const jabatanPemohon = karyawanByNama[row.nama_pemohon]?.jabatan || "-";
- 
- let detailHtml = `<table style="width: 100%; border-collapse: collapse; font-size: 12px; font-family: Arial, sans-serif;">`;
- for (const [key, val] of Object.entries(row.detail || {})) {
- const formattedKey = escapeHtml(key.replace(/_/g, " ").toUpperCase());
- 
- if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'object') {
- const headers = Object.keys(val[0]);
- let nestedTable = `<table style="width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 10px; border: 1px solid #cbd5e1;">`;
- nestedTable += `<thead style="background-color: #f8fafc;"><tr>`;
- headers.forEach(h => nestedTable += `<th style="border: 1px solid #cbd5e1; padding: 6px; text-transform: uppercase; color: #64748b;">${escapeHtml(h.replace(/_/g, " "))}</th>`);
- nestedTable += `</tr></thead><tbody>`;
- val.forEach(item => {
- nestedTable += `<tr>`;
- headers.forEach(h => {
- let cellVal = item[h];
- if (typeof cellVal === 'number' && (h.includes('total') || h.includes('biaya') || h.includes('parkir') || h.includes('denda'))) {
- cellVal = "Rp " + cellVal.toLocaleString('id-ID');
+ const flowStatus = (row.approval_flow || []).map((r, i) => `${r}: ${(steps || [])[i]}`).join(" • ");
+ const notesStr = (catatan || []).length > 0 ? (catatan || []).join(" | ") : "-";
+
+ const generalInfoList = [
+   { label: "Nomor Dokumen", value: row.id },
+   { label: "Nama Pengajuan", value: row.nama_form },
+   { label: "Pemohon", value: `${row.nama_pemohon} (${jabatanPemohon})` },
+   { label: "Alur Persetujuan", value: flowStatus }
+ ];
+
+ if (notesStr !== "-") {
+   generalInfoList.push({ label: "Catatan Approver", value: notesStr });
  }
- nestedTable += `<td style="border: 1px solid #cbd5e1; padding: 6px;">${escapeHtml(String(cellVal || '-'))}</td>`;
+
+ htmlFinal = buildStandardEmailHtml({
+   badgeText: "Disetujui Final",
+   badgeVariant: "green",
+   title: `Pengajuan Disetujui: ${row.nama_form}`,
+   recipientName: target.nama || row.nama_pemohon,
+   introText: `Pengajuan <strong>${escapeHtml(row.nama_form)}</strong> telah menyelesaikan seluruh tahapan persetujuan dan dinyatakan <strong>DISANGGUPKAN / DISETUJUI FINAL</strong>.`,
+   infoList: generalInfoList,
+   actionUrl: `${window.location.origin}/#dashboard?token=${token}`,
+   actionText: "Buka Portal HRIS →",
+   secondaryNote: "Dokumen ini telah tercatat secara resmi di sistem HRIS & Operasional CV Andela Jaya."
  });
- nestedTable += `</tr>`;
- });
- nestedTable += `</tbody></table>`;
- detailHtml += `<tr><td style="padding: 12px; border-bottom: 1px solid #f1f5f9; color: #64748b; font-weight: bold; width: 35%; vertical-align: top; border-right: 1px solid #f1f5f9;">${formattedKey}</td><td style="padding: 12px; border-bottom: 1px solid #f1f5f9; vertical-align: top; color: #1e293b;">${nestedTable}</td></tr>`;
- } 
- else {
- let displayVal = val;
- if (typeof val === 'number' && (key.includes('total') || key.includes('biaya') || key.includes('harga') || key.includes('kasbon'))) {
- displayVal = "Rp " + val.toLocaleString('id-ID');
- }
- detailHtml += `<tr><td style="padding: 12px; border-bottom: 1px solid #f1f5f9; color: #64748b; font-weight: bold; width: 35%; vertical-align: top; border-right: 1px solid #f1f5f9;">${formattedKey}</td><td style="padding: 12px; border-bottom: 1px solid #f1f5f9; vertical-align: top; color: #1e293b;">${escapeHtml(String(displayVal))}</td></tr>`;
- }
- }
- detailHtml += `</table>`;
-
- const notesHtml = (catatan || []).map(c => escapeHtml(c)).join("<br/>");
- const flowStatus = (row.approval_flow || []).map((r, i) => `<strong>${r}</strong>: ${(steps || [])[i]}`).join(" &bull; ");
-
- htmlFinal = `
- <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f8fafc; padding: 20px;">
- <div style="background-color: #be123c; color: white; padding: 30px 20px; text-align: center; border-radius: 8px 8px 0 0;">
- <div style="background-color: white; color: #be123c; width: 48px; height: 48px; border-radius: 50%; display: inline-block; text-align: center; line-height: 48px; font-size: 24px; font-weight: bold; margin: 0 auto 15px auto;">&#10003;</div>
- <h2 style="margin: 0; font-size: 22px;">Pengajuan Disetujui</h2>
- <p style="margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;">Portal HR & Operasional Internal</p>
- </div>
- <div style="padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px; background-color: #ffffff;">
- <div style="border: 1px solid #fecaca; background-color: #fff5f5; padding: 15px; border-radius: 6px; margin-bottom: 24px;">
- <p style="font-size: 11px; color: #9ca3af; margin: 0 0 4px 0;">${row.id}</p>
- <h3 style="font-size: 16px; color: #881337; margin: 0;">${escapeHtml(row.nama_form)}</h3>
- </div>
- 
- <div style="margin-bottom: 24px;">
- <p style="font-size: 11px; color: #9ca3af; margin: 0 0 4px 0; font-weight: bold; text-transform: uppercase;">PEMOHON</p>
- <p style="font-size: 14px; color: #1e293b; margin: 0; font-weight: bold;">${escapeHtml(row.nama_pemohon)} - ${escapeHtml(jabatanPemohon)}</p>
- </div>
-
- <div style="margin-bottom: 24px;">
- <p style="font-size: 11px; color: #9ca3af; margin: 0 0 8px 0; font-weight: bold; text-transform: uppercase;">DETAIL PENGAJUAN</p>
- <div style="border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden;">
- ${detailHtml}
- </div>
- </div>
-
- <div style="margin-bottom: 24px;">
- <p style="font-size: 11px; color: #9ca3af; margin: 0 0 8px 0; font-weight: bold; text-transform: uppercase;">CATATAN OTORISASI / APPROVER</p>
- <div style="border: 1px solid #fde047; background-color: #fef9c3; color: #854d0e; padding: 12px; border-radius: 6px; font-size: 12px; font-family: monospace; line-height: 1.5;">
- ${notesHtml || "Tidak ada catatan."}
- </div>
- </div>
-
- <div>
- <div style="border: 1px solid #bbf7d0; background-color: #f0fdf4; color: #166534; padding: 15px; border-radius: 6px;">
- <p style="font-size: 13px; font-weight: bold; margin: 0 0 4px 0;">Status Final: Approved Final</p>
- <p style="font-size: 11px; margin: 0; opacity: 0.8;">${flowStatus}</p>
- </div>
- </div>
- 
- <div style="margin-top: 24px; text-align: center;">
- <a href="${window.location.origin}/#dashboard?token=${token}" style="display:inline-block; padding:10px 20px; background-color:#f1f5f9; color:#475569; text-decoration:none; border-radius:6px; font-size:12px; font-weight:bold; border: 1px solid #e2e8f0;">Buka Sistem HRIS</a>
- </div>
- </div>
- </div>
- `;
  }
  
  sendEmailNotif(target.email, `[APPROVED FINAL] ${row.nama_form}`, htmlFinal);
@@ -623,16 +549,21 @@ async function processAction(row, action, note, session) {
  const dueStr = row.lpj_due_date ? new Date(row.lpj_due_date).toLocaleDateString('id-ID', { dateStyle: 'long' }) : "-";
  for (const target of pemohonTargets) {
  const tokenLpj = await createLoginToken(target.username);
- const htmlLpj = `
- <div style="font-family: Arial, sans-serif; padding: 24px; border: 1px solid #fde68a; background:#fffbeb; border-radius: 8px; max-width:560px; margin:0 auto;">
- <h2 style="color: #92400e; margin-top:0;">Jangan Lupa Laporan Pertanggungjawaban (LPJ)</h2>
- <p>Pengajuan <strong>${escapeHtml(row.nama_form)}</strong> (${escapeHtml(row.id)}) Anda telah <strong>disetujui</strong>.</p>
- <p>Sesuai ketentuan, Anda perlu melengkapi <strong>LPJ</strong> (bukti penggunaan/realisasi) paling lambat:</p>
- <p style="font-size:16px; font-weight:bold; color:#92400e;">${dueStr}</p>
- <a href="${window.location.origin}/#riwayat?token=${tokenLpj}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#92400e; color:#fff; text-decoration:none; border-radius:5px;">Isi LPJ Sekarang</a>
- <p style="margin-top:15px; font-size:11px; color:#a16207;">Buka menu Riwayat Pengajuan untuk mengisi LPJ pada transaksi ini.</p>
- </div>
- `;
+ const htmlLpj = buildStandardEmailHtml({
+   badgeText: "Wajib LPJ",
+   badgeVariant: "amber",
+   title: "Pengingat Laporan Pertanggungjawaban (LPJ)",
+   recipientName: target.nama || row.nama_pemohon,
+   introText: `Pengajuan <strong>${escapeHtml(row.nama_form)}</strong> (<code>${escapeHtml(row.id)}</code>) Anda telah disetujui secara final. Sesuai ketentuan operasional, Anda wajib melampirkan Laporan Pertanggungjawaban (LPJ) beserta bukti pengeluaran.`,
+   infoList: [
+     { label: "Nomor Dokumen", value: row.id },
+     { label: "Nama Pengajuan", value: row.nama_form },
+     { label: "Batas Waktu LPJ", value: dueStr }
+   ],
+   actionUrl: `${window.location.origin}/#riwayat?token=${tokenLpj}`,
+   actionText: "Isi & Unggah Bukti LPJ Sekarang →",
+   secondaryNote: "Buka menu Riwayat Pengajuan di HRIS untuk mengunggah bukti realisasi."
+ });
  sendEmailNotif(target.email, `[Wajib LPJ] ${row.nama_form} — batas ${dueStr}`, htmlLpj).catch(e => console.warn(e));
  }
  }
@@ -644,13 +575,22 @@ async function processAction(row, action, note, session) {
  
  for (const target of nextTargets) {
  const token = await createLoginToken(target.username);
- const htmlNext = `
- <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
- <h2 style="color: #7a1f2b;">Persetujuan Lanjutan: ${row.nama_form}</h2>
- <p>Pengajuan dari <strong>${row.nama_pemohon}</strong> membutuhkan persetujuan Anda sebagai <strong>${nextRole}</strong>.</p>
- <a href="${window.location.origin}/#approval?token=${token}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#7a1f2b; color:#fff; text-decoration:none; border-radius:5px;">Akses Langsung & Setujui</a>
- </div>
- `;
+ const htmlNext = buildStandardEmailHtml({
+   badgeText: "Approval Dibutuhkan",
+   badgeVariant: "maroon",
+   title: `Persetujuan: ${row.nama_form}`,
+   recipientName: target.nama || `Bapak/Ibu ${nextRole}`,
+   introText: `Pengajuan dari <strong>${escapeHtml(row.nama_pemohon)}</strong> saat ini menunggu peninjauan dan persetujuan Anda sebagai <strong>${escapeHtml(nextRole)}</strong>:`,
+   infoList: [
+     { label: "Nomor Dokumen", value: row.id },
+     { label: "Nama Form", value: row.nama_form },
+     { label: "Pemohon", value: row.nama_pemohon },
+     { label: "Tahap Otorisasi", value: `Tahap ${idx + 2} dari ${steps.length} (${nextRole})` }
+   ],
+   actionUrl: `${window.location.origin}/#approval?token=${token}`,
+   actionText: "Akses Langsung & Otorisasi Pengajuan →",
+   secondaryNote: "Tautan ini aman dan memungkinkan Anda menyetujui langsung tanpa mengetik ulang kata sandi."
+ });
  sendEmailNotif(target.email, `Menunggu Persetujuan Anda: ${row.nama_form}`, htmlNext);
  }
  }
@@ -658,14 +598,22 @@ async function processAction(row, action, note, session) {
  const pemohonTargets = await getTargetsForRole("PEMOHON", row.nama_pemohon);
  for (const target of pemohonTargets) {
  const token = await createLoginToken(target.username);
- const htmlReject = `
- <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #fecaca; border-radius: 8px; background-color: #fef2f2;">
- <h2 style="color: #b91c1c;">Pengajuan Ditolak: ${row.nama_form}</h2>
- <p>Pengajuan Anda telah <strong>ditolak</strong> oleh <strong>${session.nama}</strong>.</p>
- <p><strong>Catatan:</strong> ${note || "Tidak ada catatan."}</p>
- <a href="${window.location.origin}/#riwayat?token=${token}" style="display:inline-block; margin-top:15px; padding:10px 20px; background:#b91c1c; color:#fff; text-decoration:none; border-radius:5px;">Lihat Riwayat</a>
- </div>
- `;
+ const htmlReject = buildStandardEmailHtml({
+   badgeText: "Ditolak",
+   badgeVariant: "red",
+   title: `Pengajuan Ditolak: ${row.nama_form}`,
+   recipientName: target.nama || row.nama_pemohon,
+   introText: `Pengajuan Anda telah <strong>ditolak</strong> oleh <strong>${escapeHtml(session.nama)}</strong>.`,
+   infoList: [
+     { label: "Nomor Dokumen", value: row.id },
+     { label: "Nama Pengajuan", value: row.nama_form },
+     { label: "Ditolak Oleh", value: `${session.nama} (${session.role})` },
+     { label: "Catatan Penolakan", value: note || "Tidak ada catatan." }
+   ],
+   actionUrl: `${window.location.origin}/#riwayat?token=${token}`,
+   actionText: "Lihat Detail di Riwayat Pengajuan →",
+   secondaryNote: "Silakan periksa catatan revisi di atas sebelum mengajukan kembali jika diperlukan."
+ });
  sendEmailNotif(target.email, `[REJECTED] ${row.nama_form}`, htmlReject);
  }
  }
