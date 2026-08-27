@@ -339,19 +339,19 @@
     },
     "/hr_cases/{caseId}": {
       "schema": {
-        "": "#/entities/HRCase"
+        "$ref": "#/entities/HRCase"
       },
       "description": "HR counseling, coaching, and disciplinary cases"
     },
     "/hr_case_action_plans/{planId}": {
       "schema": {
-        "": "#/entities/HRCaseActionPlan"
+        "$ref": "#/entities/HRCaseActionPlan"
       },
       "description": "Action plans associated with HR cases"
     },
     "/hr_case_followups/{followupId}": {
       "schema": {
-        "": "#/entities/HRCaseFollowup"
+        "$ref": "#/entities/HRCaseFollowup"
       },
       "description": "Follow-up logs for HR cases"
     }

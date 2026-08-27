@@ -1,7 +1,8 @@
 import { db, COL, doc, deleteDoc, setDoc } from "../firebase-config.js";
-import { fsGetAll, smartParseDate, escapeHtml, fmtDateShort, fmtRupiah, fmtDateIndoLong, openModal, closeModal, toast, confirmDialog, genId, downloadWordDoc, ensureXlsxLoaded } from "../utils.js";
+import { fsGetAll, smartParseDate, escapeHtml, fmtDateShort, fmtRupiah, fmtDateIndoLong, openModal, closeModal, toast, confirmDialog, genId, downloadWordDoc, ensureXlsxLoaded, downloadHtmlAsPdf } from "../utils.js";
 import { renderCrudModule, badge, emptyState, icon } from "../components.js";
 import { canEditModuleData } from "../auth.js";
+import { COMPANY_NAME, COMPANY_ADDRESS_LINE1, logoImgTag } from "../branding.js";
 
 export async function mount(container, { session }) {
  const isHrd = ["HRD", "SUPERADMIN", "GA"].includes((session.role || "").toUpperCase());
@@ -27,28 +28,31 @@ export async function mount(container, { session }) {
  };
 
  let allVehicles = [];
- let allFuelLogs = [];
- let allServiceLogs = [];
- let allComplianceLogs = [];
- let loadedTables = {};
+  let allFuelLogs = [];
+  let allServiceLogs = [];
+  let allComplianceLogs = [];
+  let allEmployees = [];
+  let loadedTables = {};
 
  // Load all dataset
  async function loadAllData() {
- try {
- const [vData, fData, sData, cData] = await Promise.all([
- fsGetAll(COL.MASTER_KENDARAAN),
- fsGetAll(COL.LOG_KENDARAAN_FUEL),
- fsGetAll(COL.LOG_KENDARAAN_SERVICE),
- fsGetAll(COL.LOG_KENDARAAN_COMPLIANCE)
- ]);
+    try {
+      const [vData, fData, sData, cData, eData] = await Promise.all([
+        fsGetAll(COL.MASTER_KENDARAAN),
+        fsGetAll(COL.LOG_KENDARAAN_FUEL),
+        fsGetAll(COL.LOG_KENDARAAN_SERVICE),
+        fsGetAll(COL.LOG_KENDARAAN_COMPLIANCE),
+        fsGetAll(COL.MASTER_KARYAWAN).catch(() => [])
+      ]);
 
- allVehicles = vData;
- allFuelLogs = fData;
- allServiceLogs = sData;
- allComplianceLogs = cData;
+      allVehicles = vData || [];
+      allFuelLogs = fData || [];
+      allServiceLogs = sData || [];
+      allComplianceLogs = cData || [];
+      allEmployees = eData || [];
 
- renderAlerts();
- renderVehicleCards();
+      renderAlerts();
+      renderVehicleCards();
  } catch (err) {
  console.error("Error loading vehicles:", err);
  cardsGrid.innerHTML = `<div class="col-span-full p-8 text-center text-red-500 bg-red-50 rounded-2xl border border-red-200">Gagal memuat data kendaraan: ${escapeHtml(err.message)}</div>`;
@@ -286,30 +290,973 @@ export async function mount(container, { session }) {
  </div>
 
  <!-- Card Footer Stats & Action -->
- <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 relative z-10">
- <div class="flex items-center gap-3">
- <span title="Total Log BBM"><b>${fuelCount}</b> log</span>
- <span title="Total Biaya Service"> <b>${fmtRupiah(serviceCost)}</b></span>
- </div>
- <span class="text-maroon-700 font-bold group-hover:translate-x-0.5 transition flex items-center gap-1">
- Detail Kendaraan →
- </span>
- </div>
- </div>`;
+    <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 relative z-10 gap-2">
+      <button type="button" data-doc-btn="${v.id}" class="px-2.5 py-1 text-[11px] font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300/80 rounded-lg transition flex items-center gap-1.5 cursor-pointer shadow-2xs">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-amber-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        <span>Surat Kuasa & Aset</span>
+      </button>
+
+      <span class="text-maroon-700 font-bold group-hover:translate-x-0.5 transition flex items-center gap-1">
+        Detail →
+      </span>
+    </div>
+  </div>`;
  }).join("");
 
- // Bind click handlers to cards
- cardsGrid.querySelectorAll("[data-vehicle-id]").forEach(card => {
- card.onclick = () => {
- const vId = card.dataset.vehicleId;
- const vDoc = allVehicles.find(x => x.id === vId);
- if (vDoc) openVehicleDetailModal(vDoc);
- };
- });
- }
+ // Bind click handlers to cards & quick doc button
+    cardsGrid.querySelectorAll("[data-doc-btn]").forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const vId = btn.dataset.docBtn;
+        const vDoc = allVehicles.find(x => x.id === vId);
+        if (vDoc) openVehicleDocGeneratorModal(vDoc, "KUASA");
+      };
+    });
+
+    cardsGrid.querySelectorAll("[data-vehicle-id]").forEach(card => {
+      card.onclick = (e) => {
+        if (e.target.closest("[data-doc-btn]")) return;
+        const vId = card.dataset.vehicleId;
+        const vDoc = allVehicles.find(x => x.id === vId);
+        if (vDoc) openVehicleDetailModal(vDoc);
+      };
+    });
+  }
 
  // -------------------------------------------------------------
- // 3. COMPREHENSIVE VEHICLE DETAIL MODAL
+ 
+  // Helper to format Roman numerals for surat number
+  function getRomanMonth(monthIdx) {
+    const roman = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+    return roman[monthIdx] || "I";
+  }
+
+  // -------------------------------------------------------------
+  // HELPER GENERATE DOKUMEN LEGALITAS (SURAT KUASA & SKET ASET A4)
+  // -------------------------------------------------------------
+  function downloadA4LetterWordDoc({ htmlContent, filename = "Dokumen_Kendaraan.doc", title = "Dokumen Resmi" }) {
+    const docHtml = `
+<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+<meta charset='utf-8'>
+<title>${escapeHtml(title)}</title>
+<!--[if gte mso 9]>
+<xml>
+<w:WordDocument>
+<w:View>Print</w:View>
+<w:Zoom>100</w:Zoom>
+<w:DoNotOptimizeForBrowser/>
+</w:WordDocument>
+</xml>
+<![endif]-->
+<style>
+@page Section1 {
+  size: 595.3pt 841.9pt;
+  margin: 0.9in 0.9in 0.9in 0.9in;
+  mso-header-margin: 0.5in;
+  mso-footer-margin: 0.5in;
+  mso-paper-source: 0;
+}
+div.Section1 { page: Section1; }
+body { font-family: 'Times New Roman', Times, serif; font-size: 11pt; color: #000000; line-height: 1.4; }
+table { border-collapse: collapse; width: 100%; }
+p { margin: 0 0 8pt 0; }
+</style>
+</head>
+<body>
+<div class="Section1">
+${htmlContent}
+</div>
+</body>
+</html>
+`;
+
+    const blob = new Blob(["\uFEFF" + docHtml], { type: "application/msword;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const cleanFilename = filename.endsWith(".doc") ? filename : filename.replace(/\.[^/.]+$/, "") + ".doc";
+    a.href = url;
+    a.download = cleanFilename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function buildSuratKuasaHtml(cfg) {
+    const {
+      noSurat = "042/SKUASA-KND/AJ/II/2025",
+      tglSurat = new Date().toISOString().substring(0, 10),
+      pemberiNama = "Ika Novista",
+      pemberiJabatan = "Manager Operasional & GA",
+      pemberiPerusahaan = COMPANY_NAME || "CV ANDELA JAYA",
+      pemberiAlamat = COMPANY_ADDRESS_LINE1 || "Jln. Jendral Sudirman No 58, Penggung, Kota Cirebon",
+      penerimaNama = "-",
+      penerimaNik = "-",
+      penerimaJabatan = "Driver / Staff Operasional",
+      penerimaAlamat = "-",
+      tujuanPengurusan = "Perpanjangan Pajak Kendaraan Bermotor (STNK Tahunan / 5 Tahunan) dan/atau Pelaksanaan Uji Berkala (KIR)",
+      instansiTujuan = "Kantor Bersama SAMSAT dan/atau Dinas Perhubungan Kota Cirebon",
+      kendaraan = {}
+    } = cfg;
+
+    const plate = escapeHtml(kendaraan.no_polisi || "-");
+    const merkTipe = escapeHtml(`${kendaraan.merk || "-"} ${kendaraan.tipe || ""}`.trim());
+    const model = escapeHtml(kendaraan.model || "-");
+    const tahun = escapeHtml(String(kendaraan.tahun || "-"));
+    const warna = escapeHtml(kendaraan.warna || "-");
+    const noRangka = escapeHtml(kendaraan.no_rangka || "-");
+    const noMesin = escapeHtml(kendaraan.no_mesin || "-");
+    const noBpkb = escapeHtml(kendaraan.no_bpkb || kendaraan.no_dokumen_bpkb || "-");
+    const atasNama = escapeHtml(kendaraan.atas_nama_kendaraan || kendaraan.nama_pemilik || pemberiPerusahaan);
+    const driverPj = escapeHtml(kendaraan.driver_pj || "-");
+    const tglIndoFormatted = fmtDateIndoLong(tglSurat) || fmtDateShort(tglSurat);
+
+    return `
+    <div class="surat-kuasa-a4" style="font-family:'Times New Roman', Times, serif; font-size:11pt; line-height:1.4; color:#000; background:#fff; width:100%; max-width:760px; margin:0 auto; padding:10px 15px;">
+      <!-- KOP SURAT -->
+      <table style="width:100%; border-collapse:collapse; margin-bottom:6px; border-bottom:3px double #000; padding-bottom:8px;">
+        <tr>
+          <td style="width:75px; vertical-align:middle; text-align:center; padding-right:12px;">
+            ${logoImgTag(60)}
+          </td>
+          <td style="vertical-align:middle; text-align:center;">
+            <div style="font-size:16pt; font-weight:bold; letter-spacing:1px; font-family:'Times New Roman', serif;">${COMPANY_NAME}</div>
+            <div style="font-size:9.5pt; margin-top:3px; color:#222;">${COMPANY_ADDRESS_LINE1}</div>
+          </td>
+        </tr>
+      </table>
+
+      <!-- JUDUL SURAT -->
+      <div style="text-align:center; margin-top:14px; margin-bottom:16px;">
+        <div style="font-size:13pt; font-weight:bold; text-decoration:underline; letter-spacing:0.5px;">SURAT KUASA KHUSUS</div>
+        <div style="font-size:10.5pt; font-weight:normal; margin-top:2px;">Nomor: ${escapeHtml(noSurat)}</div>
+      </div>
+
+      <p style="margin-bottom:8px; text-align:justify;">Yang bertanda tangan di bawah ini:</p>
+
+      <!-- PIHAK I (PEMBERI KUASA) -->
+      <table style="width:100%; border-collapse:collapse; margin-left:15px; margin-bottom:12px; font-size:10.5pt;">
+        <tr>
+          <td style="width:170px; padding:2.5px 0; vertical-align:top;">Nama Lengkap</td>
+          <td style="width:15px; padding:2.5px 0; vertical-align:top;">:</td>
+          <td style="padding:2.5px 0; font-weight:bold; vertical-align:top;">${escapeHtml(pemberiNama)}</td>
+        </tr>
+        <tr>
+          <td style="padding:2.5px 0; vertical-align:top;">Jabatan</td>
+          <td style="padding:2.5px 0; vertical-align:top;">:</td>
+          <td style="padding:2.5px 0; vertical-align:top;">${escapeHtml(pemberiJabatan)}</td>
+        </tr>
+        <tr>
+          <td style="padding:2.5px 0; vertical-align:top;">Nama Perusahaan</td>
+          <td style="padding:2.5px 0; vertical-align:top;">:</td>
+          <td style="padding:2.5px 0; font-weight:bold; vertical-align:top;">${escapeHtml(pemberiPerusahaan)}</td>
+        </tr>
+        <tr>
+          <td style="padding:2.5px 0; vertical-align:top;">Alamat Perusahaan</td>
+          <td style="padding:2.5px 0; vertical-align:top;">:</td>
+          <td style="padding:2.5px 0; vertical-align:top;">${escapeHtml(pemberiAlamat)}</td>
+        </tr>
+      </table>
+
+      <p style="margin-bottom:8px; text-align:justify;">Dalam hal ini bertindak untuk dan atas nama <strong>${escapeHtml(pemberiPerusahaan)}</strong>, yang selanjutnya disebut sebagai <strong>PEMBERI KUASA</strong>.</p>
+
+      <p style="margin-bottom:8px; text-align:justify;">Dengan ini memberikan kuasa penuh kepada:</p>
+
+      <!-- PIHAK II (PENERIMA KUASA) -->
+      <table style="width:100%; border-collapse:collapse; margin-left:15px; margin-bottom:12px; font-size:10.5pt;">
+        <tr>
+          <td style="width:170px; padding:2.5px 0; vertical-align:top;">Nama Lengkap</td>
+          <td style="width:15px; padding:2.5px 0; vertical-align:top;">:</td>
+          <td style="padding:2.5px 0; font-weight:bold; vertical-align:top;">${escapeHtml(penerimaNama)}</td>
+        </tr>
+        <tr>
+          <td style="padding:2.5px 0; vertical-align:top;">NIK / No. KTP</td>
+          <td style="padding:2.5px 0; vertical-align:top;">:</td>
+          <td style="padding:2.5px 0; font-family:monospace; vertical-align:top;">${escapeHtml(penerimaNik)}</td>
+        </tr>
+        <tr>
+          <td style="padding:2.5px 0; vertical-align:top;">Jabatan / Tugas</td>
+          <td style="padding:2.5px 0; vertical-align:top;">:</td>
+          <td style="padding:2.5px 0; vertical-align:top;">${escapeHtml(penerimaJabatan)}</td>
+        </tr>
+        <tr>
+          <td style="padding:2.5px 0; vertical-align:top;">Alamat Domisili</td>
+          <td style="padding:2.5px 0; vertical-align:top;">:</td>
+          <td style="padding:2.5px 0; vertical-align:top;">${escapeHtml(penerimaAlamat)}</td>
+        </tr>
+      </table>
+
+      <p style="margin-bottom:8px; text-align:justify;">Yang selanjutnya disebut sebagai <strong>PENERIMA KUASA</strong>.</p>
+
+      <!-- KLAUSUL KHUSUS -->
+      <div style="text-align:center; font-weight:bold; font-size:11pt; margin:10px 0 6px 0; letter-spacing:1px;">------------------------ K H U S U S ------------------------</div>
+
+      <p style="margin-bottom:8px; text-align:justify;">
+        Untuk dan atas nama Pemberi Kuasa mewakili <strong>${escapeHtml(pemberiPerusahaan)}</strong> guna melakukan pengurusan <strong>${escapeHtml(tujuanPengurusan)}</strong> pada instansi <strong>${escapeHtml(instansiTujuan)}</strong> terhadap unit kendaraan bermotor operasional dengan spesifikasi sebagai berikut:
+      </p>
+
+      <!-- TABEL SPESIFIKASI KENDARAAN -->
+      <table style="width:100%; border-collapse:collapse; margin:8px 0 12px 0; font-size:10pt; border:1px solid #333;">
+        <tr style="background:#f1f5f9;">
+          <td style="width:36%; border:1px solid #333; padding:5px 8px; font-weight:bold;">Nomor Polisi / Nomor Plat</td>
+          <td style="border:1px solid #333; padding:5px 8px; font-weight:bold; font-family:monospace; font-size:11pt;">${plate}</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Merk & Tipe Kendaraan</td>
+          <td style="border:1px solid #333; padding:4px 8px;">${merkTipe}</td>
+        </tr>
+        <tr style="background:#fafafa;">
+          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Jenis / Model / Warna</td>
+          <td style="border:1px solid #333; padding:4px 8px;">${model} / ${warna} (Tahun: ${tahun})</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Nomor Rangka (VIN)</td>
+          <td style="border:1px solid #333; padding:4px 8px; font-family:monospace;">${noRangka}</td>
+        </tr>
+        <tr style="background:#fafafa;">
+          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Nomor Mesin</td>
+          <td style="border:1px solid #333; padding:4px 8px; font-family:monospace;">${noMesin}</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold; color:#0f172a; background:#e0f2fe;">Nomor Dokumen BPKB</td>
+          <td style="border:1px solid #333; padding:4px 8px; font-family:monospace; font-weight:bold; background:#f0f9ff;">${noBpkb}</td>
+        </tr>
+        <tr style="background:#fafafa;">
+          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Atas Nama Kendaraan (STNK/BPKB)</td>
+          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">${atasNama}</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Driver / Penanggung Jawab Armada</td>
+          <td style="border:1px solid #333; padding:4px 8px;">${driverPj}</td>
+        </tr>
+      </table>
+
+      <p style="margin-bottom:8px; text-align:justify;">
+        Untuk keperluan tersebut di atas, Penerima Kuasa berhak menghadap petugas/pejabat berwenang, menandatangani surat/formulir permohonan, melakukan pembayaran retribusi/pajak resmi yang dipersyaratkan, menerima Surat Ketetapan Pajak Daerah (SKPD), STNK, Tanda Bukti Lulus Uji Elektronik (BLU-e) / Buku Uji KIR, serta melakukan tindakan administratif lainnya yang sah dan diperlukan sesuai peraturan perundang-undangan.
+      </p>
+
+      <p style="margin-bottom:14px; text-align:justify;">
+        Demikian Surat Kuasa Khusus ini dibuat dengan sebenarnya dengan penuh rasa tanggung jawab untuk dapat dipergunakan sebagaimana mestinya.
+      </p>
+
+      <!-- TANDA TANGAN -->
+      <table style="width:100%; border-collapse:collapse; margin-top:20px; text-align:center; font-size:10.5pt; page-break-inside:avoid;">
+        <tr>
+          <td style="width:50%; vertical-align:top;">
+            <div>Cirebon, ${tglIndoFormatted}</div>
+            <div style="font-weight:bold; margin-top:2px;">Penerima Kuasa,</div>
+            <div style="height:65px;"></div>
+            <div style="font-weight:bold; text-decoration:underline;">( ${escapeHtml(penerimaNama)} )</div>
+            <div style="font-size:9pt; color:#444; margin-top:2px;">NIK: ${escapeHtml(penerimaNik)}</div>
+          </td>
+          <td style="width:50%; vertical-align:top;">
+            <div>${escapeHtml(pemberiPerusahaan)}</div>
+            <div style="font-weight:bold; margin-top:2px;">Pemberi Kuasa,</div>
+            <div style="height:15px;"></div>
+            <div style="border:1px dashed #666; width:95px; height:45px; margin:0 auto 5px auto; font-size:7.5pt; line-height:45px; color:#555; text-align:center;">
+              METERAI 10.000
+            </div>
+            <div style="font-weight:bold; text-decoration:underline;">( ${escapeHtml(pemberiNama)} )</div>
+            <div style="font-size:9pt; color:#444; margin-top:2px;">${escapeHtml(pemberiJabatan)}</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+    `;
+  }
+
+  function buildSuratKeteranganAsetHtml(cfg) {
+    const {
+      noSurat = "042/SKET-ASET/AJ/II/2025",
+      tglSurat = new Date().toISOString().substring(0, 10),
+      pejabatNama = "Ika Novista",
+      pejabatJabatan = "Manager Operasional & GA",
+      namaPerusahaan = COMPANY_NAME || "CV ANDELA JAYA",
+      alamatPerusahaan = COMPANY_ADDRESS_LINE1 || "Jln. Jendral Sudirman No 58, Penggung, Kota Cirebon",
+      keperluan = "Kelengkapan berkas administrasi pengurusan Pajak Kendaraan Bermotor (STNK Tahunan / 5 Tahunan) dan/atau Uji Kelayakan Kendaraan Bermotor (Uji KIR)",
+      kendaraan = {}
+    } = cfg;
+
+    const plate = escapeHtml(kendaraan.no_polisi || "-");
+    const merkTipe = escapeHtml(`${kendaraan.merk || "-"} ${kendaraan.tipe || ""}`.trim());
+    const model = escapeHtml(kendaraan.model || "-");
+    const tahun = escapeHtml(String(kendaraan.tahun || "-"));
+    const warna = escapeHtml(kendaraan.warna || "-");
+    const bahanBakar = escapeHtml(kendaraan.bahan_bakar || "Solar");
+    const noRangka = escapeHtml(kendaraan.no_rangka || "-");
+    const noMesin = escapeHtml(kendaraan.no_mesin || "-");
+    const noBpkb = escapeHtml(kendaraan.no_bpkb || kendaraan.no_dokumen_bpkb || "-");
+    const atasNama = escapeHtml(kendaraan.atas_nama_kendaraan || kendaraan.nama_pemilik || namaPerusahaan);
+    const driverPj = escapeHtml(kendaraan.driver_pj || "-");
+    const tglIndoFormatted = fmtDateIndoLong(tglSurat) || fmtDateShort(tglSurat);
+
+    return `
+    <div class="surat-ket-aset-a4" style="font-family:'Times New Roman', Times, serif; font-size:11pt; line-height:1.45; color:#000; background:#fff; width:100%; max-width:760px; margin:0 auto; padding:10px 15px;">
+      <!-- KOP SURAT -->
+      <table style="width:100%; border-collapse:collapse; margin-bottom:6px; border-bottom:3px double #000; padding-bottom:8px;">
+        <tr>
+          <td style="width:75px; vertical-align:middle; text-align:center; padding-right:12px;">
+            ${logoImgTag(60)}
+          </td>
+          <td style="vertical-align:middle; text-align:center;">
+            <div style="font-size:16pt; font-weight:bold; letter-spacing:1px; font-family:'Times New Roman', serif;">${COMPANY_NAME}</div>
+            <div style="font-size:9.5pt; margin-top:3px; color:#222;">${COMPANY_ADDRESS_LINE1}</div>
+          </td>
+        </tr>
+      </table>
+
+      <!-- JUDUL SURAT -->
+      <div style="text-align:center; margin-top:16px; margin-bottom:18px;">
+        <div style="font-size:13pt; font-weight:bold; text-decoration:underline; letter-spacing:0.5px;">SURAT KETERANGAN KEPEMILIKAN ASET</div>
+        <div style="font-size:10.5pt; font-weight:normal; margin-top:2px;">Nomor: ${escapeHtml(noSurat)}</div>
+      </div>
+
+      <p style="margin-bottom:8px; text-align:justify;">Yang bertanda tangan di bawah ini:</p>
+
+      <!-- PIHAK PENERANG -->
+      <table style="width:100%; border-collapse:collapse; margin-left:15px; margin-bottom:12px; font-size:10.5pt;">
+        <tr>
+          <td style="width:170px; padding:2.5px 0; vertical-align:top;">Nama Lengkap</td>
+          <td style="width:15px; padding:2.5px 0; vertical-align:top;">:</td>
+          <td style="padding:2.5px 0; font-weight:bold; vertical-align:top;">${escapeHtml(pejabatNama)}</td>
+        </tr>
+        <tr>
+          <td style="padding:2.5px 0; vertical-align:top;">Jabatan</td>
+          <td style="padding:2.5px 0; vertical-align:top;">:</td>
+          <td style="padding:2.5px 0; vertical-align:top;">${escapeHtml(pejabatJabatan)}</td>
+        </tr>
+        <tr>
+          <td style="padding:2.5px 0; vertical-align:top;">Badan Usaha / Perusahaan</td>
+          <td style="padding:2.5px 0; vertical-align:top;">:</td>
+          <td style="padding:2.5px 0; font-weight:bold; vertical-align:top;">${escapeHtml(namaPerusahaan)}</td>
+        </tr>
+        <tr>
+          <td style="padding:2.5px 0; vertical-align:top;">Alamat Kantor</td>
+          <td style="padding:2.5px 0; vertical-align:top;">:</td>
+          <td style="padding:2.5px 0; vertical-align:top;">${escapeHtml(alamatPerusahaan)}</td>
+        </tr>
+      </table>
+
+      <p style="margin-bottom:10px; text-align:justify;">
+        Dengan ini menerangkan dengan sebenarnya bahwa unit kendaraan bermotor dengan identitas dan spesifikasi teknis di bawah ini:
+      </p>
+
+      <!-- TABEL SPESIFIKASI KENDARAAN -->
+      <table style="width:100%; border-collapse:collapse; margin:8px 0 14px 0; font-size:10pt; border:1px solid #333;">
+        <tr style="background:#f1f5f9;">
+          <td style="width:36%; border:1px solid #333; padding:5px 8px; font-weight:bold;">Nomor Polisi / No. Plat</td>
+          <td style="border:1px solid #333; padding:5px 8px; font-weight:bold; font-family:monospace; font-size:11pt;">${plate}</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Merk & Tipe Kendaraan</td>
+          <td style="border:1px solid #333; padding:4px 8px;">${merkTipe}</td>
+        </tr>
+        <tr style="background:#fafafa;">
+          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Jenis / Model Kendaraan</td>
+          <td style="border:1px solid #333; padding:4px 8px;">${model}</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Tahun Pembuatan / Warna</td>
+          <td style="border:1px solid #333; padding:4px 8px;">Tahun ${tahun} / Warna ${warna}</td>
+        </tr>
+        <tr style="background:#fafafa;">
+          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Bahan Bakar</td>
+          <td style="border:1px solid #333; padding:4px 8px;">${bahanBakar}</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Nomor Rangka (VIN)</td>
+          <td style="border:1px solid #333; padding:4px 8px; font-family:monospace;">${noRangka}</td>
+        </tr>
+        <tr style="background:#fafafa;">
+          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Nomor Mesin</td>
+          <td style="border:1px solid #333; padding:4px 8px; font-family:monospace;">${noMesin}</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold; color:#0f172a; background:#e0f2fe;">Nomor Dokumen BPKB</td>
+          <td style="border:1px solid #333; padding:4px 8px; font-family:monospace; font-weight:bold; background:#f0f9ff;">${noBpkb}</td>
+        </tr>
+        <tr style="background:#fafafa;">
+          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Atas Nama di STNK & BPKB</td>
+          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">${atasNama}</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Driver / Penanggung Jawab Armada</td>
+          <td style="border:1px solid #333; padding:4px 8px;">${driverPj}</td>
+        </tr>
+      </table>
+
+      <p style="margin-bottom:10px; text-align:justify;">
+        Adalah <strong>BENAR-BENAR MERUPAKAN ASET OPERASIONAL SAH MILIK ${escapeHtml(namaPerusahaan)}</strong> yang dipergunakan sehari-hari untuk kelancaran kegiatan operasional, distribusi, dan logistik perusahaan.
+      </p>
+
+      <p style="margin-bottom:10px; text-align:justify;">
+        Surat keterangan kepemilikan aset ini diterbitkan untuk dipergunakan sebagai: <strong>${escapeHtml(keperluan)}</strong> pada instansi SAMSAT, Dinas Perhubungan, maupun instansi terkait lainnya.
+      </p>
+
+      <p style="margin-bottom:16px; text-align:justify;">
+        Demikian Surat Keterangan Aset ini kami buat dengan sebenarnya dan dapat dipertanggungjawabkan sebagaimana mestinya.
+      </p>
+
+      <!-- TANDA TANGAN -->
+      <table style="width:100%; border-collapse:collapse; margin-top:24px; text-align:center; font-size:10.5pt; page-break-inside:avoid;">
+        <tr>
+          <td style="width:50%;"></td>
+          <td style="width:50%; vertical-align:top;">
+            <div>Cirebon, ${tglIndoFormatted}</div>
+            <div style="font-weight:bold; margin-top:2px;">${escapeHtml(namaPerusahaan)}</div>
+            <div style="height:65px;"></div>
+            <div style="font-weight:bold; text-decoration:underline;">( ${escapeHtml(pejabatNama)} )</div>
+            <div style="font-size:9pt; color:#444; margin-top:2px;">${escapeHtml(pejabatJabatan)}</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+    `;
+  }
+
+  // MODAL GENERATOR SURAT KUASA & SKET ASET
+  async function openVehicleDocGeneratorModal(targetVDoc = null, initialDocType = "KUASA") {
+    if (!allVehicles || allVehicles.length === 0) {
+      return toast("Belum ada data kendaraan yang terdaftar untuk dibuatkan surat.", "warning");
+    }
+
+    if (!allEmployees || allEmployees.length === 0) {
+      try {
+        allEmployees = (await fsGetAll(COL.MASTER_KARYAWAN).catch(() => [])) || [];
+      } catch (_) {
+        allEmployees = [];
+      }
+    }
+
+    let currentVehicle = targetVDoc || allVehicles[0];
+    const activeEmployees = (allEmployees || []).filter(e => (e.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF");
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const romanMo = getRomanMonth(now.getMonth());
+    const randNum = String(Math.floor(100 + Math.random() * 900));
+
+    let currentDocType = initialDocType; // "KUASA" or "ASET"
+
+    const defaultNoKuasa = `${randNum}/SKUASA-KND/AJ/${romanMo}/${currentYear}`;
+    const defaultNoAset = `${randNum}/SKET-ASET/AJ/${romanMo}/${currentYear}`;
+
+    function getDriverEmp(vDoc) {
+      if (!vDoc || !vDoc.driver_pj) return null;
+      return activeEmployees.find(e => e.nama_karyawan && e.nama_karyawan.toLowerCase().includes(vDoc.driver_pj.toLowerCase())) || null;
+    }
+
+    // Cari pimpinan / pemberi kuasa dari database karyawan (utamakan Ika Novista / Manager / Pimpinan / Direktur / Kepala)
+    let defaultPemberiEmp = activeEmployees.find(e => 
+      (e.nama_karyawan && (e.nama_karyawan.toLowerCase().includes("ika") || e.nama_karyawan.toLowerCase().includes("novista"))) ||
+      (e.jabatan && (e.jabatan.toLowerCase().includes("manager") || e.jabatan.toLowerCase().includes("direktur") || e.jabatan.toLowerCase().includes("pimpinan") || e.jabatan.toLowerCase().includes("kepala")))
+    ) || activeEmployees[0] || null;
+
+    let currentDriverEmp = getDriverEmp(currentVehicle);
+
+    const initPemberiNama = defaultPemberiEmp ? defaultPemberiEmp.nama_karyawan : "Ika Novista";
+    const initPemberiJabatan = defaultPemberiEmp ? (defaultPemberiEmp.jabatan || defaultPemberiEmp.divisi || "Manager Operasional & GA") : "Manager Operasional & GA";
+    const initPemberiNik = defaultPemberiEmp ? (defaultPemberiEmp.nik || defaultPemberiEmp.no_ktp || "-") : "-";
+
+    openModal({
+      title: `<div class="flex items-center gap-3">
+        <div class="p-2 rounded-xl bg-amber-500/10 text-amber-600">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        </div>
+        <div>
+          <h3 class="font-bold text-slate-800 text-sm">Generator Dokumen Legalitas Kendaraan (A4)</h3>
+          <p class="text-[11px] text-slate-500">Cetak Surat Kuasa Khusus & Surat Keterangan Kepemilikan Aset Resmi</p>
+        </div>
+      </div>`,
+      size: "2xl",
+      bodyHtml: `
+      <div class="space-y-4 text-left">
+        <!-- VEHICLE SELECTOR BANNER -->
+        <div class="bg-gradient-to-r from-slate-900 to-maroon-950 p-3.5 rounded-2xl text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm border border-slate-800">
+          <div class="space-y-0.5">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-amber-400">Pilih Unit Kendaraan</span>
+            <div class="flex items-center gap-2">
+              <span id="label-curr-plate" class="px-2.5 py-0.5 bg-amber-400 text-slate-950 font-mono font-bold text-xs rounded-md shadow-2xs">${escapeHtml(currentVehicle.no_polisi || '-')}</span>
+              <span id="label-curr-name" class="font-bold text-xs text-slate-100">${escapeHtml(currentVehicle.merk || '')} ${escapeHtml(currentVehicle.tipe || '')}</span>
+            </div>
+          </div>
+          <div class="w-full sm:w-64">
+            <select id="cfg-select-vehicle-doc" class="w-full px-3 py-1.5 text-xs font-semibold bg-slate-800 text-slate-100 border border-slate-700 rounded-xl outline-none focus:border-amber-400">
+              ${allVehicles.map(v => `<option value="${v.id}" ${v.id === currentVehicle.id ? 'selected' : ''}>${escapeHtml(v.no_polisi || 'Plat -')} | ${escapeHtml(v.merk || '')} ${escapeHtml(v.tipe || '')}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+
+        <!-- TIPE DOKUMEN SELECTOR TABS -->
+        <div class="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-2xl border border-slate-200">
+          <button type="button" id="btn-tab-doc-kuasa" class="py-2.5 px-3 text-xs font-bold rounded-xl transition flex items-center justify-center gap-2 ${currentDocType === 'KUASA' ? 'bg-white text-maroon-800 shadow-sm border border-slate-200/80' : 'text-slate-500 hover:text-slate-800'}">
+            <span>📝 Surat Kuasa Khusus (STNK / KIR)</span>
+          </button>
+          <button type="button" id="btn-tab-doc-aset" class="py-2.5 px-3 text-xs font-bold rounded-xl transition flex items-center justify-center gap-2 ${currentDocType === 'ASET' ? 'bg-white text-maroon-800 shadow-sm border border-slate-200/80' : 'text-slate-500 hover:text-slate-800'}">
+            <span>🏢 Surat Keterangan Kepemilikan Aset</span>
+          </button>
+        </div>
+
+        <!-- FORM CONFIG -->
+        <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-4">
+          <!-- NOMOR & TANGGAL -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">Nomor Surat Resmi</label>
+              <input type="text" id="cfg-no-surat" class="w-full px-3 py-1.5 text-xs font-mono font-semibold border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-white" value="${currentDocType === 'KUASA' ? defaultNoKuasa : defaultNoAset}">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">Tanggal Surat</label>
+              <input type="date" id="cfg-tgl-surat" class="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-white" value="${now.toISOString().substring(0, 10)}">
+            </div>
+          </div>
+
+          <!-- SECTION PEMBERI KUASA / PEJABAT PENANDATANGAN (DARI DATABASE) -->
+          <div class="space-y-3 border-t border-slate-200 pt-3">
+            <div class="flex items-center justify-between">
+              <h4 class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <span>🏢 Pemberi Kuasa / Pejabat Penandatangan</span>
+              </h4>
+              <span class="text-[10px] text-slate-500">Sesuaikan dengan Master Karyawan</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Pilih dari Master Karyawan</label>
+                <select id="cfg-pemberi-select" class="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-white">
+                  <option value="">-- Ketik Manual / Custom --</option>
+                  ${activeEmployees.map(e => `<option value="${escapeHtml(e.id)}" ${defaultPemberiEmp && defaultPemberiEmp.id === e.id ? 'selected' : ''}>${escapeHtml(e.nama_karyawan)} (${escapeHtml(e.jabatan || e.divisi || 'Karyawan')})</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Nama Pemberi Kuasa *</label>
+                <input type="text" id="cfg-pemberi-nama" class="w-full px-3 py-1.5 text-xs font-semibold border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-white" value="${escapeHtml(initPemberiNama)}">
+              </div>
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Jabatan Pemberi Kuasa *</label>
+                <input type="text" id="cfg-pemberi-jabatan" class="w-full px-3 py-1.5 text-xs font-semibold border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-white" value="${escapeHtml(initPemberiJabatan)}">
+              </div>
+            </div>
+          </div>
+
+          <!-- SECTION KHUSUS SURAT KUASA (PENERIMA KUASA DARI DATABASE) -->
+          <div id="cfg-section-kuasa" class="space-y-3 ${currentDocType === 'KUASA' ? '' : 'hidden'} border-t border-slate-200 pt-3">
+            <div class="flex items-center justify-between">
+              <h4 class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <span>👤 Penerima Kuasa (Driver / Petugas Pajak)</span>
+              </h4>
+              <span class="text-[10px] text-slate-500">Sesuaikan dengan Master Karyawan</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Pilih dari Master Karyawan</label>
+                <select id="cfg-penerima-select" class="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-white">
+                  <option value="">-- Ketik Manual / Custom --</option>
+                  ${activeEmployees.map(e => `<option value="${escapeHtml(e.id)}" ${currentDriverEmp && currentDriverEmp.id === e.id ? 'selected' : ''}>${escapeHtml(e.nama_karyawan)} (${escapeHtml(e.jabatan || e.divisi || 'Karyawan')})</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Nama Penerima Kuasa *</label>
+                <input type="text" id="cfg-penerima-nama" class="w-full px-3 py-1.5 text-xs font-semibold border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-white" value="${currentDriverEmp ? currentDriverEmp.nama_karyawan : (currentVehicle.driver_pj || '')}">
+              </div>
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">NIK / No. KTP</label>
+                <input type="text" id="cfg-penerima-nik" class="w-full px-3 py-1.5 text-xs font-mono border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-white" value="${currentDriverEmp?.nik || currentDriverEmp?.no_ktp || '-'}">
+              </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Jabatan Penerima Kuasa</label>
+                <input type="text" id="cfg-penerima-jabatan" class="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-white" value="${currentDriverEmp?.jabatan || 'Driver / PJ Operasional'}">
+              </div>
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Alamat Domisili Penerima Kuasa</label>
+                <input type="text" id="cfg-penerima-alamat" class="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-white" value="${currentDriverEmp?.alamat || currentDriverEmp?.domisili || 'Cirebon'}">
+              </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Tujuan / Keperluan Kuasa</label>
+                <select id="cfg-tujuan-kuasa" class="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-white">
+                  <option value="Perpanjangan Pajak Kendaraan Bermotor (STNK Tahunan) & Pengesahan STNK">Perpanjangan Pajak STNK Tahunan</option>
+                  <option value="Perpanjangan Pajak 5 Tahunan, Ganti Plat Nomor (TNKB) & Cek Fisik Kendaraan">Pajak 5 Tahunan & Ganti Plat (TNKB)</option>
+                  <option value="Pelaksanaan Uji Berkala Kendaraan Bermotor (Uji KIR) & Bukti Lulus Uji Elektronik (BLU-e)">Pelaksanaan Uji Berkala (KIR)</option>
+                  <option value="Pengurusan Pajak Kendaraan Bermotor (STNK Tahunan/5 Tahunan) dan Uji Berkala (KIR) Sekaligus" selected>Pengurusan STNK & Uji KIR Sekaligus</option>
+                  <option value="Pengurusan Balik Nama / Mutasi Dokumen Kendaraan Bermotor">Pengurusan Balik Nama / Mutasi</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Instansi Tujuan</label>
+                <input type="text" id="cfg-instansi" class="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-white" value="Kantor Bersama SAMSAT dan/atau Dinas Perhubungan">
+              </div>
+            </div>
+          </div>
+
+          <!-- SECTION KHUSUS SURAT KET ASET -->
+          <div id="cfg-section-aset" class="space-y-3 ${currentDocType === 'ASET' ? '' : 'hidden'} border-t border-slate-200 pt-3">
+            <h4 class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <span>🏢 Keperluan Surat Keterangan Aset</span>
+            </h4>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">Maksud / Keperluan Penerbitan</label>
+              <input type="text" id="cfg-keperluan-aset" class="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-white" value="Kelengkapan berkas administrasi pengurusan Pajak Kendaraan Bermotor (STNK Tahunan / 5 Tahunan) dan/atau Uji Kelayakan Kendaraan Bermotor (Uji KIR)">
+            </div>
+          </div>
+        </div>
+
+        <!-- LIVE PREVIEW CONTAINER -->
+        <div class="border border-slate-200 rounded-2xl p-4 bg-slate-100 max-h-96 overflow-y-auto shadow-inner">
+          <div class="flex items-center justify-between mb-2 pb-2 border-b border-slate-200 text-xs">
+            <span class="font-bold text-slate-600 flex items-center gap-1.5">
+              <span>👁️</span> Pratinjau Dokumen Format A4
+            </span>
+            <span class="text-[11px] text-slate-400">Ukuran Standar: A4 Portrait</span>
+          </div>
+          <div id="doc-live-preview-box" class="bg-white p-6 rounded-xl shadow-sm border border-slate-300">
+            <!-- Will be populated dynamically -->
+          </div>
+        </div>
+
+        <!-- ACTION BUTTONS -->
+        <div class="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200">
+          <div class="flex items-center gap-2">
+            <button type="button" id="btn-cancel-doc-gen" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl transition cursor-pointer">
+              Tutup
+            </button>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" id="btn-download-doc-word" class="px-4 py-2 text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-xl transition flex items-center gap-1.5 shadow-2xs cursor-pointer">
+              <span class="font-mono text-[10px] bg-blue-200 text-blue-900 px-1 py-0.2 rounded font-bold">DOC</span>
+              <span>Unduh Word (A4)</span>
+            </button>
+            <button type="button" id="btn-download-doc-pdf" class="px-4.5 py-2 text-xs font-bold bg-maroon-700 hover:bg-maroon-800 text-white rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer">
+              <span class="font-mono text-[10px] bg-red-800 text-white px-1 py-0.2 rounded font-bold">PDF</span>
+              <span>Unduh PDF (A4)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      `
+    });
+
+    const previewBox = document.getElementById("doc-live-preview-box");
+    const tabKuasa = document.getElementById("btn-tab-doc-kuasa");
+    const tabAset = document.getElementById("btn-tab-doc-aset");
+    const secKuasa = document.getElementById("cfg-section-kuasa");
+    const secAset = document.getElementById("cfg-section-aset");
+    const vehSelector = document.getElementById("cfg-select-vehicle-doc");
+    const labelPlate = document.getElementById("label-curr-plate");
+    const labelName = document.getElementById("label-curr-name");
+
+    const inputNoSurat = document.getElementById("cfg-no-surat");
+    const inputTglSurat = document.getElementById("cfg-tgl-surat");
+    const inputPemberiSelect = document.getElementById("cfg-pemberi-select");
+    const inputPemberiNama = document.getElementById("cfg-pemberi-nama");
+    const inputPemberiJabatan = document.getElementById("cfg-pemberi-jabatan");
+    const inputPenerimaSelect = document.getElementById("cfg-penerima-select");
+    const inputPenerimaNama = document.getElementById("cfg-penerima-nama");
+    const inputPenerimaNik = document.getElementById("cfg-penerima-nik");
+    const inputPenerimaJabatan = document.getElementById("cfg-penerima-jabatan");
+    const inputPenerimaAlamat = document.getElementById("cfg-penerima-alamat");
+    const inputTujuanKuasa = document.getElementById("cfg-tujuan-kuasa");
+    const inputInstansi = document.getElementById("cfg-instansi");
+    const inputKeperluanAset = document.getElementById("cfg-keperluan-aset");
+
+    function renderCurrentPreview() {
+      const pNama = inputPemberiNama ? inputPemberiNama.value.trim() : initPemberiNama;
+      const pJabatan = inputPemberiJabatan ? inputPemberiJabatan.value.trim() : initPemberiJabatan;
+
+      if (currentDocType === "KUASA") {
+        const html = buildSuratKuasaHtml({
+          noSurat: inputNoSurat ? inputNoSurat.value.trim() : defaultNoKuasa,
+          tglSurat: inputTglSurat ? inputTglSurat.value : now.toISOString().substring(0, 10),
+          pemberiNama: pNama,
+          pemberiJabatan: pJabatan,
+          pemberiPerusahaan: COMPANY_NAME || "CV ANDELA JAYA",
+          pemberiAlamat: COMPANY_ADDRESS_LINE1 || "Jln. Jendral Sudirman No 58, Penggung, Kota Cirebon",
+          penerimaNama: inputPenerimaNama ? inputPenerimaNama.value.trim() : "-",
+          penerimaNik: inputPenerimaNik ? inputPenerimaNik.value.trim() : "-",
+          penerimaJabatan: inputPenerimaJabatan ? inputPenerimaJabatan.value.trim() : "Driver / Staff Operasional",
+          penerimaAlamat: inputPenerimaAlamat ? inputPenerimaAlamat.value.trim() : "Cirebon",
+          tujuanPengurusan: inputTujuanKuasa ? inputTujuanKuasa.value : "Pengurusan STNK & Uji KIR Sekaligus",
+          instansiTujuan: inputInstansi ? inputInstansi.value.trim() : "Kantor Bersama SAMSAT dan/atau Dinas Perhubungan",
+          kendaraan: currentVehicle
+        });
+        if (previewBox) previewBox.innerHTML = html;
+      } else {
+        const html = buildSuratKeteranganAsetHtml({
+          noSurat: inputNoSurat ? inputNoSurat.value.trim() : defaultNoAset,
+          tglSurat: inputTglSurat ? inputTglSurat.value : now.toISOString().substring(0, 10),
+          pejabatNama: pNama,
+          pejabatJabatan: pJabatan,
+          namaPerusahaan: COMPANY_NAME || "CV ANDELA JAYA",
+          alamatPerusahaan: COMPANY_ADDRESS_LINE1 || "Jln. Jendral Sudirman No 58, Penggung, Kota Cirebon",
+          keperluan: inputKeperluanAset ? inputKeperluanAset.value.trim() : "Kelengkapan berkas administrasi pengurusan Pajak Kendaraan Bermotor (STNK Tahunan / 5 Tahunan) dan/atau Uji Kelayakan Kendaraan Bermotor (Uji KIR)",
+          kendaraan: currentVehicle
+        });
+        if (previewBox) previewBox.innerHTML = html;
+      }
+    }
+
+    if (vehSelector) {
+      vehSelector.onchange = () => {
+        const v = allVehicles.find(x => x.id === vehSelector.value);
+        if (v) {
+          currentVehicle = v;
+          currentDriverEmp = getDriverEmp(v);
+          if (labelPlate) labelPlate.textContent = v.no_polisi || '-';
+          if (labelName) labelName.textContent = `${v.merk || ''} ${v.tipe || ''}`;
+          if (currentDriverEmp) {
+            if (inputPenerimaSelect) inputPenerimaSelect.value = currentDriverEmp.id;
+            if (inputPenerimaNama) inputPenerimaNama.value = currentDriverEmp.nama_karyawan || '';
+            if (inputPenerimaNik) inputPenerimaNik.value = currentDriverEmp.nik || currentDriverEmp.no_ktp || '-';
+            if (inputPenerimaJabatan) inputPenerimaJabatan.value = currentDriverEmp.jabatan || 'Driver / PJ Operasional';
+            if (inputPenerimaAlamat) inputPenerimaAlamat.value = currentDriverEmp.alamat || currentDriverEmp.domisili || 'Cirebon';
+          } else {
+            if (inputPenerimaSelect) inputPenerimaSelect.value = "";
+            if (inputPenerimaNama) inputPenerimaNama.value = v.driver_pj || '';
+          }
+          renderCurrentPreview();
+        }
+      };
+    }
+
+    // Tab switching
+    if (tabKuasa && tabAset) {
+      tabKuasa.onclick = () => {
+        currentDocType = "KUASA";
+        tabKuasa.className = "py-2.5 px-3 text-xs font-bold rounded-xl transition flex items-center justify-center gap-2 bg-white text-maroon-800 shadow-sm border border-slate-200/80";
+        tabAset.className = "py-2.5 px-3 text-xs font-bold rounded-xl transition flex items-center justify-center gap-2 text-slate-500 hover:text-slate-800";
+        if (secKuasa) secKuasa.classList.remove("hidden");
+        if (secAset) secAset.classList.add("hidden");
+        if (inputNoSurat) inputNoSurat.value = defaultNoKuasa;
+        renderCurrentPreview();
+      };
+
+      tabAset.onclick = () => {
+        currentDocType = "ASET";
+        tabAset.className = "py-2.5 px-3 text-xs font-bold rounded-xl transition flex items-center justify-center gap-2 bg-white text-maroon-800 shadow-sm border border-slate-200/80";
+        tabKuasa.className = "py-2.5 px-3 text-xs font-bold rounded-xl transition flex items-center justify-center gap-2 text-slate-500 hover:text-slate-800";
+        if (secKuasa) secKuasa.classList.add("hidden");
+        if (secAset) secAset.classList.remove("hidden");
+        if (inputNoSurat) inputNoSurat.value = defaultNoAset;
+        renderCurrentPreview();
+      };
+    }
+
+    // Auto-fill Pemberi Kuasa dari master karyawan select
+    if (inputPemberiSelect) {
+      inputPemberiSelect.onchange = () => {
+        const empId = inputPemberiSelect.value;
+        const emp = activeEmployees.find(e => e.id === empId);
+        if (emp) {
+          inputPemberiNama.value = emp.nama_karyawan || "";
+          inputPemberiJabatan.value = emp.jabatan || emp.divisi || "Pimpinan";
+        }
+        renderCurrentPreview();
+      };
+    }
+
+    // Auto-fill Penerima Kuasa dari master karyawan select
+    if (inputPenerimaSelect) {
+      inputPenerimaSelect.onchange = () => {
+        const empId = inputPenerimaSelect.value;
+        const emp = activeEmployees.find(e => e.id === empId);
+        if (emp) {
+          inputPenerimaNama.value = emp.nama_karyawan || "";
+          inputPenerimaNik.value = emp.nik || emp.no_ktp || "-";
+          inputPenerimaJabatan.value = emp.jabatan || emp.divisi || "Driver / Staff Operasional";
+          inputPenerimaAlamat.value = emp.alamat || emp.domisili || "Cirebon";
+        }
+        renderCurrentPreview();
+      };
+    }
+
+    // Auto-update instansi dan keperluan saat tujuan pengurusan berubah
+    if (inputTujuanKuasa) {
+      inputTujuanKuasa.onchange = () => {
+        const val = inputTujuanKuasa.value;
+        const valLower = val.toLowerCase();
+
+        if (inputInstansi) {
+          if (valLower.includes("tahunan") && !valLower.includes("5 tahun") && !valLower.includes("kir")) {
+            inputInstansi.value = "Kantor Bersama SAMSAT";
+          } else if (valLower.includes("5 tahun") || valLower.includes("ganti plat") || valLower.includes("tnkb")) {
+            inputInstansi.value = "Kantor Bersama SAMSAT Induk & Layanan Cek Fisik";
+          } else if (valLower.includes("uji berkala") || valLower.includes("uji kir") || valLower.includes("blu-e") || (valLower.includes("kir") && !valLower.includes("stnk"))) {
+            inputInstansi.value = "Balai/Unit Pelaksana Pengujian Kendaraan Bermotor (Dishub)";
+          } else if (valLower.includes("sekaligus") || (valLower.includes("stnk") && valLower.includes("kir"))) {
+            inputInstansi.value = "Kantor Bersama SAMSAT dan Dinas Perhubungan";
+          } else if (valLower.includes("balik nama") || valLower.includes("mutasi")) {
+            inputInstansi.value = "Kantor Bersama SAMSAT & Ditlantas Kepolisian";
+          }
+        }
+
+        if (inputKeperluanAset) {
+          inputKeperluanAset.value = `Kelengkapan berkas administrasi pengurusan ${val}`;
+        }
+
+        renderCurrentPreview();
+      };
+    }
+
+    // Inputs dynamic listeners (input + change events for instant reactive preview)
+    [inputNoSurat, inputTglSurat, inputPemberiNama, inputPemberiJabatan, inputPenerimaNama, inputPenerimaNik, inputPenerimaJabatan, inputPenerimaAlamat, inputTujuanKuasa, inputInstansi, inputKeperluanAset].forEach(el => {
+      if (el) {
+        el.addEventListener("input", renderCurrentPreview);
+        el.addEventListener("change", renderCurrentPreview);
+      }
+    });
+
+    // Close button
+    const btnCloseGen = document.getElementById("btn-cancel-doc-gen");
+    if (btnCloseGen) btnCloseGen.onclick = () => closeModal();
+
+    // Download Word
+    const btnDlWord = document.getElementById("btn-download-doc-word");
+    if (btnDlWord) {
+      btnDlWord.onclick = () => {
+        const cleanPlate = (currentVehicle.no_polisi || "KENDARAAN").replace(/\s+/g, "_");
+        const pNama = inputPemberiNama ? inputPemberiNama.value.trim() : initPemberiNama;
+        const pJabatan = inputPemberiJabatan ? inputPemberiJabatan.value.trim() : initPemberiJabatan;
+
+        if (currentDocType === "KUASA") {
+          const html = buildSuratKuasaHtml({
+            noSurat: inputNoSurat.value.trim(),
+            tglSurat: inputTglSurat.value,
+            pemberiNama: pNama,
+            pemberiJabatan: pJabatan,
+            pemberiPerusahaan: COMPANY_NAME || "CV ANDELA JAYA",
+            pemberiAlamat: COMPANY_ADDRESS_LINE1 || "Jln. Jendral Sudirman No 58, Penggung, Kota Cirebon",
+            penerimaNama: inputPenerimaNama.value.trim(),
+            penerimaNik: inputPenerimaNik.value.trim(),
+            penerimaJabatan: inputPenerimaJabatan.value.trim(),
+            penerimaAlamat: inputPenerimaAlamat.value.trim(),
+            tujuanPengurusan: inputTujuanKuasa.value,
+            instansiTujuan: inputInstansi.value.trim(),
+            kendaraan: currentVehicle
+          });
+          downloadA4LetterWordDoc({
+            htmlContent: html,
+            filename: `Surat_Kuasa_${cleanPlate}.doc`,
+            title: "Surat Kuasa Khusus Pengurusan Kendaraan"
+          });
+          toast("Surat Kuasa format Word berhasil diunduh!", "success");
+        } else {
+          const html = buildSuratKeteranganAsetHtml({
+            noSurat: inputNoSurat.value.trim(),
+            tglSurat: inputTglSurat.value,
+            pejabatNama: pNama,
+            pejabatJabatan: pJabatan,
+            namaPerusahaan: COMPANY_NAME || "CV ANDELA JAYA",
+            alamatPerusahaan: COMPANY_ADDRESS_LINE1 || "Jln. Jendral Sudirman No 58, Penggung, Kota Cirebon",
+            keperluan: inputKeperluanAset.value.trim(),
+            kendaraan: currentVehicle
+          });
+          downloadA4LetterWordDoc({
+            htmlContent: html,
+            filename: `Surat_Ket_Aset_${cleanPlate}.doc`,
+            title: "Surat Keterangan Kepemilikan Aset"
+          });
+          toast("Surat Keterangan Aset format Word berhasil diunduh!", "success");
+        }
+      };
+    }
+
+    // Download PDF (via iframe print)
+    const btnDlPdf = document.getElementById("btn-download-doc-pdf");
+    if (btnDlPdf) {
+      btnDlPdf.onclick = () => {
+        let html = "";
+        const pNama = inputPemberiNama ? inputPemberiNama.value.trim() : initPemberiNama;
+        const pJabatan = inputPemberiJabatan ? inputPemberiJabatan.value.trim() : initPemberiJabatan;
+
+        if (currentDocType === "KUASA") {
+          html = buildSuratKuasaHtml({
+            noSurat: inputNoSurat.value.trim(),
+            tglSurat: inputTglSurat.value,
+            pemberiNama: pNama,
+            pemberiJabatan: pJabatan,
+            pemberiPerusahaan: COMPANY_NAME || "CV ANDELA JAYA",
+            pemberiAlamat: COMPANY_ADDRESS_LINE1 || "Jln. Jendral Sudirman No 58, Penggung, Kota Cirebon",
+            penerimaNama: inputPenerimaNama.value.trim(),
+            penerimaNik: inputPenerimaNik.value.trim(),
+            penerimaJabatan: inputPenerimaJabatan.value.trim(),
+            penerimaAlamat: inputPenerimaAlamat.value.trim(),
+            tujuanPengurusan: inputTujuanKuasa.value,
+            instansiTujuan: inputInstansi.value.trim(),
+            kendaraan: currentVehicle
+          });
+        } else {
+          html = buildSuratKeteranganAsetHtml({
+            noSurat: inputNoSurat.value.trim(),
+            tglSurat: inputTglSurat.value,
+            pejabatNama: pNama,
+            pejabatJabatan: pJabatan,
+            namaPerusahaan: COMPANY_NAME || "CV ANDELA JAYA",
+            alamatPerusahaan: COMPANY_ADDRESS_LINE1 || "Jln. Jendral Sudirman No 58, Penggung, Kota Cirebon",
+            keperluan: inputKeperluanAset.value.trim(),
+            kendaraan: currentVehicle
+          });
+        }
+
+        const printIframe = document.createElement("iframe");
+        printIframe.style.position = "fixed";
+        printIframe.style.right = "0";
+        printIframe.style.bottom = "0";
+        printIframe.style.width = "0";
+        printIframe.style.height = "0";
+        printIframe.style.border = "0";
+        document.body.appendChild(printIframe);
+
+        const doc = printIframe.contentWindow.document;
+        doc.open();
+        doc.write(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>${currentDocType === 'KUASA' ? 'Surat_Kuasa_' : 'Surat_Ket_Aset_'}${(currentVehicle.no_polisi || '').replace(/\s+/g, '_')}</title>
+            <style>
+              @page {
+                size: A4 portrait;
+                margin: 20mm 15mm 20mm 15mm;
+              }
+              body {
+                font-family: 'Times New Roman', Times, serif;
+                font-size: 11pt;
+                line-height: 1.4;
+                color: #000;
+                margin: 0;
+                padding: 0;
+              }
+              table { border-collapse: collapse; width: 100%; }
+              p { margin: 0 0 8pt 0; }
+            </style>
+          </head>
+          <body>
+            ${html}
+            <script>
+              window.onload = function() {
+                window.focus();
+                window.print();
+                setTimeout(() => {
+                  window.parent.document.body.removeChild(window.frameElement);
+                }, 1000);
+              };
+            </script>
+          </body>
+          </html>
+        `);
+        doc.close();
+        toast("Membuka dialog cetak PDF...", "info");
+      };
+    }
+
+    // Initial render
+    renderCurrentPreview();
+  }
+
+  // 3. COMPREHENSIVE VEHICLE DETAIL MODAL// 3. COMPREHENSIVE VEHICLE DETAIL MODAL// 3. COMPREHENSIVE VEHICLE DETAIL MODAL
  // -------------------------------------------------------------
  function openVehicleDetailModal(vDoc) {
  const plate = escapeHtml(vDoc.no_polisi || "TANPA PLAT");
@@ -378,7 +1325,14 @@ export async function mount(container, { session }) {
 
  <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100">
  <div class="flex items-center gap-2">
- <button id="btn-export-single-excel-${vDoc.id}" class="px-3 py-1.5 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs">
+ <button id="btn-quick-gen-kuasa-${vDoc.id}" class="px-3 py-1.5 text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-amber-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          <span>Surat Kuasa (A4)</span>
+        </button>
+        <button id="btn-quick-gen-aset-${vDoc.id}" class="px-3 py-1.5 text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs">
+          <span>🏢 Surat Ket. Aset</span>
+        </button>
+        <button id="btn-export-single-excel-${vDoc.id}" class="px-3 py-1.5 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs">
  <span class="font-bold text-[10px] bg-emerald-200 text-emerald-900 px-1 py-0.2 rounded">XLS</span>
  <span>Export Excel</span>
  </button>
@@ -1515,51 +2469,66 @@ export async function mount(container, { session }) {
 
  // -------------------------------------------------------------
  // 6. EVENT BINDINGS & TAB SWITCHING
- // -------------------------------------------------------------
- if (canEdit) {
- btnAdd.onclick = () => openVehicleFormModal();
- } else if (btnAdd) {
- btnAdd.classList.add("hidden");
- }
- searchInput.oninput = () => renderVehicleCards();
- statusFilter.onchange = () => renderVehicleCards();
+  // -------------------------------------------------------------
+  const btnDocGenHeader = container.querySelector("#btn-open-doc-generator-header");
+  const btnExportDocGenMenu = container.querySelector("#btn-export-doc-gen-menu");
 
- // Export Dropdown & Action Buttons
- if (btnExportMenu && exportMenu) {
- btnExportMenu.onclick = (e) => {
- e.stopPropagation();
- exportMenu.classList.toggle("hidden");
- };
- document.addEventListener("click", (e) => {
- if (!exportMenu.contains(e.target) && e.target !== btnExportMenu && !btnExportMenu.contains(e.target)) {
- exportMenu.classList.add("hidden");
- }
- });
- }
+  if (btnDocGenHeader) {
+    btnDocGenHeader.onclick = () => {
+      openVehicleDocGeneratorModal(allVehicles[0] || null, "KUASA");
+    };
+  }
 
- if (btnExportExcel) {
- btnExportExcel.onclick = async () => {
- if (exportMenu) exportMenu.classList.add("hidden");
- await exportKendaraanExcel();
- };
- }
+  if (btnExportDocGenMenu) {
+    btnExportDocGenMenu.onclick = () => {
+      if (exportMenu) exportMenu.classList.add("hidden");
+      openVehicleDocGeneratorModal(allVehicles[0] || null, "KUASA");
+    };
+  }
 
- if (btnExportWord) {
- btnExportWord.onclick = () => {
- if (exportMenu) exportMenu.classList.add("hidden");
- exportKendaraanWord();
- };
- }
+  if (canEdit) {
+    btnAdd.onclick = () => openVehicleFormModal();
+  } else if (btnAdd) {
+    btnAdd.classList.add("hidden");
+  }
+  searchInput.oninput = () => renderVehicleCards();
+  statusFilter.onchange = () => renderVehicleCards();
 
- if (btnExportOptions) {
- btnExportOptions.onclick = () => {
- if (exportMenu) exportMenu.classList.add("hidden");
- openExportOptionsModal();
- };
- }
+  // Export Dropdown & Action Buttons
+  if (btnExportMenu && exportMenu) {
+    btnExportMenu.onclick = (e) => {
+      e.stopPropagation();
+      exportMenu.classList.toggle("hidden");
+    };
+    document.addEventListener("click", (e) => {
+      if (!exportMenu.contains(e.target) && e.target !== btnExportMenu && !btnExportMenu.contains(e.target)) {
+        exportMenu.classList.add("hidden");
+      }
+    });
+  }
 
- // Tab Switching
- container.querySelectorAll(".kd-tab").forEach(btn => {
+  if (btnExportExcel) {
+    btnExportExcel.onclick = async () => {
+      if (exportMenu) exportMenu.classList.add("hidden");
+      await exportKendaraanExcel();
+    };
+  }
+
+  if (btnExportWord) {
+    btnExportWord.onclick = () => {
+      if (exportMenu) exportMenu.classList.add("hidden");
+      exportKendaraanWord();
+    };
+  }
+
+  if (btnExportOptions) {
+    btnExportOptions.onclick = () => {
+      if (exportMenu) exportMenu.classList.add("hidden");
+      openExportOptionsModal();
+    };
+  }
+
+  container.querySelectorAll(".kd-tab").forEach(btn => {
  btn.addEventListener("click", async () => {
  const tab = btn.dataset.ktab;
  
