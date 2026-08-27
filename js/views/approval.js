@@ -529,7 +529,7 @@ async function processAction(row, action, note, session) {
    badgeVariant: "green",
    title: `Pengajuan Disetujui: ${row.nama_form}`,
    recipientName: target.nama || row.nama_pemohon,
-   introText: `Pengajuan <strong>${escapeHtml(row.nama_form)}</strong> telah menyelesaikan seluruh tahapan persetujuan dan dinyatakan <strong>DISANGGUPKAN / DISETUJUI FINAL</strong>.`,
+   introText: `Pengajuan <strong>${escapeHtml(row.nama_form)}</strong> telah menyelesaikan seluruh tahapan persetujuan dan dinyatakan <strong>DISETUJUI FINAL (APPROVED)</strong>.`,
    infoList: generalInfoList,
    actionUrl: `${window.location.origin}/#dashboard?token=${token}`,
    actionText: "Buka Portal HRIS →",
@@ -538,6 +538,54 @@ async function processAction(row, action, note, session) {
  }
  
  sendEmailNotif(target.email, `[APPROVED FINAL] ${row.nama_form}`, htmlFinal);
+ }
+
+ // Kirim Email Hasil Status & Link Form ke Target Personil Khusus (Konfigurasi Form Builder)
+ try {
+   const formCfgFinal = (await fsGetAll(COL.FORM_CONFIG).catch(() => [])).find(f => f.id === row.form_id);
+   const userRulesFinal = row.notify_user_rules || formCfgFinal?.notify_user_rules || row.notify_targets?.user_rules || [];
+   const specificUsersFallback = row.notify_specific_users || formCfgFinal?.notify_specific_users || row.notify_targets?.specific_users || [];
+   
+   const customFinalTargets = [];
+   if (Array.isArray(userRulesFinal) && userRulesFinal.length > 0) {
+     for (const r of userRulesFinal) {
+       if (r && r.nama && (r.hasil_status !== false && r.final_status !== false)) {
+         customFinalTargets.push(r.nama);
+       }
+     }
+   } else if (Array.isArray(specificUsersFallback)) {
+     customFinalTargets.push(...specificUsersFallback);
+   }
+
+   const notifiedUsernames = new Set(finalTargets.map(t => (t.username || t.nama || "").toUpperCase()));
+   for (const customName of customFinalTargets) {
+     if (!customName || notifiedUsernames.has(customName.toUpperCase())) continue;
+     const tList = await getTargetsForRole("PEMOHON", customName);
+     const customTargetObj = tList[0] || { nama: customName, email: karyawanByNama[customName]?.email, username: customName };
+     if (customTargetObj && customTargetObj.email) {
+       const customToken = await createLoginToken(customTargetObj.username || customName);
+       const customEmailHtml = buildStandardEmailHtml({
+         badgeText: "Info Status Final",
+         badgeVariant: "green",
+         title: `[Tembusan] ${row.nama_form} Disetujui Final`,
+         recipientName: customTargetObj.nama || customName,
+         introText: `Pemberitahuan bahwa pengajuan <strong>${escapeHtml(row.nama_form)}</strong> oleh <strong>${escapeHtml(row.nama_pemohon)}</strong> telah selesai diproses dan berstatus <strong>DISETUJUI FINAL</strong>.`,
+         infoList: [
+           { label: "Nomor Dokumen", value: row.id },
+           { label: "Nama Pengajuan", value: row.nama_form },
+           { label: "Pemohon", value: row.nama_pemohon },
+           { label: "Status Akhir", value: "APPROVED FINAL" }
+         ],
+         actionUrl: `${window.location.origin}/#riwayat?id=${row.id}&token=${customToken}`,
+         actionText: "Buka Dokumen Pengajuan →",
+         secondaryNote: "Anda menerima email ini sebagai personil penerima notifikasi khusus untuk formulir ini."
+       });
+       sendEmailNotif(customTargetObj.email, `[INFO FINAL] ${row.nama_form} - ${row.nama_pemohon}`, customEmailHtml).catch(e => console.warn(e));
+       notifiedUsernames.add(customName.toUpperCase());
+     }
+   }
+ } catch (errCustomEmail) {
+   console.warn("Gagal mengirim email custom final target:", errCustomEmail);
  }
 
  // ------------------------------------------------------------

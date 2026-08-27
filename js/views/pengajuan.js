@@ -252,7 +252,10 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
  lpj_fields_json: requiresLpj ? (formCfg.lpj_fields_json || []) : [],
  lpj_status: requiresLpj ? "BELUM" : null,
  lpj_due_date: null,
- lpj_detail: null
+ lpj_detail: null,
+ notify_user_rules: formCfg.notify_user_rules || formCfg.notify_targets?.user_rules || [],
+ notify_specific_users: formCfg.notify_specific_users || formCfg.notify_targets?.specific_users || [],
+ notify_targets: formCfg.notify_targets || null
  };
 
  if (requiresLpj && payload.status_final === "APPROVED FINAL") {
@@ -295,23 +298,35 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
  }
  }
 
- // Memicu Notifikasi & Email ke Target Nama Karyawan Spesifik dari Form Config
+ // Memicu Notifikasi & Email ke Target Nama Karyawan Spesifik (Info Cuti / Dinas)
+ const userRules = formCfg.notify_user_rules || formCfg.notify_targets?.user_rules || [];
  const specificTargets = formCfg.notify_specific_users || formCfg.notify_targets?.specific_users || [];
- if (Array.isArray(specificTargets) && specificTargets.length > 0) {
- for (const targetName of specificTargets) {
+ 
+ const initialNotifyNames = [];
+ if (Array.isArray(userRules) && userRules.length > 0) {
+ for (const r of userRules) {
+ if (r && r.nama && (r.info_dinas !== false && r.info_pengajuan !== false)) {
+ initialNotifyNames.push(r.nama);
+ }
+ }
+ } else if (Array.isArray(specificTargets)) {
+ initialNotifyNames.push(...specificTargets);
+ }
+
+ if (initialNotifyNames.length > 0) {
+ for (const targetName of initialNotifyNames) {
  if (!targetName || !targetName.trim()) continue;
  const targetNameUpper = targetName.trim().toUpperCase();
  if (targetNameUpper === (session.nama || "").toUpperCase()) continue;
- // Lewati kalau sudah dinotif di blok approval flow di atas, supaya
- // 1 orang tidak dapat 2 email berbeda teks untuk pengajuan yang sama.
  if (alreadyNotifiedSet.has(targetNameUpper)) continue;
 
  await notifyUser(
  targetName,
- `Notifikasi Pengajuan Baru: ${payload.nama_form}`,
- `Formulir ${payload.nama_form} baru telah diajukan oleh ${payload.nama_pemohon}.`,
- `/#approval?id=${payload.id}`
+ `Info Pengajuan Baru: ${payload.nama_form}`,
+ `Formulir ${payload.nama_form} baru telah diajukan oleh ${payload.nama_pemohon} (${session.jabatan || 'Pemohon'}).`,
+ `/#riwayat?id=${payload.id}`
  ).catch(e => console.warn("Notif target khusus pengajuan gagal:", e));
+ alreadyNotifiedSet.add(targetNameUpper);
  }
  }
  } catch (e) {

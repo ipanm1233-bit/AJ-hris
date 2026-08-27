@@ -12,6 +12,8 @@ let currentFlow = [];
 let currentRules = [];
 let selectedAllowedUsers = ["ALL"];
 let selectedNotifyUsers = [];
+let notifyUserRules = [];
+let notifyFilterMode = "all"; // "all" | "selected"
 let dragIndex = null;
 let lpjDragIndex = null;
 
@@ -76,15 +78,36 @@ function openBuilder(container, form) {
  selectedAllowedUsers = ["ALL"];
  }
 
- // Parse Target Notifikasi & Email Spesifik
+ // Parse Target Notifikasi & Email Spesifik (Matriks Per Personil)
+ const rawRules = form?.notify_user_rules || form?.notify_targets?.user_rules || [];
  const customNotify = form?.notify_specific_users || form?.notify_targets?.specific_users || [];
- if (Array.isArray(customNotify)) {
- selectedNotifyUsers = [...customNotify];
- } else if (typeof customNotify === "string") {
- selectedNotifyUsers = customNotify.split(",").map(s => s.trim()).filter(Boolean);
+ if (Array.isArray(rawRules) && rawRules.length > 0) {
+ notifyUserRules = rawRules.map(r => ({
+   nama: r.nama || "",
+   nik: r.nik || "",
+   email: r.email || "",
+   info_dinas: r.info_dinas !== false && r.info_pengajuan !== false,
+   approval: r.approval !== false,
+   hasil_status: r.hasil_status !== false && r.final_status !== false
+ })).filter(r => r.nama);
+ } else if (Array.isArray(customNotify) && customNotify.length > 0) {
+ notifyUserRules = customNotify.map(name => {
+   const strName = typeof name === "string" ? name : (name?.nama || "");
+   const emp = allEmployees.find(e => (e.nama_karyawan || e.nama || "").toLowerCase() === strName.toLowerCase());
+   return {
+     nama: strName,
+     nik: emp ? (emp.nik_karyawan || emp.nik || "") : "",
+     email: emp ? (emp.email || "") : "",
+     info_dinas: true,
+     approval: true,
+     hasil_status: true
+   };
+ }).filter(r => r.nama);
  } else {
- selectedNotifyUsers = [];
+ notifyUserRules = [];
  }
+ selectedNotifyUsers = notifyUserRules.map(r => r.nama);
+ notifyFilterMode = "all";
 
  container.querySelector("#fb-empty-hint").classList.add("hidden");
  container.querySelector("#fb-builder-wrap").classList.remove("hidden");
@@ -184,6 +207,7 @@ function ensureToolbar(container) {
  <button type="button" class="btn-add-field text-xs font-medium bg-white text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-blue-400 hover:text-blue-600 transition shadow-sm" data-type="radio">+ Radio (Pilihan Tunggal)</button>
  <button type="button" class="btn-add-field text-xs font-medium bg-white text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-blue-400 hover:text-blue-600 transition shadow-sm" data-type="checkbox">+ Checkbox (Banyak Pilihan)</button>
  <button type="button" class="btn-add-field text-xs font-medium bg-white text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-blue-400 hover:text-blue-600 transition shadow-sm" data-type="select">+ Dropdown Manual</button>
+ <button type="button" class="btn-add-field text-xs bg-emerald-50 font-bold text-emerald-800 px-3 py-1.5 rounded-lg border border-emerald-300 hover:bg-emerald-100 transition shadow-sm" data-type="list">+ Daftar / List (Bullet / Angka)</button>
  <button type="button" class="btn-add-field text-xs bg-emerald-50 font-bold text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-100 transition shadow-sm" data-type="db_select">+ Dropdown Database</button>
  <button type="button" class="btn-add-field text-xs bg-amber-50 font-bold text-amber-700 px-3 py-1.5 rounded-lg border border-amber-200 hover:bg-amber-100 transition shadow-sm" data-type="formula">+ Formula Kalkulasi</button>
  <button type="button" class="btn-add-field text-xs bg-indigo-50 font-bold text-indigo-700 px-3 py-1.5 rounded-lg border border-indigo-200 hover:bg-indigo-100 transition shadow-sm" data-type="file">+ Upload Foto/File</button>
@@ -209,6 +233,9 @@ function ensureToolbar(container) {
  newField.max_scale = 5;
  newField.min_label = "Sangat Kurang";
  newField.max_label = "Sangat Baik";
+ } else if (type === "list") {
+ newField.list_style = "bullet";
+ newField.placeholder = "Masukkan satu per baris...";
  } else if (type === "db_select") {
  newField.db_source = "master_karyawan";
  } else if (type === "formula") {
@@ -665,135 +692,265 @@ function renderAllowedUsersList(container, term = "") {
 }
 
 /* ---------------------------------------------------------------------
- * SELEKSI ALUR NOTIFIKASI & EMAIL KHUSUS (TARGET KARYAWAN SPESIFIK)
+ * SELEKSI ALUR NOTIFIKASI & EMAIL KHUSUS (TARGET KARYAWAN SPESIFIK & MATRIKS)
  * ------------------------------------------------------------------- */
 function initNotifyUsersSelector(container) {
- const searchInput = container.querySelector("#fb-notify-users-search");
- const countBadge = container.querySelector("#fb-notify-users-count");
+  const searchInput = container.querySelector("#fb-notify-users-search");
+  const countBadge = container.querySelector("#fb-notify-users-count");
+  const btnFilterAll = container.querySelector("#fb-notify-filter-all");
+  const btnFilterSelected = container.querySelector("#fb-notify-filter-selected");
 
- if (!searchInput) return;
+  if (!searchInput) return;
 
- const updateUI = () => {
- const cnt = selectedNotifyUsers.length;
- countBadge.textContent = `${cnt} Karyawan Penerima`;
- countBadge.className = cnt ? "text-xs font-semibold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100" : "text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200";
- renderNotifyUsersList(container, searchInput.value.trim());
- };
+  const updateUI = () => {
+    const cnt = notifyUserRules.length;
+    countBadge.textContent = cnt ? `${cnt} Personil Dipilih` : "0 Personil Dipilih";
+    countBadge.className = cnt ? "text-xs font-semibold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100" : "text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200";
+    
+    if (btnFilterAll && btnFilterSelected) {
+      if (notifyFilterMode === "all") {
+        btnFilterAll.className = "px-2.5 py-1 rounded-lg border border-blue-600 bg-blue-50 text-blue-700 font-bold";
+        btnFilterSelected.className = "px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-medium";
+      } else {
+        btnFilterSelected.className = "px-2.5 py-1 rounded-lg border border-blue-600 bg-blue-50 text-blue-700 font-bold";
+        btnFilterAll.className = "px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-medium";
+      }
+    }
 
- searchInput.oninput = () => {
- renderNotifyUsersList(container, searchInput.value.trim());
- };
+    renderNotifyUsersTable(container, searchInput.value.trim());
+  };
 
- updateUI();
+  searchInput.oninput = () => {
+    renderNotifyUsersTable(container, searchInput.value.trim());
+  };
+
+  if (btnFilterAll) {
+    btnFilterAll.onclick = () => {
+      notifyFilterMode = "all";
+      updateUI();
+    };
+  }
+
+  if (btnFilterSelected) {
+    btnFilterSelected.onclick = () => {
+      notifyFilterMode = "selected";
+      updateUI();
+    };
+  }
+
+  updateUI();
 }
 
-function renderNotifyUsersList(container, term = "") {
- const listEl = container.querySelector("#fb-notify-users-list");
- if (!listEl) return;
+function renderNotifyUsersTable(container, term = "") {
+  const tbodyEl = container.querySelector("#fb-notify-users-tbody");
+  if (!tbodyEl) return;
 
- const filterTerm = term.toLowerCase();
+  const filterTerm = term.toLowerCase();
 
- const filtered = allEmployees.filter(emp => {
- if (!filterTerm) return true;
- const name = (emp.nama_karyawan || emp.nama || "").toLowerCase();
- const nik = String(emp.nik_karyawan || emp.nik || "").toLowerCase();
- const jabatan = (emp.jabatan || emp.role || "").toLowerCase();
- const email = (emp.email || "").toLowerCase();
- return name.includes(filterTerm) || nik.includes(filterTerm) || jabatan.includes(filterTerm) || email.includes(filterTerm);
- });
+  let filtered = allEmployees.filter(emp => {
+    const name = (emp.nama_karyawan || emp.nama || "").toLowerCase();
+    const nik = String(emp.nik_karyawan || emp.nik || "").toLowerCase();
+    const jabatan = (emp.jabatan || emp.role || "").toLowerCase();
+    const email = (emp.email || "").toLowerCase();
+    if (!filterTerm) return true;
+    return name.includes(filterTerm) || nik.includes(filterTerm) || jabatan.includes(filterTerm) || email.includes(filterTerm);
+  });
 
- if (!filtered.length) {
- listEl.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">Tidak ada karyawan yang cocok dengan pencarian "${escapeHtml(term)}".</p>`;
- return;
- }
+  if (notifyFilterMode === "selected") {
+    const selectedNames = new Set(notifyUserRules.map(r => r.nama.toLowerCase()));
+    filtered = filtered.filter(emp => selectedNames.has((emp.nama_karyawan || emp.nama || "").toLowerCase()));
+  }
 
- listEl.innerHTML = filtered.map(emp => {
- const name = emp.nama_karyawan || emp.nama || "";
- const nik = emp.nik_karyawan || emp.nik || "-";
- const email = emp.email || "";
- const subtext = [emp.jabatan || emp.role, email].filter(Boolean).join(" • ");
- const isChecked = selectedNotifyUsers.some(u => u.toLowerCase() === name.toLowerCase());
+  if (!filtered.length) {
+    tbodyEl.innerHTML = `
+      <tr>
+        <td colspan="5" class="text-xs text-slate-400 text-center py-6">
+          ${notifyFilterMode === 'selected' ? 'Belum ada personil yang dipilih untuk alur notifikasi khusus ini.' : `Tidak ada karyawan yang cocok dengan kata kunci "${escapeHtml(term)}".`}
+        </td>
+      </tr>
+    `;
+    return;
+  }
 
- return `
- <label class="flex items-center justify-between p-2 rounded-lg hover:bg-blue-50/50 cursor-pointer text-xs border border-transparent hover:border-blue-100 transition ${isChecked ? 'bg-blue-50/60 border-blue-200' : ''}">
- <div class="flex items-center gap-2.5">
- <input type="checkbox" data-emp-notify="${escapeHtml(name)}" ${isChecked ? "checked" : ""} class="fb-notify-emp-cb rounded border-slate-300 text-blue-700 w-4 h-4">
- <div>
- <span class="font-semibold text-slate-800">${escapeHtml(name)}</span>
- ${subtext ? `<p class="text-[10px] text-slate-400 mt-0.5">${escapeHtml(subtext)}</p>` : ''}
- </div>
- </div>
- <span class="text-[10px] text-slate-400 font-mono bg-slate-100 px-1.5 py-0.5 rounded">${email ? escapeHtml(email) : 'NIK: ' + escapeHtml(nik)}</span>
- </label>
- `;
- }).join("");
+  tbodyEl.innerHTML = filtered.map(emp => {
+    const name = emp.nama_karyawan || emp.nama || "";
+    const nik = emp.nik_karyawan || emp.nik || "-";
+    const email = emp.email || "";
+    const jabatan = emp.jabatan || emp.role || "-";
+    
+    const existingRule = notifyUserRules.find(r => r.nama.toLowerCase() === name.toLowerCase());
+    const isSelected = !!existingRule;
+    const isInfoDinas = existingRule ? existingRule.info_dinas !== false : false;
+    const isApproval = existingRule ? existingRule.approval !== false : false;
+    const isHasilStatus = existingRule ? existingRule.hasil_status !== false : false;
 
- listEl.querySelectorAll(".fb-notify-emp-cb").forEach(cb => {
- cb.onchange = (e) => {
- const targetName = cb.dataset.empNotify;
- if (e.target.checked) {
- if (!selectedNotifyUsers.some(u => u.toLowerCase() === targetName.toLowerCase())) {
- selectedNotifyUsers.push(targetName);
- }
- } else {
- selectedNotifyUsers = selectedNotifyUsers.filter(u => u.toLowerCase() !== targetName.toLowerCase());
- }
+    return `
+      <tr class="hover:bg-blue-50/40 transition ${isSelected ? 'bg-blue-50/20' : ''}" data-emp-row="${escapeHtml(name)}">
+        <td class="p-2.5 text-center">
+          <input type="checkbox" data-emp-select="${escapeHtml(name)}" ${isSelected ? "checked" : ""} class="fb-notify-row-cb rounded border-slate-300 text-blue-700 w-4 h-4 cursor-pointer">
+        </td>
+        <td class="p-2.5">
+          <div class="flex flex-col">
+            <span class="font-semibold text-slate-800">${escapeHtml(name)}</span>
+            <div class="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-400">
+              <span class="bg-slate-100 px-1 py-0.2 rounded font-mono">${escapeHtml(nik)}</span>
+              <span>•</span>
+              <span>${escapeHtml(jabatan)}</span>
+              ${email ? `<span>•</span><span class="text-blue-600 font-mono">${escapeHtml(email)}</span>` : ''}
+            </div>
+          </div>
+        </td>
+        <td class="p-2.5 text-center">
+          <label class="inline-flex items-center justify-center cursor-pointer p-1 rounded hover:bg-blue-100/50">
+            <input type="checkbox" data-emp-rule="info_dinas" data-emp-name="${escapeHtml(name)}" ${isInfoDinas ? "checked" : ""} class="fb-rule-cb rounded border-blue-300 text-blue-600 w-4 h-4 cursor-pointer">
+          </label>
+        </td>
+        <td class="p-2.5 text-center">
+          <label class="inline-flex items-center justify-center cursor-pointer p-1 rounded hover:bg-amber-100/50">
+            <input type="checkbox" data-emp-rule="approval" data-emp-name="${escapeHtml(name)}" ${isApproval ? "checked" : ""} class="fb-rule-cb rounded border-amber-300 text-amber-600 w-4 h-4 cursor-pointer">
+          </label>
+        </td>
+        <td class="p-2.5 text-center">
+          <label class="inline-flex items-center justify-center cursor-pointer p-1 rounded hover:bg-emerald-100/50">
+            <input type="checkbox" data-emp-rule="hasil_status" data-emp-name="${escapeHtml(name)}" ${isHasilStatus ? "checked" : ""} class="fb-rule-cb rounded border-emerald-300 text-emerald-600 w-4 h-4 cursor-pointer">
+          </label>
+        </td>
+      </tr>
+    `;
+  }).join("");
 
- const countBadge = container.querySelector("#fb-notify-users-count");
- const cnt = selectedNotifyUsers.length;
- countBadge.textContent = `${cnt} Karyawan Penerima`;
- countBadge.className = cnt ? "text-xs font-semibold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100" : "text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200";
- };
- });
+  // Event Listener Toggle Seluruh Baris Personil
+  tbodyEl.querySelectorAll(".fb-notify-row-cb").forEach(cb => {
+    cb.onchange = (e) => {
+      const empName = cb.dataset.empSelect;
+      const emp = allEmployees.find(x => (x.nama_karyawan || x.nama || "").toLowerCase() === empName.toLowerCase());
+      const row = cb.closest("tr");
+      
+      if (e.target.checked) {
+        if (!notifyUserRules.some(r => r.nama.toLowerCase() === empName.toLowerCase())) {
+          notifyUserRules.push({
+            nama: empName,
+            nik: emp ? (emp.nik_karyawan || emp.nik || "") : "",
+            email: emp ? (emp.email || "") : "",
+            info_dinas: true,
+            approval: true,
+            hasil_status: true
+          });
+        }
+        if (row) {
+          row.classList.add("bg-blue-50/20");
+          row.querySelectorAll(".fb-rule-cb").forEach(rcb => { rcb.checked = true; });
+        }
+      } else {
+        notifyUserRules = notifyUserRules.filter(r => r.nama.toLowerCase() !== empName.toLowerCase());
+        if (row) {
+          row.classList.remove("bg-blue-50/20");
+          row.querySelectorAll(".fb-rule-cb").forEach(rcb => { rcb.checked = false; });
+        }
+      }
+
+      selectedNotifyUsers = notifyUserRules.map(r => r.nama);
+      const countBadge = container.querySelector("#fb-notify-users-count");
+      const cnt = notifyUserRules.length;
+      countBadge.textContent = cnt ? `${cnt} Personil Dipilih` : "0 Personil Dipilih";
+      countBadge.className = cnt ? "text-xs font-semibold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100" : "text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200";
+    };
+  });
+
+  // Event Listener Toggle Sub-Rule (Info Cuti/Dinas, Approval, Hasil Status)
+  tbodyEl.querySelectorAll(".fb-rule-cb").forEach(rcb => {
+    rcb.onchange = (e) => {
+      const empName = rcb.dataset.empName;
+      const ruleKey = rcb.dataset.empRule;
+      const emp = allEmployees.find(x => (x.nama_karyawan || x.nama || "").toLowerCase() === empName.toLowerCase());
+      const row = rcb.closest("tr");
+      const rowCb = row ? row.querySelector(".fb-notify-row-cb") : null;
+
+      let ruleObj = notifyUserRules.find(r => r.nama.toLowerCase() === empName.toLowerCase());
+      if (!ruleObj) {
+        ruleObj = {
+          nama: empName,
+          nik: emp ? (emp.nik_karyawan || emp.nik || "") : "",
+          email: emp ? (emp.email || "") : "",
+          info_dinas: false,
+          approval: false,
+          hasil_status: false
+        };
+        notifyUserRules.push(ruleObj);
+      }
+
+      ruleObj[ruleKey] = e.target.checked;
+
+      // Jika ketiga rule tidak ada yang dicentang, hapus dari list
+      if (!ruleObj.info_dinas && !ruleObj.approval && !ruleObj.hasil_status) {
+        notifyUserRules = notifyUserRules.filter(r => r.nama.toLowerCase() !== empName.toLowerCase());
+        if (rowCb) rowCb.checked = false;
+        if (row) row.classList.remove("bg-blue-50/20");
+      } else {
+        if (rowCb) rowCb.checked = true;
+        if (row) row.classList.add("bg-blue-50/20");
+      }
+
+      selectedNotifyUsers = notifyUserRules.map(r => r.nama);
+      const countBadge = container.querySelector("#fb-notify-users-count");
+      const cnt = notifyUserRules.length;
+      countBadge.textContent = cnt ? `${cnt} Personil Dipilih` : "0 Personil Dipilih";
+      countBadge.className = cnt ? "text-xs font-semibold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100" : "text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200";
+    };
+  });
 }
 
 async function saveForm(container) {
- const id = container.querySelector("#fb-id").value.trim();
- const nama = container.querySelector("#fb-nama").value.trim();
- if (!id || !nama) { toast("ID Form dan Nama Formulir wajib diisi", "warning"); return; }
- if (!currentFields.length) { toast("Tambahkan minimal satu kolom formulir", "warning"); return; }
+  const id = container.querySelector("#fb-id").value.trim();
+  const nama = container.querySelector("#fb-nama").value.trim();
+  if (!id || !nama) { toast("ID Form dan Nama Formulir wajib diisi", "warning"); return; }
+  if (!currentFields.length) { toast("Tambahkan minimal satu kolom formulir", "warning"); return; }
 
- const requiresLpj = container.querySelector("#fb-requires-lpj").checked;
- const lpjDeadline = parseInt(container.querySelector("#fb-lpj-deadline").value) || 7;
- if (requiresLpj && !currentLpjFields.length) { toast("Aktifkan LPJ butuh minimal 1 kolom formulir LPJ (mis. Upload Bukti)", "warning"); return; }
+  const requiresLpj = container.querySelector("#fb-requires-lpj").checked;
+  const lpjDeadline = parseInt(container.querySelector("#fb-lpj-deadline").value) || 7;
+  if (requiresLpj && !currentLpjFields.length) { toast("Aktifkan LPJ butuh minimal 1 kolom formulir LPJ (mis. Upload Bukti)", "warning"); return; }
 
- const notifyTargets = {
- pemohon: container.querySelector("#fb-nt-pemohon") ? container.querySelector("#fb-nt-pemohon").checked : true,
- atasan_bawahan: container.querySelector("#fb-nt-atasan-bawahan") ? container.querySelector("#fb-nt-atasan-bawahan").checked : true,
- peers: container.querySelector("#fb-nt-peers") ? container.querySelector("#fb-nt-peers").checked : true,
- finance: container.querySelector("#fb-nt-finance") ? container.querySelector("#fb-nt-finance").checked : true,
- specific_users: selectedNotifyUsers
- };
+  selectedNotifyUsers = notifyUserRules.map(r => r.nama);
 
- const allowedUsersVal = selectedAllowedUsers.includes("ALL") ? "ALL" : selectedAllowedUsers;
+  const notifyTargets = {
+    pemohon: container.querySelector("#fb-nt-pemohon") ? container.querySelector("#fb-nt-pemohon").checked : true,
+    atasan_bawahan: container.querySelector("#fb-nt-atasan-bawahan") ? container.querySelector("#fb-nt-atasan-bawahan").checked : true,
+    peers: container.querySelector("#fb-nt-peers") ? container.querySelector("#fb-nt-peers").checked : true,
+    finance: container.querySelector("#fb-nt-finance") ? container.querySelector("#fb-nt-finance").checked : true,
+    specific_users: selectedNotifyUsers,
+    user_rules: notifyUserRules
+  };
 
- const payload = {
- nama_form: nama,
- approval_flow: currentFlow,
- allowed_rules: currentRules.join(", "),
- allowed_users: allowedUsersVal,
- notify_specific_users: selectedNotifyUsers,
- fields_json: currentFields,
- requires_lpj: requiresLpj,
- lpj_deadline_days: lpjDeadline,
- lpj_fields_json: requiresLpj ? currentLpjFields : [],
- notify_targets: notifyTargets
- };
+  const allowedUsersVal = selectedAllowedUsers.includes("ALL") ? "ALL" : selectedAllowedUsers;
 
- try {
- if (editingId) {
- await fsUpdate(COL.FORM_CONFIG, editingId, payload);
- Object.assign(allForms.find(f => f.id === editingId), payload);
- } else {
- await fsAdd(COL.FORM_CONFIG, payload, id);
- allForms.push({ id, ...payload });
- }
- toast("Formulir berhasil disimpan", "success");
- closeBuilder(container);
- } catch (e) {
- console.error(e);
- toast("Gagal menyimpan formulir: " + e.message, "error");
- }
+  const payload = {
+    nama_form: nama,
+    approval_flow: currentFlow,
+    allowed_rules: currentRules.join(", "),
+    allowed_users: allowedUsersVal,
+    notify_user_rules: notifyUserRules,
+    notify_specific_users: selectedNotifyUsers,
+    fields_json: currentFields,
+    requires_lpj: requiresLpj,
+    lpj_deadline_days: lpjDeadline,
+    lpj_fields_json: requiresLpj ? currentLpjFields : [],
+    notify_targets: notifyTargets
+  };
+
+  try {
+    if (editingId) {
+      await fsUpdate(COL.FORM_CONFIG, editingId, payload);
+      Object.assign(allForms.find(f => f.id === editingId), payload);
+    } else {
+      await fsAdd(COL.FORM_CONFIG, payload, id);
+      allForms.push({ id, ...payload });
+    }
+    toast("Formulir berhasil disimpan", "success");
+    closeBuilder(container);
+  } catch (e) {
+    console.error(e);
+    toast("Gagal menyimpan formulir: " + e.message, "error");
+  }
 }
 
 async function deleteForm(container) {

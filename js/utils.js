@@ -1299,6 +1299,149 @@ export function exportToCsv(filename, rows) {
  URL.revokeObjectURL(url);
 }
 
+/**
+ * Ekspor Dokumen Resmi format Microsoft Word (.doc) berbasis MIME HTML Word Document.
+ * Kompatibel penuh dengan Microsoft Word (Desktop/Office 365), LibreOffice Writer,
+ * Google Docs, dan WPS Office.
+ */
+export function downloadWordDoc({
+ filename = "document.doc",
+ title = "Laporan Resmi",
+ subtitle = "CV ANDELA JAYA",
+ meta = [],
+ tables = [],
+ customHtmlBefore = "",
+ customHtmlAfter = "",
+ signatures = []
+}) {
+ const metaHtml = meta && meta.length ? `
+ <table style="width:100%; border:none; margin-bottom:14px; font-size:10pt;">
+ ${meta.map(m => `
+ <tr>
+ <td style="width:180px; font-weight:bold; color:#475569; border:none; padding:3px 0; vertical-align:top;">${escapeHtml(m.label || m.key || '')}</td>
+ <td style="width:15px; border:none; padding:3px 0; vertical-align:top;">:</td>
+ <td style="color:#0f172a; border:none; padding:3px 0; vertical-align:top;">${escapeHtml(String(m.value ?? '-'))}</td>
+ </tr>
+ `).join('')}
+ </table>
+ ` : '';
+
+ const tablesHtml = (tables || []).map((t) => {
+ const tTitle = t.title ? `<h3 style="font-size:11pt; color:#7f1d1d; margin:16px 0 6px 0; font-weight:bold;">${escapeHtml(t.title)}</h3>` : '';
+ const tSubtitle = t.subtitle ? `<p style="font-size:9pt; color:#64748b; margin:0 0 8px 0;">${escapeHtml(t.subtitle)}</p>` : '';
+ const tHeaders = t.headers && t.headers.length ? `
+ <thead>
+ <tr style="background-color:#7f1d1d; color:#ffffff;">
+ ${t.headers.map(h => `<th style="border:1px solid #7f1d1d; background-color:#7f1d1d; color:#ffffff; padding:7px 6px; font-size:9pt; text-align:left; font-weight:bold;">${escapeHtml(h)}</th>`).join('')}
+ </tr>
+ </thead>
+ ` : '';
+ const tRows = (t.rows || []).map((r, rIdx) => {
+ const bg = rIdx % 2 === 1 ? 'background-color:#f8fafc;' : 'background-color:#ffffff;';
+ return `
+ <tr style="${bg}">
+ ${r.map((c, cIdx) => {
+ const align = t.aligns && t.aligns[cIdx] ? `text-align:${t.aligns[cIdx]};` : '';
+ const isRawHtml = typeof c === 'string' && (c.includes('<span') || c.includes('<div') || c.includes('<b'));
+ const content = isRawHtml ? c : escapeHtml(String(c ?? '-'));
+ return `<td style="border:1px solid #cbd5e1; padding:6px; font-size:9pt; vertical-align:top; color:#1e293b; ${align}">${content}</td>`;
+ }).join('')}
+ </tr>
+ `;
+ }).join('');
+
+ return `
+ ${tTitle}
+ ${tSubtitle}
+ <table style="width:100%; border-collapse:collapse; margin-bottom:16px;">
+ ${tHeaders}
+ <tbody>
+ ${tRows || '<tr><td colspan="100%" style="text-align:center; padding:12px; color:#94a3b8;">Tidak ada data tercatat</td></tr>'}
+ </tbody>
+ </table>
+ `;
+ }).join('');
+
+ const sigHtml = signatures && signatures.length ? `
+ <table style="width:100%; border:none; margin-top:35px; page-break-inside:avoid; font-size:9.5pt;">
+ <tr>
+ ${signatures.map(s => `
+ <td style="border:none; text-align:center; width:${Math.floor(100 / signatures.length)}%; vertical-align:top; padding:0 10px;">
+ <div style="font-weight:normal; color:#475569; margin-bottom:55px;">${escapeHtml(s.role || 'Mengetahui,')}<br><strong style="color:#1e293b;">${escapeHtml(s.title || '')}</strong></div>
+ <div style="font-weight:bold; text-decoration:underline; color:#0f172a;">${escapeHtml(s.name || '( .................................... )')}</div>
+ ${s.nip ? `<div style="font-size:8.5pt; color:#64748b; margin-top:2px;">NIK: ${escapeHtml(s.nip)}</div>` : ''}
+ </td>
+ `).join('')}
+ </tr>
+ </table>
+ ` : '';
+
+ const docHtml = `
+ <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+ <head>
+ <meta charset='utf-8'>
+ <title>${escapeHtml(title)}</title>
+ <!--[if gte mso 9]>
+ <xml>
+ <w:WordDocument>
+ <w:View>Print</w:View>
+ <w:Zoom>100</w:Zoom>
+ <w:DoNotOptimizeForBrowser/>
+ </w:WordDocument>
+ </xml>
+ <![endif]-->
+ <style>
+ @page Section1 {
+ size: 841.9pt 595.3pt;
+ margin: 0.8in 0.8in 0.8in 0.8in;
+ mso-header-margin: 0.5in;
+ mso-footer-margin: 0.5in;
+ mso-paper-source: 0;
+ }
+ div.Section1 { page: Section1; }
+ body { font-family: 'Calibri', 'Segoe UI', 'Arial', sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.4; }
+ h1, h2, h3, h4 { font-family: 'Calibri', 'Arial', sans-serif; }
+ </style>
+ </head>
+ <body>
+ <div class="Section1">
+ <div style="border-bottom: 2.5px solid #7f1d1d; padding-bottom: 8px; margin-bottom: 14px;">
+ <table style="width:100%; border:none; margin:0;">
+ <tr>
+ <td style="border:none; vertical-align:middle;">
+ <div style="font-size:15pt; font-weight:bold; color:#7f1d1d; letter-spacing:0.5px;">${escapeHtml(title)}</div>
+ <div style="font-size:9.5pt; font-weight:bold; color:#334155; margin-top:2px;">${escapeHtml(subtitle)}</div>
+ </td>
+ <td style="border:none; text-align:right; vertical-align:middle;">
+ <div style="display:inline-block; border:1px solid #7f1d1d; padding:3px 7px; font-weight:bold; font-size:8pt; color:#7f1d1d; border-radius:4px;">
+ DOKUMEN RESMI INTERNAL
+ </div>
+ </td>
+ </tr>
+ </table>
+ </div>
+ ${metaHtml}
+ ${customHtmlBefore || ''}
+ ${tablesHtml}
+ ${customHtmlAfter || ''}
+ ${sigHtml}
+ </div>
+ </body>
+ </html>
+ `;
+
+ const blob = new Blob(["\uFEFF" + docHtml], { type: "application/msword;charset=utf-8" });
+ const url = URL.createObjectURL(blob);
+ const a = document.createElement("a");
+ const cleanFilename = filename.endsWith(".doc") ? filename : filename.replace(/\.[^/.]+$/, "") + ".doc";
+ a.href = url;
+ a.download = cleanFilename;
+ document.body.appendChild(a);
+ a.click();
+ a.remove();
+ URL.revokeObjectURL(url);
+}
+
 /* ---------------------------------------------------------------------
  * 7. SIMPLE FORMULA ENGINE — untuk Form Builder (rumus kalkulasi otomatis)
  * Mendukung sintaks: ([field_a] - [field_b]) * (10000/25)
@@ -2545,7 +2688,13 @@ export function renderPengajuanDetailHtml(row, session, options = {}) {
  tableHtml += `</tbody></table></div>`;
  return `<div class="py-2 border-b border-slate-100"><span class="font-semibold text-slate-500 text-xs">${formattedKey}</span>${tableHtml}</div>`;
  }
- return `<div class="flex justify-between py-2 border-b border-slate-100 text-xs"><span class="font-semibold text-slate-500">${formattedKey}</span><span class="font-bold text-slate-800">${escapeHtml(v.join(", "))}</span></div>`;
+ return `
+ <div class="py-2.5 border-b border-slate-100 text-xs">
+   <span class="font-semibold text-slate-500 block mb-1.5">${formattedKey}</span>
+   <ul class="list-disc list-inside space-y-1 bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-slate-800 font-medium">
+     ${v.map(item => `<li>${escapeHtml(String(item))}</li>`).join("")}
+   </ul>
+ </div>`;
  }
 
  if (typeof v === "number" && /total|biaya|harga|nominal|kasbon|pinjaman/i.test(k)) {
@@ -2620,7 +2769,7 @@ export function buildStandardEmailHtml(opts = {}) {
           ${escapeHtml(String(item.label))}
         </td>
         <td style="padding: 8px 10px; color: #0f172a; font-size: 13px; vertical-align: top; font-weight: 600;">
-          ${item.isHtml ? item.value : escapeHtml(String(item.value ?? "-"))}
+          ${item.isHtml || (typeof item.value === "string" && /<[a-z][\s\S]*>/i.test(item.value)) ? item.value : escapeHtml(String(item.value ?? "-"))}
         </td>
       </tr>
     `).join("");
@@ -2705,7 +2854,7 @@ export function buildStandardEmailHtml(opts = {}) {
 
             ${introText ? `
               <p style="margin: 0 0 16px 0; font-size: 13.5px; color: #334155; line-height: 1.6;">
-                ${escapeHtml(introText)}
+                ${(typeof introText === "string" && /<[a-z][\s\S]*>/i.test(introText)) ? introText : escapeHtml(introText)}
               </p>
             ` : ""}
 
@@ -3705,6 +3854,21 @@ export function dynFieldInputHtml(f) {
  `;
  }
  case "number": return `<input type="number" step="any" name="${f.name}" class="${base}" placeholder="0" ${req}>`;
+ case "list": {
+ const listStyle = f.list_style || "bullet";
+ const placeholder = f.placeholder || (listStyle === "numbered" ? "Tuliskan baris demi baris (setiap baris otomatis menjadi nomor 1, 2, 3...)" : "Tuliskan baris demi baris (setiap baris otomatis menjadi poin bullet •)...");
+ return `
+ <div class="space-y-1.5">
+   <div class="flex items-center justify-between text-[11px] font-semibold text-slate-500">
+     <span class="inline-flex items-center gap-1.5 ${listStyle === 'numbered' ? 'text-indigo-700' : 'text-slate-700'}">
+       ${listStyle === 'numbered' ? '🔢 Format: Daftar Nomor (1, 2, 3...)' : '• Format: Daftar Poin / Bullet'}
+     </span>
+     <span class="text-[10px] text-slate-400 font-normal">Tekan Enter untuk baris baru</span>
+   </div>
+   <textarea name="${f.name}" rows="4" class="${base} font-sans leading-relaxed" placeholder="${escapeHtml(placeholder)}" ${req}></textarea>
+ </div>
+ `;
+ }
  case "file": return `<input type="file" name="${f.name}" accept="image/*,.pdf" class="${base} bg-white" ${req}>
  <p class="text-[11px] text-slate-400 mt-1">Upload foto/dokumen (JPG, PNG, atau PDF, maks 5MB).</p>`;
  default: return `<input type="text" name="${f.name}" class="${base}" placeholder="Isi ${escapeHtml(f.label || "")}" ${req}>`;
@@ -3778,6 +3942,10 @@ export async function collectDynFormDetail(form, fields, pathPrefix) {
  } else if (f.type === "checkbox") {
  const vals = fd.getAll(f.name).filter(Boolean);
  detail[f.name] = vals.length > 1 ? vals.join(", ") : (vals[0] ?? "");
+ } else if (f.type === "list") {
+ const raw = fd.get(f.name) || "";
+ const lines = String(raw).split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+ detail[f.name] = lines;
  } else {
  detail[f.name] = fd.get(f.name) ?? "";
  }

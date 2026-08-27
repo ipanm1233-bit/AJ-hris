@@ -1,5 +1,5 @@
 import { db, COL, doc, deleteDoc, setDoc } from "../firebase-config.js";
-import { fsGetAll, smartParseDate, escapeHtml, fmtDateShort, fmtRupiah, openModal, closeModal, toast, confirmDialog, genId } from "../utils.js";
+import { fsGetAll, smartParseDate, escapeHtml, fmtDateShort, fmtRupiah, fmtDateIndoLong, openModal, closeModal, toast, confirmDialog, genId, downloadWordDoc, ensureXlsxLoaded } from "../utils.js";
 import { renderCrudModule, badge, emptyState, icon } from "../components.js";
 import { canEditModuleData } from "../auth.js";
 
@@ -12,6 +12,12 @@ export async function mount(container, { session }) {
  const searchInput = container.querySelector("#kend-search");
  const statusFilter = container.querySelector("#kend-status-filter");
  const btnAdd = container.querySelector("#btn-add-kendaraan");
+
+ const btnExportMenu = container.querySelector("#btn-export-kendaraan-menu");
+ const exportMenu = container.querySelector("#kend-export-menu");
+ const btnExportExcel = container.querySelector("#btn-export-excel-kendaraan");
+ const btnExportWord = container.querySelector("#btn-export-word-kendaraan");
+ const btnExportOptions = container.querySelector("#btn-export-options-kendaraan");
 
  const panels = {
  cards: container.querySelector("#kd-panel-cards"),
@@ -370,15 +376,27 @@ export async function mount(container, { session }) {
  <p class="text-slate-700 leading-relaxed">${escapeHtml(vDoc.alamat || 'Tidak ada catatan khusus.')}</p>
  </div>
 
- ${isHrd && canEdit ? `
- <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
- <button id="btn-edit-veh-${vDoc.id}" class="px-3.5 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white rounded-xl transition">
- Edit Data Kendaraan
+ <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100">
+ <div class="flex items-center gap-2">
+ <button id="btn-export-single-excel-${vDoc.id}" class="px-3 py-1.5 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs">
+ <span class="font-bold text-[10px] bg-emerald-200 text-emerald-900 px-1 py-0.2 rounded">XLS</span>
+ <span>Export Excel</span>
  </button>
- <button id="btn-del-veh-${vDoc.id}" class="px-3.5 py-2 text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl transition">
- Hapus Kendaraan
+ <button id="btn-export-single-word-${vDoc.id}" class="px-3 py-1.5 text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs">
+ <span class="font-bold text-[10px] bg-blue-200 text-blue-900 px-1 py-0.2 rounded">DOC</span>
+ <span>Export Word</span>
+ </button>
+ </div>
+ ${isHrd && canEdit ? `
+ <div class="flex items-center gap-2">
+ <button id="btn-edit-veh-${vDoc.id}" class="px-3.5 py-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white rounded-xl transition cursor-pointer">
+ Edit Data
+ </button>
+ <button id="btn-del-veh-${vDoc.id}" class="px-3.5 py-1.5 text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl transition cursor-pointer">
+ Hapus
  </button>
  </div>` : ''}
+ </div>
  </div>
 
  <!-- TAB 2: LOG BBM -->
@@ -547,6 +565,21 @@ export async function mount(container, { session }) {
  btnQuickPajak.onclick = () => {
  closeModal();
  openAddComplianceModal(vDoc.no_polisi);
+ };
+ }
+
+ // Export Single Vehicle Buttons
+ const btnSingleExcel = document.getElementById(`btn-export-single-excel-${vDoc.id}`);
+ if (btnSingleExcel) {
+ btnSingleExcel.onclick = async () => {
+ await exportSingleVehicleExcel(vDoc);
+ };
+ }
+
+ const btnSingleWord = document.getElementById(`btn-export-single-word-${vDoc.id}`);
+ if (btnSingleWord) {
+ btnSingleWord.onclick = () => {
+ exportSingleVehicleWord(vDoc);
  };
  }
 
@@ -920,7 +953,568 @@ export async function mount(container, { session }) {
  }
 
  // -------------------------------------------------------------
- // 5. EVENT BINDINGS & TAB SWITCHING
+ // 5. EXPORT MASTER KENDARAAN (WORD & EXCEL)
+ // -------------------------------------------------------------
+ function getFilteredVehicles() {
+ const q = (searchInput.value || "").trim().toLowerCase();
+ const stFilter = statusFilter.value;
+ const now = new Date();
+
+ return allVehicles.filter(v => {
+ const plate = String(v.no_polisi || "").toLowerCase();
+ const merk = String(v.merk || "").toLowerCase();
+ const tipe = String(v.tipe || "").toLowerCase();
+ const driver = String(v.nama_pemilik || v.driver_pj || "").toLowerCase();
+
+ const matchQuery = !q || plate.includes(q) || merk.includes(q) || tipe.includes(q) || driver.includes(q);
+ if (!matchQuery) return false;
+
+ if (stFilter === "SIAP") return String(v.status_kendaraan || "SIAP").toUpperCase().includes("SIAP");
+ if (stFilter === "SERVICE") return String(v.status_kendaraan || "").toUpperCase().includes("SERVICE") || String(v.status_kendaraan || "").toUpperCase().includes("RUSAK") || String(v.status_kendaraan || "").toUpperCase().includes("PERBAIKAN");
+ 
+ if (stFilter === "ALERT") {
+ let isAlert = false;
+ ["tgl_stnk_tahunan", "tgl_pajak_5thn", "tgl_kir", "tgl_service_berikutnya"].forEach(f => {
+ const d = smartParseDate(v[f]);
+ if (d) {
+ const days = Math.round((d - now) / 86400000);
+ if (days <= 30) isAlert = true;
+ }
+ });
+ return isAlert;
+ }
+
+ return true;
+ });
+ }
+
+ async function exportKendaraanExcel(targetVehicles = null) {
+ const list = targetVehicles || allVehicles;
+ if (!list || !list.length) {
+ return toast("Tidak ada data kendaraan untuk diekspor", "warning");
+ }
+
+ await ensureXlsxLoaded();
+ const now = new Date();
+
+ // 1. Sheet Master Kendaraan
+ const masterHeaders = [
+ "No",
+ "No. Polisi / Plat",
+ "Merk Kendaraan",
+ "Tipe / Model",
+ "Tahun",
+ "Warna",
+ "Bahan Bakar",
+ "Driver / PJ",
+ "Atas Nama STNK",
+ "Status Kendaraan",
+ "Jatuh Tempo STNK Tahunan",
+ "Status STNK",
+ "Jatuh Tempo Pajak 5 Tahun",
+ "Status Pajak 5 Tahun",
+ "Jatuh Tempo Uji KIR",
+ "Status Uji KIR",
+ "Jadwal Service Berikutnya",
+ "Total Log BBM",
+ "Total Biaya BBM (Rp)",
+ "Total Log Service",
+ "Total Biaya Service (Rp)",
+ "Total Biaya Operasional (Rp)",
+ "No. Rangka",
+ "No. Mesin",
+ "Alamat STNK / Catatan"
+ ];
+
+ const masterRows = list.map((v, idx) => {
+ const plate = (v.no_polisi || "").toUpperCase();
+ 
+ // Status STNK
+ let stnkStatus = "Aman";
+ if (v.tgl_stnk_tahunan) {
+ const d = smartParseDate(v.tgl_stnk_tahunan);
+ if (d) {
+ const days = Math.round((d - now) / 86400000);
+ if (days < 0) stnkStatus = `Lewat ${Math.abs(days)} Hari`;
+ else if (days <= 30) stnkStatus = `Perlu Perpanjang (${days} hari lagi)`;
+ }
+ } else {
+ stnkStatus = "Belum Diisi";
+ }
+
+ // Status Pajak 5th
+ let pajak5Status = "Aman";
+ if (v.tgl_pajak_5thn) {
+ const d = smartParseDate(v.tgl_pajak_5thn);
+ if (d) {
+ const days = Math.round((d - now) / 86400000);
+ if (days < 0) pajak5Status = `Lewat ${Math.abs(days)} Hari`;
+ else if (days <= 30) pajak5Status = `Perlu Perpanjang (${days} hari lagi)`;
+ }
+ } else {
+ pajak5Status = "Belum Diisi";
+ }
+
+ // Status KIR
+ let kirStatus = "Aman";
+ if (v.tgl_kir) {
+ const d = smartParseDate(v.tgl_kir);
+ if (d) {
+ const days = Math.round((d - now) / 86400000);
+ if (days < 0) kirStatus = `Lewat ${Math.abs(days)} Hari`;
+ else if (days <= 30) kirStatus = `Perlu Uji (${days} hari lagi)`;
+ }
+ } else {
+ kirStatus = "Tidak Ada / Belum Diisi";
+ }
+
+ // Fuels for this plate
+ const vFuels = allFuelLogs.filter(f => (f.no_polisi || "").toUpperCase() === plate);
+ const totalBbmCost = vFuels.reduce((sum, f) => sum + (parseFloat(f.total_biaya) || 0), 0);
+
+ // Services for this plate
+ const vServices = allServiceLogs.filter(s => (s.no_polisi || "").toUpperCase() === plate);
+ const totalSvcCost = vServices.reduce((sum, s) => sum + (parseFloat(s.total_biaya) || 0), 0);
+
+ return [
+ idx + 1,
+ plate,
+ v.merk || "-",
+ v.tipe || "-",
+ v.tahun || "-",
+ v.warna || "-",
+ v.bahan_bakar || "-",
+ v.driver_pj || v.nama_pemilik || "-",
+ v.nama_pemilik || "-",
+ v.status_kendaraan || "Siap Pakai",
+ fmtDateShort(v.tgl_stnk_tahunan),
+ stnkStatus,
+ fmtDateShort(v.tgl_pajak_5thn),
+ pajak5Status,
+ fmtDateShort(v.tgl_kir),
+ kirStatus,
+ fmtDateShort(v.tgl_service_berikutnya),
+ vFuels.length,
+ totalBbmCost,
+ vServices.length,
+ totalSvcCost,
+ totalBbmCost + totalSvcCost,
+ v.no_rangka || "-",
+ v.no_mesin || "-",
+ v.alamat || "-"
+ ];
+ });
+
+ const wb = window.XLSX.utils.book_new();
+ const wsMaster = window.XLSX.utils.aoa_to_sheet([masterHeaders, ...masterRows]);
+ window.XLSX.utils.book_append_sheet(wb, wsMaster, "Master Kendaraan");
+
+ // 2. Sheet Log BBM
+ const relevantPlates = new Set(list.map(v => (v.no_polisi || "").toUpperCase()));
+ const fuelRows = allFuelLogs
+ .filter(f => relevantPlates.has((f.no_polisi || "").toUpperCase()))
+ .sort((a, b) => (b.tanggal || "").localeCompare(a.tanggal || ""))
+ .map((f, i) => [
+ i + 1,
+ fmtDateShort(f.tanggal),
+ (f.no_polisi || "").toUpperCase(),
+ f.nama_driver || "-",
+ parseFloat(f.km_awal) || 0,
+ parseFloat(f.km_akhir) || 0,
+ parseFloat(f.liter) || 0,
+ parseFloat(f.total_biaya) || 0
+ ]);
+ const wsFuel = window.XLSX.utils.aoa_to_sheet([
+ ["No", "Tanggal", "No. Polisi", "Nama Driver", "KM Awal", "KM Akhir", "Liter", "Total Biaya (Rp)"],
+ ...fuelRows
+ ]);
+ window.XLSX.utils.book_append_sheet(wb, wsFuel, "Log BBM");
+
+ // 3. Sheet Log Service
+ const svcRows = allServiceLogs
+ .filter(s => relevantPlates.has((s.no_polisi || "").toUpperCase()))
+ .sort((a, b) => (b.tanggal || "").localeCompare(a.tanggal || ""))
+ .map((s, i) => [
+ i + 1,
+ fmtDateShort(s.tanggal),
+ (s.no_polisi || "").toUpperCase(),
+ s.jenis_dokumen || "-",
+ s.vendor || "-",
+ s.nama_driver || "-",
+ parseFloat(s.total_biaya) || 0
+ ]);
+ const wsSvc = window.XLSX.utils.aoa_to_sheet([
+ ["No", "Tanggal", "No. Polisi", "Rincian Service / Perbaikan", "Vendor / Bengkel", "Driver PJ", "Total Biaya (Rp)"],
+ ...svcRows
+ ]);
+ window.XLSX.utils.book_append_sheet(wb, wsSvc, "Log Service");
+
+ // 4. Sheet Log Compliance / Pajak
+ const cmpRows = allComplianceLogs
+ .filter(c => relevantPlates.has((c.no_polisi || "").toUpperCase()))
+ .sort((a, b) => (b.tanggal_bayar || "").localeCompare(a.tanggal_bayar || ""))
+ .map((c, i) => [
+ i + 1,
+ fmtDateShort(c.tanggal_bayar),
+ (c.no_polisi || "").toUpperCase(),
+ c.jenis_pajak || "-",
+ fmtDateShort(c.berlaku_hingga),
+ parseFloat(c.total_biaya) || 0,
+ c.dokumen_url || "-"
+ ]);
+ const wsCmp = window.XLSX.utils.aoa_to_sheet([
+ ["No", "Tgl Bayar", "No. Polisi", "Jenis Pajak / Legalitas", "Berlaku Hingga", "Total Biaya (Rp)", "Link Bukti Dokumen"],
+ ...cmpRows
+ ]);
+ window.XLSX.utils.book_append_sheet(wb, wsCmp, "Pajak & Legalitas");
+
+ const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+ const fname = `Master_Kendaraan_CV_Andela_Jaya_${todayStr}.xlsx`;
+ window.XLSX.writeFile(wb, fname);
+ toast("Berhasil mengunduh Laporan Master Kendaraan (Excel)!", "success");
+ }
+
+ function exportKendaraanWord(targetVehicles = null) {
+ const list = targetVehicles || allVehicles;
+ if (!list || !list.length) {
+ return toast("Tidak ada data kendaraan untuk diekspor", "warning");
+ }
+
+ const now = new Date();
+ const todayFormatted = fmtDateIndoLong(now.toISOString().slice(0, 10));
+ const todayStr = now.toISOString().slice(0, 10).replace(/-/g, "");
+
+ const siapCount = list.filter(v => (v.status_kendaraan || "Siap").toUpperCase().includes("SIAP")).length;
+ const serviceCount = list.filter(v => (v.status_kendaraan || "").toUpperCase().includes("SERVICE") || (v.status_kendaraan || "").toUpperCase().includes("RUSAK") || (v.status_kendaraan || "").toUpperCase().includes("PERBAIKAN")).length;
+
+ let totalBbmAll = 0;
+ let totalSvcAll = 0;
+
+ // Table 1: Master List
+ const masterRows = list.map((v, i) => {
+ const plate = (v.no_polisi || "").toUpperCase();
+ const st = v.status_kendaraan || "Siap Pakai";
+ let badgeHtml = `<b style="color:#166534;">${escapeHtml(st)}</b>`;
+ if (st.toLowerCase().includes("rusak") || st.toLowerCase().includes("perbaikan")) {
+ badgeHtml = `<b style="color:#991b1b;">${escapeHtml(st)}</b>`;
+ } else if (st.toLowerCase().includes("service")) {
+ badgeHtml = `<b style="color:#b45309;">${escapeHtml(st)}</b>`;
+ }
+
+ return [
+ i + 1,
+ `<strong>${escapeHtml(plate)}</strong>`,
+ `${escapeHtml(v.merk || '')} ${escapeHtml(v.tipe || '')}`.trim() || '-',
+ `${v.tahun || '-'} / ${escapeHtml(v.warna || '-')}`,
+ escapeHtml(v.bahan_bakar || '-'),
+ escapeHtml(v.driver_pj || v.nama_pemilik || '-'),
+ escapeHtml(v.nama_pemilik || '-'),
+ badgeHtml
+ ];
+ });
+
+ // Table 2: Legalities
+ const legalRows = list.map((v, i) => {
+ const plate = (v.no_polisi || "").toUpperCase();
+ 
+ const alerts = [];
+ if (v.tgl_stnk_tahunan) {
+ const d = smartParseDate(v.tgl_stnk_tahunan);
+ if (d) {
+ const days = Math.round((d - now) / 86400000);
+ if (days < 0) alerts.push(`<span style="color:#dc2626; font-weight:bold;">STNK Expired (${Math.abs(days)} hr lalu)</span>`);
+ else if (days <= 30) alerts.push(`<span style="color:#d97706; font-weight:bold;">STNK (${days} hr lagi)</span>`);
+ }
+ }
+ if (v.tgl_pajak_5thn) {
+ const d = smartParseDate(v.tgl_pajak_5thn);
+ if (d) {
+ const days = Math.round((d - now) / 86400000);
+ if (days < 0) alerts.push(`<span style="color:#dc2626; font-weight:bold;">Pajak 5Th Expired (${Math.abs(days)} hr lalu)</span>`);
+ else if (days <= 30) alerts.push(`<span style="color:#d97706; font-weight:bold;">Pajak 5Th (${days} hr lagi)</span>`);
+ }
+ }
+ if (v.tgl_kir) {
+ const d = smartParseDate(v.tgl_kir);
+ if (d) {
+ const days = Math.round((d - now) / 86400000);
+ if (days < 0) alerts.push(`<span style="color:#dc2626; font-weight:bold;">KIR Expired (${Math.abs(days)} hr lalu)</span>`);
+ else if (days <= 30) alerts.push(`<span style="color:#d97706; font-weight:bold;">KIR (${days} hr lagi)</span>`);
+ }
+ }
+
+ return [
+ i + 1,
+ `<strong>${escapeHtml(plate)}</strong>`,
+ fmtDateShort(v.tgl_stnk_tahunan),
+ fmtDateShort(v.tgl_pajak_5thn),
+ fmtDateShort(v.tgl_kir),
+ fmtDateShort(v.tgl_service_berikutnya),
+ alerts.length ? alerts.join("<br>") : `<span style="color:#16a34a; font-weight:bold;">Aman</span>`
+ ];
+ });
+
+ // Table 3: Costs Recap
+ const costRows = list.map((v, i) => {
+ const plate = (v.no_polisi || "").toUpperCase();
+ const vFuels = allFuelLogs.filter(f => (f.no_polisi || "").toUpperCase() === plate);
+ const bbmCost = vFuels.reduce((sum, f) => sum + (parseFloat(f.total_biaya) || 0), 0);
+
+ const vServices = allServiceLogs.filter(s => (s.no_polisi || "").toUpperCase() === plate);
+ const svcCost = vServices.reduce((sum, s) => sum + (parseFloat(s.total_biaya) || 0), 0);
+
+ totalBbmAll += bbmCost;
+ totalSvcAll += svcCost;
+
+ return [
+ i + 1,
+ `<strong>${escapeHtml(plate)}</strong>`,
+ escapeHtml(v.driver_pj || v.nama_pemilik || '-'),
+ `${vFuels.length} Trx`,
+ fmtRupiah(bbmCost),
+ `${vServices.length} Trx`,
+ fmtRupiah(svcCost),
+ `<strong>${fmtRupiah(bbmCost + svcCost)}</strong>`
+ ];
+ });
+
+ // Append Total Summary Row
+ costRows.push([
+ "",
+ "<strong>TOTAL KESELURUHAN</strong>",
+ "-",
+ "-",
+ `<strong>${fmtRupiah(totalBbmAll)}</strong>`,
+ "-",
+ `<strong>${fmtRupiah(totalSvcAll)}</strong>`,
+ `<strong style="color:#7f1d1d; font-size:10pt;">${fmtRupiah(totalBbmAll + totalSvcAll)}</strong>`
+ ]);
+
+ downloadWordDoc({
+ filename: `Laporan_Master_Kendaraan_CV_Andela_Jaya_${todayStr}.doc`,
+ title: "LAPORAN MASTER KENDARAAN & ARMADA OPERASIONAL",
+ subtitle: "CV ANDELA JAYA — MANAJEMEN HRIS & OPERASIONAL ARMADA",
+ meta: [
+ { label: "Tanggal Laporan", value: todayFormatted },
+ { label: "Total Armada Terdaftar", value: `${list.length} Unit Kendaraan` },
+ { label: "Kondisi Armada", value: `Siap Pakai: ${siapCount} Unit | Perlu Service / Perbaikan: ${serviceCount} Unit` },
+ { label: "Total Biaya Operasional", value: `BBM: ${fmtRupiah(totalBbmAll)} | Service: ${fmtRupiah(totalSvcAll)} | Total: ${fmtRupiah(totalBbmAll + totalSvcAll)}` },
+ { label: "Pencetak Laporan", value: `${session.nama} (${session.role || 'Staff'})` }
+ ],
+ tables: [
+ {
+ title: "I. DAFTAR MASTER ARMADA & KONDISI OPERASIONAL",
+ subtitle: "Spesifikasi fisik, penanggung jawab armada, dan status kelayakan jalan unit",
+ headers: ["No", "No. Polisi", "Merk & Tipe", "Tahun / Warna", "Bahan Bakar", "Driver / PJ", "Atas Nama", "Status"],
+ rows: masterRows,
+ aligns: ["center", "left", "left", "left", "left", "left", "left", "center"]
+ },
+ {
+ title: "II. MONITORING LEGALITAS DOKUMEN & JADWAL SERVICE",
+ subtitle: "Tanggal jatuh tempo STNK Tahunan, Pajak 5 Tahun (Kaleng), Uji KIR, dan Service Berkala",
+ headers: ["No", "No. Polisi", "STNK Tahunan", "Pajak 5 Tahun", "Uji KIR", "Jadwal Service", "Status & Pengingat"],
+ rows: legalRows,
+ aligns: ["center", "left", "center", "center", "center", "center", "left"]
+ },
+ {
+ title: "III. REKAPITULASI BIAYA OPERASIONAL PER KENDARAAN",
+ subtitle: "Akumulasi pengeluaran bahan bakar (BBM) dan biaya service / perawatan bengkel",
+ headers: ["No", "No. Polisi", "Driver / PJ", "Jml BBM", "Total BBM (Rp)", "Jml Svc", "Total Service (Rp)", "Total Operasional (Rp)"],
+ rows: costRows,
+ aligns: ["center", "left", "left", "center", "right", "center", "right", "right"]
+ }
+ ],
+ signatures: [
+ { role: "Dibuat Oleh,", title: "Staff GA / Pengelola Armada", name: session.nama || "Staff GA" },
+ { role: "Diperiksa Oleh,", title: "Manager Operasional & GA", name: "Ika Novista" },
+ { role: "Disetujui Oleh,", title: "Pimpinan / Direktur", name: "Pimpinan CV Andela Jaya" }
+ ]
+ });
+
+ toast("Berhasil mengunduh Laporan Master Kendaraan (Word)!", "success");
+ }
+
+ function exportSingleVehicleWord(vDoc) {
+ const plate = (vDoc.no_polisi || "").toUpperCase();
+ const vFuels = allFuelLogs.filter(f => (f.no_polisi || "").toUpperCase() === plate);
+ const vServices = allServiceLogs.filter(s => (s.no_polisi || "").toUpperCase() === plate);
+ const vCompliance = allComplianceLogs.filter(c => (c.no_polisi || "").toUpperCase() === plate);
+
+ const totalFuel = vFuels.reduce((sum, f) => sum + (parseFloat(f.total_biaya) || 0), 0);
+ const totalSvc = vServices.reduce((sum, s) => sum + (parseFloat(s.total_biaya) || 0), 0);
+ const totalCmp = vCompliance.reduce((sum, c) => sum + (parseFloat(c.total_biaya) || 0), 0);
+
+ const now = new Date();
+ const todayFormatted = fmtDateIndoLong(now.toISOString().slice(0, 10));
+
+ const fuelRows = vFuels.map((f, i) => [
+ i + 1,
+ fmtDateShort(f.tanggal),
+ f.nama_driver || "-",
+ f.km_awal || "-",
+ f.km_akhir || "-",
+ f.liter ? `${f.liter} L` : "-",
+ fmtRupiah(f.total_biaya)
+ ]);
+
+ const svcRows = vServices.map((s, i) => [
+ i + 1,
+ fmtDateShort(s.tanggal),
+ escapeHtml(s.jenis_dokumen || "-"),
+ escapeHtml(s.vendor || "-"),
+ escapeHtml(s.nama_driver || "-"),
+ fmtRupiah(s.total_biaya)
+ ]);
+
+ const cmpRows = vCompliance.map((c, i) => [
+ i + 1,
+ fmtDateShort(c.tanggal_bayar),
+ escapeHtml(c.jenis_pajak || "-"),
+ fmtDateShort(c.berlaku_hingga),
+ c.dokumen_url ? `<a href="${c.dokumen_url}">Link Bukti</a>` : "-",
+ fmtRupiah(c.total_biaya)
+ ]);
+
+ downloadWordDoc({
+ filename: `Dossier_Kendaraan_${plate.replace(/\s+/g, "_")}.doc`,
+ title: `DOSSIER & RIWAYAT KENDARAAN — ${plate}`,
+ subtitle: `CV ANDELA JAYA — SISTEM MANAJEMEN ARMADA OPERASIONAL`,
+ meta: [
+ { label: "No. Polisi / Plat", value: plate },
+ { label: "Merk / Tipe", value: `${vDoc.merk || '-'} ${vDoc.tipe || ''}` },
+ { label: "Tahun & Warna", value: `${vDoc.tahun || '-'} / ${vDoc.warna || '-'}` },
+ { label: "Bahan Bakar", value: vDoc.bahan_bakar || '-' },
+ { label: "Driver / Penanggung Jawab", value: vDoc.driver_pj || vDoc.nama_pemilik || '-' },
+ { label: "Atas Nama Pemilik STNK", value: vDoc.nama_pemilik || '-' },
+ { label: "Nomor Rangka", value: vDoc.no_rangka || '-' },
+ { label: "Nomor Mesin", value: vDoc.no_mesin || '-' },
+ { label: "Status Kondisi Kendaraan", value: vDoc.status_kendaraan || 'Siap Pakai' },
+ { label: "Jatuh Tempo STNK Tahunan", value: fmtDateShort(vDoc.tgl_stnk_tahunan) },
+ { label: "Jatuh Tempo Pajak 5 Tahun", value: fmtDateShort(vDoc.tgl_pajak_5thn) },
+ { label: "Jatuh Tempo Uji KIR", value: fmtDateShort(vDoc.tgl_kir) },
+ { label: "Jadwal Service Rutin", value: fmtDateShort(vDoc.tgl_service_berikutnya) },
+ { label: "Total Biaya Pengisian BBM", value: `${fmtRupiah(totalFuel)} (${vFuels.length} Transaksi)` },
+ { label: "Total Biaya Perbaikan / Service", value: `${fmtRupiah(totalSvc)} (${vServices.length} Transaksi)` },
+ { label: "Total Biaya Legalitas / Pajak", value: `${fmtRupiah(totalCmp)} (${vCompliance.length} Transaksi)` },
+ { label: "Akumulasi Biaya Total", value: fmtRupiah(totalFuel + totalSvc + totalCmp) },
+ { label: "Alamat / Catatan", value: vDoc.alamat || '-' },
+ { label: "Tanggal Dokumen Dicetak", value: todayFormatted }
+ ],
+ tables: [
+ {
+ title: "I. RIWAYAT PENGISIAN BAHAN BAKAR (BBM)",
+ headers: ["No", "Tanggal", "Driver", "KM Awal", "KM Akhir", "Liter", "Total Biaya (Rp)"],
+ rows: fuelRows,
+ aligns: ["center", "center", "left", "right", "right", "right", "right"]
+ },
+ {
+ title: "II. RIWAYAT SERVICE & PERBAIKAN BENGKEL",
+ headers: ["No", "Tanggal", "Rincian Perbaikan", "Vendor / Bengkel", "Driver PJ", "Total Biaya (Rp)"],
+ rows: svcRows,
+ aligns: ["center", "center", "left", "left", "left", "right"]
+ },
+ {
+ title: "III. RIWAYAT PAJAK, STNK & LEGALITAS",
+ headers: ["No", "Tgl Bayar", "Jenis Pajak / Legalitas", "Berlaku Hingga", "Dokumen", "Total Biaya (Rp)"],
+ rows: cmpRows,
+ aligns: ["center", "center", "left", "center", "center", "right"]
+ }
+ ],
+ signatures: [
+ { role: "Pengelola Armada,", title: "Staff GA / Driver", name: vDoc.driver_pj || session.nama || "Staff GA" },
+ { role: "Mengetahui,", title: "Manager Operasional", name: "Ika Novista" }
+ ]
+ });
+
+ toast(`Berhasil mengunduh dokumen Word untuk kendaraan ${plate}!`, "success");
+ }
+
+ async function exportSingleVehicleExcel(vDoc) {
+ await exportKendaraanExcel([vDoc]);
+ }
+
+ function openExportOptionsModal() {
+ const filtered = getFilteredVehicles();
+ openModal({
+ title: "Opsi & Export Data Master Kendaraan",
+ size: "md",
+ bodyHtml: `
+ <form id="form-export-opts" class="space-y-4 text-left">
+ <div>
+ <label class="block text-xs font-bold text-slate-700 mb-1.5">Cakupan Data Kendaraan</label>
+ <div class="space-y-2">
+ <label class="flex items-center gap-2.5 p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer text-xs">
+ <input type="radio" name="exp_scope" value="all" checked class="text-maroon-700 focus:ring-maroon-700">
+ <div>
+ <div class="font-bold text-slate-800">Semua Kendaraan (${allVehicles.length} Unit)</div>
+ <div class="text-[11px] text-slate-500">Ekspor seluruh database armada operasional</div>
+ </div>
+ </label>
+ <label class="flex items-center gap-2.5 p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer text-xs">
+ <input type="radio" name="exp_scope" value="filtered" class="text-maroon-700 focus:ring-maroon-700">
+ <div>
+ <div class="font-bold text-slate-800">Sesuai Filter / Pencarian Aktif (${filtered.length} Unit)</div>
+ <div class="text-[11px] text-slate-500">Hanya kendaraan yang sedang tampil di layar</div>
+ </div>
+ </label>
+ </div>
+ </div>
+
+ <div>
+ <label class="block text-xs font-bold text-slate-700 mb-1.5">Pilih Format File</label>
+ <div class="grid grid-cols-2 gap-2.5">
+ <label class="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 hover:bg-emerald-50/60 cursor-pointer text-xs">
+ <input type="radio" name="exp_format" value="excel" checked class="text-emerald-700 focus:ring-emerald-700">
+ <span class="w-6 h-6 rounded bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-[10px]">XLS</span>
+ <div>
+ <div class="font-bold text-slate-800">Excel (.xlsx)</div>
+ <div class="text-[10px] text-slate-400">Multi-sheet data</div>
+ </div>
+ </label>
+ <label class="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 hover:bg-blue-50/60 cursor-pointer text-xs">
+ <input type="radio" name="exp_format" value="word" class="text-blue-700 focus:ring-blue-700">
+ <span class="w-6 h-6 rounded bg-blue-100 text-blue-800 flex items-center justify-center font-bold text-[10px]">DOC</span>
+ <div>
+ <div class="font-bold text-slate-800">Word (.doc)</div>
+ <div class="text-[10px] text-slate-400">Laporan cetak resmi</div>
+ </div>
+ </label>
+ </div>
+ </div>
+
+ <div class="pt-3 flex justify-end gap-2 border-t border-slate-100">
+ <button type="button" id="btn-cancel-exp-opts" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl">Batal</button>
+ <button type="submit" class="px-5 py-2 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-xl transition shadow-xs flex items-center gap-2 cursor-pointer">
+ <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+ <span>Unduh File Sekarang</span>
+ </button>
+ </div>
+ </form>
+ `
+ });
+
+ const btnCancel = document.getElementById("btn-cancel-exp-opts");
+ if (btnCancel) btnCancel.onclick = () => closeModal();
+
+ const formExp = document.getElementById("form-export-opts");
+ if (formExp) {
+ formExp.onsubmit = async (e) => {
+ e.preventDefault();
+ const scope = document.querySelector('input[name="exp_scope"]:checked')?.value || "all";
+ const format = document.querySelector('input[name="exp_format"]:checked')?.value || "excel";
+ const targets = scope === "filtered" ? filtered : allVehicles;
+ closeModal();
+ if (format === "excel") {
+ await exportKendaraanExcel(targets);
+ } else {
+ exportKendaraanWord(targets);
+ }
+ };
+ }
+ }
+
+ // -------------------------------------------------------------
+ // 6. EVENT BINDINGS & TAB SWITCHING
  // -------------------------------------------------------------
  if (canEdit) {
  btnAdd.onclick = () => openVehicleFormModal();
@@ -929,6 +1523,40 @@ export async function mount(container, { session }) {
  }
  searchInput.oninput = () => renderVehicleCards();
  statusFilter.onchange = () => renderVehicleCards();
+
+ // Export Dropdown & Action Buttons
+ if (btnExportMenu && exportMenu) {
+ btnExportMenu.onclick = (e) => {
+ e.stopPropagation();
+ exportMenu.classList.toggle("hidden");
+ };
+ document.addEventListener("click", (e) => {
+ if (!exportMenu.contains(e.target) && e.target !== btnExportMenu && !btnExportMenu.contains(e.target)) {
+ exportMenu.classList.add("hidden");
+ }
+ });
+ }
+
+ if (btnExportExcel) {
+ btnExportExcel.onclick = async () => {
+ if (exportMenu) exportMenu.classList.add("hidden");
+ await exportKendaraanExcel();
+ };
+ }
+
+ if (btnExportWord) {
+ btnExportWord.onclick = () => {
+ if (exportMenu) exportMenu.classList.add("hidden");
+ exportKendaraanWord();
+ };
+ }
+
+ if (btnExportOptions) {
+ btnExportOptions.onclick = () => {
+ if (exportMenu) exportMenu.classList.add("hidden");
+ openExportOptionsModal();
+ };
+ }
 
  // Tab Switching
  container.querySelectorAll(".kd-tab").forEach(btn => {
