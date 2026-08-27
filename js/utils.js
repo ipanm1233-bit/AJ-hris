@@ -2707,6 +2707,302 @@ export function renderPengajuanDetailHtml(row, session, options = {}) {
  return `<div class="space-y-1 text-left">${itemsHtml}</div>`;
 }
 
+
+/**
+ * Helper untuk membangun tampilan HTML rincian lengkap dokumen pengajuan
+ * yang kompatibel dengan seluruh email client (Gmail, Outlook, Apple Mail, dll.)
+ * Menampilkan seluruh field isian, tabel perjalanan, rencana kunjungan sales,
+ * breakdown biaya, lampiran, dan riwayat otorisasi secara terstruktur dan rapi.
+ */
+export function buildPengajuanEmailDetailHtml(row) {
+  if (!row) return "";
+  const detail = row.detail || {};
+  const formId = (row.form_id || "").toUpperCase();
+  const formName = (row.nama_form || "").toLowerCase();
+
+  const isDinas = formId === "F-ISO-DINAS" || formName.includes("dinas") || formName.includes("tugas lapangan") || formName.includes("perjalanan");
+  const isKlaimBensin = formId === "F-KLAIM-BENSIN" || formName.includes("bensin") || formName.includes("klaim");
+  const isCuti = formId === "F-ISO-CUTI" || formName.includes("cuti") || !!row.kategori_cuti || !!detail.jenis_cuti;
+  const isKasbon = formId === "F-ISO-KASBON" || formName.includes("kasbon") || formName.includes("pinjaman");
+  const isLembur = formId === "F-ISO-LEMBUR" || formName.includes("lembur");
+
+  let contentHtml = "";
+
+  // 1. HEADER RINGKASAN PENGAJUAN
+  const headerSection = `
+    <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 12.5px;">
+        <tr>
+          <td style="padding: 4px 0; color: #64748b; width: 35%; font-weight: 500;">Nomor Dokumen</td>
+          <td style="padding: 4px 0; color: #0f172a; font-weight: 700; font-family: monospace;">${escapeHtml(row.id || "-")}</td>
+        </tr>
+        <tr>
+          <td style="padding: 4px 0; color: #64748b; font-weight: 500;">Nama Formulir</td>
+          <td style="padding: 4px 0; color: #0f172a; font-weight: 700;">${escapeHtml(row.nama_form || "-")}</td>
+        </tr>
+        <tr>
+          <td style="padding: 4px 0; color: #64748b; font-weight: 500;">Nama Pemohon</td>
+          <td style="padding: 4px 0; color: #0f172a; font-weight: 700;">${escapeHtml(row.nama_pemohon || "-")} ${row.nik && row.nik !== '-' ? `<span style="color:#64748b; font-weight:normal;">(NIK: ${escapeHtml(row.nik)})</span>` : ''}</td>
+        </tr>
+        <tr>
+          <td style="padding: 4px 0; color: #64748b; font-weight: 500;">Tanggal Pengajuan</td>
+          <td style="padding: 4px 0; color: #0f172a; font-weight: 600;">${row.tgl ? new Date(row.tgl).toLocaleDateString('id-ID', { dateStyle: 'full' }) : "-"}</td>
+        </tr>
+        <tr>
+          <td style="padding: 4px 0; color: #64748b; font-weight: 500;">Status Terkini</td>
+          <td style="padding: 4px 0;">
+            <span style="display: inline-block; background-color: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 4px;">
+              ${escapeHtml(row.status_final || "MENUNGGU")}
+            </span>
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
+
+  // 2. KLAIM BENSIN DEDICATED TABLE
+  if (isKlaimBensin && (detail.rincian_tabel || detail.rincian || detail.items)) {
+    const list = detail.rincian_tabel || detail.rincian || detail.items || [];
+    const totalKlaim = Number(detail.total_klaim || detail.grand_total || detail.total || 0);
+    const rows = list.map((r, i) => {
+      const trip = Math.max(0, Number(r.km_akhir || 0) - Number(r.km_awal || 0));
+      const rowTotal = Number(r.total_baris || 0);
+      return `
+        <tr style="border-bottom: 1px solid #e2e8f0; font-size: 11.5px;">
+          <td style="padding: 6px 8px; text-align: center; color: #64748b;">${i + 1}</td>
+          <td style="padding: 6px 8px; color: #1e293b; white-space: nowrap;">${escapeHtml(r.tanggal || "-")}</td>
+          <td style="padding: 6px 8px; text-align: right; font-family: monospace;">${Number(r.km_awal || 0).toLocaleString("id-ID")} - ${Number(r.km_akhir || 0).toLocaleString("id-ID")}</td>
+          <td style="padding: 6px 8px; text-align: right; font-weight: bold; color: #0f172a;">${trip} KM</td>
+          <td style="padding: 6px 8px; color: #334155;">${escapeHtml(r.tujuan || r.kunjungan || "-")}</td>
+          <td style="padding: 6px 8px; text-align: right; font-weight: bold; color: #7a1f2b; font-family: monospace;">Rp ${rowTotal.toLocaleString("id-ID")}</td>
+        </tr>
+      `;
+    }).join("");
+
+    contentHtml += `
+      <div style="margin-top: 14px;">
+        <h4 style="margin: 0 0 8px 0; color: #7a1f2b; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Rincian Perjalanan & Klaim Bensin</h4>
+        <div style="border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden;">
+          <table style="width: 100%; border-collapse: collapse; text-align: left;">
+            <thead style="background-color: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
+              <tr style="font-size: 11px; font-weight: bold; color: #475569; text-transform: uppercase;">
+                <th style="padding: 8px; text-align: center;">No</th>
+                <th style="padding: 8px;">Tanggal</th>
+                <th style="padding: 8px; text-align: right;">KM Awal - Akhir</th>
+                <th style="padding: 8px; text-align: right;">Jarak</th>
+                <th style="padding: 8px;">Tujuan Kunjungan</th>
+                <th style="padding: 8px; text-align: right;">Total (Rp)</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+            <tfoot style="background-color: #f8fafc; border-top: 2px solid #cbd5e1; font-weight: bold;">
+              <tr>
+                <td colspan="5" style="padding: 8px; text-align: right; font-size: 12px; text-transform: uppercase; color: #334155;">Total Pengajuan Klaim:</td>
+                <td style="padding: 8px; text-align: right; font-size: 13px; color: #7a1f2b; font-family: monospace;">Rp ${totalKlaim.toLocaleString("id-ID")}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  // 3. DINAS LUAR KOTA / PLAN KUNJUNGAN SALES / PERJALANAN / SEMUA FIELD ISIAN
+  const detailEntries = Object.entries(detail).filter(([k, v]) => {
+    if (["url_pdf", "id", "tgl", "nama_pemohon", "nik"].includes(k)) return false;
+    return v !== undefined && v !== null && v !== "";
+  });
+
+  if (detailEntries.length > 0) {
+    let fieldsListHtml = "";
+    let tablesListHtml = "";
+
+    detailEntries.forEach(([key, val]) => {
+      const formattedLabel = key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+      const isPlanOrAgenda = /plan|kunjungan|outlet|toko|itinerary|agenda|rute|jadwal|tujuan_dinas|kegiatan/i.test(key);
+
+      // Handle Array of Objects (Sub-tables / Sales Visit Plan / Itinerary)
+      if (Array.isArray(val) && val.length > 0 && typeof val[0] === "object") {
+        const subHeaders = Object.keys(val[0]);
+        const subRows = val.map((item, idx) => {
+          const cells = subHeaders.map(h => {
+            let cellVal = item[h];
+            if (typeof cellVal === "number" && /nominal|biaya|total|harga|uang|target/i.test(h)) {
+              cellVal = "Rp " + cellVal.toLocaleString("id-ID");
+            }
+            return `<td style="padding: 7px 10px; color: #1e293b; border-bottom: 1px solid #f1f5f9;">${escapeHtml(String(cellVal ?? "-"))}</td>`;
+          }).join("");
+          return `<tr><td style="padding: 7px 10px; text-align: center; color: #64748b; border-bottom: 1px solid #f1f5f9; font-weight: bold;">${idx + 1}</td>${cells}</tr>`;
+        }).join("");
+
+        tablesListHtml += `
+          <div style="margin-top: 16px;">
+            <div style="background-color: #7a1f2b; color: #ffffff; padding: 6px 12px; border-radius: 6px 6px 0 0; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">
+              📋 ${escapeHtml(formattedLabel)}
+            </div>
+            <div style="border: 1px solid #cbd5e1; border-top: none; border-radius: 0 0 6px 6px; overflow-x: auto; background-color: #ffffff;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+                <thead style="background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">
+                  <tr style="font-weight: bold; color: #475569; font-size: 11px; text-transform: uppercase;">
+                    <th style="padding: 7px 10px; text-align: center; width: 30px;">No</th>
+                    ${subHeaders.map(h => `<th style="padding: 7px 10px;">${escapeHtml(h.replace(/_/g, " ").toUpperCase())}</th>`).join("")}
+                  </tr>
+                </thead>
+                <tbody>${subRows}</tbody>
+              </table>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      // Handle Array of Strings / Bullet List
+      if (Array.isArray(val)) {
+        const listItems = val.map(item => `<li style="margin-bottom: 4px; color: #1e293b;">${escapeHtml(String(item))}</li>`).join("");
+        fieldsListHtml += `
+          <tr style="border-bottom: 1px solid #f1f5f9;">
+            <td style="padding: 9px 10px; color: #64748b; font-size: 12.5px; width: 35%; vertical-align: top; font-weight: 600;">
+              ${escapeHtml(formattedLabel)}
+            </td>
+            <td style="padding: 9px 10px; color: #0f172a; font-size: 13px; vertical-align: top;">
+              <ul style="margin: 0; padding-left: 18px;">${listItems}</ul>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      // Handle File Attachments / Links
+      if (/lampiran|bukti|foto|file|dokumen|pdf/i.test(key) || (typeof val === "string" && /^https?:\/\//i.test(val))) {
+        if (val) {
+          fieldsListHtml += `
+            <tr style="border-bottom: 1px solid #f1f5f9;">
+              <td style="padding: 9px 10px; color: #64748b; font-size: 12.5px; width: 35%; vertical-align: top; font-weight: 600;">
+                ${escapeHtml(formattedLabel)}
+              </td>
+              <td style="padding: 9px 10px; vertical-align: top;">
+                <a href="${escapeHtml(String(val))}" target="_blank" rel="noopener" style="display: inline-block; background-color: #f1f5f9; border: 1px solid #cbd5e1; color: #7a1f2b; font-weight: bold; font-size: 12px; padding: 4px 10px; border-radius: 4px; text-decoration: none;">
+                  📎 Buka Berkas Lampiran
+                </a>
+              </td>
+            </tr>
+          `;
+        }
+        return;
+      }
+
+      // Handle Multiline Text (e.g. Sales Visit Plan, Deskripsi, Alasan, Catatan)
+      const valStr = String(val);
+      if (valStr.includes("\n") || isPlanOrAgenda || valStr.length > 80) {
+        const formattedMultiline = escapeHtml(valStr).replace(/\n/g, "<br/>");
+        fieldsListHtml += `
+          <tr style="border-bottom: 1px solid #f1f5f9;">
+            <td style="padding: 9px 10px; color: #64748b; font-size: 12.5px; width: 35%; vertical-align: top; font-weight: 600;">
+              ${escapeHtml(formattedLabel)}
+            </td>
+            <td style="padding: 9px 10px; color: #0f172a; font-size: 12.5px; vertical-align: top; line-height: 1.6;">
+              <div style="background-color: ${isPlanOrAgenda ? '#fffbeb' : '#f8fafc'}; border: 1px solid ${isPlanOrAgenda ? '#fde68a' : '#e2e8f0'}; border-radius: 6px; padding: 10px 12px; font-weight: 500; color: ${isPlanOrAgenda ? '#92400e' : '#1e293b'};">
+                ${formattedMultiline}
+              </div>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      // Handle Numbers / Currency
+      let displayVal = escapeHtml(valStr);
+      if (typeof val === "number" || (!isNaN(val) && /nominal|biaya|total|harga|kasbon|uang|pinjaman|tarif/i.test(key))) {
+        const num = Number(val);
+        if (!isNaN(num)) {
+          displayVal = `<span style="font-family: monospace; font-weight: bold; color: #7a1f2b;">Rp ${num.toLocaleString("id-ID")}</span>`;
+        }
+      }
+
+      fieldsListHtml += `
+        <tr style="border-bottom: 1px solid #f1f5f9;">
+          <td style="padding: 9px 10px; color: #64748b; font-size: 12.5px; width: 35%; vertical-align: top; font-weight: 600;">
+            ${escapeHtml(formattedLabel)}
+          </td>
+          <td style="padding: 9px 10px; color: #0f172a; font-size: 13px; vertical-align: top; font-weight: 500;">
+            ${displayVal}
+          </td>
+        </tr>
+      `;
+    });
+
+    contentHtml += `
+      <div style="margin-top: 14px;">
+        <h4 style="margin: 0 0 8px 0; color: #7a1f2b; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">
+          Rincian Detail Pengajuan Formulir
+        </h4>
+        <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-left: 4px solid #7a1f2b; border-radius: 8px; overflow: hidden; margin-bottom: 12px;">
+          <table style="width: 100%; border-collapse: collapse; text-align: left;">
+            <tbody>
+              ${fieldsListHtml}
+            </tbody>
+          </table>
+        </div>
+        ${tablesListHtml}
+      </div>
+    `;
+  }
+
+  // 4. APPROVAL PROGRESS & CATATAN OTORISASI
+  if (Array.isArray(row.approval_flow) && row.approval_flow.length > 0) {
+    const steps = row.approval_steps || [];
+    const notes = row.catatan_penolakan || [];
+    
+    const flowItems = row.approval_flow.map((role, idx) => {
+      const st = steps[idx] || "PENDING";
+      let badgeColor = "#64748b";
+      let badgeBg = "#f1f5f9";
+      let badgeBorder = "#cbd5e1";
+      if (st === "APPROVED") {
+        badgeColor = "#047857";
+        badgeBg = "#ecfdf5";
+        badgeBorder = "#a7f3d0";
+      } else if (st === "REJECTED") {
+        badgeColor = "#b91c1c";
+        badgeBg = "#fef2f2";
+        badgeBorder = "#fecaca";
+      }
+
+      return `
+        <div style="display: inline-block; margin: 4px 6px 4px 0; background-color: ${badgeBg}; border: 1px solid ${badgeBorder}; color: ${badgeColor}; font-size: 11px; font-weight: bold; padding: 4px 10px; border-radius: 6px;">
+          Tahap ${idx + 1}: ${escapeHtml(role)} → <strong>${escapeHtml(st)}</strong>
+        </div>
+      `;
+    }).join("");
+
+    let notesHtml = "";
+    if (notes && notes.length > 0) {
+      const validNotes = notes.filter(n => n && n !== "-");
+      if (validNotes.length > 0) {
+        notesHtml = `
+          <div style="margin-top: 8px; padding: 8px 10px; background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; font-size: 12px; color: #92400e;">
+            <strong>Catatan Approver:</strong> ${escapeHtml(validNotes.join(" | "))}
+          </div>
+        `;
+      }
+    }
+
+    contentHtml += `
+      <div style="margin-top: 16px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+        <div style="font-size: 11px; font-weight: bold; color: #475569; text-transform: uppercase; margin-bottom: 6px;">
+          Alur & Otorisasi Persetujuan:
+        </div>
+        <div>
+          ${flowItems}
+        </div>
+        ${notesHtml}
+      </div>
+    `;
+  }
+
+  return headerSection + contentHtml;
+}
+
 // Standarisasi Template Email HTML untuk Seluruh Notifikasi & Pengingat HRIS CV Andela Jaya
 export function buildStandardEmailHtml(opts = {}) {
   const compName = opts.headerTitle || COMPANY_NAME || "CV ANDELA JAYA";
@@ -3357,159 +3653,294 @@ export async function createLoginToken(username) {
 }
 
 export async function getTargetsForRole(role, namaKaryawan = "") {
- try {
- const roleUpper = (role || "").toUpperCase().trim();
- const cleanNama = (namaKaryawan || "").trim().toLowerCase();
+  try {
+    const roleUpper = (role || "").toUpperCase().trim();
+    const cleanNama = (namaKaryawan || "").trim().toLowerCase();
 
- const allUsers = await fsGetAll(COL.USERS).catch(() => []);
- const allEmployees = await fsGetAll(COL.MASTER_KARYAWAN).catch(() => []);
+    const [allUsers, allEmployees] = await Promise.all([
+      fsGetAll(COL.USERS).catch(() => []),
+      fsGetAll(COL.MASTER_KARYAWAN).catch(() => [])
+    ]);
 
- const enrichTarget = (u) => {
- if (!u) return null;
- const uId = u.username || u.id || u.nik;
- const uNama = u.nama || u.nama_karyawan || u.username || uId;
- let email = u.email || "";
- let nik = u.nik || u.nik_karyawan || "";
+    const enrichTarget = (u) => {
+      if (!u) return null;
+      const uId = u.username || u.id || u.nik;
+      const uNama = u.nama || u.nama_karyawan || u.username || uId;
+      let email = (u.email || "").trim();
+      let nik = u.nik || u.nik_karyawan || "";
 
- const empMatch = allEmployees.find(k => 
- (k.nik_karyawan || k.nik || "").toString().toLowerCase() === String(nik).toLowerCase() ||
- (k.nama_karyawan || k.nama || "").trim().toLowerCase() === String(uNama).trim().toLowerCase() ||
- (k.id || "").toString().toLowerCase() === String(uId).toLowerCase() ||
- (k.username || "").toString().toLowerCase() === String(uId).toLowerCase()
- );
- if (empMatch) {
- if (!email && empMatch.email) email = empMatch.email;
- if (!nik && (empMatch.nik_karyawan || empMatch.nik)) nik = empMatch.nik_karyawan || empMatch.nik;
- }
+      // Cari data karyawan pendukung untuk melengkapi email & NIK jika belum ada
+      const empMatch = allEmployees.find(k => 
+        (k.nik_karyawan && String(k.nik_karyawan).trim().toLowerCase() === String(nik).trim().toLowerCase()) ||
+        (k.nik && String(k.nik).trim().toLowerCase() === String(nik).trim().toLowerCase()) ||
+        (k.nama_karyawan && k.nama_karyawan.trim().toLowerCase() === String(uNama).trim().toLowerCase()) ||
+        (k.nama && k.nama.trim().toLowerCase() === String(uNama).trim().toLowerCase()) ||
+        (k.id && String(k.id).trim().toLowerCase() === String(uId).trim().toLowerCase()) ||
+        (k.username && String(k.username).trim().toLowerCase() === String(uId).trim().toLowerCase())
+      );
 
- return {
- username: u.username || uId,
- email: email || "",
- nama: uNama,
- nik: nik
- };
- };
+      if (empMatch) {
+        if (!email && empMatch.email) email = empMatch.email.trim();
+        if (!nik && (empMatch.nik_karyawan || empMatch.nik)) nik = empMatch.nik_karyawan || empMatch.nik;
+      }
 
- // 1. PEMOHON
- if (roleUpper === "PEMOHON" && cleanNama) {
- const uMatch = allUsers.find(u => 
- (u.nama || "").trim().toLowerCase() === cleanNama ||
- (u.username || "").trim().toLowerCase() === cleanNama
- );
- if (uMatch) {
- const enriched = enrichTarget(uMatch);
- if (enriched) return [enriched];
- }
- const kMatch = allEmployees.find(k => (k.nama_karyawan || k.nama || "").trim().toLowerCase() === cleanNama);
- if (kMatch) {
- return [{ username: kMatch.username || kMatch.id || kMatch.nik, email: kMatch.email || "", nama: kMatch.nama_karyawan || kMatch.nama, nik: kMatch.nik_karyawan || kMatch.nik }];
- }
- return [];
- }
+      return {
+        username: u.username || uId,
+        email: email || "",
+        nama: uNama,
+        nik: nik
+      };
+    };
 
- // 2. ATASAN
- if (roleUpper === "ATASAN" && cleanNama) {
- const kData = allEmployees.find(k => (k.nama_karyawan || k.nama || "").trim().toLowerCase() === cleanNama);
- let namaAtasan = kData ? (kData.atasan || kData.atasan_langsung || kData.atasan_1 || kData.nama_atasan || kData.head || "") : "";
- 
- if (namaAtasan) {
- const cleanAtasan = namaAtasan.trim().toLowerCase();
- const uAtasan = allUsers.find(u => 
- (u.nama || "").trim().toLowerCase() === cleanAtasan ||
- (u.username || "").trim().toLowerCase() === cleanAtasan
- );
- if (uAtasan) return [enrichTarget(uAtasan)];
+    // 1. PEMOHON
+    if (roleUpper === "PEMOHON" && cleanNama) {
+      const uMatch = allUsers.find(u => 
+        (u.nama || "").trim().toLowerCase() === cleanNama ||
+        (u.username || "").trim().toLowerCase() === cleanNama
+      );
+      if (uMatch) {
+        const enriched = enrichTarget(uMatch);
+        if (enriched) return [enriched];
+      }
+      const kMatch = allEmployees.find(k => (k.nama_karyawan || k.nama || "").trim().toLowerCase() === cleanNama);
+      if (kMatch) {
+        return [{
+          username: kMatch.username || kMatch.id || kMatch.nik,
+          email: kMatch.email || "",
+          nama: kMatch.nama_karyawan || kMatch.nama,
+          nik: kMatch.nik_karyawan || kMatch.nik
+        }];
+      }
+      return [];
+    }
 
- const kAtasan = allEmployees.find(k => (k.nama_karyawan || k.nama || "").trim().toLowerCase() === cleanAtasan);
- if (kAtasan) {
- const matchedUser = allUsers.find(u => (u.nama || "").trim().toLowerCase() === cleanAtasan || (u.username || "").toLowerCase() === (kAtasan.username || kAtasan.id || "").toLowerCase());
- return [{
- username: matchedUser?.username || kAtasan.username || kAtasan.id || kAtasan.nik,
- email: matchedUser?.email || kAtasan.email || "",
- nama: kAtasan.nama_karyawan || kAtasan.nama,
- nik: kAtasan.nik_karyawan || kAtasan.nik
- }];
- }
- }
+    // 2. ATASAN
+    if (roleUpper === "ATASAN" && cleanNama) {
+      const kData = allEmployees.find(k => (k.nama_karyawan || k.nama || "").trim().toLowerCase() === cleanNama);
+      let namaAtasan = kData ? (kData.atasan || kData.atasan_langsung || kData.atasan_1 || kData.nama_atasan || kData.head || "") : "";
+      
+      if (namaAtasan) {
+        const cleanAtasan = namaAtasan.trim().toLowerCase();
+        const uAtasan = allUsers.find(u => 
+          (u.nama || "").trim().toLowerCase() === cleanAtasan ||
+          (u.username || "").trim().toLowerCase() === cleanAtasan
+        );
+        if (uAtasan) return [enrichTarget(uAtasan)];
 
- // Kalau atasan spesifik tidak ditemukan, JANGAN broadcast ke siapa saja
- // yang kebetulan jabatannya mengandung kata manajerial (bisa kena banyak
- // orang tak terkait & bocorkan pengajuan pribadi). Fallback aman: HRD saja.
- const fallbackApprovers = allUsers.filter(u => {
- const r = (u.role || "").toUpperCase();
- return r === "HRD" || r.includes("HRD");
- });
+        const kAtasan = allEmployees.find(k => (k.nama_karyawan || k.nama || "").trim().toLowerCase() === cleanAtasan);
+        if (kAtasan) {
+          const matchedUser = allUsers.find(u => 
+            (u.nama || "").trim().toLowerCase() === cleanAtasan || 
+            (u.username || "").toLowerCase() === (kAtasan.username || kAtasan.id || "").toLowerCase()
+          );
+          return [{
+            username: matchedUser?.username || kAtasan.username || kAtasan.id || kAtasan.nik,
+            email: matchedUser?.email || kAtasan.email || "",
+            nama: kAtasan.nama_karyawan || kAtasan.nama,
+            nik: kAtasan.nik_karyawan || kAtasan.nik
+          }];
+        }
+      }
 
- if (fallbackApprovers.length > 0) {
- return fallbackApprovers.map(enrichTarget).filter(Boolean);
- }
- }
+      // Fallback aman jika atasan belum diset: kirim ke role HRD / Superadmin saja
+      const fallbackApprovers = allUsers.filter(u => {
+        const r = (u.role || "").toUpperCase().trim();
+        return r === "HRD" || r === "SUPERADMIN";
+      });
 
- // 3. SPECIFIC ROLE (GM, HRD, FINANCE, MANAGER, SPV, etc.)
- const searchAliases = [roleUpper];
- if (roleUpper === "GM" || roleUpper === "GENERAL MANAGER") {
- searchAliases.push("GM", "GENERAL MANAGER");
- } else if (roleUpper === "HRD" || roleUpper === "HR") {
- searchAliases.push("HRD", "HR", "HUMAN RESOURCE", "ADMIN");
- } else if (roleUpper === "FINANCE" || roleUpper === "ACCOUNTING") {
- searchAliases.push("FINANCE", "ACCOUNTING", "KEUANGAN");
- } else if (roleUpper === "SPV" || roleUpper === "SUPERVISOR") {
- searchAliases.push("SPV", "SUPERVISOR");
- } else if (roleUpper === "MANAGER" || roleUpper === "MANAJER") {
- searchAliases.push("MANAGER", "MANAJER");
- }
+      if (fallbackApprovers.length > 0) {
+        return fallbackApprovers.map(enrichTarget).filter(Boolean);
+      }
+    }
 
- const matchedUsers = allUsers.filter(u => {
- const r = (u.role || "").toUpperCase();
- const p = (u.posisi || u.jabatan || "").toUpperCase();
- const un = (u.username || u.id || "").toUpperCase();
- const nm = (u.nama || "").toUpperCase();
- return searchAliases.some(alias => r === alias || r.includes(alias) || p.includes(alias) || un.includes(alias) || nm.includes(alias));
- });
+    // 3. TARGETING ROLE SPESIFIK (HRD, GM, FINANCE, SPV, MANAGER, dll.)
+    const targets = [];
 
- const matchedEmps = allEmployees.filter(k => {
- const j = (k.jabatan || k.role || k.posisi || "").toUpperCase();
- const nm = (k.nama_karyawan || k.nama || "").toUpperCase();
- return searchAliases.some(alias => j.includes(alias) || nm.includes(alias));
- });
+    if (roleUpper === "HRD" || roleUpper === "HR" || roleUpper === "HUMAN RESOURCE" || roleUpper === "SDM" || roleUpper === "HRGA") {
+      // a. User dengan role "HRD" atau "SUPERADMIN" di tabel USERS
+      const hrdUsers = allUsers.filter(u => {
+        const r = (u.role || "").toUpperCase().trim();
+        return r === "HRD" || r === "SUPERADMIN";
+      });
+      hrdUsers.forEach(u => {
+        const t = enrichTarget(u);
+        if (t) targets.push(t);
+      });
 
- const targets = [];
- matchedUsers.forEach(u => {
- const t = enrichTarget(u);
- if (t) targets.push(t);
- });
+      // b. Karyawan dengan divisi HRD/HRGA/SDM atau jabatan spesifik HR di MASTER_KARYAWAN
+      const hrdRegex = /\b(hrd|hr|hrga|sdm|human resource|personalia|recruitment|talent)\b/i;
+      const hrdEmps = allEmployees.filter(k => {
+        const div = (k.divisi || k.departemen || "").toUpperCase().trim();
+        const jab = (k.jabatan || k.posisi || "").toLowerCase();
+        const isHrdDiv = div === "HRD" || div === "HR" || div === "HRGA" || div === "SDM" || div === "HUMAN RESOURCE";
+        const isHrdJab = hrdRegex.test(jab);
+        // Pastikan bukan sekadar staf admin umum seperti Admin Gudang / Admin Sales
+        return isHrdDiv || isHrdJab;
+      });
 
- matchedEmps.forEach(k => {
- const kNama = (k.nama_karyawan || k.nama || "").trim().toLowerCase();
- const exists = targets.some(t => t.nama.toLowerCase() === kNama || (k.email && t.email.toLowerCase() === k.email.toLowerCase()));
- if (!exists) {
- const u = allUsers.find(user => (user.nama || "").trim().toLowerCase() === kNama || (user.username || "").toLowerCase() === (k.username || k.id || "").toLowerCase());
- targets.push({
- username: u?.username || k.username || k.id || k.nik_karyawan,
- email: u?.email || k.email || "",
- nama: k.nama_karyawan || k.nama,
- nik: k.nik_karyawan || k.nik
- });
- }
- });
+      hrdEmps.forEach(k => {
+        const kNama = (k.nama_karyawan || k.nama || "").trim();
+        if (!kNama) return;
+        const exists = targets.some(t => 
+          (t.nama && t.nama.toLowerCase() === kNama.toLowerCase()) || 
+          (k.email && t.email && t.email.toLowerCase() === k.email.toLowerCase())
+        );
+        if (!exists) {
+          const u = allUsers.find(user => 
+            (user.nama || "").trim().toLowerCase() === kNama.toLowerCase() || 
+            (user.username || "").toLowerCase() === (k.username || k.id || "").toLowerCase()
+          );
+          targets.push({
+            username: u?.username || k.username || k.id || k.nik_karyawan || k.nik,
+            email: u?.email || k.email || "",
+            nama: k.nama_karyawan || k.nama,
+            nik: k.nik_karyawan || k.nik
+          });
+        }
+      });
+    } else if (roleUpper === "FINANCE" || roleUpper === "ACCOUNTING" || roleUpper === "KEUANGAN") {
+      const finRegex = /\b(finance|accounting|keuangan|kasir|akuntansi|pajak|tax)\b/i;
+      const finUsers = allUsers.filter(u => {
+        const r = (u.role || "").toUpperCase().trim();
+        return r === "FINANCE" || r === "ACCOUNTING" || r === "KEUANGAN";
+      });
+      finUsers.forEach(u => {
+        const t = enrichTarget(u);
+        if (t) targets.push(t);
+      });
 
- if (targets.length > 0) {
- return targets.filter((v, i, a) => a.findIndex(v2 => (v2.username && v2.username === v.username) || (v2.email && v2.email === v.email)) === i);
- }
+      const finEmps = allEmployees.filter(k => {
+        const div = (k.divisi || k.departemen || "").toUpperCase().trim();
+        const jab = (k.jabatan || k.posisi || "").toLowerCase();
+        return div === "FINANCE" || div === "ACCOUNTING" || div === "KEUANGAN" || finRegex.test(jab);
+      });
+      finEmps.forEach(k => {
+        const kNama = (k.nama_karyawan || k.nama || "").trim();
+        if (!kNama) return;
+        const exists = targets.some(t => 
+          (t.nama && t.nama.toLowerCase() === kNama.toLowerCase()) || 
+          (k.email && t.email && t.email.toLowerCase() === k.email.toLowerCase())
+        );
+        if (!exists) {
+          const u = allUsers.find(user => 
+            (user.nama || "").trim().toLowerCase() === kNama.toLowerCase() || 
+            (user.username || "").toLowerCase() === (k.username || k.id || "").toLowerCase()
+          );
+          targets.push({
+            username: u?.username || k.username || k.id || k.nik_karyawan || k.nik,
+            email: u?.email || k.email || "",
+            nama: k.nama_karyawan || k.nama,
+            nik: k.nik_karyawan || k.nik
+          });
+        }
+      });
+    } else if (roleUpper === "GM" || roleUpper === "GENERAL MANAGER" || roleUpper === "DIREKTUR") {
+      const gmRegex = /\b(gm|general manager|direktur|director|pimpinan)\b/i;
+      const gmUsers = allUsers.filter(u => {
+        const r = (u.role || "").toUpperCase().trim();
+        return r === "GM" || r === "GENERAL MANAGER" || r === "DIREKTUR";
+      });
+      gmUsers.forEach(u => {
+        const t = enrichTarget(u);
+        if (t) targets.push(t);
+      });
 
- // Sama seperti fallback ATASAN di atas: kalau role spesifik (GM/Finance/
- // Manager/dst) tidak ketemu siapa pun, jangan sasar banyak role sekaligus.
- // Fallback aman: HRD saja.
- let fallbackUsers = allUsers.filter(u => (u.role || "").toUpperCase().includes("HRD"));
+      const gmEmps = allEmployees.filter(k => {
+        const jab = (k.jabatan || k.posisi || "").toLowerCase();
+        return gmRegex.test(jab);
+      });
+      gmEmps.forEach(k => {
+        const kNama = (k.nama_karyawan || k.nama || "").trim();
+        if (!kNama) return;
+        const exists = targets.some(t => (t.nama && t.nama.toLowerCase() === kNama.toLowerCase()));
+        if (!exists) {
+          const u = allUsers.find(user => (user.nama || "").trim().toLowerCase() === kNama.toLowerCase());
+          targets.push({
+            username: u?.username || k.username || k.id || k.nik_karyawan || k.nik,
+            email: u?.email || k.email || "",
+            nama: k.nama_karyawan || k.nama,
+            nik: k.nik_karyawan || k.nik
+          });
+        }
+      });
+    } else if (roleUpper === "MANAGER" || roleUpper === "MANAJER") {
+      const mgrRegex = /\b(manager|manajer|branch manager|kepala cabang|kepala bagian)\b/i;
+      const mgrUsers = allUsers.filter(u => {
+        const r = (u.role || "").toUpperCase().trim();
+        return r === "MANAGER" || r === "MANAJER";
+      });
+      mgrUsers.forEach(u => {
+        const t = enrichTarget(u);
+        if (t) targets.push(t);
+      });
 
- return fallbackUsers.map(enrichTarget).filter(Boolean);
+      const mgrEmps = allEmployees.filter(k => mgrRegex.test((k.jabatan || k.posisi || "").toLowerCase()));
+      mgrEmps.forEach(k => {
+        const kNama = (k.nama_karyawan || k.nama || "").trim();
+        if (!kNama) return;
+        const exists = targets.some(t => (t.nama && t.nama.toLowerCase() === kNama.toLowerCase()));
+        if (!exists) {
+          const u = allUsers.find(user => (user.nama || "").trim().toLowerCase() === kNama.toLowerCase());
+          targets.push({
+            username: u?.username || k.username || k.id || k.nik_karyawan || k.nik,
+            email: u?.email || k.email || "",
+            nama: k.nama_karyawan || k.nama,
+            nik: k.nik_karyawan || k.nik
+          });
+        }
+      });
+    } else if (roleUpper === "SPV" || roleUpper === "SUPERVISOR") {
+      const spvRegex = /\b(spv|supervisor|koordinator|kepala regu|mandor)\b/i;
+      const spvUsers = allUsers.filter(u => {
+        const r = (u.role || "").toUpperCase().trim();
+        return r === "SPV" || r === "SUPERVISOR" || r === "KOORDINATOR";
+      });
+      spvUsers.forEach(u => {
+        const t = enrichTarget(u);
+        if (t) targets.push(t);
+      });
 
- } catch (error) {
- console.error("Error getTargetsForRole:", error);
- return [];
- }
+      const spvEmps = allEmployees.filter(k => spvRegex.test((k.jabatan || k.posisi || "").toLowerCase()));
+      spvEmps.forEach(k => {
+        const kNama = (k.nama_karyawan || k.nama || "").trim();
+        if (!kNama) return;
+        const exists = targets.some(t => (t.nama && t.nama.toLowerCase() === kNama.toLowerCase()));
+        if (!exists) {
+          const u = allUsers.find(user => (user.nama || "").trim().toLowerCase() === kNama.toLowerCase());
+          targets.push({
+            username: u?.username || k.username || k.id || k.nik_karyawan || k.nik,
+            email: u?.email || k.email || "",
+            nama: k.nama_karyawan || k.nama,
+            nik: k.nik_karyawan || k.nik
+          });
+        }
+      });
+    } else {
+      // Exact role match fallback
+      const matchedUsers = allUsers.filter(u => (u.role || "").toUpperCase().trim() === roleUpper);
+      matchedUsers.forEach(u => {
+        const t = enrichTarget(u);
+        if (t) targets.push(t);
+      });
+    }
+
+    if (targets.length > 0) {
+      // Deduplicate targets berdasarkan username atau email
+      const uniqueTargets = targets.filter((v, i, a) => 
+        a.findIndex(v2 => (v2.username && v2.username === v.username) || (v2.email && v.email && v2.email.toLowerCase() === v.email.toLowerCase())) === i
+      );
+      return uniqueTargets;
+    }
+
+    // Fallback aman terakhir jika tidak ada satupun yang cocok
+    const fallbackUsers = allUsers.filter(u => (u.role || "").toUpperCase().trim() === "HRD" || (u.role || "").toUpperCase().trim() === "SUPERADMIN");
+    return fallbackUsers.map(enrichTarget).filter(Boolean);
+
+  } catch (error) {
+    console.error("Error getTargetsForRole:", error);
+    return [];
+  }
 }
-
 /* ---------------------------------------------------------------------
  * PERHITUNGAN JATAH CUTI SESUAI SK No.018/HRGA-AJ/XII/2024
  * ------------------------------------------------------------------- */

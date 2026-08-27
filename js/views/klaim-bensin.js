@@ -1,5 +1,5 @@
 import { COL } from "../firebase-config.js";
-import { fsAdd, fsGetAll, fsUpdate, genId, toast, sendEmailNotif, buildStandardEmailHtml, getTargetsForRole, createLoginToken, escapeHtml, openModal, closeModal, printSalesKlaimForm } from "../utils.js";
+import { fsAdd, fsGetAll, fsUpdate, genId, toast, sendEmailNotif, buildStandardEmailHtml, buildPengajuanEmailDetailHtml, getTargetsForRole, createLoginToken, escapeHtml, openModal, closeModal, printSalesKlaimForm } from "../utils.js";
 import { letterheadHtml } from "../branding.js";
 import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
 

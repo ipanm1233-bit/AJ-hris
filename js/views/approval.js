@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs } from "../firebase-config.js";
-import { fsGetAll, fsUpdate, fsAdd, genId, openModal, closeModal, toast, fmtDateTime, escapeHtml, sendEmailNotif, buildStandardEmailHtml, getTargetsForRole, createLoginToken, notifyUser, renderPengajuanDetailHtml, printSalesKlaimForm, generateAndSaveCutiDocument, printFormCutiFisik, getCutiDeductionCategory } from "../utils.js";
+import { fsGetAll, fsUpdate, fsAdd, genId, openModal, closeModal, toast, fmtDateTime, escapeHtml, sendEmailNotif, buildStandardEmailHtml, buildPengajuanEmailDetailHtml, getTargetsForRole, createLoginToken, notifyUser, renderPengajuanDetailHtml, printSalesKlaimForm, generateAndSaveCutiDocument, printFormCutiFisik, getCutiDeductionCategory } from "../utils.js";
 import { badge, emptyState, skeletonRows } from "../components.js";
 
 const CUTI_RULES = {
@@ -443,206 +443,143 @@ async function processAction(row, action, note, session) {
  if (typeof sendEmailNotif === 'function') {
  try {
  if (action === "APPROVE") {
- 
- // JIKA INI ADALAH APPROVAL TERAKHIR (APPROVED FINAL)
- if (idx === steps.length - 1) {
- let rolesToNotify = ["PEMOHON"];
- if (row.form_id === "F-KLAIM-BENSIN" || (row.nama_form||"").toLowerCase().includes("klaim")) { rolesToNotify.push("FINANCE", "ACCOUNTING"); }
- else if (isCuti) { rolesToNotify.push("HRD", "ATASAN"); } 
- else { rolesToNotify.push("HRD"); }
- 
- let finalTargets = [];
- for (const role of rolesToNotify) {
- const t = await getTargetsForRole(role, row.nama_pemohon);
- finalTargets.push(...t);
- }
- finalTargets = finalTargets.filter((v,i,a)=>a.findIndex(v2=>(v2.username===v.username))===i);
- 
- for (const target of finalTargets) {
- const token = await createLoginToken(target.username);
- let htmlFinal = "";
- 
- if (isCuti) {
- let jenisVal = row.detail.jenis_cuti || row.detail.jenis || "-";
- const isHalfDay = jenisVal.includes("1/2");
- const formatTglMulai = new Date(row.detail.tanggal_mulai || row.tgl).toLocaleDateString('id-ID');
- const formatTglSelesai = new Date(row.detail.tanggal_akhir || row.tgl).toLocaleDateString('id-ID');
- 
- if (isHalfDay) {
- htmlFinal = buildStandardEmailHtml({
-   badgeText: "Disetujui Final",
-   badgeVariant: "green",
-   title: "Ijin Meninggalkan Jam Kerja Disetujui",
-   recipientName: target.nama || row.nama_pemohon,
-   introText: `Pengajuan ijin setengah hari / meninggalkan jam kerja untuk <strong>${escapeHtml(row.nama_pemohon)}</strong> telah disetujui penuh oleh seluruh pihak terkait.`,
-   infoList: [
-     { label: "Nomor Dokumen", value: row.id },
-     { label: "Nama Pemohon", value: row.nama_pemohon },
-     { label: "Departemen / Divisi", value: row.detail.departemen || row.detail.divisi || "-" },
-     { label: "Hari / Tanggal", value: formatTglMulai },
-     { label: "Jam Ijin", value: `${row.detail.jam_keluar || "-"} s/d ${row.detail.jam_kembali || "-"}` },
-     { label: "Alasan / Keperluan", value: row.detail.alasan || row.detail.keterangan || "-" }
-   ],
-   actionUrl: `${window.location.origin}/#riwayat?token=${token}`,
-   actionText: "Lihat Detail di Portal HRIS →",
-   secondaryNote: "Status: Disetujui (Approved by System)."
- });
- } else {
- htmlFinal = buildStandardEmailHtml({
-   badgeText: "Disetujui Final",
-   badgeVariant: "green",
-   title: "Pengajuan Cuti Disetujui",
-   recipientName: target.nama || row.nama_pemohon,
-   introText: `Pengajuan cuti untuk <strong>${escapeHtml(row.nama_pemohon)}</strong> telah disetujui penuh oleh seluruh pihak terkait.`,
-   infoList: [
-     { label: "Nomor Dokumen", value: row.id },
-     { label: "Nama Pemohon", value: row.nama_pemohon },
-     { label: "Jabatan / Divisi", value: `${row.detail.jabatan || "-"} / ${row.detail.divisi || "-"}` },
-     { label: "Jenis Cuti", value: jenisVal },
-     { label: "Periode Cuti", value: `${formatTglMulai} s/d ${formatTglSelesai}` },
-     { label: "Alasan / Keperluan", value: row.detail.alasan || row.detail.keterangan || "-" }
-   ],
-   actionUrl: `${window.location.origin}/#riwayat?token=${token}`,
-   actionText: "Lihat Detail di Portal HRIS →",
-   secondaryNote: "Status: Disetujui (Approved by System)."
- });
- }
- } 
- else {
- const jabatanPemohon = karyawanByNama[row.nama_pemohon]?.jabatan || "-";
- const flowStatus = (row.approval_flow || []).map((r, i) => `${r}: ${(steps || [])[i]}`).join(" • ");
- const notesStr = (catatan || []).length > 0 ? (catatan || []).join(" | ") : "-";
+  
+  // JIKA INI ADALAH APPROVAL TERAKHIR (APPROVED FINAL)
+  if (idx === steps.length - 1) {
+    let rolesToNotify = ["PEMOHON"];
+    if (row.form_id === "F-KLAIM-BENSIN" || (row.nama_form||"").toLowerCase().includes("klaim")) { 
+      rolesToNotify.push("FINANCE", "ACCOUNTING", "HRD"); 
+    } else if (isCuti) { 
+      rolesToNotify.push("HRD", "ATASAN"); 
+    } else { 
+      rolesToNotify.push("HRD", "ATASAN"); 
+    }
+    
+    let finalTargets = [];
+    for (const role of rolesToNotify) {
+      const t = await getTargetsForRole(role, row.nama_pemohon);
+      finalTargets.push(...t);
+    }
+    finalTargets = finalTargets.filter((v,i,a)=>a.findIndex(v2=>(v2.username===v.username))===i);
+    
+    const detailEmailHtml = buildPengajuanEmailDetailHtml(row);
 
- const generalInfoList = [
-   { label: "Nomor Dokumen", value: row.id },
-   { label: "Nama Pengajuan", value: row.nama_form },
-   { label: "Pemohon", value: `${row.nama_pemohon} (${jabatanPemohon})` },
-   { label: "Alur Persetujuan", value: flowStatus }
- ];
+    for (const target of finalTargets) {
+      if (!target.email) continue;
+      const token = await createLoginToken(target.username);
+      
+      const htmlFinal = buildStandardEmailHtml({
+        badgeText: "Disetujui Final",
+        badgeVariant: "green",
+        title: `[DISETUJUI FINAL] ${row.nama_form}`,
+        recipientName: target.nama || row.nama_pemohon,
+        introText: `Pemberitahuan resmi: Pengajuan <strong>${escapeHtml(row.nama_form)}</strong> oleh <strong>${escapeHtml(row.nama_pemohon)}</strong> telah selesai diproses dan dinyatakan <strong>DISETUJUI FINAL (APPROVED)</strong> oleh seluruh approver terkait. Berikut rincian lengkap dokumen pengajuan:`,
+        bodyHtml: detailEmailHtml,
+        actionUrl: `${window.location.origin}/#riwayat?id=${row.id}&token=${token}`,
+        actionText: "Buka Dokumen Lengkap di Portal HRIS →",
+        secondaryNote: "Dokumen ini telah tercatat secara sah dan resmi di sistem HRIS & Operasional CV Andela Jaya."
+      });
+      
+      sendEmailNotif(target.email, `[APPROVED FINAL] ${row.nama_form} - ${row.nama_pemohon}`, htmlFinal).catch(e => console.warn(e));
+    }
 
- if (notesStr !== "-") {
-   generalInfoList.push({ label: "Catatan Approver", value: notesStr });
- }
+    // Kirim Email Hasil Status & Detail Form Lengkap ke Target Personil Khusus (Konfigurasi Form Builder / Tembusan Divisi Lain)
+    try {
+      const formCfgFinal = (await fsGetAll(COL.FORM_CONFIG).catch(() => [])).find(f => f.id === row.form_id);
+      const userRulesFinal = row.notify_user_rules || formCfgFinal?.notify_user_rules || row.notify_targets?.user_rules || [];
+      const specificUsersFallback = row.notify_specific_users || formCfgFinal?.notify_specific_users || row.notify_targets?.specific_users || [];
+      
+      const customFinalTargets = [];
+      if (Array.isArray(userRulesFinal) && userRulesFinal.length > 0) {
+        for (const r of userRulesFinal) {
+          if (r && r.nama && (r.hasil_status !== false && r.final_status !== false)) {
+            customFinalTargets.push(r.nama);
+          }
+        }
+      } else if (Array.isArray(specificUsersFallback)) {
+        customFinalTargets.push(...specificUsersFallback);
+      }
 
- htmlFinal = buildStandardEmailHtml({
-   badgeText: "Disetujui Final",
-   badgeVariant: "green",
-   title: `Pengajuan Disetujui: ${row.nama_form}`,
-   recipientName: target.nama || row.nama_pemohon,
-   introText: `Pengajuan <strong>${escapeHtml(row.nama_form)}</strong> telah menyelesaikan seluruh tahapan persetujuan dan dinyatakan <strong>DISETUJUI FINAL (APPROVED)</strong>.`,
-   infoList: generalInfoList,
-   actionUrl: `${window.location.origin}/#dashboard?token=${token}`,
-   actionText: "Buka Portal HRIS →",
-   secondaryNote: "Dokumen ini telah tercatat secara resmi di sistem HRIS & Operasional CV Andela Jaya."
- });
- }
- 
- sendEmailNotif(target.email, `[APPROVED FINAL] ${row.nama_form}`, htmlFinal);
- }
+      const notifiedUsernames = new Set(finalTargets.map(t => (t.username || t.nama || "").toUpperCase()));
+      for (const customName of customFinalTargets) {
+        if (!customName || notifiedUsernames.has(customName.toUpperCase())) continue;
+        const tList = await getTargetsForRole("PEMOHON", customName);
+        const customTargetObj = tList[0] || { nama: customName, email: karyawanByNama[customName]?.email, username: customName };
+        if (customTargetObj && customTargetObj.email) {
+          const customToken = await createLoginToken(customTargetObj.username || customName);
+          const customEmailHtml = buildStandardEmailHtml({
+            badgeText: "Info Tembusan Final",
+            badgeVariant: "green",
+            title: `[Tembusan Disetujui] ${row.nama_form} - ${row.nama_pemohon}`,
+            recipientName: customTargetObj.nama || customName,
+            introText: `Pemberitahuan tembusan kepada Anda/Divisi terkait bahwa pengajuan <strong>${escapeHtml(row.nama_form)}</strong> oleh <strong>${escapeHtml(row.nama_pemohon)}</strong> telah selesai diproses dan berstatus <strong>DISETUJUI FINAL</strong>. Berikut detail lengkap pengajuan & rencana operasional:`,
+            bodyHtml: detailEmailHtml,
+            actionUrl: `${window.location.origin}/#riwayat?id=${row.id}&token=${customToken}`,
+            actionText: "Buka Dokumen Pengajuan di HRIS →",
+            secondaryNote: "Email tembusan otomatis dikirimkan ke divisi terkait untuk keperluan koordinasi operasional."
+          });
+          sendEmailNotif(customTargetObj.email, `[INFO TEMBUSAN FINAL] ${row.nama_form} - ${row.nama_pemohon}`, customEmailHtml).catch(e => console.warn(e));
+          notifiedUsernames.add(customName.toUpperCase());
+        }
+      }
+    } catch (errCustomEmail) {
+      console.warn("Gagal mengirim email custom final target:", errCustomEmail);
+    }
 
- // Kirim Email Hasil Status & Link Form ke Target Personil Khusus (Konfigurasi Form Builder)
- try {
-   const formCfgFinal = (await fsGetAll(COL.FORM_CONFIG).catch(() => [])).find(f => f.id === row.form_id);
-   const userRulesFinal = row.notify_user_rules || formCfgFinal?.notify_user_rules || row.notify_targets?.user_rules || [];
-   const specificUsersFallback = row.notify_specific_users || formCfgFinal?.notify_specific_users || row.notify_targets?.specific_users || [];
-   
-   const customFinalTargets = [];
-   if (Array.isArray(userRulesFinal) && userRulesFinal.length > 0) {
-     for (const r of userRulesFinal) {
-       if (r && r.nama && (r.hasil_status !== false && r.final_status !== false)) {
-         customFinalTargets.push(r.nama);
-       }
-     }
-   } else if (Array.isArray(specificUsersFallback)) {
-     customFinalTargets.push(...specificUsersFallback);
-   }
-
-   const notifiedUsernames = new Set(finalTargets.map(t => (t.username || t.nama || "").toUpperCase()));
-   for (const customName of customFinalTargets) {
-     if (!customName || notifiedUsernames.has(customName.toUpperCase())) continue;
-     const tList = await getTargetsForRole("PEMOHON", customName);
-     const customTargetObj = tList[0] || { nama: customName, email: karyawanByNama[customName]?.email, username: customName };
-     if (customTargetObj && customTargetObj.email) {
-       const customToken = await createLoginToken(customTargetObj.username || customName);
-       const customEmailHtml = buildStandardEmailHtml({
-         badgeText: "Info Status Final",
-         badgeVariant: "green",
-         title: `[Tembusan] ${row.nama_form} Disetujui Final`,
-         recipientName: customTargetObj.nama || customName,
-         introText: `Pemberitahuan bahwa pengajuan <strong>${escapeHtml(row.nama_form)}</strong> oleh <strong>${escapeHtml(row.nama_pemohon)}</strong> telah selesai diproses dan berstatus <strong>DISETUJUI FINAL</strong>.`,
-         infoList: [
-           { label: "Nomor Dokumen", value: row.id },
-           { label: "Nama Pengajuan", value: row.nama_form },
-           { label: "Pemohon", value: row.nama_pemohon },
-           { label: "Status Akhir", value: "APPROVED FINAL" }
-         ],
-         actionUrl: `${window.location.origin}/#riwayat?id=${row.id}&token=${customToken}`,
-         actionText: "Buka Dokumen Pengajuan →",
-         secondaryNote: "Anda menerima email ini sebagai personil penerima notifikasi khusus untuk formulir ini."
-       });
-       sendEmailNotif(customTargetObj.email, `[INFO FINAL] ${row.nama_form} - ${row.nama_pemohon}`, customEmailHtml).catch(e => console.warn(e));
-       notifiedUsernames.add(customName.toUpperCase());
-     }
-   }
- } catch (errCustomEmail) {
-   console.warn("Gagal mengirim email custom final target:", errCustomEmail);
- }
-
- // ------------------------------------------------------------
- // PENGINGAT LPJ (Laporan Pertanggungjawaban) — dikirim khusus ke
- // PEMOHON jika form ini dikonfigurasi wajib LPJ di Form Builder.
- // ------------------------------------------------------------
- if (row.requires_lpj) {
- const pemohonTargets = await getTargetsForRole("PEMOHON", row.nama_pemohon);
- const dueStr = row.lpj_due_date ? new Date(row.lpj_due_date).toLocaleDateString('id-ID', { dateStyle: 'long' }) : "-";
- for (const target of pemohonTargets) {
- const tokenLpj = await createLoginToken(target.username);
- const htmlLpj = buildStandardEmailHtml({
-   badgeText: "Wajib LPJ",
-   badgeVariant: "amber",
-   title: "Pengingat Laporan Pertanggungjawaban (LPJ)",
-   recipientName: target.nama || row.nama_pemohon,
-   introText: `Pengajuan <strong>${escapeHtml(row.nama_form)}</strong> (<code>${escapeHtml(row.id)}</code>) Anda telah disetujui secara final. Sesuai ketentuan operasional, Anda wajib melampirkan Laporan Pertanggungjawaban (LPJ) beserta bukti pengeluaran.`,
-   infoList: [
-     { label: "Nomor Dokumen", value: row.id },
-     { label: "Nama Pengajuan", value: row.nama_form },
-     { label: "Batas Waktu LPJ", value: dueStr }
-   ],
-   actionUrl: `${window.location.origin}/#riwayat?token=${tokenLpj}`,
-   actionText: "Isi & Unggah Bukti LPJ Sekarang →",
-   secondaryNote: "Buka menu Riwayat Pengajuan di HRIS untuk mengunggah bukti realisasi."
- });
- sendEmailNotif(target.email, `[Wajib LPJ] ${row.nama_form} — batas ${dueStr}`, htmlLpj).catch(e => console.warn(e));
- }
- }
- } 
- // JIKA MASIH ADA APPROVER SELANJUTNYA
- else {
- const nextRole = row.approval_flow[idx + 1];
- const nextTargets = await getTargetsForRole(nextRole, row.nama_pemohon);
- 
- for (const target of nextTargets) {
- const token = await createLoginToken(target.username);
- const htmlNext = buildStandardEmailHtml({
-   badgeText: "Approval Dibutuhkan",
-   badgeVariant: "maroon",
-   title: `Persetujuan: ${row.nama_form}`,
-   recipientName: target.nama || `Bapak/Ibu ${nextRole}`,
-   introText: `Pengajuan dari <strong>${escapeHtml(row.nama_pemohon)}</strong> saat ini menunggu peninjauan dan persetujuan Anda sebagai <strong>${escapeHtml(nextRole)}</strong>:`,
-   infoList: [
-     { label: "Nomor Dokumen", value: row.id },
-     { label: "Nama Form", value: row.nama_form },
-     { label: "Pemohon", value: row.nama_pemohon },
-     { label: "Tahap Otorisasi", value: `Tahap ${idx + 2} dari ${steps.length} (${nextRole})` }
-   ],
-   actionUrl: `${window.location.origin}/#approval?token=${token}`,
-   actionText: "Akses Langsung & Otorisasi Pengajuan →",
-   secondaryNote: "Tautan ini aman dan memungkinkan Anda menyetujui langsung tanpa mengetik ulang kata sandi."
- });
- sendEmailNotif(target.email, `Menunggu Persetujuan Anda: ${row.nama_form}`, htmlNext);
- }
- }
- } else if (action === "REJECT") {
+    // ------------------------------------------------------------
+    // PENGINGAT LPJ (Laporan Pertanggungjawaban) — dikirim khusus ke
+    // PEMOHON jika form ini dikonfigurasi wajib LPJ di Form Builder.
+    // ------------------------------------------------------------
+    if (row.requires_lpj) {
+      const pemohonTargets = await getTargetsForRole("PEMOHON", row.nama_pemohon);
+      const dueStr = row.lpj_due_date ? new Date(row.lpj_due_date).toLocaleDateString('id-ID', { dateStyle: 'long' }) : "-";
+      for (const target of pemohonTargets) {
+        if (!target.email) continue;
+        const tokenLpj = await createLoginToken(target.username);
+        const htmlLpj = buildStandardEmailHtml({
+          badgeText: "Wajib LPJ",
+          badgeVariant: "amber",
+          title: "Pengingat Laporan Pertanggungjawaban (LPJ)",
+          recipientName: target.nama || row.nama_pemohon,
+          introText: `Pengajuan <strong>${escapeHtml(row.nama_form)}</strong> (<code>${escapeHtml(row.id)}</code>) Anda telah disetujui secara final. Sesuai ketentuan operasional, Anda wajib melampirkan Laporan Pertanggungjawaban (LPJ) beserta bukti pengeluaran.`,
+          bodyHtml: detailEmailHtml,
+          infoList: [
+            { label: "Nomor Dokumen", value: row.id },
+            { label: "Nama Pengajuan", value: row.nama_form },
+            { label: "Batas Waktu LPJ", value: dueStr }
+          ],
+          actionUrl: `${window.location.origin}/#riwayat?id=${row.id}&token=${tokenLpj}`,
+          actionText: "Isi & Unggah Bukti LPJ Sekarang →",
+          secondaryNote: "Buka menu Riwayat Pengajuan di HRIS untuk mengunggah bukti realisasi."
+        });
+        sendEmailNotif(target.email, `[Wajib LPJ] ${row.nama_form} — batas ${dueStr}`, htmlLpj).catch(e => console.warn(e));
+      }
+    }
+  } 
+  // JIKA MASIH ADA APPROVER SELANJUTNYA
+  else {
+    const nextRole = row.approval_flow[idx + 1];
+    const nextTargets = await getTargetsForRole(nextRole, row.nama_pemohon);
+    const detailEmailHtml = buildPengajuanEmailDetailHtml(row);
+    
+    for (const target of nextTargets) {
+      if (!target.email) continue;
+      const token = await createLoginToken(target.username);
+      const htmlNext = buildStandardEmailHtml({
+        badgeText: "Approval Dibutuhkan",
+        badgeVariant: "maroon",
+        title: `Persetujuan: ${row.nama_form}`,
+        recipientName: target.nama || `Bapak/Ibu ${nextRole}`,
+        introText: `Pengajuan dari <strong>${escapeHtml(row.nama_pemohon)}</strong> saat ini menunggu peninjauan dan persetujuan Anda sebagai <strong>${escapeHtml(nextRole)}</strong> (Tahap ${idx + 2} dari ${steps.length}). Berikut detail lengkap pengajuan yang diajukan:`,
+        bodyHtml: detailEmailHtml,
+        actionUrl: `${window.location.origin}/#approval?id=${row.id}&token=${token}`,
+        actionText: "Akses Langsung & Otorisasi Pengajuan →",
+        secondaryNote: "Tautan ini aman dan memungkinkan Anda menyetujui langsung tanpa mengetik ulang kata sandi."
+      });
+      sendEmailNotif(target.email, `Menunggu Persetujuan Anda: ${row.nama_form} - ${row.nama_pemohon}`, htmlNext).catch(e => console.warn(e));
+    }
+  }
+  }} else if (action === "REJECT") {
  const pemohonTargets = await getTargetsForRole("PEMOHON", row.nama_pemohon);
  for (const target of pemohonTargets) {
  const token = await createLoginToken(target.username);

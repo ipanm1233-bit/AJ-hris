@@ -1,7 +1,7 @@
 import { db, COL, collection, query, where, getDocs, orderBy, limit, doc, getDoc } from "../firebase-config.js";
 import {
  fsGetAll, fsAdd, fsUpdate, openModal, closeModal, toast, genId, escapeHtml,
- fmtDateShort, evalFormula, toNumber, sendEmailNotif, getTargetsForRole, createLoginToken,
+ fmtDateShort, evalFormula, toNumber, sendEmailNotif, buildStandardEmailHtml, buildPengajuanEmailDetailHtml, getTargetsForRole, createLoginToken,
  dynFieldWrapperHtml, wireDynFormLogic, collectDynFormDetail, sendFCMNotif, notifyUser, getCalculatedJatahCuti
 } from "../utils.js";
 import { canAccessForm } from "../auth.js";
@@ -273,63 +273,105 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
  if (container) await loadRecent(container, session);
  
  // Memicu Notifikasi (Email + Lonceng App + Push HP) ke APPROVER PERTAMA
- const alreadyNotifiedSet = new Set();
- if (approvalFlow.length > 0) {
- const nextRole = approvalFlow[0];
- let targets = await getTargetsForRole(nextRole, payload.nama_pemohon);
- if (!targets || targets.length === 0) {
- targets = await getTargetsForRole("HRD", payload.nama_pemohon);
- }
- 
- for (const target of targets) {
- if (typeof notifyUser === 'function') {
- await notifyUser(
- target, 
- `Persetujuan Dibutuhkan: ${payload.nama_form}`, 
- `Ada pengajuan ${payload.nama_form} baru dari ${payload.nama_pemohon}. Membutuhkan verifikasi Anda.`,
- `/#approval?id=${payload.id}`
- ).catch(e => console.warn("Push gagal:", e));
+  const alreadyNotifiedSet = new Set();
+  const detailEmailHtml = buildPengajuanEmailDetailHtml(payload);
 
- const uname = (typeof target === "object" ? (target.username || target.nama) : target);
- if (uname) alreadyNotifiedSet.add(String(uname).trim().toUpperCase());
- const nmVal = (typeof target === "object" ? target.nama : null);
- if (nmVal) alreadyNotifiedSet.add(String(nmVal).trim().toUpperCase());
- }
- }
- }
+  if (approvalFlow.length > 0) {
+    const nextRole = approvalFlow[0];
+    let targets = await getTargetsForRole(nextRole, payload.nama_pemohon);
+    if (!targets || targets.length === 0) {
+      targets = await getTargetsForRole("HRD", payload.nama_pemohon);
+    }
+    
+    for (const target of targets) {
+      // 1. In-App & HP Push
+      if (typeof notifyUser === 'function') {
+        await notifyUser(
+          target, 
+          `Persetujuan Dibutuhkan: ${payload.nama_form}`, 
+          `Ada pengajuan ${payload.nama_form} baru dari ${payload.nama_pemohon}. Membutuhkan verifikasi Anda.`,
+          `/#approval?id=${payload.id}`
+        ).catch(e => console.warn("Push gagal:", e));
 
- // Memicu Notifikasi & Email ke Target Nama Karyawan Spesifik (Info Cuti / Dinas)
- const userRules = formCfg.notify_user_rules || formCfg.notify_targets?.user_rules || [];
- const specificTargets = formCfg.notify_specific_users || formCfg.notify_targets?.specific_users || [];
- 
- const initialNotifyNames = [];
- if (Array.isArray(userRules) && userRules.length > 0) {
- for (const r of userRules) {
- if (r && r.nama && (r.info_dinas !== false && r.info_pengajuan !== false)) {
- initialNotifyNames.push(r.nama);
- }
- }
- } else if (Array.isArray(specificTargets)) {
- initialNotifyNames.push(...specificTargets);
- }
+        const uname = (typeof target === "object" ? (target.username || target.nama) : target);
+        if (uname) alreadyNotifiedSet.add(String(uname).trim().toUpperCase());
+        const nmVal = (typeof target === "object" ? target.nama : null);
+        if (nmVal) alreadyNotifiedSet.add(String(nmVal).trim().toUpperCase());
+      }
 
- if (initialNotifyNames.length > 0) {
- for (const targetName of initialNotifyNames) {
- if (!targetName || !targetName.trim()) continue;
- const targetNameUpper = targetName.trim().toUpperCase();
- if (targetNameUpper === (session.nama || "").toUpperCase()) continue;
- if (alreadyNotifiedSet.has(targetNameUpper)) continue;
+      // 2. Email Notifikasi Approver Pertama dengan Detail Lengkap
+      if (typeof sendEmailNotif === 'function' && target.email) {
+        const token = await createLoginToken(target.username || target.nama);
+        const htmlFirst = buildStandardEmailHtml({
+          badgeText: "Approval Baru",
+          badgeVariant: "maroon",
+          title: `Pengajuan Baru: ${payload.nama_form}`,
+          recipientName: target.nama || `Bapak/Ibu ${nextRole}`,
+          introText: `Pengajuan baru <strong>${escapeHtml(payload.nama_form)}</strong> telah diajukan oleh <strong>${escapeHtml(payload.nama_pemohon)}</strong> dan memerlukan persetujuan Anda sebagai <strong>${escapeHtml(nextRole)}</strong>. Berikut detail lengkap pengajuan:`,
+          bodyHtml: detailEmailHtml,
+          actionUrl: `${window.location.origin}/#approval?id=${payload.id}&token=${token}`,
+          actionText: "Tinjau & Otorisasi Pengajuan →",
+          secondaryNote: "Akses langsung melalui portal HRIS CV Andela Jaya."
+        });
+        sendEmailNotif(target.email, `[Persetujuan Baru] ${payload.nama_form} - ${payload.nama_pemohon}`, htmlFirst).catch(e => console.warn(e));
+      }
+    }
+  }
 
- await notifyUser(
- targetName,
- `Info Pengajuan Baru: ${payload.nama_form}`,
- `Formulir ${payload.nama_form} baru telah diajukan oleh ${payload.nama_pemohon} (${session.jabatan || 'Pemohon'}).`,
- `/#riwayat?id=${payload.id}`
- ).catch(e => console.warn("Notif target khusus pengajuan gagal:", e));
- alreadyNotifiedSet.add(targetNameUpper);
- }
- }
- } catch (e) {
+  // Memicu Notifikasi & Email ke Target Nama Karyawan Spesifik (Info Cuti / Dinas / Tembusan Divisi Lain)
+  const userRules = formCfg.notify_user_rules || formCfg.notify_targets?.user_rules || [];
+  const specificTargets = formCfg.notify_specific_users || formCfg.notify_targets?.specific_users || [];
+  
+  const initialNotifyNames = [];
+  if (Array.isArray(userRules) && userRules.length > 0) {
+    for (const r of userRules) {
+      if (r && r.nama && (r.info_dinas !== false && r.info_pengajuan !== false)) {
+        initialNotifyNames.push(r.nama);
+      }
+    }
+  } else if (Array.isArray(specificTargets)) {
+    initialNotifyNames.push(...specificTargets);
+  }
+
+  if (initialNotifyNames.length > 0) {
+    for (const targetName of initialNotifyNames) {
+      if (!targetName || !targetName.trim()) continue;
+      const targetNameUpper = targetName.trim().toUpperCase();
+      if (targetNameUpper === (session.nama || "").toUpperCase()) continue;
+      if (alreadyNotifiedSet.has(targetNameUpper)) continue;
+
+      // 1. In-App & HP Push
+      await notifyUser(
+        targetName,
+        `Info Pengajuan Baru: ${payload.nama_form}`,
+        `Formulir ${payload.nama_form} baru telah diajukan oleh ${payload.nama_pemohon} (${session.jabatan || 'Pemohon'}).`,
+        `/#riwayat?id=${payload.id}`
+      ).catch(e => console.warn("Notif target khusus pengajuan gagal:", e));
+
+      // 2. Email Notifikasi Tembusan Pengajuan Baru
+      if (typeof sendEmailNotif === 'function') {
+        const tList = await getTargetsForRole("PEMOHON", targetName);
+        const targetObj = tList[0];
+        if (targetObj && targetObj.email) {
+          const token = await createLoginToken(targetObj.username || targetName);
+          const htmlInfo = buildStandardEmailHtml({
+            badgeText: "Info Pengajuan",
+            badgeVariant: "blue",
+            title: `[Info Pengajuan Baru] ${payload.nama_form}`,
+            recipientName: targetObj.nama || targetName,
+            introText: `Pemberitahuan bahwa formulir <strong>${escapeHtml(payload.nama_form)}</strong> telah diajukan oleh <strong>${escapeHtml(payload.nama_pemohon)}</strong>. Berikut rincian lengkap pengajuan:`,
+            bodyHtml: detailEmailHtml,
+            actionUrl: `${window.location.origin}/#riwayat?id=${payload.id}&token=${token}`,
+            actionText: "Buka Dokumen di HRIS →",
+            secondaryNote: "Anda menerima email ini sebagai personil penerima notifikasi khusus."
+          });
+          sendEmailNotif(targetObj.email, `[Info Pengajuan] ${payload.nama_form} - ${payload.nama_pemohon}`, htmlInfo).catch(e => console.warn(e));
+        }
+      }
+
+      alreadyNotifiedSet.add(targetNameUpper);
+    }
+  }} catch (e) {
  console.error(e);
  toast("Gagal mengirim pengajuan: " + e.message, "error");
  const submitBtn = document.querySelector("#dyn-submit");
