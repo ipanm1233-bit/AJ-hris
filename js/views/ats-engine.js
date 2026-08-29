@@ -469,8 +469,8 @@ export function extractBasicInfo(rawText, filename = "") {
   const majorPatterns = [
     /jurusan\s*:\s*([a-zA-Z\s]+)/i,
     /program\s+studi\s*:\s*([a-zA-Z\s]+)/i,
-    /(?:s1|d3|sarjana|smk)\s+([a-zA-Z\s]{4,30})/i,
-    /(manajemen|akuntansi|teknik\s+informatika|sistem\s+informasi|ilmu\s+komunikasi|hukum|teknik\s+mesin|teknik\s+industri|pemasaran|bisnis|administrasi\s+bisnis|administrasi\s+perkantoran|ekonomi)/i
+    /(?:s1|d3|d4|s2|sarjana|smk)\s+([a-zA-Z\s]{4,30})/i,
+    /(manajemen|akuntansi|teknik\s+informatika|sistem\s+informasi|ilmu\s+komunikasi|hukum|teknik\s+mesin|teknik\s+industri|pemasaran|bisnis|administrasi\s+bisnis|administrasi\s+perkantoran|ekonomi|keuangan|psikologi|rekayasa\s+perangkat\s+lunak|multimedia)/i
   ];
   for (const pat of majorPatterns) {
     const m = rawText.match(pat);
@@ -480,7 +480,20 @@ export function extractBasicInfo(rawText, filename = "") {
     }
   }
 
-  // 7. Pengalaman Kerja & Perhitungan Tahun
+  // Nama Institusi Pendidikan
+  const instPatterns = [
+    /(?:universitas|institut|politeknik|stie|stmik|sekolah\s+tinggi|akpol|akmil|akademi)\s+([a-zA-Z0-9\s]{3,35})/i,
+    /(?:sma\s*(?:n|negeri)?\s*\d+|smk\s*(?:n|negeri)?\s*\d+|man\s*\d+|smu\s*\d+)\s*([a-zA-Z0-9\s]{0,25})/i
+  ];
+  for (const pat of instPatterns) {
+    const m = rawText.match(pat);
+    if (m) {
+      institusi = m[0].trim().replace(/[\r\n]+/g, " ");
+      if (institusi.length <= 50) break;
+    }
+  }
+
+  // 7. Pengalaman Kerja & Perhitungan Tahun (TIDAK MEMASUKKAN RIWAYAT PENDIDIKAN)
   const expData = calculateExperience(rawText);
 
   return {
@@ -501,62 +514,188 @@ export function extractBasicInfo(rawText, filename = "") {
 
 /**
  * Kalkulator Pengalaman Kerja & Rentang Waktu
+ * CATATAN PENTING: Riwayat pendidikan (Universitas, SMA, SMK, Kuliah, Sekolah, dll)
+ * TIDAK BOLEH dihitung sebagai pengalaman kerja!
  */
 export function calculateExperience(rawText) {
+  if (!rawText || typeof rawText !== "string") {
+    return { totalYears: 0, salesYears: 0, roles: [] };
+  }
+
   let totalYears = 0;
   let salesYears = 0;
   const roles = [];
   const currentYear = new Date().getFullYear();
 
   // Pattern tahun misalnya: 2019 - 2023, 2021 s/d Sekarang, Jan 2020 - Des 2022
-  const dateRangeRegex = /(?:(jan|feb|mar|apr|mei|may|jun|jul|agu|aug|sep|okt|oct|nov|des|dec)[a-z]*[\s.,]*)?([12][09][0-9]{2})\s*(?:-|–|s\/d|to|sampai|hingga)\s*(?:(jan|feb|mar|apr|mei|may|jun|jul|agu|aug|sep|okt|oct|nov|des|dec)[a-z]*[\s.,]*)?([12][09][0-9]{2}|sekarang|present|now|saat\s+ini)/gi;
+  const dateRangeRegex = /(?:(jan(?:uari)?|feb(?:ruari)?|mar(?:et)?|apr(?:il)?|mei|may|jun(?:i)?|jul(?:i)?|agu(?:stus)?|aug(?:ust)?|sep(?:tember)?|okt(?:ober)?|oct(?:ober)?|nov(?:ember)?|des(?:ember)?|dec(?:ember)?)[a-z]*[\s.,]*)?([12][09][0-9]{2})\s*(?:-|–|—|s\/d|to|sampai|hingga)\s*(?:(jan(?:uari)?|feb(?:ruari)?|mar(?:et)?|apr(?:il)?|mei|may|jun(?:i)?|jul(?:i)?|agu(?:stus)?|aug(?:ust)?|sep(?:tember)?|okt(?:ober)?|oct(?:ober)?|nov(?:ember)?|des(?:ember)?|dec(?:ember)?)[a-z]*[\s.,]*)?([12][09][0-9]{2}|sekarang|present|now|saat\s+ini)/gi;
 
-  let match;
-  const foundSpans = [];
+  // Keyword penanda riwayat pendidikan (TIDAK BOLEH DIHITUNG SEBAGAI KERJA)
+  const isEduSnippet = (text) => {
+    const t = text.toLowerCase();
+    const eduKeywords = [
+      "universitas", "univ.", " univ ", "institut", "politeknik", "stie", "stmik", "akpol", "akmil",
+      "sekolah tinggi", "sekolah menengah", "sekolah dasar", "sma ", "smk ", "smp ", "sd ", "smu ",
+      "slta", "sltp", "madrasah", "aliyah", "tsanawiyah", "pesantren", "college", "university",
+      "high school", "vocational", "sarjana", "diploma", "magister", "doktor", "bachelor", "master",
+      "jurusan", "program studi", "prodi", "fakultas", "mahasiswa", "mahasiswi", "siswa", "siswi",
+      "alumni", "ipk", "gpa", "skripsi", "tesis", "tugas akhir", "cumlaude", "pendidikan formal",
+      "pendidikan terakhir", "riwayat pendidikan", "latar belakang pendidikan", "education", "academic background"
+    ];
+    return eduKeywords.some(k => t.includes(k));
+  };
 
-  while ((match = dateRangeRegex.exec(rawText)) !== null) {
-    const startYr = parseInt(match[2], 10);
-    let endYr = currentYear;
-    if (match[4] && /^[0-9]{4}$/.test(match[4])) {
-      endYr = parseInt(match[4], 10);
+  // Keyword penanda pekerjaan nyata
+  const isWorkRoleSnippet = (text) => {
+    const t = text.toLowerCase();
+    const workKeywords = [
+      "pt ", "pt.", "cv ", "cv.", "ud ", "ud.", "tbk", "corp", "inc", "ltd", "perusahaan", "company",
+      "kantor", "cabang", "toko", "outlet", "distributor", "retail", "posisi", "jabatan", "pekerjaan",
+      "sales", "canvasser", "marketing", "supervisor", "spv", "manager", "manajer", "staff", "staf",
+      "admin", "administrasi", "officer", "operator", "driver", "sopir", "helper", "kenek", "gudang",
+      "kasir", "teller", "teknisi", "leader", "team lead", "koordinator", "head", "direktur",
+      "account executive", "field", "freelance", "kontrak", "karyawan", "pegawai", "magang", "intern",
+      "tanggung jawab", "deskripsi kerja", "job desc", "jobdesk", "melayani", "mencapai target", "omset", "omzet"
+    ];
+    return workKeywords.some(k => t.includes(k));
+  };
+
+  // 1. Pecah teks menjadi baris dan segmen bagian (Pendidikan vs Pengalaman Kerja)
+  const lines = rawText.split(/\r?\n/);
+  let currentSection = "GENERAL"; // "EDUCATION", "WORK", "ORGANIZATION", "SKILLS", "GENERAL"
+
+  const sectionBlocks = {
+    work: [],
+    education: [],
+    other: []
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    const lowerLine = line.toLowerCase();
+    
+    // Deteksi Header Bagian Pengalaman Kerja
+    if (/^(?:riwayat\s+pekerjaan|pengalaman\s+kerja|pengalaman\s+bekerja|pengalaman\s+profesional|riwayat\s+karir|jejak\s+karir|work\s+experience|professional\s+experience|employment\s+history|career\s+history|job\s+experience|pengalaman\s+kerja\s*(?:&|dan)\s*organisasi)\b/i.test(lowerLine) ||
+        (lowerLine.length < 35 && /^(?:pengalaman|experience|riwayat\s+kerja)$/i.test(lowerLine))) {
+      currentSection = "WORK";
+      continue;
     }
     
-    if (startYr >= 1990 && startYr <= currentYear && endYr >= startYr && endYr <= currentYear + 1) {
-      const diff = Math.max(1, endYr - startYr);
-      foundSpans.push({ start: startYr, end: endYr, duration: diff });
+    // Deteksi Header Bagian Pendidikan
+    if (/^(?:riwayat\s+pendidikan|pendidikan\s+formal|pendidikan\s+non-formal|latar\s+belakang\s+pendidikan|riwayat\s+sekolah|data\s+pendidikan|kualifikasi\s+pendidikan|jenjang\s+pendidikan|education|educational\s+background|academic\s+background|pendidikan)\b/i.test(lowerLine) ||
+        (lowerLine.length < 35 && /^(?:pendidikan|education|edukasi|akademik)$/i.test(lowerLine))) {
+      currentSection = "EDUCATION";
+      continue;
+    }
 
-      // Ambil teks sekitar rentang tahun untuk mengenali jabatan
-      const idx = match.index;
-      const snippet = rawText.substring(Math.max(0, idx - 120), Math.min(rawText.length, idx + 150));
-      
-      const isSales = /sales|marketing|canvassing|account\s+executive|penjualan|pemasaran/i.test(snippet);
-      if (isSales) {
-        salesYears += diff;
-      }
+    // Deteksi Header Bagian Lain (Organisasi, Keahlian, Sertifikasi, Kontak, Profil)
+    if (/^(?:keahlian|keterampilan|skills|organisasi|organizational\s+experience|sertifikasi|sertifikat|certifications?|pelatihan|training|tentang\s+saya|about\s+me|ringkasan|summary|profil|profile|kontak|contact|referensi|reference|bahasa|languages)\b/i.test(lowerLine)) {
+      currentSection = "OTHER";
+      continue;
+    }
 
-      roles.push({
-        periode: `${startYr} - ${endYr === currentYear ? 'Sekarang' : endYr}`,
-        durasi_tahun: diff,
-        is_sales: isSales,
-        cuplikan: snippet.replace(/[\r\n]+/g, " ").trim().substring(0, 100)
-      });
+    if (currentSection === "WORK") {
+      sectionBlocks.work.push({ line, index: i });
+    } else if (currentSection === "EDUCATION") {
+      sectionBlocks.education.push({ line, index: i });
+    } else {
+      sectionBlocks.other.push({ line, index: i });
     }
   }
 
-  // Jika regex rentang tahun tidak menemukan apa-apa, cari keyword pengalaman misalnya "pengalaman 3 tahun"
-  if (foundSpans.length === 0) {
-    const expTextMatch = rawText.match(/(?:pengalaman|experience)[^0-9]{1,20}([0-9]{1,2})\s*(?:tahun|thn|years)/i);
-    if (expTextMatch) {
-      totalYears = parseInt(expTextMatch[1], 10);
+  const workSpans = [];
+
+  // Helper untuk mengevaluasi rentang tahun
+  const processMatch = (textContext, matchResult, fullRaw) => {
+    const startYr = parseInt(matchResult[2], 10);
+    let endYr = currentYear;
+    if (matchResult[4] && /^[0-9]{4}$/.test(matchResult[4])) {
+      endYr = parseInt(matchResult[4], 10);
     }
-  } else {
+    
+    if (startYr >= 1990 && startYr <= currentYear && endYr >= startYr && endYr <= currentYear + 1) {
+      // Periksa apakah konteks teks di sekitarnya mengindikasikan sekolah / pendidikan
+      const isEdu = isEduSnippet(textContext);
+      const isWork = isWorkRoleSnippet(textContext);
+
+      // JIKA teks tersebut adalah riwayat pendidikan dan tidak memiliki konteks pekerjaan kantor/sales nyata -> TOLAK!
+      if (isEdu && !isWork) {
+        return null; // Abaikan masa pendidikan
+      }
+
+      const diff = Math.max(1, endYr - startYr);
+      const isSales = /sales|marketing|canvass|account\s+executive|penjualan|pemasaran|telemarketing|promoter/i.test(textContext);
+
+      return {
+        start: startYr,
+        end: endYr,
+        duration: diff,
+        isSales,
+        snippet: textContext.replace(/[\r\n]+/g, " ").trim().substring(0, 120)
+      };
+    }
+    return null;
+  };
+
+  // 2. Jika ada blok bagian WORK yang terdeteksi, prioritaskan scan pada blok WORK
+  if (sectionBlocks.work.length > 0) {
+    const workText = sectionBlocks.work.map(w => w.line).join("\n");
+    let match;
+    while ((match = dateRangeRegex.exec(workText)) !== null) {
+      const idx = match.index;
+      const snippet = workText.substring(Math.max(0, idx - 100), Math.min(workText.length, idx + 140));
+      const res = processMatch(snippet, match, workText);
+      if (res) {
+        workSpans.push(res);
+      }
+    }
+  }
+
+  // 3. Jika tidak ada blok WORK khusus atau belum menemukan pengalaman kerja, scan seluruh teks
+  // TETAPI secara ketat mengecualikan baris/konteks yang berada di bagian riwayat pendidikan
+  if (workSpans.length === 0) {
+    let match;
+    dateRangeRegex.lastIndex = 0;
+    while ((match = dateRangeRegex.exec(rawText)) !== null) {
+      const idx = match.index;
+      const snippet = rawText.substring(Math.max(0, idx - 120), Math.min(rawText.length, idx + 150));
+      
+      // Filter ketat: jika snippet berada di konteks pendidikan, tolak
+      if (isEduSnippet(snippet) && !isWorkRoleSnippet(snippet)) {
+        continue;
+      }
+
+      // Pastikan ada indikasi pekerjaan atau setidaknya tidak ada kata universitas/sekolah
+      const res = processMatch(snippet, match, rawText);
+      if (res) {
+        workSpans.push(res);
+      }
+    }
+  }
+
+  // 4. Susun daftar roles dan hitung total tahun tanpa overlap
+  if (workSpans.length > 0) {
+    for (const span of workSpans) {
+      roles.push({
+        periode: `${span.start} - ${span.end === currentYear ? 'Sekarang' : span.end}`,
+        durasi_tahun: span.duration,
+        is_sales: span.isSales,
+        cuplikan: span.snippet
+      });
+      if (span.isSales) {
+        salesYears += span.duration;
+      }
+    }
+
     // Hindari double-count overlap
-    foundSpans.sort((a, b) => a.start - b.start);
+    workSpans.sort((a, b) => a.start - b.start);
     let mergedYears = 0;
     let currStart = -1;
     let currEnd = -1;
 
-    for (const span of foundSpans) {
+    for (const span of workSpans) {
       if (currStart === -1) {
         currStart = span.start;
         currEnd = span.end;
@@ -572,7 +711,18 @@ export function calculateExperience(rawText) {
       mergedYears += Math.max(1, currEnd - currStart);
     }
 
-    totalYears = Math.min(mergedYears, 30);
+    totalYears = Math.min(mergedYears, 35);
+  } else {
+    // Fallback pencarian kalimat pengalaman kerja (contoh: "pengalaman kerja 2 tahun")
+    // Hindari mencocokkan "pendidikan 3 tahun" atau "kuliah 4 tahun"
+    const expTextMatch = rawText.match(/(?:pengalaman\s+kerja|pengalaman\s+bekerja|work\s+experience|pengalaman\s+di\s+bidang)[^0-9]{1,20}([0-9]{1,2})\s*(?:tahun|thn|years)/i);
+    if (expTextMatch) {
+      totalYears = parseInt(expTextMatch[1], 10);
+      if (totalYears > 35) totalYears = 0;
+      if (/sales|marketing|penjualan/i.test(expTextMatch[0])) {
+        salesYears = totalYears;
+      }
+    }
   }
 
   salesYears = Math.min(salesYears, totalYears);

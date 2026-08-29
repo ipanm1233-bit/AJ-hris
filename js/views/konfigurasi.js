@@ -1,5 +1,5 @@
 import { db, COL, doc, getDoc, setDoc, collection, getDocs, writeBatch, query, where } from "../firebase-config.js";
-import { toast, escapeHtml, sendEmailNotif, buildStandardEmailHtml, smartParseDate, fmtDateShort } from "../utils.js";
+import { toast, escapeHtml, sendEmailNotif, buildStandardEmailHtml, smartParseDate, fmtDateShort, fmtDateIndo, localDateStr, getBranchEmailNotificationSettings, saveBranchEmailNotificationSettings, sendBranchMorningLeaveDigest, sendBranchEveningLeaveDigest } from "../utils.js";
 
 export async function mount(container, { session }) {
   const tBody = container.querySelector("#cfg-jadwal-tbody");
@@ -738,6 +738,298 @@ export async function mount(container, { session }) {
     btn.disabled = false; btn.textContent = "EKSEKUSI MASSAL";
   };
 
+  /**
+   * =========================================================================
+   * LOGIKA UI: PEMBERITAHUAN EMAIL CUTI & IZIN BERDASARKAN CABANG
+   * =========================================================================
+   */
+  const branchTableBody = container.querySelector("#branch-emails-tbody");
+  let branchConfigState = null;
+
+  async function loadBranchEmailSettings() {
+    try {
+      branchConfigState = await getBranchEmailNotificationSettings();
+      
+      const chkMorning = container.querySelector("#cfg-branch-morning-active");
+      const chkInstant = container.querySelector("#cfg-branch-instant-active");
+      const chkEvening = container.querySelector("#cfg-branch-evening-active");
+      const inpGlobalCc = container.querySelector("#cfg-branch-global-cc");
+
+      if (chkMorning) chkMorning.checked = branchConfigState.enable_morning !== false;
+      if (chkInstant) chkInstant.checked = branchConfigState.enable_instant !== false;
+      if (chkEvening) chkEvening.checked = branchConfigState.enable_evening !== false;
+      if (inpGlobalCc) inpGlobalCc.value = branchConfigState.default_cc || "generalaffairhrandelajaya@gmail.com";
+
+      renderBranchRows();
+    } catch (err) {
+      console.error("loadBranchEmailSettings error:", err);
+    }
+  }
+
+  function renderBranchRows() {
+    if (!branchTableBody || !branchConfigState) return;
+
+    const branches = branchConfigState.branches || {};
+    const branchNames = Object.keys(branches);
+
+    if (branchNames.length === 0) {
+      branchTableBody.innerHTML = `
+        <tr>
+          <td colspan="5" class="py-6 text-center text-slate-400 italic">
+            Belum ada cabang terdaftar. Klik tombol <strong>"Deteksi Cabang dari Master Karyawan"</strong> atau <strong>"+ Tambah Cabang"</strong>.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    branchTableBody.innerHTML = branchNames.map((bName) => {
+      const bData = branches[bName] || {};
+      const emailsVal = Array.isArray(bData.emails) ? bData.emails.join(", ") : (bData.emails || "");
+      const ccVal = bData.cc || "";
+      const isEnabled = bData.enabled !== false;
+
+      return `
+        <tr data-branch="${escapeHtml(bName)}" class="hover:bg-slate-50/80 transition">
+          <td class="py-2.5 px-3 font-bold text-slate-800 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full ${isEnabled ? 'bg-emerald-500' : 'bg-slate-300'}"></span>
+            <span>${escapeHtml(bName)}</span>
+          </td>
+          <td class="py-2.5 px-3">
+            <input type="text" class="input-branch-emails w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:border-emerald-600 outline-none" 
+              placeholder="cth: pic.cirebon@andelajaya.com, hrd@andelajaya.com" 
+              value="${escapeHtml(emailsVal)}">
+          </td>
+          <td class="py-2.5 px-3">
+            <input type="text" class="input-branch-cc w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:border-emerald-600 outline-none" 
+              placeholder="cth: cc.cirebon@andelajaya.com" 
+              value="${escapeHtml(ccVal)}">
+          </td>
+          <td class="py-2.5 px-3 text-center">
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" class="input-branch-enabled sr-only peer" ${isEnabled ? 'checked' : ''}>
+              <div class="w-7 h-3.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-600"></div>
+            </label>
+          </td>
+          <td class="py-2.5 px-3 text-center space-x-1">
+            <button type="button" class="btn-test-branch-email px-2 py-1 text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md transition shadow-2xs" title="Kirim sample email uji coba ke cabang ini">
+              <i class="fa-solid fa-paper-plane text-[10px]"></i> Test
+            </button>
+            <button type="button" class="btn-delete-branch-row px-2 py-1 text-[11px] font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-md transition" title="Hapus cabang dari daftar">
+              <i class="fa-solid fa-trash-can text-[10px]"></i>
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join("");
+
+    // Bind row buttons
+    branchTableBody.querySelectorAll(".btn-delete-branch-row").forEach(btn => {
+      btn.onclick = (e) => {
+        const row = e.target.closest("tr");
+        const bName = row.getAttribute("data-branch");
+        if (confirm(`Hapus pengaturan email untuk Cabang "${bName}"?`)) {
+          delete branchConfigState.branches[bName];
+          renderBranchRows();
+        }
+      };
+    });
+
+    branchTableBody.querySelectorAll(".btn-test-branch-email").forEach(btn => {
+      btn.onclick = async (e) => {
+        const row = e.target.closest("tr");
+        const bName = row.getAttribute("data-branch");
+        const emailsInput = row.querySelector(".input-branch-emails").value.trim();
+        const ccInput = row.querySelector(".input-branch-cc").value.trim();
+        const globalCc = container.querySelector("#cfg-branch-global-cc")?.value.trim() || "";
+
+        if (!emailsInput) {
+          return toast(`Harap isi alamat email penerima untuk Cabang ${bName} terlebih dahulu!`, "warning");
+        }
+
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-[10px]"></i> Mengirim...`;
+
+        try {
+          const testHtml = buildStandardEmailHtml({
+            badgeText: "✉️ UJI COBA EMAIL CABANG • HRIS ANDELA",
+            badgeVariant: "maroon",
+            title: `Tes Notifikasi Email Otomatis Cabang ${bName}`,
+            recipientName: `Koordinator & Tim Cabang ${bName}`,
+            introText: `Ini adalah email pengujian jalur notifikasi otomatis cuti dan izin untuk <strong>Cabang ${escapeHtml(bName)}</strong>.`,
+            infoList: [
+              { label: "Nama Cabang", value: `<strong>${escapeHtml(bName)}</strong>` },
+              { label: "Target Penerima", value: escapeHtml(emailsInput) },
+              { label: "Tembusan (CC)", value: escapeHtml(ccInput || globalCc || "-") },
+              { label: "Waktu Pengujian", value: `${fmtDateIndo(localDateStr(new Date()))} (WIB)` }
+            ],
+            actionUrl: `${window.location.origin}/#konfigurasi`,
+            actionText: "Buka Pengaturan HRIS →",
+            secondaryNote: "Jika email ini masuk ke inbox Anda, jalur pemberitahuan cuti harian dan alert instan cabang telah terhubung dengan baik."
+          });
+
+          const ok = await sendEmailNotif(emailsInput, `[TEST NOTIFIKASI] Jalur Email Cuti & Izin Cabang ${bName}`, testHtml, ccInput || globalCc);
+          if (ok) {
+            toast(`Email uji coba berhasil dikirim ke ${emailsInput}!`, "success");
+          } else {
+            toast(`Gagal mengirim email uji coba ke ${emailsInput}. Periksa konfigurasi API.`, "error");
+          }
+        } catch (err) {
+          toast(`Gagal mengirim: ${err.message}`, "error");
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = originalText;
+        }
+      };
+    });
+  }
+
+  // Tambah Cabang Manual
+  container.querySelector("#btn-add-branch-row")?.addEventListener("click", () => {
+    const bName = prompt("Masukkan Nama Cabang Baru (cth: Cirebon, Malang, Surabaya, dll):");
+    if (!bName || !bName.trim()) return;
+
+    const cleanName = bName.trim();
+    if (!branchConfigState.branches) branchConfigState.branches = {};
+    if (branchConfigState.branches[cleanName]) {
+      return toast(`Cabang "${cleanName}" sudah ada di dalam daftar.`, "warning");
+    }
+
+    branchConfigState.branches[cleanName] = {
+      emails: branchConfigState.default_cc || "generalaffairhrandelajaya@gmail.com",
+      cc: "",
+      enabled: true
+    };
+    renderBranchRows();
+    toast(`Cabang "${cleanName}" berhasil ditambahkan. Silakan lengkapi emailnya dan klik Simpan.`, "success");
+  });
+
+  // Deteksi Otomatis dari Master Karyawan
+  container.querySelector("#btn-auto-detect-branches")?.addEventListener("click", async () => {
+    const btn = container.querySelector("#btn-auto-detect-branches");
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Mendeteksi...`;
+
+    try {
+      const snap = await getDocs(collection(db, COL.MASTER_KARYAWAN));
+      let addedCount = 0;
+      if (!branchConfigState.branches) branchConfigState.branches = {};
+
+      snap.forEach(d => {
+        const k = d.data();
+        const cName = (k.cabang || "").trim();
+        if (cName && !branchConfigState.branches[cName]) {
+          branchConfigState.branches[cName] = {
+            emails: branchConfigState.default_cc || "generalaffairhrandelajaya@gmail.com",
+            cc: "",
+            enabled: true
+          };
+          addedCount++;
+        }
+      });
+
+      renderBranchRows();
+      if (addedCount > 0) {
+        toast(`Berhasil mendeteksi ${addedCount} cabang baru dari Master Karyawan!`, "success");
+      } else {
+        toast("Semua cabang dari Master Karyawan sudah ada dalam daftar.", "info");
+      }
+    } catch (err) {
+      toast(`Gagal mendeteksi cabang: ${err.message}`, "error");
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fa-solid fa-arrows-rotate"></i> <span>Deteksi Cabang dari Master Karyawan</span>`;
+    }
+  });
+
+  // Simpan Pengaturan Email Cabang
+  container.querySelector("#btn-save-branch-email-cfg")?.addEventListener("click", async () => {
+    const btn = container.querySelector("#btn-save-branch-email-cfg");
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...`;
+
+    try {
+      const rows = branchTableBody.querySelectorAll("tr[data-branch]");
+      const branches = {};
+
+      rows.forEach(row => {
+        const bName = row.getAttribute("data-branch");
+        const emails = row.querySelector(".input-branch-emails").value.trim();
+        const cc = row.querySelector(".input-branch-cc").value.trim();
+        const enabled = row.querySelector(".input-branch-enabled").checked;
+
+        branches[bName] = {
+          emails,
+          cc,
+          enabled
+        };
+      });
+
+      const payload = {
+        enabled: true,
+        default_cc: container.querySelector("#cfg-branch-global-cc")?.value.trim() || "generalaffairhrandelajaya@gmail.com",
+        enable_morning: container.querySelector("#cfg-branch-morning-active")?.checked !== false,
+        morning_time: "07:45",
+        enable_instant: container.querySelector("#cfg-branch-instant-active")?.checked !== false,
+        enable_evening: container.querySelector("#cfg-branch-evening-active")?.checked !== false,
+        evening_time: "17:00",
+        branches,
+        updatedAt: new Date().toISOString()
+      };
+
+      await saveBranchEmailNotificationSettings(payload);
+      branchConfigState = payload;
+      toast("Pengaturan email pemberitahuan cuti & izin cabang berhasil disimpan!", "success");
+    } catch (err) {
+      toast(`Gagal menyimpan pengaturan: ${err.message}`, "error");
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> <span>Simpan Pengaturan Email Cabang</span>`;
+    }
+  });
+
+  // Eksekusi Pagi Sekarang (07:45)
+  container.querySelector("#btn-trigger-morning-digest")?.addEventListener("click", async () => {
+    const btn = container.querySelector("#btn-trigger-morning-digest");
+    if (!confirm("Jalankan pengiriman email rekap karyawan cuti hari ini (Pukul 07:45 WIB) ke seluruh cabang sekarang?")) return;
+
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Mengirim Rekap Pagi...`;
+
+    try {
+      const res = await sendBranchMorningLeaveDigest({ force: true });
+      const sentCount = (res.results || []).filter(r => r.sent).length;
+      toast(`Rekap Pagi berhasil diproses! Terkirim ke ${sentCount} cabang terkait.`, "success");
+    } catch (err) {
+      toast(`Gagal memproses rekap pagi: ${err.message}`, "error");
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fa-solid fa-sun"></i> <span>Kirim Rekap Pagi Sekarang (07:45)</span>`;
+    }
+  });
+
+  // Eksekusi Sore Sekarang (17:00)
+  container.querySelector("#btn-trigger-evening-digest")?.addEventListener("click", async () => {
+    const btn = container.querySelector("#btn-trigger-evening-digest");
+    if (!confirm("Jalankan pengiriman email rekap pengajuan cuti hari ini (Pukul 17:00 WIB) ke seluruh cabang sekarang?")) return;
+
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Mengirim Rekap Sore...`;
+
+    try {
+      const res = await sendBranchEveningLeaveDigest({ force: true });
+      const sentCount = (res.results || []).filter(r => r.sent).length;
+      toast(`Rekap Sore berhasil diproses! Terkirim ke ${sentCount} cabang terkait.`, "success");
+    } catch (err) {
+      toast(`Gagal memproses rekap sore: ${err.message}`, "error");
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fa-solid fa-moon"></i> <span>Kirim Rekap Sore Sekarang (17:00)</span>`;
+    }
+  });
+
   await loadConfig();
+  await loadBranchEmailSettings();
   return { unmount() {} };
 }

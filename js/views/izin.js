@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, doc, getDoc, setDoc, updateDoc } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, genId, openModal, closeModal, toast, fmtDate, fmtDateShort, escapeHtml, sendEmailNotif, getTargetsForRole, createLoginToken, notifyUser } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, genId, openModal, closeModal, toast, fmtDate, fmtDateShort, escapeHtml, sendEmailNotif, getTargetsForRole, createLoginToken, notifyUser, sendBranchInstantAlert } from "../utils.js";
 import { badge, emptyState, skeletonRows } from "../components.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 import { isoDocHeaderTable, letterheadHtml, COMPANY_NAME, logoImgTag, LOGO_DATA_URI } from "../branding.js";
@@ -521,6 +521,15 @@ export async function mount(container, { session }) {
  `Pengajuan ${JENIS_IZIN_MAP[jenisVal]?.label || 'Izin'} Anda untuk tanggal ${tglVal} telah dibuatkan oleh HRD (${session.nama}) dan dikirimkan ke atasan (${atasanVal}).`,
  `#izin`
  );
+ }
+
+ // Sepanjang hari: Kirim alert instan ke email cabang jika Izin Datang Terlambat
+ if (jenisVal === "IZIN_TERLAMBAT") {
+   sendBranchInstantAlert({
+     type: "IZIN_TERLAMBAT",
+     record: payload,
+     session
+   }).catch(eAlert => console.warn("Izin terlambat branch alert error:", eAlert));
  }
  } catch (nErr) {
  console.warn("Gagal mengirim notifikasi izin:", nErr);

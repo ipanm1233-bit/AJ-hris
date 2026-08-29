@@ -3247,6 +3247,460 @@ export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
  }
 }
 
+/**
+ * =========================================================================
+ * OTOMASI PEMBERITAHUAN EMAIL CUTI & IZIN BERDASARKAN CABANG KARYAWAN
+ * 1. Pagi Hari (07:45 WIB): List Karyawan Cuti di Hari Tersebut
+ * 2. Sepanjang Hari: Alert Instan Cuti Mendadak & Izin Datang Terlambat
+ * 3. Sore Hari (17:00 WIB): List Karyawan yang Mengajukan Cuti Hari Ini
+ * =========================================================================
+ */
+
+export async function getBranchEmailNotificationSettings() {
+  const defaultConfig = {
+    enabled: true,
+    default_cc: "generalaffairhrandelajaya@gmail.com",
+    enable_morning: true,
+    morning_time: "07:45",
+    enable_instant: true,
+    enable_evening: true,
+    evening_time: "17:00",
+    branches: {
+      "Cirebon": {
+        emails: "generalaffairhrandelajaya@gmail.com",
+        cc: "generalaffairhrandelajaya@gmail.com",
+        enabled: true
+      },
+      "Malang": {
+        emails: "generalaffairhrandelajaya@gmail.com",
+        cc: "generalaffairhrandelajaya@gmail.com",
+        enabled: true
+      }
+    }
+  };
+
+  try {
+    const snap = await getDoc(doc(db, COL.APP_SETTINGS, "email_branch_cuti"));
+    let cfg = snap.exists() ? { ...defaultConfig, ...snap.data() } : defaultConfig;
+    if (!cfg.branches) cfg.branches = {};
+
+    // Scan Master Karyawan untuk mendeteksi cabang-cabang yang aktif
+    try {
+      const kSnap = await getDocs(collection(db, COL.MASTER_KARYAWAN));
+      kSnap.forEach(d => {
+        const k = d.data();
+        const cName = (k.cabang || "").trim();
+        if (cName && !cfg.branches[cName]) {
+          cfg.branches[cName] = {
+            emails: cfg.default_cc || "generalaffairhrandelajaya@gmail.com",
+            cc: "",
+            enabled: true
+          };
+        }
+      });
+    } catch (eK) {
+      console.warn("getBranchEmailNotificationSettings scan employee cabang warning:", eK);
+    }
+
+    if (!cfg.branches["Cirebon"]) {
+      cfg.branches["Cirebon"] = {
+        emails: "generalaffairhrandelajaya@gmail.com",
+        cc: "",
+        enabled: true
+      };
+    }
+
+    return cfg;
+  } catch (err) {
+    console.warn("getBranchEmailNotificationSettings error, using defaults:", err);
+    return defaultConfig;
+  }
+}
+
+export async function saveBranchEmailNotificationSettings(config) {
+  try {
+    await setDoc(doc(db, COL.APP_SETTINGS, "email_branch_cuti"), config, { merge: true });
+    return true;
+  } catch (err) {
+    console.error("saveBranchEmailNotificationSettings error:", err);
+    throw err;
+  }
+}
+
+/**
+ * 1. PAGI HARI (07:45 WIB): Kirim Rekap Karyawan Cuti Hari Ini per Cabang
+ */
+export async function sendBranchMorningLeaveDigest({ branch = null, date = null, force = false } = {}) {
+  const targetDate = date || localDateStr(new Date());
+  const cfg = await getBranchEmailNotificationSettings();
+  if (!cfg.enabled && !force) {
+    console.log("sendBranchMorningLeaveDigest: Fitur dinonaktifkan dalam konfigurasi.");
+    return { success: false, message: "Fitur dinonaktifkan." };
+  }
+
+  // 1. Kumpulkan seluruh data cuti hari ini
+  const activeLeaves = [];
+  const seenKeys = new Set();
+
+  try {
+    const [allMasterCuti, allPengajuan] = await Promise.all([
+      fsGetAll(COL.MASTER_CUTI),
+      fsGetAll(COL.DATA_PENGAJUAN)
+    ]);
+
+    // Dari master_cuti
+    (allMasterCuti || []).forEach(d => {
+      const tgl = d.tanggal || d.tgl;
+      if (tgl === targetDate) {
+        const kName = d.nama_karyawan || d.nama || "Karyawan";
+        const key = `${kName}_${targetDate}`;
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          activeLeaves.push({
+            nama: kName,
+            nik: d.nik || "-",
+            jabatan: d.jabatan || "-",
+            divisi: d.divisi || d.departemen || "-",
+            cabang: d.cabang || "Cirebon",
+            jenis_cuti: d.type_cuti || d.jenis_cuti || "Cuti Tahunan",
+            periode: fmtDateIndo(tgl),
+            durasi: `${d.count || 1} Hari`,
+            alasan: d.keterangan_cuti || d.keterangan || d.alasan || "-",
+            pengganti: d.pejabat_pengganti || "-"
+          });
+        }
+      }
+    });
+
+    // Dari data_pengajuan
+    (allPengajuan || []).forEach(p => {
+      const isCuti = (p.tipe_form === "FORM_CUTI" || p.form_id === "F-ISO-CUTI" || (p.nama_form || "").toLowerCase().includes("cuti"));
+      if (isCuti) {
+        const st = (p.status_final || p.status || "").toUpperCase();
+        if (st !== "REJECTED" && st !== "DITOLAK") {
+          const start = p.tanggal_mulai || p.tgl_mulai;
+          const end = p.tanggal_selesai || p.tgl_selesai || start;
+          if (start && start <= targetDate && (end >= targetDate || !end)) {
+            const kName = p.nama_pemohon || p.pemohon || p.nama || "Karyawan";
+            const key = `${kName}_${targetDate}`;
+            if (!seenKeys.has(key)) {
+              seenKeys.add(key);
+              activeLeaves.push({
+                nama: kName,
+                nik: p.nik_pemohon || p.nik || "-",
+                jabatan: p.jabatan || p.posisi || "-",
+                divisi: p.divisi || p.departemen || "-",
+                cabang: p.cabang || "Cirebon",
+                jenis_cuti: p.kategori_cuti || p.jenis_cuti || "Cuti Tahunan",
+                periode: `${fmtDateIndo(start)}${end && end !== start ? ' s/d ' + fmtDateIndo(end) : ''}`,
+                durasi: `${p.jumlah_hari || 1} Hari`,
+                alasan: p.alasan || p.keterangan || "-",
+                pengganti: p.pejabat_pengganti || "-"
+              });
+            }
+          }
+        }
+      }
+    });
+  } catch (err) {
+    console.error("sendBranchMorningLeaveDigest gathering error:", err);
+  }
+
+  // Group by Cabang
+  const branchGroups = {};
+  activeLeaves.forEach(item => {
+    const cab = item.cabang || "Cirebon";
+    if (!branchGroups[cab]) branchGroups[cab] = [];
+    branchGroups[cab].push(item);
+  });
+
+  const allTargetBranches = Object.keys(cfg.branches || {});
+  if (!allTargetBranches.includes("Cirebon")) allTargetBranches.push("Cirebon");
+
+  const results = [];
+  const formattedTargetDate = fmtDateIndo(targetDate);
+
+  for (const cab of allTargetBranches) {
+    if (branch && cab.toLowerCase() !== branch.toLowerCase()) continue;
+
+    const cabCfg = cfg.branches?.[cab] || {};
+    if (cabCfg.enabled === false && !force) continue;
+
+    const targetEmails = Array.isArray(cabCfg.emails) ? cabCfg.emails.filter(Boolean) : (cabCfg.emails || "").split(",").map(s => s.trim()).filter(Boolean);
+    const emailTo = targetEmails.length > 0 ? targetEmails.join(", ") : (cfg.default_cc || "generalaffairhrandelajaya@gmail.com");
+    const cc = cabCfg.cc || cfg.default_cc || "";
+
+    const listCutiCabang = branchGroups[cab] || [];
+
+    const tableRowsHtml = listCutiCabang.length > 0
+      ? listCutiCabang.map((item, idx) => `
+          <tr style="border-bottom: 1px solid #f1f5f9; ${idx % 2 === 1 ? 'background-color: #fafbfd;' : ''}">
+            <td style="padding: 10px 12px; font-weight: bold; color: #64748b; text-align: center;">${idx + 1}</td>
+            <td style="padding: 10px 12px; font-size: 12.5px;">
+              <b>${escapeHtml(item.nama)}</b><br>
+              <span style="font-size: 11px; color: #64748b; font-family: monospace;">${escapeHtml(item.nik)}</span>
+            </td>
+            <td style="padding: 10px 12px; font-size: 12px;">
+              ${escapeHtml(item.jabatan)}<br>
+              <span style="font-size: 11px; color: #64748b;">${escapeHtml(item.divisi)}</span>
+            </td>
+            <td style="padding: 10px 12px;">
+              <span style="display: inline-block; padding: 2px 8px; border-radius: 6px; font-weight: bold; font-size: 11px; background-color: #f1f5f9; color: #334155;">${escapeHtml(item.jenis_cuti)}</span>
+            </td>
+            <td style="padding: 10px 12px; font-size: 12px;">
+              <b style="color: #7a1f2b;">${escapeHtml(item.periode)}</b><br>
+              <span style="font-size: 11px; color: #64748b;">(${escapeHtml(item.durasi)})</span>
+            </td>
+            <td style="padding: 10px 12px; font-size: 12px; color: #475569;">${escapeHtml(item.alasan)}</td>
+            <td style="padding: 10px 12px; font-size: 12px; color: #334155;">${escapeHtml(item.pengganti)}</td>
+          </tr>
+        `).join("")
+      : `<tr><td colspan="7" style="padding: 24px; text-align: center; color: #64748b; font-style: italic;">Tidak ada karyawan yang cuti hari ini di Cabang ${escapeHtml(cab)}.</td></tr>`;
+
+    const htmlBody = buildStandardEmailHtml({
+      badgeText: "🌅 REKAP PAGI (07:45 WIB) • CUTI HARI INI",
+      badgeVariant: "maroon",
+      title: `Daftar Karyawan Cuti Hari Ini (${formattedTargetDate})`,
+      recipientName: `Tim Koordinator & HRD Cabang ${cab}`,
+      introText: listCutiCabang.length > 0
+        ? `Berikut rekap <strong>${listCutiCabang.length} karyawan</strong> di <strong>Cabang ${escapeHtml(cab)}</strong> yang sedang mengambil hak cuti / izin pada hari ini, <strong>${formattedTargetDate}</strong>:`
+        : `Pemberitahuan harian: Pada hari ini, <strong>${formattedTargetDate}</strong>, <strong>tidak ada karyawan yang cuti</strong> di <strong>Cabang ${escapeHtml(cab)}</strong>.`,
+      bodyHtml: `
+        <div style="margin: 18px 0; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+          <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12.5px;">
+            <thead>
+              <tr style="background-color: #f8fafc; color: #475569; font-weight: bold; border-bottom: 2px solid #e2e8f0;">
+                <th style="padding: 10px 12px; text-align: center;">No</th>
+                <th style="padding: 10px 12px;">Nama & NIK</th>
+                <th style="padding: 10px 12px;">Jabatan / Divisi</th>
+                <th style="padding: 10px 12px;">Jenis Cuti</th>
+                <th style="padding: 10px 12px;">Periode Cuti</th>
+                <th style="padding: 10px 12px;">Keterangan</th>
+                <th style="padding: 10px 12px;">PIC Pengganti</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRowsHtml}
+            </tbody>
+          </table>
+        </div>
+      `,
+      actionUrl: `${window.location.origin}/#cuti`,
+      actionText: "Buka Data Riwayat Cuti di HRIS →",
+      secondaryNote: "Mohon Koordinator Cabang dapat menyesuaikan koordinasi operasional dan pelimpahan tugas selama karyawan yang bersangkutan menjalani masa cuti."
+    });
+
+    if (listCutiCabang.length > 0 || force) {
+      const ok = await sendEmailNotif(emailTo, `[CUTI HARI INI] ${listCutiCabang.length} Karyawan Cuti (${formattedTargetDate}) - Cabang ${cab}`, htmlBody, cc);
+      results.push({ branch: cab, count: listCutiCabang.length, to: emailTo, sent: ok });
+    } else {
+      results.push({ branch: cab, count: 0, sent: false, skipped: true });
+    }
+  }
+
+  return { success: true, date: targetDate, results };
+}
+
+/**
+ * 2. SEPANJANG HARI: Alert Real-Time Karyawan Cuti Mendadak / Izin Datang Terlambat
+ */
+export async function sendBranchInstantAlert({ type, record, session = null }) {
+  if (!record) return false;
+
+  const cfg = await getBranchEmailNotificationSettings();
+  if (!cfg.enabled || !cfg.enable_instant) {
+    console.log("sendBranchInstantAlert: Notifikasi instan cabang dinonaktifkan.");
+    return false;
+  }
+
+  const cab = (record.cabang || session?.cabang || "Cirebon").trim() || "Cirebon";
+  const cabCfg = cfg.branches?.[cab] || cfg.branches?.["Cirebon"] || {};
+  if (cabCfg.enabled === false) return false;
+
+  const targetEmails = Array.isArray(cabCfg.emails) ? cabCfg.emails.filter(Boolean) : (cabCfg.emails || "").split(",").map(s => s.trim()).filter(Boolean);
+  const emailTo = targetEmails.length > 0 ? targetEmails.join(", ") : (cfg.default_cc || "generalaffairhrandelajaya@gmail.com");
+  const cc = cabCfg.cc || cfg.default_cc || "";
+
+  const nama = record.nama_pemohon || record.pemohon || record.nama_karyawan || record.nama || "Karyawan";
+  const nik = record.nik_pemohon || record.nik || record.nik_karyawan || "-";
+  const jabatan = record.jabatan || record.posisi || "-";
+  const alasan = record.alasan || record.alasan_izin || record.keterangan || "-";
+  const refNo = record.no_referensi || record.id || "-";
+
+  const isLate = type === "IZIN_TERLAMBAT";
+  const subjectPrefix = isLate ? "IZIN DATANG TERLAMBAT" : "CUTI MENDADAK";
+  const badgeText = isLate ? "⚡ ALERT: IZIN DATANG TERLAMBAT" : "⚡ ALERT: PENGAJUAN CUTI MENDADAK";
+
+  const infoList = [
+    { label: "Nama Karyawan", value: `<strong>${escapeHtml(nama)}</strong> (${escapeHtml(nik)})` },
+    { label: "Cabang / Jabatan", value: `${escapeHtml(cab)} &bull; ${escapeHtml(jabatan)}` },
+    {
+      label: isLate ? "Waktu / Estimasi Datang" : "Periode Cuti",
+      value: isLate
+        ? `<strong style="color: #c2410c;">${escapeHtml(record.jam_izin || record.tanggal_izin || "Hari Ini")}</strong>`
+        : `<strong style="color: #7a1f2b;">${fmtDateIndo(record.tanggal_mulai || record.tanggal)} s/d ${fmtDateIndo(record.tanggal_selesai || record.tanggal_mulai || record.tanggal)} (${record.jumlah_hari || 1} Hari)</strong>`
+    },
+    { label: "Keperluan / Alasan", value: escapeHtml(alasan) },
+    { label: "Atasan / PIC Pengganti", value: escapeHtml(record.atasan_langsung || record.pejabat_pengganti || record.penanggung_jawab || "-") },
+    { label: "Nomor Dokumen", value: `<code style="font-family: monospace; background-color: #f1f5f9; padding: 2px 6px; border-radius: 4px;">${escapeHtml(refNo)}</code>` }
+  ];
+
+  const htmlBody = buildStandardEmailHtml({
+    badgeText,
+    badgeVariant: isLate ? "amber" : "maroon",
+    title: `Pemberitahuan ${isLate ? 'Izin Datang Terlambat' : 'Cuti Mendadak'} - ${escapeHtml(nama)}`,
+    recipientName: `Tim Koordinator, Atasan & HRD Cabang ${cab}`,
+    introText: `Pemberitahuan instan sepanjang hari: Karyawan atas nama <strong>${escapeHtml(nama)}</strong> (Cabang ${escapeHtml(cab)}) telah mengajukan <strong>${isLate ? 'Izin Datang Terlambat' : 'Cuti Mendadak'}</strong> dengan rincian sebagai berikut:`,
+    infoList,
+    actionUrl: `${window.location.origin}/#approval?id=${encodeURIComponent(refNo)}`,
+    actionText: "Tinjau & Berikan Persetujuan di HRIS →",
+    secondaryNote: "Mohon atasan langsung dan tim operasional cabang terkait segera mengonfirmasi dan menyesuaikan jadwal penugasan."
+  });
+
+  const subject = `[ALERT CABANG ${cab.toUpperCase()}] ${subjectPrefix} - ${nama} (${nik})`;
+  return await sendEmailNotif(emailTo, subject, htmlBody, cc);
+}
+
+/**
+ * 3. SORE HARI (17:00 WIB): Kirim Rekap Pengajuan Cuti Hari Ini per Cabang
+ */
+export async function sendBranchEveningLeaveDigest({ branch = null, date = null, force = false } = {}) {
+  const targetDate = date || localDateStr(new Date());
+  const cfg = await getBranchEmailNotificationSettings();
+  if (!cfg.enabled && !force) {
+    console.log("sendBranchEveningLeaveDigest: Fitur dinonaktifkan dalam konfigurasi.");
+    return { success: false, message: "Fitur dinonaktifkan." };
+  }
+
+  const submittedLeaves = [];
+
+  try {
+    const allPengajuan = await fsGetAll(COL.DATA_PENGAJUAN);
+    (allPengajuan || []).forEach(p => {
+      const isCuti = (p.tipe_form === "FORM_CUTI" || p.form_id === "F-ISO-CUTI" || (p.nama_form || "").toLowerCase().includes("cuti"));
+      if (isCuti) {
+        const submitDate = localDateStr(p.tgl || p.createdAt || p.created_at || p.tanggal_pengajuan);
+        if (submitDate === targetDate) {
+          submittedLeaves.push({
+            nama: p.nama_pemohon || p.pemohon || p.nama || "Karyawan",
+            nik: p.nik_pemohon || p.nik || "-",
+            jabatan: p.jabatan || p.posisi || "-",
+            divisi: p.divisi || p.departemen || "-",
+            cabang: p.cabang || "Cirebon",
+            jenis_cuti: p.kategori_cuti || p.jenis_cuti || "Cuti Tahunan",
+            periode: `${fmtDateIndo(p.tanggal_mulai)}${p.tanggal_selesai && p.tanggal_selesai !== p.tanggal_mulai ? ' s/d ' + fmtDateIndo(p.tanggal_selesai) : ''}`,
+            durasi: `${p.jumlah_hari || 1} Hari`,
+            status: p.status_final || p.status || "MENUNGGU",
+            alasan: p.alasan || p.keterangan || "-"
+          });
+        }
+      }
+    });
+  } catch (err) {
+    console.error("sendBranchEveningLeaveDigest gathering error:", err);
+  }
+
+  // Group by Cabang
+  const branchGroups = {};
+  submittedLeaves.forEach(item => {
+    const cab = item.cabang || "Cirebon";
+    if (!branchGroups[cab]) branchGroups[cab] = [];
+    branchGroups[cab].push(item);
+  });
+
+  const allTargetBranches = Object.keys(cfg.branches || {});
+  if (!allTargetBranches.includes("Cirebon")) allTargetBranches.push("Cirebon");
+
+  const results = [];
+  const formattedTargetDate = fmtDateIndo(targetDate);
+
+  for (const cab of allTargetBranches) {
+    if (branch && cab.toLowerCase() !== branch.toLowerCase()) continue;
+
+    const cabCfg = cfg.branches?.[cab] || {};
+    if (cabCfg.enabled === false && !force) continue;
+
+    const targetEmails = Array.isArray(cabCfg.emails) ? cabCfg.emails.filter(Boolean) : (cabCfg.emails || "").split(",").map(s => s.trim()).filter(Boolean);
+    const emailTo = targetEmails.length > 0 ? targetEmails.join(", ") : (cfg.default_cc || "generalaffairhrandelajaya@gmail.com");
+    const cc = cabCfg.cc || cfg.default_cc || "";
+
+    const listPengajuanCabang = branchGroups[cab] || [];
+
+    const tableRowsHtml = listPengajuanCabang.length > 0
+      ? listPengajuanCabang.map((item, idx) => {
+          const st = item.status.toUpperCase();
+          const badgeBg = st === "APPROVED" || st === "DISETUJUI" ? "#dcfce7" : (st === "REJECTED" || st === "DITOLAK" ? "#ffe4e6" : "#fef3c7");
+          const badgeColor = st === "APPROVED" || st === "DISETUJUI" ? "#166534" : (st === "REJECTED" || st === "DITOLAK" ? "#9f1239" : "#92400e");
+
+          return `
+            <tr style="border-bottom: 1px solid #f1f5f9; ${idx % 2 === 1 ? 'background-color: #fafbfd;' : ''}">
+              <td style="padding: 10px 12px; font-weight: bold; color: #64748b; text-align: center;">${idx + 1}</td>
+              <td style="padding: 10px 12px; font-size: 12.5px;">
+                <b>${escapeHtml(item.nama)}</b><br>
+                <span style="font-size: 11px; color: #64748b; font-family: monospace;">${escapeHtml(item.nik)}</span>
+              </td>
+              <td style="padding: 10px 12px; font-size: 12px;">${escapeHtml(item.jabatan)}</td>
+              <td style="padding: 10px 12px;">
+                <span style="display: inline-block; padding: 2px 8px; border-radius: 6px; font-weight: bold; font-size: 11px; background-color: #f1f5f9; color: #334155;">${escapeHtml(item.jenis_cuti)}</span>
+              </td>
+              <td style="padding: 10px 12px; font-size: 12px;">
+                <b style="color: #7a1f2b;">${escapeHtml(item.periode)}</b>
+              </td>
+              <td style="padding: 10px 12px; text-align: center; font-weight: bold; font-size: 12px;">${escapeHtml(item.durasi)}</td>
+              <td style="padding: 10px 12px; text-align: center;">
+                <span style="background-color: ${badgeBg}; color: ${badgeColor}; padding: 3px 8px; border-radius: 6px; font-weight: bold; font-size: 11px;">${escapeHtml(item.status)}</span>
+              </td>
+              <td style="padding: 10px 12px; font-size: 12px; color: #475569;">${escapeHtml(item.alasan)}</td>
+            </tr>
+          `;
+        }).join("")
+      : `<tr><td colspan="8" style="padding: 24px; text-align: center; color: #64748b; font-style: italic;">Tidak ada pengajuan cuti baru yang masuk hari ini dari Cabang ${escapeHtml(cab)}.</td></tr>`;
+
+    const htmlBody = buildStandardEmailHtml({
+      badgeText: "🌇 REKAP SORE (17:00 WIB) • PENGAJUAN CUTI HARI INI",
+      badgeVariant: "maroon",
+      title: `Rekap Pengajuan Cuti Karyawan (${formattedTargetDate})`,
+      recipientName: `Tim Manajemen, Atasan & HRD Cabang ${cab}`,
+      introText: listPengajuanCabang.length > 0
+        ? `Berikut adalah rekap <strong>${listPengajuanCabang.length} permohonan cuti baru</strong> yang diajukan oleh karyawan <strong>Cabang ${escapeHtml(cab)}</strong> pada hari ini, <strong>${formattedTargetDate}</strong>:`
+        : `Pemberitahuan sore hari: Pada hari ini, <strong>${formattedTargetDate}</strong>, <strong>tidak ada pengajuan cuti baru</strong> dari karyawan di <strong>Cabang ${escapeHtml(cab)}</strong>.`,
+      bodyHtml: `
+        <div style="margin: 18px 0; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+          <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12.5px;">
+            <thead>
+              <tr style="background-color: #f8fafc; color: #475569; font-weight: bold; border-bottom: 2px solid #e2e8f0;">
+                <th style="padding: 10px 12px; text-align: center;">No</th>
+                <th style="padding: 10px 12px;">Nama & NIK</th>
+                <th style="padding: 10px 12px;">Jabatan</th>
+                <th style="padding: 10px 12px;">Jenis Cuti</th>
+                <th style="padding: 10px 12px;">Rencana Periode</th>
+                <th style="padding: 10px 12px; text-align: center;">Durasi</th>
+                <th style="padding: 10px 12px; text-align: center;">Status Approval</th>
+                <th style="padding: 10px 12px;">Alasan</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRowsHtml}
+            </tbody>
+          </table>
+        </div>
+      `,
+      actionUrl: `${window.location.origin}/#approval`,
+      actionText: "Buka Menu Persetujuan HRIS →",
+      secondaryNote: "Mohon atasan langsung dan HRD segera memeriksa dan memberikan persetujuan sebelum periode cuti dimulai."
+    });
+
+    if (listPengajuanCabang.length > 0 || force) {
+      const ok = await sendEmailNotif(emailTo, `[REKAP PENGAJUAN SORE] ${listPengajuanCabang.length} Pengajuan Cuti (${formattedTargetDate}) - Cabang ${cab}`, htmlBody, cc);
+      results.push({ branch: cab, count: listPengajuanCabang.length, to: emailTo, sent: ok });
+    } else {
+      results.push({ branch: cab, count: 0, sent: false, skipped: true });
+    }
+  }
+
+  return { success: true, date: targetDate, results };
+}
+
 let _html2PdfLoadingPromise = null;
 export function ensureHtml2PdfLoaded() {
  if (window.html2pdf) return Promise.resolve();
@@ -4197,6 +4651,236 @@ export function getCalculatedJatahCuti(emp, cutiRecords = null) {
     sisaKhusus,
     sisaAkumulasi
   };
+}
+
+/**
+ * Daftar Hari Libur Nasional Indonesia (2024 - 2028) & Hari Libur Tetap Nasional
+ */
+export const INDONESIAN_NATIONAL_HOLIDAYS = [
+  // Libur Tetap Tahunan
+  "-01-01", // Tahun Baru Masehi
+  "-05-01", // Hari Buruh Internasional
+  "-06-01", // Hari Lahir Pancasila
+  "-08-17", // Hari Proklamasi Kemerdekaan RI
+  "-12-25", // Hari Raya Natal
+
+  // 2024
+  "2024-02-08", // Isra Mi'raj
+  "2024-02-10", // Tahun Baru Imlek 2575
+  "2024-03-11", // Hari Suci Nyepi
+  "2024-03-29", // Wafat Isa Almasih
+  "2024-03-31", // Hari Paskah
+  "2024-04-10", // Idul Fitri 1445 H
+  "2024-04-11", // Idul Fitri 1445 H
+  "2024-05-09", // Kenaikan Isa Almasih
+  "2024-05-23", // Hari Raya Waisak
+  "2024-06-17", // Idul Adha 1445 H
+  "2024-07-07", // Tahun Baru Islam 1446 H
+  "2024-09-16", // Maulid Nabi Muhammad SAW
+
+  // 2025
+  "2025-01-27", // Isra Mi'raj
+  "2025-01-29", // Tahun Baru Imlek 2576
+  "2025-03-29", // Hari Suci Nyepi
+  "2025-03-31", // Idul Fitri 1446 H
+  "2025-04-01", // Idul Fitri 1446 H
+  "2025-04-18", // Wafat Yesus Kristus
+  "2025-04-20", // Hari Paskah
+  "2025-05-12", // Hari Raya Waisak
+  "2025-05-29", // Kenaikan Yesus Kristus
+  "2025-06-06", // Idul Adha 1446 H
+  "2025-06-27", // Tahun Baru Islam 1447 H
+  "2025-09-05", // Maulid Nabi Muhammad SAW
+
+  // 2026
+  "2026-01-16", // Isra Mi'raj
+  "2026-02-17", // Tahun Baru Imlek 2577
+  "2026-03-19", // Hari Suci Nyepi
+  "2026-03-20", // Idul Fitri 1447 H
+  "2026-03-21", // Idul Fitri 1447 H
+  "2026-04-03", // Wafat Yesus Kristus
+  "2026-04-05", // Hari Paskah
+  "2026-05-14", // Kenaikan Yesus Kristus
+  "2026-05-27", // Idul Adha 1447 H
+  "2026-05-31", // Hari Raya Waisak
+  "2026-06-16", // Tahun Baru Islam 1448 H
+  "2026-08-25", // Maulid Nabi Muhammad SAW
+
+  // 2027
+  "2027-01-05", // Isra Mi'raj
+  "2027-02-06", // Tahun Baru Imlek 2578
+  "2027-03-09", // Idul Fitri 1448 H
+  "2027-03-10", // Idul Fitri 1448 H
+  "2027-03-26", // Wafat Yesus Kristus
+  "2027-04-07", // Hari Suci Nyepi
+  "2027-05-06", // Kenaikan Yesus Kristus
+  "2027-05-16", // Idul Adha 1448 H
+  "2027-05-20", // Hari Raya Waisak
+  "2027-06-06", // Tahun Baru Islam 1449 H
+  "2027-08-15", // Maulid Nabi Muhammad SAW
+
+  // 2028
+  "2028-01-25", // Tahun Baru Imlek 2579
+  "2028-02-27", // Idul Fitri 1449 H
+  "2028-02-28", // Idul Fitri 1449 H
+  "2028-03-26", // Hari Suci Nyepi
+  "2028-04-14", // Wafat Yesus Kristus
+  "2028-05-09", // Hari Raya Waisak
+  "2028-05-25", // Kenaikan Yesus Kristus
+  "2028-05-05", // Idul Adha 1449 H
+  "2028-05-25", // Tahun Baru Islam 1450 H
+  "2028-08-03"  // Maulid Nabi Muhammad SAW
+];
+
+/**
+ * Mengecek apakah tanggal tertentu merupakan hari libur nasional Indonesia
+ */
+export function isIndonesianNationalHoliday(dateObj, calendarEvents = []) {
+  if (!dateObj) return false;
+  const d = (dateObj instanceof Date) ? dateObj : new Date(dateObj);
+  if (isNaN(d.getTime())) return false;
+
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const fullIso = `${y}-${m}-${day}`;
+  const monthDay = `-${m}-${day}`;
+
+  // Cek daftar hari libur nasional
+  if (INDONESIAN_NATIONAL_HOLIDAYS.includes(fullIso) || INDONESIAN_NATIONAL_HOLIDAYS.includes(monthDay)) {
+    return true;
+  }
+
+  // Cek agenda kalender HR (jika ada agenda bertanda libur nasional / cuti bersama)
+  if (Array.isArray(calendarEvents) && calendarEvents.length > 0) {
+    const isCalLibur = calendarEvents.some(ev => {
+      const evDate = (ev.tanggal || "").substring(0, 10);
+      if (evDate !== fullIso) return false;
+      const text = `${ev.judul || ""} ${ev.keterangan || ""}`.toLowerCase();
+      return text.includes("libur") || text.includes("cuti bersama") || text.includes("holiday") || text.includes("nasional");
+    });
+    if (isCalLibur) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Menghitung jumlah hari kerja cuti di antara rentang tanggal:
+ * - TIDAK TERMASUK hari Minggu (Sunday)
+ * - TIDAK TERMASUK hari Libur Nasional
+ */
+export function countLeaveWorkingDays(startDateStr, endDateStr, calendarEvents = []) {
+  if (!startDateStr) return 0;
+  const endStr = endDateStr || startDateStr;
+  const d1 = new Date(startDateStr);
+  const d2 = new Date(endStr);
+  if (isNaN(d1.getTime()) || isNaN(d2.getTime()) || d2 < d1) return 0;
+
+  let count = 0;
+  let cur = new Date(d1);
+  while (cur <= d2) {
+    const isSunday = cur.getDay() === 0;
+    const isHoliday = isIndonesianNationalHoliday(cur, calendarEvents);
+
+    if (!isSunday && !isHoliday) {
+      count++;
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+  return count;
+}
+
+/**
+ * Menghitung masa kerja karyawan dalam tahun dan bulan beserta batas maksimal pengambilan cuti
+ * Ketentuan:
+ * - 0-5 tahun: maksimal 2 hari cuti
+ * - 6-7 tahun: maksimal 3 hari cuti
+ * - 8-10 tahun: maksimal 3 hari cuti (10 tahun = 3 hari)
+ * - > 11 tahun (atau > 10 tahun / >= 11 tahun): maksimal 5 hari cuti
+ */
+export function getEmployeeTenureInfo(emp) {
+  if (!emp) {
+    return {
+      tenureYears: 0,
+      diffMonths: 0,
+      tenureText: "0 Bulan",
+      maxLeaveDays: 2,
+      bracketLabel: "0 - 5 Tahun"
+    };
+  }
+  
+  let diffMonths = 0;
+  let tenureYears = 0;
+
+  const joinStr = emp.tanggal_join || emp.tgl_masuk || emp.tgl_bergabung || emp.tanggal_masuk || emp.tgl_join;
+  if (joinStr) {
+    const joinDate = smartParseDate(joinStr);
+    if (joinDate && !isNaN(joinDate.getTime())) {
+      const now = new Date();
+      diffMonths = (now.getFullYear() - joinDate.getFullYear()) * 12 + (now.getMonth() - joinDate.getMonth());
+      if (now.getDate() < joinDate.getDate()) {
+        diffMonths--;
+      }
+      diffMonths = Math.max(0, diffMonths);
+      tenureYears = diffMonths / 12;
+    }
+  } else if (typeof emp.masa_kerja === "number") {
+    tenureYears = emp.masa_kerja;
+    diffMonths = Math.round(tenureYears * 12);
+  } else if (typeof emp.masa_kerja === "string") {
+    const match = emp.masa_kerja.match(/(\d+)\s*(?:tahun|thn|th|y|year)/i);
+    if (match) {
+      tenureYears = parseInt(match[1], 10);
+      diffMonths = tenureYears * 12;
+    }
+  }
+
+  // Teks durasi masa kerja
+  const y = Math.floor(diffMonths / 12);
+  const m = diffMonths % 12;
+  let tenureText = "";
+  if (y > 0 && m > 0) tenureText = `${y} Tahun ${m} Bulan`;
+  else if (y > 0) tenureText = `${y} Tahun`;
+  else if (m > 0) tenureText = `${m} Bulan`;
+  else tenureText = "< 1 Bulan";
+
+  // KETENTUAN BATAS MAKSIMAL CUTI BERDASARKAN MASA KERJA:
+  // 0 - 5 tahun: maksimal 2 hari cuti
+  // 6 - 7 tahun: maksimal 3 hari cuti
+  // 8 - 10 tahun: maksimal 3 hari cuti (10 tahun = 3 hari)
+  // lebih dari 11 tahun (> 10 tahun / >= 11 tahun): maksimal 5 hari cuti
+  let maxLeaveDays = 2;
+  let bracketLabel = "0 - 5 Tahun";
+
+  if (tenureYears > 10 || tenureYears >= 11 || diffMonths > 120) {
+    maxLeaveDays = 5;
+    bracketLabel = "Lebih dari 11 Tahun (> 10 Thn)";
+  } else if (tenureYears >= 6 || diffMonths >= 72) {
+    maxLeaveDays = 3;
+    bracketLabel = (tenureYears >= 8 || diffMonths >= 96) ? "8 - 10 Tahun" : "6 - 7 Tahun";
+  } else {
+    maxLeaveDays = 2;
+    bracketLabel = "0 - 5 Tahun";
+  }
+
+  return {
+    tenureYears,
+    diffMonths,
+    tenureText,
+    maxLeaveDays,
+    bracketLabel
+  };
+}
+
+export function getMaxLeaveDaysByTenure(tenureYears) {
+  if (tenureYears > 10 || tenureYears >= 11) {
+    return 5;
+  } else if (tenureYears >= 6) {
+    return 3;
+  } else {
+    return 2;
+  }
 }
 
 /* ---------------------------------------------------------------------

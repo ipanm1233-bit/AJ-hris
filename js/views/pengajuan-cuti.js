@@ -1,5 +1,5 @@
 import { db, COL, doc, getDoc, setDoc, query, collection, where, getDocs } from "../firebase-config.js";
-import { fsGetAll, openModal, closeModal, toast, fmtDateShort, escapeHtml, genId, toNumber, sendEmailNotif, getTargetsForRole, createLoginToken, notifyUser, getCalculatedJatahCuti, confirmDialog } from "../utils.js";
+import { fsGetAll, openModal, closeModal, toast, fmtDateShort, escapeHtml, genId, toNumber, sendEmailNotif, getTargetsForRole, createLoginToken, notifyUser, getCalculatedJatahCuti, confirmDialog, getEmployeeTenureInfo, countLeaveWorkingDays, isIndonesianNationalHoliday, sendBranchInstantAlert, localDateStr } from "../utils.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 import { badge } from "../components.js";
 
@@ -36,6 +36,9 @@ export async function mount(container, { session }) {
   let leaveCategories = DEFAULT_LEAVE_TYPES;
   let myLeaveRecords = [];
   let allEmployees = [];
+  let calendarEvents = [];
+  let currentEmpData = null;
+  let employeeTenure = { tenureYears: 0, diffMonths: 0, tenureText: "0 Bulan", maxLeaveDays: 2, bracketLabel: "0 - 5 Tahun" };
   let userBalances = { sisaTahunan: 0, sisaKhusus: 0, sisaAkumulasi: 0 };
 
   // Load employee's leave balance & history
@@ -56,13 +59,18 @@ export async function mount(container, { session }) {
         console.warn("Using default leave categories");
       }
 
-      // 2. Fetch Master Karyawan for Handover selection & current employee's quota
+      // 2. Fetch Master Karyawan for Handover selection & current employee's quota & tenure
       allEmployees = await fsGetAll(COL.MASTER_KARYAWAN);
       const curEmp = allEmployees.find(e => 
         (e.nama_karyawan && e.nama_karyawan.toLowerCase() === session.nama.toLowerCase()) ||
         (e.nik && e.nik === session.nik) ||
         (e.username && e.username === session.username)
       );
+      currentEmpData = curEmp;
+      employeeTenure = getEmployeeTenureInfo(curEmp);
+
+      // Fetch calendar events (for national holidays & agenda)
+      calendarEvents = await fsGetAll(COL.KALENDER_HR).catch(() => []);
 
       // 3. Fetch Master Cuti to compute actual balances
       const allCutiRecords = await fsGetAll(COL.MASTER_CUTI);
@@ -250,6 +258,22 @@ export async function mount(container, { session }) {
       size: "lg",
       bodyHtml: `
       <form id="form-cuti-complex" class="space-y-4 text-left">
+        <!-- KETENTUAN MASA KERJA & BATAS PENGAMBILAN CUTI -->
+        <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-1.5">
+              <span class="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Masa Kerja Anda:</span>
+              <span class="px-2 py-0.5 rounded text-xs font-black bg-maroon-100 text-maroon-800 font-mono">${escapeHtml(employeeTenure.tenureText)} (${escapeHtml(employeeTenure.bracketLabel)})</span>
+            </div>
+            <div class="text-xs text-slate-700">
+              Batas Maks. Pengambilan Cuti: <b class="font-bold text-maroon-700 font-mono text-sm">${employeeTenure.maxLeaveDays} Hari Kerja</b>
+            </div>
+          </div>
+          <div class="text-[11px] text-slate-500 bg-white p-2 rounded-lg border border-slate-200 leading-relaxed">
+            <span class="font-semibold text-slate-700">Ketentuan Batas Cuti per Pengajuan:</span> 0-5 thn: <b>maks. 2 hari</b> | 6-10 thn: <b>maks. 3 hari</b> | &gt;11 thn: <b>maks. 5 hari</b> (tidak termasuk hari Minggu & Libur Nasional). <i>Pengajuan yang melebihi ketentuan akan otomatis ditolak (Auto Reject).</i>
+          </div>
+        </div>
+
         <!-- SALDO CUTI MINI SUMMARY CARDS -->
         <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
           <div class="flex items-center justify-between mb-1.5">
@@ -415,7 +439,7 @@ export async function mount(container, { session }) {
       };
     });
 
-    // Dynamic Date Calculation
+    // Dynamic Date Calculation (Excluding Sundays and Indonesian National Holidays)
     function calcDays() {
       if (!tglMulai.value) return 0;
       const val = catSelect.value || "";
@@ -432,13 +456,8 @@ export async function mount(container, { session }) {
         return 0;
       }
 
-      let count = 0;
-      let cur = new Date(d1);
-      while (cur <= d2) {
-        if (cur.getDay() !== 0) count++; // Exclude Sundays
-        cur.setDate(cur.getDate() + 1);
-      }
-      txtDurasi.value = `${count} Hari Kerja`;
+      const count = countLeaveWorkingDays(tglMulai.value, tglSelesai.value, calendarEvents);
+      txtDurasi.value = `${count} Hari Kerja (Ekskl. Libur/Minggu)`;
       return count;
     }
 
@@ -448,6 +467,45 @@ export async function mount(container, { session }) {
       if (!val) {
         warnWrap.classList.add("hidden");
         warnWrap.innerHTML = "";
+        return;
+      }
+
+      const isHalf = val.includes("Setengah Hari") || val.includes("1/2");
+      const durasiNum = isHalf ? 0.5 : (countLeaveWorkingDays(tglMulai.value, tglSelesai.value, calendarEvents) || (parseFloat(txtDurasi.value) || 0));
+
+      // 1. CEK KETENTUAN MASA KERJA (AUTO REJECT JIKA MELEBIHI BATAS MAKSIMAL)
+      if (durasiNum > employeeTenure.maxLeaveDays) {
+        warnWrap.classList.remove("hidden");
+        warnWrap.innerHTML = `
+          <div class="p-3.5 bg-rose-50 border-2 border-rose-500 rounded-xl space-y-2 text-left animate-pulse-once">
+            <div class="flex items-start gap-2.5">
+              <div class="p-2 bg-rose-100 rounded-xl text-rose-700 shrink-0 mt-0.5">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+                </svg>
+              </div>
+              <div class="flex-1">
+                <h4 class="text-xs font-black text-rose-900 uppercase tracking-wide flex items-center gap-1.5">
+                  ⛔ MELEBIHI BATAS MAKSIMAL CUTI (AUTO REJECT SISTEM)
+                </h4>
+                <div class="text-[11.5px] text-rose-800 mt-1 leading-relaxed space-y-1">
+                  <p>
+                    Masa kerja Anda: <b class="font-mono text-rose-950 px-1.5 py-0.5 bg-white rounded border border-rose-200">${escapeHtml(employeeTenure.tenureText)} (${escapeHtml(employeeTenure.bracketLabel)})</b>.
+                  </p>
+                  <p>
+                    Batas maksimal pengambilan cuti: <b class="font-mono text-rose-950 px-1.5 py-0.5 bg-white rounded border border-rose-200">${employeeTenure.maxLeaveDays} Hari Kerja</b> (tidak termasuk hari Minggu & libur nasional).
+                  </p>
+                  <p>
+                    Durasi yang diajukan saat ini: <b class="font-mono text-rose-950 px-1.5 py-0.5 bg-white rounded border border-rose-300 font-bold">${durasiNum} Hari Kerja</b>.
+                  </p>
+                  <div class="p-2 bg-rose-100 rounded-lg border border-rose-300 font-bold text-rose-950 text-xs">
+                    ⚠️ Pengajuan ini melebihi batas ketentuan SOP cuti perusahaan (${durasiNum} &gt; ${employeeTenure.maxLeaveDays} Hari) dan akan <u>OTOMATIS DITOLAK (AUTO REJECT)</u> oleh sistem jika dikirimkan.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
         return;
       }
 
@@ -465,9 +523,6 @@ export async function mount(container, { session }) {
         warnWrap.innerHTML = "";
         return;
       }
-
-      const isHalf = val.includes("Setengah Hari") || val.includes("1/2");
-      const durasiNum = isHalf ? 0.5 : (parseFloat(txtDurasi.value) || 0);
 
       // If explicitly chosen Potong Gaji
       if (catPotong === "Potong Gaji" || val.includes("Potong Gaji")) {
@@ -641,19 +696,32 @@ export async function mount(container, { session }) {
       const catName = catObj.name || catObj.id || catVal;
       const isHalfDay = catName.includes("Setengah Hari") || catName.includes("1/2");
 
-      const d1 = new Date(tglMulai.value);
-      const d2 = isHalfDay ? d1 : new Date(tglSelesai.value);
       let count = 0;
       if (isHalfDay) {
         count = 0.5;
         tglSelesai.value = tglMulai.value;
       } else {
-        let cur = new Date(d1);
-        while (cur <= d2) {
-          if (cur.getDay() !== 0) count++;
-          cur.setDate(cur.getDate() + 1);
-        }
+        count = countLeaveWorkingDays(tglMulai.value, tglSelesai.value, calendarEvents);
         if (count === 0) count = 1;
+      }
+
+      // KETENTUAN MASA KERJA - AUTO REJECT IF EXCEEDED
+      const isAutoReject = count > employeeTenure.maxLeaveDays;
+      if (isAutoReject) {
+        const confirmAutoReject = await confirmDialog(
+          `⛔ PERINGATAN AUTO REJECT SISTEM\n\n` +
+          `Sesuai ketentuan SOP Perusahaan:\n` +
+          `• Masa Kerja Anda: ${employeeTenure.tenureText} (${employeeTenure.bracketLabel})\n` +
+          `• Batas Maksimal Pengambilan Cuti: ${employeeTenure.maxLeaveDays} Hari Kerja (tidak termasuk Minggu & Libur Nasional)\n` +
+          `• Jumlah Hari yang Diajukan: ${count} Hari Kerja\n\n` +
+          `Pengajuan ini MELEBIHI KETENTUAN dan akan DITOLAK OTOMATIS (AUTO REJECT) oleh sistem dengan status REJECTED.\n\n` +
+          `Apakah Anda ingin tetap memproses pengajuan ini (langsung tercatat ditolak di riwayat)?`,
+          { title: "Konfirmasi Auto Reject", danger: true }
+        );
+        if (!confirmAutoReject) {
+          toast("Pengajuan cuti dibatalkan.", "info");
+          return;
+        }
       }
 
       const catPotong = catObj.potong_jatah || (
@@ -674,7 +742,7 @@ export async function mount(container, { session }) {
       const excessDays = isDirectPotongGaji ? count : (availableQuota <= 0 ? count : (count - availableQuota));
 
       // VALIDATION ALERT & CONFIRMATION DIALOG IF QUOTA EXHAUSTED OR INSUFFICIENT
-      if (isPotongGajiApplied) {
+      if (!isAutoReject && isPotongGajiApplied) {
         const chkAgree = document.getElementById("fc-force-potong-gaji");
         if (!chkAgree || !chkAgree.checked) {
           const okConfirm = await confirmDialog(
@@ -694,7 +762,7 @@ export async function mount(container, { session }) {
 
       const btnSubmit = document.getElementById("btn-submit-cuti");
       btnSubmit.disabled = true;
-      btnSubmit.textContent = "Sedang Mengupload & Menyimpan...";
+      btnSubmit.textContent = isAutoReject ? "Sedang Memproses Penolakan Otomatis..." : "Sedang Mengupload & Menyimpan...";
 
       try {
         const subCat = !subcatWrap.classList.contains("hidden") ? subcatSelect.value : "";
@@ -715,6 +783,10 @@ export async function mount(container, { session }) {
         const refNo = genId("CUTI");
         const nowIso = new Date().toISOString();
         const approvalFlow = ["ATASAN", "HRD"];
+
+        const autoRejectNote = isAutoReject
+          ? `[AUTO REJECT SISTEM]: Jumlah hari cuti yang diajukan (${count} hari kerja, tidak termasuk Minggu & Libur Nasional) melebihi batas maksimal ketentuan masa kerja (${employeeTenure.maxLeaveDays} hari untuk kategori ${employeeTenure.bracketLabel} [${employeeTenure.tenureText}]). Sesuai ketentuan SOP perusahaan, pengajuan ini otomatis ditolak.`
+          : null;
 
         const potongGajiNote = isPotongGajiApplied
           ? `Jatah cuti ${availableQuota <= 0 ? 'habis (0 hari)' : 'tidak mencukupi (sisa ' + availableQuota + ' hari)'}. Diajukan potong gaji sebanyak ${excessDays} hari kerja.`
@@ -753,6 +825,14 @@ export async function mount(container, { session }) {
           sisa_khusus: userBalances.sisaKhusus || 0,
           sisa_akumulasi: userBalances.sisaAkumulasi || 0,
 
+          // Masa Kerja & Validasi Ketentuan
+          masa_kerja: employeeTenure.tenureText,
+          masa_kerja_tahun: employeeTenure.tenureYears,
+          kategori_masa_kerja: employeeTenure.bracketLabel,
+          max_cuti_diperbolehkan: employeeTenure.maxLeaveDays,
+          is_auto_reject: isAutoReject,
+          auto_reject_reason: autoRejectNote,
+
           // Status & Detail Potong Gaji
           is_potong_gaji: isPotongGajiApplied,
           potong_gaji: isPotongGajiApplied,
@@ -779,52 +859,89 @@ export async function mount(container, { session }) {
             sisa_tahunan: userBalances.sisaTahunan || 0,
             sisa_khusus: userBalances.sisaKhusus || 0,
             sisa_akumulasi: userBalances.sisaAkumulasi || 0,
+            masa_kerja: employeeTenure.tenureText,
+            kategori_masa_kerja: employeeTenure.bracketLabel,
+            max_cuti_diperbolehkan: employeeTenure.maxLeaveDays,
+            is_auto_reject: isAutoReject,
+            auto_reject_reason: autoRejectNote,
             is_potong_gaji: isPotongGajiApplied,
             potong_gaji: isPotongGajiApplied,
             potong_gaji_hari: isPotongGajiApplied ? excessDays : 0,
             catatan_potong_gaji: potongGajiNote
           },
           approval_flow: approvalFlow,
-          approval_steps: ["PENDING", "PENDING"],
-          status_final: "MENUNGGU",
-          catatan_penolakan: [],
+          approval_steps: isAutoReject ? ["REJECTED", "REJECTED"] : ["PENDING", "PENDING"],
+          status_final: isAutoReject ? "REJECTED" : "MENUNGGU",
+          status: isAutoReject ? "REJECTED" : "MENUNGGU",
+          catatan_penolakan: isAutoReject ? [autoRejectNote] : [],
           createdAt: nowIso
         };
 
         await setDoc(doc(db, COL.DATA_PENGAJUAN, refNo), payload);
 
-        // Notify first approver (ATASAN / HRD) without duplicates
-        try {
-          let targets = await getTargetsForRole("ATASAN", session.nama);
-          if (!targets || targets.length === 0) {
-            targets = await getTargetsForRole("HRD", session.nama);
-          }
-          const sentKeys = new Set();
-          const notifTitle = isPotongGajiApplied ? "Persetujuan Cuti (Potong Gaji) Dibutuhkan" : "Persetujuan Cuti Dibutuhkan";
-          const notifBody = isPotongGajiApplied
-            ? `Pengajuan Cuti baru dari ${session.nama} (${catName}) sebanyak ${count} hari [POTONG GAJI: ${excessDays} Hari]. Membutuhkan verifikasi Anda.`
-            : `Pengajuan Cuti baru dari ${session.nama} (${catName}${selectedSesi ? ' - ' + selectedSesi : ''}) sebanyak ${count} hari (${tglMulai.value}). Membutuhkan verifikasi Anda.`;
-
-          for (const target of targets) {
-            const key = typeof target === 'object' ? (target.email || target.username || target.nama) : target;
-            if (!key || sentKeys.has(key)) continue;
-            sentKeys.add(key);
+        if (isAutoReject) {
+          try {
             await notifyUser(
-              target,
-              notifTitle,
-              notifBody,
-              `/#approval?id=${refNo}`
+              session.username || session.nama,
+              "⛔ [AUTO REJECT] Pengajuan Cuti Ditolak Sistem",
+              `Pengajuan cuti Anda (${count} hari) otomatis ditolak sistem karena melebihi batas maksimal masa kerja (${employeeTenure.maxLeaveDays} hari untuk ${employeeTenure.tenureText}).`,
+              `/#riwayat?id=${refNo}`
             );
+          } catch (eNotif) {
+            console.warn("Auto reject notification error:", eNotif);
           }
-        } catch (eNotif) {
-          console.warn("Notification error:", eNotif);
+
+          toast(`⛔ Pengajuan Cuti Ditolak Otomatis (Auto Reject): Durasi ${count} hari kerja melebihi batas maksimal masa kerja Anda (${employeeTenure.maxLeaveDays} hari).`, "error");
+        } else {
+          // Notify first approver (ATASAN / HRD) without duplicates
+          try {
+            let targets = await getTargetsForRole("ATASAN", session.nama);
+            if (!targets || targets.length === 0) {
+              targets = await getTargetsForRole("HRD", session.nama);
+            }
+            const sentKeys = new Set();
+            const notifTitle = isPotongGajiApplied ? "Persetujuan Cuti (Potong Gaji) Dibutuhkan" : "Persetujuan Cuti Dibutuhkan";
+            const notifBody = isPotongGajiApplied
+              ? `Pengajuan Cuti baru dari ${session.nama} (${catName}) sebanyak ${count} hari [POTONG GAJI: ${excessDays} Hari]. Membutuhkan verifikasi Anda.`
+              : `Pengajuan Cuti baru dari ${session.nama} (${catName}${selectedSesi ? ' - ' + selectedSesi : ''}) sebanyak ${count} hari (${tglMulai.value}). Membutuhkan verifikasi Anda.`;
+
+            for (const target of targets) {
+              const key = typeof target === 'object' ? (target.email || target.username || target.nama) : target;
+              if (!key || sentKeys.has(key)) continue;
+              sentKeys.add(key);
+              await notifyUser(
+                target,
+                notifTitle,
+                notifBody,
+                `/#approval?id=${refNo}`
+              );
+            }
+          } catch (eNotif) {
+            console.warn("Notification error:", eNotif);
+          }
+
+          // Sepanjang hari: Kirim alert instan ke email cabang jika merupakan Cuti Mendadak / H-0 / Darurat
+          try {
+            const todayWibStr = localDateStr(new Date());
+            const isSudden = (tglMulai.value <= todayWibStr) || isHalfDay || catVal.includes("S -") || catVal.includes("S-") || catVal.includes("C-") || catVal.toLowerCase().includes("mendadak") || (payload.alasan || "").toLowerCase().includes("mendadak") || (payload.alasan || "").toLowerCase().includes("darurat");
+            if (isSudden) {
+              sendBranchInstantAlert({
+                type: "CUTI_MENDADAK",
+                record: payload,
+                session
+              }).catch(eAlert => console.warn("Sudden leave branch alert error:", eAlert));
+            }
+          } catch (eSudden) {
+            console.warn("Check sudden leave branch alert error:", eSudden);
+          }
+
+          toast(isPotongGajiApplied 
+            ? "Pengajuan cuti potong gaji berhasil dikirim & masuk antrean persetujuan!" 
+            : "Pengajuan cuti berhasil dikirim & masuk ke antrean persetujuan!", 
+            "success"
+          );
         }
 
-        toast(isPotongGajiApplied 
-          ? "Pengajuan cuti potong gaji berhasil dikirim & masuk antrean persetujuan!" 
-          : "Pengajuan cuti berhasil dikirim & masuk ke antrean persetujuan!", 
-          "success"
-        );
         closeModal();
         await loadData();
       } catch (err) {
