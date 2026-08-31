@@ -89,7 +89,7 @@ export async function mount(container) {
  collectionName: COL.MASTER_KARYAWAN,
  orderByField: "nama_karyawan",
  size: "2xl",
- searchFields: ["nama_karyawan", "nik_karyawan", "jabatan", "cabang", "divisi", "status_karyawan", "finger_name", "nik_ktp", "no_kk", "bpjs_tk", "bpjs_kes", "npwp", "atasan"],
+ searchFields: ["nama_karyawan", "nik_karyawan", "jabatan", "cabang", "divisi", "status_karyawan", "finger_name", "nik_ktp", "no_kk", "bpjs_tk", "bpjs_kes", "npwp"],
  extraToolbarHtml: `
  <button id="btn-sync-all-karyawan" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg border border-maroon-300 text-maroon-700 bg-maroon-50 hover:bg-maroon-100 transition shadow-2xs cursor-pointer" title="Sinkronkan nama seluruh karyawan ke semua modul HRD & Operasional">
  ${icon("refresh", "w-4 h-4 text-maroon-600")}

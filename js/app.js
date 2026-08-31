@@ -563,6 +563,9 @@ async function router(session) {
  if (["manajemen-cuti"].includes(cleanPath)) {
  mappedPath = "cuti";
  }
+ if (["lembur", "sppkl", "spl", "overtime", "perintah-lembur"].includes(cleanPath)) {
+ mappedPath = "lembur-kasbon";
+ }
  if (["konseling", "coaching", "counseling", "case-management", "hr-case", "hr-cases"].includes(cleanPath)) {
     mappedPath = "konseling-coaching";
   }

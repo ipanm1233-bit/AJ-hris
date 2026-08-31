@@ -310,7 +310,8 @@ export async function mount(container, { session }) {
 
  allKaryawan = snapK.filter(k => (k.aktif_tdk_aktif||"AKTIF").toUpperCase() === "AKTIF" && k.nama_karyawan && k.nama_karyawan.trim() !== "");
  if (isAtasanView) {
- const bset = new Set(bawahanNames || []);
+  const bset = new Set(bawahanNames || []);
+  if (session?.nama) bset.add(session.nama);
  allKaryawan = allKaryawan.filter(k => bset.has(k.nama_karyawan));
  }
  allKaryawan.sort((a, b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id", { sensitivity: "base" }));

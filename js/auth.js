@@ -88,7 +88,16 @@ export const MENU_CONFIG = [
  { id: "klaim-bensin", label: "Klaim Bensin", icon: "wallet", kategori: "Keuangan", roles: ["ALL"], subMenus: [
   { id: "admin_cabang", label: "Admin Cabang" }
  ] },
- { id: "lembur-kasbon", label: "Lembur", icon: "clock", kategori: "Keuangan", roles: ["HRD", "FINANCE", "SUPERADMIN"] },
+ { id: "lembur-kasbon", label: "Lembur", icon: "clock", kategori: "Keuangan", roles: ["ALL"], subMenus: [
+  { id: "dashboard", label: "Dashboard" },
+  { id: "perintah", label: "Perintah Lembur" },
+  { id: "usulan_saya", label: "Usulan Saya" },
+  { id: "persetujuan_saya", label: "Persetujuan Saya" },
+  { id: "realisasi", label: "Realisasi & Verifikasi" },
+  { id: "rekap_jam", label: "Rekap Jam Lembur" },
+  { id: "laporan", label: "Laporan" },
+  { id: "pengaturan", label: "Pengaturan" }
+ ] },
  { id: "uang-makan", label: "Uang Makan", icon: "utensils", kategori: "Keuangan", roles: ["HRD", "FINANCE", "SUPERADMIN"] },
 
  // KATEGORI: OPERASIONAL
