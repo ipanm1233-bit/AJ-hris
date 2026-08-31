@@ -1,7 +1,7 @@
 import { COL } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsUpdate, sha256, toast, escapeHtml, openInviteEmployeeModal, geocodeAddressSmart } from "../utils.js";
 import { renderCrudModule, emptyState } from "../components.js";
-import { MENU_CONFIG, loadPermissionOverrides } from "../auth.js";
+import { MENU_CONFIG, PERMISSION_CATALOG, ROLE_PERMISSIONS_PRESETS, loadPermissionOverrides, hasPermission } from "../auth.js";
 
 export async function mount(container, { session }) {
 	const isHrd = session.role === "HRD";
@@ -124,114 +124,403 @@ async function loadUsersTab(container) {
 
 async function setupRbacMenuTab(container, users) {
  const select = container.querySelector("#rbac-user-select");
- select.innerHTML = users.map(u => {
- const key = u.username || u.id;
- return `<option value="${escapeHtml(key)}">${escapeHtml(u.nama)} (${u.username || u.role})</option>`;
- }).join("");
- const grid = container.querySelector("#rbac-menu-grid");
+ const presetSelect = container.querySelector("#rbac-preset-select");
+ const catalogContainer = container.querySelector("#rbac-catalog-container");
+ const readonlyToggle = container.querySelector("#rbac-readonly-toggle");
+ const searchInput = container.querySelector("#rbac-search-input");
+ const summaryCount = container.querySelector("#rbac-summary-count");
+ const catPills = container.querySelectorAll(".rbac-cat-pill");
 
- const groupLabel = { all: "Menu Utama", hrd: "Modul HRD", manajemen: "Modul Manajemen" };
- grid.innerHTML = `
- <label class="flex items-center gap-2 p-3 rounded-lg border border-amber-200 bg-amber-50 text-sm cursor-pointer mb-1">
- <input type="checkbox" id="rbac-readonly-toggle" class="rounded border-amber-400 text-amber-700 focus:ring-amber-400">
- <span class="text-amber-900 font-bold">Mode Hanya-Lihat (Read-Only)</span>
- <span class="text-[10px] text-amber-700 ml-auto">User tidak bisa Edit/Hapus data di modul manapun, hanya bisa lihat & buat pengajuan baru</span>
- </label>
- ` + MENU_CONFIG.map(m => `
- <div class="rounded-lg border border-slate-100 hover:bg-slate-50">
- <label class="flex items-center gap-2 p-2.5 text-sm cursor-pointer">
- <input type="checkbox" data-menu="${m.id}" class="rounded border-slate-300 text-maroon-700 focus:ring-maroon-400">
- <span class="text-slate-700">${m.label}</span>
- <span class="text-[10px] text-slate-400 ml-auto">${m.kategori || groupLabel[m.group] || "Umum"}</span>
- </label>
- ${Array.isArray(m.subMenus) && m.subMenus.length > 0 ? `
- <div class="pl-8 pb-2 space-y-1">
- ${m.subMenus.map(sm => `
- <label class="flex items-center gap-2 py-1 text-xs cursor-pointer text-slate-600">
- <input type="checkbox" data-submenu-parent="${m.id}" data-submenu="${sm.id}" class="rounded border-slate-300 text-maroon-600 focus:ring-maroon-400 w-3.5 h-3.5">
- <span>${sm.label}</span>
- </label>
- `).join("")}
- </div>
- ` : ""}
- </div>`).join("");
+ select.innerHTML = users.map(u => {
+  const key = u.username || u.id;
+  return `<option value="${escapeHtml(key)}">${escapeHtml(u.nama)} (${u.username || u.role}) - ${u.posisi || u.role}</option>`;
+ }).join("");
+
+ const categoryColorMap = {
+  "Menu Utama": "border-blue-200 bg-blue-50/50 text-blue-800",
+  "Persetujuan": "border-amber-200 bg-amber-50/50 text-amber-800",
+  "Kehadiran": "border-emerald-200 bg-emerald-50/50 text-emerald-800",
+  "Karyawan & Kinerja": "border-purple-200 bg-purple-50/50 text-purple-800",
+  "Keuangan": "border-rose-200 bg-rose-50/50 text-rose-800",
+  "Operasional": "border-cyan-200 bg-cyan-50/50 text-cyan-800",
+  "Sales": "border-orange-200 bg-orange-50/50 text-orange-800",
+  "Pengaturan": "border-slate-300 bg-slate-100/70 text-slate-800",
+  "Fitur Profil": "border-indigo-200 bg-indigo-50/50 text-indigo-800"
+ };
+
+ const actionBadgeStyles = {
+  view: "bg-slate-100 text-slate-700 border-slate-200",
+  view_all: "bg-indigo-50 text-indigo-700 border-indigo-200 font-semibold",
+  create: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  edit: "bg-amber-50 text-amber-700 border-amber-200",
+  delete: "bg-rose-50 text-rose-700 border-rose-200 font-bold",
+  approve: "bg-teal-50 text-teal-700 border-teal-200 font-semibold",
+  reject: "bg-rose-50 text-rose-700 border-rose-200",
+  publish: "bg-purple-50 text-purple-700 border-purple-200",
+  print: "bg-blue-50 text-blue-700 border-blue-200",
+  export: "bg-blue-50 text-blue-700 border-blue-200",
+  import: "bg-sky-50 text-sky-700 border-sky-200",
+  sync: "bg-cyan-50 text-cyan-700 border-cyan-200",
+  configure: "bg-purple-50 text-purple-700 border-purple-200 font-semibold",
+  verify: "bg-teal-50 text-teal-700 border-teal-200",
+  participate: "bg-emerald-50 text-emerald-700 border-emerald-200"
+ };
+
+ // Render modules from PERMISSION_CATALOG
+ catalogContainer.innerHTML = PERMISSION_CATALOG.map(module => {
+  const catColor = categoryColorMap[module.category] || "border-slate-200 bg-slate-50 text-slate-700";
+  const hasSubmenus = Array.isArray(module.subMenus) && module.subMenus.length > 0;
+  const hasDirectActions = Array.isArray(module.actions) && module.actions.length > 0;
+
+  return `
+   <div class="rbac-module-card rounded-2xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden transition hover:border-slate-300" data-cat="${escapeHtml(module.category)}" data-module-id="${escapeHtml(module.id)}">
+    <!-- Module Header -->
+    <div class="flex flex-wrap items-center justify-between gap-2 p-3.5 bg-slate-50/70 border-b border-slate-100">
+     <div class="flex items-center gap-2.5">
+      <label class="flex items-center gap-2 cursor-pointer">
+       <input type="checkbox" data-menu="${module.id}" class="rbac-module-cb rounded border-slate-300 text-maroon-700 focus:ring-maroon-400 w-4 h-4">
+       <span class="font-bold text-sm text-slate-800">${escapeHtml(module.label)}</span>
+      </label>
+      <span class="px-2 py-0.5 text-[10px] font-semibold rounded-full border ${catColor}">
+       ${escapeHtml(module.category)}
+      </span>
+     </div>
+
+     <div class="flex items-center gap-2">
+      <button type="button" class="rbac-btn-toggle-all-module px-2 py-0.5 text-[11px] font-semibold text-slate-500 hover:text-slate-800 bg-white border border-slate-200 rounded-md transition" data-target="${module.id}">
+       Pilih Semua Aksi
+      </button>
+     </div>
+    </div>
+
+    <!-- Direct Module Actions (if any) -->
+    ${hasDirectActions ? `
+     <div class="p-3.5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 border-b border-slate-50">
+      ${module.actions.map(act => `
+       <label class="rbac-action-item flex items-start gap-2 p-2 rounded-xl border border-slate-100 hover:bg-slate-50/80 cursor-pointer transition text-xs">
+        <input type="checkbox" data-parent-menu="${module.id}" data-action="${act.key}" class="rbac-action-cb rounded border-slate-300 text-maroon-600 focus:ring-maroon-400 mt-0.5 w-3.5 h-3.5">
+        <div class="flex-1 leading-tight">
+         <div class="text-slate-700 font-medium">${escapeHtml(act.label)}</div>
+         <div class="flex items-center gap-1 mt-1">
+          <span class="px-1.5 py-0.5 text-[9px] rounded border ${actionBadgeStyles[act.type] || 'bg-slate-100 text-slate-600 border-slate-200'}">${escapeHtml(act.type.toUpperCase())}</span>
+          ${act.dangerous ? '<span class="px-1.5 py-0.5 text-[9px] rounded bg-rose-100 text-rose-800 font-bold border border-rose-200">Sensitif</span>' : ''}
+         </div>
+        </div>
+       </label>
+      `).join("")}
+     </div>
+    ` : ""}
+
+    <!-- Submenus & Submenu Actions (if any) -->
+    ${hasSubmenus ? `
+     <div class="p-3.5 space-y-3 bg-slate-50/30">
+      ${module.subMenus.map(sm => `
+       <div class="rounded-xl border border-slate-200/80 bg-white p-3 space-y-2">
+        <div class="flex items-center justify-between">
+         <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" data-submenu-parent="${module.id}" data-submenu="${sm.id}" class="rbac-sub-cb rounded border-slate-300 text-maroon-600 focus:ring-maroon-400 w-3.5 h-3.5">
+          <span class="text-xs font-bold text-slate-800">Submenu: ${escapeHtml(sm.label)}</span>
+         </label>
+        </div>
+        ${Array.isArray(sm.actions) && sm.actions.length > 0 ? `
+         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 pt-1 pl-5">
+          ${sm.actions.map(act => `
+           <label class="rbac-action-item flex items-start gap-2 p-1.5 rounded-lg border border-slate-100 hover:bg-slate-50 cursor-pointer transition text-xs">
+            <input type="checkbox" data-parent-menu="${module.id}" data-parent-sub="${sm.id}" data-action="${act.key}" class="rbac-action-cb rounded border-slate-300 text-maroon-600 focus:ring-maroon-400 mt-0.5 w-3.5 h-3.5">
+            <div class="flex-1 leading-tight">
+             <div class="text-slate-700 font-medium">${escapeHtml(act.label)}</div>
+             <div class="flex items-center gap-1 mt-1">
+              <span class="px-1.5 py-0.5 text-[9px] rounded border ${actionBadgeStyles[act.type] || 'bg-slate-100 text-slate-600 border-slate-200'}">${escapeHtml(act.type.toUpperCase())}</span>
+              ${act.dangerous ? '<span class="px-1.5 py-0.5 text-[9px] rounded bg-rose-100 text-rose-800 font-bold border border-rose-200">Sensitif</span>' : ''}
+             </div>
+            </div>
+           </label>
+          `).join("")}
+         </div>
+        ` : ""}
+       </div>
+      `).join("")}
+     </div>
+    ` : ""}
+   </div>
+  `;
+ }).join("");
 
  function keysFor(userKey, userObj) {
- return [
- userKey,
- String(userKey).toLowerCase(),
- String(userKey).toUpperCase(),
- userObj?.username,
- userObj?.username ? String(userObj.username).toLowerCase() : null,
- userObj?.username ? String(userObj.username).toUpperCase() : null,
- userObj?.id,
- userObj?.id ? String(userObj.id).toLowerCase() : null,
- userObj?.id ? String(userObj.id).toUpperCase() : null,
- userObj?.nama,
- userObj?.nama ? String(userObj.nama).toLowerCase() : null,
- userObj?.nama ? String(userObj.nama).toUpperCase() : null,
- userObj?.nik ? String(userObj.nik) : null
- ].filter(Boolean);
+  return [
+   userKey,
+   String(userKey).toLowerCase(),
+   String(userKey).toUpperCase(),
+   userObj?.username,
+   userObj?.username ? String(userObj.username).toLowerCase() : null,
+   userObj?.username ? String(userObj.username).toUpperCase() : null,
+   userObj?.id,
+   userObj?.id ? String(userObj.id).toLowerCase() : null,
+   userObj?.id ? String(userObj.id).toUpperCase() : null,
+   userObj?.nama,
+   userObj?.nama ? String(userObj.nama).toLowerCase() : null,
+   userObj?.nama ? String(userObj.nama).toUpperCase() : null,
+   userObj?.nik ? String(userObj.nik) : null
+  ].filter(Boolean);
+ }
+
+ function updateSummary() {
+  const totalMenus = catalogContainer.querySelectorAll(".rbac-module-cb:checked").length;
+  const totalActions = catalogContainer.querySelectorAll(".rbac-action-cb:checked").length;
+  const allActionsCount = catalogContainer.querySelectorAll(".rbac-action-cb").length;
+  if (summaryCount) {
+   summaryCount.innerHTML = `Terpilih: <strong class="text-slate-800 font-bold">${totalMenus} Modul</strong> & <strong class="text-maroon-700 font-bold">${totalActions} / ${allActionsCount} Izin Tindakan (Action)</strong>`;
+  }
  }
 
  async function loadForUser(userKey) {
- const overrides = await loadPermissionOverrides(true);
- const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey || u.username === userKey);
- const keysToSearch = keysFor(userKey, userObj);
+  const overrides = await loadPermissionOverrides(true);
+  const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey || u.username === userKey);
+  const keysToSearch = keysFor(userKey, userObj);
 
- let ov = null;
- for (const k of keysToSearch) {
- if (overrides[k]) { ov = overrides[k]; break; }
+  let ov = null;
+  for (const k of keysToSearch) {
+   if (overrides[k]) { ov = overrides[k]; break; }
+  }
+
+  const role = (userObj?.role || "KARYAWAN").toUpperCase();
+  const preset = ROLE_PERMISSIONS_PRESETS[role] || ROLE_PERMISSIONS_PRESETS.STAFF;
+  const isSuperadmin = role === "SUPERADMIN";
+
+  // Actions
+  let allowedActions = [];
+  if (ov && Array.isArray(ov.allowed_actions) && ov.allowed_actions.length > 0) {
+   allowedActions = ov.allowed_actions;
+  } else if (preset.includes("*") || isSuperadmin) {
+   allowedActions = Array.from(catalogContainer.querySelectorAll("[data-action]")).map(cb => cb.dataset.action);
+  } else {
+   allowedActions = preset;
+  }
+
+  // Menus
+  let allowedMenus = [];
+  if (ov && Array.isArray(ov.allowed_menus) && ov.allowed_menus_set) {
+   allowedMenus = ov.allowed_menus;
+  } else if (isSuperadmin) {
+   allowedMenus = PERMISSION_CATALOG.map(m => m.id);
+  } else {
+   // Derive active menus from active actions or MENU_CONFIG default for this role
+   const defaultRoleMenus = MENU_CONFIG.filter(m => {
+    if (m.allowedRoles?.includes("*") || m.allowedRoles?.includes(role)) return true;
+    return false;
+   }).map(m => m.id);
+   allowedMenus = defaultRoleMenus;
+  }
+
+  // Submenus
+  const currentSub = ov?.allowed_submenus || {};
+
+  catalogContainer.querySelectorAll("[data-menu]").forEach(cb => {
+   cb.checked = allowedMenus.includes(cb.dataset.menu);
+  });
+
+  catalogContainer.querySelectorAll("[data-submenu]").forEach(cb => {
+   const parentId = cb.dataset.submenuParent;
+   const subId = cb.dataset.submenu;
+   if (ov?.allowed_submenus) {
+    cb.checked = Array.isArray(currentSub[parentId]) && currentSub[parentId].includes(subId);
+   } else {
+    // Default checked if parent menu is active
+    cb.checked = allowedMenus.includes(parentId);
+   }
+  });
+
+  catalogContainer.querySelectorAll("[data-action]").forEach(cb => {
+   cb.checked = allowedActions.includes(cb.dataset.action) || isSuperadmin;
+  });
+
+  if (readonlyToggle) readonlyToggle.checked = ov?.read_only === true;
+  updateSummary();
  }
- const current = ov?.allowed_menus || [];
- grid.querySelectorAll("[data-menu]").forEach(cb => { cb.checked = current.includes(cb.dataset.menu); });
 
- const currentSub = ov?.allowed_submenus || {};
- grid.querySelectorAll("[data-submenu]").forEach(cb => {
- const parentId = cb.dataset.submenuParent;
- const subId = cb.dataset.submenu;
- cb.checked = Array.isArray(currentSub[parentId]) && currentSub[parentId].includes(subId);
+ // Category Filter Pills Click
+ catPills.forEach(pill => {
+  pill.addEventListener("click", () => {
+   catPills.forEach(p => {
+    p.classList.remove("active", "bg-maroon-700", "text-white");
+    p.classList.add("bg-slate-100", "text-slate-700");
+   });
+   pill.classList.add("active", "bg-maroon-700", "text-white");
+   pill.classList.remove("bg-slate-100", "text-slate-700");
+
+   const cat = pill.dataset.cat;
+   catalogContainer.querySelectorAll(".rbac-module-card").forEach(card => {
+    if (cat === "all" || card.dataset.cat === cat) {
+     card.classList.remove("hidden");
+    } else {
+     card.classList.add("hidden");
+    }
+   });
+  });
  });
 
- const readonlyToggle = container.querySelector("#rbac-readonly-toggle");
- if (readonlyToggle) readonlyToggle.checked = ov?.read_only === true;
+ // Real-time Search Input
+ if (searchInput) {
+  searchInput.addEventListener("input", () => {
+   const query = searchInput.value.toLowerCase().trim();
+   catalogContainer.querySelectorAll(".rbac-module-card").forEach(card => {
+    const text = card.textContent.toLowerCase();
+    card.classList.toggle("hidden", query.length > 0 && !text.includes(query));
+   });
+  });
  }
+
+ // Interaction: Parent Menu toggle checks/unchecks its actions
+ catalogContainer.addEventListener("change", (e) => {
+  const target = e.target;
+  if (target.classList.contains("rbac-module-cb")) {
+   const moduleId = target.dataset.menu;
+   const isChecked = target.checked;
+   catalogContainer.querySelectorAll(`[data-parent-menu="${moduleId}"]`).forEach(cb => {
+    cb.checked = isChecked;
+   });
+   catalogContainer.querySelectorAll(`[data-submenu-parent="${moduleId}"]`).forEach(cb => {
+    cb.checked = isChecked;
+   });
+  } else if (target.classList.contains("rbac-action-cb")) {
+   if (target.checked) {
+    const parentModule = target.dataset.parentMenu;
+    const parentSub = target.dataset.parentSub;
+    if (parentModule) {
+     const menuCb = catalogContainer.querySelector(`[data-menu="${parentModule}"]`);
+     if (menuCb) menuCb.checked = true;
+    }
+    if (parentSub && parentModule) {
+     const subCb = catalogContainer.querySelector(`[data-submenu-parent="${parentModule}"][data-submenu="${parentSub}"]`);
+     if (subCb) subCb.checked = true;
+    }
+   }
+  } else if (target.classList.contains("rbac-sub-cb")) {
+   const parentModule = target.dataset.submenuParent;
+   const subId = target.dataset.submenu;
+   const isChecked = target.checked;
+   if (isChecked && parentModule) {
+    const menuCb = catalogContainer.querySelector(`[data-menu="${parentModule}"]`);
+    if (menuCb) menuCb.checked = true;
+   }
+   catalogContainer.querySelectorAll(`[data-parent-menu="${parentModule}"][data-parent-sub="${subId}"]`).forEach(cb => {
+    cb.checked = isChecked;
+   });
+  }
+  updateSummary();
+ });
+
+ // Toggle all actions in module
+ catalogContainer.addEventListener("click", (e) => {
+  const btn = e.target.closest(".rbac-btn-toggle-all-module");
+  if (btn) {
+   const moduleId = btn.dataset.target;
+   const actionCbs = catalogContainer.querySelectorAll(`[data-parent-menu="${moduleId}"]`);
+   const allChecked = Array.from(actionCbs).every(cb => cb.checked);
+   actionCbs.forEach(cb => { cb.checked = !allChecked; });
+   const menuCb = catalogContainer.querySelector(`[data-menu="${moduleId}"]`);
+   if (menuCb) menuCb.checked = !allChecked;
+   catalogContainer.querySelectorAll(`[data-submenu-parent="${moduleId}"]`).forEach(cb => { cb.checked = !allChecked; });
+   updateSummary();
+  }
+ });
+
+ // Preset Selector
+ if (presetSelect) {
+  presetSelect.addEventListener("change", () => {
+   const role = presetSelect.value;
+   if (!role) return;
+   const preset = ROLE_PERMISSIONS_PRESETS[role] || [];
+   const isSuper = role === "SUPERADMIN";
+
+   catalogContainer.querySelectorAll("[data-action]").forEach(cb => {
+    cb.checked = isSuper || preset.includes(cb.dataset.action);
+   });
+
+   // Enable corresponding menus
+   catalogContainer.querySelectorAll(".rbac-module-card").forEach(card => {
+    const hasCheckedAction = card.querySelectorAll(".rbac-action-cb:checked").length > 0;
+    const menuCb = card.querySelector(".rbac-module-cb");
+    if (menuCb) menuCb.checked = isSuper || hasCheckedAction;
+
+    card.querySelectorAll(".rbac-sub-cb").forEach(subCb => {
+     const subId = subCb.dataset.submenu;
+     const parentId = subCb.dataset.submenuParent;
+     const hasCheckedSubAction = card.querySelectorAll(`[data-parent-menu="${parentId}"][data-parent-sub="${subId}"]:checked`).length > 0;
+     subCb.checked = isSuper || hasCheckedSubAction;
+    });
+   });
+
+   updateSummary();
+   toast(`Template hak akses ${role} diterapkan pada formulir`, "info");
+  });
+ }
+
+ // Quick buttons
+ container.querySelector("#rbac-btn-select-all")?.addEventListener("click", () => {
+  catalogContainer.querySelectorAll("input[type='checkbox']").forEach(cb => { cb.checked = true; });
+  updateSummary();
+ });
+
+ container.querySelector("#rbac-btn-deselect-all")?.addEventListener("click", () => {
+  catalogContainer.querySelectorAll("input[type='checkbox']").forEach(cb => { cb.checked = false; });
+  updateSummary();
+ });
+
+ container.querySelector("#rbac-btn-reset-role")?.addEventListener("click", () => {
+  const userKey = select.value;
+  const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey || u.username === userKey);
+  const role = (userObj?.role || "KARYAWAN").toUpperCase();
+  if (presetSelect) presetSelect.value = role;
+  presetSelect.dispatchEvent(new Event("change"));
+ });
+
  await loadForUser(select.value);
  select.addEventListener("change", () => loadForUser(select.value));
 
+ // Save handler
  container.querySelector("#rbac-menu-save").addEventListener("click", async () => {
- const userKey = select.value;
- const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey || u.username === userKey);
- const checked = Array.from(grid.querySelectorAll("[data-menu]:checked")).map(cb => cb.dataset.menu);
+  const userKey = select.value;
+  const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey || u.username === userKey);
+  const checkedMenus = Array.from(catalogContainer.querySelectorAll("[data-menu]:checked")).map(cb => cb.dataset.menu);
+  const checkedActions = Array.from(catalogContainer.querySelectorAll("[data-action]:checked")).map(cb => cb.dataset.action);
 
- const allowedSubmenus = {};
- grid.querySelectorAll("[data-submenu]:checked").forEach(cb => {
- const parentId = cb.dataset.submenuParent;
- const subId = cb.dataset.submenu;
- if (!allowedSubmenus[parentId]) allowedSubmenus[parentId] = [];
- allowedSubmenus[parentId].push(subId);
- });
- // Pastikan setiap modul yang punya subMenus tetap tercatat sebagai array
- // kosong kalau semua sub-checkbox-nya di-uncheck (supaya whitelist tetap
- // berlaku "tidak ada satupun sub-menu admin", bukan "belum diset").
- MENU_CONFIG.forEach(m => {
- if (Array.isArray(m.subMenus) && m.subMenus.length > 0 && !allowedSubmenus[m.id]) {
- allowedSubmenus[m.id] = [];
- }
- });
+  const allowedSubmenus = {};
+  catalogContainer.querySelectorAll("[data-submenu]:checked").forEach(cb => {
+   const parentId = cb.dataset.submenuParent;
+   const subId = cb.dataset.submenu;
+   if (!allowedSubmenus[parentId]) allowedSubmenus[parentId] = [];
+   allowedSubmenus[parentId].push(subId);
+  });
 
- const readOnly = container.querySelector("#rbac-readonly-toggle")?.checked === true;
+  PERMISSION_CATALOG.forEach(m => {
+   if (Array.isArray(m.subMenus) && m.subMenus.length > 0 && !allowedSubmenus[m.id]) {
+    allowedSubmenus[m.id] = [];
+   }
+  });
 
- try {
- const keysToSave = new Set(keysFor(userKey, userObj));
- for (const k of keysToSave) {
- const payload = { allowed_menus: checked, allowed_menus_set: true, allowed_submenus: allowedSubmenus, read_only: readOnly };
- await fsUpdate(COL.USER_PERMISSIONS, String(k), payload).catch(async () => {
- await fsAdd(COL.USER_PERMISSIONS, { ...payload, allowed_forms: [] }, String(k));
- });
- }
- toast(`Hak akses menu untuk ${userObj?.nama || userKey} berhasil disimpan`, "success");
- } catch (e) { toast("Gagal menyimpan: " + e.message, "error"); }
+  const readOnly = readonlyToggle?.checked === true;
+
+  try {
+   const keysToSave = new Set(keysFor(userKey, userObj));
+   const payload = {
+    allowed_menus: checkedMenus,
+    allowed_menus_set: true,
+    allowed_submenus: allowedSubmenus,
+    allowed_actions: checkedActions,
+    read_only: readOnly,
+    updated_at: new Date().toISOString()
+   };
+
+   for (const k of keysToSave) {
+    await fsUpdate(COL.USER_PERMISSIONS, String(k), payload).catch(async () => {
+     await fsAdd(COL.USER_PERMISSIONS, { ...payload, allowed_forms: [] }, String(k));
+    });
+   }
+   toast(`Hak akses (${checkedActions.length} action di ${checkedMenus.length} modul) untuk ${userObj?.nama || userKey} berhasil disimpan`, "success");
+  } catch (e) {
+   toast("Gagal menyimpan hak akses: " + e.message, "error");
+  }
  });
 }
 

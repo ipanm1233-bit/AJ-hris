@@ -16,13 +16,93 @@
 
   <div id="st-panel-users"></div>
 
-  <div id="st-panel-menu" class="hidden">
-    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-      <label class="block text-xs font-medium text-slate-500 mb-1.5">Pilih Karyawan / Pengguna</label>
-      <select id="rbac-user-select" class="w-full sm:w-80 px-3 py-2.5 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none mb-5"></select>
-      <p class="text-xs text-slate-400 mb-3">Kosongkan seluruh centang untuk mengikuti hak akses bawaan sesuai Role. Centang manual untuk menimpa (override) menu spesifik bagi pengguna ini.</p>
-      <div id="rbac-menu-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"></div>
-      <button id="rbac-menu-save" class="mt-5 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-maroon-700 hover:bg-maroon-800 transition">Simpan Hak Akses Menu</button>
+  <div id="st-panel-menu" class="hidden space-y-5">
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-5">
+      <!-- HEADER & USER SELECTION -->
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+        <div class="space-y-1">
+          <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
+            <span>Matriks Hak Akses & Kewenangan Pengguna (RBAC)</span>
+            <span class="px-2 py-0.5 text-[10px] font-bold bg-maroon-100 text-maroon-800 rounded-full">Granular V2</span>
+          </h2>
+          <p class="text-xs text-slate-500">Kelola izin akses modul, submenu operasional, dan action tombol secara presisi untuk setiap personil.</p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="w-full sm:w-auto">
+            <label class="block text-[11px] font-bold text-slate-600 mb-1">Pilih Karyawan / Pengguna:</label>
+            <select id="rbac-user-select" class="w-full sm:w-72 px-3 py-2 text-xs font-semibold rounded-xl border border-slate-200 focus:border-maroon-500 outline-none bg-slate-50 hover:bg-white transition"></select>
+          </div>
+          <div class="w-full sm:w-auto">
+            <label class="block text-[11px] font-bold text-slate-600 mb-1">Terapkan Template Role:</label>
+            <select id="rbac-preset-select" class="w-full sm:w-48 px-3 py-2 text-xs font-semibold rounded-xl border border-maroon-200 focus:border-maroon-500 outline-none bg-maroon-50 text-maroon-900 transition">
+              <option value="">-- Pilih Template --</option>
+              <option value="SUPERADMIN">Template SUPERADMIN</option>
+              <option value="HRD">Template HRD</option>
+              <option value="GM">Template GM / Direksi</option>
+              <option value="FINANCE">Template FINANCE</option>
+              <option value="SPV">Template SPV / Manager</option>
+              <option value="SALES">Template SALES</option>
+              <option value="STAFF">Template STAFF / Karyawan</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- STATUS BAR & QUICK CONTROLS -->
+      <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/80">
+        <div class="flex flex-wrap items-center gap-2">
+          <button id="rbac-btn-select-all" class="px-2.5 py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg shadow-2xs transition">
+            Pilih Semua
+          </button>
+          <button id="rbac-btn-deselect-all" class="px-2.5 py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg shadow-2xs transition">
+            Batalkan Semua
+          </button>
+          <button id="rbac-btn-reset-role" class="px-2.5 py-1.5 text-xs font-bold text-maroon-700 bg-maroon-50 hover:bg-maroon-100 border border-maroon-200 rounded-lg transition">
+            Reset Sesuai Role
+          </button>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <label class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-xs font-medium cursor-pointer">
+            <input type="checkbox" id="rbac-readonly-toggle" class="rounded border-amber-400 text-amber-700 focus:ring-amber-400">
+            <span class="text-amber-900 font-bold">Mode Hanya-Lihat (Read-Only)</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- FILTER & SEARCH -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+        <div class="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1" id="rbac-category-filters">
+          <button data-cat="all" class="rbac-cat-pill active px-3 py-1 text-xs font-bold rounded-full bg-maroon-700 text-white transition">Semua Modul</button>
+          <button data-cat="Menu Utama" class="rbac-cat-pill px-3 py-1 text-xs font-medium rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition">Menu Utama</button>
+          <button data-cat="Persetujuan" class="rbac-cat-pill px-3 py-1 text-xs font-medium rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition">Persetujuan</button>
+          <button data-cat="Kehadiran" class="rbac-cat-pill px-3 py-1 text-xs font-medium rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition">Kehadiran</button>
+          <button data-cat="Karyawan & Kinerja" class="rbac-cat-pill px-3 py-1 text-xs font-medium rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition">Karyawan & Kinerja</button>
+          <button data-cat="Keuangan" class="rbac-cat-pill px-3 py-1 text-xs font-medium rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition">Keuangan</button>
+          <button data-cat="Operasional" class="rbac-cat-pill px-3 py-1 text-xs font-medium rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition">Operasional</button>
+          <button data-cat="Sales" class="rbac-cat-pill px-3 py-1 text-xs font-medium rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition">Sales</button>
+          <button data-cat="Pengaturan" class="rbac-cat-pill px-3 py-1 text-xs font-medium rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition">Pengaturan</button>
+        </div>
+
+        <div class="relative w-full sm:w-64">
+          <input type="text" id="rbac-search-input" placeholder="Cari modul atau izin action..." class="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 focus:border-maroon-400 outline-none">
+          <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
+        </div>
+      </div>
+
+      <!-- MAIN PERMISSION CONTAINER (MODULE CARDS) -->
+      <div id="rbac-catalog-container" class="space-y-4 pt-2"></div>
+
+      <!-- SAVE BUTTON & SUMMARY BAR -->
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-100">
+        <div id="rbac-summary-count" class="text-xs text-slate-500 font-medium">
+          Memuat konfigurasi hak akses...
+        </div>
+        <button id="rbac-menu-save" class="w-full sm:w-auto px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 transition shadow-sm flex items-center justify-center gap-2">
+          <span>Simpan Hak Akses Pengguna</span>
+        </button>
+      </div>
     </div>
   </div>
 
