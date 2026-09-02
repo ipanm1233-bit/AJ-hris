@@ -1,7 +1,7 @@
-import { COL } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, sha256, toast, escapeHtml, openInviteEmployeeModal, geocodeAddressSmart } from "../utils.js";
+import { db, COL, doc, getDoc, setDoc, deleteDoc, updateDoc } from "../firebase-config.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, sha256, toast, escapeHtml, openInviteEmployeeModal, openModal, closeModal, geocodeAddressSmart } from "../utils.js";
 import { renderCrudModule, emptyState } from "../components.js";
-import { MENU_CONFIG, PERMISSION_CATALOG, ROLE_PERMISSIONS_PRESETS, loadPermissionOverrides, hasPermission } from "../auth.js";
+import { MENU_CONFIG, PERMISSION_CATALOG, ROLE_PERMISSIONS_PRESETS, DEFAULT_EMPLOYEE_MENU_IDS, loadPermissionOverrides, hasPermission } from "../auth.js";
 
 export async function mount(container, { session }) {
 	const isHrd = session.role === "HRD";
@@ -28,15 +28,25 @@ export async function mount(container, { session }) {
 		const nameKey = (k.nama_karyawan || k.nama || "").trim();
 		const nikKey = (k.nik_karyawan || k.nik || "").trim();
 		const unameKey = (k.username || "").trim();
-		let foundKey = null;
-		if (unameKey && userMap.has(unameKey)) foundKey = unameKey;
-		else if (nikKey && userMap.has(nikKey)) foundKey = nikKey;
-		else if (nameKey && userMap.has(nameKey)) foundKey = nameKey;
 
-		if (foundKey) {
-			const existing = userMap.get(foundKey);
-			if (!existing.nik && nikKey) existing.nik = nikKey;
-			if (!existing.nama && nameKey) existing.nama = nameKey;
+		let matchedUser = null;
+		for (const u of userMap.values()) {
+			const uNik = String(u.nik || "").trim();
+			const uNama = String(u.nama || "").trim().toLowerCase();
+			const uUname = String(u.username || u.id || "").trim().toLowerCase();
+
+			if (nikKey && uNik && nikKey === uNik) { matchedUser = u; break; }
+			if (unameKey && (uUname === unameKey.toLowerCase() || uNik === unameKey)) { matchedUser = u; break; }
+			if (nikKey && (uUname === nikKey.toLowerCase())) { matchedUser = u; break; }
+			if (nameKey && uNama && nameKey.toLowerCase() === uNama) { matchedUser = u; break; }
+		}
+
+		if (matchedUser) {
+			if (!matchedUser.nik && nikKey) matchedUser.nik = nikKey;
+			if (!matchedUser.nama && nameKey) matchedUser.nama = nameKey;
+			if (!matchedUser.posisi && k.jabatan) matchedUser.posisi = k.jabatan;
+			if (!matchedUser.email && k.email) matchedUser.email = k.email;
+			if (!matchedUser.cabang && k.cabang) matchedUser.cabang = k.cabang;
 		} else {
 			const newKey = unameKey || nikKey || nameKey;
 			if (newKey) {
@@ -44,17 +54,19 @@ export async function mount(container, { session }) {
 					id: newKey,
 					username: unameKey || (nameKey ? nameKey.toLowerCase().replace(/\s+/g, ".") : newKey),
 					nama: nameKey || unameKey || newKey,
-					nik: nikKey,
+					nik: nikKey || "-",
 					role: k.jabatan || "KARYAWAN",
-					posisi: k.jabatan || "-"
+					posisi: k.jabatan || "-",
+					cabang: k.cabang || "-",
+					email: k.email || ""
 				});
 			}
 		}
 	});
 
 	const users = Array.from(userMap.values()).sort((a, b) => (a.nama || "").localeCompare(b.nama || ""));
-	await setupRbacMenuTab(container, users);
-	await setupRbacFormTab(container, users);
+	await setupRbacMenuTab(container, users, allUsers, allKaryawan);
+	await setupRbacFormTab(container, users, allUsers, allKaryawan);
 	await loadKanalTab(container);
 
 	container.querySelectorAll(".st-tab").forEach(btn => {
@@ -73,6 +85,218 @@ export async function mount(container, { session }) {
 	return { unmount() {} };
 }
 
+/**
+ * Modal Deteksi & Penggabungan Akun Ganda (Deduplication Engine)
+ * Memperbaiki masalah akun ganda (Username vs NIK) dan mensinkronkan izin RBAC
+ */
+export async function openMergeAccountsModal(onSuccess = () => {}) {
+	toast("Memindai akun ganda di sistem...", "info");
+	const [allUsers, allKaryawan, allPerms] = await Promise.all([
+		fsGetAll(COL.USERS).catch(() => []),
+		fsGetAll(COL.MASTER_KARYAWAN).catch(() => []),
+		fsGetAll(COL.USER_PERMISSIONS).catch(() => [])
+	]);
+
+	// Kelompokkan akun yang merujuk ke orang yang sama
+	const handledIds = new Set();
+	const duplicateGroups = [];
+
+	for (const user of allUsers) {
+		if (handledIds.has(user.id)) continue;
+		const uNik = String(user.nik || "").trim();
+		const uNama = String(user.nama || "").trim().toLowerCase();
+		const uUname = String(user.username || user.id || "").trim().toLowerCase();
+
+		const matches = allUsers.filter(other => {
+			if (other.id === user.id) return true;
+			const oNik = String(other.nik || "").trim();
+			const oNama = String(other.nama || "").trim().toLowerCase();
+			const oUname = String(other.username || other.id || "").trim().toLowerCase();
+
+			// Cocok NIK
+			if (uNik && uNik !== "-" && oNik && oNik !== "-" && uNik === oNik) return true;
+			// Cocok Username dengan NIK
+			if (uNik && (oUname === uNik.toLowerCase() || oNik === uUname)) return true;
+			// Cocok Nama Lengkap
+			if (uNama && oNama && uNama === oNama && uNama.length > 2) return true;
+			return false;
+		});
+
+		if (matches.length > 1) {
+			matches.forEach(m => handledIds.add(m.id));
+			// Tentukan akun utama: dokumen yang punya username alfabet (bukan angka NIK) atau akun terlengkap
+			const primary = matches.find(m => m.username && isNaN(m.username) && m.username !== m.nik) || matches[0];
+			const duplicates = matches.filter(m => m.id !== primary.id);
+			duplicateGroups.push({ primary, duplicates, all: matches });
+		}
+	}
+
+	const modalContent = `
+		<div class="space-y-4">
+			<div class="flex items-center justify-between pb-3 border-b border-slate-100">
+				<div>
+					<h3 class="text-base font-bold text-slate-800">Deteksi & Gabungkan Akun Ganda</h3>
+					<p class="text-xs text-slate-500">Ditemukan <strong>${duplicateGroups.length}</strong> karyawan dengan akun ganda (Username vs NIK). Penggabungan akun akan menyatukan data & menyinkronkan seluruh hak akses menu secara permanen.</p>
+				</div>
+			</div>
+
+			${duplicateGroups.length === 0 ? `
+				<div class="p-8 text-center bg-emerald-50/60 rounded-xl border border-emerald-200">
+					<div class="text-3xl mb-2">🎉</div>
+					<div class="text-sm font-bold text-emerald-900">Semua Akun Bersih & Tersinkronisasi!</div>
+					<div class="text-xs text-emerald-700 mt-1">Tidak ditemukan duplikasi akun antara NIK dan Nama Pengguna.</div>
+				</div>
+			` : `
+				<div class="max-h-[60vh] overflow-y-auto space-y-3 pr-1">
+					${duplicateGroups.map((grp, idx) => `
+						<div class="p-3.5 rounded-xl border border-amber-200 bg-amber-50/40 space-y-2">
+							<div class="flex items-center justify-between">
+								<span class="text-xs font-bold text-slate-800">${idx + 1}. ${escapeHtml(grp.primary.nama || grp.primary.username)} (NIK: ${escapeHtml(grp.primary.nik || "-")})</span>
+								<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-200 text-amber-900">${grp.all.length} Dokumen Akun</span>
+							</div>
+							<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+								<div class="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900">
+									<div class="font-bold text-[11px] text-emerald-700 uppercase">Akun Utama Yang Dipertahankan:</div>
+									<div><strong>ID/User:</strong> ${escapeHtml(grp.primary.username || grp.primary.id)}</div>
+									<div><strong>Role:</strong> ${escapeHtml(grp.primary.role || "-")} | <strong>Email:</strong> ${escapeHtml(grp.primary.email || "-")}</div>
+								</div>
+								<div class="p-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-900">
+									<div class="font-bold text-[11px] text-rose-700 uppercase">Akun Duplikat Yang Akan Dilebur:</div>
+									${grp.duplicates.map(d => `
+										<div>• <strong>ID/User:</strong> ${escapeHtml(d.username || d.id)} (${escapeHtml(d.role || "-")})</div>
+									`).join("")}
+								</div>
+							</div>
+						</div>
+					`).join("")}
+				</div>
+			`}
+
+			<div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+				<button type="button" id="btn-merge-cancel" class="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition">
+					Tutup
+				</button>
+				${duplicateGroups.length > 0 ? `
+					<button type="button" id="btn-merge-confirm" class="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-lg shadow-sm transition">
+						⚡ Gabungkan Semua & Sinkronkan Hak Akses
+					</button>
+				` : ''}
+			</div>
+		</div>
+	`;
+
+	openModal({
+		title: "Sinkronisasi & Konsolidasi Akun Pengguna",
+		content: modalContent,
+		onMount: (modalEl) => {
+			modalEl.querySelector("#btn-merge-cancel").onclick = closeModal;
+			
+			const confirmBtn = modalEl.querySelector("#btn-merge-confirm");
+			if (confirmBtn) {
+				confirmBtn.onclick = async () => {
+					confirmBtn.disabled = true;
+					confirmBtn.innerHTML = "Memproses Penggabungan...";
+
+					try {
+						let mergedCount = 0;
+						for (const grp of duplicateGroups) {
+							const primary = grp.primary;
+							const primaryId = primary.id || primary.username;
+							const primaryUname = String(primary.username || primaryId).toUpperCase();
+
+							// Cari kelengkapan data dari duplikat
+							let finalNik = primary.nik || "";
+							let finalEmail = primary.email || "";
+							let finalPhone = primary.no_hp || "";
+							let finalHash = primary.password_hash || "";
+							let finalPlain = primary.password || "";
+							let finalRole = primary.role || "STAFF";
+							let finalPosisi = primary.posisi || "";
+
+							for (const dup of grp.duplicates) {
+								if (!finalNik && dup.nik) finalNik = dup.nik;
+								if (!finalEmail && dup.email) finalEmail = dup.email;
+								if (!finalPhone && dup.no_hp) finalPhone = dup.no_hp;
+								if (!finalHash && dup.password_hash) finalHash = dup.password_hash;
+								if (!finalPlain && dup.password) finalPlain = dup.password;
+								if (dup.posisi && !finalPosisi) finalPosisi = dup.posisi;
+							}
+
+							// Simpan data terkonsolidasi ke dokumen utama
+							await setDoc(doc(db, COL.USERS, primaryId), {
+								...primary,
+								username: primaryUname,
+								nik: finalNik || "-",
+								email: finalEmail,
+								no_hp: finalPhone,
+								password_hash: finalHash,
+								password: finalPlain,
+								role: finalRole,
+								posisi: finalPosisi,
+								updated_at: new Date().toISOString()
+							}, { merge: true });
+
+							// Cari izin yang pernah diset pada akun utama maupun akun duplikat
+							const allSearchKeys = [
+								primaryId, primaryUname, finalNik, primary.nama,
+								...grp.duplicates.map(d => d.id),
+								...grp.duplicates.map(d => d.username),
+								...grp.duplicates.map(d => d.nik)
+							].filter(Boolean);
+
+							let existingPerm = null;
+							for (const sk of allSearchKeys) {
+								const found = allPerms.find(p => String(p.id).toLowerCase() === String(sk).toLowerCase());
+								if (found && (found.allowed_menus_set || found.allowed_actions)) {
+									existingPerm = found;
+									break;
+								}
+							}
+
+							// Jika ditemukan izin, sinkronkan ke SEMUA alias
+							if (existingPerm) {
+								const permPayload = {
+									allowed_menus: existingPerm.allowed_menus || [],
+									allowed_menus_set: true,
+									allowed_submenus: existingPerm.allowed_submenus || {},
+									allowed_actions: existingPerm.allowed_actions || [],
+									read_only: existingPerm.read_only || false,
+									updated_at: new Date().toISOString()
+								};
+
+								for (const sk of allSearchKeys) {
+									const strKey = String(sk).trim();
+									if (strKey) {
+										await setDoc(doc(db, COL.USER_PERMISSIONS, strKey), permPayload, { merge: true });
+									}
+								}
+							}
+
+							// Hapus dokumen duplikat dari USERS
+							for (const dup of grp.duplicates) {
+								if (dup.id && dup.id !== primaryId) {
+									await deleteDoc(doc(db, COL.USERS, dup.id)).catch(console.warn);
+								}
+							}
+
+							mergedCount++;
+						}
+
+						closeModal();
+						toast(`Sukses menggabungkan ${mergedCount} kelompok akun ganda dan mensinkronkan izin RBAC!`, "success");
+						onSuccess();
+					} catch (e) {
+						console.error("Gagal menggabungkan akun:", e);
+						toast("Gagal memproses: " + e.message, "error");
+						confirmBtn.disabled = false;
+						confirmBtn.innerHTML = "⚡ Gabungkan Semua & Sinkronkan Hak Akses";
+					}
+				};
+			}
+		}
+	});
+}
+
 async function loadUsersTab(container) {
 	await renderCrudModule(container.querySelector("#st-panel-users"), {
 		title: "Manajemen Pengguna",
@@ -82,6 +306,9 @@ async function loadUsersTab(container) {
 		orderByField: "nama",
 		searchFields: ["nama", "username", "role"],
 		extraToolbarHtml: `
+			<button id="btn-merge-users" class="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs sm:text-sm font-bold px-3.5 py-2 rounded-lg transition shadow-sm">
+				⚡ Gabungkan Akun Ganda
+			</button>
 			<button id="btn-invite-emp" class="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold px-3.5 py-2 rounded-lg transition shadow-sm">
 				Undang Karyawan
 			</button>
@@ -112,6 +339,26 @@ async function loadUsersTab(container) {
 			delete out.password;
 			if (!out.password_hash && existing) delete out.password_hash; // keep old hash on update if left blank
 			out.username = String(out.username).toUpperCase();
+
+			// Jika akun baru/update memiliki NIK, dan ada dokumen lama dengan ID NIK, lebur dokumen lama
+			if (out.nik && out.nik !== "-") {
+				try {
+					const nikDocId = String(out.nik).trim();
+					if (nikDocId && nikDocId !== out.username) {
+						const oldNikSnap = await getDoc(doc(db, COL.USERS, nikDocId));
+						if (oldNikSnap.exists()) {
+							const oldData = oldNikSnap.data();
+							if (!out.password_hash && oldData.password_hash) {
+								out.password_hash = oldData.password_hash;
+							}
+							await deleteDoc(doc(db, COL.USERS, nikDocId)).catch(console.warn);
+						}
+					}
+				} catch (e) {
+					console.warn("Auto-clean legacy NIK doc failed:", e);
+				}
+			}
+
 			return out;
 		}
 	});
@@ -120,9 +367,14 @@ async function loadUsersTab(container) {
 	if (inviteBtn) {
 		inviteBtn.onclick = () => openInviteEmployeeModal();
 	}
+
+	const mergeBtn = container.querySelector("#btn-merge-users");
+	if (mergeBtn) {
+		mergeBtn.onclick = () => openMergeAccountsModal(() => loadUsersTab(container));
+	}
 }
 
-async function setupRbacMenuTab(container, users) {
+async function setupRbacMenuTab(container, users, allUsers = [], allKaryawan = []) {
  const select = container.querySelector("#rbac-user-select");
  const presetSelect = container.querySelector("#rbac-preset-select");
  const catalogContainer = container.querySelector("#rbac-catalog-container");
@@ -247,21 +499,51 @@ async function setupRbacMenuTab(container, users) {
  }).join("");
 
  function keysFor(userKey, userObj) {
-  return [
+  const raw = [
    userKey,
-   String(userKey).toLowerCase(),
-   String(userKey).toUpperCase(),
    userObj?.username,
-   userObj?.username ? String(userObj.username).toLowerCase() : null,
-   userObj?.username ? String(userObj.username).toUpperCase() : null,
    userObj?.id,
-   userObj?.id ? String(userObj.id).toLowerCase() : null,
-   userObj?.id ? String(userObj.id).toUpperCase() : null,
    userObj?.nama,
-   userObj?.nama ? String(userObj.nama).toLowerCase() : null,
-   userObj?.nama ? String(userObj.nama).toUpperCase() : null,
-   userObj?.nik ? String(userObj.nik) : null
-  ].filter(Boolean);
+   userObj?.nik,
+   userObj?.email
+  ];
+
+  // Cari kaitan dokumen lain dari allUsers & allKaryawan
+  const uNik = String(userObj?.nik || "").trim();
+  const uNama = String(userObj?.nama || "").trim().toLowerCase();
+  const uKey = String(userKey || "").trim().toLowerCase();
+
+  allUsers.forEach(u => {
+   const un = String(u.username || u.id || "").trim();
+   const nk = String(u.nik || "").trim();
+   const nm = String(u.nama || "").trim().toLowerCase();
+   if ((uNik && uNik !== "-" && nk === uNik) || (uKey && un.toLowerCase() === uKey) || (uNama && nm === uNama)) {
+    raw.push(u.id, u.username, u.nik, u.nama, u.email);
+   }
+  });
+
+  allKaryawan.forEach(k => {
+   const nk = String(k.nik_karyawan || k.nik || "").trim();
+   const nm = String(k.nama_karyawan || k.nama || "").trim().toLowerCase();
+   const un = String(k.username || "").trim();
+   if ((uNik && uNik !== "-" && nk === uNik) || (uNama && nm === uNama) || (uKey && un.toLowerCase() === uKey)) {
+    raw.push(k.id, k.nik_karyawan, k.nik, k.nama_karyawan, k.nama, k.email, k.username);
+   }
+  });
+
+  const keysSet = new Set();
+  raw.filter(Boolean).forEach(k => {
+   const s = String(k).trim();
+   if (!s || s === "-" || s === "null" || s === "undefined" || s === "UNLINKED") return;
+   keysSet.add(s);
+   keysSet.add(s.toLowerCase());
+   keysSet.add(s.toUpperCase());
+   if (s.includes(".")) {
+    keysSet.add(s.replace(/\./g, " ").toLowerCase());
+    keysSet.add(s.replace(/\./g, " ").toUpperCase());
+   }
+  });
+  return Array.from(keysSet);
  }
 
  function updateSummary() {
@@ -430,6 +712,33 @@ async function setupRbacMenuTab(container, users) {
   presetSelect.addEventListener("change", () => {
    const role = presetSelect.value;
    if (!role) return;
+
+   if (role === "DEFAULT_KARYAWAN") {
+    const defaultPreset = ROLE_PERMISSIONS_PRESETS.DEFAULT_KARYAWAN || [];
+    catalogContainer.querySelectorAll("[data-action]").forEach(cb => {
+     cb.checked = defaultPreset.includes(cb.dataset.action);
+    });
+
+    catalogContainer.querySelectorAll(".rbac-module-card").forEach(card => {
+     const menuCb = card.querySelector(".rbac-module-cb");
+     const menuId = menuCb?.dataset.menu;
+     const isDefault = DEFAULT_EMPLOYEE_MENU_IDS.includes(menuId);
+     if (menuCb) menuCb.checked = isDefault;
+
+     card.querySelectorAll(".rbac-sub-cb").forEach(subCb => {
+      subCb.checked = isDefault;
+     });
+    });
+
+    catalogContainer.querySelectorAll(`[data-parent-menu="lembur-kasbon"], [data-menu="lembur-kasbon"]`).forEach(el => {
+     el.checked = false;
+    });
+
+    updateSummary();
+    toast("Standar 6 Menu Default (Dashboard, Pengajuan, Absensi, Cuti, Izin, Review Kinerja) diterapkan", "success");
+    return;
+   }
+
    const preset = ROLE_PERMISSIONS_PRESETS[role] || [];
    const isSuper = role === "SUPERADMIN";
 
@@ -451,12 +760,24 @@ async function setupRbacMenuTab(container, users) {
     });
    });
 
+   // Khusus Sales: Pastikan modul lembur dan action lembur dinonaktifkan
+   if (role === "SALES") {
+    catalogContainer.querySelectorAll(`[data-parent-menu="lembur-kasbon"], [data-menu="lembur-kasbon"]`).forEach(el => {
+     el.checked = false;
+    });
+   }
+
    updateSummary();
    toast(`Template hak akses ${role} diterapkan pada formulir`, "info");
   });
  }
 
  // Quick buttons
+ container.querySelector("#rbac-btn-apply-default")?.addEventListener("click", () => {
+  if (presetSelect) presetSelect.value = "DEFAULT_KARYAWAN";
+  presetSelect?.dispatchEvent(new Event("change"));
+ });
+
  container.querySelector("#rbac-btn-select-all")?.addEventListener("click", () => {
   catalogContainer.querySelectorAll("input[type='checkbox']").forEach(cb => { cb.checked = true; });
   updateSummary();
@@ -471,7 +792,19 @@ async function setupRbacMenuTab(container, users) {
   const userKey = select.value;
   const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey || u.username === userKey);
   const role = (userObj?.role || "KARYAWAN").toUpperCase();
-  if (presetSelect) presetSelect.value = role;
+  const posisi = (userObj?.posisi || userObj?.jabatan || "").toUpperCase();
+
+  if (role === "SALES" || posisi.includes("SALES")) {
+   if (presetSelect) presetSelect.value = "SALES";
+  } else if (posisi.includes("WAREHOUSE") || posisi.includes("GUDANG")) {
+   if (presetSelect) presetSelect.value = "WAREHOUSE";
+  } else if (posisi.includes("BACK OFFICE") || posisi.includes("BACKOFFICE")) {
+   if (presetSelect) presetSelect.value = "BACK_OFFICE";
+  } else if (ROLE_PERMISSIONS_PRESETS[role]) {
+   if (presetSelect) presetSelect.value = role;
+  } else {
+   if (presetSelect) presetSelect.value = "DEFAULT_KARYAWAN";
+  }
   presetSelect.dispatchEvent(new Event("change"));
  });
 
@@ -480,6 +813,13 @@ async function setupRbacMenuTab(container, users) {
 
  // Save handler
  container.querySelector("#rbac-menu-save").addEventListener("click", async () => {
+  const saveBtn = container.querySelector("#rbac-menu-save");
+  const origHtml = saveBtn ? saveBtn.innerHTML : "Simpan Hak Akses";
+  if (saveBtn) {
+   saveBtn.disabled = true;
+   saveBtn.innerHTML = "Menyimpan Perubahan...";
+  }
+
   const userKey = select.value;
   const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey || u.username === userKey);
   const checkedMenus = Array.from(catalogContainer.querySelectorAll("[data-menu]:checked")).map(cb => cb.dataset.menu);
@@ -504,6 +844,13 @@ async function setupRbacMenuTab(container, users) {
   try {
    const keysToSave = new Set(keysFor(userKey, userObj));
    const payload = {
+    user_id: userObj?.id || userKey,
+    username: userObj?.username || userKey,
+    nik: userObj?.nik || "-",
+    nama: userObj?.nama || "",
+    email: userObj?.email || "",
+    role: userObj?.role || "",
+    posisi: userObj?.posisi || "",
     allowed_menus: checkedMenus,
     allowed_menus_set: true,
     allowed_submenus: allowedSubmenus,
@@ -513,18 +860,27 @@ async function setupRbacMenuTab(container, users) {
    };
 
    for (const k of keysToSave) {
-    await fsUpdate(COL.USER_PERMISSIONS, String(k), payload).catch(async () => {
-     await fsAdd(COL.USER_PERMISSIONS, { ...payload, allowed_forms: [] }, String(k));
-    });
+    const strK = String(k).trim();
+    if (strK) {
+     await setDoc(doc(db, COL.USER_PERMISSIONS, strK), payload, { merge: true });
+    }
    }
-   toast(`Hak akses (${checkedActions.length} action di ${checkedMenus.length} modul) untuk ${userObj?.nama || userKey} berhasil disimpan`, "success");
+
+   await loadPermissionOverrides(true);
+   toast(`Hak akses (${checkedActions.length} action di ${checkedMenus.length} modul) untuk ${userObj?.nama || userKey} berhasil diperbarui & disimpan permanen!`, "success");
   } catch (e) {
+   console.error("Gagal menyimpan hak akses:", e);
    toast("Gagal menyimpan hak akses: " + e.message, "error");
+  } finally {
+   if (saveBtn) {
+    saveBtn.disabled = false;
+    saveBtn.innerHTML = origHtml;
+   }
   }
  });
 }
 
-async function setupRbacFormTab(container, users) {
+async function setupRbacFormTab(container, users, allUsers = [], allKaryawan = []) {
  const forms = await fsGetAll(COL.FORM_CONFIG);
  const select = container.querySelector("#rbac-form-user-select");
  select.innerHTML = users.map(u => {
@@ -540,63 +896,79 @@ async function setupRbacFormTab(container, users) {
  <span class="text-slate-700">${escapeHtml(f.nama_form || f.id)}</span>
  </label>`).join("");
 
- async function loadForUser(userKey) {
- const overrides = await loadPermissionOverrides(true);
- const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey || u.username === userKey);
- const keysToSearch = [
- userKey,
- String(userKey).toLowerCase(),
- String(userKey).toUpperCase(),
- userObj?.username,
- userObj?.username ? String(userObj.username).toLowerCase() : null,
- userObj?.username ? String(userObj.username).toUpperCase() : null,
- userObj?.id,
- userObj?.id ? String(userObj.id).toLowerCase() : null,
- userObj?.id ? String(userObj.id).toUpperCase() : null,
- userObj?.nama,
- userObj?.nama ? String(userObj.nama).toLowerCase() : null,
- userObj?.nama ? String(userObj.nama).toUpperCase() : null,
- userObj?.nik ? String(userObj.nik) : null
- ].filter(Boolean);
+	function formKeysFor(userKey, userObj) {
+		const raw = [userKey, userObj?.username, userObj?.id, userObj?.nama, userObj?.nik, userObj?.email];
+		const uNik = String(userObj?.nik || "").trim();
+		const uNama = String(userObj?.nama || "").trim().toLowerCase();
+		const uKey = String(userKey || "").trim().toLowerCase();
 
- let ov = null;
- for (const k of keysToSearch) {
- if (overrides[k]) { ov = overrides[k]; break; }
- }
- const current = ov?.allowed_forms || [];
- grid.querySelectorAll("[data-form]").forEach(cb => { cb.checked = current.includes(cb.dataset.form); });
- }
- if (forms.length) { await loadForUser(select.value); select.addEventListener("change", () => loadForUser(select.value)); }
+		allUsers.forEach(u => {
+			const un = String(u.username || u.id || "").trim();
+			const nk = String(u.nik || "").trim();
+			const nm = String(u.nama || "").trim().toLowerCase();
+			if ((uNik && uNik !== "-" && nk === uNik) || (uKey && un.toLowerCase() === uKey) || (uNama && nm === uNama)) {
+				raw.push(u.id, u.username, u.nik, u.nama, u.email);
+			}
+		});
 
- container.querySelector("#rbac-form-save").addEventListener("click", async () => {
- const userKey = select.value;
- const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey || u.username === userKey);
- const checked = Array.from(grid.querySelectorAll("[data-form]:checked")).map(cb => cb.dataset.form);
- try {
- const keysToSave = new Set([
- userKey,
- String(userKey).toLowerCase(),
- String(userKey).toUpperCase(),
- userObj?.username,
- userObj?.username ? String(userObj.username).toLowerCase() : null,
- userObj?.username ? String(userObj.username).toUpperCase() : null,
- userObj?.id,
- userObj?.id ? String(userObj.id).toLowerCase() : null,
- userObj?.id ? String(userObj.id).toUpperCase() : null,
- userObj?.nama,
- userObj?.nama ? String(userObj.nama).toLowerCase() : null,
- userObj?.nama ? String(userObj.nama).toUpperCase() : null,
- userObj?.nik ? String(userObj.nik) : null
- ].filter(Boolean));
+		allKaryawan.forEach(k => {
+			const nk = String(k.nik_karyawan || k.nik || "").trim();
+			const nm = String(k.nama_karyawan || k.nama || "").trim().toLowerCase();
+			const un = String(k.username || "").trim();
+			if ((uNik && uNik !== "-" && nk === uNik) || (uNama && nm === uNama) || (uKey && un.toLowerCase() === uKey)) {
+				raw.push(k.id, k.nik_karyawan, k.nik, k.nama_karyawan, k.nama, k.email, k.username);
+			}
+		});
 
- for (const k of keysToSave) {
- await fsUpdate(COL.USER_PERMISSIONS, String(k), { allowed_forms: checked }).catch(async () => {
- await fsAdd(COL.USER_PERMISSIONS, { allowed_forms: checked, allowed_menus: [] }, String(k));
- });
- }
- toast(`Hak akses formulir untuk ${userObj?.nama || userKey} berhasil disimpan`, "success");
- } catch (e) { toast("Gagal menyimpan: " + e.message, "error"); }
- });
+		const keysSet = new Set();
+		raw.filter(Boolean).forEach(k => {
+			const s = String(k).trim();
+			if (!s || s === "-" || s === "null" || s === "undefined") return;
+			keysSet.add(s);
+			keysSet.add(s.toLowerCase());
+			keysSet.add(s.toUpperCase());
+			if (s.includes(".")) {
+				keysSet.add(s.replace(/\./g, " ").toLowerCase());
+				keysSet.add(s.replace(/\./g, " ").toUpperCase());
+			}
+		});
+		return Array.from(keysSet);
+	}
+
+	async function loadForUser(userKey) {
+		const overrides = await loadPermissionOverrides(true);
+		const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey || u.username === userKey);
+		const keysToSearch = formKeysFor(userKey, userObj);
+
+		let ov = null;
+		for (const k of keysToSearch) {
+			if (overrides[k]) { ov = overrides[k]; break; }
+		}
+		const current = ov?.allowed_forms || [];
+		grid.querySelectorAll("[data-form]").forEach(cb => { cb.checked = current.includes(cb.dataset.form); });
+	}
+	if (forms.length) { await loadForUser(select.value); select.addEventListener("change", () => loadForUser(select.value)); }
+
+	container.querySelector("#rbac-form-save").addEventListener("click", async () => {
+		const userKey = select.value;
+		const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey || u.username === userKey);
+		const checked = Array.from(grid.querySelectorAll("[data-form]:checked")).map(cb => cb.dataset.form);
+		try {
+			const keysToSave = new Set(formKeysFor(userKey, userObj));
+
+			for (const k of keysToSave) {
+				const strK = String(k).trim();
+				if (strK) {
+					await setDoc(doc(db, COL.USER_PERMISSIONS, strK), {
+						allowed_forms: checked,
+						updated_at: new Date().toISOString()
+					}, { merge: true });
+				}
+			}
+			await loadPermissionOverrides(true);
+			toast(`Hak akses formulir untuk ${userObj?.nama || userKey} berhasil disimpan`, "success");
+		} catch (e) { toast("Gagal menyimpan: " + e.message, "error"); }
+	});
 }
 
 async function loadKanalTab(container) {

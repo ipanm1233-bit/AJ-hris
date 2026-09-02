@@ -6,12 +6,110 @@
  */
 import { db, COL, doc, getDoc, setDoc, deleteDoc, updateDoc } from "../firebase-config.js";
 import {
-  fsGetAll, fsAdd, fsUpdate, toast, fmtDateShort, genId, escapeHtml, openModal, closeModal
+  fsGetAll, fsAdd, fsUpdate, toast, fmtDateShort, genId, escapeHtml, openModal, closeModal,
+  createLoginToken, sendEmailNotif, buildStandardEmailHtml, notifyUser
 } from "../utils.js";
+import { findUserForAuth } from "../auth.js";
 import {
   DAY_TYPES, DEFAULT_OVERTIME_CONFIG, calculateDurationMinutes, fmtMinutesToDisplay,
   calculateAndelaHours, generateSppklNumber, detectOvertimeVariances
 } from "./lembur-calc.js";
+
+/**
+ * Mengirimkan notifikasi email resmi dan in-app kepada seluruh karyawan yang ditugaskan lembur
+ * Dilengkapi Token Login Langsung (Magic Token) untuk masuk ke sistem tanpa password
+ */
+export async function sendSppklAssignmentNotifications(orderPayload, allKaryawan = [], userNama = "Atasan") {
+  const employees = orderPayload.employees || [];
+  if (employees.length === 0) return;
+
+  const appUrl = window.location.origin;
+  const orderId = orderPayload.order_id || orderPayload.id;
+  const sppklNum = orderPayload.order_number || orderPayload.nomor_sppkl || orderId;
+  const tglStr = orderPayload.tanggal || orderPayload.overtime_date || "";
+  const jamMulai = orderPayload.jam_mulai || orderPayload.planned_start_at || "";
+  const jamSelesai = orderPayload.jam_selesai || orderPayload.planned_end_at || "";
+  const durasiJam = orderPayload.durasi_jam || orderPayload.durasi_rencana || 0;
+  const lokasi = orderPayload.lokasi || orderPayload.location || "-";
+  const tugas = orderPayload.pekerjaan || orderPayload.work_description || "-";
+  const target = orderPayload.target_output || orderPayload.expected_output || "-";
+  const alasan = orderPayload.alasan_lembur || orderPayload.business_reason || "-";
+
+  for (const emp of employees) {
+    try {
+      const empNik = String(emp.nik || "").trim();
+      const empNama = String(emp.nama || "").trim();
+
+      // Cari data karyawan di master karyawan
+      const kMatch = allKaryawan.find(k => 
+        (empNik && (k.nik === empNik || k.nik_karyawan === empNik)) || 
+        (empNama && (k.nama_karyawan === empNama || k.nama === empNama))
+      );
+      
+      let targetEmail = (emp.email || kMatch?.email || kMatch?.email_perusahaan || "").trim();
+      let targetUsername = (emp.username || kMatch?.username || empNik || empNama).trim();
+
+      // Cari data pengguna di koleksi USERS untuk email/username presisi
+      const uRes = await findUserForAuth(targetUsername || empNik || empNama);
+      if (uRes && uRes.data) {
+        if (!targetEmail && uRes.data.email) targetEmail = uRes.data.email.trim();
+        if (uRes.data.username) targetUsername = uRes.data.username.trim();
+      }
+
+      // Generate Login Token khusus (Magic Token berlaku 24 jam)
+      let magicToken = "";
+      try {
+        magicToken = await createLoginToken(targetUsername || empNik || empNama);
+      } catch (e) {
+        console.warn("Gagal membuat login token SPPKL:", e);
+      }
+
+      const routeHash = `lembur-kasbon?orderId=${encodeURIComponent(orderId)}`;
+      const targetLink = magicToken
+        ? `${appUrl}/#${routeHash}&token=${encodeURIComponent(magicToken)}`
+        : `${appUrl}/#${routeHash}`;
+
+      // 1. Notifikasi In-App (Lonceng Portal)
+      const judulNotif = `Penugasan Lembur: ${sppklNum}`;
+      const pesanNotif = `Anda ditugaskan lembur pada ${tglStr} (${jamMulai} - ${jamSelesai}) oleh ${userNama}. Klik untuk konfirmasi persetujuan.`;
+      
+      await notifyUser(targetUsername || empNik || empNama, judulNotif, pesanNotif, `#${routeHash}`, {
+        sendEmail: false
+      });
+
+      // 2. Email Notifikasi Resmi dengan Tombol Akses Langsung Ber-Token
+      if (targetEmail) {
+        const infoList = [
+          { label: "Nomor SPPKL", value: `<strong style="color: #7a1f2b; font-family: monospace;">${escapeHtml(sppklNum)}</strong>`, isHtml: true },
+          { label: "Tanggal Lembur", value: escapeHtml(fmtDateShort(tglStr) || tglStr) },
+          { label: "Waktu / Jam", value: `${escapeHtml(jamMulai)} s/d ${escapeHtml(jamSelesai)} (${durasiJam} Jam)` },
+          { label: "Lokasi Kerja", value: escapeHtml(lokasi) },
+          { label: "Uraian Tugas", value: escapeHtml(tugas) },
+          { label: "Target Output", value: escapeHtml(target) },
+          { label: "Alasan Lembur", value: escapeHtml(alasan) },
+          { label: "Pemberi Tugas", value: `<strong style="color: #0f172a;">${escapeHtml(userNama)}</strong>`, isHtml: true }
+        ];
+
+        const emailHtml = buildStandardEmailHtml({
+          title: "Surat Perintah Kerja Lembur (SPPKL)",
+          recipientName: empNama,
+          badgeText: "Penugasan Lembur Resmi",
+          badgeVariant: "maroon",
+          introText: `Anda telah ditugaskan oleh <strong>${escapeHtml(userNama)}</strong> untuk melaksanakan kerja lembur resmi CV Andela Jaya. Mohon periksa rincian tugas di bawah dan lakukan konfirmasi persetujuan digital di portal HRIS.`,
+          infoBoxTitle: "Rincian Surat Perintah Lembur",
+          infoList: infoList,
+          actionUrl: targetLink,
+          actionText: "Masuk & Konfirmasi Lembur Sekarang →",
+          secondaryNote: "Tombol di atas dilengkapi token login aman sekali pakai (berlaku 24 jam). Anda akan langsung masuk ke sistem secara otomatis tanpa perlu mengetikkan password."
+        });
+
+        await sendEmailNotif(targetEmail, `[SPPKL] Penugasan Lembur: ${sppklNum} - ${tglStr} (${empNama})`, emailHtml);
+      }
+    } catch (err) {
+      console.warn(`Gagal mengirim email lembur ke ${emp.nama}:`, err);
+    }
+  }
+}
 
 /**
  * Modal Buat Perintah Lembur Baru (Atasan / SPV / HR)
@@ -268,6 +366,11 @@ export function openCreateSppklModal(options = {}, state = {}, onSuccess = () =>
 
     try {
       await setDoc(doc(db, COL.OVERTIME_ORDERS || "overtime_orders", orderId), orderPayload);
+
+      // Trigger notifikasi email & in-app otomatis ke seluruh karyawan yang ditugaskan
+      sendSppklAssignmentNotifications(orderPayload, allKaryawan, userNama).catch(err => {
+        console.warn("Error sending SPPKL email notifications:", err);
+      });
 
       // If linked to proposal, update proposal status
       if (options.proposalId) {

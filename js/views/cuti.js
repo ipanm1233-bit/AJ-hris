@@ -158,11 +158,12 @@ export async function mount(container, { session }) {
  <th class="py-3 px-4 text-center">Cuti Tahunan<br><span class="font-normal normal-case text-[10px] text-slate-400">(Awal / Pakai / Sisa)</span></th>
  <th class="py-3 px-4 text-center">Cuti Khusus<br><span class="font-normal normal-case text-[10px] text-slate-400">(Awal / Pakai / Sisa)</span></th>
  <th class="py-3 px-4 text-center">Carryover (Akumulasi)<br><span class="font-normal normal-case text-[10px] text-slate-400">(Awal / Pakai / Sisa)</span></th>
- <th class="py-3 px-4 text-center">Sisa Cuti Tahun Lalu<br><span class="font-normal normal-case text-[10px] text-slate-400">(input manual HRD)</span></th>
+ <th class="py-3 px-4 text-center">Sisa Cuti Thn Lalu<br><span class="font-normal normal-case text-[10px] text-slate-400">(Manual HRD)</span></th>
+ <th class="py-3 px-4 text-center">Aksi</th>
  </tr>
  </thead>
  <tbody id="cuti-tbody" class="divide-y divide-slate-100">
- <tr><td colspan="6" class="py-10 text-center text-slate-400">Memuat data karyawan...</td></tr>
+ <tr><td colspan="7" class="py-10 text-center text-slate-400">Memuat data karyawan...</td></tr>
  </tbody>
  </table>
  </div>
@@ -453,104 +454,216 @@ export async function mount(container, { session }) {
  }
 
  function renderTable(list) {
- const tbody = container.querySelector("#cuti-tbody");
- if (!tbody) return;
+		const tbody = container.querySelector("#cuti-tbody");
+		if (!tbody) return;
 
- if (!list.length) {
- tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-400">Belum ada data karyawan aktif.</td></tr>`;
- return;
- }
+		if (!list.length) {
+			tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400">Belum ada data karyawan aktif.</td></tr>`;
+			return;
+		}
 
- const now = new Date();
- tbody.innerHTML = list.map(k => {
- let masaKerjaStr = "-";
- if (k.tanggal_join) {
- const join = smartParseDate(k.tanggal_join);
- if (join) {
- const diffMonths = (now.getFullYear() - join.getFullYear()) * 12 + (now.getMonth() - join.getMonth());
- const yrs = Math.floor(diffMonths / 12);
- const mths = diffMonths % 12;
- masaKerjaStr = yrs > 0 ? `${yrs} Thn ${mths} Bln` : `${mths} Bln`;
- }
- }
+		const now = new Date();
+		tbody.innerHTML = list.map(k => {
+			let masaKerjaStr = "-";
+			if (k.tanggal_join) {
+				const join = smartParseDate(k.tanggal_join);
+				if (join) {
+					const diffMonths = (now.getFullYear() - join.getFullYear()) * 12 + (now.getMonth() - join.getMonth());
+					const yrs = Math.floor(diffMonths / 12);
+					const mths = diffMonths % 12;
+					masaKerjaStr = yrs > 0 ? `${yrs} Thn ${mths} Bln` : `${mths} Bln`;
+				}
+			}
 
- const sisa = getSisa(k);
+			const sisa = getSisa(k);
 
- return `
- <tr class="hover:bg-slate-50/50 transition">
- <td class="py-3 px-4">
- <p class="font-bold text-slate-800">${escapeHtml(k.nama_karyawan)}</p>
- <p class="text-[11px] text-slate-400 font-medium">${escapeHtml(k.nik || k.nik_karyawan || "-")}</p>
- </td>
- <td class="py-3 px-4 text-slate-600 font-medium text-xs">${masaKerjaStr}</td>
- 
- <!-- CUTI TAHUNAN -->
- <td class="py-3 px-4 text-center">
- <div class="inline-flex flex-col items-center">
- <span class="bg-blue-100 text-blue-800 font-black px-2.5 py-0.5 rounded-lg text-xs">Sisa: ${sisa.Tahunan} Hari</span>
- <span class="text-[10px] text-slate-500 mt-1">Awal: <strong>${sisa.jatahTahunan}</strong> • Pakai: <strong class="text-amber-700">${sisa.used.Tahunan}</strong></span>
- </div>
- </td>
+			return `
+			<tr class="hover:bg-slate-50/50 transition">
+				<td class="py-3 px-4">
+					<p class="font-bold text-slate-800">${escapeHtml(k.nama_karyawan)}</p>
+					<p class="text-[11px] text-slate-400 font-medium">${escapeHtml(k.nik || k.nik_karyawan || "-")}</p>
+				</td>
+				<td class="py-3 px-4 text-slate-600 font-medium text-xs">${masaKerjaStr}</td>
+				
+				<!-- CUTI TAHUNAN -->
+				<td class="py-3 px-4 text-center">
+					<div class="inline-flex flex-col items-center gap-1">
+						<div class="flex items-center gap-1">
+							<span class="text-[10px] text-slate-500 font-medium">Awal:</span>
+							<input type="number" step="0.5" min="0" data-edit-tahunan="${k.id}" value="${sisa.jatahTahunan}" title="Edit Jatah Tahunan Awal (Manual HRD)" class="w-14 text-center px-1 py-0.5 border border-slate-200 rounded text-xs font-bold text-blue-800 bg-blue-50/40 focus:bg-white focus:border-blue-500 outline-none">
+						</div>
+						<div class="flex items-center gap-1">
+							<span class="bg-blue-100 text-blue-900 font-black px-2 py-0.5 rounded text-[11px]">Sisa: ${sisa.Tahunan} Hari</span>
+							<span class="text-[10px] text-slate-400 font-mono">(${sisa.used.Tahunan} pki)</span>
+						</div>
+					</div>
+				</td>
 
- <!-- CUTI KHUSUS -->
- <td class="py-3 px-4 text-center">
- <div class="inline-flex flex-col items-center">
- <span class="bg-emerald-100 text-emerald-800 font-black px-2.5 py-0.5 rounded-lg text-xs">Sisa: ${sisa.Khusus} Hari</span>
- <span class="text-[10px] text-slate-500 mt-1">Awal: <strong>${sisa.jatahKhusus}</strong> • Pakai: <strong class="text-amber-700">${sisa.used.Khusus}</strong></span>
- </div>
- </td>
+				<!-- CUTI KHUSUS -->
+				<td class="py-3 px-4 text-center">
+					<div class="inline-flex flex-col items-center gap-1">
+						<div class="flex items-center gap-1">
+							<span class="text-[10px] text-slate-500 font-medium">Awal:</span>
+							<input type="number" step="0.5" min="0" data-edit-khusus="${k.id}" value="${sisa.jatahKhusus}" title="Edit Jatah Khusus Awal (Manual HRD)" class="w-14 text-center px-1 py-0.5 border border-slate-200 rounded text-xs font-bold text-emerald-800 bg-emerald-50/40 focus:bg-white focus:border-emerald-500 outline-none">
+						</div>
+						<div class="flex items-center gap-1">
+							<span class="bg-emerald-100 text-emerald-900 font-black px-2 py-0.5 rounded text-[11px]">Sisa: ${sisa.Khusus} Hari</span>
+							<span class="text-[10px] text-slate-400 font-mono">(${sisa.used.Khusus} pki)</span>
+						</div>
+					</div>
+				</td>
 
- <!-- CARRYOVER AKUMULASI -->
- <td class="py-3 px-4 text-center">
- <div class="inline-flex flex-col items-center">
- <span class="bg-amber-100 text-amber-800 font-black px-2.5 py-0.5 rounded-lg text-xs">Sisa: ${sisa.Akumulasi} Hari</span>
- <span class="text-[10px] text-slate-500 mt-1">Awal: <strong>${sisa.jatahAkumulasi}</strong> • Pakai: <strong class="text-amber-700">${sisa.used.Akumulasi}</strong></span>
- ${k.cuti_akumulasi_expired ? `<p class="text-[9px] text-amber-600 mt-0.5 font-medium">Hangus stlh ${escapeHtml(k.cuti_akumulasi_expired)}</p>` : ""}
- </div>
- </td>
+				<!-- CARRYOVER AKUMULASI -->
+				<td class="py-3 px-4 text-center">
+					<div class="inline-flex flex-col items-center gap-1">
+						<div class="flex items-center gap-1">
+							<span class="text-[10px] text-slate-500 font-medium">Awal:</span>
+							<input type="number" step="0.5" min="0" data-edit-akumulasi="${k.id}" value="${sisa.jatahAkumulasi}" title="Edit Jatah Akumulasi Awal (Manual HRD)" class="w-14 text-center px-1 py-0.5 border border-slate-200 rounded text-xs font-bold text-amber-800 bg-amber-50/40 focus:bg-white focus:border-amber-500 outline-none">
+						</div>
+						<div class="flex items-center gap-1">
+							<span class="bg-amber-100 text-amber-900 font-black px-2 py-0.5 rounded text-[11px]">Sisa: ${sisa.Akumulasi} Hari</span>
+							<span class="text-[10px] text-slate-400 font-mono">(${sisa.used.Akumulasi} pki)</span>
+						</div>
+						${k.cuti_akumulasi_expired ? `<p class="text-[9px] text-amber-600 font-medium">Hangus ${escapeHtml(k.cuti_akumulasi_expired)}</p>` : ""}
+					</div>
+				</td>
 
- <!-- SISA CUTI TAHUN LALU (INPUT MANUAL) -->
- <td class="py-3 px-4 text-center">
- <input type="number" step="0.5" min="0" data-sisa-lalu="${k.id}"
- value="${k.sisa_cuti_tahun_lalu ?? ""}" placeholder="Belum diisi"
- class="w-24 text-center px-2 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-maroon-400 text-xs font-semibold text-slate-700">
- ${(k.sisa_cuti_tahun_lalu === undefined || k.sisa_cuti_tahun_lalu === null) ? `<p class="text-[10px] text-amber-600 mt-1">Belum diisi HRD</p>` : ""}
- </td>
- </tr>
- `;
- }).join("");
+				<!-- SISA CUTI TAHUN LALU (INPUT MANUAL) -->
+				<td class="py-3 px-4 text-center">
+					<div class="flex flex-col items-center gap-1">
+						<input type="number" step="0.5" min="0" data-sisa-lalu="${k.id}"
+							value="${k.sisa_cuti_tahun_lalu ?? ""}" placeholder="-" title="Input Sisa Cuti Tahun Lalu (Manual HRD)"
+							class="w-16 text-center px-1.5 py-1 border border-slate-200 rounded text-xs font-semibold text-slate-700 bg-slate-50 focus:bg-white focus:border-maroon-400 outline-none">
+						${(k.sisa_cuti_tahun_lalu === undefined || k.sisa_cuti_tahun_lalu === null) ? `<span class="text-[9px] text-slate-400">Kosong</span>` : ""}
+					</div>
+				</td>
 
-    tbody.querySelectorAll("[data-sisa-lalu]").forEach(inp => {
-      inp.addEventListener("change", async () => {
-        const id = inp.dataset.sisaLalu;
-        const val = inp.value === "" ? null : (parseFloat(inp.value) || 0);
-        try {
-          const emp = allKaryawan.find(k => k.id === id);
-          let jAkumulasiBaru = 0;
-          if (val !== null && val > 0 && emp) {
-            jAkumulasiBaru = calculateCarryoverJatah(val, emp.tanggal_join);
-          }
-          await updateDoc(doc(db, COL.MASTER_KARYAWAN, id), { 
-            sisa_cuti_tahun_lalu: val,
-            jatah_cuti_akumulasi: jAkumulasiBaru,
-            jatah_akumulasi: jAkumulasiBaru
-          });
-          if (emp) {
-            emp.sisa_cuti_tahun_lalu = val;
-            emp.jatah_cuti_akumulasi = jAkumulasiBaru;
-            emp.jatah_akumulasi = jAkumulasiBaru;
-          }
-          toast("Sisa cuti tahun lalu dan jatah akumulasi berhasil diperbarui", "success");
-          renderTable(allKaryawan);
-          renderCards(allKaryawan);
-        } catch (e) {
-          toast("Gagal menyimpan: " + e.message, "error");
-        }
-      });
-    });
- }
+				<!-- AKSI -->
+				<td class="py-3 px-4 text-center">
+					<button type="button" data-btn-edit-karyawan-jatah="${k.id}" class="bg-maroon-50 hover:bg-maroon-100 text-maroon-700 hover:text-maroon-800 px-2.5 py-1.5 rounded-lg font-bold text-[11px] border border-maroon-200 transition inline-flex items-center gap-1 shadow-2xs" title="Edit Rinci Jatah Cuti Karyawan">
+						<i class="fa-solid fa-pen-to-square"></i> Edit
+					</button>
+				</td>
+			</tr>
+			`;
+		}).join("");
 
- if (filterCabang) {
+		// Event listener inline edit tahunan
+		tbody.querySelectorAll("[data-edit-tahunan]").forEach(inp => {
+			inp.addEventListener("change", async () => {
+				const id = inp.dataset.editTahunan;
+				const val = parseFloat(inp.value) || 0;
+				try {
+					const emp = allKaryawan.find(k => k.id === id);
+					await updateDoc(doc(db, COL.MASTER_KARYAWAN, id), { 
+						jatah_cuti_tahunan: val,
+						jatah_tahunan: val
+					});
+					if (emp) {
+						emp.jatah_cuti_tahunan = val;
+						emp.jatah_tahunan = val;
+					}
+					calculateBalances();
+					renderTable(allKaryawan);
+					renderCards(allKaryawan);
+					toast(`Jatah Cuti Tahunan ${emp?.nama_karyawan || ''} diperbarui: ${val} Hari`, "success");
+				} catch (e) {
+					toast("Gagal menyimpan: " + e.message, "error");
+				}
+			});
+		});
+
+		// Event listener inline edit khusus
+		tbody.querySelectorAll("[data-edit-khusus]").forEach(inp => {
+			inp.addEventListener("change", async () => {
+				const id = inp.dataset.editKhusus;
+				const val = parseFloat(inp.value) || 0;
+				try {
+					const emp = allKaryawan.find(k => k.id === id);
+					await updateDoc(doc(db, COL.MASTER_KARYAWAN, id), { 
+						jatah_cuti_khusus: val,
+						jatah_khusus: val
+					});
+					if (emp) {
+						emp.jatah_cuti_khusus = val;
+						emp.jatah_khusus = val;
+					}
+					calculateBalances();
+					renderTable(allKaryawan);
+					renderCards(allKaryawan);
+					toast(`Jatah Cuti Khusus ${emp?.nama_karyawan || ''} diperbarui: ${val} Hari`, "success");
+				} catch (e) {
+					toast("Gagal menyimpan: " + e.message, "error");
+				}
+			});
+		});
+
+		// Event listener inline edit akumulasi
+		tbody.querySelectorAll("[data-edit-akumulasi]").forEach(inp => {
+			inp.addEventListener("change", async () => {
+				const id = inp.dataset.editAkumulasi;
+				const val = parseFloat(inp.value) || 0;
+				try {
+					const emp = allKaryawan.find(k => k.id === id);
+					await updateDoc(doc(db, COL.MASTER_KARYAWAN, id), { 
+						jatah_cuti_akumulasi: val,
+						jatah_akumulasi: val
+					});
+					if (emp) {
+						emp.jatah_cuti_akumulasi = val;
+						emp.jatah_akumulasi = val;
+					}
+					calculateBalances();
+					renderTable(allKaryawan);
+					renderCards(allKaryawan);
+					toast(`Jatah Cuti Akumulasi ${emp?.nama_karyawan || ''} diperbarui: ${val} Hari`, "success");
+				} catch (e) {
+					toast("Gagal menyimpan: " + e.message, "error");
+				}
+			});
+		});
+
+		// Event listener inline edit sisa cuti tahun lalu
+		tbody.querySelectorAll("[data-sisa-lalu]").forEach(inp => {
+			inp.addEventListener("change", async () => {
+				const id = inp.dataset.sisaLalu;
+				const val = inp.value === "" ? null : (parseFloat(inp.value) || 0);
+				try {
+					const emp = allKaryawan.find(k => k.id === id);
+					let jAkumulasiBaru = 0;
+					if (val !== null && val > 0 && emp) {
+						jAkumulasiBaru = calculateCarryoverJatah(val, emp.tanggal_join);
+					}
+					await updateDoc(doc(db, COL.MASTER_KARYAWAN, id), { 
+						sisa_cuti_tahun_lalu: val,
+						jatah_cuti_akumulasi: jAkumulasiBaru,
+						jatah_akumulasi: jAkumulasiBaru
+					});
+					if (emp) {
+						emp.sisa_cuti_tahun_lalu = val;
+						emp.jatah_cuti_akumulasi = jAkumulasiBaru;
+						emp.jatah_akumulasi = jAkumulasiBaru;
+					}
+					calculateBalances();
+					renderTable(allKaryawan);
+					renderCards(allKaryawan);
+					toast("Sisa cuti tahun lalu dan jatah akumulasi berhasil diperbarui", "success");
+				} catch (e) {
+					toast("Gagal menyimpan: " + e.message, "error");
+				}
+			});
+		});
+
+		// Tombol edit modal
+		tbody.querySelectorAll("[data-btn-edit-karyawan-jatah]").forEach(btn => {
+			btn.onclick = () => {
+				const emp = allKaryawan.find(k => k.id === btn.dataset.btnEditKaryawanJatah);
+				if (emp) openEmployeeModal(emp, { defaultTab: "edit" });
+			};
+		});
+	}
+
+	if (filterCabang) {
  filterCabang.onchange = applyFilters;
  }
 
@@ -793,84 +906,163 @@ export async function mount(container, { session }) {
  }
 
  // WIRING EXCEL IMPORT & RESET OTOMATIS
- const btnImport = container.querySelector("#btn-import-excel");
- const fileInput = container.querySelector("#excel-upload");
- if (btnImport && fileInput) {
- btnImport.onclick = () => fileInput.click();
- fileInput.onchange = (e) => {
- const file = e.target.files[0];
- if (!file) return;
+	const btnImport = container.querySelector("#btn-import-excel");
+	const fileInput = container.querySelector("#excel-upload");
+	if (btnImport && fileInput) {
+		btnImport.onclick = () => fileInput.click();
+		fileInput.onchange = (e) => {
+			const file = e.target.files[0];
+			if (!file) return;
 
- const reader = new FileReader();
- reader.onload = async (event) => {
- try {
- if (!window.XLSX) throw new Error("Library Excel (SheetJS) sedang dimuat, coba beberapa detik lagi.");
- const data = new Uint8Array(event.target.result);
- const workbook = XLSX.read(data, {type: 'array'});
- const worksheet = workbook.Sheets[workbook.SheetNames[0]];
- const json = XLSX.utils.sheet_to_json(worksheet);
+			const reader = new FileReader();
+			reader.onload = async (event) => {
+				try {
+					if (!window.XLSX) throw new Error("Library Excel (SheetJS) sedang dimuat, coba beberapa detik lagi.");
+					const data = new Uint8Array(event.target.result);
+					const workbook = XLSX.read(data, {type: 'array'});
+					const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+					const json = XLSX.utils.sheet_to_json(worksheet);
 
- if (json.length === 0) throw new Error("File Excel kosong.");
+					if (json.length === 0) throw new Error("File Excel kosong atau format tidak terbaca.");
 
- btnImport.disabled = true;
- btnImport.textContent = "Memproses...";
+					btnImport.disabled = true;
+					btnImport.textContent = "Memproses...";
 
-          let updateCount = 0;
-          for (const row of json) {
-            const nik = row["NIK"];
-            const nama = row["Nama Karyawan"];
-            if (!nik && !nama) continue;
+					// Helper flexible matching column name
+					const getVal = (row, names) => {
+						const rowKeys = Object.keys(row);
+						for (const n of names) {
+							const cleanN = n.toLowerCase().replace(/[^a-z0-9]/g, "");
+							for (const k of rowKeys) {
+								const cleanK = k.toLowerCase().replace(/[^a-z0-9]/g, "");
+								if (cleanK === cleanN) return row[k];
+							}
+						}
+						for (const n of names) {
+							const cleanN = n.toLowerCase().replace(/[^a-z0-9]/g, "");
+							if (!cleanN) continue;
+							for (const k of rowKeys) {
+								const cleanK = k.toLowerCase().replace(/[^a-z0-9]/g, "");
+								if (cleanK.includes(cleanN) || cleanN.includes(cleanK)) return row[k];
+							}
+						}
+						return undefined;
+					};
 
-            const targetEmp = allKaryawan.find(k => k.nik == nik || k.nik_karyawan == nik || (k.nama_karyawan || "").toLowerCase() === (nama || "").toLowerCase());
-            if (targetEmp) {
-              const sisaLaluRaw = row["Sisa Cuti Tahun Lalu"];
-              let sisaLalu = null;
-              if (sisaLaluRaw !== undefined && sisaLaluRaw !== null && sisaLaluRaw !== "") {
-                sisaLalu = parseFloat(sisaLaluRaw) || 0;
-              }
+					const parseNum = (v) => {
+						if (v === undefined || v === null || v === "") return null;
+						if (typeof v === "number") return isNaN(v) ? null : v;
+						const str = String(v).trim().replace(",", ".");
+						const m = str.match(/-?\d+(\.\d+)?/);
+						if (m) {
+							const res = parseFloat(m[0]);
+							return isNaN(res) ? null : res;
+						}
+						return null;
+					};
 
-              let jAkumulasiVal = 0;
-              if (sisaLalu !== null) {
-                // Basis carryover adalah sisa cuti tahun lalu dikalikan persentase masa kerja
-                jAkumulasiVal = calculateCarryoverJatah(sisaLalu, targetEmp.tanggal_join);
-              } else if (row["Jatah Cuti Akumulasi"] !== undefined && row["Jatah Cuti Akumulasi"] !== null && row["Jatah Cuti Akumulasi"] !== "") {
-                const rawAkumulasi = parseInt(row["Jatah Cuti Akumulasi"]) || 0;
-                const pct = getCarryoverPercentage(targetEmp.tanggal_join);
-                jAkumulasiVal = pct > 0 ? rawAkumulasi : 0;
-              }
+					let updateCount = 0;
+					let unmatched = [];
 
-              const payload = {
-                jatah_cuti_tahunan: parseInt(row["Jatah Cuti Tahunan"]) || 0,
-                jatah_tahunan: parseInt(row["Jatah Cuti Tahunan"]) || 0,
-                jatah_cuti_khusus: parseInt(row["Jatah Cuti Khusus"]) || 0,
-                jatah_khusus: parseInt(row["Jatah Cuti Khusus"]) || 0,
-                jatah_cuti_akumulasi: jAkumulasiVal,
-                jatah_akumulasi: jAkumulasiVal
-              };
-              if (sisaLalu !== null) {
-                payload.sisa_cuti_tahun_lalu = sisaLalu;
-              }
-              await updateDoc(doc(db, COL.MASTER_KARYAWAN, targetEmp.id), payload);
-              updateCount++;
-            }
-          }
+					for (const row of json) {
+						const nikRaw = getVal(row, ["nik", "no induk", "no. induk", "nomor induk", "id karyawan", "nip", "no karyawan", "kode karyawan", "id"]);
+						const namaRaw = getVal(row, ["nama karyawan", "nama", "nama lengkap", "karyawan", "nama_karyawan", "nama pemohon"]);
 
-          toast(`Berhasil mengupdate jatah cuti ${updateCount} karyawan!`, "success");
-          await loadData();
-        } catch (err) {
-          console.error(err);
-          toast("Gagal membaca Excel: " + err.message, "error");
-        } finally {
-          btnImport.disabled = false;
-          btnImport.innerHTML = `<i class="fa-solid fa-file-import"></i> Import Excel`;
-          fileInput.value = ""; 
-        }
-      };
-      reader.readAsArrayBuffer(file);
-    };
-  }
+						const cleanNik = nikRaw !== undefined && nikRaw !== null ? String(nikRaw).trim() : "";
+						const cleanNama = namaRaw !== undefined && namaRaw !== null ? String(namaRaw).trim().toLowerCase().replace(/\s+/g, " ") : "";
 
-  const btnReset = container.querySelector("#btn-reset-tahunan");
+						if (!cleanNik && !cleanNama) continue;
+
+						let targetEmp = null;
+						if (cleanNik) {
+							const pureNik = cleanNik.replace(/^0+/, "");
+							targetEmp = allKaryawan.find(k => {
+								const kNik = (k.nik || k.nik_karyawan || "").toString().trim();
+								return kNik && (kNik === cleanNik || kNik.replace(/^0+/, "") === pureNik);
+							});
+						}
+						if (!targetEmp && cleanNama) {
+							targetEmp = allKaryawan.find(k => (k.nama_karyawan || "").trim().toLowerCase().replace(/\s+/g, " ") === cleanNama);
+							if (!targetEmp && cleanNama.length >= 4) {
+								targetEmp = allKaryawan.find(k => {
+									const kN = (k.nama_karyawan || "").trim().toLowerCase().replace(/\s+/g, " ");
+									return kN.includes(cleanNama) || cleanNama.includes(kN);
+								});
+							}
+						}
+
+						if (!targetEmp) {
+							unmatched.push(cleanNama || cleanNik);
+							continue;
+						}
+
+						const jTahunan = parseNum(getVal(row, ["jatah cuti tahunan", "jatah tahunan", "jatah tahunan awal", "jatah cuti tahunan awal", "cuti tahunan", "tahunan", "hak cuti tahunan", "saldo cuti tahunan", "sisa cuti tahunan"]));
+						const jKhusus = parseNum(getVal(row, ["jatah cuti khusus", "jatah khusus", "jatah khusus awal", "jatah cuti khusus awal", "cuti khusus", "khusus", "hak cuti khusus", "saldo cuti khusus", "sisa cuti khusus"]));
+						const jAkumulasi = parseNum(getVal(row, ["jatah cuti akumulasi", "jatah akumulasi", "jatah akumulasi carryover", "carryover akumulasi", "carryover", "akumulasi", "cuti akumulasi", "hak cuti akumulasi", "saldo cuti akumulasi", "sisa cuti akumulasi"]));
+						const sisaLalu = parseNum(getVal(row, ["sisa cuti tahun lalu", "sisa cuti tahun lalu manual hrd", "sisa cuti tahun lalu input manual hrd", "sisa tahun lalu", "sisa cuti lalu", "sisa lalu", "sisa cuti tahun sebelumnya", "cuti tahun lalu"]));
+
+						const payload = {};
+						let hasChange = false;
+
+						if (jTahunan !== null) {
+							payload.jatah_cuti_tahunan = jTahunan;
+							payload.jatah_tahunan = jTahunan;
+							hasChange = true;
+						}
+						if (jKhusus !== null) {
+							payload.jatah_cuti_khusus = jKhusus;
+							payload.jatah_khusus = jKhusus;
+							hasChange = true;
+						}
+						if (jAkumulasi !== null) {
+							payload.jatah_cuti_akumulasi = jAkumulasi;
+							payload.jatah_akumulasi = jAkumulasi;
+							hasChange = true;
+						}
+						if (sisaLalu !== null) {
+							payload.sisa_cuti_tahun_lalu = sisaLalu;
+							if (jAkumulasi === null) {
+								const calcAkum = calculateCarryoverJatah(sisaLalu, targetEmp.tanggal_join);
+								payload.jatah_cuti_akumulasi = calcAkum;
+								payload.jatah_akumulasi = calcAkum;
+							}
+							hasChange = true;
+						}
+
+						if (hasChange) {
+							await updateDoc(doc(db, COL.MASTER_KARYAWAN, targetEmp.id), payload);
+							Object.assign(targetEmp, payload);
+							updateCount++;
+						}
+					}
+
+					calculateBalances();
+					renderCards(allKaryawan);
+					renderTable(allKaryawan);
+
+					if (updateCount > 0) {
+						let msg = `Berhasil mengupdate jatah cuti ${updateCount} karyawan dari file Excel!`;
+						if (unmatched.length > 0) {
+							msg += ` (${unmatched.length} baris tidak ditemukan di data karyawan aktif)`;
+						}
+						toast(msg, "success");
+					} else {
+						toast("Tidak ada data karyawan yang cocok untuk diupdate dari file Excel.", "warning");
+					}
+				} catch (err) {
+					console.error(err);
+					toast("Gagal membaca Excel: " + err.message, "error");
+				} finally {
+					btnImport.disabled = false;
+					btnImport.innerHTML = `<i class="fa-solid fa-file-import"></i> Import Excel`;
+					fileInput.value = ""; 
+				}
+			};
+			reader.readAsArrayBuffer(file);
+		};
+	}
+
+	const btnReset = container.querySelector("#btn-reset-tahunan");
   if (btnReset) {
     btnReset.onclick = async () => {
       if (!confirm("Apakah Anda yakin ingin me-reset jatah cuti seluruh karyawan aktif?\n\nSistem akan menggunakan 'Sisa Cuti Tahun Lalu' (input manual HRD / Import Excel) dikalikan persentase masa kerja sebagai basis carryover cuti akumulasi (sesuai SK No.018/HRGA-AJ/XII/2024):\n- 0 s/d < 3 tahun: 0%\n- 3 s/d < 5 tahun: 50%\n- 5 tahun ke atas: 100%\n\nLanjutkan?")) return;
@@ -1237,7 +1429,7 @@ export async function mount(container, { session }) {
   }
 
   function openEmployeeModal(k, options = {}) {
-    const sisa = getSisa(k);
+    let sisa = getSisa(k);
     const myLeaves = allCuti.filter(c => c.nama_karyawan === k.nama_karyawan).sort((a,b) => new Date(b.tanggal) - new Date(a.tanggal));
     const optLeaveTypes = leaveConfig.map(c => `<option value="${c.id}" data-potong="${c.potong}" data-count="${c.count}">${c.id} - ${c.name}</option>`).join("");
 
@@ -1253,6 +1445,10 @@ export async function mount(container, { session }) {
               <p class="text-xs text-slate-500">${escapeHtml(k.nik || "-")} • ${escapeHtml(k.jabatan || "-")} • ${escapeHtml(k.cabang || "-")}</p>
             </div>
           </div>
+          ${canManage ? `
+          <button type="button" id="btn-quick-switch-edit-jatah" class="text-xs bg-maroon-50 hover:bg-maroon-100 text-maroon-700 font-bold px-3 py-1.5 rounded-lg border border-maroon-200 transition flex items-center gap-1.5 self-start sm:self-center shadow-2xs">
+            <i class="fa-solid fa-pen-to-square"></i> Edit Jatah Manual
+          </button>` : ''}
         </div>
 
         <!-- RINCIAN SALDO CUTI: SALDO AWAL, TERPAKAI & SISA SALDO -->
@@ -1261,7 +1457,7 @@ export async function mount(container, { session }) {
           <div class="bg-white p-2.5 rounded-lg border border-blue-100 shadow-xs flex flex-col justify-between">
             <div class="flex items-center justify-between pb-1 mb-1 border-b border-slate-100">
               <span class="text-[10px] font-bold text-blue-900 uppercase">Cuti Tahunan</span>
-              <span class="text-[10px] font-semibold text-slate-600 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-100">Awal: <strong>${sisa.jatahTahunan}</strong></span>
+              <span class="text-[10px] font-semibold text-slate-600 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-100">Awal: <strong id="modal-stat-awal-tahunan">${sisa.jatahTahunan}</strong></span>
             </div>
             <div class="flex justify-between items-baseline pt-1">
               <div>
@@ -1270,7 +1466,7 @@ export async function mount(container, { session }) {
               </div>
               <div class="text-right">
                 <span class="text-[9px] uppercase font-semibold text-slate-400 block">Sisa Saldo</span>
-                <span class="text-lg font-black text-blue-700 font-mono">${sisa.Tahunan}</span>
+                <span id="modal-stat-sisa-tahunan" class="text-lg font-black text-blue-700 font-mono">${sisa.Tahunan}</span>
                 <span class="text-[10px] font-medium text-slate-500">Hari</span>
               </div>
             </div>
@@ -1280,7 +1476,7 @@ export async function mount(container, { session }) {
           <div class="bg-white p-2.5 rounded-lg border border-emerald-100 shadow-xs flex flex-col justify-between">
             <div class="flex items-center justify-between pb-1 mb-1 border-b border-slate-100">
               <span class="text-[10px] font-bold text-emerald-900 uppercase">Cuti Khusus</span>
-              <span class="text-[10px] font-semibold text-slate-600 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-100">Awal: <strong>${sisa.jatahKhusus}</strong></span>
+              <span class="text-[10px] font-semibold text-slate-600 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-100">Awal: <strong id="modal-stat-awal-khusus">${sisa.jatahKhusus}</strong></span>
             </div>
             <div class="flex justify-between items-baseline pt-1">
               <div>
@@ -1289,7 +1485,7 @@ export async function mount(container, { session }) {
               </div>
               <div class="text-right">
                 <span class="text-[9px] uppercase font-semibold text-slate-400 block">Sisa Saldo</span>
-                <span class="text-lg font-black text-emerald-700 font-mono">${sisa.Khusus}</span>
+                <span id="modal-stat-sisa-khusus" class="text-lg font-black text-emerald-700 font-mono">${sisa.Khusus}</span>
                 <span class="text-[10px] font-medium text-slate-500">Hari</span>
               </div>
             </div>
@@ -1299,7 +1495,7 @@ export async function mount(container, { session }) {
           <div class="bg-white p-2.5 rounded-lg border border-amber-100 shadow-xs flex flex-col justify-between">
             <div class="flex items-center justify-between pb-1 mb-1 border-b border-slate-100">
               <span class="text-[10px] font-bold text-amber-900 uppercase">Carryover (Akumulasi)</span>
-              <span class="text-[10px] font-semibold text-slate-600 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-100">Awal: <strong>${sisa.jatahAkumulasi}</strong></span>
+              <span class="text-[10px] font-semibold text-slate-600 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-100">Awal: <strong id="modal-stat-awal-akumulasi">${sisa.jatahAkumulasi}</strong></span>
             </div>
             <div class="flex justify-between items-baseline pt-1">
               <div>
@@ -1308,7 +1504,7 @@ export async function mount(container, { session }) {
               </div>
               <div class="text-right">
                 <span class="text-[9px] uppercase font-semibold text-slate-400 block">Sisa Saldo</span>
-                <span class="text-lg font-black text-amber-700 font-mono">${sisa.Akumulasi}</span>
+                <span id="modal-stat-sisa-akumulasi" class="text-lg font-black text-amber-700 font-mono">${sisa.Akumulasi}</span>
                 <span class="text-[10px] font-medium text-slate-500">Hari</span>
               </div>
             </div>
@@ -1316,15 +1512,17 @@ export async function mount(container, { session }) {
         </div>
 
         ${canManage ? `
-        <div class="flex border-b border-slate-200 mb-4">
-          <button id="tab-input-cuti" class="px-4 py-2 text-sm font-bold text-maroon-700 border-b-2 border-maroon-700">Input Cuti Baru</button>
-          <button id="tab-riwayat-cuti" class="px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700">Riwayat Cuti</button>
+        <div class="flex border-b border-slate-200 mb-4 gap-2">
+          <button id="tab-input-cuti" class="px-4 py-2 text-sm font-bold text-maroon-700 border-b-2 border-maroon-700 transition">Input Cuti Baru</button>
+          <button id="tab-riwayat-cuti" class="px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700 transition">Riwayat Cuti</button>
+          <button id="tab-edit-jatah" class="px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700 transition flex items-center gap-1.5"><i class="fa-solid fa-pen-to-square text-xs text-maroon-700"></i> Edit Jatah Cuti</button>
         </div>` : `
         <div class="flex border-b border-slate-200 mb-4">
           <span class="px-4 py-2 text-sm font-bold text-maroon-700 border-b-2 border-maroon-700">Riwayat Cuti</span>
           <span class="ml-auto self-center text-[11px] text-slate-400 pr-1">Mode lihat saja</span>
         </div>`}
 
+        <!-- PANEL 1: INPUT CUTI BARU -->
         <div id="panel-input-cuti" class="${canManage ? "" : "hidden"}">
           <form id="form-input-cuti" class="space-y-4">
             <div class="bg-blue-50 p-3 rounded-lg border border-blue-100 mb-2">
@@ -1399,6 +1597,7 @@ export async function mount(container, { session }) {
           </form>
         </div>
 
+        <!-- PANEL 2: RIWAYAT CUTI -->
         <div id="panel-riwayat-cuti" class="${canManage ? "hidden" : ""}">
           <div class="max-h-80 overflow-y-auto border border-slate-100 rounded-lg">
             <table class="w-full text-xs text-left">
@@ -1411,6 +1610,87 @@ export async function mount(container, { session }) {
             </table>
           </div>
         </div>
+
+        <!-- PANEL 3: EDIT JATAH CUTI (MANUAL HRD) -->
+        ${canManage ? `
+        <div id="panel-edit-jatah" class="hidden space-y-4">
+          <div class="bg-amber-50 border border-amber-200 p-3.5 rounded-xl text-amber-950 text-xs leading-relaxed space-y-1">
+            <div class="font-bold flex items-center gap-1.5 text-sm text-amber-900">
+              <i class="fa-solid fa-pen-nib text-maroon-700"></i> Form Edit Jatah Cuti Manual HRD
+            </div>
+            <p>HRD memiliki otoritas penuh untuk mengatur dan mengubah kuota jatah cuti karyawan di bawah ini secara langsung.</p>
+          </div>
+
+          <form id="form-edit-jatah" class="space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Jatah Cuti Tahunan (Awal)</label>
+                <div class="relative">
+                  <input type="number" id="inp-edit-tahunan" step="0.5" min="0" required value="${sisa.jatahTahunan}" class="w-full px-3 py-2 text-sm font-bold text-blue-800 border border-slate-200 rounded-lg outline-none focus:border-blue-500 bg-white">
+                  <span class="absolute right-3 top-2 text-xs text-slate-400 font-medium">Hari</span>
+                </div>
+                <p class="text-[10px] text-slate-400 mt-1">Terpakai: <b>${sisa.used.Tahunan} Hari</b></p>
+              </div>
+
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Jatah Cuti Khusus (Awal)</label>
+                <div class="relative">
+                  <input type="number" id="inp-edit-khusus" step="0.5" min="0" required value="${sisa.jatahKhusus}" class="w-full px-3 py-2 text-sm font-bold text-emerald-800 border border-slate-200 rounded-lg outline-none focus:border-emerald-500 bg-white">
+                  <span class="absolute right-3 top-2 text-xs text-slate-400 font-medium">Hari</span>
+                </div>
+                <p class="text-[10px] text-slate-400 mt-1">Terpakai: <b>${sisa.used.Khusus} Hari</b></p>
+              </div>
+
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Jatah Akumulasi (Carryover)</label>
+                <div class="relative">
+                  <input type="number" id="inp-edit-akumulasi" step="0.5" min="0" required value="${sisa.jatahAkumulasi}" class="w-full px-3 py-2 text-sm font-bold text-amber-800 border border-slate-200 rounded-lg outline-none focus:border-amber-500 bg-white">
+                  <span class="absolute right-3 top-2 text-xs text-slate-400 font-medium">Hari</span>
+                </div>
+                <p class="text-[10px] text-slate-400 mt-1">Terpakai: <b>${sisa.used.Akumulasi} Hari</b></p>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Sisa Cuti Tahun Lalu (Manual HRD)</label>
+                <input type="number" id="inp-edit-sisa-lalu" step="0.5" min="0" value="${k.sisa_cuti_tahun_lalu ?? ""}" placeholder="Opsional (basis kalkulasi carryover)" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-400 bg-white">
+                <p class="text-[10px] text-slate-400 mt-1">Jika diisi, jatah akumulasi dapat otomatis dihitung sesuai masa kerja.</p>
+              </div>
+
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Batas Kedaluwarsa Cuti Akumulasi</label>
+                <input type="text" id="inp-edit-expired" value="${escapeHtml(k.cuti_akumulasi_expired || '')}" placeholder="Contoh: 30 Juni 2026" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-maroon-400 bg-white">
+                <p class="text-[10px] text-slate-400 mt-1">Default sesuai SK: 30 Juni tahun berjalan.</p>
+              </div>
+            </div>
+
+            <!-- Pratinjau kalkulasi sisa saldo -->
+            <div class="bg-slate-50 border border-slate-200 p-3 rounded-xl">
+              <div class="text-[11px] font-bold text-slate-600 mb-2 uppercase tracking-wide">Pratinjau Sisa Saldo Setelah Disimpan:</div>
+              <div class="grid grid-cols-3 gap-2 text-center">
+                <div class="bg-white p-2 rounded-lg border border-blue-100">
+                  <span class="text-[10px] text-slate-400 block font-medium">Sisa Tahunan</span>
+                  <span id="preview-modal-sisa-tahunan" class="text-base font-extrabold text-blue-700 font-mono">${sisa.Tahunan} Hari</span>
+                </div>
+                <div class="bg-white p-2 rounded-lg border border-emerald-100">
+                  <span class="text-[10px] text-slate-400 block font-medium">Sisa Khusus</span>
+                  <span id="preview-modal-sisa-khusus" class="text-base font-extrabold text-emerald-700 font-mono">${sisa.Khusus} Hari</span>
+                </div>
+                <div class="bg-white p-2 rounded-lg border border-amber-100">
+                  <span class="text-[10px] text-slate-400 block font-medium">Sisa Akumulasi</span>
+                  <span id="preview-modal-sisa-akumulasi" class="text-base font-extrabold text-amber-700 font-mono">${sisa.Akumulasi} Hari</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="pt-2">
+              <button type="button" id="btn-save-edit-jatah" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl shadow transition flex items-center justify-center gap-2">
+                <i class="fa-solid fa-floppy-disk"></i> Simpan Perubahan Jatah Cuti
+              </button>
+            </div>
+          </form>
+        </div>` : ''}
       `,
       footerHtml: canManage ? `
         <button id="btn-modal-batal" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
@@ -1421,22 +1701,37 @@ export async function mount(container, { session }) {
       onMount: (m) => {
         const tabInput = m.querySelector("#tab-input-cuti");
         const tabRiwayat = m.querySelector("#tab-riwayat-cuti");
+        const tabEditJatah = m.querySelector("#tab-edit-jatah");
         const pnlInput = m.querySelector("#panel-input-cuti");
         const pnlRiwayat = m.querySelector("#panel-riwayat-cuti");
+        const pnlEditJatah = m.querySelector("#panel-edit-jatah");
         const btnSimpan = m.querySelector("#btn-modal-simpan");
+        const btnQuickEdit = m.querySelector("#btn-quick-switch-edit-jatah");
 
         const switchTab = (tab) => {
           if (tab === "riwayat") {
-            if (tabRiwayat) tabRiwayat.className = "px-4 py-2 text-sm font-bold text-maroon-700 border-b-2 border-maroon-700";
-            if (tabInput) tabInput.className = "px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700";
+            if (tabRiwayat) tabRiwayat.className = "px-4 py-2 text-sm font-bold text-maroon-700 border-b-2 border-maroon-700 transition";
+            if (tabInput) tabInput.className = "px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700 transition";
+            if (tabEditJatah) tabEditJatah.className = "px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700 transition flex items-center gap-1.5";
             if (pnlRiwayat) pnlRiwayat.classList.remove("hidden");
             if (pnlInput) pnlInput.classList.add("hidden");
+            if (pnlEditJatah) pnlEditJatah.classList.add("hidden");
+            if (btnSimpan) btnSimpan.classList.add("hidden");
+          } else if (tab === "edit") {
+            if (tabEditJatah) tabEditJatah.className = "px-4 py-2 text-sm font-bold text-maroon-700 border-b-2 border-maroon-700 transition flex items-center gap-1.5";
+            if (tabInput) tabInput.className = "px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700 transition";
+            if (tabRiwayat) tabRiwayat.className = "px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700 transition";
+            if (pnlEditJatah) pnlEditJatah.classList.remove("hidden");
+            if (pnlInput) pnlInput.classList.add("hidden");
+            if (pnlRiwayat) pnlRiwayat.classList.add("hidden");
             if (btnSimpan) btnSimpan.classList.add("hidden");
           } else {
-            if (tabInput) tabInput.className = "px-4 py-2 text-sm font-bold text-maroon-700 border-b-2 border-maroon-700";
-            if (tabRiwayat) tabRiwayat.className = "px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700";
+            if (tabInput) tabInput.className = "px-4 py-2 text-sm font-bold text-maroon-700 border-b-2 border-maroon-700 transition";
+            if (tabRiwayat) tabRiwayat.className = "px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700 transition";
+            if (tabEditJatah) tabEditJatah.className = "px-4 py-2 text-sm font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-700 transition flex items-center gap-1.5";
             if (pnlInput) pnlInput.classList.remove("hidden");
             if (pnlRiwayat) pnlRiwayat.classList.add("hidden");
+            if (pnlEditJatah) pnlEditJatah.classList.add("hidden");
             if (btnSimpan) btnSimpan.classList.remove("hidden");
           }
         };
@@ -1445,9 +1740,118 @@ export async function mount(container, { session }) {
           tabInput.onclick = () => switchTab("input");
           tabRiwayat.onclick = () => switchTab("riwayat");
         }
+        if (tabEditJatah) {
+          tabEditJatah.onclick = () => switchTab("edit");
+        }
+        if (btnQuickEdit) {
+          btnQuickEdit.onclick = () => switchTab("edit");
+        }
 
         if (options && options.defaultTab === "riwayat") {
           switchTab("riwayat");
+        } else if (options && options.defaultTab === "edit") {
+          switchTab("edit");
+        }
+
+        // Wiring Edit Jatah Manual Form
+        if (pnlEditJatah) {
+          const inEditTahunan = m.querySelector("#inp-edit-tahunan");
+          const inEditKhusus = m.querySelector("#inp-edit-khusus");
+          const inEditAkumulasi = m.querySelector("#inp-edit-akumulasi");
+          const inEditSisaLalu = m.querySelector("#inp-edit-sisa-lalu");
+          const inEditExpired = m.querySelector("#inp-edit-expired");
+          const btnSaveEditJatah = m.querySelector("#btn-save-edit-jatah");
+
+          const prevTahunan = m.querySelector("#preview-modal-sisa-tahunan");
+          const prevKhusus = m.querySelector("#preview-modal-sisa-khusus");
+          const prevAkumulasi = m.querySelector("#preview-modal-sisa-akumulasi");
+
+          const updateEditPreviews = () => {
+            const valTahunan = parseFloat(inEditTahunan?.value) || 0;
+            const valKhusus = parseFloat(inEditKhusus?.value) || 0;
+            const valAkumulasi = parseFloat(inEditAkumulasi?.value) || 0;
+
+            const sisaT = Math.max(0, valTahunan - sisa.used.Tahunan);
+            const sisaK = Math.max(0, valKhusus - sisa.used.Khusus);
+            const sisaA = Math.max(0, valAkumulasi - sisa.used.Akumulasi);
+
+            if (prevTahunan) prevTahunan.textContent = `${sisaT} Hari`;
+            if (prevKhusus) prevKhusus.textContent = `${sisaK} Hari`;
+            if (prevAkumulasi) prevAkumulasi.textContent = `${sisaA} Hari`;
+          };
+
+          if (inEditTahunan) inEditTahunan.oninput = updateEditPreviews;
+          if (inEditKhusus) inEditKhusus.oninput = updateEditPreviews;
+          if (inEditAkumulasi) inEditAkumulasi.oninput = updateEditPreviews;
+
+          if (inEditSisaLalu) {
+            inEditSisaLalu.onchange = () => {
+              const val = inEditSisaLalu.value === "" ? null : (parseFloat(inEditSisaLalu.value) || 0);
+              if (val !== null && val > 0 && inEditAkumulasi) {
+                const autoAkum = calculateCarryoverJatah(val, k.tanggal_join);
+                inEditAkumulasi.value = autoAkum;
+                updateEditPreviews();
+              }
+            };
+          }
+
+          if (btnSaveEditJatah) {
+            btnSaveEditJatah.onclick = async () => {
+              btnSaveEditJatah.disabled = true;
+              btnSaveEditJatah.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...`;
+
+              try {
+                const valTahunan = parseFloat(inEditTahunan.value) || 0;
+                const valKhusus = parseFloat(inEditKhusus.value) || 0;
+                const valAkumulasi = parseFloat(inEditAkumulasi.value) || 0;
+                const valSisaLalu = inEditSisaLalu.value === "" ? null : (parseFloat(inEditSisaLalu.value) || 0);
+                const valExpired = inEditExpired.value.trim();
+
+                const payload = {
+                  jatah_cuti_tahunan: valTahunan,
+                  jatah_tahunan: valTahunan,
+                  jatah_cuti_khusus: valKhusus,
+                  jatah_khusus: valKhusus,
+                  jatah_cuti_akumulasi: valAkumulasi,
+                  jatah_akumulasi: valAkumulasi,
+                  sisa_cuti_tahun_lalu: valSisaLalu,
+                  cuti_akumulasi_expired: valExpired || null
+                };
+
+                await updateDoc(doc(db, COL.MASTER_KARYAWAN, k.id), payload);
+                Object.assign(k, payload);
+
+                calculateBalances();
+                sisa = getSisa(k);
+
+                // Update modal top stats
+                const stAwalT = m.querySelector("#modal-stat-awal-tahunan");
+                const stSisaT = m.querySelector("#modal-stat-sisa-tahunan");
+                const stAwalK = m.querySelector("#modal-stat-awal-khusus");
+                const stSisaK = m.querySelector("#modal-stat-sisa-khusus");
+                const stAwalA = m.querySelector("#modal-stat-awal-akumulasi");
+                const stSisaA = m.querySelector("#modal-stat-sisa-akumulasi");
+
+                if (stAwalT) stAwalT.textContent = sisa.jatahTahunan;
+                if (stSisaT) stSisaT.textContent = sisa.Tahunan;
+                if (stAwalK) stAwalK.textContent = sisa.jatahKhusus;
+                if (stSisaK) stSisaK.textContent = sisa.Khusus;
+                if (stAwalA) stAwalA.textContent = sisa.jatahAkumulasi;
+                if (stSisaA) stSisaA.textContent = sisa.Akumulasi;
+
+                renderCards(allKaryawan);
+                renderTable(allKaryawan);
+
+                toast(`Jatah cuti ${k.nama_karyawan} berhasil disimpan dan diperbarui!`, "success");
+              } catch (err) {
+                console.error(err);
+                toast("Gagal menyimpan jatah cuti: " + err.message, "error");
+              } finally {
+                btnSaveEditJatah.disabled = false;
+                btnSaveEditJatah.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Simpan Perubahan Jatah Cuti`;
+              }
+            };
+          }
         }
 
         wireRiwayatActions(m, k);
@@ -1598,23 +2002,30 @@ export async function mount(container, { session }) {
               ...payload,
               tgl_akhir: tglAkhirVal,
               isHalfDay: curCfg.id === "CT-02",
-              kontak: m.querySelector("#inp-kontak").value,
-              jam_keluar: inJamKeluar ? inJamKeluar.value : "-",
-              jam_kembali: inJamKembali ? inJamKembali.value : "-"
+              jam_keluar: curCfg.id === "CT-02" ? inJamKeluar.value : "-",
+              jam_kembali: curCfg.id === "CT-02" ? inJamKembali.value : "-",
+              kontak: m.querySelector("#inp-kontak")?.value || "-",
+              alasan: inAlasan.value
             };
 
             try {
-              const res = await fsAdd(COL.MASTER_CUTI, payload);
-              toast("Pengajuan cuti berhasil disimpan", "success");
-              payload.id = res.id;
-              allCuti.push(payload);
+              const newId = await fsAdd(COL.MASTER_CUTI, payload);
+              payload.id = newId;
+              allCuti.unshift(payload);
+
               calculateBalances();
+              sisa = getSisa(k);
+
               renderCards(allKaryawan);
               renderTable(allKaryawan);
+
               closeModal();
-              await generateCutiDocument(k, pdfData, sisa);
-            } catch (e) {
-              toast("Gagal menyimpan: " + e.message, "error");
+              toast("Pengajuan cuti berhasil disimpan", "success");
+
+              generatePdfAndNotify(k, pdfData, sisa);
+            } catch (err) {
+              console.error(err);
+              toast("Gagal menyimpan cuti: " + err.message, "error");
               btnSimpan.disabled = false;
               btnSimpan.textContent = "Simpan & Cetak PDF";
             }
@@ -1624,58 +2035,57 @@ export async function mount(container, { session }) {
     });
   }
 
-  async function generateCutiDocument(k, pdfData, sisa) {
- toast("Membuat dokumen di Google Drive...", "info");
- try {
- const result = await generateCutiDocViaGAS({
- nama_karyawan: k.nama_karyawan,
- jabatan: k.jabatan || "-",
- cabang: k.cabang || "-",
- tanggal: pdfData.tanggal,
- tanggal_display: fmtDateShort(pdfData.tanggal),
- tgl_akhir: pdfData.tgl_akhir,
- tgl_akhir_display: fmtDateShort(pdfData.tgl_akhir),
- isHalfDay: pdfData.isHalfDay,
- count: pdfData.count,
- keterangan_cuti: pdfData.keterangan_cuti,
- kontak: pdfData.kontak,
- jam_keluar: pdfData.jam_keluar,
- jam_kembali: pdfData.jam_kembali,
- sisa_tahunan: sisa.Tahunan,
- sisa_khusus: sisa.Khusus,
- tanggal_pengajuan: fmtDateShort(new Date())
- });
- toast("Dokumen berhasil dibuat", "success");
- const targets = await getTargetsForRole("PEMOHON", k.nama_karyawan);
- for (const t of targets) {
- await notifyUser(t.username, "Pengajuan Cuti Tercatat", `Cuti Anda (${pdfData.tanggal_display || pdfData.tanggal}) telah dicatat HRD.`);
- if (t.email) {
-   const emailBody = buildStandardEmailHtml({
-     badgeText: "Cuti Tercatat",
-     badgeVariant: "green",
-     title: "Pengajuan Cuti Anda Telah Dicatat",
-     recipientName: k.nama_karyawan,
-     introText: `Pengajuan cuti Anda telah berhasil diverifikasi dan dicatat oleh Tim HRD. Dokumen formulir cuti telah diterbitkan secara resmi.`,
-     infoList: [
-       { label: "Nama Karyawan", value: k.nama_karyawan },
-       { label: "Tanggal Cuti", value: fmtDateShort(pdfData.tanggal) },
-       { label: "Keperluan", value: pdfData.alasan || "-" }
-     ],
-     actionUrl: result.pdfUrl,
-     actionText: "Unduh / Lihat Dokumen Cuti (PDF) →",
-     secondaryNote: "Dokumen cuti resmi ini telah tersimpan dalam arsip sistem HRIS."
-   });
-   await sendEmailNotif(t.email, `[HRIS Cuti] Pengajuan Cuti Anda Telah Dicatat`, emailBody);
- }
- } 
- window.open(result.pdfUrl, "_blank");
- } catch (err) {
- toast("Gagal generate via Google Apps Script (" + err.message + "), mencetak versi cadangan...", "warning");
- printCutiPdfFallback(k, pdfData, sisa);
- }
- }
+  async function generatePdfAndNotify(k, pdfData, sisa) {
+    try {
+      toast("Menerbitkan Dokumen Form Cuti...", "info");
+      const result = await generateAndSaveCutiDocument({
+        nama_karyawan: k.nama_karyawan,
+        divisi: k.divisi || k.jabatan || k.cabang || "-",
+        jabatan: k.jabatan || "-",
+        cabang: k.cabang || "-",
+        jenis_cuti: pdfData.type_cuti,
+        tipe_hari: pdfData.isHalfDay ? "Setengah Hari" : "Hari Penuh",
+        tanggal_mulai: pdfData.tanggal,
+        tanggal_selesai: pdfData.tgl_akhir || pdfData.tanggal,
+        keterangan_cuti: pdfData.keterangan_cuti,
+        kontak: pdfData.kontak,
+        jam_keluar: pdfData.jam_keluar,
+        jam_kembali: pdfData.jam_kembali,
+        sisa_tahunan: sisa.Tahunan,
+        sisa_khusus: sisa.Khusus,
+        tanggal_pengajuan: fmtDateShort(new Date())
+      });
+      toast("Dokumen berhasil dibuat", "success");
+      const targets = await getTargetsForRole("PEMOHON", k.nama_karyawan);
+      for (const t of targets) {
+        await notifyUser(t.username, "Pengajuan Cuti Tercatat", `Cuti Anda (${pdfData.tanggal_display || pdfData.tanggal}) telah dicatat HRD.`);
+        if (t.email) {
+          const emailBody = buildStandardEmailHtml({
+            badgeText: "Cuti Tercatat",
+            badgeVariant: "green",
+            title: "Pengajuan Cuti Anda Telah Dicatat",
+            recipientName: k.nama_karyawan,
+            introText: `Pengajuan cuti Anda telah berhasil diverifikasi dan dicatat oleh Tim HRD. Dokumen formulir cuti telah diterbitkan secara resmi.`,
+            infoList: [
+              { label: "Nama Karyawan", value: k.nama_karyawan },
+              { label: "Tanggal Cuti", value: fmtDateShort(pdfData.tanggal) },
+              { label: "Keperluan", value: pdfData.alasan || "-" }
+            ],
+            actionUrl: result.pdfUrl,
+            actionText: "Unduh / Lihat Dokumen Cuti (PDF) →",
+            secondaryNote: "Dokumen cuti resmi ini telah tersimpan dalam arsip sistem HRIS."
+          });
+          await sendEmailNotif(t.email, `[HRIS Cuti] Pengajuan Cuti Anda Telah Dicatat`, emailBody);
+        }
+      } 
+      window.open(result.pdfUrl, "_blank");
+    } catch (err) {
+      toast("Gagal generate via Google Apps Script (" + err.message + "), mencetak versi cadangan...", "warning");
+      printCutiPdfFallback(k, pdfData, sisa);
+    }
+  }
 
- async function printCutiPdfFallback(k, data, sisa) {
+  async function printCutiPdfFallback(k, data, sisa) {
  const { downloadHtmlAsPdf, toast, generateStandardFormCutiHtml } = await import("../utils.js");
  toast("Sedang memproses PDF...", "info");
 

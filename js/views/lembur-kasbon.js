@@ -14,7 +14,7 @@ import {
   escapeHtml, confirmDialog, openModal, closeModal, downloadXlsx
 } from "../utils.js";
 import { badge, icon, avatar } from "../components.js";
-import { getSession } from "../auth.js";
+import { getSession, hasSubMenuAccess } from "../auth.js";
 import {
   DAY_TYPES, DEFAULT_OVERTIME_CONFIG, calculateDurationMinutes, fmtMinutesToDisplay,
   formatOtDuration, getIndonesianDayName, getIndonesianMonthName,
@@ -37,8 +37,35 @@ export async function mount(container, context = {}) {
   const isHr = isSuper || ["HRD", "HR", "HRGA", "ADMIN"].includes(userRole);
   const isSupervisor = isSuper || isHr || ["SPV", "SUPERVISOR", "MANAGER", "KOORDINATOR", "KABAG", "GM"].includes(userRole);
 
+  // Dynamic Submenu Access from RBAC Whitelist
+  const ALL_SUBMENUS = [
+    { id: "dashboard", label: "Dashboard" },
+    { id: "perintah", label: "Perintah Lembur" },
+    { id: "usulan_saya", label: "Usulan Saya" },
+    { id: "persetujuan_saya", label: "Persetujuan Saya" },
+    { id: "realisasi", label: "Realisasi & Verifikasi" },
+    { id: "rekap_jam", label: "Rekap Jam Lembur" },
+    { id: "laporan", label: "Laporan" },
+    { id: "pengaturan", label: "Pengaturan" }
+  ];
+
+  const allowedTabs = [];
+  for (const sm of ALL_SUBMENUS) {
+    if (await hasSubMenuAccess("lembur-kasbon", sm.id, session)) {
+      allowedTabs.push(sm);
+    }
+  }
+
+  // Fallback if empty
+  if (allowedTabs.length === 0) {
+    allowedTabs.push({ id: "dashboard", label: "Dashboard" });
+  }
+
   // Active tab state
-  let currentTab = context?.params?.get("tab") || "dashboard";
+  let currentTab = context?.params?.get("tab") || allowedTabs[0]?.id || "dashboard";
+  if (!allowedTabs.some(t => t.id === currentTab)) {
+    currentTab = allowedTabs[0]?.id || "dashboard";
+  }
   let activeFilterMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
   let activeFilterBranch = "ALL";
   let activeFilterDept = "ALL";
@@ -89,34 +116,13 @@ export async function mount(container, context = {}) {
       </div>
     </div>
 
-    <!-- Navigation Submenu Tabs (8 Submenu Sesuai PRD) -->
+    <!-- Navigation Submenu Tabs (Dinamis Sesuai Hak Akses RBAC) -->
     <div class="flex items-center gap-1 overflow-x-auto border-b border-slate-200 pb-1 scrollbar-none text-xs font-bold">
-      <button data-tab="dashboard" class="tab-btn px-4 py-2.5 rounded-xl transition whitespace-nowrap flex items-center gap-1.5">
-        <span>Dashboard</span>
-      </button>
-      <button data-tab="perintah" class="tab-btn px-4 py-2.5 rounded-xl transition whitespace-nowrap flex items-center gap-1.5">
-        <span>Perintah Lembur</span>
-      </button>
-      <button data-tab="usulan_saya" class="tab-btn px-4 py-2.5 rounded-xl transition whitespace-nowrap flex items-center gap-1.5">
-        <span>Usulan Saya</span>
-      </button>
-      <button data-tab="persetujuan_saya" class="tab-btn px-4 py-2.5 rounded-xl transition whitespace-nowrap flex items-center gap-1.5">
-        <span>Persetujuan Saya</span>
-      </button>
-      <button data-tab="realisasi" class="tab-btn px-4 py-2.5 rounded-xl transition whitespace-nowrap flex items-center gap-1.5">
-        <span>Realisasi & Verifikasi</span>
-      </button>
-      <button data-tab="rekap_jam" class="tab-btn px-4 py-2.5 rounded-xl transition whitespace-nowrap flex items-center gap-1.5">
-        <span>Rekap Jam Lembur</span>
-      </button>
-      <button data-tab="laporan" class="tab-btn px-4 py-2.5 rounded-xl transition whitespace-nowrap flex items-center gap-1.5">
-        <span>Laporan</span>
-      </button>
-      ${isHr ? `
-      <button data-tab="pengaturan" class="tab-btn px-4 py-2.5 rounded-xl transition whitespace-nowrap flex items-center gap-1.5">
-        <span>Pengaturan</span>
-      </button>
-      ` : ""}
+      ${allowedTabs.map(tab => `
+        <button data-tab="${tab.id}" class="tab-btn px-4 py-2.5 rounded-xl transition whitespace-nowrap flex items-center gap-1.5 ${tab.id === currentTab ? 'bg-maroon-700 text-white font-bold shadow-xs' : 'text-slate-600 hover:bg-slate-100 font-medium'}">
+          <span>${escapeHtml(tab.label)}</span>
+        </button>
+      `).join("")}
     </div>
 
     <!-- Active Tab Content Container -->

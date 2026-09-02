@@ -22,6 +22,15 @@ const SESSION_KEY = "andela_hris_session";
  * group: 'all' | 'hrd' | 'manajemen'
  * roles: daftar role tambahan yang berhak (di luar aturan group bawaan)
  * ------------------------------------------------------------------- */
+export const DEFAULT_EMPLOYEE_MENU_IDS = [
+ "dashboard",
+ "pengajuan",
+ "absensi",
+ "pengajuan-cuti",
+ "izin",
+ "performance-review"
+];
+
 // Pengelompokan & Penyesuaian Icon Menu
 export const MENU_CONFIG = [
  // KATEGORI: MENU UTAMA
@@ -34,7 +43,7 @@ export const MENU_CONFIG = [
  { id: "broadcast", label: "Memo & Berita", icon: "book", kategori: "Persetujuan", roles: ["HRD", "SUPERADMIN"] },
 
  // KATEGORI: KEHADIRAN
- { id: "absensi", label: "Absensi", icon: "clock", kategori: "Kehadiran", roles: ["HRD", "SUPERADMIN"], subMenus: [
+ { id: "absensi", label: "Absensi", icon: "clock", kategori: "Kehadiran", roles: ["ALL"], subMenus: [
   { id: "proses_tarif", label: "Proses & Tarif Laporan" }
  ] },
  { id: "pengajuan-cuti", label: "Pengajuan Cuti", icon: "calendar", kategori: "Kehadiran", roles: ["ALL"] },
@@ -61,7 +70,7 @@ export const MENU_CONFIG = [
   { id: "template_soal", label: "Template Soal KPI" },
   { id: "distribusi_kpi360", label: "Distribusi Tugas KPI" }
  ] },
- { id: "performance-review", label: "Review Kinerja", icon: "gauge", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"], subMenus: [
+ { id: "performance-review", label: "Review Kinerja", icon: "gauge", kategori: "Karyawan & Kinerja", roles: ["ALL"], subMenus: [
   { id: "semua_review", label: "Semua Review Kinerja" }
  ] },
  { id: "training", label: "Pelatihan", icon: "book", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"], subMenus: [
@@ -88,7 +97,7 @@ export const MENU_CONFIG = [
  { id: "klaim-bensin", label: "Klaim Bensin", icon: "wallet", kategori: "Keuangan", roles: ["ALL"], subMenus: [
   { id: "admin_cabang", label: "Admin Cabang" }
  ] },
- { id: "lembur-kasbon", label: "Lembur", icon: "clock", kategori: "Keuangan", roles: ["ALL"], subMenus: [
+ { id: "lembur-kasbon", label: "Lembur", icon: "clock", kategori: "Keuangan", roles: ["HRD", "SUPERADMIN", "GM", "FINANCE", "SPV", "MANAGER", "WAREHOUSE", "BACK OFFICE", "BACKOFFICE", "STAFF", "KARYAWAN", "DRIVER"], subMenus: [
   { id: "dashboard", label: "Dashboard" },
   { id: "perintah", label: "Perintah Lembur" },
   { id: "usulan_saya", label: "Usulan Saya" },
@@ -151,13 +160,87 @@ export function clearSession() {
 export function isLoggedIn() { return !!getSession(); }
 
 /* ---------------------------------------------------------------------
- * LOGIN
+ * LOGIN & AUTHENTICATION RESOLUTION
  * ------------------------------------------------------------------- */
+/**
+ * Mencari dokumen pengguna di koleksi USERS secara cerdas:
+ * 1. Cek langsung Document ID (Huruf besar, asli, huruf kecil).
+ * 2. Cek field username (case-insensitive).
+ * 3. Cek field nik (angka/kode NIK).
+ * 4. Cek field email (case-insensitive).
+ * 5. Cek field nama (case-insensitive).
+ */
+export async function findUserForAuth(loginInput) {
+ if (!loginInput) return null;
+ const rawInput = String(loginInput).trim();
+ if (!rawInput) return null;
+
+ const inputUpper = rawInput.toUpperCase();
+ const inputLower = rawInput.toLowerCase();
+
+ // 1. Direct doc ID lookups
+ const tryIds = Array.from(new Set([inputUpper, rawInput, inputLower]));
+ for (const tid of tryIds) {
+  try {
+   const snap = await getDoc(doc(db, COL.USERS, tid));
+   if (snap.exists()) {
+    const u = snap.data();
+    return { docId: snap.id, docRef: snap.ref, data: u };
+   }
+  } catch (e) {}
+ }
+
+ // 2. Query / Scan koleksi USERS
+ try {
+  const allUsers = await fsGetAll(COL.USERS);
+  
+  // a. Match by username
+  let matched = allUsers.find(u => {
+   const un = String(u.username || u.id || "").trim().toLowerCase();
+   return un === inputLower;
+  });
+
+  // b. Match by NIK
+  if (!matched) {
+   matched = allUsers.find(u => {
+    const unk = String(u.nik || "").trim();
+    return unk && (unk === rawInput || unk.toUpperCase() === inputUpper);
+   });
+  }
+
+  // c. Match by email
+  if (!matched && rawInput.includes("@")) {
+   matched = allUsers.find(u => {
+    const uem = String(u.email || "").trim().toLowerCase();
+    return uem === inputLower;
+   });
+  }
+
+  // d. Match by Nama
+  if (!matched) {
+   matched = allUsers.find(u => {
+    const unm = String(u.nama || "").trim().toLowerCase();
+    return unm && unm === inputLower;
+   });
+  }
+
+  if (matched) {
+   const docId = matched.id || matched.username || inputUpper;
+   return { docId, docRef: doc(db, COL.USERS, docId), data: matched };
+  }
+ } catch (e) {
+  console.warn("findUserForAuth scan failed:", e);
+ }
+
+ return null;
+}
+
 export async function login(username, password, remember = false) {
- const uname = username.trim().toUpperCase();
- const snap = await getDoc(doc(db, COL.USERS, uname));
- if (!snap.exists()) throw new Error("Username tidak ditemukan.");
- const user = snap.data();
+ const userResult = await findUserForAuth(username);
+ if (!userResult || !userResult.data) throw new Error("Username, NIK, atau Akun tidak ditemukan.");
+ 
+ const user = userResult.data;
+ const docId = userResult.docId;
 
  const inputHash = await sha256(password);
  const storedHash = user.password_hash || "";
@@ -166,40 +249,50 @@ export async function login(username, password, remember = false) {
  const matchedViaPlain = !matchedViaHash && storedPlain && storedPlain === password;
  if (!matchedViaHash && !matchedViaPlain) throw new Error("Password salah.");
 
- // Kalau field plaintext masih ada di dokumen ini (akun lama/migrasi),
- // hapus permanen sekarang & pastikan password_hash tersimpan benar.
- if (storedPlain) {
- try {
- await updateDoc(doc(db, COL.USERS, uname), {
- password_hash: inputHash,
- password: ""
- });
- } catch (e) {
- console.warn("Gagal migrasi hash password saat login:", e);
- }
+ if (storedPlain || !storedHash) {
+  try {
+   await updateDoc(doc(db, COL.USERS, docId), {
+    password_hash: inputHash,
+    password: ""
+   });
+  } catch (e) {
+   console.warn("Gagal migrasi hash password saat login:", e);
+  }
  }
 
  let karyawan = null;
- if (user.nik) {
- const kSnap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(user.nik)));
- if (kSnap.exists()) karyawan = kSnap.data();
+ const searchNik = user.nik || (String(username).match(/^\d+$/) ? username : null);
+ if (searchNik) {
+  try {
+   const kSnap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(searchNik)));
+   if (kSnap.exists()) karyawan = kSnap.data();
+  } catch (e) {}
+ }
+ if (!karyawan && user.nama) {
+  try {
+   const q = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", user.nama));
+   const kDocs = await getDocs(q);
+   if (!kDocs.empty) karyawan = kDocs.docs[0].data();
+  } catch (e) {}
  }
 
+ const canonUsername = user.username || docId || String(username).trim().toUpperCase();
  const session = {
- id: user.id || snap.id || uname,
- username: uname,
- role: (user.role || "STAFF").toUpperCase(),
- nama: user.nama || uname,
- email: user.email || "",
- posisi: user.posisi || karyawan?.jabatan || "-",
- nik: user.nik || karyawan?.nik_karyawan || null,
- cabang: karyawan?.cabang || user.cabang || "-",
- foto_url: karyawan?.foto_url || null,
- loginAt: Date.now()
+  id: user.id || docId || canonUsername,
+  username: canonUsername,
+  role: (user.role || karyawan?.role || "STAFF").toUpperCase(),
+  nama: user.nama || karyawan?.nama_karyawan || canonUsername,
+  email: user.email || karyawan?.email || "",
+  posisi: user.posisi || karyawan?.jabatan || "-",
+  nik: user.nik || karyawan?.nik_karyawan || karyawan?.nik || null,
+  cabang: karyawan?.cabang || user.cabang || "-",
+  foto_url: karyawan?.foto_url || user.foto_url || null,
+  loginAt: Date.now()
  };
  setSession(session, remember);
  return session;
 }
+
 export async function loginWithToken(tokenStr) {
  const tokenSnap = await getDoc(doc(db, "login_tokens", tokenStr));
  if (!tokenSnap.exists()) throw new Error("Token tidak valid.");
@@ -207,34 +300,48 @@ export async function loginWithToken(tokenStr) {
  const tokenData = tokenSnap.data();
  if (tokenData.used) throw new Error("Token sudah pernah digunakan demi keamanan.");
 
- // Cek kedaluwarsa (Maksimal 24 Jam)
  const now = Date.now();
  if (now - tokenData.createdAt > 24 * 60 * 60 * 1000) throw new Error("Token telah kedaluwarsa.");
 
- // Ambil Data Pengguna
  const uname = tokenData.username;
- const snap = await getDoc(doc(db, COL.USERS, uname));
- if (!snap.exists()) throw new Error("Pengguna tidak ditemukan.");
- const user = snap.data();
+ const userResult = await findUserForAuth(uname);
+ if (!userResult || !userResult.data) throw new Error("Pengguna tujuan token tidak ditemukan.");
+ 
+ const user = userResult.data;
+ const docId = userResult.docId;
 
- // HANGUSKAN TOKEN (Tandai sudah terpakai)
  await updateDoc(doc(db, "login_tokens", tokenStr), { used: true, usedAt: now });
 
  let karyawan = null;
- if (user.nik) {
- const kSnap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(user.nik)));
- if (kSnap.exists()) karyawan = kSnap.data();
+ const searchNik = user.nik || (String(uname).match(/^\d+$/) ? uname : null);
+ if (searchNik) {
+  try {
+   const kSnap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(searchNik)));
+   if (kSnap.exists()) karyawan = kSnap.data();
+  } catch (e) {}
+ }
+ if (!karyawan && user.nama) {
+  try {
+   const q = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", user.nama));
+   const kDocs = await getDocs(q);
+   if (!kDocs.empty) karyawan = kDocs.docs[0].data();
+  } catch (e) {}
  }
 
- // Buat Sesi Login Otomatis
+ const canonUsername = user.username || docId || String(uname).trim().toUpperCase();
  const session = {
- id: user.id || snap.id || uname,
- username: uname, role: (user.role || "STAFF").toUpperCase(), nama: user.nama || uname,
- email: user.email || "", posisi: user.posisi || karyawan?.jabatan || "-",
- nik: user.nik || karyawan?.nik_karyawan || null, cabang: karyawan?.cabang || user.cabang || "-",
- foto_url: karyawan?.foto_url || null, loginAt: Date.now()
+  id: user.id || docId || canonUsername,
+  username: canonUsername,
+  role: (user.role || karyawan?.role || "STAFF").toUpperCase(),
+  nama: user.nama || karyawan?.nama_karyawan || canonUsername,
+  email: user.email || karyawan?.email || "",
+  posisi: user.posisi || karyawan?.jabatan || "-",
+  nik: user.nik || karyawan?.nik_karyawan || karyawan?.nik || null,
+  cabang: karyawan?.cabang || user.cabang || "-",
+  foto_url: karyawan?.foto_url || user.foto_url || null,
+  loginAt: Date.now()
  };
- setSession(session, true); // Paksa login
+ setSession(session, true);
  return session;
 }
 export function logout() {
@@ -244,24 +351,70 @@ export function logout() {
 }
 
 /* ---------------------------------------------------------------------
- * RBAC — MENU VISIBILITY
+ * RBAC — MENU VISIBILITY & PERMISSION OVERRIDES
  * ------------------------------------------------------------------- */
-let _permCache = null; // { username: {allowed_menus:[], allowed_forms:[]} }
+let _permCache = null; // Map of key -> permission record
 
 export async function loadPermissionOverrides(force = false) {
  if (_permCache && !force) return _permCache;
  const rows = await fsGetAll(COL.USER_PERMISSIONS);
  _permCache = {};
- rows.forEach(r => { _permCache[r.id] = r; });
+ rows.forEach(r => {
+  if (!r) return;
+  const targetKeys = new Set();
+  if (r.id) {
+   const strId = String(r.id).trim();
+   targetKeys.add(strId);
+   targetKeys.add(strId.toLowerCase());
+   targetKeys.add(strId.toUpperCase());
+  }
+  if (r.username) {
+   const strUn = String(r.username).trim();
+   targetKeys.add(strUn);
+   targetKeys.add(strUn.toLowerCase());
+   targetKeys.add(strUn.toUpperCase());
+   if (strUn.includes(".")) {
+    targetKeys.add(strUn.replace(/\./g, " ").toLowerCase());
+    targetKeys.add(strUn.replace(/\./g, " ").toUpperCase());
+   }
+  }
+  if (r.nik && r.nik !== "-" && r.nik !== "null" && r.nik !== "undefined") {
+   const strNik = String(r.nik).trim();
+   targetKeys.add(strNik);
+   targetKeys.add(strNik.toLowerCase());
+   targetKeys.add(strNik.toUpperCase());
+  }
+  if (r.user_id) {
+   const strUid = String(r.user_id).trim();
+   targetKeys.add(strUid);
+   targetKeys.add(strUid.toLowerCase());
+   targetKeys.add(strUid.toUpperCase());
+  }
+  if (r.nama) {
+   const strNama = String(r.nama).trim();
+   targetKeys.add(strNama);
+   targetKeys.add(strNama.toLowerCase());
+   targetKeys.add(strNama.toUpperCase());
+   targetKeys.add(strNama.toLowerCase().replace(/\s+/g, "."));
+  }
+  if (r.email) {
+   const strEmail = String(r.email).trim().toLowerCase();
+   targetKeys.add(strEmail);
+  }
+
+  targetKeys.forEach(k => {
+   if (k) _permCache[k] = r;
+  });
+ });
  return _permCache;
 }
 
 /** Apakah user adalah "atasan" (punya bawahan) berdasarkan field ATASAN di master_karyawan */
 export async function isAtasan(namaUser) {
  try {
- const q = query(collection(db, COL.MASTER_KARYAWAN), where("atasan", "==", namaUser));
- const snap = await getDocs(q);
- return !snap.empty;
+  const q = query(collection(db, COL.MASTER_KARYAWAN), where("atasan", "==", namaUser));
+  const snap = await getDocs(q);
+  return !snap.empty;
  } catch { return false; }
 }
 
@@ -280,21 +433,27 @@ export const ATASAN_VIEW_ROLES = ["MANAGER", "SPV", "KOORDINATOR"];
 /** Ambil daftar nama karyawan yang menjadi bawahan langsung dari `namaAtasan` */
 export async function getBawahanNames(namaAtasan) {
  try {
- const q = query(collection(db, COL.MASTER_KARYAWAN), where("atasan", "==", namaAtasan));
- const snap = await getDocs(q);
- return snap.docs.map(d => (d.data().nama_karyawan || "").trim()).filter(Boolean);
+  const q = query(collection(db, COL.MASTER_KARYAWAN), where("atasan", "==", namaAtasan));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => (d.data().nama_karyawan || "").trim()).filter(Boolean);
  } catch { return []; }
 }
 
 export async function computeVisibleMenus(session) {
  if (!session) return [];
  const role = (session.role || "").toUpperCase();
+ const posisi = (session.posisi || session.jabatan || "").toUpperCase();
+ const isSales = role === "SALES" || posisi.includes("SALES");
  const userOverride = await _findUserOverride(session);
 
- // Jika HRD sudah menetapkan daftar menu spesifik untuk user ini -> pakai itu (whitelist absolut)
+ // Jika HRD/Super Admin sudah menetapkan daftar menu spesifik untuk user ini -> pakai itu (whitelist absolut)
  if (userOverride && (userOverride.allowed_menus_set || (Array.isArray(userOverride.allowed_menus) && userOverride.allowed_menus.length > 0))) {
   const allowed = userOverride.allowed_menus || [];
-  const list = MENU_CONFIG.filter(m => allowed.includes(m.id));
+  let list = MENU_CONFIG.filter(m => allowed.includes(m.id));
+  // Sales tidak dapat menu lembur kecuali secara eksplisit ada di allowed_menus custom
+  if (isSales && !allowed.includes("lembur-kasbon")) {
+   list = list.filter(m => m.id !== "lembur-kasbon");
+  }
   if (!list.some(m => m.id === "dashboard")) {
    const dash = MENU_CONFIG.find(m => m.id === "dashboard");
    if (dash) list.unshift(dash);
@@ -305,24 +464,23 @@ export async function computeVisibleMenus(session) {
  const isAtasanRole = await isAtasan(session.nama);
  const isManagementOrHrd = ["HRD", "SUPERADMIN", "DIREKTUR", "MANAGER", "SPV", "KOORDINATOR", "GM", "FINANCE", "GA", "BRANCH MANAGER"].includes(role) || isAtasanRole;
 
- // Sesuai instruksi: Untuk role karyawan default (tanpa custom override HRD), menu yang tertampil HANYA Dashboard, Penilaian, dan Reimbursement
- if (!isManagementOrHrd || role === "KARYAWAN" || role === "STAFF") {
- return [
- MENU_CONFIG.find(m => m.id === "dashboard") || { id: "dashboard", label: "Home & Dashboard", icon: "home", kategori: "Menu Utama" },
- { id: "penilaian-kontrak", route: "penilaian-kontrak", label: "Penilaian & Kontrak", icon: "doc-plus", kategori: "Menu Utama" },
- { id: "reimbursement", route: "reimbursement", label: "Reimbursement", icon: "wallet", kategori: "Keuangan & Operasional" }
- ];
+ // Sesuai instruksi: Menu Default Standar Karyawan hanya berisi:
+ // 1. Dashboard, 2. Pengajuan, 3. Absensi, 4. Pengajuan Cuti, 5. Izin, 6. Review Kinerja
+ if (!isManagementOrHrd || role === "KARYAWAN" || role === "STAFF" || role === "DEFAULT") {
+  return MENU_CONFIG.filter(m => DEFAULT_EMPLOYEE_MENU_IDS.includes(m.id));
  }
 
  return MENU_CONFIG.filter(m => {
- if (m.group === "all") return true;
- if (!m.roles || m.roles.length === 0) return true;
- if (m.roles.includes("ALL")) return true;
- if (m.roles.includes(role)) return true;
- // Siapapun yang tercatat sebagai atasan (punya bawahan) otomatis kebagian akses
- // ke menu yang secara eksplisit mengizinkan role generik "ATASAN"
- if (isAtasanRole && m.roles.includes("ATASAN")) return true;
- return false;
+  // Sales secara spesifik tidak memiliki hak lembur
+  if (isSales && m.id === "lembur-kasbon") return false;
+  if (m.group === "all") return true;
+  if (!m.roles || m.roles.length === 0) return true;
+  if (m.roles.includes("ALL")) return true;
+  if (m.roles.includes(role)) return true;
+  // Siapapun yang tercatat sebagai atasan (punya bawahan) otomatis kebagian akses
+  // ke menu yang secara eksplisit mengizinkan role generik "ATASAN"
+  if (isAtasanRole && m.roles.includes("ATASAN")) return true;
+  return false;
  });
 }
 
@@ -330,11 +488,20 @@ const _MANAGEMENT_ROLES = ["HRD", "SUPERADMIN", "DIREKTUR", "MANAGER", "SPV", "K
 
 function _permOverrideSearchKeys(session) {
  if (!session) return [];
- const raw = [session.username, session.id, session.nik, session.nama].filter(Boolean);
+ const raw = [
+  session.username,
+  session.id,
+  session.nik,
+  session.nama,
+  session.email,
+  session.username && String(session.username).includes(".") ? String(session.username).replace(/\./g, " ") : null,
+  session.nama ? String(session.nama).toLowerCase().replace(/\s+/g, ".") : null
+ ].filter(Boolean);
+
  const keysSet = new Set();
  raw.forEach(k => {
   const s = String(k).trim();
-  if (!s) return;
+  if (!s || s === "null" || s === "undefined" || s === "UNLINKED") return;
   keysSet.add(s);
   keysSet.add(s.toLowerCase());
   keysSet.add(s.toUpperCase());
@@ -342,11 +509,119 @@ function _permOverrideSearchKeys(session) {
  return Array.from(keysSet);
 }
 
-async function _findUserOverride(session) {
+export async function findUserOverride(session) {
  const overrides = await loadPermissionOverrides(true);
  const keys = _permOverrideSearchKeys(session);
- for (const k of keys) { if (overrides[k]) return overrides[k]; }
+ for (const k of keys) {
+  if (overrides[k]) return overrides[k];
+ }
  return null;
+}
+export const _findUserOverride = findUserOverride;
+
+/**
+ * Sinkronisasi data sesi aktif dari USERS & MASTER_KARYAWAN secara real-time
+ * Menjamin perubahan Role, NIK, Jabatan, dan Cabang oleh Super Admin langsung terefleksi
+ */
+export async function syncSessionWithDb(session) {
+ if (!session) return null;
+ try {
+  const canonUser = session.username || session.id;
+  const userResult = await findUserForAuth(canonUser);
+  let updated = false;
+  const current = { ...session };
+
+  if (userResult && userResult.data) {
+   const u = userResult.data;
+   if (u.role && u.role.toUpperCase() !== current.role) {
+    current.role = u.role.toUpperCase();
+    updated = true;
+   }
+   if (u.nama && u.nama !== current.nama) {
+    current.nama = u.nama;
+    updated = true;
+   }
+   if (u.nik && u.nik !== current.nik && u.nik !== "-" && u.nik !== "null") {
+    current.nik = u.nik;
+    updated = true;
+   }
+   if (u.posisi && u.posisi !== current.posisi) {
+    current.posisi = u.posisi;
+    updated = true;
+   }
+   if (u.email && u.email !== current.email) {
+    current.email = u.email;
+    updated = true;
+   }
+   if (u.foto_url && u.foto_url !== current.foto_url) {
+    current.foto_url = u.foto_url;
+    updated = true;
+   }
+  }
+
+  // Cek MASTER_KARYAWAN untuk NIK / Nama
+  const searchNik = current.nik || (String(canonUser).match(/^\d+$/) ? canonUser : null);
+  if (searchNik && searchNik !== "null" && searchNik !== "UNLINKED") {
+   try {
+    const kSnap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(searchNik)));
+    if (kSnap.exists()) {
+     const kd = kSnap.data();
+     if (kd.cabang && kd.cabang !== current.cabang) {
+      current.cabang = kd.cabang;
+      updated = true;
+     }
+     if (kd.jabatan && (!current.posisi || current.posisi === "-")) {
+      current.posisi = kd.jabatan;
+      updated = true;
+     }
+     if (kd.foto_url && !current.foto_url) {
+      current.foto_url = kd.foto_url;
+      updated = true;
+     }
+    }
+   } catch {}
+  }
+
+  if (updated) {
+   setSession(current);
+  }
+  return current;
+ } catch (err) {
+  console.warn("syncSessionWithDb error:", err);
+  return session;
+ }
+}
+
+/**
+ * Ringkasan Status Hak Akses Pengguna untuk Ditampilkan di Profil
+ */
+export async function getUserPermissionSummary(session) {
+  if (!session) return null;
+  const override = await findUserOverride(session);
+  const visibleMenus = await computeVisibleMenus(session);
+  const role = (session.role || "STAFF").toUpperCase();
+  const isSuperadmin = role === "SUPERADMIN";
+  const preset = ROLE_PERMISSIONS_PRESETS[role] || ROLE_PERMISSIONS_PRESETS.DEFAULT_KARYAWAN;
+
+  const isCustom = !!(override && (override.allowed_menus_set || (Array.isArray(override.allowed_actions) && override.allowed_actions.length > 0)));
+  const allowedActions = isSuperadmin
+    ? ["*"]
+    : (isCustom && Array.isArray(override.allowed_actions) ? override.allowed_actions : (preset || []));
+  const readOnly = isSuperadmin ? false : (override?.read_only === true);
+
+  return {
+    isSuperadmin: isSuperadmin,
+    hasOverride: isCustom,
+    role: role,
+    visibleMenus: visibleMenus,
+    visibleMenuIds: visibleMenus.map(m => m.id),
+    allowedMenuNames: visibleMenus.map(m => m.label || m.name || m.id),
+    allowedActions: allowedActions,
+    allowedForms: Array.isArray(override?.allowed_forms) ? override.allowed_forms : [],
+    allowedSubmenus: override?.allowed_submenus || {},
+    readOnly: readOnly,
+    updatedAt: override?.updated_at || null
+  };
 }
 
 /**
@@ -360,6 +635,10 @@ async function _findUserOverride(session) {
 export async function hasSubMenuAccess(menuId, subMenuId, session) {
  if (!session) return false;
  const role = (session.role || "").toUpperCase();
+ const posisi = (session.posisi || session.jabatan || "").toUpperCase();
+ const isSales = role === "SALES" || posisi.includes("SALES");
+ if (isSales && menuId === "lembur-kasbon") return false;
+
  const isManagementOrHrd = _MANAGEMENT_ROLES.includes(role) || await isAtasan(session.nama);
 
  const userOverride = await _findUserOverride(session);
@@ -413,8 +692,26 @@ export async function canAccessRoute(routeId, session) {
  if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi"].includes(targetId)) {
  targetId = "penilaian-kontrak";
  }
- // Semua role berhak mengakses route publik karir, absensi, penilaian/kontrak & reimbursement
- if (["karir", "lowongan", "portal-karir", "loker", "absensi", "absensi-saya", "penilaian", "penilaian-kontrak", "kontrak", "reimbursement"].includes(targetId)) return true;
+ if (["sppkl", "spl", "lembur", "overtime", "perintah-lembur"].includes(targetId)) {
+ targetId = "lembur-kasbon";
+ }
+
+ // Cek aturan khusus Lembur: Divisi Sales tidak memiliki hak lembur, Karyawan Non-Sales diizinkan akses SPPKL mereka
+ if (targetId === "lembur-kasbon" && session) {
+  const role = (session.role || "").toUpperCase();
+  const posisi = (session.posisi || session.jabatan || "").toUpperCase();
+  const isSales = role === "SALES" || posisi.includes("SALES");
+  if (isSales) {
+   const userOverride = await _findUserOverride(session);
+   const hasExplicitLembur = userOverride?.allowed_menus?.includes("lembur-kasbon");
+   if (!hasExplicitLembur) return false;
+  } else {
+   return true;
+  }
+ }
+
+ // Route publik & route bawaan default karyawan
+ if (["karir", "lowongan", "portal-karir", "loker", "absensi", "absensi-saya", "pengajuan", "pengajuan-cuti", "izin", "performance-review"].includes(targetId)) return true;
 
  const menus = await computeVisibleMenus(session);
  // route yang tidak ada di MENU_CONFIG (mis. sub-halaman) dianggap boleh selama login
@@ -1381,7 +1678,6 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "reimbursement.my.create", "reimbursement.my.view",
   "kasbon.my.create", "kasbon.my.print",
   "klaim_bensin.form.create", "klaim_bensin.form.print",
-  "lembur.usulan_saya.create",
   "sales_order.view", "sales_order.create", "sales_order.print",
   "sales_outlet.view", "sales_outlet.create", "sales_outlet.edit",
   "sales_item.view",
@@ -1408,10 +1704,56 @@ export const ROLE_PERMISSIONS_PRESETS = {
  ]
 };
 
+// Role Presets for Default & Specific Divisions
+ROLE_PERMISSIONS_PRESETS.DEFAULT_KARYAWAN = [
+ "dashboard.view",
+ "pengajuan.view", "pengajuan.create", "riwayat.view",
+ "absensi.data.view_all", "absensi_saya.view",
+ "pengajuan_cuti.create", "pengajuan_cuti.print",
+ "izin.create", "izin.print",
+ "performance_review.my.view",
+ "profile.view", "profile.edit", "profile.documents.view", "profile.sign_document"
+];
+ROLE_PERMISSIONS_PRESETS.BACK_OFFICE = [
+ "dashboard.view",
+ "pengajuan.view", "pengajuan.create", "riwayat.view", "riwayat.print", "riwayat.lpj.submit",
+ "broadcast.view",
+ "absensi.data.view_all", "absensi_saya.view",
+ "pengajuan_cuti.create", "pengajuan_cuti.print",
+ "izin.create", "izin.print",
+ "penilaian_kontrak.hasil_saya.view", "penilaian_kontrak.kontrak_saya.view",
+ "performance_review.my.view",
+ "training.my.submit", "training.my.participate",
+ "reimbursement.my.create", "reimbursement.my.view",
+ "kasbon.my.create", "kasbon.my.print",
+ "klaim_bensin.form.create", "klaim_bensin.form.print",
+ "lembur.dashboard.view", "lembur.usulan_saya.create",
+ "profile.view", "profile.edit", "profile.documents.view", "profile.sign_document"
+];
+ROLE_PERMISSIONS_PRESETS.WAREHOUSE = [
+ "dashboard.view",
+ "pengajuan.view", "pengajuan.create", "riwayat.view", "riwayat.print",
+ "broadcast.view",
+ "absensi.data.view_all", "absensi_saya.view",
+ "pengajuan_cuti.create", "pengajuan_cuti.print",
+ "izin.create", "izin.print",
+ "penilaian_kontrak.hasil_saya.view", "penilaian_kontrak.kontrak_saya.view",
+ "performance_review.my.view",
+ "training.my.submit", "training.my.participate",
+ "lembur.dashboard.view", "lembur.usulan_saya.create",
+ "inventory.barang.view", "inventory.ambil.create",
+ "kendaraan.bbm.manage",
+ "profile.view", "profile.edit", "profile.documents.view", "profile.sign_document"
+];
+
 // Aliases for roles
-ROLE_PERMISSIONS_PRESETS.KARYAWAN = ROLE_PERMISSIONS_PRESETS.STAFF;
+ROLE_PERMISSIONS_PRESETS.KARYAWAN = ROLE_PERMISSIONS_PRESETS.DEFAULT_KARYAWAN;
+ROLE_PERMISSIONS_PRESETS.DEFAULT = ROLE_PERMISSIONS_PRESETS.DEFAULT_KARYAWAN;
 ROLE_PERMISSIONS_PRESETS.DRIVER = ROLE_PERMISSIONS_PRESETS.STAFF;
-ROLE_PERMISSIONS_PRESETS.WAREHOUSE = ROLE_PERMISSIONS_PRESETS.STAFF;
+ROLE_PERMISSIONS_PRESETS["BACK OFFICE"] = ROLE_PERMISSIONS_PRESETS.BACK_OFFICE;
+ROLE_PERMISSIONS_PRESETS.BACKOFFICE = ROLE_PERMISSIONS_PRESETS.BACK_OFFICE;
+ROLE_PERMISSIONS_PRESETS.BO = ROLE_PERMISSIONS_PRESETS.BACK_OFFICE;
+ROLE_PERMISSIONS_PRESETS.GUDANG = ROLE_PERMISSIONS_PRESETS.WAREHOUSE;
 ROLE_PERMISSIONS_PRESETS.MANAGER = ROLE_PERMISSIONS_PRESETS.SPV;
 ROLE_PERMISSIONS_PRESETS.KOORDINATOR = ROLE_PERMISSIONS_PRESETS.SPV;
 ROLE_PERMISSIONS_PRESETS["BRANCH MANAGER"] = ROLE_PERMISSIONS_PRESETS.GM;
@@ -1426,16 +1768,27 @@ ROLE_PERMISSIONS_PRESETS.DIREKTUR = ROLE_PERMISSIONS_PRESETS.GM;
 export async function hasPermission(permissionKey, session, forceReload = false) {
  if (!session) return false;
  const role = (session.role || "").toUpperCase();
+ const posisi = (session.posisi || session.jabatan || "").toUpperCase();
  if (role === "SUPERADMIN") return true;
+
+ const isSales = role === "SALES" || posisi.includes("SALES");
 
  const userOverride = await _findUserOverride(session);
  if (userOverride && Array.isArray(userOverride.allowed_actions) && userOverride.allowed_actions.length > 0) {
+  if (isSales && permissionKey.startsWith("lembur.") && !userOverride.allowed_actions.includes(permissionKey)) {
+   return false;
+  }
   return userOverride.allowed_actions.includes(permissionKey);
  }
 
+ // Aturan Khusus: Sales tidak memiliki hak lembur
+ if (isSales && permissionKey.startsWith("lembur.")) {
+  return false;
+ }
+
  // Fallback ke Role Presets
- const preset = ROLE_PERMISSIONS_PRESETS[role] || ROLE_PERMISSIONS_PRESETS.STAFF;
- if (preset.includes("*") || preset.includes(permissionKey)) {
+ const preset = ROLE_PERMISSIONS_PRESETS[role] || (isSales ? ROLE_PERMISSIONS_PRESETS.SALES : (posisi.includes("WAREHOUSE") || posisi.includes("GUDANG") ? ROLE_PERMISSIONS_PRESETS.WAREHOUSE : (posisi.includes("BACK OFFICE") || posisi.includes("BACKOFFICE") ? ROLE_PERMISSIONS_PRESETS.BACK_OFFICE : ROLE_PERMISSIONS_PRESETS.DEFAULT_KARYAWAN)));
+ if (preset && (preset.includes("*") || preset.includes(permissionKey))) {
   if (userOverride?.read_only) {
    const isModify = permissionKey.endsWith(".edit") || permissionKey.endsWith(".delete") || permissionKey.endsWith(".configure") || permissionKey.endsWith(".annual_reset") || permissionKey.endsWith(".bulk_execute");
    if (isModify && !permissionKey.includes(".my.")) return false;

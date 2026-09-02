@@ -29,115 +29,141 @@ export async function mount(container, { session }) {
  let allKaryawan = [];
  let allCuti = [];
 
+ const searchInput = container.querySelector("#manajemen-cuti-search");
+ const countDisplay = container.querySelector("#manajemen-cuti-count");
+
+ function renderRows() {
+  const searchTerm = (searchInput?.value || "").trim().toLowerCase();
+  const filtered = allKaryawan.filter(k => {
+   if (!searchTerm) return true;
+   const name = (k.nama_karyawan || "").toLowerCase();
+   const nik = (k.nik || k.nik_karyawan || "").toLowerCase();
+   const jabatan = (k.jabatan || "").toLowerCase();
+   return name.includes(searchTerm) || nik.includes(searchTerm) || jabatan.includes(searchTerm);
+  });
+
+  if (countDisplay) {
+   countDisplay.textContent = `${filtered.length} / ${allKaryawan.length} Karyawan`;
+  }
+
+  if (filtered.length === 0) {
+   tbody.innerHTML = `<tr><td colspan="6">${emptyState("Tidak ada data karyawan yang cocok dengan pencarian.")}</td></tr>`;
+   return;
+  }
+
+  const now = new Date();
+  tbody.innerHTML = filtered.map(k => {
+   let masaKerjaStr = "-";
+   if (k.tanggal_join) {
+    const join = smartParseDate(k.tanggal_join);
+    if (join) {
+     const diffMonths = (now.getFullYear() - join.getFullYear()) * 12 + (now.getMonth() - join.getMonth());
+     const yrs = Math.floor(diffMonths / 12);
+     const mths = diffMonths % 12;
+     masaKerjaStr = yrs > 0 ? `${yrs} Thn ${mths} Bln` : `${mths} Bln`;
+    }
+   }
+
+   const empCuti = allCuti.filter(c => c.nama_karyawan === k.nama_karyawan || (k.nik && c.nik === k.nik));
+   const calc = getCalculatedJatahCuti(k, empCuti);
+
+   return `
+   <tr class="hover:bg-slate-50/50 transition">
+   <td class="py-3 px-4">
+   <p class="font-bold text-slate-800">${escapeHtml(k.nama_karyawan)}</p>
+   <p class="text-[11px] text-slate-400 font-medium">${escapeHtml(k.nik || k.nik_karyawan || "-")}</p>
+   </td>
+   <td class="py-3 px-4 text-slate-600 font-medium text-xs">${masaKerjaStr}</td>
+   
+   <!-- CUTI TAHUNAN -->
+   <td class="py-3 px-4 text-center">
+   <div class="inline-flex flex-col items-center">
+   <span class="bg-blue-100 text-blue-800 font-bold px-2.5 py-0.5 rounded-lg text-xs">Sisa: ${calc.sisaTahunan} Hari</span>
+   <span class="text-[10px] text-slate-500 mt-1">Awal: <strong>${calc.jatahTahunan}</strong> • Pakai: <strong class="text-amber-700">${calc.usedTahunan}</strong></span>
+   </div>
+   </td>
+
+   <!-- CUTI KHUSUS -->
+   <td class="py-3 px-4 text-center">
+   <div class="inline-flex flex-col items-center">
+   <span class="bg-purple-100 text-purple-800 font-bold px-2.5 py-0.5 rounded-lg text-xs">Sisa: ${calc.sisaKhusus} Hari</span>
+   <span class="text-[10px] text-slate-500 mt-1">Awal: <strong>${calc.jatahKhusus}</strong> • Pakai: <strong class="text-amber-700">${calc.usedKhusus}</strong></span>
+   </div>
+   </td>
+
+   <!-- CARRYOVER AKUMULASI -->
+   <td class="py-3 px-4 text-center">
+   <div class="inline-flex flex-col items-center">
+   <span class="bg-amber-100 text-amber-800 font-bold px-2.5 py-0.5 rounded-lg text-xs">Sisa: ${calc.sisaAkumulasi} Hari</span>
+   <span class="text-[10px] text-slate-500 mt-1">Awal: <strong>${calc.jatahAkumulasi}</strong> • Pakai: <strong class="text-amber-700">${calc.usedAkumulasi}</strong></span>
+   ${k.cuti_akumulasi_expired ? `<p class="text-[9px] text-amber-600 mt-0.5 font-medium">Hangus stlh ${escapeHtml(k.cuti_akumulasi_expired)}</p>` : ""}
+   </div>
+   </td>
+
+   <!-- SISA CUTI TAHUN LALU (INPUT MANUAL) -->
+   <td class="py-3 px-4 text-center">
+   <input type="number" step="0.5" min="0" data-sisa-lalu="${k.id}"
+   value="${k.sisa_cuti_tahun_lalu ?? ""}" placeholder="Belum diisi"
+   class="w-24 text-center px-2 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-maroon-400 text-sm font-semibold text-slate-700">
+   ${(k.sisa_cuti_tahun_lalu === undefined || k.sisa_cuti_tahun_lalu === null) ? `<p class="text-[10px] text-amber-600 mt-1">Belum diisi HRD</p>` : ""}
+   </td>
+   </tr>
+   `;
+  }).join("");
+
+  tbody.querySelectorAll("[data-sisa-lalu]").forEach(inp => {
+   inp.addEventListener("change", async () => {
+    const id = inp.dataset.sisaLalu;
+    const val = inp.value === "" ? null : (parseFloat(inp.value) || 0);
+    try {
+     const emp = allKaryawan.find(k => k.id === id);
+     let jAkumulasiBaru = 0;
+     if (val !== null && val > 0 && emp) {
+      jAkumulasiBaru = calculateCarryoverJatah(val, emp.tanggal_join);
+     }
+     await updateDoc(doc(db, COL.MASTER_KARYAWAN, id), { 
+      sisa_cuti_tahun_lalu: val,
+      jatah_cuti_akumulasi: jAkumulasiBaru,
+      jatah_akumulasi: jAkumulasiBaru
+     });
+     if (emp) {
+      emp.sisa_cuti_tahun_lalu = val;
+      emp.jatah_cuti_akumulasi = jAkumulasiBaru;
+      emp.jatah_akumulasi = jAkumulasiBaru;
+     }
+     toast("Sisa cuti tahun lalu dan jatah akumulasi berhasil diperbarui", "success");
+     renderRows();
+    } catch (e) {
+     toast("Gagal menyimpan: " + e.message, "error");
+    }
+   });
+  });
+ }
+
+ if (searchInput) {
+  searchInput.addEventListener("input", () => {
+   renderRows();
+  });
+ }
+
  // ==========================================
  // 1. MEMUAT & MENAMPILKAN DATA KARYAWAN
  // ==========================================
  async function loadData() {
- const [dataKaryawan, dataCuti] = await Promise.all([
-   fsGetAll(COL.MASTER_KARYAWAN),
-   fsGetAll(COL.MASTER_CUTI)
- ]);
- allKaryawan = dataKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF");
- allKaryawan.sort((a,b) => (a.nama_karyawan||"").localeCompare(b.nama_karyawan||""));
- allCuti = dataCuti || [];
+  const [dataKaryawan, dataCuti] = await Promise.all([
+    fsGetAll(COL.MASTER_KARYAWAN),
+    fsGetAll(COL.MASTER_CUTI)
+  ]);
+  allKaryawan = dataKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF");
+  allKaryawan.sort((a,b) => (a.nama_karyawan||"").localeCompare(b.nama_karyawan||""));
+  allCuti = dataCuti || [];
 
- if (allKaryawan.length === 0) {
- tbody.innerHTML = `<tr><td colspan="6">${emptyState("Belum ada data karyawan aktif.")}</td></tr>`;
- return;
- }
+  if (allKaryawan.length === 0) {
+   tbody.innerHTML = `<tr><td colspan="6">${emptyState("Belum ada data karyawan aktif.")}</td></tr>`;
+   return;
+  }
 
- const now = new Date();
- 
- tbody.innerHTML = allKaryawan.map(k => {
- let masaKerjaStr = "-";
- if (k.tanggal_join) {
- const join = smartParseDate(k.tanggal_join);
- if (join) {
- const diffMonths = (now.getFullYear() - join.getFullYear()) * 12 + (now.getMonth() - join.getMonth());
- const yrs = Math.floor(diffMonths / 12);
- const mths = diffMonths % 12;
- masaKerjaStr = yrs > 0 ? `${yrs} Thn ${mths} Bln` : `${mths} Bln`;
- }
- }
-
- const empCuti = allCuti.filter(c => c.nama_karyawan === k.nama_karyawan || (k.nik && c.nik === k.nik));
- const calc = getCalculatedJatahCuti(k, empCuti);
-
- return `
- <tr class="hover:bg-slate-50/50 transition">
- <td class="py-3 px-4">
- <p class="font-bold text-slate-800">${escapeHtml(k.nama_karyawan)}</p>
- <p class="text-[11px] text-slate-400 font-medium">${escapeHtml(k.nik || k.nik_karyawan || "-")}</p>
- </td>
- <td class="py-3 px-4 text-slate-600 font-medium text-xs">${masaKerjaStr}</td>
- 
- <!-- CUTI TAHUNAN -->
- <td class="py-3 px-4 text-center">
- <div class="inline-flex flex-col items-center">
- <span class="bg-blue-100 text-blue-800 font-bold px-2.5 py-0.5 rounded-lg text-xs">Sisa: ${calc.sisaTahunan} Hari</span>
- <span class="text-[10px] text-slate-500 mt-1">Awal: <strong>${calc.jatahTahunan}</strong> • Pakai: <strong class="text-amber-700">${calc.usedTahunan}</strong></span>
- </div>
- </td>
-
- <!-- CUTI KHUSUS -->
- <td class="py-3 px-4 text-center">
- <div class="inline-flex flex-col items-center">
- <span class="bg-purple-100 text-purple-800 font-bold px-2.5 py-0.5 rounded-lg text-xs">Sisa: ${calc.sisaKhusus} Hari</span>
- <span class="text-[10px] text-slate-500 mt-1">Awal: <strong>${calc.jatahKhusus}</strong> • Pakai: <strong class="text-amber-700">${calc.usedKhusus}</strong></span>
- </div>
- </td>
-
- <!-- CARRYOVER AKUMULASI -->
- <td class="py-3 px-4 text-center">
- <div class="inline-flex flex-col items-center">
- <span class="bg-amber-100 text-amber-800 font-bold px-2.5 py-0.5 rounded-lg text-xs">Sisa: ${calc.sisaAkumulasi} Hari</span>
- <span class="text-[10px] text-slate-500 mt-1">Awal: <strong>${calc.jatahAkumulasi}</strong> • Pakai: <strong class="text-amber-700">${calc.usedAkumulasi}</strong></span>
- ${k.cuti_akumulasi_expired ? `<p class="text-[9px] text-amber-600 mt-0.5 font-medium">Hangus stlh ${escapeHtml(k.cuti_akumulasi_expired)}</p>` : ""}
- </div>
- </td>
-
- <!-- SISA CUTI TAHUN LALU (INPUT MANUAL) -->
- <td class="py-3 px-4 text-center">
- <input type="number" step="0.5" min="0" data-sisa-lalu="${k.id}"
- value="${k.sisa_cuti_tahun_lalu ?? ""}" placeholder="Belum diisi"
- class="w-24 text-center px-2 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-maroon-400 text-sm font-semibold text-slate-700">
- ${(k.sisa_cuti_tahun_lalu === undefined || k.sisa_cuti_tahun_lalu === null) ? `<p class="text-[10px] text-amber-600 mt-1">Belum diisi HRD</p>` : ""}
- </td>
- </tr>
- `;
- }).join("");
-
- // Input manual "Sisa Cuti Tahun Lalu" -- inilah basis carryover yang BENAR
- // (sesuai SK bagian C: "sisa cuti tahunan yang MASIH TERSISA" di tahun
- // lalu), bukan dihitung otomatis dari jatah tahun ini. HRD mengisi
- // langsung di sini (atau lewat Import Excel) sebelum menekan Reset Otomatis.
-  tbody.querySelectorAll("[data-sisa-lalu]").forEach(inp => {
-    inp.addEventListener("change", async () => {
-      const id = inp.dataset.sisaLalu;
-      const val = inp.value === "" ? null : (parseFloat(inp.value) || 0);
-      try {
-        const emp = allKaryawan.find(k => k.id === id);
-        let jAkumulasiBaru = 0;
-        if (val !== null && val > 0 && emp) {
-          jAkumulasiBaru = calculateCarryoverJatah(val, emp.tanggal_join);
-        }
-        await updateDoc(doc(db, COL.MASTER_KARYAWAN, id), { 
-          sisa_cuti_tahun_lalu: val,
-          jatah_cuti_akumulasi: jAkumulasiBaru,
-          jatah_akumulasi: jAkumulasiBaru
-        });
-        if (emp) {
-          emp.sisa_cuti_tahun_lalu = val;
-          emp.jatah_cuti_akumulasi = jAkumulasiBaru;
-          emp.jatah_akumulasi = jAkumulasiBaru;
-        }
-        toast("Sisa cuti tahun lalu dan jatah akumulasi berhasil diperbarui", "success");
-        await loadData();
-      } catch (e) {
-        toast("Gagal menyimpan: " + e.message, "error");
-      }
-    });
-  });
+  renderRows();
  }
 
  // ==========================================
@@ -162,49 +188,111 @@ export async function mount(container, { session }) {
  btnImport.disabled = true;
  btnImport.textContent = "Memproses...";
 
-  let updateCount = 0;
-  
-  for (const row of json) {
-    const nik = row["NIK"];
-    const nama = row["Nama Karyawan"];
-    if (!nik && !nama) continue;
+  // Helper flexible matching column name
+					const getVal = (row, names) => {
+						const rowKeys = Object.keys(row);
+						for (const n of names) {
+							const cleanN = n.toLowerCase().replace(/[^a-z0-9]/g, "");
+							for (const k of rowKeys) {
+								const cleanK = k.toLowerCase().replace(/[^a-z0-9]/g, "");
+								if (cleanK === cleanN) return row[k];
+							}
+						}
+						for (const n of names) {
+							const cleanN = n.toLowerCase().replace(/[^a-z0-9]/g, "");
+							if (!cleanN) continue;
+							for (const k of rowKeys) {
+								const cleanK = k.toLowerCase().replace(/[^a-z0-9]/g, "");
+								if (cleanK.includes(cleanN) || cleanN.includes(cleanK)) return row[k];
+							}
+						}
+						return undefined;
+					};
 
-    const targetEmp = allKaryawan.find(k => k.nik == nik || k.nik_karyawan == nik || (k.nama_karyawan || "").toLowerCase() === (nama || "").toLowerCase());
-    
-    if (targetEmp) {
-      const sisaLaluRaw = row["Sisa Cuti Tahun Lalu"];
-      let sisaLalu = null;
-      if (sisaLaluRaw !== undefined && sisaLaluRaw !== null && sisaLaluRaw !== "") {
-        sisaLalu = parseFloat(sisaLaluRaw) || 0;
-      }
+					const parseNum = (v) => {
+						if (v === undefined || v === null || v === "") return null;
+						if (typeof v === "number") return isNaN(v) ? null : v;
+						const str = String(v).trim().replace(",", ".");
+						const m = str.match(/-?\d+(\.\d+)?/);
+						if (m) {
+							const res = parseFloat(m[0]);
+							return isNaN(res) ? null : res;
+						}
+						return null;
+					};
 
-      let jAkumulasiVal = 0;
-      if (sisaLalu !== null) {
-        // Basis carryover adalah sisa cuti tahun lalu dikalikan persentase masa kerja
-        jAkumulasiVal = calculateCarryoverJatah(sisaLalu, targetEmp.tanggal_join);
-      } else if (row["Jatah Cuti Akumulasi"] !== undefined && row["Jatah Cuti Akumulasi"] !== null && row["Jatah Cuti Akumulasi"] !== "") {
-        const rawAkumulasi = parseInt(row["Jatah Cuti Akumulasi"]) || 0;
-        const pct = getCarryoverPercentage(targetEmp.tanggal_join);
-        jAkumulasiVal = pct > 0 ? rawAkumulasi : 0;
-      }
+					let updateCount = 0;
 
-      const payload = {
-        jatah_cuti_tahunan: parseInt(row["Jatah Cuti Tahunan"]) || 0,
-        jatah_tahunan: parseInt(row["Jatah Cuti Tahunan"]) || 0,
-        jatah_cuti_khusus: parseInt(row["Jatah Cuti Khusus"]) || 0,
-        jatah_khusus: parseInt(row["Jatah Cuti Khusus"]) || 0,
-        jatah_cuti_akumulasi: jAkumulasiVal,
-        jatah_akumulasi: jAkumulasiVal
-      };
-      if (sisaLalu !== null) {
-        payload.sisa_cuti_tahun_lalu = sisaLalu;
-      }
-      await updateDoc(doc(db, COL.MASTER_KARYAWAN, targetEmp.id), payload);
-      updateCount++;
-    }
-  }
+					for (const row of json) {
+						const nikRaw = getVal(row, ["nik", "no induk", "no. induk", "nomor induk", "id karyawan", "nip", "no karyawan", "kode karyawan", "id"]);
+						const namaRaw = getVal(row, ["nama karyawan", "nama", "nama lengkap", "karyawan", "nama_karyawan", "nama pemohon"]);
 
-  toast(`Berhasil mengupdate jatah cuti ${updateCount} karyawan!`, "success");
+						const cleanNik = nikRaw !== undefined && nikRaw !== null ? String(nikRaw).trim() : "";
+						const cleanNama = namaRaw !== undefined && namaRaw !== null ? String(namaRaw).trim().toLowerCase().replace(/\s+/g, " ") : "";
+
+						if (!cleanNik && !cleanNama) continue;
+
+						let targetEmp = null;
+						if (cleanNik) {
+							const pureNik = cleanNik.replace(/^0+/, "");
+							targetEmp = allKaryawan.find(k => {
+								const kNik = (k.nik || k.nik_karyawan || "").toString().trim();
+								return kNik && (kNik === cleanNik || kNik.replace(/^0+/, "") === pureNik);
+							});
+						}
+						if (!targetEmp && cleanNama) {
+							targetEmp = allKaryawan.find(k => (k.nama_karyawan || "").trim().toLowerCase().replace(/\s+/g, " ") === cleanNama);
+							if (!targetEmp && cleanNama.length >= 4) {
+								targetEmp = allKaryawan.find(k => {
+									const kN = (k.nama_karyawan || "").trim().toLowerCase().replace(/\s+/g, " ");
+									return kN.includes(cleanNama) || cleanNama.includes(kN);
+								});
+							}
+						}
+
+						if (!targetEmp) continue;
+
+						const jTahunan = parseNum(getVal(row, ["jatah cuti tahunan", "jatah tahunan", "jatah tahunan awal", "jatah cuti tahunan awal", "cuti tahunan", "tahunan", "hak cuti tahunan", "saldo cuti tahunan", "sisa cuti tahunan"]));
+						const jKhusus = parseNum(getVal(row, ["jatah cuti khusus", "jatah khusus", "jatah khusus awal", "jatah cuti khusus awal", "cuti khusus", "khusus", "hak cuti khusus", "saldo cuti khusus", "sisa cuti khusus"]));
+						const jAkumulasi = parseNum(getVal(row, ["jatah cuti akumulasi", "jatah akumulasi", "jatah akumulasi carryover", "carryover akumulasi", "carryover", "akumulasi", "cuti akumulasi", "hak cuti akumulasi", "saldo cuti akumulasi", "sisa cuti akumulasi"]));
+						const sisaLalu = parseNum(getVal(row, ["sisa cuti tahun lalu", "sisa cuti tahun lalu manual hrd", "sisa cuti tahun lalu input manual hrd", "sisa tahun lalu", "sisa cuti lalu", "sisa lalu", "sisa cuti tahun sebelumnya", "cuti tahun lalu"]));
+
+						const payload = {};
+						let hasChange = false;
+
+						if (jTahunan !== null) {
+							payload.jatah_cuti_tahunan = jTahunan;
+							payload.jatah_tahunan = jTahunan;
+							hasChange = true;
+						}
+						if (jKhusus !== null) {
+							payload.jatah_cuti_khusus = jKhusus;
+							payload.jatah_khusus = jKhusus;
+							hasChange = true;
+						}
+						if (jAkumulasi !== null) {
+							payload.jatah_cuti_akumulasi = jAkumulasi;
+							payload.jatah_akumulasi = jAkumulasi;
+							hasChange = true;
+						}
+						if (sisaLalu !== null) {
+							payload.sisa_cuti_tahun_lalu = sisaLalu;
+							if (jAkumulasi === null) {
+								const calcAkum = calculateCarryoverJatah(sisaLalu, targetEmp.tanggal_join);
+								payload.jatah_cuti_akumulasi = calcAkum;
+								payload.jatah_akumulasi = calcAkum;
+							}
+							hasChange = true;
+						}
+
+						if (hasChange) {
+							await updateDoc(doc(db, COL.MASTER_KARYAWAN, targetEmp.id), payload);
+							Object.assign(targetEmp, payload);
+							updateCount++;
+						}
+					}
+
+	toast(`Berhasil mengupdate jatah cuti ${updateCount} karyawan!`, "success");
   await loadData();
   } catch (err) {
   console.error(err);

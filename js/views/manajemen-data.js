@@ -553,8 +553,12 @@ export async function mount(container) {
  
  const filtered = rows.filter(r => {
  if (!searchTerm) return true;
- const jsonStr = JSON.stringify(r).toLowerCase();
- return jsonStr.includes(searchTerm);
+ const searchableText = [
+  r._docId, r.id, r.nama, r.nama_karyawan, r.nama_pemohon, r.nama_penilai,
+  r.nik, r.nik_karyawan, r.jabatan, r.cabang, r.divisi, r.email, r.judul,
+  r.toko_outlet, r.status, r.status_karyawan, r.finger_name
+ ].filter(Boolean).join(" ").toLowerCase();
+ return searchableText.includes(searchTerm);
  });
 
  if (countEl) countEl.textContent = `${filtered.length} / ${rows.length} Record`;

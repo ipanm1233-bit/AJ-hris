@@ -35,16 +35,31 @@
           </div>
           <div class="w-full sm:w-auto">
             <label class="block text-[11px] font-bold text-slate-600 mb-1">Terapkan Template Role:</label>
-            <select id="rbac-preset-select" class="w-full sm:w-48 px-3 py-2 text-xs font-semibold rounded-xl border border-maroon-200 focus:border-maroon-500 outline-none bg-maroon-50 text-maroon-900 transition">
-              <option value="">-- Pilih Template --</option>
-              <option value="SUPERADMIN">Template SUPERADMIN</option>
-              <option value="HRD">Template HRD</option>
-              <option value="GM">Template GM / Direksi</option>
-              <option value="FINANCE">Template FINANCE</option>
-              <option value="SPV">Template SPV / Manager</option>
-              <option value="SALES">Template SALES</option>
-              <option value="STAFF">Template STAFF / Karyawan</option>
+            <select id="rbac-preset-select" class="w-full sm:w-56 px-3 py-2 text-xs font-semibold rounded-xl border border-maroon-200 focus:border-maroon-500 outline-none bg-maroon-50 text-maroon-900 transition">
+              <option value="">-- Pilih Template Role --</option>
+              <option value="DEFAULT_KARYAWAN">⚡ 6 Menu Default (Standar)</option>
+              <option value="BACK_OFFICE">🏢 Back Office (+ Lembur)</option>
+              <option value="WAREHOUSE">📦 Warehouse (+ Lembur)</option>
+              <option value="SALES">💼 Sales (Tanpa Lembur)</option>
+              <option value="STAFF">👤 Staff / Karyawan Umum</option>
+              <option value="SPV">🎖️ SPV / Supervisor</option>
+              <option value="FINANCE">💰 Finance</option>
+              <option value="GM">👔 GM / Direksi</option>
+              <option value="HRD">👥 HRD / Personalia</option>
+              <option value="SUPERADMIN">🛡️ SUPERADMIN (Semua Hak)</option>
             </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- POLICY NOTICE BANNER -->
+      <div class="p-3 bg-blue-50/80 border border-blue-200/90 rounded-xl text-blue-900 text-xs flex items-start gap-2.5">
+        <span class="text-base mt-0.5">💡</span>
+        <div class="space-y-0.5">
+          <div class="font-bold text-blue-950">Kebijakan Hak Akses Menu Default & Pembagian Lembur:</div>
+          <div class="text-[11px] text-blue-800 leading-relaxed">
+            Menu default standar karyawan hanya mencakup: <span class="font-semibold text-blue-950 bg-blue-100/60 px-1 py-0.5 rounded">Dashboard, Pengajuan, Absensi, Pengajuan Cuti, Izin, dan Review Kinerja</span>. 
+            Modul kerja <strong>Lembur (SPPKL)</strong> secara otomatis diatur <strong>hanya aktif untuk divisi Warehouse dan Back Office</strong>, sedangkan <strong>tim Sales tidak memiliki hak lembur</strong>.
           </div>
         </div>
       </div>
@@ -52,6 +67,9 @@
       <!-- STATUS BAR & QUICK CONTROLS -->
       <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/80">
         <div class="flex flex-wrap items-center gap-2">
+          <button id="rbac-btn-apply-default" class="px-2.5 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg shadow-2xs transition flex items-center gap-1">
+            <span>⚡ Set 6 Menu Default</span>
+          </button>
           <button id="rbac-btn-select-all" class="px-2.5 py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg shadow-2xs transition">
             Pilih Semua
           </button>

@@ -747,9 +747,14 @@ export function smartParseDate(value) {
  * apa pun timezone perangkat yang dipakai membuka aplikasinya.
  * ------------------------------------------------------------------- */
 export function fmtDate(value, opts = {}) {
- const d = smartParseDate(value);
- if (!d) return "-";
- return d.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric", timeZone: "Asia/Jakarta", ...opts });
+	const d = smartParseDate(value);
+	if (!d) return "-";
+	return d.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric", timeZone: "Asia/Jakarta", ...opts });
+}
+export function fmtDateIndo(value, opts = {}) {
+	const d = smartParseDate(value);
+	if (!d) return "-";
+	return d.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Jakarta", ...opts });
 }
 export function fmtDateShort(value) {
  const d = smartParseDate(value);
@@ -4536,15 +4541,13 @@ export function getCalculatedJatahCuti(emp, cutiRecords = null) {
   const explicitKhusus = emp.jatah_cuti_khusus ?? emp.jatah_khusus;
   const explicitAkumulasi = emp.jatah_cuti_akumulasi ?? emp.jatah_akumulasi;
 
-  let jatahTahunan = (explicitTahunan !== undefined && explicitTahunan !== null && explicitTahunan !== "") 
-    ? toNumber(explicitTahunan) 
-    : null;
-  let jatahKhusus = (explicitKhusus !== undefined && explicitKhusus !== null && explicitKhusus !== "") 
-    ? toNumber(explicitKhusus) 
-    : 4;
-  let jatahAkumulasi = (explicitAkumulasi !== undefined && explicitAkumulasi !== null && explicitAkumulasi !== "") 
-    ? toNumber(explicitAkumulasi) 
-    : 0;
+  const hasExplicitTahunan = explicitTahunan !== undefined && explicitTahunan !== null && explicitTahunan !== "";
+  const hasExplicitKhusus = explicitKhusus !== undefined && explicitKhusus !== null && explicitKhusus !== "";
+  const hasExplicitAkumulasi = explicitAkumulasi !== undefined && explicitAkumulasi !== null && explicitAkumulasi !== "";
+
+  let jatahTahunan = hasExplicitTahunan ? toNumber(explicitTahunan) : null;
+  let jatahKhusus = hasExplicitKhusus ? toNumber(explicitKhusus) : 4;
+  let jatahAkumulasi = hasExplicitAkumulasi ? toNumber(explicitAkumulasi) : null;
 
   let tenureYears = 0;
   let diffMonths = 0;
@@ -4556,29 +4559,22 @@ export function getCalculatedJatahCuti(emp, cutiRecords = null) {
       diffMonths = (now.getFullYear() - join.getFullYear()) * 12 + (now.getMonth() - join.getMonth());
       tenureYears = diffMonths / 12;
 
-      if (diffMonths >= 12) {
-        let base = 12;
-        // SK Bagian B: Cuti Penghargaan Masa Kerja
-        // - Masa kerja 6 s/d < 8 tahun (72-95 bln): +1 hari (total 13)
-        // - Masa kerja 8 s/d < 10 tahun (96-119 bln): +2 hari (total 14)
-        // - Masa kerja 10 tahun ke atas (>= 120 bln / >= 10 thn): +4 hari (total 16)
-        if (tenureYears >= 10 || diffMonths >= 120) base = 16;
-        else if (tenureYears >= 8 || diffMonths >= 96) base = 14;
-        else if (tenureYears >= 6 || diffMonths >= 72) base = 13;
-        else base = 12;
-        
-        // Auto-heal if jatahTahunan was set to 0 or capped at 15 due to legacy calculation
-        if (jatahTahunan === null || (jatahTahunan === 0 && tenureYears >= 1) || (base === 16 && (jatahTahunan === 15 || jatahTahunan === 12))) {
-          jatahTahunan = base;
-        }
-      } else if (diffMonths >= 3) {
-        // Masa kerja < 1 tahun (3-11 bulan): Cuti tahunan proporsional (1 hari/bulan)
-        if (jatahTahunan === null || jatahTahunan === 0) {
+      // Hanya gunakan kalkulasi otomatis masa kerja jika jatah tahunan TIDAK diatur secara eksplisit oleh HRD
+      if (!hasExplicitTahunan) {
+        if (diffMonths >= 12) {
+          // SK Bagian B: Cuti Penghargaan Masa Kerja
+          // - Masa kerja 6 s/d < 8 tahun: +1 hari (total 13)
+          // - Masa kerja 8 s/d < 10 tahun: +2 hari (total 14)
+          // - Masa kerja 10 tahun ke atas: +4 hari (total 16)
+          if (tenureYears >= 10 || diffMonths >= 120) jatahTahunan = 16;
+          else if (tenureYears >= 8 || diffMonths >= 96) jatahTahunan = 14;
+          else if (tenureYears >= 6 || diffMonths >= 72) jatahTahunan = 13;
+          else jatahTahunan = 12;
+        } else if (diffMonths >= 3) {
+          // Masa kerja < 1 tahun (3-11 bulan): Cuti tahunan proporsional (1 hari/bulan)
           jatahTahunan = diffMonths;
-        }
-      } else {
-        // Masa kerja < 3 bulan: belum berhak cuti tahunan
-        if (jatahTahunan === null) {
+        } else {
+          // Masa kerja < 3 bulan: belum berhak cuti tahunan
           jatahTahunan = 0;
         }
       }
@@ -4590,21 +4586,20 @@ export function getCalculatedJatahCuti(emp, cutiRecords = null) {
   }
 
   // LOGIKA CUTI AKUMULASI (CARRYOVER):
-  // Dihitung dari sisa cuti tahun lalu dikalikan persentase masa kerja:
-  // - 0 s/d di bawah 3 tahun: 0%
-  // - 3 s/d di bawah 5 tahun: 50%
-  // - 5 tahun ke atas: 100%
-  if (emp.sisa_cuti_tahun_lalu !== undefined && emp.sisa_cuti_tahun_lalu !== null && emp.sisa_cuti_tahun_lalu !== "") {
-    const sisaLalu = parseFloat(emp.sisa_cuti_tahun_lalu) || 0;
-    if (tenureYears >= 5 || diffMonths >= 60) {
-      jatahAkumulasi = Math.floor(sisaLalu * 1.0);
-    } else if (tenureYears >= 3 || diffMonths >= 36) {
-      jatahAkumulasi = Math.floor(sisaLalu * 0.5);
+  // Jika tidak diisi secara eksplisit, gunakan sisa cuti tahun lalu jika ada
+  if (!hasExplicitAkumulasi) {
+    if (emp.sisa_cuti_tahun_lalu !== undefined && emp.sisa_cuti_tahun_lalu !== null && emp.sisa_cuti_tahun_lalu !== "") {
+      const sisaLalu = parseFloat(emp.sisa_cuti_tahun_lalu) || 0;
+      if (tenureYears >= 5 || diffMonths >= 60) {
+        jatahAkumulasi = Math.floor(sisaLalu * 1.0);
+      } else if (tenureYears >= 3 || diffMonths >= 36) {
+        jatahAkumulasi = Math.floor(sisaLalu * 0.5);
+      } else {
+        jatahAkumulasi = 0;
+      }
     } else {
       jatahAkumulasi = 0;
     }
-  } else if (emp.tanggal_join && (tenureYears < 3 && diffMonths < 36)) {
-    jatahAkumulasi = 0;
   }
 
   let usedTahunan = 0;

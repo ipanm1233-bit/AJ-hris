@@ -4,7 +4,7 @@
  * Portal HRIS & Operasional CV Andela Jaya
  * =====================================================================
  */
-import { getSession, logout, computeVisibleMenus, canAccessRoute, MENU_CONFIG, loginWithToken } from "./auth.js";
+import { getSession, logout, computeVisibleMenus, canAccessRoute, MENU_CONFIG, loginWithToken, syncSessionWithDb } from "./auth.js";
 import { parseHash, toast, fmtDateTime, openModal, closeModal, sha256, fsUpdate } from "./utils.js";
 import { icon, avatar, openNotificationCenter, showMemoDetailById, skeletonShadowLayout } from "./components.js";
 import { db, messaging, firebaseConfig, COL, collection, query, where, getDocs, doc, getDoc, updateDoc, arrayUnion } from "./firebase-config.js";
@@ -52,7 +52,7 @@ async function handleGlobalHashChange() {
  return;
  }
 
- const session = getSession();
+ let session = getSession();
  if (!session || cleanPath === "login") {
  document.getElementById("app-shell")?.classList.add("hidden");
  document.getElementById("public-portal-container")?.classList.add("hidden");
@@ -60,10 +60,13 @@ async function handleGlobalHashChange() {
  return;
  }
 
+ session = (await syncSessionWithDb(session)) || session;
+
  document.getElementById("login-container")?.classList.add("hidden");
  document.getElementById("public-portal-container")?.classList.add("hidden");
  document.getElementById("app-shell")?.classList.remove("hidden");
 
+ await renderShellForUser(session);
  await router(session);
 }
 
@@ -552,99 +555,101 @@ const ROUTE_TITLES = {
 };
 
 async function router(session) {
- const container = document.getElementById("view-container");
- if (!container) return;
+	const container = document.getElementById("view-container");
+	if (!container) return;
 
- let { path, params } = parseHash();
- let cleanPath = String(path || "").replace(/^[\/#]+/, "").replace(/[\/#]+$/, "").trim();
- if (!cleanPath || cleanPath === "login") cleanPath = "dashboard";
+	const activeSession = (await syncSessionWithDb(session)) || session;
 
- let mappedPath = cleanPath;
- if (["manajemen-cuti"].includes(cleanPath)) {
- mappedPath = "cuti";
- }
- if (["lembur", "sppkl", "spl", "overtime", "perintah-lembur"].includes(cleanPath)) {
- mappedPath = "lembur-kasbon";
- }
- if (["konseling", "coaching", "counseling", "case-management", "hr-case", "hr-cases"].includes(cleanPath)) {
-    mappedPath = "konseling-coaching";
-  }
-  if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(cleanPath)) {
- mappedPath = "pemanggilan";
- }
- if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi", "penilaian-kontrak"].includes(cleanPath)) {
- if (["kontrak", "master-kontrak", "kontrak-karyawan"].includes(cleanPath)) {
- params.set("tab", "kontrak");
- } else if (["evaluasi-kontrak", "evaluasi"].includes(cleanPath)) {
- params.set("tab", "evaluasi");
- } else if (["kpi", "kpi360"].includes(cleanPath)) {
- params.set("tab", "kpi360");
- }
- mappedPath = "penilaian-kontrak";
- }
+	let { path, params } = parseHash();
+	let cleanPath = String(path || "").replace(/^[\/#]+/, "").replace(/[\/#]+$/, "").trim();
+	if (!cleanPath || cleanPath === "login") cleanPath = "dashboard";
 
- if (cleanPath === currentRoute && cleanPath !== "pengajuan") {
- // re-render tetap diizinkan untuk pengajuan (deep link form)
- }
+	let mappedPath = cleanPath;
+	if (["manajemen-cuti"].includes(cleanPath)) {
+		mappedPath = "cuti";
+	}
+	if (["lembur", "sppkl", "spl", "overtime", "perintah-lembur"].includes(cleanPath)) {
+		mappedPath = "lembur-kasbon";
+	}
+	if (["konseling", "coaching", "counseling", "case-management", "hr-case", "hr-cases"].includes(cleanPath)) {
+    	mappedPath = "konseling-coaching";
+  	}
+  	if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(cleanPath)) {
+		mappedPath = "pemanggilan";
+	}
+	if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi", "penilaian-kontrak"].includes(cleanPath)) {
+		if (["kontrak", "master-kontrak", "kontrak-karyawan"].includes(cleanPath)) {
+			params.set("tab", "kontrak");
+		} else if (["evaluasi-kontrak", "evaluasi"].includes(cleanPath)) {
+			params.set("tab", "evaluasi");
+		} else if (["kpi", "kpi360"].includes(cleanPath)) {
+			params.set("tab", "kpi360");
+		}
+		mappedPath = "penilaian-kontrak";
+	}
 
- const allowed = await canAccessRoute(cleanPath, session);
- if (!allowed) {
- toast("Anda tidak memiliki akses ke menu tersebut", "warning");
- location.hash = "#dashboard";
- return;
- }
+	if (cleanPath === currentRoute && cleanPath !== "pengajuan") {
+		// re-render tetap diizinkan untuk pengajuan (deep link form)
+	}
 
- container.classList.remove("animate-fadein");
- void container.offsetWidth; // reflow trigger biar animasi re-trigger tiap navigasi
- container.classList.add("animate-fadein");
+	const allowed = await canAccessRoute(cleanPath, activeSession);
+	if (!allowed) {
+		toast("Anda tidak memiliki akses ke menu tersebut", "warning");
+		location.hash = "#dashboard";
+		return;
+	}
 
- // Render shadow layout instant agar transisi halaman smooth tanpa patah/kedip
- container.innerHTML = skeletonShadowLayout(mappedPath);
+	container.classList.remove("animate-fadein");
+	void container.offsetWidth; // reflow trigger biar animasi re-trigger tiap navigasi
+	container.classList.add("animate-fadein");
 
- try {
- if (typeof currentUnmount === "function") { currentUnmount(); currentUnmount = null; }
- 
- const html = await loadViewHtml(mappedPath);
- container.innerHTML = html;
- 
- try {
- const mod = await import(`./views/${mappedPath}.js`);
- if (mod && typeof mod.mount === "function") {
- const result = await mod.mount(container, { params, session });
- if (result && typeof result.unmount === "function") currentUnmount = result.unmount;
- }
- } catch (modErr) {
- console.error(`Could not mount script for view "${mappedPath}":`, modErr);
- if (!container.firstElementChild || container.children.length === 0 || container.innerHTML.trim() === '<div id="sk-panel"></div>') {
- container.innerHTML = `
- <div class="max-w-md mx-auto my-12 p-6 bg-white rounded-2xl border border-slate-200 shadow-sm text-center">
- <div class="w-12 h-12 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center mx-auto mb-3 font-bold text-lg">!</div>
- <p class="text-base font-bold text-slate-800 mb-1">Gagal Memuat Halaman ${escapeHtml(cleanPath)}</p>
- <p class="text-xs text-slate-500 mb-4">${escapeHtml(modErr.message || "Terjadi kendala teknis saat menyiapkan tampilan.")}</p>
- <button onclick="location.reload()" class="px-4 py-2 bg-maroon-700 hover:bg-maroon-800 text-white rounded-xl text-xs font-bold shadow transition">Muat Ulang Halaman</button>
- </div>
- `;
- }
- }
- 
- currentRoute = cleanPath;
- highlightActive(mappedPath);
- document.title = `${ROUTE_TITLES[mappedPath] || ROUTE_TITLES[cleanPath] || "Portal"} — Andela Jaya HRIS`;
- 
- if (params && (params.memo_id || params.id)) {
- const mId = params.memo_id || params.id;
- showMemoDetailById(mId, session);
- }
- 
- } catch (err) {
- console.error("Router error:", err);
- container.innerHTML = `
- <div class="text-center py-24">
- <p class="text-2xl font-bold text-slate-300">404</p>
- <p class="text-slate-500 mt-2">Halaman "${escapeHtml(cleanPath)}" tidak ditemukan.</p>
- <a href="#dashboard" class="inline-block mt-4 text-maroon-700 font-medium hover:underline">Kembali ke Dashboard</a>
- </div>`;
- }
+	// Render shadow layout instant agar transisi halaman smooth tanpa patah/kedip
+	container.innerHTML = skeletonShadowLayout(mappedPath);
+
+	try {
+		if (typeof currentUnmount === "function") { currentUnmount(); currentUnmount = null; }
+		
+		const html = await loadViewHtml(mappedPath);
+		container.innerHTML = html;
+		
+		try {
+			const mod = await import(`./views/${mappedPath}.js`);
+			if (mod && typeof mod.mount === "function") {
+				const result = await mod.mount(container, { params, session: activeSession });
+				if (result && typeof result.unmount === "function") currentUnmount = result.unmount;
+			}
+		} catch (modErr) {
+			console.error(`Could not mount script for view "${mappedPath}":`, modErr);
+			if (!container.firstElementChild || container.children.length === 0 || container.innerHTML.trim() === '<div id="sk-panel"></div>') {
+				container.innerHTML = `
+					<div class="max-w-md mx-auto my-12 p-6 bg-white rounded-2xl border border-slate-200 shadow-sm text-center">
+						<div class="w-12 h-12 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center mx-auto mb-3 font-bold text-lg">!</div>
+						<p class="text-base font-bold text-slate-800 mb-1">Gagal Memuat Halaman ${escapeHtml(cleanPath)}</p>
+						<p class="text-xs text-slate-500 mb-4">${escapeHtml(modErr.message || "Terjadi kendala teknis saat menyiapkan tampilan.")}</p>
+						<button onclick="location.reload()" class="px-4 py-2 bg-maroon-700 hover:bg-maroon-800 text-white rounded-xl text-xs font-bold shadow transition">Muat Ulang Halaman</button>
+					</div>
+				`;
+			}
+		}
+		
+		currentRoute = cleanPath;
+		highlightActive(mappedPath);
+		document.title = `${ROUTE_TITLES[mappedPath] || ROUTE_TITLES[cleanPath] || "Portal"} — Andela Jaya HRIS`;
+		
+		if (params && (params.memo_id || params.id)) {
+			const mId = params.memo_id || params.id;
+			showMemoDetailById(mId, activeSession);
+		}
+		
+	} catch (err) {
+		console.error("Router error:", err);
+		container.innerHTML = `
+			<div class="text-center py-24">
+				<p class="text-2xl font-bold text-slate-300">404</p>
+				<p class="text-slate-500 mt-2">Halaman "${escapeHtml(cleanPath)}" tidak ditemukan.</p>
+				<a href="#dashboard" class="inline-block mt-4 text-maroon-700 font-medium hover:underline">Kembali ke Dashboard</a>
+			</div>`;
+	}
 }
 
 /* ---------------------------------------------------------------------

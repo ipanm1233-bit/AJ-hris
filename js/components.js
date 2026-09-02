@@ -420,7 +420,8 @@ export async function renderCrudModule(container, cfg) {
  container.querySelector("#crud-search")?.addEventListener("input", (e) => {
  const term = e.target.value.trim().toLowerCase();
  if (!term) return renderRows(rows);
- const fields = searchFields.length ? searchFields : columns.map(c => c.key);
+ const rawFields = searchFields.length ? searchFields : columns.map(c => c.key);
+ const fields = rawFields.filter(f => !["atasan", "atasan_langsung", "nama_atasan", "penanggung_jawab", "pejabat_pengganti"].includes(f));
  renderRows(rows.filter(r => fields.some(f => String(r[f] ?? "").toLowerCase().includes(term))));
  });
 

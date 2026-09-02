@@ -1,49 +1,63 @@
 import { db, COL, collection, query, where, getDocs, doc, getDoc, updateDoc } from "../firebase-config.js";
 import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toast, fsUpdate, fsAdd, fsGetAll, genId, localDateStr, notifyUser, getTargetsForRole, calculateAge, calculateTenure } from "../utils.js";
 import { avatar, badge, icon, emptyState } from "../components.js";
-import { setSession } from "../auth.js";
+import { setSession, syncSessionWithDb, getUserPermissionSummary, hasPermission } from "../auth.js";
 
 export async function mount(container, { session, params }) {
- const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
+	// Sync session data with Firestore database & RBAC permissions cache
+	const activeSession = (await syncSessionWithDb(session)) || session;
+	const permSummary = await getUserPermissionSummary(activeSession);
+	const isHrd = activeSession.role === "HRD" || activeSession.role === "SUPERADMIN";
 
- // Load Karyawan Details
- let k = null;
- if (session.nik && session.nik !== "null" && session.nik !== "undefined" && session.nik !== "UNLINKED") {
- const snap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(session.nik)));
- if (snap.exists()) k = snap.data();
- }
- if (!k && session.nama) {
- const q = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", session.nama));
- const snap = await getDocs(q);
- if (!snap.empty) k = snap.docs[0].data();
- }
- if (!k) {
- const allK = await fsGetAll(COL.MASTER_KARYAWAN);
- const sName = (session.nama || "").trim().toLowerCase();
- const sNik = String(session.nik || "").trim();
- k = allK.find(item => {
- const iName = (item.nama_karyawan || "").trim().toLowerCase();
- const iNik = String(item.nik_karyawan || item.nik || "").trim();
- return (sName && iName === sName) || (sNik && sNik !== "unlinked" && iNik === sNik);
- });
- }
+	// Load Karyawan Details
+	let k = null;
+	if (activeSession.nik && activeSession.nik !== "null" && activeSession.nik !== "undefined" && activeSession.nik !== "UNLINKED") {
+		const snap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(activeSession.nik)));
+		if (snap.exists()) k = snap.data();
+	}
+	if (!k && activeSession.nama) {
+		const q = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", activeSession.nama));
+		const snap = await getDocs(q);
+		if (!snap.empty) k = snap.docs[0].data();
+	}
+	if (!k) {
+		const allK = await fsGetAll(COL.MASTER_KARYAWAN);
+		const sName = (activeSession.nama || "").trim().toLowerCase();
+		const sNik = String(activeSession.nik || "").trim();
+		k = allK.find(item => {
+			const iName = (item.nama_karyawan || "").trim().toLowerCase();
+			const iNik = String(item.nik_karyawan || item.nik || "").trim();
+			return (sName && iName === sName) || (sNik && sNik !== "unlinked" && iNik === sNik);
+		});
+	}
 
- // Bind Core Header Info
- const largeAvatar = container.querySelector("#profile-large-avatar");
- if (largeAvatar) {
- largeAvatar.innerHTML = avatar(k?.foto_url || session.foto_url || session.nama, "w-full h-full text-3xl font-extrabold");
- }
+	// Bind Core Header Info
+	const largeAvatar = container.querySelector("#profile-large-avatar");
+	if (largeAvatar) {
+		largeAvatar.innerHTML = avatar(k?.foto_url || activeSession.foto_url || activeSession.nama, "w-full h-full text-3xl font-extrabold");
+	}
 
- const displayNik = k?.nik_karyawan || k?.nik || (session.nik && session.nik !== "null" && session.nik !== "UNLINKED" ? session.nik : "");
- container.querySelector("#profile-name").textContent = k?.nama_karyawan || session.nama;
- container.querySelector("#profile-nik-badge").textContent = displayNik ? `EMP-${displayNik}` : "UNLINKED";
- container.querySelector("#profile-title").textContent = `${k?.jabatan || session.posisi || "-"} • ${k?.cabang || session.cabang || "-"}`;
+	const displayNik = k?.nik_karyawan || k?.nik || (activeSession.nik && activeSession.nik !== "null" && activeSession.nik !== "UNLINKED" ? activeSession.nik : "");
+	container.querySelector("#profile-name").textContent = k?.nama_karyawan || activeSession.nama;
+	container.querySelector("#profile-nik-badge").textContent = displayNik ? `EMP-${displayNik}` : "UNLINKED";
+	
+	const titleEl = container.querySelector("#profile-title");
+	if (titleEl) {
+		titleEl.innerHTML = `
+			<div class="font-medium text-slate-600">${escapeHtml(k?.jabatan || activeSession.posisi || "-")} • ${escapeHtml(k?.cabang || activeSession.cabang || "-")}</div>
+			<div class="mt-2 flex items-center justify-center gap-1.5 flex-wrap">
+				<span class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-200">Role: ${escapeHtml(activeSession.role || "-")}</span>
+				${permSummary.hasOverride ? `<span class="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-200 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-amber-600"></span> Whitelist Kustom Super Admin</span>` : `<span class="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200">Preset Default Role</span>`}
+				${permSummary.readOnly ? `<span class="px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-bold border border-rose-200">Hanya Lihat (Read-Only)</span>` : `<span class="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200">Akses Penuh</span>`}
+			</div>
+		`;
+	}
 
- // Passport info
- const passportCode = container.querySelector("#passport-code");
- if (passportCode) {
- passportCode.textContent = `AJ-${displayNik || session.username || "TEMP"}-${new Date(k?.tanggal_join || Date.now()).getFullYear()}`;
- }
+	// Passport info
+	const passportCode = container.querySelector("#passport-code");
+	if (passportCode) {
+		passportCode.textContent = `AJ-${displayNik || activeSession.username || "TEMP"}-${new Date(k?.tanggal_join || Date.now()).getFullYear()}`;
+	}
 
  // Key Documents & Status Ketenagakerjaan
  const statusKaryawanVal = k?.status_karyawan || k?.status || (k?.kontrak_habis ? "PKWT (KONTRAK)" : "PKWTT (PERMANEN)");
@@ -115,11 +129,11 @@ export async function mount(container, { session, params }) {
  </div>`;
  
  detailsGrid.innerHTML = `
- ${detailRow("Username Sesi Portal", session.username)}
- ${detailRow("Role & Hak Akses", session.role)}
- ${detailRow("Jabatan Resmi", k?.jabatan || session.posisi)}
+ ${detailRow("Username Sesi Portal", activeSession.username)}
+ ${detailRow("Role & Hak Akses", `${activeSession.role} ${permSummary.hasOverride ? '(Whitelist Kustom)' : '(Preset Default)'}`)}
+ ${detailRow("Jabatan Resmi", k?.jabatan || activeSession.posisi)}
  ${detailRow("Divisi / Departemen", k?.divisi || "-")}
- ${detailRow("Lokasi Penempatan / Cabang", k?.cabang || session.cabang)}
+ ${detailRow("Lokasi Penempatan / Cabang", k?.cabang || activeSession.cabang)}
  ${detailRow("Status Kepegawaian", k?.status_karyawan || "-")}
  ${detailRow("Status Keaktifan", k?.aktif_tdk_aktif || "AKTIF")}
  ${detailRow("Atasan Langsung", k?.atasan || "-")}
@@ -132,11 +146,68 @@ export async function mount(container, { session, params }) {
  `;
  }
 
+ // Render Live RBAC Permissions Overview
+ const rbacStatusBadge = container.querySelector("#profile-rbac-status-badge");
+ if (rbacStatusBadge) {
+ if (permSummary.hasOverride) {
+ rbacStatusBadge.textContent = "Kustom Super Admin";
+ rbacStatusBadge.className = "px-2.5 py-1 bg-amber-100 text-amber-800 rounded-lg text-[10px] font-bold uppercase border border-amber-200";
+ } else {
+ rbacStatusBadge.textContent = `Standar Preset (${activeSession.role})`;
+ rbacStatusBadge.className = "px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg text-[10px] font-bold uppercase border border-slate-200";
+ }
+ }
+
+ const rbacContainer = container.querySelector("#profile-permissions-container");
+ if (rbacContainer) {
+ const actionBadges = permSummary.isSuperadmin 
+ ? `<span class="px-2.5 py-1 rounded-lg bg-purple-100 text-purple-800 text-[11px] font-bold border border-purple-200">Semua Tindakan / Full Access (*)</span>`
+ : permSummary.allowedActions.length > 0 
+ ? permSummary.allowedActions.map(act => `<span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[11px] font-medium border border-slate-200">${escapeHtml(act)}</span>`).join("")
+ : `<span class="text-xs text-slate-400 italic">Mengikuti hak akses standar sistem</span>`;
+
+ const moduleList = permSummary.isSuperadmin
+ ? `<div class="p-3 bg-purple-50 rounded-xl border border-purple-100 text-xs font-semibold text-purple-900">Seluruh modul dan formulir dapat diakses secara penuh (Super Admin Mode)</div>`
+ : permSummary.allowedMenuNames.length > 0
+ ? `<div class="flex flex-wrap gap-1.5">${permSummary.allowedMenuNames.map(m => `<span class="px-2.5 py-1 rounded-xl bg-red-50 text-maroon-700 text-xs font-bold border border-red-100/70">${escapeHtml(m)}</span>`).join("")}</div>`
+ : `<div class="p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-500">Tidak ada modul khusus yang aktif</div>`;
+
+ rbacContainer.innerHTML = `
+ <div class="p-4 rounded-2xl bg-slate-50/70 border border-slate-100 space-y-4">
+ <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-3 border-b border-slate-200/70">
+ <div class="p-3 bg-white rounded-xl border border-slate-100 shadow-2xs">
+ <p class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Tipe Konfigurasi Hak Akses</p>
+ <p class="text-xs font-bold text-slate-800 mt-1">${permSummary.hasOverride ? "Kustomisasi Super Admin (Whitelist Tersinkron)" : `Preset Bawaan Jabatan / Role (${activeSession.role})`}</p>
+ </div>
+ <div class="p-3 bg-white rounded-xl border border-slate-100 shadow-2xs">
+ <p class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Mode Operasional</p>
+ <p class="text-xs font-bold ${permSummary.readOnly ? 'text-rose-700' : 'text-emerald-700'} mt-1 flex items-center gap-1.5">
+ <span class="w-2 h-2 rounded-full ${permSummary.readOnly ? 'bg-rose-500' : 'bg-emerald-500'}"></span>
+ ${permSummary.readOnly ? "Hanya Lihat (Read-Only)" : "Akses Penuh (Full Actions)"}
+ </p>
+ </div>
+ </div>
+
+ <div>
+ <p class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mb-2">Modul Menu yang Diizinkan (${permSummary.isSuperadmin ? 'Semua Modul' : `${permSummary.allowedMenuNames.length} Modul`})</p>
+ ${moduleList}
+ </div>
+
+ <div class="pt-2 border-t border-slate-200/60">
+ <p class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mb-2">Izin Tindakan & Formulir (${permSummary.isSuperadmin ? 'Superadmin Full Access' : `${permSummary.allowedActions.length} Tindakan, ${permSummary.allowedForms.length} Form`})</p>
+ <div class="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-2 bg-white rounded-xl border border-slate-100">
+ ${actionBadges}
+ </div>
+ </div>
+ </div>
+ `;
+ }
+
  // Load Recent Activity (Real dynamically parsed)
- await loadRecentActivity(container, session);
+ await loadRecentActivity(container, activeSession);
 
  // Load Uploaded Documents List
- await loadUploadedDocuments(container, session);
+ await loadUploadedDocuments(container, activeSession);
 
  // Set up Tabs switching logic
  const tabButtons = container.querySelectorAll(".profile-tab-btn");
@@ -161,18 +232,18 @@ export async function mount(container, { session, params }) {
  // Action: Edit Profile
  const btnEditProfile = container.querySelector("#btn-edit-profile-main");
  if (btnEditProfile) {
- btnEditProfile.onclick = () => openEditProfileModal(session, k, container);
+ btnEditProfile.onclick = () => openEditProfileModal(activeSession, k, container);
  }
 
  const btnEditPribadiTab = container.querySelector("#btn-edit-pribadi-tab");
  if (btnEditPribadiTab) {
- btnEditPribadiTab.onclick = () => openEditProfileModal(session, k, container);
+ btnEditPribadiTab.onclick = () => openEditProfileModal(activeSession, k, container);
  }
 
  // Action: Sign Document
  const btnSignDoc = container.querySelector("#btn-sign-document");
  if (btnSignDoc) {
- btnSignDoc.onclick = () => openSignDocModal(session);
+ btnSignDoc.onclick = () => openSignDocModal(activeSession);
  }
 
  // AUTO NAVIGATE FROM NOTIFICATION (doc_id / docId)
@@ -181,7 +252,7 @@ export async function mount(container, { session, params }) {
  if (targetDocId || reqTab === "documents") {
  const docTabBtn = container.querySelector("#tab-btn-documents");
  if (docTabBtn) docTabBtn.click();
- openSignDocModal(session, targetDocId);
+ openSignDocModal(activeSession, targetDocId);
  }
 
  // Action: Edit Avatar
