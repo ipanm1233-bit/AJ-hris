@@ -1,4 +1,4 @@
-import { db, COL, collection, getDocs, doc, setDoc, getDoc, updateDoc } from "../firebase-config.js";
+import { db, COL, collection, getDocs, doc, setDoc, getDoc, updateDoc, query, where } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort, confirmDialog, sendEmailNotif, buildStandardEmailHtml, notifyUser, getTargetsForRole, generateAndSaveCutiDocument, printFormCutiFisik, downloadFormCutiPdf, generateStandardFormCutiHtml, smartParseDate, getCalculatedJatahCuti, getCarryoverPercentage, calculateCarryoverJatah, ensureXlsxLoaded, getCutiDeductionCategory } from "../utils.js";
 import { avatar, emptyState, skeletonRows, badge } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.js";
@@ -293,7 +293,59 @@ export async function mount(container, { session }) {
    renderTable(filteredForTable);
  }
 
- let allKaryawan = [], allCuti = [], leaveConfig = [];
+  // Helper untuk menyimpan perubahan jatah cuti karyawan ke Firestore secara konsisten & sinkron
+  async function syncSaveEmployeeLeave(emp, payload) {
+    const cleanPayload = {};
+    for (const [k, v] of Object.entries(payload)) {
+      if (v !== undefined) {
+        cleanPayload[k] = v;
+      }
+    }
+
+    if (emp.id) {
+      await updateDoc(doc(db, COL.MASTER_KARYAWAN, String(emp.id)), cleanPayload);
+    }
+
+    try {
+      const empNik = (emp.nik || emp.nik_karyawan || "").toString().trim();
+      const empName = (emp.nama_karyawan || "").toString().trim();
+      if (empNik || empName) {
+        const qColl = collection(db, COL.MASTER_KARYAWAN);
+        const matches = [];
+        if (empNik) {
+          const snapNik = await getDocs(query(qColl, where("nik_karyawan", "==", empNik)));
+          snapNik.forEach(d => { if (d.id !== emp.id) matches.push(d.id); });
+          const snapNikAlt = await getDocs(query(qColl, where("nik", "==", empNik)));
+          snapNikAlt.forEach(d => { if (d.id !== emp.id) matches.push(d.id); });
+        }
+        if (empName) {
+          const snapName = await getDocs(query(qColl, where("nama_karyawan", "==", empName)));
+          snapName.forEach(d => { if (d.id !== emp.id) matches.push(d.id); });
+        }
+        const uniqueOtherDocIds = [...new Set(matches)];
+        for (const otherId of uniqueOtherDocIds) {
+          await updateDoc(doc(db, COL.MASTER_KARYAWAN, otherId), cleanPayload).catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.warn("Sinkronisasi doc alternatif:", err);
+    }
+
+    Object.assign(emp, cleanPayload);
+    for (const other of allKaryawan) {
+      if (other !== emp) {
+        const oNik = (other.nik || other.nik_karyawan || "").toString().trim();
+        const oName = (other.nama_karyawan || "").toString().trim();
+        const empNik = (emp.nik || emp.nik_karyawan || "").toString().trim();
+        const empName = (emp.nama_karyawan || "").toString().trim();
+        if ((empNik && oNik === empNik) || (empName && oName === empName)) {
+          Object.assign(other, cleanPayload);
+        }
+      }
+    }
+  }
+
+  let allKaryawan = [], allCuti = [], leaveConfig = [];
  let terpakaiMap = {};
  let bawahanNames = null;
 
@@ -309,7 +361,26 @@ export async function mount(container, { session }) {
  bawahanNames = await getBawahanNames(session.nama);
  }
 
- allKaryawan = snapK.filter(k => (k.aktif_tdk_aktif||"AKTIF").toUpperCase() === "AKTIF" && k.nama_karyawan && k.nama_karyawan.trim() !== "");
+    const rawActive = snapK.filter(k => (k.aktif_tdk_aktif||"AKTIF").toUpperCase() === "AKTIF" && k.nama_karyawan && k.nama_karyawan.trim() !== "");
+    const uniqueMap = new Map();
+    for (const k of rawActive) {
+      const nikKey = (k.nik_karyawan || k.nik || "").toString().trim().toUpperCase();
+      const nameKey = (k.nama_karyawan || "").toString().trim().toUpperCase();
+      const key = nikKey || nameKey;
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, k);
+      } else {
+        const existing = uniqueMap.get(key);
+        if (k.jatah_cuti_tahunan !== undefined) existing.jatah_cuti_tahunan = k.jatah_cuti_tahunan;
+        if (k.jatah_tahunan !== undefined) existing.jatah_tahunan = k.jatah_tahunan;
+        if (k.jatah_cuti_khusus !== undefined) existing.jatah_cuti_khusus = k.jatah_cuti_khusus;
+        if (k.jatah_khusus !== undefined) existing.jatah_khusus = k.jatah_khusus;
+        if (k.jatah_cuti_akumulasi !== undefined) existing.jatah_cuti_akumulasi = k.jatah_cuti_akumulasi;
+        if (k.jatah_akumulasi !== undefined) existing.jatah_akumulasi = k.jatah_akumulasi;
+        if (k.sisa_cuti_tahun_lalu !== undefined) existing.sisa_cuti_tahun_lalu = k.sisa_cuti_tahun_lalu;
+      }
+    }
+    allKaryawan = Array.from(uniqueMap.values());
  if (isAtasanView) {
   const bset = new Set(bawahanNames || []);
   if (session?.nama) bset.add(session.nama);
@@ -555,13 +626,11 @@ export async function mount(container, { session }) {
 				const val = parseFloat(inp.value) || 0;
 				try {
 					const emp = allKaryawan.find(k => k.id === id);
-					await updateDoc(doc(db, COL.MASTER_KARYAWAN, id), { 
-						jatah_cuti_tahunan: val,
-						jatah_tahunan: val
-					});
 					if (emp) {
-						emp.jatah_cuti_tahunan = val;
-						emp.jatah_tahunan = val;
+						await syncSaveEmployeeLeave(emp, { 
+							jatah_cuti_tahunan: val,
+							jatah_tahunan: val
+						});
 					}
 					calculateBalances();
 					renderTable(allKaryawan);
@@ -580,13 +649,11 @@ export async function mount(container, { session }) {
 				const val = parseFloat(inp.value) || 0;
 				try {
 					const emp = allKaryawan.find(k => k.id === id);
-					await updateDoc(doc(db, COL.MASTER_KARYAWAN, id), { 
-						jatah_cuti_khusus: val,
-						jatah_khusus: val
-					});
 					if (emp) {
-						emp.jatah_cuti_khusus = val;
-						emp.jatah_khusus = val;
+						await syncSaveEmployeeLeave(emp, { 
+							jatah_cuti_khusus: val,
+							jatah_khusus: val
+						});
 					}
 					calculateBalances();
 					renderTable(allKaryawan);
@@ -605,13 +672,11 @@ export async function mount(container, { session }) {
 				const val = parseFloat(inp.value) || 0;
 				try {
 					const emp = allKaryawan.find(k => k.id === id);
-					await updateDoc(doc(db, COL.MASTER_KARYAWAN, id), { 
-						jatah_cuti_akumulasi: val,
-						jatah_akumulasi: val
-					});
 					if (emp) {
-						emp.jatah_cuti_akumulasi = val;
-						emp.jatah_akumulasi = val;
+						await syncSaveEmployeeLeave(emp, { 
+							jatah_cuti_akumulasi: val,
+							jatah_akumulasi: val
+						});
 					}
 					calculateBalances();
 					renderTable(allKaryawan);
@@ -634,15 +699,12 @@ export async function mount(container, { session }) {
 					if (val !== null && val > 0 && emp) {
 						jAkumulasiBaru = calculateCarryoverJatah(val, emp.tanggal_join);
 					}
-					await updateDoc(doc(db, COL.MASTER_KARYAWAN, id), { 
-						sisa_cuti_tahun_lalu: val,
-						jatah_cuti_akumulasi: jAkumulasiBaru,
-						jatah_akumulasi: jAkumulasiBaru
-					});
 					if (emp) {
-						emp.sisa_cuti_tahun_lalu = val;
-						emp.jatah_cuti_akumulasi = jAkumulasiBaru;
-						emp.jatah_akumulasi = jAkumulasiBaru;
+						await syncSaveEmployeeLeave(emp, { 
+							sisa_cuti_tahun_lalu: val,
+							jatah_cuti_akumulasi: jAkumulasiBaru,
+							jatah_akumulasi: jAkumulasiBaru
+						});
 					}
 					calculateBalances();
 					renderTable(allKaryawan);
@@ -1030,8 +1092,7 @@ export async function mount(container, { session }) {
 						}
 
 						if (hasChange) {
-							await updateDoc(doc(db, COL.MASTER_KARYAWAN, targetEmp.id), payload);
-							Object.assign(targetEmp, payload);
+							await syncSaveEmployeeLeave(targetEmp, payload);
 							updateCount++;
 						}
 					}
@@ -1139,7 +1200,7 @@ export async function mount(container, { session }) {
             jAkumulasiBaru = 0;
           }
 
-          await updateDoc(doc(db, COL.MASTER_KARYAWAN, emp.id), {
+          await syncSaveEmployeeLeave(emp, {
             jatah_cuti_tahunan: jTahunanBaru, jatah_tahunan: jTahunanBaru,
             jatah_cuti_khusus: jKhusus, jatah_khusus: jKhusus,
             jatah_cuti_akumulasi: jAkumulasiBaru, jatah_akumulasi: jAkumulasiBaru,
@@ -1818,8 +1879,7 @@ export async function mount(container, { session }) {
                   cuti_akumulasi_expired: valExpired || null
                 };
 
-                await updateDoc(doc(db, COL.MASTER_KARYAWAN, k.id), payload);
-                Object.assign(k, payload);
+                await syncSaveEmployeeLeave(k, payload);
 
                 calculateBalances();
                 sisa = getSisa(k);

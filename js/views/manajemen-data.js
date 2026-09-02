@@ -104,6 +104,14 @@ export async function mount(container) {
  }
  },
  beforeSave: (data) => {
+ if (data.nik_karyawan) data.nik = data.nik_karyawan;
+ if (data.nik && !data.nik_karyawan) data.nik_karyawan = data.nik;
+ if (data.jatah_tahunan !== undefined) data.jatah_cuti_tahunan = data.jatah_tahunan;
+ if (data.jatah_khusus !== undefined) data.jatah_cuti_khusus = data.jatah_khusus;
+ if (data.jatah_akumulasi !== undefined) data.jatah_cuti_akumulasi = data.jatah_akumulasi;
+ if (data.jatah_cuti_tahunan !== undefined && data.jatah_tahunan === undefined) data.jatah_tahunan = data.jatah_cuti_tahunan;
+ if (data.jatah_cuti_khusus !== undefined && data.jatah_khusus === undefined) data.jatah_khusus = data.jatah_cuti_khusus;
+ if (data.jatah_cuti_akumulasi !== undefined && data.jatah_akumulasi === undefined) data.jatah_akumulasi = data.jatah_cuti_akumulasi;
  if (data.tanggal_lahir) {
  const age = calculateAge(data.tanggal_lahir);
  if (age !== null) data.usia = age;

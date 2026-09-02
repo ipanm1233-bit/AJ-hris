@@ -1,7 +1,39 @@
 import { COL } from "../firebase-config.js";
-import { fsGetAll, fsUpdate, fsAdd, toNumber, escapeHtml, fmtDateShort, openModal, closeModal, toast, notifyUser, genId, downloadXlsx } from "../utils.js";
+import { fsGet, fsGetAll, fsUpdate, fsAdd, toNumber, escapeHtml, fmtDateShort, openModal, closeModal, toast, notifyUser, genId, downloadXlsx } from "../utils.js";
 import { renderCrudModule } from "../components.js";
 import { isoDocHeaderTable } from "../branding.js";
+
+// STATE REGISTRY FOR INVENTORY VIEW REFRESHING
+let activeInventoryContainer = null;
+let activeCrudControllers = {
+  barang: null,
+  ambil: null,
+  opname: null
+};
+
+export async function reloadInventoryData(container = null) {
+  const c = container || activeInventoryContainer;
+  try {
+    if (activeCrudControllers.barang?.reload) {
+      await activeCrudControllers.barang.reload();
+    }
+    const panelRestock = c?.querySelector("#inv-panel-restock");
+    if (panelRestock) {
+      await loadRestockPanel(panelRestock, c);
+    }
+    if (activeCrudControllers.ambil?.reload) {
+      await activeCrudControllers.ambil.reload();
+    }
+    if (activeCrudControllers.opname?.reload) {
+      await activeCrudControllers.opname.reload();
+    }
+    if (c) {
+      await updateKpiSummary(c);
+    }
+  } catch (e) {
+    console.warn("Gagal reload inventory data:", e);
+  }
+}
 
 // HELPER URL DIRECT DEEP LINKING FOR QR CODES
 export function getAssetQrTargetUrl(assetId) {
@@ -167,9 +199,7 @@ export function openAssetDetailAndUpdateStockModal(found, activeEmpNames = [], s
      toast(`Stok fisik ${found.nama_barang} (${assetId}) berhasil diperbarui menjadi ${newQty} ${found.satuan || 'Unit'}!`, "success");
      closeModal();
 
-     if (container) {
-      updateKpiSummary(container);
-     }
+     await reloadInventoryData(container);
     } catch (err) {
      console.error("Gagal update stok fisik:", err);
      toast("Gagal memperbarui stok fisik: " + err.message, "error");
@@ -647,14 +677,12 @@ async function openQuickAssignModal(container, activeEmpNames) {
 
  toast(`Berhasil menyerahkan aset ${targetAsset.nama_barang} kepada ${empName}! Terbit Berita Acara Penyerahan.`, "success");
  closeModal();
- updateKpiSummary(container);
 
  // 4. Automatically generate Berita Acara Penyerahan/Peminjaman PDF
  printTandaTerimaBarang(logData);
 
- // Trigger reload on active panel
- const barangTab = container.querySelector("[data-itab='barang']");
- if (barangTab) barangTab.click();
+ // Trigger reload on active panels
+ await reloadInventoryData(container);
  } catch (e) {
  toast("Gagal menyimpan penyerahan: " + e.message, "error");
  }
@@ -663,281 +691,930 @@ async function openQuickAssignModal(container, activeEmpNames) {
  });
 }
 
+// FUNGSI MODAL INPUT MULTI-BARIS PENAMBAHAN / RESTOCK STOK BARANG
+export async function openMultiRestockModal(container, initialItemId = null) {
+  const items = await fsGetAll(COL.MASTER_INVENTORY);
+  if (!items.length) return toast("Belum ada data master barang/aset.", "warning");
+
+  const sortedItems = items.slice().sort((a, b) => {
+    const nameA = (a.nama_barang || "").toLowerCase();
+    const nameB = (b.nama_barang || "").toLowerCase();
+    return nameA.localeCompare(nameB, 'id', { sensitivity: 'base' });
+  });
+
+  // Helper highlight substring
+  function highlightSubstr(text, query) {
+    if (!text) return "";
+    if (!query) return escapeHtml(text);
+    const escaped = escapeHtml(text);
+    const q = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${q})`, 'gi');
+    return escaped.replace(regex, `<mark class="bg-emerald-200 text-emerald-950 font-black px-0.5 rounded">$1</mark>`);
+  }
+
+  openModal({
+    title: "Form Multi-Baris Penambahan / Restock Stok Barang",
+    size: "xl",
+    bodyHtml: `
+      <div class="space-y-4 text-xs">
+        <!-- Banner Info & Aksi Cepat -->
+        <div class="p-3.5 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-100/60 border border-emerald-200 rounded-2xl text-emerald-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+          <div class="space-y-0.5">
+            <div class="flex items-center gap-1.5">
+              <span class="px-2 py-0.5 rounded-full bg-emerald-600 text-white font-black text-[10px] uppercase tracking-wider">Multi-Item Restock</span>
+              <b class="text-sm text-emerald-900">Penambahan Stok Masuk Sekaligus</b>
+            </div>
+            <p class="text-[11px] text-emerald-800 leading-relaxed">
+              Ketik nama / kode barang pada kolom untuk mencari item secara langsung (search by character), lalu masukkan jumlah stok masuk (+Qty).
+            </p>
+          </div>
+          <button id="btn-add-restock-row" type="button" class="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl shadow transition shrink-0 flex items-center gap-1.5 self-start sm:self-auto cursor-pointer">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            + Tambah Baris Barang
+          </button>
+        </div>
+
+        <!-- Meta Input: Tanggal & No. Bukti / Supplier -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Tanggal Masuk / Restock <span class="text-rose-500">*</span></label>
+            <input type="date" id="multi-restock-date" value="${new Date().toISOString().substring(0, 10)}" required class="w-full p-2.5 text-xs font-bold text-slate-800 bg-white border border-slate-300 rounded-xl outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-200">
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">No. Bukti / Nota / Supplier (Opsional)</label>
+            <input type="text" id="multi-restock-nota" placeholder="Cth: Nota #1029 Toko ATK Sejahtera" class="w-full p-2.5 text-xs text-slate-800 bg-white border border-slate-300 rounded-xl outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-200">
+          </div>
+        </div>
+
+        <!-- Tabel Multi-Baris -->
+        <div class="overflow-visible border border-slate-200 rounded-2xl bg-white shadow-2xs min-h-[320px]">
+          <div class="overflow-x-auto rounded-2xl">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr class="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
+                  <th class="p-3 w-8 text-center">#</th>
+                  <th class="p-3 min-w-[300px]">Cari & Pilih Barang / ATK (Ketik Nama)</th>
+                  <th class="p-3 w-28 text-center">Stok Saat Ini</th>
+                  <th class="p-3 w-28 text-center">Jumlah Masuk (+Qty)</th>
+                  <th class="p-3 w-28 text-center">Stok Akhir</th>
+                  <th class="p-3 w-20 text-center">Satuan</th>
+                  <th class="p-3 min-w-[160px]">Catatan / Keterangan</th>
+                  <th class="p-3 w-12 text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="multi-restock-rows" class="divide-y divide-slate-100">
+                <!-- Rendered via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Summary Kuantitas -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 gap-2">
+          <div class="flex items-center gap-5">
+            <div>
+              <span class="text-slate-400 text-[10px] block uppercase font-bold">Total Baris Barang</span>
+              <b id="summary-total-rows" class="text-sm text-slate-800 font-bold">0 Barang Terpilih</b>
+            </div>
+            <div>
+              <span class="text-slate-400 text-[10px] block uppercase font-bold">Total Kuantiti Unit Ditambahkan</span>
+              <b id="summary-total-qty" class="text-sm text-emerald-700 font-black">+0 Unit</b>
+            </div>
+          </div>
+          <span class="text-[11px] text-slate-500 italic">* Nilai stok master barang akan otomatis bertambah secara otomatis saat disimpan.</span>
+        </div>
+      </div>
+    `,
+    footerHtml: `
+      <div class="flex items-center justify-between w-full">
+        <button id="btn-multi-restock-close" type="button" class="px-4 py-2.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl transition">Batal</button>
+        <button id="btn-multi-restock-save" type="button" class="px-5 py-2.5 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition shadow-md flex items-center gap-2 cursor-pointer">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+          Simpan Semua Penambahan Stok
+        </button>
+      </div>
+    `,
+    onMount: m => {
+      const tbody = m.querySelector("#multi-restock-rows");
+      const btnAddRow = m.querySelector("#btn-add-restock-row");
+      const summaryTotalRows = m.querySelector("#summary-total-rows");
+      const summaryTotalQty = m.querySelector("#summary-total-qty");
+
+      function updateSummary() {
+        const trs = tbody.querySelectorAll("tr");
+        let totalRows = 0;
+        let totalQty = 0;
+
+        trs.forEach(tr => {
+          const hiddenId = tr.querySelector(".sel-item-id");
+          const inpQty = tr.querySelector(".inp-qty");
+          if (hiddenId && hiddenId.value) {
+            totalRows++;
+            const q = toNumber(inpQty ? inpQty.value : 0);
+            totalQty += q;
+          }
+        });
+
+        if (summaryTotalRows) summaryTotalRows.textContent = `${totalRows} Barang Terpilih`;
+        if (summaryTotalQty) summaryTotalQty.textContent = `+${totalQty.toLocaleString("id-ID")} Unit`;
+      }
+
+      function reindexRows() {
+        const trs = tbody.querySelectorAll("tr");
+        trs.forEach((tr, idx) => {
+          const idxEl = tr.querySelector(".row-idx");
+          if (idxEl) idxEl.textContent = idx + 1;
+        });
+        updateSummary();
+      }
+
+      // Close all open dropdowns when clicking outside
+      document.addEventListener("click", e => {
+        if (!e.target.closest(".item-combobox-wrap")) {
+          m.querySelectorAll(".item-dropdown-menu").forEach(el => el.classList.add("hidden"));
+        }
+      });
+
+      function addRow(defaultItemId = "", defaultQty = 1) {
+        const initItem = defaultItemId ? sortedItems.find(i => i.id === defaultItemId || i.id_item === defaultItemId) : null;
+        const initId = initItem ? initItem.id : "";
+        const initName = initItem ? initItem.nama_barang : "";
+
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-50/80 transition restock-row-item";
+        tr.innerHTML = `
+          <td class="p-3 text-center font-bold text-slate-400 row-idx">1</td>
+          <td class="p-2">
+            <div class="relative w-full item-combobox-wrap">
+              <input type="hidden" class="sel-item-id" value="${escapeHtml(initId)}">
+              <div class="relative flex items-center">
+                <input type="text" 
+                  class="inp-item-search w-full pl-8 pr-7 py-2 text-xs border border-slate-300 rounded-xl font-semibold text-slate-800 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 bg-white transition shadow-2xs" 
+                  placeholder="Ketik karakter nama / kode barang..." 
+                  value="${escapeHtml(initName)}" 
+                  autocomplete="off">
+                <span class="absolute left-2.5 text-slate-400 pointer-events-none">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                </span>
+                <button type="button" class="btn-clear-choice absolute right-2 text-slate-400 hover:text-rose-600 font-bold text-xs p-1 ${initId ? '' : 'hidden'}" title="Hapus Pilihan">&times;</button>
+              </div>
+              
+              <!-- Floating Dropdown List (Search by Character) -->
+              <div class="item-dropdown-menu hidden absolute left-0 top-full mt-1 w-[320px] sm:w-[400px] max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 divide-y divide-slate-100">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+          </td>
+          <td class="p-2 text-center">
+            <span class="badge-cur-stok px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-bold text-[11px] inline-block border border-slate-200">-</span>
+          </td>
+          <td class="p-2 text-center">
+            <input type="number" class="inp-qty w-full p-2 text-xs text-center border border-slate-300 rounded-xl font-black text-emerald-800 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 bg-emerald-50/40" min="1" step="1" value="${defaultQty || 1}">
+          </td>
+          <td class="p-2 text-center">
+            <span class="badge-after-stok px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 font-black text-[11px] inline-block border border-emerald-200">-</span>
+          </td>
+          <td class="p-2 text-center">
+            <span class="badge-satuan font-semibold text-slate-600 text-xs">Unit</span>
+          </td>
+          <td class="p-2">
+            <input type="text" class="inp-notes w-full p-2 text-xs border border-slate-300 rounded-xl outline-none focus:border-emerald-600 bg-white" placeholder="Keterangan / nota / batch...">
+          </td>
+          <td class="p-2 text-center">
+            <button type="button" class="btn-del-row p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition" title="Hapus Baris">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            </button>
+          </td>
+        `;
+
+        tbody.appendChild(tr);
+
+        const hiddenId = tr.querySelector(".sel-item-id");
+        const inpSearch = tr.querySelector(".inp-item-search");
+        const btnClearChoice = tr.querySelector(".btn-clear-choice");
+        const dropdownMenu = tr.querySelector(".item-dropdown-menu");
+        const badgeCurStok = tr.querySelector(".badge-cur-stok");
+        const inpQty = tr.querySelector(".inp-qty");
+        const badgeAfterStok = tr.querySelector(".badge-after-stok");
+        const badgeSatuan = tr.querySelector(".badge-satuan");
+        const btnDel = tr.querySelector(".btn-del-row");
+
+        let activeOptionIndex = -1;
+
+        function updateRowState() {
+          const selectedId = hiddenId.value;
+          const foundItem = sortedItems.find(i => i.id === selectedId);
+          if (foundItem) {
+            const cur = toNumber(foundItem.stok_saat_ini);
+            const qtyAdd = toNumber(inpQty.value) || 0;
+            const totalAfter = cur + qtyAdd;
+            const sat = foundItem.satuan || "Unit";
+
+            badgeCurStok.textContent = `${cur} ${sat}`;
+            badgeSatuan.textContent = sat;
+            badgeAfterStok.textContent = `${totalAfter} ${sat}`;
+            btnClearChoice.classList.remove("hidden");
+          } else {
+            badgeCurStok.textContent = "-";
+            badgeSatuan.textContent = "Unit";
+            badgeAfterStok.textContent = "-";
+            btnClearChoice.classList.add("hidden");
+          }
+          updateSummary();
+        }
+
+        function renderDropdownOptions(query = "") {
+          const q = query.trim().toLowerCase();
+          const filtered = sortedItems.filter(i => {
+            if (!q) return true;
+            const name = (i.nama_barang || "").toLowerCase();
+            const code = (i.id_item || i.id || "").toLowerCase();
+            const cat = (i.kategori || "").toLowerCase();
+            const loc = (i.lokasi || i.penempatan || "").toLowerCase();
+            const sn = (i.serial_number || "").toLowerCase();
+            return name.includes(q) || code.includes(q) || cat.includes(q) || loc.includes(q) || sn.includes(q);
+          });
+
+          if (!filtered.length) {
+            dropdownMenu.innerHTML = `
+              <div class="p-4 text-center text-slate-400">
+                <svg class="w-6 h-6 mx-auto mb-1 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <div class="font-bold text-xs text-slate-600">Barang Tidak Ditemukan</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">Tidak ada barang yang cocok dengan "${escapeHtml(query)}"</div>
+              </div>
+            `;
+            dropdownMenu.classList.remove("hidden");
+            activeOptionIndex = -1;
+            return;
+          }
+
+          dropdownMenu.innerHTML = `
+            <div class="p-1.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[10px] text-slate-500 font-bold px-3">
+              <span>Hasil Pencarian: ${filtered.length} Barang</span>
+              <span class="text-emerald-700 font-bold">Ketik karakter untuk menyaring</span>
+            </div>
+            <div class="divide-y divide-slate-100">
+              ${filtered.map((item, idx) => {
+                const cur = toNumber(item.stok_saat_ini);
+                const min = toNumber(item.min_stok) || 5;
+                const isSelected = item.id === hiddenId.value;
+                const isLow = cur <= min;
+                return `
+                  <div class="item-opt-row p-2.5 hover:bg-emerald-50 cursor-pointer flex items-center justify-between gap-2 transition ${isSelected ? 'bg-emerald-50/80 font-bold' : ''}" data-id="${escapeHtml(item.id)}" data-index="${idx}">
+                    <div class="min-w-0 flex-1">
+                      <div class="font-bold text-slate-800 text-xs truncate">
+                        ${highlightSubstr(item.nama_barang, q)}
+                      </div>
+                      <div class="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500 flex-wrap">
+                        ${item.id_item ? `<span class="bg-slate-100 px-1.5 py-0.2 rounded font-mono font-bold text-slate-600">${highlightSubstr(item.id_item, q)}</span>` : ''}
+                        <span class="text-slate-400">•</span>
+                        <span class="text-slate-600 font-medium">${highlightSubstr(item.kategori || 'ATK', q)}</span>
+                        ${item.penempatan ? `<span class="text-slate-400">•</span><span class="text-slate-500 truncate">${escapeHtml(item.penempatan)}</span>` : ''}
+                      </div>
+                    </div>
+                    <div class="text-right shrink-0">
+                      <span class="px-2 py-0.5 rounded-md ${isLow ? 'bg-rose-100 text-rose-700 font-black border border-rose-200' : 'bg-slate-100 text-slate-700 font-bold'} text-[10px] inline-block">
+                        Stok: ${cur} ${escapeHtml(item.satuan || 'Unit')}
+                      </span>
+                    </div>
+                  </div>
+                `;
+              }).join("")}
+            </div>
+          `;
+
+          dropdownMenu.querySelectorAll(".item-opt-row").forEach(rowEl => {
+            rowEl.onclick = e => {
+              e.stopPropagation();
+              const itemId = rowEl.getAttribute("data-id");
+              selectItemById(itemId);
+            };
+          });
+
+          dropdownMenu.classList.remove("hidden");
+          activeOptionIndex = -1;
+        }
+
+        function selectItemById(itemId) {
+          const item = sortedItems.find(i => i.id === itemId);
+          if (item) {
+            hiddenId.value = item.id;
+            inpSearch.value = item.nama_barang;
+            updateRowState();
+            dropdownMenu.classList.add("hidden");
+            inpQty.focus();
+            inpQty.select();
+          }
+        }
+
+        // Event Listeners on search input
+        inpSearch.onfocus = () => {
+          m.querySelectorAll(".item-dropdown-menu").forEach(el => {
+            if (el !== dropdownMenu) el.classList.add("hidden");
+          });
+          renderDropdownOptions(inpSearch.value);
+        };
+
+        inpSearch.oninput = () => {
+          // If user edits text and it no longer matches selected item exactly, we can still filter
+          renderDropdownOptions(inpSearch.value);
+        };
+
+        inpSearch.onkeydown = e => {
+          const options = dropdownMenu.querySelectorAll(".item-opt-row");
+          if (dropdownMenu.classList.contains("hidden")) {
+            if (e.key === "ArrowDown" || e.key === "Enter") {
+              renderDropdownOptions(inpSearch.value);
+              e.preventDefault();
+            }
+            return;
+          }
+
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            activeOptionIndex = Math.min(activeOptionIndex + 1, options.length - 1);
+            updateActiveOption(options);
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            activeOptionIndex = Math.max(activeOptionIndex - 1, 0);
+            updateActiveOption(options);
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            if (activeOptionIndex >= 0 && options[activeOptionIndex]) {
+              const itemId = options[activeOptionIndex].getAttribute("data-id");
+              selectItemById(itemId);
+            } else if (options.length === 1) {
+              const itemId = options[0].getAttribute("data-id");
+              selectItemById(itemId);
+            }
+          } else if (e.key === "Escape") {
+            dropdownMenu.classList.add("hidden");
+          }
+        };
+
+        function updateActiveOption(options) {
+          options.forEach((opt, idx) => {
+            if (idx === activeOptionIndex) {
+              opt.classList.add("bg-emerald-100", "ring-1", "ring-emerald-400");
+              opt.scrollIntoView({ block: "nearest" });
+            } else {
+              opt.classList.remove("bg-emerald-100", "ring-1", "ring-emerald-400");
+            }
+          });
+        }
+
+        // Clear choice
+        btnClearChoice.onclick = e => {
+          e.stopPropagation();
+          hiddenId.value = "";
+          inpSearch.value = "";
+          updateRowState();
+          inpSearch.focus();
+          renderDropdownOptions("");
+        };
+
+        inpQty.oninput = updateRowState;
+
+        btnDel.onclick = () => {
+          if (tbody.querySelectorAll("tr").length > 1) {
+            tr.remove();
+            reindexRows();
+          } else {
+            hiddenId.value = "";
+            inpSearch.value = "";
+            inpQty.value = 1;
+            updateRowState();
+            toast("Baris pertama dikosongkan.", "info");
+          }
+        };
+
+        updateRowState();
+        reindexRows();
+      }
+
+      // Add Row Button
+      if (btnAddRow) {
+        btnAddRow.onclick = () => addRow("", 1);
+      }
+
+      // Init initial rows
+      if (initialItemId) {
+        const initItem = sortedItems.find(i => i.id === initialItemId || i.id_item === initialItemId);
+        const initMin = initItem ? (toNumber(initItem.min_stok) || 5) : 5;
+        const initCur = initItem ? toNumber(initItem.stok_saat_ini) : 0;
+        const suggestQty = Math.max(1, (initMin * 2) - initCur);
+        addRow(initialItemId, suggestQty);
+        addRow("", 1);
+        addRow("", 1);
+      } else {
+        addRow("", 1);
+        addRow("", 1);
+        addRow("", 1);
+      }
+
+      // Close Button
+      m.querySelector("#btn-multi-restock-close").onclick = closeModal;
+
+      // Save Button
+      m.querySelector("#btn-multi-restock-save").onclick = async () => {
+        const dateVal = m.querySelector("#multi-restock-date").value || new Date().toISOString().substring(0, 10);
+        const notaVal = m.querySelector("#multi-restock-nota").value.trim();
+        const trs = tbody.querySelectorAll("tr");
+
+        const payloadRows = [];
+        trs.forEach(tr => {
+          const hiddenId = tr.querySelector(".sel-item-id");
+          const inpSearch = tr.querySelector(".inp-item-search");
+          const inpQty = tr.querySelector(".inp-qty");
+          const inpNotes = tr.querySelector(".inp-notes");
+
+          let itemId = hiddenId ? hiddenId.value : "";
+          const queryText = inpSearch ? inpSearch.value.trim().toLowerCase() : "";
+
+          // Auto-resolve item if user typed name/code without clicking dropdown
+          if (!itemId && queryText) {
+            const matched = sortedItems.find(i => 
+              (i.nama_barang || "").toLowerCase() === queryText ||
+              (i.id_item || "").toLowerCase() === queryText ||
+              (i.id || "").toLowerCase() === queryText
+            ) || sortedItems.find(i => 
+              (i.nama_barang || "").toLowerCase().includes(queryText) ||
+              (i.id_item || "").toLowerCase().includes(queryText)
+            );
+            if (matched) {
+              itemId = matched.id;
+              if (hiddenId) hiddenId.value = matched.id;
+            }
+          }
+
+          const qty = toNumber(inpQty ? inpQty.value : 0);
+          const notes = inpNotes ? inpNotes.value.trim() : "";
+
+          if (itemId && qty > 0) {
+            const foundItem = sortedItems.find(i => i.id === itemId);
+            if (foundItem) {
+              payloadRows.push({
+                item: foundItem,
+                itemId: itemId,
+                qty: qty,
+                notes: notes
+              });
+            }
+          }
+        });
+
+        if (!payloadRows.length) {
+          return toast("Harap pilih setidaknya 1 barang dan masukkan jumlah kuantiti (> 0)!", "warning");
+        }
+
+        const btnSave = m.querySelector("#btn-multi-restock-save");
+        btnSave.disabled = true;
+        btnSave.innerHTML = `Menyimpan ${payloadRows.length} Barang...`;
+
+        try {
+          let totalQtyAdded = 0;
+          for (const row of payloadRows) {
+            const { item, itemId, qty, notes } = row;
+            
+            // Ambil fresh doc dari database jika ada untuk akurasi kalkulasi stok
+            let freshDoc = null;
+            try {
+              freshDoc = await fsGet(COL.MASTER_INVENTORY, itemId);
+            } catch (e) {
+              console.warn("fsGet freshDoc fallback:", e);
+            }
+
+            const baseItem = freshDoc || item;
+            const curStok = toNumber(baseItem.stok_saat_ini);
+            const newStok = curStok + qty;
+            totalQtyAdded += qty;
+
+            // 1. Update Stok di Master Inventory
+            await fsUpdate(COL.MASTER_INVENTORY, itemId, {
+              stok_saat_ini: newStok,
+              terakhir_restock: dateVal,
+              catatan_restock_terakhir: notaVal ? `${notaVal} (+${qty} ${baseItem.satuan || 'Unit'} tgl ${fmtDateShort(dateVal)})` : `Restock (+${qty} ${baseItem.satuan || 'Unit'}) tgl ${fmtDateShort(dateVal)}`
+            });
+
+            // 2. Catat Log Masuk Barang
+            await fsAdd(COL.LOG_INVENTORY_PENGAMBILAN, {
+              id_barang: baseItem.id_item || baseItem.id || itemId,
+              nama_barang: baseItem.nama_barang,
+              kategori: baseItem.kategori || "ATK",
+              nama_karyawan: "Restock / Penambahan Stok",
+              tanggal: dateVal,
+              jumlah_ambil: qty,
+              jenis_aksi: "PENAMBAHAN_STOK",
+              status_pengembalian: "STOK_MASUK",
+              keperluan: (notaVal ? `[${notaVal}] ` : "") + (notes ? notes : `Penambahan Stok (+${qty} ${baseItem.satuan || 'Unit'})`)
+            }, genId("STK"));
+          }
+
+          toast(`Berhasil menambahkan stok untuk ${payloadRows.length} barang (Total +${totalQtyAdded} unit)!`, "success");
+          closeModal();
+
+          // Refresh all inventory views & KPI
+          await reloadInventoryData(container);
+        } catch (err) {
+          console.error("Gagal simpan multi restock:", err);
+          toast("Gagal menyimpan penambahan stok: " + err.message, "error");
+          btnSave.disabled = false;
+          btnSave.innerHTML = `Simpan Semua Penambahan Stok`;
+        }
+      };
+    }
+  });
+}
+
 // FUNGSI MODAL INPUT MULTI-BARIS PENYERAHAN ATK / BARANG
 async function openMultiAssignModal(container, activeEmpNames) {
- const items = await fsGetAll(COL.MASTER_INVENTORY);
- if (!items.length) return toast("Belum ada master barang / ATK.", "warning");
+  const items = await fsGetAll(COL.MASTER_INVENTORY);
+  if (!items.length) return toast("Belum ada master barang / ATK.", "warning");
 
- const sortedItems = items.slice().sort((a, b) => {
-   const nameA = (a.nama_barang || "").toLowerCase();
-   const nameB = (b.nama_barang || "").toLowerCase();
-   return nameA.localeCompare(nameB, 'id', { sensitivity: 'base' });
- });
+  const sortedItems = items.slice().sort((a, b) => {
+    const nameA = (a.nama_barang || "").toLowerCase();
+    const nameB = (b.nama_barang || "").toLowerCase();
+    return nameA.localeCompare(nameB, 'id', { sensitivity: 'base' });
+  });
 
- const itemOptionsHtml = sortedItems
- .map(i => {
-   const codeStr = i.id_item || i.id ? ` - [${i.id_item || i.id}]` : "";
-   const catStr = i.kategori ? ` (${i.kategori})` : " (ATK)";
-   const stokStr = typeof i.stok_saat_ini === "number" ? ` | Stok: ${i.stok_saat_ini}` : "";
-   const nameAttr = (i.nama_barang || "").toLowerCase();
-   return `<option value="${escapeHtml(i.id)}" data-nama="${escapeHtml(nameAttr)}">${escapeHtml(i.nama_barang)}${escapeHtml(codeStr)}${escapeHtml(catStr)}${escapeHtml(stokStr)}</option>`;
- })
- .join("");
+  function highlightSubstr(text, query) {
+    if (!text) return "";
+    if (!query) return escapeHtml(text);
+    const escaped = escapeHtml(text);
+    const q = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${q})`, 'gi');
+    return escaped.replace(regex, `<mark class="bg-blue-200 text-blue-950 font-black px-0.5 rounded">$1</mark>`);
+  }
 
- const empOptionsHtml = activeEmpNames
- .map(e => `<option value="${escapeHtml(e)}">${escapeHtml(e)}</option>`)
- .join("");
+  const empOptionsHtml = activeEmpNames
+    .map(e => `<option value="${escapeHtml(e)}">${escapeHtml(e)}</option>`)
+    .join("");
 
- openModal({
- title: "Multi-Baris Input Log Penyerahan ATK / Barang",
- size: "xl",
- bodyHtml: `
- <div class="space-y-4 text-xs">
- <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 leading-relaxed flex flex-wrap items-center justify-between gap-2">
- <div>
- <b>Input Banyak Baris Penyerahan / Pengambilan ATK dalam 1 Hari:</b><br/>
- Satu kali input dapat mencatat beberapa barang/ATK yang diambil oleh satu atau beberapa karyawan sekaligus.
- </div>
- <button id="btn-add-row-atk" type="button" class="px-3.5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white font-bold rounded-lg shadow transition shrink-0">
- + Tambah Baris ATK
- </button>
- </div>
+  openModal({
+    title: "Multi-Baris Input Log Penyerahan ATK / Barang",
+    size: "xl",
+    bodyHtml: `
+      <div class="space-y-4 text-xs">
+        <div class="p-3.5 bg-gradient-to-r from-blue-50 via-indigo-50 to-blue-100/60 border border-blue-200 rounded-2xl text-blue-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+          <div class="space-y-0.5">
+            <div class="flex items-center gap-1.5">
+              <span class="px-2 py-0.5 rounded-full bg-blue-600 text-white font-black text-[10px] uppercase tracking-wider">Multi-Penyerahan</span>
+              <b class="text-sm text-blue-900">Input Banyak Baris Penyerahan / Pengambilan ATK Sekaligus</b>
+            </div>
+            <p class="text-[11px] text-blue-800 leading-relaxed">
+              Ketik karakter nama / kode barang pada kolom untuk mencari item langsung (search by character), lalu pilih karyawan penerima.
+            </p>
+          </div>
+          <button id="btn-add-row-atk" type="button" class="px-3.5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white font-bold rounded-xl shadow transition shrink-0 self-start sm:self-auto cursor-pointer flex items-center gap-1.5">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            + Tambah Baris ATK
+          </button>
+        </div>
 
- <div class="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
- <div class="flex items-center gap-2">
- <label class="font-bold text-slate-700 shrink-0">Tanggal Penyerahan:</label>
- <input type="date" id="multi-date" value="${new Date().toISOString().substring(0,10)}" class="p-2 border border-slate-300 rounded-xl font-bold text-slate-800 outline-none focus:border-maroon-500 w-full">
- </div>
+        <div class="p-3 bg-slate-50 border border-slate-200 rounded-2xl max-w-sm">
+          <label class="block font-bold text-slate-700 mb-1">Tanggal Penyerahan / Log <span class="text-rose-500">*</span></label>
+          <input type="date" id="multi-date" value="${new Date().toISOString().substring(0,10)}" class="w-full p-2.5 border border-slate-300 rounded-xl font-bold text-slate-800 outline-none focus:border-maroon-500 bg-white">
+        </div>
 
- <div class="flex items-center gap-2 bg-slate-50 p-2 border border-slate-200 rounded-xl">
- <span class="font-bold text-slate-700 shrink-0">Cari Nama ATK:</span>
- <input type="text" id="filter-atk-name" placeholder="Ketik nama barang untuk menyaring..." 
- class="w-full p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-maroon-500 bg-white">
- <button type="button" id="btn-clear-atk-filter" class="px-2.5 py-1.5 text-xs text-slate-600 font-semibold bg-slate-200 hover:bg-slate-300 rounded-lg shrink-0">Reset</button>
- </div>
- </div>
+        <div class="overflow-visible border border-slate-200 rounded-2xl bg-white shadow-2xs min-h-[300px]">
+          <div class="overflow-x-auto rounded-2xl">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr class="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
+                  <th class="p-3 w-8 text-center">#</th>
+                  <th class="p-3 min-w-[280px]">Cari & Pilih Barang / ATK (Ketik Karakter)</th>
+                  <th class="p-3 min-w-[180px]">Karyawan Penerima</th>
+                  <th class="p-3 w-32">Jenis Transaksi</th>
+                  <th class="p-3 w-20 text-center">Qty</th>
+                  <th class="p-3 min-w-[160px]">Catatan / Keperluan</th>
+                  <th class="p-3 w-10 text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="multi-atk-rows" class="divide-y divide-slate-100">
+                <!-- Dynamic rows rendered here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `,
+    footerHtml: `
+      <div class="flex items-center justify-between w-full">
+        <button id="btn-multi-close" class="px-4 py-2.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl">Batal</button>
+        <button id="btn-multi-save" class="px-5 py-2.5 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-xl transition shadow flex items-center gap-1.5 cursor-pointer">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+          Simpan Semua Transaksi ATK
+        </button>
+      </div>
+    `,
+    onMount: m => {
+      const tbody = m.querySelector("#multi-atk-rows");
 
- <div class="overflow-x-auto border border-slate-200 rounded-xl bg-white">
- <table class="w-full text-left text-xs border-collapse">
- <thead>
- <tr class="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
- <th class="p-2.5 w-8 text-center">#</th>
- <th class="p-2.5 min-w-[240px]">Pilih Barang / ATK (Berdasarkan Nama)</th>
- <th class="p-2.5 min-w-[180px]">Karyawan Penerima</th>
- <th class="p-2.5 w-28">Jenis Transaksi</th>
- <th class="p-2.5 w-20">Qty</th>
- <th class="p-2.5 min-w-[150px]">Catatan / Keperluan</th>
- <th class="p-2.5 w-10 text-center">Aksi</th>
- </tr>
- </thead>
- <tbody id="multi-atk-rows" class="divide-y divide-slate-100">
- <!-- Dynamic rows rendered here -->
- </tbody>
- </table>
- </div>
- </div>`,
- footerHtml: `
- <div class="flex items-center justify-between w-full">
- <button id="btn-multi-close" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl">Batal</button>
- <button id="btn-multi-save" class="px-5 py-2 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-xl transition shadow flex items-center gap-1.5">
- Simpan Semua Transaksi ATK
- </button>
- </div>`,
- onMount: m => {
- const tbody = m.querySelector("#multi-atk-rows");
- const filterInput = m.querySelector("#filter-atk-name");
- const btnClearFilter = m.querySelector("#btn-clear-atk-filter");
+      document.addEventListener("click", e => {
+        if (!e.target.closest(".item-combobox-wrap-assign")) {
+          m.querySelectorAll(".item-dropdown-menu-assign").forEach(el => el.classList.add("hidden"));
+        }
+      });
 
- function applyFilterToSelect(selectEl) {
- if (!filterInput) return;
- const q = filterInput.value.trim().toLowerCase();
- Array.from(selectEl.options).forEach(opt => {
- if (!opt.value) return;
- const nameText = opt.getAttribute("data-nama") || opt.textContent.toLowerCase();
- if (!q || nameText.includes(q)) {
- opt.hidden = false;
- opt.style.display = "";
- } else {
- opt.hidden = true;
- opt.style.display = "none";
- }
- });
- }
+      function addRow() {
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-50/70 transition multi-row-item";
+        tr.innerHTML = `
+          <td class="p-3 text-center font-bold text-slate-400 row-num">1</td>
+          <td class="p-2">
+            <div class="relative w-full item-combobox-wrap-assign">
+              <input type="hidden" class="m-item-id" value="">
+              <div class="relative flex items-center">
+                <input type="text" 
+                  class="inp-item-assign w-full pl-8 pr-7 py-2 text-xs border border-slate-300 rounded-xl font-semibold text-slate-800 outline-none focus:border-maroon-500 focus:ring-2 focus:ring-maroon-100 bg-white shadow-2xs" 
+                  placeholder="Ketik karakter nama / kode barang..." 
+                  autocomplete="off">
+                <span class="absolute left-2.5 text-slate-400 pointer-events-none">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                </span>
+                <button type="button" class="btn-clear-assign absolute right-2 text-slate-400 hover:text-rose-600 font-bold text-xs p-1 hidden" title="Hapus Pilihan">&times;</button>
+              </div>
+              <div class="item-dropdown-menu-assign hidden absolute left-0 top-full mt-1 w-[320px] sm:w-[400px] max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 divide-y divide-slate-100">
+              </div>
+            </div>
+          </td>
+          <td class="p-2">
+            <select class="m-emp w-full p-2 text-xs border border-slate-300 rounded-xl outline-none focus:border-maroon-500 bg-white font-medium" required>
+              <option value="">-- Pilih Karyawan --</option>
+              ${empOptionsHtml}
+            </select>
+          </td>
+          <td class="p-2">
+            <select class="m-type w-full p-2 text-xs border border-slate-300 rounded-xl outline-none focus:border-maroon-500 bg-white font-medium">
+              <option value="PENYERAHAN">Penyerahan</option>
+              <option value="PENGEMBALIAN">Pengembalian</option>
+            </select>
+          </td>
+          <td class="p-2">
+            <input type="number" min="1" value="1" class="m-qty w-full p-2 text-xs border border-slate-300 rounded-xl text-center font-black text-slate-800 outline-none focus:border-maroon-500 bg-slate-50" required>
+          </td>
+          <td class="p-2">
+            <input type="text" placeholder="Keperluan ATK..." class="m-notes w-full p-2 text-xs border border-slate-300 rounded-xl outline-none focus:border-maroon-500 bg-white">
+          </td>
+          <td class="p-2 text-center">
+            <button type="button" class="btn-del-row p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition" title="Hapus Baris">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            </button>
+          </td>
+        `;
 
- function applyFilterAll() {
- tbody.querySelectorAll(".m-item").forEach(select => applyFilterToSelect(select));
- }
+        const hiddenId = tr.querySelector(".m-item-id");
+        const inpSearch = tr.querySelector(".inp-item-assign");
+        const btnClear = tr.querySelector(".btn-clear-assign");
+        const dropdownMenu = tr.querySelector(".item-dropdown-menu-assign");
+        const inpQty = tr.querySelector(".m-qty");
+        const selEmp = tr.querySelector(".m-emp");
 
- if (filterInput) {
- filterInput.oninput = applyFilterAll;
- }
- if (btnClearFilter) {
- btnClearFilter.onclick = () => {
- if (filterInput) filterInput.value = "";
- applyFilterAll();
- };
- }
+        let activeOptionIndex = -1;
 
- function addRow() {
- const tr = document.createElement("tr");
- tr.className = "hover:bg-slate-50/70 transition multi-row-item";
- tr.innerHTML = `
- <td class="p-2.5 text-center font-bold text-slate-400 row-num">1</td>
- <td class="p-2">
- <select class="m-item w-full p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-maroon-500 bg-white font-medium" required>
- <option value="">-- Pilih Barang / ATK (Urut Nama) --</option>
- ${itemOptionsHtml}
- </select>
- </td>
- <td class="p-2">
- <select class="m-emp w-full p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-maroon-500 bg-white" required>
- <option value="">-- Pilih Karyawan --</option>
- ${empOptionsHtml}
- </select>
- </td>
- <td class="p-2">
- <select class="m-type w-full p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-maroon-500 bg-white">
- <option value="PENYERAHAN">Penyerahan</option>
- <option value="PENGEMBALIAN">Pengembalian</option>
- </select>
- </td>
- <td class="p-2">
- <input type="number" min="1" value="1" class="m-qty w-full p-2 text-xs border border-slate-300 rounded-lg text-center font-bold outline-none focus:border-maroon-500" required>
- </td>
- <td class="p-2">
- <input type="text" placeholder="Keperluan ATK..." class="m-notes w-full p-2 text-xs border border-slate-300 rounded-lg outline-none focus:border-maroon-500">
- </td>
- <td class="p-2 text-center">
- <button type="button" class="btn-del-row p-1 text-slate-400 hover:text-rose-600 transition" title="Hapus Baris">
- &times;
- </button>
- </td>
- `;
+        function renderAssignOptions(query = "") {
+          const q = query.trim().toLowerCase();
+          const filtered = sortedItems.filter(i => {
+            if (!q) return true;
+            const name = (i.nama_barang || "").toLowerCase();
+            const code = (i.id_item || i.id || "").toLowerCase();
+            const cat = (i.kategori || "").toLowerCase();
+            return name.includes(q) || code.includes(q) || cat.includes(q);
+          });
 
- const selectEl = tr.querySelector(".m-item");
- applyFilterToSelect(selectEl);
+          if (!filtered.length) {
+            dropdownMenu.innerHTML = `<div class="p-3 text-center text-slate-400 text-xs italic">Barang tidak ditemukan untuk "${escapeHtml(query)}"</div>`;
+            dropdownMenu.classList.remove("hidden");
+            activeOptionIndex = -1;
+            return;
+          }
 
- tr.querySelector(".btn-del-row").onclick = () => {
- if (tbody.querySelectorAll(".multi-row-item").length <= 1) {
- toast("Minimal harus ada 1 baris transaksi.", "warning");
- return;
- }
- tr.remove();
- reindexRows();
- };
+          dropdownMenu.innerHTML = `
+            <div class="p-1.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[10px] text-slate-500 font-bold px-3">
+              <span>Hasil Pencarian: ${filtered.length} Barang</span>
+              <span class="text-blue-700 font-bold">Ketik karakter untuk menyaring</span>
+            </div>
+            <div class="divide-y divide-slate-100">
+              ${filtered.map((item, idx) => {
+                const cur = toNumber(item.stok_saat_ini);
+                const isSelected = item.id === hiddenId.value;
+                return `
+                  <div class="p-2.5 hover:bg-blue-50 cursor-pointer flex items-center justify-between gap-2 transition item-assign-opt ${isSelected ? 'bg-blue-50/80 font-bold' : ''}" data-id="${escapeHtml(item.id)}" data-index="${idx}">
+                    <div class="min-w-0 flex-1">
+                      <div class="font-bold text-slate-800 text-xs truncate">${highlightSubstr(item.nama_barang, q)}</div>
+                      <div class="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                        ${item.id_item ? `<span class="bg-slate-100 px-1 py-0.2 rounded font-mono text-slate-600">${highlightSubstr(item.id_item, q)}</span>` : ''}
+                        <span>•</span>
+                        <span>${highlightSubstr(item.kategori || 'ATK', q)}</span>
+                      </div>
+                    </div>
+                    <span class="text-[10px] px-2 py-0.5 bg-slate-100 rounded font-bold text-slate-700 shrink-0">Stok: ${cur} ${escapeHtml(item.satuan || 'Unit')}</span>
+                  </div>
+                `;
+              }).join("")}
+            </div>
+          `;
 
- tbody.appendChild(tr);
- reindexRows();
- }
+          dropdownMenu.querySelectorAll(".item-assign-opt").forEach(optEl => {
+            optEl.onclick = e => {
+              e.stopPropagation();
+              const itId = optEl.getAttribute("data-id");
+              selectAssignItem(itId);
+            };
+          });
 
- function reindexRows() {
- tbody.querySelectorAll(".multi-row-item").forEach((tr, idx) => {
- tr.querySelector(".row-num").textContent = idx + 1;
- });
- }
+          dropdownMenu.classList.remove("hidden");
+          activeOptionIndex = -1;
+        }
 
- // Add 2 initial rows
- addRow();
- addRow();
+        function selectAssignItem(itId) {
+          const it = sortedItems.find(i => i.id === itId);
+          if (it) {
+            hiddenId.value = it.id;
+            inpSearch.value = it.nama_barang;
+            btnClear.classList.remove("hidden");
+            dropdownMenu.classList.add("hidden");
+            selEmp.focus();
+          }
+        }
 
- m.querySelector("#btn-add-row-atk").onclick = () => addRow();
- m.querySelector("#btn-multi-close").onclick = closeModal;
+        inpSearch.onfocus = () => {
+          m.querySelectorAll(".item-dropdown-menu-assign").forEach(el => {
+            if (el !== dropdownMenu) el.classList.add("hidden");
+          });
+          renderAssignOptions(inpSearch.value);
+        };
 
- m.querySelector("#btn-multi-save").onclick = async () => {
- const dateVal = m.querySelector("#multi-date").value;
- const rowEls = tbody.querySelectorAll(".multi-row-item");
- 
- const payloadRows = [];
- for (const tr of rowEls) {
- const itemDocId = tr.querySelector(".m-item").value;
- const empName = tr.querySelector(".m-emp").value;
- const typeVal = tr.querySelector(".m-type").value;
- const qtyVal = parseInt(tr.querySelector(".m-qty").value, 10) || 1;
- const notesVal = tr.querySelector(".m-notes").value.trim();
+        inpSearch.oninput = () => {
+          renderAssignOptions(inpSearch.value);
+        };
 
- if (!itemDocId || !empName) {
- return toast("Harap lengkapi Barang dan Karyawan di seluruh baris!", "warning");
- }
+        inpSearch.onkeydown = e => {
+          const options = dropdownMenu.querySelectorAll(".item-assign-opt");
+          if (dropdownMenu.classList.contains("hidden")) {
+            if (e.key === "ArrowDown" || e.key === "Enter") {
+              renderAssignOptions(inpSearch.value);
+              e.preventDefault();
+            }
+            return;
+          }
 
- const targetItem = items.find(i => i.id === itemDocId);
- payloadRows.push({
- item: targetItem,
- itemDocId,
- empName,
- typeVal,
- qtyVal,
- notesVal
- });
- }
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            activeOptionIndex = Math.min(activeOptionIndex + 1, options.length - 1);
+            updateActiveAssignOption(options);
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            activeOptionIndex = Math.max(activeOptionIndex - 1, 0);
+            updateActiveAssignOption(options);
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            if (activeOptionIndex >= 0 && options[activeOptionIndex]) {
+              const itId = options[activeOptionIndex].getAttribute("data-id");
+              selectAssignItem(itId);
+            } else if (options.length === 1) {
+              const itId = options[0].getAttribute("data-id");
+              selectAssignItem(itId);
+            }
+          } else if (e.key === "Escape") {
+            dropdownMenu.classList.add("hidden");
+          }
+        };
 
- const btnSave = m.querySelector("#btn-multi-save");
- btnSave.disabled = true;
- btnSave.innerHTML = `Menyimpan ${payloadRows.length} Baris...`;
+        function updateActiveAssignOption(options) {
+          options.forEach((opt, idx) => {
+            if (idx === activeOptionIndex) {
+              opt.classList.add("bg-blue-100", "ring-1", "ring-blue-400");
+              opt.scrollIntoView({ block: "nearest" });
+            } else {
+              opt.classList.remove("bg-blue-100", "ring-1", "ring-blue-400");
+            }
+          });
+        }
 
- try {
- for (const row of payloadRows) {
- const { item, itemDocId, empName, typeVal, qtyVal, notesVal } = row;
- const logId = genId("AMB");
+        btnClear.onclick = e => {
+          e.stopPropagation();
+          hiddenId.value = "";
+          inpSearch.value = "";
+          btnClear.classList.add("hidden");
+          inpSearch.focus();
+          renderAssignOptions("");
+        };
 
- // 1. Add Log Record
- await fsAdd(COL.LOG_INVENTORY_PENGAMBILAN, {
- id_barang: item ? (item.id_item || item.id) : itemDocId,
- nama_barang: item ? item.nama_barang : "ATK / Barang",
- kategori: item ? (item.kategori || "ATK") : "ATK",
- nama_karyawan: empName,
- tanggal: dateVal,
- jumlah_ambil: qtyVal,
- jenis_aksi: typeVal,
- status_pengembalian: typeVal === "PENYERAHAN" ? "SEDANG_DIPAKAI" : "DIKEMBALIKAN",
- keperluan: notesVal || `Penyerahan Batch ATK/Barang (${qtyVal} Unit)`
- }, logId);
+        tr.querySelector(".btn-del-row").onclick = () => {
+          if (tbody.querySelectorAll(".multi-row-item").length <= 1) {
+            toast("Minimal harus ada 1 baris transaksi.", "warning");
+            return;
+          }
+          tr.remove();
+          reindexRows();
+        };
 
- // 2. Update Master Inventory
- if (item) {
- const updates = {};
- if (typeVal === "PENYERAHAN") {
- updates.assigned_to = empName;
- } else {
- updates.assigned_to = "Unassigned";
- }
- if (typeof item.stok_saat_ini === "number") {
- updates.stok_saat_ini = Math.max(0, typeVal === "PENYERAHAN" ? item.stok_saat_ini - qtyVal : item.stok_saat_ini + qtyVal);
- }
- await fsUpdate(COL.MASTER_INVENTORY, itemDocId, updates);
- }
+        tbody.appendChild(tr);
+        reindexRows();
+      }
 
- // 3. Notify Recipient (App lonceng + Push selalu jalan; Email
- // KHUSUS di-skip untuk kategori "ATK & Office Supplies" sesuai
- // permintaan HRD -- ATK dianggap barang habis pakai kecil yang
- // tidak perlu email formal, sedangkan Aset/Inventaris/Seragam
- // tetap dikirimi email seperti biasa).
- const kategoriRow = (item ? (item.kategori || "") : "ATK").toLowerCase();
- const isATK = kategoriRow.includes("atk");
- await notifyUser(
- empName,
- "Penyerahan / Pengambilan ATK",
- `Anda tercatat menerima/mengambil ${qtyVal} unit ${item ? item.nama_barang : 'ATK'} pada tanggal ${fmtDateShort(dateVal)}.`,
- "#inventory",
- { sendEmail: !isATK }
- );
- }
+      function reindexRows() {
+        tbody.querySelectorAll(".multi-row-item").forEach((tr, idx) => {
+          tr.querySelector(".row-num").textContent = idx + 1;
+        });
+      }
 
- toast(`Berhasil menyimpan ${payloadRows.length} baris log penyerahan ATK!`, "success");
- closeModal();
- updateKpiSummary(container);
+      // Add 2 initial rows
+      addRow();
+      addRow();
 
- // Trigger refresh of active panel
- const ambilTab = container.querySelector("[data-itab='ambil']");
- if (ambilTab) ambilTab.click();
- } catch (e) {
- toast("Gagal menyimpan multi-baris ATK: " + e.message, "error");
- } finally {
- btnSave.disabled = false;
- btnSave.innerHTML = `Simpan Semua Transaksi ATK`;
- }
- };
- }
- });
+      m.querySelector("#btn-add-row-atk").onclick = () => addRow();
+      m.querySelector("#btn-multi-close").onclick = closeModal;
+
+      m.querySelector("#btn-multi-save").onclick = async () => {
+        const dateVal = m.querySelector("#multi-date").value;
+        const rowEls = tbody.querySelectorAll(".multi-row-item");
+        
+        const payloadRows = [];
+        for (const tr of rowEls) {
+          const itemDocId = tr.querySelector(".m-item-id").value;
+          const empName = tr.querySelector(".m-emp").value;
+          const typeVal = tr.querySelector(".m-type").value;
+          const qtyVal = parseInt(tr.querySelector(".m-qty").value, 10) || 1;
+          const notesVal = tr.querySelector(".m-notes").value.trim();
+
+          if (!itemDocId || !empName) {
+            return toast("Harap lengkapi Barang dan Karyawan di seluruh baris!", "warning");
+          }
+
+          const targetItem = items.find(i => i.id === itemDocId);
+          payloadRows.push({
+            item: targetItem,
+            itemDocId,
+            empName,
+            typeVal,
+            qtyVal,
+            notesVal
+          });
+        }
+
+        const btnSave = m.querySelector("#btn-multi-save");
+        btnSave.disabled = true;
+        btnSave.innerHTML = `Menyimpan ${payloadRows.length} Baris...`;
+
+        try {
+          for (const row of payloadRows) {
+            const { item, itemDocId, empName, typeVal, qtyVal, notesVal } = row;
+            const logId = genId("AMB");
+
+            // 1. Add Log Record
+            await fsAdd(COL.LOG_INVENTORY_PENGAMBILAN, {
+              id_barang: item ? (item.id_item || item.id) : itemDocId,
+              nama_barang: item ? item.nama_barang : "ATK / Barang",
+              kategori: item ? (item.kategori || "ATK") : "ATK",
+              nama_karyawan: empName,
+              tanggal: dateVal,
+              jumlah_ambil: qtyVal,
+              jenis_aksi: typeVal,
+              status_pengembalian: typeVal === "PENYERAHAN" ? "SEDANG_DIPAKAI" : "DIKEMBALIKAN",
+              keperluan: notesVal || `Penyerahan Batch ATK/Barang (${qtyVal} Unit)`
+            }, logId);
+
+            // 2. Update Master Inventory
+            if (item) {
+              const updates = {};
+              if (typeVal === "PENYERAHAN") {
+                updates.assigned_to = empName;
+              } else {
+                updates.assigned_to = "Unassigned";
+              }
+              const curStok = toNumber(item.stok_saat_ini);
+              updates.stok_saat_ini = Math.max(0, typeVal === "PENYERAHAN" ? curStok - qtyVal : curStok + qtyVal);
+              await fsUpdate(COL.MASTER_INVENTORY, itemDocId, updates);
+            }
+
+            // 3. Notify Recipient
+            const kategoriRow = (item ? (item.kategori || "") : "ATK").toLowerCase();
+            const isATK = kategoriRow.includes("atk");
+            await notifyUser(
+              empName,
+              "Penyerahan / Pengambilan ATK",
+              `Anda tercatat menerima/mengambil ${qtyVal} unit ${item ? item.nama_barang : 'ATK'} pada tanggal ${fmtDateShort(dateVal)}.`,
+              "#inventory",
+              { sendEmail: !isATK }
+            );
+          }
+
+          toast(`Berhasil menyimpan ${payloadRows.length} baris log penyerahan ATK!`, "success");
+          closeModal();
+
+          // Trigger refresh of all inventory views
+          await reloadInventoryData(container);
+        } catch (e) {
+          toast("Gagal menyimpan multi-baris ATK: " + e.message, "error");
+        } finally {
+          btnSave.disabled = false;
+          btnSave.innerHTML = `Simpan Semua Transaksi ATK`;
+        }
+      };
+    }
+  });
 }
 
 // FUNGSI CETAK BLANKO STOCK OPNAME
@@ -1211,6 +1888,10 @@ async function loadRestockPanel(panelEl, container) {
           </p>
         </div>
         <div class="flex items-center gap-2 shrink-0 flex-wrap">
+          <button id="btn-multi-restock-panel" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center gap-2 cursor-pointer">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            + Input Multi-Baris Tambah Stok
+          </button>
           <button id="btn-export-restock-excel" class="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center gap-2">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
             Export Excel
@@ -1368,6 +2049,14 @@ async function loadRestockPanel(panelEl, container) {
     };
   }
 
+  // EVENT MULTI RESTOCK
+  const btnMultiRestock = panelEl.querySelector("#btn-multi-restock-panel");
+  if (btnMultiRestock) {
+    btnMultiRestock.onclick = () => {
+      openMultiRestockModal(container);
+    };
+  }
+
   // EVENT EXPORT GAMBAR
   const btnExport = panelEl.querySelector("#btn-gen-image-png");
   if (btnExport) {
@@ -1506,9 +2195,8 @@ function bindRowRestockEvents(panelEl, container, items) {
               toast(`Berhasil menambahkan +${qtyAdd} unit! Stok total ${targetItem.nama_barang} kini menjadi ${newStokTotal}.`, "success");
               closeModal();
 
-              // Reload
-              loadRestockPanel(panelEl, container);
-              updateKpiSummary(container);
+              // Reload all inventory views & KPI
+              await reloadInventoryData(container);
             } catch (err) {
               toast("Gagal memperbarui stok: " + err.message, "error");
             }
@@ -1822,6 +2510,11 @@ export async function mount(container, options = {}) {
  const loaded = {};
 
  // Quick Action Buttons
+ const btnMultiRestockQuick = container.querySelector("#btn-multi-restock-quick");
+ if (btnMultiRestockQuick) {
+ btnMultiRestockQuick.onclick = () => openMultiRestockModal(container);
+ }
+
  const btnScanQr = container.querySelector("#btn-scan-qr");
  if (btnScanQr) {
  btnScanQr.onclick = () => openQrScannerModal(container, activeEmpNames);
@@ -1838,13 +2531,14 @@ export async function mount(container, options = {}) {
  }
 
  async function loadBarang() {
- await renderCrudModule(panels.barang, {
+ activeCrudControllers.barang = await renderCrudModule(panels.barang, {
  title: "Master Aset & Inventaris",
  collectionName: COL.MASTER_INVENTORY,
  idPrefix: "INV",
  orderByField: "nama_barang", 
  printFn: openQrCodeModal,
  printLabel: "Label QR",
+ extraToolbarHtml: `<button id="btn-multi-restock-barang" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow transition flex items-center gap-1.5 shrink-0 cursor-pointer"><svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> + Tambah Stok (Multi-Baris)</button>`,
  searchFields: ["nama_barang", "id_item", "kategori", "penempatan", "lokasi", "assigned_to", "serial_number"],
  columns: [
  { key: "id_item", label: "ID ASET" },
@@ -1879,9 +2573,14 @@ export async function mount(container, options = {}) {
  { name: "catatan", label: "Catatan Kelengkapan", type: "textarea", full: true }
  ], { idFromField: "id_item" }),
  afterSave: async (data) => {
- updateKpiSummary(container);
+ await reloadInventoryData(container);
  }
  });
+
+ const btnMultiRestockBarang = panels.barang.querySelector("#btn-multi-restock-barang");
+ if (btnMultiRestockBarang) {
+ btnMultiRestockBarang.onclick = () => openMultiRestockModal(container);
+ }
 
  updateKpiSummary(container);
  }
@@ -1958,9 +2657,8 @@ export async function mount(container, options = {}) {
  assigned_to: "Unassigned",
  kondisi: retCond === "Good" ? "Good (Baik)" : (retCond === "Maintenance" ? "Maintenance (Perlu Servis)" : "Damaged (Rusak)")
  };
- if (typeof targetMaster.stok_saat_ini === "number") {
- updates.stok_saat_ini = targetMaster.stok_saat_ini + (row.jumlah_ambil || 1);
- }
+ const curStok = toNumber(targetMaster.stok_saat_ini);
+ updates.stok_saat_ini = curStok + (toNumber(row.jumlah_ambil) || 1);
  await fsUpdate(COL.MASTER_INVENTORY, targetMaster.id, updates);
  }
 
@@ -1976,8 +2674,7 @@ export async function mount(container, options = {}) {
 
  toast(`Status aset ${row.nama_barang} berhasil diubah menjadi DIKEMBALIKAN!`, "success");
  closeModal();
- updateKpiSummary(container);
- await loadAmbil();
+ await reloadInventoryData(container);
  } catch (err) {
  toast("Gagal memproses pengembalian: " + err.message, "error");
  }
@@ -1988,7 +2685,7 @@ export async function mount(container, options = {}) {
 
  async function loadAmbil() {
  const items = await fsGetAll(COL.MASTER_INVENTORY);
- await renderCrudModule(panels.ambil, {
+ activeCrudControllers.ambil = await renderCrudModule(panels.ambil, {
  title: "Log Penyerahan & Pengembalian Aset",
  collectionName: COL.LOG_INVENTORY_PENGAMBILAN, idPrefix: "AMB", canEdit: false,
  printFn: printTandaTerimaBarang, printLabel: "Cetak Berita Acara PDF",
@@ -2047,13 +2744,19 @@ export async function mount(container, options = {}) {
 
  if (data.jenis_aksi === "PENYERAHAN") {
  data.status_pengembalian = "SEDANG_DIPAKAI";
+ const curStok = toNumber(item.stok_saat_ini);
+ const qtyAmbil = toNumber(data.jumlah_ambil) || 1;
  await fsUpdate(COL.MASTER_INVENTORY, item.id, {
- assigned_to: data.nama_karyawan
+ assigned_to: data.nama_karyawan,
+ stok_saat_ini: Math.max(0, curStok - qtyAmbil)
  });
  } else if (data.jenis_aksi === "PENGEMBALIAN") {
  data.status_pengembalian = "DIKEMBALIKAN";
+ const curStok = toNumber(item.stok_saat_ini);
+ const qtyAmbil = toNumber(data.jumlah_ambil) || 1;
  await fsUpdate(COL.MASTER_INVENTORY, item.id, {
- assigned_to: "Unassigned"
+ assigned_to: "Unassigned",
+ stok_saat_ini: curStok + qtyAmbil
  });
  }
 
@@ -2063,7 +2766,7 @@ export async function mount(container, options = {}) {
  return data;
  },
  afterSave: async (savedData) => {
- updateKpiSummary(container);
+ await reloadInventoryData(container);
  if (savedData && savedData.jenis_aksi === "PENYERAHAN") {
  printTandaTerimaBarang(savedData);
  }
@@ -2077,7 +2780,7 @@ export async function mount(container, options = {}) {
  }
 
  async function loadOpname() {
- await renderCrudModule(panels.opname, {
+ activeCrudControllers.opname = await renderCrudModule(panels.opname, {
  title: "Stock Opname & Cek Fisik Aset",
  collectionName: COL.STOCK_OPNAME, idPrefix: "OPN",
  searchFields: ["nama_barang", "nama_karyawan"],
@@ -2094,11 +2797,15 @@ export async function mount(container, options = {}) {
  { name: "jumlah_ambil", label: "Jumlah Hasil Cek Fisik", type: "number", required: true },
  { name: "nama_karyawan", label: "Petugas Pemeriksa", type: "select", options: activeEmpNames, required: true },
  { name: "keperluan", label: "Catatan Fisik / Selisih", type: "textarea", full: true },
- ]
+ ],
+ afterSave: async () => {
+ await reloadInventoryData(container);
+ }
  });
  panels.opname.querySelector("#btn-print-blanko").onclick = printBlankoOpname;
  }
 
+ activeInventoryContainer = container;
  await loadBarang(); loaded.barang = true;
 
  const rawTargetId = (params && typeof params.get === "function" ? params.get("id") : null) || parseAssetIdFromQuery(window.location.hash);
@@ -2129,11 +2836,25 @@ export async function mount(container, options = {}) {
  if (tab === "restock") await loadRestockPanel(panels.restock, container);
  if (tab === "ambil") await loadAmbil();
  if (tab === "opname") await loadOpname();
+ } else if (tab === "barang") {
+ if (activeCrudControllers.barang?.reload) await activeCrudControllers.barang.reload();
  } else if (tab === "restock") {
  await loadRestockPanel(panels.restock, container);
+ } else if (tab === "ambil") {
+ if (activeCrudControllers.ambil?.reload) await activeCrudControllers.ambil.reload();
+ } else if (tab === "opname") {
+ if (activeCrudControllers.opname?.reload) await activeCrudControllers.opname.reload();
  }
+ await updateKpiSummary(container);
  });
  });
 
- return { unmount() {} };
+ return { 
+   unmount() {
+     if (activeInventoryContainer === container) {
+       activeInventoryContainer = null;
+       activeCrudControllers = { barang: null, ambil: null, opname: null };
+     }
+   } 
+ };
 }
