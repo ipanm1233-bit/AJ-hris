@@ -177,11 +177,20 @@ export function openAssetDetailAndUpdateStockModal(found, activeEmpNames = [], s
      toast("Sedang menyimpan pembaruan stok fisik...", "info");
      
      // 1. Update Master Inventory
-     await fsUpdate(COL.MASTER_INVENTORY, found.id, {
+     const targetDocId = String(found._docId || found.id || found.id_item || assetId).trim();
+     const updatePayload = {
       stok_saat_ini: newQty,
       kondisi: newCond,
       terakhir_diaudit: dateVal
-     });
+     };
+     await fsUpdate(COL.MASTER_INVENTORY, targetDocId, updatePayload);
+     if (assetId && assetId !== targetDocId) {
+      try {
+        await fsUpdate(COL.MASTER_INVENTORY, assetId, updatePayload);
+      } catch (e) {
+        // doc fallback
+      }
+     }
 
      // 2. Add Stock Opname Record
      const diff = newQty - currentStok;
@@ -1175,31 +1184,45 @@ export async function openMultiRestockModal(container, initialItemId = null) {
           let totalQtyAdded = 0;
           for (const row of payloadRows) {
             const { item, itemId, qty, notes } = row;
+            const targetDocId = String(item?._docId || item?.id || item?.id_item || itemId || "").trim();
             
             // Ambil fresh doc dari database jika ada untuk akurasi kalkulasi stok
             let freshDoc = null;
-            try {
-              freshDoc = await fsGet(COL.MASTER_INVENTORY, itemId);
-            } catch (e) {
-              console.warn("fsGet freshDoc fallback:", e);
+            if (targetDocId) {
+              try {
+                freshDoc = await fsGet(COL.MASTER_INVENTORY, targetDocId);
+              } catch (e) {
+                console.warn("fsGet freshDoc fallback:", e);
+              }
             }
 
-            const baseItem = freshDoc || item;
+            const baseItem = freshDoc || item || {};
             const curStok = toNumber(baseItem.stok_saat_ini);
             const newStok = curStok + qty;
             totalQtyAdded += qty;
 
-            // 1. Update Stok di Master Inventory
-            await fsUpdate(COL.MASTER_INVENTORY, itemId, {
+            const updatePayload = {
               stok_saat_ini: newStok,
               terakhir_restock: dateVal,
               catatan_restock_terakhir: notaVal ? `${notaVal} (+${qty} ${baseItem.satuan || 'Unit'} tgl ${fmtDateShort(dateVal)})` : `Restock (+${qty} ${baseItem.satuan || 'Unit'}) tgl ${fmtDateShort(dateVal)}`
-            });
+            };
+
+            // 1. Update Stok di Master Inventory
+            await fsUpdate(COL.MASTER_INVENTORY, targetDocId, updatePayload);
+
+            // Jika id_item berbeda dengan targetDocId, sinkronkan juga
+            if (baseItem.id_item && baseItem.id_item !== targetDocId) {
+              try {
+                await fsUpdate(COL.MASTER_INVENTORY, baseItem.id_item, updatePayload);
+              } catch (e) {
+                // doc fallback
+              }
+            }
 
             // 2. Catat Log Masuk Barang
             await fsAdd(COL.LOG_INVENTORY_PENGAMBILAN, {
-              id_barang: baseItem.id_item || baseItem.id || itemId,
-              nama_barang: baseItem.nama_barang,
+              id_barang: baseItem.id_item || baseItem.id || targetDocId,
+              nama_barang: baseItem.nama_barang || "-",
               kategori: baseItem.kategori || "ATK",
               nama_karyawan: "Restock / Penambahan Stok",
               tanggal: dateVal,
@@ -2116,7 +2139,7 @@ function renderRestockRows(items) {
         <td class="py-3 px-4 text-center font-black text-blue-700 bg-blue-50/50">+${usulanBeli} ${escapeHtml(row.satuan || "Unit")}</td>
         <td class="py-3 px-4 text-center">${statusBadge}</td>
         <td class="py-3 px-4 text-center">
-          <button data-restock-id="${escapeHtml(row.id)}" class="btn-restock-item px-3 py-1.5 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-xl transition shadow flex items-center justify-center gap-1 mx-auto">
+          <button data-restock-id="${escapeHtml(row._docId || row.id || row.id_item || '')}" class="btn-restock-item px-3 py-1.5 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-xl transition shadow flex items-center justify-center gap-1 mx-auto cursor-pointer">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
             Update / Tambah Stok
           </button>
@@ -2129,10 +2152,15 @@ function renderRestockRows(items) {
 function bindRowRestockEvents(panelEl, container, items) {
   panelEl.querySelectorAll(".btn-restock-item").forEach(btn => {
     btn.onclick = () => {
-      const itemId = btn.dataset.restockId;
-      const targetItem = items.find(i => i.id === itemId || i.id_item === itemId);
+      const itemId = (btn.dataset.restockId || "").trim();
+      const targetItem = items.find(i => 
+        (i._docId && i._docId === itemId) || 
+        (i.id && i.id === itemId) || 
+        (i.id_item && i.id_item === itemId)
+      );
       if (!targetItem) return;
 
+      const docId = String(targetItem._docId || targetItem.id || targetItem.id_item || itemId).trim();
       const currentStok = toNumber(targetItem.stok_saat_ini);
       const minStok = toNumber(targetItem.min_stok) || 5;
 
@@ -2174,23 +2202,61 @@ function bindRowRestockEvents(panelEl, container, items) {
         footerHtml: `
           <div class="flex items-center justify-between w-full">
             <button id="btn-restock-cancel" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl">Batal</button>
-            <button id="btn-restock-save" class="px-5 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition shadow">Simpan & Tambahkan Stok</button>
+            <button id="btn-restock-save" class="px-5 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition shadow cursor-pointer">Simpan & Tambahkan Stok</button>
           </div>`,
         onMount: m => {
           m.querySelector("#btn-restock-cancel").onclick = closeModal;
           m.querySelector("#btn-restock-save").onclick = async () => {
+            const btnSave = m.querySelector("#btn-restock-save");
             const qtyAdd = toNumber(m.querySelector("#restock-qty-add").value);
             const notes = m.querySelector("#restock-notes").value.trim();
 
             if (qtyAdd <= 0) return toast("Jumlah penambahan stok harus lebih dari 0", "warning");
 
             const newStokTotal = currentStok + qtyAdd;
+            btnSave.disabled = true;
+            btnSave.innerHTML = "Menyimpan Stok...";
 
             try {
-              await fsUpdate(COL.MASTER_INVENTORY, targetItem.id, {
+              const dateToday = new Date().toISOString().slice(0, 10);
+              const noteFormatted = notes 
+                ? `${notes} (+${qtyAdd} ${targetItem.satuan || 'Unit'} tgl ${fmtDateShort(dateToday)})` 
+                : `Penambahan Stok (+${qtyAdd} ${targetItem.satuan || 'Unit'} tgl ${fmtDateShort(dateToday)})`;
+
+              const updatePayload = {
                 stok_saat_ini: newStokTotal,
-                catatan_restock_terakhir: notes ? `${notes} (+${qtyAdd} unit tgl ${new Date().toLocaleDateString('id-ID')})` : undefined
-              });
+                terakhir_restock: dateToday,
+                catatan_restock_terakhir: noteFormatted
+              };
+
+              // 1. Update Master Inventory
+              await fsUpdate(COL.MASTER_INVENTORY, docId, updatePayload);
+
+              // Jika targetItem.id_item berbeda dari docId, sinkronkan juga
+              if (targetItem.id_item && targetItem.id_item !== docId) {
+                try {
+                  await fsUpdate(COL.MASTER_INVENTORY, targetItem.id_item, updatePayload);
+                } catch (e) {
+                  // doc fallback
+                }
+              }
+
+              // 2. Catat Log Masuk Barang ke Riwayat Transaksi
+              try {
+                await fsAdd(COL.LOG_INVENTORY_PENGAMBILAN, {
+                  id_barang: targetItem.id_item || docId,
+                  nama_barang: targetItem.nama_barang,
+                  kategori: targetItem.kategori || "ATK",
+                  nama_karyawan: "Restock / Penambahan Stok",
+                  tanggal: dateToday,
+                  jumlah_ambil: qtyAdd,
+                  jenis_aksi: "PENAMBAHAN_STOK",
+                  status_pengembalian: "STOK_MASUK",
+                  keperluan: notes ? `[Restock] ${notes} (+${qtyAdd} ${targetItem.satuan || 'Unit'})` : `Penambahan Stok (+${qtyAdd} ${targetItem.satuan || 'Unit'})`
+                }, genId("STK"));
+              } catch (logErr) {
+                console.warn("Gagal simpan log restock:", logErr);
+              }
 
               toast(`Berhasil menambahkan +${qtyAdd} unit! Stok total ${targetItem.nama_barang} kini menjadi ${newStokTotal}.`, "success");
               closeModal();
@@ -2198,7 +2264,10 @@ function bindRowRestockEvents(panelEl, container, items) {
               // Reload all inventory views & KPI
               await reloadInventoryData(container);
             } catch (err) {
+              console.error("Gagal memperbarui stok:", err);
               toast("Gagal memperbarui stok: " + err.message, "error");
+              btnSave.disabled = false;
+              btnSave.innerHTML = "Simpan & Tambahkan Stok";
             }
           };
         }

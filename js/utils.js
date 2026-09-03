@@ -1076,21 +1076,30 @@ export function cleanFirestorePayload(obj, seen = new WeakSet()) {
 }
 
 export async function fsGet(colName, id) {
- const snap = await getDoc(doc(db, colName, id));
- return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  if (!id) return null;
+  const cleanId = String(id).trim();
+  if (!cleanId) return null;
+  const snap = await getDoc(doc(db, colName, cleanId));
+  return snap.exists() ? { id: snap.id, _docId: snap.id, ...snap.data() } : null;
 }
 export async function fsAdd(colName, data, customId = null) {
- const payload = cleanFirestorePayload(data) || {};
- if (customId) {
- await setDoc(doc(db, colName, String(customId)), { ...payload, created_at: serverTimestamp() });
- return customId;
- }
- const ref = await addDoc(collection(db, colName), { ...payload, created_at: serverTimestamp() });
- return ref.id;
+  const payload = cleanFirestorePayload(data) || {};
+  if (customId) {
+    const cleanId = String(customId).trim();
+    await setDoc(doc(db, colName, cleanId), { ...payload, created_at: serverTimestamp() });
+    return cleanId;
+  }
+  const ref = await addDoc(collection(db, colName), { ...payload, created_at: serverTimestamp() });
+  return ref.id;
 }
 export async function fsUpdate(colName, id, data) {
- const payload = cleanFirestorePayload(data) || {};
- await updateDoc(doc(db, colName, id), { ...payload, updated_at: serverTimestamp() });
+  if (!id) {
+    console.warn(`fsUpdate called with empty id for collection ${colName}`);
+    throw new Error(`ID dokumen tidak valid untuk pembaruan koleksi ${colName}`);
+  }
+  const cleanId = String(id).trim();
+  const payload = cleanFirestorePayload(data) || {};
+  await setDoc(doc(db, colName, cleanId), { ...payload, updated_at: serverTimestamp() }, { merge: true });
 }
 export async function fsDelete(colName, id) {
  if (!id) return;

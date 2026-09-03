@@ -20,7 +20,7 @@ let firebaseConfig = {
  appId: "1:558851473740:web:bb87504a9d5f324aec4fe9"
 };
 
-let customDbId = undefined;
+let customDbId = "ai-studio-ajhris-b3979000-ada8-4821-9f1a-49af228e2acb";
 
 try {
  const resp = await fetch("/firebase-applet-config.json");
@@ -73,9 +73,13 @@ isSupported().then((supported) => {
  console.log("Gagal mengecek dukungan messaging:", err);
 });
 
+const firestoreSettings = {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+};
+
 export const db = customDbId 
- ? initializeFirestore(app, { localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()}) }, customDbId)
- : initializeFirestore(app, { localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()}) });
+  ? initializeFirestore(app, firestoreSettings, customDbId)
+  : initializeFirestore(app, firestoreSettings);
 
 // INISIALISASI STORAGE
 export const storage = getStorage(app);
