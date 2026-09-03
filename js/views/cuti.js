@@ -1275,8 +1275,10 @@ export async function mount(container, { session }) {
         if (row) {
           downloadFormCutiPdf({
             ...row,
+            kData: k,
             nama_pemohon: k.nama_karyawan,
             nik: k.nik || "-",
+            divisi: k.divisi || k.departemen || k.bagian || "-",
             jabatan: k.jabatan || "-",
             cabang: k.cabang || "-",
             kategori_cuti: row.type_cuti,
@@ -1299,8 +1301,10 @@ export async function mount(container, { session }) {
         if (row) {
           printFormCutiFisik({
             ...row,
+            kData: k,
             nama_pemohon: k.nama_karyawan,
             nik: k.nik || "-",
+            divisi: k.divisi || k.departemen || k.bagian || "-",
             jabatan: k.jabatan || "-",
             cabang: k.cabang || "-",
             kategori_cuti: row.type_cuti,
@@ -2149,8 +2153,13 @@ export async function mount(container, { session }) {
  const { downloadHtmlAsPdf, toast, generateStandardFormCutiHtml } = await import("../utils.js");
  toast("Sedang memproses PDF...", "info");
 
+ const kontakStr = data.kontak && data.kontak !== "-" 
+ ? data.kontak 
+ : (k.alamat && k.no_hp ? `${k.alamat}/${k.no_hp}` : (k.alamat || k.no_hp || "-"));
+
  const html = generateStandardFormCutiHtml({
  namaKaryawan: k.nama_karyawan,
+ nik: k.nik || k.nik_karyawan || "-",
  divisi: k.divisi || k.jabatan || k.cabang || "-",
  jabatan: k.jabatan || "-",
  cabang: k.cabang || "-",
@@ -2160,12 +2169,15 @@ export async function mount(container, { session }) {
  tglSelesai: data.tgl_akhir || data.tanggal,
  jamKeluar: data.jam_keluar || "-",
  jamKembali: data.jam_kembali || "-",
- kontak: data.kontak || "-",
+ kontak: kontakStr,
  alasan: data.keterangan_cuti || "-",
  sisaTahunan: sisa ? (sisa.Tahunan ?? 0) : 0,
  sisaKhusus: sisa ? (sisa.Khusus ?? 0) : 0,
  sisaAkumulasi: sisa ? (sisa.Akumulasi ?? 0) : 0,
- tglPengajuan: new Date().toISOString()
+ sisaBesar: k.sisa_cuti_besar ?? k.jatah_cuti_besar ?? 0,
+ jumlahHari: data.count || (data.isHalfDay ? 0.5 : 1),
+ tglPengajuan: new Date().toISOString(),
+ forPdf: true
  });
 
  await downloadHtmlAsPdf(html, `Form_Cuti_${escapeHtml(k.nama_karyawan).replace(/\s+/g, "_")}.pdf`);

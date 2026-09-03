@@ -1803,396 +1803,1105 @@ export function printSalesKlaimForm(item) {
  printWin.document.close();
 }
 
+/**
+ * Menghitung saldo jatah cuti resmi berdasarkan riwayat pengambilan cuti (MASTER_CUTI & DATA_PENGAJUAN)
+ * untuk ditampilkan pada tabel formulir pengajuan cuti secara akurat dan konsisten sesuai data historis.
+ * 
+ * Baris 1: Sisa hak cuti (sebelum cuti pada pengajuan ini diambil)
+ * Baris 2: Cuti yang akan dipakai (jumlah hari yang diajukan pada dokumen ini)
+ * Baris 3: Total sisa cuti (Sisa hak cuti - Cuti yang akan dipakai)
+ */
+export async function calculateLeaveHistoryBalances(empIdent, currentLeave = {}) {
+	let empName = "";
+	let nik = "-";
+	let kData = null;
+
+	if (empIdent && typeof empIdent === "object") {
+		if (empIdent.nama_karyawan || empIdent.nik || empIdent.jatah_cuti_tahunan !== undefined) {
+			kData = empIdent;
+		}
+		empName = empIdent.nama_karyawan || empIdent.nama || empIdent.nama_pemohon || "";
+		nik = empIdent.nik || empIdent.nik_karyawan || empIdent.nik_pemohon || "-";
+	} else if (typeof empIdent === "string") {
+		empName = empIdent.trim();
+	}
+
+	if (currentLeave && typeof currentLeave === "object") {
+		const cDetail = currentLeave.detail || {};
+		if (!empName) {
+			empName = currentLeave.nama_pemohon || currentLeave.nama_karyawan || currentLeave.pemohon || currentLeave.nama || cDetail.nama_karyawan || cDetail.nama_pemohon || "";
+		}
+		if (!nik || nik === "-") {
+			nik = currentLeave.nik || currentLeave.nik_pemohon || currentLeave.nik_karyawan || cDetail.nik || cDetail.nik_pemohon || cDetail.nik_karyawan || "-";
+		}
+		if (!kData && (currentLeave.kData || currentLeave.karyawan)) {
+			kData = currentLeave.kData || currentLeave.karyawan;
+		}
+	}
+
+	let allEmp = [];
+	let allMasterCuti = [];
+	let allPengajuan = [];
+
+	try {
+		[allEmp, allMasterCuti, allPengajuan] = await Promise.all([
+			fsGetAll(COL.MASTER_KARYAWAN).catch(() => []),
+			fsGetAll(COL.MASTER_CUTI).catch(() => []),
+			fsGetAll(COL.DATA_PENGAJUAN).catch(() => [])
+		]);
+	} catch (e) {
+		console.warn("Error fetching data in calculateLeaveHistoryBalances:", e);
+	}
+
+	// Cari kecocokan data karyawan di MASTER_KARYAWAN
+	if (!kData && allEmp.length) {
+		const cleanNik = (nik && nik !== "-") ? String(nik).trim() : "";
+		const cleanName = (empName || "").trim().toLowerCase();
+
+		if (cleanNik) {
+			kData = allEmp.find(k => {
+				const kNik = String(k.nik || k.nik_karyawan || "").trim();
+				return kNik && (kNik === cleanNik || kNik.toLowerCase() === cleanNik.toLowerCase());
+			});
+		}
+		if (!kData && cleanName) {
+			kData = allEmp.find(k => {
+				const kName = (k.nama_karyawan || k.nama || "").trim().toLowerCase();
+				return kName && kName === cleanName;
+			});
+		}
+		if (!kData && cleanName) {
+			kData = allEmp.find(k => {
+				const kName = (k.nama_karyawan || k.nama || "").trim().toLowerCase();
+				return kName && (kName.includes(cleanName) || cleanName.includes(kName));
+			});
+		}
+	}
+
+	if (kData) {
+		if (!empName) empName = kData.nama_karyawan || kData.nama || "";
+		if (!nik || nik === "-") nik = kData.nik || kData.nik_karyawan || "-";
+	}
+
+	// 1. Tentukan tanggal & tahun acuan dari pengajuan cuti ini
+	const tglMulai = currentLeave.tanggal_mulai || (currentLeave.detail && currentLeave.detail.tanggal_mulai) || currentLeave.tanggal || currentLeave.tgl || new Date().toISOString();
+	const leaveDateObj = smartParseDate(tglMulai) || new Date(tglMulai);
+	const targetYear = leaveDateObj.getFullYear() || new Date().getFullYear();
+
+	// 2. Tentukan jumlah hari dan kategori cuti yang akan dipakai pada dokumen ini
+	const jenisCuti = currentLeave.kategori_cuti || currentLeave.jenis_cuti || (currentLeave.detail && currentLeave.detail.jenis_cuti) || currentLeave.type_cuti || "Cuti";
+	const isHalfDay = Boolean(currentLeave.isHalfDay || (jenisCuti || "").toLowerCase().includes("setengah hari") || (jenisCuti || "").includes("1/2"));
+	
+	let usedCount = parseFloat(currentLeave.jumlah_hari || (currentLeave.detail && currentLeave.detail.jumlah_hari) || currentLeave.count || (currentLeave.detail && currentLeave.detail.count));
+	if (isNaN(usedCount) || usedCount <= 0) {
+		usedCount = isHalfDay ? 0.5 : 1;
+	}
+
+	const currentDeduction = getCutiDeductionCategory({
+		...currentLeave,
+		type_cuti: jenisCuti,
+		count: usedCount,
+		isHalfDay
+	});
+	const targetCategory = currentDeduction.category; // "Tahunan", "Khusus", "Akumulasi", "Besar", "Tidak Dipotong", "Potong Gaji"
+
+	// 3. Gabungkan dan saring seluruh riwayat cuti karyawan
+	const empLeaves = [];
+	const seenKeys = new Set();
+
+	// Tambahkan dari MASTER_CUTI
+	for (const r of allMasterCuti) {
+		const rName = (r.nama_karyawan || r.nama || "").trim().toLowerCase();
+		const rNik = String(r.nik || r.nik_karyawan || "-");
+		const matchesEmp = (empName && rName === empName.toLowerCase()) || (nik !== "-" && rNik === String(nik));
+		if (!matchesEmp) continue;
+
+		const st = (r.status_final || r.status || "").toUpperCase();
+		if (st.includes("REJECT") || st.includes("TOLAK") || st.includes("BATAL") || st.includes("CANCEL")) continue;
+
+		const rYear = parseInt(r.tahun) || (r.tanggal ? new Date(r.tanggal).getFullYear() : (r.tanggal_mulai ? new Date(r.tanggal_mulai).getFullYear() : targetYear));
+		if (rYear !== targetYear) continue;
+
+		const key = `${r.id || r.no_referensi || ''}_${r.tanggal || r.tanggal_mulai || ''}_${r.type_cuti || ''}`;
+		if (!seenKeys.has(key)) {
+			seenKeys.add(key);
+			empLeaves.push(r);
+		}
+	}
+
+	// Tambahkan dari DATA_PENGAJUAN (yang disetujui / aktif dan belum ada di MASTER_CUTI)
+	for (const p of allPengajuan) {
+		const pName = (p.nama_pemohon || p.nama_karyawan || p.nama || "").trim().toLowerCase();
+		const pNik = String(p.nik || p.nik_pemohon || "-");
+		const matchesEmp = (empName && pName === empName.toLowerCase()) || (nik !== "-" && pNik === String(nik));
+		if (!matchesEmp) continue;
+
+		const st = (p.status_final || p.status || p.status_spv || p.status_hrd || "").toUpperCase();
+		if (st.includes("REJECT") || st.includes("TOLAK") || st.includes("BATAL") || st.includes("CANCEL")) continue;
+
+		const pYear = parseInt(p.tahun) || (p.tanggal_mulai ? new Date(p.tanggal_mulai).getFullYear() : (p.tgl ? new Date(p.tgl).getFullYear() : targetYear));
+		if (pYear !== targetYear) continue;
+
+		const keyRef = p.no_referensi || p.id;
+		if (keyRef && seenKeys.has(keyRef)) continue;
+
+		const key = `${p.id || ''}_${p.tanggal_mulai || p.tgl || ''}_${p.kategori_cuti || p.jenis_cuti || ''}`;
+		if (!seenKeys.has(key)) {
+			seenKeys.add(key);
+			empLeaves.push(p);
+		}
+	}
+
+	// Helper untuk mengecek apakah record r adalah dokumen cuti yang sedang diproses ini
+	const isCurrentLeaveRecord = (r) => {
+		if (!r) return false;
+		const cId = currentLeave.id || currentLeave._docId || currentLeave.no_referensi;
+		const rId = r.id || r._docId || r.no_referensi;
+		if (cId && rId) {
+			const sCId = String(cId).trim();
+			const sRId = String(rId).trim();
+			if (sCId === sRId) return true;
+			if (sRId === `CUTI_${sCId}` || sCId === `CUTI_${sRId}`) return true;
+			if (sRId.includes(sCId) || sCId.includes(sRId)) return true;
+		}
+		const cRef = currentLeave.no_referensi || currentLeave.id;
+		const rRef = r.no_referensi || r.id;
+		if (cRef && rRef && String(cRef).trim() === String(rRef).trim()) return true;
+
+		const rDate = r.tanggal_mulai || r.tanggal || r.tgl;
+		const cDate = currentLeave.tanggal_mulai || currentLeave.tanggal || currentLeave.tgl;
+		if (rDate && cDate && String(rDate).slice(0, 10) === String(cDate).slice(0, 10)) {
+			const rType = String(r.type_cuti || r.jenis_cuti || r.kategori_cuti || "").trim().toLowerCase();
+			const cType = String(jenisCuti || "").trim().toLowerCase();
+			if (rType === cType || rType.includes(cType) || cType.includes(rType)) return true;
+		}
+		return false;
+	};
+
+	// 4. Saring riwayat yang terjadi SEBELUM pengajuan ini
+	const priorLeaves = [];
+	for (const r of empLeaves) {
+		if (isCurrentLeaveRecord(r)) continue;
+
+		const rDateStr = r.tanggal_mulai || r.tanggal || r.tgl;
+		const rDateObj = smartParseDate(rDateStr);
+		if (rDateObj && leaveDateObj && rDateObj > leaveDateObj) {
+			continue;
+		}
+		priorLeaves.push(r);
+	}
+
+	// 5. Hitung saldo resmi berdasarkan riwayat sebelum cuti ini
+	const historyCalc = getCalculatedJatahCuti(kData, priorLeaves, targetYear);
+
+	// 6. Cek apakah ada saldo eksplisit tersimpan di dokumen pengajuan ini pada database
+	const cDetail = currentLeave.detail || {};
+	const checkVal = (v) => (v !== undefined && v !== null && v !== "" && !isNaN(Number(v))) ? Number(v) : null;
+
+	const docSisaTahunan = checkVal(currentLeave.sisa_tahunan) ?? checkVal(cDetail.sisa_tahunan);
+	const docSisaKhusus = checkVal(currentLeave.sisa_khusus) ?? checkVal(cDetail.sisa_khusus);
+	const docSisaAkumulasi = checkVal(currentLeave.sisa_akumulasi) ?? checkVal(cDetail.sisa_akumulasi);
+	const docSisaBesar = checkVal(currentLeave.sisa_besar) ?? checkVal(cDetail.sisa_besar);
+
+	// Baris 1: Sisa Hak Cuti (sebelum cuti ini diambil)
+	let sisaHakTahunan = docSisaTahunan !== null ? docSisaTahunan : historyCalc.sisaTahunan;
+	let sisaHakKhusus = docSisaKhusus !== null ? docSisaKhusus : historyCalc.sisaKhusus;
+	let sisaHakAkumulasi = docSisaAkumulasi !== null ? docSisaAkumulasi : historyCalc.sisaAkumulasi;
+	let sisaHakBesar = docSisaBesar !== null ? docSisaBesar : historyCalc.sisaBesar;
+
+	// Baris 2: Cuti yang akan dipakai
+	let dipakaiTahunan = 0;
+	let dipakaiKhusus = 0;
+	let dipakaiAkumulasi = 0;
+	let dipakaiBesar = 0;
+
+	if (targetCategory === "Tahunan") {
+		dipakaiTahunan = usedCount;
+	} else if (targetCategory === "Khusus") {
+		dipakaiKhusus = usedCount;
+	} else if (targetCategory === "Akumulasi") {
+		dipakaiAkumulasi = usedCount;
+	} else if (targetCategory === "Besar") {
+		dipakaiBesar = usedCount;
+	}
+
+	// Baris 3: Total Sisa Cuti (Sisa Hak Cuti - Cuti yang akan dipakai)
+	let totalSisaTahunan = Math.max(0, sisaHakTahunan - dipakaiTahunan);
+	let totalSisaKhusus = Math.max(0, sisaHakKhusus - dipakaiKhusus);
+	let totalSisaAkumulasi = Math.max(0, sisaHakAkumulasi - dipakaiAkumulasi);
+	let totalSisaBesar = Math.max(0, sisaHakBesar - dipakaiBesar);
+
+	// Jika dokumen database memiliki field total sisa spesifik, hormati nilainya
+	const docTotalTahunan = checkVal(currentLeave.total_sisa_tahunan) ?? checkVal(cDetail.total_sisa_tahunan);
+	const docTotalKhusus = checkVal(currentLeave.total_sisa_khusus) ?? checkVal(cDetail.total_sisa_khusus);
+	const docTotalAkumulasi = checkVal(currentLeave.total_sisa_akumulasi) ?? checkVal(cDetail.total_sisa_akumulasi);
+	const docTotalBesar = checkVal(currentLeave.total_sisa_besar) ?? checkVal(cDetail.total_sisa_besar);
+
+	if (docTotalTahunan !== null) totalSisaTahunan = docTotalTahunan;
+	if (docTotalKhusus !== null) totalSisaKhusus = docTotalKhusus;
+	if (docTotalAkumulasi !== null) totalSisaAkumulasi = docTotalAkumulasi;
+	if (docTotalBesar !== null) totalSisaBesar = docTotalBesar;
+
+	return {
+		kData,
+		jatahTahunan: historyCalc.jatahTahunan,
+		jatahKhusus: historyCalc.jatahKhusus,
+		jatahAkumulasi: historyCalc.jatahAkumulasi,
+		jatahBesar: historyCalc.jatahBesar,
+		priorUsedTahunan: historyCalc.usedTahunan,
+		priorUsedKhusus: historyCalc.usedKhusus,
+		priorUsedAkumulasi: historyCalc.usedAkumulasi,
+		priorUsedBesar: historyCalc.usedBesar,
+		sisaHakTahunan,
+		sisaHakKhusus,
+		sisaHakAkumulasi,
+		sisaHakBesar,
+		targetCategory,
+		usedCount,
+		dipakaiTahunan,
+		dipakaiKhusus,
+		dipakaiAkumulasi,
+		dipakaiBesar,
+		totalSisaTahunan,
+		totalSisaKhusus,
+		totalSisaAkumulasi,
+		totalSisaBesar
+	};
+}
+
 export function generateStandardFormCutiHtml(opts = {}) {
- const {
- namaKaryawan = "Karyawan",
- divisi = "-",
- jabatan = "-",
- cabang = "-",
- jenisCuti = "Cuti",
- isHalfDay = false,
- tglMulai = new Date().toISOString(),
- tglSelesai = tglMulai,
- jamKeluar = "-",
- jamKembali = "-",
- kontak = "-",
- alasan = "-",
- sisaTahunan = 0,
- sisaKhusus = 0,
- sisaAkumulasi = 0,
- tglPengajuan = new Date().toISOString(),
- pejabatPengganti = "-",
- catatanAtasan = ""
- } = opts;
+	const {
+		namaKaryawan = "Karyawan",
+		nik = "-",
+		divisi = "-",
+		jabatan = "-",
+		cabang = "-",
+		jenisCuti = "Cuti",
+		isHalfDay = false,
+		tglMulai = new Date().toISOString(),
+		tglSelesai = tglMulai,
+		jamKeluar = "-",
+		jamKembali = "-",
+		kontak = "-",
+		alasan = "-",
+		sisaTahunan = 0,
+		sisaKhusus = 0,
+		sisaAkumulasi = 0,
+		sisaBesar = 0,
+		dipakaiTahunan = null,
+		dipakaiKhusus = null,
+		dipakaiAkumulasi = null,
+		dipakaiBesar = null,
+		totalSisaTahunan = null,
+		totalSisaKhusus = null,
+		totalSisaAkumulasi = null,
+		totalSisaBesar = null,
+		jumlahHari = null,
+		tglPengajuan = new Date().toISOString(),
+		pejabatPengganti = "-",
+		catatanAtasan = "",
+		namaAtasan = "",
+		namaHrd = "",
+		signaturePemohon = "",
+		signatureAtasan = "",
+		signatureHrd = "",
+		forPdf = false,
+		hal = "1 dari 1",
+		noDok = "HR4",
+		terbitRevisi = "1/1",
+		tglTerbit = "1 September 2025"
+	} = opts;
 
- const fmtMulai = fmtDate(tglMulai);
- const fmtSelesai = fmtDate(tglSelesai);
- const fmtTglPengajuan = fmtDate(tglPengajuan);
+	const fmtMulai = fmtDateIndo(tglMulai);
+	const fmtSelesai = fmtDateIndo(tglSelesai);
+	const fmtTglPengajuan = fmtDateIndo(tglPengajuan);
 
- const locationDateStr = `CIREBON, ${fmtTglPengajuan !== "-" ? fmtTglPengajuan : fmtDate(new Date())}`;
+	let kotaCabang = (cabang && cabang !== "-" ? cabang : "MALANG").trim().toUpperCase();
+	kotaCabang = kotaCabang.replace(/^CABANG\s+/i, "");
+	const locationDateStr = `${kotaCabang}, ${fmtTglPengajuan !== "-" ? fmtTglPengajuan : fmtDateIndo(new Date())}`;
 
- let divisiDisplay = divisi;
- if (!divisiDisplay || divisiDisplay === "-") {
- divisiDisplay = jabatan !== "-" ? jabatan : (cabang !== "-" ? cabang : "Staff");
- } else if (jabatan && jabatan !== "-" && jabatan !== divisiDisplay) {
- divisiDisplay = `${jabatan} / ${divisiDisplay}`;
- }
+	let divisiDisplay = "-";
+	const cleanDiv = (divisi && divisi !== "-") ? divisi.trim() : "";
+	const cleanJab = (jabatan && jabatan !== "-") ? jabatan.trim() : "";
 
- const headerTitle = isHalfDay 
- ? "FORMULIR PENGAJUAN CUTI SETENGAH HARI" 
- : "FORMULIR PENGAJUAN CUTI KARYAWAN";
+	if (cleanDiv && cleanJab && cleanDiv.toLowerCase() !== cleanJab.toLowerCase()) {
+		divisiDisplay = `${cleanDiv} / ${cleanJab}`;
+	} else if (cleanDiv) {
+		divisiDisplay = cleanDiv;
+	} else if (cleanJab) {
+		divisiDisplay = cleanJab;
+	} else if (cabang && cabang !== "-") {
+		divisiDisplay = `STAFF ${cabang.trim().toUpperCase()}`;
+	} else {
+		divisiDisplay = "STAFF";
+	}
 
- return `<!DOCTYPE html>
+	const headerTitle = isHalfDay 
+		? "FORMULIR PENGAJUAN CUTI SETENGAH HARI" 
+		: "FORMULIR PENGAJUAN CUTI KARYAWAN";
+
+	// Tentukan jumlah hari cuti yang dipakai
+	let usedCount = parseFloat(jumlahHari);
+	if (isNaN(usedCount) || usedCount <= 0) {
+		if (isHalfDay) {
+			usedCount = 0.5;
+		} else {
+			try {
+				const d1 = smartParseDate(tglMulai);
+				const d2 = smartParseDate(tglSelesai);
+				if (d1 && d2) {
+					const diffDays = Math.round((d2 - d1) / (1000 * 60 * 60 * 24)) + 1;
+					usedCount = Math.max(1, diffDays);
+				} else {
+					usedCount = 1;
+				}
+			} catch (e) {
+				usedCount = 1;
+			}
+		}
+	}
+
+	const formatCutiNum = (val) => {
+		if (val === null || val === undefined || val === "") return "0";
+		const num = Number(val);
+		if (isNaN(num)) return "0";
+		if (Number.isInteger(num)) return String(num);
+		return num.toFixed(1).replace(/\.0$/, "");
+	};
+
+	const hakTahunan = toNumber(sisaTahunan);
+	const hakKhusus = toNumber(sisaKhusus);
+	const hakAkumulasi = toNumber(sisaAkumulasi);
+	const hakBesar = toNumber(sisaBesar);
+
+	const jenisLower = (jenisCuti || "").toLowerCase();
+	let targetCat = "Tahunan";
+	if (jenisLower.includes("khusus")) targetCat = "Khusus";
+	else if (jenisLower.includes("akumulasi") || jenisLower.includes("carry") || jenisLower.includes("cuti sisa") || jenisLower.startsWith("cs")) targetCat = "Akumulasi";
+	else if (jenisLower.includes("besar")) targetCat = "Besar";
+	else targetCat = "Tahunan";
+
+	const checkNum = (v) => (v !== null && v !== undefined && v !== "" && !isNaN(Number(v))) ? Number(v) : null;
+
+	let valDipakaiTahunan = checkNum(dipakaiTahunan);
+	let valDipakaiKhusus = checkNum(dipakaiKhusus);
+	let valDipakaiAkumulasi = checkNum(dipakaiAkumulasi);
+	let valDipakaiBesar = checkNum(dipakaiBesar);
+
+	let valTotalSisaTahunan = checkNum(totalSisaTahunan);
+	let valTotalSisaKhusus = checkNum(totalSisaKhusus);
+	let valTotalSisaAkumulasi = checkNum(totalSisaAkumulasi);
+	let valTotalSisaBesar = checkNum(totalSisaBesar);
+
+	// Jika belum ditentukan dari luar, hitung otomatis berdasarkan target kategori:
+	if (valDipakaiTahunan === null && valDipakaiKhusus === null && valDipakaiAkumulasi === null && valDipakaiBesar === null) {
+		valDipakaiTahunan = targetCat === "Tahunan" ? usedCount : 0;
+		valDipakaiKhusus = targetCat === "Khusus" ? usedCount : 0;
+		valDipakaiAkumulasi = targetCat === "Akumulasi" ? usedCount : 0;
+		valDipakaiBesar = targetCat === "Besar" ? usedCount : 0;
+	} else {
+		if (valDipakaiTahunan === null) valDipakaiTahunan = 0;
+		if (valDipakaiKhusus === null) valDipakaiKhusus = 0;
+		if (valDipakaiAkumulasi === null) valDipakaiAkumulasi = 0;
+		if (valDipakaiBesar === null) valDipakaiBesar = 0;
+	}
+
+	if (valTotalSisaTahunan === null) valTotalSisaTahunan = Math.max(0, hakTahunan - valDipakaiTahunan);
+	if (valTotalSisaKhusus === null) valTotalSisaKhusus = Math.max(0, hakKhusus - valDipakaiKhusus);
+	if (valTotalSisaAkumulasi === null) valTotalSisaAkumulasi = Math.max(0, hakAkumulasi - valDipakaiAkumulasi);
+	if (valTotalSisaBesar === null) valTotalSisaBesar = Math.max(0, hakBesar - valDipakaiBesar);
+
+	const sigPemohonHtml = signaturePemohon && (signaturePemohon.startsWith("data:") || signaturePemohon.startsWith("http"))
+		? `<img src="${signaturePemohon}" style="max-height:50px;max-width:130px;object-fit:contain;" alt="TTD Pemohon" />` 
+		: `<div style="height:46px;"></div>`;
+	const sigAtasanHtml = signatureAtasan && (signatureAtasan.startsWith("data:") || signatureAtasan.startsWith("http"))
+		? `<img src="${signatureAtasan}" style="max-height:46px;max-width:130px;object-fit:contain;" alt="TTD Atasan" />` 
+		: `<div style="height:46px;"></div>`;
+	const sigHrdHtml = signatureHrd && (signatureHrd.startsWith("data:") || signatureHrd.startsWith("http"))
+		? `<img src="${signatureHrd}" style="max-height:46px;max-width:130px;object-fit:contain;" alt="TTD HRD" />` 
+		: `<div style="height:46px;"></div>`;
+
+	// Identifikasi kolom aktif (yang terpotong) untuk aksentuasi visual yang elegan
+	const isTahunanActive = valDipakaiTahunan > 0;
+	const isKhususActive = valDipakaiKhusus > 0;
+	const isAkumulasiActive = valDipakaiAkumulasi > 0;
+	const isBesarActive = valDipakaiBesar > 0;
+
+	return `<!DOCTYPE html>
 <html lang="id">
 <head>
- <meta charset="UTF-8">
- <title>Form Cuti — ${escapeHtml(namaKaryawan)}</title>
- <style>
- @page { size: A4 portrait; margin: 10mm 12mm; }
- * {
- box-sizing: border-box;
- -webkit-print-color-adjust: exact !important;
- print-color-adjust: exact !important;
- color-adjust: exact !important;
- }
- body {
- font-family: 'Times New Roman', Times, serif;
- font-size: 14px;
- line-height: 1.5;
- color: #000;
- background: #fff;
- margin: 0;
- padding: 10px 0 0 0;
- -webkit-print-color-adjust: exact !important;
- print-color-adjust: exact !important;
- color-adjust: exact !important;
- }
- .no-print-bar {
- position: fixed;
- top: 12px;
- right: 16px;
- z-index: 9999;
- }
- .btn-cetak {
- background: #7a1f2b;
- color: white;
- border: none;
- padding: 8px 16px;
- border-radius: 6px;
- font-weight: bold;
- font-size: 13px;
- cursor: pointer;
- box-shadow: 0 2px 8px rgba(0,0,0,0.2);
- display: inline-flex;
- align-items: center;
- gap: 6px;
- font-family: Arial, sans-serif;
- }
- .btn-cetak:hover {
- background: #5c1720;
- }
- 
- .cuti-box {
- width: 100%;
- max-width: 760px;
- margin: 0 auto;
- border: 2px solid #000;
- background: #fff;
- }
+	<meta charset="UTF-8">
+	<title>Form Cuti — ${escapeHtml(namaKaryawan)}</title>
+	<style>
+		@page { 
+			size: A4 portrait; 
+			margin: 8mm 10mm 8mm 10mm; 
+		}
+		* {
+			box-sizing: border-box;
+			-webkit-print-color-adjust: exact !important;
+			print-color-adjust: exact !important;
+			color-adjust: exact !important;
+		}
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+			font-size: 11.5px;
+			line-height: 1.45;
+			color: #1e293b;
+			background: #f1f5f9;
+			margin: 0;
+			padding: 20px 0 40px 0;
+		}
+		.no-print-bar {
+			position: fixed;
+			top: 14px;
+			right: 18px;
+			z-index: 9999;
+			display: flex;
+			gap: 10px;
+		}
+		.btn-cetak {
+			background: #7a1f2b;
+			color: #ffffff;
+			border: none;
+			padding: 9px 18px;
+			border-radius: 6px;
+			font-weight: 600;
+			font-size: 12.5px;
+			cursor: pointer;
+			box-shadow: 0 4px 12px rgba(122, 31, 43, 0.35);
+			display: inline-flex;
+			align-items: center;
+			gap: 7px;
+			transition: background 0.15s ease;
+			font-family: inherit;
+		}
+		.btn-cetak:hover {
+			background: #5e1620;
+		}
+		.btn-download-pdf {
+			background: #0284c7;
+			color: #ffffff;
+			border: none;
+			padding: 9px 18px;
+			border-radius: 6px;
+			font-weight: 600;
+			font-size: 12.5px;
+			cursor: pointer;
+			box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);
+			display: inline-flex;
+			align-items: center;
+			gap: 7px;
+			transition: background 0.15s ease;
+			font-family: inherit;
+		}
+		.btn-download-pdf:hover {
+			background: #0369a1;
+		}
+		
+		/* Lembar Formulir Cuti Standar */
+		.cuti-box {
+			width: 100%;
+			max-width: 740px;
+			margin: 0 auto;
+			border: 1.5px solid #0f172a;
+			background: #ffffff;
+			box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+			box-sizing: border-box;
+		}
 
- .hdr-table {
- width: 100%;
- border-collapse: collapse;
- border-bottom: 2px solid #000;
- }
- .hdr-table td {
- border: 1px solid #000;
- vertical-align: middle;
- }
- .hdr-logo {
- width: 110px;
- text-align: center;
- padding: 8px;
- }
- .hdr-title-1 {
- font-size: 16px;
- font-weight: bold;
- text-align: center;
- text-transform: uppercase;
- padding: 8px;
- background-color: #dbeafe !important;
- -webkit-print-color-adjust: exact !important;
- print-color-adjust: exact !important;
- color-adjust: exact !important;
- }
- .hdr-title-2 {
- font-size: 16px;
- font-weight: bold;
- text-align: center;
- background-color: #dbeafe !important;
- padding: 6px;
- text-transform: uppercase;
- -webkit-print-color-adjust: exact !important;
- print-color-adjust: exact !important;
- color-adjust: exact !important;
- }
- .hdr-meta {
- width: 100%;
- border-collapse: collapse;
- }
- .hdr-meta td {
- border-right: 1px solid #000;
- font-size: 12px;
- padding: 5px 8px;
- text-align: left;
- }
- .hdr-meta td:last-child {
- border-right: none;
- }
+		/* Header ISO Standar Perusahaan */
+		.hdr-table {
+			width: 100%;
+			border-collapse: collapse;
+			border-bottom: 1.5px solid #0f172a;
+		}
+		.hdr-table td {
+			border: 1px solid #0f172a;
+			vertical-align: middle;
+		}
+		.hdr-logo {
+			width: 120px;
+			min-width: 120px;
+			max-width: 120px;
+			text-align: center !important;
+			vertical-align: middle !important;
+			padding: 4px 6px !important;
+			background: #ffffff;
+		}
+		.hdr-logo-wrap {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			width: 100%;
+			height: 100%;
+			min-height: 72px;
+			margin: 0 auto;
+			text-align: center;
+		}
+		.hdr-logo-wrap img {
+			display: block !important;
+			margin: 0 auto !important;
+			vertical-align: middle !important;
+			max-height: 52px !important;
+			width: auto !important;
+			object-fit: contain !important;
+		}
+		.hdr-title-1 {
+			font-size: 13.5px;
+			font-weight: 800;
+			text-align: center;
+			text-transform: uppercase;
+			padding: 7px 10px;
+			color: #0f172a;
+			background-color: #f8fafc !important;
+			letter-spacing: 0.6px;
+		}
+		.hdr-title-2 {
+			font-size: 12.5px;
+			font-weight: 700;
+			text-align: center;
+			color: #1e3a8a;
+			background-color: #e0f2fe !important;
+			padding: 5px 8px;
+			text-transform: uppercase;
+			letter-spacing: 1px;
+		}
+		.hdr-meta {
+			width: 100%;
+			border-collapse: collapse;
+		}
+		.hdr-meta td {
+			border-right: 1px solid #0f172a;
+			font-size: 9.5px;
+			padding: 4px 7px;
+			text-align: left;
+			color: #334155;
+			white-space: nowrap;
+		}
+		.hdr-meta td:last-child {
+			border-right: none;
+		}
 
- .body-section {
- padding: 15px 22px 18px 22px;
- }
+		/* Badan Formulir */
+		.body-section {
+			padding: 14px 20px 18px 20px;
+		}
 
- .sec-head {
- font-weight: bold;
- font-size: 14px;
- text-transform: uppercase;
- margin-top: 6px;
- margin-bottom: 8px;
- }
+		/* Section Headings */
+		.sec-head {
+			display: flex;
+			align-items: center;
+			background: #f8fafc;
+			border-left: 3.5px solid #7a1f2b;
+			border-top: 1px solid #e2e8f0;
+			border-right: 1px solid #e2e8f0;
+			border-bottom: 1px solid #e2e8f0;
+			font-weight: 700;
+			font-size: 11px;
+			text-transform: uppercase;
+			color: #0f172a;
+			padding: 4px 8px;
+			margin-top: 12px;
+			margin-bottom: 8px;
+			letter-spacing: 0.5px;
+		}
+		.sec-head:first-of-type {
+			margin-top: 0;
+		}
 
- .data-table {
- width: 100%;
- border-collapse: collapse;
- margin-bottom: 8px;
- }
- .data-table td {
- padding: 4px 0;
- vertical-align: top;
- font-size: 14px;
- }
- .lbl-col {
- width: 230px;
- }
+		/* Data Grid Table */
+		.form-grid {
+			width: 100%;
+			border-collapse: collapse;
+			margin-bottom: 4px;
+		}
+		.form-grid td {
+			padding: 4px 4px;
+			vertical-align: top;
+			font-size: 11px;
+			line-height: 1.4;
+		}
+		.f-lbl {
+			width: 180px;
+			color: #475569;
+			font-weight: 600;
+		}
+		.f-sep {
+			width: 14px;
+			text-align: center;
+			color: #64748b;
+			font-weight: bold;
+		}
+		.f-val {
+			color: #0f172a;
+		}
 
- .sig-section {
- margin-top: 22px;
- width: 100%;
- }
- .sig-location {
- font-size: 14px;
- margin-bottom: 12px;
- }
- .sig-table {
- width: 100%;
- border-collapse: collapse;
- text-align: center;
- page-break-inside: avoid;
- }
- .sig-table td {
- width: 33.33%;
- padding: 0 5px;
- font-size: 14px;
- }
+		/* Highlight Box Cuti */
+		.cuti-highlight-row {
+			background: #f8fafc;
+			border-radius: 4px;
+			border: 1px solid #e2e8f0;
+			padding: 6px 10px;
+			margin: 6px 0;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			font-size: 11px;
+		}
 
- .notes-section {
- border-top: 2px solid #000;
- border-bottom: 2px solid #000;
- padding: 10px 22px;
- min-height: 55px;
- }
- .notes-title {
- font-size: 14px;
- font-weight: normal;
- }
+		/* Tabel Matriks Jenis Cuti */
+		.tbl-jenis-cuti {
+			width: 100%;
+			border-collapse: collapse;
+			border: 1.2px solid #0f172a;
+			margin-top: 10px;
+			margin-bottom: 12px;
+		}
+		.tbl-jenis-cuti th,
+		.tbl-jenis-cuti td {
+			border: 1px solid #0f172a;
+			font-size: 11px;
+			padding: 5px 6px;
+		}
+		.tbl-jenis-cuti thead th {
+			background: #f1f5f9 !important;
+			color: #0f172a;
+			font-weight: 700;
+			text-align: center;
+		}
+		.tbl-jenis-cuti th.col-head {
+			font-size: 10.5px;
+			text-transform: uppercase;
+			letter-spacing: 0.3px;
+		}
+		.tbl-jenis-cuti td.lbl {
+			text-align: left;
+			font-weight: 600;
+			padding-left: 10px;
+			color: #1e293b;
+			background: #fafafa;
+			width: 40%;
+		}
+		.tbl-jenis-cuti td.val {
+			text-align: center;
+			font-weight: 600;
+			font-size: 11.5px;
+			color: #0f172a;
+			width: 15%;
+		}
+		.tbl-jenis-cuti td.val-active {
+			background-color: #eff6ff !important;
+			color: #1d4ed8 !important;
+			font-weight: 800;
+		}
+		.tbl-jenis-cuti tr.row-total td {
+			background-color: #f8fafc !important;
+			font-weight: 800;
+			border-top: 1.5px solid #0f172a;
+		}
+		.tbl-jenis-cuti tr.row-total td.val-active {
+			background-color: #dbeafe !important;
+			color: #1e40af !important;
+			font-weight: 800;
+		}
 
- .notice-section {
- padding: 10px 22px 12px 22px;
- font-size: 13px;
- line-height: 1.45;
- }
- .notice-title {
- margin-bottom: 4px;
- font-weight: normal;
- }
- .notice-list {
- margin: 0;
- padding-left: 18px;
- }
- .notice-list li {
- margin-bottom: 3px;
- }
+		/* Bagian Tanda Tangan */
+		.sig-wrapper {
+			margin-top: 12px;
+			page-break-inside: avoid;
+		}
+		.sig-date-line {
+			text-align: right;
+			font-size: 11px;
+			font-weight: 600;
+			color: #334155;
+			margin-bottom: 8px;
+			padding-right: 4px;
+		}
+		.sig-grid {
+			width: 100%;
+			border-collapse: collapse;
+			border: 1px solid #cbd5e1;
+			text-align: center;
+		}
+		.sig-grid td {
+			width: 33.33%;
+			border: 1px solid #cbd5e1;
+			vertical-align: top;
+			padding: 8px 6px;
+			background: #ffffff;
+		}
+		.sig-role-title {
+			font-size: 11px;
+			font-weight: 700;
+			color: #0f172a;
+			text-transform: uppercase;
+			letter-spacing: 0.3px;
+			margin-bottom: 2px;
+		}
+		.sig-role-sub {
+			font-size: 9.5px;
+			color: #64748b;
+			margin-bottom: 6px;
+		}
+		.sig-box-img {
+			height: 52px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			margin-bottom: 6px;
+		}
+		.sig-name {
+			font-size: 11px;
+			font-weight: 700;
+			color: #0f172a;
+			text-transform: uppercase;
+			border-top: 1px dotted #94a3b8;
+			display: inline-block;
+			min-width: 140px;
+			padding-top: 4px;
+		}
 
- @media print {
- * {
- -webkit-print-color-adjust: exact !important;
- print-color-adjust: exact !important;
- color-adjust: exact !important;
- }
- .no-print-bar { display: none !important; }
- body { padding: 0; margin: 0; }
- .cuti-box { border: 2px solid #000 !important; width: 100% !important; max-width: none !important; }
- .hdr-title-1, .hdr-title-2 {
- background-color: #dbeafe !important;
- -webkit-print-color-adjust: exact !important;
- print-color-adjust: exact !important;
- color-adjust: exact !important;
- }
- }
- </style>
+		/* Catatan Atasan */
+		.catatan-atasan-box {
+			margin-top: 8px;
+			border: 1px solid #cbd5e1;
+			border-radius: 4px;
+			padding: 5px 8px;
+			background: #ffffff;
+			page-break-inside: avoid;
+		}
+		.catatan-atasan-title {
+			font-size: 10px;
+			font-weight: 700;
+			color: #0f172a;
+			margin-bottom: 2px;
+		}
+		.catatan-atasan-body {
+			font-size: 10px;
+			color: #334155;
+			min-height: 18px;
+			line-height: 1.4;
+		}
+		.catatan-empty-line {
+			border-bottom: 1px dotted #cbd5e1;
+			height: 14px;
+			width: 100%;
+		}
+
+		/* Perhatikan Box */
+		.perhatikan-box {
+			margin-top: 8px;
+			background: #f8fafc;
+			border: 1px solid #e2e8f0;
+			border-left: 3.5px solid #7a1f2b;
+			border-radius: 0 4px 4px 0;
+			padding: 5px 8px;
+			font-size: 9.5px;
+			line-height: 1.4;
+			color: #334155;
+			page-break-inside: avoid;
+		}
+		.perhatikan-title {
+			font-weight: 700;
+			color: #0f172a;
+			margin-bottom: 2px;
+		}
+		.perhatikan-list {
+			margin: 0;
+			padding-left: 16px;
+		}
+		.perhatikan-list li {
+			margin-bottom: 1px;
+		}
+
+		/* Footer Dokumen ISO */
+		.doc-footer {
+			margin-top: 8px;
+			padding-top: 5px;
+			border-top: 1px dashed #cbd5e1;
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			font-size: 9px;
+			color: #64748b;
+		}
+
+		@media print {
+			* {
+				-webkit-print-color-adjust: exact !important;
+				print-color-adjust: exact !important;
+				color-adjust: exact !important;
+			}
+			.no-print-bar { display: none !important; }
+			body { 
+				background: #ffffff !important; 
+				padding: 0 !important; 
+				margin: 0 !important; 
+			}
+			.cuti-box { 
+				border: 1.5px solid #000 !important; 
+				width: 100% !important; 
+				max-width: none !important; 
+				box-shadow: none !important;
+			}
+			.hdr-title-1 {
+				background-color: #f8fafc !important;
+			}
+			.hdr-title-2 {
+				background-color: #e0f2fe !important;
+			}
+			.tbl-jenis-cuti thead th {
+				background-color: #f1f5f9 !important;
+			}
+			.tbl-jenis-cuti td.val-active {
+				background-color: #eff6ff !important;
+			}
+			.tbl-jenis-cuti tr.row-total td {
+				background-color: #f8fafc !important;
+			}
+			.tbl-jenis-cuti tr.row-total td.val-active {
+				background-color: #dbeafe !important;
+			}
+			.catatan-atasan-box {
+				border: 1px solid #94a3b8 !important;
+				background: #ffffff !important;
+			}
+			.catatan-empty-line {
+				border-bottom: 1px dotted #94a3b8 !important;
+			}
+			.perhatikan-box {
+				background: #f8fafc !important;
+				border: 1px solid #cbd5e1 !important;
+				border-left: 3.5px solid #7a1f2b !important;
+			}
+		}
+	</style>
 </head>
 <body>
- ${opts.forPdf ? "" : `
-  <div class="no-print-bar">
-    <button onclick="downloadThisPdf()" class="btn-download-pdf">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Download PDF
-    </button>
-    <button onclick="window.print()" class="btn-cetak">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-      Cetak (Print)
-    </button>
-  </div>`}
+	${opts.forPdf ? "" : `
+	<div class="no-print-bar">
+		<button onclick="downloadThisPdf()" class="btn-download-pdf">
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+			Download PDF
+		</button>
+		<button onclick="window.print()" class="btn-cetak">
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+			Cetak Dokumen
+		</button>
+	</div>`}
 
- <div class="cuti-box">
- <table class="hdr-table">
- <tr>
- <td rowspan="3" class="hdr-logo">${logoImgTag(70)}</td>
- <td class="hdr-title-1" style="background-color:#dbeafe !important;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;">${headerTitle}</td>
- </tr>
- <tr>
- <td class="hdr-title-2" style="background-color:#dbeafe !important;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;">${COMPANY_NAME}</td>
- </tr>
- <tr>
- <td style="padding:0;">
- <table class="hdr-meta">
- <tr>
- <td>Hal : 1 dari 1</td>
- <td>No Dok : HR4</td>
- <td>Terbit/ Revisi : 1/1</td>
- <td>Tgl terbit : 1 September 2025</td>
- </tr>
- </table>
- </td>
- </tr>
- </table>
+	<div class="cuti-box">
+		<!-- HEADER TABEL STANDAR ISO -->
+		<table class="hdr-table">
+			<tr>
+				<td rowspan="3" class="hdr-logo" align="center" valign="middle">
+					<div class="hdr-logo-wrap">
+						${logoImgTag(52)}
+					</div>
+				</td>
+				<td class="hdr-title-1">${headerTitle}</td>
+			</tr>
+			<tr>
+				<td class="hdr-title-2">CV ANDELA JAYA</td>
+			</tr>
+			<tr>
+				<td style="padding:0;">
+					<table class="hdr-meta">
+						<tr>
+							<td><strong>Hal :</strong> ${escapeHtml(hal)}</td>
+							<td><strong>No Dok :</strong> ${escapeHtml(noDok)}</td>
+							<td><strong>Terbit/Revisi :</strong> ${escapeHtml(terbitRevisi)}</td>
+							<td><strong>Tgl Terbit :</strong> ${escapeHtml(tglTerbit)}</td>
+						</tr>
+					</table>
+				</td>
+			</tr>
+		</table>
 
- <div class="body-section">
- <div class="sec-head">DATA KARYAWAN</div>
- <table class="data-table">
- <tr>
- <td class="lbl-col">Nama Lengkap</td>
- <td style="width: 15px;">:</td>
- <td><strong>${escapeHtml(namaKaryawan)}</strong></td>
- </tr>
- <tr>
- <td class="lbl-col">Divisi / Bagian / Unit Kerja</td>
- <td style="width: 15px;">:</td>
- <td>${escapeHtml(divisiDisplay)}</td>
- </tr>
- </table>
+		<div class="body-section">
+			<!-- BAGIAN 1: DATA KARYAWAN -->
+			<div class="sec-head">I. DATA KARYAWAN</div>
+			<table class="form-grid">
+				<tr>
+					<td class="f-lbl">Nama Lengkap</td>
+					<td class="f-sep">:</td>
+					<td class="f-val"><strong>${escapeHtml(namaKaryawan).toUpperCase()}</strong></td>
+					<td class="f-lbl" style="width:110px;">NIK</td>
+					<td class="f-sep">:</td>
+					<td class="f-val"><strong>${escapeHtml(nik)}</strong></td>
+				</tr>
+				<tr>
+					<td class="f-lbl">Divisi / Unit Kerja</td>
+					<td class="f-sep">:</td>
+					<td class="f-val">${escapeHtml(divisiDisplay).toUpperCase()}</td>
+					<td class="f-lbl" style="width:110px;">Lokasi Cabang</td>
+					<td class="f-sep">:</td>
+					<td class="f-val">${escapeHtml(cabang).toUpperCase()}</td>
+				</tr>
+			</table>
 
- <div class="sec-head" style="margin-top: 12px;">KETERANGAN CUTI</div>
- <table class="data-table">
- ${isHalfDay ? `
- <tr>
- <td class="lbl-col">Tanggal Cuti</td>
- <td style="width: 15px;">:</td>
- <td>${fmtMulai}</td>
- </tr>
- <tr>
- <td class="lbl-col">Waktu Cuti</td>
- <td style="width: 15px;">:</td>
- <td>${escapeHtml(jamKeluar)} s/d ${escapeHtml(jamKembali)}</td>
- </tr>
- ` : `
- <tr>
- <td class="lbl-col">Tanggal Cuti</td>
- <td style="width: 15px;">:</td>
- <td>${fmtMulai}</td>
- </tr>
- <tr>
- <td class="lbl-col">Tanggal Selesai Cuti</td>
- <td style="width: 15px;">:</td>
- <td>${fmtSelesai}</td>
- </tr>
- `}
- <tr><td colspan="3" style="height: 6px;"></td></tr>
- <tr>
- <td class="lbl-col">Alamat & No HP Selama Cuti</td>
- <td style="width: 15px;">:</td>
- <td>${escapeHtml(kontak)}</td>
- </tr>
- <tr>
- <td class="lbl-col">Keterangan/Alasan</td>
- <td style="width: 15px;">:</td>
- <td>${escapeHtml(alasan)}</td>
- </tr>
- <tr><td colspan="3" style="height: 6px;"></td></tr>
- <tr>
- <td class="lbl-col"><strong>Sisa cuti tahunan</strong></td>
- <td style="width: 15px;">:</td>
- <td>${sisaTahunan}</td>
- </tr>
- <tr>
- <td class="lbl-col"><strong>Sisa cuti khusus</strong></td>
- <td style="width: 15px;">:</td>
- <td>${sisaKhusus}</td>
- </tr>
- <tr>
- <td class="lbl-col"><strong>Sisa cuti akumulasi</strong></td>
- <td style="width: 15px;">:</td>
- <td>${sisaAkumulasi}</td>
- </tr>
- </table>
+			<!-- BAGIAN 2: KETERANGAN CUTI -->
+			<div class="sec-head">II. KETERANGAN PENGAJUAN CUTI</div>
+			<table class="form-grid">
+				<tr>
+					<td class="f-lbl">Jenis Cuti Diajukan</td>
+					<td class="f-sep">:</td>
+					<td class="f-val" colspan="4">
+						<strong>${escapeHtml(jenisCuti).toUpperCase()}</strong>
+						<span style="color:#64748b;font-size:10.5px;margin-left:8px;">(${formatCutiNum(usedCount)} hari kerja)</span>
+					</td>
+				</tr>
+				<tr>
+					<td class="f-lbl">Tanggal Mulai Cuti</td>
+					<td class="f-sep">:</td>
+					<td class="f-val"><strong>${fmtMulai}</strong></td>
+					<td class="f-lbl" style="width:110px;">Tanggal Selesai</td>
+					<td class="f-sep">:</td>
+					<td class="f-val"><strong>${fmtSelesai}</strong></td>
+				</tr>
+				${isHalfDay ? `
+				<tr>
+					<td class="f-lbl">Waktu / Jam Cuti</td>
+					<td class="f-sep">:</td>
+					<td class="f-val" colspan="4" style="color:#b91c1c;font-weight:600;">
+						${escapeHtml(jamKeluar)} s/d ${escapeHtml(jamKembali)} WIB (Setengah Hari)
+					</td>
+				</tr>
+				` : ""}
+				<tr>
+					<td class="f-lbl">Alamat & No. HP Selama Cuti</td>
+					<td class="f-sep">:</td>
+					<td class="f-val" colspan="4" style="word-break: break-word;">${escapeHtml(kontak).toUpperCase()}</td>
+				</tr>
+				<tr>
+					<td class="f-lbl">Alasan / Keterangan</td>
+					<td class="f-sep">:</td>
+					<td class="f-val" colspan="4">${escapeHtml(alasan)}</td>
+				</tr>
+				${pejabatPengganti && pejabatPengganti !== "-" ? `
+				<tr>
+					<td class="f-lbl">Pejabat Pengganti Sementara</td>
+					<td class="f-sep">:</td>
+					<td class="f-val" colspan="4"><strong>${escapeHtml(pejabatPengganti).toUpperCase()}</strong></td>
+				</tr>
+				` : ""}
+			</table>
 
- <div class="sig-section">
- <div class="sig-location">${locationDateStr}</div>
- <table class="sig-table">
- <tr>
- <td style="text-align: center; vertical-align: top;">
- Pemohon Cuti,
- </td>
- <td style="text-align: center; vertical-align: top;">
- Menyetujui,<br/>Atasan
- </td>
- <td style="text-align: center; vertical-align: top;">
- Mengetahui,<br/>HRD
- </td>
- </tr>
- <tr>
- <td style="height: 60px;"></td>
- <td style="height: 60px;"></td>
- <td style="height: 60px;"></td>
- </tr>
- <tr>
- <td style="text-align: center; vertical-align: bottom;">
- ( ......................... )
- </td>
- <td style="text-align: center; vertical-align: bottom;">
- ( ......................... )
- </td>
- <td style="text-align: center; vertical-align: bottom;">
- ( ......................... )
- </td>
- </tr>
- </table>
- </div>
- </div>
+			<!-- BAGIAN 3: TABEL REKAPITULASI HAK & PENGAMBILAN CUTI -->
+			<div class="sec-head">III. REKAPITULASI HAK & PENGAMBILAN CUTI</div>
+			<table class="tbl-jenis-cuti">
+				<thead>
+					<tr>
+						<th rowspan="2" style="text-align:center;width:40%;">URAIAN SALDO</th>
+						<th colspan="4" class="col-head" style="padding:4px;">JENIS HAK CUTI (HARI)</th>
+					</tr>
+					<tr>
+						<th class="col-head" style="width:15%;${isTahunanActive ? 'background:#dbeafe !important;color:#1e40af;' : ''}">Tahunan</th>
+						<th class="col-head" style="width:15%;${isKhususActive ? 'background:#dbeafe !important;color:#1e40af;' : ''}">Khusus</th>
+						<th class="col-head" style="width:15%;${isAkumulasiActive ? 'background:#dbeafe !important;color:#1e40af;' : ''}">Akumulasi</th>
+						<th class="col-head" style="width:15%;${isBesarActive ? 'background:#dbeafe !important;color:#1e40af;' : ''}">Besar</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td class="lbl">1. Sisa Hak Cuti (sebelum cuti ini)</td>
+						<td class="val ${isTahunanActive ? 'val-active' : ''}">${formatCutiNum(hakTahunan)}</td>
+						<td class="val ${isKhususActive ? 'val-active' : ''}">${formatCutiNum(hakKhusus)}</td>
+						<td class="val ${isAkumulasiActive ? 'val-active' : ''}">${formatCutiNum(hakAkumulasi)}</td>
+						<td class="val ${isBesarActive ? 'val-active' : ''}">${formatCutiNum(hakBesar)}</td>
+					</tr>
+					<tr>
+						<td class="lbl">2. Cuti yang Akan Dipakai</td>
+						<td class="val ${isTahunanActive ? 'val-active' : ''}">${formatCutiNum(valDipakaiTahunan)}</td>
+						<td class="val ${isKhususActive ? 'val-active' : ''}">${formatCutiNum(valDipakaiKhusus)}</td>
+						<td class="val ${isAkumulasiActive ? 'val-active' : ''}">${formatCutiNum(valDipakaiAkumulasi)}</td>
+						<td class="val ${isBesarActive ? 'val-active' : ''}">${formatCutiNum(valDipakaiBesar)}</td>
+					</tr>
+					<tr class="row-total">
+						<td class="lbl" style="font-weight:700;">3. Total Sisa Hak Cuti</td>
+						<td class="val ${isTahunanActive ? 'val-active' : ''}">${formatCutiNum(valTotalSisaTahunan)}</td>
+						<td class="val ${isKhususActive ? 'val-active' : ''}">${formatCutiNum(valTotalSisaKhusus)}</td>
+						<td class="val ${isAkumulasiActive ? 'val-active' : ''}">${formatCutiNum(valTotalSisaAkumulasi)}</td>
+						<td class="val ${isBesarActive ? 'val-active' : ''}">${formatCutiNum(valTotalSisaBesar)}</td>
+					</tr>
+				</tbody>
+			</table>
 
- <div class="notes-section">
- <div class="notes-title">Catatan dari Atasan${catatanAtasan ? `: <i>${escapeHtml(catatanAtasan)}</i>` : ""}</div>
- </div>
+			<!-- BAGIAN 4: PENGESAHAN DAN PERSETUJUAN -->
+			<div class="sig-wrapper">
+				<div class="sig-date-line">${escapeHtml(locationDateStr)}</div>
+				<table class="sig-grid">
+					<tr>
+						<td>
+							<div class="sig-role-title">Pemohon Cuti</div>
+							<div class="sig-role-sub">Karyawan Yang Mengajukan</div>
+							<div class="sig-box-img">${sigPemohonHtml}</div>
+							<div class="sig-name">( ${escapeHtml(namaKaryawan && namaKaryawan !== "Karyawan" ? namaKaryawan : ".........................")} )</div>
+						</td>
+						<td>
+							<div class="sig-role-title">Menyetujui</div>
+							<div class="sig-role-sub">Atasan Langsung / SPV / Manajer</div>
+							<div class="sig-box-img">${sigAtasanHtml}</div>
+							<div class="sig-name">( ${escapeHtml(namaAtasan || ".........................")} )</div>
+						</td>
+						<td>
+							<div class="sig-role-title">Mengetahui</div>
+							<div class="sig-role-sub">Human Resource Department</div>
+							<div class="sig-box-img">${sigHrdHtml}</div>
+							<div class="sig-name">( ${escapeHtml(namaHrd || "HRD DEPARTEMEN")} )</div>
+						</td>
+					</tr>
+				</table>
+			</div>
 
- <div class="notice-section">
- <div class="notice-title">Perhatikan :</div>
- <ol class="notice-list">
- <li>Surat permohonan cuti ini harus diajukan minimal 1 minggu sebelum cuti dijalankan.</li>
- <li>Sebelum ada persetujuan dari atasan, tidak diperkenankan untuk meninggalkan/mendahului cuti, kecuali sakit dengan dibuktikan dengan surat keterangan dokter atau karena keperluan yang mendesak.</li>
- </ol>
- </div>
- </div>
+			<!-- BAGIAN 5: CATATAN ATASAN -->
+			<div class="catatan-atasan-box">
+				<div class="catatan-atasan-title">Catatan Atasan :</div>
+				<div class="catatan-atasan-body">
+					${catatanAtasan && catatanAtasan.trim() !== "" && catatanAtasan.trim() !== "-" 
+						? escapeHtml(catatanAtasan) 
+						: `<div class="catatan-empty-line"></div>`}
+				</div>
+			</div>
+
+			<!-- BAGIAN 6: KETENTUAN DAN PERHATIKAN -->
+			<div class="perhatikan-box">
+				<div class="perhatikan-title">Perhatikan :</div>
+				<ol class="perhatikan-list">
+					<li>Surat permohonan cuti ini harus diajukan minimal 1 minggu sebelum cuti dijalankan.</li>
+					<li>Sebelum ada persetujuan dari atasan, tidak diperkenankan untuk meninggalkan/mendahului cuti,</li>
+					<li>kecuali sakit dengan dibuktikan dengan surat keterangan dokter atau karena keperluan yang mendesak.</li>
+				</ol>
+			</div>
+
+			<!-- FOOTER DOKUMEN -->
+			<div class="doc-footer">
+				<span>*Formulir ini sah dan resmi di bawah naungan CV Andela Jaya setelah ditandatangani pihak terkait.</span>
+				<span>Dokumen ISO HR-04 | HRIS Andela</span>
+			</div>
+		</div>
+	</div>
+
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+	<script>
+		function downloadThisPdf() {
+			const el = document.querySelector('.cuti-box');
+			if (!el || typeof html2pdf === 'undefined') {
+				window.print();
+				return;
+			}
+			const opt = {
+				margin: [8, 10, 8, 10],
+				filename: 'Form_Cuti_${escapeHtml(namaKaryawan).replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf',
+				image: { type: 'jpeg', quality: 0.98 },
+				html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+				jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+			};
+			html2pdf().set(opt).from(el).save();
+		}
+	</script>
 </body>
 </html>`;
 }
@@ -2207,76 +2916,107 @@ export async function downloadFormCutiPdf(item) {
 		if (typeof toast === "function") toast("Sedang memproses unduhan Form Cuti PDF...", "info");
 
 		const detail = item.detail || {};
-		const namaKaryawan = item.nama_pemohon || item.nama_karyawan || item.pemohon || detail.nama_karyawan || "Karyawan";
-		const nik = item.nik || item.nik_pemohon || detail.nik || "-";
-		const cabang = item.cabang || detail.cabang || "-";
-		const jabatan = detail.jabatan || item.jabatan || detail.divisi || "-";
-		const divisi = detail.divisi || item.divisi || detail.jabatan || item.jabatan || "-";
-		const jenisCuti = item.kategori_cuti || item.jenis_cuti || detail.jenis_cuti || item.type_cuti || "Cuti";
-		const isHalfDay = (jenisCuti || "").toLowerCase().includes("setengah hari") || (jenisCuti || "").includes("1/2");
+		const cleanVal = (v) => (v && String(v).trim() !== "" && String(v).trim() !== "-") ? String(v).trim() : null;
+
+		let namaKaryawan = cleanVal(item.nama_pemohon) || cleanVal(item.nama_karyawan) || cleanVal(item.pemohon) || cleanVal(detail.nama_karyawan) || "Karyawan";
+		let nik = cleanVal(item.nik) || cleanVal(item.nik_pemohon) || cleanVal(item.nik_karyawan) || cleanVal(detail.nik) || cleanVal(detail.nik_pemohon) || "-";
+		let cabang = cleanVal(item.cabang) || cleanVal(detail.cabang) || "-";
+		let jabatan = cleanVal(item.jabatan) || cleanVal(detail.jabatan) || cleanVal(detail.divisi) || "-";
+		let divisi = cleanVal(item.divisi) || cleanVal(detail.divisi) || cleanVal(detail.jabatan) || cleanVal(item.jabatan) || "-";
+		const jenisCuti = cleanVal(item.kategori_cuti) || cleanVal(item.jenis_cuti) || cleanVal(detail.jenis_cuti) || cleanVal(item.type_cuti) || "Cuti";
+		const isHalfDay = Boolean(item.isHalfDay || detail.isHalfDay || (jenisCuti || "").toLowerCase().includes("setengah hari") || (jenisCuti || "").includes("1/2"));
 		
 		const tglMulai = item.tanggal_mulai || detail.tanggal_mulai || item.tanggal || item.tgl || new Date().toISOString();
 		const tglSelesai = item.tanggal_selesai || detail.tanggal_akhir || detail.tanggal_selesai || tglMulai;
-		const alasan = item.alasan || detail.alasan || detail.keterangan || item.keterangan_cuti || "Pengajuan Cuti";
-		const kontak = item.no_telepon || detail.no_telepon || detail.kontak || item.alamat_dan_hp || detail.alamat_dan_hp || "-";
-		const jamKeluar = detail.jam_keluar || "-";
-		const jamKembali = detail.jam_kembali || "-";
-		const pejabatPengganti = item.pejabat_pengganti || detail.pejabat_pengganti || "-";
+		const alasan = cleanVal(item.alasan) || cleanVal(detail.alasan) || cleanVal(detail.keterangan) || cleanVal(item.keterangan_cuti) || cleanVal(item.keterangan) || "Pengajuan Cuti";
+		const jamKeluar = cleanVal(detail.jam_keluar) || cleanVal(item.jam_keluar) || cleanVal(detail.jam_keluar_kantor) || cleanVal(item.jam_keluar_kantor) || "-";
+		const jamKembali = cleanVal(detail.jam_kembali) || cleanVal(item.jam_kembali) || cleanVal(detail.jam_masuk) || cleanVal(item.jam_masuk) || "-";
+		const pejabatPengganti = cleanVal(item.pejabat_pengganti) || cleanVal(detail.pejabat_pengganti) || cleanVal(item.pengganti) || cleanVal(detail.pengganti) || "-";
 		const tglPengajuan = item.tgl || item.createdAt || new Date().toISOString();
 
-		let sisaTahunan = item.sisa_tahunan ?? detail.sisa_tahunan ?? item.sisa_tahunan_display ?? null;
-		let sisaKhusus = item.sisa_khusus ?? detail.sisa_khusus ?? item.sisa_khusus_display ?? null;
-		let sisaAkumulasi = item.sisa_akumulasi ?? detail.sisa_akumulasi ?? item.sisa_akumulasi_display ?? null;
+		// Hitung saldo akurat dari database dan riwayat cuti karyawan
+		const balances = await calculateLeaveHistoryBalances(item.kData || item, {
+			...item,
+			nama_karyawan: namaKaryawan,
+			nik: nik,
+			tanggal_mulai: tglMulai,
+			tanggal_selesai: tglSelesai,
+			jenis_cuti: jenisCuti,
+			isHalfDay
+		});
 
-		if (sisaTahunan === null || sisaTahunan === undefined) {
-			try {
-				const [allEmp, allMasterCuti] = await Promise.all([
-					fsGetAll(COL.MASTER_KARYAWAN),
-					fsGetAll(COL.MASTER_CUTI)
-				]);
-				const kData = allEmp.find(k => 
-					(k.nama_karyawan || "").trim().toLowerCase() === (namaKaryawan || "").trim().toLowerCase() ||
-					(nik !== "-" && String(k.nik || k.nik_karyawan) === String(nik))
-				);
-				const empCuti = allMasterCuti.filter(d => 
-					(d.nama_karyawan || "").trim().toLowerCase() === (namaKaryawan || "").trim().toLowerCase() ||
-					(nik !== "-" && String(d.nik || d.nik_karyawan) === String(nik))
-				);
-
-				const calc = getCalculatedJatahCuti(kData, empCuti);
-				sisaTahunan = calc.sisaTahunan;
-				sisaKhusus = calc.sisaKhusus;
-				sisaAkumulasi = calc.sisaAkumulasi;
-			} catch (errCalc) {
-				sisaTahunan = 0;
-				sisaKhusus = 0;
-				sisaAkumulasi = 0;
+		const kData = balances.kData;
+		if (kData) {
+			if (namaKaryawan === "Karyawan" && (kData.nama_karyawan || kData.nama)) {
+				namaKaryawan = kData.nama_karyawan || kData.nama;
+			}
+			if (nik === "-" && (kData.nik || kData.nik_karyawan)) {
+				nik = kData.nik || kData.nik_karyawan;
+			}
+			if (cabang === "-" && kData.cabang) {
+				cabang = kData.cabang;
+			}
+			if (jabatan === "-" && (kData.jabatan || kData.posisi)) {
+				jabatan = kData.jabatan || kData.posisi;
+			}
+			if (divisi === "-" && (kData.divisi || kData.departemen || kData.bagian || kData.unit_kerja)) {
+				divisi = kData.divisi || kData.departemen || kData.bagian || kData.unit_kerja;
 			}
 		}
 
+		let finalKontak = cleanVal(item.alamat_dan_hp) || cleanVal(detail.alamat_dan_hp) || "";
+		if (!finalKontak) {
+			const addr = cleanVal(item.alamat) || cleanVal(detail.alamat) || cleanVal(item.alamat_cuti) || cleanVal(detail.alamat_cuti) || cleanVal(kData?.alamat) || cleanVal(kData?.alamat_domisili) || cleanVal(kData?.alamat_ktp) || "";
+			const phone = cleanVal(item.no_telepon) || cleanVal(detail.no_telepon) || cleanVal(item.no_hp) || cleanVal(detail.no_hp) || cleanVal(item.telepon) || cleanVal(detail.telepon) || cleanVal(detail.kontak) || cleanVal(item.kontak) || cleanVal(kData?.no_hp) || cleanVal(kData?.telepon) || cleanVal(kData?.no_telepon) || "";
+			if (addr && phone) finalKontak = `${addr} / ${phone}`;
+			else finalKontak = addr || phone || cleanVal(detail.kontak) || cleanVal(item.kontak) || "-";
+		}
+
+		const signaturePemohon = item.tanda_tangan || detail.tanda_tangan || item.signature || detail.signature || kData?.tanda_tangan || kData?.signature || "";
+		const signatureAtasan = item.approval_spv?.signature || item.approval_atasan?.signature || detail.ttd_atasan || detail.signature_atasan || "";
+		const signatureHrd = item.approval_hrd?.signature || detail.ttd_hrd || detail.signature_hrd || "";
+		const namaAtasan = cleanVal(item.approved_by) || cleanVal(detail.approved_by) || cleanVal(item.approval_atasan?.nama) || cleanVal(item.approval_spv?.nama) || cleanVal(detail.atasan) || cleanVal(kData?.atasan) || cleanVal(kData?.nama_atasan) || "";
+		const namaHrd = cleanVal(item.hrd_by) || cleanVal(detail.hrd_by) || cleanVal(item.approval_hrd?.nama) || cleanVal(detail.hrd) || "HRD DEPARTEMEN";
+
 		const html = generateStandardFormCutiHtml({
-			namaKaryawan,
-			divisi,
-			jabatan,
-			cabang,
+			namaKaryawan: namaKaryawan,
+			nik: nik,
+			divisi: divisi,
+			jabatan: jabatan,
+			cabang: cabang,
 			jenisCuti,
 			isHalfDay,
 			tglMulai,
 			tglSelesai,
 			jamKeluar,
 			jamKembali,
-			kontak,
+			kontak: finalKontak,
 			alasan,
-			sisaTahunan: sisaTahunan ?? 0,
-			sisaKhusus: sisaKhusus ?? 0,
-			sisaAkumulasi: sisaAkumulasi ?? 0,
+			sisaTahunan: balances.sisaHakTahunan,
+			sisaKhusus: balances.sisaHakKhusus,
+			sisaAkumulasi: balances.sisaHakAkumulasi,
+			sisaBesar: balances.sisaHakBesar,
+			dipakaiTahunan: balances.dipakaiTahunan,
+			dipakaiKhusus: balances.dipakaiKhusus,
+			dipakaiAkumulasi: balances.dipakaiAkumulasi,
+			dipakaiBesar: balances.dipakaiBesar,
+			totalSisaTahunan: balances.totalSisaTahunan,
+			totalSisaKhusus: balances.totalSisaKhusus,
+			totalSisaAkumulasi: balances.totalSisaAkumulasi,
+			totalSisaBesar: balances.totalSisaBesar,
+			jumlahHari: balances.usedCount,
 			tglPengajuan,
 			pejabatPengganti,
-			catatanAtasan: item.catatan_atasan || detail.catatan_atasan || "",
+			catatanAtasan: cleanVal(item.catatan_atasan) || cleanVal(detail.catatan_atasan) || cleanVal(item.catatan_approval) || cleanVal(item.catatan_spv) || cleanVal(item.approval_atasan?.catatan) || cleanVal(item.approval_spv?.catatan) || cleanVal(item.catatan) || "",
+			namaAtasan,
+			namaHrd,
+			signaturePemohon,
+			signatureAtasan,
+			signatureHrd,
 			forPdf: true
 		});
 
-		const cleanFileName = "Form_Cuti_" + (namaKaryawan || "Karyawan").replace(/[^a-zA-Z0-9_-]/g, "_") + ".pdf";
+		const cleanFileName = "Form_Cuti_" + (namaKaryawan || "Karyawan").replace(/\s+/g, "_") + ".pdf";
 		await downloadHtmlAsPdf(html, cleanFileName);
 		if (typeof toast === "function") toast("Dokumen Form Cuti PDF berhasil diunduh!", "success");
 	} catch (err) {
@@ -2293,74 +3033,103 @@ export async function printFormCutiFisik(item) {
 
 	try {
 		const detail = item.detail || {};
-		const namaKaryawan = item.nama_pemohon || item.nama_karyawan || item.pemohon || detail.nama_karyawan || "Karyawan";
-		const nik = item.nik || item.nik_pemohon || detail.nik || "-";
-		const cabang = item.cabang || detail.cabang || "-";
-		const jabatan = detail.jabatan || item.jabatan || detail.divisi || "-";
-		const divisi = detail.divisi || item.divisi || detail.jabatan || item.jabatan || "-";
-		const jenisCuti = item.kategori_cuti || item.jenis_cuti || detail.jenis_cuti || item.type_cuti || "Cuti";
-		const isHalfDay = (jenisCuti || "").toLowerCase().includes("setengah hari") || (jenisCuti || "").includes("1/2");
+		const cleanVal = (v) => (v && String(v).trim() !== "" && String(v).trim() !== "-") ? String(v).trim() : null;
+
+		let namaKaryawan = cleanVal(item.nama_pemohon) || cleanVal(item.nama_karyawan) || cleanVal(item.pemohon) || cleanVal(detail.nama_karyawan) || "Karyawan";
+		let nik = cleanVal(item.nik) || cleanVal(item.nik_pemohon) || cleanVal(item.nik_karyawan) || cleanVal(detail.nik) || cleanVal(detail.nik_pemohon) || "-";
+		let cabang = cleanVal(item.cabang) || cleanVal(detail.cabang) || "-";
+		let jabatan = cleanVal(item.jabatan) || cleanVal(detail.jabatan) || cleanVal(detail.divisi) || "-";
+		let divisi = cleanVal(item.divisi) || cleanVal(detail.divisi) || cleanVal(detail.jabatan) || cleanVal(item.jabatan) || "-";
+		const jenisCuti = cleanVal(item.kategori_cuti) || cleanVal(item.jenis_cuti) || cleanVal(detail.jenis_cuti) || cleanVal(item.type_cuti) || "Cuti";
+		const isHalfDay = Boolean(item.isHalfDay || detail.isHalfDay || (jenisCuti || "").toLowerCase().includes("setengah hari") || (jenisCuti || "").includes("1/2"));
 		
 		const tglMulai = item.tanggal_mulai || detail.tanggal_mulai || item.tanggal || item.tgl || new Date().toISOString();
 		const tglSelesai = item.tanggal_selesai || detail.tanggal_akhir || detail.tanggal_selesai || tglMulai;
-		const alasan = item.alasan || detail.alasan || detail.keterangan || item.keterangan_cuti || "Pengajuan Cuti";
-		const kontak = item.no_telepon || detail.no_telepon || detail.kontak || item.alamat_dan_hp || detail.alamat_dan_hp || "-";
-		const jamKeluar = detail.jam_keluar || "-";
-		const jamKembali = detail.jam_kembali || "-";
-		const pejabatPengganti = item.pejabat_pengganti || detail.pejabat_pengganti || "-";
+		const alasan = cleanVal(item.alasan) || cleanVal(detail.alasan) || cleanVal(detail.keterangan) || cleanVal(item.keterangan_cuti) || cleanVal(item.keterangan) || "Pengajuan Cuti";
+		const jamKeluar = cleanVal(detail.jam_keluar) || cleanVal(item.jam_keluar) || cleanVal(detail.jam_keluar_kantor) || cleanVal(item.jam_keluar_kantor) || "-";
+		const jamKembali = cleanVal(detail.jam_kembali) || cleanVal(item.jam_kembali) || cleanVal(detail.jam_masuk) || cleanVal(item.jam_masuk) || "-";
+		const pejabatPengganti = cleanVal(item.pejabat_pengganti) || cleanVal(detail.pejabat_pengganti) || cleanVal(item.pengganti) || cleanVal(detail.pengganti) || "-";
 		const tglPengajuan = item.tgl || item.createdAt || new Date().toISOString();
 
-		// Dynamically calculate accurate sisa cuti from database if not explicitly attached
-		let sisaTahunan = item.sisa_tahunan ?? detail.sisa_tahunan ?? item.sisa_tahunan_display ?? null;
-		let sisaKhusus = item.sisa_khusus ?? detail.sisa_khusus ?? item.sisa_khusus_display ?? null;
-		let sisaAkumulasi = item.sisa_akumulasi ?? detail.sisa_akumulasi ?? item.sisa_akumulasi_display ?? null;
+		// Hitung saldo akurat dari database dan riwayat cuti karyawan
+		const balances = await calculateLeaveHistoryBalances(item.kData || item, {
+			...item,
+			nama_karyawan: namaKaryawan,
+			nik: nik,
+			tanggal_mulai: tglMulai,
+			tanggal_selesai: tglSelesai,
+			jenis_cuti: jenisCuti,
+			isHalfDay
+		});
 
-		if (sisaTahunan === null || sisaTahunan === undefined) {
-			try {
-				const [allEmp, allMasterCuti] = await Promise.all([
-					fsGetAll(COL.MASTER_KARYAWAN),
-					fsGetAll(COL.MASTER_CUTI)
-				]);
-				const kData = allEmp.find(k => 
-					(k.nama_karyawan || "").trim().toLowerCase() === (namaKaryawan || "").trim().toLowerCase() ||
-					(nik !== "-" && String(k.nik || k.nik_karyawan) === String(nik))
-				);
-				const empCuti = allMasterCuti.filter(d => 
-					(d.nama_karyawan || "").trim().toLowerCase() === (namaKaryawan || "").trim().toLowerCase() ||
-					(nik !== "-" && String(d.nik || d.nik_karyawan) === String(nik))
-				);
-
-				const calc = getCalculatedJatahCuti(kData, empCuti);
-				sisaTahunan = calc.sisaTahunan;
-				sisaKhusus = calc.sisaKhusus;
-				sisaAkumulasi = calc.sisaAkumulasi;
-			} catch (errCalc) {
-				console.warn("Could not calculate dynamic sisa cuti:", errCalc);
-				sisaTahunan = 0;
-				sisaKhusus = 0;
-				sisaAkumulasi = 0;
+		const kData = balances.kData;
+		if (kData) {
+			if (namaKaryawan === "Karyawan" && (kData.nama_karyawan || kData.nama)) {
+				namaKaryawan = kData.nama_karyawan || kData.nama;
+			}
+			if (nik === "-" && (kData.nik || kData.nik_karyawan)) {
+				nik = kData.nik || kData.nik_karyawan;
+			}
+			if (cabang === "-" && kData.cabang) {
+				cabang = kData.cabang;
+			}
+			if (jabatan === "-" && (kData.jabatan || kData.posisi)) {
+				jabatan = kData.jabatan || kData.posisi;
+			}
+			if (divisi === "-" && (kData.divisi || kData.departemen || kData.bagian || kData.unit_kerja)) {
+				divisi = kData.divisi || kData.departemen || kData.bagian || kData.unit_kerja;
 			}
 		}
 
+		let finalKontak = cleanVal(item.alamat_dan_hp) || cleanVal(detail.alamat_dan_hp) || "";
+		if (!finalKontak) {
+			const addr = cleanVal(item.alamat) || cleanVal(detail.alamat) || cleanVal(item.alamat_cuti) || cleanVal(detail.alamat_cuti) || cleanVal(kData?.alamat) || cleanVal(kData?.alamat_domisili) || cleanVal(kData?.alamat_ktp) || "";
+			const phone = cleanVal(item.no_telepon) || cleanVal(detail.no_telepon) || cleanVal(item.no_hp) || cleanVal(detail.no_hp) || cleanVal(item.telepon) || cleanVal(detail.telepon) || cleanVal(detail.kontak) || cleanVal(item.kontak) || cleanVal(kData?.no_hp) || cleanVal(kData?.telepon) || cleanVal(kData?.no_telepon) || "";
+			if (addr && phone) finalKontak = `${addr} / ${phone}`;
+			else finalKontak = addr || phone || cleanVal(detail.kontak) || cleanVal(item.kontak) || "-";
+		}
+
+		const signaturePemohon = item.tanda_tangan || detail.tanda_tangan || item.signature || detail.signature || kData?.tanda_tangan || kData?.signature || "";
+		const signatureAtasan = item.approval_spv?.signature || item.approval_atasan?.signature || detail.ttd_atasan || detail.signature_atasan || "";
+		const signatureHrd = item.approval_hrd?.signature || detail.ttd_hrd || detail.signature_hrd || "";
+		const namaAtasan = cleanVal(item.approved_by) || cleanVal(detail.approved_by) || cleanVal(item.approval_atasan?.nama) || cleanVal(item.approval_spv?.nama) || cleanVal(detail.atasan) || cleanVal(kData?.atasan) || cleanVal(kData?.nama_atasan) || "";
+		const namaHrd = cleanVal(item.hrd_by) || cleanVal(detail.hrd_by) || cleanVal(item.approval_hrd?.nama) || cleanVal(detail.hrd) || "HRD DEPARTEMEN";
+
 		const html = generateStandardFormCutiHtml({
-			namaKaryawan,
-			divisi,
-			jabatan,
-			cabang,
+			namaKaryawan: namaKaryawan,
+			nik: nik,
+			divisi: divisi,
+			jabatan: jabatan,
+			cabang: cabang,
 			jenisCuti,
 			isHalfDay,
 			tglMulai,
 			tglSelesai,
 			jamKeluar,
 			jamKembali,
-			kontak,
+			kontak: finalKontak,
 			alasan,
-			sisaTahunan: sisaTahunan ?? 0,
-			sisaKhusus: sisaKhusus ?? 0,
-			sisaAkumulasi: sisaAkumulasi ?? 0,
+			sisaTahunan: balances.sisaHakTahunan,
+			sisaKhusus: balances.sisaHakKhusus,
+			sisaAkumulasi: balances.sisaHakAkumulasi,
+			sisaBesar: balances.sisaHakBesar,
+			dipakaiTahunan: balances.dipakaiTahunan,
+			dipakaiKhusus: balances.dipakaiKhusus,
+			dipakaiAkumulasi: balances.dipakaiAkumulasi,
+			dipakaiBesar: balances.dipakaiBesar,
+			totalSisaTahunan: balances.totalSisaTahunan,
+			totalSisaKhusus: balances.totalSisaKhusus,
+			totalSisaAkumulasi: balances.totalSisaAkumulasi,
+			totalSisaBesar: balances.totalSisaBesar,
+			jumlahHari: balances.usedCount,
 			tglPengajuan,
 			pejabatPengganti,
-			catatanAtasan: item.catatan_atasan || detail.catatan_atasan || "",
+			catatanAtasan: cleanVal(item.catatan_atasan) || cleanVal(detail.catatan_atasan) || cleanVal(item.catatan_approval) || cleanVal(item.catatan_spv) || cleanVal(item.approval_atasan?.catatan) || cleanVal(item.approval_spv?.catatan) || cleanVal(item.catatan) || "",
+			namaAtasan,
+			namaHrd,
+			signaturePemohon,
+			signatureAtasan,
+			signatureHrd,
 			forPdf: false
 		});
 
@@ -2412,40 +3181,67 @@ export async function generateAndSaveCutiDocument(row) {
  const jamKembali = detail.jam_kembali || "-";
 
  let pdfUrl = null;
+ let calculatedBalances = null;
 
  try {
- const { generateCutiDocViaGAS } = await import("./gas-integration.js");
- const gasRes = await generateCutiDocViaGAS({
- nama_karyawan: namaKaryawan,
- jabatan: jabatan,
- cabang: cabang,
- tanggal: tglMulai,
- tanggal_display: fmtDateShort(tglMulai),
- tgl_akhir: tglSelesai,
- tgl_akhir_display: fmtDateShort(tglSelesai),
- isHalfDay,
- count: jumlahHari,
- keterangan_cuti: alasan,
- kontak,
- jam_keluar: jamKeluar,
- jam_kembali: jamKembali,
- sisa_tahunan: 12,
- sisa_khusus: 0,
- tanggal_pengajuan: fmtDateShort(row.tgl || new Date())
- });
- if (gasRes && gasRes.pdfUrl) {
- pdfUrl = gasRes.pdfUrl;
+  calculatedBalances = await calculateLeaveHistoryBalances(namaKaryawan, {
+   ...row,
+   tanggal_mulai: tglMulai,
+   tanggal_selesai: tglSelesai,
+   jumlah_hari: jumlahHari,
+   jenis_cuti: jenisCuti,
+   isHalfDay
+  });
+ } catch (e) {
+  console.warn("Could not calculate leave history balances in generateAndSaveCutiDocument:", e);
  }
+
+ try {
+  const { generateCutiDocViaGAS } = await import("./gas-integration.js");
+  const gasRes = await generateCutiDocViaGAS({
+  nama_karyawan: namaKaryawan,
+  jabatan: jabatan,
+  cabang: cabang,
+  tanggal: tglMulai,
+  tanggal_display: fmtDateShort(tglMulai),
+  tgl_akhir: tglSelesai,
+  tgl_akhir_display: fmtDateShort(tglSelesai),
+  isHalfDay,
+  count: jumlahHari,
+  keterangan_cuti: alasan,
+  kontak,
+  jam_keluar: jamKeluar,
+  jam_kembali: jamKembali,
+  sisa_tahunan: calculatedBalances ? calculatedBalances.sisaHakTahunan : 12,
+  sisa_khusus: calculatedBalances ? calculatedBalances.sisaHakKhusus : 4,
+  sisa_akumulasi: calculatedBalances ? calculatedBalances.sisaHakAkumulasi : 0,
+  sisa_besar: calculatedBalances ? calculatedBalances.sisaHakBesar : 0,
+  total_sisa_tahunan: calculatedBalances ? calculatedBalances.totalSisaTahunan : "",
+  total_sisa_khusus: calculatedBalances ? calculatedBalances.totalSisaKhusus : "",
+  total_sisa_akumulasi: calculatedBalances ? calculatedBalances.totalSisaAkumulasi : "",
+  total_sisa_besar: calculatedBalances ? calculatedBalances.totalSisaBesar : "",
+  tanggal_pengajuan: fmtDateShort(row.tgl || new Date())
+  });
+  if (gasRes && gasRes.pdfUrl) {
+  pdfUrl = gasRes.pdfUrl;
+  }
  } catch (err) {
- console.warn("GAS document creation failed or not configured, falling back to local physical document generator:", err.message);
+  console.warn("GAS document creation failed or not configured, falling back to local physical document generator:", err.message);
  }
 
  const updateData = {
- dokumen_url: pdfUrl || "#",
- pdf_url: pdfUrl || "#",
- form_fisik_generated: true,
- form_fisik_generated_at: new Date().toISOString()
+  dokumen_url: pdfUrl || "#",
+  pdf_url: pdfUrl || "#",
+  form_fisik_generated: true,
+  form_fisik_generated_at: new Date().toISOString()
  };
+ if (calculatedBalances) {
+  updateData.sisa_tahunan = calculatedBalances.sisaHakTahunan;
+  updateData.sisa_khusus = calculatedBalances.sisaHakKhusus;
+  updateData.sisa_akumulasi = calculatedBalances.sisaHakAkumulasi;
+  updateData.sisa_besar = calculatedBalances.sisaHakBesar;
+  updateData.total_sisa_tahunan = calculatedBalances.totalSisaTahunan;
+ }
 
  // Update DATA_PENGAJUAN
  if (row.id) {
@@ -4475,7 +5271,20 @@ export function getCutiDeductionCategory(r) {
     ""
   ).trim().toLowerCase();
 
-  // 2. Deteksi Tidak Dipotong (Sakit Surat Dokter, Dinas Luar Kota, Cuti Besar)
+  // 1b. Deteksi Cuti Besar
+  if (
+    potongRaw === "besar" || 
+    potongRaw.includes("besar") ||
+    typeStr.startsWith("c-besar") || 
+    typeStr.startsWith("c - besar") ||
+    typeStr.includes("cuti besar")
+  ) {
+    let count = parseFloat(r.count || r.jumlah_hari || (r.detail && r.detail.jumlah_hari)) || 1;
+    if (typeStr.includes("1/2") || typeStr.includes("setengah hari")) count = 0.5;
+    return { category: "Besar", isDeducted: true, count };
+  }
+
+  // 2. Deteksi Tidak Dipotong (Sakit Surat Dokter, Dinas Luar Kota)
   if (
     potongRaw === "tidak dipotong" || 
     potongRaw.includes("tidak") || 
@@ -4486,8 +5295,6 @@ export function getCutiDeductionCategory(r) {
     typeStr.startsWith("d -") ||
     typeStr.startsWith("d - ") ||
     typeStr.includes("dinas") ||
-    typeStr.startsWith("c-besar") ||
-    typeStr.includes("cuti besar") ||
     typeStr.includes("umroh") ||
     typeStr.includes("haji")
   ) {
@@ -4543,20 +5350,23 @@ export function getCutiDeductionCategory(r) {
   return { category: "Tahunan", isDeducted: true, count };
 }
 
-export function getCalculatedJatahCuti(emp, cutiRecords = null) {
-  if (!emp) return { jatahTahunan: 12, jatahKhusus: 4, jatahAkumulasi: 0, usedTahunan: 0, usedKhusus: 0, usedAkumulasi: 0, terpakaiTahunan: 0, terpakaiKhusus: 0, terpakaiAkumulasi: 0, sisaTahunan: 12, sisaKhusus: 4, sisaAkumulasi: 0 };
+export function getCalculatedJatahCuti(emp, cutiRecords = null, targetYear = null) {
+  if (!emp) return { jatahTahunan: 12, jatahKhusus: 4, jatahAkumulasi: 0, jatahBesar: 0, usedTahunan: 0, usedKhusus: 0, usedAkumulasi: 0, usedBesar: 0, terpakaiTahunan: 0, terpakaiKhusus: 0, terpakaiAkumulasi: 0, sisaTahunan: 12, sisaKhusus: 4, sisaAkumulasi: 0, sisaBesar: 0 };
 
   const explicitTahunan = emp.jatah_cuti_tahunan ?? emp.jatah_tahunan;
   const explicitKhusus = emp.jatah_cuti_khusus ?? emp.jatah_khusus;
   const explicitAkumulasi = emp.jatah_cuti_akumulasi ?? emp.jatah_akumulasi;
+  const explicitBesar = emp.sisa_cuti_besar ?? emp.jatah_cuti_besar ?? emp.cuti_besar;
 
   const hasExplicitTahunan = explicitTahunan !== undefined && explicitTahunan !== null && explicitTahunan !== "";
   const hasExplicitKhusus = explicitKhusus !== undefined && explicitKhusus !== null && explicitKhusus !== "";
   const hasExplicitAkumulasi = explicitAkumulasi !== undefined && explicitAkumulasi !== null && explicitAkumulasi !== "";
+  const hasExplicitBesar = explicitBesar !== undefined && explicitBesar !== null && explicitBesar !== "";
 
   let jatahTahunan = hasExplicitTahunan ? toNumber(explicitTahunan) : null;
   let jatahKhusus = hasExplicitKhusus ? toNumber(explicitKhusus) : 4;
   let jatahAkumulasi = hasExplicitAkumulasi ? toNumber(explicitAkumulasi) : null;
+  let jatahBesar = hasExplicitBesar ? toNumber(explicitBesar) : 0;
 
   let tenureYears = 0;
   let diffMonths = 0;
@@ -4614,15 +5424,16 @@ export function getCalculatedJatahCuti(emp, cutiRecords = null) {
   let usedTahunan = 0;
   let usedKhusus = 0;
   let usedAkumulasi = 0;
+  let usedBesar = 0;
 
   if (Array.isArray(cutiRecords) && cutiRecords.length > 0) {
-    const currentYear = new Date().getFullYear();
+    const activeYear = targetYear ? parseInt(targetYear) : new Date().getFullYear();
     cutiRecords.forEach(r => {
       const st = (r.status_final || r.status || "").toUpperCase();
-      if (st.includes("REJECT") || st.includes("TOLAK")) return;
+      if (st.includes("REJECT") || st.includes("TOLAK") || st.includes("BATAL") || st.includes("CANCEL")) return;
 
-      const rowYear = parseInt(r.tahun) || (r.tanggal ? new Date(r.tanggal).getFullYear() : currentYear);
-      if (rowYear !== currentYear) return;
+      const rowYear = parseInt(r.tahun) || (r.tanggal ? new Date(r.tanggal).getFullYear() : (r.tanggal_mulai ? new Date(r.tanggal_mulai).getFullYear() : activeYear));
+      if (rowYear !== activeYear) return;
 
       const deduction = getCutiDeductionCategory(r);
       if (!deduction.isDeducted || deduction.count <= 0) return;
@@ -4633,6 +5444,8 @@ export function getCalculatedJatahCuti(emp, cutiRecords = null) {
         usedKhusus += deduction.count;
       } else if (deduction.category === "Akumulasi") {
         usedAkumulasi += deduction.count;
+      } else if (deduction.category === "Besar" || (r.type_cuti && String(r.type_cuti).toLowerCase().includes("besar"))) {
+        usedBesar += deduction.count;
       }
     });
   }
@@ -4640,20 +5453,25 @@ export function getCalculatedJatahCuti(emp, cutiRecords = null) {
   const sisaTahunan = Math.max(0, jatahTahunan - usedTahunan);
   const sisaKhusus = Math.max(0, jatahKhusus - usedKhusus);
   const sisaAkumulasi = Math.max(0, jatahAkumulasi - usedAkumulasi);
+  const sisaBesar = Math.max(0, jatahBesar - usedBesar);
 
   return {
     jatahTahunan,
     jatahKhusus,
     jatahAkumulasi,
+    jatahBesar,
     usedTahunan,
     usedKhusus,
     usedAkumulasi,
+    usedBesar,
     terpakaiTahunan: usedTahunan,
     terpakaiKhusus: usedKhusus,
     terpakaiAkumulasi: usedAkumulasi,
+    terpakaiBesar: usedBesar,
     sisaTahunan,
     sisaKhusus,
-    sisaAkumulasi
+    sisaAkumulasi,
+    sisaBesar
   };
 }
 
