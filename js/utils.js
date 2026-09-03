@@ -2846,9 +2846,9 @@ export function generateStandardFormCutiHtml(opts = {}) {
 						</td>
 						<td>
 							<div class="sig-role-title">Mengetahui</div>
-							<div class="sig-role-sub">Human Resource Department</div>
+							<div class="sig-role-sub">Human Resource Development</div>
 							<div class="sig-box-img">${sigHrdHtml}</div>
-							<div class="sig-name">( ${escapeHtml(namaHrd || "HRD DEPARTEMEN")} )</div>
+							<div class="sig-name">( ${escapeHtml(namaHrd || "STAFF HRD")} )</div>
 						</td>
 					</tr>
 				</table>
@@ -2876,7 +2876,7 @@ export function generateStandardFormCutiHtml(opts = {}) {
 
 			<!-- FOOTER DOKUMEN -->
 			<div class="doc-footer">
-				<span>*Formulir ini sah dan resmi di bawah naungan CV Andela Jaya setelah ditandatangani pihak terkait.</span>
+				<span>*Formulir ini sah dikeluarkan Andela Jaya setelah ditandatangani pihak terkait.</span>
 				<span>Dokumen ISO HR-04 | HRIS Andela</span>
 			</div>
 		</div>
@@ -2974,7 +2974,7 @@ export async function downloadFormCutiPdf(item) {
 		const signatureAtasan = item.approval_spv?.signature || item.approval_atasan?.signature || detail.ttd_atasan || detail.signature_atasan || "";
 		const signatureHrd = item.approval_hrd?.signature || detail.ttd_hrd || detail.signature_hrd || "";
 		const namaAtasan = cleanVal(item.approved_by) || cleanVal(detail.approved_by) || cleanVal(item.approval_atasan?.nama) || cleanVal(item.approval_spv?.nama) || cleanVal(detail.atasan) || cleanVal(kData?.atasan) || cleanVal(kData?.nama_atasan) || "";
-		const namaHrd = cleanVal(item.hrd_by) || cleanVal(detail.hrd_by) || cleanVal(item.approval_hrd?.nama) || cleanVal(detail.hrd) || "HRD DEPARTEMEN";
+		const namaHrd = cleanVal(item.hrd_by) || cleanVal(detail.hrd_by) || cleanVal(item.approval_hrd?.nama) || cleanVal(detail.hrd) || "STAFF HRD";
 
 		const html = generateStandardFormCutiHtml({
 			namaKaryawan: namaKaryawan,
@@ -3091,7 +3091,7 @@ export async function printFormCutiFisik(item) {
 		const signatureAtasan = item.approval_spv?.signature || item.approval_atasan?.signature || detail.ttd_atasan || detail.signature_atasan || "";
 		const signatureHrd = item.approval_hrd?.signature || detail.ttd_hrd || detail.signature_hrd || "";
 		const namaAtasan = cleanVal(item.approved_by) || cleanVal(detail.approved_by) || cleanVal(item.approval_atasan?.nama) || cleanVal(item.approval_spv?.nama) || cleanVal(detail.atasan) || cleanVal(kData?.atasan) || cleanVal(kData?.nama_atasan) || "";
-		const namaHrd = cleanVal(item.hrd_by) || cleanVal(detail.hrd_by) || cleanVal(item.approval_hrd?.nama) || cleanVal(detail.hrd) || "HRD DEPARTEMEN";
+		const namaHrd = cleanVal(item.hrd_by) || cleanVal(detail.hrd_by) || cleanVal(item.approval_hrd?.nama) || cleanVal(detail.hrd) || "STAFF HRD";
 
 		const html = generateStandardFormCutiHtml({
 			namaKaryawan: namaKaryawan,
