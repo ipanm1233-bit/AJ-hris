@@ -171,7 +171,8 @@ export async function renderCrudModule(container, cfg) {
  const {
  title, subtitle = "", collectionName, columns, formFields = null,
  idPrefix = "REC", searchFields = [], extraToolbarHtml = "", onRowRender = null, printFn = null, printLabel = "Cetak Dokumen",
- beforeSave = null, afterSave = null, orderByField = null, filterFn = null, emptyMessage = null
+ beforeSave = null, afterSave = null, orderByField = null, filterFn = null, emptyMessage = null,
+    onRowClick = null, onEditClick = null
  } = cfg;
 
  const fieldsList = Array.isArray(formFields) ? formFields : [];
@@ -242,23 +243,44 @@ export async function renderCrudModule(container, cfg) {
  }
  if (emptyEl) emptyEl.innerHTML = "";
  if (tbody) tbody.innerHTML = list.map(row => `
- <tr class="border-t border-slate-50 hover:bg-slate-50/60 transition">
+ <tr class="border-t border-slate-50 hover:bg-slate-50/60 transition ${onRowClick ? 'cursor-pointer hover:bg-maroon-50/40' : ''}" data-row-id="${row.id}">
  ${columns.map(c => `<td class="px-4 py-3 text-slate-700">${cellValue(row, c)}</td>`).join("")}
- <td class="px-4 py-3 text-right whitespace-nowrap">
+ <td class="px-4 py-3 text-right whitespace-nowrap actions-cell">
  ${printFn ? `<button data-print="${row.id}" title="${escapeHtml(printLabel)}" class="text-slate-400 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50 transition">${icon("printer", "w-4 h-4")}</button>` : ""}
  ${canEdit ? `<button data-edit="${row.id}" class="text-slate-400 hover:text-maroon-700 p-1.5 rounded-lg hover:bg-maroon-50 transition">${icon("edit", "w-4 h-4")}</button>` : ""}
  ${userCanDelete ? `<button data-del="${row.id}" class="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition">${icon("trash", "w-4 h-4")}</button>` : ""}
  </td>
  </tr>`).join("");
 
+  if (onRowClick) {
+    tbody.querySelectorAll("tr[data-row-id]").forEach(tr => {
+      tr.addEventListener("click", (e) => {
+        if (e.target.closest("button") || e.target.closest("a") || e.target.closest("input") || e.target.closest(".actions-cell")) {
+          return;
+        }
+        const r = rows.find(x => x.id === tr.dataset.rowId);
+        if (r) onRowClick(r, { openEdit: () => openForm(r), reload: load });
+      });
+    });
+  }
  if (printFn) {
  tbody.querySelectorAll("[data-print]").forEach(btn => {
  btn.onclick = () => printFn(rows.find(r => r.id === btn.dataset.print));
  });
  }
- tbody.querySelectorAll("[data-edit]").forEach(btn => {
- btn.onclick = () => openForm(rows.find(r => r.id === btn.dataset.edit));
- });
+  tbody.querySelectorAll("[data-edit]").forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const r = rows.find(x => x.id === btn.dataset.edit);
+      if (r) {
+        if (onEditClick) {
+          onEditClick(r, { openDefaultForm: () => openForm(r), reload: load });
+        } else {
+          openForm(r);
+        }
+      }
+    };
+  });
  tbody.querySelectorAll("[data-del]").forEach(btn => {
  btn.onclick = async () => {
  if (!canDeleteModuleData(getSession())) {

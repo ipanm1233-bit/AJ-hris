@@ -1,5 +1,5 @@
 import { db, COL, collection, getDocs, doc, updateDoc, addDoc, setDoc, deleteDoc, query, where, limit } from "../firebase-config.js";
-import { fsGetAll, fsDelete, escapeHtml, toast, genId, notifyUser, openModal, closeModal, confirmDialog, promptDialog, calculateAge, calculateTenure, cascadeEmployeeChanges, syncAllEmployeesAcrossCollections } from "../utils.js";
+import { fsGetAll, fsUpdate, fsDelete, escapeHtml, toast, genId, notifyUser, openModal, closeModal, confirmDialog, promptDialog, calculateAge, calculateTenure, cascadeEmployeeChanges, syncAllEmployeesAcrossCollections, fmtDateShort, localDateStr, toNumber, getCalculatedJatahCuti, calculateCarryoverJatah } from "../utils.js";
 import { renderCrudModule, badge, emptyState, icon, skeletonRows } from "../components.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 
@@ -79,65 +79,748 @@ export async function mount(container) {
  { name: "jatah_tahunan", label: "Jatah Cuti Tahunan", type: "number", default: 12 },
  { name: "jatah_khusus", label: "Jatah Cuti Khusus", type: "number", default: 4 },
  { name: "jatah_akumulasi", label: "Jatah Cuti Akumulasi", type: "number", default: 0 },
+ { name: "sisa_cuti_tahun_lalu", label: "Sisa Cuti Tahun Lalu", type: "number", default: 0 },
  { name: "alamat", label: "Alamat Lengkap", type: "textarea", full: true },
  ];
  fields.idFromField = "nik_karyawan";
 
- const crudRes = await renderCrudModule(panels.karyawan, {
- title: "Database Induk Karyawan",
- subtitle: "Sumber data utama seluruh karyawan CV Andela Jaya. Perubahan nama & profil di sini otomatis memperbarui seluruh modul.",
- collectionName: COL.MASTER_KARYAWAN,
- orderByField: "nama_karyawan",
- size: "2xl",
- searchFields: ["nama_karyawan", "nik_karyawan", "jabatan", "cabang", "divisi", "status_karyawan", "finger_name", "nik_ktp", "no_kk", "bpjs_tk", "bpjs_kes", "npwp"],
- extraToolbarHtml: `
- <button id="btn-sync-all-karyawan" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg border border-maroon-300 text-maroon-700 bg-maroon-50 hover:bg-maroon-100 transition shadow-2xs cursor-pointer" title="Sinkronkan nama seluruh karyawan ke semua modul HRD & Operasional">
- ${icon("refresh", "w-4 h-4 text-maroon-600")}
- Sinkronkan Seluruh Modul
- </button>
- `,
- afterSave: async (data, isNew, savedId, existing) => {
- try {
- await cascadeEmployeeChanges(existing, data);
- } catch (err) {
- console.warn("Cascade error:", err);
- }
- },
- beforeSave: (data) => {
- if (data.nik_karyawan) data.nik = data.nik_karyawan;
- if (data.nik && !data.nik_karyawan) data.nik_karyawan = data.nik;
- if (data.jatah_tahunan !== undefined) data.jatah_cuti_tahunan = data.jatah_tahunan;
- if (data.jatah_khusus !== undefined) data.jatah_cuti_khusus = data.jatah_khusus;
- if (data.jatah_akumulasi !== undefined) data.jatah_cuti_akumulasi = data.jatah_akumulasi;
- if (data.jatah_cuti_tahunan !== undefined && data.jatah_tahunan === undefined) data.jatah_tahunan = data.jatah_cuti_tahunan;
- if (data.jatah_cuti_khusus !== undefined && data.jatah_khusus === undefined) data.jatah_khusus = data.jatah_cuti_khusus;
- if (data.jatah_cuti_akumulasi !== undefined && data.jatah_akumulasi === undefined) data.jatah_akumulasi = data.jatah_cuti_akumulasi;
- if (data.tanggal_lahir) {
- const age = calculateAge(data.tanggal_lahir);
- if (age !== null) data.usia = age;
- }
- if (data.tanggal_join) {
- const tenure = calculateTenure(data.tanggal_join);
- if (tenure) data.masa_kerja = tenure;
- }
- if (data.no_kk) data.no_kartu_keluarga = data.no_kk;
- if (data.no_kartu_keluarga) data.no_kk = data.no_kartu_keluarga;
- if (data.bpjs_tk) data.no_bpjs_tk = data.bpjs_tk;
- if (data.no_bpjs_tk) data.bpjs_tk = data.no_bpjs_tk;
- if (data.bpjs_kes) data.no_bpjs_kes = data.bpjs_kes;
- if (data.no_bpjs_kes) data.bpjs_kes = data.no_bpjs_kes;
- if (data.kontak_darurat_hp) data.kontak_darurat = data.kontak_darurat_hp;
- if (data.kontak_darurat) data.kontak_darurat_hp = data.kontak_darurat;
- if (data.kontak_darurat_nama) data.nama_kontak_darurat = data.kontak_darurat_nama;
- if (data.nama_kontak_darurat) data.kontak_darurat_nama = data.nama_kontak_darurat;
- if (data.tanggungan !== undefined) data.anak = data.tanggungan;
- if (data.anak !== undefined) data.tanggungan = data.anak;
- if (data["aktif/tidak_aktif"] && !data.aktif_tdk_aktif) {
-   data.aktif_tdk_aktif = data["aktif/tidak_aktif"];
- }
- delete data["aktif/tidak_aktif"];
- return data;
- },
+  const beforeSaveEmp = (data) => {
+    if (data.nik_karyawan) data.nik = data.nik_karyawan;
+    if (data.nik && !data.nik_karyawan) data.nik_karyawan = data.nik;
+    if (data.jatah_tahunan !== undefined) {
+      data.jatah_tahunan = toNumber(data.jatah_tahunan);
+      data.jatah_cuti_tahunan = data.jatah_tahunan;
+    }
+    if (data.jatah_khusus !== undefined) {
+      data.jatah_khusus = toNumber(data.jatah_khusus);
+      data.jatah_cuti_khusus = data.jatah_khusus;
+    }
+    if (data.jatah_akumulasi !== undefined) {
+      data.jatah_akumulasi = toNumber(data.jatah_akumulasi);
+      data.jatah_cuti_akumulasi = data.jatah_akumulasi;
+    }
+    if (data.sisa_cuti_tahun_lalu !== undefined) {
+      data.sisa_cuti_tahun_lalu = toNumber(data.sisa_cuti_tahun_lalu);
+    }
+    if (data.jatah_cuti_tahunan !== undefined && data.jatah_tahunan === undefined) data.jatah_tahunan = data.jatah_cuti_tahunan;
+    if (data.jatah_cuti_khusus !== undefined && data.jatah_khusus === undefined) data.jatah_khusus = data.jatah_cuti_khusus;
+    if (data.jatah_cuti_akumulasi !== undefined && data.jatah_akumulasi === undefined) data.jatah_akumulasi = data.jatah_cuti_akumulasi;
+    if (data.tanggal_lahir) {
+      const age = calculateAge(data.tanggal_lahir);
+      if (age !== null) data.usia = age;
+    }
+    if (data.tanggal_join) {
+      const tenure = calculateTenure(data.tanggal_join);
+      if (tenure) data.masa_kerja = tenure;
+    }
+    if (data.no_kk) data.no_kartu_keluarga = data.no_kk;
+    if (data.no_kartu_keluarga) data.no_kk = data.no_kartu_keluarga;
+    if (data.bpjs_tk) data.no_bpjs_tk = data.bpjs_tk;
+    if (data.no_bpjs_tk) data.bpjs_tk = data.no_bpjs_tk;
+    if (data.bpjs_kes) data.no_bpjs_kes = data.bpjs_kes;
+    if (data.no_bpjs_kes) data.bpjs_kes = data.no_bpjs_kes;
+    if (data.kontak_darurat_hp) data.kontak_darurat = data.kontak_darurat_hp;
+    if (data.kontak_darurat) data.kontak_darurat_hp = data.kontak_darurat;
+    if (data.kontak_darurat_nama) data.nama_kontak_darurat = data.kontak_darurat_nama;
+    if (data.nama_kontak_darurat) data.kontak_darurat_nama = data.nama_kontak_darurat;
+    if (data.tanggungan !== undefined) data.anak = data.tanggungan;
+    if (data.anak !== undefined) data.tanggungan = data.anak;
+    if (data["aktif/tidak_aktif"] && !data.aktif_tdk_aktif) {
+      data.aktif_tdk_aktif = data["aktif/tidak_aktif"];
+    }
+    delete data["aktif/tidak_aktif"];
+    return data;
+  };
+
+  async function openEmployeeDetailAndEditModal(initialEmp, reloadFn, startTab = "detail") {
+    if (!initialEmp) return;
+    let currentEmp = { ...initialEmp };
+    let activeTab = startTab || "detail";
+
+    let allEmps = [];
+    let allCutiRecords = [];
+    try {
+      const [emps, cutis] = await Promise.all([
+        fsGetAll(COL.MASTER_KARYAWAN),
+        fsGetAll(COL.MASTER_CUTI).catch(() => [])
+      ]);
+      allEmps = emps || [];
+      allCutiRecords = cutis || [];
+    } catch (e) {
+      allEmps = [];
+      allCutiRecords = [];
+    }
+
+    const freshEmp = allEmps.find(e => 
+      (currentEmp.id && e.id === currentEmp.id) || 
+      (currentEmp.nik_karyawan && (e.nik_karyawan === currentEmp.nik_karyawan || e.nik === currentEmp.nik_karyawan)) ||
+      (currentEmp.nama_karyawan && e.nama_karyawan === currentEmp.nama_karyawan)
+    );
+    if (freshEmp) {
+      currentEmp = { ...freshEmp, ...currentEmp };
+    }
+
+    function getEmployeeLeaveBalance(empData) {
+      const empCuti = allCutiRecords.filter(c => 
+        (empData.nama_karyawan && c.nama_karyawan === empData.nama_karyawan) || 
+        (empData.nik_karyawan && (c.nik_karyawan === empData.nik_karyawan || c.nik === empData.nik_karyawan)) ||
+        (empData.nik && (c.nik === empData.nik || c.nik_karyawan === empData.nik))
+      );
+      const calc = getCalculatedJatahCuti(empData, empCuti);
+      return {
+        jatahTahunan: calc.jatahTahunan,
+        jatahKhusus: calc.jatahKhusus,
+        jatahAkumulasi: calc.jatahAkumulasi,
+        usedTahunan: calc.usedTahunan,
+        usedKhusus: calc.usedKhusus,
+        usedAkumulasi: calc.usedAkumulasi,
+        sisaTahunan: calc.sisaTahunan,
+        sisaKhusus: calc.sisaKhusus,
+        sisaAkumulasi: calc.sisaAkumulasi,
+        sisaLalu: parseFloat(empData.sisa_cuti_tahun_lalu) || 0
+      };
+    }
+
+    const empNames = [...new Set(allEmps.map(e => e.nama_karyawan).filter(Boolean))].sort();
+    const atasanOpts = empNames;
+    const cabangOpts = [...new Set(["HEAD OFFICE", "CABANG BANDUNG", "CABANG SURABAYA", "CABANG SEMARANG", "CABANG BALI", "WORKSHOP", ...allEmps.map(e => e.cabang).filter(Boolean)])].sort();
+    const jabatanOpts = [...new Set(["DIREKTUR", "MANAGER HRD", "SUPERVISOR", "STAFF HRD", "STAFF FINANCE", "STAFF OPERASIONAL", "DRIVER", "SECURITY", "HEAD STORE", "STORE ASSOCIATE", ...allEmps.map(e => e.jabatan).filter(Boolean)])].sort();
+    const divisiOpts = [...new Set(["HRD & GA", "FINANCE & ACCOUNTING", "OPERASIONAL", "MARKETING & SALES", "IT & DIGITAL", "LOGISTIK", "PRODUKSI", ...allEmps.map(e => e.divisi).filter(Boolean)])].sort();
+
+    function getInitials(name) {
+      if (!name) return "K";
+      const parts = name.trim().split(/\s+/);
+      if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+
+    function renderDetailContent(empData) {
+      const isAktif = (empData.aktif_tdk_aktif || empData["aktif/tidak_aktif"] || "AKTIF").toUpperCase() === "AKTIF";
+      const tenureStr = empData.tanggal_join ? calculateTenure(empData.tanggal_join) : (empData.masa_kerja || "-");
+      const ageStr = empData.tanggal_lahir ? (calculateAge(empData.tanggal_lahir) ?? empData.usia ?? "-") : (empData.usia ?? "-");
+      const bal = getEmployeeLeaveBalance(empData);
+
+      return `
+        <div class="space-y-5">
+          <!-- TOP HERO / HEADER CARD -->
+          <div class="bg-gradient-to-r from-slate-900 via-slate-800 to-maroon-950 text-white rounded-2xl p-5 border border-slate-700/60 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div class="flex items-center gap-4 min-w-0">
+              <div class="w-14 h-14 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-xl font-black text-amber-300 shadow-inner shrink-0">
+                ${escapeHtml(getInitials(empData.nama_karyawan))}
+              </div>
+              <div class="min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <h3 class="text-xl font-bold text-white tracking-tight truncate">${escapeHtml(empData.nama_karyawan || "-")}</h3>
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold ${isAktif ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}">
+                    ${isAktif ? "● AKTIF" : "○ TIDAK AKTIF"}
+                  </span>
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-amber-400/20 text-amber-200 border border-amber-400/30">
+                    ${escapeHtml(empData.status_karyawan || "Karyawan")}
+                  </span>
+                </div>
+                <div class="flex items-center gap-3 text-xs text-slate-300 mt-1 flex-wrap">
+                  <span>NIK: <b class="font-mono text-white">${escapeHtml(empData.nik_karyawan || empData.nik || "-")}</b></span>
+                  <span>•</span>
+                  <span>Jabatan: <b class="text-white">${escapeHtml(empData.jabatan || "-")}</b></span>
+                  <span>•</span>
+                  <span>Cabang: <b class="text-white">${escapeHtml(empData.cabang || "-")}</b></span>
+                  <span>•</span>
+                  <span>Divisi: <b class="text-white">${escapeHtml(empData.divisi || "-")}</b></span>
+                </div>
+              </div>
+            </div>
+            <button type="button" id="btn-hero-switch-edit" class="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-white text-maroon-900 hover:bg-amber-50 hover:shadow-md transition cursor-pointer shrink-0">
+              ${icon("edit", "w-4 h-4 text-maroon-700")}
+              Edit Data Karyawan
+            </button>
+          </div>
+
+          <!-- 4 CARDS GRID -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- 1. DATA POKOK & IDENTITAS -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs">
+              <div class="flex items-center gap-2 pb-2.5 mb-3 border-b border-slate-100 text-maroon-800 font-bold text-xs uppercase tracking-wider">
+                ${icon("user", "w-4 h-4 text-maroon-700")}
+                Data Pokok & Identitas
+              </div>
+              <dl class="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">NIK Karyawan</dt>
+                  <dd class="font-mono font-bold text-slate-800 mt-0.5">${escapeHtml(empData.nik_karyawan || empData.nik || "-")}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">NIK KTP</dt>
+                  <dd class="font-mono text-slate-700 mt-0.5">${escapeHtml(empData.nik_ktp || empData.no_ktp || "-")}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">No. Kartu Keluarga (KK)</dt>
+                  <dd class="font-mono text-slate-700 mt-0.5">${escapeHtml(empData.no_kk || empData.no_kartu_keluarga || "-")}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">NPWP</dt>
+                  <dd class="font-mono text-slate-700 mt-0.5">${escapeHtml(empData.npwp || "-")}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">BPJS Ketenagakerjaan</dt>
+                  <dd class="font-mono text-slate-700 mt-0.5">${escapeHtml(empData.bpjs_tk || empData.no_bpjs_tk || "-")}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">BPJS Kesehatan</dt>
+                  <dd class="font-mono text-slate-700 mt-0.5">${escapeHtml(empData.bpjs_kes || empData.no_bpjs_kes || "-")}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">Jenis Kelamin</dt>
+                  <dd class="text-slate-800 font-medium mt-0.5">${escapeHtml(empData.jenis_kelamin || "-")}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">Tanggal Lahir / Usia</dt>
+                  <dd class="text-slate-800 mt-0.5">${empData.tanggal_lahir ? fmtDateShort(empData.tanggal_lahir) : "-"} (${ageStr} Thn)</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">Agama / Gol. Darah</dt>
+                  <dd class="text-slate-800 mt-0.5">${escapeHtml(empData.agama || "-")} / Gol. ${escapeHtml(empData.golongan_darah || "-")}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">Pendidikan Terakhir</dt>
+                  <dd class="text-slate-800 font-medium mt-0.5">${escapeHtml(empData.pendidikan || "-")}</dd>
+                </div>
+                <div class="col-span-2 pt-1 border-t border-slate-50">
+                  <dt class="text-[10.5px] text-slate-400">Alamat Tinggal / Domisili</dt>
+                  <dd class="text-slate-700 text-xs mt-0.5 leading-relaxed">${escapeHtml(empData.alamat || "-")}</dd>
+                </div>
+              </dl>
+            </div>
+
+            <!-- 2. KEPEGAWAIAN & PENEMPATAN -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs">
+              <div class="flex items-center gap-2 pb-2.5 mb-3 border-b border-slate-100 text-maroon-800 font-bold text-xs uppercase tracking-wider">
+                ${icon("briefcase", "w-4 h-4 text-maroon-700")}
+                Kepegawaian & Penempatan
+              </div>
+              <dl class="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">Cabang Penempatan</dt>
+                  <dd class="font-bold text-slate-800 mt-0.5">${escapeHtml(empData.cabang || "-")}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">Jabatan</dt>
+                  <dd class="font-bold text-slate-800 mt-0.5">${escapeHtml(empData.jabatan || "-")}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">Divisi / Unit Kerja</dt>
+                  <dd class="text-slate-700 mt-0.5">${escapeHtml(empData.divisi || "-")}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">Status Hubungan Kerja</dt>
+                  <dd class="text-slate-800 font-semibold mt-0.5">${escapeHtml(empData.status_karyawan || "-")}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">Tanggal Bergabung (Join)</dt>
+                  <dd class="text-slate-800 font-medium mt-0.5">${empData.tanggal_join ? fmtDateShort(empData.tanggal_join) : "-"}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">Masa Kerja</dt>
+                  <dd class="text-slate-800 font-bold mt-0.5 text-maroon-800">${escapeHtml(tenureStr)}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">Habis Kontrak</dt>
+                  <dd class="text-slate-700 mt-0.5">${empData.kontrak_habis ? fmtDateShort(empData.kontrak_habis) : "-"}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">Jam Kerja Standar</dt>
+                  <dd class="text-slate-700 font-mono mt-0.5">${escapeHtml(empData.jam_kerja || "08:00 - 17:00")}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">Atasan Langsung</dt>
+                  <dd class="text-slate-800 font-medium mt-0.5">${escapeHtml(empData.atasan || "-")}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">ID / Nama Fingerprint</dt>
+                  <dd class="font-mono text-slate-700 mt-0.5">${escapeHtml(empData.finger_name || "-")}</dd>
+                </div>
+              </dl>
+            </div>
+
+            <!-- 3. KONTAK, KELUARGA & PAJAK -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs">
+              <div class="flex items-center gap-2 pb-2.5 mb-3 border-b border-slate-100 text-maroon-800 font-bold text-xs uppercase tracking-wider">
+                ${icon("phone", "w-4 h-4 text-maroon-700")}
+                Kontak, Keluarga & Pajak
+              </div>
+              <dl class="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">Nomor HP Aktif</dt>
+                  <dd class="font-mono font-semibold text-slate-800 mt-0.5">${escapeHtml(empData.no_hp_aktif || "-")}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">Email Perusahaan / Aktif</dt>
+                  <dd class="text-slate-800 break-all mt-0.5">${escapeHtml(empData.email || "-")}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">Status Pajak / PTKP</dt>
+                  <dd class="font-mono font-bold text-slate-800 mt-0.5">${escapeHtml(empData.status_pajak || "TK/0")}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">Tanggungan / Anak</dt>
+                  <dd class="text-slate-800 font-medium mt-0.5">${empData.tanggungan ?? empData.anak ?? 0} Orang</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">Nama Kontak Darurat</dt>
+                  <dd class="text-slate-800 font-medium mt-0.5">${escapeHtml(empData.kontak_darurat_nama || empData.nama_kontak_darurat || "-")}</dd>
+                </div>
+                <div>
+                  <dt class="text-[10.5px] text-slate-400">No. HP Kontak Darurat</dt>
+                  <dd class="font-mono text-slate-700 mt-0.5">${escapeHtml(empData.kontak_darurat_hp || empData.kontak_darurat || "-")}</dd>
+                </div>
+              </dl>
+            </div>
+
+            <!-- 4. HAK & KUOTA CUTI -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs">
+              <div class="flex items-center justify-between pb-2.5 mb-3 border-b border-slate-100">
+                <div class="flex items-center gap-2 text-maroon-800 font-bold text-xs uppercase tracking-wider">
+                  ${icon("calendar", "w-4 h-4 text-maroon-700")}
+                  Hak & Kuota Cuti Karyawan
+                </div>
+                <span class="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  Sinkron Kelola Cuti
+                </span>
+              </div>
+              <div class="grid grid-cols-3 gap-2.5">
+                <div class="p-2.5 bg-blue-50/50 rounded-xl border border-blue-100 text-center">
+                  <div class="text-[10px] uppercase font-bold text-blue-900">Cuti Tahunan</div>
+                  <div class="text-lg font-black text-blue-700 font-mono mt-0.5">${bal.sisaTahunan} <span class="text-[10px] font-normal text-slate-500">Hari</span></div>
+                  <div class="text-[10px] text-slate-500 mt-0.5">Jatah: <b class="text-slate-700">${bal.jatahTahunan}</b> | Pakai: <b class="text-amber-700">${bal.usedTahunan}</b></div>
+                </div>
+                <div class="p-2.5 bg-emerald-50/50 rounded-xl border border-emerald-100 text-center">
+                  <div class="text-[10px] uppercase font-bold text-emerald-900">Cuti Khusus</div>
+                  <div class="text-lg font-black text-emerald-700 font-mono mt-0.5">${bal.sisaKhusus} <span class="text-[10px] font-normal text-slate-500">Hari</span></div>
+                  <div class="text-[10px] text-slate-500 mt-0.5">Jatah: <b class="text-slate-700">${bal.jatahKhusus}</b> | Pakai: <b class="text-amber-700">${bal.usedKhusus}</b></div>
+                </div>
+                <div class="p-2.5 bg-amber-50/50 rounded-xl border border-amber-100 text-center">
+                  <div class="text-[10px] uppercase font-bold text-amber-900">Akumulasi</div>
+                  <div class="text-lg font-black text-amber-700 font-mono mt-0.5">${bal.sisaAkumulasi} <span class="text-[10px] font-normal text-slate-500">Hari</span></div>
+                  <div class="text-[10px] text-slate-500 mt-0.5">Jatah: <b class="text-slate-700">${bal.jatahAkumulasi}</b> | Pakai: <b class="text-amber-700">${bal.usedAkumulasi}</b></div>
+                </div>
+              </div>
+              <div class="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                <span>Sisa Cuti Tahun Lalu (Basis Carryover): <b class="text-slate-700 font-mono">${bal.sisaLalu} Hari</b></span>
+                <a href="#cuti" class="text-maroon-700 hover:text-maroon-800 font-bold hover:underline inline-flex items-center gap-1 text-[11px]" onclick="document.querySelector('#nav-link-cuti')?.click()">
+                  Buka di Kelola Cuti &rarr;
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <!-- FOOTER ACTION INSIDE DETAIL -->
+          <div class="pt-2 flex items-center justify-between border-t border-slate-100">
+            <span class="text-xs text-slate-400">Data ini tersinkronisasi otomatis ke seluruh modul HRD & Operasional.</span>
+            <button type="button" id="btn-bottom-switch-edit" class="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-maroon-700 hover:bg-maroon-800 text-white transition shadow-sm cursor-pointer">
+              ${icon("edit", "w-4 h-4")}
+              Buka Form Edit Data
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderEditFormContent(empData) {
+      const bal = getEmployeeLeaveBalance(empData);
+      function renderInput(name, label, type, val, opts = {}, extra = {}) {
+        const baseClass = "w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-800 focus:border-maroon-600 focus:ring-2 focus:ring-maroon-100 outline-none transition";
+        let inputHtml = "";
+        if (type === "textarea") {
+          inputHtml = `<textarea name="${name}" rows="2" class="${baseClass}" placeholder="Ketik ${label}...">${escapeHtml(val ?? "")}</textarea>`;
+        } else if (type === "select") {
+          inputHtml = `
+            <select name="${name}" class="${baseClass}">
+              <option value="">-- Pilih ${label} --</option>
+              ${(opts.options || []).map(o => `<option value="${escapeHtml(o)}" ${String(o).trim() === String(val ?? "").trim() ? "selected" : ""}>${escapeHtml(o)}</option>`).join("")}
+            </select>`;
+        } else if (type === "datalist") {
+          const dlId = `dl-${name}-${Math.random().toString(36).substring(2, 6)}`;
+          inputHtml = `
+            <input type="text" name="${name}" list="${dlId}" value="${escapeHtml(val ?? "")}" placeholder="Ketik / pilih ${label}" class="${baseClass}" ${extra.required ? "required" : ""}>
+            <datalist id="${dlId}">
+              ${(opts.options || []).map(o => `<option value="${escapeHtml(o)}"></option>`).join("")}
+            </datalist>`;
+        } else if (type === "date") {
+          const dv = val ? localDateStr(val) : "";
+          inputHtml = `<input type="date" name="${name}" value="${dv}" class="${baseClass}">`;
+        } else if (type === "number") {
+          inputHtml = `<input type="number" name="${name}" value="${val !== undefined && val !== null ? val : (extra.default ?? 0)}" class="${baseClass}" ${extra.readonly ? "readonly" : ""} ${extra.step ? `step="${extra.step}"` : ""} ${extra.min ? `min="${extra.min}"` : ""}>`;
+        } else {
+          inputHtml = `<input type="text" name="${name}" value="${escapeHtml(val ?? "")}" placeholder="Ketik ${label}" class="${baseClass}" ${extra.required ? "required" : ""}>`;
+        }
+
+        return `
+          <div class="${extra.full ? "col-span-full" : ""}">
+            <label class="block text-[11px] font-bold text-slate-700 mb-1">${label} ${extra.required ? '<span class="text-red-500">*</span>' : ""}</label>
+            ${inputHtml}
+          </div>
+        `;
+      }
+
+      return `
+        <form id="form-edit-emp" class="space-y-5">
+          <!-- GROUP 1: IDENTITAS & DATA POKOK -->
+          <div class="bg-slate-50/70 rounded-2xl border border-slate-200/80 p-4">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-maroon-800 pb-2 mb-3 border-b border-slate-200/60 flex items-center gap-1.5">
+              ${icon("user", "w-4 h-4 text-maroon-700")}
+              1. Identitas & Data Pokok Karyawan
+            </h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              ${renderInput("nik_karyawan", "NIK Karyawan", "text", empData.nik_karyawan || empData.nik, {}, { required: true })}
+              ${renderInput("nama_karyawan", "Nama Karyawan", "text", empData.nama_karyawan, {}, { required: true })}
+              ${renderInput("jenis_kelamin", "Jenis Kelamin", "select", empData.jenis_kelamin, { options: ["LAKI-LAKI", "PEREMPUAN"] })}
+              ${renderInput("nik_ktp", "NIK KTP", "text", empData.nik_ktp || empData.no_ktp)}
+              ${renderInput("no_kk", "No. Kartu Keluarga", "text", empData.no_kk || empData.no_kartu_keluarga)}
+              ${renderInput("npwp", "NPWP", "text", empData.npwp)}
+              ${renderInput("bpjs_tk", "No. BPJS TK", "text", empData.bpjs_tk || empData.no_bpjs_tk)}
+              ${renderInput("bpjs_kes", "No. BPJS KES", "text", empData.bpjs_kes || empData.no_bpjs_kes)}
+              ${renderInput("tanggal_lahir", "Tanggal Lahir", "date", empData.tanggal_lahir)}
+              ${renderInput("usia", "Usia (Tahun)", "number", empData.tanggal_lahir ? (calculateAge(empData.tanggal_lahir) ?? empData.usia ?? 0) : (empData.usia ?? 0))}
+              ${renderInput("agama", "Agama", "select", empData.agama, { options: ["ISLAM", "KRISTEN", "KATHOLIK", "HINDU", "BUDDHA", "KHONGHUCU", "LAINNYA"] })}
+              ${renderInput("golongan_darah", "Golongan Darah", "select", empData.golongan_darah, { options: ["A", "B", "AB", "O", "-"] })}
+              ${renderInput("pendidikan", "Pendidikan Terakhir", "select", empData.pendidikan, { options: ["SMA/SMK", "D1", "D2", "D3", "S1", "S2", "S3", "SMP", "SD", "Lainnya"] })}
+            </div>
+          </div>
+
+          <!-- GROUP 2: KEPEGAWAIAN & PENEMPATAN -->
+          <div class="bg-slate-50/70 rounded-2xl border border-slate-200/80 p-4">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-maroon-800 pb-2 mb-3 border-b border-slate-200/60 flex items-center gap-1.5">
+              ${icon("briefcase", "w-4 h-4 text-maroon-700")}
+              2. Kepegawaian & Penempatan Kerja
+            </h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              ${renderInput("cabang", "Cabang Penempatan", "datalist", empData.cabang, { options: cabangOpts })}
+              ${renderInput("jabatan", "Jabatan", "datalist", empData.jabatan, { options: jabatanOpts }, { required: true })}
+              ${renderInput("divisi", "Divisi / Unit", "datalist", empData.divisi, { options: divisiOpts })}
+              ${renderInput("status_karyawan", "Status Karyawan", "select", empData.status_karyawan, { options: ["PKWTT (Karyawan Tetap)", "PKWT (Karyawan Kontrak)", "Probation (Masa Percobaan)", "Magang", "Buruh Harian", "Outsourcing", "Lainnya"] })}
+              ${renderInput("tanggal_join", "Tanggal Join", "date", empData.tanggal_join)}
+              ${renderInput("masa_kerja", "Masa Kerja", "text", empData.tanggal_join ? calculateTenure(empData.tanggal_join) : (empData.masa_kerja || ""))}
+              ${renderInput("kontrak_habis", "Kontrak Habis", "date", empData.kontrak_habis)}
+              ${renderInput("jam_kerja", "Jam Kerja", "text", empData.jam_kerja || "08:00 - 17:00")}
+              ${renderInput("atasan", "Nama Atasan Langsung", "datalist", empData.atasan, { options: atasanOpts })}
+              ${renderInput("finger_name", "Finger Name", "text", empData.finger_name)}
+              ${renderInput("aktif_tdk_aktif", "Status Keaktifan", "select", empData.aktif_tdk_aktif || empData["aktif/tidak_aktif"] || "AKTIF", { options: ["AKTIF", "TIDAK AKTIF"] })}
+            </div>
+          </div>
+
+          <!-- GROUP 3: KONTAK, KELUARGA & PAJAK -->
+          <div class="bg-slate-50/70 rounded-2xl border border-slate-200/80 p-4">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-maroon-800 pb-2 mb-3 border-b border-slate-200/60 flex items-center gap-1.5">
+              ${icon("phone", "w-4 h-4 text-maroon-700")}
+              3. Kontak Pribadi, Keluarga & Pajak
+            </h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              ${renderInput("no_hp_aktif", "No. HP Aktif", "text", empData.no_hp_aktif)}
+              ${renderInput("email", "Email Aktif", "text", empData.email)}
+              ${renderInput("status_pajak", "Status Pajak / PTKP", "select", empData.status_pajak || "TK/0", { options: ["TK/0", "TK/1", "TK/2", "TK/3", "K/0", "K/1", "K/2", "K/3", "K/I/0", "K/I/1", "K/I/2", "K/I/3"] })}
+              ${renderInput("tanggungan", "Anak / Tanggungan", "number", empData.tanggungan ?? empData.anak ?? 0)}
+              ${renderInput("kontak_darurat_nama", "Nama Kontak Darurat", "text", empData.kontak_darurat_nama || empData.nama_kontak_darurat)}
+              ${renderInput("kontak_darurat_hp", "No. HP Kontak Darurat", "text", empData.kontak_darurat_hp || empData.kontak_darurat)}
+            </div>
+          </div>
+
+          <!-- GROUP 4: JATAH CUTI & ALAMAT -->
+          <div class="bg-slate-50/70 rounded-2xl border border-slate-200/80 p-4">
+            <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200/60">
+              <h4 class="text-xs font-bold uppercase tracking-wider text-maroon-800 flex items-center gap-1.5">
+                ${icon("calendar", "w-4 h-4 text-maroon-700")}
+                4. Hak & Kuota Cuti (Terhubung Langsung dengan Kelola Cuti)
+              </h4>
+              <span class="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                Sinkron Real-time
+              </span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+              ${renderInput("jatah_tahunan", "Jatah Cuti Tahunan (Awal)", "number", bal.jatahTahunan, {}, { step: "0.5", min: "0" })}
+              ${renderInput("jatah_khusus", "Jatah Cuti Khusus (Awal)", "number", bal.jatahKhusus, {}, { step: "0.5", min: "0" })}
+              ${renderInput("jatah_akumulasi", "Jatah Cuti Akumulasi", "number", bal.jatahAkumulasi, {}, { step: "0.5", min: "0" })}
+              ${renderInput("sisa_cuti_tahun_lalu", "Sisa Cuti Thn Lalu (Basis)", "number", empData.sisa_cuti_tahun_lalu ?? 0, {}, { step: "0.5", min: "0" })}
+            </div>
+            <div class="p-2.5 bg-white rounded-xl border border-slate-200/80 text-[11px] text-slate-600 mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div class="space-x-1">
+                <span class="font-bold text-slate-700">Pemakaian Berjalan:</span>
+                <span>Tahunan: <b class="text-amber-700 font-mono">${bal.usedTahunan} hari</b> (Sisa: <b class="text-blue-700 font-mono">${bal.sisaTahunan}</b>)</span>
+                <span>•</span>
+                <span>Khusus: <b class="text-amber-700 font-mono">${bal.usedKhusus} hari</b> (Sisa: <b class="text-emerald-700 font-mono">${bal.sisaKhusus}</b>)</span>
+                <span>•</span>
+                <span>Akumulasi: <b class="text-amber-700 font-mono">${bal.usedAkumulasi} hari</b> (Sisa: <b class="text-amber-700 font-mono">${bal.sisaAkumulasi}</b>)</span>
+              </div>
+            </div>
+            <div>
+              ${renderInput("alamat", "Alamat Lengkap Karyawan", "textarea", empData.alamat, {}, { full: true })}
+            </div>
+          </div>
+
+          <!-- FORM ACTIONS -->
+          <div class="pt-3 flex items-center justify-between border-t border-slate-200">
+            <button type="button" id="btn-cancel-edit-form" class="px-4 py-2.5 text-xs font-semibold rounded-xl text-slate-600 hover:bg-slate-100 transition cursor-pointer">
+              Batal / Kembali ke Detail
+            </button>
+            <button type="submit" id="btn-save-emp-form" class="flex items-center gap-2 px-5 py-2.5 text-xs font-bold rounded-xl bg-maroon-700 hover:bg-maroon-800 text-white shadow-sm hover:shadow transition cursor-pointer">
+              ${icon("check", "w-4 h-4")}
+              Simpan Perubahan Data Karyawan
+            </button>
+          </div>
+        </form>
+      `;
+    }
+
+    const modalBodyHtml = `
+      <div id="modal-emp-wrapper" class="space-y-4">
+        <!-- TABS NAV -->
+        <div class="flex items-center border-b border-slate-200 gap-1 pb-1">
+          <button id="tab-btn-detail" type="button" class="px-4 py-2.5 text-xs font-bold border-b-2 border-maroon-700 text-maroon-800 flex items-center gap-2 transition cursor-pointer">
+            ${icon("user", "w-4 h-4 text-maroon-700")}
+            Detail Profil Karyawan
+          </button>
+          <button id="tab-btn-edit" type="button" class="px-4 py-2.5 text-xs font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2 transition cursor-pointer">
+            ${icon("edit", "w-4 h-4")}
+            Edit Data Karyawan
+          </button>
+        </div>
+
+        <!-- PANE 1: DETAIL -->
+        <div id="pane-detail" class="${activeTab === 'detail' ? "" : "hidden"}">
+          ${renderDetailContent(currentEmp)}
+        </div>
+
+        <!-- PANE 2: EDIT -->
+        <div id="pane-edit" class="${activeTab === 'edit' ? "" : "hidden"}">
+          ${renderEditFormContent(currentEmp)}
+        </div>
+      </div>
+    `;
+
+    const modalFooterHtml = `
+      <div class="flex items-center justify-between w-full">
+        <span class="text-xs text-slate-400">ID Dokumen: <span class="font-mono">${escapeHtml(currentEmp.id || currentEmp.nik_karyawan || "-")}</span></span>
+        <button id="btn-close-emp-modal" type="button" class="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer">
+          Tutup
+        </button>
+      </div>
+    `;
+
+    openModal({
+      title: "Profil & Edit Data Karyawan",
+      size: "xl",
+      bodyHtml: modalBodyHtml,
+      footerHtml: modalFooterHtml,
+      onMount: (modalEl) => {
+        const tabBtnDetail = modalEl.querySelector("#tab-btn-detail");
+        const tabBtnEdit = modalEl.querySelector("#tab-btn-edit");
+        const paneDetail = modalEl.querySelector("#pane-detail");
+        const paneEdit = modalEl.querySelector("#pane-edit");
+        const btnClose = modalEl.querySelector("#btn-close-emp-modal");
+
+        if (btnClose) btnClose.onclick = () => closeModal();
+
+        function setTab(tab) {
+          activeTab = tab;
+          if (tab === "detail") {
+            tabBtnDetail.classList.add("border-maroon-700", "text-maroon-800", "font-bold");
+            tabBtnDetail.classList.remove("border-transparent", "text-slate-500", "font-semibold");
+            tabBtnEdit.classList.remove("border-maroon-700", "text-maroon-800", "font-bold");
+            tabBtnEdit.classList.add("border-transparent", "text-slate-500", "font-semibold");
+            paneDetail.classList.remove("hidden");
+            paneEdit.classList.add("hidden");
+          } else {
+            tabBtnEdit.classList.add("border-maroon-700", "text-maroon-800", "font-bold");
+            tabBtnEdit.classList.remove("border-transparent", "text-slate-500", "font-semibold");
+            tabBtnDetail.classList.remove("border-maroon-700", "text-maroon-800", "font-bold");
+            tabBtnDetail.classList.add("border-transparent", "text-slate-500", "font-semibold");
+            paneEdit.classList.remove("hidden");
+            paneDetail.classList.add("hidden");
+          }
+        }
+
+        tabBtnDetail.onclick = () => setTab("detail");
+        tabBtnEdit.onclick = () => setTab("edit");
+
+        function attachDetailEvents() {
+          const btnHeroEdit = modalEl.querySelector("#btn-hero-switch-edit");
+          const btnBottomEdit = modalEl.querySelector("#btn-bottom-switch-edit");
+          if (btnHeroEdit) btnHeroEdit.onclick = () => setTab("edit");
+          if (btnBottomEdit) btnBottomEdit.onclick = () => setTab("edit");
+        }
+
+        function attachEditEvents() {
+          const form = modalEl.querySelector("#form-edit-emp");
+          const btnCancel = modalEl.querySelector("#btn-cancel-edit-form");
+          if (btnCancel) btnCancel.onclick = () => setTab("detail");
+
+          if (!form) return;
+
+          const inputBirth = form.querySelector('input[name="tanggal_lahir"]');
+          const inputUsia = form.querySelector('input[name="usia"]');
+          if (inputBirth && inputUsia) {
+            inputBirth.addEventListener("change", () => {
+              if (inputBirth.value) {
+                const age = calculateAge(inputBirth.value);
+                if (age !== null) inputUsia.value = age;
+              }
+            });
+          }
+
+          const inputJoin = form.querySelector('input[name="tanggal_join"]');
+          const inputTenure = form.querySelector('input[name="masa_kerja"]');
+          if (inputJoin && inputTenure) {
+            inputJoin.addEventListener("change", () => {
+              if (inputJoin.value) {
+                const tenure = calculateTenure(inputJoin.value);
+                if (tenure) inputTenure.value = tenure;
+              }
+            });
+          }
+
+          const inSisaLalu = form.querySelector('input[name="sisa_cuti_tahun_lalu"]');
+          const inAkumulasi = form.querySelector('input[name="jatah_akumulasi"]');
+          if (inSisaLalu && inAkumulasi) {
+            inSisaLalu.addEventListener("change", () => {
+              const val = parseFloat(inSisaLalu.value) || 0;
+              if (val > 0) {
+                const autoAkum = calculateCarryoverJatah(val, currentEmp.tanggal_join);
+                inAkumulasi.value = autoAkum;
+              }
+            });
+          }
+
+          form.onsubmit = async (evt) => {
+            evt.preventDefault();
+            if (!form.reportValidity()) return;
+
+            const fd = new FormData(form);
+            let updatedData = {};
+            fields.forEach(f => {
+              let v = fd.get(f.name);
+              if (f.type === "number") v = toNumber(v);
+              updatedData[f.name] = v;
+            });
+
+            if (fd.has("jatah_tahunan")) updatedData.jatah_tahunan = toNumber(fd.get("jatah_tahunan"));
+            if (fd.has("jatah_khusus")) updatedData.jatah_khusus = toNumber(fd.get("jatah_khusus"));
+            if (fd.has("jatah_akumulasi")) updatedData.jatah_akumulasi = toNumber(fd.get("jatah_akumulasi"));
+            if (fd.has("sisa_cuti_tahun_lalu")) updatedData.sisa_cuti_tahun_lalu = toNumber(fd.get("sisa_cuti_tahun_lalu"));
+
+            updatedData = beforeSaveEmp(updatedData);
+
+            // Calculate fresh leave balances to keep all modules perfectly in sync
+            const freshEmpForCalc = { ...currentEmp, ...updatedData };
+            const empCuti = allCutiRecords.filter(c => 
+              (freshEmpForCalc.nama_karyawan && c.nama_karyawan === freshEmpForCalc.nama_karyawan) || 
+              (freshEmpForCalc.nik_karyawan && (c.nik_karyawan === freshEmpForCalc.nik_karyawan || c.nik === freshEmpForCalc.nik_karyawan)) ||
+              (freshEmpForCalc.nik && (c.nik === freshEmpForCalc.nik || c.nik_karyawan === freshEmpForCalc.nik))
+            );
+            const freshCalc = getCalculatedJatahCuti(freshEmpForCalc, empCuti);
+            updatedData.terpakai_tahunan = freshCalc.usedTahunan;
+            updatedData.terpakai_khusus = freshCalc.usedKhusus;
+            updatedData.terpakai_akumulasi = freshCalc.usedAkumulasi;
+            updatedData.cuti_terpakai_tahunan = freshCalc.usedTahunan;
+            updatedData.cuti_terpakai_khusus = freshCalc.usedKhusus;
+            updatedData.cuti_terpakai_akumulasi = freshCalc.usedAkumulasi;
+            updatedData.sisa_cuti_tahunan = freshCalc.sisaTahunan;
+            updatedData.sisa_cuti_khusus = freshCalc.sisaKhusus;
+            updatedData.sisa_cuti_akumulasi = freshCalc.sisaAkumulasi;
+
+            const btnSave = form.querySelector("#btn-save-emp-form");
+            if (btnSave) {
+              btnSave.disabled = true;
+              btnSave.innerHTML = `${icon("refresh", "w-4 h-4 animate-spin")} Menyimpan...`;
+            }
+
+            try {
+              const targetDocId = currentEmp.id || currentEmp.nik_karyawan;
+              await fsUpdate(COL.MASTER_KARYAWAN, targetDocId, updatedData);
+              
+              // Synchronize across duplicate/alternate docs by NIK or name if any
+              try {
+                const empNik = (currentEmp.nik || currentEmp.nik_karyawan || "").toString().trim();
+                const empName = (currentEmp.nama_karyawan || "").toString().trim();
+                if (empNik || empName) {
+                  const qColl = collection(db, COL.MASTER_KARYAWAN);
+                  const matches = [];
+                  if (empNik) {
+                    const snapNik = await getDocs(query(qColl, where("nik_karyawan", "==", empNik)));
+                    snapNik.forEach(d => { if (d.id !== String(targetDocId)) matches.push(d.id); });
+                    const snapNikAlt = await getDocs(query(qColl, where("nik", "==", empNik)));
+                    snapNikAlt.forEach(d => { if (d.id !== String(targetDocId)) matches.push(d.id); });
+                  }
+                  if (empName) {
+                    const snapName = await getDocs(query(qColl, where("nama_karyawan", "==", empName)));
+                    snapName.forEach(d => { if (d.id !== String(targetDocId)) matches.push(d.id); });
+                  }
+                  const uniqueOtherDocIds = [...new Set(matches)];
+                  for (const otherId of uniqueOtherDocIds) {
+                    await updateDoc(doc(db, COL.MASTER_KARYAWAN, otherId), updatedData).catch(() => {});
+                  }
+                }
+              } catch (altErr) {
+                console.warn("Sinkronisasi doc alternatif:", altErr);
+              }
+
+              try {
+                await cascadeEmployeeChanges(currentEmp, updatedData);
+              } catch (cascErr) {
+                console.warn("Cascade error on update:", cascErr);
+              }
+
+              currentEmp = { ...currentEmp, ...updatedData };
+              toast("Data karyawan & kuota cuti berhasil diperbarui dan tersinkronisasi!", "success");
+
+              if (typeof reloadFn === "function") {
+                try { reloadFn(); } catch (e) { console.warn("Reload table error:", e); }
+              }
+
+              paneDetail.innerHTML = renderDetailContent(currentEmp);
+              paneEdit.innerHTML = renderEditFormContent(currentEmp);
+              attachDetailEvents();
+              attachEditEvents();
+              setTab("detail");
+            } catch (err) {
+              console.error("Gagal simpan data karyawan:", err);
+              toast("Gagal menyimpan data karyawan: " + (err.message || err), "error");
+            } finally {
+              if (btnSave) {
+                btnSave.disabled = false;
+                btnSave.innerHTML = `${icon("check", "w-4 h-4")} Simpan Perubahan Data Karyawan`;
+              }
+            }
+          };
+        }
+
+        attachDetailEvents();
+        attachEditEvents();
+      }
+    });
+  }
+
+  const crudRes = await renderCrudModule(panels.karyawan, {
+    title: "Database Induk Karyawan",
+    subtitle: "Sumber data utama seluruh karyawan CV Andela Jaya. Klik baris data karyawan untuk melihat popup detail profil & mengedit data.",
+    collectionName: COL.MASTER_KARYAWAN,
+    orderByField: "nama_karyawan",
+    size: "2xl",
+    searchFields: ["nama_karyawan", "nik_karyawan", "jabatan", "cabang", "divisi", "status_karyawan", "finger_name", "nik_ktp", "no_kk", "bpjs_tk", "bpjs_kes", "npwp"],
+    onRowClick: (emp, helpers) => openEmployeeDetailAndEditModal(emp, helpers?.reload, "detail"),
+    onEditClick: (emp, helpers) => openEmployeeDetailAndEditModal(emp, helpers?.reload, "edit"),
+    extraToolbarHtml: `
+      <button id="btn-sync-all-karyawan" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg border border-maroon-300 text-maroon-700 bg-maroon-50 hover:bg-maroon-100 transition shadow-2xs cursor-pointer" title="Sinkronkan nama seluruh karyawan ke semua modul HRD & Operasional">
+        ${icon("refresh", "w-4 h-4 text-maroon-600")}
+        Sinkronkan Seluruh Modul
+      </button>
+    `,
+    afterSave: async (data, isNew, savedId, existing) => {
+      try {
+        await cascadeEmployeeChanges(existing, data);
+      } catch (err) {
+        console.warn("Cascade error:", err);
+      }
+    },
+    beforeSave: beforeSaveEmp,
  columns: [
  { key: "nik_karyawan", label: "nik_karyawan" },
  { key: "nama_karyawan", label: "nama_karyawan" },

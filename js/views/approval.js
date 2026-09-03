@@ -579,7 +579,7 @@ async function processAction(row, action, note, session) {
       sendEmailNotif(target.email, `Menunggu Persetujuan Anda: ${row.nama_form} - ${row.nama_pemohon}`, htmlNext).catch(e => console.warn(e));
     }
   }
-  }} else if (action === "REJECT") {
+} else if (action === "REJECT") {
  const pemohonTargets = await getTargetsForRole("PEMOHON", row.nama_pemohon);
  for (const target of pemohonTargets) {
  const token = await createLoginToken(target.username);
