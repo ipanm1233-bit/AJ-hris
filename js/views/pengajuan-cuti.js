@@ -1,5 +1,5 @@
 import { db, COL, doc, getDoc, setDoc, query, collection, where, getDocs } from "../firebase-config.js";
-import { fsGetAll, openModal, closeModal, toast, fmtDateShort, escapeHtml, genId, toNumber, sendEmailNotif, getTargetsForRole, createLoginToken, notifyUser, getCalculatedJatahCuti, confirmDialog, getEmployeeTenureInfo, countLeaveWorkingDays, isIndonesianNationalHoliday, sendBranchInstantAlert, localDateStr } from "../utils.js";
+import { fsGetAll, openModal, closeModal, toast, fmtDateShort, escapeHtml, genId, toNumber, sendEmailNotif, getTargetsForRole, createLoginToken, notifyUser, getCalculatedJatahCuti, confirmDialog, getEmployeeTenureInfo, countLeaveWorkingDays, getLeaveWorkingDaysDetail, isIndonesianNationalHoliday, sendBranchInstantAlert, localDateStr } from "../utils.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 import { badge } from "../components.js";
 
@@ -270,7 +270,7 @@ export async function mount(container, { session }) {
             </div>
           </div>
           <div class="text-[11px] text-slate-500 bg-white p-2 rounded-lg border border-slate-200 leading-relaxed">
-            <span class="font-semibold text-slate-700">Ketentuan Batas Cuti per Pengajuan:</span> 0-5 thn: <b>maks. 2 hari</b> | 6-10 thn: <b>maks. 3 hari</b> | &gt;11 thn: <b>maks. 5 hari</b> (tidak termasuk hari Minggu & Libur Nasional). <i>Pengajuan yang melebihi ketentuan akan otomatis ditolak (Auto Reject).</i>
+            <span class="font-semibold text-slate-700">Ketentuan Batas Cuti per Pengajuan:</span> 0 s/d &lt; 6 thn: <b>maks. 2 hari</b> | 6 s/d &lt; 11 thn: <b>maks. 3 hari</b> | &ge; 11 thn: <b>maks. 5 hari</b> per bulan (tidak termasuk hari Minggu & Libur Nasional/Perusahaan). <i>Pengajuan yang melebihi ketentuan akan otomatis ditolak (Auto Reject).</i>
           </div>
         </div>
 
@@ -366,6 +366,7 @@ export async function mount(container, { session }) {
           <div>
             <label class="block text-xs font-bold text-slate-800 mb-1">Hitungan Hari Kerja</label>
             <input type="text" id="fc-durasi" readonly class="w-full px-3 py-2 text-xs border border-slate-200 bg-slate-100 rounded-xl font-bold font-mono text-slate-800" value="0 Hari">
+            <div id="fc-detail-hari" class="text-[11px] text-slate-500 mt-1"></div>
           </div>
         </div>
 
@@ -441,24 +442,41 @@ export async function mount(container, { session }) {
 
     // Dynamic Date Calculation (Excluding Sundays and Indonesian National Holidays)
     function calcDays() {
-      if (!tglMulai.value) return 0;
+      const detailEl = document.getElementById("fc-detail-hari");
+      if (!tglMulai.value) {
+        if (detailEl) detailEl.textContent = "";
+        return 0;
+      }
       const val = catSelect.value || "";
       if (val.includes("Setengah Hari") || val.includes("1/2")) {
         tglSelesai.value = tglMulai.value;
         txtDurasi.value = "0.5 Hari Kerja";
+        if (detailEl) detailEl.innerHTML = `<span class="text-blue-600 font-medium">Cuti Setengah Hari (0.5 Hari Kerja)</span>`;
         return 0.5;
       }
-      if (!tglSelesai.value) return 0;
+      if (!tglSelesai.value) {
+        if (detailEl) detailEl.textContent = "";
+        return 0;
+      }
       const d1 = new Date(tglMulai.value);
       const d2 = new Date(tglSelesai.value);
       if (d2 < d1) {
         txtDurasi.value = "Tanggal Tidak Valid";
+        if (detailEl) detailEl.innerHTML = `<span class="text-rose-600 font-medium">Tanggal selesai tidak boleh sebelum tanggal mulai</span>`;
         return 0;
       }
 
-      const count = countLeaveWorkingDays(tglMulai.value, tglSelesai.value, calendarEvents);
-      txtDurasi.value = `${count} Hari Kerja (Ekskl. Libur/Minggu)`;
-      return count;
+      const detail = getLeaveWorkingDaysDetail(tglMulai.value, tglSelesai.value, calendarEvents);
+      txtDurasi.value = `${detail.totalWorkingDays} Hari Kerja`;
+      if (detailEl) {
+        if (detail.sundaysCount > 0 || detail.holidaysCount > 0) {
+          const holList = detail.skippedHolidays.map(h => `${h.name} (${h.date})`).join(", ");
+          detailEl.innerHTML = `<span class="text-emerald-700 font-semibold">✓ ${detail.totalWorkingDays} Hari Kerja Dihitung</span> <span class="text-slate-500">(Melewatkan ${detail.sundaysCount > 0 ? `${detail.sundaysCount} hari Minggu` : ''}${detail.sundaysCount > 0 && detail.holidaysCount > 0 ? ' & ' : ''}${detail.holidaysCount > 0 ? `${detail.holidaysCount} libur: ${holList}` : ''})</span>`;
+        } else {
+          detailEl.innerHTML = `<span class="text-slate-500 font-medium">Total: ${detail.totalWorkingDays} Hari Kerja (tidak termasuk Minggu & Libur Nasional/Perusahaan)</span>`;
+        }
+      }
+      return detail.totalWorkingDays;
     }
 
     // Check Quota and Display Real-time Alert
@@ -488,18 +506,61 @@ export async function mount(container, { session }) {
                 <h4 class="text-xs font-black text-rose-900 uppercase tracking-wide flex items-center gap-1.5">
                   ⛔ MELEBIHI BATAS MAKSIMAL CUTI (AUTO REJECT SISTEM)
                 </h4>
-                <div class="text-[11.5px] text-rose-800 mt-1 leading-relaxed space-y-1">
+                <div class="text-[11.5px] text-rose-800 mt-1 leading-relaxed space-y-1.5">
                   <p>
                     Masa kerja Anda: <b class="font-mono text-rose-950 px-1.5 py-0.5 bg-white rounded border border-rose-200">${escapeHtml(employeeTenure.tenureText)} (${escapeHtml(employeeTenure.bracketLabel)})</b>.
                   </p>
                   <p>
-                    Batas maksimal pengambilan cuti: <b class="font-mono text-rose-950 px-1.5 py-0.5 bg-white rounded border border-rose-200">${employeeTenure.maxLeaveDays} Hari Kerja</b> (tidak termasuk hari Minggu & libur nasional).
+                    Batas maksimal cuti berturut-turut per bulan: <b class="font-mono text-rose-950 px-1.5 py-0.5 bg-white rounded border border-rose-200">${employeeTenure.maxLeaveDays} Hari Kerja</b> (tidak termasuk hari Minggu & Libur Nasional/Perusahaan).
                   </p>
                   <p>
-                    Durasi yang diajukan saat ini: <b class="font-mono text-rose-950 px-1.5 py-0.5 bg-white rounded border border-rose-300 font-bold">${durasiNum} Hari Kerja</b>.
+                    Durasi yang Anda ajukan saat ini: <b class="font-mono text-rose-950 px-1.5 py-0.5 bg-white rounded border border-rose-300 font-bold">${durasiNum} Hari Kerja</b>.
                   </p>
                   <div class="p-2 bg-rose-100 rounded-lg border border-rose-300 font-bold text-rose-950 text-xs">
                     ⚠️ Pengajuan ini melebihi batas ketentuan SOP cuti perusahaan (${durasiNum} &gt; ${employeeTenure.maxLeaveDays} Hari) dan akan <u>OTOMATIS DITOLAK (AUTO REJECT)</u> oleh sistem jika dikirimkan.
+                  </div>
+
+                  <!-- TABEL KETENTUAN MASA KERJA -->
+                  <div class="mt-2 overflow-x-auto rounded-lg border border-rose-200 bg-white">
+                    <div class="px-2 py-1 bg-rose-100/70 border-b border-rose-200 text-[10.5px] font-bold text-rose-900">
+                      Tabel Batas Cuti Berdasarkan Masa Kerja (Lampiran SOP):
+                    </div>
+                    <table class="w-full text-[11px] text-left">
+                      <thead class="bg-rose-50 text-rose-900 border-b border-rose-100 text-[10px]">
+                        <tr>
+                          <th class="p-1.5">Masa Kerja</th>
+                          <th class="p-1.5 text-center">Tambahan Cuti</th>
+                          <th class="p-1.5 text-center">Batas Maks. / Bln</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-rose-100 text-rose-800 text-[10.5px]">
+                        <tr class="${employeeTenure.ambangTahun === 0 ? 'bg-rose-100/80 font-bold text-rose-950' : ''}">
+                          <td class="p-1.5">0 s/d &lt; 6 Tahun ${employeeTenure.ambangTahun === 0 ? '← (Anda)' : ''}</td>
+                          <td class="p-1.5 text-center">0 Hari</td>
+                          <td class="p-1.5 text-center font-bold">Maks 2 Hari</td>
+                        </tr>
+                        <tr class="${employeeTenure.ambangTahun === 6 ? 'bg-rose-100/80 font-bold text-rose-950' : ''}">
+                          <td class="p-1.5">6 s/d &lt; 8 Tahun ${employeeTenure.ambangTahun === 6 ? '← (Anda)' : ''}</td>
+                          <td class="p-1.5 text-center">+1 Hari</td>
+                          <td class="p-1.5 text-center font-bold">Maks 3 Hari</td>
+                        </tr>
+                        <tr class="${employeeTenure.ambangTahun === 8 ? 'bg-rose-100/80 font-bold text-rose-950' : ''}">
+                          <td class="p-1.5">8 s/d &lt; 10 Tahun ${employeeTenure.ambangTahun === 8 ? '← (Anda)' : ''}</td>
+                          <td class="p-1.5 text-center">+2 Hari</td>
+                          <td class="p-1.5 text-center font-bold">Maks 3 Hari</td>
+                        </tr>
+                        <tr class="${employeeTenure.ambangTahun === 10 ? 'bg-rose-100/80 font-bold text-rose-950' : ''}">
+                          <td class="p-1.5">10 s/d &lt; 11 Tahun ${employeeTenure.ambangTahun === 10 ? '← (Anda)' : ''}</td>
+                          <td class="p-1.5 text-center">+3 Hari</td>
+                          <td class="p-1.5 text-center font-bold">Maks 3 Hari</td>
+                        </tr>
+                        <tr class="${employeeTenure.ambangTahun === 11 ? 'bg-rose-100/80 font-bold text-rose-950' : ''}">
+                          <td class="p-1.5">&ge; 11 Tahun ${employeeTenure.ambangTahun === 11 ? '← (Anda)' : ''}</td>
+                          <td class="p-1.5 text-center">+4 Hari</td>
+                          <td class="p-1.5 text-center font-bold">Maks 5 Hari</td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               </div>

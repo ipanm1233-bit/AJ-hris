@@ -2147,11 +2147,9 @@ export function generateStandardFormCutiHtml(opts = {}) {
 			usedCount = 0.5;
 		} else {
 			try {
-				const d1 = smartParseDate(tglMulai);
-				const d2 = smartParseDate(tglSelesai);
-				if (d1 && d2) {
-					const diffDays = Math.round((d2 - d1) / (1000 * 60 * 60 * 24)) + 1;
-					usedCount = Math.max(1, diffDays);
+				if (tglMulai) {
+					const calculated = countLeaveWorkingDays(tglMulai, tglSelesai || tglMulai);
+					usedCount = Math.max(1, calculated || 1);
 				} else {
 					usedCount = 1;
 				}
@@ -5381,11 +5379,14 @@ export function getCalculatedJatahCuti(emp, cutiRecords = null, targetYear = nul
       // Hanya gunakan kalkulasi otomatis masa kerja jika jatah tahunan TIDAK diatur secara eksplisit oleh HRD
       if (!hasExplicitTahunan) {
         if (diffMonths >= 12) {
-          // SK Bagian B: Cuti Penghargaan Masa Kerja
-          // - Masa kerja 6 s/d < 8 tahun: +1 hari (total 13)
-          // - Masa kerja 8 s/d < 10 tahun: +2 hari (total 14)
-          // - Masa kerja 10 tahun ke atas: +4 hari (total 16)
-          if (tenureYears >= 10 || diffMonths >= 120) jatahTahunan = 16;
+          // Tabel Tambahan Cuti Penghargaan Masa Kerja:
+          // - Ambang 11 tahun (>= 11 tahun): +4 hari (total 16)
+          // - Ambang 10 tahun (10 s/d < 11 tahun): +3 hari (total 15)
+          // - Ambang 8 tahun (8 s/d < 10 tahun): +2 hari (total 14)
+          // - Ambang 6 tahun (6 s/d < 8 tahun): +1 hari (total 13)
+          // - Ambang 0 tahun (< 6 tahun): +0 hari (total 12)
+          if (tenureYears >= 11 || diffMonths >= 132) jatahTahunan = 16;
+          else if (tenureYears >= 10 || diffMonths >= 120) jatahTahunan = 15;
           else if (tenureYears >= 8 || diffMonths >= 96) jatahTahunan = 14;
           else if (tenureYears >= 6 || diffMonths >= 72) jatahTahunan = 13;
           else jatahTahunan = 12;
@@ -5555,12 +5556,103 @@ export const INDONESIAN_NATIONAL_HOLIDAYS = [
 ];
 
 /**
- * Mengecek apakah tanggal tertentu merupakan hari libur nasional Indonesia
+ * Pemetaan Nama Hari Libur Nasional Indonesia
  */
-export function isIndonesianNationalHoliday(dateObj, calendarEvents = []) {
-  if (!dateObj) return false;
-  const d = (dateObj instanceof Date) ? dateObj : new Date(dateObj);
-  if (isNaN(d.getTime())) return false;
+export const INDONESIAN_HOLIDAY_NAMES = {
+  "-01-01": "Tahun Baru Masehi",
+  "-05-01": "Hari Buruh Internasional",
+  "-06-01": "Hari Lahir Pancasila",
+  "-08-17": "Hari Proklamasi Kemerdekaan RI",
+  "-12-25": "Hari Raya Natal",
+
+  // 2024
+  "2024-02-08": "Isra Mi'raj 1445 H",
+  "2024-02-10": "Tahun Baru Imlek 2575",
+  "2024-03-11": "Hari Suci Nyepi 1946",
+  "2024-03-29": "Wafat Isa Almasih",
+  "2024-03-31": "Hari Paskah",
+  "2024-04-10": "Hari Raya Idul Fitri 1445 H",
+  "2024-04-11": "Hari Raya Idul Fitri 1445 H",
+  "2024-05-09": "Kenaikan Isa Almasih",
+  "2024-05-23": "Hari Raya Waisak 2568",
+  "2024-06-17": "Hari Raya Idul Adha 1445 H",
+  "2024-07-07": "Tahun Baru Islam 1446 H",
+  "2024-09-16": "Maulid Nabi Muhammad SAW",
+
+  // 2025
+  "2025-01-27": "Isra Mi'raj 1446 H",
+  "2025-01-29": "Tahun Baru Imlek 2576",
+  "2025-03-29": "Hari Suci Nyepi 1947",
+  "2025-03-31": "Hari Raya Idul Fitri 1446 H",
+  "2025-04-01": "Hari Raya Idul Fitri 1446 H",
+  "2025-04-18": "Wafat Yesus Kristus",
+  "2025-04-20": "Hari Paskah",
+  "2025-05-12": "Hari Raya Waisak 2569",
+  "2025-05-29": "Kenaikan Yesus Kristus",
+  "2025-06-06": "Hari Raya Idul Adha 1446 H",
+  "2025-06-27": "Tahun Baru Islam 1447 H",
+  "2025-09-05": "Maulid Nabi Muhammad SAW",
+
+  // 2026
+  "2026-01-16": "Isra Mi'raj 1447 H",
+  "2026-02-17": "Tahun Baru Imlek 2577",
+  "2026-03-19": "Hari Suci Nyepi 1948",
+  "2026-03-20": "Hari Raya Idul Fitri 1447 H",
+  "2026-03-21": "Hari Raya Idul Fitri 1447 H",
+  "2026-04-03": "Wafat Yesus Kristus",
+  "2026-04-05": "Hari Paskah",
+  "2026-05-14": "Kenaikan Yesus Kristus",
+  "2026-05-27": "Hari Raya Idul Adha 1447 H",
+  "2026-05-31": "Hari Raya Waisak 2570",
+  "2026-06-16": "Tahun Baru Islam 1448 H",
+  "2026-08-25": "Maulid Nabi Muhammad SAW",
+
+  // 2027
+  "2027-01-05": "Isra Mi'raj 1448 H",
+  "2027-02-06": "Tahun Baru Imlek 2578",
+  "2027-03-09": "Hari Raya Idul Fitri 1448 H",
+  "2027-03-10": "Hari Raya Idul Fitri 1448 H",
+  "2027-03-26": "Wafat Yesus Kristus",
+  "2027-04-07": "Hari Suci Nyepi 1949",
+  "2027-05-06": "Kenaikan Yesus Kristus",
+  "2027-05-16": "Hari Raya Idul Adha 1448 H",
+  "2027-05-20": "Hari Raya Waisak 2571",
+  "2027-06-06": "Tahun Baru Islam 1449 H",
+  "2027-08-15": "Maulid Nabi Muhammad SAW",
+
+  // 2028
+  "2028-01-25": "Tahun Baru Imlek 2579",
+  "2028-02-27": "Hari Raya Idul Fitri 1449 H",
+  "2028-02-28": "Hari Raya Idul Fitri 1449 H",
+  "2028-03-26": "Hari Suci Nyepi 1950",
+  "2028-04-14": "Wafat Yesus Kristus",
+  "2028-05-05": "Hari Raya Idul Adha 1449 H",
+  "2028-05-09": "Hari Raya Waisak 2572",
+  "2028-05-25": "Kenaikan Yesus Kristus",
+  "2028-05-25": "Tahun Baru Islam 1450 H",
+  "2028-08-03": "Maulid Nabi Muhammad SAW"
+};
+
+/**
+ * Cek dan ambil info hari libur (nasional maupun yang ditentukan di kalender perusahaan)
+ */
+export function getHolidayInfo(dateObj, calendarEvents = []) {
+  if (!dateObj) return { isHoliday: false, name: "", type: "" };
+  let d;
+  if (typeof dateObj === "string") {
+    const parts = dateObj.substring(0, 10).split("-");
+    if (parts.length === 3) {
+      d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 12, 0, 0);
+    } else {
+      d = new Date(dateObj);
+    }
+  } else if (dateObj instanceof Date) {
+    d = dateObj;
+  } else {
+    d = new Date(dateObj);
+  }
+
+  if (isNaN(d.getTime())) return { isHoliday: false, name: "", type: "" };
 
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -5568,58 +5660,183 @@ export function isIndonesianNationalHoliday(dateObj, calendarEvents = []) {
   const fullIso = `${y}-${m}-${day}`;
   const monthDay = `-${m}-${day}`;
 
-  // Cek daftar hari libur nasional
+  // 1. Cek Hari Libur Nasional Terdaftar
+  if (INDONESIAN_HOLIDAY_NAMES[fullIso]) {
+    return { isHoliday: true, name: INDONESIAN_HOLIDAY_NAMES[fullIso], type: "Libur Nasional" };
+  }
+  if (INDONESIAN_HOLIDAY_NAMES[monthDay]) {
+    return { isHoliday: true, name: INDONESIAN_HOLIDAY_NAMES[monthDay], type: "Libur Nasional" };
+  }
   if (INDONESIAN_NATIONAL_HOLIDAYS.includes(fullIso) || INDONESIAN_NATIONAL_HOLIDAYS.includes(monthDay)) {
-    return true;
+    return { isHoliday: true, name: "Hari Libur Nasional", type: "Libur Nasional" };
   }
 
-  // Cek agenda kalender HR (jika ada agenda bertanda libur nasional / cuti bersama)
+  // 2. Cek Agenda Kalender HR / Hari Libur yang Telah Ditentukan Perusahaan
   if (Array.isArray(calendarEvents) && calendarEvents.length > 0) {
-    const isCalLibur = calendarEvents.some(ev => {
-      const evDate = (ev.tanggal || "").substring(0, 10);
-      if (evDate !== fullIso) return false;
-      const text = `${ev.judul || ""} ${ev.keterangan || ""}`.toLowerCase();
-      return text.includes("libur") || text.includes("cuti bersama") || text.includes("holiday") || text.includes("nasional");
-    });
-    if (isCalLibur) return true;
+    for (const ev of calendarEvents) {
+      const evStart = (ev.tanggal || ev.date || ev.tgl || ev.tanggal_mulai || "").substring(0, 10);
+      const evEnd = (ev.tanggal_selesai || ev.tanggal_akhir || ev.tgl_selesai || evStart).substring(0, 10);
+      const text = `${ev.judul || ""} ${ev.keterangan || ""} ${ev.kategori || ""} ${ev.tipe || ""}`.toLowerCase();
+      const isLibur = text.includes("libur") || text.includes("cuti bersama") || text.includes("holiday") || text.includes("nasional") || text.includes("off");
+
+      if (isLibur) {
+        if (evStart && evEnd && evEnd >= evStart) {
+          if (fullIso >= evStart && fullIso <= evEnd) {
+            return {
+              isHoliday: true,
+              name: ev.judul || "Hari Libur Ditentukan (Kalender HR)",
+              type: "Hari Libur Ditentukan"
+            };
+          }
+        } else if (evStart === fullIso) {
+          return {
+            isHoliday: true,
+            name: ev.judul || "Hari Libur Ditentukan (Kalender HR)",
+            type: "Hari Libur Ditentukan"
+          };
+        }
+      }
+    }
   }
 
-  return false;
+  return { isHoliday: false, name: "", type: "" };
+}
+
+/**
+ * Mengecek apakah tanggal tertentu merupakan hari libur nasional atau libur ditentukan
+ */
+export function isIndonesianNationalHoliday(dateObj, calendarEvents = []) {
+  return getHolidayInfo(dateObj, calendarEvents).isHoliday;
+}
+
+/**
+ * Menghitung rincian hari kerja cuti:
+ * - TIDAK TERMASUK hari Minggu (Sunday)
+ * - TIDAK TERMASUK hari Libur Nasional dan Hari Libur yang ditentukan perusahaan
+ * Mengembalikan objek rincian lengkap untuk transparansi user & HRD
+ */
+export function getLeaveWorkingDaysDetail(startDateStr, endDateStr, calendarEvents = []) {
+  if (!startDateStr) {
+    return {
+      totalWorkingDays: 0,
+      totalCalendarDays: 0,
+      sundaysCount: 0,
+      holidaysCount: 0,
+      skippedHolidays: [],
+      skippedSundays: [],
+      workingDates: []
+    };
+  }
+
+  const endStr = endDateStr || startDateStr;
+  const p1 = startDateStr.substring(0, 10).split("-").map(Number);
+  const p2 = endStr.substring(0, 10).split("-").map(Number);
+  if (p1.length !== 3 || p2.length !== 3) {
+    return {
+      totalWorkingDays: 0,
+      totalCalendarDays: 0,
+      sundaysCount: 0,
+      holidaysCount: 0,
+      skippedHolidays: [],
+      skippedSundays: [],
+      workingDates: []
+    };
+  }
+
+  const d1 = new Date(p1[0], p1[1] - 1, p1[2], 12, 0, 0);
+  const d2 = new Date(p2[0], p2[1] - 1, p2[2], 12, 0, 0);
+  if (isNaN(d1.getTime()) || isNaN(d2.getTime()) || d2 < d1) {
+    return {
+      totalWorkingDays: 0,
+      totalCalendarDays: 0,
+      sundaysCount: 0,
+      holidaysCount: 0,
+      skippedHolidays: [],
+      skippedSundays: [],
+      workingDates: []
+    };
+  }
+
+  let totalCalendarDays = 0;
+  let totalWorkingDays = 0;
+  let sundaysCount = 0;
+  let holidaysCount = 0;
+  const skippedHolidays = [];
+  const skippedSundays = [];
+  const workingDates = [];
+
+  let cur = new Date(d1);
+  while (cur <= d2) {
+    totalCalendarDays++;
+    const y = cur.getFullYear();
+    const m = String(cur.getMonth() + 1).padStart(2, "0");
+    const day = String(cur.getDate()).padStart(2, "0");
+    const isoDate = `${y}-${m}-${day}`;
+
+    const isSunday = cur.getDay() === 0;
+    const holInfo = getHolidayInfo(cur, calendarEvents);
+
+    if (isSunday) {
+      sundaysCount++;
+      skippedSundays.push(isoDate);
+    } else if (holInfo.isHoliday) {
+      holidaysCount++;
+      skippedHolidays.push({
+        date: isoDate,
+        name: holInfo.name,
+        type: holInfo.type
+      });
+    } else {
+      totalWorkingDays++;
+      workingDates.push(isoDate);
+    }
+
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  return {
+    totalWorkingDays,
+    totalCalendarDays,
+    sundaysCount,
+    holidaysCount,
+    skippedHolidays,
+    skippedSundays,
+    workingDates
+  };
 }
 
 /**
  * Menghitung jumlah hari kerja cuti di antara rentang tanggal:
  * - TIDAK TERMASUK hari Minggu (Sunday)
- * - TIDAK TERMASUK hari Libur Nasional
+ * - TIDAK TERMASUK hari Libur Nasional dan Hari Libur yang ditentukan perusahaan
  */
 export function countLeaveWorkingDays(startDateStr, endDateStr, calendarEvents = []) {
-  if (!startDateStr) return 0;
-  const endStr = endDateStr || startDateStr;
-  const d1 = new Date(startDateStr);
-  const d2 = new Date(endStr);
-  if (isNaN(d1.getTime()) || isNaN(d2.getTime()) || d2 < d1) return 0;
-
-  let count = 0;
-  let cur = new Date(d1);
-  while (cur <= d2) {
-    const isSunday = cur.getDay() === 0;
-    const isHoliday = isIndonesianNationalHoliday(cur, calendarEvents);
-
-    if (!isSunday && !isHoliday) {
-      count++;
-    }
-    cur.setDate(cur.getDate() + 1);
-  }
-  return count;
+  return getLeaveWorkingDaysDetail(startDateStr, endDateStr, calendarEvents).totalWorkingDays;
 }
 
 /**
- * Menghitung masa kerja karyawan dalam tahun dan bulan beserta batas maksimal pengambilan cuti
- * Ketentuan:
- * - 0-5 tahun: maksimal 2 hari cuti
- * - 6-7 tahun: maksimal 3 hari cuti
- * - 8-10 tahun: maksimal 3 hari cuti (10 tahun = 3 hari)
- * - > 11 tahun (atau > 10 tahun / >= 11 tahun): maksimal 5 hari cuti
+ * Tabel Tambahan Cuti Penghargaan Masa Kerja (SOP & SK Perusahaan):
+ * | Ambang Masa Kerja (tahun) | Tambahan Hari Cuti Tahunan | Maks. Cuti Berturut-turut / bulan |
+ * | 0                         | 0                          | 2                                 |
+ * | 6                         | 1                          | 3                                 |
+ * | 8                         | 2                          | 3                                 |
+ * | 10                        | 3                          | 3                                 |
+ * | 11                        | 4                          | 5                                 |
+ */
+export const TABEL_CUTI_PENGHARGAAN_MASA_KERJA = [
+  { ambangTahun: 0, minYears: 0, maxYears: 6, label: "0 s/d < 6 Tahun", tambahanTahunan: 0, maxBerturutTurut: 2 },
+  { ambangTahun: 6, minYears: 6, maxYears: 8, label: "6 s/d < 8 Tahun", tambahanTahunan: 1, maxBerturutTurut: 3 },
+  { ambangTahun: 8, minYears: 8, maxYears: 10, label: "8 s/d < 10 Tahun", tambahanTahunan: 2, maxBerturutTurut: 3 },
+  { ambangTahun: 10, minYears: 10, maxYears: 11, label: "10 s/d < 11 Tahun", tambahanTahunan: 3, maxBerturutTurut: 3 },
+  { ambangTahun: 11, minYears: 11, maxYears: 99, label: "≥ 11 Tahun", tambahanTahunan: 4, maxBerturutTurut: 5 }
+];
+
+/**
+ * Menghitung masa kerja karyawan dalam tahun dan bulan beserta ketentuan:
+ * - Ambang masa kerja (tahun)
+ * - Tambahan hari cuti tahunan
+ * - Batas maksimal cuti berturut-turut per bulan
+ * Berdasarkan Tabel Tambahan Cuti Penghargaan Masa Kerja
  */
 export function getEmployeeTenureInfo(emp) {
   if (!emp) {
@@ -5627,8 +5844,10 @@ export function getEmployeeTenureInfo(emp) {
       tenureYears: 0,
       diffMonths: 0,
       tenureText: "0 Bulan",
+      ambangTahun: 0,
+      tambahanCuti: 0,
       maxLeaveDays: 2,
-      bracketLabel: "0 - 5 Tahun"
+      bracketLabel: "0 s/d < 6 Tahun"
     };
   }
   
@@ -5667,36 +5886,57 @@ export function getEmployeeTenureInfo(emp) {
   else if (m > 0) tenureText = `${m} Bulan`;
   else tenureText = "< 1 Bulan";
 
-  // KETENTUAN BATAS MAKSIMAL CUTI BERDASARKAN MASA KERJA:
-  // 0 - 5 tahun: maksimal 2 hari cuti
-  // 6 - 7 tahun: maksimal 3 hari cuti
-  // 8 - 10 tahun: maksimal 3 hari cuti (10 tahun = 3 hari)
-  // lebih dari 11 tahun (> 10 tahun / >= 11 tahun): maksimal 5 hari cuti
+  // KETENTUAN TABEL TAMBAHAN CUTI PENGHARGAAN MASA KERJA:
+  // - Ambang 11 (>= 11 tahun): Tambahan cuti 4 hari, Maks berturut-turut 5 hari
+  // - Ambang 10 (10 s/d < 11 tahun): Tambahan cuti 3 hari, Maks berturut-turut 3 hari
+  // - Ambang 8 (8 s/d < 10 tahun): Tambahan cuti 2 hari, Maks berturut-turut 3 hari
+  // - Ambang 6 (6 s/d < 8 tahun): Tambahan cuti 1 hari, Maks berturut-turut 3 hari
+  // - Ambang 0 (< 6 tahun): Tambahan cuti 0 hari, Maks berturut-turut 2 hari
+  let ambangTahun = 0;
+  let tambahanCuti = 0;
   let maxLeaveDays = 2;
-  let bracketLabel = "0 - 5 Tahun";
+  let bracketLabel = "0 s/d < 6 Tahun";
 
-  if (tenureYears > 10 || tenureYears >= 11 || diffMonths > 120) {
+  if (tenureYears >= 11 || diffMonths >= 132) {
+    ambangTahun = 11;
+    tambahanCuti = 4;
     maxLeaveDays = 5;
-    bracketLabel = "Lebih dari 11 Tahun (> 10 Thn)";
-  } else if (tenureYears >= 6 || diffMonths >= 72) {
+    bracketLabel = "≥ 11 Tahun (Ambang 11 Thn)";
+  } else if (tenureYears >= 10 || diffMonths >= 120) {
+    ambangTahun = 10;
+    tambahanCuti = 3;
     maxLeaveDays = 3;
-    bracketLabel = (tenureYears >= 8 || diffMonths >= 96) ? "8 - 10 Tahun" : "6 - 7 Tahun";
+    bracketLabel = "10 s/d < 11 Tahun (Ambang 10 Thn)";
+  } else if (tenureYears >= 8 || diffMonths >= 96) {
+    ambangTahun = 8;
+    tambahanCuti = 2;
+    maxLeaveDays = 3;
+    bracketLabel = "8 s/d < 10 Tahun (Ambang 8 Thn)";
+  } else if (tenureYears >= 6 || diffMonths >= 72) {
+    ambangTahun = 6;
+    tambahanCuti = 1;
+    maxLeaveDays = 3;
+    bracketLabel = "6 s/d < 8 Tahun (Ambang 6 Thn)";
   } else {
+    ambangTahun = 0;
+    tambahanCuti = 0;
     maxLeaveDays = 2;
-    bracketLabel = "0 - 5 Tahun";
+    bracketLabel = "0 s/d < 6 Tahun (Ambang 0 Thn)";
   }
 
   return {
     tenureYears,
     diffMonths,
     tenureText,
+    ambangTahun,
+    tambahanCuti,
     maxLeaveDays,
     bracketLabel
   };
 }
 
 export function getMaxLeaveDaysByTenure(tenureYears) {
-  if (tenureYears > 10 || tenureYears >= 11) {
+  if (tenureYears >= 11) {
     return 5;
   } else if (tenureYears >= 6) {
     return 3;

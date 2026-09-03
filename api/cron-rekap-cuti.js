@@ -40,7 +40,7 @@ function initFirebaseAdmin() {
       }
     }
   }
-  return admin.firestore();
+  return admin.apps.length ? admin.firestore() : null;
 }
 
 function getWibDateStr(d = new Date()) {
@@ -151,6 +151,9 @@ function buildEmailHtml({ title, subtitle, badgeText, badgeColor = "#7a1f2b", in
 module.exports = async function handler(req, res) {
   try {
     const db = initFirebaseAdmin();
+    if (!db) {
+      return res.status(200).json({ success: false, message: "Firebase Admin is not configured or offline." });
+    }
     const todayStr = getWibDateStr();
     const todayFormatted = formatIndoDate(todayStr);
 
