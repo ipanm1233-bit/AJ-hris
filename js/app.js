@@ -9,6 +9,7 @@ import { parseHash, toast, fmtDateTime, openModal, closeModal, sha256, fsUpdate 
 import { icon, avatar, openNotificationCenter, showMemoDetailById, skeletonShadowLayout } from "./components.js";
 import { db, messaging, firebaseConfig, COL, collection, query, where, getDocs, doc, getDoc, updateDoc, arrayUnion } from "./firebase-config.js";
 import { getToken } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js";
+import { initGlobalSearch } from "./global-search.js";
 
 const viewContainer = document.getElementById("view-container");
 let currentUnmount = null;
@@ -808,6 +809,9 @@ function bindShellEvents(session) {
  };
  }
 
+ // Inisialisasi Pencarian Global di Top Navigation Bar (Desktop & Mobile)
+ initGlobalSearch(session);
+
  checkUnreadNotifications(session);
 }
 
@@ -918,8 +922,9 @@ async function checkUnreadNotifications(session) {
 
 function startClock() {
  const el = document.getElementById("header-clock");
+ if (!el) return;
  const tick = () => {
- el.textContent = new Date().toLocaleString("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  el.textContent = new Date().toLocaleString("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
  };
  tick();
  setInterval(tick, 30000);

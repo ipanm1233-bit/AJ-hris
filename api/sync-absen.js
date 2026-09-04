@@ -1,4 +1,4 @@
-const admin = require('firebase-admin');
+const { admin, getFirebaseAdmin } = require('./firebase-admin.js');
 
 /**
  * api/sync-absen.js
@@ -34,42 +34,13 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Metode tidak diizinkan' });
 
   try {
-    if (!admin.apps.length) {
-      if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-        let serviceAccount;
-        try {
-          serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
-          admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-        } catch (e) {
-          return res.status(500).json({
-            success: false,
-            error: "FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON: " + e.message
-          });
-        }
-      } else if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
-        admin.initializeApp({
-          credential: admin.credential.cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
-          })
-        });
-      } else {
-        try {
-          admin.initializeApp();
-        } catch (e) {
-          console.warn("Firebase Admin default init failed:", e.message);
-        }
-      }
-    }
-
-    if (!admin.apps.length) {
+    const { db, error } = getFirebaseAdmin();
+    if (!db) {
       return res.status(500).json({
         success: false,
-        error: "Firebase Admin environment variables are not configured."
+        error: error || "Firebase Admin environment variables are not configured."
       });
     }
-    const db = admin.firestore();
     const { logs } = req.body;
 
     if (!logs || !Array.isArray(logs) || !logs.length) {

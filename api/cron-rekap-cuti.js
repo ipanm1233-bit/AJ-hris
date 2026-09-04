@@ -1,4 +1,4 @@
-const admin = require('firebase-admin');
+const { admin, getFirebaseAdmin } = require('./firebase-admin.js');
 const nodemailer = require('nodemailer');
 
 let transporter = null;
@@ -16,31 +16,8 @@ function getTransporter() {
 }
 
 function initFirebaseAdmin() {
-  if (!admin.apps.length) {
-    if (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
-      const decoded = Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf8');
-      const serviceAccount = JSON.parse(decoded);
-      admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-    } else if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
-      admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-    } else if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
-      admin.initializeApp({
-        credential: admin.credential.cert({
-          projectId: process.env.FIREBASE_PROJECT_ID,
-          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-          privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
-        })
-      });
-    } else {
-      try {
-        admin.initializeApp();
-      } catch (e) {
-        console.warn("Firebase Admin fallback init warning:", e.message);
-      }
-    }
-  }
-  return admin.apps.length ? admin.firestore() : null;
+  const { db } = getFirebaseAdmin();
+  return db;
 }
 
 function getWibDateStr(d = new Date()) {

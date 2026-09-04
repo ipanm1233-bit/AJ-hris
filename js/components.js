@@ -663,7 +663,7 @@ export function openExportPicker(title, columns, rows) {
  });
 }
 
-export { fsGetAll, fsAdd, fsUpdate, fsDelete };
+export { fsGetAll, fsAdd, fsUpdate, fsDelete, escapeHtml };
 
 /* ---------------------------------------------------------------------
  * PUSAT NOTIFIKASI (lonceng header) — dipanggil global dari app.js agar
@@ -1683,6 +1683,14 @@ export function openPenilaianFormFromNotif(task, kpis, session) {
  </div>
  </div>
  <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+				<button type="button" id="btn-print-kpi-modal" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition flex items-center gap-1.5" title="Cetak Formulir Penilaian Fisik">
+					<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+					<span>Cetak Fisik</span>
+				</button>
+				<button type="button" id="btn-download-kpi-modal" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition flex items-center gap-1.5" title="Unduh Dokumen Penilaian Fisik (PDF)">
+					<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+					<span>Unduh PDF</span>
+				</button>
  <button type="button" id="btn-back-to-kpi-list" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">Kembali</button>
  <button type="button" id="btn-submit-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2 rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5">
  <span>✓</span> Kirim Penilaian Kinerja
@@ -1691,6 +1699,22 @@ export function openPenilaianFormFromNotif(task, kpis, session) {
  </div>
  `,
  onMount: (m) => {
+		const btnPrintModal = m.querySelector("#btn-print-kpi-modal");
+		if (btnPrintModal) {
+			btnPrintModal.onclick = () => {
+				if (typeof window.printDokumenPenilaianFisik === "function") {
+					window.printDokumenPenilaianFisik(task);
+				}
+			};
+		}
+		const btnDownloadModal = m.querySelector("#btn-download-kpi-modal");
+		if (btnDownloadModal) {
+			btnDownloadModal.onclick = () => {
+				if (typeof window.downloadDokumenPenilaianFisikPdf === "function") {
+					window.downloadDokumenPenilaianFisikPdf(task);
+				}
+			};
+		}
  const liveScore = m.querySelector("#kpi-live-score");
  const livePredikat = m.querySelector("#kpi-live-predikat");
  const filledCountEl = m.querySelector("#kpi-filled-count");

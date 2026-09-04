@@ -4690,6 +4690,465 @@ export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf", 
  }
 }
 
+// =====================================================================
+// FORMULIR CETAK & DOKUMEN PENILAIAN FISIK 360 (ISO HR-FORM-KPI360)
+// =====================================================================
+export function generateDokumenPenilaianFisikHtml(task = {}) {
+  if (!task) task = {};
+  const isDone = (task.status || "").toUpperCase() === "DONE";
+  const tglDoc = task.created_at ? fmtDateShort(task.created_at) : (task.deadline ? fmtDateShort(task.deadline) : fmtDateShort(new Date()));
+
+  const soalList = Array.isArray(task.soal_json) && task.soal_json.length > 0
+    ? task.soal_json
+    : [
+        { aspek: "Kedisiplinan & Sikap", indikator: "Kepatuhan jam kerja, absensi, ketaatan SOP perusahaan, etika kerja, integritas dan kejujuran.", bobot: 20 },
+        { aspek: "Kualitas & Ketelitian", indikator: "Kerapihan hasil kerja, ketelitian, akurasi data/pekerjaan, serta minimnya komplain/kesalahan.", bobot: 25 },
+        { aspek: "Produktivitas & Target", indikator: "Kemampuan memenuhi target volume kerja, kecepatan eksekusi, dan komitmen terhadap deadline.", bobot: 25 },
+        { aspek: "Kerjasama & Komunikasi", indikator: "Koordinasi aktif, komunikasi santun dan efektif, kesediaan membantu rekan dan divisi lain.", bobot: 15 },
+        { aspek: "Inisiatif & Adaptasi", indikator: "Proaktif mencari solusi masalah, tanggap terhadap arahan, dan kemampuan adaptasi perubahan.", bobot: 15 }
+      ];
+
+  const totalBobot = soalList.reduce((acc, s) => acc + (parseFloat(s.bobot) || 0), 0);
+
+  let calcScore = 0;
+  if (isDone) {
+    calcScore = parseFloat(task.skor_akhir) || 0;
+    if (!calcScore && soalList.some(s => s.nilai_diberikan !== undefined)) {
+      calcScore = soalList.reduce((acc, s) => acc + ((parseFloat(s.nilai_diberikan) || 0) * ((parseFloat(s.bobot) || 0) / 100)), 0);
+    }
+  }
+  const finalScoreNum = Math.round(calcScore * 100) / 100;
+
+  const getPredikatInfo = (score) => {
+    if (score >= 85) return { grade: "A", label: "Sangat Baik", desc: "Melampaui standar kerja & target" };
+    if (score >= 70) return { grade: "B", label: "Baik", desc: "Memenuhi seluruh standar kerja & target" };
+    if (score >= 55) return { grade: "C", label: "Cukup", desc: "Memenuhi sebagian standar, butuh pendampingan" };
+    return { grade: "D", label: "Kurang", desc: "Di bawah standar, membutuhkan pembinaan intensif" };
+  };
+
+  const predikatInfo = isDone ? getPredikatInfo(finalScoreNum) : null;
+  const tipeRelasi = task.tipe_relasi || task.kategori_penilaian || "Evaluasi 360 Multi-Rater";
+
+  const rowsSoalHtml = soalList.map((s, idx) => {
+    const bbt = parseFloat(s.bobot) || 0;
+    const nilaiNum = (s.nilai_diberikan !== undefined && s.nilai_diberikan !== null && String(s.nilai_diberikan).trim() !== "") 
+      ? parseFloat(s.nilai_diberikan) 
+      : null;
+    const nilaiTerbobot = (nilaiNum !== null) ? ((nilaiNum * bbt) / 100).toFixed(2) : null;
+
+    return `
+      <tr>
+        <td style="border:1px solid #000; padding:2.5px 3px; text-align:center; vertical-align:top; font-weight:bold;">${idx + 1}</td>
+        <td style="border:1px solid #000; padding:2.5px 4px; vertical-align:top;">
+          <div style="font-weight:bold; font-size:8.5pt; color:#0f172a; text-transform:uppercase;">${escapeHtml(s.aspek || "Kompetensi")}</div>
+        </td>
+        <td style="border:1px solid #000; padding:2.5px 4px; vertical-align:top;">
+          <div style="font-size:8pt; line-height:1.2; color:#1e293b;">${escapeHtml(s.indikator || "-")}</div>
+          ${s.target ? `<div style="font-size:7.5pt; color:#475569; margin-top:1px;"><em>Target: ${escapeHtml(s.target)}</em></div>` : ''}
+        </td>
+        <td style="border:1px solid #000; padding:2.5px 3px; text-align:center; vertical-align:middle; font-weight:bold; font-size:8.5pt;">${bbt}%</td>
+        <td style="border:1px solid #000; padding:2.5px 3px; text-align:center; vertical-align:middle;">
+          ${isDone && nilaiNum !== null ? `
+            <span style="font-size:9.5pt; font-weight:bold; color:#800000;">${nilaiNum}</span>
+          ` : `
+            <div style="height:18px; border:1px dashed #64748b; background:#f8fafc; border-radius:2px; line-height:18px; font-size:7.5pt; color:#94a3b8; font-weight:bold;">
+              [ &nbsp; &nbsp; &nbsp; ]
+            </div>
+          `}
+        </td>
+        <td style="border:1px solid #000; padding:2.5px 3px; text-align:center; vertical-align:middle;">
+          ${isDone && nilaiTerbobot !== null ? `
+            <span style="font-size:8.5pt; font-weight:bold; color:#1e293b;">${nilaiTerbobot}</span>
+          ` : `
+            <div style="height:18px; border:1px dashed #cbd5e1; background:#fff; border-radius:2px; line-height:18px; font-size:7.5pt; color:#cbd5e1;">-</div>
+          `}
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  const headerTableHtml = isoDocHeaderTable({
+    judul: "FORMULIR PENILAIAN KINERJA & KOMPETENSI 360",
+    noDok: "HR-FORM-KPI360",
+    terbitRevisi: "1/0",
+    tglTerbit: tglDoc,
+    hal: "1 dari 1"
+  });
+
+  return `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Dokumen Penilaian Fisik 360 - ${escapeHtml(task.nama_dinilai || "Karyawan")}</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 6mm 8mm 6mm 8mm;
+    }
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
+    }
+    html, body {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 8pt;
+      color: #0f172a;
+      background: #ffffff;
+      margin: 0;
+      padding: 0;
+      line-height: 1.25;
+    }
+    body {
+      padding: 10px;
+    }
+    .doc-container {
+      max-width: 760px;
+      margin: 0 auto;
+      background: #ffffff;
+    }
+    .no-print-bar {
+      background: #1e293b;
+      color: #ffffff;
+      padding: 8px 12px;
+      margin: -10px -10px 10px -10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #0f172a;
+      position: sticky;
+      top: 0;
+      z-index: 9999;
+    }
+    .btn-doc-action {
+      padding: 5px 12px;
+      font-size: 11px;
+      font-weight: bold;
+      border-radius: 5px;
+      border: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: opacity 0.2s;
+    }
+    .btn-doc-print { background: #800000; color: #ffffff; }
+    .btn-doc-print:hover { opacity: 0.9; }
+    .btn-doc-close { background: #475569; color: #ffffff; }
+    .btn-doc-close:hover { opacity: 0.9; }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .table-bordered th, .table-bordered td {
+      border: 1px solid #000;
+    }
+    .bg-header-gray {
+      background: #f1f5f9 !important;
+    }
+    .catatan-line {
+      border-bottom: 1px dashed #94a3b8;
+      height: 14px;
+    }
+    @media print {
+      .no-print-bar, .no-print {
+        display: none !important;
+      }
+      body {
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+      .doc-container {
+        width: 100% !important;
+        max-width: 100% !important;
+        max-height: 285mm;
+        page-break-after: avoid;
+        page-break-inside: avoid;
+      }
+      tr, td, th {
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print-bar">
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span style="font-weight:bold; font-size:12px;">Dokumen Penilaian Fisik 360 - CV Andela Jaya</span>
+      <span style="background:#334155; padding:2px 6px; border-radius:3px; font-size:10px; color:#cbd5e1;">${escapeHtml(task.id || 'FORM-360')}</span>
+      <span style="background:${isDone ? '#14532d' : '#854d0e'}; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px; font-weight:bold;">
+        ${isDone ? 'SELESAI (SUDAH DINILAI)' : 'BLANGKO PENILAIAN FISIK'}
+      </span>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn-doc-action btn-doc-print" onclick="window.print()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+        <span>Cetak Dokumen Fisik</span>
+      </button>
+      <button class="btn-doc-action btn-doc-close" onclick="window.close()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        <span>Tutup</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="doc-container">
+    <!-- KOP SURAT ISO RESMI -->
+    ${headerTableHtml}
+
+    <!-- JUDUL DOKUMEN -->
+    <div style="text-align:center; margin:5px 0 6px 0;">
+      <div style="font-size:10.5pt; font-weight:bold; margin:0; text-transform:uppercase; color:#800000; letter-spacing:0.3px; text-decoration:underline;">
+        LEMBAR PENILAIAN KOMPETENSI & KINERJA KARYAWAN (360 MULTI-RATER)
+      </div>
+      <div style="font-size:7.5pt; color:#475569; margin-top:1px;">
+        Dokumen evaluasi kerja resmi sebagai dasar penentuan grade kinerja, pembinaan, serta perjanjian kerja CV Andela Jaya.
+      </div>
+    </div>
+
+    <!-- TABEL IDENTITAS (2 KOLOM: DINILAI & PENILAI) -->
+    <table class="table-bordered" style="margin-bottom:6px; font-size:8pt;">
+      <tr class="bg-header-gray">
+        <th colspan="2" style="padding:2.5px 5px; text-align:left; width:50%; font-size:8pt; text-transform:uppercase; color:#0f172a;">
+          A. DATA KARYAWAN YANG DINILAI
+        </th>
+        <th colspan="2" style="padding:2.5px 5px; text-align:left; width:50%; font-size:8pt; text-transform:uppercase; color:#0f172a;">
+          B. DATA PENILAI (EVALUATOR)
+        </th>
+      </tr>
+      <tr>
+        <td style="width:16%; font-weight:bold; padding:2px 4px; background:#fafafa;">Nama Lengkap</td>
+        <td style="width:34%; padding:2px 4px; font-weight:bold; color:#0f172a;">${escapeHtml(task.nama_dinilai || "-")}</td>
+        <td style="width:16%; font-weight:bold; padding:2px 4px; background:#fafafa;">Nama Penilai</td>
+        <td style="width:34%; padding:2px 4px; font-weight:bold; color:#0f172a;">${escapeHtml(task.nama_penilai || "-")}</td>
+      </tr>
+      <tr>
+        <td style="font-weight:bold; padding:2px 4px; background:#fafafa;">NIK Karyawan</td>
+        <td style="padding:2px 4px;">${escapeHtml(task.nik_dinilai || "-")}</td>
+        <td style="font-weight:bold; padding:2px 4px; background:#fafafa;">NIK Penilai</td>
+        <td style="padding:2px 4px;">${escapeHtml(task.nik_penilai || "-")}</td>
+      </tr>
+      <tr>
+        <td style="font-weight:bold; padding:2px 4px; background:#fafafa;">Jabatan / Posisi</td>
+        <td style="padding:2px 4px;">${escapeHtml(task.jabatan_dinilai || "-")}</td>
+        <td style="font-weight:bold; padding:2px 4px; background:#fafafa;">Jabatan Penilai</td>
+        <td style="padding:2px 4px;">${escapeHtml(task.jabatan_penilai || "-")}</td>
+      </tr>
+      <tr>
+        <td style="font-weight:bold; padding:2px 4px; background:#fafafa;">Cabang / Divisi</td>
+        <td style="padding:2px 4px;">${escapeHtml(task.cabang_dinilai || task.divisi_dinilai || "-")}</td>
+        <td style="font-weight:bold; padding:2px 4px; background:#fafafa;">Hubungan Evaluasi</td>
+        <td style="padding:2px 4px;">${escapeHtml(tipeRelasi)}</td>
+      </tr>
+      <tr>
+        <td style="font-weight:bold; padding:2px 4px; background:#fafafa;">Periode Evaluasi</td>
+        <td style="padding:2px 4px; font-weight:bold; color:#800000;">${escapeHtml(task.periode || "-")}</td>
+        <td style="font-weight:bold; padding:2px 4px; background:#fafafa;">Batas Waktu Form</td>
+        <td style="padding:2px 4px; color:#b91c1c; font-weight:bold;">${task.deadline ? fmtDateShort(task.deadline) : '-'}</td>
+      </tr>
+    </table>
+
+    <!-- CATATAN HRD (JIKA ADA) -->
+    ${task.catatan_hrd ? `
+    <div style="margin-bottom:6px; padding:3px 6px; background:#f0f9ff; border:1px solid #38bdf8; border-radius:3px; font-size:7.5pt;">
+      <strong style="color:#0369a1;">Instruksi Khusus HRD:</strong>
+      <span style="color:#0c4a6e; margin-left:3px;">${escapeHtml(task.catatan_hrd)}</span>
+    </div>
+    ` : ''}
+
+    <!-- BAGIAN I: BUTIR PERTANYAAN & INDIKATOR KOMPETENSI -->
+    <div style="margin-bottom:6px;">
+      <div style="font-weight:bold; font-size:8.5pt; text-transform:uppercase; margin-bottom:3px; color:#0f172a; display:flex; justify-content:space-between; align-items:center;">
+        <span>I. BUTIR PENILAIAN INDIKATOR KERJA & KOMPETENSI (${soalList.length} BUTIR)</span>
+        <span style="font-size:7.5pt; font-weight:normal; color:#64748b;">Template: <strong>${escapeHtml(task.nama_template || "Template Standar")}</strong></span>
+      </div>
+      <table class="table-bordered" style="font-size:8pt;">
+        <thead>
+          <tr class="bg-header-gray">
+            <th style="width:24px; padding:3px 2px; text-align:center;">No</th>
+            <th style="width:125px; padding:3px 4px; text-align:left;">Aspek Kompetensi</th>
+            <th style="padding:3px 4px; text-align:left;">Indikator Perilaku & Tolok Ukur Kinerja</th>
+            <th style="width:48px; padding:3px 3px; text-align:center;">Bobot</th>
+            <th style="width:65px; padding:3px 3px; text-align:center;">Skor Fisik<br/><span style="font-size:7pt; font-weight:normal;">(0 - 100)</span></th>
+            <th style="width:68px; padding:3px 3px; text-align:center;">Nilai Bobot<br/><span style="font-size:7pt; font-weight:normal;">(Bobot x Skor)</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsSoalHtml}
+        </tbody>
+        <tfoot>
+          <tr style="background:#f8fafc; font-weight:bold;">
+            <td colspan="3" style="border:1px solid #000; padding:3px 5px; text-align:right; font-size:8.5pt;">TOTAL BOBOT & SKOR AKHIR:</td>
+            <td style="border:1px solid #000; padding:3px 2px; text-align:center; font-size:8.5pt;">${totalBobot}%</td>
+            <td style="border:1px solid #000; padding:3px 2px; text-align:center;" colspan="2">
+              ${isDone ? `
+                <span style="font-size:9.5pt; font-weight:bold; color:#800000;">${finalScoreNum.toFixed(2)}</span>
+                <span style="font-size:7.5pt; color:#475569;"> / 100</span>
+                <span style="margin-left:4px; font-size:7.5pt; padding:1px 4px; border-radius:2px; background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd;">Grade ${predikatInfo.grade} (${predikatInfo.label})</span>
+              ` : `
+                <span style="font-size:7.5pt; color:#64748b;">[ &nbsp; &nbsp; &nbsp; ] / 100 &nbsp; (Predikat: [ ] A &nbsp; [ ] B &nbsp; [ ] C &nbsp; [ ] D)</span>
+              `}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <!-- BAGIAN II: ULASAN KUALITATIF (DESKRIPTIF) -->
+    <div style="margin-bottom:6px; page-break-inside:avoid;">
+      <div style="font-weight:bold; font-size:8.5pt; text-transform:uppercase; margin-bottom:3px; color:#0f172a;">
+        II. CATATAN & EVALUASI DESKRIPTIF PENILAI
+      </div>
+      <table class="table-bordered" style="font-size:8pt; width:100%;">
+        <tr>
+          <td style="width:28%; padding:2.5px 5px; font-weight:bold; background:#fafafa; vertical-align:top; color:#166534;">
+            1. Aspek yang Sudah Baik<br/><span style="font-size:7pt; font-weight:normal; color:#475569;">(Kelebihan / Prestasi Kerja)</span>
+          </td>
+          <td style="padding:2.5px 5px; vertical-align:top;">
+            ${isDone && task.catatan_baik ? `
+              <div style="font-size:8pt; color:#0f172a; line-height:1.2;">${escapeHtml(task.catatan_baik)}</div>
+            ` : `
+              <div class="catatan-line"></div>
+            `}
+          </td>
+        </tr>
+        <tr>
+          <td style="width:28%; padding:2.5px 5px; font-weight:bold; background:#fafafa; vertical-align:top; color:#991b1b;">
+            2. Aspek Perlu Peningkatan<br/><span style="font-size:7pt; font-weight:normal; color:#475569;">(Area Pembinaan / Perbaikan)</span>
+          </td>
+          <td style="padding:2.5px 5px; vertical-align:top;">
+            ${isDone && task.catatan_perbaikan ? `
+              <div style="font-size:8pt; color:#0f172a; line-height:1.2;">${escapeHtml(task.catatan_perbaikan)}</div>
+            ` : `
+              <div class="catatan-line"></div>
+            `}
+          </td>
+        </tr>
+        <tr>
+          <td style="width:28%; padding:2.5px 5px; font-weight:bold; background:#fafafa; vertical-align:top; color:#1e293b;">
+            3. Catatan & Rekomendasi<br/><span style="font-size:7pt; font-weight:normal; color:#475569;">(Pengembangan Karir / Pelatihan)</span>
+          </td>
+          <td style="padding:2.5px 5px; vertical-align:top;">
+            ${isDone && task.catatan_penilai ? `
+              <div style="font-size:8pt; color:#0f172a; line-height:1.2;">${escapeHtml(task.catatan_penilai)}</div>
+            ` : `
+              <div class="catatan-line"></div>
+            `}
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- BAGIAN III: STANDAR SKALA NILAI MUTU -->
+    <div style="margin-bottom:6px; page-break-inside:avoid;">
+      <table class="table-bordered" style="font-size:7.5pt; text-align:center; width:100%;">
+        <tr class="bg-header-gray">
+          <th style="padding:1.5px 2px; width:25%;">Grade A (85.00 - 100)</th>
+          <th style="padding:1.5px 2px; width:25%;">Grade B (70.00 - 84.99)</th>
+          <th style="padding:1.5px 2px; width:25%;">Grade C (55.00 - 69.99)</th>
+          <th style="padding:1.5px 2px; width:25%;">Grade D (&lt; 55.00)</th>
+        </tr>
+        <tr>
+          <td style="padding:1.5px; color:#15803d; font-weight:bold;">Sangat Baik (Istimewa)</td>
+          <td style="padding:1.5px; color:#1d4ed8; font-weight:bold;">Baik (Kompeten)</td>
+          <td style="padding:1.5px; color:#b45309; font-weight:bold;">Cukup (Cukup Standar)</td>
+          <td style="padding:1.5px; color:#b91c1c; font-weight:bold;">Kurang (Perlu Pembinaan)</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- BAGIAN IV: KOLOM PENGESAHAN TANDA TANGAN FISIK -->
+    <div style="page-break-inside:avoid;">
+      <div style="text-align:right; font-size:8pt; font-weight:bold; margin-bottom:3px; color:#334155;">
+        Cirebon, ${task.tanggal_diselesaikan ? fmtDateShort(task.tanggal_diselesaikan) : fmtDateShort(new Date())}
+      </div>
+      <table style="width:100%; text-align:center; font-size:8pt; border-collapse:collapse;">
+        <tr>
+          <td style="width:33.3%; padding:0 6px;">
+            <div style="font-weight:bold; border-bottom:1px solid #000; padding-bottom:2px; margin-bottom:30px;">
+              Karyawan yang Dinilai,
+            </div>
+            <div style="font-weight:bold; text-decoration:underline;">( ${escapeHtml(task.nama_dinilai || "Karyawan")} )</div>
+            <div style="font-size:7.5pt; color:#64748b;">NIK: ${escapeHtml(task.nik_dinilai || "-")}</div>
+          </td>
+          <td style="width:33.3%; padding:0 6px;">
+            <div style="font-weight:bold; border-bottom:1px solid #000; padding-bottom:2px; margin-bottom:30px;">
+              Penilai (Evaluator),
+            </div>
+            <div style="font-weight:bold; text-decoration:underline;">( ${escapeHtml(task.nama_penilai || "Penilai")} )</div>
+            <div style="font-size:7.5pt; color:#64748b;">NIK: ${escapeHtml(task.nik_penilai || "-")}</div>
+          </td>
+          <td style="width:33.3%; padding:0 6px;">
+            <div style="font-weight:bold; border-bottom:1px solid #000; padding-bottom:2px; margin-bottom:30px;">
+              Mengetahui / HRD,
+            </div>
+            <div style="font-weight:bold; text-decoration:underline;">( ________________________ )</div>
+            <div style="font-size:7.5pt; color:#64748b;">HRD & GA Department</div>
+          </td>
+        </tr>
+      </table>
+
+      <!-- FOOTER CATATAN KECIL -->
+      <div style="border-top:1px solid #cbd5e1; margin-top:6px; padding-top:2px; font-size:7pt; color:#94a3b8; display:flex; justify-content:space-between;">
+        <span>*Formulir fisik penilaian ini sah setelah dibubuhi tanda tangan basah penilai dan diverifikasi HRD.</span>
+        <span>Dokumen ISO HR-FORM-KPI360 | CV Andela Jaya</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', function() {
+      setTimeout(function() {
+        try { window.print(); } catch(e) {}
+      }, 350);
+    });
+  </script>
+</body>
+</html>`;
+}
+
+export function printDokumenPenilaianFisik(task) {
+  if (!task) {
+    toast("Data tugas penilaian tidak valid", "error");
+    return;
+  }
+  const html = generateDokumenPenilaianFisikHtml(task);
+  const printWin = window.open("", "_blank", "width=920,height=800");
+  if (!printWin) {
+    toast("Izin popup diblokir oleh browser. Harap izinkan popup browser untuk mencetak dokumen fisik.", "error");
+    return;
+  }
+  printWin.document.write(html);
+  printWin.document.close();
+}
+
+export async function downloadDokumenPenilaianFisikPdf(task) {
+  if (!task) {
+    toast("Data tugas penilaian tidak valid", "error");
+    return;
+  }
+  try {
+    toast("Menyiapkan dokumen penilaian fisik PDF...", "info");
+    const html = generateDokumenPenilaianFisikHtml(task);
+    const safeName = (task.nama_dinilai || "Karyawan").replace(/[^a-zA-Z0-9_-]/g, "_");
+    const safePeriode = (task.periode || "360").replace(/[^a-zA-Z0-9_-]/g, "_");
+    const filename = `Dokumen_Penilaian_Fisik_360_${safeName}_${safePeriode}.pdf`;
+    await downloadHtmlAsPdf(html, filename, "portrait");
+    toast("Dokumen penilaian fisik PDF berhasil diunduh!", "success");
+  } catch (err) {
+    console.error("Gagal download PDF penilaian fisik:", err);
+    toast("Gagal mengunduh dokumen PDF: " + err.message, "error");
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.generateDokumenPenilaianFisikHtml = generateDokumenPenilaianFisikHtml;
+  window.printDokumenPenilaianFisik = printDokumenPenilaianFisik;
+  window.downloadDokumenPenilaianFisikPdf = downloadDokumenPenilaianFisikPdf;
+}
+
 export async function sendFCMNotif(tokens, title, body, link = "") {
  const list = (Array.isArray(tokens) ? tokens : [tokens]).filter(Boolean);
  if (!list.length) return false;

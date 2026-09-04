@@ -1,7 +1,7 @@
 import { db, COL, collection, query, where, getDocs, orderBy, limit, getDoc, doc, updateDoc, messaging } from "../firebase-config.js";
 import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, getTargetsForRole, toast, fsUpdate, fsAdd, fsGetAll, fsDelete, deleteBroadcastMemoAndNotifs, genId, localDateStr, getCalculatedJatahCuti, calculateAge, calculateTenure, cleanSalesName, calculateSalesRouteMetrics, normalizeCheckinItem, getDirectImageUrl } from "../utils.js";
 import { avatar, badge, icon, emptyState, skeletonRows, getDismissedAnnouncements, dismissAnnouncementForUser } from "../components.js";
-import { MANAJEMEN_ROLES, computeVisibleMenus } from "../auth.js";
+import { MANAJEMEN_ROLES, computeVisibleMenus, MENU_CONFIG } from "../auth.js";
 // IMPORT BARU UNTUK MENDAPATKAN TOKEN HP (FCM)
 import { getToken } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js";
 
@@ -10,7 +10,11 @@ const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agus
 export async function mount(container, { session }) {
  const hour = new Date().getHours();
  const greet = hour < 11 ? "Selamat Pagi" : hour < 15 ? "Selamat Siang" : hour < 18 ? "Selamat Sore" : "Selamat Malam";
- container.querySelector("#dash-greeting").textContent = `${greet}, ${session.nama.split(" ")[0]}`;
+ const greetingEl = container.querySelector("#dash-greeting");
+ if (greetingEl) {
+  const firstName = session?.nama ? session.nama.split(" ")[0] : (session?.username || "Karyawan");
+  greetingEl.textContent = `${greet}, ${firstName}`;
+ }
 
  const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
 
@@ -40,20 +44,20 @@ export async function mount(container, { session }) {
 
  // loadProfileCard dipanggil lebih dulu (bukan di dalam Promise.all) karena
  // loadPersonalBanner butuh data karyawan yang sama supaya tidak query dobel.
- const karyawanProfile = await loadProfileCard(container, session);
+ const karyawanProfile = await loadProfileCard(container, session).catch(() => null);
 
  await Promise.all([
- loadPersonalBanner(container, session, karyawanProfile),
- loadSalesPerformanceWidget(container, session, karyawanProfile),
- loadLeaveBalances(container, session),
- loadKpiTasks(container, session),
- loadAssignedAssets(container, session, karyawanProfile),
- loadCutiHariIni(container),
- loadAnnouncements(container, session),
- loadAttendanceAnalytics(container, session),
- loadPerformanceWidget(container, session),
- loadTrainingHistory(container, session),
- loadContractExpiry(container, session)
+  loadPersonalBanner(container, session, karyawanProfile).catch(e => console.warn("Banner error:", e)),
+  loadSalesPerformanceWidget(container, session, karyawanProfile).catch(e => console.warn("Sales error:", e)),
+  loadLeaveBalances(container, session).catch(e => console.warn("Leave error:", e)),
+  loadKpiTasks(container, session).catch(e => console.warn("KPI error:", e)),
+  loadAssignedAssets(container, session, karyawanProfile).catch(e => console.warn("Assets error:", e)),
+  loadCutiHariIni(container).catch(e => console.warn("Cuti error:", e)),
+  loadAnnouncements(container, session).catch(e => console.warn("Announcements error:", e)),
+  loadAttendanceAnalytics(container, session).catch(e => console.warn("Attendance error:", e)),
+  loadPerformanceWidget(container, session).catch(e => console.warn("Performance error:", e)),
+  loadTrainingHistory(container, session).catch(e => console.warn("Training error:", e)),
+  loadContractExpiry(container, session).catch(e => console.warn("Contract error:", e))
  ]);
 
  // Lonceng notifikasi kini ditangani secara global di app.js (bindShellEvents)
@@ -295,6 +299,7 @@ async function loadPersonalBanner(container, session, karyawan) {
 /* ------------------------ b. LEAVE BALANCE ------------------------ */
 async function loadLeaveBalances(container, session) {
  const wrap = container.querySelector("#dash-cuti-cards");
+ if (!wrap) return;
  wrap.innerHTML = `<div class="col-span-3">${skeletonRows(1)}</div>`;
  let jatah = { tahunan: 0, khusus: 0, akumulasi: 0 };
  
@@ -381,6 +386,7 @@ async function loadLeaveBalances(container, session) {
 /* ------------------------ c. KPI 360 TASKS ------------------------ */
 async function loadKpiTasks(container, session) {
  const wrap = container.querySelector("#dash-kpi-tasks");
+ if (!wrap) return;
  try {
  const q = query(collection(db, COL.TUGAS_KPI_360), where("nama_penilai", "==", session.nama));
  const snap = await getDocs(q);
@@ -404,7 +410,7 @@ async function loadKpiTasks(container, session) {
  el.onclick = () => { openPenilaianForm(pending.find(x => x.id === el.dataset.kpiId), container, session); };
  });
 
- } catch (e) { wrap.innerHTML = emptyState("Belum ada data penilaian"); }
+ } catch (e) { if (wrap) wrap.innerHTML = emptyState("Belum ada data penilaian"); }
 }
 
 function openPenilaianForm(task, container, session) {
@@ -445,7 +451,18 @@ function openPenilaianForm(task, container, session) {
  `,
  footerHtml: `
  <div class="w-full flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-200 mb-3"><span class="text-sm font-bold text-slate-600">Skor Akhir Sementara:</span><span id="kpi-live-score" class="text-lg font-black text-maroon-700">0.00</span></div>
- <div class="flex gap-2 justify-end"><button id="btn-cancel-kpi" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button><button id="btn-submit-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2 rounded-lg text-sm font-medium transition shadow-md">Kirim Penilaian</button></div>
+    <div class="flex gap-2 justify-end items-center flex-wrap">
+      <button type="button" id="btn-print-kpi-dash" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition flex items-center gap-1.5" title="Cetak Dokumen Penilaian Fisik">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+        <span>Cetak Fisik</span>
+      </button>
+      <button type="button" id="btn-download-kpi-dash" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition flex items-center gap-1.5" title="Unduh Dokumen Penilaian Fisik (PDF)">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+        <span>Unduh PDF</span>
+      </button>
+      <button id="btn-cancel-kpi" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
+      <button id="btn-submit-kpi" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2 rounded-lg text-sm font-medium transition shadow-md">Kirim Penilaian</button>
+    </div>
  `,
  onMount: (m) => {
  const liveScore = m.querySelector("#kpi-live-score");
@@ -458,6 +475,22 @@ function openPenilaianForm(task, container, session) {
  liveScore.textContent = calcTotal.toFixed(2);
  });
 
+    const btnPrintDash = m.querySelector("#btn-print-kpi-dash");
+    if (btnPrintDash) {
+      btnPrintDash.onclick = () => {
+        if (typeof window.printDokumenPenilaianFisik === "function") {
+          window.printDokumenPenilaianFisik(task);
+        }
+      };
+    }
+    const btnDownloadDash = m.querySelector("#btn-download-kpi-dash");
+    if (btnDownloadDash) {
+      btnDownloadDash.onclick = () => {
+        if (typeof window.downloadDokumenPenilaianFisikPdf === "function") {
+          window.downloadDokumenPenilaianFisikPdf(task);
+        }
+      };
+    }
  m.querySelector("#btn-cancel-kpi").onclick = closeModal;
  m.querySelector("#btn-submit-kpi").onclick = async () => {
  const form = m.querySelector("#form-isi-kpi");
@@ -513,6 +546,7 @@ function openPenilaianForm(task, container, session) {
 /* ------------------------ d. CUTI HARI INI ------------------------ */
 async function loadCutiHariIni(container) {
  const wrap = container.querySelector("#dash-cuti-hari-ini");
+ if (!wrap) return;
  const now = new Date();
  const todayStr = localDateStr(now);
  try {
@@ -554,12 +588,13 @@ async function loadCutiHariIni(container) {
  ${escapeHtml(r.type_cuti || "Cuti")}
  </span>
  </div>`).join("");
- } catch (e) { wrap.innerHTML = `<div class="col-span-full py-2 px-3 text-center text-xs text-slate-400 italic bg-slate-50 rounded-lg">Gagal memuat data cuti</div>`; }
+ } catch (e) { if (wrap) wrap.innerHTML = `<div class="col-span-full py-2 px-3 text-center text-xs text-slate-400 italic bg-slate-50 rounded-lg">Gagal memuat data cuti</div>`; }
 }
 
 /* ------------------------ e. PENGUMUMAN ------------------------ */
 async function loadAnnouncements(container, session) {
  const wrap = container.querySelector("#dash-announcements");
+ if (!wrap) return;
  try {
  const q = query(collection(db, COL.BROADCAST), orderBy("tanggal", "desc"), limit(20));
  const snap = await getDocs(q);
@@ -611,7 +646,7 @@ async function loadAnnouncements(container, session) {
  wrap.querySelectorAll("[data-memo-idx]").forEach(el => {
  el.onclick = () => openAnnouncementDetailModal(validMemos[parseInt(el.dataset.memoIdx, 10)], session, () => loadAnnouncements(container, session));
  });
- } catch (e) { wrap.innerHTML = emptyState("Belum ada pengumuman"); }
+ } catch (e) { if (wrap) wrap.innerHTML = emptyState("Belum ada pengumuman"); }
 }
 
 function openAnnouncementDetailModal(memo, session, onRefresh) {
@@ -702,6 +737,7 @@ async function loadContractExpiry(container, session) {
 
  wrapOuter.classList.remove("hidden");
  const wrap = container.querySelector("#dash-contract-list");
+ if (!wrap) return;
  const countBadge = container.querySelector("#dash-contract-count-badge");
  const subtitleEl = container.querySelector("#dash-contract-subtitle");
 
@@ -943,6 +979,7 @@ async function loadAttendanceAnalytics(container, session) {
   const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
   const titleEl = container.querySelector("#dash-attendance-title");
   const bodyEl = container.querySelector("#dash-attendance-body");
+  if (!bodyEl) return;
 
   try {
     const [rawAllAbsen, allKaryawan, cfgSnap] = await Promise.all([
@@ -1380,12 +1417,13 @@ async function loadPerformanceWidget(container, session) {
  const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
  const titleEl = container.querySelector("#dash-performance-title");
  const bodyEl = container.querySelector("#dash-performance-body");
+ if (!bodyEl) return;
 
  try {
  const allReviews = await fsGetAll(COL.PERFORMANCE_REVIEW);
 
  if (isHrd) {
- titleEl.textContent = "Evaluasi Kinerja Karyawan Perusahaan";
+ if (titleEl) titleEl.textContent = "Evaluasi Kinerja Karyawan Perusahaan";
  
  const totalReviews = allReviews.length;
  if (totalReviews === 0) {
@@ -1427,7 +1465,7 @@ async function loadPerformanceWidget(container, session) {
  </div>
  `;
  } else {
- titleEl.textContent = "Evaluasi Kinerja Saya";
+ if (titleEl) titleEl.textContent = "Evaluasi Kinerja Saya";
  
  const myReviews = allReviews.filter(r => r.nik === session.nik || r.nama_karyawan === session.nama)
  .sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
@@ -1465,7 +1503,7 @@ async function loadPerformanceWidget(container, session) {
  }
  } catch (err) {
  console.error(err);
- bodyEl.innerHTML = `<p class="text-xs text-rose-500">Gagal memuat evaluasi kinerja: ${err.message}</p>`;
+ if (bodyEl) bodyEl.innerHTML = `<p class="text-xs text-rose-500">Gagal memuat evaluasi kinerja: ${err.message}</p>`;
  }
 }
 
@@ -1507,7 +1545,7 @@ async function loadTrainingHistory(container, session) {
  `;
  }).join("");
  } catch (err) {
- wrap.innerHTML = `<p class="text-xs text-slate-400">Gagal memuat riwayat training</p>`;
+ if (wrap) wrap.innerHTML = `<p class="text-xs text-slate-400">Gagal memuat riwayat training</p>`;
  }
 }
 
@@ -1990,7 +2028,7 @@ async function loadAssignedAssets(container, session, userEmpProfile = null) {
 
  } catch (err) {
   console.warn("Gagal memuat aset & ATK karyawan:", err);
-  wrap.innerHTML = `<p class="text-xs text-slate-400">Gagal memuat daftar aset dan log pengambilan ATK.</p>`;
+  if (wrap) wrap.innerHTML = `<p class="text-xs text-slate-400">Gagal memuat daftar aset dan log pengambilan ATK.</p>`;
  }
 }
 
@@ -2343,7 +2381,7 @@ async function loadSalesPerformanceWidget(container, session, karyawanProfile = 
     if (!isSalesPerson) {
       widgetWrap.classList.add("hidden");
     } else {
-      contentEl.innerHTML = `<p class="text-xs text-slate-400">Gagal memuat rekapan pencapaian sales.</p>`;
+      if (contentEl) contentEl.innerHTML = `<p class="text-xs text-slate-400">Gagal memuat rekapan pencapaian sales.</p>`;
     }
   }
 }

@@ -28,12 +28,11 @@
  * mengalami hal sama dan sedang menunggu perbaikan dari pihak Google).
  * ------------------------------------------------------------------- */
 
-// GANTI dengan API key baru Anda dari https://aistudio.google.com/apikey (harus diawali "AIzaSy...")
-export const GEMINI_API_KEY = "AIzaSyBD6xrkrxPrOFd4nxjsoMGILYu5-Q4S2Fw";
+// API Key dikelola aman via GEMINI_API_KEY di server-side (.env / Settings)
+export const GEMINI_API_KEY = "";
 
-// Alias "flash-latest" otomatis mengikuti model stabil terbaru dari Google,
-// jadi tidak perlu diubah manual tiap kali Google pensiunkan versi model.
-export const GEMINI_MODEL = "gemini-flash-latest";
+// Alias model default untuk Gemini
+export const GEMINI_MODEL = "gemini-3.6-flash";
 
 export const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
@@ -46,33 +45,43 @@ export function isLikelyBrokenKeyFormat(key) {
 }
 
 /**
- * Helper terpusat untuk memanggil Gemini generateContent. Melempar Error
- * dengan pesan yang jelas (Bahasa Indonesia) supaya mudah didiagnosa dari UI,
- * termasuk deteksi dini kalau format API key-nya kemungkinan bermasalah.
+ * Helper terpusat untuk memanggil Gemini generateContent.
+ * Menggunakan server-side endpoint /api/gemini agar API key aman di server.
  * @param {string} prompt
  * @returns {Promise<string>} teks mentah hasil respons Gemini
  */
 export async function callGemini(prompt) {
-  // 1. Coba panggil server-side endpoint /api/gemini terlebih dahulu (Paling Aman & Standar AI Studio)
+  // 1. Panggil server-side endpoint /api/gemini terlebih dahulu (Aman & Standar AI Studio)
   try {
     const serverResp = await fetch("/api/gemini", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, model: "gemini-2.5-flash" })
+      body: JSON.stringify({ prompt, model: GEMINI_MODEL })
     });
-    if (serverResp.ok) {
-      const serverData = await serverResp.json();
-      if (serverData && serverData.text) {
-        return serverData.text;
+    const serverData = await serverResp.json();
+    if (serverResp.ok && serverData && serverData.success && serverData.text) {
+      return serverData.text;
+    }
+    if (!serverResp.ok && serverData && serverData.error) {
+      // Jika server memberikan error eksplisit (misal GEMINI_API_KEY belum diset)
+      if (!GEMINI_API_KEY) {
+        throw new Error(serverData.error);
       }
     }
   } catch (e) {
+    if (!GEMINI_API_KEY) {
+      throw e;
+    }
     console.warn("[AI Gemini] Server route failed, falling back to direct REST client:", e);
   }
 
-  // 2. Fallback ke Direct Client REST jika server endpoint tidak diset
+  // 2. Fallback ke Direct Client REST jika GEMINI_API_KEY diset di client
+  if (!GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY belum dikonfigurasi di server (.env).");
+  }
+
   if (isLikelyBrokenKeyFormat(GEMINI_API_KEY)) {
-    console.warn("[AI Gemini] Format API key tidak diawali 'AIzaSy' — kemungkinan besar akan ditolak Google (401). Lihat komentar di js/ai-config.js.");
+    console.warn("[AI Gemini] Format API key tidak diawali 'AIzaSy' — kemungkinan besar akan ditolak Google (401).");
   }
 
   let response;

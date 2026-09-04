@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, getDoc, setDoc, doc, limit } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, confirmDialog, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, buildStandardEmailHtml, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan, downloadXlsx, ensureXlsxLoaded, formatPhoneNumberForWa, openWhatsAppMessage, getEmployeePhoneByName, buildKpiTaskWaMessage } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, confirmDialog, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, buildStandardEmailHtml, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan, downloadXlsx, ensureXlsxLoaded, formatPhoneNumberForWa, openWhatsAppMessage, getEmployeePhoneByName, buildKpiTaskWaMessage, printDokumenPenilaianFisik, downloadDokumenPenilaianFisikPdf } from "../utils.js";
 import { renderCrudModule, badge, emptyState, skeletonRows, avatar, openPenilaianFormFromNotif } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames, hasSubMenuAccess, canEditModuleData } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
@@ -2403,15 +2403,25 @@ export async function mount(container, { session, params }) {
                         </div>
                       ` : ''}
                     </div>
-                    <div class="flex items-center justify-between border-t border-slate-100 pt-3 text-xs">
+                    <div class="flex items-center justify-between border-t border-slate-100 pt-3 text-xs gap-2 flex-wrap">
                       <span class="text-slate-400 text-[11px]">Batas: <strong>${t.deadline ? fmtDateShort(t.deadline) : '-'}</strong></span>
-                      ${!isDone ? `
-                        <button data-task-id="${t.id}" class="btn-fill-kpi-item px-3.5 py-1.5 bg-maroon-700 hover:bg-maroon-800 text-white font-bold rounded-lg text-xs transition shadow-2xs">
-                          Isi Penilaian
+                      <div class="flex items-center gap-1.5 flex-wrap">
+                        <button type="button" data-task-id="${t.id}" class="btn-print-kpi-task px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs transition flex items-center gap-1 shadow-2xs" title="Cetak Dokumen Penilaian Fisik">
+                          <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                          <span>Cetak</span>
                         </button>
-                      ` : `
-                        <span class="font-black text-emerald-700 text-xs bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">Skor: ${t.skor_akhir || 0}</span>
-                      `}
+                        <button type="button" data-task-id="${t.id}" class="btn-download-kpi-task px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs transition flex items-center gap-1 shadow-2xs" title="Download Dokumen Penilaian Fisik (PDF)">
+                          <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                          <span>PDF</span>
+                        </button>
+                        ${!isDone ? `
+                          <button data-task-id="${t.id}" class="btn-fill-kpi-item px-3.5 py-1.5 bg-maroon-700 hover:bg-maroon-800 text-white font-bold rounded-lg text-xs transition shadow-2xs">
+                            Isi Penilaian
+                          </button>
+                        ` : `
+                          <span class="font-black text-emerald-700 text-xs bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">Skor: ${t.skor_akhir || 0}</span>
+                        `}
+                      </div>
                     </div>
                   </div>
                 `;
@@ -2502,6 +2512,24 @@ export async function mount(container, { session, params }) {
       </div>
     `;
 
+    // Bind Print & Download Physical Document buttons in myTasks cards
+    wrap.querySelectorAll(".btn-print-kpi-task").forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const tid = btn.dataset.taskId;
+        const taskObj = myTasks.find(t => t.id === tid) || tasks.find(t => t.id === tid);
+        if (taskObj) printDokumenPenilaianFisik(taskObj);
+      };
+    });
+    wrap.querySelectorAll(".btn-download-kpi-task").forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const tid = btn.dataset.taskId;
+        const taskObj = myTasks.find(t => t.id === tid) || tasks.find(t => t.id === tid);
+        if (taskObj) downloadDokumenPenilaianFisikPdf(taskObj);
+      };
+    });
+
     // Bind Fill KPI button
     wrap.querySelectorAll(".btn-fill-kpi-item").forEach(btn => {
       btn.onclick = () => {
@@ -2585,7 +2613,15 @@ export async function mount(container, { session, params }) {
                 ${isDone ? `<span class="font-black text-emerald-700 text-sm">${t.skor_akhir || 0}</span>` : '<span class="text-slate-300">-</span>'}
               </td>
               <td class="py-2.5 px-3 text-center">
-                <div class="flex items-center justify-center gap-1">
+                <div class="flex items-center justify-center gap-1 flex-wrap">
+                  <button data-action="print-task" data-task-id="${t.id}" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-bold rounded-lg text-[11px] transition flex items-center gap-1" title="Cetak Dokumen Penilaian Fisik">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                    <span>Cetak</span>
+                  </button>
+                  <button data-action="download-task" data-task-id="${t.id}" class="px-2 py-1 bg-maroon-50 hover:bg-maroon-100 text-maroon-800 border border-maroon-200 font-bold rounded-lg text-[11px] transition flex items-center gap-1" title="Download Dokumen Penilaian Fisik (PDF)">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                    <span>PDF</span>
+                  </button>
                   ${!isDone ? `
                     <button data-action="resend-task" data-task-id="${t.id}" class="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold rounded-lg text-[11px] transition" title="Kirim Notifikasi Email & WhatsApp Ulang">
                       📧 Pengingat
@@ -2599,6 +2635,24 @@ export async function mount(container, { session, params }) {
             </tr>
           `;
         }).join("");
+
+        // Attach Print physical assessment document action
+        tbody.querySelectorAll('[data-action="print-task"]').forEach(btn => {
+          btn.onclick = () => {
+            const tid = btn.dataset.taskId;
+            const taskObj = tasks.find(x => x.id === tid);
+            if (taskObj) printDokumenPenilaianFisik(taskObj);
+          };
+        });
+
+        // Attach Download physical assessment document PDF action
+        tbody.querySelectorAll('[data-action="download-task"]').forEach(btn => {
+          btn.onclick = () => {
+            const tid = btn.dataset.taskId;
+            const taskObj = tasks.find(x => x.id === tid);
+            if (taskObj) downloadDokumenPenilaianFisikPdf(taskObj);
+          };
+        });
 
         // Attach Resend action
         tbody.querySelectorAll('[data-action="resend-task"]').forEach(btn => {
