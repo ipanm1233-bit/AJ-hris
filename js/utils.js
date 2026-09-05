@@ -1890,11 +1890,22 @@ export async function calculateLeaveHistoryBalances(empIdent, currentLeave = {})
 
 	// 2. Tentukan jumlah hari dan kategori cuti yang akan dipakai pada dokumen ini
 	const jenisCuti = currentLeave.kategori_cuti || currentLeave.jenis_cuti || (currentLeave.detail && currentLeave.detail.jenis_cuti) || currentLeave.type_cuti || "Cuti";
-	const isHalfDay = Boolean(currentLeave.isHalfDay || (jenisCuti || "").toLowerCase().includes("setengah hari") || (jenisCuti || "").includes("1/2"));
+	const isHalfDay = Boolean(
+		currentLeave.isHalfDay || 
+		currentLeave.is_half_day || 
+		(currentLeave.detail && (currentLeave.detail.isHalfDay || currentLeave.detail.is_half_day)) ||
+		parseFloat(currentLeave.count) === 0.5 ||
+		parseFloat(currentLeave.jumlah_hari) === 0.5 ||
+		(currentLeave.detail && (parseFloat(currentLeave.detail.count) === 0.5 || parseFloat(currentLeave.detail.jumlah_hari) === 0.5)) ||
+		(jenisCuti || "").toLowerCase().includes("setengah") || 
+		(jenisCuti || "").includes("1/2")
+	);
 	
 	let usedCount = parseFloat(currentLeave.jumlah_hari || (currentLeave.detail && currentLeave.detail.jumlah_hari) || currentLeave.count || (currentLeave.detail && currentLeave.detail.count));
-	if (isNaN(usedCount) || usedCount <= 0) {
-		usedCount = isHalfDay ? 0.5 : 1;
+	if (isHalfDay) {
+		usedCount = 0.5;
+	} else if (isNaN(usedCount) || usedCount <= 0) {
+		usedCount = 1;
 	}
 
 	const currentDeduction = getCutiDeductionCategory({
@@ -2922,13 +2933,24 @@ export async function downloadFormCutiPdf(item) {
 		let jabatan = cleanVal(item.jabatan) || cleanVal(detail.jabatan) || cleanVal(detail.divisi) || "-";
 		let divisi = cleanVal(item.divisi) || cleanVal(detail.divisi) || cleanVal(detail.jabatan) || cleanVal(item.jabatan) || "-";
 		const jenisCuti = cleanVal(item.kategori_cuti) || cleanVal(item.jenis_cuti) || cleanVal(detail.jenis_cuti) || cleanVal(item.type_cuti) || "Cuti";
-		const isHalfDay = Boolean(item.isHalfDay || detail.isHalfDay || (jenisCuti || "").toLowerCase().includes("setengah hari") || (jenisCuti || "").includes("1/2"));
+		const isHalfDay = Boolean(
+			item.isHalfDay || 
+			detail.isHalfDay || 
+			item.is_half_day || 
+			detail.is_half_day || 
+			parseFloat(item.count) === 0.5 || 
+			parseFloat(item.jumlah_hari) === 0.5 || 
+			parseFloat(detail.count) === 0.5 || 
+			parseFloat(detail.jumlah_hari) === 0.5 || 
+			(jenisCuti || "").toLowerCase().includes("setengah") || 
+			(jenisCuti || "").includes("1/2")
+		);
 		
 		const tglMulai = item.tanggal_mulai || detail.tanggal_mulai || item.tanggal || item.tgl || new Date().toISOString();
-		const tglSelesai = item.tanggal_selesai || detail.tanggal_akhir || detail.tanggal_selesai || tglMulai;
+		const tglSelesai = isHalfDay ? tglMulai : (item.tanggal_selesai || detail.tanggal_akhir || detail.tanggal_selesai || tglMulai);
 		const alasan = cleanVal(item.alasan) || cleanVal(detail.alasan) || cleanVal(detail.keterangan) || cleanVal(item.keterangan_cuti) || cleanVal(item.keterangan) || "Pengajuan Cuti";
-		const jamKeluar = cleanVal(detail.jam_keluar) || cleanVal(item.jam_keluar) || cleanVal(detail.jam_keluar_kantor) || cleanVal(item.jam_keluar_kantor) || "-";
-		const jamKembali = cleanVal(detail.jam_kembali) || cleanVal(item.jam_kembali) || cleanVal(detail.jam_masuk) || cleanVal(item.jam_masuk) || "-";
+		const jamKeluar = cleanVal(detail.jam_keluar) || cleanVal(item.jam_keluar) || cleanVal(detail.jam_mulai) || cleanVal(item.jam_mulai) || cleanVal(detail.jam_keluar_kantor) || cleanVal(item.jam_keluar_kantor) || "-";
+		const jamKembali = cleanVal(detail.jam_kembali) || cleanVal(item.jam_kembali) || cleanVal(detail.jam_selesai) || cleanVal(item.jam_selesai) || cleanVal(detail.jam_masuk) || cleanVal(item.jam_masuk) || "-";
 		const pejabatPengganti = cleanVal(item.pejabat_pengganti) || cleanVal(detail.pejabat_pengganti) || cleanVal(item.pengganti) || cleanVal(detail.pengganti) || "-";
 		const tglPengajuan = item.tgl || item.createdAt || new Date().toISOString();
 
@@ -3039,13 +3061,24 @@ export async function printFormCutiFisik(item) {
 		let jabatan = cleanVal(item.jabatan) || cleanVal(detail.jabatan) || cleanVal(detail.divisi) || "-";
 		let divisi = cleanVal(item.divisi) || cleanVal(detail.divisi) || cleanVal(detail.jabatan) || cleanVal(item.jabatan) || "-";
 		const jenisCuti = cleanVal(item.kategori_cuti) || cleanVal(item.jenis_cuti) || cleanVal(detail.jenis_cuti) || cleanVal(item.type_cuti) || "Cuti";
-		const isHalfDay = Boolean(item.isHalfDay || detail.isHalfDay || (jenisCuti || "").toLowerCase().includes("setengah hari") || (jenisCuti || "").includes("1/2"));
+		const isHalfDay = Boolean(
+			item.isHalfDay || 
+			detail.isHalfDay || 
+			item.is_half_day || 
+			detail.is_half_day || 
+			parseFloat(item.count) === 0.5 || 
+			parseFloat(item.jumlah_hari) === 0.5 || 
+			parseFloat(detail.count) === 0.5 || 
+			parseFloat(detail.jumlah_hari) === 0.5 || 
+			(jenisCuti || "").toLowerCase().includes("setengah") || 
+			(jenisCuti || "").includes("1/2")
+		);
 		
 		const tglMulai = item.tanggal_mulai || detail.tanggal_mulai || item.tanggal || item.tgl || new Date().toISOString();
-		const tglSelesai = item.tanggal_selesai || detail.tanggal_akhir || detail.tanggal_selesai || tglMulai;
+		const tglSelesai = isHalfDay ? tglMulai : (item.tanggal_selesai || detail.tanggal_akhir || detail.tanggal_selesai || tglMulai);
 		const alasan = cleanVal(item.alasan) || cleanVal(detail.alasan) || cleanVal(detail.keterangan) || cleanVal(item.keterangan_cuti) || cleanVal(item.keterangan) || "Pengajuan Cuti";
-		const jamKeluar = cleanVal(detail.jam_keluar) || cleanVal(item.jam_keluar) || cleanVal(detail.jam_keluar_kantor) || cleanVal(item.jam_keluar_kantor) || "-";
-		const jamKembali = cleanVal(detail.jam_kembali) || cleanVal(item.jam_kembali) || cleanVal(detail.jam_masuk) || cleanVal(item.jam_masuk) || "-";
+		const jamKeluar = cleanVal(detail.jam_keluar) || cleanVal(item.jam_keluar) || cleanVal(detail.jam_mulai) || cleanVal(item.jam_mulai) || cleanVal(detail.jam_keluar_kantor) || cleanVal(item.jam_keluar_kantor) || "-";
+		const jamKembali = cleanVal(detail.jam_kembali) || cleanVal(item.jam_kembali) || cleanVal(detail.jam_selesai) || cleanVal(item.jam_selesai) || cleanVal(detail.jam_masuk) || cleanVal(item.jam_masuk) || "-";
 		const pejabatPengganti = cleanVal(item.pejabat_pengganti) || cleanVal(detail.pejabat_pengganti) || cleanVal(item.pengganti) || cleanVal(detail.pengganti) || "-";
 		const tglPengajuan = item.tgl || item.createdAt || new Date().toISOString();
 
@@ -3168,15 +3201,26 @@ export async function generateAndSaveCutiDocument(row) {
  const cabang = row.cabang || detail.cabang || "-";
  const jabatan = detail.jabatan || row.jabatan || "-";
  const jenisCuti = row.kategori_cuti || row.jenis_cuti || detail.jenis_cuti || row.type_cuti || "Cuti";
- const isHalfDay = (jenisCuti || "").toLowerCase().includes("setengah hari") || (jenisCuti || "").includes("1/2");
+ const isHalfDay = Boolean(
+  row.isHalfDay || 
+  detail.isHalfDay || 
+  row.is_half_day || 
+  detail.is_half_day || 
+  parseFloat(row.count) === 0.5 || 
+  parseFloat(row.jumlah_hari) === 0.5 || 
+  parseFloat(detail.count) === 0.5 || 
+  parseFloat(detail.jumlah_hari) === 0.5 || 
+  (jenisCuti || "").toLowerCase().includes("setengah") || 
+  (jenisCuti || "").includes("1/2")
+ );
  
  const tglMulai = row.tanggal_mulai || detail.tanggal_mulai || row.tanggal || row.tgl || new Date().toISOString();
- const tglSelesai = row.tanggal_selesai || detail.tanggal_akhir || detail.tanggal_selesai || tglMulai;
- const jumlahHari = parseFloat(row.jumlah_hari || detail.jumlah_hari || row.count || (isHalfDay ? 0.5 : 1));
+ const tglSelesai = isHalfDay ? tglMulai : (row.tanggal_selesai || detail.tanggal_akhir || detail.tanggal_selesai || tglMulai);
+ const jumlahHari = isHalfDay ? 0.5 : parseFloat(row.jumlah_hari || detail.jumlah_hari || row.count || 1);
  const alasan = row.alasan || detail.alasan || detail.keterangan || row.keterangan_cuti || "Pengajuan Cuti Disetujui";
  const kontak = row.no_telepon || detail.no_telepon || detail.kontak || "-";
- const jamKeluar = detail.jam_keluar || "-";
- const jamKembali = detail.jam_kembali || "-";
+ const jamKeluar = detail.jam_keluar || row.jam_keluar || detail.jam_mulai || row.jam_mulai || detail.jam_keluar_kantor || row.jam_keluar_kantor || "-";
+ const jamKembali = detail.jam_kembali || row.jam_kembali || detail.jam_selesai || row.jam_selesai || detail.jam_masuk || row.jam_masuk || "-";
 
  let pdfUrl = null;
  let calculatedBalances = null;
@@ -3992,7 +4036,7 @@ export function buildStandardEmailHtml(opts = {}) {
   `;
 }
 
-export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
+export async function sendEmailNotif(to, subject, htmlBody, cc = "", attachments = null) {
  if (!to) {
  console.warn("sendEmailNotif: Alamat email tujuan tidak ditentukan.");
  return false;
@@ -4023,14 +4067,16 @@ export async function sendEmailNotif(to, subject, htmlBody, cc = "") {
  }).catch(err => console.warn("Note: Write to Firebase mail collection queued:", err?.message));
  } catch (e) {}
 
- // Kirim lewat endpoint server sendiri (/api/send-email, pakai Resend) —
- // BUKAN lagi lewat Google Apps Script, karena jalur GAS sebelumnya tidak
- // pernah benar-benar mengecek apakah pengiriman berhasil atau gagal.
+ // Kirim lewat endpoint server sendiri (/api/send-email)
  try {
+ const emailPayload = { to: targetTo, subject, htmlBody: formattedHtml, cc };
+ if (Array.isArray(attachments) && attachments.length > 0) {
+   emailPayload.attachments = attachments;
+ }
  const res = await fetch("/api/send-email", {
  method: "POST",
  headers: { "Content-Type": "application/json" },
- body: JSON.stringify({ to: targetTo, subject, htmlBody: formattedHtml, cc })
+ body: JSON.stringify(emailPayload)
  });
 
  let json;
@@ -4158,8 +4204,9 @@ export async function sendBranchMorningLeaveDigest({ branch = null, date = null,
 
     // Dari master_cuti
     (allMasterCuti || []).forEach(d => {
-      const tgl = d.tanggal || d.tgl;
-      if (tgl === targetDate) {
+      const tglStart = d.tanggal || d.tgl || d.tanggal_mulai;
+      const tglEnd = d.tanggal_selesai || d.tgl_akhir || tglStart;
+      if (tglStart && tglStart <= targetDate && tglEnd >= targetDate) {
         const kName = d.nama_karyawan || d.nama || "Karyawan";
         const key = `${kName}_${targetDate}`;
         if (!seenKeys.has(key)) {
@@ -4171,7 +4218,7 @@ export async function sendBranchMorningLeaveDigest({ branch = null, date = null,
             divisi: d.divisi || d.departemen || "-",
             cabang: d.cabang || "Cirebon",
             jenis_cuti: d.type_cuti || d.jenis_cuti || "Cuti Tahunan",
-            periode: fmtDateIndo(tgl),
+            periode: `${fmtDateIndo(tglStart)}${tglEnd && tglEnd !== tglStart ? ' s/d ' + fmtDateIndo(tglEnd) : ''}`,
             durasi: `${d.count || 1} Hari`,
             alasan: d.keterangan_cuti || d.keterangan || d.alasan || "-",
             pengganti: d.pejabat_pengganti || "-"
@@ -4383,7 +4430,11 @@ export async function sendBranchEveningLeaveDigest({ branch = null, date = null,
   const submittedLeaves = [];
 
   try {
-    const allPengajuan = await fsGetAll(COL.DATA_PENGAJUAN);
+    const [allPengajuan, allMasterCuti] = await Promise.all([
+      fsGetAll(COL.DATA_PENGAJUAN),
+      fsGetAll(COL.MASTER_CUTI).catch(() => [])
+    ]);
+
     (allPengajuan || []).forEach(p => {
       const isCuti = (p.tipe_form === "FORM_CUTI" || p.form_id === "F-ISO-CUTI" || (p.nama_form || "").toLowerCase().includes("cuti"));
       if (isCuti) {
@@ -4400,6 +4451,30 @@ export async function sendBranchEveningLeaveDigest({ branch = null, date = null,
             durasi: `${p.jumlah_hari || 1} Hari`,
             status: p.status_final || p.status || "MENUNGGU",
             alasan: p.alasan || p.keterangan || "-"
+          });
+        }
+      }
+    });
+
+    (allMasterCuti || []).forEach(m => {
+      const submitDate = localDateStr(m.createdAt || m.created_at || m.tgl || m.tanggal_input || m.tanggal);
+      if (submitDate === targetDate) {
+        const already = submittedLeaves.some(s => 
+          (s.nama === m.nama_karyawan || s.nik === m.nik) &&
+          (s.periode && s.periode.includes(m.tanggal))
+        );
+        if (!already) {
+          submittedLeaves.push({
+            nama: m.nama_karyawan || m.nama || "Karyawan",
+            nik: m.nik || m.nik_karyawan || "-",
+            jabatan: m.jabatan || "-",
+            divisi: m.divisi || "-",
+            cabang: m.cabang || "Cirebon",
+            jenis_cuti: m.type_cuti || "Cuti Tahunan",
+            periode: `${fmtDateIndo(m.tanggal)}${m.tanggal_selesai && m.tanggal_selesai !== m.tanggal ? ' s/d ' + fmtDateIndo(m.tanggal_selesai) : ''}`,
+            durasi: `${m.count || 1} Hari`,
+            status: "APPROVED (HRD)",
+            alasan: m.keterangan_cuti || m.alasan || "-"
           });
         }
       }
@@ -4688,6 +4763,76 @@ export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf", 
  }
  window.scrollTo(prevScrollX, prevScrollY);
  }
+}
+
+/**
+ * Mengonversi konten HTML formulir menjadi format Base64 PDF murni
+ * agar dapat dilampirkan langsung pada email (email attachments).
+ */
+export async function generateHtmlAsPdfBase64(htmlContent, orientation = "portrait") {
+  await ensureHtml2PdfLoaded();
+  const isLandscape = orientation === "landscape";
+  const widthPx = isLandscape ? 1080 : 750;
+
+  const wrapper = document.createElement("div");
+  wrapper.style.position = "fixed";
+  wrapper.style.left = "0px";
+  wrapper.style.top = "0px";
+  wrapper.style.width = widthPx + "px";
+  wrapper.style.height = "auto";
+  wrapper.style.overflow = "visible";
+  wrapper.style.zIndex = "-99999";
+  wrapper.style.opacity = "0";
+  wrapper.style.pointerEvents = "none";
+
+  const element = document.createElement("div");
+  element.style.position = "static";
+  element.style.width = widthPx + "px";
+  element.style.padding = "0px";
+  element.style.margin = "0px";
+  element.style.background = "#ffffff";
+  element.style.color = "#000000";
+  element.style.fontFamily = "'Times New Roman', Times, serif";
+  element.style.boxSizing = "border-box";
+  element.innerHTML = htmlContent;
+  element.querySelectorAll(".no-print-bar, .no-print, button.btn-cetak, [data-no-print]").forEach(el => el.remove());
+
+  wrapper.appendChild(element);
+  document.body.appendChild(wrapper);
+
+  const opt = {
+    margin: [5, 5, 5, 5],
+    image: { type: 'jpeg', quality: 0.95 },
+    html2canvas: { 
+      scale: 2, 
+      useCORS: true, 
+      logging: false,
+      backgroundColor: "#ffffff",
+      width: widthPx,
+      windowWidth: widthPx,
+      scrollX: 0,
+      scrollY: 0,
+      x: 0,
+      y: 0
+    },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: orientation },
+    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+  };
+
+  try {
+    const pdfDataUri = await window.html2pdf().from(element).set(opt).output('datauristring');
+    if (pdfDataUri && pdfDataUri.includes(",")) {
+      return pdfDataUri.split(",")[1];
+    }
+    return pdfDataUri;
+  } catch (err) {
+    console.warn("Gagal konversi HTML ke PDF Base64:", err);
+    return null;
+  } finally {
+    if (wrapper.parentNode) {
+      wrapper.parentNode.removeChild(wrapper);
+    }
+  }
 }
 
 // =====================================================================
@@ -7989,13 +8134,35 @@ export async function cascadeEmployeeChanges(oldRecord = {}, newRecord = {}) {
 
 /**
  * Performs a global synchronization of all Master Karyawan records into all related modules.
+ * @param {Function} onProgress - Callback function receiving ({ current, total, percentage, currentEmployee })
  */
-export async function syncAllEmployeesAcrossCollections() {
+export async function syncAllEmployeesAcrossCollections(onProgress = null) {
   const emps = await fsGetAll(COL.MASTER_KARYAWAN).catch(() => []);
   if (!emps.length) return 0;
+  let count = 0;
   for (const emp of emps) {
     await cascadeEmployeeChanges(emp, emp);
+    count++;
+    if (typeof onProgress === "function") {
+      try {
+        onProgress({
+          current: count,
+          total: emps.length,
+          percentage: Math.round((count / emps.length) * 100),
+          currentEmployee: emp.nama_karyawan || emp.nama || `Karyawan #${count}`
+        });
+      } catch (eCb) {
+        console.warn("onProgress callback error:", eCb);
+      }
+    }
   }
-  return emps.length;
+  return count;
 }
+
+export async function requestEditAuth(options = {}) {
+  if (window.requestEditAuth) return window.requestEditAuth(options);
+  const { requestEditAuth: authFn } = await import("./auth.js");
+  return authFn(options);
+}
+
 

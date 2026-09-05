@@ -12,8 +12,8 @@
  * 5. canAccessForm(formConfig) untuk kontrol akses Katalog Pengajuan ISO
  * =====================================================================
  */
-import { db, COL, doc, getDoc, collection, getDocs, query, where, updateDoc } from "./firebase-config.js";
-import { sha256, fsGetAll } from "./utils.js";
+import { db, COL, doc, getDoc, collection, getDocs, query, where, updateDoc, addDoc } from "./firebase-config.js";
+import { sha256, fsGetAll, escapeHtml, toast } from "./utils.js";
 
 const SESSION_KEY = "andela_hris_session";
 
@@ -233,6 +233,344 @@ export async function findUserForAuth(loginInput) {
  }
 
  return null;
+}
+
+let _editAuthGraceUntil = 0; // Timestamp batas grace period otentikasi pengeditan
+
+export function isEditAuthValid() {
+  return Date.now() < _editAuthGraceUntil;
+}
+
+export function resetEditAuthGrace() {
+  _editAuthGraceUntil = 0;
+}
+
+/**
+ * Memvalidasi kata sandi pengguna langsung ke Firestore / database.
+ * Mendukung password_hash (SHA-256) dan plain password migration.
+ */
+export async function verifyUserPassword(usernameOrNik, password) {
+  if (!password) throw new Error("Kata sandi wajib diisi.");
+  const session = getSession();
+  const targetId = usernameOrNik || session?.username || session?.nik || session?.nama;
+  if (!targetId) throw new Error("Identitas pengguna tidak ditemukan.");
+
+  const userResult = await findUserForAuth(targetId);
+  if (!userResult || !userResult.data) {
+    throw new Error(`Akun pengguna '${targetId}' tidak ditemukan di sistem.`);
+  }
+
+  const user = userResult.data;
+  const inputHash = await sha256(password);
+  const storedHash = user.password_hash || "";
+  const storedPlain = user.password || "";
+
+  const matchedViaHash = storedHash && storedHash === inputHash;
+  const matchedViaPlain = !matchedViaHash && storedPlain && storedPlain === password;
+
+  if (!matchedViaHash && !matchedViaPlain) {
+    throw new Error("Kata sandi salah. Akses otentikasi pengeditan ditolak.");
+  }
+
+  // Migrasi otomatis ke SHA-256 jika masih plain
+  if (storedPlain || !storedHash) {
+    try {
+      await updateDoc(doc(db, COL.USERS, userResult.docId), {
+        password_hash: inputHash,
+        password: ""
+      });
+    } catch (e) {
+      console.warn("Gagal migrasi hash password saat verifikasi:", e);
+    }
+  }
+
+  return user;
+}
+
+/**
+ * Modal Autentikasi Keamanan Universal untuk Pengeditan Data (Universal Edit Authentication).
+ * Mencegah Staff atau HRD mengubah kuota jatah cuti atau data sensitif perusahaan tanpa verifikasi.
+ */
+export async function requestEditAuth(options = {}) {
+  const {
+    actionTitle = "Verifikasi Otentikasi Pengeditan Data",
+    actionDescription = "Konfirmasi kata sandi akun Anda diperlukan sebelum perubahan data resmi dapat disimpan.",
+    targetName = "",
+    requireRoles = null,
+    forceFresh = false
+  } = options;
+
+  const session = getSession();
+  if (!session) {
+    toast("Sesi login Anda tidak ditemukan. Silakan login kembali.", "error");
+    return false;
+  }
+
+  // Grace period aktif dan tidak dipaksa verifikasi fresh
+  if (!forceFresh && Date.now() < _editAuthGraceUntil) {
+    return true;
+  }
+
+  // Hapus modal lama jika ada
+  const prevModal = document.getElementById("app-edit-auth-backdrop");
+  if (prevModal) prevModal.remove();
+
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.id = "app-edit-auth-backdrop";
+    backdrop.className = "fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 opacity-0 transition-opacity duration-200";
+
+    const defaultRole = (session.role || "STAFF").toUpperCase();
+    const canUseCurrent = !requireRoles || requireRoles.map(r => r.toUpperCase()).includes(defaultRole);
+
+    backdrop.innerHTML = `
+      <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-100 flex flex-col scale-95 transition-transform duration-200 overflow-hidden" id="app-edit-auth-panel">
+        
+        <!-- Header -->
+        <div class="px-6 pt-5 pb-4 border-b border-slate-100 flex items-start justify-between bg-slate-50/70">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-maroon-100 text-maroon-800 flex items-center justify-center text-lg font-black shadow-xs shrink-0">
+              <i class="fa-solid fa-shield-halved"></i>
+            </div>
+            <div>
+              <span class="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-maroon-700 bg-maroon-50 px-2 py-0.5 rounded-full border border-maroon-200">
+                <i class="fa-solid fa-lock text-[9px]"></i> Keamanan Data Master
+              </span>
+              <h3 class="text-base font-bold text-slate-800 mt-1 leading-snug">${escapeHtml(actionTitle)}</h3>
+            </div>
+          </div>
+          <button id="auth-btn-close" type="button" class="text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-lg w-8 h-8 flex items-center justify-center transition cursor-pointer">
+            <i class="fa-solid fa-xmark text-sm"></i>
+          </button>
+        </div>
+
+        <!-- Body -->
+        <div class="p-6 space-y-4">
+          <!-- Description & Target -->
+          <div class="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <p class="font-medium text-slate-700 mb-1">${escapeHtml(actionDescription)}</p>
+            ${targetName ? `
+              <div class="flex items-center gap-2 mt-2 pt-2 border-t border-slate-200/80 text-xs">
+                <span class="text-slate-500 font-semibold shrink-0">Target Data:</span>
+                <span class="font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200 truncate">${escapeHtml(targetName)}</span>
+              </div>
+            ` : ""}
+          </div>
+
+          <!-- Active Account Card -->
+          <div class="p-3 bg-amber-50/80 border border-amber-200 rounded-xl text-xs space-y-1">
+            <div class="flex items-center justify-between text-slate-500 font-medium">
+              <span>Akun Otoritas (Operator):</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase ${canUseCurrent ? 'bg-amber-200 text-amber-900' : 'bg-rose-100 text-rose-800'}">
+                ${escapeHtml(defaultRole)}
+              </span>
+            </div>
+            <p class="text-sm font-bold text-slate-800">${escapeHtml(session.nama || session.username)} <span class="font-normal text-xs text-slate-500">(${escapeHtml(session.nik || session.username)})</span></p>
+            ${!canUseCurrent ? `
+              <p class="text-[11px] text-rose-700 font-semibold mt-1">
+                <i class="fa-solid fa-triangle-exclamation"></i> Role Anda (${escapeHtml(defaultRole)}) memerlukan otorisasi Supervisor / Atasan HRD. Silakan masukkan kredensial Atasan di bawah ini.
+              </p>
+            ` : ""}
+          </div>
+
+          <!-- Alternate / Supervisor User Input (if needed or toggled) -->
+          <div id="auth-alt-user-box" class="${canUseCurrent ? 'hidden' : ''} space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-700">Username / NIK Otorisator (Atasan / HRD): <span class="text-rose-500">*</span></label>
+            <input type="text" id="auth-alt-user" placeholder="Contoh: HRD001 atau NIK Atasan" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-maroon-600 focus:ring-1 focus:ring-maroon-200 bg-white font-medium" />
+          </div>
+
+          <!-- Password Input -->
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-700 flex items-center justify-between">
+              <span>Kata Sandi (Password): <span class="text-rose-500">*</span></span>
+              ${canUseCurrent ? `
+                <button type="button" id="auth-toggle-alt-btn" class="text-[11px] text-maroon-700 hover:underline font-semibold cursor-pointer">
+                  Gunakan Akun Atasan Lain
+                </button>
+              ` : ""}
+            </label>
+            <div class="relative">
+              <input type="password" id="auth-input-pwd" placeholder="Ketik kata sandi untuk verifikasi..." class="w-full px-3 py-2 pr-10 text-sm border border-slate-300 rounded-lg outline-none focus:border-maroon-600 focus:ring-2 focus:ring-maroon-100 bg-white font-medium" autocomplete="current-password" autofocus />
+              <button type="button" id="auth-toggle-pwd-btn" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 text-sm cursor-pointer">
+                <i class="fa-solid fa-eye" id="auth-pwd-icon"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Remember Auth Checkbox -->
+          <div class="flex items-center gap-2 pt-1">
+            <input type="checkbox" id="auth-chk-remember" class="w-4 h-4 text-maroon-700 rounded border-slate-300 focus:ring-maroon-500 cursor-pointer" />
+            <label for="auth-chk-remember" class="text-xs text-slate-600 cursor-pointer select-none">
+              Ingat otentikasi pengeditan selama 5 menit untuk sesi ini
+            </label>
+          </div>
+
+          <!-- Error Alert Box -->
+          <div id="auth-error-box" class="hidden p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-medium flex items-center gap-2.5">
+            <i class="fa-solid fa-circle-exclamation text-rose-600 text-sm shrink-0"></i>
+            <span id="auth-error-text">Kata sandi tidak valid.</span>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-2 bg-slate-50/50">
+          <button type="button" id="auth-btn-cancel" class="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition cursor-pointer">
+            Batal
+          </button>
+          <button type="button" id="auth-btn-submit" class="px-5 py-2 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 active:scale-95 rounded-lg shadow-sm transition flex items-center gap-1.5 cursor-pointer">
+            <i class="fa-solid fa-check"></i> Verifikasi & Lanjutkan
+          </button>
+        </div>
+
+      </div>
+    `;
+
+    document.body.appendChild(backdrop);
+    requestAnimationFrame(() => {
+      backdrop.classList.remove("opacity-0");
+      const pnl = backdrop.querySelector("#app-edit-auth-panel");
+      if (pnl) pnl.classList.remove("scale-95");
+    });
+
+    const closeAndResolve = (result) => {
+      backdrop.classList.add("opacity-0");
+      setTimeout(() => {
+        backdrop.remove();
+      }, 200);
+      resolve(result);
+    };
+
+    const inPwd = backdrop.querySelector("#auth-input-pwd");
+    const inAltUser = backdrop.querySelector("#auth-alt-user");
+    const boxAltUser = backdrop.querySelector("#auth-alt-user-box");
+    const btnToggleAlt = backdrop.querySelector("#auth-toggle-alt-btn");
+    const btnTogglePwd = backdrop.querySelector("#auth-toggle-pwd-btn");
+    const iconPwd = backdrop.querySelector("#auth-pwd-icon");
+    const btnSubmit = backdrop.querySelector("#auth-btn-submit");
+    const btnCancel = backdrop.querySelector("#auth-btn-cancel");
+    const btnClose = backdrop.querySelector("#auth-btn-close");
+    const errBox = backdrop.querySelector("#auth-error-box");
+    const errText = backdrop.querySelector("#auth-error-text");
+    const chkRemember = backdrop.querySelector("#auth-chk-remember");
+
+    if (btnToggleAlt && boxAltUser) {
+      btnToggleAlt.onclick = () => {
+        const isHidden = boxAltUser.classList.contains("hidden");
+        boxAltUser.classList.toggle("hidden", !isHidden);
+        btnToggleAlt.textContent = isHidden ? "Kembali ke Akun Saya" : "Gunakan Akun Atasan Lain";
+        if (isHidden && inAltUser) inAltUser.focus();
+      };
+    }
+
+    if (btnTogglePwd && inPwd && iconPwd) {
+      btnTogglePwd.onclick = () => {
+        const isPwd = inPwd.type === "password";
+        inPwd.type = isPwd ? "text" : "password";
+        iconPwd.className = isPwd ? "fa-solid fa-eye-slash" : "fa-solid fa-eye";
+      };
+    }
+
+    const showError = (msg) => {
+      if (errText) errText.textContent = msg;
+      if (errBox) errBox.classList.remove("hidden");
+      if (inPwd) {
+        inPwd.classList.add("border-rose-400", "focus:ring-rose-200");
+        inPwd.select();
+      }
+    };
+
+    const hideError = () => {
+      if (errBox) errBox.classList.add("hidden");
+      if (inPwd) inPwd.classList.remove("border-rose-400", "focus:ring-rose-200");
+    };
+
+    const doVerify = async () => {
+      hideError();
+      const pwd = (inPwd?.value || "").trim();
+      if (!pwd) {
+        showError("Kata sandi wajib diisi untuk verifikasi keamanan.");
+        inPwd?.focus();
+        return;
+      }
+
+      let authUsername = session.username || session.nik;
+      if (boxAltUser && !boxAltUser.classList.contains("hidden")) {
+        const altU = (inAltUser?.value || "").trim();
+        if (!altU) {
+          showError("Username atau NIK Atasan wajib diisi.");
+          inAltUser?.focus();
+          return;
+        }
+        authUsername = altU;
+      }
+
+      btnSubmit.disabled = true;
+      btnSubmit.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Memverifikasi...`;
+
+      try {
+        const verifiedUser = await verifyUserPassword(authUsername, pwd);
+
+        // Jika memerlukan role tertentu, periksa role pengguna yang terverifikasi
+        if (requireRoles && requireRoles.length > 0) {
+          const vRole = (verifiedUser.role || "STAFF").toUpperCase();
+          const roleAllowed = requireRoles.map(r => r.toUpperCase()).includes(vRole);
+          if (!roleAllowed) {
+            throw new Error(`Akun (${verifiedUser.nama || authUsername}) memiliki role ${vRole}. Pengeditan ini hanya diizinkan untuk: ${requireRoles.join(", ")}.`);
+          }
+        }
+
+        // Jika opsi remember dicentang, aktifkan grace period 5 menit
+        if (chkRemember && chkRemember.checked) {
+          _editAuthGraceUntil = Date.now() + (5 * 60 * 1000);
+        }
+
+        // Catat ke log aktivitas secara asinkron
+        try {
+          addDoc(collection(db, "audit_edit_logs"), {
+            operator_user: session.username || session.nik || "ANON",
+            operator_nama: session.nama || "Unknown",
+            authorized_by: verifiedUser.nama || verifiedUser.username || authUsername,
+            authorized_role: verifiedUser.role || "STAFF",
+            action: actionTitle,
+            description: actionDescription,
+            target: targetName || "-",
+            timestamp: new Date().toISOString()
+          }).catch(() => {});
+        } catch (eLog) {}
+
+        toast("Otentikasi berhasil diverifikasi.", "success");
+        closeAndResolve(true);
+      } catch (err) {
+        console.warn("Verifikasi otentikasi gagal:", err);
+        showError(err.message || "Kata sandi yang Anda masukkan salah. Coba periksa kembali.");
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = `<i class="fa-solid fa-check"></i> Verifikasi & Lanjutkan`;
+      }
+    };
+
+    if (btnSubmit) btnSubmit.onclick = doVerify;
+    if (inPwd) {
+      inPwd.onkeydown = (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          doVerify();
+        }
+      };
+      setTimeout(() => inPwd.focus(), 150);
+    }
+    if (btnCancel) btnCancel.onclick = () => closeAndResolve(false);
+    if (btnClose) btnClose.onclick = () => closeAndResolve(false);
+    backdrop.onclick = (e) => {
+      if (e.target === backdrop) closeAndResolve(false);
+    };
+  });
+}
+
+if (typeof window !== "undefined") {
+  window.requestEditAuth = requestEditAuth;
+  window.verifyUserPassword = verifyUserPassword;
+  window.isEditAuthValid = isEditAuthValid;
+  window.resetEditAuthGrace = resetEditAuthGrace;
 }
 
 export async function login(username, password, remember = false) {

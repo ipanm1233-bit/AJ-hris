@@ -21,7 +21,7 @@ module.exports = async function handler(req, res) {
     }
 
     // Sisipkan link ke dalam properti 'data'
-    const response = await admin.messaging().sendEachForMulticast({
+    const response = await fbAdmin.messaging().sendEachForMulticast({
       notification: { title, body },
       data: { link: link || "" }, 
       tokens: tokens

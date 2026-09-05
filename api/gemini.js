@@ -20,7 +20,7 @@ module.exports = async function handler(req, res) {
 
   try {
     const ai = new GoogleGenAI({ apiKey });
-    const selectedModel = model || 'gemini-3.6-flash';
+    const selectedModel = model || 'gemini-2.5-flash';
     const response = await ai.models.generateContent({
       model: selectedModel,
       contents: prompt,

@@ -1,5 +1,5 @@
 import { db, COL, collection, getDocs, doc, setDoc, getDoc, updateDoc, query, where } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort, confirmDialog, sendEmailNotif, buildStandardEmailHtml, notifyUser, getTargetsForRole, generateAndSaveCutiDocument, printFormCutiFisik, downloadFormCutiPdf, generateStandardFormCutiHtml, smartParseDate, getCalculatedJatahCuti, getCarryoverPercentage, calculateCarryoverJatah, ensureXlsxLoaded, getCutiDeductionCategory, getEmployeeTenureInfo, countLeaveWorkingDays, getLeaveWorkingDaysDetail, isIndonesianNationalHoliday, TABEL_CUTI_PENGHARGAAN_MASA_KERJA } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort, confirmDialog, sendEmailNotif, buildStandardEmailHtml, notifyUser, getTargetsForRole, generateAndSaveCutiDocument, printFormCutiFisik, downloadFormCutiPdf, generateStandardFormCutiHtml, smartParseDate, getCalculatedJatahCuti, getCarryoverPercentage, calculateCarryoverJatah, ensureXlsxLoaded, getCutiDeductionCategory, getEmployeeTenureInfo, countLeaveWorkingDays, getLeaveWorkingDaysDetail, isIndonesianNationalHoliday, TABEL_CUTI_PENGHARGAAN_MASA_KERJA, generateHtmlAsPdfBase64, downloadHtmlAsPdf } from "../utils.js";
 import { avatar, emptyState, skeletonRows, badge } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
@@ -19,6 +19,19 @@ const DEFAULT_LEAVE_TYPES = [
  { id: "D", name: "Dinas Luar Kota", potong: "Tidak Dipotong", count: 0 },
  { id: "C-BESAR", name: "Cuti Besar", potong: "Tidak Dipotong", count: 0 }
 ];
+
+export function checkIsHalfDay(cfgOrNameOrId) {
+  if (!cfgOrNameOrId) return false;
+  if (typeof cfgOrNameOrId === "object") {
+    if (cfgOrNameOrId.count === 0.5 || parseFloat(cfgOrNameOrId.count) === 0.5) return true;
+    if (cfgOrNameOrId.jumlah_hari === 0.5 || parseFloat(cfgOrNameOrId.jumlah_hari) === 0.5) return true;
+    if (cfgOrNameOrId.isHalfDay || cfgOrNameOrId.is_half_day) return true;
+    const str = `${cfgOrNameOrId.id || ''} ${cfgOrNameOrId.name || ''} ${cfgOrNameOrId.type_cuti || ''} ${cfgOrNameOrId.jenis_cuti || ''} ${cfgOrNameOrId.kategori_cuti || ''}`.toLowerCase();
+    return str.includes("setengah") || str.includes("1/2") || str.includes("half") || cfgOrNameOrId.id === "CT-02";
+  }
+  const str = String(cfgOrNameOrId).toLowerCase();
+  return str.includes("setengah") || str.includes("1/2") || str.includes("half") || str === "ct-02";
+}
 
 export async function mount(container, { session }) {
  // Load library XLSX jika belum ter-load untuk fitur import Excel
@@ -1276,6 +1289,7 @@ export async function mount(container, { session }) {
         const rowId = btn.dataset.pdfCuti;
         const row = allCuti.find(c => String(c.id) === String(rowId));
         if (row) {
+          const isRowHalf = checkIsHalfDay(row) || checkIsHalfDay(row.type_cuti);
           downloadFormCutiPdf({
             ...row,
             kData: k,
@@ -1286,8 +1300,14 @@ export async function mount(container, { session }) {
             cabang: k.cabang || "-",
             kategori_cuti: row.type_cuti,
             tanggal_mulai: row.tanggal,
-            tanggal_selesai: row.tanggal_selesai || row.tanggal,
-            jumlah_hari: row.count,
+            tanggal_selesai: isRowHalf ? row.tanggal : (row.tanggal_selesai || row.tanggal),
+            jumlah_hari: isRowHalf ? 0.5 : row.count,
+            count: isRowHalf ? 0.5 : row.count,
+            isHalfDay: isRowHalf,
+            is_half_day: isRowHalf,
+            tipe_hari: isRowHalf ? "Setengah Hari" : "Hari Penuh",
+            jam_keluar: row.jam_keluar || row.jam_mulai || "-",
+            jam_kembali: row.jam_kembali || row.jam_selesai || "-",
             alasan: row.keterangan_cuti,
             status_final: "APPROVED FINAL"
           });
@@ -1302,6 +1322,7 @@ export async function mount(container, { session }) {
         const rowId = btn.dataset.printCuti;
         const row = allCuti.find(c => String(c.id) === String(rowId));
         if (row) {
+          const isRowHalf = checkIsHalfDay(row) || checkIsHalfDay(row.type_cuti);
           printFormCutiFisik({
             ...row,
             kData: k,
@@ -1312,8 +1333,14 @@ export async function mount(container, { session }) {
             cabang: k.cabang || "-",
             kategori_cuti: row.type_cuti,
             tanggal_mulai: row.tanggal,
-            tanggal_selesai: row.tanggal_selesai || row.tanggal,
-            jumlah_hari: row.count,
+            tanggal_selesai: isRowHalf ? row.tanggal : (row.tanggal_selesai || row.tanggal),
+            jumlah_hari: isRowHalf ? 0.5 : row.count,
+            count: isRowHalf ? 0.5 : row.count,
+            isHalfDay: isRowHalf,
+            is_half_day: isRowHalf,
+            tipe_hari: isRowHalf ? "Setengah Hari" : "Hari Penuh",
+            jam_keluar: row.jam_keluar || row.jam_mulai || "-",
+            jam_kembali: row.jam_kembali || row.jam_selesai || "-",
             alasan: row.keterangan_cuti,
             status_final: "APPROVED FINAL"
           });
@@ -1400,10 +1427,28 @@ export async function mount(container, { session }) {
             <label class="block text-xs font-bold text-slate-600 mb-1">Tanggal Mulai</label>
             <input type="date" id="edit-tanggal" required value="${row.tanggal || ""}" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
           </div>
-          <div>
+          <div id="wrap-edit-tgl-selesai">
             <label class="block text-xs font-bold text-slate-600 mb-1">Tanggal Selesai</label>
             <input type="date" id="edit-tanggal-selesai" value="${row.tanggal_selesai || row.tanggal || ""}" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
             <div id="edit-detail-hari" class="text-[11px] text-slate-500 mt-1"></div>
+          </div>
+
+          <!-- INPUT JAM CUTI SETENGAH HARI (EDIT) -->
+          <div id="wrap-edit-jam" class="${checkIsHalfDay(row) || checkIsHalfDay(row.type_cuti) ? '' : 'hidden'} p-3 bg-amber-50/90 border border-amber-300 rounded-xl space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-amber-900 flex items-center gap-1.5"><i class="fa-solid fa-clock text-amber-700"></i> Jam Cuti Setengah Hari</span>
+              <span class="text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded border border-blue-200">0.5 Hari Kerja</span>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">Jam Keluar / Mulai</label>
+                <input type="time" id="edit-jam-keluar" value="${row.jam_keluar || row.jam_mulai || '08:00'}" class="w-full px-2.5 py-1.5 text-xs border rounded-lg outline-none bg-white font-medium">
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">Jam Kembali / Selesai</label>
+                <input type="time" id="edit-jam-kembali" value="${row.jam_kembali || row.jam_selesai || '12:00'}" class="w-full px-2.5 py-1.5 text-xs border rounded-lg outline-none bg-white font-medium">
+              </div>
+            </div>
           </div>
 
           <!-- PERINGATAN MELEBIHI KETENTUAN MASA KERJA -->
@@ -1446,9 +1491,38 @@ export async function mount(container, { session }) {
         const inCount = m2.querySelector("#edit-count");
         const editDetailHari = m2.querySelector("#edit-detail-hari");
         const editTenureWarn = m2.querySelector("#edit-tenure-warning");
+        const wrapEditTglSelesai = m2.querySelector("#wrap-edit-tgl-selesai");
+        const wrapEditJam = m2.querySelector("#wrap-edit-jam");
+        const inEditJamKeluar = m2.querySelector("#edit-jam-keluar");
+        const inEditJamKembali = m2.querySelector("#edit-jam-kembali");
 
         const updateEditDayCount = () => {
           if (!inMulai.value) return;
+          const opt = selJenis ? selJenis.options[selJenis.selectedIndex] : null;
+          const isHalf = checkIsHalfDay(selJenis ? selJenis.value : null) || (opt && opt.text && checkIsHalfDay(opt.text));
+
+          if (isHalf) {
+            if (wrapEditTglSelesai) wrapEditTglSelesai.classList.add("hidden");
+            if (wrapEditJam) wrapEditJam.classList.remove("hidden");
+            if (inAkhir) inAkhir.value = inMulai.value;
+            if (inCount) {
+              inCount.value = 0.5;
+              inCount.readOnly = true;
+            }
+            if (editDetailHari) {
+              editDetailHari.innerHTML = `<span class="text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200">⏱️ Cuti Setengah Hari: 0.5 Hari Kerja</span>`;
+            }
+            if (editTenureWarn) {
+              editTenureWarn.classList.add("hidden");
+              editTenureWarn.innerHTML = "";
+            }
+            return;
+          }
+
+          if (wrapEditTglSelesai) wrapEditTglSelesai.classList.remove("hidden");
+          if (wrapEditJam) wrapEditJam.classList.add("hidden");
+          if (inCount) inCount.readOnly = false;
+
           const tglAwal = inMulai.value;
           const tglAkhir = inAkhir.value || tglAwal;
           const detail = getLeaveWorkingDaysDetail(tglAwal, tglAkhir, calendarEvents);
@@ -1498,6 +1572,7 @@ export async function mount(container, { session }) {
             if (opt && opt.dataset.potong) {
               selPotong.value = opt.dataset.potong;
             }
+            updateEditDayCount();
           };
         }
 
@@ -1511,12 +1586,15 @@ export async function mount(container, { session }) {
           const form = m2.querySelector("#form-edit-cuti");
           if (!form.reportValidity()) return;
           const opt = selJenis ? selJenis.options[selJenis.selectedIndex] : null;
+          const isHalf = checkIsHalfDay(selJenis ? selJenis.value : null) || (opt && opt.text && checkIsHalfDay(opt.text));
           const typeCutiVal = opt ? opt.text : (row.type_cuti || "Cuti");
           const potongJatahVal = selPotong ? selPotong.value : (opt?.dataset.potong || row.potong_jatah || "Tahunan");
           const tglMulai = inMulai.value;
-          const tglSelesai = inAkhir.value || tglMulai;
-          const jmlHari = parseFloat(inCount.value) || 0;
+          const tglSelesai = isHalf ? tglMulai : (inAkhir.value || tglMulai);
+          const jmlHari = isHalf ? 0.5 : (parseFloat(inCount.value) || 0);
           const keterangan = m2.querySelector("#edit-keterangan").value.trim();
+          const jamKel = isHalf ? (inEditJamKeluar ? inEditJamKeluar.value : (row.jam_keluar || "08:00")) : "-";
+          const jamKem = isHalf ? (inEditJamKembali ? inEditJamKembali.value : (row.jam_kembali || "12:00")) : "-";
 
           if (jmlHari > empTenure.maxLeaveDays) {
             const confirmOver = await confirmDialog(
@@ -1539,6 +1617,14 @@ export async function mount(container, { session }) {
             potong_jatah: potongJatahVal,
             keterangan_cuti: keterangan,
             count: jmlHari,
+            jumlah_hari: jmlHari,
+            isHalfDay: isHalf,
+            is_half_day: isHalf,
+            tipe_hari: isHalf ? "Setengah Hari" : "Hari Penuh",
+            jam_keluar: jamKel,
+            jam_kembali: jamKem,
+            jam_mulai: jamKel,
+            jam_selesai: jamKem,
             tahun: new Date(tglMulai).getFullYear(),
             bulan: new Date(tglMulai).toLocaleString('id-ID', { month: 'long' })
           };
@@ -1713,22 +1799,38 @@ export async function mount(container, { session }) {
             <!-- PERINGATAN MELEBIHI KETENTUAN MASA KERJA -->
             <div id="hrd-tenure-warning" class="hidden"></div>
 
-            <div class="space-y-3 hidden" id="wrap-jam">
+            <!-- INPUT JAM CUTI SETENGAH HARI (DITAMPILKAN KETIKA MEMILIH CUTI SETENGAH HARI) -->
+            <div class="p-3.5 bg-amber-50/90 border border-amber-300 rounded-xl space-y-3 hidden transition-all shadow-sm" id="wrap-jam">
+              <div class="flex items-center justify-between pb-2 border-b border-amber-200">
+                <div class="flex items-center gap-2 text-xs font-bold text-amber-950">
+                  <div class="w-6 h-6 rounded-lg bg-amber-200 text-amber-900 flex items-center justify-center text-xs shrink-0">
+                    <i class="fa-solid fa-clock"></i>
+                  </div>
+                  <div>
+                    <span class="block">Penginputan Jam Cuti Setengah Hari</span>
+                    <span class="block text-[10px] font-normal text-amber-800">Tentukan jam keluar dan jam kembali kerja karyawan</span>
+                  </div>
+                </div>
+                <span class="text-[10px] font-black text-blue-800 bg-blue-100/90 px-2.5 py-0.5 rounded border border-blue-300 font-mono tracking-wide">0.5 HARI KERJA</span>
+              </div>
               <div>
-                <label class="block text-xs font-bold text-slate-600 mb-1">Pilihan Sesi Cuti Setengah Hari</label>
-                <select id="inp-sesi-cuti" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400 bg-white">
-                  <option value="Cuti Pagi">Cuti Pagi (Masuk Siang: 08:00 - 12:00)</option>
-                  <option value="Cuti Siang">Cuti Siang (Pulang Awal: 12:00 - 17:00)</option>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Pilihan Sesi Cuti Setengah Hari</label>
+                <select id="inp-sesi-cuti" class="w-full px-3 py-2 text-sm border border-amber-300 rounded-lg outline-none focus:border-maroon-400 bg-white font-medium">
+                  <option value="Cuti Pagi">Cuti Pagi (Masuk Siang: 08:00 - 12:00 WIB)</option>
+                  <option value="Cuti Siang">Cuti Siang (Pulang Awal: 12:00 - 17:00 WIB)</option>
+                  <option value="Kustom">Kustom / Tentukan Jam Bebas</option>
                 </select>
               </div>
-              <div class="grid grid-cols-2 gap-4">
+              <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-xs font-bold text-slate-600 mb-1">Jam Keluar / Absen Cuti</label>
-                  <input type="time" id="inp-jam-keluar" value="08:00" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Jam Keluar / Mulai Cuti <span class="text-rose-600">*</span></label>
+                  <input type="time" id="inp-jam-keluar" value="08:00" class="w-full px-3 py-2 text-sm border border-amber-300 rounded-lg outline-none focus:border-maroon-400 bg-white font-semibold text-slate-800">
+                  <p class="text-[10px] text-slate-500 mt-1">Waktu mulai meninggalkan kantor</p>
                 </div>
                 <div>
-                  <label class="block text-xs font-bold text-slate-600 mb-1">Jam Kembali / Masuk Kerja</label>
-                  <input type="time" id="inp-jam-kembali" value="12:00" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Jam Kembali / Masuk Kerja <span class="text-rose-600">*</span></label>
+                  <input type="time" id="inp-jam-kembali" value="12:00" class="w-full px-3 py-2 text-sm border border-amber-300 rounded-lg outline-none focus:border-maroon-400 bg-white font-semibold text-slate-800">
+                  <p class="text-[10px] text-slate-500 mt-1">Waktu kembali/selesai setengah hari</p>
                 </div>
               </div>
             </div>
@@ -2041,12 +2143,18 @@ export async function mount(container, { session }) {
             if (hrdTenureWarning) { hrdTenureWarning.classList.add("hidden"); hrdTenureWarning.innerHTML = ""; }
             return;
           }
-          const isHalf = curCfg.id === "CT-02";
+          const isHalf = checkIsHalfDay(curCfg);
           if (isHalf) {
             inHari.value = 0.5;
-            if (inAkhir) inAkhir.value = inMulai.value;
-            if (wrapDaysInfo) wrapDaysInfo.innerHTML = `<span class="text-blue-600 font-medium">Cuti Setengah Hari (0.5 Hari Kerja)</span>`;
+            inHari.readOnly = true;
+            if (inMulai.value && inAkhir) inAkhir.value = inMulai.value;
+            const jamK = inJamKeluar ? inJamKeluar.value : "08:00";
+            const jamM = inJamKembali ? inJamKembali.value : "12:00";
+            if (wrapDaysInfo) {
+              wrapDaysInfo.innerHTML = `<span class="text-blue-700 font-bold bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200 inline-flex items-center gap-1.5"><i class="fa-solid fa-clock"></i> Cuti Setengah Hari (0.5 Hari Kerja) • Jam ${jamK} s/d ${jamM} WIB</span>`;
+            }
           } else {
+            if (inHari) inHari.readOnly = false;
             if (inMulai.value && inAkhir.value) {
               const detail = getLeaveWorkingDaysDetail(inMulai.value, inAkhir.value, calendarEvents);
               inHari.value = detail.totalWorkingDays;
@@ -2064,7 +2172,7 @@ export async function mount(container, { session }) {
             }
           }
 
-          const countVal = parseFloat(inHari.value) || 0;
+          const countVal = isHalf ? 0.5 : (parseFloat(inHari.value) || 0);
 
           // Cek peringatan ketentuan masa kerja
           if (hrdTenureWarning) {
@@ -2126,22 +2234,31 @@ export async function mount(container, { session }) {
 
         if (selJenis) {
           selJenis.onchange = () => {
-            curCfg = leaveConfig.find(c => c.id === selJenis.value);
+            curCfg = leaveConfig.find(c => c.id === selJenis.value) || DEFAULT_LEAVE_TYPES.find(c => c.id === selJenis.value);
             if (!curCfg) return;
-            const isHalf = curCfg.id === "CT-02";
+            const isHalf = checkIsHalfDay(curCfg);
             if (isHalf) {
               wrapTglAkhir.classList.add("hidden");
               wrapJam.classList.remove("hidden");
+              if (inMulai.value && inAkhir) inAkhir.value = inMulai.value;
+              inHari.value = 0.5;
+              inHari.readOnly = true;
             } else {
               wrapTglAkhir.classList.remove("hidden");
               wrapJam.classList.add("hidden");
+              inHari.readOnly = false;
             }
             lblPotong.textContent = "Potong Jatah: " + curCfg.potong;
             updateCalculations();
           };
         }
 
-        if (inMulai) inMulai.onchange = updateCalculations;
+        if (inMulai) inMulai.onchange = () => {
+          if (curCfg && checkIsHalfDay(curCfg)) {
+            if (inAkhir) inAkhir.value = inMulai.value;
+          }
+          updateCalculations();
+        };
         if (inAkhir) inAkhir.onchange = updateCalculations;
         if (inHari) inHari.oninput = updateCalculations;
 
@@ -2150,12 +2267,15 @@ export async function mount(container, { session }) {
             if (selSesi.value === "Cuti Pagi") {
               inJamKeluar.value = "08:00";
               inJamKembali.value = "12:00";
-            } else {
+            } else if (selSesi.value === "Cuti Siang") {
               inJamKeluar.value = "12:00";
               inJamKembali.value = "17:00";
             }
+            updateCalculations();
           };
         }
+        if (inJamKeluar) inJamKeluar.onchange = updateCalculations;
+        if (inJamKembali) inJamKembali.onchange = updateCalculations;
 
         m.querySelector("#btn-modal-batal").onclick = closeModal;
 
@@ -2168,9 +2288,17 @@ export async function mount(container, { session }) {
               return;
             }
 
+            const isHalf = checkIsHalfDay(curCfg);
             const tglAwal = inMulai.value;
-            const tglAkhirVal = curCfg.id === "CT-02" ? tglAwal : (inAkhir.value || tglAwal);
-            const countVal = parseFloat(inHari.value) || 1;
+            const tglAkhirVal = isHalf ? tglAwal : (inAkhir.value || tglAwal);
+            const countVal = isHalf ? 0.5 : (parseFloat(inHari.value) || 1);
+
+            if (isHalf) {
+              if (!inJamKeluar.value || !inJamKembali.value) {
+                toast("Harap lengkapi jam keluar dan jam kembali cuti setengah hari", "warning");
+                return;
+              }
+            }
 
             if (curCfg.potong === "Tahunan" && sisa.Tahunan < countVal) {
               toast(`Sisa cuti tahunan tidak mencukupi (${sisa.Tahunan} hari tersisa)`, "error");
@@ -2203,16 +2331,33 @@ export async function mount(container, { session }) {
             btnSimpan.disabled = true;
             btnSimpan.textContent = "Menyimpan & Mencetak...";
 
+            const jamKel = isHalf ? inJamKeluar.value : "-";
+            const jamKem = isHalf ? inJamKembali.value : "-";
+            const sesiCutiVal = isHalf ? (selSesi?.value || "Cuti Pagi") : null;
+
             const payload = {
               nama_karyawan: k.nama_karyawan,
               tanggal: tglAwal,
+              tanggal_mulai: tglAwal,
               tanggal_selesai: tglAkhirVal,
               tahun: new Date(tglAwal).getFullYear(),
               bulan: new Date(tglAwal).toLocaleString('id-ID', { month: 'long' }),
               type_cuti: `${curCfg.id} - ${curCfg.name}`,
+              jenis_cuti: `${curCfg.id} - ${curCfg.name}`,
+              kategori_cuti: `${curCfg.id} - ${curCfg.name}`,
               potong_jatah: curCfg.potong,
               count: countVal,
+              jumlah_hari: countVal,
+              isHalfDay: isHalf,
+              is_half_day: isHalf,
+              tipe_hari: isHalf ? "Setengah Hari" : "Hari Penuh",
+              jam_keluar: jamKel,
+              jam_kembali: jamKem,
+              jam_mulai: jamKel,
+              jam_selesai: jamKem,
+              sesi_cuti: sesiCutiVal,
               keterangan_cuti: inAlasan.value,
+              alasan: inAlasan.value,
               nik: k.nik || "-",
               cabang: k.cabang || "-",
               jabatan: k.jabatan || "-",
@@ -2222,9 +2367,12 @@ export async function mount(container, { session }) {
             const pdfData = {
               ...payload,
               tgl_akhir: tglAkhirVal,
-              isHalfDay: curCfg.id === "CT-02",
-              jam_keluar: curCfg.id === "CT-02" ? inJamKeluar.value : "-",
-              jam_kembali: curCfg.id === "CT-02" ? inJamKembali.value : "-",
+              isHalfDay: isHalf,
+              is_half_day: isHalf,
+              tipe_hari: isHalf ? "Setengah Hari" : "Hari Penuh",
+              jam_keluar: jamKel,
+              jam_kembali: jamKem,
+              sesi_cuti: sesiCutiVal,
               kontak: m.querySelector("#inp-kontak")?.value || "-",
               alasan: inAlasan.value
             };
@@ -2259,87 +2407,474 @@ export async function mount(container, { session }) {
   async function generatePdfAndNotify(k, pdfData, sisa) {
     try {
       toast("Menerbitkan Dokumen Form Cuti...", "info");
-      const result = await generateAndSaveCutiDocument({
-        nama_karyawan: k.nama_karyawan,
+
+      // 1. Rekam juga ke DATA_PENGAJUAN agar terdata di rekap pengajuan & rekap otomatis sore 17:00
+      try {
+        await fsAdd(COL.DATA_PENGAJUAN, {
+          tipe_form: "FORM_CUTI",
+          form_id: "F-ISO-CUTI",
+          nama_form: "Formulir Pengajuan Cuti",
+          nama_pemohon: k.nama_karyawan,
+          pemohon: k.nama_karyawan,
+          nik_pemohon: k.nik || k.nik_karyawan || "-",
+          jabatan: k.jabatan || "-",
+          divisi: k.divisi || "-",
+          cabang: k.cabang || "Cirebon",
+          kategori_cuti: pdfData.type_cuti || "Cuti Tahunan",
+          tanggal_mulai: pdfData.tanggal,
+          tanggal_selesai: pdfData.tgl_akhir || pdfData.tanggal,
+          jumlah_hari: pdfData.count || (pdfData.isHalfDay ? 0.5 : 1),
+          count: pdfData.count || (pdfData.isHalfDay ? 0.5 : 1),
+          isHalfDay: !!pdfData.isHalfDay,
+          is_half_day: !!pdfData.isHalfDay,
+          tipe_hari: pdfData.isHalfDay ? "Setengah Hari" : "Hari Penuh",
+          jam_keluar: pdfData.jam_keluar || "-",
+          jam_kembali: pdfData.jam_kembali || "-",
+          alasan: pdfData.keterangan_cuti || pdfData.alasan || "-",
+          status_final: "APPROVED",
+          status: "APPROVED",
+          tgl: new Date().toISOString().substring(0, 10),
+          tanggal_pengajuan: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          diinput_oleh: "HRD"
+        });
+      } catch (eP) {
+        console.warn("Gagal merekam cuti ke data_pengajuan:", eP);
+      }
+
+      // 2. Generate Formulir Cuti Resmi ISO HR-FORM-CUTI
+      const kontakStr = pdfData.kontak && pdfData.kontak !== "-" 
+        ? pdfData.kontak 
+        : (k.alamat && k.no_hp ? `${k.alamat}/${k.no_hp}` : (k.alamat || k.no_hp || "-"));
+
+      const formHtml = generateStandardFormCutiHtml({
+        namaKaryawan: k.nama_karyawan,
+        nik: k.nik || k.nik_karyawan || "-",
         divisi: k.divisi || k.jabatan || k.cabang || "-",
         jabatan: k.jabatan || "-",
         cabang: k.cabang || "-",
-        jenis_cuti: pdfData.type_cuti,
-        tipe_hari: pdfData.isHalfDay ? "Setengah Hari" : "Hari Penuh",
-        tanggal_mulai: pdfData.tanggal,
-        tanggal_selesai: pdfData.tgl_akhir || pdfData.tanggal,
-        keterangan_cuti: pdfData.keterangan_cuti,
-        kontak: pdfData.kontak,
-        jam_keluar: pdfData.jam_keluar,
-        jam_kembali: pdfData.jam_kembali,
-        sisa_tahunan: sisa.Tahunan,
-        sisa_khusus: sisa.Khusus,
-        tanggal_pengajuan: fmtDateShort(new Date())
+        jenisCuti: pdfData.type_cuti || "Cuti",
+        isHalfDay: pdfData.isHalfDay,
+        tglMulai: pdfData.tanggal,
+        tglSelesai: pdfData.tgl_akhir || pdfData.tanggal,
+        jamKeluar: pdfData.jam_keluar || "-",
+        jamKembali: pdfData.jam_kembali || "-",
+        kontak: kontakStr,
+        alasan: pdfData.keterangan_cuti || pdfData.alasan || "-",
+        sisaTahunan: sisa ? (sisa.Tahunan ?? 0) : 0,
+        sisaKhusus: sisa ? (sisa.Khusus ?? 0) : 0,
+        sisaAkumulasi: sisa ? (sisa.Akumulasi ?? 0) : 0,
+        sisaBesar: k.sisa_cuti_besar ?? k.jatah_cuti_besar ?? 0,
+        jumlahHari: pdfData.count || (pdfData.isHalfDay ? 0.5 : 1),
+        tglPengajuan: new Date().toISOString(),
+        forPdf: true
       });
-      toast("Dokumen berhasil dibuat", "success");
-      const targets = await getTargetsForRole("PEMOHON", k.nama_karyawan);
-      for (const t of targets) {
-        await notifyUser(t.username, "Pengajuan Cuti Tercatat", `Cuti Anda (${pdfData.tanggal_display || pdfData.tanggal}) telah dicatat HRD.`);
-        if (t.email) {
-          const emailBody = buildStandardEmailHtml({
-            badgeText: "Cuti Tercatat",
-            badgeVariant: "green",
-            title: "Pengajuan Cuti Anda Telah Dicatat",
-            recipientName: k.nama_karyawan,
-            introText: `Pengajuan cuti Anda telah berhasil diverifikasi dan dicatat oleh Tim HRD. Dokumen formulir cuti telah diterbitkan secara resmi.`,
+
+      // 3. Buat attachment berkas PDF murni
+      const cleanEmpName = (k.nama_karyawan || "Karyawan").replace(/[^a-zA-Z0-9_-]/g, "_");
+      const attachments = [];
+      try {
+        const pdfBase64 = await generateHtmlAsPdfBase64(formHtml);
+        if (pdfBase64) {
+          attachments.push({
+            filename: `Form_Cuti_${cleanEmpName}.pdf`,
+            content: pdfBase64,
+            encoding: "base64",
+            contentType: "application/pdf"
+          });
+        } else {
+          attachments.push({
+            filename: `Form_Cuti_${cleanEmpName}.html`,
+            content: formHtml,
+            contentType: "text/html"
+          });
+        }
+      } catch (ePdf) {
+        console.warn("generateHtmlAsPdfBase64 warning:", ePdf);
+        attachments.push({
+          filename: `Form_Cuti_${cleanEmpName}.html`,
+          content: formHtml,
+          contentType: "text/html"
+        });
+      }
+
+      // 4. Resolusi Penerima Notifikasi (Karyawan, Atasan di Cabang Sama, Rekan Se-Divisi di Cabang Sama)
+      const empNama = (k.nama_karyawan || k.nama || "").trim();
+      const empNik = (k.nik || k.nik_karyawan || "").trim();
+      const empCabang = (k.cabang || "").trim();
+      const empDivisi = (k.divisi || k.departemen || k.bagian || "").trim();
+      const empJabatan = (k.jabatan || k.posisi || "").trim();
+      const empAtasanNama = (k.atasan || k.atasan_langsung || k.nama_atasan || k.spv || "").trim();
+
+      const [allUsers, masterKaryawan] = await Promise.all([
+        fsGetAll(COL.USERS).catch(() => []),
+        (allKaryawan && allKaryawan.length > 0) ? Promise.resolve(allKaryawan) : fsGetAll(COL.MASTER_KARYAWAN).catch(() => [])
+      ]);
+
+      const resolveEmailAndUser = (empOrUser, fallbackName = "", fallbackNik = "") => {
+        let name = (empOrUser?.nama_karyawan || empOrUser?.nama || fallbackName || "").trim();
+        let nik = (empOrUser?.nik_karyawan || empOrUser?.nik || fallbackNik || "").trim();
+        let email = (empOrUser?.email || "").trim();
+        let username = empOrUser?.username || "";
+        let cabang = (empOrUser?.cabang || "").trim();
+        let divisi = (empOrUser?.divisi || empOrUser?.departemen || empOrUser?.bagian || "").trim();
+        let jabatan = (empOrUser?.jabatan || empOrUser?.posisi || "").trim();
+
+        const uMatch = allUsers.find(u => 
+          (nik && u.nik && String(u.nik).trim() === nik) ||
+          (name && u.nama && u.nama.trim().toLowerCase() === name.toLowerCase()) ||
+          (nik && u.username && String(u.username).trim() === nik) ||
+          (username && u.username && String(u.username).trim().toLowerCase() === String(username).trim().toLowerCase())
+        );
+        if (uMatch) {
+          if (!email && uMatch.email) email = uMatch.email.trim();
+          if (!username && uMatch.username) username = uMatch.username.trim();
+          if (!cabang && uMatch.cabang) cabang = uMatch.cabang.trim();
+          if (!divisi && uMatch.divisi) divisi = uMatch.divisi.trim();
+          if (!jabatan && uMatch.jabatan) jabatan = uMatch.jabatan.trim();
+        }
+
+        const kMatch = masterKaryawan.find(m => 
+          (nik && m.nik && String(m.nik).trim() === nik) ||
+          (name && m.nama_karyawan && m.nama_karyawan.trim().toLowerCase() === name.toLowerCase())
+        );
+        if (kMatch) {
+          if (!email && kMatch.email) email = kMatch.email.trim();
+          if (!cabang && kMatch.cabang) cabang = kMatch.cabang.trim();
+          if (!divisi && (kMatch.divisi || kMatch.departemen)) divisi = (kMatch.divisi || kMatch.departemen).trim();
+          if (!jabatan && kMatch.jabatan) jabatan = kMatch.jabatan.trim();
+        }
+
+        return {
+          nama: name,
+          nik: nik,
+          email: (email && email.includes("@")) ? email.trim() : null,
+          username: username || nik || name,
+          cabang: cabang,
+          divisi: divisi,
+          jabatan: jabatan
+        };
+      };
+
+      // 4a. Karyawan yang Cuti
+      const recipientEmails = [];
+      const empContact = resolveEmailAndUser(k, empNama, empNik);
+      if (empContact.email) {
+        recipientEmails.push(empContact.email);
+      }
+      try {
+        const targets = await getTargetsForRole("PEMOHON", empNama);
+        for (const t of targets) {
+          if (t.username) {
+            await notifyUser(t.username, "Pengajuan Cuti Tercatat", `Cuti Anda (${pdfData.tanggal_display || pdfData.tanggal}) telah dicatat HRD.`, "#cuti").catch(() => {});
+          }
+          if (t.email && t.email.includes("@") && !recipientEmails.includes(t.email.trim())) {
+            recipientEmails.push(t.email.trim());
+          }
+        }
+      } catch (eT) {}
+
+      // 4b. Atasan Karyawan (Wajib melihat Cabang Karyawan yang Cuti)
+      // Mencegah SPV Sales cabang lain (misal Malang) menerima notifikasi cuti karyawan cabang Cirebon
+      const atasanTargets = [];
+      const atasanEmails = [];
+      const leadershipRegex = /\b(spv|supervisor|koordinator|coordinator|manager|head|kepala|kabag|lead|asmen|asisten manager|kacab|kepala cabang)\b/i;
+
+      // 1) Cek atasan langsung jika diset di profil karyawan
+      if (empAtasanNama) {
+        const atasanEmp = masterKaryawan.find(m => 
+          (m.nama_karyawan || m.nama || "").trim().toLowerCase() === empAtasanNama.toLowerCase()
+        );
+        const atasanUser = allUsers.find(u => 
+          (u.nama || "").trim().toLowerCase() === empAtasanNama.toLowerCase() ||
+          (u.username || "").trim().toLowerCase() === empAtasanNama.toLowerCase()
+        );
+        const atasanObj = atasanEmp || atasanUser;
+        if (atasanObj) {
+          const atasanInfo = resolveEmailAndUser(atasanObj, empAtasanNama);
+          const atasanCabang = (atasanInfo.cabang || "").toLowerCase();
+          const targetCabang = (empCabang || "").toLowerCase();
+          // Filter ketat cabang atasan: harus cabang yang sama atau level pusat
+          const matchCabangAtasan = !atasanCabang || !targetCabang || atasanCabang === targetCabang || atasanCabang.includes("pusat") || atasanCabang.includes("direksi") || atasanCabang.includes("head office");
+          if (matchCabangAtasan && atasanInfo.nama.toLowerCase() !== empNama.toLowerCase()) {
+            atasanTargets.push(atasanInfo);
+          }
+        }
+      }
+
+      // 2) Cari SPV / Koordinator / Manager di Divisi dan Cabang yang SAMA
+      if (empCabang) {
+        masterKaryawan.forEach(m => {
+          const mNama = (m.nama_karyawan || m.nama || "").trim();
+          if (!mNama || mNama.toLowerCase() === empNama.toLowerCase()) return;
+
+          const mCabang = (m.cabang || "").trim().toLowerCase();
+          const mDivisi = (m.divisi || m.departemen || m.bagian || "").trim().toLowerCase();
+          const mJabatan = (m.jabatan || m.posisi || "").trim().toLowerCase();
+
+          // VALIDASI KETAT: Cabang HARUS sama persis dengan cabang karyawan yang cuti!
+          if (mCabang !== empCabang.toLowerCase()) return;
+
+          const isSameDivisi = empDivisi && (mDivisi === empDivisi.toLowerCase() || mDivisi.includes(empDivisi.toLowerCase()) || empDivisi.toLowerCase().includes(mDivisi));
+          const isSpvOrLeader = leadershipRegex.test(mJabatan);
+          const isKacab = /\b(kepala cabang|kacab|branch manager)\b/i.test(mJabatan);
+
+          if ((isSameDivisi && isSpvOrLeader) || isKacab) {
+            const info = resolveEmailAndUser(m, mNama);
+            if (!atasanTargets.some(t => t.nama.toLowerCase() === info.nama.toLowerCase())) {
+              atasanTargets.push(info);
+            }
+          }
+        });
+
+        allUsers.forEach(u => {
+          const uNama = (u.nama || "").trim();
+          if (!uNama || uNama.toLowerCase() === empNama.toLowerCase()) return;
+
+          const uCabang = (u.cabang || "").trim().toLowerCase();
+          const uDivisi = (u.divisi || "").trim().toLowerCase();
+          const uRole = (u.role || "").trim().toUpperCase();
+
+          if (uCabang !== empCabang.toLowerCase()) return;
+
+          const isSameDivisi = empDivisi && (uDivisi === empDivisi.toLowerCase() || uDivisi.includes(empDivisi.toLowerCase()) || empDivisi.toLowerCase().includes(uDivisi));
+          const isLeaderRole = ["SPV", "SUPERVISOR", "MANAGER", "KOORDINATOR", "KEPALA_CABANG", "KACAB"].includes(uRole);
+
+          if (isSameDivisi && isLeaderRole) {
+            const info = resolveEmailAndUser(u, uNama);
+            if (!atasanTargets.some(t => t.nama.toLowerCase() === info.nama.toLowerCase())) {
+              atasanTargets.push(info);
+            }
+          }
+        });
+      }
+
+      atasanTargets.forEach(t => {
+        if (t.email && !atasanEmails.includes(t.email) && !recipientEmails.includes(t.email)) {
+          atasanEmails.push(t.email);
+        }
+        if (t.username) {
+          notifyUser(t.username, `[Info Cuti Tim] ${empNama}`, `Anggota tim Anda (${empNama} - ${empDivisi || 'Divisi'}) di Cabang ${empCabang || '-'} dijadwalkan cuti (${pdfData.tanggal_display || pdfData.tanggal}).`, "#cuti").catch(() => {});
+        }
+      });
+
+      // 4c. Rekan Satu Divisi Karyawan (Wajib melihat Cabang Karyawan yang Cuti)
+      const peerTargets = [];
+      const peerEmails = [];
+
+      if (empCabang && empDivisi) {
+        masterKaryawan.forEach(m => {
+          const mNama = (m.nama_karyawan || m.nama || "").trim();
+          if (!mNama || mNama.toLowerCase() === empNama.toLowerCase()) return;
+
+          const mCabang = (m.cabang || "").trim().toLowerCase();
+          const mDivisi = (m.divisi || m.departemen || m.bagian || "").trim().toLowerCase();
+
+          // KETAT: Cabang dan Divisi HARUS sama persis dengan karyawan yang cuti
+          const isSameCabang = mCabang === empCabang.toLowerCase();
+          const isSameDivisi = mDivisi === empDivisi.toLowerCase() || mDivisi.includes(empDivisi.toLowerCase()) || empDivisi.toLowerCase().includes(mDivisi);
+
+          if (isSameCabang && isSameDivisi) {
+            const isAlreadyAtasan = atasanTargets.some(a => a.nama.toLowerCase() === mNama.toLowerCase());
+            if (!isAlreadyAtasan) {
+              const info = resolveEmailAndUser(m, mNama);
+              if (!peerTargets.some(p => p.nama.toLowerCase() === info.nama.toLowerCase())) {
+                peerTargets.push(info);
+              }
+            }
+          }
+        });
+      }
+
+      peerTargets.forEach(p => {
+        if (p.email && !peerEmails.includes(p.email) && !recipientEmails.includes(p.email) && !atasanEmails.includes(p.email)) {
+          peerEmails.push(p.email);
+        }
+        if (p.username) {
+          notifyUser(p.username, `[Info Cuti Rekan Tim] ${empNama}`, `Rekan satu divisi Anda (${empNama}) di Cabang ${empCabang} akan cuti (${pdfData.tanggal_display || pdfData.tanggal}).`, "#cuti").catch(() => {});
+        }
+      });
+
+      // 5. Pengiriman Email Notifikasi (Karyawan, Atasan di Cabang Sama, Rekan Se-Divisi di Cabang Sama)
+      const tglCutiStr = `${fmtDateShort(pdfData.tanggal)}${pdfData.tgl_akhir && pdfData.tgl_akhir !== pdfData.tanggal ? ' s/d ' + fmtDateShort(pdfData.tgl_akhir) : ''}`;
+      const durasiStr = pdfData.isHalfDay 
+        ? `0.5 Hari Kerja (Jam ${pdfData.jam_keluar || '08:00'} - ${pdfData.jam_kembali || '12:00'} WIB)`
+        : `${pdfData.count || 1} Hari Kerja`;
+
+      // 5a. Email ke Karyawan yang Bersangkutan (dengan Dokumen Form Cuti Terlampir)
+      if (recipientEmails.length > 0) {
+        const emailBodyKaryawan = buildStandardEmailHtml({
+          badgeText: "Cuti Tercatat • Form Terlampir",
+          badgeVariant: "green",
+          title: "Pengajuan Cuti Anda Telah Dicatat",
+          recipientName: k.nama_karyawan,
+          introText: `Pengajuan cuti Anda telah berhasil diverifikasi dan dicatat oleh Tim HRD. Dokumen formulir cuti resmi (Form Cuti) <strong>terlampir langsung pada email ini</strong> dalam format PDF.`,
+          infoList: [
+            { label: "Nama Karyawan", value: k.nama_karyawan },
+            { label: "NIK", value: k.nik || k.nik_karyawan || "-" },
+            { label: "Divisi & Cabang", value: `${empDivisi || "-"} • Cabang ${empCabang || "-"}` },
+            { label: "Jenis Cuti", value: pdfData.type_cuti || "Cuti" },
+            { label: "Tanggal Cuti", value: tglCutiStr },
+            { label: "Durasi Cuti", value: durasiStr },
+            { label: "Keperluan", value: pdfData.alasan || pdfData.keterangan_cuti || "-" },
+            { label: "Dokumen Terlampir", value: `📎 Form_Cuti_${cleanEmpName}.pdf` }
+          ],
+          secondaryNote: "Dokumen cuti resmi telah dilampirkan pada email ini untuk arsip Anda dan telah tersimpan di sistem HRIS CV Andela Jaya."
+        });
+
+        await sendEmailNotif(
+          recipientEmails.join(", "),
+          `[HRIS Cuti] Form Cuti Resmi: ${k.nama_karyawan} (${fmtDateShort(pdfData.tanggal)})`,
+          emailBodyKaryawan,
+          "",
+          attachments
+        );
+        toast(`Email Form Cuti terkirim ke karyawan: ${recipientEmails.join(", ")}`, "success");
+      } else {
+        toast("Catatan: Email karyawan tidak ditemukan, dokumen tersimpan di arsip sistem.", "info");
+      }
+
+      // 5b. Email ke Atasan Karyawan (Satu Cabang & Divisi Terkait, dengan Lampiran Form Cuti)
+      if (atasanEmails.length > 0) {
+        try {
+          const emailBodyAtasan = buildStandardEmailHtml({
+            badgeText: `Info Cuti Anggota Tim • Cabang ${empCabang || '-'}`,
+            badgeVariant: "maroon",
+            title: "Pemberitahuan Cuti Anggota Tim / Bawahan",
+            recipientName: "Bapak/Ibu Pimpinan & Atasan Terkait",
+            introText: `Pemberitahuan resmi: Anggota tim Anda di divisi <strong>${empDivisi || '-'}</strong> Cabang <strong>${empCabang || '-'}</strong> telah diverifikasi dan dicatat pelaksanaan cutinya oleh Tim HRD. Dokumen Form Cuti resmi terlampir pada email ini untuk keperluan koordinasi operasional.`,
             infoList: [
               { label: "Nama Karyawan", value: k.nama_karyawan },
-              { label: "Tanggal Cuti", value: fmtDateShort(pdfData.tanggal) },
-              { label: "Keperluan", value: pdfData.alasan || "-" }
+              { label: "NIK", value: k.nik || k.nik_karyawan || "-" },
+              { label: "Jabatan & Divisi", value: `${empJabatan || "-"} (${empDivisi || "-"})` },
+              { label: "Cabang Penugasan", value: `Cabang ${empCabang || "-"}` },
+              { label: "Jenis Cuti", value: pdfData.type_cuti || "Cuti" },
+              { label: "Tanggal Pelaksanaan", value: tglCutiStr },
+              { label: "Durasi Cuti", value: durasiStr },
+              { label: "Keperluan", value: pdfData.alasan || pdfData.keterangan_cuti || "-" },
+              { label: "Kontak Selama Cuti", value: kontakStr },
+              { label: "Dokumen Terlampir", value: `📎 Form_Cuti_${cleanEmpName}.pdf` }
             ],
-            actionUrl: result.pdfUrl,
-            actionText: "Unduh / Lihat Dokumen Cuti (PDF) →",
-            secondaryNote: "Dokumen cuti resmi ini telah tersimpan dalam arsip sistem HRIS."
+            secondaryNote: `Mohon pimpinan cabang dan supervisor divisi ${empDivisi || ''} Cabang ${empCabang || ''} dapat menyesuaikan jadwal dan pembagian tugas operasional selama masa cuti karyawan.`
           });
-          await sendEmailNotif(t.email, `[HRIS Cuti] Pengajuan Cuti Anda Telah Dicatat`, emailBody);
+
+          await sendEmailNotif(
+            atasanEmails.join(", "),
+            `[Info Cuti Karyawan] ${k.nama_karyawan} (${empJabatan || empDivisi || 'Karyawan'} - Cabang ${empCabang || '-'}) Cuti (${tglCutiStr})`,
+            emailBodyAtasan,
+            "",
+            attachments
+          );
+          toast(`Info cuti terkirim ke atasan cabang ${empCabang}: ${atasanEmails.join(", ")}`, "success");
+        } catch (eAtasanMail) {
+          console.warn("Gagal mengirim email info cuti ke atasan:", eAtasanMail);
         }
-      } 
-      window.open(result.pdfUrl, "_blank");
+      }
+
+      // 5c. Email ke Rekan Satu Divisi Karyawan (Satu Cabang & Divisi Terkait)
+      if (peerEmails.length > 0) {
+        try {
+          const emailBodyPeers = buildStandardEmailHtml({
+            badgeText: `Info Rekan Divisi ${empDivisi || ''} • Cabang ${empCabang || ''}`,
+            badgeVariant: "blue",
+            title: "Jadwal Cuti Rekan Kerja Se-Divisi",
+            recipientName: `Rekan-Rekan Divisi ${empDivisi || ''}`,
+            introText: `Informasi koordinasi tim: Rekan kerja Anda di divisi <strong>${empDivisi || '-'}</strong> Cabang <strong>${empCabang || '-'}</strong> akan melaksanakan cuti sesuai jadwal berikut. Mohon rekan-rekan dapat saling berkoordinasi untuk kelancaran operasional.`,
+            infoList: [
+              { label: "Nama Rekan Cuti", value: k.nama_karyawan },
+              { label: "Jabatan", value: empJabatan || "-" },
+              { label: "Divisi & Cabang", value: `${empDivisi || "-"} • Cabang ${empCabang || "-"}` },
+              { label: "Jenis Cuti", value: pdfData.type_cuti || "Cuti" },
+              { label: "Jadwal Cuti", value: tglCutiStr },
+              { label: "Durasi Cuti", value: durasiStr },
+              { label: "Kontak Selama Cuti", value: kontakStr }
+            ],
+            secondaryNote: `Koordinasikan tugas operasional bersama tim satu divisi dan atasan selama masa cuti berlangsung.`
+          });
+
+          await sendEmailNotif(
+            peerEmails.join(", "),
+            `[Info Cuti Rekan Se-Divisi] ${k.nama_karyawan} (Divisi ${empDivisi} - Cabang ${empCabang}) Cuti (${tglCutiStr})`,
+            emailBodyPeers,
+            "",
+            null
+          );
+          toast(`Info cuti terkirim ke rekan se-divisi cabang ${empCabang} (${peerEmails.length} rekan)`, "info");
+        } catch (ePeerMail) {
+          console.warn("Gagal mengirim email info cuti ke rekan kerja:", ePeerMail);
+        }
+      }
+
+      // 6. Coba Google Apps Script dan unduh PDF untuk HRD
+      try {
+        const result = await generateAndSaveCutiDocument({
+          nama_karyawan: k.nama_karyawan,
+          divisi: k.divisi || k.jabatan || k.cabang || "-",
+          jabatan: k.jabatan || "-",
+          cabang: k.cabang || "-",
+          jenis_cuti: pdfData.type_cuti,
+          tipe_hari: pdfData.isHalfDay ? "Setengah Hari" : "Hari Penuh",
+          tanggal_mulai: pdfData.tanggal,
+          tanggal_selesai: pdfData.tgl_akhir || pdfData.tanggal,
+          keterangan_cuti: pdfData.keterangan_cuti,
+          kontak: kontakStr,
+          jam_keluar: pdfData.jam_keluar,
+          jam_kembali: pdfData.jam_kembali,
+          sisa_tahunan: sisa.Tahunan,
+          sisa_khusus: sisa.Khusus,
+          tanggal_pengajuan: fmtDateShort(new Date())
+        });
+        if (result && result.pdfUrl && result.pdfUrl !== "#") {
+          window.open(result.pdfUrl, "_blank");
+        } else {
+          await downloadHtmlAsPdf(formHtml, `Form_Cuti_${cleanEmpName}.pdf`);
+        }
+      } catch (errGas) {
+        await downloadHtmlAsPdf(formHtml, `Form_Cuti_${cleanEmpName}.pdf`);
+      }
+
+      toast("Dokumen Form Cuti berhasil diterbitkan dan dikirimkan!", "success");
     } catch (err) {
-      toast("Gagal generate via Google Apps Script (" + err.message + "), mencetak versi cadangan...", "warning");
+      console.error("Error generatePdfAndNotify:", err);
+      toast("Memproses versi cadangan: " + err.message, "warning");
       printCutiPdfFallback(k, pdfData, sisa);
     }
   }
 
   async function printCutiPdfFallback(k, data, sisa) {
- const { downloadHtmlAsPdf, toast, generateStandardFormCutiHtml } = await import("../utils.js");
- toast("Sedang memproses PDF...", "info");
+    toast("Sedang memproses PDF cadangan...", "info");
 
- const kontakStr = data.kontak && data.kontak !== "-" 
- ? data.kontak 
- : (k.alamat && k.no_hp ? `${k.alamat}/${k.no_hp}` : (k.alamat || k.no_hp || "-"));
+    const kontakStr = data.kontak && data.kontak !== "-" 
+      ? data.kontak 
+      : (k.alamat && k.no_hp ? `${k.alamat}/${k.no_hp}` : (k.alamat || k.no_hp || "-"));
 
- const html = generateStandardFormCutiHtml({
- namaKaryawan: k.nama_karyawan,
- nik: k.nik || k.nik_karyawan || "-",
- divisi: k.divisi || k.jabatan || k.cabang || "-",
- jabatan: k.jabatan || "-",
- cabang: k.cabang || "-",
- jenisCuti: data.type_cuti || "Cuti",
- isHalfDay: data.isHalfDay,
- tglMulai: data.tanggal,
- tglSelesai: data.tgl_akhir || data.tanggal,
- jamKeluar: data.jam_keluar || "-",
- jamKembali: data.jam_kembali || "-",
- kontak: kontakStr,
- alasan: data.keterangan_cuti || "-",
- sisaTahunan: sisa ? (sisa.Tahunan ?? 0) : 0,
- sisaKhusus: sisa ? (sisa.Khusus ?? 0) : 0,
- sisaAkumulasi: sisa ? (sisa.Akumulasi ?? 0) : 0,
- sisaBesar: k.sisa_cuti_besar ?? k.jatah_cuti_besar ?? 0,
- jumlahHari: data.count || (data.isHalfDay ? 0.5 : 1),
- tglPengajuan: new Date().toISOString(),
- forPdf: true
- });
+    const html = generateStandardFormCutiHtml({
+      namaKaryawan: k.nama_karyawan,
+      nik: k.nik || k.nik_karyawan || "-",
+      divisi: k.divisi || k.jabatan || k.cabang || "-",
+      jabatan: k.jabatan || "-",
+      cabang: k.cabang || "-",
+      jenisCuti: data.type_cuti || "Cuti",
+      isHalfDay: data.isHalfDay,
+      tglMulai: data.tanggal,
+      tglSelesai: data.tgl_akhir || data.tanggal,
+      jamKeluar: data.jam_keluar || "-",
+      jamKembali: data.jam_kembali || "-",
+      kontak: kontakStr,
+      alasan: data.keterangan_cuti || "-",
+      sisaTahunan: sisa ? (sisa.Tahunan ?? 0) : 0,
+      sisaKhusus: sisa ? (sisa.Khusus ?? 0) : 0,
+      sisaAkumulasi: sisa ? (sisa.Akumulasi ?? 0) : 0,
+      sisaBesar: k.sisa_cuti_besar ?? k.jatah_cuti_besar ?? 0,
+      jumlahHari: data.count || (data.isHalfDay ? 0.5 : 1),
+      tglPengajuan: new Date().toISOString(),
+      forPdf: true
+    });
 
- await downloadHtmlAsPdf(html, `Form_Cuti_${escapeHtml(k.nama_karyawan).replace(/\s+/g, "_")}.pdf`);
- toast("PDF berhasil diunduh!", "success");
- }
+    const cleanEmpName = (k.nama_karyawan || "Karyawan").replace(/[^a-zA-Z0-9_-]/g, "_");
+    await downloadHtmlAsPdf(html, `Form_Cuti_${cleanEmpName}.pdf`);
+    toast("PDF berhasil diunduh!", "success");
+  }
 
  container.querySelector("#btn-setting-cuti")?.addEventListener("click", () => {
  openModal({

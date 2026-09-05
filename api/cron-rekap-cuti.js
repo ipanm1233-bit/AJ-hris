@@ -186,8 +186,9 @@ module.exports = async function handler(req, res) {
           const mSnap = await db.collection('master_cuti').get();
           mSnap.forEach(docSnap => {
             const d = docSnap.data();
-            const tgl = d.tanggal || d.tgl;
-            if (tgl === todayStr) {
+            const tglStart = d.tanggal || d.tgl || d.tanggal_mulai;
+            const tglEnd = d.tanggal_selesai || d.tgl_akhir || tglStart;
+            if (tglStart && tglStart <= todayStr && tglEnd >= todayStr) {
               const kName = d.nama_karyawan || d.nama || "Karyawan";
               const key = `${kName}_${todayStr}`;
               if (!seenKeys.has(key)) {
@@ -199,7 +200,7 @@ module.exports = async function handler(req, res) {
                   divisi: d.divisi || d.departemen || "-",
                   cabang: d.cabang || "Cirebon",
                   jenis_cuti: d.type_cuti || d.jenis_cuti || "Cuti Tahunan",
-                  periode: formatIndoDate(tgl),
+                  periode: `${formatIndoDate(tglStart)}${tglEnd && tglEnd !== tglStart ? ' s/d ' + formatIndoDate(tglEnd) : ''}`,
                   durasi: `${d.count || 1} Hari`,
                   alasan: d.keterangan_cuti || d.keterangan || d.alasan || "-",
                   pengganti: d.pejabat_pengganti || "-"
@@ -358,6 +359,37 @@ module.exports = async function handler(req, res) {
           });
         } catch (eP) {
           console.warn("Err reading submitted leaves:", eP.message);
+        }
+
+        // Dari master_cuti (inputted today by HRD)
+        try {
+          const mSnap = await db.collection('master_cuti').get();
+          mSnap.forEach(docSnap => {
+            const m = docSnap.data();
+            const submitDate = (m.createdAt || m.created_at || m.tgl || m.tanggal_input || m.tanggal || "").substring(0, 10);
+            if (submitDate === todayStr) {
+              const already = submittedLeaves.some(s => 
+                (s.nama === m.nama_karyawan || s.nik === m.nik) &&
+                (s.periode && s.periode.includes(m.tanggal))
+              );
+              if (!already) {
+                submittedLeaves.push({
+                  nama: m.nama_karyawan || m.nama || "Karyawan",
+                  nik: m.nik || m.nik_karyawan || "-",
+                  jabatan: m.jabatan || "-",
+                  divisi: m.divisi || "-",
+                  cabang: m.cabang || "Cirebon",
+                  jenis_cuti: m.type_cuti || "Cuti Tahunan",
+                  periode: `${formatIndoDate(m.tanggal)}${m.tanggal_selesai && m.tanggal_selesai !== m.tanggal ? ' s/d ' + formatIndoDate(m.tanggal_selesai) : ''}`,
+                  durasi: `${m.count || 1} Hari`,
+                  status: "APPROVED (HRD)",
+                  alasan: m.keterangan_cuti || m.alasan || "-"
+                });
+              }
+            }
+          });
+        } catch (eM) {
+          console.warn("Err reading master_cuti leaves for evening:", eM.message);
         }
 
         // Group by Cabang

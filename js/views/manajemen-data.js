@@ -869,18 +869,105 @@ export async function mount(container) {
  formFields: fields
  });
 
- panels.karyawan.querySelector("#btn-sync-all-karyawan")?.addEventListener("click", async () => {
- const ok = await confirmDialog("Sinkronkan seluruh nama & data karyawan dari Master Database ke seluruh modul (Absensi, Pengajuan, Tracking Sales, KPI, dsb)?", { title: "Sinkronisasi Master Karyawan Global" });
- if (!ok) return;
- try {
- toast("Sedang menyinkronkan data karyawan ke seluruh modul...", "info");
- const count = await syncAllEmployeesAcrossCollections();
- toast(`Sukses menyinkronkan ${count} data karyawan ke seluruh modul sistem!`, "success");
- crudRes.reload();
- } catch (e) {
- toast("Gagal sinkronisasi: " + e.message, "error");
- }
- });
+  panels.karyawan.querySelector("#btn-sync-all-karyawan")?.addEventListener("click", async () => {
+    const ok = await confirmDialog("Sinkronkan seluruh nama & data karyawan dari Master Database ke seluruh modul (Absensi, Pengajuan, Tracking Sales, KPI, dsb)?", { title: "Sinkronisasi Master Karyawan Global" });
+    if (!ok) return;
+
+    openModal({
+      title: "Sinkronisasi Seluruh Modul",
+      size: "md",
+      bodyHtml: `
+        <div class="space-y-4 py-2" id="sync-progress-container">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Progress Sinkronisasi</span>
+            <span id="sync-percentage-text" class="text-sm font-extrabold text-maroon-700">0%</span>
+          </div>
+          
+          <!-- Progress Bar Track -->
+          <div class="w-full bg-slate-100 rounded-full h-3.5 overflow-hidden p-0.5 border border-slate-200">
+            <div id="sync-progress-bar" class="bg-gradient-to-r from-maroon-600 to-maroon-800 h-full rounded-full transition-all duration-200 ease-out" style="width: 0%;"></div>
+          </div>
+
+          <div class="bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-1.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-slate-500">Karyawan Terproses:</span>
+              <span id="sync-count-text" class="font-bold text-slate-800">0 / 0 Karyawan</span>
+            </div>
+            <div class="flex items-start justify-between text-xs gap-2">
+              <span class="text-slate-500 shrink-0">Sedang Memproses:</span>
+              <span id="sync-current-emp" class="font-semibold text-slate-700 truncate text-right">Menyiapkan data...</span>
+            </div>
+          </div>
+
+          <div class="text-[11px] text-slate-500 flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span>Sinkronisasi otomatis ke modul Absensi, Pengajuan, Cuti, Kontrak PKWT, KPI & Sales.</span>
+          </div>
+        </div>
+      `,
+      footerHtml: `
+        <button id="btn-close-sync-modal" class="w-full px-4 py-2.5 bg-slate-100 text-slate-400 font-semibold rounded-lg text-xs cursor-not-allowed transition" disabled>
+          Sedang Menyinkronkan Data...
+        </button>
+      `,
+      onMount: async (mEl) => {
+        const pBar = mEl.querySelector("#sync-progress-bar");
+        const pText = mEl.querySelector("#sync-percentage-text");
+        const cText = mEl.querySelector("#sync-count-text");
+        const empText = mEl.querySelector("#sync-current-emp");
+        const btnClose = mEl.querySelector("#btn-close-sync-modal");
+
+        try {
+          const count = await syncAllEmployeesAcrossCollections(({ current, total, percentage, currentEmployee }) => {
+            if (pBar) pBar.style.width = `${percentage}%`;
+            if (pText) pText.textContent = `${percentage}%`;
+            if (cText) cText.textContent = `${current} / ${total} Karyawan`;
+            if (empText) empText.textContent = currentEmployee;
+          });
+
+          if (pBar) {
+            pBar.style.width = "100%";
+            pBar.classList.remove("from-maroon-600", "to-maroon-800");
+            pBar.classList.add("from-emerald-500", "to-emerald-600");
+          }
+          if (pText) {
+            pText.textContent = "100% Selesai";
+            pText.className = "text-sm font-extrabold text-emerald-600";
+          }
+          if (empText) empText.textContent = "Seluruh modul berhasil tersinkron!";
+          
+          if (btnClose) {
+            btnClose.disabled = false;
+            btnClose.className = "w-full px-4 py-2.5 bg-emerald-600 text-white font-bold rounded-lg text-xs hover:bg-emerald-700 transition shadow-sm cursor-pointer";
+            btnClose.textContent = "Selesai & Tutup";
+            btnClose.onclick = () => {
+              closeModal();
+              crudRes.reload();
+            };
+          }
+
+          toast(`Sukses menyinkronkan ${count} data karyawan ke seluruh modul sistem!`, "success");
+          setTimeout(() => {
+            crudRes.reload();
+          }, 1200);
+
+        } catch (e) {
+          if (pText) {
+            pText.textContent = "Gagal";
+            pText.className = "text-sm font-extrabold text-rose-600";
+          }
+          if (empText) empText.textContent = "Terjadi kesalahan: " + e.message;
+          if (btnClose) {
+            btnClose.disabled = false;
+            btnClose.className = "w-full px-4 py-2.5 bg-rose-600 text-white font-bold rounded-lg text-xs hover:bg-rose-700 transition cursor-pointer";
+            btnClose.textContent = "Tutup";
+            btnClose.onclick = () => closeModal();
+          }
+          toast("Gagal sinkronisasi: " + e.message, "error");
+        }
+      }
+    });
+  });
  }
 
  async function loadRekapTab() {

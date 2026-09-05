@@ -665,15 +665,25 @@ async function processAction(row, action, note, session) {
  }
  }
 
- // Rekan kerja se-divisi / cabang
- const peers = masterKaryawan.filter(k => (k.nama_karyawan || k.nama) !== row.nama_pemohon && ((k.divisi && k.divisi === pemohonData.divisi) || (k.cabang && k.cabang === pemohonData.cabang)));
+ // Rekan kerja se-divisi dan satu cabang (wajib melihat cabang karyawan yang cuti)
+ const pemCabang = (pemohonData.cabang || "").trim().toLowerCase();
+ const pemDivisi = (pemohonData.divisi || pemohonData.departemen || "").trim().toLowerCase();
+ const peers = masterKaryawan.filter(k => {
+ const kNama = (k.nama_karyawan || k.nama || "").trim();
+ if (kNama === row.nama_pemohon) return false;
+ const kCab = (k.cabang || "").trim().toLowerCase();
+ const kDiv = (k.divisi || k.departemen || "").trim().toLowerCase();
+ const matchCab = !pemCabang || kCab === pemCabang;
+ const matchDiv = !pemDivisi || kDiv === pemDivisi;
+ return matchCab && matchDiv;
+ });
  for (const peer of peers.slice(0, 10)) {
  const peerUser = userByNama[peer.nama_karyawan || peer.nama];
  if (peerUser) {
  await notifyUser(
  peerUser,
  `[Info Cuti Rekan Kerja] ${row.nama_pemohon}`,
- `Rekan se-divisi/cabang (${row.nama_pemohon}) disetujui Cuti/Izin (${tglRange}).`,
+ `Rekan se-divisi (${row.nama_pemohon}) di cabang ${pemohonData.cabang || '-'} disetujui Cuti/Izin (${tglRange}).`,
  `#dashboard`
  );
  }

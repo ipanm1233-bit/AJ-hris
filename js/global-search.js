@@ -1,6 +1,7 @@
 import { MENU_CONFIG } from "./auth.js";
-import { icon } from "./components.js";
-import { escapeHtml } from "./utils.js";
+import { icon, avatar } from "./components.js";
+import { escapeHtml, fsGetAll, openModal, closeModal } from "./utils.js";
+import { COL } from "./firebase-config.js";
 
 /* ---------------------------------------------------------------------
  * GLOBAL SEARCH TOP NAVIGATION BAR (Fitur, Menu Utama, Submenu & Layanan HRIS)
@@ -543,11 +544,289 @@ export function initGlobalSearch(session) {
     return uniqueItems.slice(0, 15);
   }
 
-  function renderResultsHtml(results, rawQuery, onTagClick, onNavigate) {
+  /* ---------------- PENCARIAN KARYAWAN KHUSUS ROLE HRD ---------------- */
+  const isHrdRole = ["HRD", "SUPERADMIN"].includes(userRole);
+  let cachedEmployees = null;
+  let isFetchingEmployees = false;
+
+  async function ensureEmployeesLoaded() {
+    if (cachedEmployees !== null || isFetchingEmployees) return;
+    isFetchingEmployees = true;
+    try {
+      const emps = await fsGetAll(COL.MASTER_KARYAWAN);
+      cachedEmployees = (emps || []).filter(e => e && e.nama_karyawan && e.nama_karyawan.trim() !== "");
+    } catch (e) {
+      console.warn("Gagal memuat master karyawan untuk pencarian HRD:", e);
+      cachedEmployees = [];
+    } finally {
+      isFetchingEmployees = false;
+    }
+  }
+
+  function searchEmployees(rawQuery) {
+    if (!isHrdRole || !cachedEmployees || !cachedEmployees.length) return [];
+    const q = norm(rawQuery);
+    if (!q || q.length < 2) return [];
+
+    const queryWords = q.split(" ").filter(w => w.length > 0);
+    const scored = [];
+
+    for (const emp of cachedEmployees) {
+      const nameNorm = norm(emp.nama_karyawan);
+      const nikNorm = norm(emp.nik_karyawan || emp.nik || "");
+      const jabNorm = norm(emp.jabatan || "");
+      const divNorm = norm(emp.divisi || "");
+      const cabNorm = norm(emp.cabang || "");
+      const konNorm = norm(emp.no_kontrak || "");
+
+      let score = 0;
+      let matched = false;
+
+      if (nameNorm === q) {
+        score += 250;
+        matched = true;
+      } else if (nikNorm === q) {
+        score += 250;
+        matched = true;
+      } else if (nameNorm.startsWith(q)) {
+        score += 150;
+        matched = true;
+      } else if (nikNorm.startsWith(q)) {
+        score += 150;
+        matched = true;
+      } else if (nameNorm.includes(q)) {
+        score += 80;
+        matched = true;
+      } else if (nikNorm.includes(q)) {
+        score += 80;
+        matched = true;
+      }
+
+      let allWordsFound = true;
+      for (const w of queryWords) {
+        if (nameNorm.includes(w) || nikNorm.includes(w) || jabNorm.includes(w) || divNorm.includes(w) || cabNorm.includes(w) || konNorm.includes(w)) {
+          score += 30;
+          matched = true;
+        } else {
+          allWordsFound = false;
+        }
+      }
+
+      if (allWordsFound && queryWords.length > 1) {
+        score += 40;
+      }
+
+      if (matched && score > 0) {
+        scored.push({ emp, score });
+      }
+    }
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, 6).map(s => s.emp);
+  }
+
+  function openHrdEmployeeDestinationModal(emp) {
+    const nik = emp.nik_karyawan || emp.nik || "-";
+    const nama = emp.nama_karyawan || "Karyawan";
+    const jabatan = emp.jabatan || "-";
+    const divisi = emp.divisi || "-";
+    const cabang = emp.cabang || "-";
+    const status = emp.status_karyawan || "AKTIF";
+
+    const targetMenus = [
+      {
+        id: "menu-db-karyawan",
+        title: "Database Karyawan (Master Data)",
+        route: "manajemen-data",
+        badge: "Master Database",
+        badgeColor: "bg-blue-50 text-blue-700 border-blue-200",
+        icon: "database",
+        desc: "Lihat profil lengkap, data pokok NIK/KTP/KK, BPJS, rekening, riwayat jabatan, dan mutasi."
+      },
+      {
+        id: "menu-kontrak-pkwt",
+        title: "Data Kontrak Kerja & Evaluasi PKWT",
+        route: "penilaian-kontrak?tab=evaluasi",
+        badge: "SPK & Kontrak",
+        badgeColor: "bg-amber-50 text-amber-700 border-amber-200",
+        icon: "doc-plus",
+        desc: "Pantau masa berlaku SPK, tanggal berakhir kontrak, sisa masa kerja, dan evaluasi perpanjangan."
+      },
+      {
+        id: "menu-cuti",
+        title: "Manajemen Cuti & Saldo Jatah",
+        route: "cuti",
+        badge: "Cuti & Izin",
+        badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
+        icon: "calendar",
+        desc: "Riwayat pengajuan cuti, sisa hak cuti tahunan/khusus, input cuti karyawan, dan cetak form fisik."
+      },
+      {
+        id: "menu-absensi",
+        title: "Presensi & Rekap Absensi",
+        route: "absensi",
+        badge: "Kehadiran",
+        badgeColor: "bg-purple-50 text-purple-700 border-purple-200",
+        icon: "clock",
+        desc: "Catatan jam presensi harian, log datang/pulang, keterlambatan, jam lembur, dan koordinat GPS."
+      },
+      {
+        id: "menu-kpi360",
+        title: "Penilaian Kinerja / KPI 360",
+        route: "penilaian-kontrak?tab=kpi360",
+        badge: "Kinerja & KPI",
+        badgeColor: "bg-rose-50 text-rose-700 border-rose-200",
+        icon: "layers",
+        desc: "Instrumen evaluasi multi-rater 360 derajat, skor kompetensi, dan capaian target kerja."
+      },
+      {
+        id: "menu-sp-disiplin",
+        title: "Kedisiplinan & Surat Peringatan (SP)",
+        route: "pemanggilan",
+        badge: "Disiplin & SP",
+        badgeColor: "bg-red-50 text-red-700 border-red-200",
+        icon: "alert",
+        desc: "Catatan berita acara pemanggilan, histori pelanggaran tata tertib, dan surat peringatan (SP)."
+      },
+      {
+        id: "menu-dokumen",
+        title: "Arsip Berkas & Dokumen Digital",
+        route: "dokumen",
+        badge: "Berkas Digital",
+        badgeColor: "bg-indigo-50 text-indigo-700 border-indigo-200",
+        icon: "box",
+        desc: "Pusat arsip berkas digital, ijazah, KTP, perjanjian kerja, dan dokumen resmi kepegawaian."
+      },
+      {
+        id: "menu-konseling",
+        title: "Konseling & Coaching Karyawan",
+        route: "konseling-coaching",
+        badge: "Coaching",
+        badgeColor: "bg-teal-50 text-teal-700 border-teal-200",
+        icon: "user-plus",
+        desc: "Lembar sesi bimbingan internal, evaluasi kendala kerja tim, dan sasaran action plan."
+      },
+      {
+        id: "menu-riwayat-gaji",
+        title: "Riwayat Penggajian & Slip Gaji",
+        route: "riwayat",
+        badge: "Payroll & Slip",
+        badgeColor: "bg-slate-100 text-slate-700 border-slate-200",
+        icon: "wallet",
+        desc: "Rincian pembayaran gaji bulanan, komponen tunjangan, potongan kasbon, dan arsip slip gaji."
+      }
+    ];
+
+    openModal({
+      title: "Pilih Menu Tujuan Karyawan",
+      size: "lg",
+      bodyHtml: `
+        <div class="space-y-4 py-1">
+          <!-- Profile Card -->
+          <div class="bg-gradient-to-r from-slate-900 via-slate-800 to-maroon-900 rounded-2xl p-4 text-white shadow-sm flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3.5 min-w-0">
+              <div class="w-12 h-12 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center font-black text-base text-amber-300 shrink-0">
+                ${escapeHtml((nama || "K").charAt(0).toUpperCase())}
+              </div>
+              <div class="min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <h3 class="font-bold text-sm sm:text-base text-white truncate">${escapeHtml(nama)}</h3>
+                  <span class="text-[10px] font-mono font-bold bg-amber-400 text-slate-950 px-2 py-0.5 rounded-md">NIK: ${escapeHtml(nik)}</span>
+                  <span class="text-[10px] font-bold bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 px-2 py-0.5 rounded-md">${escapeHtml(status)}</span>
+                </div>
+                <p class="text-xs text-slate-200 mt-1 truncate">
+                  <span class="font-semibold text-amber-200">${escapeHtml(jabatan)}</span> • ${escapeHtml(divisi)} • Cabang: <span class="font-bold text-white">${escapeHtml(cabang)}</span>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="px-0.5">
+            <p class="text-xs font-bold text-slate-600 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+              <svg class="w-4 h-4 text-maroon-700" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              Sistem menanyakan: Pilih menu tujuan untuk karyawan ini
+            </p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[50vh] overflow-y-auto pr-1" id="hrd-target-menu-grid">
+              ${targetMenus.map(m => `
+                <div 
+                  data-route="${m.route}"
+                  class="btn-select-hrd-dest group p-3 rounded-xl border border-slate-200 hover:border-maroon-500 hover:bg-maroon-50/30 transition cursor-pointer flex flex-col justify-between gap-2 bg-white"
+                >
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="flex items-center gap-2.5 min-w-0">
+                      <div class="w-8 h-8 rounded-lg bg-slate-100 group-hover:bg-maroon-700 group-hover:text-white text-slate-700 border border-slate-200 flex items-center justify-center shrink-0 transition">
+                        ${icon(m.icon || 'box', 'w-4 h-4')}
+                      </div>
+                      <span class="font-bold text-xs text-slate-800 group-hover:text-maroon-800 transition truncate">${m.title}</span>
+                    </div>
+                    <span class="text-[9px] font-extrabold px-1.5 py-0.5 rounded border ${m.badgeColor} shrink-0">${m.badge}</span>
+                  </div>
+                  <p class="text-[10.5px] text-slate-500 leading-relaxed group-hover:text-slate-700 transition line-clamp-2">${m.desc}</p>
+                  <div class="pt-1 flex items-center justify-between text-[10px] text-maroon-700 font-bold border-t border-slate-100">
+                    <span>Buka Modul</span>
+                    <span class="group-hover:translate-x-1 transition-transform">→</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `,
+      footerHtml: `
+        <button id="btn-cancel-dest-modal" class="px-4 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 transition">
+          Batal
+        </button>
+      `,
+      onMount: (mEl) => {
+        mEl.querySelector("#btn-cancel-dest-modal")?.addEventListener("click", () => closeModal());
+
+        mEl.querySelectorAll(".btn-select-hrd-dest").forEach(card => {
+          card.addEventListener("click", () => {
+            const route = card.getAttribute("data-route");
+            if (!route) return;
+
+            try {
+              sessionStorage.setItem("hrd_selected_employee", JSON.stringify({
+                nama: nama,
+                nik: nik,
+                jabatan: jabatan,
+                divisi: divisi,
+                cabang: cabang
+              }));
+              sessionStorage.setItem("hrd_search_query", nama);
+            } catch (e) {}
+
+            closeModal();
+
+            // Navigasi ke rute tujuan
+            window.location.hash = '#' + route;
+
+            // Auto-fill input pencarian pada halaman tujuan
+            setTimeout(() => {
+              const possibleInputs = document.querySelectorAll(
+                '#cuti-search, #cuti-table-search, #search-karyawan, input[id*="search"], input[placeholder*="Cari"], input[placeholder*="cari"]'
+              );
+              possibleInputs.forEach(inp => {
+                if (inp && (inp.offsetParent !== null || inp.offsetWidth > 0)) {
+                  inp.value = nama;
+                  inp.dispatchEvent(new Event("input", { bubbles: true }));
+                }
+              });
+            }, 350);
+          });
+        });
+      }
+    });
+  }
+
+  function renderCombinedResultsHtml(catalogResults, employeeResults, rawQuery) {
     const q = norm(rawQuery);
     const queryWords = q.split(" ").filter(w => w.length > 0);
 
-    if (results.length === 0) {
+    const totalCount = (catalogResults?.length || 0) + (employeeResults?.length || 0);
+
+    if (totalCount === 0) {
       return `
         <div class="p-5 text-center space-y-3">
           <div class="w-10 h-10 mx-auto rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center">
@@ -556,8 +835,8 @@ export function initGlobalSearch(session) {
             </svg>
           </div>
           <div>
-            <h4 class="text-xs sm:text-sm font-bold text-slate-700">Tidak ada menu atau fitur yang cocok</h4>
-            <p class="text-[11px] text-slate-400 mt-0.5 max-w-xs mx-auto">Tidak ditemukan hasil untuk "<strong>${escapeHtml(rawQuery)}</strong>".</p>
+            <h4 class="text-xs sm:text-sm font-bold text-slate-700">Tidak ada hasil yang cocok</h4>
+            <p class="text-[11px] text-slate-400 mt-0.5 max-w-xs mx-auto">Tidak ditemukan menu${isHrdRole ? ' atau data karyawan' : ''} untuk "<strong>${escapeHtml(rawQuery)}</strong>".</p>
           </div>
           <div class="pt-1 flex flex-wrap justify-center gap-1.5 text-xs">
             <span class="text-[10.5px] font-bold text-slate-400 self-center">Pintasan Cepat:</span>
@@ -573,51 +852,113 @@ export function initGlobalSearch(session) {
       <div class="px-3.5 py-2 bg-slate-50/90 border-b border-slate-100 flex items-center justify-between">
         <span class="text-[10.5px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-maroon-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-          Ditemukan <strong>${results.length}</strong> menu & fitur:
+          Ditemukan <strong>${totalCount}</strong> hasil:
         </span>
         <span class="text-[9.5px] text-slate-400 hidden sm:inline-block">Gunakan ↑ ↓ untuk memilih, Enter untuk membuka</span>
       </div>
       <div class="divide-y divide-slate-100 max-h-96 overflow-y-auto" id="global-search-results-list">
     `;
 
-    results.forEach((item, idx) => {
-      const catClass = getCategoryBadgeClass(item.category);
-      const typeClass = getTypeBadgeClass(item.type);
-      const highlightedTitle = highlightMatches(item.title, queryWords);
-      const highlightedDesc = highlightMatches(item.description, queryWords);
-
+    // 1. Employee Results (HRD Only)
+    if (employeeResults && employeeResults.length > 0) {
       html += `
-        <div 
-          data-index="${idx}" 
-          data-route="${escapeHtml(item.route)}" 
-          class="global-search-result-item group px-3.5 py-2.5 hover:bg-slate-50 cursor-pointer transition flex items-center justify-between gap-2.5"
-        >
-          <div class="flex items-start gap-2.5 min-w-0">
-            <div class="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200/80 text-slate-700 flex items-center justify-center shrink-0 group-hover:bg-maroon-50 group-hover:border-maroon-200 group-hover:text-maroon-700 transition">
-              ${icon(item.icon || 'box', 'w-3.5 h-3.5')}
-            </div>
-            <div class="min-w-0">
-              <div class="flex items-center gap-1.5 flex-wrap">
-                <span class="text-xs sm:text-sm font-bold text-slate-800 group-hover:text-maroon-700 transition truncate">${highlightedTitle}</span>
-                <span class="text-[9px] font-bold px-1.5 py-0.2 rounded border ${catClass}">${item.category}</span>
-                <span class="text-[9px] font-semibold px-1.5 py-0.2 rounded ${typeClass}">${item.type}</span>
-              </div>
-              <p class="text-[10.5px] text-slate-500 mt-0.5 line-clamp-1">${highlightedDesc}</p>
-              <div class="flex items-center gap-2 mt-0.5">
-                <span class="text-[9.5px] font-mono text-slate-400">#${item.route}</span>
-                ${!item.hasAccess ? `<span class="text-[9.5px] font-bold text-amber-600 bg-amber-50 px-1 py-0.2 rounded border border-amber-200">Perlu Role: ${item.roles.join(', ')}</span>` : ''}
-              </div>
-            </div>
-          </div>
-          <div class="shrink-0 flex items-center">
-            <button type="button" class="px-2 py-1 rounded-lg bg-slate-100 group-hover:bg-maroon-700 group-hover:text-white text-slate-600 font-bold text-[11px] transition flex items-center gap-1">
-              <span>Buka</span>
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
-            </button>
-          </div>
+        <div class="px-3 py-1.5 bg-gradient-to-r from-maroon-50 to-amber-50/30 border-b border-maroon-100 flex items-center justify-between">
+          <span class="text-[10.5px] font-black text-maroon-800 uppercase tracking-wide flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 text-maroon-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+            Data Karyawan (Pencarian Role HRD)
+          </span>
+          <span class="text-[9.5px] font-bold text-maroon-600 bg-white/80 border border-maroon-200 px-1.5 py-0.2 rounded">Pilih Menu</span>
         </div>
       `;
-    });
+
+      employeeResults.forEach((emp, empIdx) => {
+        const highlightedName = highlightMatches(emp.nama_karyawan, queryWords);
+        const highlightedNik = highlightMatches(emp.nik_karyawan || emp.nik || "-", queryWords);
+        const cabangStr = emp.cabang || "-";
+        const jabatanStr = emp.jabatan || "-";
+
+        html += `
+          <div 
+            data-type="employee"
+            data-emp-idx="${empIdx}"
+            class="global-search-interactive-item global-search-emp-row group px-3.5 py-2.5 hover:bg-maroon-50/30 cursor-pointer transition flex items-center justify-between gap-2.5 border-l-2 border-transparent hover:border-maroon-600"
+          >
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="w-8 h-8 rounded-xl bg-maroon-100 border border-maroon-200 text-maroon-800 flex items-center justify-center font-bold text-xs shrink-0 group-hover:bg-maroon-700 group-hover:text-white transition">
+                ${escapeHtml((emp.nama_karyawan || "K").charAt(0).toUpperCase())}
+              </div>
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="text-xs sm:text-sm font-bold text-slate-800 group-hover:text-maroon-700 transition truncate">${highlightedName}</span>
+                  <span class="text-[9.5px] font-mono font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200">NIK: ${highlightedNik}</span>
+                  <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">${escapeHtml(emp.status_karyawan || "AKTIF")}</span>
+                </div>
+                <p class="text-[10.5px] text-slate-500 mt-0.5 truncate">${escapeHtml(jabatanStr)} • ${escapeHtml(emp.divisi || "-")} • Cabang: <strong class="text-slate-700">${escapeHtml(cabangStr)}</strong></p>
+              </div>
+            </div>
+            <div class="shrink-0 flex items-center">
+              <button type="button" class="px-2.5 py-1 rounded-lg bg-maroon-50 group-hover:bg-maroon-700 group-hover:text-white text-maroon-700 border border-maroon-200 font-bold text-[11px] transition flex items-center gap-1">
+                <span>Pilih Menu</span>
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+              </button>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    // 2. Menu & Feature Results
+    if (catalogResults && catalogResults.length > 0) {
+      if (employeeResults && employeeResults.length > 0) {
+        html += `
+          <div class="px-3 py-1.5 bg-slate-50 border-y border-slate-100 flex items-center justify-between">
+            <span class="text-[10.5px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h7"/></svg>
+              Menu & Fitur Aplikasi
+            </span>
+          </div>
+        `;
+      }
+
+      catalogResults.forEach((item, catIdx) => {
+        const catClass = getCategoryBadgeClass(item.category);
+        const typeClass = getTypeBadgeClass(item.type);
+        const highlightedTitle = highlightMatches(item.title, queryWords);
+        const highlightedDesc = highlightMatches(item.description, queryWords);
+
+        html += `
+          <div 
+            data-type="menu"
+            data-route="${escapeHtml(item.route)}" 
+            class="global-search-interactive-item global-search-menu-row group px-3.5 py-2.5 hover:bg-slate-50 cursor-pointer transition flex items-center justify-between gap-2.5"
+          >
+            <div class="flex items-start gap-2.5 min-w-0">
+              <div class="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200/80 text-slate-700 flex items-center justify-center shrink-0 group-hover:bg-maroon-50 group-hover:border-maroon-200 group-hover:text-maroon-700 transition">
+                ${icon(item.icon || 'box', 'w-3.5 h-3.5')}
+              </div>
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="text-xs sm:text-sm font-bold text-slate-800 group-hover:text-maroon-700 transition truncate">${highlightedTitle}</span>
+                  <span class="text-[9px] font-bold px-1.5 py-0.2 rounded border ${catClass}">${item.category}</span>
+                  <span class="text-[9px] font-semibold px-1.5 py-0.2 rounded ${typeClass}">${item.type}</span>
+                </div>
+                <p class="text-[10.5px] text-slate-500 mt-0.5 line-clamp-1">${highlightedDesc}</p>
+                <div class="flex items-center gap-2 mt-0.5">
+                  <span class="text-[9.5px] font-mono text-slate-400">#${item.route}</span>
+                  ${!item.hasAccess ? `<span class="text-[9.5px] font-bold text-amber-600 bg-amber-50 px-1 py-0.2 rounded border border-amber-200">Perlu Role: ${item.roles.join(', ')}</span>` : ''}
+                </div>
+              </div>
+            </div>
+            <div class="shrink-0 flex items-center">
+              <button type="button" class="px-2 py-1 rounded-lg bg-slate-100 group-hover:bg-maroon-700 group-hover:text-white text-slate-600 font-bold text-[11px] transition flex items-center gap-1">
+                <span>Buka</span>
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+              </button>
+            </div>
+          </div>
+        `;
+      });
+    }
 
     html += `</div>`;
     return html;
@@ -625,7 +966,8 @@ export function initGlobalSearch(session) {
 
   /* ---------------- DESKTOP SEARCH CONTROLLER ---------------- */
   let desktopSelectedIndex = -1;
-  let desktopResultsList = [];
+  let desktopCurrentCatalogResults = [];
+  let desktopCurrentEmployeeResults = [];
 
   function performDesktopSearch(query) {
     if (!desktopResults || !desktopInput) return;
@@ -636,19 +978,34 @@ export function initGlobalSearch(session) {
       desktopResults.innerHTML = "";
       desktopClearBtn?.classList.add("hidden");
       desktopSelectedIndex = -1;
-      desktopResultsList = [];
+      desktopCurrentCatalogResults = [];
+      desktopCurrentEmployeeResults = [];
       return;
     }
 
     desktopClearBtn?.classList.remove("hidden");
-    desktopResultsList = searchCatalog(raw);
+    desktopCurrentCatalogResults = searchCatalog(raw);
+    desktopCurrentEmployeeResults = isHrdRole ? searchEmployees(raw) : [];
     desktopSelectedIndex = -1;
 
-    desktopResults.innerHTML = renderResultsHtml(desktopResultsList, raw);
+    desktopResults.innerHTML = renderCombinedResultsHtml(desktopCurrentCatalogResults, desktopCurrentEmployeeResults, raw);
     desktopResults.classList.remove("hidden");
 
-    // Bind item clicks
-    desktopResults.querySelectorAll(".global-search-result-item").forEach(itemEl => {
+    // Bind Employee clicks
+    desktopResults.querySelectorAll(".global-search-emp-row").forEach(empRow => {
+      empRow.onclick = () => {
+        const empIdx = parseInt(empRow.getAttribute("data-emp-idx"), 10);
+        const emp = desktopCurrentEmployeeResults[empIdx];
+        if (emp) {
+          desktopResults.classList.add("hidden");
+          desktopInput.blur();
+          openHrdEmployeeDestinationModal(emp);
+        }
+      };
+    });
+
+    // Bind Menu clicks
+    desktopResults.querySelectorAll(".global-search-menu-row").forEach(itemEl => {
       itemEl.onclick = () => {
         const route = itemEl.getAttribute("data-route");
         if (route) {
@@ -673,7 +1030,7 @@ export function initGlobalSearch(session) {
 
   function updateDesktopActiveItem(newIndex) {
     if (!desktopResults) return;
-    const items = desktopResults.querySelectorAll(".global-search-result-item");
+    const items = desktopResults.querySelectorAll(".global-search-interactive-item");
     if (!items || items.length === 0) return;
 
     if (newIndex < 0) newIndex = items.length - 1;
@@ -683,17 +1040,22 @@ export function initGlobalSearch(session) {
 
     items.forEach((item, idx) => {
       if (idx === desktopSelectedIndex) {
-        item.classList.add("bg-maroon-50/80", "border-l-4", "border-maroon-700");
+        item.classList.add("bg-maroon-50", "border-l-4", "border-maroon-700");
         item.scrollIntoView({ block: "nearest" });
       } else {
-        item.classList.remove("bg-maroon-50/80", "border-l-4", "border-maroon-700");
+        item.classList.remove("bg-maroon-50", "border-l-4", "border-maroon-700");
       }
     });
   }
 
   if (desktopInput) {
-    desktopInput.addEventListener("input", (e) => performDesktopSearch(e.target.value));
+    desktopInput.addEventListener("input", (e) => {
+      if (isHrdRole && !cachedEmployees) ensureEmployeesLoaded();
+      performDesktopSearch(e.target.value);
+    });
+
     desktopInput.addEventListener("focus", () => {
+      if (isHrdRole && !cachedEmployees) ensureEmployeesLoaded();
       if (desktopInput.value.trim().length > 0) {
         performDesktopSearch(desktopInput.value);
       }
@@ -706,6 +1068,7 @@ export function initGlobalSearch(session) {
     });
 
     desktopInput.addEventListener("keydown", (e) => {
+      const items = desktopResults ? desktopResults.querySelectorAll(".global-search-interactive-item") : [];
       if (e.key === "ArrowDown") {
         e.preventDefault();
         updateDesktopActiveItem(desktopSelectedIndex + 1);
@@ -714,19 +1077,15 @@ export function initGlobalSearch(session) {
         updateDesktopActiveItem(desktopSelectedIndex - 1);
       } else if (e.key === "Enter") {
         e.preventDefault();
-        if (desktopSelectedIndex >= 0 && desktopResultsList[desktopSelectedIndex]) {
-          const it = desktopResultsList[desktopSelectedIndex];
-          desktopResults.classList.add("hidden");
-          desktopInput.blur();
-          window.location.hash = '#' + it.route;
-        } else if (desktopResultsList.length > 0) {
-          const it = desktopResultsList[0];
-          desktopResults.classList.add("hidden");
-          desktopInput.blur();
-          window.location.hash = '#' + it.route;
+        if (items.length > 0) {
+          const targetIdx = desktopSelectedIndex >= 0 ? desktopSelectedIndex : 0;
+          const targetItem = items[targetIdx];
+          if (targetItem) {
+            targetItem.click();
+          }
         }
       } else if (e.key === "Escape") {
-        desktopResults.classList.add("hidden");
+        desktopResults?.classList.add("hidden");
         desktopInput.blur();
       }
     });
@@ -734,7 +1093,8 @@ export function initGlobalSearch(session) {
 
   /* ---------------- MOBILE SEARCH CONTROLLER ---------------- */
   let mobileSelectedIndex = -1;
-  let mobileResultsList = [];
+  let mobileCurrentCatalogResults = [];
+  let mobileCurrentEmployeeResults = [];
 
   function performMobileSearch(query) {
     if (!mobileResults || !mobileInput) return;
@@ -752,7 +1112,8 @@ export function initGlobalSearch(session) {
         </div>
       `;
       mobileClearBtn?.classList.add("hidden");
-      mobileResultsList = [];
+      mobileCurrentCatalogResults = [];
+      mobileCurrentEmployeeResults = [];
       mobileSelectedIndex = -1;
 
       mobileResults.querySelectorAll(".btn-search-tag-chip").forEach(chip => {
@@ -768,12 +1129,26 @@ export function initGlobalSearch(session) {
     }
 
     mobileClearBtn?.classList.remove("hidden");
-    mobileResultsList = searchCatalog(raw);
+    mobileCurrentCatalogResults = searchCatalog(raw);
+    mobileCurrentEmployeeResults = isHrdRole ? searchEmployees(raw) : [];
     mobileSelectedIndex = -1;
 
-    mobileResults.innerHTML = renderResultsHtml(mobileResultsList, raw);
+    mobileResults.innerHTML = renderCombinedResultsHtml(mobileCurrentCatalogResults, mobileCurrentEmployeeResults, raw);
 
-    mobileResults.querySelectorAll(".global-search-result-item").forEach(itemEl => {
+    // Bind Employee clicks
+    mobileResults.querySelectorAll(".global-search-emp-row").forEach(empRow => {
+      empRow.onclick = () => {
+        const empIdx = parseInt(empRow.getAttribute("data-emp-idx"), 10);
+        const emp = mobileCurrentEmployeeResults[empIdx];
+        if (emp) {
+          closeMobileSearch();
+          openHrdEmployeeDestinationModal(emp);
+        }
+      };
+    });
+
+    // Bind Menu clicks
+    mobileResults.querySelectorAll(".global-search-menu-row").forEach(itemEl => {
       itemEl.onclick = () => {
         const route = itemEl.getAttribute("data-route");
         if (route) {
@@ -796,6 +1171,7 @@ export function initGlobalSearch(session) {
 
   function openMobileSearch() {
     if (!mobileOverlay) return;
+    if (isHrdRole && !cachedEmployees) ensureEmployeesLoaded();
     mobileOverlay.classList.remove("hidden");
     document.body.style.overflow = "hidden";
     if (mobileInput) {
@@ -821,7 +1197,10 @@ export function initGlobalSearch(session) {
   }
 
   if (mobileInput) {
-    mobileInput.addEventListener("input", (e) => performMobileSearch(e.target.value));
+    mobileInput.addEventListener("input", (e) => {
+      if (isHrdRole && !cachedEmployees) ensureEmployeesLoaded();
+      performMobileSearch(e.target.value);
+    });
 
     mobileClearBtn?.addEventListener("click", () => {
       mobileInput.value = "";
@@ -830,11 +1209,10 @@ export function initGlobalSearch(session) {
     });
 
     mobileInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && mobileResultsList.length > 0) {
+      const items = mobileResults ? mobileResults.querySelectorAll(".global-search-interactive-item") : [];
+      if (e.key === "Enter" && items.length > 0) {
         e.preventDefault();
-        const it = mobileResultsList[0];
-        closeMobileSearch();
-        window.location.hash = '#' + it.route;
+        items[0].click();
       } else if (e.key === "Escape") {
         closeMobileSearch();
       }
