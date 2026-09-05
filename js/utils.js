@@ -5619,6 +5619,40 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
       }
     }
 
+	    // 2b. REKAN SATU DIVISI (rekan kerja di divisi & CABANG yang sama — bukan lintas cabang)
+    if (roleUpper === "REKAN_DIVISI" && cleanNama) {
+      const kData = allEmployees.find(k => (k.nama_karyawan || k.nama || "").trim().toLowerCase() === cleanNama);
+      if (!kData) return [];
+
+      const divisi = (kData.divisi || kData.departemen || kData.bagian || "").trim().toLowerCase();
+      const cabang = (kData.cabang || "").trim().toLowerCase();
+
+      // Kalau divisi/cabang karyawan ybs kosong, JANGAN kirim ke siapapun.
+      // Ini sengaja fail-safe: lebih baik tidak ada yang menerima ketimbang
+      // filter kosong dianggap "cocok semua" dan ke-broadcast ke seluruh perusahaan.
+      if (!divisi || !cabang) return [];
+
+      const rekanEmps = allEmployees.filter(k => {
+        if ((k.nama_karyawan || k.nama || "").trim().toLowerCase() === cleanNama) return false; // exclude diri sendiri
+        const kDivisi = (k.divisi || k.departemen || k.bagian || "").trim().toLowerCase();
+        const kCabang = (k.cabang || "").trim().toLowerCase();
+        return kDivisi === divisi && kCabang === cabang;
+      });
+
+      return rekanEmps.map(k => {
+        const u = allUsers.find(user =>
+          (user.nama || "").trim().toLowerCase() === (k.nama_karyawan || k.nama || "").trim().toLowerCase() ||
+          (user.username || "").toLowerCase() === (k.username || k.id || "").toLowerCase()
+        );
+        return {
+          username: u?.username || k.username || k.id || k.nik_karyawan || k.nik,
+          email: u?.email || k.email || "",
+          nama: k.nama_karyawan || k.nama,
+          nik: k.nik_karyawan || k.nik
+        };
+      }).filter(t => t.email);
+    }  
+
     // 3. TARGETING ROLE SPESIFIK (HRD, GM, FINANCE, SPV, MANAGER, dll.)
     const targets = [];
 
