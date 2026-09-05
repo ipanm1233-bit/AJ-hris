@@ -2594,8 +2594,9 @@ export async function mount(container, { session }) {
           const atasanInfo = resolveEmailAndUser(atasanObj, empAtasanNama);
           const atasanCabang = (atasanInfo.cabang || "").toLowerCase();
           const targetCabang = (empCabang || "").toLowerCase();
-          // Filter ketat cabang atasan: harus cabang yang sama atau level pusat
-          const matchCabangAtasan = !atasanCabang || !targetCabang || atasanCabang === targetCabang || atasanCabang.includes("pusat") || atasanCabang.includes("direksi") || atasanCabang.includes("head office");
+          // Fail-closed: atasan langsung hanya boleh menerima info jika data cabangnya
+          // terisi dan sama persis dengan cabang karyawan yang cuti.
+          const matchCabangAtasan = Boolean(targetCabang && atasanCabang && atasanCabang === targetCabang);
           if (matchCabangAtasan && atasanInfo.nama.toLowerCase() !== empNama.toLowerCase()) {
             atasanTargets.push(atasanInfo);
           }
