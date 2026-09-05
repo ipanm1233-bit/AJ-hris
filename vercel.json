@@ -13,6 +13,14 @@
     {
       "path": "/api/cron-check-kontrak",
       "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron-rekap-cuti",
+      "schedule": "45 0 * * *"
+    },
+    {
+      "path": "/api/cron-rekap-cuti",
+      "schedule": "0 10 * * *"
     }
   ]
 }

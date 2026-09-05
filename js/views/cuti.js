@@ -2475,27 +2475,16 @@ export async function mount(container, { session }) {
       const attachments = [];
       try {
         const pdfBase64 = await generateHtmlAsPdfBase64(formHtml);
-        if (pdfBase64) {
-          attachments.push({
-            filename: `Form_Cuti_${cleanEmpName}.pdf`,
-            content: pdfBase64,
-            encoding: "base64",
-            contentType: "application/pdf"
-          });
-        } else {
-          attachments.push({
-            filename: `Form_Cuti_${cleanEmpName}.html`,
-            content: formHtml,
-            contentType: "text/html"
-          });
-        }
-      } catch (ePdf) {
-        console.warn("generateHtmlAsPdfBase64 warning:", ePdf);
+        if (!pdfBase64) throw new Error("Hasil konversi PDF kosong");
         attachments.push({
-          filename: `Form_Cuti_${cleanEmpName}.html`,
-          content: formHtml,
-          contentType: "text/html"
+          filename: `Form_Cuti_${cleanEmpName}.pdf`,
+          content: pdfBase64,
+          encoding: "base64",
+          contentType: "application/pdf"
         });
+      } catch (ePdf) {
+        console.error("Gagal membuat lampiran PDF Form Cuti:", ePdf);
+        throw new Error("Form Cuti PDF gagal dibuat. Email tidak dikirim agar karyawan tidak menerima lampiran yang keliru.");
       }
 
       // 4. Resolusi Penerima Notifikasi (Karyawan, Atasan di Cabang Sama, Rekan Se-Divisi di Cabang Sama)
@@ -2723,13 +2712,16 @@ export async function mount(container, { session }) {
           secondaryNote: "Dokumen cuti resmi telah dilampirkan pada email ini untuk arsip Anda dan telah tersimpan di sistem HRIS CV Andela Jaya."
         });
 
-        await sendEmailNotif(
+        const employeeEmailSent = await sendEmailNotif(
           recipientEmails.join(", "),
           `[HRIS Cuti] Form Cuti Resmi: ${k.nama_karyawan} (${fmtDateShort(pdfData.tanggal)})`,
           emailBodyKaryawan,
           "",
           attachments
         );
+        if (!employeeEmailSent) {
+          throw new Error("Email Form Cuti kepada karyawan gagal dikirim.");
+        }
         toast(`Email Form Cuti terkirim ke karyawan: ${recipientEmails.join(", ")}`, "success");
       } else {
         toast("Catatan: Email karyawan tidak ditemukan, dokumen tersimpan di arsip sistem.", "info");

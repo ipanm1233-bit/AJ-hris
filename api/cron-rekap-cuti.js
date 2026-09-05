@@ -29,6 +29,23 @@ function getWibDateStr(d = new Date()) {
   }).format(d);
 }
 
+function getRecordWibDateStr(value) {
+  if (!value) return "";
+  if (typeof value?.toDate === "function") {
+    return getWibDateStr(value.toDate());
+  }
+
+  const raw = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? raw.substring(0, 10) : getWibDateStr(parsed);
+}
+
+function normalizeBranch(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
 function formatIndoDate(dateStr) {
   if (!dateStr) return "-";
   const parts = String(dateStr).split("T")[0].split("-");
@@ -134,9 +151,13 @@ module.exports = async function handler(req, res) {
     const todayStr = getWibDateStr();
     const todayFormatted = formatIndoDate(todayStr);
 
-    const type = (req.query.type || req.body?.type || "auto").toLowerCase();
-    const targetBranchParam = req.query.branch || req.body?.branch || null;
-    const forceSend = req.query.force === "true" || req.body?.force === true;
+    const cronSchedule = req.headers?.['x-vercel-cron-schedule'] || "";
+    const scheduledType = cronSchedule === "45 0 * * *"
+      ? "morning"
+      : (cronSchedule === "0 10 * * *" ? "evening" : null);
+    const type = (req.query?.type || req.body?.type || scheduledType || "auto").toLowerCase();
+    const targetBranchParam = req.query?.branch || req.body?.branch || null;
+    const forceSend = req.query?.force === "true" || req.body?.force === true;
 
     // 1. Ambil Konfigurasi Email Cabang
     let branchConfig = {
@@ -186,6 +207,8 @@ module.exports = async function handler(req, res) {
           const mSnap = await db.collection('master_cuti').get();
           mSnap.forEach(docSnap => {
             const d = docSnap.data();
+            const status = String(d.status_final || d.status || "APPROVED").toUpperCase();
+            if (status.includes("REJECT") || status.includes("TOLAK")) return;
             const tglStart = d.tanggal || d.tgl || d.tanggal_mulai;
             const tglEnd = d.tanggal_selesai || d.tgl_akhir || tglStart;
             if (tglStart && tglStart <= todayStr && tglEnd >= todayStr) {
@@ -198,7 +221,7 @@ module.exports = async function handler(req, res) {
                   nik: d.nik || "-",
                   jabatan: d.jabatan || "-",
                   divisi: d.divisi || d.departemen || "-",
-                  cabang: d.cabang || "Cirebon",
+                  cabang: String(d.cabang || "").trim(),
                   jenis_cuti: d.type_cuti || d.jenis_cuti || "Cuti Tahunan",
                   periode: `${formatIndoDate(tglStart)}${tglEnd && tglEnd !== tglStart ? ' s/d ' + formatIndoDate(tglEnd) : ''}`,
                   durasi: `${d.count || 1} Hari`,
@@ -220,7 +243,8 @@ module.exports = async function handler(req, res) {
             const isCuti = (p.tipe_form === "FORM_CUTI" || p.form_id === "F-ISO-CUTI" || (p.nama_form || "").toLowerCase().includes("cuti"));
             if (isCuti) {
               const st = (p.status_final || p.status || "").toUpperCase();
-              if (st !== "REJECTED" && st !== "DITOLAK") {
+              const isApproved = st.includes("APPROVED") || st.includes("DISETUJUI") || st.includes("SELESAI");
+              if (isApproved) {
                 const start = p.tanggal_mulai || p.tgl_mulai;
                 const end = p.tanggal_selesai || p.tgl_selesai || start;
                 if (start && start <= todayStr && (end >= todayStr || !end)) {
@@ -233,7 +257,7 @@ module.exports = async function handler(req, res) {
                       nik: p.nik_pemohon || p.nik || "-",
                       jabatan: p.jabatan || p.posisi || "-",
                       divisi: p.divisi || p.departemen || "-",
-                      cabang: p.cabang || "Cirebon",
+                      cabang: String(p.cabang || "").trim(),
                       jenis_cuti: p.kategori_cuti || p.jenis_cuti || "Cuti Tahunan",
                       periode: `${formatIndoDate(start)}${end && end !== start ? ' s/d ' + formatIndoDate(end) : ''}`,
                       durasi: `${p.jumlah_hari || 1} Hari`,
@@ -252,14 +276,14 @@ module.exports = async function handler(req, res) {
         // Group by Cabang
         const branchGroups = {};
         activeLeaves.forEach(item => {
-          const cab = item.cabang || "Cirebon";
-          if (!branchGroups[cab]) branchGroups[cab] = [];
-          branchGroups[cab].push(item);
+          const branchKey = normalizeBranch(item.cabang);
+          if (!branchKey) return;
+          if (!branchGroups[branchKey]) branchGroups[branchKey] = [];
+          branchGroups[branchKey].push(item);
         });
 
-        // Ensure configured branches are processed
+        // Hanya proses cabang yang memang diatur pada menu Konfigurasi.
         const allTargetBranches = Object.keys(branchConfig.branches || {});
-        if (!allTargetBranches.includes("Cirebon")) allTargetBranches.push("Cirebon");
 
         for (const cab of allTargetBranches) {
           if (targetBranchParam && cab.toLowerCase() !== targetBranchParam.toLowerCase()) continue;
@@ -268,10 +292,15 @@ module.exports = async function handler(req, res) {
           if (cabCfg.enabled === false && !forceSend) continue;
 
           const targetEmails = Array.isArray(cabCfg.emails) ? cabCfg.emails.filter(Boolean) : (cabCfg.emails || "").split(",").map(s => s.trim()).filter(Boolean);
-          const emailTo = targetEmails.length > 0 ? targetEmails.join(", ") : (branchConfig.default_cc || "generalaffairhrandelajaya@gmail.com");
+          const emailTo = targetEmails.join(", ");
           const cc = cabCfg.cc || branchConfig.default_cc || "";
 
-          const listCutiCabang = branchGroups[cab] || [];
+          const listCutiCabang = branchGroups[normalizeBranch(cab)] || [];
+
+          if (!emailTo) {
+            results.push({ type: "morning", branch: cab, count: listCutiCabang.length, status: "SKIPPED (No configured recipient)" });
+            continue;
+          }
 
           const tableHeaders = [
             { label: "No", align: "center" },
@@ -333,6 +362,7 @@ module.exports = async function handler(req, res) {
     if (type === "evening" || type === "sore" || (type === "auto")) {
       if (branchConfig.enable_evening || forceSend) {
         const submittedLeaves = [];
+        const submittedKeys = new Set();
 
         try {
           const pSnap = await db.collection('data_pengajuan').get();
@@ -340,14 +370,21 @@ module.exports = async function handler(req, res) {
             const p = docSnap.data();
             const isCuti = (p.tipe_form === "FORM_CUTI" || p.form_id === "F-ISO-CUTI" || (p.nama_form || "").toLowerCase().includes("cuti"));
             if (isCuti) {
-              const submitDate = (p.tgl || p.createdAt || p.created_at || p.tanggal_pengajuan || "").substring(0, 10);
+              const submitDate = getRecordWibDateStr(p.createdAt || p.created_at || p.tanggal_pengajuan || p.tgl);
               if (submitDate === todayStr) {
+                const nama = p.nama_pemohon || p.pemohon || p.nama || "Karyawan";
+                const nik = p.nik_pemohon || p.nik || "-";
+                const start = p.tanggal_mulai || p.tgl_mulai || "";
+                const end = p.tanggal_selesai || p.tgl_selesai || start;
+                const recordKey = `${nik !== "-" ? nik : nama}_${start}_${end}`.toLowerCase();
+                if (submittedKeys.has(recordKey)) return;
+                submittedKeys.add(recordKey);
                 submittedLeaves.push({
-                  nama: p.nama_pemohon || p.pemohon || p.nama || "Karyawan",
-                  nik: p.nik_pemohon || p.nik || "-",
+                  nama,
+                  nik,
                   jabatan: p.jabatan || p.posisi || "-",
                   divisi: p.divisi || p.departemen || "-",
-                  cabang: p.cabang || "Cirebon",
+                  cabang: String(p.cabang || "").trim(),
                   jenis_cuti: p.kategori_cuti || p.jenis_cuti || "Cuti Tahunan",
                   periode: `${formatIndoDate(p.tanggal_mulai)}${p.tanggal_selesai && p.tanggal_selesai !== p.tanggal_mulai ? ' s/d ' + formatIndoDate(p.tanggal_selesai) : ''}`,
                   durasi: `${p.jumlah_hari || 1} Hari`,
@@ -366,19 +403,21 @@ module.exports = async function handler(req, res) {
           const mSnap = await db.collection('master_cuti').get();
           mSnap.forEach(docSnap => {
             const m = docSnap.data();
-            const submitDate = (m.createdAt || m.created_at || m.tgl || m.tanggal_input || m.tanggal || "").substring(0, 10);
+            const submitDate = getRecordWibDateStr(m.createdAt || m.created_at || m.tgl || m.tanggal_input || m.tanggal);
             if (submitDate === todayStr) {
-              const already = submittedLeaves.some(s => 
-                (s.nama === m.nama_karyawan || s.nik === m.nik) &&
-                (s.periode && s.periode.includes(m.tanggal))
-              );
-              if (!already) {
+              const nama = m.nama_karyawan || m.nama || "Karyawan";
+              const nik = m.nik || m.nik_karyawan || "-";
+              const start = m.tanggal || m.tanggal_mulai || "";
+              const end = m.tanggal_selesai || m.tgl_akhir || start;
+              const recordKey = `${nik !== "-" ? nik : nama}_${start}_${end}`.toLowerCase();
+              if (!submittedKeys.has(recordKey)) {
+                submittedKeys.add(recordKey);
                 submittedLeaves.push({
-                  nama: m.nama_karyawan || m.nama || "Karyawan",
-                  nik: m.nik || m.nik_karyawan || "-",
+                  nama,
+                  nik,
                   jabatan: m.jabatan || "-",
                   divisi: m.divisi || "-",
-                  cabang: m.cabang || "Cirebon",
+                  cabang: String(m.cabang || "").trim(),
                   jenis_cuti: m.type_cuti || "Cuti Tahunan",
                   periode: `${formatIndoDate(m.tanggal)}${m.tanggal_selesai && m.tanggal_selesai !== m.tanggal ? ' s/d ' + formatIndoDate(m.tanggal_selesai) : ''}`,
                   durasi: `${m.count || 1} Hari`,
@@ -395,13 +434,13 @@ module.exports = async function handler(req, res) {
         // Group by Cabang
         const branchGroups = {};
         submittedLeaves.forEach(item => {
-          const cab = item.cabang || "Cirebon";
-          if (!branchGroups[cab]) branchGroups[cab] = [];
-          branchGroups[cab].push(item);
+          const branchKey = normalizeBranch(item.cabang);
+          if (!branchKey) return;
+          if (!branchGroups[branchKey]) branchGroups[branchKey] = [];
+          branchGroups[branchKey].push(item);
         });
 
         const allTargetBranches = Object.keys(branchConfig.branches || {});
-        if (!allTargetBranches.includes("Cirebon")) allTargetBranches.push("Cirebon");
 
         for (const cab of allTargetBranches) {
           if (targetBranchParam && cab.toLowerCase() !== targetBranchParam.toLowerCase()) continue;
@@ -410,10 +449,15 @@ module.exports = async function handler(req, res) {
           if (cabCfg.enabled === false && !forceSend) continue;
 
           const targetEmails = Array.isArray(cabCfg.emails) ? cabCfg.emails.filter(Boolean) : (cabCfg.emails || "").split(",").map(s => s.trim()).filter(Boolean);
-          const emailTo = targetEmails.length > 0 ? targetEmails.join(", ") : (branchConfig.default_cc || "generalaffairhrandelajaya@gmail.com");
+          const emailTo = targetEmails.join(", ");
           const cc = cabCfg.cc || branchConfig.default_cc || "";
 
-          const listPengajuanCabang = branchGroups[cab] || [];
+          const listPengajuanCabang = branchGroups[normalizeBranch(cab)] || [];
+
+          if (!emailTo) {
+            results.push({ type: "evening", branch: cab, count: listPengajuanCabang.length, status: "SKIPPED (No configured recipient)" });
+            continue;
+          }
 
           const tableHeaders = [
             { label: "No", align: "center" },
