@@ -3,18 +3,38 @@ const crypto = require('crypto');
 const { enforceRateLimit, writeAuditLog } = require('../lib/security.js');
 const { aggregateFingerprintLogs, computeAttendance } = require('../lib/fingerprint-normalizer.js');
 
-function verifyBridgeSignature(req) {
-  const secret = process.env.FINGERPRINT_BRIDGE_SECRET || '';
+function verifyBridgeSignature(req, rawBody) {
+  const secret = String(process.env.FINGERPRINT_BRIDGE_SECRET || '').trim();
   const timestamp = String(req.headers?.['x-bridge-timestamp'] || '');
   const signature = String(req.headers?.['x-bridge-signature'] || '').toLowerCase();
   if (!secret || !timestamp || !signature) return false;
   const timestampMs = Number(timestamp);
   if (!Number.isFinite(timestampMs) || Math.abs(Date.now() - timestampMs) > 5 * 60_000) return false;
-  const message = `${timestamp}.${JSON.stringify(req.body || {})}`;
+  const message = `${timestamp}.${rawBody}`;
   const expected = crypto.createHmac('sha256', secret).update(message).digest('hex');
   const a = Buffer.from(signature);
   const b = Buffer.from(expected);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+async function readJsonBody(req) {
+  if (req.body !== undefined && req.body !== null) {
+    const rawBody = Buffer.isBuffer(req.body)
+      ? req.body.toString('utf8')
+      : typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    return { rawBody, body: typeof req.body === 'object' && !Buffer.isBuffer(req.body) ? req.body : JSON.parse(rawBody) };
+  }
+
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > 2 * 1024 * 1024) throw new Error('Request terlalu besar');
+    chunks.push(buffer);
+  }
+  const rawBody = Buffer.concat(chunks).toString('utf8');
+  return { rawBody, body: JSON.parse(rawBody) };
 }
 
 /**
@@ -50,9 +70,14 @@ function verifyBridgeSignature(req) {
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Metode tidak diizinkan' });
   if (!enforceRateLimit(req, res, { namespace: 'sync-absen', limit: 30, windowMs: 60_000 })) return;
-  if (!verifyBridgeSignature(req)) return res.status(401).json({ success: false, error: 'Signature fingerprint bridge tidak valid.' });
 
   try {
+    const { rawBody, body } = await readJsonBody(req);
+    req.body = body;
+    if (!verifyBridgeSignature(req, rawBody)) {
+      return res.status(401).json({ success: false, error: 'Signature fingerprint bridge tidak valid.' });
+    }
+
     const { db, error } = getFirebaseAdmin();
     if (!db) {
       return res.status(500).json({
