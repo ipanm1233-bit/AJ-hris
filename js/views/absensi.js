@@ -459,11 +459,14 @@ export async function mount(container, { session } = {}) {
  const uid = genId("ABS");
  const payload = {
  id: uid,
- nik: empNik,
- nama: empNama,
+ nik: empNik || empObj?.nik || empObj?.nik_karyawan || "",
+ nama: empNama || empObj?.nama_karyawan || empObj?.nama || "",
  tanggal: tglStr,
+ cabang: getVal(["CABANG", "BRANCH"]) || empObj?.cabang || "",
+ sumber: "IMPORT_EXCEL",
  jadwal_masuk: getVal(["JAM KERJA MASUK"]) || shift.masuk,
  jadwal_keluar: getVal(["JAM KERJA KELUAR"]) || shift.pulang,
+ // Scan selalu berasal dari file; jangan isi jam dummy jika kolom kosong.
  scan_masuk: getVal(["JAM MASUK", "SCAN MASUK"]),
  scan_keluar: getVal(["JAM KELUAR", "SCAN KELUAR"])
  };
