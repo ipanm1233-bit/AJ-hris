@@ -1,4 +1,4 @@
-const { admin, getFirebaseAdmin } = require('./firebase-admin.js');
+const { admin, getFirebaseAdmin } = require('../lib/firebase-admin.js');
 const crypto = require('crypto');
 const { enforceRateLimit, writeAuditLog } = require('../lib/security.js');
 const { aggregateFingerprintLogs, computeAttendance } = require('../lib/fingerprint-normalizer.js');

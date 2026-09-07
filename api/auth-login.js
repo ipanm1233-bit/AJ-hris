@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { getFirebaseAdmin } = require('./firebase-admin.js');
+const { getFirebaseAdmin } = require('../lib/firebase-admin.js');
 const { enforceRateLimit, writeAuditLog, assertAllowedKeys, verifyAppCheck } = require('../lib/security.js');
 
 function cleanIdentifier(value) {

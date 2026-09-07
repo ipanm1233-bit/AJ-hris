@@ -1,4 +1,4 @@
-const { getFirebaseAdmin } = require('./firebase-admin.js');
+const { getFirebaseAdmin } = require('../lib/firebase-admin.js');
 const { requireCronSecret, enforceRateLimit, writeAuditLog } = require('../lib/security.js');
 
 module.exports = async function handler(req, res) {

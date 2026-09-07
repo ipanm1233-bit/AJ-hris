@@ -6,7 +6,7 @@ Dokumen ini wajib diikuti berurutan. Jangan deploy `firestore.rules` ke producti
 
 1. Buat backup Firestore production dan lakukan uji restore ke project staging.
 2. Ubah repository menjadi private.
-3. Rotasi credential Kanal, token fingerprint, Gmail App Password, Gemini key, dan Firebase service account yang pernah dibagikan.
+3. Rotasi token fingerprint, Gmail App Password, Gemini key, dan Firebase service account yang pernah dibagikan.
 4. Aktifkan GitHub secret scanning, push protection, Dependabot, branch protection, dan 2FA.
 5. Buat Firebase project dan Vercel project staging yang terpisah dari production.
 
@@ -22,9 +22,6 @@ Isi untuk Preview terlebih dahulu, lalu Production setelah pengujian:
 - `GMAIL_USER`
 - `GMAIL_APP_PASSWORD`
 - `GEMINI_API_KEY`
-- `KANAL_API_KEY`
-- `KANAL_SECRET_KEY`
-- `KANAL_ACCESS_TOKEN`
 - `FINGERPRINT_BRIDGE_SECRET`
 - `FINGERPRINT_TIMEZONE=Asia/Jakarta`
 - `FINGERPRINT_MIN_WORK_GAP_MINUTES=120`
@@ -103,7 +100,6 @@ Rate limiter di kode membatasi satu instance fungsi. Tambahkan aturan Vercel Fir
 - `/api/auth-login`: 7 request per 15 menit per IP.
 - `/api/gemini`: 20 request per jam per pengguna/IP.
 - `/api/send-email`: 30 request per jam per pengguna/IP.
-- `/api/kanal-proxy`: hanya method POST dan rate limit.
 - Blok negara yang tidak relevan jika kebijakan perusahaan mengizinkan.
 
 ## 9. Acceptance test wajib

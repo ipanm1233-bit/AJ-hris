@@ -1,4 +1,4 @@
-const { admin, getFirebaseAdmin } = require('./firebase-admin.js');
+const { admin, getFirebaseAdmin } = require('../lib/firebase-admin.js');
 const nodemailer = require('nodemailer');
 const { requireCronSecret, enforceRateLimit, writeAuditLog } = require('../lib/security.js');
 
