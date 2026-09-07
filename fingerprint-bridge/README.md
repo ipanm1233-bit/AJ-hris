@@ -2,6 +2,17 @@
 
 Bridge ini dijalankan pada satu komputer Windows kantor yang berada dalam LAN yang sama dengan mesin. Bridge **hanya membaca** log; tidak menghapus log atau pengguna dari mesin.
 
+## Pemasangan mudah melalui HRIS (disarankan)
+
+1. Buka **Absensi → Konfigurasi Mesin** sebagai HRD.
+2. Tambahkan cabang, nama mesin, IP lokal, port, dan interval sinkronisasi.
+3. Salin perintah pemasangan yang dibuat HRIS.
+4. Jalankan perintah tersebut sekali pada PowerShell komputer cabang.
+
+Installer akan memasangkan komputer menggunakan kode sekali pakai, menguji koneksi, dan membuat auto-start Windows. IP, port, cabang, dan interval berikutnya dapat diubah dari HRIS tanpa mengedit `.env` lagi.
+
+Bagian konfigurasi manual di bawah tetap tersedia untuk connector Cirebon yang sudah terpasang sebelumnya.
+
 ## Persiapan
 
 1. Pasang Node.js 22 LTS pada komputer kantor.

@@ -7,6 +7,21 @@ const {
   aggregateFingerprintLogs,
   computeAttendance
 } = require('../lib/fingerprint-normalizer.js');
+const fingerprintApiHelpers = require('../api/sync-absen.js')._test;
+
+test('accepts only private IPv4 addresses for LAN fingerprint configuration', () => {
+  assert.equal(fingerprintApiHelpers.validPrivateIpv4('192.168.1.201'), true);
+  assert.equal(fingerprintApiHelpers.validPrivateIpv4('10.10.0.5'), true);
+  assert.equal(fingerprintApiHelpers.validPrivateIpv4('172.20.1.8'), true);
+  assert.equal(fingerprintApiHelpers.validPrivateIpv4('8.8.8.8'), false);
+  assert.equal(fingerprintApiHelpers.validPrivateIpv4('192.168.1.999'), false);
+});
+
+test('creates strong human-readable one-time pairing codes', () => {
+  const code = fingerprintApiHelpers.pairingCode();
+  assert.match(code, /^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+  assert.notEqual(fingerprintApiHelpers.secretHash(code), code);
+});
 
 test('keeps device-local timestamps unchanged instead of shifting them by seven hours', () => {
   assert.deepEqual(parseFingerprintTimestamp('2026-09-07 07:55:12'), {

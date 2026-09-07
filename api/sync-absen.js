@@ -1,6 +1,6 @@
 const { admin, getFirebaseAdmin } = require('../lib/firebase-admin.js');
 const crypto = require('crypto');
-const { enforceRateLimit, writeAuditLog } = require('../lib/security.js');
+const { enforceRateLimit, writeAuditLog, requireFirebaseAuth } = require('../lib/security.js');
 const { aggregateFingerprintLogs, computeAttendance } = require('../lib/fingerprint-normalizer.js');
 
 function normalizePersonName(value) {
@@ -29,6 +29,195 @@ function verifyBridgeSignature(req, rawBody) {
   const a = Buffer.from(signature);
   const b = Buffer.from(expected);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function secretHash(value) {
+  return crypto.createHash('sha256').update(String(value || '')).digest('hex');
+}
+
+function timingSafeTextEqual(left, right) {
+  const a = Buffer.from(String(left || ''));
+  const b = Buffer.from(String(right || ''));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function cleanDeviceId(value) {
+  return String(value || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+}
+
+function validPrivateIpv4(value) {
+  const parts = String(value || '').trim().split('.').map(Number);
+  if (parts.length !== 4 || parts.some(part => !Number.isInteger(part) || part < 0 || part > 255)) return false;
+  return parts[0] === 10 || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) || (parts[0] === 192 && parts[1] === 168);
+}
+
+function pairingCode() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = crypto.randomBytes(12);
+  const value = [...bytes].map(byte => alphabet[byte % alphabet.length]).join('');
+  return `${value.slice(0, 4)}-${value.slice(4, 8)}-${value.slice(8, 12)}`;
+}
+
+function publicDeviceConfig(snapshot) {
+  const data = snapshot.data() || {};
+  const lastSeenAt = data.lastSeenAt?.toDate?.()?.toISOString?.() || data.lastSeenAt || null;
+  const pairedAt = data.pairedAt?.toDate?.()?.toISOString?.() || data.pairedAt || null;
+  const online = Boolean(lastSeenAt) && Date.now() - new Date(lastSeenAt).getTime() <= 15 * 60_000;
+  return {
+    id: snapshot.id,
+    name: String(data.name || ''),
+    branch: normalizeBranch(data.branch),
+    ip: String(data.ip || ''),
+    port: Number(data.port || 4370),
+    intervalMinutes: Number(data.intervalMinutes || 5),
+    enabled: data.enabled !== false,
+    paired: Boolean(data.tokenHash),
+    pairedAt,
+    lastSeenAt,
+    online,
+    lastSyncAt: data.lastSyncAt?.toDate?.()?.toISOString?.() || data.lastSyncAt || null,
+    lastError: String(data.lastError || '').slice(0, 300)
+  };
+}
+
+function validateDeviceInput(body) {
+  const branch = normalizeBranch(body?.branch);
+  const name = String(body?.name || '').trim().slice(0, 80);
+  const ip = String(body?.ip || '').trim();
+  const port = Number(body?.port || 4370);
+  const intervalMinutes = Number(body?.intervalMinutes || 5);
+  if (!branch || !/^[A-Z0-9 _-]{2,50}$/.test(branch)) throw new Error('Nama cabang tidak valid.');
+  if (!name) throw new Error('Nama mesin wajib diisi.');
+  if (!validPrivateIpv4(ip)) throw new Error('Alamat IP wajib berupa IP lokal, misalnya 192.168.1.201.');
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Port mesin tidak valid.');
+  if (!Number.isInteger(intervalMinutes) || intervalMinutes < 1 || intervalMinutes > 1440) throw new Error('Interval sinkronisasi tidak valid.');
+  return { branch, name, ip, port, intervalMinutes };
+}
+
+async function handleAdminDeviceAction(req, res, body) {
+  const context = await requireFirebaseAuth(req, res, { roles: ['HRD', 'SUPERADMIN'] });
+  if (!context) return true;
+  if (!enforceRateLimit(req, res, { namespace: 'fingerprint-admin', key: context.user.uid, limit: 60, windowMs: 60 * 60_000 })) return true;
+  const devices = context.db.collection('fingerprint_devices');
+
+  if (body.action === 'admin_list_devices') {
+    const snapshot = await devices.get();
+    const rows = snapshot.docs.map(publicDeviceConfig).sort((a, b) => a.branch.localeCompare(b.branch) || a.name.localeCompare(b.name));
+    res.status(200).json({ success: true, devices: rows });
+    return true;
+  }
+
+  if (body.action === 'admin_create_device') {
+    let input;
+    try { input = validateDeviceInput(body); }
+    catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+      return true;
+    }
+    const ref = devices.doc();
+    const code = pairingCode();
+    await ref.set({
+      ...input,
+      enabled: true,
+      tokenHash: '',
+      pairingCodeHash: secretHash(code.replace(/-/g, '')),
+      pairingExpiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdBy: context.user.uid,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    await writeAuditLog(context.db, req, context.user, {
+      action: 'FINGERPRINT_DEVICE_CREATED', module: 'ATTENDANCE', recordId: ref.id,
+      metadata: { branch: input.branch, name: input.name }
+    });
+    res.status(200).json({ success: true, device: { id: ref.id, ...input, enabled: true, paired: false }, pairingCode: code, expiresInMinutes: 30 });
+    return true;
+  }
+
+  const id = cleanDeviceId(body.deviceId);
+  if (!id) {
+    res.status(400).json({ success: false, error: 'ID mesin tidak valid.' });
+    return true;
+  }
+  const ref = devices.doc(id);
+  const snapshot = await ref.get();
+  if (!snapshot.exists) {
+    res.status(404).json({ success: false, error: 'Konfigurasi mesin tidak ditemukan.' });
+    return true;
+  }
+
+  if (body.action === 'admin_update_device') {
+    let input;
+    try { input = validateDeviceInput(body); }
+    catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+      return true;
+    }
+    await ref.set({ ...input, enabled: body.enabled !== false, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    await writeAuditLog(context.db, req, context.user, {
+      action: 'FINGERPRINT_DEVICE_UPDATED', module: 'ATTENDANCE', recordId: id,
+      metadata: { branch: input.branch, name: input.name, enabled: body.enabled !== false }
+    });
+    const updated = await ref.get();
+    res.status(200).json({ success: true, device: publicDeviceConfig(updated) });
+    return true;
+  }
+
+  if (body.action === 'admin_pairing_code') {
+    const code = pairingCode();
+    await ref.set({
+      pairingCodeHash: secretHash(code.replace(/-/g, '')),
+      pairingExpiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+      tokenHash: '',
+      pairedAt: admin.firestore.FieldValue.delete(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    res.status(200).json({ success: true, pairingCode: code, expiresInMinutes: 30 });
+    return true;
+  }
+
+  res.status(400).json({ success: false, error: 'Tindakan konfigurasi mesin tidak dikenali.' });
+  return true;
+}
+
+async function pairDevice(req, res, db, body) {
+  const code = String(body?.pairingCode || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length !== 12) return res.status(400).json({ success: false, error: 'Format kode pairing tidak valid.' });
+  if (!enforceRateLimit(req, res, { namespace: 'fingerprint-pair', limit: 8, windowMs: 15 * 60_000 })) return;
+  const snapshot = await db.collection('fingerprint_devices').where('pairingCodeHash', '==', secretHash(code)).limit(2).get();
+  if (snapshot.empty || snapshot.size !== 1) return res.status(401).json({ success: false, error: 'Kode pairing salah atau sudah tidak berlaku.' });
+  const deviceSnapshot = snapshot.docs[0];
+  const data = deviceSnapshot.data();
+  if (data.enabled === false || !data.pairingExpiresAt || new Date(data.pairingExpiresAt).getTime() < Date.now()) {
+    return res.status(401).json({ success: false, error: 'Kode pairing sudah kedaluwarsa. Buat kode baru dari HRIS.' });
+  }
+  const token = crypto.randomBytes(32).toString('hex');
+  await deviceSnapshot.ref.set({
+    tokenHash: secretHash(token),
+    pairingCodeHash: admin.firestore.FieldValue.delete(),
+    pairingExpiresAt: admin.firestore.FieldValue.delete(),
+    pairedAt: admin.firestore.FieldValue.serverTimestamp(),
+    lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
+    lastError: '',
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  return res.status(200).json({
+    success: true,
+    deviceId: deviceSnapshot.id,
+    deviceToken: token,
+    config: publicDeviceConfig({ id: deviceSnapshot.id, data: () => ({ ...data, tokenHash: secretHash(token) }) })
+  });
+}
+
+async function authenticatePairedDevice(req, db) {
+  const id = cleanDeviceId(req.headers?.['x-fingerprint-device-id']);
+  const token = String(req.headers?.['x-fingerprint-device-token'] || '').trim();
+  const timestamp = Number(req.headers?.['x-bridge-timestamp']);
+  if (!id || token.length < 32 || !Number.isFinite(timestamp) || Math.abs(Date.now() - timestamp) > 5 * 60_000) return null;
+  const snapshot = await db.collection('fingerprint_devices').doc(id).get();
+  if (!snapshot.exists || snapshot.data()?.enabled === false || !timingSafeTextEqual(secretHash(token), snapshot.data()?.tokenHash)) return null;
+  await snapshot.ref.set({ lastSeenAt: admin.firestore.FieldValue.serverTimestamp(), lastError: '' }, { merge: true });
+  return { id, branch: normalizeBranch(snapshot.data()?.branch), snapshot };
 }
 
 async function readJsonBody(req) {
@@ -83,13 +272,14 @@ async function readJsonBody(req) {
  */
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Metode tidak diizinkan' });
-  if (!enforceRateLimit(req, res, { namespace: 'sync-absen', limit: 30, windowMs: 60_000 })) return;
 
   try {
     const { rawBody, body } = await readJsonBody(req);
     req.body = body;
-    if (!verifyBridgeSignature(req, rawBody)) {
-      return res.status(401).json({ success: false, error: 'Signature fingerprint bridge tidak valid.' });
+
+    if (String(body?.action || '').startsWith('admin_')) {
+      await handleAdminDeviceAction(req, res, body);
+      return;
     }
 
     const { db, error } = getFirebaseAdmin();
@@ -99,10 +289,40 @@ module.exports = async function handler(req, res) {
         error: error || "Firebase Admin environment variables are not configured."
       });
     }
-    const branch = normalizeBranch(req.body?.branch);
+
+    if (body?.action === 'pair') {
+      await pairDevice(req, res, db, body);
+      return;
+    }
+
+    const pairedDevice = await authenticatePairedDevice(req, db);
+    const legacyAuthenticated = !pairedDevice && verifyBridgeSignature(req, rawBody);
+    if (!pairedDevice && !legacyAuthenticated) {
+      return res.status(401).json({ success: false, error: 'Autentikasi fingerprint bridge tidak valid.' });
+    }
+    const rateKey = pairedDevice?.id || 'legacy';
+    if (!enforceRateLimit(req, res, { namespace: 'sync-absen', key: rateKey, limit: 30, windowMs: 60_000 })) return;
+
+    const branch = pairedDevice?.branch || normalizeBranch(req.body?.branch);
     if (!branch) return res.status(400).json({ success: false, error: 'Cabang mesin fingerprint wajib diisi.' });
     const safeBranch = branch.replace(/[^A-Z0-9_-]/g, '_').slice(0, 50);
     const syncStateRef = db.collection('system_metadata').doc(`fingerprint_sync_${safeBranch}`);
+
+    if (req.body?.action === 'heartbeat') {
+      if (!pairedDevice) return res.status(400).json({ success: false, error: 'Heartbeat hanya tersedia untuk mesin yang sudah dipasangkan.' });
+      const lastError = String(req.body?.error || '').trim().slice(0, 300);
+      await pairedDevice.snapshot.ref.set({
+        lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastError
+      }, { merge: true });
+      return res.status(200).json({ success: true });
+    }
+
+    if (req.body?.action === 'config') {
+      if (!pairedDevice) return res.status(400).json({ success: false, error: 'Konfigurasi pusat hanya tersedia untuk mesin yang sudah dipasangkan.' });
+      return res.status(200).json({ success: true, config: publicDeviceConfig(pairedDevice.snapshot) });
+    }
+
     if (req.body?.action === 'status') {
       const stateSnap = await syncStateRef.get();
       let latestDate = stateSnap.exists ? String(stateSnap.data()?.latestDate || '') : '';
@@ -267,6 +487,13 @@ module.exports = async function handler(req, res) {
       action: 'FINGERPRINT_SYNC', module: 'ATTENDANCE',
       metadata: { branch, processed_records: count, raw_scans: logs.length, invalid_logs: invalidLogs, unmatched_count: unmatchedIds.length }
     });
+    if (pairedDevice) {
+      await pairedDevice.snapshot.ref.set({
+        lastSyncAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastError: ''
+      }, { merge: true });
+    }
     res.status(200).json({
       success: true,
       message: `${count} data absen (${logs.length} scan mentah) berhasil disinkronkan.`,
@@ -283,3 +510,5 @@ module.exports = async function handler(req, res) {
     res.status(500).json({ success: false, error: "Gagal memproses sinkronisasi fingerprint." });
   }
 };
+
+module.exports._test = { validPrivateIpv4, cleanDeviceId, pairingCode, secretHash, normalizeBranch };

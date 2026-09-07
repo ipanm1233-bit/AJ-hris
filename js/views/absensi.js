@@ -3,6 +3,23 @@ import { toast, genId, fsGetAll, escapeHtml, openModal, closeModal, formatUangJa
 import { skeletonRows, emptyState } from "../components.js";
 import { callGasArchiveWebApp } from "../gas-integration.js";
 import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
+import { authFetch } from "../api-client.js";
+
+async function fingerprintApi(action, payload = {}) {
+ const response = await authFetch('/api/sync-absen', {
+ method: 'POST',
+ body: JSON.stringify({ action, ...payload })
+ });
+ const result = await response.json().catch(() => ({}));
+ if (!response.ok || result.success === false) throw new Error(result.error || `HTTP ${response.status}`);
+ return result;
+}
+
+function fingerprintInstallCommand(pairingCode) {
+ const installer = 'https://raw.githubusercontent.com/ipanm1233-bit/AJ-hris/security/firebase-auth-hardening/fingerprint-bridge/install.ps1';
+ const origin = window.location.origin;
+ return `Invoke-WebRequest "${installer}" -OutFile "$env:TEMP\\ajhris-fingerprint-install.ps1"; powershell -ExecutionPolicy Bypass -File "$env:TEMP\\ajhris-fingerprint-install.ps1" -HrisUrl "${origin}" -PairingCode "${pairingCode}"`;
+}
 
 function getTwoRunningMonthsRange() {
  const now = new Date();
@@ -716,21 +733,49 @@ export async function mount(container, { session } = {}) {
  if (btnConfigFingerprint) {
  btnConfigFingerprint.onclick = () => {
  openModal({
- title: "Informasi Koneksi Fingerprint",
+ title: "Konfigurasi Mesin Fingerprint",
+ size: "lg",
  bodyHtml: `
- <div class="space-y-4 text-left">
+ <div class="space-y-4 text-left min-w-0">
  <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-xs text-indigo-800">
- <p class="font-bold">Solution X150 — Agent Otomatis</p>
- <p class="mt-1">Log mesin dibaca oleh agent pada komputer kantor dan dikirim ke HRIS setiap beberapa menit. Kredensial koneksi tidak disimpan di browser.</p>
+ <p class="font-bold">Connector per Cabang</p>
+ <p class="mt-1">Tambahkan mesin, lalu jalankan satu perintah pemasangan pada komputer yang satu jaringan dengan mesin. Setelah itu sinkronisasi berjalan otomatis.</p>
  </div>
- <div class="rounded-xl border border-slate-200 p-3 text-xs text-slate-600 space-y-1">
- <p><b>Status:</b> konfigurasi dilakukan pada komputer bridge.</p>
- <p><b>Keamanan:</b> secret hanya tersimpan sebagai environment variable lokal dan Vercel.</p>
- <p><b>Catatan:</b> tombol “Muat Data Terbaru” tidak membuat data contoh ketika mesin tidak terhubung.</p>
+
+ <div id="fp-device-list" class="space-y-3">
+   <div class="p-4 text-center text-xs text-slate-500">Memuat konfigurasi mesin...</div>
  </div>
- <div class="pt-2 border-t border-slate-100">
- <p class="text-[11px] font-bold text-slate-600 uppercase">Status Retensi & Otomasi Archive:</p>
- <p class="text-xs text-slate-500 mt-0.5">Firebase mempertahankan <b>maksimal 60 hari</b> data absensi per karyawan. Data >60 hari secara otomatis dapat diarsipkan ke Google Sheets agar database tetap ringan.</p>
+
+ <form id="fp-add-form" class="border border-slate-200 rounded-xl p-3 space-y-3">
+   <p class="text-xs font-bold text-slate-700">Tambah Mesin Baru</p>
+   <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+     <label class="text-[11px] text-slate-600">Cabang
+       <input id="fp-new-branch" value="MALANG" required class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-xs uppercase">
+     </label>
+     <label class="text-[11px] text-slate-600">Nama mesin
+       <input id="fp-new-name" value="Fingerprint Malang" required class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-xs">
+     </label>
+     <label class="text-[11px] text-slate-600">Alamat IP lokal
+       <input id="fp-new-ip" placeholder="Contoh: 192.168.1.201" required class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-mono">
+     </label>
+     <div class="grid grid-cols-2 gap-2">
+       <label class="text-[11px] text-slate-600">Port
+         <input id="fp-new-port" type="number" value="4370" min="1" max="65535" required class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-mono">
+       </label>
+       <label class="text-[11px] text-slate-600">Interval (menit)
+         <input id="fp-new-interval" type="number" value="5" min="1" max="1440" required class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-xs">
+       </label>
+     </div>
+   </div>
+   <button id="fp-add-button" type="submit" class="w-full bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-semibold px-4 py-2.5 rounded-lg">Tambah & Buat Kode Pairing</button>
+ </form>
+
+ <div id="fp-pairing-result" class="hidden rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+   <p class="text-xs font-bold text-emerald-900">Kode pairing berlaku selama 30 menit</p>
+   <p id="fp-pairing-code" class="text-xl font-mono font-bold tracking-wider text-emerald-800"></p>
+   <p class="text-[11px] text-emerald-800">Pada komputer cabang, buka PowerShell lalu tempel perintah pemasangan berikut.</p>
+   <textarea id="fp-install-command" readonly rows="4" class="w-full p-2 border border-emerald-200 rounded-lg bg-white text-[10px] font-mono"></textarea>
+   <button id="fp-copy-command" type="button" class="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold px-3 py-2 rounded-lg">Salin Perintah Pemasangan</button>
  </div>
  </div>
  `,
@@ -739,6 +784,124 @@ export async function mount(container, { session } = {}) {
  `,
  onMount: m => {
  m.querySelector("#btn-cfg-fp-close").onclick = closeModal;
+
+ const listEl = m.querySelector('#fp-device-list');
+ const pairingBox = m.querySelector('#fp-pairing-result');
+ const showPairing = code => {
+   pairingBox.classList.remove('hidden');
+   m.querySelector('#fp-pairing-code').textContent = code;
+   m.querySelector('#fp-install-command').value = fingerprintInstallCommand(code);
+   pairingBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+ };
+
+ const renderDevices = devices => {
+   if (!devices.length) {
+     listEl.innerHTML = `<div class="p-4 border border-dashed border-slate-300 rounded-xl text-center text-xs text-slate-500">Belum ada mesin yang dikonfigurasi melalui HRIS.</div>`;
+     return;
+   }
+   listEl.innerHTML = devices.map(device => {
+     const hasError = Boolean(device.online && device.lastError);
+     const statusClass = hasError ? 'bg-red-100 text-red-700' : device.online ? 'bg-emerald-100 text-emerald-700' : device.paired ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600';
+     const statusText = hasError ? 'Koneksi mesin bermasalah' : device.online ? 'Online' : device.paired ? 'Offline' : 'Belum dipasangkan';
+     const lastSeen = device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString('id-ID') : 'Belum pernah';
+     return `
+       <div class="fp-device-card border border-slate-200 rounded-xl p-3 space-y-2" data-device-id="${escapeHtml(device.id)}">
+         <div class="flex items-center justify-between gap-2">
+           <div><span class="font-bold text-xs text-slate-800">${escapeHtml(device.name)}</span> <span class="text-[10px] text-slate-400">• ${escapeHtml(device.branch)}</span></div>
+           <span class="px-2 py-1 rounded-full text-[10px] font-bold ${statusClass}">${statusText}</span>
+         </div>
+         <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+           <input data-field="branch" value="${escapeHtml(device.branch)}" aria-label="Cabang" class="px-2 py-1.5 border rounded text-[11px] uppercase">
+           <input data-field="name" value="${escapeHtml(device.name)}" aria-label="Nama mesin" class="px-2 py-1.5 border rounded text-[11px]">
+           <input data-field="ip" value="${escapeHtml(device.ip)}" aria-label="Alamat IP" class="px-2 py-1.5 border rounded text-[11px] font-mono">
+           <input data-field="port" type="number" value="${device.port}" aria-label="Port" class="px-2 py-1.5 border rounded text-[11px] font-mono">
+           <input data-field="intervalMinutes" type="number" min="1" value="${device.intervalMinutes}" aria-label="Interval" class="px-2 py-1.5 border rounded text-[11px]">
+         </div>
+         <div class="flex items-center justify-between gap-2 flex-wrap">
+           <div>
+             <p class="text-[10px] text-slate-500">Terakhir terhubung: ${escapeHtml(lastSeen)}</p>
+             ${device.lastError ? `<p class="text-[10px] text-red-600 mt-0.5">${escapeHtml(device.lastError)}</p>` : ''}
+           </div>
+           <div class="flex gap-2">
+             <button type="button" data-action="save" class="text-[11px] font-semibold text-indigo-700 hover:underline">Simpan konfigurasi</button>
+             <button type="button" data-action="pair" class="text-[11px] font-semibold text-emerald-700 hover:underline">${device.paired ? 'Pasangkan ulang' : 'Buat kode pairing'}</button>
+           </div>
+         </div>
+       </div>`;
+   }).join('');
+
+   listEl.querySelectorAll('[data-action="save"]').forEach(button => {
+     button.onclick = async () => {
+       const card = button.closest('.fp-device-card');
+       button.disabled = true;
+       try {
+         const value = field => card.querySelector(`[data-field="${field}"]`).value.trim();
+         await fingerprintApi('admin_update_device', {
+           deviceId: card.dataset.deviceId,
+           branch: value('branch'), name: value('name'), ip: value('ip'),
+           port: Number(value('port')), intervalMinutes: Number(value('intervalMinutes')), enabled: true
+         });
+         toast('Konfigurasi mesin berhasil disimpan.', 'success');
+       } catch (error) { toast(error.message, 'error'); }
+       button.disabled = false;
+     };
+   });
+   listEl.querySelectorAll('[data-action="pair"]').forEach(button => {
+     button.onclick = async () => {
+       if (button.textContent.includes('ulang') && !confirm('Pairing ulang akan memutus connector lama. Lanjutkan?')) return;
+       button.disabled = true;
+       try {
+         const result = await fingerprintApi('admin_pairing_code', { deviceId: button.closest('.fp-device-card').dataset.deviceId });
+         showPairing(result.pairingCode);
+       } catch (error) { toast(error.message, 'error'); }
+       button.disabled = false;
+     };
+   });
+ };
+
+ const loadDevices = async () => {
+   try {
+     const result = await fingerprintApi('admin_list_devices');
+     renderDevices(result.devices || []);
+   } catch (error) {
+     listEl.innerHTML = `<div class="p-3 bg-red-50 text-red-700 rounded-lg text-xs">${escapeHtml(error.message)}</div>`;
+   }
+ };
+
+ m.querySelector('#fp-add-form').onsubmit = async event => {
+   event.preventDefault();
+   const button = m.querySelector('#fp-add-button');
+   button.disabled = true;
+   button.textContent = 'Menyimpan...';
+   try {
+     const result = await fingerprintApi('admin_create_device', {
+       branch: m.querySelector('#fp-new-branch').value.trim(),
+       name: m.querySelector('#fp-new-name').value.trim(),
+       ip: m.querySelector('#fp-new-ip').value.trim(),
+       port: Number(m.querySelector('#fp-new-port').value),
+       intervalMinutes: Number(m.querySelector('#fp-new-interval').value)
+     });
+     showPairing(result.pairingCode);
+     toast('Mesin ditambahkan. Lanjutkan pemasangan pada komputer cabang.', 'success');
+     await loadDevices();
+   } catch (error) { toast(error.message, 'error'); }
+   button.disabled = false;
+   button.textContent = 'Tambah & Buat Kode Pairing';
+ };
+
+ m.querySelector('#fp-copy-command').onclick = async () => {
+   const command = m.querySelector('#fp-install-command').value;
+   try {
+     await navigator.clipboard.writeText(command);
+     toast('Perintah pemasangan berhasil disalin.', 'success');
+   } catch (_) {
+     m.querySelector('#fp-install-command').select();
+     document.execCommand('copy');
+     toast('Perintah pemasangan berhasil disalin.', 'success');
+   }
+ };
+
+ loadDevices();
  }
  });
  };

@@ -89,14 +89,21 @@ function endpointUrl() {
 
 function signedHeaders(body) {
   const timestamp = String(Date.now());
-  const signature = crypto.createHmac('sha256', required('FINGERPRINT_BRIDGE_SECRET'))
-    .update(`${timestamp}.${body}`)
-    .digest('hex');
   const headers = {
     'content-type': 'application/json',
-    'x-bridge-timestamp': timestamp,
-    'x-bridge-signature': signature
+    'x-bridge-timestamp': timestamp
   };
+  const deviceId = String(process.env.FINGERPRINT_DEVICE_ID || '').trim();
+  const deviceToken = String(process.env.FINGERPRINT_DEVICE_TOKEN || '').trim();
+  if (deviceId && deviceToken) {
+    headers['x-fingerprint-device-id'] = deviceId;
+    headers['x-fingerprint-device-token'] = deviceToken;
+  } else {
+    const signature = crypto.createHmac('sha256', required('FINGERPRINT_BRIDGE_SECRET'))
+      .update(`${timestamp}.${body}`)
+      .digest('hex');
+    headers['x-bridge-signature'] = signature;
+  }
   const vercelBypass = String(process.env.VERCEL_AUTOMATION_BYPASS_SECRET || '').trim();
   if (vercelBypass) headers['x-vercel-protection-bypass'] = vercelBypass;
   return headers;
@@ -142,6 +149,20 @@ async function sendPayload(payload) {
 
 async function getSyncState(branch) {
   return sendPayload({ action: 'status', branch });
+}
+
+async function refreshCentralConfig() {
+  const deviceId = String(process.env.FINGERPRINT_DEVICE_ID || '').trim();
+  const deviceToken = String(process.env.FINGERPRINT_DEVICE_TOKEN || '').trim();
+  if (!deviceId || !deviceToken) return null;
+  const response = await sendPayload({ action: 'config' });
+  const config = response?.config;
+  if (!config?.ip || !config?.branch) throw new Error('Konfigurasi mesin dari HRIS tidak lengkap');
+  process.env.FINGERPRINT_DEVICE_IP = String(config.ip);
+  process.env.FINGERPRINT_DEVICE_PORT = String(config.port || 4370);
+  process.env.FINGERPRINT_BRANCH = String(config.branch).toUpperCase();
+  process.env.FINGERPRINT_SYNC_INTERVAL_MINUTES = String(config.intervalMinutes || 5);
+  return config;
 }
 
 async function connectDevice() {
@@ -197,6 +218,7 @@ function dateFromLog(log) {
 }
 
 async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {}) {
+  await refreshCentralConfig();
   const startedAt = new Date();
   const result = await readDevice();
   console.log(`[${startedAt.toISOString()}] Solution X150 terhubung via ${result.protocol.toUpperCase()}; log terbaca ${result.logs.length}.`);
@@ -269,7 +291,6 @@ async function main() {
   if (args.has('--check')) return synchronize({ checkOnly: true });
   if (args.has('--once')) return synchronize({ fromDate, toDate });
 
-  const intervalMinutes = positiveNumber('FINGERPRINT_SYNC_INTERVAL_MINUTES', 5);
   let running = false;
   const run = async () => {
     if (running) return;
@@ -278,13 +299,24 @@ async function main() {
       await synchronize({ fromDate, toDate });
     } catch (error) {
       console.error(`[${new Date().toISOString()}] Sinkronisasi gagal: ${error.message}`);
+      if (process.env.FINGERPRINT_DEVICE_ID && process.env.FINGERPRINT_DEVICE_TOKEN) {
+        try { await sendPayload({ action: 'heartbeat', error: error.message }); }
+        catch (_) { /* HRIS mungkin sedang tidak dapat dijangkau */ }
+      }
     } finally {
       running = false;
     }
   };
   await run();
-  setInterval(run, intervalMinutes * 60_000);
-  console.log(`Bridge aktif; sinkronisasi berikutnya setiap ${intervalMinutes} menit. Tekan Ctrl+C untuk berhenti.`);
+  const scheduleNext = () => {
+    const intervalMinutes = positiveNumber('FINGERPRINT_SYNC_INTERVAL_MINUTES', 5);
+    console.log(`Bridge aktif; sinkronisasi berikutnya dalam ${intervalMinutes} menit. Tekan Ctrl+C untuk berhenti.`);
+    setTimeout(async () => {
+      await run();
+      scheduleNext();
+    }, intervalMinutes * 60_000);
+  };
+  scheduleNext();
 }
 
 if (require.main === module) {
@@ -294,4 +326,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { normalizeDeviceLog, normalizeDeviceUser, attendanceRows, userRows, localDateTime, signedHeaders, addDays, dateFromLog };
+module.exports = { normalizeDeviceLog, normalizeDeviceUser, attendanceRows, userRows, localDateTime, signedHeaders, addDays, dateFromLog, refreshCentralConfig };
