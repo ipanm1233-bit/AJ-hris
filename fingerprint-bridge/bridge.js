@@ -49,6 +49,19 @@ function attendanceRows(result) {
   return [];
 }
 
+function userRows(result) {
+  if (Array.isArray(result)) return result;
+  if (Array.isArray(result?.data)) return result.data;
+  return [];
+}
+
+function normalizeDeviceUser(user) {
+  const deviceUserId = String(user?.userId ?? user?.deviceUserId ?? user?.uid ?? user?.userSn ?? '').trim();
+  const name = String(user?.name ?? user?.username ?? user?.userName ?? '').trim();
+  if (!deviceUserId || !name) return null;
+  return { deviceUserId, name };
+}
+
 function normalizeDeviceLog(log) {
   const deviceUserId = String(log?.deviceUserId ?? log?.userId ?? log?.userSn ?? log?.uid ?? '').trim();
   const recordTime = localDateTime(log?.recordTime ?? log?.timestamp ?? log?.checkTime);
@@ -98,8 +111,8 @@ function readableError(value, fallback) {
   return fallback;
 }
 
-async function sendChunk(logs) {
-  const body = JSON.stringify({ logs });
+async function sendChunk(logs, users = []) {
+  const body = JSON.stringify({ logs, users });
   const timeout = positiveNumber('FINGERPRINT_REQUEST_TIMEOUT_MS', 30000, 5000);
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -145,8 +158,16 @@ async function readDevice() {
   const { device, protocol } = await connectDevice();
   try {
     const identity = await deviceIdentity(device);
-    const attendance = await device.getAttendances();
-    return { ...identity, protocol, logs: attendanceRows(attendance).map(normalizeDeviceLog).filter(Boolean) };
+    const [attendance, users] = await Promise.all([
+      device.getAttendances(),
+      device.getUsers().catch(() => ({ data: [] }))
+    ]);
+    return {
+      ...identity,
+      protocol,
+      logs: attendanceRows(attendance).map(normalizeDeviceLog).filter(Boolean),
+      users: userRows(users).map(normalizeDeviceUser).filter(Boolean)
+    };
   } finally {
     try { await device.disconnect(); } catch (_) { /* koneksi sudah tertutup */ }
   }
@@ -175,7 +196,7 @@ async function synchronize({ checkOnly = false } = {}) {
   let processed = 0;
   const unmatched = new Set();
   for (let index = 0; index < recentLogs.length; index += 1000) {
-    const response = await sendChunk(recentLogs.slice(index, index + 1000));
+    const response = await sendChunk(recentLogs.slice(index, index + 1000), result.users);
     processed += Number(response.processedRecords || 0);
     for (const id of response.unmatchedFingerprintIds || []) unmatched.add(String(id));
   }
@@ -213,4 +234,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { normalizeDeviceLog, attendanceRows, localDateTime, signedHeaders };
+module.exports = { normalizeDeviceLog, normalizeDeviceUser, attendanceRows, userRows, localDateTime, signedHeaders };

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const { normalizeDeviceLog, attendanceRows, localDateTime, signedHeaders } = require('./bridge.js');
+const { normalizeDeviceLog, normalizeDeviceUser, attendanceRows, userRows, localDateTime, signedHeaders } = require('./bridge.js');
 
 test('normalizes node-zklib attendance records for the HRIS endpoint', () => {
   const result = normalizeDeviceLog({
@@ -20,6 +20,15 @@ test('accepts node-zklib response wrappers and common aliases', () => {
   assert.deepEqual(attendanceRows({ data: [{ userSn: 9 }] }), [{ userSn: 9 }]);
   assert.equal(normalizeDeviceLog({ userSn: 9, timestamp: '2026-09-07 08:00:00' }).deviceUserId, '9');
   assert.equal(localDateTime('2026-09-07 08:00:00'), '2026-09-07 08:00:00');
+});
+
+test('normalizes Solution X150 users for automatic employee mapping', () => {
+  const wrapped = { data: [{ uid: 7, userId: '81', name: 'Budi Santoso' }] };
+  assert.deepEqual(userRows(wrapped), wrapped.data);
+  assert.deepEqual(normalizeDeviceUser(wrapped.data[0]), {
+    deviceUserId: '81',
+    name: 'Budi Santoso'
+  });
 });
 
 test('signs the exact request body using the configured bridge secret', () => {

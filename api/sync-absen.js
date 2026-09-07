@@ -3,6 +3,16 @@ const crypto = require('crypto');
 const { enforceRateLimit, writeAuditLog } = require('../lib/security.js');
 const { aggregateFingerprintLogs, computeAttendance } = require('../lib/fingerprint-normalizer.js');
 
+function normalizePersonName(value) {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
+}
+
 function verifyBridgeSignature(req, rawBody) {
   const secret = String(process.env.FINGERPRINT_BRIDGE_SECRET || '').trim();
   const timestamp = String(req.headers?.['x-bridge-timestamp'] || '');
@@ -86,6 +96,7 @@ module.exports = async function handler(req, res) {
       });
     }
     const logs = req.body?.logs || req.body?.records || req.body?.attendance || req.body?.data;
+    const deviceUsers = Array.isArray(req.body?.users) ? req.body.users : [];
 
     if (!logs || !Array.isArray(logs) || !logs.length || logs.length > 5000) {
       return res.status(400).json({ success: false, error: "Data logs tidak valid atau kosong" });
@@ -104,6 +115,7 @@ module.exports = async function handler(req, res) {
     const employeeSnap = await db.collection('master_karyawan').get();
     const employeeMap = new Map();
     const numericEmployeeMap = new Map();
+    const employeeNameMap = new Map();
     const fingerprintFields = ['nik', 'nik_karyawan', 'finger_id', 'finger_name', 'kode_finger', 'no_finger', 'id_finger', 'pin'];
     employeeSnap.forEach(snapshot => {
       const employee = { ...snapshot.data(), _docId: snapshot.id };
@@ -118,11 +130,29 @@ module.exports = async function handler(req, res) {
           else if (numericEmployeeMap.get(numericKey)?._docId !== employee._docId) numericEmployeeMap.set(numericKey, null);
         }
       });
+      const names = [employee.nama_karyawan, employee.nama, employee.finger_name];
+      names.forEach(value => {
+        const nameKey = normalizePersonName(value);
+        if (!nameKey) return;
+        if (!employeeNameMap.has(nameKey)) employeeNameMap.set(nameKey, employee);
+        else if (employeeNameMap.get(nameKey)?._docId !== employee._docId) employeeNameMap.set(nameKey, null);
+      });
+    });
+    const deviceUserNameMap = new Map();
+    deviceUsers.forEach(user => {
+      const id = String(user?.deviceUserId || '').trim().toUpperCase();
+      const name = normalizePersonName(user?.name);
+      if (id && name) deviceUserNameMap.set(id, name);
     });
     const resolveEmployee = deviceUserId => {
       const exactKey = String(deviceUserId).trim().toUpperCase();
       if (employeeMap.has(exactKey)) return employeeMap.get(exactKey);
-      return /^\d+$/.test(exactKey) ? numericEmployeeMap.get(exactKey.replace(/^0+(?=\d)/, '')) || null : null;
+      if (/^\d+$/.test(exactKey)) {
+        const numericMatch = numericEmployeeMap.get(exactKey.replace(/^0+(?=\d)/, ''));
+        if (numericMatch) return numericMatch;
+      }
+      const machineName = deviceUserNameMap.get(exactKey);
+      return machineName ? employeeNameMap.get(machineName) || null : null;
     };
 
     // --- 3) Upsert per (NIK, tanggal), MERGE dgn scan lama kalau ada ----
@@ -135,13 +165,17 @@ module.exports = async function handler(req, res) {
         const nik = String(employee?.nik_karyawan || employee?.nik || group.deviceUserId).trim();
         const safeNik = nik.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);
         const ref = db.collection('data_absensi').doc(`ABS-FP-${safeNik}-${group.tanggal}`);
-        return { group, employee, nik, ref };
+        const safeDeviceId = String(group.deviceUserId).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);
+        const legacyRef = employee && safeDeviceId !== safeNik
+          ? db.collection('data_absensi').doc(`ABS-FP-${safeDeviceId}-${group.tanggal}`)
+          : null;
+        return { group, employee, nik, ref, legacyRef };
       });
       const existingSnapshots = await db.getAll(...resolvedChunk.map(item => item.ref));
       const batch = db.batch();
 
       resolvedChunk.forEach((item, index) => {
-        const { group: g, employee, nik, ref } = item;
+        const { group: g, employee, nik, ref, legacyRef } = item;
         const existing = existingSnapshots[index];
         const oldData = existing.exists ? existing.data() : {};
         const attendance = computeAttendance(g.events, oldData, minWorkGapMinutes);
@@ -159,6 +193,7 @@ module.exports = async function handler(req, res) {
           sumber: "FINGERPRINT",
           disinkron_pada: admin.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
+        if (legacyRef) batch.delete(legacyRef);
 
         count++;
       });
