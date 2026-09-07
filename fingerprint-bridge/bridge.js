@@ -112,7 +112,11 @@ function readableError(value, fallback) {
 }
 
 async function sendChunk(logs, users = []) {
-  const body = JSON.stringify({ logs, users });
+  return sendPayload({ logs, users });
+}
+
+async function sendPayload(payload) {
+  const body = JSON.stringify(payload);
   const timeout = positiveNumber('FINGERPRINT_REQUEST_TIMEOUT_MS', 30000, 5000);
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -134,6 +138,10 @@ async function sendChunk(logs, users = []) {
     }
   }
   throw lastError;
+}
+
+async function getSyncState() {
+  return sendPayload({ action: 'status' });
 }
 
 async function connectDevice() {
@@ -158,10 +166,10 @@ async function readDevice() {
   const { device, protocol } = await connectDevice();
   try {
     const identity = await deviceIdentity(device);
-    const [attendance, users] = await Promise.all([
-      device.getAttendances(),
-      device.getUsers().catch(() => ({ data: [] }))
-    ]);
+    // X150 hanya aman menerima satu command pada satu waktu. Menjalankan
+    // getUsers dan getAttendances bersamaan dapat membuat daftar log kosong.
+    const users = await device.getUsers().catch(() => ({ data: [] }));
+    const attendance = await device.getAttendances();
     return {
       ...identity,
       protocol,
@@ -173,7 +181,22 @@ async function readDevice() {
   }
 }
 
-async function synchronize({ checkOnly = false } = {}) {
+function validDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+}
+
+function addDays(value, days) {
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day + days);
+  return localDateTime(date).slice(0, 10);
+}
+
+function dateFromLog(log) {
+  const match = String(log?.recordTime || '').match(/^(\d{4}-\d{2}-\d{2})/);
+  return match?.[1] || '';
+}
+
+async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {}) {
   const startedAt = new Date();
   const result = await readDevice();
   console.log(`[${startedAt.toISOString()}] Solution X150 terhubung via ${result.protocol.toUpperCase()}; log terbaca ${result.logs.length}.`);
@@ -182,14 +205,40 @@ async function synchronize({ checkOnly = false } = {}) {
     return;
   }
 
-  const lookbackDays = positiveNumber('FINGERPRINT_LOOKBACK_DAYS', 7);
-  const cutoff = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
-  const recentLogs = result.logs.filter(log => {
-    const timestamp = logTimestamp(log);
-    return timestamp !== null && timestamp >= cutoff;
-  });
+  const today = localDateTime(new Date()).slice(0, 10);
+  let startDate = fromDate;
+  let endDate = toDate || today;
+
+  if (startDate && !validDate(startDate)) throw new Error('Format --from wajib YYYY-MM-DD');
+  if (!validDate(endDate)) throw new Error('Format --to wajib YYYY-MM-DD');
+  if (!startDate) {
+    const state = await getSyncState();
+    const latestDate = validDate(state.latestDate) ? state.latestDate : '';
+    if (latestDate) startDate = latestDate === today ? today : addDays(latestDate, 1);
+  }
+
+  let recentLogs;
+  if (startDate) {
+    if (startDate > endDate) {
+      console.log(`Data HRIS sudah mutakhir sampai ${endDate}; tidak ada periode baru untuk ditarik.`);
+      return;
+    }
+    recentLogs = result.logs.filter(log => {
+      const date = dateFromLog(log);
+      return date && date >= startDate && date <= endDate;
+    });
+    console.log(`Periode sinkronisasi: ${startDate} s.d. ${endDate}.`);
+  } else {
+    const lookbackDays = positiveNumber('FINGERPRINT_LOOKBACK_DAYS', 7);
+    const cutoff = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
+    recentLogs = result.logs.filter(log => {
+      const timestamp = logTimestamp(log);
+      return timestamp !== null && timestamp >= cutoff;
+    });
+    console.log(`Belum ada tanggal terakhir di HRIS; memakai periode awal ${lookbackDays} hari.`);
+  }
   if (!recentLogs.length) {
-    console.log(`Tidak ada log dalam ${lookbackDays} hari terakhir.`);
+    console.log('Tidak ada log mesin pada periode tersebut.');
     return;
   }
 
@@ -205,9 +254,12 @@ async function synchronize({ checkOnly = false } = {}) {
 }
 
 async function main() {
-  const args = new Set(process.argv.slice(2));
+  const rawArgs = process.argv.slice(2);
+  const args = new Set(rawArgs);
+  const fromDate = rawArgs.find(value => value.startsWith('--from='))?.slice(7) || '';
+  const toDate = rawArgs.find(value => value.startsWith('--to='))?.slice(5) || '';
   if (args.has('--check')) return synchronize({ checkOnly: true });
-  if (args.has('--once')) return synchronize();
+  if (args.has('--once')) return synchronize({ fromDate, toDate });
 
   const intervalMinutes = positiveNumber('FINGERPRINT_SYNC_INTERVAL_MINUTES', 5);
   let running = false;
@@ -215,7 +267,7 @@ async function main() {
     if (running) return;
     running = true;
     try {
-      await synchronize();
+      await synchronize({ fromDate, toDate });
     } catch (error) {
       console.error(`[${new Date().toISOString()}] Sinkronisasi gagal: ${error.message}`);
     } finally {
@@ -234,4 +286,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { normalizeDeviceLog, normalizeDeviceUser, attendanceRows, userRows, localDateTime, signedHeaders };
+module.exports = { normalizeDeviceLog, normalizeDeviceUser, attendanceRows, userRows, localDateTime, signedHeaders, addDays, dateFromLog };

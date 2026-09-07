@@ -95,6 +95,16 @@ module.exports = async function handler(req, res) {
         error: error || "Firebase Admin environment variables are not configured."
       });
     }
+    const syncStateRef = db.collection('system_metadata').doc('fingerprint_sync');
+    if (req.body?.action === 'status') {
+      const stateSnap = await syncStateRef.get();
+      let latestDate = stateSnap.exists ? String(stateSnap.data()?.latestDate || '') : '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(latestDate)) {
+        const latestSnap = await db.collection('data_absensi').orderBy('tanggal', 'desc').limit(1).get();
+        latestDate = latestSnap.empty ? '' : String(latestSnap.docs[0].data()?.tanggal || '');
+      }
+      return res.status(200).json({ success: true, latestDate });
+    }
     const logs = req.body?.logs || req.body?.records || req.body?.attendance || req.body?.data;
     const deviceUsers = Array.isArray(req.body?.users) ? req.body.users : [];
 
@@ -203,6 +213,20 @@ module.exports = async function handler(req, res) {
     const unmatchedIds = [...new Set(groupList
       .filter(group => !resolveEmployee(group.deviceUserId))
       .map(group => group.deviceUserId))].slice(0, 25);
+
+    const newestDate = groupList.reduce((latest, group) => group.tanggal > latest ? group.tanggal : latest, '');
+    if (newestDate) {
+      await db.runTransaction(async transaction => {
+        const stateSnap = await transaction.get(syncStateRef);
+        const currentDate = stateSnap.exists ? String(stateSnap.data()?.latestDate || '') : '';
+        if (newestDate > currentDate) {
+          transaction.set(syncStateRef, {
+            latestDate: newestDate,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+        }
+      });
+    }
 
     await writeAuditLog(db, req, null, {
       action: 'FINGERPRINT_SYNC', module: 'ATTENDANCE',
