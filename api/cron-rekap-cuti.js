@@ -1,11 +1,14 @@
 const { admin, getFirebaseAdmin } = require('./firebase-admin.js');
 const nodemailer = require('nodemailer');
+const { requireCronSecret, enforceRateLimit, writeAuditLog } = require('../lib/security.js');
 
 let transporter = null;
 function getTransporter() {
   if (!transporter) {
     transporter = nodemailer.createTransport({
       service: 'gmail',
+      disableFileAccess: true,
+      disableUrlAccess: true,
       auth: {
         user: process.env.GMAIL_USER,
         pass: process.env.GMAIL_APP_PASSWORD
@@ -44,6 +47,28 @@ function getRecordWibDateStr(value) {
 
 function normalizeBranch(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+async function sendCronMailOnce(db, lockId, mailOptions) {
+  const ref = db.collection('cron_locks').doc(lockId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 240));
+  const maySend = await db.runTransaction(async transaction => {
+    const snap = await transaction.get(ref);
+    const existing = snap.exists ? snap.data() : null;
+    if (existing?.status === 'SENT') return false;
+    const startedAt = existing?.started_at ? new Date(existing.started_at).getTime() : 0;
+    if (existing?.status === 'SENDING' && Date.now() - startedAt < 15 * 60_000) return false;
+    transaction.set(ref, { status: 'SENDING', started_at: new Date().toISOString(), attempts: (existing?.attempts || 0) + 1 }, { merge: true });
+    return true;
+  });
+  if (!maySend) return { skipped: true };
+  try {
+    const info = await getTransporter().sendMail(mailOptions);
+    await ref.set({ status: 'SENT', sent_at: new Date().toISOString(), message_id: info.messageId }, { merge: true });
+    return { skipped: false, info };
+  } catch (error) {
+    await ref.set({ status: 'FAILED', failed_at: new Date().toISOString(), error: String(error.message || error).slice(0, 500) }, { merge: true });
+    throw error;
+  }
 }
 
 function formatIndoDate(dateStr) {
@@ -144,6 +169,9 @@ function buildEmailHtml({ title, subtitle, badgeText, badgeColor = "#7a1f2b", in
 
 module.exports = async function handler(req, res) {
   try {
+    if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Metode tidak diizinkan.' });
+    if (!enforceRateLimit(req, res, { namespace: 'cron-leave', limit: 5, windowMs: 60_000 })) return;
+    if (!requireCronSecret(req, res)) return;
     const db = initFirebaseAdmin();
     if (!db) {
       return res.status(200).json({ success: false, message: "Firebase Admin is not configured or offline." });
@@ -162,14 +190,11 @@ module.exports = async function handler(req, res) {
     // 1. Ambil Konfigurasi Email Cabang
     let branchConfig = {
       enabled: true,
-      default_cc: "generalaffairhrandelajaya@gmail.com",
+      default_cc: "",
       enable_morning: true,
       enable_instant: true,
       enable_evening: true,
-      branches: {
-        "Cirebon": { emails: ["generalaffairhrandelajaya@gmail.com"], cc: "", enabled: true },
-        "Malang": { emails: ["generalaffairhrandelajaya@gmail.com"], cc: "", enabled: true }
-      }
+      branches: {}
     };
 
     try {
@@ -337,14 +362,14 @@ module.exports = async function handler(req, res) {
           // Kirim email jika ada data cuti atau jika dipaksa/mode terjadwal
           if (listCutiCabang.length > 0 || forceSend) {
             try {
-              const info = await getTransporter().sendMail({
+              const delivery = await sendCronMailOnce(db, `${todayStr}_morning_${normalizeBranch(cab)}`, {
                 from: `"HRIS Andela Jaya" <${process.env.GMAIL_USER}>`,
                 to: emailTo,
                 cc: cc || undefined,
                 subject: `[CUTI HARI INI] ${listCutiCabang.length} Karyawan Cuti (${todayFormatted}) - Cabang ${cab}`,
                 html: htmlBody
               });
-              results.push({ type: "morning", branch: cab, count: listCutiCabang.length, to: emailTo, messageId: info.messageId, status: "SENT" });
+              results.push({ type: "morning", branch: cab, count: listCutiCabang.length, to: emailTo, messageId: delivery.info?.messageId, status: delivery.skipped ? "SKIPPED (Already sent)" : "SENT" });
             } catch (sendErr) {
               console.error(`Gagal kirim email pagi cabang ${cab}:`, sendErr);
               results.push({ type: "morning", branch: cab, count: listCutiCabang.length, to: emailTo, error: sendErr.message, status: "FAILED" });
@@ -501,14 +526,14 @@ module.exports = async function handler(req, res) {
 
           if (listPengajuanCabang.length > 0 || forceSend) {
             try {
-              const info = await getTransporter().sendMail({
+              const delivery = await sendCronMailOnce(db, `${todayStr}_evening_${normalizeBranch(cab)}`, {
                 from: `"HRIS Andela Jaya" <${process.env.GMAIL_USER}>`,
                 to: emailTo,
                 cc: cc || undefined,
                 subject: `[REKAP PENGAJUAN SORE] ${listPengajuanCabang.length} Pengajuan Cuti (${todayFormatted}) - Cabang ${cab}`,
                 html: htmlBody
               });
-              results.push({ type: "evening", branch: cab, count: listPengajuanCabang.length, to: emailTo, messageId: info.messageId, status: "SENT" });
+              results.push({ type: "evening", branch: cab, count: listPengajuanCabang.length, to: emailTo, messageId: delivery.info?.messageId, status: delivery.skipped ? "SKIPPED (Already sent)" : "SENT" });
             } catch (sendErr) {
               console.error(`Gagal kirim email sore cabang ${cab}:`, sendErr);
               results.push({ type: "evening", branch: cab, count: listPengajuanCabang.length, to: emailTo, error: sendErr.message, status: "FAILED" });
@@ -520,6 +545,10 @@ module.exports = async function handler(req, res) {
       }
     }
 
+    await writeAuditLog(db, req, null, {
+      action: 'CRON_LEAVE_DIGEST', module: 'LEAVE',
+      metadata: { date: todayStr, type, sent: results.filter(item => item.status === 'SENT').length, failed: results.filter(item => item.status === 'FAILED').length }
+    });
     return res.status(200).json({
       success: true,
       date: todayStr,

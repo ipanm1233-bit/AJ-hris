@@ -1,4 +1,21 @@
 const { admin, getFirebaseAdmin } = require('./firebase-admin.js');
+const crypto = require('crypto');
+const { enforceRateLimit, writeAuditLog } = require('../lib/security.js');
+const { aggregateFingerprintLogs, computeAttendance } = require('../lib/fingerprint-normalizer.js');
+
+function verifyBridgeSignature(req) {
+  const secret = process.env.FINGERPRINT_BRIDGE_SECRET || '';
+  const timestamp = String(req.headers?.['x-bridge-timestamp'] || '');
+  const signature = String(req.headers?.['x-bridge-signature'] || '').toLowerCase();
+  if (!secret || !timestamp || !signature) return false;
+  const timestampMs = Number(timestamp);
+  if (!Number.isFinite(timestampMs) || Math.abs(Date.now() - timestampMs) > 5 * 60_000) return false;
+  const message = `${timestamp}.${JSON.stringify(req.body || {})}`;
+  const expected = crypto.createHmac('sha256', secret).update(message).digest('hex');
+  const a = Buffer.from(signature);
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 /**
  * api/sync-absen.js
@@ -32,6 +49,8 @@ const { admin, getFirebaseAdmin } = require('./firebase-admin.js');
  */
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Metode tidak diizinkan' });
+  if (!enforceRateLimit(req, res, { namespace: 'sync-absen', limit: 30, windowMs: 60_000 })) return;
+  if (!verifyBridgeSignature(req)) return res.status(401).json({ success: false, error: 'Signature fingerprint bridge tidak valid.' });
 
   try {
     const { db, error } = getFirebaseAdmin();
@@ -41,86 +60,105 @@ module.exports = async function handler(req, res) {
         error: error || "Firebase Admin environment variables are not configured."
       });
     }
-    const { logs } = req.body;
+    const logs = req.body?.logs || req.body?.records || req.body?.attendance || req.body?.data;
 
-    if (!logs || !Array.isArray(logs) || !logs.length) {
+    if (!logs || !Array.isArray(logs) || !logs.length || logs.length > 5000) {
       return res.status(400).json({ success: false, error: "Data logs tidak valid atau kosong" });
     }
 
-    // --- 1) Kelompokkan log mentah per (NIK, tanggal WIB) ---------------
-    const groups = {}; // key: "NIK|YYYY-MM-DD" -> { nik, tanggal, times: [] }
-    for (const log of logs) {
-      const nik = String(log.deviceUserId || log.userId || log.userSn || "").trim();
-      const waktuRaw = log.recordTime || log.timestamp;
-      if (!nik || !waktuRaw) continue;
-
-      const d = new Date(waktuRaw);
-      if (isNaN(d)) continue;
-
-      // Tanggal & jam WIB eksplisit (BUKAN zona waktu server Vercel yang
-      // biasanya UTC) -- pola sama seperti localDateStr() di js/utils.js,
-      // supaya jam masuk/keluar yang tersimpan tidak meleset.
-      const tanggal = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
-      const jam = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
-
-      const key = `${nik}|${tanggal}`;
-      if (!groups[key]) groups[key] = { nik, tanggal, times: [] };
-      groups[key].times.push(jam);
-    }
-
-    const groupList = Object.values(groups);
+    // String waktu tanpa offset dianggap sudah merupakan waktu lokal mesin.
+    const timeZone = process.env.FINGERPRINT_TIMEZONE || 'Asia/Jakarta';
+    const minWorkGapMinutes = Math.max(30, Number(process.env.FINGERPRINT_MIN_WORK_GAP_MINUTES || 120));
+    const { groups: groupList, invalid: invalidLogs } = aggregateFingerprintLogs(logs, { timeZone });
     if (!groupList.length) {
       return res.status(200).json({ success: true, message: "Tidak ada log valid untuk diproses (cek format deviceUserId/recordTime)." });
     }
 
-    // --- 2) Resolve NIK -> nama_karyawan dari Master Karyawan -----------
-    const nikSet = [...new Set(groupList.map(g => g.nik))];
-    const nikToNama = {};
-    for (let i = 0; i < nikSet.length; i += 30) { // batas "in" query Firestore = 30
-      const batchNik = nikSet.slice(i, i + 30);
-      const snap = await db.collection('master_karyawan').where('nik', 'in', batchNik).get();
-      snap.forEach(doc => { nikToNama[String(doc.data().nik)] = doc.data().nama_karyawan; });
-    }
+    // --- 2) Resolve ID mesin -> master karyawan. Mendukung NIK, doc ID,
+    // nik_karyawan, dan beberapa nama field fingerprint yang umum.
+    const employeeSnap = await db.collection('master_karyawan').get();
+    const employeeMap = new Map();
+    const numericEmployeeMap = new Map();
+    const fingerprintFields = ['nik', 'nik_karyawan', 'finger_id', 'finger_name', 'kode_finger', 'no_finger', 'id_finger', 'pin'];
+    employeeSnap.forEach(snapshot => {
+      const employee = { ...snapshot.data(), _docId: snapshot.id };
+      const identifiers = [snapshot.id, ...fingerprintFields.map(field => employee[field])];
+      identifiers.forEach(value => {
+        const key = String(value || '').trim().toUpperCase();
+        if (!key) return;
+        if (!employeeMap.has(key)) employeeMap.set(key, employee);
+        if (/^\d+$/.test(key)) {
+          const numericKey = key.replace(/^0+(?=\d)/, '');
+          if (!numericEmployeeMap.has(numericKey)) numericEmployeeMap.set(numericKey, employee);
+          else if (numericEmployeeMap.get(numericKey)?._docId !== employee._docId) numericEmployeeMap.set(numericKey, null);
+        }
+      });
+    });
+    const resolveEmployee = deviceUserId => {
+      const exactKey = String(deviceUserId).trim().toUpperCase();
+      if (employeeMap.has(exactKey)) return employeeMap.get(exactKey);
+      return /^\d+$/.test(exactKey) ? numericEmployeeMap.get(exactKey.replace(/^0+(?=\d)/, '')) || null : null;
+    };
 
     // --- 3) Upsert per (NIK, tanggal), MERGE dgn scan lama kalau ada ----
     const chunkSize = 200;
     let count = 0;
     for (let i = 0; i < groupList.length; i += chunkSize) {
       const chunk = groupList.slice(i, i + chunkSize);
+      const resolvedChunk = chunk.map(group => {
+        const employee = resolveEmployee(group.deviceUserId);
+        const nik = String(employee?.nik_karyawan || employee?.nik || group.deviceUserId).trim();
+        const safeNik = nik.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);
+        const ref = db.collection('data_absensi').doc(`ABS-FP-${safeNik}-${group.tanggal}`);
+        return { group, employee, nik, ref };
+      });
+      const existingSnapshots = await db.getAll(...resolvedChunk.map(item => item.ref));
       const batch = db.batch();
 
-      for (const g of chunk) {
-        const docId = `ABS-FP-${g.nik}-${g.tanggal}`;
-        const ref = db.collection('data_absensi').doc(docId);
-        const existing = await ref.get();
-
-        let allTimes = [...g.times];
-        if (existing.exists) {
-          const ex = existing.data();
-          if (ex.scan_masuk) allTimes.push(ex.scan_masuk);
-          if (ex.scan_keluar) allTimes.push(ex.scan_keluar);
-        }
-        allTimes.sort();
+      resolvedChunk.forEach((item, index) => {
+        const { group: g, employee, nik, ref } = item;
+        const existing = existingSnapshots[index];
+        const oldData = existing.exists ? existing.data() : {};
+        const attendance = computeAttendance(g.events, oldData, minWorkGapMinutes);
 
         batch.set(ref, {
-          nik: g.nik,
-          nama: nikToNama[g.nik] || (existing.exists ? existing.data().nama : `NIK ${g.nik} (tidak ditemukan di Master Karyawan)`),
+          nik,
+          fingerprint_user_id: g.deviceUserId,
+          nama: employee?.nama_karyawan || employee?.nama || oldData.nama || `ID Finger ${g.deviceUserId} (belum dipetakan)`,
           tanggal: g.tanggal,
-          scan_masuk: allTimes[0],
-          scan_keluar: allTimes.length > 1 ? allTimes[allTimes.length - 1] : (existing.exists ? existing.data().scan_keluar || null : null),
+          scan_masuk: attendance.scan_masuk,
+          scan_keluar: attendance.scan_keluar,
+          cabang: employee?.cabang || oldData.cabang || '',
+          divisi: employee?.divisi || employee?.departemen || oldData.divisi || '',
+          jabatan: employee?.jabatan || employee?.posisi || oldData.jabatan || '',
           sumber: "FINGERPRINT",
           disinkron_pada: admin.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
 
         count++;
-      }
+      });
       await batch.commit();
     }
 
-    res.status(200).json({ success: true, message: `${count} data absen (${logs.length} scan mentah) berhasil disinkronkan.` });
+    const unmatchedIds = [...new Set(groupList
+      .filter(group => !resolveEmployee(group.deviceUserId))
+      .map(group => group.deviceUserId))].slice(0, 25);
+
+    await writeAuditLog(db, req, null, {
+      action: 'FINGERPRINT_SYNC', module: 'ATTENDANCE',
+      metadata: { processed_records: count, raw_scans: logs.length, invalid_logs: invalidLogs, unmatched_count: unmatchedIds.length }
+    });
+    res.status(200).json({
+      success: true,
+      message: `${count} data absen (${logs.length} scan mentah) berhasil disinkronkan.`,
+      processedRecords: count,
+      rawScans: logs.length,
+      invalidLogs,
+      unmatchedFingerprintIds: unmatchedIds
+    });
 
   } catch (error) {
     console.error("CRASH SYNC ABSEN:", error);
-    res.status(500).json({ success: false, error: "Gagal memproses sinkronisasi: " + error.message });
+    res.status(500).json({ success: false, error: "Gagal memproses sinkronisasi fingerprint." });
   }
 };
