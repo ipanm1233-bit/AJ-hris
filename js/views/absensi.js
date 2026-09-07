@@ -834,7 +834,7 @@ export async function mount(container, { session } = {}) {
  if (btnConfigFingerprint) {
  btnConfigFingerprint.onclick = () => {
  const apiIP = localStorage.getItem("fingerprint_api_ip") || "192.168.1.150";
- const apiToken = localStorage.getItem("fingerprint_api_token") || "tok_finger_7a8d9b1c";
+ const apiToken = localStorage.getItem("fingerprint_api_token") || "";
  const apiPort = localStorage.getItem("fingerprint_api_port") || "8080";
  
  openModal({

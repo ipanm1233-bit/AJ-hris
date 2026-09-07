@@ -1,6 +1,10 @@
 const { getFirebaseAdmin } = require('./firebase-admin.js');
+const { requireCronSecret, enforceRateLimit, writeAuditLog } = require('../lib/security.js');
 
 module.exports = async function handler(req, res) {
+  if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Metode tidak diizinkan.' });
+  if (!enforceRateLimit(req, res, { namespace: 'cron-contract', limit: 5, windowMs: 60_000 })) return;
+  if (!requireCronSecret(req, res)) return;
   const { admin, db, error } = getFirebaseAdmin();
   if (!admin || !db) {
     return res.status(500).json({
@@ -21,9 +25,12 @@ module.exports = async function handler(req, res) {
         tokens
       });
     }
+    await writeAuditLog(db, req, null, {
+      action: 'CRON_CONTRACT_CHECK', module: 'CONTRACT', metadata: { checked: kontrakSnap.size }
+    });
     res.status(200).json({ checked: kontrakSnap.size });
   } catch (err) {
     console.error("Error in cron-check-kontrak:", err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Pemeriksaan kontrak gagal dijalankan.' });
   }
 };

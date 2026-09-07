@@ -1,5 +1,8 @@
-const admin = require('firebase-admin');
-const { getFirestore } = require('firebase-admin/firestore');
+const { initializeApp, getApps, getApp, cert, applicationDefault } = require('firebase-admin/app');
+const { getAuth } = require('firebase-admin/auth');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { getMessaging } = require('firebase-admin/messaging');
+const { getAppCheck } = require('firebase-admin/app-check');
 const fs = require('fs');
 const path = require('path');
 
@@ -18,58 +21,45 @@ if (!customDbId) {
   }
 }
 
+function serviceAccountCredential() {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
+    const decoded = Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf8');
+    return cert(JSON.parse(decoded));
+  }
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    return cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON));
+  }
+  if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+    return cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
+    });
+  }
+  return applicationDefault();
+}
+
+function ensureAdminApp() {
+  if (getApps().length) return getApp();
+  return initializeApp({ credential: serviceAccountCredential() });
+}
+
+// Facade kompatibilitas untuk handler lama; bootstrap SDK-nya sudah modular.
+const admin = {
+  auth: () => getAuth(ensureAdminApp()),
+  messaging: () => getMessaging(ensureAdminApp()),
+  appCheck: () => getAppCheck(ensureAdminApp()),
+  firestore: { FieldValue }
+};
+
 function getFirebaseAdmin() {
-  if (!admin.apps.length) {
-    if (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
-      try {
-        const decoded = Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf8');
-        const serviceAccount = JSON.parse(decoded);
-        admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount)
-        });
-      } catch (e) {
-        console.error("Failed to initialize Firebase Admin from FIREBASE_SERVICE_ACCOUNT_BASE64:", e.message);
-      }
-    } else if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-      try {
-        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
-        admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount)
-        });
-      } catch (e) {
-        console.error("Failed to initialize Firebase Admin from FIREBASE_SERVICE_ACCOUNT_JSON:", e.message);
-      }
-    } else if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
-      try {
-        admin.initializeApp({
-          credential: admin.credential.cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
-          })
-        });
-      } catch (e) {
-        console.error("Failed to initialize Firebase Admin from env credentials:", e.message);
-      }
-    } else {
-      try {
-        admin.initializeApp();
-      } catch (e) {
-        // Fallback
-      }
-    }
-  }
-
-  if (!admin.apps.length) {
-    return { admin: null, db: null, error: "Firebase Admin environment variables are not configured." };
-  }
-
   try {
-    const db = customDbId ? getFirestore(customDbId) : admin.firestore();
+    const app = ensureAdminApp();
+    const db = customDbId ? getFirestore(app, customDbId) : getFirestore(app);
     return { admin, db, error: null };
-  } catch (err) {
-    console.error("Error creating Firestore instance:", err);
-    return { admin, db: null, error: err.message };
+  } catch (error) {
+    console.error('Firebase Admin initialization failed:', error.message);
+    return { admin: null, db: null, error: 'Firebase Admin environment variables are not configured.' };
   }
 }
 

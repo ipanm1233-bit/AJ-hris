@@ -1,4 +1,20 @@
 const { admin, getFirebaseAdmin } = require('./firebase-admin.js');
+const crypto = require('crypto');
+const { enforceRateLimit, writeAuditLog } = require('../lib/security.js');
+
+function verifyBridgeSignature(req) {
+  const secret = process.env.FINGERPRINT_BRIDGE_SECRET || '';
+  const timestamp = String(req.headers?.['x-bridge-timestamp'] || '');
+  const signature = String(req.headers?.['x-bridge-signature'] || '').toLowerCase();
+  if (!secret || !timestamp || !signature) return false;
+  const timestampMs = Number(timestamp);
+  if (!Number.isFinite(timestampMs) || Math.abs(Date.now() - timestampMs) > 5 * 60_000) return false;
+  const message = `${timestamp}.${JSON.stringify(req.body || {})}`;
+  const expected = crypto.createHmac('sha256', secret).update(message).digest('hex');
+  const a = Buffer.from(signature);
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 /**
  * api/sync-absen.js
@@ -32,6 +48,8 @@ const { admin, getFirebaseAdmin } = require('./firebase-admin.js');
  */
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Metode tidak diizinkan' });
+  if (!enforceRateLimit(req, res, { namespace: 'sync-absen', limit: 30, windowMs: 60_000 })) return;
+  if (!verifyBridgeSignature(req)) return res.status(401).json({ success: false, error: 'Signature fingerprint bridge tidak valid.' });
 
   try {
     const { db, error } = getFirebaseAdmin();
@@ -43,7 +61,7 @@ module.exports = async function handler(req, res) {
     }
     const { logs } = req.body;
 
-    if (!logs || !Array.isArray(logs) || !logs.length) {
+    if (!logs || !Array.isArray(logs) || !logs.length || logs.length > 5000) {
       return res.status(400).json({ success: false, error: "Data logs tidak valid atau kosong" });
     }
 
@@ -117,10 +135,14 @@ module.exports = async function handler(req, res) {
       await batch.commit();
     }
 
+    await writeAuditLog(db, req, null, {
+      action: 'FINGERPRINT_SYNC', module: 'ATTENDANCE',
+      metadata: { processed_records: count, raw_scans: logs.length }
+    });
     res.status(200).json({ success: true, message: `${count} data absen (${logs.length} scan mentah) berhasil disinkronkan.` });
 
   } catch (error) {
     console.error("CRASH SYNC ABSEN:", error);
-    res.status(500).json({ success: false, error: "Gagal memproses sinkronisasi: " + error.message });
+    res.status(500).json({ success: false, error: "Gagal memproses sinkronisasi fingerprint." });
   }
 };
