@@ -26,6 +26,8 @@ Isi untuk Preview terlebih dahulu, lalu Production setelah pengujian:
 - `KANAL_SECRET_KEY`
 - `KANAL_ACCESS_TOKEN`
 - `FINGERPRINT_BRIDGE_SECRET`
+- `FINGERPRINT_TIMEZONE=Asia/Jakarta`
+- `FINGERPRINT_MIN_WORK_GAP_MINUTES=120`
 - `CRON_SECRET` (minimal 32 karakter acak)
 - `APP_ORIGIN` (origin penuh tanpa slash di belakang)
 - `REQUIRE_APP_CHECK=false` selama tahap awal
@@ -78,6 +80,12 @@ Bridge harus menandatangani payload yang sama persis dengan body JSON:
 4. Kirim header `X-Bridge-Timestamp` dan `X-Bridge-Signature`
 
 Server menolak signature salah dan request yang lebih tua dari lima menit.
+
+Payload dapat memakai array `logs`, `records`, `attendance`, atau `data`. Setiap log minimal harus memiliki ID pengguna mesin (misalnya `deviceUserId`, `userId`, `enrollNumber`, atau `pin`) dan waktu scan (misalnya `recordTime`, `timestamp`, `checkTime`, atau `punchTime`). Waktu berbentuk `YYYY-MM-DD HH:mm:ss` dianggap sebagai waktu lokal mesin dan tidak digeser lagi oleh zona waktu server.
+
+Endpoint mencocokkan ID mesin terhadap document ID/NIK serta field `finger_id`, `finger_name`, `kode_finger`, `no_finger`, `id_finger`, atau `pin` pada `master_karyawan`. Periksa `unmatchedFingerprintIds` pada respons bridge; ID yang muncul di sana harus dipetakan ke master karyawan sebelum go-live.
+
+Dua scan tanpa penanda masuk/pulang baru dianggap satu hari kerja lengkap jika jaraknya minimal `FINGERPRINT_MIN_WORK_GAP_MINUTES`. Nilai awal 120 menit mencegah scan ulang 2–5 menit setelah masuk salah dibaca sebagai jam pulang.
 
 ## 7. Verifikasi cron
 

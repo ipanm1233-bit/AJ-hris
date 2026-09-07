@@ -321,7 +321,6 @@ export async function mount(container, { session } = {}) {
  m.querySelector("#btn-k-simpan").onclick = async () => {
  const dataUpdate = {
  scan_masuk: m.querySelector("#k-masuk").value.trim() || null,
- scan_masuk: m.querySelector("#k-masuk").value.trim() || null,
  scan_keluar: m.querySelector("#k-keluar").value.trim() || null
  };
  await updateDoc(doc(db, COL.DATA_ABSENSI, item.id), dataUpdate);
