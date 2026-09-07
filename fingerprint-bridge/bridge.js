@@ -79,11 +79,23 @@ function signedHeaders(body) {
   const signature = crypto.createHmac('sha256', required('FINGERPRINT_BRIDGE_SECRET'))
     .update(`${timestamp}.${body}`)
     .digest('hex');
-  return {
+  const headers = {
     'content-type': 'application/json',
     'x-bridge-timestamp': timestamp,
     'x-bridge-signature': signature
   };
+  const vercelBypass = String(process.env.VERCEL_AUTOMATION_BYPASS_SECRET || '').trim();
+  if (vercelBypass) headers['x-vercel-protection-bypass'] = vercelBypass;
+  return headers;
+}
+
+function readableError(value, fallback) {
+  if (typeof value === 'string' && value.trim()) return value;
+  if (value && typeof value === 'object') {
+    if (typeof value.message === 'string') return value.message;
+    try { return JSON.stringify(value); } catch (_) { /* gunakan fallback */ }
+  }
+  return fallback;
 }
 
 async function sendChunk(logs) {
@@ -100,7 +112,7 @@ async function sendChunk(logs) {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload.success === false) {
-        throw new Error(payload.error || `HTTP ${response.status}`);
+        throw new Error(readableError(payload.error, `HTTP ${response.status}`));
       }
       return payload;
     } catch (error) {

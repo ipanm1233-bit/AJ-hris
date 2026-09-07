@@ -24,10 +24,13 @@ test('accepts node-zklib response wrappers and common aliases', () => {
 
 test('signs the exact request body using the configured bridge secret', () => {
   process.env.FINGERPRINT_BRIDGE_SECRET = 'test-secret-which-is-not-used-in-production';
+  process.env.VERCEL_AUTOMATION_BYPASS_SECRET = 'preview-bypass-test';
   const body = JSON.stringify({ logs: [{ deviceUserId: '1' }] });
   const headers = signedHeaders(body);
   const expected = crypto.createHmac('sha256', process.env.FINGERPRINT_BRIDGE_SECRET)
     .update(`${headers['x-bridge-timestamp']}.${body}`)
     .digest('hex');
   assert.equal(headers['x-bridge-signature'], expected);
+  assert.equal(headers['x-vercel-protection-bypass'], 'preview-bypass-test');
+  delete process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
 });

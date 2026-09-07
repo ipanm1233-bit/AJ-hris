@@ -11,6 +11,8 @@ Bridge ini dijalankan pada satu komputer Windows kantor yang berada dalam LAN ya
 5. Isi `HRIS_BASE_URL` dan `FINGERPRINT_BRIDGE_SECRET` pada `.env`.
 6. Secret pada `.env` harus sama dengan environment variable `FINGERPRINT_BRIDGE_SECRET` di Vercel Preview/Production.
 
+Jika URL Preview memakai Vercel Authentication, buat **Protection Bypass for Automation** pada pengaturan Deployment Protection Vercel lalu isi nilainya pada `VERCEL_AUTOMATION_BYPASS_SECRET` di `.env` lokal. Bridge akan mengirimkannya melalui header `x-vercel-protection-bypass`; jangan mematikan perlindungan Preview hanya untuk pengujian.
+
 Jangan mengunggah `.env` atau membagikan secret melalui chat.
 
 ## Tes aman
