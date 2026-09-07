@@ -126,9 +126,11 @@ module.exports = async function handler(req, res) {
     const employeeMap = new Map();
     const numericEmployeeMap = new Map();
     const employeeNameMap = new Map();
+    const employees = [];
     const fingerprintFields = ['nik', 'nik_karyawan', 'finger_id', 'finger_name', 'kode_finger', 'no_finger', 'id_finger', 'pin'];
     employeeSnap.forEach(snapshot => {
       const employee = { ...snapshot.data(), _docId: snapshot.id };
+      employees.push(employee);
       const identifiers = [snapshot.id, ...fingerprintFields.map(field => employee[field])];
       identifiers.forEach(value => {
         const key = String(value || '').trim().toUpperCase();
@@ -154,6 +156,20 @@ module.exports = async function handler(req, res) {
       const name = normalizePersonName(user?.name);
       if (id && name) deviceUserNameMap.set(id, name);
     });
+    const resolveEmployeeByMachineName = machineName => {
+      const exact = employeeNameMap.get(machineName);
+      if (exact) return exact;
+      const candidates = employees.filter(employee => {
+        const aliases = [employee.finger_name, employee.nama_karyawan, employee.nama]
+          .map(normalizePersonName)
+          .filter(alias => alias.length >= 3);
+        return aliases.some(alias =>
+          machineName.startsWith(`${alias} `) || alias.startsWith(`${machineName} `)
+        );
+      });
+      const uniqueIds = new Set(candidates.map(employee => employee._docId));
+      return uniqueIds.size === 1 ? candidates[0] : null;
+    };
     const resolveEmployee = deviceUserId => {
       const exactKey = String(deviceUserId).trim().toUpperCase();
       if (employeeMap.has(exactKey)) return employeeMap.get(exactKey);
@@ -162,7 +178,7 @@ module.exports = async function handler(req, res) {
         if (numericMatch) return numericMatch;
       }
       const machineName = deviceUserNameMap.get(exactKey);
-      return machineName ? employeeNameMap.get(machineName) || null : null;
+      return machineName ? resolveEmployeeByMachineName(machineName) : null;
     };
 
     // --- 3) Upsert per (NIK, tanggal), MERGE dgn scan lama kalau ada ----
@@ -213,6 +229,10 @@ module.exports = async function handler(req, res) {
     const unmatchedIds = [...new Set(groupList
       .filter(group => !resolveEmployee(group.deviceUserId))
       .map(group => group.deviceUserId))].slice(0, 25);
+    const unmatchedFingerprintUsers = unmatchedIds.map(id => ({
+      id,
+      fingerName: deviceUserNameMap.get(String(id).trim().toUpperCase()) || ''
+    }));
 
     const newestDate = groupList.reduce((latest, group) => group.tanggal > latest ? group.tanggal : latest, '');
     if (newestDate) {
@@ -238,7 +258,8 @@ module.exports = async function handler(req, res) {
       processedRecords: count,
       rawScans: logs.length,
       invalidLogs,
-      unmatchedFingerprintIds: unmatchedIds
+      unmatchedFingerprintIds: unmatchedIds,
+      unmatchedFingerprintUsers
     });
 
   } catch (error) {
