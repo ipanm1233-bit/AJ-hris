@@ -9,7 +9,7 @@
     "start": "node server.js",
     "dev": "node server.js",
     "lint": "node scripts/check-syntax.js",
-    "test": "node --test tests/security.test.js tests/fingerprint.test.js",
+    "test": "node --test tests/security.test.js tests/fingerprint.test.js fingerprint-bridge/bridge.test.js",
     "security:rules": "firebase emulators:exec --project demo-ajhris-security --only firestore \"node --test tests/firestore-rules.test.js\"",
     "security:check": "npm run lint && npm test && npm run security:rules"
   },

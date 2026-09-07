@@ -87,6 +87,8 @@ Endpoint mencocokkan ID mesin terhadap document ID/NIK serta field `finger_id`, 
 
 Dua scan tanpa penanda masuk/pulang baru dianggap satu hari kerja lengkap jika jaraknya minimal `FINGERPRINT_MIN_WORK_GAP_MINUTES`. Nilai awal 120 menit mencegah scan ulang 2–5 menit setelah masuk salah dibaca sebagai jam pulang.
 
+Untuk Solution X150, pasang agent pada komputer Windows yang satu LAN dengan mesin. Petunjuk lengkap terdapat di `fingerprint-bridge/README.md`. Agent memakai IP/port dari `.env` lokal, membaca log tanpa menghapusnya, lalu mengirimnya ke `/api/sync-absen` dengan HMAC. Jangan membuka port mesin ke internet dan jangan menyimpan bridge secret di browser.
+
 ## 7. Verifikasi cron
 
 1. Vercel → Settings → Cron Jobs.

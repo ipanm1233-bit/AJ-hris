@@ -1,7 +1,7 @@
 import { db, COL, collection, getDocs, writeBatch, doc, getDoc, query, where, updateDoc, deleteDoc } from "../firebase-config.js";
 import { toast, genId, fsGetAll, escapeHtml, openModal, closeModal, formatUangJalanEkspedisiRows } from "../utils.js";
 import { skeletonRows, emptyState } from "../components.js";
-import { callGasWebApp, callGasArchiveWebApp } from "../gas-integration.js";
+import { callGasArchiveWebApp } from "../gas-integration.js";
 import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
 
 function getTwoRunningMonthsRange() {
@@ -698,165 +698,32 @@ export async function mount(container, { session } = {}) {
  btnSyncFingerprint.onclick = async () => {
  btnSyncFingerprint.disabled = true;
  const origText = btnSyncFingerprint.innerHTML;
- btnSyncFingerprint.innerHTML = `Menghubungkan ke LAN Gateway...`;
- 
- const apiIP = localStorage.getItem("fingerprint_api_ip") || "192.168.1.150";
- toast(`Membuka koneksi ke gateway LAN/Fingerprint IP (${apiIP})...`, "info");
- 
- setTimeout(async () => {
- btnSyncFingerprint.innerHTML = `Mengunduh Log Mesin...`;
- toast("Mengunduh log absensi terbaru dari komputer/mesin sidik jari di LAN...", "info");
- 
- setTimeout(async () => {
+ btnSyncFingerprint.innerHTML = `Memuat data terbaru...`;
  try {
- // Coba lakukan request ke Apps Script / Gateway jika tersedia
- let fetchedRows = [];
- try {
- const gasRes = await callGasWebApp({ action: "sync_fingerprint", ip: apiIP });
- if (gasRes && gasRes.rows) fetchedRows = gasRes.rows;
- } catch(e) {
- console.warn("GAS WebApp fingerprint gateway fallback: ", e);
- }
-
- const masterKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
- const activeKaryawan = masterKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF") === "AKTIF");
- 
- const todayStr = new Date().toISOString().substring(0, 10);
- const yesterday = new Date();
- yesterday.setDate(yesterday.getDate() - 1);
- const yesterdayStr = yesterday.toISOString().substring(0, 10);
- 
- const existingDates = new Set(listAbsensiGlobal.map(x => `${x.nik}_${x.tanggal}`));
- const newRecords = [];
-
- if (fetchedRows.length > 0) {
- fetchedRows.forEach(r => {
- if (!existingDates.has(`${r.nik}_${r.tanggal}`)) {
- newRecords.push({ id: genId("ABS"), ...r });
- }
- });
- } else {
- // Fallback: Generate log sinkronisasi dari data karyawan aktif kantor
- const snapCfg = await getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(() => null);
- const cfgJadwal = (snapCfg && snapCfg.exists()) ? (snapCfg.data()?.jadwal || []) : [];
-
- function getShiftForEmployee(karyawanObj, cfgJadwalArr = []) {
- let jab = "";
- let nama = "";
-
- if (typeof karyawanObj === "string") {
- jab = karyawanObj.trim().toLowerCase();
- } else if (karyawanObj && typeof karyawanObj === "object") {
- jab = String(karyawanObj.jabatan || karyawanObj.posisi || "").trim().toLowerCase();
- nama = String(karyawanObj.nama_karyawan || karyawanObj.nama || "").trim().toLowerCase();
- }
-
- const isCashier = jab.includes("cashier") || jab.includes("kasir") || nama.includes("jannah") || nama.includes("amaliatul");
-
- if (jab && cfgJadwalArr && cfgJadwalArr.length) {
- const match = cfgJadwalArr.find(j => {
- const jJab = String(j.jabatan || "").trim().toLowerCase();
- return jJab && (jJab === jab || jab.includes(jJab) || jJab.includes(jab));
- });
- if (match && match.masuk) {
- return { masuk: match.masuk, pulang: match.pulang || "17:00" };
- }
- }
-
- if (isCashier) {
- return { masuk: "09:00", pulang: "18:00" };
- }
-
- if (cfgJadwalArr && cfgJadwalArr.length) {
- const defaultShift = cfgJadwalArr.find(j => {
- const jJab = String(j.jabatan || "").trim().toLowerCase();
- return !jJab || jJab === "all" || jJab === "semua jabatan" || jJab === "semua";
- });
- if (defaultShift && defaultShift.masuk) {
- return { masuk: defaultShift.masuk, pulang: defaultShift.pulang || "17:00" };
- }
- }
- return { masuk: "08:00", pulang: "17:00" };
- }
-
- activeKaryawan.forEach(k => {
- const nikVal = k.nik || k.nik_karyawan || "10001";
- const shift = getShiftForEmployee(k, cfgJadwal);
- // kemarin
- if (!existingDates.has(`${nikVal}_${yesterdayStr}`)) {
- newRecords.push({
- id: genId("ABS"),
- nik: nikVal,
- nama: k.nama_karyawan,
- tanggal: yesterdayStr,
- jadwal_masuk: shift.masuk,
- jadwal_keluar: shift.pulang,
- scan_masuk: "07:51",
- scan_keluar: "17:04"
- });
- }
- // hari ini
- if (!existingDates.has(`${nikVal}_${todayStr}`)) {
- newRecords.push({
- id: genId("ABS"),
- nik: nikVal,
- nama: k.nama_karyawan,
- tanggal: todayStr,
- jadwal_masuk: shift.masuk,
- jadwal_keluar: shift.pulang,
- scan_masuk: "07:45",
- scan_keluar: null
- });
- }
- });
- }
- 
- if (newRecords.length > 0) {
- const batch = writeBatch(db);
- newRecords.forEach(p => { batch.set(doc(db, COL.DATA_ABSENSI, p.id), p); });
- await batch.commit();
- toast(`Sukses penarikan LAN! Berhasil menarik ${newRecords.length} log absensi baru dari komputer/mesin kantor (${apiIP})!`, "success");
- } else {
- toast(`Koneksi LAN (${apiIP}) sukses. Seluruh data absensi sudah sinkron & terbaru.`, "success");
- }
- loadRawAbsensiTable();
+ await loadRawAbsensiTable();
+ toast("Data absensi terbaru sudah dimuat. Penarikan dari mesin dilakukan otomatis oleh agent komputer kantor.", "success");
  } catch (err) {
- toast("Gagal melakukan penarikan: " + err.message, "error");
+ toast("Gagal memuat data absensi: " + err.message, "error");
  }
  btnSyncFingerprint.disabled = false;
  btnSyncFingerprint.innerHTML = origText;
- }, 1200);
- }, 1200);
  };
  }
 
  if (btnConfigFingerprint) {
  btnConfigFingerprint.onclick = () => {
- const apiIP = localStorage.getItem("fingerprint_api_ip") || "192.168.1.150";
- const apiToken = localStorage.getItem("fingerprint_api_token") || "";
- const apiPort = localStorage.getItem("fingerprint_api_port") || "8080";
- 
  openModal({
- title: "Konfigurasi Gateway Mesin Absensi LAN",
+ title: "Informasi Koneksi Fingerprint",
  bodyHtml: `
  <div class="space-y-4 text-left">
  <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-xs text-indigo-800">
- <p class="font-bold">Integrasi Komputer LAN & Mesin Sidik Jari</p>
- <p class="mt-1">Komputer lokal kantor yang terhubung ke mesin fingerprint (Solution, ZKTeco, Fingerspot, dll.) dapat mengirim log scan otomatis ke aplikasi ini lewat Web API Gateway atau Agent Service.</p>
+ <p class="font-bold">Solution X150 — Agent Otomatis</p>
+ <p class="mt-1">Log mesin dibaca oleh agent pada komputer kantor dan dikirim ke HRIS setiap beberapa menit. Kredensial koneksi tidak disimpan di browser.</p>
  </div>
- <div>
- <label class="block text-xs font-bold text-slate-700 uppercase mb-1">IP Address / Host Mesin LAN</label>
- <input type="text" id="cfg-fp-ip" value="${apiIP}" placeholder="192.168.1.150" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:border-indigo-500 font-mono">
- </div>
- <div class="grid grid-cols-2 gap-3">
- <div>
- <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Port Gateway</label>
- <input type="text" id="cfg-fp-port" value="${apiPort}" placeholder="8080" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:border-indigo-500 font-mono">
- </div>
- <div>
- <label class="block text-xs font-bold text-slate-700 uppercase mb-1">API Access Token</label>
- <input type="password" id="cfg-fp-token" value="${apiToken}" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:border-indigo-500 font-mono">
- </div>
+ <div class="rounded-xl border border-slate-200 p-3 text-xs text-slate-600 space-y-1">
+ <p><b>Status:</b> konfigurasi dilakukan pada komputer bridge.</p>
+ <p><b>Keamanan:</b> secret hanya tersimpan sebagai environment variable lokal dan Vercel.</p>
+ <p><b>Catatan:</b> tombol “Muat Data Terbaru” tidak membuat data contoh ketika mesin tidak terhubung.</p>
  </div>
  <div class="pt-2 border-t border-slate-100">
  <p class="text-[11px] font-bold text-slate-600 uppercase">Status Retensi & Otomasi Archive:</p>
@@ -865,21 +732,10 @@ export async function mount(container, { session } = {}) {
  </div>
  `,
  footerHtml: `
- <button id="btn-cfg-fp-cancel" class="px-4 py-2 text-slate-500 text-sm hover:bg-slate-100 rounded-lg transition">Batal</button>
- <button id="btn-cfg-fp-save" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg font-semibold transition">Simpan Konfigurasi</button>
+ <button id="btn-cfg-fp-close" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg font-semibold transition">Tutup</button>
  `,
  onMount: m => {
- m.querySelector("#btn-cfg-fp-cancel").onclick = closeModal;
- m.querySelector("#btn-cfg-fp-save").onclick = () => {
- const ip = m.querySelector("#cfg-fp-ip").value.trim();
- const port = m.querySelector("#cfg-fp-port").value.trim();
- const token = m.querySelector("#cfg-fp-token").value.trim();
- localStorage.setItem("fingerprint_api_ip", ip);
- localStorage.setItem("fingerprint_api_port", port);
- localStorage.setItem("fingerprint_api_token", token);
- toast("Konfigurasi API Gateway LAN Mesin Absensi berhasil disimpan!", "success");
- closeModal();
- };
+ m.querySelector("#btn-cfg-fp-close").onclick = closeModal;
  }
  });
  };
