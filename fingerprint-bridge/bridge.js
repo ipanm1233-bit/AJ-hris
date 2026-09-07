@@ -111,8 +111,8 @@ function readableError(value, fallback) {
   return fallback;
 }
 
-async function sendChunk(logs, users = []) {
-  return sendPayload({ logs, users });
+async function sendChunk(logs, users = [], branch = '') {
+  return sendPayload({ logs, users, branch });
 }
 
 async function sendPayload(payload) {
@@ -140,8 +140,8 @@ async function sendPayload(payload) {
   throw lastError;
 }
 
-async function getSyncState() {
-  return sendPayload({ action: 'status' });
+async function getSyncState(branch) {
+  return sendPayload({ action: 'status', branch });
 }
 
 async function connectDevice() {
@@ -206,13 +206,14 @@ async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {
   }
 
   const today = localDateTime(new Date()).slice(0, 10);
+  const branch = String(process.env.FINGERPRINT_BRANCH || 'CIREBON').trim().toUpperCase();
   let startDate = fromDate;
   let endDate = toDate || today;
 
   if (startDate && !validDate(startDate)) throw new Error('Format --from wajib YYYY-MM-DD');
   if (!validDate(endDate)) throw new Error('Format --to wajib YYYY-MM-DD');
   if (!startDate) {
-    const state = await getSyncState();
+    const state = await getSyncState(branch);
     const latestDate = validDate(state.latestDate) ? state.latestDate : '';
     if (latestDate) startDate = latestDate === today ? today : addDays(latestDate, 1);
   }
@@ -246,7 +247,7 @@ async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {
   const unmatched = new Set();
   const unmatchedNames = new Map();
   for (let index = 0; index < recentLogs.length; index += 1000) {
-    const response = await sendChunk(recentLogs.slice(index, index + 1000), result.users);
+    const response = await sendChunk(recentLogs.slice(index, index + 1000), result.users, branch);
     processed += Number(response.processedRecords || 0);
     for (const id of response.unmatchedFingerprintIds || []) unmatched.add(String(id));
     for (const user of response.unmatchedFingerprintUsers || []) {

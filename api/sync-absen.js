@@ -13,6 +13,10 @@ function normalizePersonName(value) {
     .toUpperCase();
 }
 
+function normalizeBranch(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
 function verifyBridgeSignature(req, rawBody) {
   const secret = String(process.env.FINGERPRINT_BRIDGE_SECRET || '').trim();
   const timestamp = String(req.headers?.['x-bridge-timestamp'] || '');
@@ -95,13 +99,19 @@ module.exports = async function handler(req, res) {
         error: error || "Firebase Admin environment variables are not configured."
       });
     }
-    const syncStateRef = db.collection('system_metadata').doc('fingerprint_sync');
+    const branch = normalizeBranch(req.body?.branch);
+    if (!branch) return res.status(400).json({ success: false, error: 'Cabang mesin fingerprint wajib diisi.' });
+    const safeBranch = branch.replace(/[^A-Z0-9_-]/g, '_').slice(0, 50);
+    const syncStateRef = db.collection('system_metadata').doc(`fingerprint_sync_${safeBranch}`);
     if (req.body?.action === 'status') {
       const stateSnap = await syncStateRef.get();
       let latestDate = stateSnap.exists ? String(stateSnap.data()?.latestDate || '') : '';
       if (!/^\d{4}-\d{2}-\d{2}$/.test(latestDate)) {
-        const latestSnap = await db.collection('data_absensi').orderBy('tanggal', 'desc').limit(1).get();
-        latestDate = latestSnap.empty ? '' : String(latestSnap.docs[0].data()?.tanggal || '');
+        const branchSnap = await db.collection('data_absensi').where('cabang', '==', branch).select('tanggal').get();
+        latestDate = branchSnap.docs.reduce((latest, doc) => {
+          const date = String(doc.data()?.tanggal || '');
+          return date > latest ? date : latest;
+        }, '');
       }
       return res.status(200).json({ success: true, latestDate });
     }
@@ -130,6 +140,7 @@ module.exports = async function handler(req, res) {
     const fingerprintFields = ['nik', 'nik_karyawan', 'finger_id', 'finger_name', 'kode_finger', 'no_finger', 'id_finger', 'pin'];
     employeeSnap.forEach(snapshot => {
       const employee = { ...snapshot.data(), _docId: snapshot.id };
+      if (normalizeBranch(employee.cabang) !== branch) return;
       employees.push(employee);
       const identifiers = [snapshot.id, ...fingerprintFields.map(field => employee[field])];
       identifiers.forEach(value => {
@@ -186,19 +197,23 @@ module.exports = async function handler(req, res) {
     let count = 0;
     for (let i = 0; i < groupList.length; i += chunkSize) {
       const chunk = groupList.slice(i, i + chunkSize);
-      const resolvedChunk = chunk.map(group => {
+      const chunkItems = chunk.map(group => {
         const employee = resolveEmployee(group.deviceUserId);
         const nik = String(employee?.nik_karyawan || employee?.nik || group.deviceUserId).trim();
         const safeNik = nik.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);
         const ref = db.collection('data_absensi').doc(`ABS-FP-${safeNik}-${group.tanggal}`);
         const safeDeviceId = String(group.deviceUserId).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);
-        const legacyRef = employee && safeDeviceId !== safeNik
-          ? db.collection('data_absensi').doc(`ABS-FP-${safeDeviceId}-${group.tanggal}`)
-          : null;
+        const legacyRef = db.collection('data_absensi').doc(`ABS-FP-${safeDeviceId}-${group.tanggal}`);
         return { group, employee, nik, ref, legacyRef };
       });
-      const existingSnapshots = await db.getAll(...resolvedChunk.map(item => item.ref));
+      const resolvedChunk = chunkItems.filter(item => item.employee);
+      const existingSnapshots = resolvedChunk.length
+        ? await db.getAll(...resolvedChunk.map(item => item.ref))
+        : [];
       const batch = db.batch();
+
+      // ID yang tidak bisa dipetakan tidak boleh menghasilkan jam/data dummy.
+      chunkItems.filter(item => !item.employee).forEach(item => batch.delete(item.legacyRef));
 
       resolvedChunk.forEach((item, index) => {
         const { group: g, employee, nik, ref, legacyRef } = item;
@@ -213,13 +228,13 @@ module.exports = async function handler(req, res) {
           tanggal: g.tanggal,
           scan_masuk: attendance.scan_masuk,
           scan_keluar: attendance.scan_keluar,
-          cabang: employee?.cabang || oldData.cabang || '',
+          cabang: employee.cabang || branch,
           divisi: employee?.divisi || employee?.departemen || oldData.divisi || '',
           jabatan: employee?.jabatan || employee?.posisi || oldData.jabatan || '',
           sumber: "FINGERPRINT",
           disinkron_pada: admin.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
-        if (legacyRef) batch.delete(legacyRef);
+        if (legacyRef.path !== ref.path) batch.delete(legacyRef);
 
         count++;
       });
@@ -250,13 +265,14 @@ module.exports = async function handler(req, res) {
 
     await writeAuditLog(db, req, null, {
       action: 'FINGERPRINT_SYNC', module: 'ATTENDANCE',
-      metadata: { processed_records: count, raw_scans: logs.length, invalid_logs: invalidLogs, unmatched_count: unmatchedIds.length }
+      metadata: { branch, processed_records: count, raw_scans: logs.length, invalid_logs: invalidLogs, unmatched_count: unmatchedIds.length }
     });
     res.status(200).json({
       success: true,
       message: `${count} data absen (${logs.length} scan mentah) berhasil disinkronkan.`,
       processedRecords: count,
       rawScans: logs.length,
+      branch,
       invalidLogs,
       unmatchedFingerprintIds: unmatchedIds,
       unmatchedFingerprintUsers
