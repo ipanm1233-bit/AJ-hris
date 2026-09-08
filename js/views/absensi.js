@@ -4,6 +4,7 @@ import { skeletonRows, emptyState } from "../components.js";
 import { callGasArchiveWebApp } from "../gas-integration.js";
 import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
 import { authFetch } from "../api-client.js";
+import { resolveWorkSchedule } from "../work-schedule.mjs";
 
 async function fingerprintApi(action, payload = {}) {
  const response = await authFetch('/api/sync-absen', {
@@ -74,6 +75,8 @@ export async function mount(container, { session } = {}) {
  const { startStr: twoMonthsStart, endStr: twoMonthsEnd } = getTwoRunningMonthsRange();
 
  let listAbsensiGlobal = [];
+ let employeeRowsGlobal = [];
+ let scheduleRowsGlobal = [];
  // sortNama: null (default, urut tanggal terbaru) | "asc" (A-Z) | "desc" (Z-A)
  let filterState = {
  search: "",
@@ -83,6 +86,60 @@ export async function mount(container, { session } = {}) {
  division: "",
  sortNama: null
  };
+
+ function attendanceKey(value) {
+ return String(value || "").trim().toUpperCase();
+ }
+
+ function buildUniqueEmployeeMap(rows, valueGetter) {
+ const map = new Map();
+ rows.forEach(employee => {
+ const keys = valueGetter(employee).map(attendanceKey).filter(Boolean);
+ keys.forEach(key => {
+ if (!map.has(key)) map.set(key, employee);
+ else if (map.get(key) !== employee) map.set(key, null);
+ });
+ });
+ return map;
+ }
+
+ function enrichAttendanceRows(rows) {
+ const employeeByNik = buildUniqueEmployeeMap(employeeRowsGlobal, employee => [employee.id, employee.nik, employee.nik_karyawan]);
+ const employeeByFingerId = buildUniqueEmployeeMap(employeeRowsGlobal, employee => [employee.finger_id, employee.kode_finger, employee.no_finger, employee.id_finger, employee.pin]);
+ const employeeByFingerName = buildUniqueEmployeeMap(employeeRowsGlobal, employee => [employee.finger_name]);
+
+ return rows.map(row => {
+ const machineId = row.fingerprint_no_id || row.no_id || row.fingerprint_user_id || "";
+ const machineName = row.fingerprint_name || row.nama_finger || "";
+ const employee = employeeByNik.get(attendanceKey(row.nik || row.nik_karyawan))
+ || employeeByFingerId.get(attendanceKey(machineId))
+ || employeeByFingerName.get(attendanceKey(machineName));
+ const employeeView = employee || row;
+ const shift = resolveWorkSchedule(employeeView, scheduleRowsGlobal, row.tanggal);
+ const source = String(row.sumber || "").toUpperCase();
+ const autoAssigned = typeof row.auto_assign === "boolean"
+ ? row.auto_assign
+ : source === "FINGERPRINT" && Boolean(employee);
+
+ return {
+ ...row,
+ nik: row.nik || row.nik_karyawan || employee?.nik || employee?.nik_karyawan || "",
+ nama: row.nama || employee?.nama_karyawan || employee?.nama || "",
+ cabang: row.cabang || employee?.cabang || "",
+ divisi: row.divisi || row.departemen || employee?.divisi || employee?.departemen || "",
+ jabatan: row.jabatan || row.posisi || employee?.jabatan || employee?.posisi || "",
+ emp_no: row.fingerprint_emp_no || row.emp_no || row.fingerprint_user_id || "",
+ no_id: machineId,
+ nama_finger: machineName || employee?.finger_name || "",
+ auto_assign_label: autoAssigned ? "Ya" : "Tidak",
+ jam_kerja: row.jam_kerja || shift.jamKerja,
+ jadwal_masuk: shift.masuk || row.jadwal_masuk || "",
+ jadwal_keluar: shift.pulang || row.jadwal_keluar || "",
+ scan_masuk: row.scan_masuk || "",
+ scan_keluar: row.scan_keluar || row.scan_pulang || ""
+ };
+ });
+ }
 
  // Sembunyikan kontrol admin jika bukan HRD/Admin
  if (!isHrdOrAdmin) {
@@ -131,29 +188,15 @@ export async function mount(container, { session } = {}) {
  });
 
  async function loadRawAbsensiTable() {
- rawTbody.innerHTML = `<tr><td colspan="6" class="p-4">${skeletonRows(4)}</td></tr>`;
- const [attendanceRows, employeeRows] = await Promise.all([
+ rawTbody.innerHTML = `<tr><td colspan="13" class="p-4">${skeletonRows(4)}</td></tr>`;
+ const [attendanceRows, employeeRows, scheduleSnapshot] = await Promise.all([
  fsGetAll(COL.DATA_ABSENSI),
- fsGetAll(COL.MASTER_KARYAWAN).catch(() => [])
+ fsGetAll(COL.MASTER_KARYAWAN).catch(() => []),
+ getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(() => null)
  ]);
- const employeeByNik = new Map();
- employeeRows.forEach(employee => {
- const keys = [employee.id, employee.nik, employee.nik_karyawan]
- .map(value => String(value || "").trim().toUpperCase())
- .filter(Boolean);
- keys.forEach(key => { if (!employeeByNik.has(key)) employeeByNik.set(key, employee); });
- });
- listAbsensiGlobal = attendanceRows.map(row => {
- const employee = employeeByNik.get(String(row.nik || row.nik_karyawan || "").trim().toUpperCase());
- return {
- ...row,
- nik: row.nik || row.nik_karyawan || employee?.nik || employee?.nik_karyawan || "",
- nama: row.nama || employee?.nama_karyawan || employee?.nama || "",
- cabang: row.cabang || employee?.cabang || "",
- divisi: row.divisi || row.departemen || employee?.divisi || employee?.departemen || "",
- jabatan: row.jabatan || row.posisi || employee?.jabatan || employee?.posisi || ""
- };
- });
+ employeeRowsGlobal = employeeRows;
+ scheduleRowsGlobal = scheduleSnapshot?.exists() ? (scheduleSnapshot.data()?.jadwal || []) : [];
+ listAbsensiGlobal = enrichAttendanceRows(attendanceRows);
  populateAttendanceFilterOptions();
 
  // Check for records older than 60 days per employee to keep Firebase lightweight
@@ -291,7 +334,8 @@ export async function mount(container, { session } = {}) {
  if (filterState.division) data = data.filter(x => String(x.divisi || "").trim().toUpperCase() === filterState.division.toUpperCase());
  if (filterState.search) {
  const term = filterState.search;
- data = data.filter(x => String(x.nama || "").toLowerCase().includes(term) || String(x.nik || "").toLowerCase().includes(term));
+ data = data.filter(x => [x.nama, x.nik, x.nama_finger, x.emp_no, x.no_id]
+ .some(value => String(value || "").toLowerCase().includes(term)));
  }
 
  if (filterState.sortNama === "asc") {
@@ -308,16 +352,23 @@ export async function mount(container, { session } = {}) {
 
  function renderRawTable(data) {
  if(!data.length) {
- rawTbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center">${emptyState("Tidak ada data absensi Anda pada periode ini")}</td></tr>`;
+ rawTbody.innerHTML = `<tr><td colspan="13" class="p-8 text-center">${emptyState("Tidak ada data absensi Anda pada periode ini")}</td></tr>`;
  return;
  }
  rawTbody.innerHTML = data.map(r => `
  <tr class="hover:bg-slate-50 transition text-xs">
- <td class="px-4 py-3 font-medium text-slate-700">${r.tanggal}</td>
+ <td class="px-4 py-3 text-slate-500">${escapeHtml(r.emp_no || "-")}</td>
+ <td class="px-4 py-3 text-slate-500">${escapeHtml(r.no_id || "-")}</td>
  <td class="px-4 py-3 text-slate-500">${escapeHtml(r.nik || "-")}</td>
- <td class="px-4 py-3 font-semibold text-slate-800">${escapeHtml(r.nama)}</td>
- <td class="px-4 py-3 text-center font-mono ${r.scan_masuk ? 'text-slate-700':'text-red-400 font-bold'}">${r.scan_masuk || "-"}</td>
- <td class="px-4 py-3 text-center font-mono ${r.scan_keluar ? 'text-slate-700':'text-red-400 font-bold'}">${r.scan_keluar || "-"}</td>
+ <td class="px-4 py-3 text-slate-600">${escapeHtml(r.nama_finger || "-")}</td>
+ <td class="px-4 py-3 font-semibold text-slate-800">${escapeHtml(r.nama || "-")}</td>
+ <td class="px-4 py-3 text-center">${escapeHtml(r.auto_assign_label)}</td>
+ <td class="px-4 py-3 font-medium text-slate-700">${escapeHtml(r.tanggal || "-")}</td>
+ <td class="px-4 py-3 text-center whitespace-nowrap">${escapeHtml(r.jam_kerja || "-")}</td>
+ <td class="px-4 py-3 text-center font-mono">${escapeHtml(r.jadwal_masuk || "-")}</td>
+ <td class="px-4 py-3 text-center font-mono">${escapeHtml(r.jadwal_keluar || "-")}</td>
+ <td class="px-4 py-3 text-center font-mono ${r.scan_masuk ? 'text-slate-700':'text-red-400 font-bold'}">${escapeHtml(r.scan_masuk || "-")}</td>
+ <td class="px-4 py-3 text-center font-mono ${r.scan_keluar ? 'text-slate-700':'text-red-400 font-bold'}">${escapeHtml(r.scan_keluar || "-")}</td>
  <td class="px-4 py-3 text-right">
  ${isHrdOrAdmin && canEdit ? `
  <button data-edit-id="${r.id}" class="text-maroon-700 font-medium hover:underline mr-3">Koreksi</button>
@@ -417,27 +468,25 @@ export async function mount(container, { session } = {}) {
 
  const exportRows = [...filteredRows]
  .sort((a, b) => String(a.tanggal || "").localeCompare(String(b.tanggal || "")) || String(a.nama || "").localeCompare(String(b.nama || ""), "id"))
- .map((row, index) => ({
- "No": index + 1,
- "Tanggal": row.tanggal || "",
+ .map(row => ({
+ "Emp No.": row.emp_no || "",
+ "No. ID": row.no_id || "",
  "NIK": row.nik || "",
+ "Nama Finger": row.nama_finger || "",
  "Nama Karyawan": row.nama || "",
- "Cabang": row.cabang || "",
- "Divisi": row.divisi || "",
- "Jabatan": row.jabatan || "",
- "Jadwal Masuk": row.jadwal_masuk || "",
- "Jadwal Keluar": row.jadwal_keluar || "",
+ "Auto-Assign": row.auto_assign_label || "Tidak",
+ "Tanggal": row.tanggal || "",
+ "Jam Kerja": row.jam_kerja || "",
+ "Jam Masuk": row.jadwal_masuk || "",
+ "Jam Pulang": row.jadwal_keluar || "",
  "Scan Masuk": row.scan_masuk || "",
- "Scan Keluar": row.scan_keluar || "",
- "Status Scan": row.scan_masuk && row.scan_keluar ? "Lengkap" : row.scan_masuk || row.scan_keluar ? "Belum Lengkap" : "Tanpa Scan",
- "Sumber Data": row.sumber || "DATA LAMA",
- "ID Fingerprint": row.fingerprint_user_id || ""
+ "Scan Pulang": row.scan_keluar || ""
  }));
 
  const worksheet = window.XLSX.utils.json_to_sheet(exportRows);
  worksheet["!cols"] = [
- { wch: 6 }, { wch: 13 }, { wch: 18 }, { wch: 30 }, { wch: 14 }, { wch: 22 }, { wch: 24 },
- { wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 13 }, { wch: 16 }, { wch: 18 }, { wch: 16 }
+ { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 24 }, { wch: 30 }, { wch: 14 },
+ { wch: 13 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }
  ];
  if (worksheet["!ref"]) worksheet["!autofilter"] = { ref: worksheet["!ref"] };
  const workbook = window.XLSX.utils.book_new();
@@ -545,45 +594,6 @@ export async function mount(container, { session } = {}) {
  ]);
  const cfgJadwal = (snapCfg && snapCfg.exists()) ? (snapCfg.data()?.jadwal || []) : [];
 
- function getShiftForEmployee(karyawanObj, cfgJadwalArr = []) {
- let jab = "";
- let nama = "";
-
- if (typeof karyawanObj === "string") {
- jab = karyawanObj.trim().toLowerCase();
- } else if (karyawanObj && typeof karyawanObj === "object") {
- jab = String(karyawanObj.jabatan || karyawanObj.posisi || "").trim().toLowerCase();
- nama = String(karyawanObj.nama_karyawan || karyawanObj.nama || "").trim().toLowerCase();
- }
-
- const isCashier = jab.includes("cashier") || jab.includes("kasir") || nama.includes("jannah") || nama.includes("amaliatul");
-
- if (jab && cfgJadwalArr && cfgJadwalArr.length) {
- const match = cfgJadwalArr.find(j => {
- const jJab = String(j.jabatan || "").trim().toLowerCase();
- return jJab && (jJab === jab || jab.includes(jJab) || jJab.includes(jab));
- });
- if (match && match.masuk) {
- return { masuk: match.masuk, pulang: match.pulang || "17:00" };
- }
- }
-
- if (isCashier) {
- return { masuk: "09:00", pulang: "18:00" };
- }
-
- if (cfgJadwalArr && cfgJadwalArr.length) {
- const defaultShift = cfgJadwalArr.find(j => {
- const jJab = String(j.jabatan || "").trim().toLowerCase();
- return !jJab || jJab === "all" || jJab === "semua jabatan" || jJab === "semua";
- });
- if (defaultShift && defaultShift.masuk) {
- return { masuk: defaultShift.masuk, pulang: defaultShift.pulang || "17:00" };
- }
- }
- return { masuk: "08:00", pulang: "17:00" };
- }
-
  const chunks = []; let tempArr = [];
  rows.forEach(r => {
  const getVal = (keys) => {
@@ -602,7 +612,7 @@ export async function mount(container, { session } = {}) {
  if (kNama && empNama && kNama === String(empNama).trim().toLowerCase()) return true;
  return false;
  });
- const shift = getShiftForEmployee(empObj, cfgJadwal);
+ const shift = resolveWorkSchedule(empObj, cfgJadwal, tglStr);
 
  const resolvedNik = String(empNik || empObj?.nik || empObj?.nik_karyawan || "").trim();
  const stableEmployeeKey = (resolvedNik || String(empNama || empObj?.nama_karyawan || empObj?.nama || ""))
@@ -837,7 +847,7 @@ export async function mount(container, { session } = {}) {
  if (res && res.rows && res.rows.length > 0) {
  // Merge with global list (excluding duplicates)
  const existingIds = new Set(listAbsensiGlobal.map(x => x.id));
- const newRows = res.rows.filter(x => !existingIds.has(x.id));
+ const newRows = enrichAttendanceRows(res.rows.filter(x => !existingIds.has(x.id)));
  listAbsensiGlobal = [...listAbsensiGlobal, ...newRows];
  populateAttendanceFilterOptions();
  applyFiltersAbsen();
