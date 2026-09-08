@@ -382,10 +382,17 @@ module.exports = async function handler(req, res) {
       });
     });
     const deviceUserNameMap = new Map();
+    const deviceUserMetadataMap = new Map();
     deviceUsers.forEach(user => {
-      const id = String(user?.deviceUserId || '').trim().toUpperCase();
+      const empNo = String(user?.empNo ?? user?.uid ?? user?.userSn ?? '').trim();
+      const noId = String(user?.noId ?? user?.userId ?? user?.deviceUserId ?? '').trim();
+      const id = String(user?.deviceUserId || noId || empNo).trim().toUpperCase();
       const name = normalizePersonName(user?.name);
-      if (id && name) deviceUserNameMap.set(id, name);
+      const metadata = { empNo, noId: noId || id, name: String(user?.name || '').trim() };
+      [id, empNo, noId].map(value => String(value || '').trim().toUpperCase()).filter(Boolean).forEach(alias => {
+        deviceUserMetadataMap.set(alias, metadata);
+        if (name) deviceUserNameMap.set(alias, name);
+      });
     });
     const resolveEmployeeByMachineName = machineName => {
       const exact = employeeNameMap.get(machineName);
@@ -427,7 +434,8 @@ module.exports = async function handler(req, res) {
         const ref = db.collection('data_absensi').doc(`ABS-FP-${safeNik}-${group.tanggal}`);
         const safeDeviceId = String(group.deviceUserId).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);
         const legacyRef = db.collection('data_absensi').doc(`ABS-FP-${safeDeviceId}-${group.tanggal}`);
-        return { group, employee, nik, ref, legacyRef };
+        const machineUser = deviceUserMetadataMap.get(String(group.deviceUserId).trim().toUpperCase()) || null;
+        return { group, employee, machineUser, nik, ref, legacyRef };
       });
       const resolvedChunk = chunkItems.filter(item => item.employee);
       const existingSnapshots = resolvedChunk.length
@@ -453,7 +461,7 @@ module.exports = async function handler(req, res) {
       chunkItems.filter(item => !item.employee).forEach(item => batch.delete(item.legacyRef));
 
       resolvedChunk.forEach((item, index) => {
-        const { group: g, employee, nik, ref, legacyRef } = item;
+        const { group: g, employee, machineUser, nik, ref, legacyRef } = item;
         const existing = existingSnapshots[index];
         const oldData = existing.exists ? existing.data() : {};
         const attendance = computeAttendance(g.events, oldData, minWorkGapMinutes);
@@ -461,6 +469,10 @@ module.exports = async function handler(req, res) {
         batch.set(ref, {
           nik,
           fingerprint_user_id: g.deviceUserId,
+          fingerprint_emp_no: machineUser?.empNo || g.deviceUserId,
+          fingerprint_no_id: machineUser?.noId || g.deviceUserId,
+          fingerprint_name: machineUser?.name || employee?.finger_name || '',
+          auto_assign: true,
           nama: employee?.nama_karyawan || employee?.nama || oldData.nama || `ID Finger ${g.deviceUserId} (belum dipetakan)`,
           tanggal: g.tanggal,
           scan_masuk: attendance.scan_masuk,
