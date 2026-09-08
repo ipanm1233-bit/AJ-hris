@@ -8,6 +8,7 @@ import { COL } from "../firebase-config.js";
 import { isoDocHeaderTable, COMPANY_NAME, logoImgTag } from "../branding.js";
 import { getSession } from "../auth.js";
 import { authFetch } from "../api-client.js";
+import { callGasArchiveWebApp } from "../gas-integration.js";
 
 // Beautiful SVG D3 visualization loaded from ESM
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
@@ -21,7 +22,7 @@ export async function mount(container, { session } = {}) {
   const userCabang = (activeSession.cabang || "").trim().toUpperCase();
 
   // Role Access Levels
-  const isSuperOrHrd = ["SUPERADMIN", "HRD", "DIREKTUR", "DIRECTOR", "GM"].includes(userRole);
+  const isSuperOrHrd = ["SUPERADMIN", "ADMIN", "HRD", "DIREKTUR", "DIRECTOR", "GM"].includes(userRole);
   const isSpvOrKoordinatorSales = !isSuperOrHrd && (
     ["SPV", "KOORDINATOR", "MANAGER", "BRANCH MANAGER"].includes(userRole) ||
     userPosisi.includes("SPV") ||
@@ -40,6 +41,12 @@ export async function mount(container, { session } = {}) {
   const btnPurgeDummy = container.querySelector("#btn-purge-dummy-sales");
   const btnConfigDeparture = container.querySelector("#btn-config-departure");
   const timelineEl = container.querySelector("#live-timeline");
+  const archivePanel = container.querySelector("#kanal-archive-panel");
+  const archiveStatus = container.querySelector("#kanal-archive-status");
+  const btnArchiveKanal = container.querySelector("#btn-archive-kanal");
+  const btnPullKanalArchive = container.querySelector("#btn-pull-kanal-archive");
+  const archiveStart = container.querySelector("#kanal-archive-start");
+  const archiveEnd = container.querySelector("#kanal-archive-end");
 
   // Apply RBAC UI Restrictions immediately
   if (isStandardKaryawan) {
@@ -47,9 +54,11 @@ export async function mount(container, { session } = {}) {
     if (btnPurgeDummy) btnPurgeDummy.classList.add("hidden");
     if (btnConfigDeparture) btnConfigDeparture.classList.add("hidden");
     if (btnSync) btnSync.classList.add("hidden");
+    if (archivePanel) archivePanel.classList.add("hidden");
   } else if (isSpvOrKoordinatorSales) {
     if (btnImport) btnImport.classList.add("hidden");
     if (btnPurgeDummy) btnPurgeDummy.classList.add("hidden");
+    if (archivePanel) archivePanel.classList.add("hidden");
   }
 
   const subtitleEl = container.querySelector("#kanal-status-subtitle");
@@ -83,6 +92,31 @@ export async function mount(container, { session } = {}) {
   let karyawanList = [];
   let odometerLogsMap = new Map();
 
+  function kanalArchiveKey(item) {
+    return String(item?.id || item?._docId || [item?.sales_nik, item?.tanggal, item?.waktu_checkin, item?.toko_outlet].join("|")).trim();
+  }
+
+  function kanalOldRecords() {
+    const threshold = new Date();
+    threshold.setDate(threshold.getDate() - 60);
+    const thresholdDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(threshold);
+    return allCheckinsList.filter(item => item.tanggal && item.tanggal < thresholdDate && !item._fromArchive);
+  }
+
+  function renderKanalArchiveStatus() {
+    if (!archiveStatus || !btnArchiveKanal) return;
+    const oldRows = kanalOldRecords();
+    if (oldRows.length) {
+      const dates = oldRows.map(item => item.tanggal).filter(Boolean).sort();
+      if (archiveStart && !archiveStart.value) archiveStart.value = dates[0];
+      if (archiveEnd && !archiveEnd.value) archiveEnd.value = dates[dates.length - 1];
+    }
+    archiveStatus.textContent = oldRows.length
+      ? `${oldRows.length} data check-in berusia lebih dari 60 hari siap dipindahkan ke Spreadsheet.`
+      : "Belum ada data check-in berusia lebih dari 60 hari yang perlu diarsipkan.";
+    btnArchiveKanal.disabled = oldRows.length === 0;
+  }
+
   // Function to purge all dummy/mock checkin visits from the database
   async function purgeDummyVisits() {
     try {
@@ -101,8 +135,7 @@ export async function mount(container, { session } = {}) {
           sumber.includes("API Kanal") ||
           cat.includes("via API Kanal") ||
           cat.includes("Check-in kunjungan sales") ||
-          ["Toko Kelontong Berkah", "Minimarket Harapan Jaya", "Swalayan Surya Cirebon", "Toko Rejeki Makmur", "Outlet Mitra Kanal"].includes(outlet) ||
-          (!sumber.includes("Import Excel") && !id.startsWith("CHK-IMP-") && !cat.startsWith("Import Excel:"));
+          ["Toko Kelontong Berkah", "Minimarket Harapan Jaya", "Swalayan Surya Cirebon", "Toko Rejeki Makmur", "Outlet Mitra Kanal"].includes(outlet);
 
         if (isDummy && !id.startsWith("CHK-IMP-") && !sumber.includes("Import Excel")) {
           dummyIds.push(c.id);
@@ -492,9 +525,6 @@ export async function mount(container, { session } = {}) {
       if (subtitleEl) subtitleEl.innerHTML = `Terhubung ke cloud server <b>API Kanal (${escapeHtml(companyName)})</b>. Geocoding alamat otomatis & kalkulasi jarak tempuh sales aktif.`;
       if (companyBadgeEl) companyBadgeEl.textContent = companyName;
 
-      // Automatically purge leftover dummy visits so only Excel imported records remain
-      await purgeDummyVisits();
-
       const rawCheckins = await fsGetAll("kanal_checkins").catch(() => []);
       allCheckinsList = rawCheckins.map(c => {
         const item = normalizeCheckinItem(c);
@@ -609,6 +639,7 @@ export async function mount(container, { session } = {}) {
 
       // Apply Filters and Render
       applyAndRenderDashboard();
+      renderKanalArchiveStatus();
 
     } catch (e) {
       console.error("Err loading sales track data:", e);
@@ -3419,9 +3450,6 @@ export async function mount(container, { session } = {}) {
         const progressBar = document.getElementById("import-progress-bar");
         const progressStatus = document.getElementById("import-progress-status");
 
-        // Clean out any dummy/mock records before importing
-        await purgeDummyVisits();
-
         // Preload Master Outlets to use registered coordinates when raw address lacks Plus code or GPS
         const masterOutlets = await fsGetAll("sales_outlets").catch(() => []);
 
@@ -3618,6 +3646,54 @@ export async function mount(container, { session } = {}) {
         toast(`Berhasil menghapus ${count} data kunjungan dummy! Hanya menyisakan data hasil import Excel.`, "success");
       } catch (e) {
         toast("Gagal menghapus data dummy: " + e.message, "error");
+      }
+    };
+  }
+
+  if (btnArchiveKanal) {
+    btnArchiveKanal.onclick = async () => {
+      const rows = kanalOldRecords();
+      if (!rows.length) return toast("Tidak ada data check-in Kanal >60 hari untuk diarsipkan.", "warning");
+      const ok = await confirmDialog(`Pindahkan ${rows.length} data check-in Kanal >60 hari ke Spreadsheet? Data dapat ditarik kembali berdasarkan periode.`, { title: "Arsip Check-in Kanal" });
+      if (!ok) return;
+      btnArchiveKanal.disabled = true;
+      btnArchiveKanal.textContent = "Mengarsipkan...";
+      try {
+        await callGasArchiveWebApp({ action: "archive_kanal_checkins", rows });
+        for (const row of rows) await fsDelete("kanal_checkins", row._docId || row.id);
+        toast(`${rows.length} data check-in Kanal berhasil dipindahkan ke Spreadsheet.`, "success");
+        await loadAndRenderTrack();
+      } catch (error) {
+        toast("Gagal mengarsipkan check-in Kanal: " + error.message, "error");
+      } finally {
+        btnArchiveKanal.textContent = "Arsipkan Data >60 Hari";
+        renderKanalArchiveStatus();
+      }
+    };
+  }
+
+  if (btnPullKanalArchive) {
+    btnPullKanalArchive.onclick = async () => {
+      const start = archiveStart?.value || "";
+      const end = archiveEnd?.value || "";
+      if (!start || !end) return toast("Pilih tanggal mulai dan akhir arsip Kanal.", "warning");
+      if (start > end) return toast("Tanggal mulai tidak boleh melewati tanggal akhir.", "warning");
+      btnPullKanalArchive.disabled = true;
+      btnPullKanalArchive.textContent = "Menarik arsip...";
+      try {
+        const response = await callGasArchiveWebApp({ action: "get_archived_kanal_checkins", start, end });
+        const existing = new Set(allCheckinsList.map(kanalArchiveKey));
+        const restored = (response.rows || []).map(row => ({ ...normalizeCheckinItem(row), _fromArchive: true }))
+          .filter(row => !existing.has(kanalArchiveKey(row)));
+        allCheckinsList = [...allCheckinsList, ...restored];
+        populateSalesmanOptions();
+        applyAndRenderDashboard();
+        toast(`${restored.length} data arsip Kanal berhasil ditampilkan.`, restored.length ? "success" : "warning");
+      } catch (error) {
+        toast("Gagal menarik arsip Kanal: " + error.message, "error");
+      } finally {
+        btnPullKanalArchive.disabled = false;
+        btnPullKanalArchive.textContent = "Tarik Arsip Periode";
       }
     };
   }
