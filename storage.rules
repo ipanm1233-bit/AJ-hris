@@ -1,0 +1,39 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null
+        && request.auth.token.get('active', false) == true
+        && request.auth.token.get('password_change_required', false) == false;
+    }
+    function role() { return signedIn() ? request.auth.token.get('role', 'STAFF') : 'ANONYMOUS'; }
+    function isHrd() { return role() in ['HRD', 'SUPERADMIN']; }
+    function isManagement() { return role() in ['HRD', 'SUPERADMIN', 'GM', 'MANAGER', 'BRANCH MANAGER', 'SPV', 'ATASAN']; }
+    function isImage() { return request.resource.contentType.matches('image/(jpeg|png|webp)'); }
+    function isPdf() { return request.resource.contentType == 'application/pdf'; }
+
+    match /profile/{uid}/{fileName} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.size < 2 * 1024 * 1024 && isImage();
+      allow delete: if signedIn() && (request.auth.uid == uid || isHrd());
+    }
+    match /employee-documents/{uid}/{fileName} {
+      allow read: if signedIn() && (request.auth.uid == uid || isHrd());
+      allow create, update: if isHrd() && request.resource.size < 10 * 1024 * 1024
+        && (isPdf() || isImage());
+      allow delete: if isHrd();
+    }
+    match /leave-forms/{uid}/{fileName} {
+      allow read: if signedIn() && (request.auth.uid == uid || isManagement());
+      allow create, update, delete: if isHrd() && request.resource.size < 5 * 1024 * 1024 && isPdf();
+    }
+    match /reimbursement/{uid}/{fileName} {
+      allow read: if signedIn() && (request.auth.uid == uid || role() in ['HRD', 'SUPERADMIN', 'GM', 'FINANCE']);
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.size < 5 * 1024 * 1024 && (isPdf() || isImage());
+      allow delete: if signedIn() && (request.auth.uid == uid || isHrd());
+    }
+    match /{allPaths=**} { allow read, write: if false; }
+  }
+}

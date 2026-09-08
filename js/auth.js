@@ -4,18 +4,24 @@
  * Portal HRIS & Operasional CV Andela Jaya
  * =====================================================================
  * Alur:
- * 1. login() -> cocokkan username/password (hash SHA-256) ke koleksi `users`
- * 2. Simpan sesi minimal (username, role, nama, nik) ke sessionStorage
+ * 1. login() -> endpoint server memverifikasi/migrasi akun ke Firebase Authentication
+ * 2. Firebase ID token menjadi sumber identitas; browser hanya menyimpan profil tampilan minimum
  * 3. getMenuConfig() mendefinisikan SELURUH menu sistem + kelompok otoritas
  * 4. computeVisibleMenus() = (menu default sesuai role) DIGABUNG/DITINDIH
  * oleh override per-user dari koleksi `user_permissions` (diatur HRD)
  * 5. canAccessForm(formConfig) untuk kontrol akses Katalog Pengajuan ISO
  * =====================================================================
  */
-import { db, COL, doc, getDoc, collection, getDocs, query, where, updateDoc, addDoc } from "./firebase-config.js";
-import { sha256, fsGetAll, escapeHtml, toast } from "./utils.js";
+import {
+ db, COL, doc, getDoc, collection, getDocs, query, where, updateDoc, addDoc,
+ auth, signInWithCustomToken, firebaseSignOut, setPersistence,
+ browserLocalPersistence, browserSessionPersistence
+} from "./firebase-config.js";
+import { fsGetAll, escapeHtml, toast } from "./utils.js";
+import { authFetch, waitForAuthReady, publicSecurityHeaders } from "./api-client.js";
 
 const SESSION_KEY = "andela_hris_session";
+const REMEMBER_KEY = "andela_hris_remember";
 
 /* ---------------------------------------------------------------------
  * DEFINISI MENU GLOBAL — SATU SUMBER KEBENARAN UNTUK SIDEBAR & ROUTER
@@ -138,16 +144,23 @@ const MANAJEMEN_ROLES = ["SPV", "HRD", "GM", "FINANCE", "MANAGER", "BRANCH MANAG
  * ------------------------------------------------------------------- */
 export function getSession() {
  try {
- const raw = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY);
+ const raw = sessionStorage.getItem(SESSION_KEY) || (localStorage.getItem(REMEMBER_KEY) === "true" ? localStorage.getItem(SESSION_KEY) : null);
  return raw ? JSON.parse(raw) : null;
  } catch { return null; }
 }
-export function setSession(data) {
+export function setSession(data, remember = null) {
  try {
  const str = JSON.stringify(data);
  if (str) {
  sessionStorage.setItem(SESSION_KEY, str);
- localStorage.setItem(SESSION_KEY, str);
+ const shouldRemember = remember === null ? localStorage.getItem(REMEMBER_KEY) === "true" : Boolean(remember);
+ if (shouldRemember) {
+  localStorage.setItem(SESSION_KEY, str);
+  localStorage.setItem(REMEMBER_KEY, "true");
+ } else {
+  localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(REMEMBER_KEY);
+ }
  }
  } catch (e) {
  console.error("Gagal menyimpan session:", e);
@@ -156,8 +169,9 @@ export function setSession(data) {
 export function clearSession() {
  sessionStorage.removeItem(SESSION_KEY);
  localStorage.removeItem(SESSION_KEY);
+ localStorage.removeItem(REMEMBER_KEY);
 }
-export function isLoggedIn() { return !!getSession(); }
+export function isLoggedIn() { return Boolean(auth.currentUser && getSession()); }
 
 /* ---------------------------------------------------------------------
  * LOGIN & AUTHENTICATION RESOLUTION
@@ -245,46 +259,20 @@ export function resetEditAuthGrace() {
   _editAuthGraceUntil = 0;
 }
 
-/**
- * Memvalidasi kata sandi pengguna langsung ke Firestore / database.
- * Mendukung password_hash (SHA-256) dan plain password migration.
- */
+/** Memvalidasi ulang password melalui Firebase Authentication di server. */
 export async function verifyUserPassword(usernameOrNik, password) {
   if (!password) throw new Error("Kata sandi wajib diisi.");
   const session = getSession();
   const targetId = usernameOrNik || session?.username || session?.nik || session?.nama;
   if (!targetId) throw new Error("Identitas pengguna tidak ditemukan.");
-
-  const userResult = await findUserForAuth(targetId);
-  if (!userResult || !userResult.data) {
-    throw new Error(`Akun pengguna '${targetId}' tidak ditemukan di sistem.`);
-  }
-
-  const user = userResult.data;
-  const inputHash = await sha256(password);
-  const storedHash = user.password_hash || "";
-  const storedPlain = user.password || "";
-
-  const matchedViaHash = storedHash && storedHash === inputHash;
-  const matchedViaPlain = !matchedViaHash && storedPlain && storedPlain === password;
-
-  if (!matchedViaHash && !matchedViaPlain) {
-    throw new Error("Kata sandi salah. Akses otentikasi pengeditan ditolak.");
-  }
-
-  // Migrasi otomatis ke SHA-256 jika masih plain
-  if (storedPlain || !storedHash) {
-    try {
-      await updateDoc(doc(db, COL.USERS, userResult.docId), {
-        password_hash: inputHash,
-        password: ""
-      });
-    } catch (e) {
-      console.warn("Gagal migrasi hash password saat verifikasi:", e);
-    }
-  }
-
-  return user;
+  const response = await fetch('/api/auth-login', {
+    method: 'POST',
+    headers: await publicSecurityHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ identifier: targetId, password, verifyOnly: true })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.success) throw new Error(payload.error || "Kata sandi salah. Akses ditolak.");
+  return payload.profile;
 }
 
 /**
@@ -574,57 +562,32 @@ if (typeof window !== "undefined") {
 }
 
 export async function login(username, password, remember = false) {
- const userResult = await findUserForAuth(username);
- if (!userResult || !userResult.data) throw new Error("Username, NIK, atau Akun tidak ditemukan.");
- 
- const user = userResult.data;
- const docId = userResult.docId;
-
- const inputHash = await sha256(password);
- const storedHash = user.password_hash || "";
- const storedPlain = user.password || "";
- const matchedViaHash = storedHash && storedHash === inputHash;
- const matchedViaPlain = !matchedViaHash && storedPlain && storedPlain === password;
- if (!matchedViaHash && !matchedViaPlain) throw new Error("Password salah.");
-
- if (storedPlain || !storedHash) {
-  try {
-   await updateDoc(doc(db, COL.USERS, docId), {
-    password_hash: inputHash,
-    password: ""
-   });
-  } catch (e) {
-   console.warn("Gagal migrasi hash password saat login:", e);
-  }
+ if (!username || !password) throw new Error("Username/NIK dan password wajib diisi.");
+ await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
+ const response = await fetch('/api/auth-login', {
+  method: 'POST',
+  headers: await publicSecurityHeaders({ 'Content-Type': 'application/json' }),
+  body: JSON.stringify({ identifier: String(username).trim(), password })
+ });
+ const payload = await response.json().catch(() => ({}));
+ if (!response.ok || !payload.success || !payload.customToken) {
+  throw new Error(payload.error || "Username/NIK atau password salah.");
  }
-
- let karyawan = null;
- const searchNik = user.nik || (String(username).match(/^\d+$/) ? username : null);
- if (searchNik) {
-  try {
-   const kSnap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(searchNik)));
-   if (kSnap.exists()) karyawan = kSnap.data();
-  } catch (e) {}
- }
- if (!karyawan && user.nama) {
-  try {
-   const q = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", user.nama));
-   const kDocs = await getDocs(q);
-   if (!kDocs.empty) karyawan = kDocs.docs[0].data();
-  } catch (e) {}
- }
-
- const canonUsername = user.username || docId || String(username).trim().toUpperCase();
+ await signInWithCustomToken(auth, payload.customToken);
+ const user = payload.profile || {};
  const session = {
-  id: user.id || docId || canonUsername,
-  username: canonUsername,
-  role: (user.role || karyawan?.role || "STAFF").toUpperCase(),
-  nama: user.nama || karyawan?.nama_karyawan || canonUsername,
-  email: user.email || karyawan?.email || "",
-  posisi: user.posisi || karyawan?.jabatan || "-",
-  nik: user.nik || karyawan?.nik_karyawan || karyawan?.nik || null,
-  cabang: karyawan?.cabang || user.cabang || "-",
-  foto_url: karyawan?.foto_url || user.foto_url || null,
+  uid: user.uid,
+  id: user.id || user.uid,
+  username: user.username || String(username).trim().toUpperCase(),
+  role: (user.role || "STAFF").toUpperCase(),
+  nama: user.nama || user.username || String(username).trim(),
+  email: user.email || "",
+  posisi: user.posisi || "-",
+  nik: user.nik || null,
+  cabang: user.cabang || "-",
+  divisi: user.divisi || "-",
+  must_change_password: user.must_change_password === true,
+  foto_url: user.foto_url || null,
   loginAt: Date.now()
  };
  setSession(session, remember);
@@ -632,57 +595,11 @@ export async function login(username, password, remember = false) {
 }
 
 export async function loginWithToken(tokenStr) {
- const tokenSnap = await getDoc(doc(db, "login_tokens", tokenStr));
- if (!tokenSnap.exists()) throw new Error("Token tidak valid.");
- 
- const tokenData = tokenSnap.data();
- if (tokenData.used) throw new Error("Token sudah pernah digunakan demi keamanan.");
-
- const now = Date.now();
- if (now - tokenData.createdAt > 24 * 60 * 60 * 1000) throw new Error("Token telah kedaluwarsa.");
-
- const uname = tokenData.username;
- const userResult = await findUserForAuth(uname);
- if (!userResult || !userResult.data) throw new Error("Pengguna tujuan token tidak ditemukan.");
- 
- const user = userResult.data;
- const docId = userResult.docId;
-
- await updateDoc(doc(db, "login_tokens", tokenStr), { used: true, usedAt: now });
-
- let karyawan = null;
- const searchNik = user.nik || (String(uname).match(/^\d+$/) ? uname : null);
- if (searchNik) {
-  try {
-   const kSnap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(searchNik)));
-   if (kSnap.exists()) karyawan = kSnap.data();
-  } catch (e) {}
- }
- if (!karyawan && user.nama) {
-  try {
-   const q = query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", user.nama));
-   const kDocs = await getDocs(q);
-   if (!kDocs.empty) karyawan = kDocs.docs[0].data();
-  } catch (e) {}
- }
-
- const canonUsername = user.username || docId || String(uname).trim().toUpperCase();
- const session = {
-  id: user.id || docId || canonUsername,
-  username: canonUsername,
-  role: (user.role || karyawan?.role || "STAFF").toUpperCase(),
-  nama: user.nama || karyawan?.nama_karyawan || canonUsername,
-  email: user.email || karyawan?.email || "",
-  posisi: user.posisi || karyawan?.jabatan || "-",
-  nik: user.nik || karyawan?.nik_karyawan || karyawan?.nik || null,
-  cabang: karyawan?.cabang || user.cabang || "-",
-  foto_url: karyawan?.foto_url || user.foto_url || null,
-  loginAt: Date.now()
- };
- setSession(session, true);
- return session;
+ void tokenStr;
+ throw new Error("Login otomatis dari tautan sudah dinonaktifkan. Silakan login dengan NIK/username untuk melanjutkan.");
 }
-export function logout() {
+export async function logout() {
+ try { await firebaseSignOut(auth); } catch (error) { console.warn('Firebase logout:', error.message); }
  clearSession();
  location.hash = "#login";
  location.reload();
@@ -864,69 +781,36 @@ export const _findUserOverride = findUserOverride;
 export async function syncSessionWithDb(session) {
  if (!session) return null;
  try {
-  const canonUser = session.username || session.id;
-  const userResult = await findUserForAuth(canonUser);
-  let updated = false;
-  const current = { ...session };
-
-  if (userResult && userResult.data) {
-   const u = userResult.data;
-   if (u.role && u.role.toUpperCase() !== current.role) {
-    current.role = u.role.toUpperCase();
-    updated = true;
-   }
-   if (u.nama && u.nama !== current.nama) {
-    current.nama = u.nama;
-    updated = true;
-   }
-   if (u.nik && u.nik !== current.nik && u.nik !== "-" && u.nik !== "null") {
-    current.nik = u.nik;
-    updated = true;
-   }
-   if (u.posisi && u.posisi !== current.posisi) {
-    current.posisi = u.posisi;
-    updated = true;
-   }
-   if (u.email && u.email !== current.email) {
-    current.email = u.email;
-    updated = true;
-   }
-   if (u.foto_url && u.foto_url !== current.foto_url) {
-    current.foto_url = u.foto_url;
-    updated = true;
-   }
+  await waitForAuthReady();
+  if (!auth.currentUser) {
+   clearSession();
+   return null;
   }
-
-  // Cek MASTER_KARYAWAN untuk NIK / Nama
-  const searchNik = current.nik || (String(canonUser).match(/^\d+$/) ? canonUser : null);
-  if (searchNik && searchNik !== "null" && searchNik !== "UNLINKED") {
-   try {
-    const kSnap = await getDoc(doc(db, COL.MASTER_KARYAWAN, String(searchNik)));
-    if (kSnap.exists()) {
-     const kd = kSnap.data();
-     if (kd.cabang && kd.cabang !== current.cabang) {
-      current.cabang = kd.cabang;
-      updated = true;
-     }
-     if (kd.jabatan && (!current.posisi || current.posisi === "-")) {
-      current.posisi = kd.jabatan;
-      updated = true;
-     }
-     if (kd.foto_url && !current.foto_url) {
-      current.foto_url = kd.foto_url;
-      updated = true;
-     }
-    }
-   } catch {}
-  }
-
-  if (updated) {
-   setSession(current);
-  }
+  const response = await authFetch('/api/auth-session');
+  const payload = await response.json();
+  if (!response.ok || !payload.success || !payload.profile) throw new Error(payload.error || 'Profil sesi tidak valid.');
+  const p = payload.profile;
+  const current = {
+   ...session,
+   uid: p.uid || auth.currentUser.uid,
+   id: p.id || session.id,
+   username: p.username || session.username,
+   role: String(p.role || 'STAFF').toUpperCase(),
+   nama: p.nama || session.nama,
+   email: p.email || '',
+   posisi: p.posisi || '-',
+   nik: p.nik || null,
+   cabang: p.cabang || '-',
+   divisi: p.divisi || '-',
+   must_change_password: p.must_change_password === true,
+   foto_url: p.foto_url || null
+  };
+  setSession(current);
   return current;
  } catch (err) {
   console.warn("syncSessionWithDb error:", err);
-  return session;
+  clearSession();
+  return null;
  }
 }
 
@@ -2138,4 +2022,3 @@ export async function hasPermission(permissionKey, session, forceReload = false)
 }
 
 export { MANAJEMEN_ROLES };
-

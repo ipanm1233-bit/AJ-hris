@@ -4,12 +4,14 @@
  * Portal HRIS & Operasional CV Andela Jaya
  * =====================================================================
  */
-import { getSession, logout, computeVisibleMenus, canAccessRoute, MENU_CONFIG, loginWithToken, syncSessionWithDb } from "./auth.js";
-import { parseHash, toast, fmtDateTime, openModal, closeModal, sha256, fsUpdate } from "./utils.js";
+import { getSession, clearSession, logout, computeVisibleMenus, canAccessRoute, MENU_CONFIG, syncSessionWithDb } from "./auth.js";
+import { parseHash, toast, fmtDateTime, openModal, closeModal } from "./utils.js";
 import { icon, avatar, openNotificationCenter, showMemoDetailById, skeletonShadowLayout } from "./components.js";
-import { db, messaging, firebaseConfig, COL, collection, query, where, getDocs, doc, getDoc, updateDoc, arrayUnion } from "./firebase-config.js";
+import { db, messaging, firebaseConfig, COL, collection, query, where, getDocs, doc, getDoc } from "./firebase-config.js";
 import { getToken } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js";
 import { initGlobalSearch } from "./global-search.js";
+import { waitForAuthReady, authFetch } from "./api-client.js";
+import { auth } from "./firebase-config.js";
 
 const viewContainer = document.getElementById("view-container");
 let currentUnmount = null;
@@ -61,7 +63,15 @@ async function handleGlobalHashChange() {
  return;
  }
 
- session = (await syncSessionWithDb(session)) || session;
+ session = await syncSessionWithDb(session);
+ if (!session) {
+  await showLogin();
+  return;
+ }
+ if (session.must_change_password === true) {
+  openChangePasswordModal(session, true);
+  return;
+ }
 
  document.getElementById("login-container")?.classList.add("hidden");
  document.getElementById("public-portal-container")?.classList.add("hidden");
@@ -76,25 +86,18 @@ async function handleGlobalHashChange() {
  * ------------------------------------------------------------------- */
 async function boot() {
  const bootLoader = document.getElementById("boot-loader");
+ await waitForAuthReady();
  const { path, params } = parseHash();
  const token = params.get("token");
 
- // INTERSEP: Jika ada token Magic Link di URL dari Email
+ // Token login lama tidak lagi dipakai untuk autentikasi. Simpan tujuan dan
+ // wajibkan pengguna login dengan Firebase sebelum membuka halaman terkait.
  if (token) {
- try {
- const pText = bootLoader ? bootLoader.querySelector("p") : null;
- if (pText) pText.textContent = "Memverifikasi login aman sekali pakai...";
- 
- await loginWithToken(token);
  params.delete("token");
  const remainingQs = params.toString();
  const targetHash = (path || "approval") + (remainingQs ? "?" + remainingQs : "");
- history.replaceState(null, "", window.location.pathname + "#" + targetHash);
- 
- } catch (e) {
- alert("Akses otomatis gagal: " + e.message + "\nSilakan login secara manual.");
- history.replaceState(null, "", window.location.pathname + "#login");
- }
+ sessionStorage.setItem('andela_hris_post_login_hash', targetHash);
+ history.replaceState(null, "", window.location.pathname + (auth.currentUser ? "#" + targetHash : "#login"));
  }
 
  const cleanPath = String(path || "").toLowerCase().replace(/^[\/#]+/, "").replace(/[\/#]+$/, "").trim();
@@ -107,13 +110,24 @@ async function boot() {
  return;
  }
 
- const session = getSession();
+ let session = getSession();
+ if (!auth.currentUser && session) {
+  clearSession();
+  session = null;
+ }
 
  if (!session) {
  window.addEventListener("hashchange", handleGlobalHashChange);
  await showLogin();
  if (bootLoader) bootLoader.classList.add("hidden");
  return;
+ }
+
+ session = await syncSessionWithDb(session);
+ if (!session) {
+  await showLogin();
+  if (bootLoader) bootLoader.classList.add("hidden");
+  return;
  }
 
  document.getElementById("login-container")?.classList.add("hidden");
@@ -147,6 +161,11 @@ async function boot() {
  location.hash = "#dashboard";
  }
  
+ if (session.must_change_password === true) {
+  if (bootLoader) bootLoader.classList.add("hidden");
+  setTimeout(() => openChangePasswordModal(session, true), 150);
+  return;
+ }
  await router(session);
  if (bootLoader) bootLoader.classList.add("hidden");
 }
@@ -192,26 +211,11 @@ async function aktifkanNotifikasiHP(userData) {
  // laptop, dst) sekaligus tersimpan semua & semua device kebagian
  // notifikasi, bukan cuma device yang paling terakhir login.
  if (userData && userData.username) {
- await fsUpdate(COL.USERS, userData.username, {
- fcm_tokens: arrayUnion(currentToken)
+ const registerResponse = await authFetch('/api/register-device', {
+  method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ token: currentToken })
  });
- 
- if (userData.nik) {
- try {
- await updateDoc(doc(db, COL.MASTER_KARYAWAN, String(userData.nik)), {
- fcm_tokens: arrayUnion(currentToken)
- });
- } catch(e) {
- console.warn("Karyawan doc update failed: ", e);
- }
- } else if (userData.id) {
- try {
- await updateDoc(doc(db, COL.MASTER_KARYAWAN, String(userData.id)), {
- fcm_tokens: arrayUnion(currentToken)
- });
- } catch(e) {
- console.warn("Karyawan doc update failed: ", e);
- }
+ if (!registerResponse.ok) throw new Error('Token perangkat ditolak server.');
  }
  console.log("Token FCM berhasil disimpan ke database!");
  }
@@ -304,19 +308,11 @@ export async function handleTestAndActivateNotification(session) {
  
  if (currentToken) {
  if (session && session.username) {
- await fsUpdate(COL.USERS, session.username, {
- fcm_tokens: arrayUnion(currentToken)
+ const registerResponse = await authFetch('/api/register-device', {
+  method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ token: currentToken })
  });
- 
- if (session.nik) {
- try {
- await updateDoc(doc(db, COL.MASTER_KARYAWAN, String(session.nik)), {
- fcm_tokens: arrayUnion(currentToken)
- });
- } catch(err) {
- console.warn("Karyawan doc update failed: ", err);
- }
- }
+ if (!registerResponse.ok) throw new Error('Token perangkat ditolak server.');
  toast("Token notifikasi berhasil disimpan ke profil Anda!", "success");
  }
  } else {
@@ -405,7 +401,10 @@ async function showLogin() {
  mod.mount(loginContainer, {
  onSuccess: () => {
  loginContainer.classList.add("hidden");
- location.reload(); 
+ const pendingHash = sessionStorage.getItem('andela_hris_post_login_hash');
+ sessionStorage.removeItem('andela_hris_post_login_hash');
+ if (pendingHash) location.hash = '#' + pendingHash;
+ location.reload();
  }
  });
  }
@@ -816,7 +815,7 @@ function bindShellEvents(session) {
 }
 
 // LOGIKA MODAL GANTI PASSWORD
-async function openChangePasswordModal(session) {
+async function openChangePasswordModal(session, forceChange = false) {
  openModal({
  title: "Ganti Password",
  size: "md",
@@ -837,10 +836,11 @@ async function openChangePasswordModal(session) {
  </form>
  `,
  footerHtml: `
- <button id="btn-cancel-pw" class="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition border border-slate-200">Batal</button>
+ ${forceChange ? '' : '<button id="btn-cancel-pw" class="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition border border-slate-200">Batal</button>'}
  <button id="btn-save-pw" class="bg-maroon-700 hover:bg-maroon-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-md">Simpan Password</button>`,
  onMount: (m) => {
- m.querySelector("#btn-cancel-pw").onclick = closeModal;
+ const cancelButton = m.querySelector("#btn-cancel-pw");
+ if (cancelButton) cancelButton.onclick = closeModal;
  m.querySelector("#btn-save-pw").onclick = async () => {
  const form = m.querySelector("#form-ganti-pw");
  if (!form.reportValidity()) return;
@@ -850,22 +850,21 @@ async function openChangePasswordModal(session) {
  const konfirm = m.querySelector("#pw-konfirm").value;
 
  if (baru !== konfirm) return toast("Konfirmasi password baru tidak cocok!", "warning");
- if (baru.length < 6) return toast("Password minimal 6 karakter", "warning");
+ if (baru.length < 10) return toast("Password minimal 10 karakter", "warning");
+ if (!/[a-z]/.test(baru) || !/[A-Z]/.test(baru) || !/\d/.test(baru) || !/[^A-Za-z0-9]/.test(baru)) {
+  return toast("Password harus memuat huruf besar, huruf kecil, angka, dan simbol.", "warning");
+ }
 
  const btn = m.querySelector("#btn-save-pw");
  btn.disabled = true; btn.textContent = "Menyimpan...";
 
  try {
- const snap = await getDoc(doc(db, COL.USERS, session.username));
- const user = snap.data();
- const hashLama = await sha256(lama);
-
- if (user.password_hash !== hashLama && user.password !== lama) {
- throw new Error("Password lama salah");
- }
-
- const hashBaru = await sha256(baru);
- await fsUpdate(COL.USERS, session.username, { password_hash: hashBaru, password: "" });
+ const response = await authFetch('/api/change-password', {
+  method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ currentPassword: lama, newPassword: baru })
+ });
+ const result = await response.json().catch(() => ({}));
+ if (!response.ok || !result.success) throw new Error(result.error || 'Password gagal diubah.');
  
  toast("Password berhasil diubah. Silakan login ulang.", "success");
  closeModal();

@@ -10,7 +10,7 @@ Single Page Application (SPA) modular berbasis **HTML5 + Tailwind CSS + Firebase
 andela-hris/
 ├─ index.html                ← Shell utama SPA (header, sidebar, mount point)
 ├─ super-migrasi.html        ← Alat migrasi data Excel → Firestore
-├─ firestore.rules           ← Contoh Security Rules (WAJIB disesuaikan sebelum go-live)
+├─ firestore.rules           ← Security Rules berbasis Firebase Auth dan custom claims
 ├─ css/
 │  └─ style.css              ← Pelengkap Tailwind: animasi, state sidebar, dsb
 ├─ js/
@@ -37,8 +37,9 @@ andela-hris/
 ### A. Setup Firebase
 1. Buat project baru di [Firebase Console](https://console.firebase.google.com).
 2. Aktifkan **Cloud Firestore** (mode production atau test, bebas — rules akan diatur manual).
-3. Buka **Project Settings → General → Your apps → Web app**, salin konfigurasi, lalu tempel ke `js/firebase-config.js` menggantikan seluruh nilai `GANTI_...`.
-4. (Opsional tapi disarankan) Deploy `firestore.rules` lewat Firebase CLI:
+3. Buka **Project Settings → General → Your apps → Web app**, lalu isi `firebase-applet-config.json` untuk environment terkait.
+4. Ikuti urutan staging pada `SECURITY_ROLLOUT.md`; jangan deploy rules baru sebelum aplikasi Firebase Auth teruji.
+5. Setelah staging lulus, deploy rules lewat Firebase CLI:
    ```bash
    firebase deploy --only firestore:rules
    ```
@@ -57,7 +58,7 @@ andela-hris/
 6. Klik **Buat Data Dummy Sekarang** (langkah 4) untuk mengisi modul-modul baru yang belum ada datanya di Excel (Rekrutmen, Gimmick & SOP, Kalender HR, dsb) agar sistem tidak kosong.
 
 ### C. Menjalankan Aplikasi Utama
-Buka `http://localhost:8080/index.html`. Login menggunakan username & password dari sheet **Users** yang sudah dimigrasi (password otomatis di-hash SHA-256 saat migrasi).
+Buka `http://localhost:8080/index.html`. Login tetap memakai NIK/username. Akun lama dimigrasikan satu kali di server ke Firebase Authentication; password/hash lama kemudian dihapus dari Firestore.
 
 ### D. Deploy ke Hosting
 Karena ini murni file statis (HTML/CSS/JS), bisa langsung di-deploy ke **Firebase Hosting**, Netlify, Vercel static, GitHub Pages, dsb. Contoh Firebase Hosting:
@@ -89,7 +90,7 @@ Fungsi ini dipakai konsisten di seluruh aplikasi (`super-migrasi.html` maupun ta
 | `master_kendaraan` | Master Kendaraan | `no_polisi` | Data armada |
 | `master_inventory` | Master Inventory | `id_item` | Katalog barang/ATK |
 | `master_kontrak` | MASTER KONTRAK | `record_id` | Riwayat kontrak kerja |
-| `users` | Users | `username` | Akun login (password di-hash SHA-256) |
+| `users` | Users | `username` | Profil akun lama tanpa password; login dikelola Firebase Authentication |
 | `user_permissions` | *(baru)* | `username` | Override RBAC per-personil (menu & form) |
 | `form_config` | Form_Config | `id_form` | Skema formulir ISO (dipakai Form Builder & Katalog Pengajuan) |
 | `data_pengajuan` | Data_Pengajuan | `id` (TRX-...) | Transaksi pengajuan + status approval berjenjang |
@@ -142,8 +143,8 @@ Mesin evaluasi ada di `evalFormula()` (`js/utils.js`) — hanya mengizinkan kara
 
 ## 7. Catatan Keamanan Produksi
 
-1. **Password**: sistem ini melakukan hashing SHA-256 di sisi klien sebagai peningkatan minimum dari plaintext. Untuk keamanan kelas produksi penuh, migrasikan ke **Firebase Authentication** (lihat komentar di `firestore.rules`).
-2. **Firestore Security Rules**: file `firestore.rules` yang disertakan masih dalam **mode terbuka** (`allow read, write: if true`) untuk mempermudah tahap migrasi & development. **WAJIB diperketat** sebelum sistem dipakai produksi — lihat contoh rules berbasis custom claims di dalam file yang sama.
+1. **Password**: login dikelola Firebase Authentication. Kompatibilitas SHA-256/plaintext hanya dibaca satu kali di server untuk migrasi akun lama, lalu field tersebut dihapus.
+2. **Firestore Security Rules**: akses anonim ditolak dan operasi sensitif dibatasi oleh role, kepemilikan, serta cabang dari custom claims. Deploy sesuai urutan di `SECURITY_ROLLOUT.md`.
 3. **API Key Firebase** yang terekspos di client adalah hal normal (bukan rahasia rahasia) selama Security Rules sudah benar — proteksi sesungguhnya ada di Rules, bukan di API key.
 
 ---
@@ -168,7 +169,7 @@ Ketiga kapabilitas ini generik — berlaku untuk **form apapun** yang dibuat lew
 
 ## 10. Wajib Dikonfigurasi Sebelum Go-Live
 
-1. **API Key Gemini** — buka `js/ai-config.js`, ganti `GEMINI_API_KEY` dengan key baru dari [aistudio.google.com/apikey](https://aistudio.google.com/apikey). **Pastikan key diawali `AIzaSy...`** — key berformat `AQ.` sedang bermasalah di Google dan sering ditolak (401) untuk pemanggilan REST langsung seperti yang dipakai di sini.
+1. **API Key Gemini** — simpan `GEMINI_API_KEY` hanya sebagai Environment Variable server. Browser mengakses endpoint terautentikasi dan tidak menerima key tersebut.
 2. **CORS Firebase Storage** — semua fitur upload file (lampiran Broadcast, LPJ, field Upload Foto di form dinamis, CV Rekrutmen) butuh bucket Storage diizinkan menerima request dari domain hosting Anda. Jalankan sekali lewat [Google Cloud Shell](https://console.cloud.google.com/):
    ```bash
    cat > cors.json << 'EOF'

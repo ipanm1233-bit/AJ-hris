@@ -7,6 +7,7 @@ import {
 import { COL } from "../firebase-config.js";
 import { isoDocHeaderTable, COMPANY_NAME, logoImgTag } from "../branding.js";
 import { getSession } from "../auth.js";
+import { authFetch } from "../api-client.js";
 
 // Beautiful SVG D3 visualization loaded from ESM
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
@@ -348,22 +349,16 @@ export async function mount(container, { session } = {}) {
       if (depCfgDoc) departureConfig = { ...departureConfig, ...depCfgDoc };
     } catch (e) { console.warn("Err loading settings:", e); }
 
-    const apiKey = currentCfg.key || "MjJdcpPYYBLRDcUP9gee";
-    const secretKey = currentCfg.secret || "c10b04f80cea668339b95195107c6c5e349a43e926679d82985d37ef70cf71ef";
-    const accessToken = currentCfg.token || "eyJ0aW1lX2NyZWF0ZSI6MTc4NDg4MTY0NiwidGltZV9leHAiOjE3ODU1MTcxOTksImFwaWtleSI6Ik1qSmRjcFBZWUJMUkRjVVA5Z2VlIiwiY29tcGFueUlkIjoiMzYxMSJ9.be3bd89a1f49ebfeedf7c6f93c331321ebc7d642b6dbdf96f7ab375aca7f964b";
     const apiUrl = currentCfg.url || "https://api.kanal.work/v1/checkin";
 
     let liveItems = [];
     let isLiveSuccess = false;
     try {
-      const proxyResp = await fetch("/api/kanal-proxy", {
+      const proxyResp = await authFetch("/api/kanal-proxy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           url: apiUrl,
-          apiKey: apiKey,
-          secretKey: secretKey,
-          accessToken: accessToken,
           company: companyName,
           dataType: "checkin_sales"
         })

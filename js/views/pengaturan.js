@@ -1,7 +1,8 @@
 import { db, COL, doc, getDoc, setDoc, deleteDoc, updateDoc } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, sha256, toast, escapeHtml, openInviteEmployeeModal, openModal, closeModal, geocodeAddressSmart } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, toast, escapeHtml, openInviteEmployeeModal, openModal, closeModal, geocodeAddressSmart } from "../utils.js";
 import { renderCrudModule, emptyState } from "../components.js";
 import { MENU_CONFIG, PERMISSION_CATALOG, ROLE_PERMISSIONS_PRESETS, DEFAULT_EMPLOYEE_MENU_IDS, loadPermissionOverrides, hasPermission } from "../auth.js";
+import { authFetch } from "../api-client.js";
 
 export async function mount(container, { session }) {
 	const isHrd = session.role === "HRD";
@@ -208,8 +209,6 @@ export async function openMergeAccountsModal(onSuccess = () => {}) {
 							let finalNik = primary.nik || "";
 							let finalEmail = primary.email || "";
 							let finalPhone = primary.no_hp || "";
-							let finalHash = primary.password_hash || "";
-							let finalPlain = primary.password || "";
 							let finalRole = primary.role || "STAFF";
 							let finalPosisi = primary.posisi || "";
 
@@ -217,8 +216,6 @@ export async function openMergeAccountsModal(onSuccess = () => {}) {
 								if (!finalNik && dup.nik) finalNik = dup.nik;
 								if (!finalEmail && dup.email) finalEmail = dup.email;
 								if (!finalPhone && dup.no_hp) finalPhone = dup.no_hp;
-								if (!finalHash && dup.password_hash) finalHash = dup.password_hash;
-								if (!finalPlain && dup.password) finalPlain = dup.password;
 								if (dup.posisi && !finalPosisi) finalPosisi = dup.posisi;
 							}
 
@@ -229,8 +226,8 @@ export async function openMergeAccountsModal(onSuccess = () => {}) {
 								nik: finalNik || "-",
 								email: finalEmail,
 								no_hp: finalPhone,
-								password_hash: finalHash,
-								password: finalPlain,
+								password_hash: "",
+								password: "",
 								role: finalRole,
 								posisi: finalPosisi,
 								updated_at: new Date().toISOString()
@@ -300,8 +297,9 @@ export async function openMergeAccountsModal(onSuccess = () => {}) {
 async function loadUsersTab(container) {
 	await renderCrudModule(container.querySelector("#st-panel-users"), {
 		title: "Manajemen Pengguna",
-		subtitle: "Kelola akun login karyawan. Password otomatis dienkripsi (SHA-256).",
+		subtitle: "Kelola akun Firebase Authentication karyawan secara aman.",
 		collectionName: COL.USERS,
+		canDelete: false,
 		idPrefix: "USR",
 		orderByField: "nama",
 		searchFields: ["nama", "username", "role"],
@@ -329,37 +327,22 @@ async function loadUsersTab(container) {
 				{ name: "posisi", label: "Posisi / Jabatan", type: "text" },
 				{ name: "email", label: "Email", type: "text" },
 				{ name: "nik", label: "NIK (tautkan ke Master Karyawan)", type: "text", full: true },
+				{ name: "active", label: "Status Akun", type: "select", options: ["true", "false"], full: true },
 			];
 			f.idFromField = "username";
 			return f;
 		})(),
 		beforeSave: async (data, existing) => {
-			const out = { ...data };
-			if (data.password) { out.password_hash = await sha256(data.password); }
-			delete out.password;
-			if (!out.password_hash && existing) delete out.password_hash; // keep old hash on update if left blank
-			out.username = String(out.username).toUpperCase();
-
-			// Jika akun baru/update memiliki NIK, dan ada dokumen lama dengan ID NIK, lebur dokumen lama
-			if (out.nik && out.nik !== "-") {
-				try {
-					const nikDocId = String(out.nik).trim();
-					if (nikDocId && nikDocId !== out.username) {
-						const oldNikSnap = await getDoc(doc(db, COL.USERS, nikDocId));
-						if (oldNikSnap.exists()) {
-							const oldData = oldNikSnap.data();
-							if (!out.password_hash && oldData.password_hash) {
-								out.password_hash = oldData.password_hash;
-							}
-							await deleteDoc(doc(db, COL.USERS, nikDocId)).catch(console.warn);
-						}
-					}
-				} catch (e) {
-					console.warn("Auto-clean legacy NIK doc failed:", e);
-				}
-			}
-
-			return out;
+			const payload = { ...data, username: String(data.username || '').toUpperCase(), active: String(data.active) !== 'false' };
+			if (!payload.password) delete payload.password;
+			const response = await authFetch('/api/admin-user', {
+				method: existing ? 'PATCH' : 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload)
+			});
+			const result = await response.json().catch(() => ({}));
+			if (!response.ok || !result.success) throw new Error(result.error || 'Gagal menyimpan akun Firebase.');
+			return result.profile;
 		}
 	});
 
@@ -986,9 +969,9 @@ async function loadKanalTab(container) {
 
  // Defaults provided by HRD / Perusahaan CV ANDELA JAYA CIREBON
  const defaultCompany = "CV ANDELA JAYA CIREBON";
- const defaultKey = "MjJdcpPYYBLRDcUP9gee";
- const defaultSecret = "c10b04f80cea668339b95195107c6c5e349a43e926679d82985d37ef70cf71ef";
- const defaultToken = "eyJ0aW1lX2NyZWF0ZSI6MTc4NDg4MTY0NiwidGltZV9leHAiOjE3ODU1MTcxOTksImFwaWtleSI6Ik1qSmRjcFBZWUJMUkRjVVA5Z2VlIiwiY29tcGFueUlkIjoiMzYxMSJ9.be3bd89a1f49ebfeedf7c6f93c331321ebc7d642b6dbdf96f7ab375aca7f964b";
+ const defaultKey = "";
+ const defaultSecret = "";
+ const defaultToken = "";
  const defaultUrl = "https://api.kanal.work/v1/checkin";
 
  // Load existing config
@@ -1019,9 +1002,9 @@ async function loadKanalTab(container) {
 
  try {
  await fsUpdate(COL.APP_SETTINGS, "kanal_config", {
- company, url, key, secret, token, type, mode, updated_at: new Date().toISOString()
+ company, url, type, mode, updated_at: new Date().toISOString()
  }).catch(async () => {
- await fsAdd(COL.APP_SETTINGS, { id: "kanal_config", company, url, key, secret, token, type, mode, updated_at: new Date().toISOString() }, "kanal_config");
+ await fsAdd(COL.APP_SETTINGS, { id: "kanal_config", company, url, type, mode, updated_at: new Date().toISOString() }, "kanal_config");
  });
  toast("Konfigurasi API Kanal (CV ANDELA JAYA CIREBON) berhasil disimpan!", "success");
  } catch (e) {
@@ -1042,14 +1025,11 @@ async function loadKanalTab(container) {
  statusBox.innerHTML = `Menghubungi Server API Kanal (${escapeHtml(company)})...`;
 
  try {
- const proxyResp = await fetch("/api/kanal-proxy", {
+ const proxyResp = await authFetch("/api/kanal-proxy", {
  method: "POST",
  headers: { "Content-Type": "application/json" },
  body: JSON.stringify({
  url: url,
- apiKey: key,
- secretKey: secret,
- accessToken: token,
  company: company
  })
  });
@@ -1140,14 +1120,11 @@ async function loadKanalTab(container) {
  let liveItems = [];
  let isLiveSuccess = false;
  try {
- const proxyResp = await fetch("/api/kanal-proxy", {
+ const proxyResp = await authFetch("/api/kanal-proxy", {
  method: "POST",
  headers: { "Content-Type": "application/json" },
  body: JSON.stringify({
  url: url,
- apiKey: key,
- secretKey: secret,
- accessToken: token,
  company: company,
  dataType: type
  })

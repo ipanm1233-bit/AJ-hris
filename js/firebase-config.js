@@ -9,6 +9,11 @@ import {
 // TAMBAHKAN IMPORT STORAGE DI SINI
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js";
 import { getMessaging, isSupported, onMessage } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js"; 
+import {
+ getAuth, signInWithCustomToken, signOut as firebaseSignOut, onAuthStateChanged,
+ setPersistence, browserLocalPersistence, browserSessionPersistence
+} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider, getToken as getAppCheckToken } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app-check.js";
 // Pastikan versinya (10.7.1) sama dengan versi firebase-app.js yang Anda gunakan di baris atas
 
 let firebaseConfig = {
@@ -39,6 +44,18 @@ try {
 
 export const app = initializeApp(firebaseConfig);
 export { firebaseConfig };
+export const auth = getAuth(app);
+export let appCheck = null;
+if (firebaseConfig.recaptchaSiteKey) {
+ try {
+  appCheck = initializeAppCheck(app, {
+   provider: new ReCaptchaEnterpriseProvider(firebaseConfig.recaptchaSiteKey),
+   isTokenAutoRefreshEnabled: true
+  });
+ } catch (error) {
+  console.warn('Firebase App Check initialization failed:', error.message);
+ }
+}
 export let messaging = null;
 
 // Cek dulu apakah HP/Browser mendukung notifikasi sebelum menyalakan fiturnya
@@ -90,6 +107,12 @@ export {
  query, where, orderBy, limit, onSnapshot, writeBatch, serverTimestamp,
  Timestamp, increment, ref, uploadBytes, getDownloadURL, arrayUnion
 };
+
+export {
+ signInWithCustomToken, firebaseSignOut, onAuthStateChanged, setPersistence,
+ browserLocalPersistence, browserSessionPersistence
+};
+export { getAppCheckToken };
 
 // Daftar Koleksi
 export const COL = {

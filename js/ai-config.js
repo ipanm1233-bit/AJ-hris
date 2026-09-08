@@ -28,6 +28,8 @@
  * mengalami hal sama dan sedang menunggu perbaikan dari pihak Google).
  * ------------------------------------------------------------------- */
 
+import { authFetch } from "./api-client.js";
+
 // API Key dikelola aman via GEMINI_API_KEY di server-side (.env / Settings)
 export const GEMINI_API_KEY = "";
 
@@ -53,7 +55,7 @@ export function isLikelyBrokenKeyFormat(key) {
 export async function callGemini(prompt) {
   // 1. Panggil server-side endpoint /api/gemini terlebih dahulu (Aman & Standar AI Studio)
   try {
-    const serverResp = await fetch("/api/gemini", {
+    const serverResp = await authFetch("/api/gemini", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt, model: GEMINI_MODEL })

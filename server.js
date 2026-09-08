@@ -3,8 +3,16 @@ const path = require('path');
 const app = express();
 
 // Parsers for POST bodies
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.disable('x-powered-by');
+app.use(express.json({ limit: '12mb' }));
+app.use(express.urlencoded({ extended: true, limit: '12mb' }));
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self)');
+  next();
+});
 
 // Import API Handlers
 const cronCheckKontrak = require('./api/cron-check-kontrak.js');
@@ -15,6 +23,31 @@ const kanalProxy = require('./api/kanal-proxy.js');
 const sendEmail = require('./api/send-email.js');
 const proxyImage = require('./api/proxy-image.js');
 const geminiProxy = require('./api/gemini.js');
+const authLogin = require('./api/auth-login.js');
+const authSession = require('./api/auth-session.js');
+const adminUser = require('./api/admin-user.js');
+const changePassword = require('./api/change-password.js');
+const registerDevice = require('./api/register-device.js');
+
+app.all('/api/auth-login', async (req, res, next) => {
+  try { await authLogin(req, res); } catch (error) { next(error); }
+});
+
+app.all('/api/auth-session', async (req, res, next) => {
+  try { await authSession(req, res); } catch (error) { next(error); }
+});
+
+app.all('/api/admin-user', async (req, res, next) => {
+  try { await adminUser(req, res); } catch (error) { next(error); }
+});
+
+app.all('/api/change-password', async (req, res, next) => {
+  try { await changePassword(req, res); } catch (error) { next(error); }
+});
+
+app.all('/api/register-device', async (req, res, next) => {
+  try { await registerDevice(req, res); } catch (error) { next(error); }
+});
 
 // Map the API paths to the handlers
 app.all('/api/cron-rekap-cuti', async (req, res, next) => {
@@ -100,71 +133,10 @@ app.get('*all', (req, res) => {
 // Global error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ success: false, error: err.message });
+  res.status(500).json({ success: false, error: 'Terjadi kesalahan pada server.' });
 });
-
-// Background Automated Scheduler (07:45 WIB Morning Leave Digest & 17:00 WIB Evening Leave Applications Digest)
-let lastMorningTriggerDate = null;
-let lastEveningTriggerDate = null;
-
-function checkDailyLeaveSchedule() {
-  try {
-    const now = new Date();
-    // Gunakan formatter zona waktu Asia/Jakarta (WIB)
-    const formatter = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Jakarta',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    });
-    
-    const parts = formatter.formatToParts(now);
-    const dateObj = {};
-    parts.forEach(p => { dateObj[p.type] = p.value; });
-
-    const todayWib = `${dateObj.year}-${dateObj.month}-${dateObj.day}`;
-    const currentHour = parseInt(dateObj.hour, 10);
-    const currentMinute = parseInt(dateObj.minute, 10);
-
-    // 1. Pagi Hari 07:45 WIB - List Karyawan Cuti di Hari Tersebut
-    if (currentHour === 7 && currentMinute >= 45 && currentMinute <= 55 && lastMorningTriggerDate !== todayWib) {
-      lastMorningTriggerDate = todayWib;
-      console.log(`[CRON 07:45 WIB] Menjalankan Pengiriman Rekap Karyawan Cuti Pagi (${todayWib})...`);
-      const mockReq = { query: { type: 'morning' }, body: {} };
-      const mockRes = {
-        status: () => mockRes,
-        json: (data) => console.log('[CRON 07:45 WIB Result]:', JSON.stringify(data)),
-        send: (data) => console.log('[CRON 07:45 WIB Send]:', data)
-      };
-      cronRekapCuti(mockReq, mockRes).catch(e => console.error('[CRON 07:45 WIB Error]:', e));
-    }
-
-    // 2. Sore Hari 17:00 WIB - List Karyawan yang Mengajukan Cuti Hari Ini
-    if (currentHour === 17 && currentMinute >= 0 && currentMinute <= 10 && lastEveningTriggerDate !== todayWib) {
-      lastEveningTriggerDate = todayWib;
-      console.log(`[CRON 17:00 WIB] Menjalankan Pengiriman Rekap Pengajuan Cuti Sore (${todayWib})...`);
-      const mockReq = { query: { type: 'evening' }, body: {} };
-      const mockRes = {
-        status: () => mockRes,
-        json: (data) => console.log('[CRON 17:00 WIB Result]:', JSON.stringify(data)),
-        send: (data) => console.log('[CRON 17:00 WIB Send]:', data)
-      };
-      cronRekapCuti(mockReq, mockRes).catch(e => console.error('[CRON 17:00 WIB Error]:', e));
-    }
-  } catch (err) {
-    console.error('Error in checkDailyLeaveSchedule scheduler:', err);
-  }
-}
-
-// Cek jadwal setiap 30 detik
-setInterval(checkDailyLeaveSchedule, 30000);
 
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running at http://0.0.0.0:${PORT}/`);
-  // Cek jadwal saat startup
-  setTimeout(checkDailyLeaveSchedule, 5000);
 });

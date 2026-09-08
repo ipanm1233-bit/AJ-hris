@@ -1,8 +1,25 @@
 import { db, COL, collection, getDocs, writeBatch, doc, getDoc, query, where, updateDoc, deleteDoc } from "../firebase-config.js";
 import { toast, genId, fsGetAll, escapeHtml, openModal, closeModal, formatUangJalanEkspedisiRows } from "../utils.js";
 import { skeletonRows, emptyState } from "../components.js";
-import { callGasWebApp, callGasArchiveWebApp } from "../gas-integration.js";
+import { callGasArchiveWebApp } from "../gas-integration.js";
 import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
+import { authFetch } from "../api-client.js";
+
+async function fingerprintApi(action, payload = {}) {
+ const response = await authFetch('/api/sync-absen', {
+ method: 'POST',
+ body: JSON.stringify({ action, ...payload })
+ });
+ const result = await response.json().catch(() => ({}));
+ if (!response.ok || result.success === false) throw new Error(result.error || `HTTP ${response.status}`);
+ return result;
+}
+
+function fingerprintInstallCommand(pairingCode) {
+ const installer = 'https://raw.githubusercontent.com/ipanm1233-bit/AJ-hris/security/firebase-auth-hardening/fingerprint-bridge/install.ps1';
+ const origin = window.location.origin;
+ return `Invoke-WebRequest "${installer}" -OutFile "$env:TEMP\\ajhris-fingerprint-install.ps1"; powershell -ExecutionPolicy Bypass -File "$env:TEMP\\ajhris-fingerprint-install.ps1" -HrisUrl "${origin}" -PairingCode "${pairingCode}"`;
+}
 
 function getTwoRunningMonthsRange() {
  const now = new Date();
@@ -42,7 +59,10 @@ export async function mount(container, { session } = {}) {
  const searchRaw = container.querySelector("#search-absen-raw");
  const filterStart = container.querySelector("#filter-absen-start");
  const filterEnd = container.querySelector("#filter-absen-end");
+ const filterBranch = container.querySelector("#filter-absen-cabang");
+ const filterDivision = container.querySelector("#filter-absen-divisi");
  const btnResetFilterAbsen = container.querySelector("#btn-reset-filter-absen");
+ const btnExportRawAbsen = container.querySelector("#btn-export-raw-absen");
  const thSortNama = container.querySelector("#th-sort-nama");
  const iconSortNama = container.querySelector("#th-sort-nama-icon");
 
@@ -59,6 +79,8 @@ export async function mount(container, { session } = {}) {
  search: "",
  start: isHrdOrAdmin ? "" : twoMonthsStart,
  end: isHrdOrAdmin ? "" : twoMonthsEnd,
+ branch: "",
+ division: "",
  sortNama: null
  };
 
@@ -66,6 +88,7 @@ export async function mount(container, { session } = {}) {
  if (!isHrdOrAdmin) {
  if (btnImport) btnImport.style.display = "none";
  if (btnExport) btnExport.style.display = "none";
+ if (btnExportRawAbsen) btnExportRawAbsen.style.display = "none";
  if (btnSyncFingerprint) btnSyncFingerprint.style.display = "none";
  if (btnConfigFingerprint) btnConfigFingerprint.style.display = "none";
  if (btnPullArchive) btnPullArchive.style.display = "none";
@@ -109,7 +132,29 @@ export async function mount(container, { session } = {}) {
 
  async function loadRawAbsensiTable() {
  rawTbody.innerHTML = `<tr><td colspan="6" class="p-4">${skeletonRows(4)}</td></tr>`;
- listAbsensiGlobal = await fsGetAll(COL.DATA_ABSENSI);
+ const [attendanceRows, employeeRows] = await Promise.all([
+ fsGetAll(COL.DATA_ABSENSI),
+ fsGetAll(COL.MASTER_KARYAWAN).catch(() => [])
+ ]);
+ const employeeByNik = new Map();
+ employeeRows.forEach(employee => {
+ const keys = [employee.id, employee.nik, employee.nik_karyawan]
+ .map(value => String(value || "").trim().toUpperCase())
+ .filter(Boolean);
+ keys.forEach(key => { if (!employeeByNik.has(key)) employeeByNik.set(key, employee); });
+ });
+ listAbsensiGlobal = attendanceRows.map(row => {
+ const employee = employeeByNik.get(String(row.nik || row.nik_karyawan || "").trim().toUpperCase());
+ return {
+ ...row,
+ nik: row.nik || row.nik_karyawan || employee?.nik || employee?.nik_karyawan || "",
+ nama: row.nama || employee?.nama_karyawan || employee?.nama || "",
+ cabang: row.cabang || employee?.cabang || "",
+ divisi: row.divisi || row.departemen || employee?.divisi || employee?.departemen || "",
+ jabatan: row.jabatan || row.posisi || employee?.jabatan || employee?.posisi || ""
+ };
+ });
+ populateAttendanceFilterOptions();
 
  // Check for records older than 60 days per employee to keep Firebase lightweight
  const sixtyDaysAgo = new Date();
@@ -185,6 +230,37 @@ export async function mount(container, { session } = {}) {
  applyFiltersAbsen();
  }
 
+ function setAttendanceSelectOptions(select, emptyLabel, values, selectedValue = "") {
+ if (!select) return;
+ select.innerHTML = "";
+ const emptyOption = document.createElement("option");
+ emptyOption.value = "";
+ emptyOption.textContent = emptyLabel;
+ select.appendChild(emptyOption);
+ values.forEach(value => {
+ const option = document.createElement("option");
+ option.value = value;
+ option.textContent = value;
+ select.appendChild(option);
+ });
+ select.value = values.includes(selectedValue) ? selectedValue : "";
+ }
+
+ function populateAttendanceFilterOptions() {
+ const branches = [...new Set(listAbsensiGlobal.map(row => String(row.cabang || "").trim()).filter(Boolean))]
+ .sort((a, b) => a.localeCompare(b, "id", { sensitivity: "base" }));
+ setAttendanceSelectOptions(filterBranch, "Semua Cabang", branches, filterState.branch);
+ if (filterBranch && filterState.branch && !filterBranch.value) filterState.branch = "";
+
+ const divisionSource = filterState.branch
+ ? listAbsensiGlobal.filter(row => String(row.cabang || "").trim().toUpperCase() === filterState.branch.toUpperCase())
+ : listAbsensiGlobal;
+ const divisions = [...new Set(divisionSource.map(row => String(row.divisi || "").trim()).filter(Boolean))]
+ .sort((a, b) => a.localeCompare(b, "id", { sensitivity: "base" }));
+ setAttendanceSelectOptions(filterDivision, "Semua Divisi", divisions, filterState.division);
+ if (filterDivision && filterState.division && !filterDivision.value) filterState.division = "";
+ }
+
  /**
  * Terapkan filter periode/tanggal + pencarian nama/NIK + urutan
  * (default tanggal terbaru, atau A-Z/Z-A kalau kolom Nama diklik).
@@ -211,6 +287,8 @@ export async function mount(container, { session } = {}) {
 
  if (filterState.start) data = data.filter(x => x.tanggal >= filterState.start);
  if (filterState.end) data = data.filter(x => x.tanggal <= filterState.end);
+ if (filterState.branch) data = data.filter(x => String(x.cabang || "").trim().toUpperCase() === filterState.branch.toUpperCase());
+ if (filterState.division) data = data.filter(x => String(x.divisi || "").trim().toUpperCase() === filterState.division.toUpperCase());
  if (filterState.search) {
  const term = filterState.search;
  data = data.filter(x => String(x.nama || "").toLowerCase().includes(term) || String(x.nik || "").toLowerCase().includes(term));
@@ -276,17 +354,31 @@ export async function mount(container, { session } = {}) {
  if (filterEnd) {
  filterEnd.onchange = (e) => { filterState.end = e.target.value; applyFiltersAbsen(); };
  }
+ if (filterBranch) {
+ filterBranch.onchange = (e) => {
+ filterState.branch = e.target.value;
+ filterState.division = "";
+ populateAttendanceFilterOptions();
+ applyFiltersAbsen();
+ };
+ }
+ if (filterDivision) {
+ filterDivision.onchange = (e) => { filterState.division = e.target.value; applyFiltersAbsen(); };
+ }
  if (btnResetFilterAbsen) {
  btnResetFilterAbsen.onclick = () => {
  filterState = {
  search: "",
  start: isHrdOrAdmin ? "" : twoMonthsStart,
  end: isHrdOrAdmin ? "" : twoMonthsEnd,
+ branch: "",
+ division: "",
  sortNama: null
  };
  if (searchRaw) searchRaw.value = "";
  if (filterStart) filterStart.value = isHrdOrAdmin ? "" : twoMonthsStart;
  if (filterEnd) filterEnd.value = isHrdOrAdmin ? "" : twoMonthsEnd;
+ populateAttendanceFilterOptions();
  if (iconSortNama) iconSortNama.textContent = "↕";
  applyFiltersAbsen();
  };
@@ -299,6 +391,62 @@ export async function mount(container, { session } = {}) {
  iconSortNama.textContent = filterState.sortNama === "asc" ? "↑ A-Z" : filterState.sortNama === "desc" ? "↓ Z-A" : "↕";
  }
  applyFiltersAbsen();
+ };
+ }
+
+ if (btnExportRawAbsen) {
+ btnExportRawAbsen.onclick = () => {
+ if (!filterState.start || !filterState.end) {
+ toast("Pilih tanggal mulai dan tanggal akhir terlebih dahulu.", "warning");
+ return;
+ }
+ if (filterState.start > filterState.end) {
+ toast("Tanggal mulai tidak boleh melewati tanggal akhir.", "warning");
+ return;
+ }
+ if (typeof window.XLSX === "undefined") {
+ toast("Komponen Excel belum tersedia. Muat ulang halaman lalu coba kembali.", "error");
+ return;
+ }
+
+ const filteredRows = applyFiltersAbsen();
+ if (!filteredRows.length) {
+ toast("Tidak ada data absensi pada filter yang dipilih.", "warning");
+ return;
+ }
+
+ const exportRows = [...filteredRows]
+ .sort((a, b) => String(a.tanggal || "").localeCompare(String(b.tanggal || "")) || String(a.nama || "").localeCompare(String(b.nama || ""), "id"))
+ .map((row, index) => ({
+ "No": index + 1,
+ "Tanggal": row.tanggal || "",
+ "NIK": row.nik || "",
+ "Nama Karyawan": row.nama || "",
+ "Cabang": row.cabang || "",
+ "Divisi": row.divisi || "",
+ "Jabatan": row.jabatan || "",
+ "Jadwal Masuk": row.jadwal_masuk || "",
+ "Jadwal Keluar": row.jadwal_keluar || "",
+ "Scan Masuk": row.scan_masuk || "",
+ "Scan Keluar": row.scan_keluar || "",
+ "Status Scan": row.scan_masuk && row.scan_keluar ? "Lengkap" : row.scan_masuk || row.scan_keluar ? "Belum Lengkap" : "Tanpa Scan",
+ "Sumber Data": row.sumber || "DATA LAMA",
+ "ID Fingerprint": row.fingerprint_user_id || ""
+ }));
+
+ const worksheet = window.XLSX.utils.json_to_sheet(exportRows);
+ worksheet["!cols"] = [
+ { wch: 6 }, { wch: 13 }, { wch: 18 }, { wch: 30 }, { wch: 14 }, { wch: 22 }, { wch: 24 },
+ { wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 13 }, { wch: 16 }, { wch: 18 }, { wch: 16 }
+ ];
+ if (worksheet["!ref"]) worksheet["!autofilter"] = { ref: worksheet["!ref"] };
+ const workbook = window.XLSX.utils.book_new();
+ window.XLSX.utils.book_append_sheet(workbook, worksheet, "Raw Finger");
+
+ const safePart = value => String(value || "SEMUA").replace(/[^a-zA-Z0-9_-]/g, "_");
+ const filename = `RAW_FINGER_${filterState.start}_SD_${filterState.end}_${safePart(filterState.branch)}_${safePart(filterState.division)}.xlsx`;
+ window.XLSX.writeFile(workbook, filename);
+ toast(`${exportRows.length} baris raw finger berhasil diunduh.`, "success");
  };
  }
 
@@ -320,7 +468,6 @@ export async function mount(container, { session } = {}) {
  m.querySelector("#btn-k-batal").onclick = closeModal;
  m.querySelector("#btn-k-simpan").onclick = async () => {
  const dataUpdate = {
- scan_masuk: m.querySelector("#k-masuk").value.trim() || null,
  scan_masuk: m.querySelector("#k-masuk").value.trim() || null,
  scan_keluar: m.querySelector("#k-keluar").value.trim() || null
  };
@@ -457,14 +604,24 @@ export async function mount(container, { session } = {}) {
  });
  const shift = getShiftForEmployee(empObj, cfgJadwal);
 
- const uid = genId("ABS");
+ const resolvedNik = String(empNik || empObj?.nik || empObj?.nik_karyawan || "").trim();
+ const stableEmployeeKey = (resolvedNik || String(empNama || empObj?.nama_karyawan || empObj?.nama || ""))
+ .normalize("NFKD")
+ .replace(/[\u0300-\u036f]/g, "")
+ .replace(/[^a-zA-Z0-9._-]/g, "_")
+ .slice(0, 100);
+ // ID deterministik mencegah file/periode yang sama membuat baris ganda.
+ const uid = `ABS-IMP-${stableEmployeeKey}-${tglStr}`;
  const payload = {
  id: uid,
- nik: empNik,
- nama: empNama,
+ nik: resolvedNik,
+ nama: empNama || empObj?.nama_karyawan || empObj?.nama || "",
  tanggal: tglStr,
+ cabang: getVal(["CABANG", "BRANCH"]) || empObj?.cabang || "",
+ sumber: "IMPORT_EXCEL",
  jadwal_masuk: getVal(["JAM KERJA MASUK"]) || shift.masuk,
  jadwal_keluar: getVal(["JAM KERJA KELUAR"]) || shift.pulang,
+ // Scan selalu berasal dari file; jangan isi jam dummy jika kolom kosong.
  scan_masuk: getVal(["JAM MASUK", "SCAN MASUK"]),
  scan_keluar: getVal(["JAM KELUAR", "SCAN KELUAR"])
  };
@@ -682,6 +839,7 @@ export async function mount(container, { session } = {}) {
  const existingIds = new Set(listAbsensiGlobal.map(x => x.id));
  const newRows = res.rows.filter(x => !existingIds.has(x.id));
  listAbsensiGlobal = [...listAbsensiGlobal, ...newRows];
+ populateAttendanceFilterOptions();
  applyFiltersAbsen();
  toast(`Sukses memuat ${newRows.length} data arsip untuk periode terpilih!`, "success");
  } else {
@@ -699,188 +857,190 @@ export async function mount(container, { session } = {}) {
  btnSyncFingerprint.onclick = async () => {
  btnSyncFingerprint.disabled = true;
  const origText = btnSyncFingerprint.innerHTML;
- btnSyncFingerprint.innerHTML = `Menghubungkan ke LAN Gateway...`;
- 
- const apiIP = localStorage.getItem("fingerprint_api_ip") || "192.168.1.150";
- toast(`Membuka koneksi ke gateway LAN/Fingerprint IP (${apiIP})...`, "info");
- 
- setTimeout(async () => {
- btnSyncFingerprint.innerHTML = `Mengunduh Log Mesin...`;
- toast("Mengunduh log absensi terbaru dari komputer/mesin sidik jari di LAN...", "info");
- 
- setTimeout(async () => {
+ btnSyncFingerprint.innerHTML = `Memuat data terbaru...`;
  try {
- // Coba lakukan request ke Apps Script / Gateway jika tersedia
- let fetchedRows = [];
- try {
- const gasRes = await callGasWebApp({ action: "sync_fingerprint", ip: apiIP });
- if (gasRes && gasRes.rows) fetchedRows = gasRes.rows;
- } catch(e) {
- console.warn("GAS WebApp fingerprint gateway fallback: ", e);
- }
-
- const masterKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
- const activeKaryawan = masterKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF") === "AKTIF");
- 
- const todayStr = new Date().toISOString().substring(0, 10);
- const yesterday = new Date();
- yesterday.setDate(yesterday.getDate() - 1);
- const yesterdayStr = yesterday.toISOString().substring(0, 10);
- 
- const existingDates = new Set(listAbsensiGlobal.map(x => `${x.nik}_${x.tanggal}`));
- const newRecords = [];
-
- if (fetchedRows.length > 0) {
- fetchedRows.forEach(r => {
- if (!existingDates.has(`${r.nik}_${r.tanggal}`)) {
- newRecords.push({ id: genId("ABS"), ...r });
- }
- });
- } else {
- // Fallback: Generate log sinkronisasi dari data karyawan aktif kantor
- const snapCfg = await getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(() => null);
- const cfgJadwal = (snapCfg && snapCfg.exists()) ? (snapCfg.data()?.jadwal || []) : [];
-
- function getShiftForEmployee(karyawanObj, cfgJadwalArr = []) {
- let jab = "";
- let nama = "";
-
- if (typeof karyawanObj === "string") {
- jab = karyawanObj.trim().toLowerCase();
- } else if (karyawanObj && typeof karyawanObj === "object") {
- jab = String(karyawanObj.jabatan || karyawanObj.posisi || "").trim().toLowerCase();
- nama = String(karyawanObj.nama_karyawan || karyawanObj.nama || "").trim().toLowerCase();
- }
-
- const isCashier = jab.includes("cashier") || jab.includes("kasir") || nama.includes("jannah") || nama.includes("amaliatul");
-
- if (jab && cfgJadwalArr && cfgJadwalArr.length) {
- const match = cfgJadwalArr.find(j => {
- const jJab = String(j.jabatan || "").trim().toLowerCase();
- return jJab && (jJab === jab || jab.includes(jJab) || jJab.includes(jab));
- });
- if (match && match.masuk) {
- return { masuk: match.masuk, pulang: match.pulang || "17:00" };
- }
- }
-
- if (isCashier) {
- return { masuk: "09:00", pulang: "18:00" };
- }
-
- if (cfgJadwalArr && cfgJadwalArr.length) {
- const defaultShift = cfgJadwalArr.find(j => {
- const jJab = String(j.jabatan || "").trim().toLowerCase();
- return !jJab || jJab === "all" || jJab === "semua jabatan" || jJab === "semua";
- });
- if (defaultShift && defaultShift.masuk) {
- return { masuk: defaultShift.masuk, pulang: defaultShift.pulang || "17:00" };
- }
- }
- return { masuk: "08:00", pulang: "17:00" };
- }
-
- activeKaryawan.forEach(k => {
- const nikVal = k.nik || k.nik_karyawan || "10001";
- const shift = getShiftForEmployee(k, cfgJadwal);
- // kemarin
- if (!existingDates.has(`${nikVal}_${yesterdayStr}`)) {
- newRecords.push({
- id: genId("ABS"),
- nik: nikVal,
- nama: k.nama_karyawan,
- tanggal: yesterdayStr,
- jadwal_masuk: shift.masuk,
- jadwal_keluar: shift.pulang,
- scan_masuk: "07:51",
- scan_keluar: "17:04"
- });
- }
- // hari ini
- if (!existingDates.has(`${nikVal}_${todayStr}`)) {
- newRecords.push({
- id: genId("ABS"),
- nik: nikVal,
- nama: k.nama_karyawan,
- tanggal: todayStr,
- jadwal_masuk: shift.masuk,
- jadwal_keluar: shift.pulang,
- scan_masuk: "07:45",
- scan_keluar: null
- });
- }
- });
- }
- 
- if (newRecords.length > 0) {
- const batch = writeBatch(db);
- newRecords.forEach(p => { batch.set(doc(db, COL.DATA_ABSENSI, p.id), p); });
- await batch.commit();
- toast(`Sukses penarikan LAN! Berhasil menarik ${newRecords.length} log absensi baru dari komputer/mesin kantor (${apiIP})!`, "success");
- } else {
- toast(`Koneksi LAN (${apiIP}) sukses. Seluruh data absensi sudah sinkron & terbaru.`, "success");
- }
- loadRawAbsensiTable();
+ await loadRawAbsensiTable();
+ toast("Data absensi terbaru sudah dimuat. Penarikan dari mesin dilakukan otomatis oleh agent komputer kantor.", "success");
  } catch (err) {
- toast("Gagal melakukan penarikan: " + err.message, "error");
+ toast("Gagal memuat data absensi: " + err.message, "error");
  }
  btnSyncFingerprint.disabled = false;
  btnSyncFingerprint.innerHTML = origText;
- }, 1200);
- }, 1200);
  };
  }
 
  if (btnConfigFingerprint) {
  btnConfigFingerprint.onclick = () => {
- const apiIP = localStorage.getItem("fingerprint_api_ip") || "192.168.1.150";
- const apiToken = localStorage.getItem("fingerprint_api_token") || "tok_finger_7a8d9b1c";
- const apiPort = localStorage.getItem("fingerprint_api_port") || "8080";
- 
  openModal({
- title: "Konfigurasi Gateway Mesin Absensi LAN",
+ title: "Konfigurasi Mesin Fingerprint",
+ size: "lg",
  bodyHtml: `
- <div class="space-y-4 text-left">
+ <div class="space-y-4 text-left min-w-0">
  <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-xs text-indigo-800">
- <p class="font-bold">Integrasi Komputer LAN & Mesin Sidik Jari</p>
- <p class="mt-1">Komputer lokal kantor yang terhubung ke mesin fingerprint (Solution, ZKTeco, Fingerspot, dll.) dapat mengirim log scan otomatis ke aplikasi ini lewat Web API Gateway atau Agent Service.</p>
+ <p class="font-bold">Connector per Cabang</p>
+ <p class="mt-1">Tambahkan mesin, lalu jalankan satu perintah pemasangan pada komputer yang satu jaringan dengan mesin. Setelah itu sinkronisasi berjalan otomatis.</p>
  </div>
- <div>
- <label class="block text-xs font-bold text-slate-700 uppercase mb-1">IP Address / Host Mesin LAN</label>
- <input type="text" id="cfg-fp-ip" value="${apiIP}" placeholder="192.168.1.150" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:border-indigo-500 font-mono">
+
+ <div id="fp-device-list" class="space-y-3">
+   <div class="p-4 text-center text-xs text-slate-500">Memuat konfigurasi mesin...</div>
  </div>
- <div class="grid grid-cols-2 gap-3">
- <div>
- <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Port Gateway</label>
- <input type="text" id="cfg-fp-port" value="${apiPort}" placeholder="8080" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:border-indigo-500 font-mono">
- </div>
- <div>
- <label class="block text-xs font-bold text-slate-700 uppercase mb-1">API Access Token</label>
- <input type="password" id="cfg-fp-token" value="${apiToken}" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:border-indigo-500 font-mono">
- </div>
- </div>
- <div class="pt-2 border-t border-slate-100">
- <p class="text-[11px] font-bold text-slate-600 uppercase">Status Retensi & Otomasi Archive:</p>
- <p class="text-xs text-slate-500 mt-0.5">Firebase mempertahankan <b>maksimal 60 hari</b> data absensi per karyawan. Data >60 hari secara otomatis dapat diarsipkan ke Google Sheets agar database tetap ringan.</p>
+
+ <form id="fp-add-form" class="border border-slate-200 rounded-xl p-3 space-y-3">
+   <p class="text-xs font-bold text-slate-700">Tambah Mesin Baru</p>
+   <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+     <label class="text-[11px] text-slate-600">Cabang
+       <input id="fp-new-branch" value="MALANG" required class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-xs uppercase">
+     </label>
+     <label class="text-[11px] text-slate-600">Nama mesin
+       <input id="fp-new-name" value="Fingerprint Malang" required class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-xs">
+     </label>
+     <label class="text-[11px] text-slate-600">Alamat IP lokal
+       <input id="fp-new-ip" placeholder="Contoh: 192.168.1.201" required class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-mono">
+     </label>
+     <div class="grid grid-cols-2 gap-2">
+       <label class="text-[11px] text-slate-600">Port
+         <input id="fp-new-port" type="number" value="4370" min="1" max="65535" required class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-mono">
+       </label>
+       <label class="text-[11px] text-slate-600">Interval (menit)
+         <input id="fp-new-interval" type="number" value="5" min="1" max="1440" required class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-xs">
+       </label>
+     </div>
+   </div>
+   <button id="fp-add-button" type="submit" class="w-full bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-semibold px-4 py-2.5 rounded-lg">Tambah & Buat Kode Pairing</button>
+ </form>
+
+ <div id="fp-pairing-result" class="hidden rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+   <p class="text-xs font-bold text-emerald-900">Kode pairing berlaku selama 30 menit</p>
+   <p id="fp-pairing-code" class="text-xl font-mono font-bold tracking-wider text-emerald-800"></p>
+   <p class="text-[11px] text-emerald-800">Pada komputer cabang, buka PowerShell lalu tempel perintah pemasangan berikut.</p>
+   <textarea id="fp-install-command" readonly rows="4" class="w-full p-2 border border-emerald-200 rounded-lg bg-white text-[10px] font-mono"></textarea>
+   <button id="fp-copy-command" type="button" class="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold px-3 py-2 rounded-lg">Salin Perintah Pemasangan</button>
  </div>
  </div>
  `,
  footerHtml: `
- <button id="btn-cfg-fp-cancel" class="px-4 py-2 text-slate-500 text-sm hover:bg-slate-100 rounded-lg transition">Batal</button>
- <button id="btn-cfg-fp-save" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg font-semibold transition">Simpan Konfigurasi</button>
+ <button id="btn-cfg-fp-close" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg font-semibold transition">Tutup</button>
  `,
  onMount: m => {
- m.querySelector("#btn-cfg-fp-cancel").onclick = closeModal;
- m.querySelector("#btn-cfg-fp-save").onclick = () => {
- const ip = m.querySelector("#cfg-fp-ip").value.trim();
- const port = m.querySelector("#cfg-fp-port").value.trim();
- const token = m.querySelector("#cfg-fp-token").value.trim();
- localStorage.setItem("fingerprint_api_ip", ip);
- localStorage.setItem("fingerprint_api_port", port);
- localStorage.setItem("fingerprint_api_token", token);
- toast("Konfigurasi API Gateway LAN Mesin Absensi berhasil disimpan!", "success");
- closeModal();
+ m.querySelector("#btn-cfg-fp-close").onclick = closeModal;
+
+ const listEl = m.querySelector('#fp-device-list');
+ const pairingBox = m.querySelector('#fp-pairing-result');
+ const showPairing = code => {
+   pairingBox.classList.remove('hidden');
+   m.querySelector('#fp-pairing-code').textContent = code;
+   m.querySelector('#fp-install-command').value = fingerprintInstallCommand(code);
+   pairingBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
  };
+
+ const renderDevices = devices => {
+   if (!devices.length) {
+     listEl.innerHTML = `<div class="p-4 border border-dashed border-slate-300 rounded-xl text-center text-xs text-slate-500">Belum ada mesin yang dikonfigurasi melalui HRIS.</div>`;
+     return;
+   }
+   listEl.innerHTML = devices.map(device => {
+     const hasError = Boolean(device.online && device.lastError);
+     const statusClass = hasError ? 'bg-red-100 text-red-700' : device.online ? 'bg-emerald-100 text-emerald-700' : device.paired ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600';
+     const statusText = hasError ? 'Koneksi mesin bermasalah' : device.online ? 'Online' : device.paired ? 'Offline' : 'Belum dipasangkan';
+     const lastSeen = device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString('id-ID') : 'Belum pernah';
+     return `
+       <div class="fp-device-card border border-slate-200 rounded-xl p-3 space-y-2" data-device-id="${escapeHtml(device.id)}">
+         <div class="flex items-center justify-between gap-2">
+           <div><span class="font-bold text-xs text-slate-800">${escapeHtml(device.name)}</span> <span class="text-[10px] text-slate-400">• ${escapeHtml(device.branch)}</span></div>
+           <span class="px-2 py-1 rounded-full text-[10px] font-bold ${statusClass}">${statusText}</span>
+         </div>
+         <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+           <input data-field="branch" value="${escapeHtml(device.branch)}" aria-label="Cabang" class="px-2 py-1.5 border rounded text-[11px] uppercase">
+           <input data-field="name" value="${escapeHtml(device.name)}" aria-label="Nama mesin" class="px-2 py-1.5 border rounded text-[11px]">
+           <input data-field="ip" value="${escapeHtml(device.ip)}" aria-label="Alamat IP" class="px-2 py-1.5 border rounded text-[11px] font-mono">
+           <input data-field="port" type="number" value="${device.port}" aria-label="Port" class="px-2 py-1.5 border rounded text-[11px] font-mono">
+           <input data-field="intervalMinutes" type="number" min="1" value="${device.intervalMinutes}" aria-label="Interval" class="px-2 py-1.5 border rounded text-[11px]">
+         </div>
+         <div class="flex items-center justify-between gap-2 flex-wrap">
+           <div>
+             <p class="text-[10px] text-slate-500">Terakhir terhubung: ${escapeHtml(lastSeen)}</p>
+             ${device.lastError ? `<p class="text-[10px] text-red-600 mt-0.5">${escapeHtml(device.lastError)}</p>` : ''}
+           </div>
+           <div class="flex gap-2">
+             <button type="button" data-action="save" class="text-[11px] font-semibold text-indigo-700 hover:underline">Simpan konfigurasi</button>
+             <button type="button" data-action="pair" class="text-[11px] font-semibold text-emerald-700 hover:underline">${device.paired ? 'Pasangkan ulang' : 'Buat kode pairing'}</button>
+           </div>
+         </div>
+       </div>`;
+   }).join('');
+
+   listEl.querySelectorAll('[data-action="save"]').forEach(button => {
+     button.onclick = async () => {
+       const card = button.closest('.fp-device-card');
+       button.disabled = true;
+       try {
+         const value = field => card.querySelector(`[data-field="${field}"]`).value.trim();
+         await fingerprintApi('admin_update_device', {
+           deviceId: card.dataset.deviceId,
+           branch: value('branch'), name: value('name'), ip: value('ip'),
+           port: Number(value('port')), intervalMinutes: Number(value('intervalMinutes')), enabled: true
+         });
+         toast('Konfigurasi mesin berhasil disimpan.', 'success');
+       } catch (error) { toast(error.message, 'error'); }
+       button.disabled = false;
+     };
+   });
+   listEl.querySelectorAll('[data-action="pair"]').forEach(button => {
+     button.onclick = async () => {
+       if (button.textContent.includes('ulang') && !confirm('Pairing ulang akan memutus connector lama. Lanjutkan?')) return;
+       button.disabled = true;
+       try {
+         const result = await fingerprintApi('admin_pairing_code', { deviceId: button.closest('.fp-device-card').dataset.deviceId });
+         showPairing(result.pairingCode);
+       } catch (error) { toast(error.message, 'error'); }
+       button.disabled = false;
+     };
+   });
+ };
+
+ const loadDevices = async () => {
+   try {
+     const result = await fingerprintApi('admin_list_devices');
+     renderDevices(result.devices || []);
+   } catch (error) {
+     listEl.innerHTML = `<div class="p-3 bg-red-50 text-red-700 rounded-lg text-xs">${escapeHtml(error.message)}</div>`;
+   }
+ };
+
+ m.querySelector('#fp-add-form').onsubmit = async event => {
+   event.preventDefault();
+   const button = m.querySelector('#fp-add-button');
+   button.disabled = true;
+   button.textContent = 'Menyimpan...';
+   try {
+     const result = await fingerprintApi('admin_create_device', {
+       branch: m.querySelector('#fp-new-branch').value.trim(),
+       name: m.querySelector('#fp-new-name').value.trim(),
+       ip: m.querySelector('#fp-new-ip').value.trim(),
+       port: Number(m.querySelector('#fp-new-port').value),
+       intervalMinutes: Number(m.querySelector('#fp-new-interval').value)
+     });
+     showPairing(result.pairingCode);
+     toast('Mesin ditambahkan. Lanjutkan pemasangan pada komputer cabang.', 'success');
+     await loadDevices();
+   } catch (error) { toast(error.message, 'error'); }
+   button.disabled = false;
+   button.textContent = 'Tambah & Buat Kode Pairing';
+ };
+
+ m.querySelector('#fp-copy-command').onclick = async () => {
+   const command = m.querySelector('#fp-install-command').value;
+   try {
+     await navigator.clipboard.writeText(command);
+     toast('Perintah pemasangan berhasil disalin.', 'success');
+   } catch (_) {
+     m.querySelector('#fp-install-command').select();
+     document.execCommand('copy');
+     toast('Perintah pemasangan berhasil disalin.', 'success');
+   }
+ };
+
+ loadDevices();
  }
  });
  };

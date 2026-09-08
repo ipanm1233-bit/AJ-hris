@@ -8,7 +8,7 @@
  * =====================================================================
  */
 import { db, COL, collection, doc, getDocs, writeBatch, query, limit, setDoc } from "./firebase-config.js";
-import { toSnakeCase, smartParseDate, sha256, genId, localDateStr, calculateAge, calculateTenure } from "./utils.js";
+import { toSnakeCase, smartParseDate, genId, localDateStr, calculateAge, calculateTenure } from "./utils.js";
 
 /* ---------------------------------------------------------------------
  * PETA SHEET EXCEL -> KOLEKSI FIRESTORE
@@ -43,7 +43,10 @@ const SHEET_MAP = {
   "Users": {
     collection: COL.USERS, idField: "username",
     transform: async (row) => {
-      if (row.password) { row.password_hash = await sha256(String(row.password)); delete row.password; }
+      if (row.password) {
+        delete row.password;
+        row.requires_auth_provisioning = true;
+      }
       if (row.username) row.username = String(row.username).toUpperCase();
       return row;
     }
@@ -605,7 +608,6 @@ async function runMigration() {
         else if (jabUpper.includes("FINANCE")) userRole = "FINANCE";
         else if (jabUpper.includes("HRD")) userRole = "HRD";
 
-        const defaultHash = "ba3253876aed6bc22d4a6ff53d8406c6ad864195ed144ea5c87621042db51563"; // sha256("andela123")
         batch.set(userRef, {
           username: userUname,
           nama: obj.nama_karyawan || obj.nama || "Karyawan",
@@ -614,8 +616,7 @@ async function runMigration() {
           posisi: obj.jabatan || obj.posisi || "Staf",
           email: obj.email || "",
           no_hp: obj.no_hp_aktif || obj.no_hp || "",
-          password_hash: defaultHash,
-          password: "andela123",
+          requires_auth_provisioning: true,
           updated_at: new Date().toISOString()
         }, { merge: true });
         opCount++;

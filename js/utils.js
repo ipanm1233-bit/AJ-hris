@@ -13,6 +13,7 @@ import {
 // Web App), bukan lagi Firebase Storage. Lihat js/gas-integration.js.
 import { uploadFileToDrive } from "./gas-integration.js";
 import { letterheadHtml, isoDocHeaderTable, COMPANY_NAME, logoImgTag } from "./branding.js";
+import { authFetch } from "./api-client.js";
 
 // =========================================================================
 // PLUS CODE (Open Location Code) DECODER -- diambil & diadaptasi dari
@@ -4073,7 +4074,7 @@ export async function sendEmailNotif(to, subject, htmlBody, cc = "", attachments
  if (Array.isArray(attachments) && attachments.length > 0) {
    emailPayload.attachments = attachments;
  }
- const res = await fetch("/api/send-email", {
+ const res = await authFetch("/api/send-email", {
  method: "POST",
  headers: { "Content-Type": "application/json" },
  body: JSON.stringify(emailPayload)
@@ -5303,7 +5304,7 @@ export async function sendFCMNotif(tokens, title, body, link = "") {
  const targetLink = link ? (baseUrl + link) : baseUrl;
 
  try {
- const res = await fetch("/api/send-push", {
+ const res = await authFetch("/api/send-push", {
  method: "POST",
  headers: { "Content-Type": "application/json" },
  // Kirim targetLink ke Vercel
@@ -5511,11 +5512,10 @@ export async function notifyUser(username, judul, pesan, link = "", opts = {}) {
 }
 
 export async function createLoginToken(username) {
- const token = genId("TKN") + "-" + Math.random().toString(36).slice(2, 10);
- await fsAdd("login_tokens", {
- username: username, used: false, createdAt: Date.now()
- }, token);
- return token;
+ // Login otomatis lewat URL dinonaktifkan. Tautan email tetap mengarah ke
+ // halaman tujuan dan pengguna harus login dengan sesi Firebase yang sah.
+ void username;
+ return "";
 }
 
 export async function getTargetsForRole(role, namaKaryawan = "") {
@@ -6961,7 +6961,9 @@ export async function openInviteEmployeeModal(defaultEmpNikOrName = "") {
       return;
     }
 
-    const defaultPasswordVal = "andela123";
+    const randomBytes = new Uint32Array(2);
+    crypto.getRandomValues(randomBytes);
+    const defaultPasswordVal = `Aj!${randomBytes[0].toString(36)}${randomBytes[1].toString(36)}#`;
     const baseUrl = window.location.origin + window.location.pathname;
 
     openModal({
@@ -7151,18 +7153,21 @@ export async function openInviteEmployeeModal(defaultEmpNikOrName = "") {
           }
 
           try {
-            const pHash = await sha256(pword);
-            await setDoc(doc(db, COL.USERS, uname), {
+            const response = await authFetch('/api/admin-user', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
               username: uname,
               nama: nama,
               nik: nik || "-",
               role: role,
               email: email || "",
               no_hp: phone || "",
-              password_hash: pHash,
-              password: pword,
-              updated_at: new Date().toISOString()
-            }, { merge: true });
+              password: pword
+              })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.success) throw new Error(result.error || 'Gagal membuat akun Firebase.');
             
             toast(`Akun pengguna ${uname} berhasil diperbarui di database!`, "success");
             return true;
@@ -8198,5 +8203,3 @@ export async function requestEditAuth(options = {}) {
   const { requestEditAuth: authFn } = await import("./auth.js");
   return authFn(options);
 }
-
-

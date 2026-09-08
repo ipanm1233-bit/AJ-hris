@@ -1,0 +1,19 @@
+{
+  "name": "aj-hris-fingerprint-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local bridge Solution X150 to AJ HRIS",
+  "main": "bridge.js",
+  "scripts": {
+    "check": "node bridge.js --check",
+    "sync": "node bridge.js --once",
+    "start": "node bridge.js",
+    "test": "node --test bridge.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "node-zklib": "1.3.0"
+  }
+}

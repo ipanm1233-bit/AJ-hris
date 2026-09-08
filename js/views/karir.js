@@ -4,7 +4,7 @@
  * CV Andela Jaya (Portal Rekrutmen Terbuka Tanpa Perlu Login HRIS)
  * =====================================================================
  */
-import { COL } from "../firebase-config.js";
+import { db, COL, collection, getDocs, query, where } from "../firebase-config.js";
 import { fsGetAll, fsAdd, openModal, closeModal, toast, escapeHtml, genId, fmtDateShort, fmtRupiah } from "../utils.js";
 import { evaluateCandidateATS, extractBasicInfo, extractTextFromPdfFile, extractTextFromDocxFile, DEFAULT_SYNONYMS, CITIES_DICTIONARY } from "./ats-engine.js";
 import { loadRecruitmentMasterData } from "./ats-ui-components.js";
@@ -85,10 +85,19 @@ export async function mount(container, { params, session }) {
       }
 
       // Fetch vacancies
-      allVacancies = await fsGetAll(COL.DATA_REKRUTMEN || "data_rekrutmen").catch(() => []);
+      if (session) {
+        allVacancies = await fsGetAll(COL.DATA_REKRUTMEN || "data_rekrutmen").catch(() => []);
+      } else {
+        const publicVacancies = query(
+          collection(db, COL.DATA_REKRUTMEN || "data_rekrutmen"),
+          where("status", "in", ["Open", "OPEN", "AKTIF", "Aktif", "Dibuka", "DIBUKA"])
+        );
+        const vacancySnap = await getDocs(publicVacancies);
+        allVacancies = vacancySnap.docs.map(item => ({ ...item.data(), id: item.id, _docId: item.id }));
+      }
 
       // If no vacancies, seed default open vacancies for immediate testing
-      if (allVacancies.length === 0) {
+      if (allVacancies.length === 0 && session && ["HRD", "SUPERADMIN"].includes(String(session.role || "").toUpperCase())) {
         const defaultList = [
           {
             id: "VAC-001",
