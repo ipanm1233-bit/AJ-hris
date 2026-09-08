@@ -59,7 +59,10 @@ export async function mount(container, { session } = {}) {
  const searchRaw = container.querySelector("#search-absen-raw");
  const filterStart = container.querySelector("#filter-absen-start");
  const filterEnd = container.querySelector("#filter-absen-end");
+ const filterBranch = container.querySelector("#filter-absen-cabang");
+ const filterDivision = container.querySelector("#filter-absen-divisi");
  const btnResetFilterAbsen = container.querySelector("#btn-reset-filter-absen");
+ const btnExportRawAbsen = container.querySelector("#btn-export-raw-absen");
  const thSortNama = container.querySelector("#th-sort-nama");
  const iconSortNama = container.querySelector("#th-sort-nama-icon");
 
@@ -76,6 +79,8 @@ export async function mount(container, { session } = {}) {
  search: "",
  start: isHrdOrAdmin ? "" : twoMonthsStart,
  end: isHrdOrAdmin ? "" : twoMonthsEnd,
+ branch: "",
+ division: "",
  sortNama: null
  };
 
@@ -83,6 +88,7 @@ export async function mount(container, { session } = {}) {
  if (!isHrdOrAdmin) {
  if (btnImport) btnImport.style.display = "none";
  if (btnExport) btnExport.style.display = "none";
+ if (btnExportRawAbsen) btnExportRawAbsen.style.display = "none";
  if (btnSyncFingerprint) btnSyncFingerprint.style.display = "none";
  if (btnConfigFingerprint) btnConfigFingerprint.style.display = "none";
  if (btnPullArchive) btnPullArchive.style.display = "none";
@@ -126,7 +132,29 @@ export async function mount(container, { session } = {}) {
 
  async function loadRawAbsensiTable() {
  rawTbody.innerHTML = `<tr><td colspan="6" class="p-4">${skeletonRows(4)}</td></tr>`;
- listAbsensiGlobal = await fsGetAll(COL.DATA_ABSENSI);
+ const [attendanceRows, employeeRows] = await Promise.all([
+ fsGetAll(COL.DATA_ABSENSI),
+ fsGetAll(COL.MASTER_KARYAWAN).catch(() => [])
+ ]);
+ const employeeByNik = new Map();
+ employeeRows.forEach(employee => {
+ const keys = [employee.id, employee.nik, employee.nik_karyawan]
+ .map(value => String(value || "").trim().toUpperCase())
+ .filter(Boolean);
+ keys.forEach(key => { if (!employeeByNik.has(key)) employeeByNik.set(key, employee); });
+ });
+ listAbsensiGlobal = attendanceRows.map(row => {
+ const employee = employeeByNik.get(String(row.nik || row.nik_karyawan || "").trim().toUpperCase());
+ return {
+ ...row,
+ nik: row.nik || row.nik_karyawan || employee?.nik || employee?.nik_karyawan || "",
+ nama: row.nama || employee?.nama_karyawan || employee?.nama || "",
+ cabang: row.cabang || employee?.cabang || "",
+ divisi: row.divisi || row.departemen || employee?.divisi || employee?.departemen || "",
+ jabatan: row.jabatan || row.posisi || employee?.jabatan || employee?.posisi || ""
+ };
+ });
+ populateAttendanceFilterOptions();
 
  // Check for records older than 60 days per employee to keep Firebase lightweight
  const sixtyDaysAgo = new Date();
@@ -202,6 +230,37 @@ export async function mount(container, { session } = {}) {
  applyFiltersAbsen();
  }
 
+ function setAttendanceSelectOptions(select, emptyLabel, values, selectedValue = "") {
+ if (!select) return;
+ select.innerHTML = "";
+ const emptyOption = document.createElement("option");
+ emptyOption.value = "";
+ emptyOption.textContent = emptyLabel;
+ select.appendChild(emptyOption);
+ values.forEach(value => {
+ const option = document.createElement("option");
+ option.value = value;
+ option.textContent = value;
+ select.appendChild(option);
+ });
+ select.value = values.includes(selectedValue) ? selectedValue : "";
+ }
+
+ function populateAttendanceFilterOptions() {
+ const branches = [...new Set(listAbsensiGlobal.map(row => String(row.cabang || "").trim()).filter(Boolean))]
+ .sort((a, b) => a.localeCompare(b, "id", { sensitivity: "base" }));
+ setAttendanceSelectOptions(filterBranch, "Semua Cabang", branches, filterState.branch);
+ if (filterBranch && filterState.branch && !filterBranch.value) filterState.branch = "";
+
+ const divisionSource = filterState.branch
+ ? listAbsensiGlobal.filter(row => String(row.cabang || "").trim().toUpperCase() === filterState.branch.toUpperCase())
+ : listAbsensiGlobal;
+ const divisions = [...new Set(divisionSource.map(row => String(row.divisi || "").trim()).filter(Boolean))]
+ .sort((a, b) => a.localeCompare(b, "id", { sensitivity: "base" }));
+ setAttendanceSelectOptions(filterDivision, "Semua Divisi", divisions, filterState.division);
+ if (filterDivision && filterState.division && !filterDivision.value) filterState.division = "";
+ }
+
  /**
  * Terapkan filter periode/tanggal + pencarian nama/NIK + urutan
  * (default tanggal terbaru, atau A-Z/Z-A kalau kolom Nama diklik).
@@ -228,6 +287,8 @@ export async function mount(container, { session } = {}) {
 
  if (filterState.start) data = data.filter(x => x.tanggal >= filterState.start);
  if (filterState.end) data = data.filter(x => x.tanggal <= filterState.end);
+ if (filterState.branch) data = data.filter(x => String(x.cabang || "").trim().toUpperCase() === filterState.branch.toUpperCase());
+ if (filterState.division) data = data.filter(x => String(x.divisi || "").trim().toUpperCase() === filterState.division.toUpperCase());
  if (filterState.search) {
  const term = filterState.search;
  data = data.filter(x => String(x.nama || "").toLowerCase().includes(term) || String(x.nik || "").toLowerCase().includes(term));
@@ -293,17 +354,31 @@ export async function mount(container, { session } = {}) {
  if (filterEnd) {
  filterEnd.onchange = (e) => { filterState.end = e.target.value; applyFiltersAbsen(); };
  }
+ if (filterBranch) {
+ filterBranch.onchange = (e) => {
+ filterState.branch = e.target.value;
+ filterState.division = "";
+ populateAttendanceFilterOptions();
+ applyFiltersAbsen();
+ };
+ }
+ if (filterDivision) {
+ filterDivision.onchange = (e) => { filterState.division = e.target.value; applyFiltersAbsen(); };
+ }
  if (btnResetFilterAbsen) {
  btnResetFilterAbsen.onclick = () => {
  filterState = {
  search: "",
  start: isHrdOrAdmin ? "" : twoMonthsStart,
  end: isHrdOrAdmin ? "" : twoMonthsEnd,
+ branch: "",
+ division: "",
  sortNama: null
  };
  if (searchRaw) searchRaw.value = "";
  if (filterStart) filterStart.value = isHrdOrAdmin ? "" : twoMonthsStart;
  if (filterEnd) filterEnd.value = isHrdOrAdmin ? "" : twoMonthsEnd;
+ populateAttendanceFilterOptions();
  if (iconSortNama) iconSortNama.textContent = "↕";
  applyFiltersAbsen();
  };
@@ -316,6 +391,62 @@ export async function mount(container, { session } = {}) {
  iconSortNama.textContent = filterState.sortNama === "asc" ? "↑ A-Z" : filterState.sortNama === "desc" ? "↓ Z-A" : "↕";
  }
  applyFiltersAbsen();
+ };
+ }
+
+ if (btnExportRawAbsen) {
+ btnExportRawAbsen.onclick = () => {
+ if (!filterState.start || !filterState.end) {
+ toast("Pilih tanggal mulai dan tanggal akhir terlebih dahulu.", "warning");
+ return;
+ }
+ if (filterState.start > filterState.end) {
+ toast("Tanggal mulai tidak boleh melewati tanggal akhir.", "warning");
+ return;
+ }
+ if (typeof window.XLSX === "undefined") {
+ toast("Komponen Excel belum tersedia. Muat ulang halaman lalu coba kembali.", "error");
+ return;
+ }
+
+ const filteredRows = applyFiltersAbsen();
+ if (!filteredRows.length) {
+ toast("Tidak ada data absensi pada filter yang dipilih.", "warning");
+ return;
+ }
+
+ const exportRows = [...filteredRows]
+ .sort((a, b) => String(a.tanggal || "").localeCompare(String(b.tanggal || "")) || String(a.nama || "").localeCompare(String(b.nama || ""), "id"))
+ .map((row, index) => ({
+ "No": index + 1,
+ "Tanggal": row.tanggal || "",
+ "NIK": row.nik || "",
+ "Nama Karyawan": row.nama || "",
+ "Cabang": row.cabang || "",
+ "Divisi": row.divisi || "",
+ "Jabatan": row.jabatan || "",
+ "Jadwal Masuk": row.jadwal_masuk || "",
+ "Jadwal Keluar": row.jadwal_keluar || "",
+ "Scan Masuk": row.scan_masuk || "",
+ "Scan Keluar": row.scan_keluar || "",
+ "Status Scan": row.scan_masuk && row.scan_keluar ? "Lengkap" : row.scan_masuk || row.scan_keluar ? "Belum Lengkap" : "Tanpa Scan",
+ "Sumber Data": row.sumber || "DATA LAMA",
+ "ID Fingerprint": row.fingerprint_user_id || ""
+ }));
+
+ const worksheet = window.XLSX.utils.json_to_sheet(exportRows);
+ worksheet["!cols"] = [
+ { wch: 6 }, { wch: 13 }, { wch: 18 }, { wch: 30 }, { wch: 14 }, { wch: 22 }, { wch: 24 },
+ { wch: 14 }, { wch: 14 }, { wch: 13 }, { wch: 13 }, { wch: 16 }, { wch: 18 }, { wch: 16 }
+ ];
+ if (worksheet["!ref"]) worksheet["!autofilter"] = { ref: worksheet["!ref"] };
+ const workbook = window.XLSX.utils.book_new();
+ window.XLSX.utils.book_append_sheet(workbook, worksheet, "Raw Finger");
+
+ const safePart = value => String(value || "SEMUA").replace(/[^a-zA-Z0-9_-]/g, "_");
+ const filename = `RAW_FINGER_${filterState.start}_SD_${filterState.end}_${safePart(filterState.branch)}_${safePart(filterState.division)}.xlsx`;
+ window.XLSX.writeFile(workbook, filename);
+ toast(`${exportRows.length} baris raw finger berhasil diunduh.`, "success");
  };
  }
 
@@ -708,6 +839,7 @@ export async function mount(container, { session } = {}) {
  const existingIds = new Set(listAbsensiGlobal.map(x => x.id));
  const newRows = res.rows.filter(x => !existingIds.has(x.id));
  listAbsensiGlobal = [...listAbsensiGlobal, ...newRows];
+ populateAttendanceFilterOptions();
  applyFiltersAbsen();
  toast(`Sukses memuat ${newRows.length} data arsip untuk periode terpilih!`, "success");
  } else {
