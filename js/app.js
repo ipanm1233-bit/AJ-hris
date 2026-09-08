@@ -219,7 +219,6 @@ async function aktifkanNotifikasiHP(userData) {
  }
  console.log("Token FCM berhasil disimpan ke database!");
  }
- }
  } catch (error) {
  console.info('Pemberitahuan Notifikasi:', error.message);
  }
