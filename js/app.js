@@ -13,6 +13,9 @@ import { initGlobalSearch } from "./global-search.js";
 import { waitForAuthReady, authFetch } from "./api-client.js";
 import { auth } from "./firebase-config.js";
 
+// Ubah versi ini setiap ada perubahan struktur view agar browser tidak
+// mencampur HTML terbaru dengan modul JavaScript lama dari cache.
+const APP_ASSET_VERSION = "20260908-raw-finger-v2";
 const viewContainer = document.getElementById("view-container");
 let currentUnmount = null;
 let currentRoute = null;
@@ -37,7 +40,7 @@ async function showPublicCareerPortal(params) {
  }
 
  try {
- const mod = await import("./views/karir.js");
+ const mod = await import(`./views/karir.js?v=${APP_ASSET_VERSION}`);
  if (mod && typeof mod.mount === "function") {
  mod.mount(portalContainer, { params, session: getSession() });
  }
@@ -366,7 +369,7 @@ async function loadViewHtml(viewName) {
  ];
  for (const p of paths) {
  try {
- const res = await fetch(p);
+ const res = await fetch(`${p}?v=${APP_ASSET_VERSION}`, { cache: "no-store" });
  if (res.ok) {
  return await res.text();
  }
@@ -395,7 +398,7 @@ async function showLogin() {
  }
 
  try {
- const mod = await import("./views/login.js");
+ const mod = await import(`./views/login.js?v=${APP_ASSET_VERSION}`);
  if (mod && typeof mod.mount === "function") {
  mod.mount(loginContainer, {
  onSuccess: () => {
@@ -612,7 +615,7 @@ async function router(session) {
 		container.innerHTML = html;
 		
 		try {
-			const mod = await import(`./views/${mappedPath}.js`);
+			const mod = await import(`./views/${mappedPath}.js?v=${APP_ASSET_VERSION}`);
 			if (mod && typeof mod.mount === "function") {
 				const result = await mod.mount(container, { params, session: activeSession });
 				if (result && typeof result.unmount === "function") currentUnmount = result.unmount;
