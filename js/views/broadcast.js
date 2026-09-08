@@ -331,11 +331,7 @@ function openComposeModal(container, session, karyawan, users, reload) {
  if (file) {
  if (file.size > 10 * 1024 * 1024) { toast("Ukuran file lampiran maksimal 10MB", "warning"); btnSend.disabled = false; btnSend.innerHTML = "Kirim Memo"; return; }
  btnSend.innerHTML = "Mengupload Lampiran...";
- try {
  lampiranUrl = await uploadFileToDrive(file, `Broadcast/${id}`);
- } catch (upErr) {
- console.warn("Gagal upload ke Drive, melanjutkan tanpa lampiran:", upErr);
- }
  btnSend.innerHTML = "Sedang Mengirim...";
  }
 
@@ -442,7 +438,10 @@ function openComposeModal(container, session, karyawan, users, reload) {
  closeModal();
  reload();
  } catch (e) {
- toast("Gagal mengirim memo: " + e.message, "error");
+ const prefix = String(e?.message || "").toLowerCase().includes("upload") || String(e?.message || "").toLowerCase().includes("apps script")
+   ? "Gagal mengunggah lampiran"
+   : "Gagal mengirim memo";
+ toast(prefix + ": " + e.message, "error");
  btnSend.disabled = false; btnSend.innerHTML = "Kirim Memo";
  }
  };

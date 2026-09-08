@@ -442,9 +442,11 @@ export async function mount(container, { session }) {
  if (fileInput && fileInput.files && fileInput.files[0]) {
  try {
  toast("Mengunggah lampiran pendukung...", "info");
- fileUrl = await uploadFileToDrive(fileInput.files[0]);
+ fileUrl = await uploadFileToDrive(fileInput.files[0], `Izin/${session.username || session.nik || "Karyawan"}`);
  } catch(fErr) {
  console.warn("Upload lampiran error:", fErr);
+ toast("Lampiran gagal diunggah: " + fErr.message, "error");
+ return;
  }
  }
 

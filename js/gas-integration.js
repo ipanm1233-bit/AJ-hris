@@ -54,13 +54,21 @@ export async function callGasWebApp(payload) {
  }
 
  let response;
+ const controller = new AbortController();
+ const timeoutId = setTimeout(() => controller.abort(), 60000);
  try {
  response = await fetch(GAS_WEBAPP_URL, {
  method: "POST",
- body: JSON.stringify(payload)
+ body: JSON.stringify(payload),
+ signal: controller.signal
  });
  } catch (networkErr) {
+ if (networkErr?.name === "AbortError") {
+ throw new Error("Upload melewati batas waktu 60 detik. Periksa koneksi internet lalu coba kembali.");
+ }
  throw new Error("Gagal menghubungi Google Apps Script. Cek koneksi internet Anda, atau pastikan URL Web App di js/gas-integration.js masih aktif (belum di-undeploy).");
+ } finally {
+ clearTimeout(timeoutId);
  }
 
  let json;
@@ -135,11 +143,16 @@ export async function generateCutiDocViaGAS(payload) {
  * @returns {Promise<string>} URL Google Drive file yang sudah diupload (siap dipakai sbg link di Firestore)
  */
 export async function uploadFileToDrive(file, folderPath) {
+ if (!file || typeof file.size !== "number") {
+ throw new Error("File yang akan diunggah tidak valid.");
+ }
+ if (file.size === 0) {
+ throw new Error("File kosong tidak dapat diunggah.");
+ }
  if (file.size > 25 * 1024 * 1024) {
  throw new Error("Ukuran file maksimal 25MB untuk upload ke Google Drive.");
  }
  const base64 = await fileToBase64(file);
- try {
  const result = await callGasWebApp({
  action: "upload_file",
  base64,
@@ -151,10 +164,6 @@ export async function uploadFileToDrive(file, folderPath) {
  return result.url;
  }
  throw new Error("Respons Apps Script tidak menyertakan URL file.");
- } catch (err) {
- console.info("Upload Google Drive via Apps Script tidak aktif/diizinkan. Menyimpan lampiran secara internal (Data URL).");
- return `data:${file.type || "application/octet-stream"};base64,${base64}`;
- }
 }
 
 function fileToBase64(file) {

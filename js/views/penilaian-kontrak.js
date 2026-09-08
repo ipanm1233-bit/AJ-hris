@@ -4,6 +4,7 @@ import { renderCrudModule, badge, emptyState, skeletonRows, avatar, openPenilaia
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames, hasSubMenuAccess, canEditModuleData } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
 import { uploadFileToDrive } from "../gas-integration.js";
+import { aggregateKpiByPeriod, evaluateKpiGrade, getLatestKpiSummary, validateGradeRulesMap } from "../kpi-scoring.mjs";
 
 // =====================================================================
 // MASTER INDIKATOR PENILAIAN HARIAN & TARGET BULANAN
@@ -34,14 +35,6 @@ export async function getEmployeeCustomIndicators(empKey, defaultCategory = "NON
   const cleanKey = (empKey || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "_");
   const storageKey = "HRIS_CUSTOM_KPI_IND_" + cleanKey;
   try {
-    const local = localStorage.getItem(storageKey);
-    if (local) {
-      const parsed = JSON.parse(local);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch (e) {}
-
-  try {
     const docRef = doc(db, COL.APP_SETTINGS, storageKey);
     const snap = await getDoc(docRef);
     if (snap.exists() && snap.data()?.indicators) {
@@ -50,6 +43,16 @@ export async function getEmployeeCustomIndicators(empKey, defaultCategory = "NON
         localStorage.setItem(storageKey, JSON.stringify(list));
         return list;
       }
+    }
+  } catch (e) {
+    console.warn("Gagal membaca indikator KPI dari database, mencoba cache perangkat:", e);
+  }
+
+  try {
+    const local = localStorage.getItem(storageKey);
+    if (local) {
+      const parsed = JSON.parse(local);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
   } catch (e) {}
 
@@ -62,13 +65,9 @@ export async function saveEmployeeCustomIndicators(empKey, indicators) {
   if (!empKey || !Array.isArray(indicators) || indicators.length === 0) return;
   const cleanKey = (empKey || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "_");
   const storageKey = "HRIS_CUSTOM_KPI_IND_" + cleanKey;
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(indicators));
-    const docRef = doc(db, COL.APP_SETTINGS, storageKey);
-    await setDoc(docRef, { indicators: indicators, updated_at: new Date().toISOString() }, { merge: true });
-  } catch (e) {
-    console.warn("Could not save custom indicators template:", e);
-  }
+  const docRef = doc(db, COL.APP_SETTINGS, storageKey);
+  await setDoc(docRef, { indicators: indicators, updated_at: new Date().toISOString() }, { merge: true });
+  try { localStorage.setItem(storageKey, JSON.stringify(indicators)); } catch (e) {}
 }
 
 // =====================================================================
@@ -192,25 +191,7 @@ export const DEFAULT_GRADE_RULES = {
 };
 
 export function evaluateGradeRule(categoryKey, score, rulesMap = DEFAULT_GRADE_RULES) {
- const catKey = categoryKey || "KPI_360";
- const catRules = rulesMap[catKey] || rulesMap.KPI_360 || DEFAULT_GRADE_RULES.KPI_360;
- 
- const numScore = parseFloat(score) || 0;
- for (const r of catRules) {
- if (numScore >= parseFloat(r.min) && numScore <= parseFloat(r.max)) {
- return {
- predikat: r.predikat,
- rekomendasi: r.rekomendasi,
- badgeClass: r.badgeClass || "bg-blue-100 text-blue-800 border-blue-300"
- };
- }
- }
- 
- return {
- predikat: numScore >= 80 ? "Baik" : "Kurang",
- rekomendasi: catRules[0]?.rekomendasi || "Evaluasi",
- badgeClass: numScore >= 80 ? "bg-blue-100 text-blue-800 border-blue-300" : "bg-rose-100 text-rose-800 border-rose-300"
- };
+ return evaluateKpiGrade(categoryKey, score, rulesMap);
 }
 
 export function getCatConfig(key) {
@@ -386,6 +367,8 @@ export function openGradeRulesModal(session, rulesMap, onSaveCallback) {
  const btnSave = m.querySelector("#btn-save-grade-rules");
  btnSave.disabled = true; btnSave.textContent = "Menyimpan Aturan...";
  try {
+ const validationError = validateGradeRulesMap(workingRules);
+ if (validationError) throw new Error(validationError);
  await setDoc(doc(db, COL.APP_SETTINGS, "aturan_penilaian_grade"), {
  rules: workingRules,
  updated_by: session.nama,
@@ -487,6 +470,9 @@ export async function mount(container, { session, params }) {
  (r.nik && r.nik.toLowerCase() === userNik)
  ).sort((a, b) => new Date(b.created_at || b.tanggal || 0) - new Date(a.created_at || a.tanggal || 0));
 
+ const myKpiPeriods = aggregateKpiByPeriod(allLogs, { name: session.nama, nik: session.nik });
+ const latestKpiPeriod = myKpiPeriods[0] || null;
+
  // Check if employee has any evaluation record
  if (myLogs.length === 0 && myTasks.length === 0 && myReviews.length === 0) {
  wrap.innerHTML = `
@@ -515,9 +501,9 @@ export async function mount(container, { session, params }) {
  let detailSoal = [];
 
  if (latestLog) {
- totalScore = parseFloat(latestLog.total_skor || latestLog.skor_akhir || 0);
- periodeName = latestLog.periode || "Periode Berjalan";
- penilaiName = latestLog.penilai || latestLog.nama_penilai || "Atasan Direct";
+ totalScore = latestKpiPeriod?.score ?? parseFloat(latestLog.total_skor || latestLog.skor_akhir || 0);
+ periodeName = latestKpiPeriod?.period || latestLog.periode || "Periode Berjalan";
+ penilaiName = latestKpiPeriod?.raterCount > 1 ? `${latestKpiPeriod.raterCount} evaluator` : (latestLog.penilai || latestLog.nama_penilai || "Atasan Direct");
  detailSoal = latestLog.detail_json || latestLog.soal_json || [];
  } else if (latestReview) {
  totalScore = parseFloat(latestReview.skor_akhir || 0);
@@ -637,19 +623,20 @@ export async function mount(container, { session, params }) {
 
  // Render Historical Evaluation Trend if multiple logs exist
  let historyHtml = "";
- if (myLogs.length > 1) {
+ if (myKpiPeriods.length > 1) {
  historyHtml = `
  <div class="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-2xs space-y-4">
  <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
  <span></span> Riwayat Perkembangan KPI Per Periode
  </h3>
  <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
- ${myLogs.slice(0, 6).map(lg => {
- const sc = parseFloat(lg.total_skor || lg.skor_akhir || 0);
+ ${myKpiPeriods.slice(0, 6).map(periodSummary => {
+ const lg = periodSummary.latestLog || {};
+ const sc = periodSummary.score;
  return `
  <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200/60 flex items-center justify-between">
  <div>
- <div class="text-xs font-bold text-slate-700">${escapeHtml(lg.periode || "Periode")}</div>
+ <div class="text-xs font-bold text-slate-700">${escapeHtml(periodSummary.period || "Periode")}</div>
  <div class="text-[11px] text-slate-400">${fmtDateShort(lg.tanggal)}</div>
  </div>
  <span class="text-base font-black text-maroon-700">${sc}</span>
@@ -4245,9 +4232,11 @@ export async function mount(container, { session, params }) {
     });
 
     // Employee specific performance logs
-    const empKpi = kpiLogs.filter(k => (k.nama_karyawan || "").toLowerCase() === (empData.nama_karyawan || "").toLowerCase());
-    empKpi.sort((a, b) => new Date(b.created_at || b.tanggal || 0) - new Date(a.created_at || a.tanggal || 0));
-    const latestKpi = empKpi[0] || null;
+    const latestKpiSummary = getLatestKpiSummary(kpiLogs, {
+      name: empData.nama_karyawan,
+      nik: empData.nik_karyawan || empData.nik
+    });
+    const latestKpi = latestKpiSummary?.latestLog || null;
 
     const empDaily = dailyLogs.filter(d => (d.nama_karyawan || "").toLowerCase() === (empData.nama_karyawan || "").toLowerCase());
     empDaily.sort((a, b) => new Date(b.tanggal || 0) - new Date(a.tanggal || 0));
@@ -4363,7 +4352,8 @@ export async function mount(container, { session, params }) {
                 <div>
                   <label class="block text-slate-600 font-semibold mb-1">Usulan / Rekomendasi HRD</label>
                   <select id="input-rekomendasi-hrd" class="w-full px-3 py-2 rounded-xl border border-slate-200 outline-none bg-white font-medium">
-                    <option value="Perpanjang Kontrak 12 Bulan (1 Tahun)" ${ev.rekomendasi_hrd === "Perpanjang Kontrak 12 Bulan (1 Tahun)" || !ev.rekomendasi_hrd ? 'selected' : ''}>Perpanjang Kontrak 12 Bulan (1 Tahun)</option>
+                    <option value="" ${!ev.rekomendasi_hrd ? 'selected' : ''}>-- Pilih berdasarkan hasil evaluasi --</option>
+                    <option value="Perpanjang Kontrak 12 Bulan (1 Tahun)" ${ev.rekomendasi_hrd === "Perpanjang Kontrak 12 Bulan (1 Tahun)" ? 'selected' : ''}>Perpanjang Kontrak 12 Bulan (1 Tahun)</option>
                     <option value="Perpanjang Kontrak 6 Bulan" ${ev.rekomendasi_hrd === "Perpanjang Kontrak 6 Bulan" ? 'selected' : ''}>Perpanjang Kontrak 6 Bulan</option>
                     <option value="Perpanjang Kontrak 3 Bulan" ${ev.rekomendasi_hrd === "Perpanjang Kontrak 3 Bulan" ? 'selected' : ''}>Perpanjang Kontrak 3 Bulan</option>
                     <option value="Diangkat Karyawan Tetap (PKWTT / Kartap)" ${ev.rekomendasi_hrd === "Diangkat Karyawan Tetap (PKWTT / Kartap)" ? 'selected' : ''}>Diangkat Karyawan Tetap (PKWTT / Kartap)</option>
@@ -4496,10 +4486,10 @@ export async function mount(container, { session, params }) {
                 <div>
                   <label class="block text-slate-600 font-semibold mb-1">Keputusan Final Direktur</label>
                   <select id="input-keputusan-dir" class="w-full px-3 py-2 rounded-xl border border-slate-200 outline-none bg-white font-bold text-slate-800">
-                    <option value="DISETUJUI_PERPANJANG" ${ev.keputusan_direktur === "DISETUJUI_PERPANJANG" || !ev.keputusan_direktur ? 'selected' : ''}>✅ DISETUJUI - Perpanjang Kontrak</option>
+                    <option value="PENDING" ${ev.keputusan_direktur === "PENDING" || !ev.keputusan_direktur ? 'selected' : ''}>⏳ PENDING - Perlu Pembahasan Lanjutan</option>
+                    <option value="DISETUJUI_PERPANJANG" ${ev.keputusan_direktur === "DISETUJUI_PERPANJANG" ? 'selected' : ''}>✅ DISETUJUI - Perpanjang Kontrak</option>
                     <option value="DISETUJUI_KARTAP" ${ev.keputusan_direktur === "DISETUJUI_KARTAP" ? 'selected' : ''}>🌟 DISETUJUI - Pengangkatan Karyawan Tetap (Kartap)</option>
                     <option value="TIDAK_DIPERPANJANG" ${ev.keputusan_direktur === "TIDAK_DIPERPANJANG" ? 'selected' : ''}>❌ DITOLAK - Tidak Diperpanjang</option>
-                    <option value="PENDING" ${ev.keputusan_direktur === "PENDING" ? 'selected' : ''}>⏳ PENDING - Perlu Pembahasan Lanjutan</option>
                   </select>
                 </div>
                 <div>
@@ -4580,10 +4570,13 @@ export async function mount(container, { session, params }) {
               <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wide">Nilai Penilaian KPI Terakhir</h4>
               ${latestKpi ? `
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-white p-3 rounded-xl border border-slate-200">
-                  <div><span class="text-slate-400 block">Periode:</span> <strong>${escapeHtml(latestKpi.periode || latestKpi.bulan || "-")}</strong></div>
-                  <div><span class="text-slate-400 block">Skor Akhir:</span> <strong class="text-maroon-700 text-sm font-black">${latestKpi.nilai_akhir || latestKpi.skor_akhir || 0}</strong></div>
-                  <div><span class="text-slate-400 block">Predikat:</span> <span class="px-2 py-0.5 rounded font-bold bg-emerald-50 text-emerald-700">${escapeHtml(latestKpi.grade || latestKpi.predikat || "Baik")}</span></div>
-                  <div><span class="text-slate-400 block">Penilai:</span> <strong>${escapeHtml(latestKpi.nama_penilai || latestKpi.evaluator || "-")}</strong></div>
+                  <div><span class="text-slate-400 block">Periode:</span> <strong>${escapeHtml(latestKpiSummary.period || latestKpi.periode || latestKpi.bulan || "-")}</strong></div>
+                  <div><span class="text-slate-400 block">Skor Agregat:</span> <strong class="text-maroon-700 text-sm font-black">${latestKpiSummary.score.toFixed(2)}</strong></div>
+                  <div><span class="text-slate-400 block">Predikat:</span> <span class="px-2 py-0.5 rounded font-bold bg-emerald-50 text-emerald-700">${escapeHtml(evaluateGradeRule("KONTRAK", latestKpiSummary.score, currentGradeRulesMap).predikat)}</span></div>
+                  <div><span class="text-slate-400 block">Penilai:</span> <strong>${latestKpiSummary.raterCount} evaluator</strong></div>
+                </div>
+                <div class="mt-2 p-2.5 rounded-xl border border-blue-200 bg-blue-50 text-[11px] text-blue-900">
+                  Rekomendasi sistem berdasarkan skor agregat: <strong>${escapeHtml(evaluateGradeRule("KONTRAK", latestKpiSummary.score, currentGradeRulesMap).rekomendasi)}</strong>. Keputusan tetap wajib ditetapkan HRD, GM, dan Direktur.
                 </div>
               ` : `
                 <div class="py-4 text-center text-xs text-slate-400 italic">Belum ada riwayat penilaian KPI tercatat.</div>
@@ -4598,7 +4591,7 @@ export async function mount(container, { session, params }) {
                     <div class="bg-white p-3 rounded-xl border border-slate-200 text-xs space-y-1">
                       <div class="flex items-center justify-between">
                         <span class="font-bold text-slate-800">${fmtDateShort(dl.tanggal)}</span>
-                        <span class="font-semibold text-blue-700">Skor: ${dl.skor_harian || dl.total_capaian || 100}%</span>
+                        <span class="font-semibold text-blue-700">Skor: ${dl.total_skor ?? dl.skor_harian ?? dl.total_capaian ?? 0}%</span>
                       </div>
                       <p class="text-slate-600 text-[11px]">${escapeHtml(dl.catatan_harian || dl.keterangan || "Aktivitas tercatat normal.")}</p>
                     </div>
@@ -4668,7 +4661,7 @@ export async function mount(container, { session, params }) {
 
     // WA Helper function for GM
     function buildGmWaText() {
-      const recHrd = document.getElementById("input-rekomendasi-hrd")?.value || "Perpanjang Kontrak 12 Bulan";
+      const recHrd = document.getElementById("input-rekomendasi-hrd")?.value || "Belum ditetapkan";
       const catHrd = document.getElementById("input-catatan-hrd")?.value || "Kinerja dan kedisiplinan baik.";
       const gmName = inNamaGm?.value || "Bapak/Ibu GM";
       return `Yth. ${gmName},\n\nMohon koordinasi dan masukan terkait evaluasi perpanjangan kontrak karyawan:\n- Nama: *${empData.nama_karyawan}*\n- NIK: ${empData.nik_karyawan || empData.nik || "-"}\n- Jabatan: ${empData.jabatan || "-"} (${empData.cabang || "Pusat"})\n- Kontrak Berakhir: *${empData.tglAkhir ? fmtDateShort(empData.tglAkhir) : "-"}* (Sisa ${empData.daysLeft !== null ? empData.daysLeft : '-'} Hari)\n\n*Hasil Review HRD:*\n- Rekomendasi: ${recHrd}\n- Catatan: "${catHrd}"\n\nMohon feedback dan rekomendasi Bapak/Ibu untuk kelanjutan kontrak yang bersangkutan. Terima kasih.`;
@@ -4676,7 +4669,7 @@ export async function mount(container, { session, params }) {
 
     // WA Helper function for Director
     function buildDirWaText() {
-      const recHrd = document.getElementById("input-rekomendasi-hrd")?.value || "Perpanjang Kontrak 12 Bulan";
+      const recHrd = document.getElementById("input-rekomendasi-hrd")?.value || "Belum ditetapkan";
       const recGm = document.getElementById("input-rekomendasi-gm")?.value || "Setuju Rekomendasi HRD";
       const catGm = document.getElementById("input-catatan-gm")?.value || "-";
       const dirName = inNamaDir?.value || "Bapak/Ibu Direktur";
@@ -4790,6 +4783,12 @@ export async function mount(container, { session, params }) {
           no_sk_kontrak_baru: document.getElementById("input-no-sk")?.value || "",
           tgl_mulai_baru: inMulaiBaru?.value || "",
           tgl_akhir_baru: inAkhirBaru?.value || "",
+          kpi_periode_referensi: latestKpiSummary?.period || "",
+          kpi_skor_agregat: latestKpiSummary?.score ?? null,
+          kpi_jumlah_penilai: latestKpiSummary?.raterCount || 0,
+          kpi_rekomendasi_sistem: latestKpiSummary
+            ? evaluateGradeRule("KONTRAK", latestKpiSummary.score, currentGradeRulesMap).rekomendasi
+            : "",
           status_final: ev.status_final || "PROSES",
           updated_at: new Date().toISOString()
         };
@@ -4811,11 +4810,23 @@ export async function mount(container, { session, params }) {
     const btnExecute = document.getElementById("btn-execute-renewal");
     if (btnExecute) {
       btnExecute.onclick = () => {
-        const keputusan = document.getElementById("input-keputusan-dir")?.value || "DISETUJUI_PERPANJANG";
+        const keputusan = document.getElementById("input-keputusan-dir")?.value || "PENDING";
         const durasi = selDurasi?.value || "12 Bulan";
         const tglMulai = inMulaiBaru?.value;
         const tglAkhir = inAkhirBaru?.value;
         const noSk = document.getElementById("input-no-sk")?.value || `SK-KTR-${Date.now().toString().slice(-4)}`;
+
+        if (keputusan === "PENDING") {
+          toast("Keputusan Direktur masih PENDING. Kontrak baru belum boleh diterbitkan.", "warning");
+          return;
+        }
+
+        const approvalDate = document.getElementById("input-tgl-dir")?.value;
+        const directorName = document.getElementById("input-nama-dir")?.value?.trim();
+        if (!approvalDate || !directorName) {
+          toast("Lengkapi nama Direktur dan tanggal persetujuan sebelum menyelesaikan evaluasi kontrak.", "warning");
+          return;
+        }
 
         if (keputusan === "TIDAK_DIPERPANJANG") {
           confirmDialog(
@@ -4896,6 +4907,12 @@ export async function mount(container, { session, params }) {
                 tgl_akhir_baru: tglAkhir,
                 keputusan_direktur: keputusan,
                 durasi_perpanjangan_disetujui: durasi,
+                kpi_periode_referensi: latestKpiSummary?.period || "",
+                kpi_skor_agregat: latestKpiSummary?.score ?? null,
+                kpi_jumlah_penilai: latestKpiSummary?.raterCount || 0,
+                kpi_rekomendasi_sistem: latestKpiSummary
+                  ? evaluateGradeRule("KONTRAK", latestKpiSummary.score, currentGradeRulesMap).rekomendasi
+                  : "",
                 updated_at: new Date().toISOString()
               });
 

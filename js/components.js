@@ -1821,16 +1821,24 @@ export function openPenilaianFormFromNotif(task, kpis, session) {
  tanggal_diselesaikan: new Date().toISOString()
  });
  await fsAdd(COL.LOG_PENILAIAN_KPI, {
+ task_id: task.id,
  tanggal: new Date().toISOString(),
  nama_dinilai: task.nama_dinilai,
+ nik_dinilai: task.nik_dinilai || "",
  penilai: task.nama_penilai,
+ nama_penilai: task.nama_penilai,
+ nik_penilai: task.nik_penilai || "",
+ tipe_relasi: task.tipe_relasi || "360 Multi-Rater",
+ kategori_penilaian: task.kategori_penilaian || "KPI_360",
  total_skor: finalScore,
+ skor_akhir: finalScore,
  keputusan: keputusan,
  periode: task.periode,
  detail_json: answeredSoal,
  catatan_baik: catatanBaik,
  catatan_perbaikan: catatanPerbaikan,
- catatan_penilai: catatanPenilai
+ catatan_penilai: catatanPenilai,
+ created_at: new Date().toISOString()
  }, genId("KPI-LOG"));
 
  toast("Evaluasi kinerja berhasil disimpan & diselesaikan!", "success");
