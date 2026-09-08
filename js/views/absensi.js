@@ -473,10 +473,17 @@ export async function mount(container, { session } = {}) {
  });
  const shift = getShiftForEmployee(empObj, cfgJadwal);
 
- const uid = genId("ABS");
+ const resolvedNik = String(empNik || empObj?.nik || empObj?.nik_karyawan || "").trim();
+ const stableEmployeeKey = (resolvedNik || String(empNama || empObj?.nama_karyawan || empObj?.nama || ""))
+ .normalize("NFKD")
+ .replace(/[\u0300-\u036f]/g, "")
+ .replace(/[^a-zA-Z0-9._-]/g, "_")
+ .slice(0, 100);
+ // ID deterministik mencegah file/periode yang sama membuat baris ganda.
+ const uid = `ABS-IMP-${stableEmployeeKey}-${tglStr}`;
  const payload = {
  id: uid,
- nik: empNik || empObj?.nik || empObj?.nik_karyawan || "",
+ nik: resolvedNik,
  nama: empNama || empObj?.nama_karyawan || empObj?.nama || "",
  tanggal: tglStr,
  cabang: getVal(["CABANG", "BRANCH"]) || empObj?.cabang || "",

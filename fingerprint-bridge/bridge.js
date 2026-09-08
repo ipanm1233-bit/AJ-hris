@@ -266,17 +266,20 @@ async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {
   }
 
   let processed = 0;
+  let duplicatesRemoved = 0;
   const unmatched = new Set();
   const unmatchedNames = new Map();
   for (let index = 0; index < recentLogs.length; index += 1000) {
     const response = await sendChunk(recentLogs.slice(index, index + 1000), result.users, branch);
     processed += Number(response.processedRecords || 0);
+    duplicatesRemoved += Number(response.duplicatesRemoved || 0);
     for (const id of response.unmatchedFingerprintIds || []) unmatched.add(String(id));
     for (const user of response.unmatchedFingerprintUsers || []) {
       if (user?.id) unmatchedNames.set(String(user.id), String(user.fingerName || '').trim());
     }
   }
   console.log(`Sinkronisasi selesai: ${recentLogs.length} scan dikirim, ${processed} hari-karyawan diproses.`);
+  if (duplicatesRemoved) console.log(`Pembersihan data ganda: ${duplicatesRemoved} baris lama dihapus.`);
   if (unmatched.size) {
     const labels = [...unmatched].map(id => unmatchedNames.get(id) ? `${id} (${unmatchedNames.get(id)})` : id);
     console.warn(`Finger Name mesin belum terpetakan: ${labels.join(', ')}`);

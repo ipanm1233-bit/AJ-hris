@@ -413,8 +413,11 @@ module.exports = async function handler(req, res) {
     };
 
     // --- 3) Upsert per (NIK, tanggal), MERGE dgn scan lama kalau ada ----
-    const chunkSize = 200;
+    // Ukuran kecil menyisakan ruang pada batas 500 operasi per batch untuk
+    // menghapus dokumen impor/legacy yang memiliki NIK+tanggal yang sama.
+    const chunkSize = 50;
     let count = 0;
+    let duplicatesRemoved = 0;
     for (let i = 0; i < groupList.length; i += chunkSize) {
       const chunk = groupList.slice(i, i + chunkSize);
       const chunkItems = chunk.map(group => {
@@ -430,6 +433,20 @@ module.exports = async function handler(req, res) {
       const existingSnapshots = resolvedChunk.length
         ? await db.getAll(...resolvedChunk.map(item => item.ref))
         : [];
+      const dates = [...new Set(resolvedChunk.map(item => item.group.tanggal))];
+      const dateSnapshots = await Promise.all(dates.map(date =>
+        db.collection('data_absensi').where('tanggal', '==', date).get()
+      ));
+      const documentsByEmployeeDate = new Map();
+      dateSnapshots.forEach(snapshot => snapshot.docs.forEach(attendanceDoc => {
+        const data = attendanceDoc.data() || {};
+        const nikKey = String(data.nik || data.nik_karyawan || '').trim().toUpperCase();
+        const dateKey = String(data.tanggal || '').trim();
+        if (!nikKey || !dateKey) return;
+        const key = `${nikKey}|${dateKey}`;
+        if (!documentsByEmployeeDate.has(key)) documentsByEmployeeDate.set(key, []);
+        documentsByEmployeeDate.get(key).push(attendanceDoc.ref);
+      }));
       const batch = db.batch();
 
       // ID yang tidak bisa dipetakan tidak boleh menghasilkan jam/data dummy.
@@ -455,6 +472,18 @@ module.exports = async function handler(req, res) {
           disinkron_pada: admin.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
         if (legacyRef.path !== ref.path) batch.delete(legacyRef);
+
+        // Fingerprint asli menjadi sumber utama. Hapus baris impor lama atau
+        // ID acak lain untuk karyawan dan tanggal yang sama agar tabel tidak
+        // menampilkan jam dummy/duplikat di samping hasil mesin.
+        const duplicateKey = `${String(nik).trim().toUpperCase()}|${g.tanggal}`;
+        const duplicateRefs = (documentsByEmployeeDate.get(duplicateKey) || [])
+          .filter(candidate => candidate.path !== ref.path && candidate.path !== legacyRef.path)
+          .slice(0, 5);
+        duplicateRefs.forEach(candidate => {
+          batch.delete(candidate);
+          duplicatesRemoved += 1;
+        });
 
         count++;
       });
@@ -485,7 +514,7 @@ module.exports = async function handler(req, res) {
 
     await writeAuditLog(db, req, null, {
       action: 'FINGERPRINT_SYNC', module: 'ATTENDANCE',
-      metadata: { branch, processed_records: count, raw_scans: logs.length, invalid_logs: invalidLogs, unmatched_count: unmatchedIds.length }
+      metadata: { branch, processed_records: count, raw_scans: logs.length, invalid_logs: invalidLogs, unmatched_count: unmatchedIds.length, duplicates_removed: duplicatesRemoved }
     });
     if (pairedDevice) {
       await pairedDevice.snapshot.ref.set({
@@ -501,6 +530,7 @@ module.exports = async function handler(req, res) {
       rawScans: logs.length,
       branch,
       invalidLogs,
+      duplicatesRemoved,
       unmatchedFingerprintIds: unmatchedIds,
       unmatchedFingerprintUsers
     });
