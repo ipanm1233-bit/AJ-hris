@@ -28,7 +28,7 @@
 // GANTI dengan URL Web App hasil Deploy Apps Script Anda (harus diakhiri "/exec")
 export const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyFJVxJPFh39wBBEu5h98O2oGFCV7l3moeN18jiZ6zhdzVL83V6Evn7PZ_dJiKFB3GqqA/exec";
 
-// URL Web App TERPISAH khusus untuk Arsip Absensi -- ini project Apps
+// URL Web App TERPISAH khusus untuk Arsip Absensi dan Check-in Kanal -- ini project Apps
 // Script yang BERBEDA dari GAS_WEBAPP_URL di atas (yang menangani
 // generate_cuti_doc & upload_file). Jangan digabung jadi satu project;
 // biarkan terpisah supaya tidak ada risiko bentrok nama fungsi doPost.
@@ -89,7 +89,7 @@ export async function callGasWebApp(payload) {
  */
 export async function callGasArchiveWebApp(payload) {
  if (!GAS_ARCHIVE_WEBAPP_URL || GAS_ARCHIVE_WEBAPP_URL.includes("GANTI_DENGAN")) {
- throw new Error("URL Google Apps Script Arsip Absensi belum dikonfigurasi (GAS_ARCHIVE_WEBAPP_URL).");
+ throw new Error("URL Google Apps Script Arsip Absensi/Kanal belum dikonfigurasi (GAS_ARCHIVE_WEBAPP_URL).");
  }
 
  let response;
@@ -99,7 +99,7 @@ export async function callGasArchiveWebApp(payload) {
  body: JSON.stringify(payload)
  });
  } catch (networkErr) {
- throw new Error("Gagal menghubungi Google Apps Script Arsip Absensi. Cek koneksi internet, atau pastikan Web App masih ter-deploy.");
+ throw new Error("Gagal menghubungi Google Apps Script Arsip Absensi/Kanal. Cek koneksi internet, atau pastikan Web App masih ter-deploy.");
  }
 
  let json;
