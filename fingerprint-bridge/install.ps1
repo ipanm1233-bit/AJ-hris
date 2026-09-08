@@ -5,7 +5,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $bridgeDirectory = Join-Path $env:LOCALAPPDATA "AJHRIS-FingerprintBridge"
-$sourceBase = "https://raw.githubusercontent.com/ipanm1233-bit/AJ-hris/security/firebase-auth-hardening/fingerprint-bridge"
+$sourceBase = "https://raw.githubusercontent.com/ipanm1233-bit/AJ-hris/main/fingerprint-bridge"
 
 Write-Host "`nAJ HRIS - Pemasangan Fingerprint Connector" -ForegroundColor Cyan
 
