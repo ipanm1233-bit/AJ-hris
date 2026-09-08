@@ -56,10 +56,12 @@ function userRows(result) {
 }
 
 function normalizeDeviceUser(user) {
-  const deviceUserId = String(user?.userId ?? user?.deviceUserId ?? user?.uid ?? user?.userSn ?? '').trim();
+  const empNo = String(user?.uid ?? user?.userSn ?? '').trim();
+  const noId = String(user?.userId ?? user?.deviceUserId ?? user?.pin ?? '').trim();
+  const deviceUserId = noId || empNo;
   const name = String(user?.name ?? user?.username ?? user?.userName ?? '').trim();
   if (!deviceUserId || !name) return null;
-  return { deviceUserId, name };
+  return { deviceUserId, empNo, noId, name };
 }
 
 function normalizeDeviceLog(log) {
