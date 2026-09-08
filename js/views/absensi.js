@@ -5,6 +5,7 @@ import { callGasArchiveWebApp } from "../gas-integration.js";
 import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
 import { authFetch } from "../api-client.js";
 import { resolveWorkSchedule } from "../work-schedule.mjs";
+import { buildRawAttendanceExport } from "../attendance-export.mjs";
 
 async function fingerprintApi(action, payload = {}) {
  const response = await authFetch('/api/sync-absen', {
@@ -446,7 +447,7 @@ export async function mount(container, { session } = {}) {
  }
 
  if (btnExportRawAbsen) {
- btnExportRawAbsen.onclick = () => {
+ btnExportRawAbsen.onclick = async () => {
  if (!filterState.start || !filterState.end) {
  toast("Pilih tanggal mulai dan tanggal akhir terlebih dahulu.", "warning");
  return;
@@ -460,33 +461,44 @@ export async function mount(container, { session } = {}) {
  return;
  }
 
- const filteredRows = applyFiltersAbsen();
- if (!filteredRows.length) {
- toast("Tidak ada data absensi pada filter yang dipilih.", "warning");
+ btnExportRawAbsen.disabled = true;
+ const originalLabel = btnExportRawAbsen.innerHTML;
+ btnExportRawAbsen.textContent = "Menyiapkan data...";
+ let exportRows;
+ try {
+ const [leaveRows, freshEmployees] = await Promise.all([
+ fsGetAll(COL.MASTER_CUTI).catch(() => []),
+ fsGetAll(COL.MASTER_KARYAWAN).catch(() => employeeRowsGlobal)
+ ]);
+ const filteredAttendance = applyFiltersAbsen();
+ exportRows = buildRawAttendanceExport({
+ attendanceRows: filteredAttendance,
+ employees: freshEmployees,
+ leaves: leaveRows,
+ schedules: scheduleRowsGlobal,
+ start: filterState.start,
+ end: filterState.end,
+ branch: filterState.branch,
+ division: filterState.division
+ });
+ } catch (error) {
+ toast("Gagal menyiapkan data raw finger: " + error.message, "error");
+ btnExportRawAbsen.disabled = false;
+ btnExportRawAbsen.innerHTML = originalLabel;
+ return;
+ }
+ if (!exportRows.length) {
+ toast("Tidak ada karyawan atau data absensi pada filter yang dipilih.", "warning");
+ btnExportRawAbsen.disabled = false;
+ btnExportRawAbsen.innerHTML = originalLabel;
  return;
  }
 
- const exportRows = [...filteredRows]
- .sort((a, b) => String(a.tanggal || "").localeCompare(String(b.tanggal || "")) || String(a.nama || "").localeCompare(String(b.nama || ""), "id"))
- .map(row => ({
- "Emp No.": row.emp_no || "",
- "No. ID": row.no_id || "",
- "NIK": row.nik || "",
- "Nama Finger": row.nama_finger || "",
- "Nama Karyawan": row.nama || "",
- "Auto-Assign": row.auto_assign_label || "Tidak",
- "Tanggal": row.tanggal || "",
- "Jam Kerja": row.jam_kerja || "",
- "Jam Masuk": row.jadwal_masuk || "",
- "Jam Pulang": row.jadwal_keluar || "",
- "Scan Masuk": row.scan_masuk || "",
- "Scan Pulang": row.scan_keluar || ""
- }));
-
+ try {
  const worksheet = window.XLSX.utils.json_to_sheet(exportRows);
  worksheet["!cols"] = [
  { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 24 }, { wch: 30 }, { wch: 14 },
- { wch: 13 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }
+ { wch: 13 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 52 }
  ];
  if (worksheet["!ref"]) worksheet["!autofilter"] = { ref: worksheet["!ref"] };
  const workbook = window.XLSX.utils.book_new();
@@ -496,6 +508,12 @@ export async function mount(container, { session } = {}) {
  const filename = `RAW_FINGER_${filterState.start}_SD_${filterState.end}_${safePart(filterState.branch)}_${safePart(filterState.division)}.xlsx`;
  window.XLSX.writeFile(workbook, filename);
  toast(`${exportRows.length} baris raw finger berhasil diunduh.`, "success");
+ } catch (error) {
+ toast("Gagal membuat file Excel raw finger: " + error.message, "error");
+ } finally {
+ btnExportRawAbsen.disabled = false;
+ btnExportRawAbsen.innerHTML = originalLabel;
+ }
  };
  }
 
