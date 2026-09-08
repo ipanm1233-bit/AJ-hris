@@ -44,22 +44,46 @@ function getFirebaseWebApiKey() {
 async function findLegacyUser(db, identifier) {
   const raw = cleanIdentifier(identifier);
   const candidates = [...new Set([raw, raw.toUpperCase(), raw.toLowerCase()])];
+  const matches = new Map();
+  const remember = (snap) => {
+    if (snap?.exists) matches.set(snap.id, { ref: snap.ref, id: snap.id, data: snap.data() });
+  };
+
   for (const id of candidates) {
     const snap = await db.collection('users').doc(id).get();
-    if (snap.exists) return { ref: snap.ref, id: snap.id, data: snap.data() };
+    remember(snap);
   }
 
   const fields = ['username', 'nik', 'email'];
   for (const field of fields) {
-    for (const candidate of candidates) {
+    const fieldCandidates = field === 'nik' && /^\d+$/.test(raw)
+      ? [...candidates, Number(raw)]
+      : candidates;
+    for (const candidate of [...new Set(fieldCandidates)]) {
       const snap = await db.collection('users').where(field, '==', candidate).limit(1).get();
       if (!snap.empty) {
-        const doc = snap.docs[0];
-        return { ref: doc.ref, id: doc.id, data: doc.data() };
+        remember(snap.docs[0]);
       }
     }
   }
-  return null;
+
+  // Data lama dapat mempunyai dua dokumen untuk orang yang sama: document ID
+  // berupa NIK dan akun utama berupa username. Jangan langsung memilih dokumen
+  // NIK yang kosong; prioritaskan akun yang sudah dimigrasi atau masih memiliki
+  // kredensial legacy agar login pertama tetap dapat berlangsung.
+  const normalized = raw.toLowerCase();
+  return [...matches.values()].sort((a, b) => {
+    const score = (entry) => {
+      const user = entry.data || {};
+      let value = 0;
+      if (user.firebase_uid) value += 100;
+      if (user.password_hash || user.password) value += 50;
+      if (String(user.username || '').trim().toLowerCase() === normalized) value += 20;
+      if (String(entry.id || '').trim().toLowerCase() === normalized) value += 10;
+      return value;
+    };
+    return score(b) - score(a);
+  })[0] || null;
 }
 
 async function getEmployee(db, user, identifier) {
