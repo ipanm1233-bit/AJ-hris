@@ -16,7 +16,7 @@ async function fingerprintApi(action, payload = {}) {
 }
 
 function fingerprintInstallCommand(pairingCode) {
- const installer = 'https://raw.githubusercontent.com/ipanm1233-bit/AJ-hris/security/firebase-auth-hardening/fingerprint-bridge/install.ps1';
+ const installer = 'https://raw.githubusercontent.com/ipanm1233-bit/AJ-hris/main/fingerprint-bridge/install.ps1';
  const origin = window.location.origin;
  return `Invoke-WebRequest "${installer}" -OutFile "$env:TEMP\\ajhris-fingerprint-install.ps1"; powershell -ExecutionPolicy Bypass -File "$env:TEMP\\ajhris-fingerprint-install.ps1" -HrisUrl "${origin}" -PairingCode "${pairingCode}"`;
 }
