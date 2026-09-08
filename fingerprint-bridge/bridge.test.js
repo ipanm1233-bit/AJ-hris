@@ -27,6 +27,8 @@ test('normalizes Solution X150 users for automatic employee mapping', () => {
   assert.deepEqual(userRows(wrapped), wrapped.data);
   assert.deepEqual(normalizeDeviceUser(wrapped.data[0]), {
     deviceUserId: '81',
+    empNo: '7',
+    noId: '81',
     name: 'Budi Santoso'
   });
 });
