@@ -3659,7 +3659,12 @@ export async function mount(container, { session } = {}) {
       btnArchiveKanal.disabled = true;
       btnArchiveKanal.textContent = "Mengarsipkan...";
       try {
-        await callGasArchiveWebApp({ action: "archive_kanal_checkins", rows });
+        const chunkSize = 250;
+        for (let index = 0; index < rows.length; index += chunkSize) {
+          const chunk = rows.slice(index, index + chunkSize);
+          btnArchiveKanal.textContent = `Mengarsipkan ${Math.min(index + chunk.length, rows.length)}/${rows.length}...`;
+          await callGasArchiveWebApp({ action: "archive_kanal_checkins", rows: chunk });
+        }
         for (const row of rows) await fsDelete("kanal_checkins", row._docId || row.id);
         toast(`${rows.length} data check-in Kanal berhasil dipindahkan ke Spreadsheet.`, "success");
         await loadAndRenderTrack();
