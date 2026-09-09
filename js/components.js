@@ -3,12 +3,13 @@
  * COMPONENTS.JS — Pustaka komponen UI yang dapat dipakai ulang
  * =====================================================================
  */
-import { db, COL, doc, getDoc } from "./firebase-config.js";
+import { db, COL, collection, query, where, getDocs, doc, getDoc, writeBatch, serverTimestamp } from "./firebase-config.js";
 import {
  fsGetAll, fsAdd, fsUpdate, fsDelete, deleteBroadcastMemoAndNotifs, openModal, closeModal, confirmDialog,
  toast, fmtDateShort, fmtRupiah, toNumber, genId, escapeHtml, localDateStr
 } from "./utils.js";
 import { getSession, canDeleteModuleData } from "./auth.js";
+import { DEFAULT_KPI_GRADE_RULES, evaluateKpiGrade } from "./kpi-scoring.mjs";
 
 /* ---------------------------------------------------------------------
  * ICON SET (inline SVG, mengikuti aksen warna via currentColor)
@@ -736,9 +737,14 @@ export async function openNotificationCenter(session) {
  try {
  const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
 
+ const ownKpiPromise = session.nik
+   ? getDocs(query(collection(db, COL.TUGAS_KPI_360), where("nik_penilai", "==", session.nik)))
+       .then(snap => snap.docs.map(item => ({ id: item.id, ...item.data() })))
+       .catch(() => [])
+   : Promise.resolve([]);
  const [semuaPengajuan, tugasKpi, kontrak, broadcastRows, personalNotifs] = await Promise.all([
  fsGetAll(COL.DATA_PENGAJUAN),
- fsGetAll(COL.TUGAS_KPI_360).catch(() => []),
+ ownKpiPromise,
  isHrd ? fsGetAll(COL.MASTER_KONTRAK) : Promise.resolve([]),
  fsGetAll(COL.BROADCAST).catch(() => []),
  fsGetAll(COL.NOTIFICATIONS).then(rows => {
@@ -809,7 +815,7 @@ export async function openNotificationCenter(session) {
  return stepUpper === myRole || myRole === "SUPERADMIN" || myPosisi.includes(stepUpper) || myNameLower === stepLabel.toLowerCase();
  });
 
- const myKpi = tugasKpi.filter(t => t.nama_penilai === session.nama && t.status !== "DONE");
+ const myKpi = tugasKpi.filter(t => String(t.nik_penilai || "") === String(session.nik || "") && t.status !== "DONE");
  const kontrakHabis = isHrd ? kontrak.filter(k => k.status_kolom_kontrak === "SEGERA HABIS") : [];
 
  const nowForLpj = new Date();
@@ -1804,23 +1810,28 @@ export function openPenilaianFormFromNotif(task, kpis, session) {
  });
 
  let finalScore = Math.round(totalSkorBobot * 100) / 100;
- let keputusan = finalScore >= 85 ? "Sangat Baik" : finalScore >= 70 ? "Baik" : finalScore >= 55 ? "Cukup" : "Kurang";
+ const gradeRules = task.grade_rules_snapshot || DEFAULT_KPI_GRADE_RULES[task.kategori_penilaian || "KPI_360"];
+ let keputusan = evaluateKpiGrade(task.kategori_penilaian || "KPI_360", finalScore, {
+   [task.kategori_penilaian || "KPI_360"]: gradeRules
+ }).predikat;
 
  const btn = m.querySelector("#btn-submit-kpi");
  btn.disabled = true;
  btn.textContent = "Merekap Nilai...";
 
  try {
- await fsUpdate(COL.TUGAS_KPI_360, task.id, {
+ const completedAt = new Date().toISOString();
+ const taskUpdate = {
  status: "DONE",
  skor_akhir: finalScore,
  soal_json: answeredSoal,
  catatan_baik: catatanBaik,
  catatan_perbaikan: catatanPerbaikan,
  catatan_penilai: catatanPenilai,
- tanggal_diselesaikan: new Date().toISOString()
- });
- await fsAdd(COL.LOG_PENILAIAN_KPI, {
+ tanggal_diselesaikan: completedAt,
+ updated_at: serverTimestamp()
+ };
+ const logPayload = {
  task_id: task.id,
  tanggal: new Date().toISOString(),
  nama_dinilai: task.nama_dinilai,
@@ -1838,8 +1849,23 @@ export function openPenilaianFormFromNotif(task, kpis, session) {
  catatan_baik: catatanBaik,
  catatan_perbaikan: catatanPerbaikan,
  catatan_penilai: catatanPenilai,
- created_at: new Date().toISOString()
- }, genId("KPI-LOG"));
+ created_at: completedAt,
+ updated_at: serverTimestamp()
+ };
+ const batch = writeBatch(db);
+ batch.update(doc(db, COL.TUGAS_KPI_360, task.id), taskUpdate);
+ batch.set(doc(db, COL.LOG_PENILAIAN_KPI, `KPI-LOG-${task.id}`), logPayload, { merge: true });
+ batch.set(doc(db, "kpi_audit_logs", `KPI-SUBMIT-${task.id}-${Date.now()}`), {
+   action: "SUBMIT_EVALUATION",
+   task_id: task.id,
+   actor_uid: session.uid || "",
+   actor_nik: session.nik || task.nik_penilai || "",
+   before_status: task.status || "PENDING",
+   after_status: "DONE",
+   score: finalScore,
+   created_at: serverTimestamp()
+ }, { merge: false });
+ await batch.commit();
 
  toast("Evaluasi kinerja berhasil disimpan & diselesaikan!", "success");
  

@@ -1,10 +1,10 @@
-import { db, COL, collection, query, where, getDocs, getDoc, setDoc, doc, limit } from "../firebase-config.js";
+import { auth, db, COL, collection, query, where, getDocs, getDoc, setDoc, doc, limit, writeBatch, serverTimestamp } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, confirmDialog, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, buildStandardEmailHtml, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan, downloadXlsx, ensureXlsxLoaded, formatPhoneNumberForWa, openWhatsAppMessage, getEmployeePhoneByName, buildKpiTaskWaMessage, printDokumenPenilaianFisik, downloadDokumenPenilaianFisikPdf } from "../utils.js";
 import { renderCrudModule, badge, emptyState, skeletonRows, avatar, openPenilaianFormFromNotif } from "../components.js";
-import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames, hasSubMenuAccess, canEditModuleData } from "../auth.js";
+import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames, hasPermission, canEditModuleData } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
 import { uploadFileToDrive } from "../gas-integration.js";
-import { aggregateKpiByPeriod, evaluateKpiGrade, getLatestKpiSummary, validateGradeRulesMap } from "../kpi-scoring.mjs";
+import { aggregateKpiByPeriod, DEFAULT_KPI_GRADE_RULES, evaluateKpiGrade, getLatestKpiSummary, validateGradeRulesMap } from "../kpi-scoring.mjs";
 
 // =====================================================================
 // MASTER INDIKATOR PENILAIAN HARIAN & TARGET BULANAN
@@ -153,42 +153,7 @@ export const JENIS_PENILAIAN_MAP = {
 // =====================================================================
 // DEFAULT RULES STANDAR GRADE PENILAIAN HRD
 // =====================================================================
-export const DEFAULT_GRADE_RULES = {
- MASA_PERCOBAAN: [
- { min: 91, max: 100, predikat: "Sangat Baik", rekomendasi: "Sangat Baik - Lulus Masa Percobaan (Karyawan Tetap)", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300" },
- { min: 81, max: 90, predikat: "Baik", rekomendasi: "Baik - Lulus Masa Percobaan", badgeClass: "bg-blue-100 text-blue-800 border-blue-300" },
- { min: 0, max: 80, predikat: "Kurang", rekomendasi: "Kurang - Tidak Lulus Masa Percobaan / Evaluasi", badgeClass: "bg-rose-100 text-rose-800 border-rose-300" }
- ],
- KONTRAK: [
- { min: 91, max: 100, predikat: "Sangat Baik", rekomendasi: "Direkomendasikan Karyawan Tetap (Kartap)", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300" },
- { min: 81, max: 90, predikat: "Baik", rekomendasi: "Perpanjang Kontrak 12 Bulan", badgeClass: "bg-blue-100 text-blue-800 border-blue-300" },
- { min: 70, max: 80, predikat: "Cukup", rekomendasi: "Perpanjang Kontrak 6 Bulan", badgeClass: "bg-amber-100 text-amber-800 border-amber-300" },
- { min: 0, max: 69, predikat: "Kurang", rekomendasi: "Tidak Diperpanjang (Putus Kontrak)", badgeClass: "bg-rose-100 text-rose-800 border-rose-300" }
- ],
- KARTAP: [
- { min: 91, max: 100, predikat: "Sangat Baik", rekomendasi: "Direkomendasikan Menjadi Karyawan Tetap", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300" },
- { min: 81, max: 90, predikat: "Baik", rekomendasi: "Diperpanjang Kontrak Kembali (12 Bulan)", badgeClass: "bg-blue-100 text-blue-800 border-blue-300" },
- { min: 70, max: 80, predikat: "Cukup", rekomendasi: "Diperpanjang Kontrak Kembali (6 Bulan)", badgeClass: "bg-amber-100 text-amber-800 border-amber-300" },
- { min: 0, max: 69, predikat: "Kurang", rekomendasi: "Tidak Direkomendasikan (Putus Hubungan Kerja)", badgeClass: "bg-rose-100 text-rose-800 border-rose-300" }
- ],
- PIP: [
- { min: 85, max: 100, predikat: "Sangat Baik", rekomendasi: "Lulus PIP (Performa Membaik / Lanjut Kerja)", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300" },
- { min: 70, max: 84, predikat: "Cukup", rekomendasi: "Perpanjang Masa PIP (1 - 3 Bulan)", badgeClass: "bg-amber-100 text-amber-800 border-amber-300" },
- { min: 0, max: 69, predikat: "Kurang", rekomendasi: "Gagal PIP (Demosi / Sanksi / PHK)", badgeClass: "bg-rose-100 text-rose-800 border-rose-300" }
- ],
- MUTASI_DEMOSI: [
- { min: 90, max: 100, predikat: "Sangat Baik", rekomendasi: "Direkomendasikan Promosi Jabatan", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300" },
- { min: 75, max: 89, predikat: "Baik", rekomendasi: "Tetap Pada Posisi Saat Ini", badgeClass: "bg-blue-100 text-blue-800 border-blue-300" },
- { min: 60, max: 74, predikat: "Cukup", rekomendasi: "Direkomendasikan Mutasi Jabatan / Divisi", badgeClass: "bg-purple-100 text-purple-800 border-purple-300" },
- { min: 0, max: 59, predikat: "Kurang", rekomendasi: "Direkomendasikan Demosi Jabatan", badgeClass: "bg-rose-100 text-rose-800 border-rose-300" }
- ],
- KPI_360: [
- { min: 90, max: 100, predikat: "Sangat Baik", rekomendasi: "Kinerja Sangat Baik (Apresiasi / Bonus)", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300" },
- { min: 80, max: 89, predikat: "Baik", rekomendasi: "Kinerja Memenuhi Ekspektasi (Dipertahankan)", badgeClass: "bg-blue-100 text-blue-800 border-blue-300" },
- { min: 70, max: 79, predikat: "Cukup", rekomendasi: "Kinerja Perlu Perbaikan (Evaluasi / Guidance)", badgeClass: "bg-amber-100 text-amber-800 border-amber-300" },
- { min: 0, max: 69, predikat: "Kurang", rekomendasi: "Saran Pelatihan & Peningkatan Kompetensi", badgeClass: "bg-rose-100 text-rose-800 border-rose-300" }
- ]
-};
+export const DEFAULT_GRADE_RULES = DEFAULT_KPI_GRADE_RULES;
 
 export function evaluateGradeRule(categoryKey, score, rulesMap = DEFAULT_GRADE_RULES) {
  return evaluateKpiGrade(categoryKey, score, rulesMap);
@@ -369,11 +334,21 @@ export function openGradeRulesModal(session, rulesMap, onSaveCallback) {
  try {
  const validationError = validateGradeRulesMap(workingRules);
  if (validationError) throw new Error(validationError);
- await setDoc(doc(db, COL.APP_SETTINGS, "aturan_penilaian_grade"), {
+ const batch = writeBatch(db);
+ batch.set(doc(db, COL.APP_SETTINGS, "aturan_penilaian_grade"), {
  rules: workingRules,
  updated_by: session.nama,
- updated_at: new Date().toISOString()
+ updated_at: serverTimestamp()
  }, { merge: true });
+ batch.set(doc(db, "kpi_audit_logs", `KPI-GRADE-${Date.now()}`), {
+  action: "UPDATE_GRADE_RULES",
+  actor_uid: auth.currentUser?.uid || "",
+  actor_nik: session.nik || "",
+  actor_name: session.nama || "HRD",
+  rules_snapshot: workingRules,
+  created_at: serverTimestamp()
+ });
+ await batch.commit();
 
  currentGradeRulesMap = workingRules;
  toast("Standar Grade & Keputusan HRD berhasil disimpan!", "success");
@@ -392,17 +367,29 @@ export async function mount(container, { session, params }) {
  const role = (session.role || "").toUpperCase();
  const isFullAccess = FULL_ACCESS_ROLES.includes(role);
  const isAtasanView = !isFullAccess && ATASAN_VIEW_ROLES.includes(role);
- const isHrdOrAdmin = isFullAccess || ["HRD", "SUPERADMIN", "ADMIN", "ADMINISTRATOR", "DIREKTUR", "GM", "FINANCE"].includes(role);
+ const isHrdOrAdmin = ["HRD", "SUPERADMIN", "DIREKTUR", "GM"].includes(role);
  const isAtasan = isAtasanView || ["MANAGER", "SPV", "KOORDINATOR", "BRANCH MANAGER"].includes(role);
  const isRegularEmployee = !isHrdOrAdmin && !isAtasan;
- const canManageKontrak = isFullAccess;
+ const canManageKontrak = ["HRD", "SUPERADMIN", "DIREKTUR"].includes(role) && await hasPermission("penilaian_kontrak.evaluasi.execute_renewal", session);
  const canEdit = await canEditModuleData(session);
  // Sub-menu: bisa diberikan HRD ke Atasan/karyawan tertentu tanpa naikkan
  // role mereka jadi HRD/SUPERADMIN penuh.
- const canStandarGrade = isHrdOrAdmin || await hasSubMenuAccess("penilaian-kontrak", "standar_grade", session);
- const canTemplateSoal = isHrdOrAdmin || await hasSubMenuAccess("penilaian-kontrak", "template_soal", session);
- const canDistribusiKpi360 = isHrdOrAdmin || await hasSubMenuAccess("penilaian-kontrak", "distribusi_kpi360", session);
+ const canStandarGrade = ["HRD", "SUPERADMIN"].includes(role) && await hasPermission("penilaian_kontrak.standar_grade.configure", session);
+ const canTemplateSoal = ["HRD", "SUPERADMIN"].includes(role) && await hasPermission("penilaian_kontrak.template_soal.configure", session);
+ const canDistribusiKpi360 = ["HRD", "SUPERADMIN", "GM", "DIREKTUR"].includes(role) && await hasPermission("penilaian_kontrak.distribusi_kpi360.create", session);
  let bawahanNames = null;
+
+ async function queryRows(colName, field, value) {
+  if (!value) return [];
+  const snap = await getDocs(query(collection(db, colName), where(field, "==", value)));
+  return snap.docs.map(item => ({ id: item.id, ...item.data() }));
+ }
+
+ async function loadKpiRowsForAccess(colName, subjectField = "nik_dinilai") {
+  if (isHrdOrAdmin) return fsGetAll(colName);
+  if (isAtasan && session.cabang) return queryRows(colName, "cabang_dinilai", session.cabang);
+  return queryRows(colName, subjectField, session.nik);
+ }
 
  try {
  const snapRules = await getDoc(doc(db, COL.APP_SETTINGS, "aturan_penilaian_grade"));
@@ -446,9 +433,9 @@ export async function mount(container, { session, params }) {
 
  try {
  const [allLogs, allTasks, allReviews] = await Promise.all([
- fsGetAll(COL.LOG_PENILAIAN_KPI),
- fsGetAll(COL.TUGAS_KPI_360),
- fsGetAll(COL.PERFORMANCE_REVIEW)
+ queryRows(COL.LOG_PENILAIAN_KPI, "nik_dinilai", session.nik),
+ queryRows(COL.TUGAS_KPI_360, "nik_dinilai", session.nik),
+ queryRows(COL.PERFORMANCE_REVIEW, "nik", session.nik)
  ]);
 
  const userNama = (session.nama || "").toLowerCase();
@@ -504,7 +491,7 @@ export async function mount(container, { session, params }) {
  totalScore = latestKpiPeriod?.score ?? parseFloat(latestLog.total_skor || latestLog.skor_akhir || 0);
  periodeName = latestKpiPeriod?.period || latestLog.periode || "Periode Berjalan";
  penilaiName = latestKpiPeriod?.raterCount > 1 ? `${latestKpiPeriod.raterCount} evaluator` : (latestLog.penilai || latestLog.nama_penilai || "Atasan Direct");
- detailSoal = latestLog.detail_json || latestLog.soal_json || [];
+ detailSoal = latestKpiPeriod?.indicatorScores?.length ? latestKpiPeriod.indicatorScores : (latestLog.detail_json || latestLog.soal_json || []);
  } else if (latestReview) {
  totalScore = parseFloat(latestReview.skor_akhir || 0);
  periodeName = latestReview.periode || "Periode Berjalan";
@@ -518,19 +505,10 @@ export async function mount(container, { session, params }) {
  ];
  }
 
- // Grade determination
- let gradeLabel = "Perlu Perbaikan";
- let gradeBadgeClass = "bg-rose-100 text-rose-800 border-rose-200";
- if (totalScore >= 88) {
- gradeLabel = "Sangat Baik (A)";
- gradeBadgeClass = "bg-emerald-100 text-emerald-800 border-emerald-200";
- } else if (totalScore >= 75) {
- gradeLabel = "Baik (B)";
- gradeBadgeClass = "bg-blue-100 text-blue-800 border-blue-200";
- } else if (totalScore >= 60) {
- gradeLabel = "Cukup (C)";
- gradeBadgeClass = "bg-amber-100 text-amber-800 border-amber-200";
- }
+ // Grade selalu memakai aturan yang sama dengan form evaluator/HRD.
+ const gradeResult = evaluateGradeRule(latestLog?.kategori_penilaian || "KPI_360", totalScore, currentGradeRulesMap);
+ let gradeLabel = gradeResult.predikat;
+ let gradeBadgeClass = gradeResult.badgeClass;
 
  if (typeof detailSoal === "string") {
  try { detailSoal = JSON.parse(detailSoal); } catch (e) { detailSoal = []; }
@@ -1900,6 +1878,13 @@ export async function mount(container, { session, params }) {
  if (templateKeys.length === 0) {
  throw new Error("Tidak ada indikator KPI yang valid ditemukan. Mohon periksa header JABATAN, ASPEK, INDIKATOR, dan BOBOT.");
  }
+ const invalidWeights = templateKeys.map(name => ({
+  name,
+  total: groupedTemplates[name].soal_json.reduce((sum, item) => sum + (Number(item.bobot) || 0), 0)
+ })).filter(item => Math.abs(item.total - 100) > 0.01);
+ if (invalidWeights.length) {
+  throw new Error(`Total bobot setiap template wajib 100%. Periksa: ${invalidWeights.map(item => `${item.name} (${item.total}%)`).join(", ")}`);
+ }
 
  // Step 2: Replace or Add existing templates in Firestore
  const existingTemplates = await fsGetAll(COL.MASTER_SOAL_KPI);
@@ -2298,8 +2283,13 @@ export async function mount(container, { session, params }) {
     const wrap = panels.kpi360;
     wrap.innerHTML = `<div class="space-y-4">${skeletonRows(4)}</div>`;
     
+    const taskRowsPromise = isHrdOrAdmin
+      ? fsGetAll(COL.TUGAS_KPI_360)
+      : (isAtasan && session.cabang
+        ? queryRows(COL.TUGAS_KPI_360, "cabang_dinilai", session.cabang)
+        : queryRows(COL.TUGAS_KPI_360, "nik_penilai", session.nik));
     const [tasks, allEmps] = await Promise.all([
-      fsGetAll(COL.TUGAS_KPI_360),
+      taskRowsPromise,
       fsGetAll(COL.MASTER_KARYAWAN)
     ]);
 
@@ -2308,10 +2298,11 @@ export async function mount(container, { session, params }) {
     const userNikLower = (session.nik || "").toLowerCase().trim();
     
     // My Assigned Tasks (where current user is Penilai)
-    const myTasks = tasks.filter(t => 
-      (t.nama_penilai || "").toLowerCase().trim() === userNamaLower ||
-      (t.nik_penilai && t.nik_penilai.toLowerCase().trim() === userNikLower)
-    ).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    const myTasks = tasks.filter(t => {
+      const taskNik = String(t.nik_penilai || "").toLowerCase().trim();
+      if (userNikLower && taskNik) return taskNik === userNikLower;
+      return !taskNik && (t.nama_penilai || "").toLowerCase().trim() === userNamaLower;
+    }).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 
     // Stats for HRD
     const totalTasks = tasks.length;
@@ -3031,7 +3022,7 @@ export async function mount(container, { session, params }) {
                   return `
                     <label class="penilai-item flex items-center justify-between gap-2 p-2 rounded-lg bg-white hover:bg-maroon-50/50 border border-slate-100 transition cursor-pointer" data-nama="${escapeHtml(emp.nama_karyawan)}" data-jabatan="${escapeHtml(emp.jabatan || '')}" data-cabang="${escapeHtml(emp.cabang || '')}">
                       <div class="flex items-center gap-2.5 min-w-0">
-                        <input type="checkbox" name="chk-penilai" value="${escapeHtml(emp.nama_karyawan)}" class="w-4 h-4 rounded text-maroon-700 border-slate-300 focus:ring-maroon-500 shrink-0">
+                        <input type="checkbox" name="chk-penilai" value="${escapeHtml(emp.nik_karyawan || emp.nik || emp.id)}" class="w-4 h-4 rounded text-maroon-700 border-slate-300 focus:ring-maroon-500 shrink-0">
                         <div class="truncate">
                           <div class="font-bold text-slate-800 text-xs truncate">${escapeHtml(emp.nama_karyawan)}</div>
                           <div class="text-[10px] text-slate-500 truncate">${escapeHtml(emp.jabatan || "-")} (${escapeHtml(emp.cabang || "Pusat")})</div>
@@ -3084,7 +3075,7 @@ export async function mount(container, { session, params }) {
                 ${activeEmps.map(emp => `
                   <label class="dinilai-item flex items-center justify-between gap-2 p-2 rounded-lg bg-white hover:bg-blue-50/50 border border-slate-100 transition cursor-pointer" data-nama="${escapeHtml(emp.nama_karyawan)}" data-jabatan="${escapeHtml(emp.jabatan || '')}" data-cabang="${escapeHtml(emp.cabang || '')}">
                     <div class="flex items-center gap-2.5 min-w-0">
-                      <input type="checkbox" name="chk-dinilai" value="${escapeHtml(emp.nama_karyawan)}" class="w-4 h-4 rounded text-blue-700 border-slate-300 focus:ring-blue-500 shrink-0">
+                      <input type="checkbox" name="chk-dinilai" value="${escapeHtml(emp.nik_karyawan || emp.nik || emp.id)}" class="w-4 h-4 rounded text-blue-700 border-slate-300 focus:ring-blue-500 shrink-0">
                       <div class="truncate">
                         <div class="font-bold text-slate-800 text-xs truncate">${escapeHtml(emp.nama_karyawan)}</div>
                         <div class="text-[10px] text-slate-500 truncate">${escapeHtml(emp.jabatan || "-")} (${escapeHtml(emp.cabang || "Pusat")})</div>
@@ -3390,7 +3381,8 @@ export async function mount(container, { session, params }) {
           
           let matchedCount = 0;
           m.querySelectorAll('input[name="chk-dinilai"]').forEach(chk => {
-            if (assignedSet.has(chk.value.toLowerCase().trim())) {
+            const employeeName = (chk.closest("label")?.dataset.nama || "").toLowerCase().trim();
+            if (assignedSet.has(employeeName)) {
               chk.checked = true;
               matchedCount++;
             } else {
@@ -3405,7 +3397,8 @@ export async function mount(container, { session, params }) {
         if (selectedTpl && Array.isArray(selectedTpl.karyawan_assigned) && selectedTpl.karyawan_assigned.length > 0) {
           const assignedSet = new Set(selectedTpl.karyawan_assigned.map(n => (n || "").toLowerCase().trim()));
           m.querySelectorAll('input[name="chk-dinilai"]').forEach(chk => {
-            if (assignedSet.has(chk.value.toLowerCase().trim())) {
+            const employeeName = (chk.closest("label")?.dataset.nama || "").toLowerCase().trim();
+            if (assignedSet.has(employeeName)) {
               chk.checked = true;
             }
           });
@@ -3448,16 +3441,20 @@ export async function mount(container, { session, params }) {
             const tasksByPenilai = {};
 
             // Generate task records for each evaluator -> evaluatee pair
-            for (const pName of selectedPenilai) {
-              const empPenilai = activeEmps.find(e => e.nama_karyawan === pName) || { nama_karyawan: pName };
+            for (const pNik of selectedPenilai) {
+              const empPenilai = activeEmps.find(e => String(e.nik_karyawan || e.nik || e.id) === String(pNik));
+              if (!empPenilai) throw new Error(`Data evaluator NIK ${pNik} tidak ditemukan.`);
+              const pName = empPenilai.nama_karyawan;
               const emailPenilai = getEmpEmail(empPenilai);
 
-              for (const dName of selectedDinilai) {
-                if (pName === dName && !includeSelf) {
+              for (const dNik of selectedDinilai) {
+                if (String(pNik) === String(dNik) && !includeSelf) {
                   continue; // Skip self review unless enabled
                 }
 
-                const empDinilai = activeEmps.find(e => e.nama_karyawan === dName) || { nama_karyawan: dName };
+                const empDinilai = activeEmps.find(e => String(e.nik_karyawan || e.nik || e.id) === String(dNik));
+                if (!empDinilai) throw new Error(`Data karyawan NIK ${dNik} tidak ditemukan.`);
+                const dName = empDinilai.nama_karyawan;
                 const emailDinilai = getEmpEmail(empDinilai);
 
                 const taskId = genId("TGS-360");
@@ -3481,6 +3478,7 @@ export async function mount(container, { session, params }) {
                   periode: periode,
                   deadline: deadline,
                   soal_json: tplObj.soal_json || [],
+                  grade_rules_snapshot: JSON.parse(JSON.stringify(currentGradeRulesMap[kategori || "KPI_360"] || DEFAULT_GRADE_RULES.KPI_360)),
                   catatan_hrd: catatanHrd,
                   status: "PENDING",
                   created_at: new Date().toISOString(),
@@ -3491,8 +3489,8 @@ export async function mount(container, { session, params }) {
                 taskPayload.id = taskId;
                 createdTasks.push(taskPayload);
 
-                if (!tasksByPenilai[pName]) tasksByPenilai[pName] = [];
-                tasksByPenilai[pName].push(taskPayload);
+                if (!tasksByPenilai[pNik]) tasksByPenilai[pNik] = [];
+                tasksByPenilai[pNik].push(taskPayload);
               }
             }
 
@@ -3507,7 +3505,7 @@ export async function mount(container, { session, params }) {
             let emailFailCount = 0;
 
             if (shouldSendEmail || shouldSendInApp) {
-              for (const [pName, pTaskList] of Object.entries(tasksByPenilai)) {
+              for (const [, pTaskList] of Object.entries(tasksByPenilai)) {
                 try {
                   const sampleTask = pTaskList[0];
                   if (shouldSendInApp) {
@@ -3515,7 +3513,7 @@ export async function mount(container, { session, params }) {
                     const catConfig = getCatConfig(sampleTask.kategori_penilaian);
                     const notifTitle = `Tugas Penilaian ${catConfig.label}`;
                     const notifMsg = `Anda menerima penugasan penilaian ${catConfig.label} untuk ${pTaskList.length} karyawan (${pTaskList.map(x => x.nama_dinilai).slice(0, 3).join(", ")}${pTaskList.length > 3 ? '...' : ''}). Batas waktu: ${deadlineStr}.`;
-                    await notifyUser(pName, notifTitle, notifMsg, "#penilaian-kontrak?tab=kpi360", { sendEmail: false });
+                    await notifyUser(sampleTask.nama_penilai, notifTitle, notifMsg, "#penilaian-kontrak?tab=kpi360", { sendEmail: false });
                   }
 
                   if (shouldSendEmail) {
@@ -3561,7 +3559,7 @@ export async function mount(container, { session, params }) {
   if (!wrap) return;
   wrap.innerHTML = `<div class="p-6">${skeletonRows(4)}</div>`;
 
-  const logs = await fsGetAll(COL.LOG_PENILAIAN_KPI);
+  const logs = await loadKpiRowsForAccess(COL.LOG_PENILAIAN_KPI);
   let filteredLogs = logs;
 
   if (isAtasanView && bawahanNames) {
@@ -3573,7 +3571,7 @@ export async function mount(container, { session, params }) {
 
   filteredLogs.sort((a, b) => new Date(b.tanggal || b.created_at || 0) - new Date(a.tanggal || a.created_at || 0));
 
-  const canManageLog = isHrdOrAdmin || canEdit;
+  const canManageLog = ["HRD", "SUPERADMIN"].includes(role) && canEdit;
 
   wrap.innerHTML = `
     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
@@ -3647,7 +3645,14 @@ export async function mount(container, { session, params }) {
           `Apakah Anda yakin ingin menghapus log penilaian KPI untuk <b>${escapeHtml(logObj.nama_dinilai)}</b> (Periode: ${escapeHtml(logObj.periode || "-")})?<br/><br/><span class="text-xs text-rose-500 font-semibold">Data yang dihapus tidak dapat dikembalikan.</span>`,
           async () => {
             try {
-              await fsDelete(COL.LOG_PENILAIAN_KPI, logObj.id);
+              const batch = writeBatch(db);
+              batch.delete(doc(db, COL.LOG_PENILAIAN_KPI, logObj.id));
+              batch.set(doc(db, "kpi_audit_logs", `KPI-DELETE-${logObj.id}-${Date.now()}`), {
+                action: "DELETE_RESULT", record_id: logObj.id,
+                actor_uid: auth.currentUser?.uid || "", actor_nik: session.nik || "", actor_name: session.nama || "HRD",
+                before: logObj, created_at: serverTimestamp()
+              });
+              await batch.commit();
               toast("Log hasil penilaian KPI berhasil dihapus!", "success");
               loadHasilPenilaian();
             } catch (err) {
@@ -3732,7 +3737,14 @@ export async function mount(container, { session, params }) {
           `Apakah Anda yakin ingin menghapus log penilaian KPI untuk <b>${escapeHtml(logObj.nama_dinilai)}</b>?`,
           async () => {
             try {
-              await fsDelete(COL.LOG_PENILAIAN_KPI, logObj.id);
+              const batch = writeBatch(db);
+              batch.delete(doc(db, COL.LOG_PENILAIAN_KPI, logObj.id));
+              batch.set(doc(db, "kpi_audit_logs", `KPI-DELETE-${logObj.id}-${Date.now()}`), {
+                action: "DELETE_RESULT", record_id: logObj.id,
+                actor_uid: auth.currentUser?.uid || "", actor_nik: session.nik || "", actor_name: session.nama || "HRD",
+                before: logObj, created_at: serverTimestamp()
+              });
+              await batch.commit();
               toast("Log penilaian KPI berhasil dihapus!", "success");
               loadHasilPenilaian();
             } catch (err) {
@@ -3761,7 +3773,7 @@ export async function mount(container, { session, params }) {
         btnSave.textContent = "Menyimpan...";
 
         try {
-          await fsUpdate(COL.LOG_PENILAIAN_KPI, logObj.id, {
+          const changes = {
             nama_dinilai: namaDinilai,
             penilai: penilai,
             periode: periode,
@@ -3771,8 +3783,16 @@ export async function mount(container, { session, params }) {
             catatan_baik: catatanBaik,
             catatan_perbaikan: catatanPerbaikan,
             catatan_penilai: catatanPenilai,
-            updated_at: new Date().toISOString()
+            updated_at: serverTimestamp()
+          };
+          const batch = writeBatch(db);
+          batch.set(doc(db, COL.LOG_PENILAIAN_KPI, logObj.id), changes, { merge: true });
+          batch.set(doc(db, "kpi_audit_logs", `KPI-EDIT-${logObj.id}-${Date.now()}`), {
+            action: "EDIT_RESULT", record_id: logObj.id,
+            actor_uid: auth.currentUser?.uid || "", actor_nik: session.nik || "", actor_name: session.nama || "HRD",
+            before: logObj, after: { ...changes, updated_at: null }, created_at: serverTimestamp()
           });
+          await batch.commit();
 
           toast("Log hasil penilaian KPI berhasil diperbarui!", "success");
           closeModal();
@@ -4833,12 +4853,22 @@ export async function mount(container, { session, params }) {
             `Apakah Anda yakin ingin memproses status <b>TIDAK DIPERPANJANG</b> untuk karyawan <b>${escapeHtml(empData.nama_karyawan)}</b>?`,
             async () => {
               try {
-                await fsUpdate(COL.EVALUASI_KONTRAK, recordId, {
+                const batch = writeBatch(db);
+                batch.set(doc(db, COL.EVALUASI_KONTRAK, recordId), {
                   tahap: "SELESAI",
                   status_final: "SELESAI",
                   keputusan_direktur: "TIDAK_DIPERPANJANG",
-                  updated_at: new Date().toISOString()
+                  updated_at: serverTimestamp()
+                }, { merge: true });
+                batch.set(doc(db, "contract_audit_logs", `CONTRACT-REJECT-${recordId}-${Date.now()}`), {
+                  action: "REJECT_RENEWAL",
+                  evaluation_id: recordId,
+                  employee_nik: empData.nik_karyawan || empData.nik || "",
+                  actor_uid: auth.currentUser?.uid || "",
+                  actor_name: session.nama || "HRD",
+                  created_at: serverTimestamp()
                 });
+                await batch.commit();
                 toast("Status tidak diperpanjang telah disimpan.", "info");
                 closeModal();
                 if (onDoneCallback) onDoneCallback();
@@ -4866,10 +4896,12 @@ export async function mount(container, { session, params }) {
 
             try {
               const newKontrakKe = (empData.kontrakKe || 1) + 1;
-              const newContractId = `KTR-${(empData.nama_karyawan || "EMP").replace(/[^a-zA-Z0-9]/g, "")}-${Date.now().toString().slice(-4)}`;
+              if (ev.status_final === "SELESAI") throw new Error("Evaluasi ini sudah selesai dan tidak boleh diterbitkan ulang.");
+              const newContractId = `KTR-RENEW-${String(recordId).replace(/[^a-zA-Z0-9_-]/g, "")}`;
+              const batch = writeBatch(db);
 
               // 1. Add new contract record
-              await fsAdd(COL.MASTER_KONTRAK, {
+              batch.set(doc(db, COL.MASTER_KONTRAK, newContractId), {
                 id: newContractId,
                 nama_karyawan: empData.nama_karyawan,
                 nik_karyawan: empData.nik_karyawan || empData.nik || "",
@@ -4882,7 +4914,7 @@ export async function mount(container, { session, params }) {
                 tanggal_akhir: tglAkhir,
                 status_kolom_kontrak: "AKTIF",
                 keterangan: `Perpanjangan hasil koordinasi Direksi (${durasi}).`,
-                created_at: new Date().toISOString(),
+                created_at: serverTimestamp(),
                 created_by: session.nama || "HRD Admin"
               });
 
@@ -4895,11 +4927,11 @@ export async function mount(container, { session, params }) {
                   status_karyawan: keputusan === "DISETUJUI_KARTAP" ? "PKWTT" : "PKWT",
                   aktif_tdk_aktif: "AKTIF"
                 };
-                await fsUpdate(COL.MASTER_KARYAWAN, empData.id, empPatch);
+                batch.set(doc(db, COL.MASTER_KARYAWAN, empData.id), { ...empPatch, updated_at: serverTimestamp() }, { merge: true });
               }
 
               // 3. Mark evaluation stage as SELESAI
-              await fsUpdate(COL.EVALUASI_KONTRAK, recordId, {
+              batch.set(doc(db, COL.EVALUASI_KONTRAK, recordId), {
                 tahap: "SELESAI",
                 status_final: "SELESAI",
                 no_sk_kontrak_baru: noSk,
@@ -4913,8 +4945,19 @@ export async function mount(container, { session, params }) {
                 kpi_rekomendasi_sistem: latestKpiSummary
                   ? evaluateGradeRule("KONTRAK", latestKpiSummary.score, currentGradeRulesMap).rekomendasi
                   : "",
-                updated_at: new Date().toISOString()
+                updated_at: serverTimestamp()
+              }, { merge: true });
+              batch.set(doc(db, "contract_audit_logs", `CONTRACT-ISSUE-${recordId}-${Date.now()}`), {
+                action: "ISSUE_RENEWAL",
+                evaluation_id: recordId,
+                contract_id: newContractId,
+                employee_nik: empData.nik_karyawan || empData.nik || "",
+                decision: keputusan,
+                actor_uid: auth.currentUser?.uid || "",
+                actor_name: session.nama || "HRD",
+                created_at: serverTimestamp()
               });
+              await batch.commit();
 
               toast(`Kontrak baru untuk ${empData.nama_karyawan} berhasil diterbitkan dan aktif di sistem!`, "success");
               closeModal();

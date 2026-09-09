@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { before, after, beforeEach, test } = require('node:test');
 const { initializeTestEnvironment, assertFails, assertSucceeds } = require('@firebase/rules-unit-testing');
-const { collection, doc, getDoc, getDocs, query, setDoc, where } = require('firebase/firestore');
+const { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } = require('firebase/firestore');
 
 let env;
 
@@ -87,4 +87,30 @@ test('public applicant creation is validated and existing applications stay priv
   await assertFails(setDoc(doc(publicDb, 'pelamar_ats', 'oversized'), {
     nama: 'Pelamar Uji', email: 'pelamar@example.com', resume_text: '', catatan: 'x'.repeat(5001)
   }));
+});
+
+test('KPI evaluator can query own tasks by NIK but cannot query all tasks', async () => {
+  await seed('tugas_kpi_360', 'own', { nik_penilai: '001', nik_dinilai: '010', cabang_penilai: 'Cirebon', cabang_dinilai: 'Cirebon', status: 'PENDING' });
+  await seed('tugas_kpi_360', 'other', { nik_penilai: '002', nik_dinilai: '011', cabang_penilai: 'Malang', cabang_dinilai: 'Malang', status: 'PENDING' });
+  const employee = env.authenticatedContext('employee', claims()).firestore();
+  const ownQuery = query(collection(employee, 'tugas_kpi_360'), where('nik_penilai', '==', '001'));
+  const result = await assertSucceeds(getDocs(ownQuery));
+  if (result.size !== 1) throw new Error(`Expected one KPI task, got ${result.size}`);
+  await assertFails(getDocs(collection(employee, 'tugas_kpi_360')));
+});
+
+test('KPI evaluator may submit score fields but cannot change task identity', async () => {
+  await seed('tugas_kpi_360', 'task', { nik_penilai: '001', nik_dinilai: '010', cabang_penilai: 'Cirebon', cabang_dinilai: 'Cirebon', status: 'PENDING' });
+  const employee = env.authenticatedContext('employee', claims()).firestore();
+  await assertSucceeds(updateDoc(doc(employee, 'tugas_kpi_360', 'task'), { status: 'DONE', skor_akhir: 88 }));
+  await assertFails(updateDoc(doc(employee, 'tugas_kpi_360', 'task'), { nik_dinilai: '999' }));
+});
+
+test('KPI subject can read own result and audit records are immutable', async () => {
+  await seed('log_penilaian_kpi', 'own', { nik_penilai: '002', nik_dinilai: '001', cabang_dinilai: 'Cirebon', total_skor: 90 });
+  const employee = env.authenticatedContext('employee', claims()).firestore();
+  await assertSucceeds(getDoc(doc(employee, 'log_penilaian_kpi', 'own')));
+  const audit = doc(employee, 'kpi_audit_logs', 'audit-1');
+  await assertSucceeds(setDoc(audit, { actor_nik: '001', action: 'SUBMIT_EVALUATION' }));
+  await assertFails(updateDoc(audit, { action: 'FORGED' }));
 });

@@ -13,6 +13,13 @@ test("matches KPI records written with nama_dinilai and NIK aliases", () => {
   assert.equal(matchesKpiEmployee({ nik_dinilai: "123" }, { nik: "123" }), true);
 });
 
+test("does not match employees with the same name when both NIK values exist", () => {
+  assert.equal(matchesKpiEmployee(
+    { nama_dinilai: "Angga", nik_dinilai: "M001" },
+    { name: "Angga", nik: "C001" }
+  ), false);
+});
+
 test("aggregates multi-rater KPI per relation and period", () => {
   const rows = [
     { nama_dinilai: "A", periode: "Q2", total_skor: 90, nama_penilai: "Boss", tipe_relasi: "Atasan Langsung", tanggal: "2026-07-01" },
@@ -36,6 +43,17 @@ test("deduplicates repeated evaluator submissions in one period", () => {
   const result = getLatestKpiSummary(rows, { name: "A" });
   assert.equal(result.score, 90);
   assert.equal(result.raterCount, 1);
+});
+
+test("normalizes period labels and aggregates indicator scores across evaluators", () => {
+  const rows = [
+    { nik_dinilai: "1", periode: "q2   2026", total_skor: 80, nik_penilai: "A", tipe_relasi: "atasan", detail_json: [{ aspek: "Target", indikator: "Omzet", bobot: 100, nilai_diberikan: 80 }] },
+    { nik_dinilai: "1", periode: "Q2 2026", total_skor: 100, nik_penilai: "P", tipe_relasi: "peer", detail_json: [{ aspek: "Target", indikator: "Omzet", bobot: 100, nilai_diberikan: 100 }] }
+  ];
+  const result = aggregateKpiByPeriod(rows, { nik: "1" });
+  assert.equal(result.length, 1);
+  assert.equal(result[0].period, "Q2 2026");
+  assert.equal(result[0].indicatorScores[0].nilai_diberikan, 86.67);
 });
 
 test("decimal score uses the nearest lower grade instead of first recommendation", () => {

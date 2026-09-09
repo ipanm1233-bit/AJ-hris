@@ -8,7 +8,7 @@ service cloud.firestore {
     }
     function role() { return signedIn() ? request.auth.token.get('role', 'STAFF') : 'ANONYMOUS'; }
     function isHrd() { return role() in ['HRD', 'SUPERADMIN']; }
-    function isManagement() { return role() in ['HRD', 'SUPERADMIN', 'GM', 'MANAGER', 'BRANCH MANAGER', 'SPV', 'ATASAN']; }
+    function isManagement() { return role() in ['HRD', 'SUPERADMIN', 'GM', 'DIREKTUR', 'MANAGER', 'BRANCH MANAGER', 'SPV', 'ATASAN']; }
     function isFinance() { return role() in ['HRD', 'SUPERADMIN', 'GM', 'FINANCE']; }
     function username() { return signedIn() ? request.auth.token.get('username', '') : ''; }
     function nik() { return signedIn() ? request.auth.token.get('nik', '') : ''; }
@@ -21,6 +21,14 @@ service cloud.firestore {
       );
     }
     function sameBranch(data) { return signedIn() && branch() != '' && data.get('cabang', '') == branch(); }
+    function isKpiAdmin() { return role() in ['HRD', 'SUPERADMIN', 'GM', 'DIREKTUR']; }
+    function isKpiEvaluator(data) { return signedIn() && nik() != '' && data.get('nik_penilai', '') == nik(); }
+    function isKpiSubject(data) { return signedIn() && nik() != '' && data.get('nik_dinilai', '') == nik(); }
+    function sameKpiBranch(data) {
+      return signedIn() && branch() != '' && (
+        data.get('cabang_dinilai', '') == branch() || data.get('cabang_penilai', '') == branch()
+      );
+    }
     function onlyChanges(fields) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields); }
 
     match /auth_profiles/{uid} {
@@ -35,7 +43,8 @@ service cloud.firestore {
 
     match /master_karyawan/{id} {
       allow read: if signedIn();
-      allow create, update, delete: if isHrd();
+      allow create, delete: if isHrd();
+      allow update: if isHrd() || (role() == 'DIREKTUR' && onlyChanges(['updated_at', 'kontrak_ke', 'tgl_mulai_kontrak', 'tgl_akhir_kontrak', 'status_karyawan', 'aktif_tdk_aktif']));
     }
     match /master_cabang/{id} {
       allow read: if signedIn();
@@ -47,7 +56,7 @@ service cloud.firestore {
     }
     match /master_kontrak/{id} {
       allow read: if signedIn() && (isManagement() || owns(resource.data));
-      allow write: if isHrd();
+      allow write: if role() in ['HRD', 'SUPERADMIN', 'DIREKTUR'];
     }
     match /master_kendaraan/{id} {
       allow read: if signedIn();
@@ -116,7 +125,7 @@ service cloud.firestore {
     match /siklus_karyawan/{id} { allow read, write: if isHrd(); }
     match /evaluasi_kontrak/{id} {
       allow read: if isManagement();
-      allow write: if isHrd();
+      allow write: if role() in ['HRD', 'SUPERADMIN', 'DIREKTUR'];
     }
     match /log_offboarding/{id} { allow read, write: if isHrd(); }
     match /sign_documents/{id} {
@@ -125,13 +134,29 @@ service cloud.firestore {
     }
 
     match /log_penilaian_kpi/{id} {
-      allow read: if signedIn() && (isManagement() || owns(resource.data));
-      allow create, update: if signedIn() && (isManagement() || owns(request.resource.data));
+      allow read: if signedIn() && (
+        isKpiAdmin() || isKpiEvaluator(resource.data) || isKpiSubject(resource.data) ||
+        (isManagement() && sameKpiBranch(resource.data))
+      );
+      allow create: if signedIn() && (isKpiAdmin() || isKpiEvaluator(request.resource.data));
+      allow update: if signedIn() && (
+        isKpiAdmin() ||
+        (isKpiEvaluator(resource.data) && isKpiEvaluator(request.resource.data) &&
+          onlyChanges(['updated_at', 'tanggal', 'total_skor', 'skor_akhir', 'keputusan', 'detail_json', 'catatan_baik', 'catatan_perbaikan', 'catatan_penilai']))
+      );
       allow delete: if isHrd();
     }
     match /tugas_kpi_360/{id} {
-      allow read: if signedIn() && (isManagement() || owns(resource.data));
-      allow create, update: if signedIn() && (isManagement() || owns(request.resource.data));
+      allow read: if signedIn() && (
+        isKpiAdmin() || isKpiEvaluator(resource.data) || isKpiSubject(resource.data) ||
+        (isManagement() && sameKpiBranch(resource.data))
+      );
+      allow create: if isKpiAdmin();
+      allow update: if signedIn() && (
+        isKpiAdmin() ||
+        (isKpiEvaluator(resource.data) && isKpiEvaluator(request.resource.data) &&
+          onlyChanges(['updated_at', 'status', 'skor_akhir', 'soal_json', 'catatan_baik', 'catatan_perbaikan', 'catatan_penilai', 'tanggal_diselesaikan']))
+      );
       allow delete: if isHrd();
     }
     match /performance_review/{id} {
@@ -141,6 +166,19 @@ service cloud.firestore {
     match /master_soal_kpi/{id} {
       allow read: if signedIn();
       allow write: if isHrd();
+    }
+    match /kpi_audit_logs/{id} {
+      allow read: if isHrd() || (signedIn() && nik() != '' && resource.data.get('actor_nik', '') == nik());
+      allow create: if signedIn() && (
+        (nik() != '' && request.resource.data.get('actor_nik', '') == nik()) ||
+        (isHrd() && request.resource.data.get('actor_uid', '') == request.auth.uid)
+      );
+      allow update, delete: if false;
+    }
+    match /contract_audit_logs/{id} {
+      allow read: if role() in ['HRD', 'SUPERADMIN', 'DIREKTUR'];
+      allow create: if role() in ['HRD', 'SUPERADMIN', 'DIREKTUR'] && request.resource.data.get('actor_uid', '') == request.auth.uid;
+      allow update, delete: if false;
     }
     match /target_bulanan_kpi/{id} {
       allow read: if signedIn();
