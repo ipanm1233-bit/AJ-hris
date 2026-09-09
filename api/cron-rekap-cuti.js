@@ -428,7 +428,7 @@ module.exports = async function handler(req, res) {
           const mSnap = await db.collection('master_cuti').get();
           mSnap.forEach(docSnap => {
             const m = docSnap.data();
-            const submitDate = getRecordWibDateStr(m.createdAt || m.created_at || m.tgl || m.tanggal_input || m.tanggal);
+            const submitDate = getRecordWibDateStr(m.createdAt || m.created_at || m.tanggal_pengajuan || m.tanggal_input);
             if (submitDate === todayStr) {
               const nama = m.nama_karyawan || m.nama || "Karyawan";
               const nik = m.nik || m.nik_karyawan || "-";
