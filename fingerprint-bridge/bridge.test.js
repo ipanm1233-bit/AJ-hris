@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const { normalizeDeviceLog, normalizeDeviceUser, attendanceRows, userRows, localDateTime, signedHeaders, addDays, dateFromLog } = require('./bridge.js');
+const { normalizeDeviceLog, normalizeDeviceUser, attendanceRows, userRows, localDateTime, signedHeaders, addDays, dateFromLog, resolveSyncStartDate } = require('./bridge.js');
 
 test('normalizes node-zklib attendance records for the HRIS endpoint', () => {
   const result = normalizeDeviceLog({
@@ -36,6 +36,13 @@ test('normalizes Solution X150 users for automatic employee mapping', () => {
 test('builds an incremental fingerprint date range', () => {
   assert.equal(addDays('2026-08-08', 1), '2026-08-09');
   assert.equal(dateFromLog({ recordTime: '2026-08-09 07:45:00' }), '2026-08-09');
+});
+
+test('rechecks the previous day so late checkout scans update existing attendance', () => {
+  assert.equal(resolveSyncStartDate('2026-09-08', '2026-09-09'), '2026-09-07');
+  assert.equal(resolveSyncStartDate('2026-09-09', '2026-09-09'), '2026-09-08');
+  assert.equal(resolveSyncStartDate('2026-09-09', '2026-09-09', 2), '2026-09-07');
+  assert.equal(resolveSyncStartDate('', '2026-09-09'), '');
 });
 
 test('signs the exact request body using the configured bridge secret', () => {

@@ -2,6 +2,8 @@
 
 Bridge ini dijalankan pada satu komputer Windows kantor yang berada dalam LAN yang sama dengan mesin. Bridge **hanya membaca** log; tidak menghapus log atau pengguna dari mesin.
 
+Sinkronisasi otomatis selalu memeriksa ulang sedikitnya satu hari sebelum tanggal terakhir yang tersimpan. Karena endpoint memakai upsert per karyawan per tanggal, pemeriksaan ulang tidak membuat data ganda dan memungkinkan scan pulang yang baru muncul setelah pergantian hari memperbarui absensi kemarin.
+
 ## Pemasangan mudah melalui HRIS (disarankan)
 
 1. Buka **Absensi → Konfigurasi Mesin** sebagai HRD.

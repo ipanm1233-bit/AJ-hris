@@ -219,6 +219,12 @@ function dateFromLog(log) {
   return match?.[1] || '';
 }
 
+function resolveSyncStartDate(latestDate, today, overlapDays = 1) {
+  if (!validDate(latestDate)) return '';
+  const safeOverlapDays = Math.max(1, Math.floor(Number(overlapDays) || 1));
+  return addDays(latestDate, -safeOverlapDays);
+}
+
 async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {}) {
   await refreshCentralConfig();
   const startedAt = new Date();
@@ -239,7 +245,10 @@ async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {
   if (!startDate) {
     const state = await getSyncState(branch);
     const latestDate = validDate(state.latestDate) ? state.latestDate : '';
-    if (latestDate) startDate = latestDate === today ? today : addDays(latestDate, 1);
+    if (latestDate) {
+      const overlapDays = positiveNumber('FINGERPRINT_RESYNC_DAYS', 1);
+      startDate = resolveSyncStartDate(latestDate, today, overlapDays);
+    }
   }
 
   let recentLogs;
@@ -331,4 +340,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { normalizeDeviceLog, normalizeDeviceUser, attendanceRows, userRows, localDateTime, signedHeaders, addDays, dateFromLog, refreshCentralConfig };
+module.exports = { normalizeDeviceLog, normalizeDeviceUser, attendanceRows, userRows, localDateTime, signedHeaders, addDays, dateFromLog, resolveSyncStartDate, refreshCentralConfig };
