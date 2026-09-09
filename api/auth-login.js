@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { getFirebaseAdmin } = require('../lib/firebase-admin.js');
 const { enforceRateLimit, writeAuditLog, assertAllowedKeys, verifyAppCheck } = require('../lib/security.js');
+const { strongPassword } = require('../lib/password-policy.js');
 
 function cleanIdentifier(value) {
   return String(value || '').trim();
@@ -14,12 +15,6 @@ function normalizeRole(value) {
 
 function sha256(value) {
   return crypto.createHash('sha256').update(String(value)).digest('hex');
-}
-
-function strongPassword(value) {
-  const password = String(value || '');
-  return password.length >= 10 && password.length <= 128 &&
-    /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password) && /[^A-Za-z0-9]/.test(password);
 }
 
 function isValidEmail(value) {

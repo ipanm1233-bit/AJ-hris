@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { requireFirebaseAuth, enforceRateLimit, writeAuditLog, assertAllowedKeys } = require('../lib/security.js');
+const { MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH, strongPassword } = require('../lib/password-policy.js');
 
 function getApiKey() {
   if (process.env.FIREBASE_API_KEY) return process.env.FIREBASE_API_KEY;
@@ -17,10 +18,10 @@ module.exports = async function handler(req, res) {
     assertAllowedKeys(req.body || {}, ['currentPassword', 'newPassword']);
     const currentPassword = String(req.body?.currentPassword || '');
     const newPassword = String(req.body?.newPassword || '');
-    if (newPassword.length < 10 || newPassword.length > 128) {
-      return res.status(400).json({ success: false, error: 'Password baru harus 10–128 karakter.' });
+    if (newPassword.length < MIN_PASSWORD_LENGTH || newPassword.length > MAX_PASSWORD_LENGTH) {
+      return res.status(400).json({ success: false, error: 'Password baru harus 6–128 karakter.' });
     }
-    if (!/[a-z]/.test(newPassword) || !/[A-Z]/.test(newPassword) || !/\d/.test(newPassword) || !/[^A-Za-z0-9]/.test(newPassword)) {
+    if (!strongPassword(newPassword)) {
       return res.status(400).json({ success: false, error: 'Password harus memuat huruf besar, huruf kecil, angka, dan simbol.' });
     }
     const profileSnap = await context.db.collection('auth_profiles').doc(context.user.uid).get();

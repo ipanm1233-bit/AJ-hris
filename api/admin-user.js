@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { requireFirebaseAuth, enforceRateLimit, writeAuditLog, assertAllowedKeys, normalizeRole } = require('../lib/security.js');
+const { strongPassword } = require('../lib/password-policy.js');
 
 const ALLOWED_ROLES = new Set(['HRD', 'GM', 'FINANCE', 'SPV', 'ATASAN', 'MANAGER', 'BRANCH MANAGER', 'SALES', 'STAFF', 'DRIVER', 'HELPER', 'WAREHOUSE', 'GA', 'BACK OFFICE', 'BACKOFFICE']);
 
@@ -10,12 +11,6 @@ function internalEmail(username) {
 
 function validEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
-}
-
-function strongPassword(value) {
-  const password = String(value || '');
-  return password.length >= 10 && password.length <= 128 &&
-    /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password) && /[^A-Za-z0-9]/.test(password);
 }
 
 module.exports = async function handler(req, res) {
@@ -31,7 +26,7 @@ module.exports = async function handler(req, res) {
     const role = normalizeRole(req.body?.role);
     if (!/^[A-Z0-9._-]{2,80}$/.test(username)) return res.status(400).json({ success: false, error: 'Format username tidak valid.' });
     if (!ALLOWED_ROLES.has(role)) return res.status(400).json({ success: false, error: 'Role tidak diizinkan.' });
-    if (password && !strongPassword(password)) return res.status(400).json({ success: false, error: 'Password minimal 10 karakter dan wajib memuat huruf besar, huruf kecil, angka, serta simbol.' });
+    if (password && !strongPassword(password)) return res.status(400).json({ success: false, error: 'Password minimal 6 karakter dan wajib memuat huruf besar, huruf kecil, angka, serta simbol.' });
 
     const existingSnap = await context.db.collection('users').doc(username).get();
     const existing = existingSnap.exists ? existingSnap.data() : {};

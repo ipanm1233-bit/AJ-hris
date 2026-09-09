@@ -829,11 +829,11 @@ async function openChangePasswordModal(session, forceChange = false) {
  </div>
  <div>
  <label class="block text-xs font-semibold text-slate-700 mb-1.5">Password Baru</label>
- <input type="password" id="pw-baru" required class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 focus:border-maroon-500 focus:ring-2 focus:ring-maroon-100 outline-none transition">
+ <input type="password" id="pw-baru" required minlength="6" maxlength="128" class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 focus:border-maroon-500 focus:ring-2 focus:ring-maroon-100 outline-none transition">
  </div>
  <div>
  <label class="block text-xs font-semibold text-slate-700 mb-1.5">Konfirmasi Password Baru</label>
- <input type="password" id="pw-konfirm" required class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 focus:border-maroon-500 focus:ring-2 focus:ring-maroon-100 outline-none transition">
+ <input type="password" id="pw-konfirm" required minlength="6" maxlength="128" class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 focus:border-maroon-500 focus:ring-2 focus:ring-maroon-100 outline-none transition">
  </div>
  </form>
  `,
@@ -852,7 +852,7 @@ async function openChangePasswordModal(session, forceChange = false) {
  const konfirm = m.querySelector("#pw-konfirm").value;
 
  if (baru !== konfirm) return toast("Konfirmasi password baru tidak cocok!", "warning");
- if (baru.length < 10) return toast("Password minimal 10 karakter", "warning");
+ if (baru.length < 6) return toast("Password minimal 6 karakter", "warning");
  if (!/[a-z]/.test(baru) || !/[A-Z]/.test(baru) || !/\d/.test(baru) || !/[^A-Za-z0-9]/.test(baru)) {
   return toast("Password harus memuat huruf besar, huruf kecil, angka, dan simbol.", "warning");
  }
