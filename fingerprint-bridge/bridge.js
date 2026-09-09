@@ -222,7 +222,8 @@ function dateFromLog(log) {
 function resolveSyncStartDate(latestDate, today, overlapDays = 1) {
   if (!validDate(latestDate)) return '';
   const safeOverlapDays = Math.max(1, Math.floor(Number(overlapDays) || 1));
-  return addDays(latestDate, -safeOverlapDays);
+  const overlapStart = addDays(today, -safeOverlapDays);
+  return latestDate < overlapStart ? latestDate : overlapStart;
 }
 
 async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {}) {

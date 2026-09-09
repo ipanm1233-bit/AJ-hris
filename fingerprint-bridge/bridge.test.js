@@ -39,9 +39,10 @@ test('builds an incremental fingerprint date range', () => {
 });
 
 test('rechecks the previous day so late checkout scans update existing attendance', () => {
-  assert.equal(resolveSyncStartDate('2026-09-08', '2026-09-09'), '2026-09-07');
+  assert.equal(resolveSyncStartDate('2026-09-08', '2026-09-09'), '2026-09-08');
   assert.equal(resolveSyncStartDate('2026-09-09', '2026-09-09'), '2026-09-08');
   assert.equal(resolveSyncStartDate('2026-09-09', '2026-09-09', 2), '2026-09-07');
+  assert.equal(resolveSyncStartDate('2026-08-06', '2026-09-09'), '2026-08-06');
   assert.equal(resolveSyncStartDate('', '2026-09-09'), '');
 });
 
