@@ -20,3 +20,12 @@ test("Apps Script uploads allow the ContentService response host and a realistic
   assert.match(integration, /setTimeout\(\(\) => controller\.abort\(\),\s*180000\)/);
   assert.match(vercelConfig, /https:\/\/script\.googleusercontent\.com/);
 });
+
+test("Broadcast email includes the uploaded file and a Google Drive fallback link", () => {
+  const broadcast = readFileSync(new URL("../js/views/broadcast.js", import.meta.url), "utf8");
+  const emailApi = readFileSync(new URL("../api/send-email.js", import.meta.url), "utf8");
+  assert.match(broadcast, /emailAttachments\s*=\s*\[await buildEmailAttachment\(file\)\]/);
+  assert.match(broadcast, /Buka.*lampiran.*Google Drive/s);
+  assert.match(broadcast, /sendEmailNotif\([\s\S]*emailAttachments/);
+  assert.match(emailApi, /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/);
+});
