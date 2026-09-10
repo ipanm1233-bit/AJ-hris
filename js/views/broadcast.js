@@ -4,6 +4,41 @@ import { fsGetAll, fsAdd, fsDelete, deleteBroadcastMemoAndNotifs, openModal, clo
 import { uploadFileToDrive } from "../gas-integration.js";
 import { avatar, badge, emptyState, skeletonRows } from "../components.js";
 
+// Batas mentah 3 MB menjaga payload base64 tetap di bawah batas request
+// serverless. File yang lebih besar tetap dikirim sebagai tautan Drive.
+const MAX_EMAIL_ATTACHMENT_BYTES = 3 * 1024 * 1024;
+const EMAIL_ATTACHMENT_MIME_BY_EXTENSION = {
+ pdf: "application/pdf",
+ jpg: "image/jpeg",
+ jpeg: "image/jpeg",
+ png: "image/png",
+ doc: "application/msword",
+ docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+ xls: "application/vnd.ms-excel",
+ xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+};
+
+function buildEmailAttachment(file) {
+ return new Promise((resolve, reject) => {
+ const extension = String(file?.name || "").split(".").pop().toLowerCase();
+ const contentType = String(file?.type || EMAIL_ATTACHMENT_MIME_BY_EXTENSION[extension] || "").toLowerCase();
+ if (!contentType || !Object.values(EMAIL_ATTACHMENT_MIME_BY_EXTENSION).includes(contentType)) {
+ reject(new Error("Tipe file tidak didukung sebagai lampiran email."));
+ return;
+ }
+
+ const reader = new FileReader();
+ reader.onload = () => resolve({
+ filename: file.name,
+ content: String(reader.result || "").split(",")[1] || "",
+ encoding: "base64",
+ contentType
+ });
+ reader.onerror = () => reject(new Error("File gagal dibaca untuk lampiran email."));
+ reader.readAsDataURL(file);
+ });
+}
+
 export async function mount(container, { session }) {
  const listEl = container.querySelector("#bc-list");
  listEl.innerHTML = skeletonRows(3);
@@ -326,12 +361,20 @@ function openComposeModal(container, session, karyawan, users, reload) {
 
  // Upload lampiran (jika ada file dipilih) ke Google Drive
  let lampiranUrl = null;
+ let emailAttachments = [];
  const fileInput = m.querySelector("#bc-lampiran-file");
  const file = fileInput.files && fileInput.files[0];
  if (file) {
  if (file.size > 10 * 1024 * 1024) { toast("Ukuran file lampiran maksimal 10MB", "warning"); btnSend.disabled = false; btnSend.innerHTML = "Kirim Memo"; return; }
  btnSend.innerHTML = "Mengupload Lampiran...";
  lampiranUrl = await uploadFileToDrive(file, `Broadcast/${id}`);
+ if (file.size <= MAX_EMAIL_ATTACHMENT_BYTES) {
+ try {
+ emailAttachments = [await buildEmailAttachment(file)];
+ } catch (attachmentError) {
+ console.warn("Lampiran email tidak dapat disiapkan; tautan Drive tetap disertakan.", attachmentError);
+ }
+ }
  btnSend.innerHTML = "Sedang Mengirim...";
  }
 
@@ -411,6 +454,14 @@ function openComposeModal(container, session, karyawan, users, reload) {
  // Email
  const targetEmails = Array.from(targetEmailsSet);
  if (targetEmails.length > 0) {
+ const attachmentLinkHtml = lampiranUrl ? `
+   <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:14px 16px;margin:16px 0;">
+     <div style="font-size:12px;font-weight:700;color:#9a3412;margin-bottom:6px;">📎 Lampiran Memo</div>
+     <a href="${escapeHtml(lampiranUrl)}" target="_blank" rel="noopener noreferrer" style="color:#7a1f2b;font-size:13px;font-weight:700;text-decoration:underline;">
+       Buka ${escapeHtml(file?.name || "lampiran")} di Google Drive
+     </a>
+   </div>
+ ` : "";
  const emailTemplate = buildStandardEmailHtml({
    badgeText: "Memo Internal",
    badgeVariant: "maroon",
@@ -420,12 +471,23 @@ function openComposeModal(container, session, karyawan, users, reload) {
      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; margin: 16px 0; color: #1e293b; font-size: 13.5px; line-height: 1.7;">
        ${htmlContent}
      </div>
+     ${attachmentLinkHtml}
    `,
    actionUrl: `${window.location.origin}/#broadcast?memo_id=${id}`,
    actionText: "Lihat Memo di Portal HRIS →",
-   secondaryNote: "Memo ini ditujukan kepada karyawan di lingkungan CV Andela Jaya."
+   secondaryNote: emailAttachments.length
+     ? "File memo dilampirkan langsung pada email ini. Tautan Google Drive juga disediakan sebagai akses cadangan."
+     : (lampiranUrl
+       ? "Lampiran tersedia melalui tautan Google Drive di atas. File berukuran lebih dari 3 MB tidak dilampirkan langsung ke email."
+       : "Memo ini ditujukan kepada karyawan di lingkungan CV Andela Jaya.")
  });
- await Promise.all(targetEmails.map(email => sendEmailNotif(email, `[Memo HRIS] ${payload.judul}`, emailTemplate)));
+ await Promise.all(targetEmails.map(email => sendEmailNotif(
+   email,
+   `[Memo HRIS] ${payload.judul}`,
+   emailTemplate,
+   "",
+   emailAttachments
+ )));
  }
 
  // Push notification ke HP (FCM)
