@@ -353,6 +353,11 @@ module.exports = async function handler(req, res) {
     // --- 2) Resolve ID mesin -> master karyawan. Mendukung NIK, doc ID,
     // nik_karyawan, dan beberapa nama field fingerprint yang umum.
     const employeeSnap = await db.collection('master_karyawan').get();
+    const settingsSnap = await db.collection('app_settings').doc('main').get();
+    const scheduleRows = settingsSnap.exists && Array.isArray(settingsSnap.data()?.jadwal)
+      ? settingsSnap.data().jadwal
+      : [];
+    const { resolveWorkSchedule } = await import('../js/work-schedule.mjs');
     const employeeMap = new Map();
     const numericEmployeeMap = new Map();
     const employeeNameMap = new Map();
@@ -464,7 +469,8 @@ module.exports = async function handler(req, res) {
         const { group: g, employee, machineUser, nik, ref, legacyRef } = item;
         const existing = existingSnapshots[index];
         const oldData = existing.exists ? existing.data() : {};
-        const attendance = computeAttendance(g.events, oldData, minWorkGapMinutes);
+        const schedule = resolveWorkSchedule(employee, scheduleRows, g.tanggal);
+        const attendance = computeAttendance(g.events, oldData, minWorkGapMinutes, schedule);
 
         batch.set(ref, {
           nik,
@@ -477,6 +483,9 @@ module.exports = async function handler(req, res) {
           tanggal: g.tanggal,
           scan_masuk: attendance.scan_masuk,
           scan_keluar: attendance.scan_keluar,
+          perlu_koreksi: attendance.needs_review,
+          alasan_koreksi: attendance.review_reason,
+          klasifikasi_scan: attendance.classification,
           cabang: employee.cabang || branch,
           divisi: employee?.divisi || employee?.departemen || oldData.divisi || '',
           jabatan: employee?.jabatan || employee?.posisi || oldData.jabatan || '',
