@@ -55,7 +55,11 @@ export async function callGasWebApp(payload) {
 
  let response;
  const controller = new AbortController();
- const timeoutId = setTimeout(() => controller.abort(), 60000);
+ // Apps Script mengembalikan respons ContentService melalui redirect ke
+ // script.googleusercontent.com. Cold start + pembuatan file Drive dapat
+ // melewati 60 detik, terutama pada upload pertama, jadi beri waktu sampai
+ // 3 menit sebelum benar-benar dianggap gagal.
+ const timeoutId = setTimeout(() => controller.abort(), 180000);
  try {
  response = await fetch(GAS_WEBAPP_URL, {
  method: "POST",
@@ -64,7 +68,7 @@ export async function callGasWebApp(payload) {
  });
  } catch (networkErr) {
  if (networkErr?.name === "AbortError") {
- throw new Error("Upload melewati batas waktu 60 detik. Periksa koneksi internet lalu coba kembali.");
+ throw new Error("Upload melewati batas waktu 3 menit. Periksa status eksekusi Apps Script dan koneksi internet lalu coba kembali.");
  }
  throw new Error("Gagal menghubungi Google Apps Script. Cek koneksi internet Anda, atau pastikan URL Web App di js/gas-integration.js masih aktif (belum di-undeploy).");
  } finally {
