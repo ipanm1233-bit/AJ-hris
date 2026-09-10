@@ -97,7 +97,16 @@ module.exports = async function handler(req, res) {
       mailOptions.attachments = attachments.map(att => {
         if (!att || !att.content || att.path) throw new Error('Lampiran harus berupa konten terenkode; path/URL tidak diizinkan.');
         const contentType = String(att.contentType || 'application/pdf').toLowerCase();
-        if (!['application/pdf', 'image/jpeg', 'image/png'].includes(contentType)) throw new Error('Tipe lampiran tidak diizinkan.');
+        const allowedAttachmentTypes = [
+          'application/pdf',
+          'image/jpeg',
+          'image/png',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        ];
+        if (!allowedAttachmentTypes.includes(contentType)) throw new Error('Tipe lampiran tidak diizinkan.');
         const content = String(att.content);
         totalBytes += Buffer.byteLength(content, 'base64');
         if (totalBytes > 10 * 1024 * 1024) throw new Error('Total lampiran melebihi 10 MB.');
