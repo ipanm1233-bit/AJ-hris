@@ -33,6 +33,15 @@ test('does not treat pending leave as an approved absence', () => {
   assert.match(rows[0].Keterangan, /PERLU PEMERIKSAAN MANUAL/);
 });
 
+test('labels an approved izin record from data_pengajuan', () => {
+  const rows = buildRawAttendanceExport({
+    employees: [employee], schedules: schedule, attendanceRows: [],
+    leaves: [{ nik_pemohon: '1001', tanggal_izin: '2026-09-08', kategori: 'IZIN', jenis_izin: 'IZIN_KELUAR_KANTOR', status_final: 'APPROVED FINAL' }],
+    start: '2026-09-08', end: '2026-09-08'
+  });
+  assert.equal(rows[0].Keterangan, 'IZIN_KELUAR_KANTOR');
+});
+
 test('merges duplicate source rows into one employee-day', () => {
   const rows = buildRawAttendanceExport({
     employees: [employee], schedules: schedule,

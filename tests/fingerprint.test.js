@@ -60,14 +60,18 @@ test('does not interpret two nearby scans as a full workday', () => {
     { jam: '08:00', minutes: 480, direction: null },
     { jam: '08:03', minutes: 483, direction: null }
   ], {}, 120);
-  assert.deepEqual(attendance, { scan_masuk: '08:00', scan_keluar: null });
+  assert.equal(attendance.scan_masuk, '08:00');
+  assert.equal(attendance.scan_keluar, null);
+  assert.equal(attendance.needs_review, true);
 });
 
 test('merges later synchronization into the existing morning scan', () => {
   const attendance = computeAttendance([
     { jam: '17:05', minutes: 1025, direction: null }
   ], { scan_masuk: '07:58', scan_keluar: null }, 120);
-  assert.deepEqual(attendance, { scan_masuk: '07:58', scan_keluar: '17:05' });
+  assert.equal(attendance.scan_masuk, '07:58');
+  assert.equal(attendance.scan_keluar, '17:05');
+  assert.equal(attendance.needs_review, false);
 });
 
 test('respects explicit check-in and check-out markers', () => {
@@ -77,7 +81,28 @@ test('respects explicit check-in and check-out markers', () => {
     { jam: '13:01', minutes: 781, direction: 'IN' },
     { jam: '17:10', minutes: 1030, direction: 'OUT' }
   ]);
-  assert.deepEqual(attendance, { scan_masuk: '08:02', scan_keluar: '17:10' });
+  assert.equal(attendance.scan_masuk, '08:02');
+  assert.equal(attendance.scan_keluar, '17:10');
+  assert.equal(attendance.needs_review, false);
+});
+
+test('classifies a lone scan near scheduled checkout as scan pulang', () => {
+  const attendance = computeAttendance([
+    { jam: '17:03', minutes: 1023, direction: null }
+  ], {}, 120, { masuk: '08:00', pulang: '17:00' });
+  assert.equal(attendance.scan_masuk, null);
+  assert.equal(attendance.scan_keluar, '17:03');
+  assert.equal(attendance.classification, 'SINGLE_SCAN_OUT');
+  assert.match(attendance.review_reason, /Scan masuk/i);
+});
+
+test('repairs an old record that stored the same lone afternoon scan as scan masuk', () => {
+  const attendance = computeAttendance([
+    { jam: '17:03', minutes: 1023, direction: null }
+  ], { scan_masuk: '17:03', scan_keluar: null }, 120, { masuk: '08:00', pulang: '17:00' });
+  assert.equal(attendance.scan_masuk, null);
+  assert.equal(attendance.scan_keluar, '17:03');
+  assert.equal(attendance.needs_review, true);
 });
 
 test('rejects invalid calendar dates and incomplete records', () => {
