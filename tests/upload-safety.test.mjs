@@ -13,3 +13,10 @@ test("Broadcast does not continue after a failed attachment upload", () => {
   assert.doesNotMatch(source, /melanjutkan tanpa lampiran/);
   assert.match(source, /lampiranUrl\s*=\s*await uploadFileToDrive/);
 });
+
+test("Apps Script uploads allow the ContentService response host and a realistic timeout", () => {
+  const integration = readFileSync(new URL("../js/gas-integration.js", import.meta.url), "utf8");
+  const vercelConfig = readFileSync(new URL("../vercel.json", import.meta.url), "utf8");
+  assert.match(integration, /setTimeout\(\(\) => controller\.abort\(\),\s*180000\)/);
+  assert.match(vercelConfig, /https:\/\/script\.googleusercontent\.com/);
+});
