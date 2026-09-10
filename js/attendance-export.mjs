@@ -22,18 +22,28 @@ function approvedLeave(leave) {
   return status.includes("APPROVED") || status.includes("DISETUJUI") || status.includes("SELESAI");
 }
 
+function absenceRecord(leave) {
+  const marker = key([
+    leave?.form_id, leave?.tipe_form, leave?.kategori, leave?.nama_form,
+    leave?.type_cuti, leave?.jenis_cuti, leave?.jenis_izin,
+    leave?.detail?.jenis_cuti, leave?.detail?.jenis_izin
+  ].filter(Boolean).join(" "));
+  return /CUTI|IZIN|SAKIT|DINAS|TUGAS LUAR/.test(marker);
+}
+
 function employeeMatchesLeave(employee, leave) {
   const employeeNik = key(employee?.nik || employee?.nik_karyawan || employee?.id);
-  const leaveNik = key(leave?.nik || leave?.nik_karyawan);
+  const leaveNik = key(leave?.nik || leave?.nik_karyawan || leave?.nik_pemohon || leave?.detail?.nik);
   if (employeeNik && leaveNik && employeeNik === leaveNik) return true;
-  return key(employee?.nama_karyawan || employee?.nama) === key(leave?.nama_karyawan || leave?.nama);
+  return key(employee?.nama_karyawan || employee?.nama) === key(leave?.nama_karyawan || leave?.nama || leave?.nama_pemohon || leave?.pemohon);
 }
 
 function leaveForDate(employee, leaves, date) {
   return leaves.find(leave => {
-    if (!approvedLeave(leave) || !employeeMatchesLeave(employee, leave)) return false;
-    const start = String(leave.tanggal || leave.tanggal_mulai || leave.tgl_mulai || "").slice(0, 10);
-    const end = String(leave.tanggal_selesai || leave.tgl_selesai || start).slice(0, 10);
+    if (!absenceRecord(leave) || !approvedLeave(leave) || !employeeMatchesLeave(employee, leave)) return false;
+    const detail = leave?.detail || {};
+    const start = String(leave.tanggal_izin || leave.tanggal_mulai || leave.tgl_mulai || leave.tanggal_berangkat || leave.tanggal_keberangkatan || leave.tanggal || detail.tanggal_izin || detail.tanggal_mulai || detail.tanggal_berangkat || detail.tanggal_keberangkatan || "").slice(0, 10);
+    const end = String(leave.tanggal_selesai || leave.tanggal_akhir || leave.tgl_selesai || leave.tanggal_kembali || leave.tanggal_pulang || detail.tanggal_selesai || detail.tanggal_akhir || detail.tanggal_kembali || detail.tanggal_pulang || start).slice(0, 10);
     return start && date >= start && date <= end;
   });
 }
@@ -52,7 +62,7 @@ function employeeKey(employee) {
 }
 
 function leaveLabel(leave) {
-  return String(leave?.type_cuti || leave?.jenis_cuti || leave?.kategori_cuti || "CUTI / IZIN").trim();
+  return String(leave?.type_cuti || leave?.jenis_cuti || leave?.detail?.jenis_cuti || leave?.detail?.jenis_izin || leave?.jenis_izin || leave?.kategori_cuti || leave?.nama_form || "CUTI / IZIN").trim();
 }
 
 function timeValue(value) {
