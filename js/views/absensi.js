@@ -1,4 +1,4 @@
-import { db, COL, collection, getDocs, writeBatch, doc, getDoc, query, where, updateDoc, deleteDoc } from "../firebase-config.js";
+import { db, COL, collection, getDocs, writeBatch, doc, getDoc, query, where, setDoc, deleteDoc } from "../firebase-config.js";
 import { toast, genId, fsGetAll, escapeHtml, openModal, closeModal, formatUangJalanEkspedisiRows } from "../utils.js";
 import { skeletonRows, emptyState } from "../components.js";
 import { callGasArchiveWebApp } from "../gas-integration.js";
@@ -6,6 +6,7 @@ import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
 import { authFetch } from "../api-client.js";
 import { resolveWorkSchedule } from "../work-schedule.mjs";
 import { buildRawAttendanceExport } from "../attendance-export.mjs";
+import { buildAttendanceStatusRows } from "../attendance-status.mjs";
 
 async function fingerprintApi(action, payload = {}) {
  const response = await authFetch('/api/sync-absen', {
@@ -78,6 +79,7 @@ export async function mount(container, { session } = {}) {
  let listAbsensiGlobal = [];
  let employeeRowsGlobal = [];
  let scheduleRowsGlobal = [];
+ let absenceRowsGlobal = [];
  // sortNama: null (default, urut tanggal terbaru) | "asc" (A-Z) | "desc" (Z-A)
  let filterState = {
  search: "",
@@ -189,15 +191,23 @@ export async function mount(container, { session } = {}) {
  });
 
  async function loadRawAbsensiTable() {
- rawTbody.innerHTML = `<tr><td colspan="13" class="p-4">${skeletonRows(4)}</td></tr>`;
- const [attendanceRows, employeeRows, scheduleSnapshot] = await Promise.all([
+ rawTbody.innerHTML = `<tr><td colspan="14" class="p-4">${skeletonRows(4)}</td></tr>`;
+ const [attendanceRows, employeeRows, scheduleSnapshot, leaveRows, submissionRows] = await Promise.all([
  fsGetAll(COL.DATA_ABSENSI),
  fsGetAll(COL.MASTER_KARYAWAN).catch(() => []),
- getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(() => null)
+ getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(() => null),
+ fsGetAll(COL.MASTER_CUTI).catch(() => []),
+ fsGetAll(COL.DATA_PENGAJUAN).catch(() => [])
  ]);
  employeeRowsGlobal = employeeRows;
  scheduleRowsGlobal = scheduleSnapshot?.exists() ? (scheduleSnapshot.data()?.jadwal || []) : [];
- listAbsensiGlobal = enrichAttendanceRows(attendanceRows);
+ absenceRowsGlobal = [...leaveRows, ...submissionRows];
+ listAbsensiGlobal = buildAttendanceStatusRows({
+ attendanceRows: enrichAttendanceRows(attendanceRows),
+ employees: employeeRowsGlobal,
+ absenceRecords: absenceRowsGlobal,
+ schedules: scheduleRowsGlobal
+ });
  populateAttendanceFilterOptions();
 
  // Check for records older than 60 days per employee to keep Firebase lightweight
@@ -206,7 +216,7 @@ export async function mount(container, { session } = {}) {
  const thresholdStr = sixtyDaysAgo.toISOString().substring(0, 10);
  
  // Select records older than 60 days from today
- const oldRecords = listAbsensiGlobal.filter(x => x.tanggal && x.tanggal < thresholdStr);
+ const oldRecords = listAbsensiGlobal.filter(x => !x.is_status_only && x.tanggal && x.tanggal < thresholdStr);
 
  if (archiveAlertBox) {
  const hasOld = oldRecords.length > 0;
@@ -335,7 +345,7 @@ export async function mount(container, { session } = {}) {
  if (filterState.division) data = data.filter(x => String(x.divisi || "").trim().toUpperCase() === filterState.division.toUpperCase());
  if (filterState.search) {
  const term = filterState.search;
- data = data.filter(x => [x.nama, x.nik, x.nama_finger, x.emp_no, x.no_id]
+ data = data.filter(x => [x.nama, x.nik, x.nama_finger, x.emp_no, x.no_id, x.attendance_status]
  .some(value => String(value || "").toLowerCase().includes(term)));
  }
 
@@ -353,11 +363,11 @@ export async function mount(container, { session } = {}) {
 
  function renderRawTable(data) {
  if(!data.length) {
- rawTbody.innerHTML = `<tr><td colspan="13" class="p-8 text-center">${emptyState("Tidak ada data absensi Anda pada periode ini")}</td></tr>`;
+ rawTbody.innerHTML = `<tr><td colspan="14" class="p-8 text-center">${emptyState("Tidak ada data absensi Anda pada periode ini")}</td></tr>`;
  return;
  }
  rawTbody.innerHTML = data.map(r => `
- <tr class="hover:bg-slate-50 transition text-xs">
+ <tr class="transition text-xs ${r.status_kind === 'review' ? 'bg-amber-50 hover:bg-amber-100' : r.status_kind === 'absence' ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-slate-50'}">
  <td class="px-4 py-3 text-slate-500">${escapeHtml(r.emp_no || "-")}</td>
  <td class="px-4 py-3 text-slate-500">${escapeHtml(r.no_id || "-")}</td>
  <td class="px-4 py-3 text-slate-500">${escapeHtml(r.nik || "-")}</td>
@@ -370,10 +380,15 @@ export async function mount(container, { session } = {}) {
  <td class="px-4 py-3 text-center font-mono">${escapeHtml(r.jadwal_keluar || "-")}</td>
  <td class="px-4 py-3 text-center font-mono ${r.scan_masuk ? 'text-slate-700':'text-red-400 font-bold'}">${escapeHtml(r.scan_masuk || "-")}</td>
  <td class="px-4 py-3 text-center font-mono ${r.scan_keluar ? 'text-slate-700':'text-red-400 font-bold'}">${escapeHtml(r.scan_keluar || "-")}</td>
+ <td class="px-4 py-3 min-w-52">
+ <span title="${escapeHtml(r.alasan_koreksi || r.attendance_status || '')}" class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold leading-tight ${r.status_kind === 'review' ? 'bg-amber-100 text-amber-800 border border-amber-200' : r.status_kind === 'absence' ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}">
+ ${escapeHtml(r.attendance_status || "HADIR")}
+ </span>
+ </td>
  <td class="px-4 py-3 text-right">
  ${isHrdOrAdmin && canEdit ? `
  <button data-edit-id="${r.id}" class="text-maroon-700 font-medium hover:underline mr-3">Koreksi</button>
- <button data-del-id="${r.id}" class="text-red-500 hover:underline">Hapus</button>
+ ${r.is_status_only ? '' : `<button data-del-id="${r.id}" class="text-red-500 hover:underline">Hapus</button>`}
  ` : `<span class="text-slate-300">-</span>`}
  </td>
  </tr>
@@ -466,15 +481,12 @@ export async function mount(container, { session } = {}) {
  btnExportRawAbsen.textContent = "Menyiapkan data...";
  let exportRows;
  try {
- const [leaveRows, freshEmployees] = await Promise.all([
- fsGetAll(COL.MASTER_CUTI).catch(() => []),
- fsGetAll(COL.MASTER_KARYAWAN).catch(() => employeeRowsGlobal)
- ]);
- const filteredAttendance = applyFiltersAbsen();
+ const freshEmployees = await fsGetAll(COL.MASTER_KARYAWAN).catch(() => employeeRowsGlobal);
+ const filteredAttendance = applyFiltersAbsen().filter(row => !row.is_status_only);
  exportRows = buildRawAttendanceExport({
  attendanceRows: filteredAttendance,
  employees: freshEmployees,
- leaves: leaveRows,
+ leaves: absenceRowsGlobal,
  schedules: scheduleRowsGlobal,
  start: filterState.start,
  end: filterState.end,
@@ -538,7 +550,19 @@ export async function mount(container, { session } = {}) {
  scan_masuk: m.querySelector("#k-masuk").value.trim() || null,
  scan_keluar: m.querySelector("#k-keluar").value.trim() || null
  };
- await updateDoc(doc(db, COL.DATA_ABSENSI, item.id), dataUpdate);
+ const targetId = item.is_status_only
+ ? `ABS-MANUAL-${String(item.nik || item.id).replace(/[^a-zA-Z0-9._-]/g, '_')}-${item.tanggal}`
+ : item.id;
+ await setDoc(doc(db, COL.DATA_ABSENSI, targetId), item.is_status_only ? {
+ nik: item.nik,
+ nama: item.nama,
+ tanggal: item.tanggal,
+ cabang: item.cabang || "",
+ divisi: item.divisi || "",
+ jabatan: item.jabatan || "",
+ sumber: "KOREKSI HRD",
+ ...dataUpdate
+ } : dataUpdate, { merge: true });
  toast("Koreksi absensi berhasil disimpan", "success");
  closeModal();
  loadRawAbsensiTable();
