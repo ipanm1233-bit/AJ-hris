@@ -2441,7 +2441,7 @@ export async function mount(container, { session }) {
 
               pdfData.id = newId;
               generatePdfAndNotify(k, pdfData, sisa, {
-                recordSubmission: true,
+                recordSubmission: false,
                 publishDocument: true,
                 audiences: []
               });
