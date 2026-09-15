@@ -1,4 +1,5 @@
 import { resolveWorkSchedule } from "./work-schedule.mjs";
+import { applyHalfDayWorkWindow, isHalfDayLeave } from "./leave-attendance.mjs";
 
 function key(value) {
   return String(value || "").trim().toUpperCase();
@@ -135,11 +136,14 @@ export function buildRawAttendanceExport({ attendanceRows = [], employees = [], 
 
       if (rows.length) {
         rows.forEach(row => consumed.add(row));
-        const row = mergeAttendanceRows(rows);
+        let row = mergeAttendanceRows(rows);
+        if (leave && isHalfDayLeave(leave)) row = applyHalfDayWorkWindow(row, leave);
         const hasIn = Boolean(row.scan_masuk);
         const hasOut = Boolean(row.scan_keluar || row.scan_pulang);
         let description = hasIn && hasOut ? "HADIR" : "SCAN BELUM LENGKAP - PERLU PEMERIKSAAN MANUAL";
-        if (leave) description = `${leaveLabel(leave)}${hasIn || hasOut ? " - ADA SCAN, PERLU PEMERIKSAAN MANUAL" : ""}`;
+        if (leave && isHalfDayLeave(leave)) {
+          description = `${leaveLabel(leave)} - ${row.half_day_status || "CUTI SETENGAH HARI"}${hasIn && hasOut ? "" : " - SCAN BELUM LENGKAP, PERLU PEMERIKSAAN MANUAL"}`;
+        } else if (leave) description = `${leaveLabel(leave)}${hasIn || hasOut ? " - ADA SCAN, PERLU PEMERIKSAAN MANUAL" : ""}`;
         result.push(exportObject(row, employee, shift, description));
       } else {
         const description = leave
@@ -147,7 +151,10 @@ export function buildRawAttendanceExport({ attendanceRows = [], employees = [], 
           : shift.masuk || shift.pulang
             ? "TIDAK ADA SCAN - PERLU PEMERIKSAAN MANUAL"
             : "TIDAK ADA JADWAL / LIBUR - PERLU PEMERIKSAAN MANUAL";
-        result.push(exportObject({ tanggal: date }, employee, shift, description));
+        const emptyRow = leave && isHalfDayLeave(leave)
+          ? applyHalfDayWorkWindow({ tanggal: date, jadwal_masuk: shift.masuk, jadwal_keluar: shift.pulang, jam_kerja: shift.jamKerja }, leave)
+          : { tanggal: date };
+        result.push(exportObject(emptyRow, employee, shift, description));
       }
     }
   }

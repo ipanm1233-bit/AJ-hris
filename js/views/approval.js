@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs } from "../firebase-config.js";
-import { fsGetAll, fsUpdate, fsAdd, genId, openModal, closeModal, toast, fmtDateTime, escapeHtml, sendEmailNotif, buildStandardEmailHtml, buildPengajuanEmailDetailHtml, getTargetsForRole, createLoginToken, notifyUser, renderPengajuanDetailHtml, printSalesKlaimForm, generateAndSaveCutiDocument, printFormCutiFisik, getCutiDeductionCategory } from "../utils.js";
+import { fsGetAll, fsUpdate, fsAdd, genId, openModal, closeModal, toast, fmtDateTime, escapeHtml, sendEmailNotif, buildStandardEmailHtml, buildPengajuanEmailDetailHtml, getTargetsForRole, createLoginToken, notifyUser, renderPengajuanDetailHtml, printSalesKlaimForm, generateAndSaveCutiDocument, printFormCutiFisik, getCutiDeductionCategory, confirmDialog } from "../utils.js";
 import { badge, emptyState, skeletonRows } from "../components.js";
 
 const CUTI_RULES = {
@@ -19,6 +19,7 @@ const CUTI_RULES = {
 const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
 
 let allPengajuan = [], karyawanByNama = {};
+const AUTO_OPERATIONAL_DELIVERY = false;
 
 export async function mount(container, { session }) {
  const listEl = container.querySelector("#approval-list");
@@ -141,6 +142,9 @@ function renderList(container, session, tab) {
  const isPotongGaji = r.is_potong_gaji || r.potong_gaji || (r.detail && (r.detail.is_potong_gaji || r.detail.potong_gaji)) || (r.kategori_cuti || "").includes("Potong Gaji");
     const potongHari = r.potong_gaji_hari || (r.detail && r.detail.potong_gaji_hari) || r.jumlah_hari || 1;
 
+    const roleUpper = String(session.role || "").toUpperCase();
+    const canSendManual = isEligible(r, session) || ["HRD", "ADMIN", "ADMINISTRATOR", "SUPERADMIN"].includes(roleUpper);
+
     return `
     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 ${isPotongGaji ? "ring-2 ring-rose-300 bg-rose-50/20" : ""}">
       <div class="flex flex-wrap items-start justify-between gap-3">
@@ -157,7 +161,10 @@ function renderList(container, session, tab) {
  ${stepsHtml}
  </div>
  <div class="mt-4 flex items-center justify-between">
- <button data-detail="${r.id}" class="text-xs text-maroon-700 font-medium hover:underline">Lihat Detail Pengajuan</button>
+ <div class="flex items-center gap-3 flex-wrap">
+   <button data-detail="${r.id}" class="text-xs text-maroon-700 font-medium hover:underline">Lihat Detail Pengajuan</button>
+   ${canSendManual ? `<button data-manual-notify="${r.id}" class="px-3 py-1.5 text-xs font-semibold rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition">Kirim Email &amp; Notifikasi</button>` : ""}
+ </div>
  ${tab === "pending" ? `
  <div class="flex gap-2">
  <button data-reject="${r.id}" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-red-200 text-red-700 hover:bg-red-50 transition">Tolak</button>
@@ -170,6 +177,10 @@ function renderList(container, session, tab) {
  listEl.querySelectorAll("[data-detail]").forEach(btn => btn.addEventListener("click", () => showDetail(rows.find(r => r.id === btn.dataset.detail), session)));
  listEl.querySelectorAll("[data-approve]").forEach(btn => btn.addEventListener("click", () => actionModal(rows.find(r => r.id === btn.dataset.approve), "APPROVE", session, container, tab)));
  listEl.querySelectorAll("[data-reject]").forEach(btn => btn.addEventListener("click", () => actionModal(rows.find(r => r.id === btn.dataset.reject), "REJECT", session, container, tab)));
+ listEl.querySelectorAll("[data-manual-notify]").forEach(btn => btn.addEventListener("click", () => {
+   const row = rows.find(r => r.id === btn.dataset.manualNotify);
+   if (row) sendManualApprovalNotification(row, session, btn);
+ }));
 
  // Auto-open modal jika URL Hash mengandung id tertentu (mis. dari Klik Notifikasi)
  const idMatch = window.location.hash.match(/id=([a-zA-Z0-9_-]+)/);
@@ -178,6 +189,71 @@ function renderList(container, session, tab) {
  if (targetRow) {
  setTimeout(() => showDetail(targetRow, session), 200);
  }
+ }
+}
+
+async function sendManualApprovalNotification(row, session, button) {
+ const status = String(row.status_final || row.status || "MENUNGGU").toUpperCase();
+ const idx = currentStepIndex(row);
+ const isPending = status === "MENUNGGU" || status === "PENDING" || status.includes("MENUNGGU");
+ const targetRole = isPending && idx >= 0 ? (row.approval_flow || [])[idx] : "PEMOHON";
+ const targetLabel = targetRole === "PEMOHON" ? row.nama_pemohon : targetRole;
+
+ const confirmed = await confirmDialog(
+   `Kirim email dan notifikasi untuk ${row.nama_form} kepada ${targetLabel}?`,
+   { title: "Konfirmasi Pengiriman Manual", danger: false }
+ );
+ if (!confirmed) return;
+
+ const originalText = button.textContent;
+ button.disabled = true;
+ button.textContent = "Mengirim...";
+
+ try {
+   let targets = await getTargetsForRole(targetRole || "PEMOHON", row.nama_pemohon);
+   targets = (targets || []).filter((target, index, all) => {
+     const key = String(target.username || target.email || target.nama || "").toLowerCase();
+     return key && all.findIndex(other => String(other.username || other.email || other.nama || "").toLowerCase() === key) === index;
+   });
+   if (!targets.length) throw new Error(`Penerima ${targetLabel} tidak ditemukan di data pengguna.`);
+
+   const finalApproved = status.includes("APPROVED FINAL");
+   const rejected = status.includes("REJECT");
+   const title = rejected
+     ? `[DITOLAK] ${row.nama_form}`
+     : finalApproved
+       ? `[DISETUJUI FINAL] ${row.nama_form}`
+       : `Menunggu Persetujuan Anda: ${row.nama_form}`;
+   const message = rejected
+     ? `Pengajuan ${row.nama_form} (${row.id}) dari ${row.nama_pemohon} telah ditolak. Silakan buka HRIS untuk melihat catatan.`
+     : finalApproved
+       ? `Pengajuan ${row.nama_form} (${row.id}) dari ${row.nama_pemohon} telah disetujui final.`
+       : `Pengajuan ${row.nama_form} (${row.id}) dari ${row.nama_pemohon} menunggu persetujuan Anda sebagai ${targetRole}.`;
+   const link = isPending ? `#approval?id=${row.id}` : `#riwayat?id=${row.id}`;
+
+   let sent = 0;
+   for (const target of targets) {
+     const recipient = target.username || target.email || target.nama;
+     const ok = await notifyUser(recipient, title, message, link, { manual: true });
+     if (ok) sent++;
+   }
+   if (!sent) throw new Error("Tidak ada email/notifikasi yang berhasil dikirim.");
+
+   const sentAt = new Date().toISOString();
+   await fsUpdate(COL.DATA_PENGAJUAN, row.id, {
+     notification_status: "TERKIRIM_MANUAL",
+     manual_notification_at: sentAt,
+     manual_notification_by: session.nama || session.username || "HRD",
+     manual_notification_target: targetLabel
+   });
+   Object.assign(row, { notification_status: "TERKIRIM_MANUAL", manual_notification_at: sentAt });
+   toast(`Email & notifikasi berhasil dikirim ke ${sent} penerima.`, "success");
+ } catch (error) {
+   console.error("Pengiriman manual gagal:", error);
+   toast("Gagal mengirim: " + error.message, "error");
+ } finally {
+   button.disabled = false;
+   button.textContent = originalText;
  }
 }
 
@@ -373,7 +449,12 @@ async function processAction(row, action, note, session) {
 
  // Jika pengajuan ini butuh Laporan Pertanggungjawaban (LPJ) dan baru saja mencapai
  // status APPROVED FINAL, hitung batas waktu pengumpulan LPJ-nya sekarang.
- const updatePayload = { approval_steps: steps, status_final: statusFinal, catatan_penolakan: catatan };
+ const updatePayload = {
+   approval_steps: steps,
+   status_final: statusFinal,
+   catatan_penolakan: catatan,
+   notification_status: "MENUNGGU_PENGIRIMAN_MANUAL"
+ };
  if (statusFinal === "APPROVED FINAL" && row.requires_lpj && row.lpj_status === "BELUM" && !row.lpj_due_date) {
  const due = new Date();
  due.setDate(due.getDate() + (parseInt(row.lpj_deadline_days) || 7));
@@ -440,7 +521,7 @@ async function processAction(row, action, note, session) {
  // ----------------------------------------------------
  // EMAIL NOTIFICATION SYSTEM
  // ----------------------------------------------------
- if (typeof sendEmailNotif === 'function') {
+ if (AUTO_OPERATIONAL_DELIVERY && typeof sendEmailNotif === 'function') {
  try {
  if (action === "APPROVE") {
   
@@ -610,7 +691,7 @@ async function processAction(row, action, note, session) {
  // ----------------------------------------------------
  // REAL-TIME IN-APP & HP PUSH NOTIFICATIONS SYSTEM
  // ----------------------------------------------------
- try {
+ if (AUTO_OPERATIONAL_DELIVERY) try {
  const pemohonTargetList = await getTargetsForRole("PEMOHON", row.nama_pemohon);
  const pemohonUsername = pemohonTargetList[0]?.username || row.nama_pemohon;
 

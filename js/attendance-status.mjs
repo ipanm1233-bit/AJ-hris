@@ -1,4 +1,5 @@
 import { resolveWorkSchedule } from "./work-schedule.mjs";
+import { applyHalfDayWorkWindow, isHalfDayLeave } from "./leave-attendance.mjs";
 
 function key(value) {
   return String(value || "").trim().toUpperCase();
@@ -72,12 +73,21 @@ function minutes(value) {
   return match ? Number(match[1]) * 60 + Number(match[2]) : null;
 }
 
-function statusForRow(row, absenceLabel) {
+function statusForRow(row, absence) {
   const hasIn = Boolean(row.scan_masuk);
   const hasOut = Boolean(row.scan_keluar || row.scan_pulang);
-  if (absenceLabel) {
+  if (absence?.record && isHalfDayLeave(absence.record)) {
+    const base = `${absence.label} — ${row.half_day_status || "CUTI SETENGAH HARI"}`;
     return {
-      attendance_status: hasIn || hasOut ? `${absenceLabel} — ADA SCAN, PERLU KOREKSI HRD` : absenceLabel,
+      attendance_status: hasIn && hasOut ? base : `${base}; SCAN BELUM LENGKAP — PERLU KOREKSI HRD`,
+      status_kind: hasIn && hasOut ? "half-day" : "review",
+      perlu_koreksi: !(hasIn && hasOut),
+      alasan_koreksi: hasIn && hasOut ? "" : "Cuti setengah hari terdata, tetapi scan masuk atau scan pulang belum lengkap."
+    };
+  }
+  if (absence?.label) {
+    return {
+      attendance_status: hasIn || hasOut ? `${absence.label} — ADA SCAN, PERLU KOREKSI HRD` : absence.label,
       status_kind: hasIn || hasOut ? "review" : "absence",
       perlu_koreksi: Boolean(hasIn || hasOut || row.perlu_koreksi),
       alasan_koreksi: hasIn || hasOut ? "Ada scan pada hari cuti/izin/dinas; perlu diperiksa HRD." : (row.alasan_koreksi || "")
@@ -123,26 +133,27 @@ export function buildAttendanceStatusRows({ attendanceRows = [], employees = [],
     const employeeId = employeeIdentities(employee)[0];
     dates(record).forEach(date => {
       const mapKey = `${employeeId}|${date}`;
-      if (!absenceByEmployeeDate.has(mapKey)) absenceByEmployeeDate.set(mapKey, { employee, date, label: label(record) });
+      if (!absenceByEmployeeDate.has(mapKey)) absenceByEmployeeDate.set(mapKey, { employee, date, label: label(record), record });
     });
   });
 
   const usedAbsences = new Set();
   const actual = attendanceRows.map(original => {
-    const row = reclassifyLegacySingleScan(original);
+    let row = reclassifyLegacySingleScan(original);
     const employee = employeeIdentities(row).map(id => employeeByIdentity.get(id)).find(Boolean) || row;
     const employeeId = employeeIdentities(employee)[0];
     const absenceKey = `${employeeId}|${row.tanggal}`;
     const absence = absenceByEmployeeDate.get(absenceKey);
     if (absence) usedAbsences.add(absenceKey);
-    return { ...row, ...statusForRow(row, absence?.label) };
+    if (absence?.record && isHalfDayLeave(absence.record)) row = applyHalfDayWorkWindow(row, absence.record);
+    return { ...row, ...statusForRow(row, absence) };
   });
 
   absenceByEmployeeDate.forEach((absence, absenceKey) => {
     if (usedAbsences.has(absenceKey)) return;
     const { employee, date } = absence;
     const shift = resolveWorkSchedule(employee, schedules, date);
-    actual.push({
+    let statusOnlyRow = {
       id: `STATUS-${key(employee.nik || employee.nik_karyawan || employee.id).replace(/[^A-Z0-9_-]/g, "_")}-${date}`,
       nik: employee.nik || employee.nik_karyawan || employee.id || "",
       nama: employee.nama_karyawan || employee.nama || "",
@@ -164,7 +175,15 @@ export function buildAttendanceStatusRows({ attendanceRows = [], employees = [],
       perlu_koreksi: false,
       alasan_koreksi: "",
       is_status_only: true
-    });
+    };
+    if (isHalfDayLeave(absence.record)) {
+      statusOnlyRow = applyHalfDayWorkWindow(statusOnlyRow, absence.record);
+      statusOnlyRow.attendance_status = `${absence.label} — ${statusOnlyRow.half_day_status}; TIDAK ADA SCAN — PERLU KOREKSI HRD`;
+      statusOnlyRow.status_kind = "review";
+      statusOnlyRow.perlu_koreksi = true;
+      statusOnlyRow.alasan_koreksi = "Cuti setengah hari terdata, tetapi tidak ada scan pada jam kerja parsial.";
+    }
+    actual.push(statusOnlyRow);
   });
 
   return actual;

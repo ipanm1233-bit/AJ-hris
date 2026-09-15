@@ -486,7 +486,8 @@ function openComposeModal(container, session, karyawan, users, reload) {
    `[Memo HRIS] ${payload.judul}`,
    emailTemplate,
    "",
-   emailAttachments
+   emailAttachments,
+   { manual: true }
  )));
  }
 

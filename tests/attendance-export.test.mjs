@@ -17,6 +17,19 @@ test('keeps a no-scan employee row and labels approved sick leave', () => {
   assert.equal(rows[0].Keterangan, 'S - Sakit dengan Surat Dokter');
 });
 
+test('exports an approved morning half-day leave with a noon effective schedule', () => {
+  const rows = buildRawAttendanceExport({
+    employees: [employee], schedules: schedule,
+    attendanceRows: [{ nik: '1001', nama: 'BUDI', tanggal: '2026-09-09', scan_masuk: '12:00', scan_keluar: '17:05', sumber: 'FINGERPRINT' }],
+    leaves: [{ nik: '1001', tanggal: '2026-09-09', type_cuti: 'C1/2 - Cuti Setengah Hari', status: 'APPROVED', sesi_cuti: 'Cuti Pagi', jam_keluar: '08:00', jam_kembali: '12:00', count: 0.5 }],
+    start: '2026-09-09', end: '2026-09-09'
+  });
+  assert.equal(rows[0]['Jam Masuk'], '12:00');
+  assert.equal(rows[0]['Jam Pulang'], '17:00');
+  assert.match(rows[0].Keterangan, /CUTI PAGI.*HADIR SIANG/);
+  assert.doesNotMatch(rows[0].Keterangan, /PERLU PEMERIKSAAN/);
+});
+
 test('marks an unexplained no-scan workday for manual review', () => {
   const rows = buildRawAttendanceExport({ employees: [employee], schedules: schedule, start: '2026-09-08', end: '2026-09-08' });
   assert.equal(rows[0].Keterangan, 'TIDAK ADA SCAN - PERLU PEMERIKSAAN MANUAL');

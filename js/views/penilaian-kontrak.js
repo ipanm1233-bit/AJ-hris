@@ -2739,7 +2739,7 @@ export async function mount(container, { session, params }) {
     try {
       const notifTitle = `Tugas Penilaian ${catConfig.label}`;
       const notifMsg = `Anda menerima penugasan penilaian ${catConfig.label} untuk ${allTasksForEvaluator.length} karyawan (${allTasksForEvaluator.map(x => x.nama_dinilai).slice(0, 3).join(", ")}${allTasksForEvaluator.length > 3 ? '...' : ''}). Batas waktu: ${deadlineStr}.`;
-      await notifyUser(penilaiName, notifTitle, notifMsg, "#penilaian-kontrak?tab=kpi360", { sendEmail: false });
+      await notifyUser(penilaiName, notifTitle, notifMsg, "#penilaian-kontrak?tab=kpi360", { sendEmail: false, manual: true });
     } catch (e) {
       console.warn("notifyUser error:", e);
     }
@@ -2800,7 +2800,7 @@ export async function mount(container, { session, params }) {
     });
 
     try {
-      const emailResult = await sendEmailNotif(targetEmail, emailSubject, emailHtml);
+      const emailResult = await sendEmailNotif(targetEmail, emailSubject, emailHtml, "", null, { manual: true });
       return { emailSent: true, emailResult };
     } catch (err) {
       console.warn("Gagal mengirim email notifikasi KPI:", err);
@@ -3513,7 +3513,7 @@ export async function mount(container, { session, params }) {
                     const catConfig = getCatConfig(sampleTask.kategori_penilaian);
                     const notifTitle = `Tugas Penilaian ${catConfig.label}`;
                     const notifMsg = `Anda menerima penugasan penilaian ${catConfig.label} untuk ${pTaskList.length} karyawan (${pTaskList.map(x => x.nama_dinilai).slice(0, 3).join(", ")}${pTaskList.length > 3 ? '...' : ''}). Batas waktu: ${deadlineStr}.`;
-                    await notifyUser(sampleTask.nama_penilai, notifTitle, notifMsg, "#penilaian-kontrak?tab=kpi360", { sendEmail: false });
+                    await notifyUser(sampleTask.nama_penilai, notifTitle, notifMsg, "#penilaian-kontrak?tab=kpi360", { sendEmail: false, manual: true });
                   }
 
                   if (shouldSendEmail) {

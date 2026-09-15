@@ -367,7 +367,7 @@ export async function mount(container, { session } = {}) {
  return;
  }
  rawTbody.innerHTML = data.map(r => `
- <tr class="transition text-xs ${r.status_kind === 'review' ? 'bg-amber-50 hover:bg-amber-100' : r.status_kind === 'absence' ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-slate-50'}">
+ <tr class="transition text-xs ${r.status_kind === 'review' ? 'bg-amber-50 hover:bg-amber-100' : r.status_kind === 'absence' ? 'bg-blue-50 hover:bg-blue-100' : r.status_kind === 'half-day' ? 'bg-violet-50 hover:bg-violet-100' : 'hover:bg-slate-50'}">
  <td class="px-4 py-3 text-slate-500">${escapeHtml(r.emp_no || "-")}</td>
  <td class="px-4 py-3 text-slate-500">${escapeHtml(r.no_id || "-")}</td>
  <td class="px-4 py-3 text-slate-500">${escapeHtml(r.nik || "-")}</td>
@@ -381,7 +381,7 @@ export async function mount(container, { session } = {}) {
  <td class="px-4 py-3 text-center font-mono ${r.scan_masuk ? 'text-slate-700':'text-red-400 font-bold'}">${escapeHtml(r.scan_masuk || "-")}</td>
  <td class="px-4 py-3 text-center font-mono ${r.scan_keluar ? 'text-slate-700':'text-red-400 font-bold'}">${escapeHtml(r.scan_keluar || "-")}</td>
  <td class="px-4 py-3 min-w-52">
- <span title="${escapeHtml(r.alasan_koreksi || r.attendance_status || '')}" class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold leading-tight ${r.status_kind === 'review' ? 'bg-amber-100 text-amber-800 border border-amber-200' : r.status_kind === 'absence' ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}">
+ <span title="${escapeHtml(r.alasan_koreksi || r.attendance_status || '')}" class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold leading-tight ${r.status_kind === 'review' ? 'bg-amber-100 text-amber-800 border border-amber-200' : r.status_kind === 'absence' ? 'bg-blue-100 text-blue-800 border border-blue-200' : r.status_kind === 'half-day' ? 'bg-violet-100 text-violet-800 border border-violet-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}">
  ${escapeHtml(r.attendance_status || "HADIR")}
  </span>
  </td>

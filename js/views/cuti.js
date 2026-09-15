@@ -1271,6 +1271,9 @@ export async function mount(container, { session }) {
  </button>
  <button type="button" data-print-cuti="${c.id}" class="text-slate-600 hover:underline font-medium mr-3">Cetak</button>
   ${canManage ? `
+  <button type="button" data-notify-cuti="employee" data-cuti-notify-id="${c.id}" class="text-violet-700 hover:underline font-medium mr-3" title="Kirim email dan notifikasi ke karyawan">Kirim ke Karyawan</button>
+  <button type="button" data-notify-cuti="supervisor" data-cuti-notify-id="${c.id}" class="text-maroon-700 hover:underline font-medium mr-3" title="Kirim email dan notifikasi ke atasan">Kirim ke Atasan</button>
+  <button type="button" data-notify-cuti="peers" data-cuti-notify-id="${c.id}" class="text-indigo-700 hover:underline font-medium mr-3" title="Kirim email dan notifikasi ke rekan satu divisi dan cabang">Kirim ke Rekan</button>
   <button type="button" data-edit-cuti="${c.id}" class="text-blue-600 hover:underline font-medium mr-3">Edit</button>
   <button type="button" data-del-cuti="${c.id}" class="text-red-600 hover:underline font-medium">Hapus</button>
   ` : ''}
@@ -1351,6 +1354,51 @@ export async function mount(container, { session }) {
     });
 
     if (!canManage) return;
+
+    tbody.querySelectorAll("[data-notify-cuti]").forEach(btn => {
+      btn.onclick = async () => {
+        const row = allCuti.find(c => String(c.id) === String(btn.dataset.cutiNotifyId));
+        if (!row) return toast("Data cuti tidak ditemukan", "error");
+        const audience = btn.dataset.notifyCuti;
+        const audienceLabel = audience === "employee" ? "karyawan" : audience === "supervisor" ? "atasan" : "rekan satu divisi";
+        const ok = await confirmDialog(
+          `Kirim email dan notifikasi cuti ${k.nama_karyawan} kepada ${audienceLabel} sekarang?`,
+          { title: "Konfirmasi Pengiriman Manual" }
+        );
+        if (!ok) return;
+
+        const original = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "Mengirim...";
+        try {
+          const isRowHalf = checkIsHalfDay(row) || checkIsHalfDay(row.type_cuti);
+          await generatePdfAndNotify(k, {
+            ...row,
+            id: row.id,
+            type_cuti: row.type_cuti || row.jenis_cuti || row.kategori_cuti,
+            tanggal: row.tanggal || row.tanggal_mulai,
+            tgl_akhir: isRowHalf ? (row.tanggal || row.tanggal_mulai) : (row.tanggal_selesai || row.tanggal || row.tanggal_mulai),
+            count: isRowHalf ? 0.5 : (row.count || row.jumlah_hari || 1),
+            isHalfDay: isRowHalf,
+            jam_keluar: row.jam_keluar || row.jam_mulai || "-",
+            jam_kembali: row.jam_kembali || row.jam_selesai || "-",
+            alasan: row.keterangan_cuti || row.alasan || "-",
+            kontak: row.kontak || row.no_telepon || "-"
+          }, getSisa(k), {
+            recordSubmission: false,
+            publishDocument: false,
+            audiences: [audience]
+          });
+          await fsUpdate(COL.MASTER_CUTI, row.id, {
+            [`manual_notification_${audience}_at`]: new Date().toISOString(),
+            [`manual_notification_${audience}_by`]: session?.nama || session?.username || "HRD"
+          }).catch(() => {});
+        } finally {
+          btn.disabled = false;
+          btn.textContent = original;
+        }
+      };
+    });
 
     tbody.querySelectorAll("[data-del-cuti]").forEach(btn => {
       btn.onclick = async () => {
@@ -2391,7 +2439,12 @@ export async function mount(container, { session }) {
               closeModal();
               toast("Pengajuan cuti berhasil disimpan", "success");
 
-              generatePdfAndNotify(k, pdfData, sisa);
+              pdfData.id = newId;
+              generatePdfAndNotify(k, pdfData, sisa, {
+                recordSubmission: true,
+                publishDocument: true,
+                audiences: []
+              });
             } catch (err) {
               console.error(err);
               toast("Gagal menyimpan cuti: " + err.message, "error");
@@ -2404,12 +2457,16 @@ export async function mount(container, { session }) {
     });
   }
 
-  async function generatePdfAndNotify(k, pdfData, sisa) {
+  async function generatePdfAndNotify(k, pdfData, sisa, options = {}) {
+    const audiences = new Set(options.audiences || []);
+    const recordSubmission = options.recordSubmission === true;
+    const publishDocument = options.publishDocument === true;
+    let manualDeliveryCount = 0;
     try {
-      toast("Menerbitkan Dokumen Form Cuti...", "info");
+      toast(audiences.size ? "Menyiapkan email & notifikasi cuti..." : "Menerbitkan Dokumen Form Cuti...", "info");
 
       // 1. Rekam juga ke DATA_PENGAJUAN agar terdata di rekap pengajuan & rekap otomatis sore 17:00
-      try {
+      if (recordSubmission) try {
         await fsAdd(COL.DATA_PENGAJUAN, {
           tipe_form: "FORM_CUTI",
           form_id: "F-ISO-CUTI",
@@ -2447,6 +2504,17 @@ export async function mount(container, { session }) {
         ? pdfData.kontak 
         : (k.alamat && k.no_hp ? `${k.alamat}/${k.no_hp}` : (k.alamat || k.no_hp || "-"));
 
+      const balances = await calculateLeaveHistoryBalances(k, {
+        ...pdfData,
+        nama_karyawan: k.nama_karyawan,
+        nik: k.nik || k.nik_karyawan || "-",
+        tanggal_mulai: pdfData.tanggal,
+        tanggal_selesai: pdfData.tgl_akhir || pdfData.tanggal,
+        jumlah_hari: pdfData.count || (pdfData.isHalfDay ? 0.5 : 1),
+        jenis_cuti: pdfData.type_cuti,
+        status_final: "APPROVED FINAL"
+      });
+
       const formHtml = generateStandardFormCutiHtml({
         namaKaryawan: k.nama_karyawan,
         nik: k.nik || k.nik_karyawan || "-",
@@ -2461,12 +2529,22 @@ export async function mount(container, { session }) {
         jamKembali: pdfData.jam_kembali || "-",
         kontak: kontakStr,
         alasan: pdfData.keterangan_cuti || pdfData.alasan || "-",
-        sisaTahunan: sisa ? (sisa.Tahunan ?? 0) : 0,
-        sisaKhusus: sisa ? (sisa.Khusus ?? 0) : 0,
-        sisaAkumulasi: sisa ? (sisa.Akumulasi ?? 0) : 0,
-        sisaBesar: k.sisa_cuti_besar ?? k.jatah_cuti_besar ?? 0,
-        jumlahHari: pdfData.count || (pdfData.isHalfDay ? 0.5 : 1),
+        sisaTahunan: balances.sisaHakTahunan,
+        sisaKhusus: balances.sisaHakKhusus,
+        sisaAkumulasi: balances.sisaHakAkumulasi,
+        sisaBesar: balances.sisaHakBesar,
+        dipakaiTahunan: balances.dipakaiTahunan,
+        dipakaiKhusus: balances.dipakaiKhusus,
+        dipakaiAkumulasi: balances.dipakaiAkumulasi,
+        dipakaiBesar: balances.dipakaiBesar,
+        totalSisaTahunan: balances.totalSisaTahunan,
+        totalSisaKhusus: balances.totalSisaKhusus,
+        totalSisaAkumulasi: balances.totalSisaAkumulasi,
+        totalSisaBesar: balances.totalSisaBesar,
+        jumlahHari: balances.usedCount,
         tglPengajuan: new Date().toISOString(),
+        namaAtasan: k.atasan || k.atasan_langsung || k.nama_atasan || k.spv || "",
+        namaHrd: "STAFF HRD",
         forPdf: true
       });
 
@@ -2554,8 +2632,9 @@ export async function mount(container, { session }) {
       try {
         const targets = await getTargetsForRole("PEMOHON", empNama);
         for (const t of targets) {
-          if (t.username) {
-            await notifyUser(t.username, "Pengajuan Cuti Tercatat", `Cuti Anda (${pdfData.tanggal_display || pdfData.tanggal}) telah dicatat HRD.`, "#cuti").catch(() => {});
+          if (audiences.has("employee") && t.username) {
+            await notifyUser(t.username, "Pengajuan Cuti Tercatat", `Cuti Anda (${pdfData.tanggal_display || pdfData.tanggal}) telah dicatat HRD.`, "#cuti", { manual: true }).catch(() => {});
+            manualDeliveryCount++;
           }
           if (t.email && t.email.includes("@") && !recipientEmails.includes(t.email.trim())) {
             recipientEmails.push(t.email.trim());
@@ -2643,8 +2722,9 @@ export async function mount(container, { session }) {
         if (t.email && !atasanEmails.includes(t.email) && !recipientEmails.includes(t.email)) {
           atasanEmails.push(t.email);
         }
-        if (t.username) {
-          notifyUser(t.username, `[Info Cuti Tim] ${empNama}`, `Anggota tim Anda (${empNama} - ${empDivisi || 'Divisi'}) di Cabang ${empCabang || '-'} dijadwalkan cuti (${pdfData.tanggal_display || pdfData.tanggal}).`, "#cuti").catch(() => {});
+        if (audiences.has("supervisor") && t.username) {
+          notifyUser(t.username, `[Info Cuti Tim] ${empNama}`, `Anggota tim Anda (${empNama} - ${empDivisi || 'Divisi'}) di Cabang ${empCabang || '-'} dijadwalkan cuti (${pdfData.tanggal_display || pdfData.tanggal}).`, "#cuti", { manual: true }).catch(() => {});
+          manualDeliveryCount++;
         }
       });
 
@@ -2680,8 +2760,9 @@ export async function mount(container, { session }) {
         if (p.email && !peerEmails.includes(p.email) && !recipientEmails.includes(p.email) && !atasanEmails.includes(p.email)) {
           peerEmails.push(p.email);
         }
-        if (p.username) {
-          notifyUser(p.username, `[Info Cuti Rekan Tim] ${empNama}`, `Rekan satu divisi Anda (${empNama}) di Cabang ${empCabang} akan cuti (${pdfData.tanggal_display || pdfData.tanggal}).`, "#cuti").catch(() => {});
+        if (audiences.has("peers") && p.username) {
+          notifyUser(p.username, `[Info Cuti Rekan Tim] ${empNama}`, `Rekan satu divisi Anda (${empNama}) di Cabang ${empCabang} akan cuti (${pdfData.tanggal_display || pdfData.tanggal}).`, "#cuti", { manual: true }).catch(() => {});
+          manualDeliveryCount++;
         }
       });
 
@@ -2692,7 +2773,7 @@ export async function mount(container, { session }) {
         : `${pdfData.count || 1} Hari Kerja`;
 
       // 5a. Email ke Karyawan yang Bersangkutan (dengan Dokumen Form Cuti Terlampir)
-      if (recipientEmails.length > 0) {
+      if (audiences.has("employee") && recipientEmails.length > 0) {
         const emailBodyKaryawan = buildStandardEmailHtml({
           badgeText: "Cuti Tercatat • Form Terlampir",
           badgeVariant: "green",
@@ -2717,18 +2798,20 @@ export async function mount(container, { session }) {
           `[HRIS Cuti] Form Cuti Resmi: ${k.nama_karyawan} (${fmtDateShort(pdfData.tanggal)})`,
           emailBodyKaryawan,
           "",
-          attachments
+          attachments,
+          { manual: true }
         );
         if (!employeeEmailSent) {
           throw new Error("Email Form Cuti kepada karyawan gagal dikirim.");
         }
+        manualDeliveryCount++;
         toast(`Email Form Cuti terkirim ke karyawan: ${recipientEmails.join(", ")}`, "success");
-      } else {
+      } else if (audiences.has("employee")) {
         toast("Catatan: Email karyawan tidak ditemukan, dokumen tersimpan di arsip sistem.", "info");
       }
 
       // 5b. Email ke Atasan Karyawan (Satu Cabang & Divisi Terkait, dengan Lampiran Form Cuti)
-      if (atasanEmails.length > 0) {
+      if (audiences.has("supervisor") && atasanEmails.length > 0) {
         try {
           const emailBodyAtasan = buildStandardEmailHtml({
             badgeText: `Info Cuti Anggota Tim • Cabang ${empCabang || '-'}`,
@@ -2751,13 +2834,15 @@ export async function mount(container, { session }) {
             secondaryNote: `Mohon pimpinan cabang dan supervisor divisi ${empDivisi || ''} Cabang ${empCabang || ''} dapat menyesuaikan jadwal dan pembagian tugas operasional selama masa cuti karyawan.`
           });
 
-          await sendEmailNotif(
+          const sent = await sendEmailNotif(
             atasanEmails.join(", "),
             `[Info Cuti Karyawan] ${k.nama_karyawan} (${empJabatan || empDivisi || 'Karyawan'} - Cabang ${empCabang || '-'}) Cuti (${tglCutiStr})`,
             emailBodyAtasan,
             "",
-            attachments
+            attachments,
+            { manual: true }
           );
+          if (sent) manualDeliveryCount++;
           toast(`Info cuti terkirim ke atasan cabang ${empCabang}: ${atasanEmails.join(", ")}`, "success");
         } catch (eAtasanMail) {
           console.warn("Gagal mengirim email info cuti ke atasan:", eAtasanMail);
@@ -2765,7 +2850,7 @@ export async function mount(container, { session }) {
       }
 
       // 5c. Email ke Rekan Satu Divisi Karyawan (Satu Cabang & Divisi Terkait)
-      if (peerEmails.length > 0) {
+      if (audiences.has("peers") && peerEmails.length > 0) {
         try {
           const emailBodyPeers = buildStandardEmailHtml({
             badgeText: `Info Rekan Divisi ${empDivisi || ''} • Cabang ${empCabang || ''}`,
@@ -2785,13 +2870,15 @@ export async function mount(container, { session }) {
             secondaryNote: `Koordinasikan tugas operasional bersama tim satu divisi dan atasan selama masa cuti berlangsung.`
           });
 
-          await sendEmailNotif(
+          const sent = await sendEmailNotif(
             peerEmails.join(", "),
             `[Info Cuti Rekan Se-Divisi] ${k.nama_karyawan} (Divisi ${empDivisi} - Cabang ${empCabang}) Cuti (${tglCutiStr})`,
             emailBodyPeers,
             "",
-            null
+            null,
+            { manual: true }
           );
+          if (sent) manualDeliveryCount++;
           toast(`Info cuti terkirim ke rekan se-divisi cabang ${empCabang} (${peerEmails.length} rekan)`, "info");
         } catch (ePeerMail) {
           console.warn("Gagal mengirim email info cuti ke rekan kerja:", ePeerMail);
@@ -2799,8 +2886,10 @@ export async function mount(container, { session }) {
       }
 
       // 6. Coba Google Apps Script dan unduh PDF untuk HRD
-      try {
+      if (publishDocument) try {
         const result = await generateAndSaveCutiDocument({
+          id: pdfData.id,
+          no_referensi: pdfData.no_referensi || pdfData.id,
           nama_karyawan: k.nama_karyawan,
           divisi: k.divisi || k.jabatan || k.cabang || "-",
           jabatan: k.jabatan || "-",
@@ -2813,8 +2902,10 @@ export async function mount(container, { session }) {
           kontak: kontakStr,
           jam_keluar: pdfData.jam_keluar,
           jam_kembali: pdfData.jam_kembali,
-          sisa_tahunan: sisa.Tahunan,
-          sisa_khusus: sisa.Khusus,
+          sisa_tahunan: balances.sisaHakTahunan,
+          sisa_khusus: balances.sisaHakKhusus,
+          sisa_akumulasi: balances.sisaHakAkumulasi,
+          sisa_besar: balances.sisaHakBesar,
           tanggal_pengajuan: fmtDateShort(new Date())
         });
         if (result && result.pdfUrl && result.pdfUrl !== "#") {
@@ -2826,9 +2917,16 @@ export async function mount(container, { session }) {
         await downloadHtmlAsPdf(formHtml, `Form_Cuti_${cleanEmpName}.pdf`);
       }
 
-      toast("Dokumen Form Cuti berhasil diterbitkan dan dikirimkan!", "success");
+      if (audiences.size && manualDeliveryCount === 0) {
+        throw new Error("Penerima tidak ditemukan. Periksa email, username, cabang, divisi, dan data atasan karyawan.");
+      }
+      toast(audiences.size ? "Email & notifikasi cuti berhasil dikirim secara manual." : "Dokumen Form Cuti berhasil diterbitkan tanpa pengiriman otomatis.", "success");
     } catch (err) {
       console.error("Error generatePdfAndNotify:", err);
+      if (audiences.size) {
+        toast("Gagal mengirim manual: " + err.message, "error");
+        throw err;
+      }
       toast("Memproses versi cadangan: " + err.message, "warning");
       printCutiPdfFallback(k, pdfData, sisa);
     }

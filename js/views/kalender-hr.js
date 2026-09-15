@@ -268,7 +268,7 @@ export async function mount(container, { session }) {
    secondaryNote: "Salam hangat dari Divisi Human Resource Development (HRD) CV Andela Jaya."
  });
  }
- await sendEmailNotif(email, subject, htmlBody);
+ await sendEmailNotif(email, subject, htmlBody, "", null, { manual: true });
  toast("Ucapan berhasil dikirim ke Email Karyawan!", "success");
  btn.className = "text-[10px] font-bold bg-green-100 text-green-700 px-2 py-1 rounded";
  btn.textContent = "Terkirim [v]";

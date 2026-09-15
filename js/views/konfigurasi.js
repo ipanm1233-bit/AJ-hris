@@ -298,7 +298,7 @@ export async function mount(container, { session }) {
       });
 
       try {
-        const ok = await sendEmailNotif(emailTo, "[TEST NOTIFIKASI] Pengingat Pajak & Dokumen Armada HRIS Andela Jaya", htmlBody, cc);
+        const ok = await sendEmailNotif(emailTo, "[TEST NOTIFIKASI] Pengingat Pajak & Dokumen Armada HRIS Andela Jaya", htmlBody, cc, null, { manual: true });
         if (ok) {
           toast(`Email uji coba pengingat kendaraan berhasil dikirim ke ${emailTo}!`, "success");
         } else {
@@ -435,7 +435,7 @@ export async function mount(container, { session }) {
           secondaryNote: "Mohon segera mengagendakan proses perpanjangan STNK/KIR atau servis berkala armada guna kelancaran operasional distribusi."
         });
 
-        const sent = await sendEmailNotif(emailTo, `[PERHATIAN] Rekap Jatuh Tempo Pajak & Dokumen Armada (${urgentItems.length} Kendaraan)`, htmlBody, cc);
+        const sent = await sendEmailNotif(emailTo, `[PERHATIAN] Rekap Jatuh Tempo Pajak & Dokumen Armada (${urgentItems.length} Kendaraan)`, htmlBody, cc, null, { manual: true });
         if (sent) {
           toast(`Berhasil mengirim rekap pengingat ${urgentItems.length} kendaraan ke ${emailTo}!`, "success");
         } else {
@@ -478,7 +478,7 @@ export async function mount(container, { session }) {
         secondaryNote: "Sistem HRIS akan secara otomatis mengirimkan rekap ketika ada kontrak karyawan yang mendekati masa berakhir."
       });
 
-      const ok = await sendEmailNotif(emailTo, "[TEST NOTIFIKASI] Pengingat Kontrak Karyawan HRIS Andela Jaya", htmlBody, cc);
+      const ok = await sendEmailNotif(emailTo, "[TEST NOTIFIKASI] Pengingat Kontrak Karyawan HRIS Andela Jaya", htmlBody, cc, null, { manual: true });
       if (ok) toast(`Email uji coba kontrak berhasil dikirim ke ${emailTo}!`, "success");
       else toast("Gagal mengirim email uji coba kontrak.", "error");
 
@@ -579,7 +579,7 @@ export async function mount(container, { session }) {
           secondaryNote: "Silakan lakukan penilaian evaluasi kinerja karyawan sebelum masa berlaku kontrak berakhir."
         });
 
-        const sent = await sendEmailNotif(emailTo, `[PERHATIAN] Rekap Masa Kontrak Karyawan Segera Berakhir (${urgentContracts.length} Orang)`, htmlBody, cc);
+        const sent = await sendEmailNotif(emailTo, `[PERHATIAN] Rekap Masa Kontrak Karyawan Segera Berakhir (${urgentContracts.length} Orang)`, htmlBody, cc, null, { manual: true });
         if (sent) toast(`Berhasil mengirim rekap ${urgentContracts.length} kontrak ke ${emailTo}!`, "success");
         else toast("Gagal mengirim email rekap kontrak.", "error");
 
@@ -617,7 +617,7 @@ export async function mount(container, { session }) {
         actionUrl: `${window.location.origin}/#penilaian-kontrak`,
         actionText: "Buka Modul Penilaian KPI →"
       });
-      const ok = await sendEmailNotif(emailTo, "[TEST NOTIFIKASI] Pengingat Penilaian KPI HRIS Andela Jaya", htmlBody, cc);
+      const ok = await sendEmailNotif(emailTo, "[TEST NOTIFIKASI] Pengingat Penilaian KPI HRIS Andela Jaya", htmlBody, cc, null, { manual: true });
       if (ok) toast(`Email uji coba KPI berhasil dikirim ke ${emailTo}!`, "success");
       else toast("Gagal mengirim email uji coba KPI.", "error");
 
@@ -650,7 +650,7 @@ export async function mount(container, { session }) {
         actionUrl: `${window.location.origin}/#kalender-hr`,
         actionText: "Buka Kalender HR & Operasional →"
       });
-      const ok = await sendEmailNotif(emailTo, "[TEST NOTIFIKASI] Pengingat LPJ & Kalender HRIS Andela Jaya", htmlBody, cc);
+      const ok = await sendEmailNotif(emailTo, "[TEST NOTIFIKASI] Pengingat LPJ & Kalender HRIS Andela Jaya", htmlBody, cc, null, { manual: true });
       if (ok) toast(`Email uji coba LPJ/Kalender berhasil dikirim ke ${emailTo}!`, "success");
       else toast("Gagal mengirim email uji coba LPJ/Kalender.", "error");
 
@@ -869,7 +869,7 @@ export async function mount(container, { session }) {
             secondaryNote: "Jika email ini masuk ke inbox Anda, jalur pemberitahuan cuti harian dan alert instan cabang telah terhubung dengan baik."
           });
 
-          const ok = await sendEmailNotif(emailsInput, `[TEST NOTIFIKASI] Jalur Email Cuti & Izin Cabang ${bName}`, testHtml, ccInput || globalCc);
+          const ok = await sendEmailNotif(emailsInput, `[TEST NOTIFIKASI] Jalur Email Cuti & Izin Cabang ${bName}`, testHtml, ccInput || globalCc, null, { manual: true });
           if (ok) {
             toast(`Email uji coba berhasil dikirim ke ${emailsInput}!`, "success");
           } else {
@@ -1005,7 +1005,7 @@ export async function mount(container, { session }) {
       toast(`Gagal memproses rekap pagi: ${err.message}`, "error");
     } finally {
       btn.disabled = false;
-      btn.innerHTML = `<i class="fa-solid fa-sun"></i> <span>Kirim Rekap Pagi Sekarang (07:45)</span>`;
+      btn.innerHTML = `<i class="fa-solid fa-sun"></i> <span>Kirim Rekap Cuti Hari Ini</span>`;
     }
   });
 
@@ -1025,7 +1025,7 @@ export async function mount(container, { session }) {
       toast(`Gagal memproses rekap sore: ${err.message}`, "error");
     } finally {
       btn.disabled = false;
-      btn.innerHTML = `<i class="fa-solid fa-moon"></i> <span>Kirim Rekap Sore Sekarang (17:00)</span>`;
+      btn.innerHTML = `<i class="fa-solid fa-moon"></i> <span>Kirim Rekap Pengajuan Hari Ini</span>`;
     }
   });
 

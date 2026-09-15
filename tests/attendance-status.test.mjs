@@ -43,3 +43,28 @@ test("does not create rows from pending absence requests", () => {
   });
   assert.equal(rows.length, 0);
 });
+
+test("uses 12:00 as effective start for approved morning half-day leave", () => {
+  const [row] = buildAttendanceStatusRows({
+    employees: [{ ...employee, nama_karyawan: "LUKMAN" }], schedules,
+    attendanceRows: [{ id: "lukman-0909", nik: employee.nik, tanggal: "2026-09-09", scan_masuk: "12:00", scan_keluar: "17:03", jadwal_masuk: "08:00", jadwal_keluar: "17:00" }],
+    absenceRecords: [{ nik: employee.nik, tanggal: "2026-09-09", type_cuti: "C1/2 - Cuti Setengah Hari", status: "APPROVED", sesi_cuti: "Cuti Pagi", jam_keluar: "08:00", jam_kembali: "12:00", count: 0.5 }]
+  });
+  assert.equal(row.jadwal_masuk, "12:00");
+  assert.equal(row.jadwal_keluar, "17:00");
+  assert.equal(row.status_kind, "half-day");
+  assert.equal(row.perlu_koreksi, false);
+  assert.match(row.attendance_status, /CUTI PAGI.*HADIR SIANG/);
+});
+
+test("uses noon as effective checkout for approved afternoon half-day leave", () => {
+  const [row] = buildAttendanceStatusRows({
+    employees: [employee], schedules,
+    attendanceRows: [{ id: "a", nik: employee.nik, tanggal: "2026-09-09", scan_masuk: "07:55", scan_keluar: "12:00", jadwal_masuk: "08:00", jadwal_keluar: "17:00" }],
+    absenceRecords: [{ nik: employee.nik, tanggal: "2026-09-09", type_cuti: "C1/2 - Cuti Setengah Hari", status: "APPROVED", sesi_cuti: "Cuti Siang", jam_keluar: "12:00", jam_kembali: "17:00", count: 0.5 }]
+  });
+  assert.equal(row.jadwal_masuk, "08:00");
+  assert.equal(row.jadwal_keluar, "12:00");
+  assert.equal(row.status_kind, "half-day");
+  assert.match(row.attendance_status, /HADIR PAGI.*CUTI SIANG/);
+});

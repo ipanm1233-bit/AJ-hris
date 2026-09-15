@@ -98,7 +98,7 @@ export async function mount(container, { session } = {}) {
 
   function kanalOldRecords() {
     const threshold = new Date();
-    threshold.setDate(threshold.getDate() - 60);
+    threshold.setDate(threshold.getDate() - 7);
     const thresholdDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(threshold);
     return allCheckinsList.filter(item => item.tanggal && item.tanggal < thresholdDate && !item._fromArchive);
   }
@@ -112,8 +112,8 @@ export async function mount(container, { session } = {}) {
       if (archiveEnd && !archiveEnd.value) archiveEnd.value = dates[dates.length - 1];
     }
     archiveStatus.textContent = oldRows.length
-      ? `${oldRows.length} data check-in berusia lebih dari 60 hari siap dipindahkan ke Spreadsheet.`
-      : "Belum ada data check-in berusia lebih dari 60 hari yang perlu diarsipkan.";
+      ? `${oldRows.length} data check-in berusia lebih dari 7 hari siap dipindahkan ke Spreadsheet.`
+      : "Belum ada data check-in berusia lebih dari 7 hari yang perlu diarsipkan.";
     btnArchiveKanal.disabled = oldRows.length === 0;
   }
 
@@ -3653,8 +3653,8 @@ export async function mount(container, { session } = {}) {
   if (btnArchiveKanal) {
     btnArchiveKanal.onclick = async () => {
       const rows = kanalOldRecords();
-      if (!rows.length) return toast("Tidak ada data check-in Kanal >60 hari untuk diarsipkan.", "warning");
-      const ok = await confirmDialog(`Pindahkan ${rows.length} data check-in Kanal >60 hari ke Spreadsheet? Data dapat ditarik kembali berdasarkan periode.`, { title: "Arsip Check-in Kanal" });
+      if (!rows.length) return toast("Tidak ada data check-in Kanal >7 hari untuk diarsipkan.", "warning");
+      const ok = await confirmDialog(`Pindahkan ${rows.length} data check-in Kanal >7 hari ke Spreadsheet? Data dapat ditarik kembali berdasarkan periode.`, { title: "Arsip Mingguan Check-in Kanal" });
       if (!ok) return;
       btnArchiveKanal.disabled = true;
       btnArchiveKanal.textContent = "Mengarsipkan...";
@@ -3671,7 +3671,7 @@ export async function mount(container, { session } = {}) {
       } catch (error) {
         toast("Gagal mengarsipkan check-in Kanal: " + error.message, "error");
       } finally {
-        btnArchiveKanal.textContent = "Arsipkan Data >60 Hari";
+        btnArchiveKanal.textContent = "Arsipkan Data >7 Hari";
         renderKanalArchiveStatus();
       }
     };

@@ -818,7 +818,7 @@ async function loadContractExpiry(container, session) {
  const targetNama = btn.dataset.nama;
  const remainingDays = btn.dataset.days;
  try {
- await notifyUser(targetAtasan, `Pengingat Penilaian Kontrak: ${targetNama}`, `Masa kontrak ${targetNama} tersisa ${remainingDays} hari. Mohon lakukan Penilaian Kontrak & Evaluasi Kinerja.`, "#penilaian-kontrak");
+ await notifyUser(targetAtasan, `Pengingat Penilaian Kontrak: ${targetNama}`, `Masa kontrak ${targetNama} tersisa ${remainingDays} hari. Mohon lakukan Penilaian Kontrak & Evaluasi Kinerja.`, "#penilaian-kontrak", { manual: true });
  toast(`Notifikasi pengingat evaluasi berhasil dikirim ke ${targetAtasan}`, "success");
  } catch (e) {
  toast("Gagal mengirim notifikasi: " + e.message, "error");

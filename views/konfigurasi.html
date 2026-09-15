@@ -94,7 +94,7 @@
   </div>
 
   <!-- ========================================================================= -->
-  <!-- BAGIAN: PENGATURAN EMAIL PENGINGAT OTOMATIS (EMAIL REMINDER SETTINGS)    -->
+  <!-- BAGIAN: PENGATURAN EMAIL PENGINGAT MANUAL (EMAIL REMINDER SETTINGS)      -->
   <!-- ========================================================================= -->
   <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
@@ -103,7 +103,7 @@
           <div class="w-8 h-8 rounded-lg bg-maroon-100 text-maroon-800 flex items-center justify-center font-bold text-sm">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
           </div>
-          <h2 class="text-lg font-bold text-slate-800">Pengaturan Pengiriman Email Pengingat Otomatis</h2>
+          <h2 class="text-lg font-bold text-slate-800">Pengaturan Pengiriman Email Pengingat Manual</h2>
         </div>
         <p class="text-xs text-slate-500 mt-1">Konfigurasikan alamat email penerima notifikasi pengingat jatuh tempo (Pajak Kendaraan, Kontrak PKWT, Evaluasi KPI, LPJ Kasbon, & Kalender HR).</p>
       </div>
@@ -359,7 +359,7 @@
           </div>
           <h2 class="text-lg font-bold text-slate-800">Email Pemberitahuan Cuti & Izin Berdasarkan Cabang Karyawan</h2>
         </div>
-        <p class="text-xs text-slate-500 mt-1">Otomasi pengiriman email informasi cuti karyawan ke PIC cabang terkait (Pagi 07:45 WIB: Cuti Hari Ini, Sepanjang Hari: Cuti Mendadak & Terlambat, Sore 17:00 WIB: Rekap Pengajuan Cuti).</p>
+        <p class="text-xs text-slate-500 mt-1">Atur penerima email cuti per cabang. Pengiriman hanya dilakukan setelah HRD menekan tombol kirim; tidak ada pengiriman otomatis di latar belakang.</p>
       </div>
 
       <div class="flex items-center gap-2">
@@ -375,40 +375,40 @@
       <div class="p-4 rounded-xl border border-amber-200 bg-amber-50/60 space-y-2">
         <div class="flex items-center justify-between">
           <span class="text-xs font-bold text-amber-900 flex items-center gap-1.5">
-            <span>🌅</span> Pagi Hari (07:45 WIB)
+            <span>🌅</span> Rekap Cuti Hari Ini
           </span>
           <label class="relative inline-flex items-center cursor-pointer">
             <input type="checkbox" id="cfg-branch-morning-active" class="sr-only peer" checked>
             <div class="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-amber-600"></div>
           </label>
         </div>
-        <p class="text-[11px] text-amber-800 leading-relaxed">Terkirim email daftar seluruh karyawan yang <strong>sedang cuti di hari tersebut</strong> ke email cabang terkait untuk penyesuaian jadwal tugas.</p>
+        <p class="text-[11px] text-amber-800 leading-relaxed">Dikirim manual melalui tombol di bawah: daftar karyawan yang <strong>sedang cuti di hari tersebut</strong> untuk penyesuaian jadwal tugas.</p>
       </div>
 
       <div class="p-4 rounded-xl border border-rose-200 bg-rose-50/60 space-y-2">
         <div class="flex items-center justify-between">
           <span class="text-xs font-bold text-rose-900 flex items-center gap-1.5">
-            <span>⚡</span> Sepanjang Hari (Real-time)
+            <span>⚡</span> Cuti & Izin Individual
           </span>
           <label class="relative inline-flex items-center cursor-pointer">
             <input type="checkbox" id="cfg-branch-instant-active" class="sr-only peer" checked>
             <div class="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-rose-600"></div>
           </label>
         </div>
-        <p class="text-[11px] text-rose-800 leading-relaxed">Alert instan saat ada karyawan mengajukan <strong>Cuti Mendadak</strong> atau <strong>Izin Datang Terlambat</strong> ke PIC cabang & atasan.</p>
+        <p class="text-[11px] text-rose-800 leading-relaxed">Email dan notifikasi individual dikirim melalui tombol pada menu <strong>Cuti</strong> atau <strong>Persetujuan</strong>, termasuk kepada atasan dan rekan kerja.</p>
       </div>
 
       <div class="p-4 rounded-xl border border-indigo-200 bg-indigo-50/60 space-y-2">
         <div class="flex items-center justify-between">
           <span class="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
-            <span>🌇</span> Sore Hari (17:00 WIB)
+            <span>🌇</span> Rekap Pengajuan Hari Ini
           </span>
           <label class="relative inline-flex items-center cursor-pointer">
             <input type="checkbox" id="cfg-branch-evening-active" class="sr-only peer" checked>
             <div class="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-indigo-600"></div>
           </label>
         </div>
-        <p class="text-[11px] text-indigo-800 leading-relaxed">Terkirim email rekap seluruh <strong>pengajuan cuti baru</strong> yang diajukan pada hari tersebut ke email cabang untuk proses persetujuan.</p>
+        <p class="text-[11px] text-indigo-800 leading-relaxed">Dikirim manual melalui tombol di bawah: rekap seluruh <strong>pengajuan cuti baru</strong> pada hari tersebut untuk proses persetujuan.</p>
       </div>
     </div>
 
@@ -470,18 +470,18 @@
       <div class="flex flex-wrap items-center gap-2">
         <button id="btn-trigger-morning-digest" type="button" class="px-3.5 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-xs transition flex items-center gap-2 cursor-pointer" title="Jalankan pengiriman email rekap karyawan cuti hari ini (07:45) secara manual sekarang">
           <i class="fa-solid fa-sun"></i>
-          <span>Kirim Rekap Pagi Sekarang (07:45)</span>
+          <span>Kirim Rekap Cuti Hari Ini</span>
         </button>
 
         <button id="btn-trigger-evening-digest" type="button" class="px-3.5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs transition flex items-center gap-2 cursor-pointer" title="Jalankan pengiriman email rekap pengajuan cuti hari ini (17:00) secara manual sekarang">
           <i class="fa-solid fa-moon"></i>
-          <span>Kirim Rekap Sore Sekarang (17:00)</span>
+          <span>Kirim Rekap Pengajuan Hari Ini</span>
         </button>
       </div>
 
       <div class="text-[11px] text-slate-500 flex items-center gap-1.5">
         <i class="fa-solid fa-circle-info text-emerald-600"></i>
-        <span>Pengiriman otomatis berjalan di latar belakang (server cron) setiap pukul <strong>07:45 WIB</strong> dan <strong>17:00 WIB</strong>.</span>
+        <span>Pengiriman otomatis dinonaktifkan. Email dan notifikasi hanya terkirim setelah tombol pengiriman manual ditekan.</span>
       </div>
     </div>
   </div>

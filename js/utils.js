@@ -3255,6 +3255,8 @@ export async function generateAndSaveCutiDocument(row) {
   kontak,
   jam_keluar: jamKeluar,
   jam_kembali: jamKembali,
+  nama_atasan: row.approved_by || detail.approved_by || calculatedBalances?.kData?.atasan || calculatedBalances?.kData?.atasan_langsung || calculatedBalances?.kData?.nama_atasan || "",
+  nama_hrd: row.nama_hrd || detail.nama_hrd || "STAFF HRD",
   sisa_tahunan: calculatedBalances ? calculatedBalances.sisaHakTahunan : 12,
   sisa_khusus: calculatedBalances ? calculatedBalances.sisaHakKhusus : 4,
   sisa_akumulasi: calculatedBalances ? calculatedBalances.sisaHakAkumulasi : 0,
@@ -4022,7 +4024,7 @@ export function buildStandardEmailHtml(opts = {}) {
                 Sistem Informasi Manajemen SDM & Operasional — ${escapeHtml(compName)}
               </div>
               <div style="color: #94a3b8;">
-                Email ini dikirim secara otomatis oleh sistem. Harap tidak membalas email ini secara langsung.
+                Email ini dikirim melalui sistem oleh petugas yang berwenang. Harap tidak membalas email ini secara langsung.
               </div>
             `}
             ${includeTimestamp ? `
@@ -4037,7 +4039,11 @@ export function buildStandardEmailHtml(opts = {}) {
   `;
 }
 
-export async function sendEmailNotif(to, subject, htmlBody, cc = "", attachments = null) {
+export async function sendEmailNotif(to, subject, htmlBody, cc = "", attachments = null, options = {}) {
+	if (options?.manual !== true) {
+		console.info("[manual-delivery] Email operasional ditahan; gunakan tombol kirim manual.", subject);
+		return false;
+	}
  if (!to) {
  console.warn("sendEmailNotif: Alamat email tujuan tidak ditentukan.");
  return false;
@@ -4347,7 +4353,7 @@ export async function sendBranchMorningLeaveDigest({ branch = null, date = null,
     });
 
     if (listCutiCabang.length > 0 || force) {
-      const ok = await sendEmailNotif(emailTo, `[CUTI HARI INI] ${listCutiCabang.length} Karyawan Cuti (${formattedTargetDate}) - Cabang ${cab}`, htmlBody, cc);
+      const ok = await sendEmailNotif(emailTo, `[CUTI HARI INI] ${listCutiCabang.length} Karyawan Cuti (${formattedTargetDate}) - Cabang ${cab}`, htmlBody, cc, null, { manual: true });
       results.push({ branch: cab, count: listCutiCabang.length, to: emailTo, sent: ok });
     } else {
       results.push({ branch: cab, count: 0, sent: false, skipped: true });
@@ -4575,7 +4581,7 @@ export async function sendBranchEveningLeaveDigest({ branch = null, date = null,
     });
 
     if (listPengajuanCabang.length > 0 || force) {
-      const ok = await sendEmailNotif(emailTo, `[REKAP PENGAJUAN SORE] ${listPengajuanCabang.length} Pengajuan Cuti (${formattedTargetDate}) - Cabang ${cab}`, htmlBody, cc);
+      const ok = await sendEmailNotif(emailTo, `[REKAP PENGAJUAN SORE] ${listPengajuanCabang.length} Pengajuan Cuti (${formattedTargetDate}) - Cabang ${cab}`, htmlBody, cc, null, { manual: true });
       results.push({ branch: cab, count: listPengajuanCabang.length, to: emailTo, sent: ok });
     } else {
       results.push({ branch: cab, count: 0, sent: false, skipped: true });
@@ -5360,16 +5366,22 @@ export async function notifyUser(username, judul, pesan, link = "", opts = {}) {
   link = String(link || "");
  }
 
+ // Semua notifikasi operasional wajib berasal dari tombol/tindakan kirim manual.
+ if (opts.manual !== true) {
+ console.info("[manual-delivery] Notifikasi operasional ditahan; gunakan tombol kirim manual.", judul);
+ return false;
+ }
+
  // opts.sendEmail (default true): dipakai HRD untuk menonaktifkan email
  // pada kasus tertentu (mis. pengambilan ATK) tanpa menghilangkan
  // notifikasi in-app (lonceng) & push HP yang tetap perlu tampil.
  const sendEmail = opts.sendEmail !== false;
- if (!username) return;
+ if (!username) return false;
  let targetEmail = (typeof username === "object" && username.email) ? username.email : null;
  let targetName = (typeof username === "object" && username.nama) ? username.nama : null;
  let targetNik = (typeof username === "object" && username.nik) ? username.nik : null;
  const rawTarget = typeof username === "object" ? (username.username || username.nama || username.id) : username;
- if (!rawTarget) return;
+ if (!rawTarget) return false;
 
  const targetStr = String(rawTarget).trim();
  const targetLower = targetStr.toLowerCase();
@@ -5381,7 +5393,7 @@ export async function notifyUser(username, judul, pesan, link = "", opts = {}) {
  const dedupKey = targetEmail || targetStr || targetName;
  if (isDuplicateNotification(dedupKey, judul, pesan, link)) {
  console.warn("[notifyUser] Notifikasi terdeteksi duplikat, dilewati:", dedupKey, judul);
- return;
+ return false;
  }
 
  try {
@@ -5502,12 +5514,14 @@ export async function notifyUser(username, judul, pesan, link = "", opts = {}) {
    introText: pesan,
    actionUrl: targetLink,
    actionText: "Buka HRIS & Lihat Rincian →",
-   secondaryNote: "Pesan ini dibuat otomatis oleh Sistem Portal HRIS & Operasional CV Andela Jaya."
+   secondaryNote: "Pesan ini dikirim secara manual melalui Sistem Portal HRIS & Operasional CV Andela Jaya."
  });
- await sendEmailNotif(targetEmail, `[HRIS Update] ${judul}`, htmlBody);
+ await sendEmailNotif(targetEmail, `[HRIS Update] ${judul}`, htmlBody, "", null, { manual: true });
  }
+ return true;
  } catch (e) {
  console.warn("Gagal mengirim notifikasi ke " + rawTarget, e);
+ return false;
  }
 }
 
@@ -7231,7 +7245,7 @@ export async function openInviteEmployeeModal(defaultEmpNikOrName = "") {
             secondaryNote: "Jika ada pertanyaan atau kendala akses, silakan hubungi tim HRD CV Andela Jaya."
           });
 
-          const sent = await sendEmailNotif(email, `[Undangan HRIS] Kredensial Login - ${COMPANY_NAME}`, htmlEmail);
+          const sent = await sendEmailNotif(email, `[Undangan HRIS] Kredensial Login - ${COMPANY_NAME}`, htmlEmail, "", null, { manual: true });
           if (sent) {
             toast(`Email undangan berhasil dikirim ke ${email}!`, "success");
             closeModal();
@@ -7280,7 +7294,7 @@ export async function openInviteEmployeeModal(defaultEmpNikOrName = "") {
               actionText: "Login ke Portal HRIS →",
               secondaryNote: "Jika ada pertanyaan atau kendala akses, silakan hubungi tim HRD CV Andela Jaya."
             });
-            await sendEmailNotif(email, `[Undangan HRIS] Kredensial Login - ${COMPANY_NAME}`, htmlEmail);
+            await sendEmailNotif(email, `[Undangan HRIS] Kredensial Login - ${COMPANY_NAME}`, htmlEmail, "", null, { manual: true });
           }
 
           if (phone) {

@@ -1,5 +1,5 @@
 import { db, COL, doc, getDoc, setDoc, query, collection, where, getDocs } from "../firebase-config.js";
-import { fsGetAll, openModal, closeModal, toast, fmtDateShort, escapeHtml, genId, toNumber, sendEmailNotif, getTargetsForRole, createLoginToken, notifyUser, getCalculatedJatahCuti, confirmDialog, getEmployeeTenureInfo, countLeaveWorkingDays, getLeaveWorkingDaysDetail, isIndonesianNationalHoliday, sendBranchInstantAlert, localDateStr } from "../utils.js";
+import { fsGetAll, openModal, closeModal, toast, fmtDateShort, escapeHtml, genId, toNumber, getCalculatedJatahCuti, confirmDialog, getEmployeeTenureInfo, countLeaveWorkingDays, getLeaveWorkingDaysDetail, isIndonesianNationalHoliday } from "../utils.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 import { badge } from "../components.js";
 
@@ -934,6 +934,7 @@ export async function mount(container, { session }) {
           approval_steps: isAutoReject ? ["REJECTED", "REJECTED"] : ["PENDING", "PENDING"],
           status_final: isAutoReject ? "REJECTED" : "MENUNGGU",
           status: isAutoReject ? "REJECTED" : "MENUNGGU",
+          notification_status: "MENUNGGU_PENGIRIMAN_MANUAL",
           catatan_penolakan: isAutoReject ? [autoRejectNote] : [],
           createdAt: nowIso
         };
@@ -941,64 +942,11 @@ export async function mount(container, { session }) {
         await setDoc(doc(db, COL.DATA_PENGAJUAN, refNo), payload);
 
         if (isAutoReject) {
-          try {
-            await notifyUser(
-              session.username || session.nama,
-              "⛔ [AUTO REJECT] Pengajuan Cuti Ditolak Sistem",
-              `Pengajuan cuti Anda (${count} hari) otomatis ditolak sistem karena melebihi batas maksimal masa kerja (${employeeTenure.maxLeaveDays} hari untuk ${employeeTenure.tenureText}).`,
-              `/#riwayat?id=${refNo}`
-            );
-          } catch (eNotif) {
-            console.warn("Auto reject notification error:", eNotif);
-          }
-
           toast(`⛔ Pengajuan Cuti Ditolak Otomatis (Auto Reject): Durasi ${count} hari kerja melebihi batas maksimal masa kerja Anda (${employeeTenure.maxLeaveDays} hari).`, "error");
         } else {
-          // Notify first approver (ATASAN / HRD) without duplicates
-          try {
-            let targets = await getTargetsForRole("ATASAN", session.nama);
-            if (!targets || targets.length === 0) {
-              targets = await getTargetsForRole("HRD", session.nama);
-            }
-            const sentKeys = new Set();
-            const notifTitle = isPotongGajiApplied ? "Persetujuan Cuti (Potong Gaji) Dibutuhkan" : "Persetujuan Cuti Dibutuhkan";
-            const notifBody = isPotongGajiApplied
-              ? `Pengajuan Cuti baru dari ${session.nama} (${catName}) sebanyak ${count} hari [POTONG GAJI: ${excessDays} Hari]. Membutuhkan verifikasi Anda.`
-              : `Pengajuan Cuti baru dari ${session.nama} (${catName}${selectedSesi ? ' - ' + selectedSesi : ''}) sebanyak ${count} hari (${tglMulai.value}). Membutuhkan verifikasi Anda.`;
-
-            for (const target of targets) {
-              const key = typeof target === 'object' ? (target.email || target.username || target.nama) : target;
-              if (!key || sentKeys.has(key)) continue;
-              sentKeys.add(key);
-              await notifyUser(
-                target,
-                notifTitle,
-                notifBody,
-                `/#approval?id=${refNo}`
-              );
-            }
-          } catch (eNotif) {
-            console.warn("Notification error:", eNotif);
-          }
-
-          // Sepanjang hari: Kirim alert instan ke email cabang jika merupakan Cuti Mendadak / H-0 / Darurat
-          try {
-            const todayWibStr = localDateStr(new Date());
-            const isSudden = (tglMulai.value <= todayWibStr) || isHalfDay || catVal.includes("S -") || catVal.includes("S-") || catVal.includes("C-") || catVal.toLowerCase().includes("mendadak") || (payload.alasan || "").toLowerCase().includes("mendadak") || (payload.alasan || "").toLowerCase().includes("darurat");
-            if (isSudden) {
-              sendBranchInstantAlert({
-                type: "CUTI_MENDADAK",
-                record: payload,
-                session
-              }).catch(eAlert => console.warn("Sudden leave branch alert error:", eAlert));
-            }
-          } catch (eSudden) {
-            console.warn("Check sudden leave branch alert error:", eSudden);
-          }
-
           toast(isPotongGajiApplied 
-            ? "Pengajuan cuti potong gaji berhasil dikirim & masuk antrean persetujuan!" 
-            : "Pengajuan cuti berhasil dikirim & masuk ke antrean persetujuan!", 
+            ? "Pengajuan cuti potong gaji tersimpan. Email dan notifikasi menunggu dikirim manual oleh HRD."
+            : "Pengajuan cuti tersimpan. Email dan notifikasi menunggu dikirim manual oleh HRD.",
             "success"
           );
         }
