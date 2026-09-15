@@ -2520,6 +2520,7 @@ export async function mount(container, { session }) {
     const recordSubmission = options.recordSubmission === true;
     const sickRecord = isSickLeave({ type_cuti: pdfData.type_cuti || pdfData.jenis_cuti });
     const publishDocument = options.publishDocument === true && !sickRecord;
+    const needsFormPdf = !sickRecord && (publishDocument || audiences.has("supervisor"));
     let manualDeliveryCount = 0;
     try {
       toast(audiences.size ? "Menyiapkan email & notifikasi..." : "Menerbitkan Dokumen Form Cuti...", "info");
@@ -2563,7 +2564,7 @@ export async function mount(container, { session }) {
         ? pdfData.kontak 
         : (k.alamat && k.no_hp ? `${k.alamat}/${k.no_hp}` : (k.alamat || k.no_hp || "-"));
 
-      const balances = sickRecord ? null : await calculateLeaveHistoryBalances(k, {
+      const balances = needsFormPdf ? await calculateLeaveHistoryBalances(k, {
         ...pdfData,
         nama_karyawan: k.nama_karyawan,
         nik: k.nik || k.nik_karyawan || "-",
@@ -2574,7 +2575,7 @@ export async function mount(container, { session }) {
         status_final: "APPROVED FINAL"
       });
 
-      const formHtml = sickRecord ? null : generateStandardFormCutiHtml({
+      const formHtml = needsFormPdf ? generateStandardFormCutiHtml({
         namaKaryawan: k.nama_karyawan,
         nik: k.nik || k.nik_karyawan || "-",
         divisi: k.divisi || k.jabatan || k.cabang || "-",
@@ -2610,7 +2611,7 @@ export async function mount(container, { session }) {
       // 3. Buat attachment berkas PDF murni
       const cleanEmpName = (k.nama_karyawan || "Karyawan").replace(/[^a-zA-Z0-9_-]/g, "_");
       const attachments = [];
-      if (!sickRecord) try {
+      if (!sickRecord && audiences.has("supervisor")) try {
         const pdfBase64 = await generateHtmlAsPdfBase64(formHtml);
         if (!pdfBase64) throw new Error("Hasil konversi PDF kosong");
         attachments.push({
@@ -2621,7 +2622,7 @@ export async function mount(container, { session }) {
         });
       } catch (ePdf) {
         console.error("Gagal membuat lampiran PDF Form Cuti:", ePdf);
-        throw new Error("Form Cuti PDF gagal dibuat. Email tidak dikirim agar karyawan tidak menerima lampiran yang keliru.");
+        throw new Error("Form Cuti PDF gagal dibuat. Email kepada atasan tidak dikirim tanpa lampiran yang sesuai.");
       }
 
       // 4. Resolusi Penerima Notifikasi (Karyawan, Atasan di Cabang Sama, Rekan Se-Divisi di Cabang Sama)
@@ -2820,14 +2821,14 @@ export async function mount(container, { session }) {
         : `${pdfData.count || 1} Hari Kerja`;
       const sickDocumentUrl = sickRecord && /^https:\/\//i.test(String(pdfData.dokumen_sakit_url || "")) ? pdfData.dokumen_sakit_url : "";
 
-      // 5a. Email ke Karyawan yang Bersangkutan (dengan Dokumen Form Cuti Terlampir)
+      // 5a. Email ke Karyawan yang Bersangkutan: rincian saja, tanpa Form Cuti.
       if (audiences.has("employee") && recipientEmails.length > 0) {
         const emailBodyKaryawan = buildStandardEmailHtml({
-          badgeText: sickRecord ? "Catatan Sakit Tercatat" : "Cuti Tercatat • Form Terlampir",
+          badgeText: sickRecord ? "Catatan Sakit Tercatat" : "Cuti Tercatat",
           badgeVariant: "green",
           title: sickRecord ? "Catatan Sakit Anda Telah Dicatat" : "Pengajuan Cuti Anda Telah Dicatat",
           recipientName: k.nama_karyawan,
-          introText: sickRecord ? "Ketidakhadiran karena sakit Anda telah dicatat oleh Tim HRD tanpa menerbitkan Form Cuti." : `Pengajuan cuti Anda telah berhasil diverifikasi dan dicatat oleh Tim HRD. Dokumen formulir cuti resmi (Form Cuti) <strong>terlampir langsung pada email ini</strong> dalam format PDF.`,
+          introText: sickRecord ? "Ketidakhadiran karena sakit Anda telah dicatat oleh Tim HRD tanpa menerbitkan Form Cuti." : "Pengajuan cuti Anda telah diverifikasi dan dicatat oleh Tim HRD. Berikut rincian cuti Anda.",
           infoList: [
             { label: "Nama Karyawan", value: k.nama_karyawan },
             { label: "NIK", value: k.nik || k.nik_karyawan || "-" },
@@ -2836,19 +2837,19 @@ export async function mount(container, { session }) {
             { label: "Tanggal Cuti", value: tglCutiStr },
             { label: "Durasi Cuti", value: durasiStr },
             { label: "Keperluan", value: pdfData.alasan || pdfData.keterangan_cuti || "-" },
-            ...(sickRecord ? [{ label: "Pemotongan Saldo", value: getCutiDeductionCategory(pdfData).category === "Tidak Dipotong" ? "Bebas Potongan" : pdfData.potong_jatah || "Tahunan" }] : [{ label: "Dokumen Terlampir", value: `📎 Form_Cuti_${cleanEmpName}.pdf` }])
+            { label: "Pemotongan Saldo", value: getCutiDeductionCategory(pdfData).category === "Tidak Dipotong" ? "Bebas Potongan" : pdfData.potong_jatah || "Tahunan" }
           ],
           actionUrl: sickDocumentUrl,
           actionText: "Buka Dokumen Sakit →",
-          secondaryNote: sickRecord ? (sickDocumentUrl ? "Dokumen sakit dapat dibuka lewat tombol di atas; Form Cuti tidak dibuat." : "Tidak ada dokumen yang diunggah. Form Cuti tidak dibuat.") : "Dokumen cuti resmi telah dilampirkan pada email ini untuk arsip Anda dan telah tersimpan di sistem HRIS CV Andela Jaya."
+          secondaryNote: sickRecord ? (sickDocumentUrl ? "Dokumen sakit dapat dibuka lewat tombol di atas; Form Cuti tidak dibuat." : "Tidak ada dokumen yang diunggah. Form Cuti tidak dibuat.") : "Rincian cuti telah tersimpan di sistem HRIS CV Andela Jaya. Jatah cuti terbaru dapat dilihat di portal HRIS."
         });
 
         const employeeEmailSent = await sendEmailNotif(
           recipientEmails.join(", "),
-          sickRecord ? `[HRIS] Catatan Sakit: ${k.nama_karyawan} (${fmtDateShort(pdfData.tanggal)})` : `[HRIS Cuti] Form Cuti Resmi: ${k.nama_karyawan} (${fmtDateShort(pdfData.tanggal)})`,
+          sickRecord ? `[HRIS] Catatan Sakit: ${k.nama_karyawan} (${fmtDateShort(pdfData.tanggal)})` : `[HRIS Cuti] Pengajuan Cuti Tercatat: ${k.nama_karyawan} (${fmtDateShort(pdfData.tanggal)})`,
           emailBodyKaryawan,
           "",
-          sickRecord ? null : attachments,
+          null,
           { manual: true }
         );
         if (!employeeEmailSent) {

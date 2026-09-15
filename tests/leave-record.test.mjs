@@ -26,7 +26,8 @@ test("multi-day execution period overlaps filter and no-scan sick record skips l
   assert.equal(matchesLeaveExportPeriod({}, { basis: "leave", start: "2026-09-10", end: "2026-09-10", leaveStart: "2026-09-09", leaveEnd: "2026-09-11" }), true);
   const source = readFileSync(new URL("../js/views/cuti.js", import.meta.url), "utf8");
   assert.match(source, /if \(!sickRecord\) \{\s*await generatePdfAndNotify/);
-  assert.match(source, /const formHtml = sickRecord \? null/);
+  assert.match(source, /const needsFormPdf = !sickRecord && \(publishDocument \|\| audiences\.has\("supervisor"\)\)/);
+  assert.match(source, /const formHtml = needsFormPdf \? generateStandardFormCutiHtml/);
   assert.match(source, /const publishDocument = options\.publishDocument === true && !sickRecord/);
   assert.match(source, /uploadFileToDrive\(sickFile, "Cuti\/Surat Dokter"\)/);
   assert.doesNotMatch(source, /const ok = await confirmDialog\(\s*`Kirim email dan notifikasi cuti/);

@@ -22,3 +22,17 @@ test("leave and approval screens expose manual delivery controls", () => {
   assert.match(approval, /data-manual-notify/);
   assert.match(approval, /Kirim Email &amp; Notifikasi/);
 });
+
+test("employee leave email contains details without a Form Cuti attachment", () => {
+  const leave = readFileSync(new URL("../js/views/cuti.js", import.meta.url), "utf8");
+  const employee = leave.split("// 5a. Email ke Karyawan")[1]?.split("// 5b. Email ke Atasan")[0];
+  const supervisor = leave.split("// 5b. Email ke Atasan")[1]?.split("// 5c. Email ke Rekan")[0];
+  assert.ok(employee && supervisor);
+  assert.match(employee, /label: "Tanggal Cuti"/);
+  assert.match(employee, /label: "Pemotongan Saldo"/);
+  assert.doesNotMatch(employee, /Form Terlampir|Dokumen Terlampir|Form Cuti Resmi|: attachments,/);
+  assert.match(employee, /emailBodyKaryawan,\s*"",\s*null,\s*\{ manual: true \}/);
+  assert.match(supervisor, /sickRecord \? null : attachments/);
+  assert.match(leave, /const needsFormPdf = !sickRecord && \(publishDocument \|\| audiences\.has\("supervisor"\)\)/);
+  assert.match(leave, /if \(!sickRecord && audiences\.has\("supervisor"\)\) try \{/);
+});
