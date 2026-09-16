@@ -2,9 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-test("production configuration contains no automatic operational cron", () => {
+test("production schedules morning and evening leave digests in UTC", () => {
   const config = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url), "utf8"));
-  assert.deepEqual(config.crons, []);
+  assert.deepEqual(config.crons, [
+    { path: "/api/cron-rekap-cuti", schedule: "45 0 * * *" },
+    { path: "/api/cron-rekap-cuti", schedule: "0 10 * * *" }
+  ]);
+
+  const handler = readFileSync(new URL("../api/cron-rekap-cuti.js", import.meta.url), "utf8");
+  assert.match(handler, /cronSchedule === "45 0 \* \* \*"[\s\S]*\? "morning"/);
+  assert.match(handler, /cronSchedule === "0 10 \* \* \*" \? "evening"/);
 });
 
 test("shared email and notification helpers require an explicit manual action", () => {
