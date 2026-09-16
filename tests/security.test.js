@@ -54,11 +54,13 @@ test('cron secret uses bearer authorization', () => {
 });
 
 test('attendance PIC endpoint enforces auth, explicit actions, branch scope, and batch limit', () => {
-  const source = fs.readFileSync(path.join(__dirname, '..', 'api', 'attendance-access.js'), 'utf8');
+  const source = fs.readFileSync(path.join(__dirname, '..', 'lib', 'attendance-access.js'), 'utf8');
+  const endpoint = fs.readFileSync(path.join(__dirname, '..', 'api', 'sync-absen.js'), 'utf8');
   assert.match(source, /requireFirebaseAuth\(req, res\)/);
   assert.match(source, /absensi\.data\.view_all/);
   assert.match(source, /absensi\.data\.edit/);
   assert.match(source, /normalizeBranch\(snap\.data\(\)\.cabang\).*normalizeBranch\(branch\)/s);
   assert.match(source, /changes\.length > 400/);
   assert.match(source, /BULK_ATTENDANCE_CORRECTION/);
+  assert.match(endpoint, /startsWith\('attendance_'\)/);
 });

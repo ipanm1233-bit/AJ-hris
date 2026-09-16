@@ -23,10 +23,10 @@ async function fingerprintApi(action, payload = {}) {
  return result;
 }
 
-async function attendanceAccessApi(method = "GET", payload = null) {
- const response = await authFetch('/api/attendance-access', {
-  method,
-  ...(payload ? { body: JSON.stringify(payload) } : {})
+async function attendanceAccessApi(action, payload = null) {
+ const response = await authFetch('/api/sync-absen', {
+  method: "POST",
+  body: JSON.stringify({ action, ...(payload || {}) })
  });
  const result = await response.json().catch(() => ({}));
  if (!response.ok || result.success === false) throw new Error(result.error || `HTTP ${response.status}`);
@@ -252,7 +252,7 @@ export async function mount(container, { session } = {}) {
  }
  const attendanceRef = collection(db, COL.DATA_ABSENSI);
  const attendanceRequest = roleIsHrdOrAdmin ? fsGetAll(COL.DATA_ABSENSI)
-  : isPicBranch ? attendanceAccessApi("GET").then(result => result.rows || [])
+  : isPicBranch ? attendanceAccessApi("attendance_list").then(result => result.rows || [])
   : session?.nik ? Promise.all([
       getDocs(query(attendanceRef, where("nik", "==", String(session.nik)))),
       getDocs(query(attendanceRef, where("nik_karyawan", "==", String(session.nik))))
@@ -733,7 +733,7 @@ export async function mount(container, { session } = {}) {
       });
       await batch.commit();
      } else {
-      await attendanceAccessApi("PATCH", { changes: apiChanges });
+      await attendanceAccessApi("attendance_patch", { changes: apiChanges });
      }
      selectedAttendanceKeys.clear();
      closeModal();
@@ -780,7 +780,7 @@ export async function mount(container, { session } = {}) {
    divisi: item.divisi || "", jabatan: item.jabatan || "", sumber: "KOREKSI HRD", ...dataUpdate
   } : dataUpdate, { merge: true });
  } else {
-  await attendanceAccessApi("PATCH", { changes: [{
+  await attendanceAccessApi("attendance_patch", { changes: [{
    id: targetId, nik: item.nik || "", nama: item.nama || "", tanggal: item.tanggal,
    cabang: item.cabang || "", divisi: item.divisi || "", jabatan: item.jabatan || "",
    ...dataUpdate
