@@ -2573,7 +2573,7 @@ export async function mount(container, { session }) {
         jumlah_hari: pdfData.count || (pdfData.isHalfDay ? 0.5 : 1),
         jenis_cuti: pdfData.type_cuti,
         status_final: "APPROVED FINAL"
-      });
+      }) : null;
 
       const formHtml = needsFormPdf ? generateStandardFormCutiHtml({
         namaKaryawan: k.nama_karyawan,
@@ -2606,7 +2606,7 @@ export async function mount(container, { session }) {
         namaAtasan: k.atasan || k.atasan_langsung || k.nama_atasan || k.spv || "",
         namaHrd: "STAFF HRD",
         forPdf: true
-      });
+      }) : "";
 
       // 3. Buat attachment berkas PDF murni
       const cleanEmpName = (k.nama_karyawan || "Karyawan").replace(/[^a-zA-Z0-9_-]/g, "_");

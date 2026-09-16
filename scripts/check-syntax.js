@@ -15,3 +15,23 @@ for (const file of files) {
   }
 }
 console.log(`Syntax check passed for ${files.length} server files.`);
+
+const { parse } = require('@babel/parser');
+function browserFiles(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+    const file = path.join(dir, entry.name);
+    if (entry.isDirectory()) return browserFiles(file);
+    return /\.(?:js|mjs)$/.test(entry.name) ? [file] : [];
+  });
+}
+
+const clientFiles = browserFiles(path.join(process.cwd(), 'js'));
+for (const file of clientFiles) {
+  try {
+    parse(fs.readFileSync(file, 'utf8'), { sourceType: 'module' });
+  } catch (error) {
+    console.error(`${path.relative(process.cwd(), file)}: ${error.message}`);
+    process.exit(1);
+  }
+}
+console.log(`Syntax check passed for ${clientFiles.length} browser files.`);
