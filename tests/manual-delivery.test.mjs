@@ -12,6 +12,8 @@ test("production schedules morning and evening leave digests in UTC", () => {
   const handler = readFileSync(new URL("../api/cron-rekap-cuti.js", import.meta.url), "utf8");
   assert.match(handler, /cronSchedule === "45 0 \* \* \*"[\s\S]*\? "morning"/);
   assert.match(handler, /cronSchedule === "0 10 \* \* \*" \? "evening"/);
+  assert.match(handler, /const isScheduledInvocation = Boolean\(scheduledType\)/);
+  assert.equal((handler.match(/\|\| forceSend \|\| isScheduledInvocation/g) || []).length, 2);
 });
 
 test("shared email and notification helpers require an explicit manual action", () => {

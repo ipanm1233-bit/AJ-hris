@@ -183,6 +183,7 @@ module.exports = async function handler(req, res) {
     const scheduledType = cronSchedule === "45 0 * * *"
       ? "morning"
       : (cronSchedule === "0 10 * * *" ? "evening" : null);
+    const isScheduledInvocation = Boolean(scheduledType);
     const type = (req.query?.type || req.body?.type || scheduledType || "auto").toLowerCase();
     const targetBranchParam = req.query?.branch || req.body?.branch || null;
     const forceSend = req.query?.force === "true" || req.body?.force === true;
@@ -360,7 +361,7 @@ module.exports = async function handler(req, res) {
           });
 
           // Kirim email jika ada data cuti atau jika dipaksa/mode terjadwal
-          if (listCutiCabang.length > 0 || forceSend) {
+          if (listCutiCabang.length > 0 || forceSend || isScheduledInvocation) {
             try {
               const delivery = await sendCronMailOnce(db, `${todayStr}_morning_${normalizeBranch(cab)}`, {
                 from: `"HRIS Andela Jaya" <${process.env.GMAIL_USER}>`,
@@ -524,7 +525,7 @@ module.exports = async function handler(req, res) {
             footerNote: "Atasan Langsung dan HRD diharapkan segera meninjau dan memberikan persetujuan pada menu Persetujuan HRIS."
           });
 
-          if (listPengajuanCabang.length > 0 || forceSend) {
+          if (listPengajuanCabang.length > 0 || forceSend || isScheduledInvocation) {
             try {
               const delivery = await sendCronMailOnce(db, `${todayStr}_evening_${normalizeBranch(cab)}`, {
                 from: `"HRIS Andela Jaya" <${process.env.GMAIL_USER}>`,
