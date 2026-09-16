@@ -4,7 +4,7 @@ import { renderCrudModule, badge, emptyState, skeletonRows, avatar, openPenilaia
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames, hasPermission, canEditModuleData } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
 import { uploadFileToDrive } from "../gas-integration.js";
-import { aggregateKpiByPeriod, DEFAULT_KPI_GRADE_RULES, evaluateKpiGrade, getLatestKpiSummary, validateGradeRulesMap } from "../kpi-scoring.mjs";
+import { aggregateKpiByPeriod, DEFAULT_KPI_GRADE_RULES, evaluateKpiGrade, getLatestKpiSummary, validateGradeRulesMap, assessKpiDecisionReadiness } from "../kpi-scoring.mjs";
 
 // =====================================================================
 // MASTER INDIKATOR PENILAIAN HARIAN & TARGET BULANAN
@@ -4260,6 +4260,7 @@ export async function mount(container, { session, params }) {
 
     const empDaily = dailyLogs.filter(d => (d.nama_karyawan || "").toLowerCase() === (empData.nama_karyawan || "").toLowerCase());
     empDaily.sort((a, b) => new Date(b.tanggal || 0) - new Date(a.tanggal || 0));
+    const decisionReadiness = assessKpiDecisionReadiness(latestKpiSummary, empDaily.length);
 
     // Existing evaluation data
     const ev = existingEval || {};
@@ -4392,6 +4393,13 @@ export async function mount(container, { session, params }) {
               <div>
                 <label class="block text-xs text-slate-600 font-semibold mb-1">Catatan & Justifikasi HRD (Kinerja, Absensi, Kedisiplinan)</label>
                 <textarea id="input-catatan-hrd" rows="2" placeholder="Tuliskan ringkasan evaluasi kehadiran, pencapaian target, integritas, dan alasan rekomendasi..." class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none bg-white font-normal">${escapeHtml(ev.catatan_hrd || "")}</textarea>
+              </div>
+              <div class="bg-white rounded-xl border border-blue-200 p-3 space-y-2">
+                <p class="text-xs font-bold text-blue-950">Jejak Data untuk Keputusan</p>
+                <p class="text-[11px] text-slate-600">KPI: ${latestKpiSummary ? `${escapeHtml(latestKpiSummary.period)} • ${latestKpiSummary.score.toFixed(2)} • ${latestKpiSummary.raterCount} penilai` : "belum ada"}; log harian: ${empDaily.length} catatan. ${decisionReadiness.ready ? "Data dasar tersedia." : "Skor sistem hanya petunjuk sementara."}</p>
+                ${decisionReadiness.gaps.length ? `<ul class="list-disc pl-4 text-[11px] text-amber-800">${decisionReadiness.gaps.map(gap => `<li>${escapeHtml(gap)}</li>`).join("")}</ul>` : ""}
+                <label class="block text-[11px] font-semibold text-slate-700" for="input-sumber-bukti-hrd">Sumber bukti yang ditinjau HRD (periode, laporan kerja, absensi terverifikasi, catatan atasan, atau tautan)</label>
+                <textarea id="input-sumber-bukti-hrd" rows="2" placeholder="Contoh: Rekap pencapaian Agustus 2026, absensi yang sudah dikoreksi HRD, dan catatan evaluasi supervisor..." class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none">${escapeHtml(ev.sumber_bukti_hrd || "")}</textarea>
               </div>
             </div>
 
@@ -4596,7 +4604,7 @@ export async function mount(container, { session, params }) {
                   <div><span class="text-slate-400 block">Penilai:</span> <strong>${latestKpiSummary.raterCount} evaluator</strong></div>
                 </div>
                 <div class="mt-2 p-2.5 rounded-xl border border-blue-200 bg-blue-50 text-[11px] text-blue-900">
-                  Rekomendasi sistem berdasarkan skor agregat: <strong>${escapeHtml(evaluateGradeRule("KONTRAK", latestKpiSummary.score, currentGradeRulesMap).rekomendasi)}</strong>. Keputusan tetap wajib ditetapkan HRD, GM, dan Direktur.
+                  ${decisionReadiness.ready ? "Referensi" : "Referensi sementara (data belum lengkap)"} berdasarkan skor agregat: <strong>${escapeHtml(evaluateGradeRule("KONTRAK", latestKpiSummary.score, currentGradeRulesMap).rekomendasi)}</strong>. Keputusan tetap wajib ditetapkan HRD, GM, dan Direktur.
                 </div>
               ` : `
                 <div class="py-4 text-center text-xs text-slate-400 italic">Belum ada riwayat penilaian KPI tercatat.</div>
@@ -4771,6 +4779,12 @@ export async function mount(container, { session, params }) {
     const btnSaveProgress = document.getElementById("btn-save-progress-eval");
     if (btnSaveProgress) {
       btnSaveProgress.onclick = async () => {
+        const recommendation = document.getElementById("input-rekomendasi-hrd")?.value || "";
+        const evidence = document.getElementById("input-sumber-bukti-hrd")?.value.trim() || "";
+        if (recommendation && evidence.length < 12) {
+          toast("Sebutkan sumber bukti dan periode yang ditinjau sebelum menyimpan rekomendasi HRD.", "warning");
+          return;
+        }
         btnSaveProgress.disabled = true;
         btnSaveProgress.textContent = "Menyimpan...";
 
@@ -4789,6 +4803,9 @@ export async function mount(container, { session, params }) {
           tahap: calculatedStage,
           rekomendasi_hrd: document.getElementById("input-rekomendasi-hrd")?.value || "",
           catatan_hrd: document.getElementById("input-catatan-hrd")?.value || "",
+          sumber_bukti_hrd: evidence,
+          kelengkapan_data_kpi: decisionReadiness.ready ? "CUKUP" : "PERLU_VERIFIKASI",
+          celah_data_kpi: decisionReadiness.gaps,
           nama_reviewer_hrd: document.getElementById("input-nama-hrd")?.value || "",
           tgl_review_hrd: document.getElementById("input-tgl-hrd")?.value || "",
           nama_gm: inNamaGm?.value || "",
@@ -4830,6 +4847,11 @@ export async function mount(container, { session, params }) {
     const btnExecute = document.getElementById("btn-execute-renewal");
     if (btnExecute) {
       btnExecute.onclick = () => {
+        const evidence = document.getElementById("input-sumber-bukti-hrd")?.value.trim() || ev.sumber_bukti_hrd || "";
+        if (evidence.length < 12) {
+          toast("Keputusan kontrak perlu sumber bukti HRD yang dapat ditelusuri. Lengkapi lalu simpan progres dahulu.", "warning");
+          return;
+        }
         const keputusan = document.getElementById("input-keputusan-dir")?.value || "PENDING";
         const durasi = selDurasi?.value || "12 Bulan";
         const tglMulai = inMulaiBaru?.value;
@@ -4858,6 +4880,8 @@ export async function mount(container, { session, params }) {
                   tahap: "SELESAI",
                   status_final: "SELESAI",
                   keputusan_direktur: "TIDAK_DIPERPANJANG",
+                  sumber_bukti_hrd: evidence,
+                  kelengkapan_data_kpi: decisionReadiness.ready ? "CUKUP" : "PERLU_VERIFIKASI",
                   updated_at: serverTimestamp()
                 }, { merge: true });
                 batch.set(doc(db, "contract_audit_logs", `CONTRACT-REJECT-${recordId}-${Date.now()}`), {
@@ -4942,6 +4966,9 @@ export async function mount(container, { session, params }) {
                 kpi_periode_referensi: latestKpiSummary?.period || "",
                 kpi_skor_agregat: latestKpiSummary?.score ?? null,
                 kpi_jumlah_penilai: latestKpiSummary?.raterCount || 0,
+                sumber_bukti_hrd: evidence,
+                kelengkapan_data_kpi: decisionReadiness.ready ? "CUKUP" : "PERLU_VERIFIKASI",
+                celah_data_kpi: decisionReadiness.gaps,
                 kpi_rekomendasi_sistem: latestKpiSummary
                   ? evaluateGradeRule("KONTRAK", latestKpiSummary.score, currentGradeRulesMap).rekomendasi
                   : "",

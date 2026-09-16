@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   aggregateKpiByPeriod,
+  assessKpiDecisionReadiness,
   evaluateKpiGrade,
   getLatestKpiSummary,
   matchesKpiEmployee,
@@ -73,4 +74,16 @@ test("rejects overlapping grade rules", () => {
     { min: 80, max: 100, predikat: "B", rekomendasi: "B" }
   ] });
   assert.match(error, /tumpang tindih/);
+});
+
+test("contract decision labels single-rater KPI with no indicator evidence as provisional", () => {
+  const summary = getLatestKpiSummary([{
+    nik_dinilai: '123', periode: 'Q3 2026', total_skor: 97,
+    nama_penilai: 'Boss', tipe_relasi: 'Atasan'
+  }], { nik: '123' });
+  const readiness = assessKpiDecisionReadiness(summary, 0);
+  assert.equal(readiness.ready, false);
+  assert.ok(readiness.gaps.some(gap => /penilai/.test(gap)));
+  assert.ok(readiness.gaps.some(gap => /indikator/.test(gap)));
+  assert.equal(assessKpiDecisionReadiness(null, 3).ready, false);
 });

@@ -191,6 +191,18 @@ export function getLatestKpiSummary(records, employee = {}) {
   return aggregateKpiByPeriod(records, employee)[0] || null;
 }
 
+export function assessKpiDecisionReadiness(summary, dailyLogCount = 0) {
+  const gaps = [];
+  if (!summary) gaps.push("Belum ada KPI pada periode yang relevan.");
+  else {
+    if (summary.raterCount < 2) gaps.push("KPI baru memiliki satu penilai; belum ada pembanding.");
+    if (!summary.indicatorScores?.length) gaps.push("KPI belum memiliki rincian skor indikator.");
+    if (!summary.relationScores?.ATASAN) gaps.push("Penilaian dari atasan belum tersedia.");
+  }
+  if (!dailyLogCount) gaps.push("Log capaian kerja harian belum tersedia.");
+  return { ready: gaps.length === 0, gaps };
+}
+
 export function evaluateKpiGrade(categoryKey, score, rulesMap) {
   const category = categoryKey || "KPI_360";
   const rules = rulesMap?.[category] || rulesMap?.KPI_360 || [];

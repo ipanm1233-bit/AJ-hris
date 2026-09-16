@@ -68,3 +68,14 @@ test("uses noon as effective checkout for approved afternoon half-day leave", ()
   assert.equal(row.status_kind, "half-day");
   assert.match(row.attendance_status, /HADIR PAGI.*CUTI SIANG/);
 });
+test('highlights a finger name belonging to another employee without changing scan owner', () => {
+  const rows = buildAttendanceStatusRows({
+    employees: [{ nik: '1001', nama_karyawan: 'SAPUTRA HIDAYAT', finger_name: 'SAPUTRA' }],
+    attendanceRows: [{ nik: '1001', nama: 'SAPUTRA HIDAYAT', fingerprint_name: 'SOLEHUL HADI',
+      sumber: 'FINGERPRINT', tanggal: '2026-09-08', scan_masuk: '07:56', scan_keluar: '17:02' }]
+  });
+  assert.equal(rows[0].nik, '1001');
+  assert.equal(rows[0].perlu_koreksi, true);
+  assert.match(rows[0].alasan_koreksi, /Nama finger berbeda/);
+  assert.equal(rows[0].ketidakhadiran, '');
+});

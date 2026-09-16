@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { machineNameAgrees, addUniqueIdentifier } = require('../lib/fingerprint-identity');
 const {
   getDeviceUserId,
   parseFingerprintTimestamp,
@@ -108,4 +109,14 @@ test('repairs an old record that stored the same lone afternoon scan as scan mas
 test('rejects invalid calendar dates and incomplete records', () => {
   assert.equal(parseFingerprintTimestamp('2026-02-31 08:00:00'), null);
   assert.equal(normalizeFingerprintLog({ recordTime: '2026-09-07 08:00:00' }), null);
+});
+test('finger ID for Saputra is not accepted when the machine reports Solehul Hadi', () => {
+  const saputra = { _docId: 'SAP', nama_karyawan: 'SAPUTRA HIDAYAT', finger_name: 'SAPUTRA' };
+  const solehul = { _docId: 'SOL', nama_karyawan: 'SOLEHUL HADI', finger_name: 'SOLEHUL' };
+  assert.equal(machineNameAgrees(saputra, 'SOLEHUL HADI'), false);
+  assert.equal(machineNameAgrees(saputra, 'SAPUTRA HIDAYAT'), true);
+  const machineIds = new Map();
+  addUniqueIdentifier(machineIds, '30', saputra);
+  addUniqueIdentifier(machineIds, '30', solehul);
+  assert.equal(machineIds.get('30'), null);
 });

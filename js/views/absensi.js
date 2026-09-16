@@ -6,6 +6,7 @@ import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
 import { authFetch } from "../api-client.js";
 import { resolveWorkSchedule } from "../work-schedule.mjs";
 import { buildRawAttendanceExport } from "../attendance-export.mjs";
+import { attendanceImportValues, attendanceImportScan } from "../attendance-import.mjs";
 import { buildAttendanceStatusRows } from "../attendance-status.mjs";
 
 async function fingerprintApi(action, payload = {}) {
@@ -260,6 +261,7 @@ export async function mount(container, { session } = {}) {
  
  // Delete from Firebase in batches
  const chunks = []; let tempArr = [];
+ let importedCount = 0;
  rowsToArchive.forEach(r => {
  tempArr.push(r.id);
  if (tempArr.length === 400) { chunks.push(tempArr); tempArr = []; }
@@ -363,7 +365,7 @@ export async function mount(container, { session } = {}) {
 
  function renderRawTable(data) {
  if(!data.length) {
- rawTbody.innerHTML = `<tr><td colspan="14" class="p-8 text-center">${emptyState("Tidak ada data absensi Anda pada periode ini")}</td></tr>`;
+ rawTbody.innerHTML = `<tr><td colspan="15" class="p-8 text-center">${emptyState("Tidak ada data absensi Anda pada periode ini")}</td></tr>`;
  return;
  }
  rawTbody.innerHTML = data.map(r => `
@@ -380,10 +382,11 @@ export async function mount(container, { session } = {}) {
  <td class="px-4 py-3 text-center font-mono">${escapeHtml(r.jadwal_keluar || "-")}</td>
  <td class="px-4 py-3 text-center font-mono ${r.scan_masuk ? 'text-slate-700':'text-red-400 font-bold'}">${escapeHtml(r.scan_masuk || "-")}</td>
  <td class="px-4 py-3 text-center font-mono ${r.scan_keluar ? 'text-slate-700':'text-red-400 font-bold'}">${escapeHtml(r.scan_keluar || "-")}</td>
+ <td class="px-4 py-3 min-w-44">
+ ${r.ketidakhadiran ? `<span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">${escapeHtml(r.ketidakhadiran)}</span>` : `<span class="text-slate-400">—</span>`}
+ </td>
  <td class="px-4 py-3 min-w-52">
- <span title="${escapeHtml(r.alasan_koreksi || r.attendance_status || '')}" class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold leading-tight ${r.status_kind === 'review' ? 'bg-amber-100 text-amber-800 border border-amber-200' : r.status_kind === 'absence' ? 'bg-blue-100 text-blue-800 border border-blue-200' : r.status_kind === 'half-day' ? 'bg-violet-100 text-violet-800 border border-violet-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}">
- ${escapeHtml(r.attendance_status || "HADIR")}
- </span>
+ ${r.perlu_koreksi ? `<span title="${escapeHtml(r.alasan_koreksi || '')}" class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">Perlu koreksi HRD</span><p class="text-[10px] text-amber-800 mt-1">${escapeHtml(r.alasan_koreksi || 'Periksa scan')}</p>` : `<span class="text-emerald-600 text-[10px] font-bold">Tidak</span>`}
  </td>
  <td class="px-4 py-3 text-right">
  ${isHrdOrAdmin && canEdit ? `
@@ -510,7 +513,8 @@ export async function mount(container, { session } = {}) {
  const worksheet = window.XLSX.utils.json_to_sheet(exportRows);
  worksheet["!cols"] = [
  { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 24 }, { wch: 30 }, { wch: 14 },
- { wch: 13 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 52 }
+ { wch: 13 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+ { wch: 34 }, { wch: 18 }, { wch: 70 }
  ];
  if (worksheet["!ref"]) worksheet["!autofilter"] = { ref: worksheet["!ref"] };
  const workbook = window.XLSX.utils.book_new();
@@ -638,26 +642,29 @@ export async function mount(container, { session } = {}) {
 
  const chunks = []; let tempArr = [];
  rows.forEach(r => {
- const getVal = (keys) => {
- for(let k of Object.keys(r)) { if(keys.some(x => k.toUpperCase().includes(x))) return r[k]; }
- return null;
- };
-
- const tglStr = parseTanggalImport(getVal(["TANGGAL", "DATE"]));
- const empNama = getVal(["NAMA", "NAME"]);
- const empNik = getVal(["NIK", "ID"]);
-
- const empObj = (allKaryawan || []).find(k => {
- const kNik = String(k.nik || k.nik_karyawan || "").trim();
- const kNama = String(k.nama_karyawan || k.nama || "").trim().toLowerCase();
- if (kNik && empNik && kNik === String(empNik).trim()) return true;
- if (kNama && empNama && kNama === String(empNama).trim().toLowerCase()) return true;
- return false;
- });
+ const values = attendanceImportValues(r);
+ const tglStr = parseTanggalImport(values.tanggal);
+ const empNama = values.nama;
+ const empNik = values.nik;
+ const sameBranch = k => !values.cabang || attendanceKey(k.cabang) === attendanceKey(values.cabang);
+ const nikMatches = empNik ? (allKaryawan || []).filter(k => sameBranch(k) && attendanceKey(k.nik || k.nik_karyawan) === attendanceKey(empNik)) : [];
+ const nameMatches = empNama ? (allKaryawan || []).filter(k => sameBranch(k) && attendanceKey(k.nama_karyawan || k.nama) === attendanceKey(empNama)) : [];
+ const idMatches = values.fingerId ? (allKaryawan || []).filter(k => sameBranch(k) && [k.finger_id, k.no_finger, k.id_finger, k.pin].some(id => attendanceKey(id) === attendanceKey(values.fingerId))) : [];
+ const empObj = empNik ? (nikMatches.length === 1 ? nikMatches[0] : null)
+   : idMatches.length === 1 ? idMatches[0] : nameMatches.length === 1 ? nameMatches[0] : null;
+ const conflictingIdentity = Boolean(
+   (empNik && nikMatches.length !== 1) ||
+   (empObj && empNama && nameMatches.length && !nameMatches.includes(empObj)) ||
+   (empObj && values.fingerId && idMatches.length && !idMatches.includes(empObj)) ||
+   (empObj && values.fingerName && ![empObj.finger_name, empObj.nama_karyawan, empObj.nama]
+     .map(attendanceKey).filter(Boolean).some(alias => alias === attendanceKey(values.fingerName) ||
+       alias.startsWith(`${attendanceKey(values.fingerName)} `))) ||
+   (!empNik && !empObj && (idMatches.length > 1 || nameMatches.length > 1))
+ );
  const shift = resolveWorkSchedule(empObj, cfgJadwal, tglStr);
 
  const resolvedNik = String(empNik || empObj?.nik || empObj?.nik_karyawan || "").trim();
- const stableEmployeeKey = (resolvedNik || String(empNama || empObj?.nama_karyawan || empObj?.nama || ""))
+ const stableEmployeeKey = (resolvedNik || String(values.fingerId || empNama || empObj?.nama_karyawan || empObj?.nama || ""))
  .normalize("NFKD")
  .replace(/[\u0300-\u036f]/g, "")
  .replace(/[^a-zA-Z0-9._-]/g, "_")
@@ -669,17 +676,23 @@ export async function mount(container, { session } = {}) {
  nik: resolvedNik,
  nama: empNama || empObj?.nama_karyawan || empObj?.nama || "",
  tanggal: tglStr,
- cabang: getVal(["CABANG", "BRANCH"]) || empObj?.cabang || "",
+ cabang: values.cabang || empObj?.cabang || "",
  sumber: "IMPORT_EXCEL",
- jadwal_masuk: getVal(["JAM KERJA MASUK"]) || shift.masuk,
- jadwal_keluar: getVal(["JAM KERJA KELUAR"]) || shift.pulang,
+ fingerprint_no_id: values.fingerId || "",
+ fingerprint_name: values.fingerName || "",
+ auto_assign: Boolean(empObj && !conflictingIdentity),
+ perlu_koreksi: conflictingIdentity,
+ alasan_koreksi: conflictingIdentity ? "NIK, nama, atau ID finger pada file tidak cocok dengan master karyawan; periksa sumber scan." : "",
+ jadwal_masuk: values.jadwalMasuk || shift.masuk,
+ jadwal_keluar: values.jadwalPulang || shift.pulang,
  // Scan selalu berasal dari file; jangan isi jam dummy jika kolom kosong.
- scan_masuk: getVal(["JAM MASUK", "SCAN MASUK"]),
- scan_keluar: getVal(["JAM KELUAR", "SCAN KELUAR"])
+ scan_masuk: attendanceImportScan(values.scanMasuk),
+ scan_keluar: attendanceImportScan(values.scanPulang)
  };
 
- if (payload.nama && payload.tanggal) {
+ if (payload.nama && /^\d{4}-\d{2}-\d{2}$/.test(payload.tanggal) && (payload.scan_masuk || payload.scan_keluar)) {
  tempArr.push(payload);
+ importedCount++;
  if (tempArr.length === 400) { chunks.push(tempArr); tempArr = []; }
  }
  });
@@ -690,7 +703,7 @@ export async function mount(container, { session } = {}) {
  chunk.forEach(p => { batch.set(doc(db, COL.DATA_ABSENSI, p.id), p); });
  await batch.commit();
  }
- toast(`Sukses mengimport ${rows.length} data absensi!`, "success");
+ toast(`${importedCount} baris scan diimpor; ${rows.length - importedCount} baris tanpa scan/tanggal valid tidak dibuat menjadi finger palsu.`, "success");
  } catch (err) { toast("Gagal: " + err.message, "error"); }
  btnImport.disabled = false; btnImport.innerHTML = `Pilih & Unggah File Excel`;
  inputUpload.value = "";

@@ -362,7 +362,8 @@ module.exports = async function handler(req, res) {
     const numericEmployeeMap = new Map();
     const employeeNameMap = new Map();
     const employees = [];
-    const fingerprintFields = ['nik', 'nik_karyawan', 'finger_id', 'finger_name', 'kode_finger', 'no_finger', 'id_finger', 'pin'];
+    const { machineNameAgrees, addUniqueIdentifier } = require('../lib/fingerprint-identity');
+    const fingerprintFields = ['nik', 'nik_karyawan', 'finger_id', 'kode_finger', 'no_finger', 'id_finger', 'pin'];
     employeeSnap.forEach(snapshot => {
       const employee = { ...snapshot.data(), _docId: snapshot.id };
       if (normalizeBranch(employee.cabang) !== branch) return;
@@ -371,7 +372,7 @@ module.exports = async function handler(req, res) {
       identifiers.forEach(value => {
         const key = String(value || '').trim().toUpperCase();
         if (!key) return;
-        if (!employeeMap.has(key)) employeeMap.set(key, employee);
+        addUniqueIdentifier(employeeMap, key, employee);
         if (/^\d+$/.test(key)) {
           const numericKey = key.replace(/^0+(?=\d)/, '');
           if (!numericEmployeeMap.has(numericKey)) numericEmployeeMap.set(numericKey, employee);
@@ -415,12 +416,15 @@ module.exports = async function handler(req, res) {
     };
     const resolveEmployee = deviceUserId => {
       const exactKey = String(deviceUserId).trim().toUpperCase();
-      if (employeeMap.has(exactKey)) return employeeMap.get(exactKey);
+      const machineName = deviceUserNameMap.get(exactKey);
+      if (employeeMap.has(exactKey)) {
+        const matched = employeeMap.get(exactKey);
+        return matched && machineNameAgrees(matched, machineName) ? matched : null;
+      }
       if (/^\d+$/.test(exactKey)) {
         const numericMatch = numericEmployeeMap.get(exactKey.replace(/^0+(?=\d)/, ''));
-        if (numericMatch) return numericMatch;
+        if (numericMatch) return machineNameAgrees(numericMatch, machineName) ? numericMatch : null;
       }
-      const machineName = deviceUserNameMap.get(exactKey);
       return machineName ? resolveEmployeeByMachineName(machineName) : null;
     };
 
@@ -462,8 +466,8 @@ module.exports = async function handler(req, res) {
       }));
       const batch = db.batch();
 
-      // ID yang tidak bisa dipetakan tidak boleh menghasilkan jam/data dummy.
-      chunkItems.filter(item => !item.employee).forEach(item => batch.delete(item.legacyRef));
+      // Scan dengan identitas tidak cocok tidak ditulis maupun dihapus otomatis;
+      // catat sebagai unmatched agar HRD bisa memperbaiki pendaftaran pada mesin.
 
       resolvedChunk.forEach((item, index) => {
         const { group: g, employee, machineUser, nik, ref, legacyRef } = item;

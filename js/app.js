@@ -15,10 +15,12 @@ import { auth } from "./firebase-config.js";
 
 // Ubah versi ini setiap ada perubahan struktur view agar browser tidak
 // mencampur HTML terbaru dengan modul JavaScript lama dari cache.
-const APP_ASSET_VERSION = "20260915-leave-email-v2";
+const APP_ASSET_VERSION = "20260916-attendance-review-v1";
 const viewContainer = document.getElementById("view-container");
 let currentUnmount = null;
 let currentRoute = null;
+const viewHtmlCache = new Map();
+let routeRequestId = 0;
 
 const PUBLIC_CAREER_ROUTES = ["karir", "lowongan", "portal-karir", "loker", "karir-online", "career"];
 
@@ -362,6 +364,7 @@ export async function handleTestAndActivateNotification(session) {
 }
 
 async function loadViewHtml(viewName) {
+ if (viewHtmlCache.has(viewName)) return viewHtmlCache.get(viewName);
  const paths = [
  `/views/${viewName}.html`,
  `./views/${viewName}.html`,
@@ -369,9 +372,11 @@ async function loadViewHtml(viewName) {
  ];
  for (const p of paths) {
  try {
- const res = await fetch(`${p}?v=${APP_ASSET_VERSION}`, { cache: "no-store" });
+ const res = await fetch(`${p}?v=${APP_ASSET_VERSION}`);
  if (res.ok) {
- return await res.text();
+ const html = await res.text();
+ viewHtmlCache.set(viewName, html);
+ return html;
  }
  } catch (e) {
  // lanjut mencoba path berikutnya
@@ -559,8 +564,10 @@ const ROUTE_TITLES = {
 async function router(session) {
 	const container = document.getElementById("view-container");
 	if (!container) return;
+	const requestId = ++routeRequestId;
 
 	const activeSession = (await syncSessionWithDb(session)) || session;
+	if (requestId !== routeRequestId) return;
 
 	let { path, params } = parseHash();
 	let cleanPath = String(path || "").replace(/^[\/#]+/, "").replace(/[\/#]+$/, "").trim();
@@ -595,6 +602,7 @@ async function router(session) {
 	}
 
 	const allowed = await canAccessRoute(cleanPath, activeSession);
+	if (requestId !== routeRequestId) return;
 	if (!allowed) {
 		toast("Anda tidak memiliki akses ke menu tersebut", "warning");
 		location.hash = "#dashboard";
@@ -602,7 +610,6 @@ async function router(session) {
 	}
 
 	container.classList.remove("animate-fadein");
-	void container.offsetWidth; // reflow trigger biar animasi re-trigger tiap navigasi
 	container.classList.add("animate-fadein");
 
 	// Render shadow layout instant agar transisi halaman smooth tanpa patah/kedip
@@ -611,11 +618,15 @@ async function router(session) {
 	try {
 		if (typeof currentUnmount === "function") { currentUnmount(); currentUnmount = null; }
 		
-		const html = await loadViewHtml(mappedPath);
+		const [html, mod] = await Promise.all([
+			loadViewHtml(mappedPath),
+			import(`./views/${mappedPath}.js?v=${APP_ASSET_VERSION}`).catch(error => ({ __loadError: error }))
+		]);
+		if (requestId !== routeRequestId) return;
 		container.innerHTML = html;
 		
 		try {
-			const mod = await import(`./views/${mappedPath}.js?v=${APP_ASSET_VERSION}`);
+			if (mod.__loadError) throw mod.__loadError;
 			if (mod && typeof mod.mount === "function") {
 				const result = await mod.mount(container, { params, session: activeSession });
 				if (result && typeof result.unmount === "function") currentUnmount = result.unmount;

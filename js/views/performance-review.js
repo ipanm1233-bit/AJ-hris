@@ -141,6 +141,7 @@ async function renderMyReviews(wrap, session) {
  </div>
 
  <!-- LATEST PERFORMANCE GAUGE & OVERVIEW -->
+ ${latestReview.sumber_bukti ? `<div class="mb-4 rounded-xl bg-blue-50 border border-blue-100 p-3 text-xs text-blue-900"><strong>Sumber data evaluasi:</strong> ${escapeHtml(latestReview.sumber_bukti)}</div>` : `<div class="mb-4 rounded-xl bg-amber-50 border border-amber-100 p-3 text-xs text-amber-900">Review lama belum mencatat sumber bukti. Skor perlu ditelusuri ke reviewer sebelum digunakan sebagai dasar keputusan.</div>`}
  <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
  
  <!-- SCORE BOX -->
@@ -507,6 +508,11 @@ function openCreateReviewModal(employees, session, onSuccess) {
  
  <div class="space-y-4">
  <div>
+ <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Sumber Bukti & Periode yang Dinilai</label>
+ <textarea id="rev-sumber-bukti" rows="2" required minlength="12" class="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-maroon-500 text-sm" placeholder="Contoh: laporan target Q3 2026, absensi yang telah diverifikasi, dan evaluasi supervisor..."></textarea>
+ <p class="text-[11px] text-slate-500">Tuliskan data yang benar-benar ditinjau, bukan hanya opini atau kesimpulan.</p>
+ </div>
+ <div>
  <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Kekuatan Utama Karyawan (Strengths)</label>
  <textarea id="rev-kelebihan" rows="2" required class="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-maroon-500 text-sm" placeholder="Sebutkan prestasi rill, dedikasi, atau kekuatan kerja karyawan..."></textarea>
  </div>
@@ -620,6 +626,8 @@ function openCreateReviewModal(employees, session, onSuccess) {
  const kelebihan = m.querySelector("#rev-kelebihan").value.trim();
  const area_pengembangan = m.querySelector("#rev-area-pengembangan").value.trim();
  const rekomendasi = m.querySelector("#rev-rekomendasi").value.trim();
+ const sumber_bukti = m.querySelector("#rev-sumber-bukti").value.trim();
+ if (sumber_bukti.length < 12) return toast("Cantumkan sumber data dan periode untuk mendukung skor review.", "warning");
 
  const skor_akhir = Math.round(((kualitas_kerja + produktivitas + kerja_sama + kedisiplinan + komunikasi) / 5) * 10) / 10;
  let grade = "D";
@@ -648,6 +656,7 @@ function openCreateReviewModal(employees, session, onSuccess) {
  kelebihan,
  area_pengembangan,
  rekomendasi,
+ sumber_bukti,
  reviewer: `${session.nama} (${session.posisi})`,
  tanggal: new Date().toISOString()
  }, revId);

@@ -14,7 +14,8 @@ test('keeps a no-scan employee row and labels approved sick leave', () => {
   assert.equal(rows.length, 1);
   assert.equal(rows[0]['Nama Karyawan'], 'BUDI');
   assert.equal(rows[0]['Scan Masuk'], '');
-  assert.equal(rows[0].Keterangan, 'S - Sakit dengan Surat Dokter');
+  assert.equal(rows[0]['Keterangan Izin/Cuti'], 'S - Sakit dengan Surat Dokter');
+  assert.equal(rows[0]['Perlu Koreksi HRD'], 'Tidak');
 });
 
 test('exports an approved morning half-day leave with a noon effective schedule', () => {
@@ -26,13 +27,14 @@ test('exports an approved morning half-day leave with a noon effective schedule'
   });
   assert.equal(rows[0]['Jam Masuk'], '12:00');
   assert.equal(rows[0]['Jam Pulang'], '17:00');
-  assert.match(rows[0].Keterangan, /CUTI PAGI.*HADIR SIANG/);
-  assert.doesNotMatch(rows[0].Keterangan, /PERLU PEMERIKSAAN/);
+  assert.match(rows[0]['Keterangan Izin/Cuti'], /CUTI PAGI.*HADIR SIANG/);
+  assert.equal(rows[0]['Perlu Koreksi HRD'], 'Tidak');
 });
 
 test('marks an unexplained no-scan workday for manual review', () => {
   const rows = buildRawAttendanceExport({ employees: [employee], schedules: schedule, start: '2026-09-08', end: '2026-09-08' });
-  assert.equal(rows[0].Keterangan, 'TIDAK ADA SCAN - PERLU PEMERIKSAAN MANUAL');
+  assert.equal(rows[0]['Keterangan Izin/Cuti'], '');
+  assert.equal(rows[0]['Perlu Koreksi HRD'], 'Ya');
   assert.equal(rows[0]['Jam Masuk'], '08:00');
   assert.equal(rows[0]['Jam Pulang'], '17:00');
 });
@@ -43,7 +45,8 @@ test('does not treat pending leave as an approved absence', () => {
     leaves: [{ nik: '1001', tanggal: '2026-09-08', type_cuti: 'C - Cuti Tahunan', status: 'PENDING' }],
     start: '2026-09-08', end: '2026-09-08'
   });
-  assert.match(rows[0].Keterangan, /PERLU PEMERIKSAAN MANUAL/);
+  assert.equal(rows[0]['Keterangan Izin/Cuti'], '');
+  assert.equal(rows[0]['Perlu Koreksi HRD'], 'Ya');
 });
 
 test('labels an approved izin record from data_pengajuan', () => {
@@ -52,7 +55,7 @@ test('labels an approved izin record from data_pengajuan', () => {
     leaves: [{ nik_pemohon: '1001', tanggal_izin: '2026-09-08', kategori: 'IZIN', jenis_izin: 'IZIN_KELUAR_KANTOR', status_final: 'APPROVED FINAL' }],
     start: '2026-09-08', end: '2026-09-08'
   });
-  assert.equal(rows[0].Keterangan, 'IZIN_KELUAR_KANTOR');
+  assert.equal(rows[0]['Keterangan Izin/Cuti'], 'IZIN_KELUAR_KANTOR');
 });
 
 test('merges duplicate source rows into one employee-day', () => {
@@ -67,5 +70,45 @@ test('merges duplicate source rows into one employee-day', () => {
   assert.equal(rows.length, 1);
   assert.equal(rows[0]['Scan Masuk'], '07:58');
   assert.equal(rows[0]['Scan Pulang'], '17:01');
-  assert.equal(rows[0].Keterangan, 'HADIR');
+  assert.equal(rows[0]['Perlu Koreksi HRD'], 'Tidak');
+});
+
+test('travel absence does not invent daily finger scans', () => {
+  const rows = buildRawAttendanceExport({
+    employees: [{ ...employee, nama_karyawan: 'ANGGA', finger_name: 'ANGGA' }],
+    leaves: [{ nik: '1001', jenis_izin: 'DINAS LUAR KOTA', tanggal_berangkat: '2026-09-07', tanggal_kembali: '2026-09-12', status_final: 'APPROVED' }],
+    attendanceRows: [
+      { nik: '1001', nama: 'ANGGA', fingerprint_name: 'ANGGA', sumber: 'FINGERPRINT', tanggal: '2026-09-07', scan_masuk: '07:53' },
+      { nik: '1001', nama: 'ANGGA', fingerprint_name: 'ANGGA', sumber: 'FINGERPRINT', tanggal: '2026-09-12', scan_keluar: '16:05' }
+    ], start: '2026-09-07', end: '2026-09-12'
+  });
+  assert.equal(rows.length, 6);
+  assert.equal(rows[0]['Scan Masuk'], '07:53');
+  assert.equal(rows[5]['Scan Pulang'], '16:05');
+  for (const day of rows.slice(1, -1)) {
+    assert.equal(day['Scan Masuk'], '');
+    assert.equal(day['Scan Pulang'], '');
+    assert.equal(day['Keterangan Izin/Cuti'], 'DINAS LUAR KOTA');
+  }
+});
+
+test('flags finger name belonging to someone else and never merges competing machine users', () => {
+  const rows = buildRawAttendanceExport({
+    employees: [{ ...employee, nama_karyawan: 'SAPUTRA HIDAYAT', finger_name: 'SAPUTRA HIDAYAT' }],
+    attendanceRows: [
+      { nik: '1001', nama: 'SAPUTRA HIDAYAT', fingerprint_name: 'SAPUTRA HIDAYAT', fingerprint_user_id: '30', sumber: 'FINGERPRINT', tanggal: '2026-09-08', scan_masuk: '07:56' },
+      { nik: '1001', nama: 'SAPUTRA HIDAYAT', fingerprint_name: 'SOLEHUL HADI', fingerprint_user_id: '45', sumber: 'FINGERPRINT', tanggal: '2026-09-08', scan_keluar: '17:02' }
+    ], start: '2026-09-08', end: '2026-09-08'
+  });
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every(row => row['Perlu Koreksi HRD'] === 'Ya'));
+  assert.ok(rows.every(row => !row['Scan Masuk'] || !row['Scan Pulang']));
+});
+
+test('suspect legacy import that used scheduled start as a scan', () => {
+  const rows = buildRawAttendanceExport({ employees: [employee], schedules: schedule,
+    attendanceRows: [{ nik: '1001', nama: 'BUDI', sumber: 'IMPORT_EXCEL', tanggal: '2026-09-08', jadwal_masuk: '08:00', scan_masuk: '08:00' }],
+    start: '2026-09-08', end: '2026-09-08' });
+  assert.equal(rows[0]['Perlu Koreksi HRD'], 'Ya');
+  assert.match(rows[0]['Alasan Koreksi'], /log mesin/);
 });

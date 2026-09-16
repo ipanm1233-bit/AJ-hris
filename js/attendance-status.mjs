@@ -73,6 +73,14 @@ function minutes(value) {
   return match ? Number(match[1]) * 60 + Number(match[2]) : null;
 }
 
+function fingerOwnerConflict(row, employee) {
+  const machine = key(row?.fingerprint_name || row?.nama_finger);
+  if (!machine || !employee || !/FINGERPRINT|IMPORT_EXCEL/.test(key(row.sumber))) return false;
+  const aliases = [employee.finger_name, employee.nama_karyawan, employee.nama].map(key).filter(Boolean);
+  return aliases.length > 0 && !aliases.some(alias => machine === alias ||
+    (machine.length >= 3 && (alias.startsWith(`${machine} `) || machine.startsWith(`${alias} `))));
+}
+
 function statusForRow(row, absence) {
   const hasIn = Boolean(row.scan_masuk);
   const hasOut = Boolean(row.scan_keluar || row.scan_pulang);
@@ -90,7 +98,7 @@ function statusForRow(row, absence) {
       attendance_status: hasIn || hasOut ? `${absence.label} — ADA SCAN, PERLU KOREKSI HRD` : absence.label,
       status_kind: hasIn || hasOut ? "review" : "absence",
       perlu_koreksi: Boolean(hasIn || hasOut || row.perlu_koreksi),
-      alasan_koreksi: hasIn || hasOut ? "Ada scan pada hari cuti/izin/dinas; perlu diperiksa HRD." : (row.alasan_koreksi || "")
+      alasan_koreksi: hasIn || hasOut ? (row.alasan_koreksi || "Ada scan pada hari cuti/izin/dinas; perlu diperiksa HRD.") : (row.alasan_koreksi || "")
     };
   }
   if (row.perlu_koreksi || !hasIn || !hasOut) {
@@ -141,12 +149,16 @@ export function buildAttendanceStatusRows({ attendanceRows = [], employees = [],
   const actual = attendanceRows.map(original => {
     let row = reclassifyLegacySingleScan(original);
     const employee = employeeIdentities(row).map(id => employeeByIdentity.get(id)).find(Boolean) || row;
+    if (fingerOwnerConflict(row, employee)) row = {
+      ...row, perlu_koreksi: true,
+      alasan_koreksi: "Nama finger berbeda dari identitas karyawan; bandingkan ID dan log mesin sebelum mengoreksi."
+    };
     const employeeId = employeeIdentities(employee)[0];
     const absenceKey = `${employeeId}|${row.tanggal}`;
     const absence = absenceByEmployeeDate.get(absenceKey);
     if (absence) usedAbsences.add(absenceKey);
     if (absence?.record && isHalfDayLeave(absence.record)) row = applyHalfDayWorkWindow(row, absence.record);
-    return { ...row, ...statusForRow(row, absence) };
+    return { ...row, ...statusForRow(row, absence), ketidakhadiran: absence?.label || "" };
   });
 
   absenceByEmployeeDate.forEach((absence, absenceKey) => {
@@ -171,6 +183,7 @@ export function buildAttendanceStatusRows({ attendanceRows = [], employees = [],
       scan_masuk: "",
       scan_keluar: "",
       attendance_status: absence.label,
+      ketidakhadiran: absence.label,
       status_kind: "absence",
       perlu_koreksi: false,
       alasan_koreksi: "",
