@@ -1,11 +1,12 @@
 import { db, COL, collection, getDocs, doc, setDoc, getDoc, updateDoc, query, where } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, toNumber, escapeHtml, genId, fmtDateShort, confirmDialog, sendEmailNotif, buildStandardEmailHtml, notifyUser, getTargetsForRole, generateAndSaveCutiDocument, printFormCutiFisik, downloadFormCutiPdf, generateStandardFormCutiHtml, smartParseDate, getCalculatedJatahCuti, calculateLeaveHistoryBalances, getCarryoverPercentage, calculateCarryoverJatah, ensureXlsxLoaded, getCutiDeductionCategory, getEmployeeTenureInfo, countLeaveWorkingDays, getLeaveWorkingDaysDetail, isIndonesianNationalHoliday, TABEL_CUTI_PENGHARGAAN_MASA_KERJA, generateHtmlAsPdfBase64, downloadHtmlAsPdf } from "../utils.js";
 import { avatar, emptyState, skeletonRows, badge } from "../components.js";
-import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.js";
+import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames, hasPermission } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
 import { generateCutiDocViaGAS, uploadFileToDrive } from "../gas-integration.js";
 import { isSickLeave, isDoctorCertifiedSickLeave, resolveEffectiveLeaveDeduction } from "../leave-policy.mjs";
 import { leaveInputDate, leaveInputDisplay, matchesLeaveExportPeriod } from "../leave-export.mjs";
+import { resolveLeaveBranchScope, filterEmployeesForLeaveBranch, filterLeaveRowsForBranch, filterLeaveRowsForEmployees } from "../leave-scope.mjs";
 
 const DEFAULT_LEAVE_TYPES = [
  { id: "C", name: "Cuti Tahunan", potong: "Tahunan", count: 1 },
@@ -46,6 +47,9 @@ export async function mount(container, { session }) {
  const role = (session.role || "").toUpperCase();
  const isFullAccess = FULL_ACCESS_ROLES.includes(role);
  const isAtasanView = !isFullAccess && ATASAN_VIEW_ROLES.includes(role);
+ const canViewAll = isFullAccess || await hasPermission("cuti.view_all", session);
+ const leaveBranchScope = resolveLeaveBranchScope({ role, branch: session?.cabang, canViewAll });
+ const isBranchScopedPic = Boolean(leaveBranchScope);
  const canManage = isFullAccess; // hanya HRD/SUPERADMIN/DIREKTUR yang boleh atasi/edit/import/reset
 
  container.innerHTML = `
@@ -53,7 +57,7 @@ export async function mount(container, { session }) {
  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
  <div>
  <h1 class="text-2xl font-bold text-slate-800">Manajemen Cuti</h1>
- <p class="text-sm text-slate-500 mt-1">${canManage ? "Kelola jatah cuti, input izin manual, cetak form fisik, ekspor data Excel, serta kalkulasi reset & import." : "Mode lihat saja — hanya menampilkan karyawan yang menjadi bawahan Anda."}</p>
+ <p class="text-sm text-slate-500 mt-1">${canManage ? "Kelola jatah cuti, input izin manual, cetak form fisik, ekspor data Excel, serta kalkulasi reset & import." : isBranchScopedPic ? `Mode PIC Cabang ${escapeHtml(leaveBranchScope)} — hanya menampilkan karyawan cabang ini.` : "Mode lihat saja — hanya menampilkan data dalam lingkup akun Anda."}</p>
  </div>
  <div class="flex flex-wrap items-center gap-2">
  ${canManage ? `
@@ -276,6 +280,13 @@ export async function mount(container, { session }) {
 
  function populateCabangDropdown() {
    if (!filterCabang) return;
+   if (isBranchScopedPic) {
+     filterCabang.innerHTML = `<option value="${escapeHtml(leaveBranchScope)}">${escapeHtml(leaveBranchScope)} (${allKaryawan.length} Karyawan)</option>`;
+     filterCabang.value = leaveBranchScope;
+     filterCabang.disabled = true;
+     filterCabang.title = `Akses dibatasi untuk Cabang ${leaveBranchScope}`;
+     return;
+   }
    const currentVal = filterCabang.value;
    const branches = [...new Set(allKaryawan.map(k => (k.cabang || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "id", { sensitivity: "base" }));
    
@@ -408,14 +419,25 @@ export async function mount(container, { session }) {
       }
     }
     allKaryawan = Array.from(uniqueMap.values());
- if (isAtasanView) {
+ if (isBranchScopedPic) {
+  allKaryawan = filterEmployeesForLeaveBranch(allKaryawan, leaveBranchScope);
+ } else if (isAtasanView) {
   const bset = new Set(bawahanNames || []);
   if (session?.nama) bset.add(session.nama);
  allKaryawan = allKaryawan.filter(k => bset.has(k.nama_karyawan));
+ } else if (!isFullAccess) {
+  const sessionNik = String(session?.nik || '').trim().toUpperCase();
+  const sessionName = String(session?.nama || '').trim().toUpperCase();
+  allKaryawan = allKaryawan.filter(k =>
+    (sessionNik && String(k.nik || k.nik_karyawan || '').trim().toUpperCase() === sessionNik) ||
+    (sessionName && String(k.nama_karyawan || '').trim().toUpperCase() === sessionName)
+  );
  }
  allKaryawan.sort((a, b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id", { sensitivity: "base" }));
 
- allCuti = snapC;
+ allCuti = isBranchScopedPic
+  ? filterLeaveRowsForBranch(snapC, allKaryawan, leaveBranchScope)
+  : isFullAccess ? snapC : filterLeaveRowsForEmployees(snapC, allKaryawan);
  
  if (snapCfg.exists() && snapCfg.data().types) {
  leaveConfig = snapCfg.data().types;
@@ -766,7 +788,7 @@ export async function mount(container, { session }) {
 
  if (btnResetFilter) {
  btnResetFilter.onclick = () => {
- if (filterCabang) filterCabang.value = "";
+ if (filterCabang) filterCabang.value = isBranchScopedPic ? leaveBranchScope : "";
  if (filterDateBasis) filterDateBasis.value = "leave";
  if (filterStartDate) filterStartDate.value = `${curYear}-01-01`;
  if (filterEndDate) {
