@@ -15,7 +15,7 @@ import { auth } from "./firebase-config.js";
 
 // Ubah versi ini setiap ada perubahan struktur view agar browser tidak
 // mencampur HTML terbaru dengan modul JavaScript lama dari cache.
-const APP_ASSET_VERSION = "20260916-attendance-review-v1";
+const APP_ASSET_VERSION = "20260916-cuti-load-retry-v2";
 const viewContainer = document.getElementById("view-container");
 let currentUnmount = null;
 let currentRoute = null;
@@ -385,6 +385,19 @@ async function loadViewHtml(viewName) {
  throw new Error(`view-not-found: ${viewName}`);
 }
 
+async function loadRouteModule(viewName) {
+ const modulePath = `./views/${viewName}.js?v=${APP_ASSET_VERSION}`;
+ try {
+  return await import(modulePath);
+ } catch (error) {
+  // Kode modul valid di build, tetapi file terunduh dapat tertinggal/rusak di
+  // cache browser. Hanya cuti yang dicoba ulang sekali dengan URL berbeda.
+  if (viewName !== "cuti" || !(error instanceof SyntaxError)) throw error;
+  console.warn("Modul cuti gagal diparse; mencoba unduhan ulang sekali.", error);
+  return import(`${modulePath}-retry-${Date.now()}`);
+ }
+}
+
 /* ---------------------------------------------------------------------
  * LOGIN SCREEN
  * ------------------------------------------------------------------- */
@@ -620,7 +633,7 @@ async function router(session) {
 		
 		const [html, mod] = await Promise.all([
 			loadViewHtml(mappedPath),
-			import(`./views/${mappedPath}.js?v=${APP_ASSET_VERSION}`).catch(error => ({ __loadError: error }))
+			loadRouteModule(mappedPath).catch(error => ({ __loadError: error }))
 		]);
 		if (requestId !== routeRequestId) return;
 		container.innerHTML = html;
@@ -633,7 +646,8 @@ async function router(session) {
 			}
 		} catch (modErr) {
 			console.error(`Could not mount script for view "${mappedPath}":`, modErr);
-			if (!container.firstElementChild || container.children.length === 0 || container.innerHTML.trim() === '<div id="sk-panel"></div>') {
+			const emptyCutiRoot = mappedPath === "cuti" && container.querySelector("#cuti-root")?.children.length === 0;
+			if (emptyCutiRoot || !container.firstElementChild || container.children.length === 0 || container.innerHTML.trim() === '<div id="sk-panel"></div>') {
 				container.innerHTML = `
 					<div class="max-w-md mx-auto my-12 p-6 bg-white rounded-2xl border border-slate-200 shadow-sm text-center">
 						<div class="w-12 h-12 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center mx-auto mb-3 font-bold text-lg">!</div>
