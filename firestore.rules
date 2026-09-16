@@ -30,6 +30,18 @@ service cloud.firestore {
       );
     }
     function onlyChanges(fields) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields); }
+    function attendancePermissionDoc() {
+      return /databases/$(database)/documents/user_permissions/$(username());
+    }
+    function hasScopedAttendanceAction(action) {
+      let permission = get(attendancePermissionDoc()).data;
+      return signedIn() && username() != '' && nik() != '' && branch() != ''
+        && permission.get('username', '') == username()
+        && permission.get('nik', '') == nik()
+        && permission.get('allowed_menus_set', false) == true
+        && permission.get('allowed_menus', []).hasAny(['absensi'])
+        && permission.get('allowed_actions', []).hasAny([action]);
+    }
 
     match /auth_profiles/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isHrd());
@@ -37,7 +49,8 @@ service cloud.firestore {
     }
     match /users/{id} { allow read, write: if isHrd(); }
     match /user_permissions/{id} {
-      allow read: if signedIn();
+      allow get: if signedIn() && (isHrd() || id == request.auth.uid || id == username() || (nik() != '' && id == nik()));
+      allow list: if isHrd();
       allow write: if isHrd();
     }
 
@@ -77,8 +90,17 @@ service cloud.firestore {
       allow delete: if isHrd();
     }
     match /data_absensi/{id} {
-      allow read: if signedIn() && (isManagement() || owns(resource.data));
-      allow write: if isHrd();
+      allow read: if signedIn() && (isManagement() || owns(resource.data) ||
+        (hasScopedAttendanceAction('absensi.data.view_all') && sameBranch(resource.data)));
+      allow create: if isHrd() || (hasScopedAttendanceAction('absensi.data.edit')
+        && sameBranch(request.resource.data)
+        && id.matches('ABS-MANUAL-.*')
+        && request.resource.data.keys().hasOnly(['nik', 'nama', 'tanggal', 'cabang', 'divisi', 'jabatan', 'sumber', 'scan_masuk', 'scan_keluar'])
+        && request.resource.data.get('sumber', '') == 'KOREKSI PIC');
+      allow update: if isHrd() || (hasScopedAttendanceAction('absensi.data.edit')
+        && sameBranch(resource.data) && sameBranch(request.resource.data)
+        && onlyChanges(['scan_masuk', 'scan_keluar']));
+      allow delete: if isHrd();
     }
     match /data_reimbursement/{id} {
       allow read: if signedIn() && (isFinance() || isManagement() || owns(resource.data));

@@ -2,17 +2,31 @@ import { db, COL, collection, getDocs, writeBatch, doc, getDoc, query, where, se
 import { toast, genId, fsGetAll, escapeHtml, openModal, closeModal, formatUangJalanEkspedisiRows } from "../utils.js";
 import { skeletonRows, emptyState } from "../components.js";
 import { callGasArchiveWebApp } from "../gas-integration.js";
-import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
+import { hasSubMenuAccess, hasPermission, canEditModuleData } from "../auth.js";
 import { authFetch } from "../api-client.js";
 import { resolveWorkSchedule } from "../work-schedule.mjs";
 import { buildRawAttendanceExport } from "../attendance-export.mjs";
 import { attendanceImportValues, attendanceImportScan } from "../attendance-import.mjs";
 import { buildAttendanceStatusRows } from "../attendance-status.mjs";
 
+function normalizeToken(value) {
+ return String(value || "").trim().toUpperCase();
+}
+
 async function fingerprintApi(action, payload = {}) {
  const response = await authFetch('/api/sync-absen', {
  method: 'POST',
  body: JSON.stringify({ action, ...payload })
+ });
+ const result = await response.json().catch(() => ({}));
+ if (!response.ok || result.success === false) throw new Error(result.error || `HTTP ${response.status}`);
+ return result;
+}
+
+async function attendanceAccessApi(method = "GET", payload = null) {
+ const response = await authFetch('/api/attendance-access', {
+  method,
+  ...(payload ? { body: JSON.stringify(payload) } : {})
  });
  const result = await response.json().catch(() => ({}));
  if (!response.ok || result.success === false) throw new Error(result.error || `HTTP ${response.status}`);
@@ -51,7 +65,11 @@ export async function mount(container, { session } = {}) {
  // seperti sebelumnya (role HRD/SUPERADMIN/ADMIN dapat akses penuh), tapi
  // HRD bisa memberi/mencabut akses ini per-karyawan secara individual.
  const isHrdOrAdmin = roleIsHrdOrAdmin || await hasSubMenuAccess("absensi", "proses_tarif", session);
- const canEdit = await canEditModuleData(session);
+ const canViewAll = roleIsHrdOrAdmin || await hasPermission("absensi.data.view_all", session);
+ const canCorrectBranch = !roleIsHrdOrAdmin && await hasPermission("absensi.data.edit", session);
+ const canEdit = roleIsHrdOrAdmin ? await canEditModuleData(session) : canCorrectBranch;
+ const scopedBranch = !roleIsHrdOrAdmin && canViewAll ? String(session?.cabang || "").trim() : "";
+ const isPicBranch = Boolean(scopedBranch);
 
  const btnImport = container.querySelector("#btn-import-absen");
  const inputUpload = container.querySelector("#absen-upload");
@@ -65,6 +83,8 @@ export async function mount(container, { session } = {}) {
  const filterEnd = container.querySelector("#filter-absen-end");
  const filterBranch = container.querySelector("#filter-absen-cabang");
  const filterDivision = container.querySelector("#filter-absen-divisi");
+ const filterEmployee = container.querySelector("#filter-absen-karyawan");
+ const filterCompleteness = container.querySelector("#filter-absen-kelengkapan");
  const btnResetFilterAbsen = container.querySelector("#btn-reset-filter-absen");
  const btnExportRawAbsen = container.querySelector("#btn-export-raw-absen");
  const thSortNama = container.querySelector("#th-sort-nama");
@@ -74,6 +94,11 @@ export async function mount(container, { session } = {}) {
  const btnPullArchive = container.querySelector("#btn-pull-archive");
  const btnSyncFingerprint = container.querySelector("#btn-sync-fingerprint");
  const btnConfigFingerprint = container.querySelector("#btn-config-fingerprint");
+ const bulkToolbar = container.querySelector("#absen-bulk-toolbar");
+ const selectedCountEl = container.querySelector("#absen-selected-count");
+ const btnBulkEdit = container.querySelector("#btn-bulk-edit-absen");
+ const btnClearSelected = container.querySelector("#btn-clear-selected-absen");
+ const selectAllVisible = container.querySelector("#absen-select-all-visible");
 
  const { startStr: twoMonthsStart, endStr: twoMonthsEnd } = getTwoRunningMonthsRange();
 
@@ -81,15 +106,41 @@ export async function mount(container, { session } = {}) {
  let employeeRowsGlobal = [];
  let scheduleRowsGlobal = [];
  let absenceRowsGlobal = [];
+ let currentFilteredRows = [];
+ const selectedAttendanceKeys = new Set();
  // sortNama: null (default, urut tanggal terbaru) | "asc" (A-Z) | "desc" (Z-A)
  let filterState = {
  search: "",
  start: isHrdOrAdmin ? "" : twoMonthsStart,
  end: isHrdOrAdmin ? "" : twoMonthsEnd,
- branch: "",
+ branch: scopedBranch,
  division: "",
+ employee: "",
+ completeness: "",
  sortNama: null
  };
+
+ function attendanceRowKey(row) {
+  return row.is_status_only
+   ? `STATUS:${String(row.nik || row.id)}:${row.tanggal}`
+   : `DATA:${row.id}`;
+ }
+
+ function updateBulkToolbar() {
+  const count = selectedAttendanceKeys.size;
+  if (selectedCountEl) selectedCountEl.textContent = String(count);
+  if (bulkToolbar) {
+   bulkToolbar.classList.toggle("hidden", !canEdit || count === 0);
+   bulkToolbar.classList.toggle("flex", canEdit && count > 0);
+  }
+  if (selectAllVisible) {
+   const selectable = currentFilteredRows.filter(row => canEdit && (roleIsHrdOrAdmin || isPicBranch));
+   const selectedVisible = selectable.filter(row => selectedAttendanceKeys.has(attendanceRowKey(row))).length;
+   selectAllVisible.checked = selectable.length > 0 && selectedVisible === selectable.length;
+   selectAllVisible.indeterminate = selectedVisible > 0 && selectedVisible < selectable.length;
+   selectAllVisible.disabled = selectable.length === 0;
+  }
+ }
 
  function attendanceKey(value) {
  return String(value || "").trim().toUpperCase();
@@ -146,10 +197,10 @@ export async function mount(container, { session } = {}) {
  }
 
  // Sembunyikan kontrol admin jika bukan HRD/Admin
- if (!isHrdOrAdmin) {
+ if (!roleIsHrdOrAdmin) {
  if (btnImport) btnImport.style.display = "none";
  if (btnExport) btnExport.style.display = "none";
- if (btnExportRawAbsen) btnExportRawAbsen.style.display = "none";
+ if (btnExportRawAbsen && !isPicBranch) btnExportRawAbsen.style.display = "none";
  if (btnSyncFingerprint) btnSyncFingerprint.style.display = "none";
  if (btnConfigFingerprint) btnConfigFingerprint.style.display = "none";
  if (btnPullArchive) btnPullArchive.style.display = "none";
@@ -163,9 +214,9 @@ export async function mount(container, { session } = {}) {
  if (tabHeaderContainer) tabHeaderContainer.style.display = "none";
 
  const pageH1 = container.querySelector("h1");
- if (pageH1) pageH1.textContent = "Data Absensi Saya";
+ if (pageH1) pageH1.textContent = isPicBranch ? `Data Absensi Cabang ${scopedBranch}` : "Data Absensi Saya";
  const pageP = container.querySelector("p");
- if (pageP) pageP.textContent = "Daftar riwayat kehadiran sidik jari Anda pada 2 bulan berjalan.";
+ if (pageP) pageP.textContent = isPicBranch ? `Data kehadiran ${scopedBranch} yang diizinkan HRD.` : "Daftar riwayat kehadiran sidik jari Anda pada 2 bulan berjalan.";
 
  if (filterStart) filterStart.value = twoMonthsStart;
  if (filterEnd) filterEnd.value = twoMonthsEnd;
@@ -175,8 +226,10 @@ export async function mount(container, { session } = {}) {
  }
 
  container.querySelectorAll(".absen-tab").forEach(btn => {
+ if (btn.dataset.atab === "proses" && !roleIsHrdOrAdmin) btn.classList.add("hidden");
  btn.onclick = () => {
  const isProses = btn.dataset.atab === "proses";
+ if (isProses && !roleIsHrdOrAdmin) return;
  panelProses.classList.toggle("hidden", !isProses);
  panelData.classList.toggle("hidden", isProses);
 
@@ -192,17 +245,36 @@ export async function mount(container, { session } = {}) {
  });
 
  async function loadRawAbsensiTable() {
- rawTbody.innerHTML = `<tr><td colspan="14" class="p-4">${skeletonRows(4)}</td></tr>`;
- const [attendanceRows, employeeRows, scheduleSnapshot, leaveRows, submissionRows] = await Promise.all([
- fsGetAll(COL.DATA_ABSENSI),
+ rawTbody.innerHTML = `<tr><td colspan="16" class="p-4">${skeletonRows(4)}</td></tr>`;
+ if (canViewAll && !roleIsHrdOrAdmin && !scopedBranch) {
+  rawTbody.innerHTML = `<tr><td colspan="16" class="p-4 text-amber-800">Cabang akun belum terdaftar. Hubungi HRD agar akses PIC absensi dapat dibatasi ke cabang yang tepat.</td></tr>`;
+  return;
+ }
+ const attendanceRef = collection(db, COL.DATA_ABSENSI);
+ const attendanceRequest = roleIsHrdOrAdmin ? fsGetAll(COL.DATA_ABSENSI)
+  : isPicBranch ? attendanceAccessApi("GET").then(result => result.rows || [])
+  : session?.nik ? Promise.all([
+      getDocs(query(attendanceRef, where("nik", "==", String(session.nik)))),
+      getDocs(query(attendanceRef, where("nik_karyawan", "==", String(session.nik))))
+    ]).then(snaps => [...new Map(snaps.flatMap(snap => snap.docs).map(d => [d.id, { ...d.data(), id: d.id }])).values()])
+  : Promise.resolve([]);
+ let attendanceRows, employeeRows, scheduleSnapshot, leaveRows, submissionRows;
+ try {
+ [attendanceRows, employeeRows, scheduleSnapshot, leaveRows, submissionRows] = await Promise.all([
+ attendanceRequest,
  fsGetAll(COL.MASTER_KARYAWAN).catch(() => []),
  getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(() => null),
  fsGetAll(COL.MASTER_CUTI).catch(() => []),
  fsGetAll(COL.DATA_PENGAJUAN).catch(() => [])
  ]);
- employeeRowsGlobal = employeeRows;
+ } catch (error) {
+  console.error("Gagal membaca data absensi:", error);
+  rawTbody.innerHTML = `<tr><td colspan="16" class="p-4 text-rose-700">Data absensi belum dapat dibaca oleh akun ini. Periksa izin data dan cabang akun di Pengaturan Hak Akses. (${escapeHtml(error.message || 'Akses ditolak')})</td></tr>`;
+  return;
+ }
+ employeeRowsGlobal = isPicBranch ? employeeRows.filter(k => normalizeToken(k.cabang) === normalizeToken(scopedBranch)) : employeeRows;
  scheduleRowsGlobal = scheduleSnapshot?.exists() ? (scheduleSnapshot.data()?.jadwal || []) : [];
- absenceRowsGlobal = [...leaveRows, ...submissionRows];
+ absenceRowsGlobal = isPicBranch ? [...leaveRows, ...submissionRows].filter(row => normalizeToken(row.cabang) === normalizeToken(scopedBranch)) : [...leaveRows, ...submissionRows];
  listAbsensiGlobal = buildAttendanceStatusRows({
  attendanceRows: enrichAttendanceRows(attendanceRows),
  employees: employeeRowsGlobal,
@@ -217,7 +289,7 @@ export async function mount(container, { session } = {}) {
  const thresholdStr = sixtyDaysAgo.toISOString().substring(0, 10);
  
  // Select records older than 60 days from today
- const oldRecords = listAbsensiGlobal.filter(x => !x.is_status_only && x.tanggal && x.tanggal < thresholdStr);
+ const oldRecords = roleIsHrdOrAdmin ? listAbsensiGlobal.filter(x => !x.is_status_only && x.tanggal && x.tanggal < thresholdStr) : [];
 
  if (archiveAlertBox) {
  const hasOld = oldRecords.length > 0;
@@ -315,6 +387,19 @@ export async function mount(container, { session } = {}) {
  .sort((a, b) => a.localeCompare(b, "id", { sensitivity: "base" }));
  setAttendanceSelectOptions(filterDivision, "Semua Divisi", divisions, filterState.division);
  if (filterDivision && filterState.division && !filterDivision.value) filterState.division = "";
+
+ const employeeSource = filterState.division
+  ? divisionSource.filter(row => String(row.divisi || "").trim().toUpperCase() === filterState.division.toUpperCase())
+  : divisionSource;
+ const employees = [...new Map(employeeSource
+  .filter(row => row.nik || row.nama)
+  .map(row => [String(row.nik || row.nama).trim(), `${row.nama || '-'}${row.nik ? ` — ${row.nik}` : ''}`])).entries()]
+  .sort((a, b) => a[1].localeCompare(b[1], "id", { sensitivity: "base" }));
+ if (filterEmployee) {
+  filterEmployee.innerHTML = `<option value="">Semua Karyawan</option>${employees.map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`).join("")}`;
+  filterEmployee.value = employees.some(([value]) => value === filterState.employee) ? filterState.employee : "";
+  if (filterState.employee && !filterEmployee.value) filterState.employee = "";
+ }
  }
 
  /**
@@ -324,7 +409,7 @@ export async function mount(container, { session } = {}) {
  function applyFiltersAbsen() {
  let data = [...listAbsensiGlobal];
 
- if (!isHrdOrAdmin) {
+ if (!canViewAll) {
  const uNik = String(session?.nik || "").trim().toLowerCase();
  const uNama = String(session?.nama || "").trim().toLowerCase();
  const uUser = String(session?.username || "").trim().toLowerCase();
@@ -345,6 +430,11 @@ export async function mount(container, { session } = {}) {
  if (filterState.end) data = data.filter(x => x.tanggal <= filterState.end);
  if (filterState.branch) data = data.filter(x => String(x.cabang || "").trim().toUpperCase() === filterState.branch.toUpperCase());
  if (filterState.division) data = data.filter(x => String(x.divisi || "").trim().toUpperCase() === filterState.division.toUpperCase());
+ if (filterState.employee) data = data.filter(x => String(x.nik || x.nama || "").trim() === filterState.employee);
+ if (filterState.completeness === "incomplete") data = data.filter(x => !x.ketidakhadiran && (x.perlu_koreksi || !x.scan_masuk || !x.scan_keluar));
+ if (filterState.completeness === "missing_in") data = data.filter(x => !x.ketidakhadiran && !x.scan_masuk);
+ if (filterState.completeness === "missing_out") data = data.filter(x => !x.ketidakhadiran && !x.scan_keluar);
+ if (filterState.completeness === "complete") data = data.filter(x => Boolean(x.scan_masuk && x.scan_keluar));
  if (filterState.search) {
  const term = filterState.search;
  data = data.filter(x => [x.nama, x.nik, x.nama_finger, x.emp_no, x.no_id, x.attendance_status]
@@ -359,17 +449,20 @@ export async function mount(container, { session } = {}) {
  data.sort((a, b) => (b.tanggal || "").localeCompare(a.tanggal || "") || (a.nama || "").localeCompare(b.nama || ""));
  }
 
+ currentFilteredRows = data;
  renderRawTable(data);
+ updateBulkToolbar();
  return data;
  }
 
  function renderRawTable(data) {
  if(!data.length) {
- rawTbody.innerHTML = `<tr><td colspan="15" class="p-8 text-center">${emptyState("Tidak ada data absensi Anda pada periode ini")}</td></tr>`;
+ rawTbody.innerHTML = `<tr><td colspan="16" class="p-8 text-center">${emptyState("Tidak ada data absensi pada filter ini")}</td></tr>`;
  return;
  }
  rawTbody.innerHTML = data.map(r => `
  <tr class="transition text-xs ${r.status_kind === 'review' ? 'bg-amber-50 hover:bg-amber-100' : r.status_kind === 'absence' ? 'bg-blue-50 hover:bg-blue-100' : r.status_kind === 'half-day' ? 'bg-violet-50 hover:bg-violet-100' : 'hover:bg-slate-50'}">
+ <td class="px-3 py-3 text-center">${canEdit && (roleIsHrdOrAdmin || isPicBranch) ? `<input type="checkbox" data-select-absen="${escapeHtml(attendanceRowKey(r))}" class="rounded border-slate-300 text-maroon-700" ${selectedAttendanceKeys.has(attendanceRowKey(r)) ? 'checked' : ''}>` : ''}</td>
  <td class="px-4 py-3 text-slate-500">${escapeHtml(r.emp_no || "-")}</td>
  <td class="px-4 py-3 text-slate-500">${escapeHtml(r.no_id || "-")}</td>
  <td class="px-4 py-3 text-slate-500">${escapeHtml(r.nik || "-")}</td>
@@ -389,9 +482,9 @@ export async function mount(container, { session } = {}) {
  ${r.perlu_koreksi ? `<span title="${escapeHtml(r.alasan_koreksi || '')}" class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">Perlu koreksi HRD</span><p class="text-[10px] text-amber-800 mt-1">${escapeHtml(r.alasan_koreksi || 'Periksa scan')}</p>` : `<span class="text-emerald-600 text-[10px] font-bold">Tidak</span>`}
  </td>
  <td class="px-4 py-3 text-right">
- ${isHrdOrAdmin && canEdit ? `
+ ${canEdit && (roleIsHrdOrAdmin || isPicBranch) ? `
  <button data-edit-id="${r.id}" class="text-maroon-700 font-medium hover:underline mr-3">Koreksi</button>
- ${r.is_status_only ? '' : `<button data-del-id="${r.id}" class="text-red-500 hover:underline">Hapus</button>`}
+ ${roleIsHrdOrAdmin && !r.is_status_only ? `<button data-del-id="${r.id}" class="text-red-500 hover:underline">Hapus</button>` : ''}
  ` : `<span class="text-slate-300">-</span>`}
  </td>
  </tr>
@@ -399,6 +492,14 @@ export async function mount(container, { session } = {}) {
 
  rawTbody.querySelectorAll("[data-edit-id]").forEach(btn => {
  btn.onclick = () => openEditAbsenModal(data.find(x => x.id === btn.dataset.editId));
+ });
+
+ rawTbody.querySelectorAll("[data-select-absen]").forEach(cb => {
+  cb.onchange = () => {
+   if (cb.checked) selectedAttendanceKeys.add(cb.dataset.selectAbsen);
+   else selectedAttendanceKeys.delete(cb.dataset.selectAbsen);
+   updateBulkToolbar();
+  };
  });
 
  rawTbody.querySelectorAll("[data-del-id]").forEach(btn => {
@@ -433,7 +534,18 @@ export async function mount(container, { session } = {}) {
  };
  }
  if (filterDivision) {
- filterDivision.onchange = (e) => { filterState.division = e.target.value; applyFiltersAbsen(); };
+ filterDivision.onchange = (e) => {
+  filterState.division = e.target.value;
+  filterState.employee = "";
+  populateAttendanceFilterOptions();
+  applyFiltersAbsen();
+ };
+ }
+ if (filterEmployee) {
+ filterEmployee.onchange = (e) => { filterState.employee = e.target.value; applyFiltersAbsen(); };
+ }
+ if (filterCompleteness) {
+ filterCompleteness.onchange = (e) => { filterState.completeness = e.target.value; applyFiltersAbsen(); };
  }
  if (btnResetFilterAbsen) {
  btnResetFilterAbsen.onclick = () => {
@@ -441,17 +553,42 @@ export async function mount(container, { session } = {}) {
  search: "",
  start: isHrdOrAdmin ? "" : twoMonthsStart,
  end: isHrdOrAdmin ? "" : twoMonthsEnd,
- branch: "",
+ branch: scopedBranch,
  division: "",
+ employee: "",
+ completeness: "",
  sortNama: null
  };
  if (searchRaw) searchRaw.value = "";
  if (filterStart) filterStart.value = isHrdOrAdmin ? "" : twoMonthsStart;
  if (filterEnd) filterEnd.value = isHrdOrAdmin ? "" : twoMonthsEnd;
+ if (filterCompleteness) filterCompleteness.value = "";
+ selectedAttendanceKeys.clear();
  populateAttendanceFilterOptions();
  if (iconSortNama) iconSortNama.textContent = "↕";
  applyFiltersAbsen();
  };
+ }
+ if (selectAllVisible) {
+ selectAllVisible.onchange = () => {
+  currentFilteredRows.forEach(row => {
+   const key = attendanceRowKey(row);
+   if (selectAllVisible.checked) selectedAttendanceKeys.add(key);
+   else selectedAttendanceKeys.delete(key);
+  });
+  renderRawTable(currentFilteredRows);
+  updateBulkToolbar();
+ };
+ }
+ if (btnClearSelected) {
+ btnClearSelected.onclick = () => {
+  selectedAttendanceKeys.clear();
+  renderRawTable(currentFilteredRows);
+  updateBulkToolbar();
+ };
+ }
+ if (btnBulkEdit) {
+ btnBulkEdit.onclick = () => openBulkEditAbsensiModal();
  }
  if (thSortNama) {
  thSortNama.onclick = () => {
@@ -488,12 +625,12 @@ export async function mount(container, { session } = {}) {
  const filteredAttendance = applyFiltersAbsen().filter(row => !row.is_status_only);
  exportRows = buildRawAttendanceExport({
  attendanceRows: filteredAttendance,
- employees: freshEmployees,
+ employees: isPicBranch ? freshEmployees.filter(k => normalizeToken(k.cabang) === normalizeToken(scopedBranch)) : freshEmployees,
  leaves: absenceRowsGlobal,
  schedules: scheduleRowsGlobal,
  start: filterState.start,
  end: filterState.end,
- branch: filterState.branch,
+ branch: scopedBranch || filterState.branch,
  division: filterState.division
  });
  } catch (error) {
@@ -533,6 +670,86 @@ export async function mount(container, { session } = {}) {
  };
  }
 
+ function openBulkEditAbsensiModal() {
+ const selectedRows = listAbsensiGlobal.filter(row => selectedAttendanceKeys.has(attendanceRowKey(row)));
+ if (!selectedRows.length) return toast("Pilih minimal satu baris absensi.", "warning");
+ if (selectedRows.length > 400) return toast("Maksimal 400 baris dalam satu kali koreksi.", "warning");
+
+ openModal({
+  title: `Koreksi Massal Absensi (${selectedRows.length} Baris)`,
+  size: "max-w-6xl",
+  bodyHtml: `
+   <div class="mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+    Isi hanya jam yang perlu diperbaiki. Format jam <strong>HH:mm</strong>; kolom kosong akan disimpan sebagai scan kosong.
+   </div>
+   <div class="max-h-[55vh] overflow-auto border border-slate-200 rounded-xl">
+    <table class="w-full text-xs">
+     <thead class="sticky top-0 bg-slate-100 text-slate-600"><tr><th class="p-2 text-left">Karyawan</th><th class="p-2">Tanggal</th><th class="p-2">Scan Masuk</th><th class="p-2">Scan Pulang</th><th class="p-2 text-left">Penanda</th></tr></thead>
+     <tbody class="divide-y divide-slate-100">${selectedRows.map((row, index) => `
+      <tr data-bulk-row="${index}">
+       <td class="p-2"><strong>${escapeHtml(row.nama || '-')}</strong><div class="text-[10px] text-slate-400">${escapeHtml(row.nik || '-')}</div></td>
+       <td class="p-2 text-center whitespace-nowrap">${escapeHtml(row.tanggal || '-')}</td>
+       <td class="p-2"><input data-bulk-in="${index}" value="${escapeHtml(row.scan_masuk || '')}" placeholder="HH:mm" class="w-24 px-2 py-1.5 border rounded-lg font-mono"></td>
+       <td class="p-2"><input data-bulk-out="${index}" value="${escapeHtml(row.scan_keluar || '')}" placeholder="HH:mm" class="w-24 px-2 py-1.5 border rounded-lg font-mono"></td>
+       <td class="p-2 text-slate-500">${escapeHtml(row.alasan_koreksi || row.ketidakhadiran || '-')}</td>
+      </tr>`).join("")}</tbody>
+    </table>
+   </div>`,
+  footerHtml: `<button id="btn-bulk-cancel" class="px-4 py-2 text-sm text-slate-600 rounded-lg hover:bg-slate-100">Batal</button><button id="btn-bulk-save" class="px-4 py-2 text-sm font-bold text-white bg-maroon-700 rounded-lg">Simpan ${selectedRows.length} Baris</button>`,
+  onMount: modal => {
+   modal.querySelector("#btn-bulk-cancel").onclick = closeModal;
+   modal.querySelector("#btn-bulk-save").onclick = async event => {
+    const saveBtn = event.currentTarget;
+    const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+    const changes = selectedRows.map((row, index) => ({
+     row,
+     scan_masuk: modal.querySelector(`[data-bulk-in="${index}"]`).value.trim(),
+     scan_keluar: modal.querySelector(`[data-bulk-out="${index}"]`).value.trim()
+    }));
+    const invalid = changes.find(item => (item.scan_masuk && !timePattern.test(item.scan_masuk)) || (item.scan_keluar && !timePattern.test(item.scan_keluar)));
+    if (invalid) return toast(`Format jam ${invalid.row.nama || ''} tanggal ${invalid.row.tanggal || ''} belum benar. Gunakan HH:mm.`, "warning");
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Menyimpan...";
+    try {
+     const apiChanges = changes.map(({ row, scan_masuk, scan_keluar }) => {
+      const targetId = row.is_status_only
+       ? `ABS-MANUAL-${String(row.nik || row.id).replace(/[^a-zA-Z0-9._-]/g, '_')}-${row.tanggal}`
+       : row.id;
+      return {
+       id: targetId, scan_masuk: scan_masuk || null, scan_keluar: scan_keluar || null,
+       nik: row.nik || "", nama: row.nama || "", tanggal: row.tanggal,
+       cabang: row.cabang || "", divisi: row.divisi || "", jabatan: row.jabatan || "",
+      };
+     });
+     if (roleIsHrdOrAdmin) {
+      const batch = writeBatch(db);
+      changes.forEach(({ row, scan_masuk, scan_keluar }, index) => {
+       const data = apiChanges[index];
+       const update = { scan_masuk: scan_masuk || null, scan_keluar: scan_keluar || null };
+       batch.set(doc(db, COL.DATA_ABSENSI, data.id), row.is_status_only ? {
+        nik: data.nik, nama: data.nama, tanggal: data.tanggal, cabang: data.cabang,
+        divisi: data.divisi, jabatan: data.jabatan, sumber: "KOREKSI HRD", ...update
+       } : update, { merge: true });
+      });
+      await batch.commit();
+     } else {
+      await attendanceAccessApi("PATCH", { changes: apiChanges });
+     }
+     selectedAttendanceKeys.clear();
+     closeModal();
+     toast(`${changes.length} baris absensi berhasil dikoreksi.`, "success");
+     await loadRawAbsensiTable();
+    } catch (error) {
+     console.error("Koreksi massal absensi gagal:", error);
+     toast("Koreksi massal gagal: " + error.message, "error");
+     saveBtn.disabled = false;
+     saveBtn.textContent = `Simpan ${selectedRows.length} Baris`;
+    }
+   };
+  }
+ });
+ }
+
  function openEditAbsenModal(item) {
  if(!item) return;
  openModal({
@@ -557,16 +774,18 @@ export async function mount(container, { session } = {}) {
  const targetId = item.is_status_only
  ? `ABS-MANUAL-${String(item.nik || item.id).replace(/[^a-zA-Z0-9._-]/g, '_')}-${item.tanggal}`
  : item.id;
- await setDoc(doc(db, COL.DATA_ABSENSI, targetId), item.is_status_only ? {
- nik: item.nik,
- nama: item.nama,
- tanggal: item.tanggal,
- cabang: item.cabang || "",
- divisi: item.divisi || "",
- jabatan: item.jabatan || "",
- sumber: "KOREKSI HRD",
- ...dataUpdate
- } : dataUpdate, { merge: true });
+ if (roleIsHrdOrAdmin) {
+  await setDoc(doc(db, COL.DATA_ABSENSI, targetId), item.is_status_only ? {
+   nik: item.nik, nama: item.nama, tanggal: item.tanggal, cabang: item.cabang || "",
+   divisi: item.divisi || "", jabatan: item.jabatan || "", sumber: "KOREKSI HRD", ...dataUpdate
+  } : dataUpdate, { merge: true });
+ } else {
+  await attendanceAccessApi("PATCH", { changes: [{
+   id: targetId, nik: item.nik || "", nama: item.nama || "", tanggal: item.tanggal,
+   cabang: item.cabang || "", divisi: item.divisi || "", jabatan: item.jabatan || "",
+   ...dataUpdate
+  }] });
+ }
  toast("Koreksi absensi berhasil disimpan", "success");
  closeModal();
  loadRawAbsensiTable();

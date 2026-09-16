@@ -483,34 +483,30 @@ async function setupRbacMenuTab(container, users, allUsers = [], allKaryawan = [
 
  function keysFor(userKey, userObj) {
   const raw = [
+   userObj?.firebase_uid,
    userKey,
    userObj?.username,
    userObj?.id,
-   userObj?.nama,
-   userObj?.nik,
-   userObj?.email
+   userObj?.nik
   ];
 
   // Cari kaitan dokumen lain dari allUsers & allKaryawan
   const uNik = String(userObj?.nik || "").trim();
-  const uNama = String(userObj?.nama || "").trim().toLowerCase();
   const uKey = String(userKey || "").trim().toLowerCase();
 
   allUsers.forEach(u => {
    const un = String(u.username || u.id || "").trim();
    const nk = String(u.nik || "").trim();
-   const nm = String(u.nama || "").trim().toLowerCase();
-   if ((uNik && uNik !== "-" && nk === uNik) || (uKey && un.toLowerCase() === uKey) || (uNama && nm === uNama)) {
-    raw.push(u.id, u.username, u.nik, u.nama, u.email);
+   if ((uNik && uNik !== "-" && nk === uNik) || (uKey && un.toLowerCase() === uKey)) {
+    raw.push(u.firebase_uid, u.id, u.username, u.nik);
    }
   });
 
   allKaryawan.forEach(k => {
    const nk = String(k.nik_karyawan || k.nik || "").trim();
-   const nm = String(k.nama_karyawan || k.nama || "").trim().toLowerCase();
    const un = String(k.username || "").trim();
-   if ((uNik && uNik !== "-" && nk === uNik) || (uNama && nm === uNama) || (uKey && un.toLowerCase() === uKey)) {
-    raw.push(k.id, k.nik_karyawan, k.nik, k.nama_karyawan, k.nama, k.email, k.username);
+   if ((uNik && uNik !== "-" && nk === uNik) || (uKey && un.toLowerCase() === uKey)) {
+    raw.push(k.id, k.nik_karyawan, k.nik, k.username);
    }
   });
 
@@ -521,10 +517,6 @@ async function setupRbacMenuTab(container, users, allUsers = [], allKaryawan = [
    keysSet.add(s);
    keysSet.add(s.toLowerCase());
    keysSet.add(s.toUpperCase());
-   if (s.includes(".")) {
-    keysSet.add(s.replace(/\./g, " ").toLowerCase());
-    keysSet.add(s.replace(/\./g, " ").toUpperCase());
-   }
   });
   return Array.from(keysSet);
  }
@@ -554,7 +546,7 @@ async function setupRbacMenuTab(container, users, allUsers = [], allKaryawan = [
 
   // Actions
   let allowedActions = [];
-  if (ov && Array.isArray(ov.allowed_actions) && ov.allowed_actions.length > 0) {
+  if (ov?.allowed_menus_set && Array.isArray(ov.allowed_actions)) {
    allowedActions = ov.allowed_actions;
   } else if (preset.includes("*") || isSuperadmin) {
    allowedActions = Array.from(catalogContainer.querySelectorAll("[data-action]")).map(cb => cb.dataset.action);
@@ -570,10 +562,11 @@ async function setupRbacMenuTab(container, users, allUsers = [], allKaryawan = [
    allowedMenus = PERMISSION_CATALOG.map(m => m.id);
   } else {
    // Derive active menus from active actions or MENU_CONFIG default for this role
-   const defaultRoleMenus = MENU_CONFIG.filter(m => {
-    if (m.allowedRoles?.includes("*") || m.allowedRoles?.includes(role)) return true;
-    return false;
-   }).map(m => m.id);
+   const defaultRoleMenus = MENU_CONFIG.filter(m =>
+    role === "STAFF" || role === "KARYAWAN"
+     ? DEFAULT_EMPLOYEE_MENU_IDS.includes(m.id)
+     : m.roles?.includes("ALL") || m.roles?.includes(role)
+   ).map(m => m.id);
    allowedMenus = defaultRoleMenus;
   }
 
@@ -827,6 +820,7 @@ async function setupRbacMenuTab(container, users, allUsers = [], allKaryawan = [
   try {
    const keysToSave = new Set(keysFor(userKey, userObj));
    const payload = {
+    firebase_uid: userObj?.firebase_uid || "",
     user_id: userObj?.id || userKey,
     username: userObj?.username || userKey,
     nik: userObj?.nik || "-",

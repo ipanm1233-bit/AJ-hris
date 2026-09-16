@@ -4,7 +4,7 @@ import { avatar, emptyState, skeletonRows, badge } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
 import { generateCutiDocViaGAS, uploadFileToDrive } from "../gas-integration.js";
-import { isSickLeave, resolveEffectiveLeaveDeduction } from "../leave-policy.mjs";
+import { isSickLeave, isDoctorCertifiedSickLeave, resolveEffectiveLeaveDeduction } from "../leave-policy.mjs";
 import { leaveInputDate, leaveInputDisplay, matchesLeaveExportPeriod } from "../leave-export.mjs";
 
 const DEFAULT_LEAVE_TYPES = [
@@ -1248,7 +1248,7 @@ export async function mount(container, { session }) {
     if (!myLeaves.length) return `<tr><td colspan="5" class="p-6 text-center text-slate-400">Belum ada riwayat cuti.</td></tr>`;
     return myLeaves.map(c => {
       const ded = getCutiDeductionCategory(c);
-      const sickRecord = isSickLeave({ type_cuti: c.type_cuti || c.jenis_cuti });
+      const sickRecord = isDoctorCertifiedSickLeave({ type_cuti: c.type_cuti || c.jenis_cuti });
       let badgeClass = "bg-blue-50 text-blue-700 border-blue-200";
       let badgeLabel = `${c.count} Hari (Tahunan)`;
 
@@ -2404,7 +2404,7 @@ export async function mount(container, { session }) {
             const jamKem = isHalf ? inJamKembali.value : "-";
             const sesiCutiVal = isHalf ? (selSesi?.value || "Cuti Pagi") : null;
 
-            const sickRecord = isSickLeave(curCfg);
+            const sickRecord = isDoctorCertifiedSickLeave(curCfg);
             const payload = {
               nama_karyawan: k.nama_karyawan,
               tanggal: tglAwal,
@@ -2518,7 +2518,10 @@ export async function mount(container, { session }) {
   async function generatePdfAndNotify(k, pdfData, sisa, options = {}) {
     const audiences = new Set(options.audiences || []);
     const recordSubmission = options.recordSubmission === true;
-    const sickRecord = isSickLeave({ type_cuti: pdfData.type_cuti || pdfData.jenis_cuti });
+    // Hanya S (sakit dengan surat dokter) menjadi catatan sakit bebas
+    // potongan tanpa Form Cuti. S- tetap memotong cuti tahunan dan harus
+    // mengikuti alur Form Cuti biasa.
+    const sickRecord = isDoctorCertifiedSickLeave({ type_cuti: pdfData.type_cuti || pdfData.jenis_cuti });
     const publishDocument = options.publishDocument === true && !sickRecord;
     const needsFormPdf = !sickRecord && (publishDocument || audiences.has("supervisor"));
     let manualDeliveryCount = 0;

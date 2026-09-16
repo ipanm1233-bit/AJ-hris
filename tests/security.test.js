@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const {
   assertAllowedKeys,
   enforceRateLimit,
@@ -49,4 +51,14 @@ test('cron secret uses bearer authorization', () => {
     if (previous === undefined) delete process.env.CRON_SECRET;
     else process.env.CRON_SECRET = previous;
   }
+});
+
+test('attendance PIC endpoint enforces auth, explicit actions, branch scope, and batch limit', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'api', 'attendance-access.js'), 'utf8');
+  assert.match(source, /requireFirebaseAuth\(req, res\)/);
+  assert.match(source, /absensi\.data\.view_all/);
+  assert.match(source, /absensi\.data\.edit/);
+  assert.match(source, /normalizeBranch\(snap\.data\(\)\.cabang\).*normalizeBranch\(branch\)/s);
+  assert.match(source, /changes\.length > 400/);
+  assert.match(source, /BULK_ATTENDANCE_CORRECTION/);
 });

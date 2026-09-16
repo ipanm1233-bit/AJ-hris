@@ -612,9 +612,19 @@ let _permCache = null; // Map of key -> permission record
 
 export async function loadPermissionOverrides(force = false) {
  if (_permCache && !force) return _permCache;
- const rows = await fsGetAll(COL.USER_PERMISSIONS);
+ const session = getSession();
+ const role = String(session?.role || '').toUpperCase();
+ const rows = ['HRD', 'SUPERADMIN'].includes(role)
+  ? await fsGetAll(COL.USER_PERMISSIONS)
+  : (await Promise.all([...new Set([auth.currentUser?.uid, session?.username, session?.nik].filter(k => k && k !== 'UNLINKED' && k !== '-'))]
+      .map(async key => {
+       const snap = await getDoc(doc(db, COL.USER_PERMISSIONS, String(key)));
+       return snap.exists() ? { ...snap.data(), id: snap.id } : null;
+      }))).filter(Boolean);
  _permCache = {};
- rows.forEach(r => {
+ // Dokumen alias lama bisa berisi revisi berbeda. Dahulukan revisi terbaru
+ // dan identitas akun (UID/username/NIK), bukan kecocokan nama atau email.
+ rows.sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || ''))).forEach(r => {
   if (!r) return;
   const targetKeys = new Set();
   if (r.id) {
@@ -645,17 +655,7 @@ export async function loadPermissionOverrides(force = false) {
    targetKeys.add(strUid.toLowerCase());
    targetKeys.add(strUid.toUpperCase());
   }
-  if (r.nama) {
-   const strNama = String(r.nama).trim();
-   targetKeys.add(strNama);
-   targetKeys.add(strNama.toLowerCase());
-   targetKeys.add(strNama.toUpperCase());
-   targetKeys.add(strNama.toLowerCase().replace(/\s+/g, "."));
-  }
-  if (r.email) {
-   const strEmail = String(r.email).trim().toLowerCase();
-   targetKeys.add(strEmail);
-  }
+  if (r.firebase_uid) targetKeys.add(String(r.firebase_uid).trim());
 
   targetKeys.forEach(k => {
    if (k) _permCache[k] = r;
@@ -744,13 +744,10 @@ const _MANAGEMENT_ROLES = ["HRD", "SUPERADMIN", "DIREKTUR", "MANAGER", "SPV", "K
 function _permOverrideSearchKeys(session) {
  if (!session) return [];
  const raw = [
+  session.uid,
   session.username,
   session.id,
-  session.nik,
-  session.nama,
-  session.email,
-  session.username && String(session.username).includes(".") ? String(session.username).replace(/\./g, " ") : null,
-  session.nama ? String(session.nama).toLowerCase().replace(/\s+/g, ".") : null
+  session.nik
  ].filter(Boolean);
 
  const keysSet = new Set();
@@ -1930,7 +1927,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
 ROLE_PERMISSIONS_PRESETS.DEFAULT_KARYAWAN = [
  "dashboard.view",
  "pengajuan.view", "pengajuan.create", "riwayat.view",
- "absensi.data.view_all", "absensi_saya.view",
+ "absensi_saya.view",
  "pengajuan_cuti.create", "pengajuan_cuti.print",
  "izin.create", "izin.print",
  "performance_review.my.view",
@@ -1940,7 +1937,7 @@ ROLE_PERMISSIONS_PRESETS.BACK_OFFICE = [
  "dashboard.view",
  "pengajuan.view", "pengajuan.create", "riwayat.view", "riwayat.print", "riwayat.lpj.submit",
  "broadcast.view",
- "absensi.data.view_all", "absensi_saya.view",
+ "absensi_saya.view",
  "pengajuan_cuti.create", "pengajuan_cuti.print",
  "izin.create", "izin.print",
  "penilaian_kontrak.hasil_saya.view", "penilaian_kontrak.kontrak_saya.view",
@@ -1956,7 +1953,7 @@ ROLE_PERMISSIONS_PRESETS.WAREHOUSE = [
  "dashboard.view",
  "pengajuan.view", "pengajuan.create", "riwayat.view", "riwayat.print",
  "broadcast.view",
- "absensi.data.view_all", "absensi_saya.view",
+ "absensi_saya.view",
  "pengajuan_cuti.create", "pengajuan_cuti.print",
  "izin.create", "izin.print",
  "penilaian_kontrak.hasil_saya.view", "penilaian_kontrak.kontrak_saya.view",
@@ -1996,7 +1993,8 @@ export async function hasPermission(permissionKey, session, forceReload = false)
  const isSales = role === "SALES" || posisi.includes("SALES");
 
  const userOverride = await _findUserOverride(session);
- if (userOverride && Array.isArray(userOverride.allowed_actions) && userOverride.allowed_actions.length > 0) {
+ if (userOverride?.allowed_menus_set && Array.isArray(userOverride.allowed_actions)) {
+  if (userOverride.read_only === true && /\.(?:edit|delete|configure|annual_reset|bulk_execute)$/.test(permissionKey)) return false;
   if (isSales && permissionKey.startsWith("lembur.") && !userOverride.allowed_actions.includes(permissionKey)) {
    return false;
   }

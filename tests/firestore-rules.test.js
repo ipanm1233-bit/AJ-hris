@@ -55,6 +55,60 @@ test('employee can read own submission but not another employee submission', asy
   await assertFails(getDoc(doc(employee, 'data_pengajuan', 'other')));
 });
 
+test('staff attendance PIC reads only assigned branch with an explicit identity-bound grant', async () => {
+  await seed('data_absensi', 'own', { nik: '001', cabang: 'MALANG', tanggal: '2026-09-16' });
+  await seed('data_absensi', 'colleague', { nik: '002', cabang: 'MALANG', tanggal: '2026-09-16' });
+  await seed('data_absensi', 'outside', { nik: '003', cabang: 'CIREBON', tanggal: '2026-09-16' });
+  const pic = env.authenticatedContext('gelora', claims({ username: 'GELORA', nik: '001', branch: 'MALANG' })).firestore();
+  const malang = query(collection(pic, 'data_absensi'), where('cabang', '==', 'MALANG'));
+  await assertFails(getDocs(malang));
+  await seed('user_permissions', 'GELORA', {
+    username: 'GELORA', nik: '001', allowed_menus_set: true,
+    allowed_menus: ['absensi'], allowed_actions: ['absensi.data.view_all']
+  });
+  await assertSucceeds(getDoc(doc(pic, 'data_absensi', 'colleague')));
+  const result = await assertSucceeds(getDocs(malang));
+  if (result.size !== 2) throw new Error(`Expected only Malang attendance, got ${result.size}`);
+  await assertFails(getDocs(collection(pic, 'data_absensi')));
+  await assertFails(getDoc(doc(pic, 'data_absensi', 'outside')));
+  await assertFails(setDoc(doc(pic, 'data_absensi', 'colleague'), { scan_keluar: '17:00' }, { merge: true }));
+  const otherStaff = env.authenticatedContext('other', claims({ username: 'OTHER', nik: '009', branch: 'MALANG' })).firestore();
+  await assertFails(getDocs(query(collection(otherStaff, 'data_absensi'), where('cabang', '==', 'MALANG'))));
+  await assertFails(getDoc(doc(otherStaff, 'data_absensi', 'colleague')));
+});
+
+test('PIC corrections require an explicit action and cannot change identity or other branches', async () => {
+  await seed('data_absensi', 'inside', { nik: '002', cabang: 'MALANG', scan_masuk: '08:00' });
+  await seed('data_absensi', 'outside', { nik: '003', cabang: 'CIREBON', scan_masuk: '08:00' });
+  await seed('user_permissions', 'GELORA', {
+    username: 'GELORA', nik: '001', allowed_menus_set: true,
+    allowed_menus: ['absensi'], allowed_actions: ['absensi.data.view_all', 'absensi.data.edit']
+  });
+  const pic = env.authenticatedContext('gelora', claims({ username: 'GELORA', nik: '001', branch: 'MALANG' })).firestore();
+  await assertSucceeds(updateDoc(doc(pic, 'data_absensi', 'inside'), { scan_masuk: '08:15' }));
+  await assertFails(updateDoc(doc(pic, 'data_absensi', 'inside'), { nik: '999' }));
+  await assertFails(updateDoc(doc(pic, 'data_absensi', 'outside'), { scan_masuk: '08:15' }));
+  await assertFails(setDoc(doc(pic, 'data_absensi', 'fake'), { nik: '002', cabang: 'MALANG', sumber: 'KOREKSI PIC' }));
+  await assertSucceeds(setDoc(doc(pic, 'data_absensi', 'ABS-MANUAL-002-2026-09-16'), {
+    nik: '002', nama: 'Staf Malang', tanggal: '2026-09-16', cabang: 'MALANG',
+    sumber: 'KOREKSI PIC', scan_masuk: '08:00'
+  }));
+  await assertFails(setDoc(doc(pic, 'data_absensi', 'ABS-MANUAL-003-2026-09-16'), {
+    nik: '003', nama: 'Staf Cirebon', tanggal: '2026-09-16', cabang: 'CIREBON', sumber: 'KOREKSI PIC'
+  }));
+});
+
+test('staff can read only own permission override, while HRD can manage the catalog', async () => {
+  await seed('user_permissions', 'GELORA', { username: 'GELORA', nik: '001' });
+  await seed('user_permissions', 'OTHER', { username: 'OTHER', nik: '002' });
+  const staff = env.authenticatedContext('gelora', claims({ username: 'GELORA', nik: '001', branch: 'MALANG' })).firestore();
+  const hrd = env.authenticatedContext('hrd', claims({ role: 'HRD' })).firestore();
+  await assertSucceeds(getDoc(doc(staff, 'user_permissions', 'GELORA')));
+  await assertFails(getDoc(doc(staff, 'user_permissions', 'OTHER')));
+  await assertFails(getDocs(collection(staff, 'user_permissions')));
+  await assertSucceeds(getDocs(collection(hrd, 'user_permissions')));
+});
+
 test('manager branch access is fail-closed for HR case data', async () => {
   await seed('hr_cases', 'same', { cabang: 'Cirebon' });
   await seed('hr_cases', 'other', { cabang: 'Malang' });
