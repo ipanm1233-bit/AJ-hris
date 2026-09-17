@@ -34,7 +34,7 @@
     },
     {
       "path": "/api/cron-informasi",
-      "schedule": "0 * * * *"
+      "schedule": "15 0 * * *"
     }
   ]
 }

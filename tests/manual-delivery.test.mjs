@@ -2,12 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-test("production schedules leave digests and hourly information email delivery", () => {
+test("production schedules leave digests and daily scheduled information email delivery", () => {
   const config = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url), "utf8"));
   assert.deepEqual(config.crons, [
     { path: "/api/cron-rekap-cuti", schedule: "45 0 * * *" },
     { path: "/api/cron-rekap-cuti", schedule: "0 10 * * *" },
-    { path: "/api/cron-informasi", schedule: "0 * * * *" }
+    { path: "/api/cron-informasi", schedule: "15 0 * * *" }
   ]);
 
   const handler = readFileSync(new URL("../api/cron-rekap-cuti.js", import.meta.url), "utf8");
