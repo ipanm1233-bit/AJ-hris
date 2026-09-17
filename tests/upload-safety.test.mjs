@@ -21,6 +21,8 @@ test("Broadcast uses authenticated backend storage before the Apps Script fallba
   assert.match(broadcast, /action:\s*"upload_broadcast"/);
   assert.match(broadcast, /authFetch\("\/api\/send-email"/);
   assert.match(broadcast, /Upload backend gagal; mencoba cadangan Google Drive/);
+  assert.match(broadcast, /compressBroadcastImage/);
+  assert.match(broadcast, /createImageBitmap/);
   assert.match(emailApi, /handleBroadcastUpload/);
   assert.match(emailApi, /firebaseStorageDownloadTokens/);
   assert.match(emailApi, /3 \* 1024 \* 1024/);

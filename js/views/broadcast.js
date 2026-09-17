@@ -50,18 +50,24 @@ async function runInBatches(items, batchSize, task) {
 }
 
 async function uploadBroadcastAttachment(file, publicationId) {
- if (file.size > 3 * 1024 * 1024) return uploadFileToDrive(file, `Broadcast/${publicationId}`);
+ let uploadFile = file;
+ if (file.size > 3 * 1024 * 1024 && String(file.type || "").startsWith("image/")) {
+ uploadFile = await compressBroadcastImage(file);
+ }
+ if (uploadFile.size > 3 * 1024 * 1024) {
+ throw new Error("Ukuran dokumen maksimal 3 MB. Untuk gambar, sistem akan mengompresnya secara otomatis.");
+ }
  const encoded = await new Promise((resolve, reject) => {
  const reader = new FileReader();
  reader.onload = () => resolve(String(reader.result || "").split(",")[1] || "");
  reader.onerror = () => reject(new Error("File lampiran gagal dibaca."));
- reader.readAsDataURL(file);
+ reader.readAsDataURL(uploadFile);
  });
  try {
  const response = await authFetch("/api/send-email", {
  method: "POST",
  headers: { "Content-Type": "application/json" },
- body: JSON.stringify({ action: "upload_broadcast", publicationId, fileName: file.name, mimeType: file.type || "application/octet-stream", base64: encoded })
+ body: JSON.stringify({ action: "upload_broadcast", publicationId, fileName: uploadFile.name, mimeType: uploadFile.type || "application/octet-stream", base64: encoded })
  });
  const result = await response.json().catch(() => null);
  if (!response.ok || result?.success !== true || !result?.url) throw new Error(result?.error || `Upload gagal (HTTP ${response.status}).`);
@@ -70,6 +76,27 @@ async function uploadBroadcastAttachment(file, publicationId) {
  console.warn("Upload backend gagal; mencoba cadangan Google Drive.", serverError);
  return uploadFileToDrive(file, `Broadcast/${publicationId}`);
  }
+}
+
+async function compressBroadcastImage(file) {
+ const bitmap = await createImageBitmap(file);
+ const maxSide = 1920;
+ const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+ const canvas = document.createElement("canvas");
+ canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+ canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+ const context = canvas.getContext("2d");
+ context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+ bitmap.close?.();
+ let quality = 0.84;
+ let blob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", quality));
+ while (blob && blob.size > 2.8 * 1024 * 1024 && quality > 0.5) {
+ quality -= 0.1;
+ blob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", quality));
+ }
+ if (!blob) throw new Error("Gambar gagal dikompres.");
+ const baseName = String(file.name || "gambar").replace(/\.[^.]+$/, "");
+ return new File([blob], `${baseName}.jpg`, { type: "image/jpeg", lastModified: Date.now() });
 }
 
 export async function mount(container, { session }) {
@@ -224,7 +251,7 @@ function openComposeModal(container, session, karyawan, users, reload) {
  <div>
  <label class="block text-xs font-medium text-slate-500 mb-1.5">Lampiran File (opsional)</label>
  <input type="file" name="lampiran_file" id="bc-lampiran-file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none bg-white">
- <p class="text-[11px] text-slate-400 mt-1">Foto, PDF, atau dokumen Office, maks 10MB.</p>
+ <p class="text-[11px] text-slate-400 mt-1">Foto akan dikompres otomatis. PDF atau dokumen Office maksimal 3MB.</p>
  </div>
  </form>`,
  footerHtml: `
