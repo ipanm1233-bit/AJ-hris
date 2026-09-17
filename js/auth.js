@@ -50,6 +50,7 @@ export const MENU_CONFIG = [
 
  // KATEGORI: KEHADIRAN
  { id: "absensi", label: "Absensi", icon: "clock", kategori: "Kehadiran", roles: ["ALL"], subMenus: [
+  { id: "dashboard", label: "Dashboard Absensi" },
   { id: "proses_tarif", label: "Proses & Tarif Laporan" }
  ] },
  { id: "pengajuan-cuti", label: "Pengajuan Cuti", icon: "calendar", kategori: "Kehadiran", roles: ["ALL"] },
@@ -1024,6 +1025,14 @@ export const PERMISSION_CATALOG = [
   icon: "alert",
   subMenus: [
    {
+    id: "dashboard",
+    label: "Dashboard Absensi",
+    actions: [
+     { key: "absensi.dashboard.view", label: "Lihat Analitik Kehadiran", type: "view" },
+     { key: "absensi.dashboard.archive", label: "Gabungkan Arsip Spreadsheet", type: "sync" }
+    ]
+   },
+   {
     id: "pending",
     label: "Menunggu Persetujuan Saya",
     actions: [
@@ -1783,7 +1792,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "pengajuan.view", "pengajuan.create", "riwayat.view", "riwayat.print", "riwayat.lpj.submit",
   "approval.pending.view", "approval.pending.edit", "approval.pending.approve", "approval.pending.reject", "approval.pending.print", "approval.history.view",
   "broadcast.view", "broadcast.create", "broadcast.publish", "broadcast.delete",
-  "absensi.data.view_all", "absensi.data.edit", "absensi.data.delete", "absensi.proses_tarif.import", "absensi.proses_tarif.export", "absensi.proses_tarif.archive", "absensi.fingerprint.sync", "absensi.fingerprint.configure",
+  "absensi.dashboard.view", "absensi.dashboard.archive", "absensi.data.view_all", "absensi.data.edit", "absensi.data.delete", "absensi.proses_tarif.import", "absensi.proses_tarif.export", "absensi.proses_tarif.archive", "absensi.fingerprint.sync", "absensi.fingerprint.configure",
   "pengajuan_cuti.create", "pengajuan_cuti.print",
   "cuti.view_all", "cuti.create", "cuti.edit", "cuti.delete", "cuti.print", "cuti.import", "cuti.export", "cuti.annual_reset", "cuti.configure",
   "izin.create", "izin.print", "izin.lihat_semua.view", "izin.lihat_semua.approve", "izin.lihat_semua.reject",

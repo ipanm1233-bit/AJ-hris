@@ -5,11 +5,12 @@
   </div>
 
   <div class="flex items-center gap-2 border-b border-slate-200 overflow-x-auto">
-    <button data-atab="proses" class="absen-tab px-4 py-2.5 text-sm font-medium border-b-2 border-maroon-700 text-maroon-700 whitespace-nowrap">Proses & Tarif Laporan</button>
+    <button data-atab="dashboard" class="absen-tab px-4 py-2.5 text-sm font-medium border-b-2 border-maroon-700 text-maroon-700 whitespace-nowrap">Dashboard Absensi</button>
+    <button data-atab="proses" class="absen-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">Proses & Tarif Laporan</button>
     <button data-atab="data" class="absen-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">Lihat & Koreksi Data Absensi</button>
   </div>
 
-  <div id="absen-panel-proses" class="space-y-6">
+  <div id="absen-panel-proses" class="hidden space-y-6">
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div class="bg-blue-50 border border-blue-200 p-6 rounded-xl relative overflow-hidden flex flex-col justify-between">
          <div>
@@ -79,7 +80,7 @@
     </div>
   </div>
 
-  <div id="absen-panel-data" class="hidden space-y-4">
+  <div id="absen-panel-dashboard" class="space-y-4">
      <section id="attendance-dashboard" class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
        <div class="p-5 border-b border-slate-100 bg-gradient-to-r from-slate-900 via-slate-800 to-maroon-950 text-white">
          <div class="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4">
@@ -121,7 +122,9 @@
          </div>
        </div>
      </section>
+  </div>
 
+  <div id="absen-panel-data" class="hidden space-y-4">
      <div id="archive-alert-box" class="hidden"></div>
 
      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">

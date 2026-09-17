@@ -62,6 +62,7 @@ function getTwoRunningMonthsRange() {
 export async function mount(container, { session } = {}) {
  const userRole = (session?.role || "").toUpperCase();
  const roleIsHrdOrAdmin = ["HRD", "SUPERADMIN", "ADMIN"].includes(userRole);
+ const canViewDashboard = roleIsHrdOrAdmin || await hasSubMenuAccess("absensi", "dashboard", session);
  // "isHrdOrAdmin" sekarang final ditentukan lewat Pengaturan > Akses Menu >
  // Manajemen Absensi > Proses & Tarif Laporan -- default-nya tetap sama
  // seperti sebelumnya (role HRD/SUPERADMIN/ADMIN dapat akses penuh), tapi
@@ -78,6 +79,7 @@ export async function mount(container, { session } = {}) {
  const btnExport = container.querySelector("#btn-export-absen");
  
  const panelProses = container.querySelector("#absen-panel-proses");
+ const panelDashboard = container.querySelector("#absen-panel-dashboard");
  const panelData = container.querySelector("#absen-panel-data");
  const rawTbody = container.querySelector("#absen-raw-tbody");
  const searchRaw = container.querySelector("#search-absen-raw");
@@ -152,7 +154,7 @@ export async function mount(container, { session } = {}) {
  }
 
  function populateDashboardFilters() {
-  if (!roleIsHrdOrAdmin || !dashboardSection) return;
+  if (!canViewDashboard || !dashboardSection) return;
   const monthEmployees = employeeRowsGlobal;
   const branches = [...new Set(monthEmployees.map(row => String(row.cabang || "").trim()).filter(Boolean))]
    .sort((a, b) => a.localeCompare(b, "id", { sensitivity: "base" }));
@@ -168,7 +170,7 @@ export async function mount(container, { session } = {}) {
  }
 
  function renderAttendanceDashboard() {
-  if (!roleIsHrdOrAdmin || !dashboardSection) return;
+  if (!canViewDashboard || !dashboardSection) return;
   const analytics = buildAttendanceAnalytics(listAbsensiGlobal, dashboardState);
   const { totals } = analytics;
   const formatNumber = value => Number(value || 0).toLocaleString("id-ID");
@@ -219,7 +221,7 @@ export async function mount(container, { session } = {}) {
  }
 
  async function loadAttendanceArchiveForDashboard({ force = false } = {}) {
-  if (!roleIsHrdOrAdmin || !dashboardMonth) return;
+  if (!canViewDashboard || !dashboardMonth) return;
   const range = dashboardMonthRange(dashboardState.month);
   if (!range) return;
   if (!force && archiveMonthsLoaded.has(dashboardState.month)) return renderAttendanceDashboard();
@@ -322,7 +324,7 @@ export async function mount(container, { session } = {}) {
 
  // Sembunyikan kontrol admin jika bukan HRD/Admin
  if (!roleIsHrdOrAdmin) {
- if (dashboardSection) dashboardSection.style.display = "none";
+ if (!canViewDashboard && dashboardSection) dashboardSection.style.display = "none";
  if (btnImport) btnImport.style.display = "none";
  if (btnExport) btnExport.style.display = "none";
  if (btnExportRawAbsen && !isPicBranch) btnExportRawAbsen.style.display = "none";
@@ -331,12 +333,14 @@ export async function mount(container, { session } = {}) {
  if (btnPullArchive) btnPullArchive.style.display = "none";
  if (archiveAlertBox) archiveAlertBox.style.display = "none";
 
- // Paksa langsung ke tab data
+ // Pengguna tanpa akses dashboard langsung ke data; penerima akses
+ // dashboard tetap mendapatkan pemisahan sub-menu yang sama seperti HRD.
  if (panelProses) panelProses.classList.add("hidden");
- if (panelData) panelData.classList.remove("hidden");
+ if (panelDashboard) panelDashboard.classList.toggle("hidden", !canViewDashboard);
+ if (panelData) panelData.classList.toggle("hidden", canViewDashboard);
 
  const tabHeaderContainer = container.querySelector(".absen-tab")?.parentElement;
- if (tabHeaderContainer) tabHeaderContainer.style.display = "none";
+ if (tabHeaderContainer && !canViewDashboard) tabHeaderContainer.style.display = "none";
 
  const pageH1 = container.querySelector("h1");
  if (pageH1) pageH1.textContent = isPicBranch ? `Data Absensi Cabang ${scopedBranch}` : "Data Absensi Saya";
@@ -350,7 +354,16 @@ export async function mount(container, { session } = {}) {
  loadRawAbsensiTable();
  }
 
- if (roleIsHrdOrAdmin && dashboardSection) {
+ if (roleIsHrdOrAdmin && !canViewDashboard) {
+  panelDashboard?.classList.add("hidden");
+  panelProses?.classList.remove("hidden");
+  container.querySelector('[data-atab="dashboard"]')?.classList.add("hidden");
+  const processTab = container.querySelector('[data-atab="proses"]');
+  processTab?.classList.add("border-maroon-700", "text-maroon-700");
+  processTab?.classList.remove("border-transparent", "text-slate-500");
+ }
+
+ if (canViewDashboard && dashboardSection) {
   if (dashboardMonth) dashboardMonth.value = dashboardState.month;
   dashboardMonth.onchange = () => {
    dashboardState.month = dashboardMonth.value || dashboardState.month;
@@ -372,11 +385,16 @@ export async function mount(container, { session } = {}) {
 
  container.querySelectorAll(".absen-tab").forEach(btn => {
  if (btn.dataset.atab === "proses" && !roleIsHrdOrAdmin) btn.classList.add("hidden");
+ if (btn.dataset.atab === "dashboard" && !canViewDashboard) btn.classList.add("hidden");
  btn.onclick = () => {
- const isProses = btn.dataset.atab === "proses";
+ const selectedTab = btn.dataset.atab;
+ const isProses = selectedTab === "proses";
+ const isDashboard = selectedTab === "dashboard";
  if (isProses && !roleIsHrdOrAdmin) return;
+ if (isDashboard && !canViewDashboard) return;
  panelProses.classList.toggle("hidden", !isProses);
- panelData.classList.toggle("hidden", isProses);
+ panelDashboard.classList.toggle("hidden", !isDashboard);
+ panelData.classList.toggle("hidden", selectedTab !== "data");
 
  container.querySelectorAll(".absen-tab").forEach(b => {
  b.classList.toggle("border-maroon-700", b === btn);
@@ -388,6 +406,8 @@ export async function mount(container, { session } = {}) {
  if (!isProses) loadRawAbsensiTable();
  };
  });
+
+ if (canViewDashboard) loadRawAbsensiTable();
 
  async function loadRawAbsensiTable() {
  rawTbody.innerHTML = `<tr><td colspan="18" class="p-4">${skeletonRows(4)}</td></tr>`;
@@ -431,7 +451,7 @@ export async function mount(container, { session } = {}) {
  populateAttendanceFilterOptions();
  populateDashboardFilters();
  renderAttendanceDashboard();
- if (roleIsHrdOrAdmin && !archiveMonthsLoaded.has(dashboardState.month)) loadAttendanceArchiveForDashboard();
+ if (canViewDashboard && !archiveMonthsLoaded.has(dashboardState.month)) loadAttendanceArchiveForDashboard();
 
  // Check for records older than 60 days per employee to keep Firebase lightweight
  const sixtyDaysAgo = new Date();
