@@ -2,11 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-test("production schedules morning and evening leave digests in UTC", () => {
+test("production schedules leave digests and hourly information email delivery", () => {
   const config = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url), "utf8"));
   assert.deepEqual(config.crons, [
     { path: "/api/cron-rekap-cuti", schedule: "45 0 * * *" },
-    { path: "/api/cron-rekap-cuti", schedule: "0 10 * * *" }
+    { path: "/api/cron-rekap-cuti", schedule: "0 10 * * *" },
+    { path: "/api/cron-informasi", schedule: "0 * * * *" }
   ]);
 
   const handler = readFileSync(new URL("../api/cron-rekap-cuti.js", import.meta.url), "utf8");
@@ -14,6 +15,12 @@ test("production schedules morning and evening leave digests in UTC", () => {
   assert.match(handler, /cronSchedule === "0 10 \* \* \*" \? "evening"/);
   assert.match(handler, /const isScheduledInvocation = Boolean\(scheduledType\)/);
   assert.equal((handler.match(/\|\| forceSend \|\| isScheduledInvocation/g) || []).length, 2);
+
+  const informationHandler = readFileSync(new URL("../api/cron-informasi.js", import.meta.url), "utf8");
+  assert.match(informationHandler, /requireCronSecret\(req, res\)/);
+  assert.match(informationHandler, /kirim_email_terjadwal/);
+  assert.match(informationHandler, /email_sent_at/);
+  assert.match(informationHandler, /bcc: group/);
 });
 
 test("shared email and notification helpers require an explicit manual action", () => {

@@ -20,7 +20,7 @@ export async function mount(container, { session }) {
 
  // Widget dashboard karyawan bisa diatur HRD per-karyawan (user_dashboard_widgets)
  // atau secara global (dashboard_widgets). Default: semua widget aktif jika belum diatur.
- const WIDGET_IDS = ["dash-widget-leave", "dash-widget-kpi", "dash-widget-cuti-hari-ini", "dash-widget-pengumuman", "dash-widget-attendance", "dash-widget-performance", "dash-widget-assets", "dash-contract-widget-wrap", "dash-widget-sales-performance"];
+ const WIDGET_IDS = ["dash-widget-leave", "dash-widget-kpi", "dash-widget-cuti-hari-ini", "dash-widget-pengumuman", "dash-widget-informasi", "dash-widget-attendance", "dash-widget-performance", "dash-widget-assets", "dash-contract-widget-wrap", "dash-widget-sales-performance"];
  try {
  const cfgSnap = await getDoc(doc(db, COL.APP_SETTINGS, "main"));
  if (cfgSnap.exists()) {
@@ -53,6 +53,7 @@ export async function mount(container, { session }) {
   loadKpiTasks(container, session).catch(e => console.warn("KPI error:", e)),
   loadAssignedAssets(container, session, karyawanProfile).catch(e => console.warn("Assets error:", e)),
   loadCutiHariIni(container).catch(e => console.warn("Cuti error:", e)),
+  loadEmployeeInformation(container, session).catch(e => console.warn("Information error:", e)),
   loadAnnouncements(container, session).catch(e => console.warn("Announcements error:", e)),
   loadAttendanceAnalytics(container, session).catch(e => console.warn("Attendance error:", e)),
   loadPerformanceWidget(container, session).catch(e => console.warn("Performance error:", e)),
@@ -592,7 +593,63 @@ async function loadCutiHariIni(container) {
  } catch (e) { if (wrap) wrap.innerHTML = `<div class="col-span-full py-2 px-3 text-center text-xs text-slate-400 italic bg-slate-50 rounded-lg">Gagal memuat data cuti</div>`; }
 }
 
-/* ------------------------ e. PENGUMUMAN ------------------------ */
+function publicationMatchesSession(item, session, privileged = false) {
+ if (privileged) return true;
+ if (item.dibuat_oleh && item.dibuat_oleh.toLowerCase() === String(session?.nama || "").toLowerCase()) return true;
+ if (!item.target_type || item.target_type === "ALL") return true;
+ const targets = (item.target_list || []).map(value => String(value || "").trim().toLowerCase());
+ const identities = [session?.nama, session?.username, session?.nik].map(value => String(value || "").trim().toLowerCase()).filter(Boolean);
+ return targets.some(target => identities.some(identity => target === identity || (identity.length > 3 && (target.includes(identity) || identity.includes(target)))));
+}
+
+/* ------------------------ e. INFORMASI KARYAWAN ------------------------ */
+async function loadEmployeeInformation(container, session) {
+ const wrap = container.querySelector("#dash-information");
+ if (!wrap) return;
+ const isHrdRole = ["HRD", "SUPERADMIN"].includes((session?.role || "").toUpperCase());
+ const manageButton = container.querySelector("#dash-information-manage");
+ if (manageButton) manageButton.classList.toggle("hidden", !isHrdRole);
+ try {
+ const now = new Date();
+ const rows = (await fsGetAll(COL.BROADCAST)).filter(item => {
+ if (item.jenis_publikasi !== "INFORMASI") return false;
+ const startsAt = item.tanggal_tayang ? new Date(item.tanggal_tayang) : new Date(item.tanggal || 0);
+ if (!Number.isNaN(startsAt.getTime()) && startsAt > now) return false;
+ if (item.tanggal_berakhir) {
+ const expiresAt = new Date(item.tanggal_berakhir); expiresAt.setHours(23, 59, 59, 999);
+ if (expiresAt < now) return false;
+ }
+ return publicationMatchesSession(item, session, isHrdRole);
+ }).sort((a, b) => new Date(b.tanggal_tayang || b.tanggal || 0) - new Date(a.tanggal_tayang || a.tanggal || 0)).slice(0, 6);
+
+ if (!rows.length) {
+ wrap.innerHTML = `<div class="flex items-center justify-between gap-4 rounded-xl border border-dashed border-slate-200 bg-white/70 px-4 py-5"><div><p class="text-sm font-semibold text-slate-700">Belum ada informasi terbaru</p><p class="text-xs text-slate-400 mt-1">Bacaan, tips, dan kabar dari HRD akan tampil di sini.</p></div>${isHrdRole ? '<a href="#broadcast" class="text-xs font-bold text-maroon-700 hover:underline shrink-0">Buat informasi</a>' : ''}</div>`;
+ return;
+ }
+
+ const categoryLabels = { UMUM: "Umum", LIBUR_NASIONAL: "Libur Nasional", TIPS_KEUANGAN: "Tips Keuangan", KESEHATAN: "Kesehatan", PENGEMBANGAN: "Pengembangan Diri", LAINNYA: "Lainnya" };
+ wrap.innerHTML = `<div class="grid grid-cols-1 ${rows.length > 1 ? "md:grid-cols-2 xl:grid-cols-3" : ""} gap-3">${rows.map((item, index) => {
+ const plainText = String(item.isi || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+ const isImage = String(item.lampiran_tipe || "").startsWith("image/");
+ const imageUrl = isImage ? getDirectImageUrl(item.lampiran_url) : "";
+ const category = categoryLabels[item.kategori_informasi] || "Informasi";
+ return `<article data-info-idx="${index}" tabindex="0" role="button" class="group cursor-pointer overflow-hidden rounded-2xl border border-slate-100 bg-white hover:border-red-200 hover:shadow-md transition focus:outline-none focus:ring-2 focus:ring-maroon-300">
+ ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="" class="h-36 w-full object-cover bg-slate-100" loading="lazy">` : `<div class="h-20 bg-gradient-to-br from-maroon-700 to-rose-500 flex items-end p-3"><span class="text-[10px] uppercase tracking-widest font-extrabold text-white/80">${escapeHtml(category)}</span></div>`}
+ <div class="p-4"><div class="flex items-center justify-between gap-2"><span class="text-[10px] uppercase tracking-wide font-extrabold text-maroon-700">${escapeHtml(category)}</span><span class="text-[10px] text-slate-400">${fmtDateShort(item.tanggal_tayang || item.tanggal)}</span></div><h3 class="font-bold text-slate-800 mt-1.5 group-hover:text-maroon-800 transition">${escapeHtml(item.judul || "Informasi")}</h3><p class="text-xs text-slate-500 mt-1.5 leading-relaxed line-clamp-2">${escapeHtml(plainText.slice(0, 150))}${plainText.length > 150 ? "…" : ""}</p><span class="inline-flex mt-3 text-xs font-bold text-maroon-700">Baca selengkapnya →</span></div>
+ </article>`;
+ }).join("")}</div>`;
+ wrap.querySelectorAll("[data-info-idx]").forEach(card => {
+ const open = () => openAnnouncementDetailModal(rows[Number(card.dataset.infoIdx)], session, () => loadEmployeeInformation(container, session));
+ card.onclick = open;
+ card.onkeydown = event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); } };
+ });
+ } catch (error) {
+ console.warn("Gagal memuat informasi karyawan:", error);
+ wrap.innerHTML = emptyState("Informasi belum dapat dimuat");
+ }
+}
+
+/* ------------------------ f. PENGUMUMAN ------------------------ */
 async function loadAnnouncements(container, session) {
  const wrap = container.querySelector("#dash-announcements");
  if (!wrap) return;
@@ -604,30 +661,17 @@ async function loadAnnouncements(container, session) {
  const dismissedIds = getDismissedAnnouncements(session).map(String);
 
  const validMemos = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => {
+ if (r.jenis_publikasi === "INFORMASI") return false;
  if (dismissedIds.includes(String(r.id))) return false;
+
+ if (r.tanggal_tayang && new Date(r.tanggal_tayang) > now) return false;
 
  if (r.tanggal_berakhir) { 
  const tglBatas = new Date(r.tanggal_berakhir); tglBatas.setHours(23, 59, 59, 999);
  if (tglBatas < now) return false;
  }
  
- if (isHrdRole) return true;
- if (r.dibuat_oleh && r.dibuat_oleh.toLowerCase() === String(session?.nama || "").toLowerCase()) return true;
-
- // Filter Penerima Spesifik
- if (r.target_type === "SPESIFIK") {
- const list = (r.target_list || []).map(x => String(x || "").trim().toLowerCase());
- const myName = String(session?.nama || "").trim().toLowerCase();
- const myUsername = String(session?.username || "").trim().toLowerCase();
- const myNik = String(session?.nik || "").trim().toLowerCase();
- return list.some(target => 
- target === myName || 
- target === myUsername || 
- (myNik && target === myNik) ||
- (myName && (target.includes(myName) || myName.includes(target)))
- );
- }
- return true;
+ return publicationMatchesSession(r, session, isHrdRole);
  }).slice(0, 6);
 
  if (!validMemos.length) { wrap.innerHTML = emptyState("Belum ada pengumuman aktif"); return; }
@@ -662,6 +706,7 @@ function openAnnouncementDetailModal(memo, session, onRefresh) {
  <span>${fmtDateShort(memo.tanggal)} • oleh ${escapeHtml(memo.dibuat_oleh || "-")}</span>
  ${memo.tanggal_berakhir ? `<span>Berlaku s/d ${fmtDateShort(memo.tanggal_berakhir)}</span>` : ""}
  </div>
+ ${String(memo.lampiran_tipe || "").startsWith("image/") && memo.lampiran_url ? `<img src="${escapeHtml(getDirectImageUrl(memo.lampiran_url))}" alt="${escapeHtml(memo.judul || "Informasi")}" class="w-full max-h-80 object-cover rounded-xl border border-slate-100">` : ""}
  <div class="text-sm text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100 quill-content">${memo.isi || "<i>Tidak ada isi.</i>"}</div>
  ${memo.lampiran_url ? `<a href="${escapeHtml(memo.lampiran_url)}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-sm font-medium text-maroon-700 hover:underline">${icon("link", "w-4 h-4")} Lihat Lampiran</a>` : ""}
  </div>

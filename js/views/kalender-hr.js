@@ -8,10 +8,11 @@ export async function mount(container, { session }) {
  let cutiData = [];
  let karyawanData = [];
  let agendaData = [];
+ let activeFilters = new Set(["cuti", "bday", "anniv", "kontrak", "agenda"]);
 
  container.innerHTML = `
  <div class="max-w-7xl mx-auto space-y-6 pb-10">
- <div class="flex justify-between items-center border-b border-slate-200 pb-4">
+ <div class="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-3 border-b border-slate-200 pb-4">
  <div>
  <h1 class="text-2xl font-bold text-slate-800">Kalender Pintar HR</h1>
  <p class="text-sm text-slate-500 mt-1">Pantau Cuti, Ulang Tahun, Anniversary, Kontrak Habis & Agenda dalam satu tampilan.</p>
@@ -22,27 +23,29 @@ export async function mount(container, { session }) {
  </button>
  </div>
  
- <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+ <div class="grid grid-cols-2 sm:grid-cols-5 gap-2" id="cal-summary"></div>
+
+ <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3 sm:p-5">
  <!-- Calendar Header -->
- <div class="flex justify-between items-center mb-6">
- <button id="cal-prev" class="p-2 rounded-lg hover:bg-slate-100 text-slate-600 transition"><svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg></button>
+ <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+ <div class="flex items-center gap-1"><button id="cal-prev" class="p-2 rounded-lg hover:bg-slate-100 text-slate-600 transition"><svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg></button><button id="cal-today" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50">Hari Ini</button></div>
  <h2 id="cal-month-year" class="text-xl font-bold text-slate-800 uppercase tracking-wide"></h2>
  <button id="cal-next" class="p-2 rounded-lg hover:bg-slate-100 text-slate-600 transition"><svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></button>
  </div>
 
  <!-- Keterangan Indikator -->
- <div class="flex flex-wrap gap-4 mb-4 text-[11px] font-medium text-slate-500 justify-center">
- <span class="flex items-center gap-1"><div class="w-2.5 h-2.5 rounded-full bg-blue-500"></div> Cuti / Izin</span>
- <span class="flex items-center gap-1"><div class="w-2.5 h-2.5 rounded-full bg-pink-500"></div> Ulang Tahun</span>
- <span class="flex items-center gap-1"><div class="w-2.5 h-2.5 rounded-full bg-purple-500"></div> Anniversary Kerja</span>
- <span class="flex items-center gap-1"><div class="w-2.5 h-2.5 rounded-full bg-red-500"></div> Habis Kontrak</span>
- <span class="flex items-center gap-1"><div class="w-2.5 h-2.5 rounded-full bg-emerald-500"></div> Agenda HR</span>
+ <div class="flex flex-wrap gap-2 mb-4 text-[11px] font-bold text-slate-600 justify-center" id="cal-filters">
+ <button data-cal-filter="cuti" class="cal-filter px-2.5 py-1.5 rounded-full border bg-blue-50 text-blue-700 border-blue-200">● Cuti / Izin</button>
+ <button data-cal-filter="bday" class="cal-filter px-2.5 py-1.5 rounded-full border bg-pink-50 text-pink-700 border-pink-200">● Ulang Tahun</button>
+ <button data-cal-filter="anniv" class="cal-filter px-2.5 py-1.5 rounded-full border bg-purple-50 text-purple-700 border-purple-200">● Anniversary</button>
+ <button data-cal-filter="kontrak" class="cal-filter px-2.5 py-1.5 rounded-full border bg-red-50 text-red-700 border-red-200">● Habis Kontrak</button>
+ <button data-cal-filter="agenda" class="cal-filter px-2.5 py-1.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">● Agenda HR</button>
  </div>
 
  <!-- Calendar Grid -->
- <div class="grid grid-cols-7 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden" id="cal-grid">
+ <div class="overflow-x-auto"><div class="grid grid-cols-7 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden min-w-[920px]" id="cal-grid">
  <!-- Diisi oleh Javascript -->
- </div>
+ </div></div>
  </div>
  </div>
  `;
@@ -70,6 +73,38 @@ export async function mount(container, { session }) {
  return localDateStr(val);
  }
 
+ function approvedLeave(record) {
+  const status = String(record?.status_final || record?.status || "").toUpperCase();
+  return !/DITOLAK|REJECT|PENDING|MENUNGGU/.test(status);
+ }
+
+ function leaveCoversDate(record, date) {
+  if (!approvedLeave(record)) return false;
+  const start = toLocalDateStr(record.tanggal || record.tanggal_mulai);
+  const end = toLocalDateStr(record.tanggal_selesai || record.tanggal_akhir || record.tanggal || record.tanggal_mulai);
+  return Boolean(start && end && date >= start && date <= end);
+ }
+
+ function dayLists(dStr) {
+  return {
+   cuti: cutiData.filter(c => leaveCoversDate(c, dStr)),
+   bday: karyawanData.filter(k => toLocalDateStr(k.tanggal_lahir)?.substring(5) === dStr.substring(5)),
+   anniv: karyawanData.filter(k => toLocalDateStr(k.tanggal_join)?.substring(5) === dStr.substring(5) && toLocalDateStr(k.tanggal_join) < dStr),
+   kontrak: karyawanData.filter(k => toLocalDateStr(k.kontrak_habis) === dStr),
+   agenda: agendaData.filter(a => toLocalDateStr(a.tanggal) === dStr)
+  };
+ }
+
+ function eventChips(lists) {
+  const items = [];
+  if (activeFilters.has("agenda")) lists.agenda.forEach(a => items.push({ cls: "bg-emerald-50 text-emerald-800 border-emerald-200", text: a.judul || "Agenda HR" }));
+  if (activeFilters.has("cuti")) lists.cuti.forEach(c => items.push({ cls: "bg-blue-50 text-blue-800 border-blue-200", text: `${c.nama_karyawan || c.nama || "Karyawan"} • ${c.type_cuti || c.jenis_cuti || "Cuti/Izin"}` }));
+  if (activeFilters.has("bday")) lists.bday.forEach(k => items.push({ cls: "bg-pink-50 text-pink-800 border-pink-200", text: `🎂 ${k.nama_karyawan || k.nama}` }));
+  if (activeFilters.has("anniv")) lists.anniv.forEach(k => items.push({ cls: "bg-purple-50 text-purple-800 border-purple-200", text: `★ ${k.nama_karyawan || k.nama}` }));
+  if (activeFilters.has("kontrak")) lists.kontrak.forEach(k => items.push({ cls: "bg-red-50 text-red-800 border-red-200", text: `Kontrak: ${k.nama_karyawan || k.nama}` }));
+  return items;
+ }
+
  function renderCalendar() {
  const year = currentDate.getFullYear();
  const month = currentDate.getMonth();
@@ -83,44 +118,28 @@ export async function mount(container, { session }) {
  let html = daysOfWeek.map(d => `<div class="bg-slate-50 text-center py-2 text-xs font-bold text-slate-500 uppercase tracking-wider">${d}</div>`).join("");
 
  for (let i = 0; i < firstDay; i++) {
- html += `<div class="bg-white/50 h-28"></div>`; // Kotak kosong bulan lalu
+ html += `<div class="bg-white/50 min-h-36"></div>`; // Kotak kosong bulan lalu
  }
 
  for (let day = 1; day <= daysInMonth; day++) {
  const dStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
  const isToday = dStr === toLocalDateStr(new Date());
 
- // Kumpulkan indikator hari ini
- const listCuti = cutiData.filter(c => toLocalDateStr(c.tanggal) === dStr);
- const listBday = karyawanData.filter(k => toLocalDateStr(k.tanggal_lahir)?.substring(5) === dStr.substring(5));
- const listAnniv = karyawanData.filter(k => toLocalDateStr(k.tanggal_join)?.substring(5) === dStr.substring(5) && toLocalDateStr(k.tanggal_join) < dStr);
- const listKontrak = karyawanData.filter(k => toLocalDateStr(k.kontrak_habis) === dStr);
- const listAgenda = agendaData.filter(a => a.tanggal === dStr);
-
- let dotsHtml = '';
- if(listCuti.length) dotsHtml += `<div class="w-2 h-2 rounded-full bg-blue-500" title="Cuti"></div>`;
- if(listBday.length) dotsHtml += `<div class="w-2 h-2 rounded-full bg-pink-500" title="Ulang Tahun"></div>`;
- if(listAnniv.length) dotsHtml += `<div class="w-2 h-2 rounded-full bg-purple-500" title="Anniversary"></div>`;
- if(listKontrak.length) dotsHtml += `<div class="w-2 h-2 rounded-full bg-red-500" title="Kontrak Habis"></div>`;
- if(listAgenda.length) dotsHtml += `<div class="w-2 h-2 rounded-full bg-emerald-500" title="Agenda HR"></div>`;
-
- // Ringkasan Teks
- let textSummary = '';
- if (listBday.length) textSummary += `<p class="text-[9px] text-pink-600 truncate font-semibold">${listBday.length} Ultah</p>`;
- if (listAnniv.length) textSummary += `<p class="text-[9px] text-purple-600 truncate font-semibold">${listAnniv.length} Anniv</p>`;
- if (listCuti.length) textSummary += `<p class="text-[9px] text-blue-600 truncate">️ ${listCuti.length} Cuti</p>`;
- if (listAgenda.length) textSummary += `<p class="text-[9px] text-emerald-600 truncate">${listAgenda[0].judul}</p>`;
+ const lists = dayLists(dStr);
+ const chips = eventChips(lists);
+ const visibleChips = chips.slice(0, 4);
 
  html += `
- <div data-date="${dStr}" class="bg-white h-28 p-1.5 border-t-2 ${isToday ? 'border-maroon-600 bg-maroon-50/20' : 'border-transparent'} hover:bg-slate-50 cursor-pointer transition flex flex-col">
+ <button type="button" data-date="${dStr}" class="text-left bg-white min-h-36 p-2 border-t-2 ${isToday ? 'border-maroon-600 bg-maroon-50/30' : 'border-transparent'} hover:bg-slate-50 hover:shadow-inner cursor-pointer transition flex flex-col focus:outline-none focus:ring-2 focus:ring-inset focus:ring-maroon-300">
  <div class="flex justify-between items-start mb-1">
- <span class="text-sm ${isToday ? 'font-black text-maroon-700' : 'font-medium text-slate-700'}">${day}</span>
- <div class="flex gap-0.5 mt-1">${dotsHtml}</div>
+ <span class="inline-flex items-center justify-center w-7 h-7 rounded-full text-sm ${isToday ? 'font-black text-white bg-maroon-700' : 'font-bold text-slate-700'}">${day}</span>
+ ${chips.length ? `<span class="text-[9px] font-bold text-slate-400">${chips.length} item</span>` : ''}
  </div>
- <div class="flex-1 overflow-hidden space-y-0.5 mt-1">
- ${textSummary}
+ <div class="flex-1 overflow-hidden space-y-1 mt-1">
+ ${visibleChips.map(item => `<div class="px-1.5 py-1 rounded-md border text-[9px] font-semibold truncate ${item.cls}" title="${escapeHtml(item.text)}">${escapeHtml(item.text)}</div>`).join("")}
+ ${chips.length > visibleChips.length ? `<div class="text-[9px] font-bold text-slate-500 px-1">+${chips.length - visibleChips.length} lainnya</div>` : ''}
  </div>
- </div>
+ </button>
  `;
  }
  
@@ -129,20 +148,41 @@ export async function mount(container, { session }) {
  gridEl.querySelectorAll("[data-date]").forEach(cell => {
  cell.onclick = () => openDayDetailModal(cell.dataset.date);
  });
+
+ const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+ const monthly = { cuti: 0, bday: 0, anniv: 0, kontrak: 0, agenda: 0 };
+ for (let day = 1; day <= daysInMonth; day++) {
+  const lists = dayLists(`${monthPrefix}-${String(day).padStart(2, '0')}`);
+  Object.keys(monthly).forEach(type => { monthly[type] += lists[type].length; });
+ }
+ const summary = container.querySelector("#cal-summary");
+ if (summary) summary.innerHTML = [
+  ["Cuti / Izin", monthly.cuti, "bg-blue-50 border-blue-200 text-blue-800"],
+  ["Ulang Tahun", monthly.bday, "bg-pink-50 border-pink-200 text-pink-800"],
+  ["Anniversary", monthly.anniv, "bg-purple-50 border-purple-200 text-purple-800"],
+  ["Kontrak Habis", monthly.kontrak, "bg-red-50 border-red-200 text-red-800"],
+  ["Agenda HR", monthly.agenda, "bg-emerald-50 border-emerald-200 text-emerald-800"]
+ ].map(([label, count, cls]) => `<div class="rounded-xl border p-3 ${cls}"><p class="text-[10px] font-bold uppercase">${label}</p><p class="text-xl font-black mt-1">${count}</p></div>`).join("");
  }
 
  container.querySelector("#cal-prev").onclick = () => { currentDate.setMonth(currentDate.getMonth() - 1); renderCalendar(); };
  container.querySelector("#cal-next").onclick = () => { currentDate.setMonth(currentDate.getMonth() + 1); renderCalendar(); };
+ container.querySelector("#cal-today").onclick = () => { currentDate = new Date(); renderCalendar(); };
+ container.querySelectorAll("[data-cal-filter]").forEach(button => {
+  button.onclick = () => {
+   const type = button.dataset.calFilter;
+   if (activeFilters.has(type)) activeFilters.delete(type); else activeFilters.add(type);
+   button.classList.toggle("opacity-35", !activeFilters.has(type));
+   button.classList.toggle("grayscale", !activeFilters.has(type));
+   renderCalendar();
+  };
+ });
 
  // ==========================================
  // MODAL DETAIL HARI INI & PENGIRIMAN EMAIL
  // ==========================================
  function openDayDetailModal(dStr) {
- const listCuti = cutiData.filter(c => toLocalDateStr(c.tanggal) === dStr);
- const listBday = karyawanData.filter(k => toLocalDateStr(k.tanggal_lahir)?.substring(5) === dStr.substring(5));
- const listAnniv = karyawanData.filter(k => toLocalDateStr(k.tanggal_join)?.substring(5) === dStr.substring(5) && toLocalDateStr(k.tanggal_join) < dStr);
- const listKontrak = karyawanData.filter(k => toLocalDateStr(k.kontrak_habis) === dStr);
- const listAgenda = agendaData.filter(a => a.tanggal === dStr);
+ const { cuti: listCuti, bday: listBday, anniv: listAnniv, kontrak: listKontrak, agenda: listAgenda } = dayLists(dStr);
 
  const formatTgl = new Date(dStr).toLocaleString('id-ID', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
 

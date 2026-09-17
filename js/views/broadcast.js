@@ -1,5 +1,5 @@
 import { COL } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsDelete, deleteBroadcastMemoAndNotifs, openModal, closeModal, toast, genId, escapeHtml, fmtDateTime, sendEmailNotif, buildStandardEmailHtml, sendFCMNotif } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, deleteBroadcastMemoAndNotifs, openModal, closeModal, toast, genId, escapeHtml, fmtDateTime, sendEmailNotif, buildStandardEmailHtml, sendFCMNotif } from "../utils.js";
 // PERUBAHAN: lampiran memo kini diupload ke Google Drive, bukan Firebase Storage.
 import { uploadFileToDrive } from "../gas-integration.js";
 import { avatar, badge, emptyState, skeletonRows } from "../components.js";
@@ -73,7 +73,7 @@ export async function mount(container, { session }) {
 
  const rows = allRows.filter(isRecipient);
  
- if (!rows.length) { listEl.innerHTML = emptyState("Belum ada memo yang diterbitkan"); return; }
+ if (!rows.length) { listEl.innerHTML = emptyState("Belum ada publikasi yang diterbitkan"); return; }
  
  listEl.innerHTML = rows.map(r => `
  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
@@ -81,7 +81,7 @@ export async function mount(container, { session }) {
  ${avatar(r.dibuat_oleh || "?", "w-10 h-10")}
  <div class="flex-1 min-w-0">
  <div class="flex items-center justify-between gap-2 flex-wrap">
- <p class="font-semibold text-slate-800">${escapeHtml(r.judul)}</p>
+ <div class="flex items-center gap-2 flex-wrap"><p class="font-semibold text-slate-800">${escapeHtml(r.judul)}</p>${badge(r.jenis_publikasi === "INFORMASI" ? (r.kategori_informasi || "Informasi") : "Memo", r.jenis_publikasi === "INFORMASI" ? "blue" : "maroon")}</div>
  <div class="flex items-center gap-2">
  <span class="text-xs text-slate-400">${fmtDateTime(r.tanggal)}</span>
  ${isHrd || (r.dibuat_oleh && r.dibuat_oleh.toLowerCase() === String(session?.nama || "").toLowerCase()) ? `
@@ -98,7 +98,7 @@ export async function mount(container, { session }) {
  ${r.lampiran_url ? `<a href="${escapeHtml(r.lampiran_url)}" target="_blank" class="inline-flex items-center gap-1 mt-2 text-xs font-medium text-maroon-700 hover:underline"><svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg><span>Lihat Lampiran</span></a>` : ''}
  <div class="flex items-center gap-2 mt-3">
  ${badge(r.target_type === "SPESIFIK" ? `${(r.target_list || []).length} Karyawan Terpilih` : "Seluruh Karyawan", "maroon")}
- <span class="text-xs text-slate-400">oleh ${escapeHtml(r.dibuat_oleh || "-")} • Berakhir: ${r.tanggal_berakhir || "Tanpa Batas"}</span>
+ <span class="text-xs text-slate-400">oleh ${escapeHtml(r.dibuat_oleh || "-")} • Berakhir: ${r.tanggal_berakhir || "Tanpa Batas"}${r.mode_email === "TERJADWAL" ? ` • Email: ${r.email_sent_at ? "terkirim" : `terjadwal ${fmtDateTime(r.jadwal_email)}`}` : ""}</span>
  </div>
  </div>
  </div>
@@ -129,18 +129,38 @@ export async function mount(container, { session }) {
 
 function openComposeModal(container, session, karyawan, users, reload) {
  openModal({
- title: "Buat Memo Baru",
+ title: "Buat Publikasi Baru",
  size: "lg",
  bodyHtml: `
  <form id="bc-form" class="space-y-4">
  <div>
- <label class="block text-xs font-medium text-slate-500 mb-1.5">Judul Memo</label>
+ <label class="block text-xs font-medium text-slate-500 mb-1.5">Judul Publikasi</label>
  <input name="judul" required class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none">
  </div>
+ <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
  <div>
- <label class="block text-xs font-medium text-slate-500 mb-1.5">Isi Pengumuman</label>
+ <label class="block text-xs font-medium text-slate-500 mb-1.5">Jenis Publikasi</label>
+ <select id="bc-publication-type" name="jenis_publikasi" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none">
+ <option value="MEMO">Memo / Pengumuman</option>
+ <option value="INFORMASI">Informasi Karyawan</option>
+ </select>
+ </div>
+ <div id="bc-info-category-wrap" class="hidden">
+ <label class="block text-xs font-medium text-slate-500 mb-1.5">Kategori Informasi</label>
+ <select name="kategori_informasi" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none">
+ <option value="UMUM">Umum</option><option value="LIBUR_NASIONAL">Libur Nasional</option><option value="TIPS_KEUANGAN">Tips Keuangan</option><option value="KESEHATAN">Kesehatan</option><option value="PENGEMBANGAN">Pengembangan Diri</option><option value="LAINNYA">Lainnya</option>
+ </select>
+ </div>
+ </div>
+ <div>
+ <label class="block text-xs font-medium text-slate-500 mb-1.5">Isi Publikasi</label>
  <div id="editor-container" class="w-full text-sm rounded-lg border border-slate-200" style="height: 220px; background: white;"></div>
  </div>
+ <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+ <div><label class="block text-xs font-medium text-slate-500 mb-1.5">Mulai Tayang</label><input type="datetime-local" id="bc-tanggal-tayang" name="tanggal_tayang" required class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none"></div>
+ <div><label class="block text-xs font-medium text-slate-500 mb-1.5">Pengiriman Email</label><select id="bc-email-mode" name="mode_email" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none"><option value="LANGSUNG">Kirim sekarang</option><option value="TERJADWAL">Kirim terjadwal</option><option value="TIDAK_KIRIM">Tidak kirim email</option></select></div>
+ </div>
+ <div id="bc-email-schedule-wrap" class="hidden"><label class="block text-xs font-medium text-slate-500 mb-1.5">Jadwal Email</label><input type="datetime-local" id="bc-email-schedule" name="jadwal_email" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none"><p class="text-[11px] text-slate-400 mt-1">Email akan diproses otomatis setiap jam.</p></div>
  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
  <div>
  <label class="block text-xs font-medium text-slate-500 mb-1.5">Target Penerima</label>
@@ -176,13 +196,28 @@ function openComposeModal(container, session, karyawan, users, reload) {
  </form>`,
  footerHtml: `
  <button id="bc-cancel" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
- <button id="bc-send" class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-maroon-700 hover:bg-maroon-800 transition shadow-md">Kirim Memo</button>`,
+ <button id="bc-send" class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-maroon-700 hover:bg-maroon-800 transition shadow-md">Publikasikan</button>`,
  onMount: (m) => {
  // Set Default Deadline (7 Hari dari Sekarang)
  const dateInput = m.querySelector("#bc-tanggal-berakhir");
  const nextWeek = new Date();
  nextWeek.setDate(nextWeek.getDate() + 7);
  dateInput.value = nextWeek.toISOString().split('T')[0];
+ const toLocalInputValue = (date) => {
+ const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+ return shifted.toISOString().slice(0, 16);
+ };
+ m.querySelector("#bc-tanggal-tayang").value = toLocalInputValue(new Date());
+ const publicationType = m.querySelector("#bc-publication-type");
+ publicationType.onchange = () => m.querySelector("#bc-info-category-wrap").classList.toggle("hidden", publicationType.value !== "INFORMASI");
+ const emailMode = m.querySelector("#bc-email-mode");
+ const scheduleInput = m.querySelector("#bc-email-schedule");
+ emailMode.onchange = () => {
+ const scheduled = emailMode.value === "TERJADWAL";
+ m.querySelector("#bc-email-schedule-wrap").classList.toggle("hidden", !scheduled);
+ scheduleInput.required = scheduled;
+ if (scheduled && !scheduleInput.value) scheduleInput.value = toLocalInputValue(new Date(Date.now() + 60 * 60 * 1000));
+ };
 
  const listContainer = m.querySelector("#bc-checkbox-list");
  const searchBox = m.querySelector("#bc-search-box");
@@ -338,6 +373,12 @@ function openComposeModal(container, session, karyawan, users, reload) {
 
  const fd = new FormData(form);
  const targetType = fd.get("target_type");
+ const publicationKind = String(fd.get("jenis_publikasi") || "MEMO");
+ const emailDeliveryMode = String(fd.get("mode_email") || "LANGSUNG");
+ const publishAt = new Date(String(fd.get("tanggal_tayang")));
+ const scheduledAt = fd.get("jadwal_email") ? new Date(String(fd.get("jadwal_email"))) : null;
+ if (Number.isNaN(publishAt.getTime())) { toast("Waktu mulai tayang tidak valid.", "warning"); return; }
+ if (emailDeliveryMode === "TERJADWAL" && (!scheduledAt || Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now())) { toast("Jadwal email harus berada di waktu mendatang.", "warning"); return; }
 
  let targetList = [];
  if (targetType === "SPESIFIK") {
@@ -381,10 +422,19 @@ function openComposeModal(container, session, karyawan, users, reload) {
  const payload = {
  judul: fd.get("judul"),
  isi: htmlContent,
+ jenis_publikasi: publicationKind,
+ kategori_informasi: publicationKind === "INFORMASI" ? fd.get("kategori_informasi") : "",
  target_type: targetType,
  target_list: targetList,
  tanggal_berakhir: fd.get("tanggal_berakhir"),
+ tanggal_tayang: publishAt.toISOString(),
+ mode_email: emailDeliveryMode,
+ kirim_email_terjadwal: emailDeliveryMode === "TERJADWAL",
+ jadwal_email: scheduledAt ? scheduledAt.toISOString() : "",
+ email_status: emailDeliveryMode === "TERJADWAL" ? "TERJADWAL" : (emailDeliveryMode === "TIDAK_KIRIM" ? "TIDAK_DIKIRIM" : "MENUNGGU"),
  lampiran_url: lampiranUrl,
+ lampiran_nama: file?.name || "",
+ lampiran_tipe: file?.type || "",
  tanggal: new Date().toISOString(),
  dibuat_oleh: session.nama
  };
@@ -443,7 +493,7 @@ function openComposeModal(container, session, karyawan, users, reload) {
  const targetUserIds = Array.from(targetUserIdsSet);
  await Promise.all(targetUserIds.map(uname => fsAdd(COL.NOTIFICATIONS, {
  username_target: uname,
- judul: `Memo Baru: ${payload.judul}`,
+ judul: `${publicationKind === "INFORMASI" ? "Informasi Baru" : "Memo Baru"}: ${payload.judul}`,
  pesan: plainText.substring(0, 80) + '...',
  dibaca: false,
  tanggal: payload.tanggal,
@@ -453,7 +503,7 @@ function openComposeModal(container, session, karyawan, users, reload) {
 
  // Email
  const targetEmails = Array.from(targetEmailsSet);
- if (targetEmails.length > 0) {
+ if (emailDeliveryMode === "LANGSUNG" && targetEmails.length > 0) {
  const attachmentLinkHtml = lampiranUrl ? `
    <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:14px 16px;margin:16px 0;">
      <div style="font-size:12px;font-weight:700;color:#9a3412;margin-bottom:6px;">📎 Lampiran Memo</div>
@@ -463,7 +513,7 @@ function openComposeModal(container, session, karyawan, users, reload) {
    </div>
  ` : "";
  const emailTemplate = buildStandardEmailHtml({
-   badgeText: "Memo Internal",
+   badgeText: publicationKind === "INFORMASI" ? "Informasi Karyawan" : "Memo Internal",
    badgeVariant: "maroon",
    title: payload.judul,
    introText: `Pengumuman resmi dari <strong>${escapeHtml(session.nama || "Manajemen")}</strong>:`,
@@ -489,15 +539,16 @@ function openComposeModal(container, session, karyawan, users, reload) {
    emailAttachments,
    { manual: true }
  )));
+ await fsUpdate(COL.BROADCAST, id, { email_status: "TERKIRIM", email_sent_at: new Date().toISOString() });
  }
 
  // Push notification ke HP (FCM)
  const targetTokens = Array.from(fcmTokensSet).filter(Boolean);
- if (targetTokens.length > 0) {
- await sendFCMNotif(targetTokens, `Memo Baru: ${payload.judul}`, plainText.substring(0, 80) + '...', `/#broadcast?memo_id=${id}`);
+ if (targetTokens.length > 0 && publishAt.getTime() <= Date.now()) {
+ await sendFCMNotif(targetTokens, `${publicationKind === "INFORMASI" ? "Informasi Baru" : "Memo Baru"}: ${payload.judul}`, plainText.substring(0, 80) + '...', `/#broadcast?memo_id=${id}`);
  }
 
- toast("Memo berhasil dikirim", "success");
+ toast(emailDeliveryMode === "TERJADWAL" ? "Publikasi disimpan dan email dijadwalkan" : "Publikasi berhasil disimpan", "success");
  closeModal();
  reload();
  } catch (e) {
@@ -505,7 +556,7 @@ function openComposeModal(container, session, karyawan, users, reload) {
    ? "Gagal mengunggah lampiran"
    : "Gagal mengirim memo";
  toast(prefix + ": " + e.message, "error");
- btnSend.disabled = false; btnSend.innerHTML = "Kirim Memo";
+ btnSend.disabled = false; btnSend.innerHTML = "Publikasikan";
  }
  };
  }

@@ -41,6 +41,7 @@ export const DEFAULT_EMPLOYEE_MENU_IDS = [
 export const MENU_CONFIG = [
  // KATEGORI: MENU UTAMA
  { id: "dashboard", label: "Dashboard", icon: "home", kategori: "Menu Utama", roles: ["ALL"] },
+ { id: "kalender-hr", label: "Kalender", icon: "calendar", kategori: "Menu Utama", roles: ["HRD", "SUPERADMIN"] },
  { id: "pengajuan", label: "Pengajuan", icon: "doc-plus", kategori: "Menu Utama", roles: ["ALL"] },
  { id: "riwayat", label: "Riwayat", icon: "clock", kategori: "Menu Utama", roles: ["ALL"] },
 
@@ -58,7 +59,6 @@ export const MENU_CONFIG = [
  { id: "izin", label: "Izin", icon: "doc-plus", kategori: "Kehadiran", roles: ["ALL"], subMenus: [
   { id: "lihat_semua", label: "Lihat Semua Izin" }
  ] },
- { id: "kalender-hr", label: "Kalender", icon: "calendar", kategori: "Kehadiran", roles: ["HRD", "SUPERADMIN"] },
 
  // KATEGORI: KARYAWAN & KINERJA
  { id: "siklus-karyawan", label: "Karyawan", icon: "refresh", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN"] },
@@ -1151,7 +1151,7 @@ export const PERMISSION_CATALOG = [
  {
   id: "kalender-hr",
   label: "Kalender",
-  category: "Kehadiran",
+  category: "Menu Utama",
   icon: "calendar",
   actions: [
    { key: "kalender_hr.view", label: "Lihat Agenda & Kalender HR", type: "view" },
