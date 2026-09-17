@@ -139,7 +139,9 @@ module.exports = async function handler(req, res) {
   try {
     const context = await requireFirebaseAuth(req, res);
     if (!context) return;
-    if (!enforceRateLimit(req, res, { namespace: 'send-email', key: context.user.uid, limit: 30, windowMs: 60 * 60_000 })) return;
+    const privilegedRoles = new Set(['HRD', 'SUPERADMIN', 'GM', 'MANAGER', 'FINANCE']);
+    const hourlyLimit = privilegedRoles.has(context.user.role) ? 150 : 30;
+    if (!enforceRateLimit(req, res, { namespace: 'send-email', key: context.user.uid, limit: hourlyLimit, windowMs: 60 * 60_000 })) return;
     assertAllowedKeys(req.body || {}, ['to', 'subject', 'htmlBody', 'cc', 'attachments']);
     if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
       return res.status(500).json({
@@ -163,7 +165,6 @@ module.exports = async function handler(req, res) {
     if (!allRecipients.length || allRecipients.some(email => !emailPattern.test(email)) || allRecipients.length > 25) {
       return res.status(400).json({ success: false, error: 'Daftar penerima email tidak valid.' });
     }
-    const privilegedRoles = new Set(['HRD', 'SUPERADMIN', 'GM', 'MANAGER', 'FINANCE']);
     if (!privilegedRoles.has(context.user.role)) {
       for (const recipient of allRecipients) {
         if (!await isKnownRecipient(context.db, recipient)) {

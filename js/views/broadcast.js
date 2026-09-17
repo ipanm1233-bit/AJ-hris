@@ -39,6 +39,15 @@ function buildEmailAttachment(file) {
  });
 }
 
+async function runInBatches(items, batchSize, task) {
+ const results = [];
+ for (let index = 0; index < items.length; index += batchSize) {
+ const batch = items.slice(index, index + batchSize);
+ results.push(...await Promise.allSettled(batch.map(task)));
+ }
+ return results;
+}
+
 export async function mount(container, { session }) {
  const listEl = container.querySelector("#bc-list");
  listEl.innerHTML = skeletonRows(3);
@@ -489,9 +498,11 @@ function openComposeModal(container, session, karyawan, users, reload) {
  }
  });
 
- // Notif in-app (lonceng)
+ // Notif in-app (lonceng). Diproses bertahap agar publikasi massal tidak
+ // membuka terlalu banyak transaksi Firestore sekaligus di browser.
  const targetUserIds = Array.from(targetUserIdsSet);
- await Promise.all(targetUserIds.map(uname => fsAdd(COL.NOTIFICATIONS, {
+ btnSend.innerHTML = "Menyimpan Notifikasi...";
+ const notificationResults = await runInBatches(targetUserIds, 10, uname => fsAdd(COL.NOTIFICATIONS, {
  username_target: uname,
  judul: `${publicationKind === "INFORMASI" ? "Informasi Baru" : "Memo Baru"}: ${payload.judul}`,
  pesan: plainText.substring(0, 80) + '...',
@@ -499,11 +510,16 @@ function openComposeModal(container, session, karyawan, users, reload) {
  tanggal: payload.tanggal,
  link: `/#broadcast?memo_id=${id}`,
  memo_id: id
- }, genId("NTF"))));
+ }, genId("NTF")));
+ const notificationFailures = notificationResults.filter(result => result.status === "rejected");
+ if (notificationFailures.length) console.warn(`${notificationFailures.length} notifikasi publikasi gagal disimpan.`, notificationFailures[0]?.reason);
 
  // Email
  const targetEmails = Array.from(targetEmailsSet);
+ let emailSuccessCount = 0;
+ let emailFailureCount = 0;
  if (emailDeliveryMode === "LANGSUNG" && targetEmails.length > 0) {
+ btnSend.innerHTML = `Mengirim Email (0/${targetEmails.length})...`;
  const attachmentLinkHtml = lampiranUrl ? `
    <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:14px 16px;margin:16px 0;">
      <div style="font-size:12px;font-weight:700;color:#9a3412;margin-bottom:6px;">📎 Lampiran Memo</div>
@@ -531,24 +547,42 @@ function openComposeModal(container, session, karyawan, users, reload) {
        ? "Lampiran tersedia melalui tautan Google Drive di atas. File berukuran lebih dari 3 MB tidak dilampirkan langsung ke email."
        : "Memo ini ditujukan kepada karyawan di lingkungan CV Andela Jaya.")
  });
- await Promise.all(targetEmails.map(email => sendEmailNotif(
-   email,
-   `[Memo HRIS] ${payload.judul}`,
-   emailTemplate,
-   "",
-   emailAttachments,
-   { manual: true }
- )));
- await fsUpdate(COL.BROADCAST, id, { email_status: "TERKIRIM", email_sent_at: new Date().toISOString() });
+ const emailResults = await runInBatches(targetEmails, 5, async email => {
+ const sent = await sendEmailNotif(
+ email,
+ `[${publicationKind === "INFORMASI" ? "Informasi" : "Memo"} HRIS] ${payload.judul}`,
+ emailTemplate,
+ "",
+ emailAttachments,
+ { manual: true }
+ );
+ if (!sent) throw new Error(`Email ke ${email} gagal dikirim.`);
+ emailSuccessCount += 1;
+ btnSend.innerHTML = `Mengirim Email (${emailSuccessCount}/${targetEmails.length})...`;
+ return true;
+ });
+ emailFailureCount = emailResults.filter(result => result.status === "rejected").length;
+ await fsUpdate(COL.BROADCAST, id, {
+ email_status: emailFailureCount === 0 ? "TERKIRIM" : (emailSuccessCount > 0 ? "SEBAGIAN_GAGAL" : "GAGAL"),
+ email_sent_at: emailSuccessCount > 0 ? new Date().toISOString() : "",
+ email_recipient_count: targetEmails.length,
+ email_success_count: emailSuccessCount,
+ email_failure_count: emailFailureCount
+ });
+ } else if (emailDeliveryMode === "LANGSUNG") {
+ await fsUpdate(COL.BROADCAST, id, { email_status: "TIDAK_ADA_PENERIMA", email_recipient_count: 0 });
  }
 
  // Push notification ke HP (FCM)
  const targetTokens = Array.from(fcmTokensSet).filter(Boolean);
  if (targetTokens.length > 0 && publishAt.getTime() <= Date.now()) {
- await sendFCMNotif(targetTokens, `${publicationKind === "INFORMASI" ? "Informasi Baru" : "Memo Baru"}: ${payload.judul}`, plainText.substring(0, 80) + '...', `/#broadcast?memo_id=${id}`);
+ await sendFCMNotif(targetTokens, `${publicationKind === "INFORMASI" ? "Informasi Baru" : "Memo Baru"}: ${payload.judul}`, plainText.substring(0, 80) + '...', `/#broadcast?memo_id=${id}`).catch(error => console.warn("Push publikasi gagal dikirim:", error));
  }
 
- toast(emailDeliveryMode === "TERJADWAL" ? "Publikasi disimpan dan email dijadwalkan" : "Publikasi berhasil disimpan", "success");
+ const deliveryNote = emailDeliveryMode === "TERJADWAL"
+ ? " Email telah dijadwalkan."
+ : (emailDeliveryMode === "LANGSUNG" && targetEmails.length ? ` Email terkirim ${emailSuccessCount}/${targetEmails.length}.` : "");
+ toast(`Publikasi berhasil disimpan.${deliveryNote}${notificationFailures.length ? ` ${notificationFailures.length} notifikasi perlu dicoba ulang.` : ""}`, emailFailureCount ? "warning" : "success");
  closeModal();
  reload();
  } catch (e) {

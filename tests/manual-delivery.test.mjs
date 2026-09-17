@@ -30,6 +30,14 @@ test("shared email and notification helpers require an explicit manual action", 
   assert.match(source, /notifyUser[\s\S]*opts\.manual\s*!==\s*true/);
 });
 
+test("mass publication delivery is batched and does not overload browser transactions", () => {
+  const source = readFileSync(new URL("../js/views/broadcast.js", import.meta.url), "utf8");
+  assert.match(source, /runInBatches\(targetUserIds, 10/);
+  assert.match(source, /runInBatches\(targetEmails, 5/);
+  assert.match(source, /Promise\.allSettled/);
+  assert.match(source, /SEBAGIAN_GAGAL/);
+});
+
 test("leave and approval screens expose manual delivery controls", () => {
   const leave = readFileSync(new URL("../js/views/cuti.js", import.meta.url), "utf8");
   const approval = readFileSync(new URL("../js/views/approval.js", import.meta.url), "utf8");
