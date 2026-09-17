@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 const { getFirebaseAdmin } = require('../lib/firebase-admin.js');
 const { requireFirebaseAuth, requireCronSecret, enforceRateLimit, writeAuditLog, assertAllowedKeys } = require('../lib/security.js');
 
@@ -38,6 +39,41 @@ async function isKnownRecipient(db, email) {
     if (configured.map(v => String(v || '').trim().toLowerCase()).includes(email)) return true;
   }
   return email === String(process.env.GMAIL_USER || '').trim().toLowerCase();
+}
+
+async function handleBroadcastUpload(req, res, context) {
+  if (!['HRD', 'SUPERADMIN'].includes(context.user.role)) {
+    return res.status(403).json({ success: false, error: 'Hanya HRD yang dapat mengunggah lampiran publikasi.' });
+  }
+  assertAllowedKeys(req.body || {}, ['action', 'fileName', 'mimeType', 'base64', 'publicationId']);
+  const allowedTypes = new Set([
+    'image/jpeg', 'image/png', 'image/webp', 'application/pdf',
+    'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  ]);
+  const mimeType = String(req.body?.mimeType || '').toLowerCase();
+  const encoded = String(req.body?.base64 || '').replace(/\s/g, '');
+  if (!allowedTypes.has(mimeType)) return res.status(400).json({ success: false, error: 'Tipe lampiran tidak didukung.' });
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) return res.status(400).json({ success: false, error: 'Data lampiran tidak valid.' });
+  const content = Buffer.from(encoded, 'base64');
+  if (!content.length || content.length > 3 * 1024 * 1024) return res.status(413).json({ success: false, error: 'Upload langsung maksimal 3 MB.' });
+
+  const safeName = String(req.body?.fileName || 'lampiran').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120);
+  const publicationId = String(req.body?.publicationId || 'publikasi').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+  const objectPath = `broadcast/${publicationId}/${Date.now()}-${safeName}`;
+  const downloadToken = crypto.randomUUID();
+  const bucket = context.admin.storage().bucket();
+  await bucket.file(objectPath).save(content, {
+    resumable: false,
+    contentType: mimeType,
+    metadata: {
+      cacheControl: 'private, max-age=3600',
+      metadata: { firebaseStorageDownloadTokens: downloadToken }
+    }
+  });
+  const url = `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket.name)}/o/${encodeURIComponent(objectPath)}?alt=media&token=${downloadToken}`;
+  await writeAuditLog(context.db, req, context.user, { action: 'BROADCAST_ATTACHMENT_UPLOADED', module: 'BROADCAST', recordId: publicationId, metadata: { object_path: objectPath, mime_type: mimeType, size: content.length } });
+  return res.status(200).json({ success: true, url, name: safeName, mimeType, size: content.length });
 }
 
 function escapeHtml(value) {
@@ -142,6 +178,7 @@ module.exports = async function handler(req, res) {
     const privilegedRoles = new Set(['HRD', 'SUPERADMIN', 'GM', 'MANAGER', 'FINANCE']);
     const hourlyLimit = privilegedRoles.has(context.user.role) ? 150 : 30;
     if (!enforceRateLimit(req, res, { namespace: 'send-email', key: context.user.uid, limit: hourlyLimit, windowMs: 60 * 60_000 })) return;
+    if (req.body?.action === 'upload_broadcast') return handleBroadcastUpload(req, res, context);
     assertAllowedKeys(req.body || {}, ['to', 'subject', 'htmlBody', 'cc', 'attachments']);
     if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
       return res.status(500).json({

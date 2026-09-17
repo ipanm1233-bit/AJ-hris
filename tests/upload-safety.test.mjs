@@ -11,7 +11,19 @@ test("shared uploader never falls back to embedding a Data URL in Firestore", ()
 test("Broadcast does not continue after a failed attachment upload", () => {
   const source = readFileSync(new URL("../js/views/broadcast.js", import.meta.url), "utf8");
   assert.doesNotMatch(source, /melanjutkan tanpa lampiran/);
-  assert.match(source, /lampiranUrl\s*=\s*await uploadFileToDrive/);
+  assert.match(source, /lampiranUrl\s*=\s*await uploadBroadcastAttachment/);
+  assert.match(source, /return uploadFileToDrive/);
+});
+
+test("Broadcast uses authenticated backend storage before the Apps Script fallback", () => {
+  const broadcast = readFileSync(new URL("../js/views/broadcast.js", import.meta.url), "utf8");
+  const emailApi = readFileSync(new URL("../api/send-email.js", import.meta.url), "utf8");
+  assert.match(broadcast, /action:\s*"upload_broadcast"/);
+  assert.match(broadcast, /authFetch\("\/api\/send-email"/);
+  assert.match(broadcast, /Upload backend gagal; mencoba cadangan Google Drive/);
+  assert.match(emailApi, /handleBroadcastUpload/);
+  assert.match(emailApi, /firebaseStorageDownloadTokens/);
+  assert.match(emailApi, /3 \* 1024 \* 1024/);
 });
 
 test("Apps Script uploads allow the ContentService response host and a realistic timeout", () => {

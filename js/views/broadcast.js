@@ -2,6 +2,7 @@ import { COL } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsUpdate, deleteBroadcastMemoAndNotifs, openModal, closeModal, toast, genId, escapeHtml, fmtDateTime, sendEmailNotif, buildStandardEmailHtml, sendFCMNotif } from "../utils.js";
 // PERUBAHAN: lampiran memo kini diupload ke Google Drive, bukan Firebase Storage.
 import { uploadFileToDrive } from "../gas-integration.js";
+import { authFetch } from "../api-client.js";
 import { avatar, badge, emptyState, skeletonRows } from "../components.js";
 
 // Batas mentah 3 MB menjaga payload base64 tetap di bawah batas request
@@ -46,6 +47,29 @@ async function runInBatches(items, batchSize, task) {
  results.push(...await Promise.allSettled(batch.map(task)));
  }
  return results;
+}
+
+async function uploadBroadcastAttachment(file, publicationId) {
+ if (file.size > 3 * 1024 * 1024) return uploadFileToDrive(file, `Broadcast/${publicationId}`);
+ const encoded = await new Promise((resolve, reject) => {
+ const reader = new FileReader();
+ reader.onload = () => resolve(String(reader.result || "").split(",")[1] || "");
+ reader.onerror = () => reject(new Error("File lampiran gagal dibaca."));
+ reader.readAsDataURL(file);
+ });
+ try {
+ const response = await authFetch("/api/send-email", {
+ method: "POST",
+ headers: { "Content-Type": "application/json" },
+ body: JSON.stringify({ action: "upload_broadcast", publicationId, fileName: file.name, mimeType: file.type || "application/octet-stream", base64: encoded })
+ });
+ const result = await response.json().catch(() => null);
+ if (!response.ok || result?.success !== true || !result?.url) throw new Error(result?.error || `Upload gagal (HTTP ${response.status}).`);
+ return result.url;
+ } catch (serverError) {
+ console.warn("Upload backend gagal; mencoba cadangan Google Drive.", serverError);
+ return uploadFileToDrive(file, `Broadcast/${publicationId}`);
+ }
 }
 
 export async function mount(container, { session }) {
@@ -417,7 +441,7 @@ function openComposeModal(container, session, karyawan, users, reload) {
  if (file) {
  if (file.size > 10 * 1024 * 1024) { toast("Ukuran file lampiran maksimal 10MB", "warning"); btnSend.disabled = false; btnSend.innerHTML = "Kirim Memo"; return; }
  btnSend.innerHTML = "Mengupload Lampiran...";
- lampiranUrl = await uploadFileToDrive(file, `Broadcast/${id}`);
+ lampiranUrl = await uploadBroadcastAttachment(file, id);
  if (file.size <= MAX_EMAIL_ATTACHMENT_BYTES) {
  try {
  emailAttachments = [await buildEmailAttachment(file)];
