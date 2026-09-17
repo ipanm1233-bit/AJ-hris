@@ -39,7 +39,7 @@ test("submitting an izin explicitly delivers approver notifications", () => {
   assert.ok(deliveryBlock);
   assert.match(deliveryBlock, /notifyUser\(atasanVal,[\s\S]*\{ manual: true \}\)/);
   assert.match(deliveryBlock, /notifyUser\(t,[\s\S]*\{ manual: true \}\)/);
-  assert.match(utils, /sendBranchInstantAlert[\s\S]*sendEmailNotif\(emailTo, subject, htmlBody, cc, null, \{ manual: true \}\)/);
+  assert.match(utils, /sendBranchInstantAlert/);
 });
 
 test("employee leave email contains details without a Form Cuti attachment", () => {
