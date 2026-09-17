@@ -19,6 +19,65 @@ const EMAIL_ATTACHMENT_MIME_BY_EXTENSION = {
  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 };
 
+function ensureMemoTableFormat() {
+ const Quill = window.Quill;
+ if (!Quill || Quill.imports?.["formats/memo-table"]) return;
+
+ const BlockEmbed = Quill.import("blots/block/embed");
+ class MemoTableBlot extends BlockEmbed {
+ static create(value = {}) {
+ const node = super.create();
+ const rowCount = Math.min(Math.max(Number(value.rows) || 1, 1), 15);
+ const columnCount = Math.min(Math.max(Number(value.columns) || 1, 1), 8);
+ node.setAttribute("contenteditable", "false");
+ node.setAttribute("data-rows", String(rowCount));
+ node.setAttribute("data-columns", String(columnCount));
+ node.setAttribute("style", "display:block; overflow-x:auto; margin:12px 0;");
+
+ const table = document.createElement("table");
+ table.setAttribute("style", "width:100%; min-width:360px; border-collapse:collapse; table-layout:fixed; border:1px solid #cbd5e1;");
+ const tbody = document.createElement("tbody");
+ const headerRow = document.createElement("tr");
+ for (let column = 0; column < columnCount; column++) {
+ const header = document.createElement("th");
+ header.setAttribute("contenteditable", "true");
+ header.setAttribute("tabindex", "0");
+ header.setAttribute("style", "border:1px solid #cbd5e1; padding:8px 12px; background-color:#f8fafc; font-weight:600; text-align:left; vertical-align:top; overflow-wrap:anywhere; outline:none;");
+ header.textContent = `Judul ${column + 1}`;
+ headerRow.appendChild(header);
+ }
+ tbody.appendChild(headerRow);
+
+ for (let row = 0; row < rowCount; row++) {
+ const dataRow = document.createElement("tr");
+ for (let column = 0; column < columnCount; column++) {
+ const cell = document.createElement("td");
+ cell.setAttribute("contenteditable", "true");
+ cell.setAttribute("tabindex", "0");
+ cell.setAttribute("style", "border:1px solid #cbd5e1; padding:8px 12px; text-align:left; vertical-align:top; overflow-wrap:anywhere; outline:none;");
+ cell.textContent = `Isi ${row + 1}.${column + 1}`;
+ dataRow.appendChild(cell);
+ }
+ tbody.appendChild(dataRow);
+ }
+ table.appendChild(tbody);
+ node.appendChild(table);
+ return node;
+ }
+
+ static value(node) {
+ return {
+ rows: Number(node.getAttribute("data-rows")) || 1,
+ columns: Number(node.getAttribute("data-columns")) || 1
+ };
+ }
+ }
+ MemoTableBlot.blotName = "memo-table";
+ MemoTableBlot.tagName = "div";
+ MemoTableBlot.className = "memo-table-embed";
+ Quill.register(MemoTableBlot, true);
+}
+
 function buildEmailAttachment(file) {
  return new Promise((resolve, reject) => {
  const extension = String(file?.name || "").split(".").pop().toLowerCase();
@@ -387,50 +446,28 @@ function openComposeModal(container, session, karyawan, users, reload) {
 
  const rowCount = Math.min(parsedRows, 15);
  const columnCount = Math.min(parsedColumns, 8);
- const table = document.createElement("table");
- table.setAttribute("style", "width:100%; border-collapse:collapse; table-layout:fixed; margin:12px 0; border:1px solid #cbd5e1;");
- const tbody = document.createElement("tbody");
+ const currentSelection = quillInstance.getSelection();
+ const insertionIndex = currentSelection?.index ?? Math.max(0, quillInstance.getLength() - 1);
+ quillInstance.insertEmbed(insertionIndex, "memo-table", { rows: rowCount, columns: columnCount }, "user");
+ quillInstance.insertText(insertionIndex + 1, "\n", "user");
 
- const headerRow = document.createElement("tr");
- for (let column = 0; column < columnCount; column++) {
- const header = document.createElement("th");
- header.setAttribute("style", "border:1px solid #cbd5e1; padding:8px 12px; background-color:#f8fafc; font-weight:600; text-align:left; vertical-align:top; overflow-wrap:anywhere;");
- header.textContent = `Judul ${column + 1}`;
- headerRow.appendChild(header);
- }
- tbody.appendChild(headerRow);
-
- for (let row = 0; row < rowCount; row++) {
- const dataRow = document.createElement("tr");
- for (let column = 0; column < columnCount; column++) {
- const cell = document.createElement("td");
- cell.setAttribute("style", "border:1px solid #cbd5e1; padding:8px 12px; text-align:left; vertical-align:top; overflow-wrap:anywhere;");
- cell.textContent = `Isi ${row + 1}.${column + 1}`;
- dataRow.appendChild(cell);
- }
- tbody.appendChild(dataRow);
- }
-
- table.appendChild(tbody);
- const editorRoot = quillInstance.root;
- editorRoot.appendChild(table);
- const trailingParagraph = document.createElement("p");
- trailingParagraph.innerHTML = "<br>";
- editorRoot.appendChild(trailingParagraph);
- editorRoot.dispatchEvent(new Event("input", { bubbles: true }));
-
- const firstCell = table.querySelector("th");
- if (firstCell) {
+ requestAnimationFrame(() => {
+ const tables = quillInstance.root.querySelectorAll(".memo-table-embed");
+ const insertedTable = tables[tables.length - 1];
+ const firstCell = insertedTable?.querySelector("th");
+ insertedTable?.scrollIntoView({ block: "nearest" });
+ if (!firstCell?.isConnected) return;
+ firstCell.focus();
  const selection = window.getSelection();
  const range = document.createRange();
  range.selectNodeContents(firstCell);
  selection.removeAllRanges();
  selection.addRange(range);
- }
- editorRoot.focus();
+ });
  toast(`Tabel ${rowCount + 1} baris × ${columnCount} kolom berhasil ditambahkan.`, "success");
  }
 
+ ensureMemoTableFormat();
  const quill = new window.Quill(m.querySelector('#editor-container'), {
  theme: 'snow',
  placeholder: 'Ketik isi memo di sini...',
@@ -491,7 +528,7 @@ function openComposeModal(container, session, karyawan, users, reload) {
  }
 
  const htmlContent = quill.root.innerHTML;
- const plainText = quill.getText().trim();
+ const plainText = quill.root.textContent.trim() || quill.getText().trim();
 
  if (plainText.length === 0) { toast("Isi memo tidak boleh kosong!", "warning"); return; }
 

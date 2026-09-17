@@ -41,11 +41,15 @@ test("mass publication delivery is batched and does not overload browser transac
 test("memo editor exposes a reusable editable table insertion control", () => {
   const source = readFileSync(new URL("../js/views/broadcast.js", import.meta.url), "utf8");
   assert.match(source, /id="bc-insert-table"/);
+  assert.match(source, /class MemoTableBlot extends BlockEmbed/);
+  assert.match(source, /Quill\.register\(MemoTableBlot, true\)/);
   assert.match(source, /function insertTableIntoEditor\(quillInstance\)/);
   assert.match(source, /'table-btn': function\(\) \{\s*insertTableIntoEditor\(this\.quill\);/);
   assert.match(source, /table-layout:fixed/);
   assert.match(source, /Math\.min\(parsedRows, 15\)/);
   assert.match(source, /Math\.min\(parsedColumns, 8\)/);
+  assert.match(source, /insertEmbed\(insertionIndex, "memo-table"/);
+  assert.match(source, /setAttribute\("contenteditable", "true"\)/);
   assert.match(source, /Isi setiap sel tabel dapat diedit langsung/);
 });
 
