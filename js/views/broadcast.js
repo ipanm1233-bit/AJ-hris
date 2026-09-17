@@ -213,8 +213,15 @@ function openComposeModal(container, session, karyawan, users, reload) {
  </div>
  </div>
  <div>
- <label class="block text-xs font-medium text-slate-500 mb-1.5">Isi Publikasi</label>
+ <div class="flex items-center justify-between gap-3 mb-1.5">
+ <label class="block text-xs font-medium text-slate-500">Isi Publikasi</label>
+ <button type="button" id="bc-insert-table" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-maroon-700 bg-maroon-50 border border-maroon-200 rounded-lg hover:bg-maroon-100 transition">
+ <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18M9 3v18M15 3v18M3 4a1 1 0 011-1h16a1 1 0 011 1v16a1 1 0 01-1 1H4a1 1 0 01-1-1V4z"/></svg>
+ Sisipkan Tabel
+ </button>
+ </div>
  <div id="editor-container" class="w-full text-sm rounded-lg border border-slate-200" style="height: 220px; background: white;"></div>
+ <p class="text-[11px] text-slate-400 mt-1">Isi setiap sel tabel dapat diedit langsung di dalam editor.</p>
  </div>
  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
  <div><label class="block text-xs font-medium text-slate-500 mb-1.5">Mulai Tayang</label><input type="datetime-local" id="bc-tanggal-tayang" name="tanggal_tayang" required class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none"></div>
@@ -365,6 +372,65 @@ function openComposeModal(container, session, karyawan, users, reload) {
  btnToggleAll.textContent = allChecked ? "Batal Semua" : "Pilih Semua";
  };
 
+ function insertTableIntoEditor(quillInstance) {
+ const rowAnswer = prompt("Jumlah baris data (di luar baris judul, maksimal 15)", "3");
+ if (rowAnswer === null) return;
+ const columnAnswer = prompt("Jumlah kolom (maksimal 8)", "3");
+ if (columnAnswer === null) return;
+
+ const parsedRows = Number.parseInt(rowAnswer, 10);
+ const parsedColumns = Number.parseInt(columnAnswer, 10);
+ if (!Number.isInteger(parsedRows) || parsedRows < 1 || !Number.isInteger(parsedColumns) || parsedColumns < 1) {
+ toast("Jumlah baris dan kolom harus berupa angka minimal 1.", "warning");
+ return;
+ }
+
+ const rowCount = Math.min(parsedRows, 15);
+ const columnCount = Math.min(parsedColumns, 8);
+ const table = document.createElement("table");
+ table.setAttribute("style", "width:100%; border-collapse:collapse; table-layout:fixed; margin:12px 0; border:1px solid #cbd5e1;");
+ const tbody = document.createElement("tbody");
+
+ const headerRow = document.createElement("tr");
+ for (let column = 0; column < columnCount; column++) {
+ const header = document.createElement("th");
+ header.setAttribute("style", "border:1px solid #cbd5e1; padding:8px 12px; background-color:#f8fafc; font-weight:600; text-align:left; vertical-align:top; overflow-wrap:anywhere;");
+ header.textContent = `Judul ${column + 1}`;
+ headerRow.appendChild(header);
+ }
+ tbody.appendChild(headerRow);
+
+ for (let row = 0; row < rowCount; row++) {
+ const dataRow = document.createElement("tr");
+ for (let column = 0; column < columnCount; column++) {
+ const cell = document.createElement("td");
+ cell.setAttribute("style", "border:1px solid #cbd5e1; padding:8px 12px; text-align:left; vertical-align:top; overflow-wrap:anywhere;");
+ cell.textContent = `Isi ${row + 1}.${column + 1}`;
+ dataRow.appendChild(cell);
+ }
+ tbody.appendChild(dataRow);
+ }
+
+ table.appendChild(tbody);
+ const editorRoot = quillInstance.root;
+ editorRoot.appendChild(table);
+ const trailingParagraph = document.createElement("p");
+ trailingParagraph.innerHTML = "<br>";
+ editorRoot.appendChild(trailingParagraph);
+ editorRoot.dispatchEvent(new Event("input", { bubbles: true }));
+
+ const firstCell = table.querySelector("th");
+ if (firstCell) {
+ const selection = window.getSelection();
+ const range = document.createRange();
+ range.selectNodeContents(firstCell);
+ selection.removeAllRanges();
+ selection.addRange(range);
+ }
+ editorRoot.focus();
+ toast(`Tabel ${rowCount + 1} baris × ${columnCount} kolom berhasil ditambahkan.`, "success");
+ }
+
  const quill = new window.Quill(m.querySelector('#editor-container'), {
  theme: 'snow',
  placeholder: 'Ketik isi memo di sini...',
@@ -380,35 +446,7 @@ function openComposeModal(container, session, karyawan, users, reload) {
  ],
  handlers: {
  'table-btn': function() {
- const rows = prompt("Jumlah Baris (misal: 3)", "3");
- if (!rows) return;
- const cols = prompt("Jumlah Kolom (misal: 3)", "3");
- if (!cols) return;
- 
- const r = Math.max(parseInt(rows) || 2, 1);
- const c = Math.max(parseInt(cols) || 2, 1);
- 
- let tableHtml = '<table style="width:100%; border-collapse:collapse; margin:12px 0; border:1px solid #cbd5e1;"><tbody>';
- for (let i = 0; i < r; i++) {
- tableHtml += '<tr>';
- for (let j = 0; j < c; j++) {
- if (i === 0) {
- tableHtml += '<th style="border:1px solid #cbd5e1; padding:8px 12px; background-color:#f8fafc; font-weight:600; text-align:left;">Judul ' + (j + 1) + '</th>';
- } else {
- tableHtml += '<td style="border:1px solid #cbd5e1; padding:8px 12px;">Data ' + i + '.' + (j + 1) + '</td>';
- }
- }
- tableHtml += '</tr>';
- }
- tableHtml += '</tbody></table><p><br></p>';
- 
- const tempDiv = document.createElement("div");
- tempDiv.innerHTML = tableHtml;
- const editorRoot = this.quill.root;
- editorRoot.appendChild(tempDiv.firstElementChild);
- const p = document.createElement("p");
- p.innerHTML = "<br>";
- editorRoot.appendChild(p);
+ insertTableIntoEditor(this.quill);
  }
  }
  }
@@ -421,6 +459,9 @@ function openComposeModal(container, session, karyawan, users, reload) {
  tableBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18M9 3v18M15 3v18M3 4a1 1 0 011-1h16a1 1 0 011 1v16a1 1 0 01-1 1H4a1 1 0 01-1-1V4z"/></svg>`;
  tableBtn.title = "Sisipkan Tabel";
  }
+
+ const insertTableButton = m.querySelector("#bc-insert-table");
+ if (insertTableButton) insertTableButton.onclick = () => insertTableIntoEditor(quill);
 
  m.querySelector("#bc-target-type").addEventListener("change", (e) => {
  m.querySelector("#bc-target-list-wrap").classList.toggle("hidden", e.target.value !== "SPESIFIK");
