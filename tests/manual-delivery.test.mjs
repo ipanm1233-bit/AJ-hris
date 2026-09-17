@@ -7,7 +7,7 @@ test("production schedules leave digests and daily scheduled information email d
   assert.deepEqual(config.crons, [
     { path: "/api/cron-rekap-cuti", schedule: "45 0 * * *" },
     { path: "/api/cron-rekap-cuti", schedule: "0 10 * * *" },
-    { path: "/api/cron-informasi", schedule: "15 0 * * *" }
+    { path: "/api/send-email", schedule: "15 0 * * *" }
   ]);
 
   const handler = readFileSync(new URL("../api/cron-rekap-cuti.js", import.meta.url), "utf8");
@@ -16,11 +16,12 @@ test("production schedules leave digests and daily scheduled information email d
   assert.match(handler, /const isScheduledInvocation = Boolean\(scheduledType\)/);
   assert.equal((handler.match(/\|\| forceSend \|\| isScheduledInvocation/g) || []).length, 2);
 
-  const informationHandler = readFileSync(new URL("../api/cron-informasi.js", import.meta.url), "utf8");
+  const informationHandler = readFileSync(new URL("../api/send-email.js", import.meta.url), "utf8");
   assert.match(informationHandler, /requireCronSecret\(req, res\)/);
   assert.match(informationHandler, /kirim_email_terjadwal/);
   assert.match(informationHandler, /email_sent_at/);
   assert.match(informationHandler, /bcc: group/);
+  assert.match(informationHandler, /req\.method === 'GET'/);
 });
 
 test("shared email and notification helpers require an explicit manual action", () => {

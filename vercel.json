@@ -33,7 +33,7 @@
       "schedule": "0 10 * * *"
     },
     {
-      "path": "/api/cron-informasi",
+      "path": "/api/send-email",
       "schedule": "15 0 * * *"
     }
   ]
