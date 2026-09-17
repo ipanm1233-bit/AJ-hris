@@ -44,6 +44,29 @@ test("does not create rows from pending absence requests", () => {
   assert.equal(rows.length, 0);
 });
 
+test("approved late-arrival permission adjusts schedule and remains present", () => {
+  const [row] = buildAttendanceStatusRows({
+    employees: [employee], schedules,
+    attendanceRows: [{ id: "izin-late", nik: employee.nik, tanggal: "2026-09-16", scan_masuk: "09:00", scan_keluar: "17:02", jadwal_masuk: "08:00", jadwal_keluar: "17:00" }],
+    absenceRecords: [{ nik: employee.nik, tanggal_izin: "2026-09-16", jenis_izin: "IZIN_TERLAMBAT", detail: { jenis_izin: "Izin Datang Terlambat" }, jam_izin: "Estimasi Tiba: 09:00 WIB (Jam Masuk: 08:00)", status_final: "APPROVED FINAL" }]
+  });
+  assert.equal(row.jadwal_masuk, "09:00");
+  assert.equal(row.status_kind, "permission");
+  assert.equal(row.perlu_koreksi, false);
+  assert.match(row.attendance_status, /HADIR DENGAN IZIN/);
+});
+
+test("approved partial permission without scans requires correction", () => {
+  const [row] = buildAttendanceStatusRows({
+    employees: [employee], schedules, attendanceRows: [],
+    absenceRecords: [{ nik: employee.nik, tanggal_izin: "2026-09-16", jenis_izin: "IZIN_PULANG_CEPAT", detail: { jenis_izin: "Izin Pulang Cepat" }, jam_izin: "Estimasi Pulang: 15:00 WIB", status: "APPROVED" }]
+  });
+  assert.equal(row.jadwal_keluar, "15:00");
+  assert.equal(row.status_kind, "review");
+  assert.equal(row.perlu_koreksi, true);
+  assert.match(row.attendance_status, /TIDAK ADA SCAN/);
+});
+
 test("uses 12:00 as effective start for approved morning half-day leave", () => {
   const [row] = buildAttendanceStatusRows({
     employees: [{ ...employee, nama_karyawan: "LUKMAN" }], schedules,

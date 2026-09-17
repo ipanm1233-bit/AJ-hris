@@ -1,5 +1,6 @@
 import { resolveWorkSchedule } from "./work-schedule.mjs";
 import { applyHalfDayWorkWindow, isHalfDayLeave } from "./leave-attendance.mjs";
+import { applyIzinWorkWindow, isPartialDayIzin } from "./izin-attendance.mjs";
 
 function key(value) {
   return String(value || "").trim().toUpperCase();
@@ -170,22 +171,27 @@ export function buildRawAttendanceExport({ attendanceRows = [], employees = [], 
         }
         let row = mergeAttendanceRows(rows);
         if (leave && isHalfDayLeave(leave)) row = applyHalfDayWorkWindow(row, leave);
+        if (leave && isPartialDayIzin(leave)) row = applyIzinWorkWindow(row, leave);
         const hasIn = Boolean(row.scan_masuk);
         const hasOut = Boolean(row.scan_keluar || row.scan_pulang);
         const absence = leave ? `${leaveLabel(leave)}${isHalfDayLeave(leave) ? ` - ${row.half_day_status || "CUTI SETENGAH HARI"}` : ""}` : "";
         const suspectedImportedSchedule = key(row.sumber) === "IMPORT_EXCEL" && hasIn && key(row.scan_masuk) === key(row.jadwal_masuk) && !hasOut;
-        const review = !hasIn || !hasOut || Boolean(leave && (hasIn || hasOut) && !isHalfDayLeave(leave)) || suspectedImportedSchedule || Boolean(row.perlu_koreksi);
+        const fullDayAbsenceWithScan = Boolean(leave && (hasIn || hasOut) && !isHalfDayLeave(leave) && !isPartialDayIzin(leave));
+        const review = !hasIn || !hasOut || fullDayAbsenceWithScan || suspectedImportedSchedule || Boolean(row.perlu_koreksi);
         const reason = row.alasan_koreksi || (suspectedImportedSchedule
           ? "Scan dari impor Excel sama dengan jam jadwal dan tidak ada scan pulang; periksa log mesin agar tidak dianggap finger nyata."
-          : leave && (hasIn || hasOut) && !isHalfDayLeave(leave) ? "Ada scan di hari cuti/izin/dinas; perlu verifikasi HRD."
+          : fullDayAbsenceWithScan ? "Ada scan di hari cuti/izin/dinas; perlu verifikasi HRD."
           : !hasIn || !hasOut ? "Scan masuk atau pulang belum lengkap; perlu pemeriksaan manual." : "");
         result.push(exportObject(row, employee, shift, { absence, review: review ? "Ya" : "", reason }));
       } else {
-        const reason = leave && !isHalfDayLeave(leave) ? "" : shift.masuk || shift.pulang
+        const reason = leave && !isHalfDayLeave(leave) && !isPartialDayIzin(leave) ? "" : shift.masuk || shift.pulang
           ? "Tidak ada scan; perlu pemeriksaan manual." : "Tidak ada jadwal/libur; periksa bila seharusnya bekerja.";
-        const emptyRow = leave && isHalfDayLeave(leave)
+        let emptyRow = leave && isHalfDayLeave(leave)
           ? applyHalfDayWorkWindow({ tanggal: date, jadwal_masuk: shift.masuk, jadwal_keluar: shift.pulang, jam_kerja: shift.jamKerja }, leave)
           : { tanggal: date };
+        if (leave && isPartialDayIzin(leave)) {
+          emptyRow = applyIzinWorkWindow({ tanggal: date, jadwal_masuk: shift.masuk, jadwal_keluar: shift.pulang, jam_kerja: shift.jamKerja }, leave);
+        }
         result.push(exportObject(emptyRow, employee, shift, { absence: leave ? leaveLabel(leave) : "", review: reason ? "Ya" : "", reason }));
       }
     }

@@ -9,6 +9,7 @@ const {
   normalizeRole,
   normalizeBranch
 } = require('../lib/security.js');
+const { _test: izinAccessTest } = require('../lib/izin-access.js');
 
 function responseMock() {
   return {
@@ -63,4 +64,15 @@ test('attendance PIC endpoint enforces auth, explicit actions, branch scope, and
   assert.match(source, /changes\.length > 400/);
   assert.match(source, /BULK_ATTENDANCE_CORRECTION/);
   assert.match(endpoint, /startsWith\('attendance_'\)/);
+});
+
+test('izin endpoint validates calendar dates and uses authenticated server access', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'lib', 'izin-access.js'), 'utf8');
+  const endpoint = fs.readFileSync(path.join(__dirname, '..', 'api', 'sync-absen.js'), 'utf8');
+  assert.equal(izinAccessTest.isYmd('2026-09-16'), true);
+  assert.equal(izinAccessTest.isYmd('2026-02-30'), false);
+  assert.match(source, /requireFirebaseAuth\(req, res\)/);
+  assert.match(source, /Anda tidak berhak membuat izin atas nama karyawan lain/);
+  assert.match(source, /IZIN_CREATED/);
+  assert.match(endpoint, /startsWith\('izin_'\)/);
 });

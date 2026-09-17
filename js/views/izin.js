@@ -1,9 +1,10 @@
-import { db, COL, collection, query, where, getDocs, doc, getDoc, setDoc, updateDoc } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, genId, openModal, closeModal, toast, fmtDate, fmtDateShort, escapeHtml, sendEmailNotif, getTargetsForRole, createLoginToken, notifyUser, sendBranchInstantAlert } from "../utils.js";
-import { badge, emptyState, skeletonRows } from "../components.js";
+import { db, COL, collection, query, getDocs } from "../firebase-config.js";
+import { fsGetAll, fsDelete, genId, openModal, closeModal, toast, fmtDate, fmtDateShort, escapeHtml, getTargetsForRole, notifyUser, sendBranchInstantAlert } from "../utils.js";
+import { emptyState, skeletonRows } from "../components.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 import { isoDocHeaderTable, letterheadHtml, COMPANY_NAME, logoImgTag, LOGO_DATA_URI } from "../branding.js";
 import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
+import { authFetch } from "../api-client.js";
 
 export const JENIS_IZIN_MAP = {
  IZIN_TERLAMBAT: {
@@ -33,7 +34,6 @@ export async function mount(container, { session }) {
  // default-nya sama seperti sebelumnya untuk role manajemen, TAPI HRD
  // sekarang bisa memberi akses ini ke karyawan lain lewat Akses Menu.
  const isHrdOrAdmin = roleIsHrdOrAdmin || await hasSubMenuAccess("izin", "lihat_semua", session);
- const isAtasan = isHrdOrAdmin || ["MANAGER", "SPV", "KOORDINATOR", "BRANCH MANAGER"].includes(userRole);
  const canEdit = await canEditModuleData(session);
 
  let allIzinRecords = [];
@@ -135,7 +135,7 @@ export async function mount(container, { session }) {
  }
 
  const isMyRecord = (r.nama_pemohon || "").toLowerCase() === (session.nama || "").toLowerCase();
- const canApprove = (isAtasan || isHrdOrAdmin) && canEdit && (st === "PENDING" || st === "MENUNGGU PERSETUJUAN");
+ const canReview = (isHrdOrAdmin || ["MANAGER", "SPV", "KOORDINATOR", "BRANCH MANAGER"].includes(userRole)) && canEdit && (st === "PENDING" || st === "MENUNGGU" || st === "MENUNGGU PERSETUJUAN");
 
  return `
  <tr class="hover:bg-slate-50 transition">
@@ -166,13 +166,10 @@ export async function mount(container, { session }) {
  <button data-print-izin="${r.id}" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-bold text-[11px] inline-flex items-center gap-1 transition shadow-2xs" title="Cetak Surat Izin Resmi">
  Cetak Surat
  </button>
- ${canApprove ? `
- <button data-approve-izin="${r.id}" class="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] inline-flex items-center gap-1 transition" title="Setujui Pengajuan">
- [v]
- </button>
- <button data-reject-izin="${r.id}" class="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-[11px] inline-flex items-center gap-1 transition" title="Tolak Pengajuan">
- [X]
- </button>
+ ${canReview ? `
+ <a href="#approval?id=${encodeURIComponent(r.id)}" class="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] inline-flex items-center gap-1 transition" title="Proses sesuai alur persetujuan">
+ Proses Approval
+ </a>
  ` : ''}
  ${(isMyRecord || (isHrdOrAdmin && canEdit)) ? `
  <button data-del-izin="${r.id}" class="px-2 py-1 bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 rounded-lg font-bold text-[11px] border border-slate-200 transition" title="Hapus">
@@ -189,42 +186,6 @@ export async function mount(container, { session }) {
  btn.onclick = () => {
  const row = allIzinRecords.find(x => x.id === btn.dataset.printIzin);
  if (row) openPrintIzinModal(row, allIzinRecords);
- };
- });
-
- tbody.querySelectorAll("[data-approve-izin]").forEach(btn => {
- btn.onclick = async () => {
- const row = allIzinRecords.find(x => x.id === btn.dataset.approveIzin);
- if (!row) return;
- if (confirm(`Apakah Anda yakin ingin MENYETUJUI pengajuan izin untuk "${row.nama_pemohon}"?`)) {
- await fsUpdate(COL.DATA_PENGAJUAN, row.id, {
- status_final: "APPROVED",
- status: "APPROVED",
- approved_by: session.nama,
- tanggal_approved: new Date().toISOString()
- });
- toast("Pengajuan izin berhasil disetujui!", "success");
- await loadData();
- }
- };
- });
-
- tbody.querySelectorAll("[data-reject-izin]").forEach(btn => {
- btn.onclick = async () => {
- const row = allIzinRecords.find(x => x.id === btn.dataset.rejectIzin);
- if (!row) return;
- const note = prompt("Alasan penolakan pengajuan izin:");
- if (note !== null) {
- await fsUpdate(COL.DATA_PENGAJUAN, row.id, {
- status_final: "REJECTED",
- status: "REJECTED",
- rejected_by: session.nama,
- catatan_penolakan: note,
- tanggal_rejected: new Date().toISOString()
- });
- toast("Pengajuan izin telah ditolak.", "info");
- await loadData();
- }
  };
  });
 
@@ -455,10 +416,11 @@ export async function mount(container, { session }) {
 
  try {
  const nowIso = new Date().toISOString();
+ const docId = genId("IZN");
  const genNoRef = `IZIN/ANDELA/${new Date().getFullYear()}/${String(new Date().getMonth()+1).padStart(2, "0")}/${genId("IZN").slice(-4)}`;
 
  const payload = {
- id: genNoRef,
+ id: docId,
  no_referensi: genNoRef,
  tgl: nowIso,
  form_id: "F-ISO-IZIN",
@@ -497,13 +459,18 @@ export async function mount(container, { session }) {
  createdAt: nowIso
  };
 
- await fsAdd(COL.DATA_PENGAJUAN, payload, genNoRef);
+ const saveResponse = await authFetch('/api/sync-absen', {
+ method: 'POST',
+ body: JSON.stringify({ action: 'izin_create', payload })
+ });
+ const saveResult = await saveResponse.json().catch(() => ({}));
+ if (!saveResponse.ok || saveResult.success === false) throw new Error(saveResult.error || `HTTP ${saveResponse.status}`);
 
  // Send Notifications to Atasan & Target Employee
  try {
  const notifTitle = `Pengajuan Izin Baru: ${targetEmpNama}`;
  const notifMsg = `${targetEmpNama} (${targetEmpJabatan}) mengajukan ${JENIS_IZIN_MAP[jenisVal]?.label || 'Izin'} untuk tanggal ${tglVal}. Membutuhkan persetujuan Anda.`;
- const notifLink = `#approval?id=${genNoRef}`;
+ const notifLink = `#approval?id=${docId}`;
 
  if (atasanVal) {
  await notifyUser(atasanVal, notifTitle, notifMsg, notifLink);

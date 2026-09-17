@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { enforceRateLimit, writeAuditLog, requireFirebaseAuth } = require('../lib/security.js');
 const { aggregateFingerprintLogs, computeAttendance } = require('../lib/fingerprint-normalizer.js');
 const { handleAttendanceAccess } = require('../lib/attendance-access.js');
+const { handleIzinAccess } = require('../lib/izin-access.js');
 
 function normalizePersonName(value) {
   return String(value || '')
@@ -277,6 +278,11 @@ module.exports = async function handler(req, res) {
   try {
     const { rawBody, body } = await readJsonBody(req);
     req.body = body;
+
+    if (String(body?.action || '').startsWith('izin_')) {
+      await handleIzinAccess(req, res, body);
+      return;
+    }
 
     if (String(body?.action || '').startsWith('attendance_')) {
       await handleAttendanceAccess(req, res, body);

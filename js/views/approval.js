@@ -468,6 +468,7 @@ async function processAction(row, action, note, session) {
  toast(action === "APPROVE" ? "Pengajuan disetujui" : "Pengajuan ditolak", action === "APPROVE" ? "success" : "warning");
  
  const isCuti = (row.form_id === "F-ISO-CUTI" || (row.nama_form || "").toLowerCase().includes("cuti"));
+ const isIzin = row.form_id === "F-ISO-IZIN" || row.tipe_form === "FORM_IZIN" || row.kategori === "IZIN";
  
  if (statusFinal === "APPROVED FINAL" && isCuti) {
  let jenisVal = row.detail.jenis_cuti || row.detail.jenis || Object.values(row.detail).find(v => typeof v === 'string' && v.includes("Cuti"));
@@ -516,6 +517,32 @@ async function processAction(row, action, note, session) {
  } catch (docErr) {
  console.warn("Gagal tergenerate dokumen fisik cuti:", docErr);
  }
+ }
+
+ if (statusFinal === "APPROVED FINAL" && isIzin) {
+   const izinDocId = `IZIN_${String(row.id || row.no_referensi || "").replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+   const izinDate = row.tanggal_izin || row.detail?.tanggal_izin || row.tgl;
+   const jenisIzin = row.detail?.jenis_izin || row.jenis_izin || "Izin Karyawan";
+   await fsAdd(COL.MASTER_CUTI, {
+     id: izinDocId,
+     source_pengajuan_id: row.id,
+     no_referensi: row.no_referensi || row.id,
+     tanggal: izinDate,
+     tanggal_selesai: izinDate,
+     nama_karyawan: row.nama_pemohon,
+     nik: row.nik || row.nik_pemohon || "",
+     cabang: row.cabang || row.detail?.cabang || "-",
+     type_cuti: `C+I - ${jenisIzin}`,
+     jenis_izin: row.jenis_izin || jenisIzin,
+     jam_izin: row.jam_izin || row.detail?.jam_izin || "",
+     potong_jatah: "Tidak Dipotong",
+     keterangan_cuti: row.alasan_izin || row.alasan || row.detail?.alasan || "Izin disetujui",
+     count: 0,
+     status: "APPROVED",
+     status_final: "APPROVED FINAL",
+     tahun: new Date(izinDate).getFullYear(),
+     bulan: BULAN_ID[new Date(izinDate).getMonth()]
+   }, izinDocId);
  }
 
  // ----------------------------------------------------

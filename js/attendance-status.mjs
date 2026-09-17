@@ -1,5 +1,6 @@
 import { resolveWorkSchedule } from "./work-schedule.mjs";
 import { applyHalfDayWorkWindow, isHalfDayLeave } from "./leave-attendance.mjs";
+import { applyIzinWorkWindow, isPartialDayIzin, partialIzinStatus } from "./izin-attendance.mjs";
 
 function key(value) {
   return String(value || "").trim().toUpperCase();
@@ -82,6 +83,8 @@ function fingerOwnerConflict(row, employee) {
 }
 
 function statusForRow(row, absence) {
+  const izinStatus = partialIzinStatus(row, absence);
+  if (izinStatus) return izinStatus;
   const hasIn = Boolean(row.scan_masuk);
   const hasOut = Boolean(row.scan_keluar || row.scan_pulang);
   if (absence?.record && isHalfDayLeave(absence.record)) {
@@ -158,6 +161,7 @@ export function buildAttendanceStatusRows({ attendanceRows = [], employees = [],
     const absence = absenceByEmployeeDate.get(absenceKey);
     if (absence) usedAbsences.add(absenceKey);
     if (absence?.record && isHalfDayLeave(absence.record)) row = applyHalfDayWorkWindow(row, absence.record);
+    if (absence?.record && isPartialDayIzin(absence.record)) row = applyIzinWorkWindow(row, absence.record);
     return { ...row, ...statusForRow(row, absence), ketidakhadiran: absence?.label || "" };
   });
 
@@ -195,6 +199,12 @@ export function buildAttendanceStatusRows({ attendanceRows = [], employees = [],
       statusOnlyRow.status_kind = "review";
       statusOnlyRow.perlu_koreksi = true;
       statusOnlyRow.alasan_koreksi = "Cuti setengah hari terdata, tetapi tidak ada scan pada jam kerja parsial.";
+    } else if (isPartialDayIzin(absence.record)) {
+      statusOnlyRow = applyIzinWorkWindow(statusOnlyRow, absence.record);
+      statusOnlyRow.attendance_status = `${absence.label} — TIDAK ADA SCAN`;
+      statusOnlyRow.status_kind = "review";
+      statusOnlyRow.perlu_koreksi = true;
+      statusOnlyRow.alasan_koreksi = "Izin parsial telah disetujui, tetapi tidak ada scan kehadiran pada hari tersebut.";
     }
     actual.push(statusOnlyRow);
   });

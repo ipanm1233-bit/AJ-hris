@@ -56,6 +56,19 @@ test('labels an approved izin record from data_pengajuan', () => {
     start: '2026-09-08', end: '2026-09-08'
   });
   assert.equal(rows[0]['Keterangan Izin/Cuti'], 'IZIN_KELUAR_KANTOR');
+  assert.equal(rows[0]['Perlu Koreksi HRD'], 'Ya');
+});
+
+test('approved late-arrival izin uses the permitted time and complete scans need no correction', () => {
+  const rows = buildRawAttendanceExport({
+    employees: [employee], schedules: schedule,
+    attendanceRows: [{ nik: '1001', nama: 'BUDI', tanggal: '2026-09-16', scan_masuk: '09:00', scan_keluar: '17:01', sumber: 'FINGERPRINT' }],
+    leaves: [{ nik_pemohon: '1001', tanggal_izin: '2026-09-16', kategori: 'IZIN', jenis_izin: 'IZIN_TERLAMBAT', jam_izin: 'Estimasi Tiba: 09:00 WIB (Jam Masuk: 08:00)', status_final: 'APPROVED FINAL' }],
+    start: '2026-09-16', end: '2026-09-16'
+  });
+  assert.equal(rows[0]['Jam Masuk'], '09:00');
+  assert.equal(rows[0]['Perlu Koreksi HRD'], 'Tidak');
+  assert.equal(rows[0]['Keterangan Izin/Cuti'], 'IZIN_TERLAMBAT');
 });
 
 test('merges duplicate source rows into one employee-day', () => {

@@ -461,7 +461,7 @@ export async function mount(container, { session } = {}) {
  return;
  }
  rawTbody.innerHTML = data.map(r => `
- <tr class="transition text-xs ${r.status_kind === 'review' ? 'bg-amber-50 hover:bg-amber-100' : r.status_kind === 'absence' ? 'bg-blue-50 hover:bg-blue-100' : r.status_kind === 'half-day' ? 'bg-violet-50 hover:bg-violet-100' : 'hover:bg-slate-50'}">
+ <tr class="transition text-xs ${r.status_kind === 'review' ? 'bg-amber-50 hover:bg-amber-100' : r.status_kind === 'absence' ? 'bg-blue-50 hover:bg-blue-100' : ['half-day', 'permission'].includes(r.status_kind) ? 'bg-violet-50 hover:bg-violet-100' : 'hover:bg-slate-50'}">
  <td class="px-3 py-3 text-center">${canEdit && (roleIsHrdOrAdmin || isPicBranch) ? `<input type="checkbox" data-select-absen="${escapeHtml(attendanceRowKey(r))}" class="rounded border-slate-300 text-maroon-700" ${selectedAttendanceKeys.has(attendanceRowKey(r)) ? 'checked' : ''}>` : ''}</td>
  <td class="px-4 py-3 text-slate-500">${escapeHtml(r.emp_no || "-")}</td>
  <td class="px-4 py-3 text-slate-500">${escapeHtml(r.no_id || "-")}</td>
