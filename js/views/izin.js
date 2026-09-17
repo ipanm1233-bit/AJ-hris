@@ -471,15 +471,19 @@ export async function mount(container, { session }) {
  const notifTitle = `Pengajuan Izin Baru: ${targetEmpNama}`;
  const notifMsg = `${targetEmpNama} (${targetEmpJabatan}) mengajukan ${JENIS_IZIN_MAP[jenisVal]?.label || 'Izin'} untuk tanggal ${tglVal}. Membutuhkan persetujuan Anda.`;
  const notifLink = `#approval?id=${docId}`;
+ const selectedAtasanKey = String(atasanVal || "").trim().toLowerCase();
 
  if (atasanVal) {
- await notifyUser(atasanVal, notifTitle, notifMsg, notifLink);
+ await notifyUser(atasanVal, notifTitle, notifMsg, notifLink, { manual: true });
  }
 
  let atasanTargets = await getTargetsForRole("ATASAN", targetEmpNama);
  for (const t of atasanTargets) {
- if (t.username && t.username !== atasanVal) {
- await notifyUser(t.username, notifTitle, notifMsg, notifLink);
+ const isSelectedAtasan = [t.username, t.nama, t.nik]
+   .filter(Boolean)
+   .some(value => String(value).trim().toLowerCase() === selectedAtasanKey);
+ if (!isSelectedAtasan) {
+ await notifyUser(t, notifTitle, notifMsg, notifLink, { manual: true });
  }
  }
 
@@ -488,7 +492,8 @@ export async function mount(container, { session }) {
  targetEmpNama,
  `ℹ️ Pengajuan Izin Dibuatkan oleh HRD`,
  `Pengajuan ${JENIS_IZIN_MAP[jenisVal]?.label || 'Izin'} Anda untuk tanggal ${tglVal} telah dibuatkan oleh HRD (${session.nama}) dan dikirimkan ke atasan (${atasanVal}).`,
- `#izin`
+ `#izin`,
+ { manual: true }
  );
  }
 

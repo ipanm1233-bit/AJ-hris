@@ -32,6 +32,16 @@ test("leave and approval screens expose manual delivery controls", () => {
   assert.match(approval, /Kirim Email &amp; Notifikasi/);
 });
 
+test("submitting an izin explicitly delivers approver notifications", () => {
+  const izin = readFileSync(new URL("../js/views/izin.js", import.meta.url), "utf8");
+  const utils = readFileSync(new URL("../js/utils.js", import.meta.url), "utf8");
+  const deliveryBlock = izin.split("// Send Notifications to Atasan & Target Employee")[1]?.split("toast(\"Pengajuan izin berhasil dibuat!\"")[0];
+  assert.ok(deliveryBlock);
+  assert.match(deliveryBlock, /notifyUser\(atasanVal,[\s\S]*\{ manual: true \}\)/);
+  assert.match(deliveryBlock, /notifyUser\(t,[\s\S]*\{ manual: true \}\)/);
+  assert.match(utils, /sendBranchInstantAlert[\s\S]*sendEmailNotif\(emailTo, subject, htmlBody, cc, null, \{ manual: true \}\)/);
+});
+
 test("employee leave email contains details without a Form Cuti attachment", () => {
   const leave = readFileSync(new URL("../js/views/cuti.js", import.meta.url), "utf8");
   const employee = leave.split("// 5a. Email ke Karyawan")[1]?.split("// 5b. Email ke Atasan")[0];
