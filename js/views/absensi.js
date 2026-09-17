@@ -9,6 +9,7 @@ import { buildRawAttendanceExport } from "../attendance-export.mjs";
 import { attendanceImportValues, attendanceImportScan } from "../attendance-import.mjs";
 import { buildAttendanceStatusRows } from "../attendance-status.mjs";
 import { attendanceDeductionSource, calculateAttendancePenalty } from "../attendance-penalty.mjs";
+import { buildAttendanceAnalytics } from "../attendance-analytics.mjs";
 
 function normalizeToken(value) {
  return String(value || "").trim().toUpperCase();
@@ -100,6 +101,16 @@ export async function mount(container, { session } = {}) {
  const btnBulkEdit = container.querySelector("#btn-bulk-edit-absen");
  const btnClearSelected = container.querySelector("#btn-clear-selected-absen");
  const selectAllVisible = container.querySelector("#absen-select-all-visible");
+ const dashboardSection = container.querySelector("#attendance-dashboard");
+ const dashboardMonth = container.querySelector("#attendance-dashboard-month");
+ const dashboardBranch = container.querySelector("#attendance-dashboard-branch");
+ const dashboardDivision = container.querySelector("#attendance-dashboard-division");
+ const dashboardLoadArchive = container.querySelector("#attendance-dashboard-load-archive");
+ const dashboardSource = container.querySelector("#attendance-dashboard-source");
+ const dashboardKpis = container.querySelector("#attendance-dashboard-kpis");
+ const dashboardTrend = container.querySelector("#attendance-dashboard-trend");
+ const dashboardTopLate = container.querySelector("#attendance-dashboard-top-late");
+ const dashboardDivisions = container.querySelector("#attendance-dashboard-divisions");
 
  const { startStr: twoMonthsStart, endStr: twoMonthsEnd } = getTwoRunningMonthsRange();
 
@@ -107,7 +118,11 @@ export async function mount(container, { session } = {}) {
  let employeeRowsGlobal = [];
  let scheduleRowsGlobal = [];
  let absenceRowsGlobal = [];
+ let archiveAttendanceRowsGlobal = [];
  let currentFilteredRows = [];
+ const archiveMonthsLoaded = new Set();
+ const jakartaDateParts = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date()).map(part => [part.type, part.value]));
+ let dashboardState = { month: `${jakartaDateParts.year}-${jakartaDateParts.month}`, branch: "", division: "" };
  const selectedAttendanceKeys = new Set();
  // sortNama: null (default, urut tanggal terbaru) | "asc" (A-Z) | "desc" (Z-A)
  let filterState = {
@@ -120,6 +135,114 @@ export async function mount(container, { session } = {}) {
  completeness: "",
  sortNama: null
  };
+
+ function dashboardMonthRange(month) {
+  const match = String(month || "").match(/^(\d{4})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const monthNumber = Number(match[2]);
+  const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  return { start: `${match[1]}-${match[2]}-01`, end: `${match[1]}-${match[2]}-${String(lastDay).padStart(2, "0")}` };
+ }
+
+ function setDashboardOptions(select, emptyLabel, values, selected) {
+  if (!select) return;
+  select.innerHTML = `<option value="">${escapeHtml(emptyLabel)}</option>${values.map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}`;
+  select.value = values.includes(selected) ? selected : "";
+ }
+
+ function populateDashboardFilters() {
+  if (!roleIsHrdOrAdmin || !dashboardSection) return;
+  const monthEmployees = employeeRowsGlobal;
+  const branches = [...new Set(monthEmployees.map(row => String(row.cabang || "").trim()).filter(Boolean))]
+   .sort((a, b) => a.localeCompare(b, "id", { sensitivity: "base" }));
+  setDashboardOptions(dashboardBranch, "Semua Cabang", branches, dashboardState.branch);
+  if (dashboardState.branch && !dashboardBranch.value) dashboardState.branch = "";
+  const divisionEmployees = dashboardState.branch
+   ? monthEmployees.filter(row => normalizeToken(row.cabang) === normalizeToken(dashboardState.branch))
+   : monthEmployees;
+  const divisions = [...new Set(divisionEmployees.map(row => String(row.divisi || row.departemen || "").trim()).filter(Boolean))]
+   .sort((a, b) => a.localeCompare(b, "id", { sensitivity: "base" }));
+  setDashboardOptions(dashboardDivision, "Semua Divisi", divisions, dashboardState.division);
+  if (dashboardState.division && !dashboardDivision.value) dashboardState.division = "";
+ }
+
+ function renderAttendanceDashboard() {
+  if (!roleIsHrdOrAdmin || !dashboardSection) return;
+  const analytics = buildAttendanceAnalytics(listAbsensiGlobal, dashboardState);
+  const { totals } = analytics;
+  const formatNumber = value => Number(value || 0).toLocaleString("id-ID");
+  const kpis = [
+   ["Karyawan Tercatat", totals.employees, "text-slate-800", "bg-slate-50 border-slate-200"],
+   ["Hari Scan Lengkap", totals.complete_days, "text-emerald-800", "bg-emerald-50 border-emerald-200"],
+   ["Tepat Waktu", totals.on_time_days, "text-sky-800", "bg-sky-50 border-sky-200"],
+   ["Keterlambatan", totals.late_days, "text-rose-800", "bg-rose-50 border-rose-200"],
+   ["Total Denda", `Rp ${formatNumber(totals.total_penalty)}`, "text-amber-900", "bg-amber-50 border-amber-200"],
+   ["C1/2 Terlambat", totals.half_day_penalty_days, "text-violet-800", "bg-violet-50 border-violet-200"],
+   ["Dibebaskan HRD", totals.waived_days, "text-teal-800", "bg-teal-50 border-teal-200"],
+   ["Perlu Koreksi", totals.review_days, "text-orange-800", "bg-orange-50 border-orange-200"]
+  ];
+  dashboardKpis.innerHTML = kpis.map(([label, value, textClass, boxClass]) => `<div class="rounded-xl border p-3 ${boxClass}"><p class="text-[10px] font-bold uppercase tracking-wide text-slate-500">${label}</p><p class="mt-1 text-lg font-black ${textClass}">${value}</p></div>`).join("");
+
+  const maxDaily = Math.max(1, ...analytics.daily.flatMap(day => [day.complete, day.late, day.absence]));
+  dashboardTrend.innerHTML = analytics.daily.length ? `<div class="min-w-max h-44 flex items-end gap-2 px-1 pt-4">${analytics.daily.map(day => {
+   const height = value => Math.max(value ? 4 : 0, Math.round((value / maxDaily) * 112));
+   return `<div class="w-8 shrink-0 text-center" title="${escapeHtml(day.date)} — Lengkap ${day.complete}, Terlambat ${day.late}, Cuti/Izin ${day.absence}"><div class="h-28 flex items-end justify-center gap-0.5"><span class="w-1.5 rounded-t bg-emerald-500" style="height:${height(day.complete)}px"></span><span class="w-1.5 rounded-t bg-rose-500" style="height:${height(day.late)}px"></span><span class="w-1.5 rounded-t bg-violet-500" style="height:${height(day.absence)}px"></span></div><p class="text-[9px] text-slate-500 mt-1">${escapeHtml(day.date.slice(8))}</p></div>`;
+  }).join("")}</div>` : `<div class="h-40 flex items-center justify-center text-xs text-slate-400">Belum ada data pada filter ini.</div>`;
+
+  dashboardTopLate.innerHTML = analytics.top_late.length ? `<table class="w-full text-xs"><thead class="text-[10px] uppercase text-slate-400 border-b"><tr><th class="pb-2 text-left">Karyawan</th><th class="pb-2 text-right">Kali</th><th class="pb-2 text-right">Menit</th><th class="pb-2 text-right">Denda</th></tr></thead><tbody class="divide-y divide-slate-100">${analytics.top_late.map(row => `<tr><td class="py-2 pr-2"><strong class="text-slate-700">${escapeHtml(row.name)}</strong><p class="text-[9px] text-slate-400">${escapeHtml(row.branch)} • ${escapeHtml(row.division)}</p></td><td class="py-2 text-right font-bold">${row.occurrences}</td><td class="py-2 text-right text-rose-700 font-bold">${row.minutes}</td><td class="py-2 text-right font-mono">Rp ${formatNumber(row.penalty)}</td></tr>`).join("")}</tbody></table>` : `<div class="h-40 flex items-center justify-center text-xs text-slate-400">Tidak ada keterlambatan.</div>`;
+
+  dashboardDivisions.innerHTML = analytics.divisions.length ? `<table class="w-full text-xs"><thead class="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th class="p-2 text-left">Divisi</th><th class="p-2 text-right">Hari Tercatat</th><th class="p-2 text-right">Scan Lengkap</th><th class="p-2 text-right">Terlambat</th><th class="p-2 text-right">Cuti/Izin</th><th class="p-2 text-right">Perlu Koreksi</th><th class="p-2 text-right">Denda</th><th class="p-2 text-left min-w-36">Kelengkapan</th></tr></thead><tbody class="divide-y divide-slate-100">${analytics.divisions.map(row => `<tr><td class="p-2 font-bold text-slate-700">${escapeHtml(row.division)}</td><td class="p-2 text-right">${row.employee_days}</td><td class="p-2 text-right text-emerald-700 font-bold">${row.complete}</td><td class="p-2 text-right text-rose-700 font-bold">${row.late}</td><td class="p-2 text-right">${row.absence}</td><td class="p-2 text-right text-orange-700">${row.review}</td><td class="p-2 text-right font-mono">Rp ${formatNumber(row.penalty)}</td><td class="p-2"><div class="flex items-center gap-2"><div class="h-2 flex-1 rounded-full bg-slate-100 overflow-hidden"><div class="h-full bg-emerald-500" style="width:${Math.min(100, row.completeness_rate)}%"></div></div><span class="text-[10px] font-bold text-slate-600">${row.completeness_rate}%</span></div></td></tr>`).join("")}</tbody></table>` : `<p class="py-8 text-center text-xs text-slate-400">Belum ada data divisi pada filter ini.</p>`;
+
+  const archiveLoaded = archiveMonthsLoaded.has(dashboardState.month);
+  dashboardSource.innerHTML = `<div class="flex flex-wrap items-center gap-2"><span class="px-2 py-1 rounded-full bg-slate-100 text-slate-600 font-semibold">${formatNumber(totals.employee_days)} hari-karyawan</span><span class="px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold">Kelengkapan scan ${totals.completeness_rate}%</span><span class="px-2 py-1 rounded-full ${archiveLoaded ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'} font-semibold">${archiveLoaded ? `${formatNumber(totals.spreadsheet_rows)} data arsip Spreadsheet tergabung` : 'Arsip Spreadsheet belum dimuat'}</span></div>`;
+ }
+
+ function mergeArchivedAttendanceRows(rows = []) {
+  const normalized = rows.map(row => ({
+   ...row,
+   scan_masuk: row.scan_masuk === "-" ? "" : (row.scan_masuk || ""),
+   scan_keluar: row.scan_keluar === "-" ? "" : (row.scan_keluar || row.scan_pulang || ""),
+   _archive_source: true
+  }));
+  const processed = buildAttendanceStatusRows({
+   attendanceRows: enrichAttendanceRows(normalized),
+   employees: employeeRowsGlobal,
+   absenceRecords: absenceRowsGlobal,
+   schedules: scheduleRowsGlobal
+  }).filter(row => !row.is_status_only);
+  const existing = new Set([...listAbsensiGlobal, ...archiveAttendanceRowsGlobal].map(row => String(row.id || "")).filter(Boolean));
+  const additions = processed.filter(row => !row.id || !existing.has(String(row.id)));
+  archiveAttendanceRowsGlobal.push(...additions);
+  listAbsensiGlobal.push(...additions);
+  return additions.length;
+ }
+
+ async function loadAttendanceArchiveForDashboard({ force = false } = {}) {
+  if (!roleIsHrdOrAdmin || !dashboardMonth) return;
+  const range = dashboardMonthRange(dashboardState.month);
+  if (!range) return;
+  if (!force && archiveMonthsLoaded.has(dashboardState.month)) return renderAttendanceDashboard();
+  const originalLabel = dashboardLoadArchive?.textContent || "Muat Spreadsheet";
+  if (dashboardLoadArchive) { dashboardLoadArchive.disabled = true; dashboardLoadArchive.textContent = "Memuat..."; }
+  if (dashboardSource) dashboardSource.innerHTML = `<span class="text-blue-700 font-semibold">Mengambil arsip Spreadsheet ${range.start} s/d ${range.end}...</span>`;
+  try {
+   const result = await callGasArchiveWebApp({ action: "get_archived_attendance", start: range.start, end: range.end });
+   const added = mergeArchivedAttendanceRows(result.rows || []);
+   archiveMonthsLoaded.add(dashboardState.month);
+   populateAttendanceFilterOptions();
+   applyFiltersAbsen();
+   renderAttendanceDashboard();
+   if (force) toast(`${added} data arsip baru digabungkan ke dashboard.`, "success");
+  } catch (error) {
+   console.error("Gagal memuat arsip dashboard:", error);
+   renderAttendanceDashboard();
+   if (dashboardSource) dashboardSource.insertAdjacentHTML("beforeend", `<p class="mt-2 text-rose-700">Arsip Spreadsheet belum dapat dimuat: ${escapeHtml(error.message || "Koneksi gagal")}</p>`);
+   if (force) toast("Gagal memuat arsip Spreadsheet: " + error.message, "error");
+  } finally {
+   if (dashboardLoadArchive) { dashboardLoadArchive.disabled = false; dashboardLoadArchive.textContent = originalLabel; }
+  }
+ }
 
  function attendanceRowKey(row) {
   return row.is_status_only
@@ -199,6 +322,7 @@ export async function mount(container, { session } = {}) {
 
  // Sembunyikan kontrol admin jika bukan HRD/Admin
  if (!roleIsHrdOrAdmin) {
+ if (dashboardSection) dashboardSection.style.display = "none";
  if (btnImport) btnImport.style.display = "none";
  if (btnExport) btnExport.style.display = "none";
  if (btnExportRawAbsen && !isPicBranch) btnExportRawAbsen.style.display = "none";
@@ -224,6 +348,26 @@ export async function mount(container, { session } = {}) {
 
  // Panggil pemuatan data absensi otomatis untuk non-HRD
  loadRawAbsensiTable();
+ }
+
+ if (roleIsHrdOrAdmin && dashboardSection) {
+  if (dashboardMonth) dashboardMonth.value = dashboardState.month;
+  dashboardMonth.onchange = () => {
+   dashboardState.month = dashboardMonth.value || dashboardState.month;
+   renderAttendanceDashboard();
+   loadAttendanceArchiveForDashboard();
+  };
+  dashboardBranch.onchange = () => {
+   dashboardState.branch = dashboardBranch.value;
+   dashboardState.division = "";
+   populateDashboardFilters();
+   renderAttendanceDashboard();
+  };
+  dashboardDivision.onchange = () => {
+   dashboardState.division = dashboardDivision.value;
+   renderAttendanceDashboard();
+  };
+  dashboardLoadArchive.onclick = () => loadAttendanceArchiveForDashboard({ force: true });
  }
 
  container.querySelectorAll(".absen-tab").forEach(btn => {
@@ -276,13 +420,18 @@ export async function mount(container, { session } = {}) {
  employeeRowsGlobal = isPicBranch ? employeeRows.filter(k => normalizeToken(k.cabang) === normalizeToken(scopedBranch)) : employeeRows;
  scheduleRowsGlobal = scheduleSnapshot?.exists() ? (scheduleSnapshot.data()?.jadwal || []) : [];
  absenceRowsGlobal = isPicBranch ? [...leaveRows, ...submissionRows].filter(row => normalizeToken(row.cabang) === normalizeToken(scopedBranch)) : [...leaveRows, ...submissionRows];
- listAbsensiGlobal = buildAttendanceStatusRows({
+ const liveAttendanceRows = buildAttendanceStatusRows({
  attendanceRows: enrichAttendanceRows(attendanceRows),
  employees: employeeRowsGlobal,
  absenceRecords: absenceRowsGlobal,
  schedules: scheduleRowsGlobal
  });
+ const liveIds = new Set(liveAttendanceRows.map(row => String(row.id || "")).filter(Boolean));
+ listAbsensiGlobal = [...liveAttendanceRows, ...archiveAttendanceRowsGlobal.filter(row => !row.id || !liveIds.has(String(row.id)))];
  populateAttendanceFilterOptions();
+ populateDashboardFilters();
+ renderAttendanceDashboard();
+ if (roleIsHrdOrAdmin && !archiveMonthsLoaded.has(dashboardState.month)) loadAttendanceArchiveForDashboard();
 
  // Check for records older than 60 days per employee to keep Firebase lightweight
  const sixtyDaysAgo = new Date();
@@ -1194,13 +1343,11 @@ export async function mount(container, { session } = {}) {
  end: periodEnd
  });
  if (res && res.rows && res.rows.length > 0) {
- // Merge with global list (excluding duplicates)
- const existingIds = new Set(listAbsensiGlobal.map(x => x.id));
- const newRows = enrichAttendanceRows(res.rows.filter(x => !existingIds.has(x.id)));
- listAbsensiGlobal = [...listAbsensiGlobal, ...newRows];
+ const addedCount = mergeArchivedAttendanceRows(res.rows);
  populateAttendanceFilterOptions();
  applyFiltersAbsen();
- toast(`Sukses memuat ${newRows.length} data arsip untuk periode terpilih!`, "success");
+ renderAttendanceDashboard();
+ toast(`Sukses memuat ${addedCount} data arsip baru untuk periode terpilih!`, "success");
  } else {
  toast("Tidak ada data arsip pada periode tersebut di Google Spreadsheet.", "warning");
  }

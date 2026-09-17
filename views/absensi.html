@@ -80,6 +80,48 @@
   </div>
 
   <div id="absen-panel-data" class="hidden space-y-4">
+     <section id="attendance-dashboard" class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+       <div class="p-5 border-b border-slate-100 bg-gradient-to-r from-slate-900 via-slate-800 to-maroon-950 text-white">
+         <div class="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4">
+           <div>
+             <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-rose-200">Analitik HRD</p>
+             <h2 class="text-xl font-bold mt-1">Dashboard Kehadiran Karyawan</h2>
+             <p class="text-xs text-slate-300 mt-1">Data HRIS aktif dan arsip Spreadsheet digabungkan berdasarkan periode.</p>
+           </div>
+           <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 w-full xl:w-auto">
+             <label class="text-[10px] font-bold text-slate-300">Bulan
+               <input id="attendance-dashboard-month" type="month" class="mt-1 w-full min-w-36 px-3 py-2 rounded-lg border border-white/15 bg-white text-slate-800 text-xs outline-none">
+             </label>
+             <label class="text-[10px] font-bold text-slate-300">Cabang
+               <select id="attendance-dashboard-branch" class="mt-1 w-full min-w-36 px-3 py-2 rounded-lg border border-white/15 bg-white text-slate-800 text-xs outline-none"><option value="">Semua Cabang</option></select>
+             </label>
+             <label class="text-[10px] font-bold text-slate-300">Divisi
+               <select id="attendance-dashboard-division" class="mt-1 w-full min-w-40 px-3 py-2 rounded-lg border border-white/15 bg-white text-slate-800 text-xs outline-none"><option value="">Semua Divisi</option></select>
+             </label>
+             <button id="attendance-dashboard-load-archive" type="button" class="self-end px-3 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold transition">Muat Spreadsheet</button>
+           </div>
+         </div>
+       </div>
+       <div class="p-5 space-y-5">
+         <div id="attendance-dashboard-source" class="text-[11px] text-slate-500"></div>
+         <div id="attendance-dashboard-kpis" class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3"></div>
+         <div class="grid grid-cols-1 xl:grid-cols-5 gap-4">
+           <div class="xl:col-span-3 border border-slate-200 rounded-xl p-4 min-w-0">
+             <div class="flex items-center justify-between gap-3 mb-3"><h3 class="text-sm font-bold text-slate-800">Tren Kehadiran Harian</h3><div class="flex gap-3 text-[10px] text-slate-500"><span><i class="inline-block w-2 h-2 rounded-sm bg-emerald-500 mr-1"></i>Scan lengkap</span><span><i class="inline-block w-2 h-2 rounded-sm bg-rose-500 mr-1"></i>Terlambat</span><span><i class="inline-block w-2 h-2 rounded-sm bg-violet-500 mr-1"></i>Cuti/Izin</span></div></div>
+             <div id="attendance-dashboard-trend" class="min-h-44 overflow-x-auto"></div>
+           </div>
+           <div class="xl:col-span-2 border border-slate-200 rounded-xl p-4 min-w-0">
+             <h3 class="text-sm font-bold text-slate-800 mb-3">10 Karyawan Paling Sering Terlambat</h3>
+             <div id="attendance-dashboard-top-late" class="overflow-auto max-h-64"></div>
+           </div>
+         </div>
+         <div class="border border-slate-200 rounded-xl p-4 min-w-0">
+           <h3 class="text-sm font-bold text-slate-800 mb-3">Perbandingan per Divisi</h3>
+           <div id="attendance-dashboard-divisions" class="overflow-x-auto"></div>
+         </div>
+       </div>
+     </section>
+
      <div id="archive-alert-box" class="hidden"></div>
 
      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
