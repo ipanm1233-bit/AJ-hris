@@ -26,8 +26,8 @@
 
       <div class="bg-emerald-50 border border-emerald-200 p-6 rounded-xl flex flex-col justify-between">
          <div>
-            <h2 class="font-bold text-emerald-900 text-lg mb-2">2. Export Laporan Kehadiran Terpadu (4 Sheet)</h2>
-            <p class="text-sm text-emerald-700 mb-4 leading-relaxed">Tarik laporan matriks bulanan komprehensif yang dikalibrasi otomatis dengan data cuti, lembur, dan uang makan ekspedisi.</p>
+            <h2 class="font-bold text-emerald-900 text-lg mb-2">2. Export Laporan Kehadiran Terpadu (5 Sheet)</h2>
+            <p class="text-sm text-emerald-700 mb-4 leading-relaxed">Tarik laporan matriks bulanan yang dikalibrasi otomatis dengan data cuti, lembur, uang makan ekspedisi, serta rekap denda keterlambatan.</p>
             
             <div class="flex gap-3 mb-4">
                <div class="flex-1">
@@ -61,6 +61,20 @@
               Konfigurasi Mesin
             </button>
          </div>
+      </div>
+    </div>
+
+    <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+      <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+        <div class="max-w-xl">
+          <h2 class="font-bold text-slate-800">Ketentuan Keterlambatan</h2>
+          <p class="text-xs text-slate-500 mt-1 leading-relaxed">Perhitungan menggunakan selisih scan masuk terhadap jadwal kerja efektif. Izin datang terlambat yang sudah disetujui mengubah jadwal efektif sesuai waktu izin.</p>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs flex-1">
+          <div class="rounded-lg bg-amber-50 border border-amber-200 p-3"><strong class="text-amber-900">1–5 menit</strong><p class="text-amber-700 mt-1">Denda Rp5.000</p></div>
+          <div class="rounded-lg bg-rose-50 border border-rose-200 p-3"><strong class="text-rose-900">6–25 menit</strong><p class="text-rose-700 mt-1">Tambah Rp1.000 per menit</p></div>
+          <div class="rounded-lg bg-violet-50 border border-violet-200 p-3"><strong class="text-violet-900">Lebih dari 25 menit</strong><p class="text-violet-700 mt-1">Cuti ½ hari</p></div>
+        </div>
       </div>
     </div>
   </div>
@@ -141,6 +155,8 @@
                     <th class="px-4 py-3 text-center whitespace-nowrap">Jam Pulang</th>
                     <th class="px-4 py-3 text-center whitespace-nowrap">Scan Masuk</th>
                     <th class="px-4 py-3 text-center whitespace-nowrap">Scan Pulang</th>
+                    <th class="px-4 py-3 whitespace-nowrap">Keterlambatan</th>
+                    <th class="px-4 py-3 whitespace-nowrap">Dasar Pemotongan</th>
                     <th class="px-4 py-3 whitespace-nowrap">Izin / Cuti / Dinas</th>
                     <th class="px-4 py-3 whitespace-nowrap">Perlu Koreksi HRD</th>
                     <th class="px-4 py-3 text-right">Aksi</th>

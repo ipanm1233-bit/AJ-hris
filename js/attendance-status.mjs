@@ -1,6 +1,7 @@
 import { resolveWorkSchedule } from "./work-schedule.mjs";
 import { applyHalfDayWorkWindow, isHalfDayLeave } from "./leave-attendance.mjs";
 import { applyIzinWorkWindow, isPartialDayIzin, partialIzinStatus } from "./izin-attendance.mjs";
+import { calculateAttendancePenalty, formatAttendancePenalty } from "./attendance-penalty.mjs";
 
 function key(value) {
   return String(value || "").trim().toUpperCase();
@@ -162,7 +163,20 @@ export function buildAttendanceStatusRows({ attendanceRows = [], employees = [],
     if (absence) usedAbsences.add(absenceKey);
     if (absence?.record && isHalfDayLeave(absence.record)) row = applyHalfDayWorkWindow(row, absence.record);
     if (absence?.record && isPartialDayIzin(absence.record)) row = applyIzinWorkWindow(row, absence.record);
-    return { ...row, ...statusForRow(row, absence), ketidakhadiran: absence?.label || "" };
+    const attendanceStatus = statusForRow(row, absence);
+    const penalty = calculateAttendancePenalty(row, employee);
+    const canApplyPenalty = !absence?.label || isHalfDayLeave(absence?.record) || isPartialDayIzin(absence?.record);
+    const hasValidScans = Boolean(row.scan_masuk && (row.scan_keluar || row.scan_pulang) && !row.perlu_koreksi);
+    if (canApplyPenalty && hasValidScans && penalty.late_minutes > 0) {
+      attendanceStatus.attendance_status = `${attendanceStatus.attendance_status} — TERLAMBAT ${formatAttendancePenalty(penalty)}`;
+      attendanceStatus.status_kind = penalty.half_day_leave ? "late-half-day" : "late";
+    }
+    return {
+      ...row,
+      ...attendanceStatus,
+      ...penalty,
+      ketidakhadiran: absence?.label || (penalty.half_day_leave ? "C1/2 - Terlambat >25 menit" : "")
+    };
   });
 
   absenceByEmployeeDate.forEach((absence, absenceKey) => {
@@ -191,6 +205,7 @@ export function buildAttendanceStatusRows({ attendanceRows = [], employees = [],
       status_kind: "absence",
       perlu_koreksi: false,
       alasan_koreksi: "",
+      ...calculateAttendancePenalty({}, employee),
       is_status_only: true
     };
     if (isHalfDayLeave(absence.record)) {

@@ -8,6 +8,7 @@ import { resolveWorkSchedule } from "../work-schedule.mjs";
 import { buildRawAttendanceExport } from "../attendance-export.mjs";
 import { attendanceImportValues, attendanceImportScan } from "../attendance-import.mjs";
 import { buildAttendanceStatusRows } from "../attendance-status.mjs";
+import { attendanceDeductionSource, calculateAttendancePenalty } from "../attendance-penalty.mjs";
 
 function normalizeToken(value) {
  return String(value || "").trim().toUpperCase();
@@ -245,9 +246,9 @@ export async function mount(container, { session } = {}) {
  });
 
  async function loadRawAbsensiTable() {
- rawTbody.innerHTML = `<tr><td colspan="16" class="p-4">${skeletonRows(4)}</td></tr>`;
+ rawTbody.innerHTML = `<tr><td colspan="18" class="p-4">${skeletonRows(4)}</td></tr>`;
  if (canViewAll && !roleIsHrdOrAdmin && !scopedBranch) {
-  rawTbody.innerHTML = `<tr><td colspan="16" class="p-4 text-amber-800">Cabang akun belum terdaftar. Hubungi HRD agar akses PIC absensi dapat dibatasi ke cabang yang tepat.</td></tr>`;
+  rawTbody.innerHTML = `<tr><td colspan="18" class="p-4 text-amber-800">Cabang akun belum terdaftar. Hubungi HRD agar akses PIC absensi dapat dibatasi ke cabang yang tepat.</td></tr>`;
   return;
  }
  const attendanceRef = collection(db, COL.DATA_ABSENSI);
@@ -269,7 +270,7 @@ export async function mount(container, { session } = {}) {
  ]);
  } catch (error) {
   console.error("Gagal membaca data absensi:", error);
-  rawTbody.innerHTML = `<tr><td colspan="16" class="p-4 text-rose-700">Data absensi belum dapat dibaca oleh akun ini. Periksa izin data dan cabang akun di Pengaturan Hak Akses. (${escapeHtml(error.message || 'Akses ditolak')})</td></tr>`;
+  rawTbody.innerHTML = `<tr><td colspan="18" class="p-4 text-rose-700">Data absensi belum dapat dibaca oleh akun ini. Periksa izin data dan cabang akun di Pengaturan Hak Akses. (${escapeHtml(error.message || 'Akses ditolak')})</td></tr>`;
   return;
  }
  employeeRowsGlobal = isPicBranch ? employeeRows.filter(k => normalizeToken(k.cabang) === normalizeToken(scopedBranch)) : employeeRows;
@@ -457,11 +458,11 @@ export async function mount(container, { session } = {}) {
 
  function renderRawTable(data) {
  if(!data.length) {
- rawTbody.innerHTML = `<tr><td colspan="16" class="p-8 text-center">${emptyState("Tidak ada data absensi pada filter ini")}</td></tr>`;
+ rawTbody.innerHTML = `<tr><td colspan="18" class="p-8 text-center">${emptyState("Tidak ada data absensi pada filter ini")}</td></tr>`;
  return;
  }
  rawTbody.innerHTML = data.map(r => `
- <tr class="transition text-xs ${r.status_kind === 'review' ? 'bg-amber-50 hover:bg-amber-100' : r.status_kind === 'absence' ? 'bg-blue-50 hover:bg-blue-100' : ['half-day', 'permission'].includes(r.status_kind) ? 'bg-violet-50 hover:bg-violet-100' : 'hover:bg-slate-50'}">
+ <tr class="transition text-xs ${r.status_kind === 'review' ? 'bg-amber-50 hover:bg-amber-100' : r.status_kind === 'absence' ? 'bg-blue-50 hover:bg-blue-100' : ['half-day', 'permission', 'late-half-day'].includes(r.status_kind) ? 'bg-violet-50 hover:bg-violet-100' : r.status_kind === 'late' ? 'bg-rose-50 hover:bg-rose-100' : 'hover:bg-slate-50'}">
  <td class="px-3 py-3 text-center">${canEdit && (roleIsHrdOrAdmin || isPicBranch) ? `<input type="checkbox" data-select-absen="${escapeHtml(attendanceRowKey(r))}" class="rounded border-slate-300 text-maroon-700" ${selectedAttendanceKeys.has(attendanceRowKey(r)) ? 'checked' : ''}>` : ''}</td>
  <td class="px-4 py-3 text-slate-500">${escapeHtml(r.emp_no || "-")}</td>
  <td class="px-4 py-3 text-slate-500">${escapeHtml(r.no_id || "-")}</td>
@@ -475,6 +476,10 @@ export async function mount(container, { session } = {}) {
  <td class="px-4 py-3 text-center font-mono">${escapeHtml(r.jadwal_keluar || "-")}</td>
  <td class="px-4 py-3 text-center font-mono ${r.scan_masuk ? 'text-slate-700':'text-red-400 font-bold'}">${escapeHtml(r.scan_masuk || "-")}</td>
  <td class="px-4 py-3 text-center font-mono ${r.scan_keluar ? 'text-slate-700':'text-red-400 font-bold'}">${escapeHtml(r.scan_keluar || "-")}</td>
+ <td class="px-4 py-3 min-w-44">
+ ${r.late_minutes ? `<span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${r.half_day_leave ? 'bg-violet-100 text-violet-800 border border-violet-200' : 'bg-rose-100 text-rose-800 border border-rose-200'}">${escapeHtml(String(r.late_minutes))} menit — ${r.half_day_leave ? 'Cuti 1/2 hari' : `Rp ${Number(r.late_penalty || 0).toLocaleString('id-ID')}`}</span>` : `<span class="text-emerald-600 text-[10px] font-bold">Tepat waktu</span>`}
+ </td>
+ <td class="px-4 py-3 min-w-56 text-[11px] text-slate-600">${r.late_minutes ? escapeHtml(r.deduction_source || '-') : '—'}</td>
  <td class="px-4 py-3 min-w-44">
  ${r.ketidakhadiran ? `<span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">${escapeHtml(r.ketidakhadiran)}</span>` : `<span class="text-slate-400">—</span>`}
  </td>
@@ -936,11 +941,12 @@ export async function mount(container, { session } = {}) {
  btnExport.disabled = true; btnExport.textContent = "Menyusun Laporan Terstruktur...";
 
  try {
- const [allKaryawan, snapAbsen, snapCuti, snapUme] = await Promise.all([
+ const [allKaryawan, snapAbsen, snapCuti, snapUme, snapSettings] = await Promise.all([
  fsGetAll(COL.MASTER_KARYAWAN),
  getDocs(query(collection(db, COL.DATA_ABSENSI), where("tanggal", ">=", start), where("tanggal", "<=", end))),
  getDocs(collection(db, COL.MASTER_CUTI)),
- getDocs(collection(db, COL.UANG_MAKAN_EXPEDISI))
+ getDocs(collection(db, COL.UANG_MAKAN_EXPEDISI)),
+ getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(() => null)
  ]);
 
  const listAbsen = snapAbsen.docs.map(d => d.data());
@@ -955,6 +961,7 @@ export async function mount(container, { session } = {}) {
  return cStart && cEnd >= start && cStart <= end;
  });
  const listUme = snapUme.docs.map(d => d.data()).filter(u => u.tanggal && u.tanggal >= start && u.tanggal <= end);
+ const reportSchedules = snapSettings?.exists() ? (snapSettings.data()?.jadwal || []) : [];
 
  const datesArr = [];
  let currLoop = new Date(start);
@@ -987,6 +994,7 @@ export async function mount(container, { session } = {}) {
  };
  
  let totalJam = 0; let hariMasuk = 0;
+ let totalMenitTerlambat = 0; let totalDendaTerlambat = 0; let totalCutiSetengahTerlambat = 0;
  let c_tahunan = 0; let c_setengah = 0; let c_khusus = 0; let c_sakit = 0;
  let c_sakit_tanpa = 0; let c_bersama = 0; let c_potong_gaji = 0; let c_sisa = 0;
  let c_khusus_setengah = 0; let alpa_count = 0;
@@ -1023,7 +1031,24 @@ export async function mount(container, { session } = {}) {
  else { cellCode = "C"; c_tahunan++; }
  } else if (matchAbsen) {
  if (matchAbsen.scan_masuk && matchAbsen.scan_keluar) {
- cellCode = "8"; hariMasuk++; totalJam += 8;
+ const shift = resolveWorkSchedule(k, reportSchedules, dStr);
+ const penalty = calculateAttendancePenalty({
+  ...matchAbsen,
+  jadwal_masuk: matchAbsen.jadwal_masuk || shift.masuk || ""
+ }, k);
+ totalMenitTerlambat += penalty.late_minutes;
+ if (penalty.half_day_leave) {
+  cellCode = "C1/2";
+  c_setengah++;
+  totalCutiSetengahTerlambat++;
+  hariMasuk++;
+  totalJam += 4;
+ } else {
+  cellCode = "8";
+  hariMasuk++;
+  totalJam += 8;
+  totalDendaTerlambat += penalty.late_penalty;
+ }
  } else if (matchAbsen.scan_masuk || matchAbsen.scan_keluar) {
  cellCode = "4"; hariMasuk++; totalJam += 4;
  } else if (!isSunday) {
@@ -1058,6 +1083,10 @@ export async function mount(container, { session } = {}) {
  rowObj["Cuti 1/2 Hari (C 1/2)"] = c_setengah;
  rowObj["Cuti Khusus 1/2 Hari (C+ 1/2)"] = c_khusus_setengah;
  rowObj["Libur Minggu (L)"] = datesArr.filter(d => new Date(d).getDay() === 0).length;
+ rowObj["Total Menit Terlambat"] = totalMenitTerlambat;
+ rowObj["Total Denda Terlambat"] = totalDendaTerlambat;
+ rowObj["Cuti 1/2 Hari karena Terlambat"] = totalCutiSetengahTerlambat;
+ rowObj["Dasar Pemotongan Denda"] = attendanceDeductionSource(k);
  sheet1Rows.push(rowObj);
  });
 
@@ -1084,11 +1113,34 @@ export async function mount(container, { session } = {}) {
 
  const sheet4Rows = formatUangJalanEkspedisiRows(listUme);
 
+ const sheet5Rows = buildRawAttendanceExport({
+  attendanceRows: listAbsen,
+  employees: allKaryawan,
+  leaves: listCuti,
+  schedules: reportSchedules,
+  start,
+  end
+ }).filter(row => Number(row["Terlambat (Menit)"] || 0) > 0).map(row => ({
+  "Tanggal": row.Tanggal,
+  "NIK": row.NIK,
+  "Nama Karyawan": row["Nama Karyawan"],
+  "Cabang": allKaryawan.find(k => String(k.nik || k.nik_karyawan || "") === String(row.NIK || ""))?.cabang || "-",
+  "Divisi": allKaryawan.find(k => String(k.nik || k.nik_karyawan || "") === String(row.NIK || ""))?.divisi || "-",
+  "Jabatan": allKaryawan.find(k => String(k.nik || k.nik_karyawan || "") === String(row.NIK || ""))?.jabatan || "-",
+  "Jadwal Masuk": row["Jam Masuk"],
+  "Scan Masuk": row["Scan Masuk"],
+  "Terlambat (Menit)": row["Terlambat (Menit)"],
+  "Konsekuensi": row["Konsekuensi Terlambat"],
+  "Nominal Denda": row["Nominal Denda"],
+  "Dasar Pemotongan": row["Dasar Pemotongan"]
+ }));
+
  const wb = window.XLSX.utils.book_new();
  window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(sheet1Rows), "Rekap Matriks Absensi");
  window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(sheet2Rows), "Data Lembur");
  window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(sheet3Rows), "Data Cuti");
  window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(sheet4Rows), "UANG JALAN 2026");
+ window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(sheet5Rows), "Rekap Keterlambatan");
 
  window.XLSX.writeFile(wb, `PAYROLL_REPORT_ANDELA_${start}_TO_${end}.xlsx`);
  toast("Berhasil mendownload laporan terstruktur!", "success");

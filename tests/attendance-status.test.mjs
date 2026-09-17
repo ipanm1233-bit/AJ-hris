@@ -54,6 +54,25 @@ test("approved late-arrival permission adjusts schedule and remains present", ()
   assert.equal(row.status_kind, "permission");
   assert.equal(row.perlu_koreksi, false);
   assert.match(row.attendance_status, /HADIR DENGAN IZIN/);
+  assert.equal(row.late_minutes, 0);
+  assert.equal(row.late_penalty, 0);
+});
+
+test("calculates monetary lateness and half-day leave from the effective schedule", () => {
+  const rows = buildAttendanceStatusRows({
+    employees: [{ ...employee, cabang: "CIREBON", divisi: "SALES" }], schedules,
+    attendanceRows: [
+      { id: "late-5", nik: employee.nik, tanggal: "2026-09-17", scan_masuk: "08:05", scan_keluar: "17:00", jadwal_masuk: "08:00", jadwal_keluar: "17:00" },
+      { id: "late-26", nik: employee.nik, tanggal: "2026-09-18", scan_masuk: "08:26", scan_keluar: "17:00", jadwal_masuk: "08:00", jadwal_keluar: "17:00" }
+    ]
+  });
+  assert.equal(rows[0].late_penalty, 5000);
+  assert.equal(rows[0].deduction_source, "BBM mingguan");
+  assert.equal(rows[0].status_kind, "late");
+  assert.equal(rows[1].half_day_leave, true);
+  assert.equal(rows[1].late_penalty, 0);
+  assert.equal(rows[1].status_kind, "late-half-day");
+  assert.equal(rows[1].ketidakhadiran, "C1/2 - Terlambat >25 menit");
 });
 
 test("approved partial permission without scans requires correction", () => {

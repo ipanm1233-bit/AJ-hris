@@ -69,6 +69,19 @@ test('approved late-arrival izin uses the permitted time and complete scans need
   assert.equal(rows[0]['Jam Masuk'], '09:00');
   assert.equal(rows[0]['Perlu Koreksi HRD'], 'Tidak');
   assert.equal(rows[0]['Keterangan Izin/Cuti'], 'IZIN_TERLAMBAT');
+  assert.equal(rows[0]['Terlambat (Menit)'], 0);
+  assert.equal(rows[0]['Nominal Denda'], 0);
+});
+
+test('exports lateness amount and deduction source for payroll', () => {
+  const rows = buildRawAttendanceExport({
+    employees: [employee], schedules: schedule,
+    attendanceRows: [{ nik: '1001', nama: 'BUDI', tanggal: '2026-09-17', scan_masuk: '08:07', scan_keluar: '17:01', sumber: 'FINGERPRINT' }],
+    start: '2026-09-17', end: '2026-09-17'
+  });
+  assert.equal(rows[0]['Terlambat (Menit)'], 7);
+  assert.equal(rows[0]['Nominal Denda'], 7000);
+  assert.equal(rows[0]['Dasar Pemotongan'], 'BBM mingguan');
 });
 
 test('merges duplicate source rows into one employee-day', () => {

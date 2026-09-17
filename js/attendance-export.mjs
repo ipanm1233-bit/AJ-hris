@@ -1,6 +1,7 @@
 import { resolveWorkSchedule } from "./work-schedule.mjs";
 import { applyHalfDayWorkWindow, isHalfDayLeave } from "./leave-attendance.mjs";
 import { applyIzinWorkWindow, isPartialDayIzin } from "./izin-attendance.mjs";
+import { calculateAttendancePenalty } from "./attendance-penalty.mjs";
 
 function key(value) {
   return String(value || "").trim().toUpperCase();
@@ -102,6 +103,10 @@ function conflictingFingerOwner(row, employee) {
 }
 
 function exportObject(row, employee, shift, { absence = "", review = "", reason = "" } = {}) {
+  const penalty = calculateAttendancePenalty({
+    ...row,
+    jadwal_masuk: row?.jadwal_masuk || shift.masuk || ""
+  }, employee);
   return {
     "Emp No.": row?.emp_no || row?.fingerprint_emp_no || employee?.finger_emp_no || employee?.emp_no || "",
     "No. ID": row?.no_id || row?.fingerprint_no_id || row?.fingerprint_user_id || employee?.finger_id || employee?.no_finger || employee?.id_finger || employee?.pin || "",
@@ -115,6 +120,10 @@ function exportObject(row, employee, shift, { absence = "", review = "", reason 
     "Jam Pulang": row?.jadwal_keluar || shift.pulang || "",
     "Scan Masuk": row?.scan_masuk || "",
     "Scan Pulang": row?.scan_keluar || row?.scan_pulang || "",
+    "Terlambat (Menit)": penalty.late_minutes || 0,
+    "Konsekuensi Terlambat": penalty.late_minutes ? penalty.late_consequence : "Tepat waktu",
+    "Nominal Denda": penalty.late_penalty || 0,
+    "Dasar Pemotongan": penalty.late_minutes ? penalty.deduction_source : "-",
     "Keterangan Izin/Cuti": absence,
     "Perlu Koreksi HRD": review ? "Ya" : "Tidak",
     "Alasan Koreksi": reason
