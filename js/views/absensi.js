@@ -462,7 +462,7 @@ export async function mount(container, { session } = {}) {
  return;
  }
  rawTbody.innerHTML = data.map(r => `
- <tr class="transition text-xs ${r.status_kind === 'review' ? 'bg-amber-50 hover:bg-amber-100' : r.status_kind === 'absence' ? 'bg-blue-50 hover:bg-blue-100' : ['half-day', 'permission', 'late-half-day'].includes(r.status_kind) ? 'bg-violet-50 hover:bg-violet-100' : r.status_kind === 'late' ? 'bg-rose-50 hover:bg-rose-100' : 'hover:bg-slate-50'}">
+ <tr class="transition text-xs ${r.status_kind === 'review' ? 'bg-amber-50 hover:bg-amber-100' : r.status_kind === 'absence' ? 'bg-blue-50 hover:bg-blue-100' : ['half-day', 'permission', 'late-half-day'].includes(r.status_kind) ? 'bg-violet-50 hover:bg-violet-100' : r.status_kind === 'late-waived' ? 'bg-emerald-50 hover:bg-emerald-100' : r.status_kind === 'late' ? 'bg-rose-50 hover:bg-rose-100' : 'hover:bg-slate-50'}">
  <td class="px-3 py-3 text-center">${canEdit && (roleIsHrdOrAdmin || isPicBranch) ? `<input type="checkbox" data-select-absen="${escapeHtml(attendanceRowKey(r))}" class="rounded border-slate-300 text-maroon-700" ${selectedAttendanceKeys.has(attendanceRowKey(r)) ? 'checked' : ''}>` : ''}</td>
  <td class="px-4 py-3 text-slate-500">${escapeHtml(r.emp_no || "-")}</td>
  <td class="px-4 py-3 text-slate-500">${escapeHtml(r.no_id || "-")}</td>
@@ -477,7 +477,7 @@ export async function mount(container, { session } = {}) {
  <td class="px-4 py-3 text-center font-mono ${r.scan_masuk ? 'text-slate-700':'text-red-400 font-bold'}">${escapeHtml(r.scan_masuk || "-")}</td>
  <td class="px-4 py-3 text-center font-mono ${r.scan_keluar ? 'text-slate-700':'text-red-400 font-bold'}">${escapeHtml(r.scan_keluar || "-")}</td>
  <td class="px-4 py-3 min-w-44">
- ${r.late_minutes ? `<span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${r.half_day_leave ? 'bg-violet-100 text-violet-800 border border-violet-200' : 'bg-rose-100 text-rose-800 border border-rose-200'}">${escapeHtml(String(r.late_minutes))} menit — ${r.half_day_leave ? 'Cuti 1/2 hari' : `Rp ${Number(r.late_penalty || 0).toLocaleString('id-ID')}`}</span>` : `<span class="text-emerald-600 text-[10px] font-bold">Tepat waktu</span>`}
+ ${r.late_minutes ? `<span title="${escapeHtml(r.late_penalty_note || '')}" class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${r.late_penalty_waived ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : r.half_day_leave ? 'bg-violet-100 text-violet-800 border border-violet-200' : 'bg-rose-100 text-rose-800 border border-rose-200'}">${escapeHtml(String(r.late_minutes))} menit — ${r.late_penalty_waived ? 'Dibebaskan HRD' : r.half_day_leave ? 'Cuti 1/2 hari' : `Rp ${Number(r.late_penalty || 0).toLocaleString('id-ID')}`}</span>${r.late_penalty_waived && r.late_penalty_note ? `<p class="text-[10px] text-emerald-700 mt-1">${escapeHtml(r.late_penalty_note)}</p>` : ''}` : `<span class="text-emerald-600 text-[10px] font-bold">Tepat waktu</span>`}
  </td>
  <td class="px-4 py-3 min-w-56 text-[11px] text-slate-600">${r.late_minutes ? escapeHtml(r.deduction_source || '-') : '—'}</td>
  <td class="px-4 py-3 min-w-44">
@@ -689,13 +689,14 @@ export async function mount(container, { session } = {}) {
    </div>
    <div class="max-h-[55vh] overflow-auto border border-slate-200 rounded-xl">
     <table class="w-full text-xs">
-     <thead class="sticky top-0 bg-slate-100 text-slate-600"><tr><th class="p-2 text-left">Karyawan</th><th class="p-2">Tanggal</th><th class="p-2">Scan Masuk</th><th class="p-2">Scan Pulang</th><th class="p-2 text-left">Penanda</th></tr></thead>
+     <thead class="sticky top-0 bg-slate-100 text-slate-600"><tr><th class="p-2 text-left">Karyawan</th><th class="p-2">Tanggal</th><th class="p-2">Scan Masuk</th><th class="p-2">Scan Pulang</th>${roleIsHrdOrAdmin ? '<th class="p-2 text-left">Denda</th>' : ''}<th class="p-2 text-left">Penanda</th></tr></thead>
      <tbody class="divide-y divide-slate-100">${selectedRows.map((row, index) => `
       <tr data-bulk-row="${index}">
        <td class="p-2"><strong>${escapeHtml(row.nama || '-')}</strong><div class="text-[10px] text-slate-400">${escapeHtml(row.nik || '-')}</div></td>
        <td class="p-2 text-center whitespace-nowrap">${escapeHtml(row.tanggal || '-')}</td>
        <td class="p-2"><input data-bulk-in="${index}" value="${escapeHtml(row.scan_masuk || '')}" placeholder="HH:mm" class="w-24 px-2 py-1.5 border rounded-lg font-mono"></td>
        <td class="p-2"><input data-bulk-out="${index}" value="${escapeHtml(row.scan_keluar || '')}" placeholder="HH:mm" class="w-24 px-2 py-1.5 border rounded-lg font-mono"></td>
+       ${roleIsHrdOrAdmin ? `<td class="p-2 min-w-52"><label class="flex items-center gap-2"><input type="checkbox" data-bulk-waive="${index}" class="rounded border-slate-300 text-maroon-700" ${row.late_penalty_waived ? 'checked' : ''}><span>Bebaskan konsekuensi</span></label><input data-bulk-waive-note="${index}" value="${escapeHtml(row.late_penalty_note || '')}" placeholder="Alasan HRD" class="mt-1 w-full px-2 py-1.5 border rounded-lg"></td>` : ''}
        <td class="p-2 text-slate-500">${escapeHtml(row.alasan_koreksi || row.ketidakhadiran || '-')}</td>
       </tr>`).join("")}</tbody>
     </table>
@@ -709,14 +710,18 @@ export async function mount(container, { session } = {}) {
     const changes = selectedRows.map((row, index) => ({
      row,
      scan_masuk: modal.querySelector(`[data-bulk-in="${index}"]`).value.trim(),
-     scan_keluar: modal.querySelector(`[data-bulk-out="${index}"]`).value.trim()
+     scan_keluar: modal.querySelector(`[data-bulk-out="${index}"]`).value.trim(),
+     late_penalty_waived: roleIsHrdOrAdmin ? modal.querySelector(`[data-bulk-waive="${index}"]`).checked : Boolean(row.late_penalty_waived),
+     late_penalty_note: roleIsHrdOrAdmin ? modal.querySelector(`[data-bulk-waive-note="${index}"]`).value.trim() : String(row.late_penalty_note || "")
     }));
     const invalid = changes.find(item => (item.scan_masuk && !timePattern.test(item.scan_masuk)) || (item.scan_keluar && !timePattern.test(item.scan_keluar)));
     if (invalid) return toast(`Format jam ${invalid.row.nama || ''} tanggal ${invalid.row.tanggal || ''} belum benar. Gunakan HH:mm.`, "warning");
+    const missingWaiverReason = changes.find(item => item.late_penalty_waived && !item.late_penalty_note);
+    if (roleIsHrdOrAdmin && missingWaiverReason) return toast(`Isi alasan pembebasan denda untuk ${missingWaiverReason.row.nama || 'karyawan'} tanggal ${missingWaiverReason.row.tanggal || ''}.`, "warning");
     saveBtn.disabled = true;
     saveBtn.textContent = "Menyimpan...";
     try {
-     const apiChanges = changes.map(({ row, scan_masuk, scan_keluar }) => {
+     const apiChanges = changes.map(({ row, scan_masuk, scan_keluar, late_penalty_waived, late_penalty_note }) => {
       const targetId = row.is_status_only
        ? `ABS-MANUAL-${String(row.nik || row.id).replace(/[^a-zA-Z0-9._-]/g, '_')}-${row.tanggal}`
        : row.id;
@@ -724,13 +729,21 @@ export async function mount(container, { session } = {}) {
        id: targetId, scan_masuk: scan_masuk || null, scan_keluar: scan_keluar || null,
        nik: row.nik || "", nama: row.nama || "", tanggal: row.tanggal,
        cabang: row.cabang || "", divisi: row.divisi || "", jabatan: row.jabatan || "",
+       ...(roleIsHrdOrAdmin ? { late_penalty_waived, late_penalty_note } : {}),
       };
      });
      if (roleIsHrdOrAdmin) {
       const batch = writeBatch(db);
-      changes.forEach(({ row, scan_masuk, scan_keluar }, index) => {
+      changes.forEach(({ row, scan_masuk, scan_keluar, late_penalty_waived, late_penalty_note }, index) => {
        const data = apiChanges[index];
-       const update = { scan_masuk: scan_masuk || null, scan_keluar: scan_keluar || null };
+       const update = {
+        scan_masuk: scan_masuk || null,
+        scan_keluar: scan_keluar || null,
+        late_penalty_waived,
+        late_penalty_note: late_penalty_waived ? late_penalty_note : "",
+        late_penalty_updated_by: session?.nama || session?.username || "HRD",
+        late_penalty_updated_at: new Date().toISOString()
+       };
        batch.set(doc(db, COL.DATA_ABSENSI, data.id), row.is_status_only ? {
         nik: data.nik, nama: data.nama, tanggal: data.tanggal, cabang: data.cabang,
         divisi: data.divisi, jabatan: data.jabatan, sumber: "KOREKSI HRD", ...update
@@ -763,6 +776,7 @@ export async function mount(container, { session } = {}) {
  <form id="form-koreksi-absen" class="space-y-4">
  <div><label class="block text-xs font-medium text-slate-500 mb-1">Jam Scan Masuk</label><input type="text" id="k-masuk" value="${item.scan_masuk || ''}" placeholder="Cth: 07:55" class="w-full px-3 py-2 text-sm border rounded outline-none"></div>
  <div><label class="block text-xs font-medium text-slate-500 mb-1">Jam Scan Keluar</label><input type="text" id="k-keluar" value="${item.scan_keluar || ''}" placeholder="Cth: 17:02" class="w-full px-3 py-2 text-sm border rounded outline-none"></div>
+ ${roleIsHrdOrAdmin ? `<div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-2"><label class="flex items-center gap-2 text-xs font-bold text-emerald-900"><input type="checkbox" id="k-waive-penalty" class="rounded border-emerald-300 text-emerald-700" ${item.late_penalty_waived ? 'checked' : ''}> Bebaskan denda/konsekuensi keterlambatan</label><div><label class="block text-[11px] font-medium text-emerald-800 mb-1">Alasan koreksi HRD</label><input type="text" id="k-waive-note" value="${escapeHtml(item.late_penalty_note || '')}" placeholder="Contoh: gangguan mesin fingerprint" class="w-full px-3 py-2 text-sm border border-emerald-200 rounded outline-none bg-white"></div><p class="text-[10px] text-emerald-700">Jika dicentang, denda uang maupun konsekuensi C1/2 tidak diterapkan. Hapus centang untuk mengaktifkan kembali perhitungan otomatis.</p></div>` : ''}
  </form>
  `,
  footerHtml: `
@@ -772,9 +786,18 @@ export async function mount(container, { session } = {}) {
  onMount: m => {
  m.querySelector("#btn-k-batal").onclick = closeModal;
  m.querySelector("#btn-k-simpan").onclick = async () => {
+ const waivePenalty = roleIsHrdOrAdmin && m.querySelector("#k-waive-penalty").checked;
+ const waiverNote = roleIsHrdOrAdmin ? m.querySelector("#k-waive-note").value.trim() : "";
+ if (waivePenalty && !waiverNote) return toast("Isi alasan pembebasan denda terlebih dahulu.", "warning");
  const dataUpdate = {
  scan_masuk: m.querySelector("#k-masuk").value.trim() || null,
- scan_keluar: m.querySelector("#k-keluar").value.trim() || null
+ scan_keluar: m.querySelector("#k-keluar").value.trim() || null,
+ ...(roleIsHrdOrAdmin ? {
+  late_penalty_waived: waivePenalty,
+  late_penalty_note: waivePenalty ? waiverNote : "",
+  late_penalty_updated_by: session?.nama || session?.username || "HRD",
+  late_penalty_updated_at: new Date().toISOString()
+ } : {})
  };
  const targetId = item.is_status_only
  ? `ABS-MANUAL-${String(item.nik || item.id).replace(/[^a-zA-Z0-9._-]/g, '_')}-${item.tanggal}`

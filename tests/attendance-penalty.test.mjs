@@ -23,6 +23,23 @@ test("converts lateness above twenty five minutes into half-day leave", () => {
   assert.equal(result.deduction_source, "Jatah cuti tahunan 0,5 hari");
 });
 
+test("HRD can waive both a monetary penalty and a half-day consequence", () => {
+  const monetary = calculateAttendancePenalty({
+    jadwal_masuk: "08:00", scan_masuk: "08:10",
+    late_penalty_waived: true, late_penalty_note: "Gangguan mesin"
+  });
+  assert.equal(monetary.late_minutes, 10);
+  assert.equal(monetary.late_penalty, 0);
+  assert.equal(monetary.late_consequence, "Dibebaskan HRD");
+  assert.equal(monetary.late_penalty_note, "Gangguan mesin");
+
+  const halfDay = calculateAttendancePenalty({
+    jadwal_masuk: "08:00", scan_masuk: "08:45", late_penalty_waived: true
+  });
+  assert.equal(halfDay.half_day_leave, false);
+  assert.equal(halfDay.late_penalty, 0);
+});
+
 test("maps deduction sources by branch and employee group", () => {
   assert.equal(attendanceDeductionSource({ cabang: "Cirebon", divisi: "Sales" }), "BBM mingguan");
   assert.equal(attendanceDeductionSource({ cabang: "Malang", jabatan: "Sales Representative" }), "Insentif bulanan");

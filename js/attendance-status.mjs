@@ -169,7 +169,7 @@ export function buildAttendanceStatusRows({ attendanceRows = [], employees = [],
     const hasValidScans = Boolean(row.scan_masuk && (row.scan_keluar || row.scan_pulang) && !row.perlu_koreksi);
     if (canApplyPenalty && hasValidScans && penalty.late_minutes > 0) {
       attendanceStatus.attendance_status = `${attendanceStatus.attendance_status} — TERLAMBAT ${formatAttendancePenalty(penalty)}`;
-      attendanceStatus.status_kind = penalty.half_day_leave ? "late-half-day" : "late";
+      attendanceStatus.status_kind = penalty.late_penalty_waived ? "late-waived" : penalty.half_day_leave ? "late-half-day" : "late";
     }
     return {
       ...row,

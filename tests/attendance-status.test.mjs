@@ -75,6 +75,18 @@ test("calculates monetary lateness and half-day leave from the effective schedul
   assert.equal(rows[1].ketidakhadiran, "C1/2 - Terlambat >25 menit");
 });
 
+test("shows an HRD-waived lateness without a deduction", () => {
+  const [row] = buildAttendanceStatusRows({
+    employees: [{ ...employee, cabang: "MALANG", divisi: "WAREHOUSE" }], schedules,
+    attendanceRows: [{ id: "waived", nik: employee.nik, tanggal: "2026-09-19", scan_masuk: "08:40", scan_keluar: "17:00", jadwal_masuk: "08:00", jadwal_keluar: "17:00", late_penalty_waived: true, late_penalty_note: "Gangguan mesin fingerprint" }]
+  });
+  assert.equal(row.status_kind, "late-waived");
+  assert.equal(row.late_penalty, 0);
+  assert.equal(row.half_day_leave, false);
+  assert.equal(row.ketidakhadiran, "");
+  assert.match(row.attendance_status, /Dibebaskan HRD/);
+});
+
 test("approved partial permission without scans requires correction", () => {
   const [row] = buildAttendanceStatusRows({
     employees: [employee], schedules, attendanceRows: [],

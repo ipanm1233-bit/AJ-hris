@@ -57,6 +57,18 @@ export function calculateAttendancePenalty(row = {}, employee = row) {
   }
 
   const lateMinutes = Math.ceil((scanned - scheduled) / 60);
+  const waived = row.late_penalty_waived === true;
+  if (waived) {
+    return {
+      late_minutes: lateMinutes,
+      late_penalty: 0,
+      late_consequence: "Dibebaskan HRD",
+      deduction_source: "Tidak ada — dibebaskan HRD",
+      half_day_leave: false,
+      late_penalty_waived: true,
+      late_penalty_note: String(row.late_penalty_note || "").trim()
+    };
+  }
   if (lateMinutes > 25) {
     return {
       late_minutes: lateMinutes,
@@ -78,6 +90,7 @@ export function calculateAttendancePenalty(row = {}, employee = row) {
 
 export function formatAttendancePenalty(penalty = {}) {
   if (!penalty.late_minutes) return "Tepat waktu";
+  if (penalty.late_penalty_waived) return `${penalty.late_minutes} menit — Dibebaskan HRD`;
   if (penalty.half_day_leave) return `${penalty.late_minutes} menit — Cuti 1/2 hari`;
   return `${penalty.late_minutes} menit — Rp ${Number(penalty.late_penalty || 0).toLocaleString("id-ID")}`;
 }
