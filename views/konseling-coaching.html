@@ -10,14 +10,14 @@
         </div>
         <div>
           <h1 class="text-xl md:text-2xl font-black text-slate-800 tracking-tight">Konseling & Coaching Karyawan</h1>
-          <p class="text-xs md:text-sm text-slate-500 font-medium">Employee Case Management System — Pembinaan terstruktur, objektif, dan confidential</p>
+          <p class="text-xs md:text-sm text-slate-500 font-medium">Sistem pembinaan karyawan yang terstruktur, objektif, dan rahasia</p>
         </div>
       </div>
     </div>
     <div class="flex items-center flex-wrap gap-2.5" id="kc-top-actions">
       <button type="button" id="kc-btn-new-case" class="px-4 py-2.5 bg-maroon-700 hover:bg-maroon-800 text-white text-xs md:text-sm font-bold rounded-xl shadow-sm transition inline-flex items-center gap-2 cursor-pointer">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-        <span>Buat Case Baru</span>
+        <span>Buat Kasus Baru</span>
       </button>
       <button type="button" id="kc-btn-export-excel" class="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs md:text-sm font-semibold rounded-xl transition inline-flex items-center gap-1.5 cursor-pointer">
         <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
@@ -39,12 +39,12 @@
     </button>
     <button data-kctab="action_plan" class="kc-tab-btn px-4 py-3 text-xs md:text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap transition flex items-center gap-2">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
-      Action Plan
+      Rencana Perbaikan
       <span id="kc-badge-active-ap" class="hidden px-2 py-0.5 text-[10px] font-black rounded-full bg-amber-100 text-amber-800">0</span>
     </button>
     <button data-kctab="follow_up" class="kc-tab-btn px-4 py-3 text-xs md:text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap transition flex items-center gap-2">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-      Jadwal Follow-up
+      Jadwal Tindak Lanjut
       <span id="kc-badge-overdue-fol" class="hidden px-2 py-0.5 text-[10px] font-black rounded-full bg-rose-100 text-rose-700">0</span>
     </button>
     <button data-kctab="reports" class="kc-tab-btn px-4 py-3 text-xs md:text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap transition flex items-center gap-2">

@@ -8,58 +8,16 @@ import {
 } from "../utils.js";
 import { isoDocHeaderTable } from "../branding.js";
 import { getSession } from "../auth.js";
+import {
+  CASE_CATEGORIES, CASE_SOURCES, ROOT_CAUSES, ACTION_TAKENS, CASE_STATUSES, PRIORITIES,
+  ACTION_PLAN_STATUSES, IMPROVEMENT_STATUSES,
+  normalizeCaseRecord, normalizeActionPlanRecord, normalizeFollowupRecord, activeActionPlans
+} from "../konseling-standards.mjs";
 
 // =========================================================================
 // CONSTANTS & DEFINITIONS
 // =========================================================================
-export const CASE_CATEGORIES = {
-  Counseling: [
-    "Personal issue", "Work-related issue", "Relationship with coworker",
-    "Relationship with supervisor", "Work stress", "Communication issue",
-    "Motivation issue", "Other"
-  ],
-  Coaching: [
-    "Performance", "Attendance", "Discipline", "Productivity",
-    "Communication", "Leadership", "Sales performance", "Work behavior",
-    "SOP compliance", "Other"
-  ],
-  Disciplinary: [
-    "Late attendance", "Absence", "Leaving workplace without permission",
-    "SOP violation", "Negligence", "Misconduct", "Insubordination",
-    "Unauthorized activity", "Other"
-  ],
-  "Corrective Action": [
-    "Performance improvement", "Behavioral improvement", "SOP improvement",
-    "Attendance improvement", "Sales improvement"
-  ],
-  "Follow-up SP": [
-    "SP1", "SP2", "SP3", "Other formal warning"
-  ]
-};
-
-export const CASE_SOURCES = [
-  "HR Monitoring", "Supervisor Report", "Employee Request",
-  "Attendance", "KPI", "Complaint", "Management", "Other"
-];
-
-export const ROOT_CAUSES = [
-  "Knowledge gap", "Skill gap", "Communication issue", "Personal factor",
-  "Workload", "Leadership issue", "System/process issue", "Motivation",
-  "Discipline", "SOP misunderstanding", "Other"
-];
-
-export const ACTION_TAKENS = [
-  "Counseling", "Coaching", "Verbal Reminder", "Written Reminder",
-  "Corrective Action", "Training", "Mediation", "Monitoring",
-  "SP Recommendation", "Management Escalation", "Other"
-];
-
-export const CASE_STATUSES = [
-  "Draft", "Open", "Investigation", "Counseling", "Coaching",
-  "Action Plan", "Monitoring", "Review", "Closed", "Escalated", "Cancelled"
-];
-
-export const PRIORITIES = ["Low", "Medium", "High", "Critical"];
+export { CASE_CATEGORIES, CASE_SOURCES, ROOT_CAUSES, ACTION_TAKENS, CASE_STATUSES, PRIORITIES };
 
 // Module State
 let activeTab = "dashboard";
@@ -93,8 +51,8 @@ export async function mount(container, { params, session }) {
   if (params && params.get("action") === "new_case") {
     const prefill = {
       nik: params.get("nik") || "",
-      case_type: params.get("case_type") || "Disciplinary",
-      source: params.get("source") || "Attendance",
+      case_type: params.get("case_type") || "Pembinaan Disiplin",
+      source: params.get("source") || "Data Absensi",
       description: params.get("description") || ""
     };
     showCaseFormModal(null, prefill);
@@ -167,11 +125,11 @@ async function reloadAllData(container) {
     ]);
 
     allEmployees = empsRaw || [];
-    allActionPlans = apRaw || [];
-    allFollowups = folRaw || [];
+    allActionPlans = (apRaw || []).map(normalizeActionPlanRecord);
+    allFollowups = (folRaw || []).map(normalizeFollowupRecord);
     
     // Sort cases by latest report date or createdAt
-    allCases = (casesRaw || []).sort((a, b) => {
+    allCases = (casesRaw || []).map(normalizeCaseRecord).sort((a, b) => {
       const da = new Date(a.report_date || a.created_at || 0).getTime();
       const db = new Date(b.report_date || b.created_at || 0).getTime();
       return db - da;
@@ -200,29 +158,32 @@ function filterCasesByRole(cases) {
   // Manager / SPV / Branch Manager: only see cases of their subordinates or where they are assigned / creator
   return cases.filter(c => {
     // Highly confidential can only be seen by HRD/Superadmin unless explicitly assigned
-    if (c.confidentiality === "Highly Confidential") {
+    if (c.confidentiality === "Sangat Rahasia") {
       return (c.created_by || "").toUpperCase() === uname || (c.hr_officer_username || "").toUpperCase() === uname;
     }
-    if (c.confidentiality === "Confidential") {
-      return (c.created_by || "").toUpperCase() === uname || (c.atasan || "").toLowerCase().includes((currentSession?.nama || "").toLowerCase());
+    if (c.confidentiality === "Rahasia") {
+      return (c.created_by || "").toUpperCase() === uname || (c.hr_officer_username || "").toUpperCase() === uname;
     }
-    // Normal cases: visible if supervisor / creator / assigned
+    // Kasus terbatas: hanya pembuat, petugas HR, atau atasan langsung yang tercatat.
     if ((c.created_by || "").toUpperCase() === uname) return true;
     if ((c.hr_officer_username || "").toUpperCase() === uname) return true;
-    if (c.nik && userNik && String(c.nik) === userNik) return false; // Employee doesn't see confidential investigation without explicit sharing
-    return true;
+    if (c.nik && userNik && String(c.nik) === userNik) return false;
+    const supervisor = String(c.atasan || "").trim().toLowerCase();
+    const sessionName = String(currentSession?.nama || "").trim().toLowerCase();
+    return Boolean(supervisor && sessionName && supervisor === sessionName);
   });
 }
 
 function updateTabBadges(container) {
   const visibleCases = filterCasesByRole(allCases);
+  const visibleIds = new Set(visibleCases.map(item => String(item.id)));
   const totalCasesEl = container.querySelector("#kc-badge-total-cases");
   if (totalCasesEl) {
     totalCasesEl.textContent = visibleCases.length;
     totalCasesEl.classList.toggle("hidden", visibleCases.length === 0);
   }
 
-  const activeAp = allActionPlans.filter(ap => ap.status === "In Progress" || ap.status === "Pending");
+  const activeAp = activeActionPlans(allActionPlans.filter(item => visibleIds.has(String(item.case_id))));
   const apEl = container.querySelector("#kc-badge-active-ap");
   if (apEl) {
     apEl.textContent = activeAp.length;
@@ -230,7 +191,7 @@ function updateTabBadges(container) {
   }
 
   const todayStr = new Date().toISOString().split("T")[0];
-  const overdueFol = allFollowups.filter(f => f.next_followup_date && f.next_followup_date < todayStr && f.status !== "Completed");
+  const overdueFol = allFollowups.filter(f => visibleIds.has(String(f.case_id)) && f.next_followup_date && f.next_followup_date < todayStr && f.status !== "Selesai");
   const folEl = container.querySelector("#kc-badge-overdue-fol");
   if (folEl) {
     folEl.textContent = overdueFol.length;
@@ -269,13 +230,14 @@ function renderDashboard(container) {
   const todayStr = new Date().toISOString().split("T")[0];
 
   const totalCases = visibleCases.length;
-  const openCases = visibleCases.filter(c => ["Open", "Draft", "Investigation"].includes(c.status)).length;
-  const monitoringCases = visibleCases.filter(c => ["Monitoring", "Action Plan", "Counseling", "Coaching", "Review"].includes(c.status)).length;
-  const closedCases = visibleCases.filter(c => c.status === "Closed").length;
-  const escalatedCases = visibleCases.filter(c => c.status === "Escalated").length;
+  const openCases = visibleCases.filter(c => ["Draf", "Asesmen Awal", "Klarifikasi"].includes(c.status)).length;
+  const monitoringCases = visibleCases.filter(c => ["Rencana Perbaikan", "Pemantauan", "Evaluasi"].includes(c.status)).length;
+  const closedCases = visibleCases.filter(c => c.status === "Selesai").length;
+  const escalatedCases = visibleCases.filter(c => c.status === "Dieskalasikan").length;
   
   // Overdue followups calculation
-  const overdueFollowups = allFollowups.filter(f => f.next_followup_date && f.next_followup_date < todayStr);
+  const visibleCaseIds = new Set(visibleCases.map(item => String(item.id)));
+  const overdueFollowups = allFollowups.filter(f => visibleCaseIds.has(String(f.case_id)) && f.next_followup_date && f.next_followup_date < todayStr);
   const overdueCount = overdueFollowups.length;
 
   // Recurring cases detection
@@ -292,7 +254,7 @@ function renderDashboard(container) {
   // Category breakdown
   const catCount = {};
   visibleCases.forEach(c => {
-    const type = c.case_type || "Counseling";
+    const type = c.case_type || "Konseling";
     catCount[type] = (catCount[type] || 0) + 1;
   });
 
@@ -317,28 +279,28 @@ function renderDashboard(container) {
         <span class="text-[11px] font-bold text-sky-700 uppercase tracking-wider">Kasus Terbuka</span>
         <div class="flex items-baseline gap-2 mt-2">
           <span class="text-2xl font-black text-sky-700">${openCases}</span>
-          <span class="text-[10px] text-sky-600 font-medium">Open / Inv.</span>
+          <span class="text-[10px] text-sky-600 font-medium">asesmen / klarifikasi</span>
         </div>
       </div>
       <div class="bg-white p-4 rounded-2xl border border-amber-200/80 bg-amber-50/20 shadow-xs flex flex-col justify-between">
-        <span class="text-[11px] font-bold text-amber-700 uppercase tracking-wider">Dalam Monitoring</span>
+        <span class="text-[11px] font-bold text-amber-700 uppercase tracking-wider">Dalam Pemantauan</span>
         <div class="flex items-baseline gap-2 mt-2">
           <span class="text-2xl font-black text-amber-700">${monitoringCases}</span>
           <span class="text-[10px] text-amber-600 font-medium">aktif</span>
         </div>
       </div>
       <div class="bg-white p-4 rounded-2xl border border-rose-200/80 bg-rose-50/20 shadow-xs flex flex-col justify-between">
-        <span class="text-[11px] font-bold text-rose-700 uppercase tracking-wider">Follow-up Terlambat</span>
+        <span class="text-[11px] font-bold text-rose-700 uppercase tracking-wider">Tindak Lanjut Terlambat</span>
         <div class="flex items-baseline gap-2 mt-2">
           <span class="text-2xl font-black text-rose-700">${overdueCount}</span>
-          <span class="text-[10px] text-rose-600 font-bold">overdue</span>
+          <span class="text-[10px] text-rose-600 font-bold">terlambat</span>
         </div>
       </div>
       <div class="bg-white p-4 rounded-2xl border border-emerald-200/80 bg-emerald-50/20 shadow-xs flex flex-col justify-between">
         <span class="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Kasus Selesai</span>
         <div class="flex items-baseline gap-2 mt-2">
           <span class="text-2xl font-black text-emerald-700">${closedCases}</span>
-          <span class="text-[10px] text-emerald-600 font-medium">resolved</span>
+          <span class="text-[10px] text-emerald-600 font-medium">dituntaskan</span>
         </div>
       </div>
       <div class="bg-white p-4 rounded-2xl border border-purple-200/80 bg-purple-50/20 shadow-xs flex flex-col justify-between">
@@ -357,8 +319,8 @@ function renderDashboard(container) {
           <div class="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center font-black shrink-0 shadow-xs">!</div>
           <div>
             <h2 class="text-sm font-bold text-amber-900 flex items-center gap-2">
-              <span>Perhatian: Ditemukan ${recurringList.length} Karyawan dengan Kasus Berulang (Recurring Cases)</span>
-              <span class="px-2 py-0.5 text-[10px] bg-amber-200 text-amber-900 rounded-full font-black">RECURRING</span>
+              <span>Perhatian: Ditemukan ${recurringList.length} Karyawan dengan Kasus Berulang</span>
+              <span class="px-2 py-0.5 text-[10px] bg-amber-200 text-amber-900 rounded-full font-black">BERULANG</span>
             </h2>
             <p class="text-xs text-amber-700 mt-0.5">Sistem mendeteksi adanya permasalahan pembinaan yang berulang pada karyawan berikut:</p>
             <div class="flex flex-wrap gap-2 mt-2">
@@ -386,15 +348,15 @@ function renderDashboard(container) {
           <span class="text-xs font-semibold text-slate-400">${totalCases} Total</span>
         </div>
         <div class="space-y-3">
-          ${["Counseling", "Coaching", "Disciplinary", "Corrective Action", "Follow-up SP"].map(type => {
+          ${Object.keys(CASE_CATEGORIES).map(type => {
             const count = catCount[type] || 0;
             const pct = totalCases > 0 ? Math.round((count / totalCases) * 100) : 0;
             const colorMap = {
-              Counseling: "bg-teal-600",
-              Coaching: "bg-sky-600",
-              Disciplinary: "bg-amber-600",
-              "Corrective Action": "bg-indigo-600",
-              "Follow-up SP": "bg-rose-600"
+              Konseling: "bg-teal-600",
+              "Coaching Kinerja": "bg-sky-600",
+              "Pembinaan Disiplin": "bg-amber-600",
+              "Tindakan Perbaikan": "bg-indigo-600",
+              "Tindak Lanjut Surat Peringatan": "bg-rose-600"
             };
             return `
               <div>
@@ -439,7 +401,7 @@ function renderDashboard(container) {
         </div>
         <div class="space-y-2.5 max-h-56 overflow-y-auto pr-1">
           ${(() => {
-            const urgentCases = visibleCases.filter(c => ["High", "Critical"].includes(c.priority) && c.status !== "Closed");
+            const urgentCases = visibleCases.filter(c => ["Tinggi", "Kritis"].includes(c.priority) && c.status !== "Selesai");
             if (urgentCases.length === 0) {
               return '<div class="p-6 text-center text-xs text-emerald-600 bg-emerald-50 rounded-xl font-medium">Semua kasus prioritas tinggi sudah tertangani dengan baik.</div>';
             }
@@ -447,7 +409,7 @@ function renderDashboard(container) {
               <div class="p-3 bg-rose-50/50 border border-rose-100 rounded-xl hover:bg-rose-50 transition cursor-pointer" onclick="window.kcShowCaseDetail('${c.id}')">
                 <div class="flex items-center justify-between mb-1">
                   <span class="text-[11px] font-black text-rose-800">${escapeHtml(c.case_number || c.id)}</span>
-                  <span class="px-1.5 py-0.5 text-[9px] font-black rounded-md ${c.priority === 'Critical' ? 'bg-rose-600 text-white' : 'bg-amber-500 text-white'}">${c.priority}</span>
+                  <span class="px-1.5 py-0.5 text-[9px] font-black rounded-md ${c.priority === 'Kritis' ? 'bg-rose-600 text-white' : 'bg-amber-500 text-white'}">${c.priority}</span>
                 </div>
                 <div class="text-xs font-bold text-slate-800 truncate">${escapeHtml(c.nama_karyawan)}</div>
                 <div class="text-[11px] text-slate-500 truncate mt-0.5">${escapeHtml(c.category || c.case_type)} — ${escapeHtml(c.description || "-")}</div>
@@ -474,7 +436,7 @@ function renderDashboard(container) {
         <table class="w-full text-left text-xs border-collapse">
           <thead>
             <tr class="bg-slate-50 text-slate-600 font-bold border-y border-slate-200">
-              <th class="py-2.5 px-3">Case ID</th>
+              <th class="py-2.5 px-3">Nomor Kasus</th>
               <th class="py-2.5 px-3">Karyawan</th>
               <th class="py-2.5 px-3">Tipe & Kategori</th>
               <th class="py-2.5 px-3">Prioritas</th>
@@ -519,29 +481,27 @@ function renderDashboard(container) {
 // Helpers for badges
 function renderPriorityBadge(priority) {
   const map = {
-    Low: "bg-slate-100 text-slate-700 border-slate-200",
-    Medium: "bg-sky-50 text-sky-700 border-sky-200",
-    High: "bg-amber-50 text-amber-700 border-amber-200",
-    Critical: "bg-rose-100 text-rose-700 border-rose-300 font-black"
+    Rendah: "bg-slate-100 text-slate-700 border-slate-200",
+    Sedang: "bg-sky-50 text-sky-700 border-sky-200",
+    Tinggi: "bg-amber-50 text-amber-700 border-amber-200",
+    Kritis: "bg-rose-100 text-rose-700 border-rose-300 font-black"
   };
-  return `<span class="inline-block px-2 py-0.5 text-[10px] font-bold rounded-full border ${map[priority] || map.Low}">${escapeHtml(priority || "Low")}</span>`;
+  return `<span class="inline-block px-2 py-0.5 text-[10px] font-bold rounded-full border ${map[priority] || map.Rendah}">${escapeHtml(priority || "Rendah")}</span>`;
 }
 
 function renderStatusBadge(status) {
   const map = {
-    Draft: "bg-slate-100 text-slate-600",
-    Open: "bg-sky-100 text-sky-800 font-bold",
-    Investigation: "bg-purple-100 text-purple-800 font-bold",
-    Counseling: "bg-teal-100 text-teal-800 font-bold",
-    Coaching: "bg-indigo-100 text-indigo-800 font-bold",
-    "Action Plan": "bg-amber-100 text-amber-800 font-bold",
-    Monitoring: "bg-yellow-100 text-yellow-800 font-bold",
-    Review: "bg-blue-100 text-blue-800 font-bold",
-    Closed: "bg-emerald-100 text-emerald-800 font-bold",
-    Escalated: "bg-rose-100 text-rose-800 font-black",
-    Cancelled: "bg-slate-100 text-slate-400 line-through"
+    Draf: "bg-slate-100 text-slate-600",
+    "Asesmen Awal": "bg-sky-100 text-sky-800 font-bold",
+    Klarifikasi: "bg-purple-100 text-purple-800 font-bold",
+    "Rencana Perbaikan": "bg-amber-100 text-amber-800 font-bold",
+    Pemantauan: "bg-yellow-100 text-yellow-800 font-bold",
+    Evaluasi: "bg-blue-100 text-blue-800 font-bold",
+    Selesai: "bg-emerald-100 text-emerald-800 font-bold",
+    Dieskalasikan: "bg-rose-100 text-rose-800 font-black",
+    Dibatalkan: "bg-slate-100 text-slate-400 line-through"
   };
-  return `<span class="inline-block px-2.5 py-0.5 text-[10px] rounded-full ${map[status] || 'bg-slate-100 text-slate-700'}">${escapeHtml(status || "Open")}</span>`;
+  return `<span class="inline-block px-2.5 py-0.5 text-[10px] rounded-full ${map[status] || 'bg-slate-100 text-slate-700'}">${escapeHtml(status || "Asesmen Awal")}</span>`;
 }
 
 // =========================================================================
@@ -590,11 +550,7 @@ function renderCaseManagement(container) {
         </div>
         <select id="kc-filter-type" class="text-xs border border-slate-200 rounded-xl px-3 py-2 bg-white font-medium focus:outline-none focus:border-maroon-700">
           <option value="ALL" ${caseFilterType === 'ALL' ? 'selected' : ''}>Semua Tipe</option>
-          <option value="Counseling" ${caseFilterType === 'Counseling' ? 'selected' : ''}>Counseling</option>
-          <option value="Coaching" ${caseFilterType === 'Coaching' ? 'selected' : ''}>Coaching</option>
-          <option value="Disciplinary" ${caseFilterType === 'Disciplinary' ? 'selected' : ''}>Disciplinary</option>
-          <option value="Corrective Action" ${caseFilterType === 'Corrective Action' ? 'selected' : ''}>Corrective Action</option>
-          <option value="Follow-up SP" ${caseFilterType === 'Follow-up SP' ? 'selected' : ''}>Follow-up SP</option>
+          ${Object.keys(CASE_CATEGORIES).map(type => `<option value="${type}" ${caseFilterType === type ? 'selected' : ''}>${type}</option>`).join("")}
         </select>
         <select id="kc-filter-status" class="text-xs border border-slate-200 rounded-xl px-3 py-2 bg-white font-medium focus:outline-none focus:border-maroon-700">
           <option value="ALL" ${caseFilterStatus === 'ALL' ? 'selected' : ''}>Semua Status</option>
@@ -605,7 +561,7 @@ function renderCaseManagement(container) {
       <div class="flex items-center gap-2 w-full lg:w-auto justify-end">
         <label class="inline-flex items-center gap-1.5 text-xs text-slate-600 font-bold cursor-pointer">
           <input type="checkbox" id="kc-check-recurring" ${caseOnlyRecurring ? 'checked' : ''} class="rounded text-maroon-700 focus:ring-maroon-700">
-          <span>Hanya Recurring Cases</span>
+          <span>Hanya Kasus Berulang</span>
         </label>
         <button type="button" id="kc-btn-table-new" class="px-3.5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold rounded-xl transition inline-flex items-center gap-1.5 shadow-xs cursor-pointer">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
@@ -620,7 +576,7 @@ function renderCaseManagement(container) {
         <table class="w-full text-left text-xs border-collapse">
           <thead>
             <tr class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
-              <th class="py-3 px-4">Case ID</th>
+              <th class="py-3 px-4">Nomor Kasus</th>
               <th class="py-3 px-4">Karyawan</th>
               <th class="py-3 px-4">Tipe & Kategori</th>
               <th class="py-3 px-4">Sumber</th>
@@ -644,7 +600,7 @@ function renderCaseManagement(container) {
                   <td class="py-3 px-4">
                     <div class="font-bold text-slate-800 flex items-center gap-1.5">
                       <span>${escapeHtml(c.nama_karyawan || "-")}</span>
-                      ${isRecurring ? '<span class="px-1.5 py-0.2 bg-amber-100 text-amber-800 text-[9px] font-black rounded-md">RECURRING</span>' : ''}
+                      ${isRecurring ? '<span class="px-1.5 py-0.2 bg-amber-100 text-amber-800 text-[9px] font-black rounded-md">BERULANG</span>' : ''}
                     </div>
                     <div class="text-[10px] text-slate-500">${escapeHtml(c.nik || "-")} &bull; ${escapeHtml(c.jabatan || "-")} &bull; ${escapeHtml(c.cabang || "-")}</div>
                   </td>
@@ -657,10 +613,10 @@ function renderCaseManagement(container) {
                   <td class="py-3 px-4">${renderStatusBadge(c.status)}</td>
                   <td class="py-3 px-4">
                     <span class="inline-block px-2 py-0.5 text-[10px] font-semibold rounded-md ${
-                      c.confidentiality === 'Highly Confidential' ? 'bg-rose-100 text-rose-800 font-bold' :
-                      c.confidentiality === 'Confidential' ? 'bg-amber-100 text-amber-800' :
+                      c.confidentiality === 'Sangat Rahasia' ? 'bg-rose-100 text-rose-800 font-bold' :
+                      c.confidentiality === 'Rahasia' ? 'bg-amber-100 text-amber-800' :
                       'bg-slate-100 text-slate-600'
-                    }">${escapeHtml(c.confidentiality || "Normal")}</span>
+                    }">${escapeHtml(c.confidentiality || "Terbatas")}</span>
                   </td>
                   <td class="py-3 px-4 text-right">
                     <div class="flex items-center justify-end gap-1.5">
@@ -733,15 +689,17 @@ function renderActionPlanTab(container) {
 
   const todayStr = new Date().toISOString().split("T")[0];
 
-  const totalAp = allActionPlans.length;
-  const inProgressAp = allActionPlans.filter(a => a.status === "In Progress" || a.status === "Pending").length;
-  const overdueAp = allActionPlans.filter(a => a.target_date && a.target_date < todayStr && a.status !== "Completed" && a.status !== "Cancelled").length;
-  const completedAp = allActionPlans.filter(a => a.status === "Completed").length;
+  const visibleIds = new Set(filterCasesByRole(allCases).map(item => String(item.id)));
+  const visiblePlans = allActionPlans.filter(item => visibleIds.has(String(item.case_id)));
+  const totalAp = visiblePlans.length;
+  const inProgressAp = activeActionPlans(visiblePlans).length;
+  const overdueAp = visiblePlans.filter(a => a.target_date && a.target_date < todayStr && !["Selesai", "Dibatalkan"].includes(a.status)).length;
+  const completedAp = visiblePlans.filter(a => a.status === "Selesai").length;
 
-  const filtered = allActionPlans.filter(a => {
+  const filtered = visiblePlans.filter(a => {
     if (apFilterStatus === "ALL") return true;
-    if (apFilterStatus === "Overdue") {
-      return a.target_date && a.target_date < todayStr && a.status !== "Completed" && a.status !== "Cancelled";
+    if (apFilterStatus === "Terlambat") {
+      return a.target_date && a.target_date < todayStr && !["Selesai", "Dibatalkan"].includes(a.status);
     }
     return a.status === apFilterStatus;
   });
@@ -750,7 +708,7 @@ function renderActionPlanTab(container) {
     <!-- Action Plan Metrics -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3.5">
       <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-        <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Action Plans</span>
+        <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Rencana Perbaikan</span>
         <div class="text-2xl font-black text-slate-800 mt-2">${totalAp}</div>
       </div>
       <div class="bg-white p-4 rounded-2xl border border-sky-200/80 bg-sky-50/20 shadow-xs">
@@ -758,11 +716,11 @@ function renderActionPlanTab(container) {
         <div class="text-2xl font-black text-sky-700 mt-2">${inProgressAp}</div>
       </div>
       <div class="bg-white p-4 rounded-2xl border border-rose-200/80 bg-rose-50/20 shadow-xs">
-        <span class="text-[11px] font-bold text-rose-700 uppercase tracking-wider">Terlambat (Overdue)</span>
+        <span class="text-[11px] font-bold text-rose-700 uppercase tracking-wider">Terlambat</span>
         <div class="text-2xl font-black text-rose-700 mt-2">${overdueAp}</div>
       </div>
       <div class="bg-white p-4 rounded-2xl border border-emerald-200/80 bg-emerald-50/20 shadow-xs">
-        <span class="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Selesai (Completed)</span>
+        <span class="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Selesai</span>
         <div class="text-2xl font-black text-emerald-700 mt-2">${completedAp}</div>
       </div>
     </div>
@@ -772,10 +730,10 @@ function renderActionPlanTab(container) {
       <div class="flex items-center gap-2">
         <span class="text-xs font-bold text-slate-600">Filter Status:</span>
         <div class="flex items-center gap-1.5 flex-wrap">
-          ${["ALL", "In Progress", "Pending", "Overdue", "Completed", "Cancelled"].map(st => `
+          ${["ALL", "Berjalan", "Belum Dimulai", "Terlambat", "Selesai", "Dibatalkan"].map(st => `
             <button type="button" onclick="window.kcFilterAp('${st}')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition ${
               apFilterStatus === st ? 'bg-maroon-700 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-            }">${st}</button>
+            }">${st === "ALL" ? "Semua" : st}</button>
           `).join("")}
         </div>
       </div>
@@ -788,8 +746,8 @@ function renderActionPlanTab(container) {
           <thead>
             <tr class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
               <th class="py-3 px-4">Case / Karyawan</th>
-              <th class="py-3 px-4">Deskripsi Action Plan</th>
-              <th class="py-3 px-4">PIC</th>
+              <th class="py-3 px-4">Rencana Perbaikan</th>
+              <th class="py-3 px-4">Penanggung Jawab</th>
               <th class="py-3 px-4">Target Waktu</th>
               <th class="py-3 px-4">Indikator Keberhasilan</th>
               <th class="py-3 px-4">Status</th>
@@ -798,9 +756,9 @@ function renderActionPlanTab(container) {
           </thead>
           <tbody class="divide-y divide-slate-100 text-slate-700 font-medium">
             ${filtered.length === 0 ? `
-              <tr><td colspan="7" class="py-8 text-center text-slate-400 italic">Tidak ada Action Plan pada kategori ini.</td></tr>
+              <tr><td colspan="7" class="py-8 text-center text-slate-400 italic">Tidak ada rencana perbaikan pada kategori ini.</td></tr>
             ` : filtered.map(a => {
-              const isOverdue = a.target_date && a.target_date < todayStr && a.status !== "Completed" && a.status !== "Cancelled";
+              const isOverdue = a.target_date && a.target_date < todayStr && !["Selesai", "Dibatalkan"].includes(a.status);
               return `
                 <tr class="hover:bg-slate-50/80 transition">
                   <td class="py-3 px-4">
@@ -814,16 +772,16 @@ function renderActionPlanTab(container) {
                   <td class="py-3 px-4 font-semibold text-slate-700">${escapeHtml(a.pic || "Employee")}</td>
                   <td class="py-3 px-4">
                     <div class="font-bold ${isOverdue ? 'text-rose-600' : 'text-slate-800'}">${fmtDateShort(a.target_date)}</div>
-                    ${isOverdue ? '<span class="inline-block text-[9px] font-black text-rose-600 uppercase">OVERDUE</span>' : ''}
+                    ${isOverdue ? '<span class="inline-block text-[9px] font-black text-rose-600 uppercase">TERLAMBAT</span>' : ''}
                   </td>
                   <td class="py-3 px-4 text-slate-600">${escapeHtml(a.measurement || "-")}</td>
                   <td class="py-3 px-4">
                     <span class="inline-block px-2.5 py-0.5 text-[10px] font-bold rounded-full ${
-                      a.status === 'Completed' ? 'bg-emerald-100 text-emerald-800' :
-                      a.status === 'In Progress' ? 'bg-sky-100 text-sky-800' :
-                      a.status === 'Pending' ? 'bg-slate-100 text-slate-700' :
+                      a.status === 'Selesai' ? 'bg-emerald-100 text-emerald-800' :
+                      a.status === 'Berjalan' ? 'bg-sky-100 text-sky-800' :
+                      a.status === 'Belum Dimulai' ? 'bg-slate-100 text-slate-700' :
                       'bg-rose-100 text-rose-800'
-                    }">${escapeHtml(a.status || "Pending")}</span>
+                    }">${escapeHtml(a.status || "Belum Dimulai")}</span>
                   </td>
                   <td class="py-3 px-4 text-right">
                     <button type="button" onclick="window.kcUpdateApStatus('${a.id}')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition">Update</button>
@@ -847,23 +805,25 @@ function renderFollowupTab(container) {
 
   const todayStr = new Date().toISOString().split("T")[0];
 
-  const overdueList = allFollowups.filter(f => f.next_followup_date && f.next_followup_date < todayStr);
-  const todayList = allFollowups.filter(f => f.next_followup_date === todayStr || f.followup_date === todayStr);
-  const upcomingList = allFollowups.filter(f => f.next_followup_date && f.next_followup_date > todayStr);
+  const visibleIds = new Set(filterCasesByRole(allCases).map(item => String(item.id)));
+  const visibleFollowups = allFollowups.filter(item => visibleIds.has(String(item.case_id)));
+  const overdueList = visibleFollowups.filter(f => f.next_followup_date && f.next_followup_date < todayStr);
+  const todayList = visibleFollowups.filter(f => f.next_followup_date === todayStr || f.followup_date === todayStr);
+  const upcomingList = visibleFollowups.filter(f => f.next_followup_date && f.next_followup_date > todayStr);
 
   panel.innerHTML = `
     <!-- Top reminder banners -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
       <div class="p-4 rounded-2xl border border-rose-200 bg-rose-50/50 shadow-xs flex items-center justify-between">
         <div>
-          <span class="text-xs font-bold text-rose-700 uppercase">Follow-up Terlambat</span>
+          <span class="text-xs font-bold text-rose-700 uppercase">Tindak Lanjut Terlambat</span>
           <div class="text-2xl font-black text-rose-800 mt-1">${overdueList.length} Kasus</div>
         </div>
         <div class="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center font-bold">!</div>
       </div>
       <div class="p-4 rounded-2xl border border-amber-200 bg-amber-50/50 shadow-xs flex items-center justify-between">
         <div>
-          <span class="text-xs font-bold text-amber-700 uppercase">Follow-up Hari Ini</span>
+          <span class="text-xs font-bold text-amber-700 uppercase">Tindak Lanjut Hari Ini</span>
           <div class="text-2xl font-black text-amber-800 mt-1">${todayList.length} Jadwal</div>
         </div>
         <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold">⏰</div>
@@ -881,15 +841,15 @@ function renderFollowupTab(container) {
     <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
       <div class="flex items-center justify-between border-b border-slate-100 pb-3">
         <div>
-          <h2 class="text-sm font-bold text-slate-800">Catatan Monitoring & Follow-up</h2>
+          <h2 class="text-sm font-bold text-slate-800">Catatan Pemantauan & Tindak Lanjut</h2>
           <p class="text-xs text-slate-400">Riwayat perkembangan dan evaluasi pembinaan karyawan secara berkala</p>
         </div>
       </div>
 
       <div class="space-y-3">
-        ${allFollowups.length === 0 ? `
-          <div class="p-8 text-center text-slate-400 italic">Belum ada catatan follow-up. Buka detail kasus untuk menambahkan monitoring follow-up.</div>
-        ` : allFollowups.map(f => {
+        ${visibleFollowups.length === 0 ? `
+          <div class="p-8 text-center text-slate-400 italic">Belum ada catatan tindak lanjut. Buka detail kasus untuk menambahkan pemantauan.</div>
+        ` : visibleFollowups.map(f => {
           const matchingCase = allCases.find(c => String(c.id) === String(f.case_id));
           return `
             <div class="p-4 bg-slate-50 border border-slate-200/80 rounded-xl hover:border-slate-300 transition space-y-2">
@@ -899,23 +859,23 @@ function renderFollowupTab(container) {
                   <span class="text-xs font-bold text-slate-800">${escapeHtml(matchingCase?.nama_karyawan || "-")}</span>
                 </div>
                 <div class="flex items-center gap-2">
-                  <span class="text-xs text-slate-500">Tgl Monitoring: <b>${fmtDateShort(f.followup_date)}</b></span>
+                  <span class="text-xs text-slate-500">Tanggal Pemantauan: <b>${fmtDateShort(f.followup_date)}</b></span>
                   ${renderImprovementBadge(f.improvement_status)}
                 </div>
               </div>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                 <div>
-                  <span class="font-bold text-slate-500">Kondisi & Progress Karyawan:</span>
+                  <span class="font-bold text-slate-500">Kondisi & Perkembangan Karyawan:</span>
                   <p class="text-slate-800 mt-0.5">${escapeHtml(f.employee_progress || f.current_condition || "-")}</p>
                 </div>
                 <div>
-                  <span class="font-bold text-slate-500">Feedback Supervisor / HR:</span>
+                  <span class="font-bold text-slate-500">Umpan Balik Atasan / HR:</span>
                   <p class="text-slate-800 mt-0.5">${escapeHtml(f.supervisor_feedback || f.notes || "-")}</p>
                 </div>
               </div>
               ${f.next_followup_date ? `
                 <div class="pt-1 text-[11px] text-slate-500 flex items-center justify-between border-t border-slate-200/40">
-                  <span>Jadwal Follow-up Berikutnya: <b class="text-maroon-700">${fmtDateShort(f.next_followup_date)}</b></span>
+                  <span>Jadwal Tindak Lanjut Berikutnya: <b class="text-maroon-700">${fmtDateShort(f.next_followup_date)}</b></span>
                   <button type="button" onclick="window.kcAddFollowup('${f.case_id}')" class="text-maroon-700 font-bold hover:underline">Catat Sesi Lanjutan &rarr;</button>
                 </div>
               ` : ""}
@@ -929,12 +889,12 @@ function renderFollowupTab(container) {
 
 function renderImprovementBadge(status) {
   const map = {
-    "Significant Improvement": "bg-emerald-100 text-emerald-800 border-emerald-300 font-black",
-    Improvement: "bg-teal-100 text-teal-800 border-teal-300 font-bold",
-    "No Improvement": "bg-amber-100 text-amber-800 border-amber-300 font-bold",
-    Regression: "bg-rose-100 text-rose-800 border-rose-300 font-black"
+    "Perbaikan Sangat Baik": "bg-emerald-100 text-emerald-800 border-emerald-300 font-black",
+    "Ada Perbaikan": "bg-teal-100 text-teal-800 border-teal-300 font-bold",
+    "Belum Ada Perbaikan": "bg-amber-100 text-amber-800 border-amber-300 font-bold",
+    "Mengalami Kemunduran": "bg-rose-100 text-rose-800 border-rose-300 font-black"
   };
-  return `<span class="inline-block px-2.5 py-0.5 text-[10px] rounded-full border ${map[status] || 'bg-slate-100 text-slate-700 border-slate-200'}">${escapeHtml(status || "Monitoring")}</span>`;
+  return `<span class="inline-block px-2.5 py-0.5 text-[10px] rounded-full border ${map[status] || 'bg-slate-100 text-slate-700 border-slate-200'}">${escapeHtml(status || "Pemantauan")}</span>`;
 }
 
 // =========================================================================
@@ -946,9 +906,9 @@ function renderReportsTab(container) {
 
   const visibleCases = filterCasesByRole(allCases);
   const total = visibleCases.length;
-  const closed = visibleCases.filter(c => c.status === "Closed").length;
-  const active = visibleCases.filter(c => c.status !== "Closed" && c.status !== "Cancelled").length;
-  const escalated = visibleCases.filter(c => c.status === "Escalated").length;
+  const closed = visibleCases.filter(c => c.status === "Selesai").length;
+  const active = visibleCases.filter(c => !["Selesai", "Dibatalkan"].includes(c.status)).length;
+  const escalated = visibleCases.filter(c => c.status === "Dieskalasikan").length;
   const resolvedPct = total > 0 ? Math.round((closed / total) * 100) : 0;
 
   panel.innerHTML = `
@@ -991,7 +951,7 @@ function renderReportsTab(container) {
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
       <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
         <h3 class="text-sm font-bold text-slate-800">Cetak Berkas Case Report (Per Kasus)</h3>
-        <p class="text-xs text-slate-500">Pilih kasus untuk mengunduh dokumen laporan resmi lengkap dengan Fakta, Pernyataan Karyawan, Assessment HR, Action Plan, dan Riwayat Monitoring.</p>
+        <p class="text-xs text-slate-500">Pilih kasus untuk mengunduh laporan resmi berisi fakta, pernyataan karyawan, asesmen HR, rencana perbaikan, dan riwayat pemantauan.</p>
         <div class="space-y-2 pt-2">
           <select id="kc-report-case-select" class="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5 bg-white font-medium focus:outline-none focus:border-maroon-700">
             <option value="">-- Pilih Kasus --</option>
@@ -1035,6 +995,7 @@ function renderReportsTab(container) {
 // MODALS: CREATE / EDIT CASE
 // =========================================================================
 function showCaseFormModal(caseId = null, prefill = {}) {
+  prefill = normalizeCaseRecord(prefill);
   const existing = caseId ? allCases.find(c => String(c.id) === String(caseId)) : null;
   const isEdit = !!existing;
 
@@ -1044,13 +1005,19 @@ function showCaseFormModal(caseId = null, prefill = {}) {
 
   const html = `
     <div class="space-y-5 max-h-[80vh] overflow-y-auto pr-1">
+      <div class="p-3 rounded-xl border border-sky-200 bg-sky-50 text-[11px] text-sky-900">
+        <div class="font-black mb-2">Alur penanganan standar</div>
+        <div class="flex flex-wrap items-center gap-1.5 font-semibold">
+          ${["Asesmen Awal", "Klarifikasi", "Rencana Perbaikan", "Pemantauan", "Evaluasi", "Selesai"].map((step, index) => `<span class="px-2 py-1 bg-white border border-sky-200 rounded-lg">${index + 1}. ${step}</span>${index < 5 ? '<span aria-hidden="true">→</span>' : ''}`).join("")}
+        </div>
+      </div>
       <div class="bg-maroon-50/60 p-3.5 rounded-xl border border-maroon-100 flex items-center justify-between">
         <div>
-          <span class="text-[10px] font-black text-maroon-700 uppercase tracking-wider">Nomor Kasus / Case ID</span>
+          <span class="text-[10px] font-black text-maroon-700 uppercase tracking-wider">Nomor Kasus</span>
           <div class="text-sm font-black text-slate-800">${escapeHtml(autoCaseNumber)}</div>
         </div>
         <span class="px-2.5 py-1 bg-white text-maroon-700 text-xs font-bold rounded-lg border border-maroon-200">
-          ${isEdit ? 'Edit Case' : 'Buat Kasus Baru'}
+          ${isEdit ? 'Ubah Kasus' : 'Buat Kasus Baru'}
         </span>
       </div>
 
@@ -1096,7 +1063,7 @@ function showCaseFormModal(caseId = null, prefill = {}) {
             <label class="block text-xs font-bold text-slate-700 mb-1">Tipe Kasus <span class="text-rose-500">*</span></label>
             <select id="kc-form-case-type" class="w-full text-xs border border-slate-200 rounded-xl px-3 py-2 bg-white font-bold focus:border-maroon-700">
               ${Object.keys(CASE_CATEGORIES).map(k => `
-                <option value="${k}" ${(existing?.case_type || prefill.case_type || 'Counseling') === k ? 'selected' : ''}>${k}</option>
+                <option value="${k}" ${(existing?.case_type || prefill.case_type || 'Konseling') === k ? 'selected' : ''}>${k}</option>
               `).join("")}
             </select>
           </div>
@@ -1108,7 +1075,7 @@ function showCaseFormModal(caseId = null, prefill = {}) {
             <label class="block text-xs font-bold text-slate-700 mb-1">Sumber Kasus</label>
             <select id="kc-form-source" class="w-full text-xs border border-slate-200 rounded-xl px-3 py-2 bg-white font-medium focus:border-maroon-700">
               ${CASE_SOURCES.map(s => `
-                <option value="${s}" ${(existing?.source || prefill.source || 'HR Monitoring') === s ? 'selected' : ''}>${s}</option>
+                <option value="${s}" ${(existing?.source || prefill.source || 'Pemantauan HR') === s ? 'selected' : ''}>${s}</option>
               `).join("")}
             </select>
           </div>
@@ -1123,16 +1090,16 @@ function showCaseFormModal(caseId = null, prefill = {}) {
             <label class="block text-xs font-bold text-slate-700 mb-1">Prioritas</label>
             <select id="kc-form-priority" class="w-full text-xs border border-slate-200 rounded-xl px-3 py-2 bg-white font-bold focus:border-maroon-700">
               ${PRIORITIES.map(p => `
-                <option value="${p}" ${(existing?.priority || 'Medium') === p ? 'selected' : ''}>${p}</option>
+                <option value="${p}" ${(existing?.priority || 'Sedang') === p ? 'selected' : ''}>${p}</option>
               `).join("")}
             </select>
           </div>
           <div>
             <label class="block text-xs font-bold text-slate-700 mb-1">Tingkat Kerahasiaan</label>
             <select id="kc-form-confidentiality" class="w-full text-xs border border-slate-200 rounded-xl px-3 py-2 bg-white font-bold focus:border-maroon-700">
-              <option value="Normal" ${(existing?.confidentiality || 'Normal') === 'Normal' ? 'selected' : ''}>Normal (HR & SPV)</option>
-              <option value="Confidential" ${(existing?.confidentiality) === 'Confidential' ? 'selected' : ''}>Confidential (HR & Mgmt)</option>
-              <option value="Highly Confidential" ${(existing?.confidentiality) === 'Highly Confidential' ? 'selected' : ''}>Highly Confidential (HR Only)</option>
+              <option value="Terbatas" ${(existing?.confidentiality) === 'Terbatas' ? 'selected' : ''}>Terbatas — HR dan atasan langsung</option>
+              <option value="Rahasia" ${(existing?.confidentiality || 'Rahasia') === 'Rahasia' ? 'selected' : ''}>Rahasia — HR dan petugas terkait</option>
+              <option value="Sangat Rahasia" ${(existing?.confidentiality) === 'Sangat Rahasia' ? 'selected' : ''}>Sangat Rahasia — hanya HRD</option>
             </select>
           </div>
         </div>
@@ -1143,10 +1110,10 @@ function showCaseFormModal(caseId = null, prefill = {}) {
         </div>
       </div>
 
-      <!-- Section 3: Employee Statement (Pernyataan Karyawan) -->
+      <!-- Section 3: Klarifikasi Karyawan -->
       <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
         <h3 class="text-xs font-black text-slate-800 uppercase tracking-wider border-b border-slate-200 pb-1.5">
-          3. Employee Statement (Klarifikasi & Pernyataan Karyawan)
+          3. Klarifikasi & Pernyataan Karyawan
         </h3>
         <div>
           <label class="block text-xs font-semibold text-slate-700 mb-1">Penjelasan / Alasan dari Karyawan</label>
@@ -1158,22 +1125,22 @@ function showCaseFormModal(caseId = null, prefill = {}) {
         </div>
       </div>
 
-      <!-- Section 4: HR Assessment & Action Taken -->
+      <!-- Section 4: Asesmen HR dan Tindakan -->
       <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
         <h3 class="text-xs font-black text-slate-800 uppercase tracking-wider border-b border-slate-200 pb-1.5">
-          4. HR Assessment & Tindakan
+          4. Asesmen HR & Tindakan
         </h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">Akar Masalah (Root Cause)</label>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Akar Masalah</label>
             <select id="kc-form-root-cause" class="w-full text-xs border border-slate-200 rounded-xl px-3 py-2 bg-white font-medium focus:border-maroon-700">
               ${ROOT_CAUSES.map(rc => `
-                <option value="${rc}" ${(existing?.hr_assessment?.root_cause || 'Discipline') === rc ? 'selected' : ''}>${rc}</option>
+                <option value="${rc}" ${(existing?.hr_assessment?.root_cause || 'Kedisiplinan') === rc ? 'selected' : ''}>${rc}</option>
               `).join("")}
             </select>
           </div>
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">Tindakan Pembinaan (Action Taken)</label>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Tindakan Pembinaan</label>
             <select id="kc-form-action-taken" class="w-full text-xs border border-slate-200 rounded-xl px-3 py-2 bg-white font-bold focus:border-maroon-700">
               ${ACTION_TAKENS.map(at => `
                 <option value="${at}" ${(existing?.action_taken || 'Coaching') === at ? 'selected' : ''}>${at}</option>
@@ -1185,6 +1152,15 @@ function showCaseFormModal(caseId = null, prefill = {}) {
           <label class="block text-xs font-semibold text-slate-700 mb-1">Analisa & Catatan HR</label>
           <textarea id="kc-form-assessment-notes" rows="2" placeholder="Catatan penilaian objektif dari HR Officer..." class="w-full text-xs border border-slate-200 rounded-xl p-2.5 bg-white font-medium focus:border-maroon-700">${escapeHtml(existing?.hr_assessment?.assessment_notes || '')}</textarea>
         </div>
+        ${isEdit ? `
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Tahap Penanganan Saat Ini</label>
+            <select id="kc-form-status" class="w-full text-xs border border-slate-200 rounded-xl px-3 py-2 bg-white font-bold focus:border-maroon-700">
+              ${CASE_STATUSES.filter(status => status !== "Selesai").map(status => `<option value="${status}" ${existing?.status === status ? "selected" : ""}>${status}</option>`).join("")}
+            </select>
+            <p class="text-[10px] text-slate-500 mt-1">Gunakan tombol “Tutup Kasus” untuk tahap Selesai agar resolusi dan bukti penutupan tercatat.</p>
+          </div>
+        ` : ""}
       </div>
 
       <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
@@ -1232,8 +1208,8 @@ function showCaseFormModal(caseId = null, prefill = {}) {
   const catSelect = document.getElementById("kc-form-category");
 
   function syncCategories() {
-    const selectedType = typeSelect.value || "Counseling";
-    const cats = CASE_CATEGORIES[selectedType] || ["Other"];
+    const selectedType = typeSelect.value || "Konseling";
+    const cats = CASE_CATEGORIES[selectedType] || ["Lainnya"];
     catSelect.innerHTML = cats.map(c => `
       <option value="${c}" ${(existing?.category) === c ? 'selected' : ''}>${c}</option>
     `).join("");
@@ -1253,16 +1229,16 @@ function showCaseFormModal(caseId = null, prefill = {}) {
     saveBtn.onclick = async () => {
       const nama = empInput ? empInput.value.trim() : "";
       const nik = nikInput ? nikInput.value.trim() : "";
-      const caseType = typeSelect ? typeSelect.value : "Counseling";
-      const category = catSelect ? catSelect.value : "Other";
-      const source = document.getElementById("kc-form-source")?.value || "HR Monitoring";
+      const caseType = typeSelect ? typeSelect.value : "Konseling";
+      const category = catSelect ? catSelect.value : "Lainnya";
+      const source = document.getElementById("kc-form-source")?.value || "Pemantauan HR";
       const incidentDate = document.getElementById("kc-form-incident-date")?.value || new Date().toISOString().split("T")[0];
-      const priority = document.getElementById("kc-form-priority")?.value || "Medium";
-      const confidentiality = document.getElementById("kc-form-confidentiality")?.value || "Normal";
+      const priority = document.getElementById("kc-form-priority")?.value || "Sedang";
+      const confidentiality = document.getElementById("kc-form-confidentiality")?.value || "Rahasia";
       const desc = document.getElementById("kc-form-desc")?.value.trim() || "";
       const empExpl = document.getElementById("kc-form-emp-explanation")?.value.trim() || "";
       const empResp = document.getElementById("kc-form-emp-response")?.value.trim() || "";
-      const rootCause = document.getElementById("kc-form-root-cause")?.value || "Discipline";
+      const rootCause = document.getElementById("kc-form-root-cause")?.value || "Kedisiplinan";
       const actionTaken = document.getElementById("kc-form-action-taken")?.value || "Coaching";
       const assessNotes = document.getElementById("kc-form-assessment-notes")?.value.trim() || "";
 
@@ -1296,7 +1272,11 @@ function showCaseFormModal(caseId = null, prefill = {}) {
           recommended_action: actionTaken
         },
         action_taken: actionTaken,
-        status: existing?.status || "Open",
+        status: document.getElementById("kc-form-status")?.value || existing?.status || "Asesmen Awal",
+        atasan: (() => {
+          const employee = allEmployees.find(e => String(e.nik || "") === String(nik || ""));
+          return employee?.atasan || employee?.atasan_langsung || employee?.nama_atasan || existing?.atasan || "";
+        })(),
         hr_officer: currentSession?.nama || "HR Officer",
         hr_officer_username: currentSession?.username || "",
         updated_at: new Date().toISOString()
@@ -1357,9 +1337,9 @@ export function showCaseDetail(caseId) {
           <div class="text-xs text-slate-500 mt-1">Dibuat tgl <b>${fmtDateShort(c.created_at || c.report_date)}</b> oleh <b>${escapeHtml(c.hr_officer || c.created_by || "HR")}</b></div>
         </div>
         <div class="flex items-center gap-2">
-          <button type="button" onclick="window.kcAddActionPlan('${c.id}')" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shadow-2xs transition">+ Action Plan</button>
-          <button type="button" onclick="window.kcAddFollowup('${c.id}')" class="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold shadow-2xs transition">+ Follow-up</button>
-          ${c.status !== "Closed" ? `
+          <button type="button" onclick="window.kcAddActionPlan('${c.id}')" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shadow-2xs transition">+ Rencana Perbaikan</button>
+          <button type="button" onclick="window.kcAddFollowup('${c.id}')" class="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold shadow-2xs transition">+ Pemantauan</button>
+          ${c.status !== "Selesai" ? `
             <button type="button" onclick="window.kcCloseCase('${c.id}')" class="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-2xs transition">Tutup Kasus</button>
           ` : ""}
           <button type="button" onclick="window.kcPrintCaseDossier('${c.id}')" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-xs font-bold shadow-2xs transition">Print PDF</button>
@@ -1388,7 +1368,7 @@ export function showCaseDetail(caseId) {
       <!-- Employee Statement & HR Assessment -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-2 text-xs">
-          <h4 class="font-black text-slate-800 uppercase tracking-wider text-[11px] border-b border-slate-100 pb-1.5">Pernyataan Karyawan (Employee Statement)</h4>
+          <h4 class="font-black text-slate-800 uppercase tracking-wider text-[11px] border-b border-slate-100 pb-1.5">Pernyataan Karyawan</h4>
           <div>
             <span class="text-slate-400 font-semibold block">Klarifikasi & Penjelasan:</span>
             <p class="text-slate-700 mt-0.5 font-medium">${escapeHtml(c.employee_statement?.explanation || "Belum ada pernyataan tercatat.")}</p>
@@ -1400,7 +1380,7 @@ export function showCaseDetail(caseId) {
         </div>
 
         <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-2 text-xs">
-          <h4 class="font-black text-slate-800 uppercase tracking-wider text-[11px] border-b border-slate-100 pb-1.5">HR Assessment & Tindakan</h4>
+          <h4 class="font-black text-slate-800 uppercase tracking-wider text-[11px] border-b border-slate-100 pb-1.5">Asesmen HR & Tindakan</h4>
           <div>
             <span class="text-slate-400 font-semibold block">Akar Masalah (Root Cause):</span>
             <b class="text-slate-800">${escapeHtml(c.hr_assessment?.root_cause || "-")}</b>
@@ -1419,7 +1399,7 @@ export function showCaseDetail(caseId) {
       <!-- Action Plans Section -->
       <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
         <div class="flex items-center justify-between border-b border-slate-100 pb-2">
-          <h4 class="font-black text-slate-800 uppercase tracking-wider text-[11px]">Rencana Aksi Pembinaan (Action Plans)</h4>
+          <h4 class="font-black text-slate-800 uppercase tracking-wider text-[11px]">Rencana Perbaikan</h4>
           <span class="text-xs font-bold text-amber-700">${caseAps.length} Rencana</span>
         </div>
         ${caseAps.length === 0 ? `
@@ -1432,7 +1412,7 @@ export function showCaseDetail(caseId) {
                   <div class="font-bold text-slate-800">${escapeHtml(ap.description)}</div>
                   <div class="text-[10px] text-slate-500 mt-0.5">PIC: <b>${escapeHtml(ap.pic || "Employee")}</b> &bull; Target: <b>${fmtDateShort(ap.target_date)}</b> &bull; Indikator: ${escapeHtml(ap.measurement || "-")}</div>
                 </div>
-                <span class="px-2 py-0.5 text-[10px] font-bold rounded-md ${ap.status === 'Completed' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${ap.status}</span>
+                <span class="px-2 py-0.5 text-[10px] font-bold rounded-md ${ap.status === 'Selesai' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${ap.status}</span>
               </div>
             `).join("")}
           </div>
@@ -1442,7 +1422,7 @@ export function showCaseDetail(caseId) {
       <!-- Monitoring & Follow-up History -->
       <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
         <div class="flex items-center justify-between border-b border-slate-100 pb-2">
-          <h4 class="font-black text-slate-800 uppercase tracking-wider text-[11px]">Riwayat Monitoring & Follow-up</h4>
+          <h4 class="font-black text-slate-800 uppercase tracking-wider text-[11px]">Riwayat Pemantauan & Tindak Lanjut</h4>
           <span class="text-xs font-bold text-sky-700">${caseFls.length} Sesi</span>
         </div>
         ${caseFls.length === 0 ? `
@@ -1463,7 +1443,7 @@ export function showCaseDetail(caseId) {
       </div>
 
       <!-- Resolution Section if Closed -->
-      ${c.status === "Closed" ? `
+      ${c.status === "Selesai" ? `
         <div class="bg-emerald-50 p-4 rounded-xl border border-emerald-200 space-y-2 text-xs">
           <h4 class="font-black text-emerald-900 uppercase tracking-wider text-[11px]">Resolusi & Penutupan Kasus</h4>
           <div><span class="text-emerald-700 font-semibold">Hasil Akhir:</span> <b class="text-emerald-900">${escapeHtml(c.resolution || "-")}</b></div>
@@ -1490,13 +1470,13 @@ export function showAddActionPlanModal(caseId) {
   const html = `
     <div class="space-y-4 text-xs">
       <div>
-        <label class="block font-bold text-slate-700 mb-1">Deskripsi Action Plan <span class="text-rose-500">*</span></label>
+        <label class="block font-bold text-slate-700 mb-1">Rencana Perbaikan <span class="text-rose-500">*</span></label>
         <textarea id="kc-ap-desc" rows="2" placeholder="Contoh: Memastikan kehadiran tepat waktu minimal 14 hari kerja berturut-turut..." class="w-full border border-slate-200 rounded-xl p-2.5 bg-white font-medium focus:border-maroon-700"></textarea>
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
-          <label class="block font-bold text-slate-700 mb-1">PIC (Penanggung Jawab)</label>
-          <input type="text" id="kc-ap-pic" value="Employee & SPV" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white font-medium focus:border-maroon-700">
+          <label class="block font-bold text-slate-700 mb-1">Penanggung Jawab</label>
+          <input type="text" id="kc-ap-pic" value="Karyawan & Atasan" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white font-medium focus:border-maroon-700">
         </div>
         <div>
           <label class="block font-bold text-slate-700 mb-1">Target Tanggal Selesai <span class="text-rose-500">*</span></label>
@@ -1504,18 +1484,18 @@ export function showAddActionPlanModal(caseId) {
         </div>
       </div>
       <div>
-        <label class="block font-bold text-slate-700 mb-1">Indikator Keberhasilan (Measurement)</label>
+        <label class="block font-bold text-slate-700 mb-1">Indikator Keberhasilan</label>
         <input type="text" id="kc-ap-measurement" placeholder="Contoh: Log absensi tidak mencatat keterlambatan..." class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white font-medium focus:border-maroon-700">
       </div>
       <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
         <button type="button" onclick="window.kcCloseModal()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold">Batal</button>
-        <button type="button" id="kc-ap-btn-save" class="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold shadow-xs">Simpan Action Plan</button>
+        <button type="button" id="kc-ap-btn-save" class="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold shadow-xs">Simpan Rencana</button>
       </div>
     </div>
   `;
 
   openModal({
-    title: `Tambah Action Plan — ${escapeHtml(c.case_number || c.id)}`,
+    title: `Tambah Rencana Perbaikan — ${escapeHtml(c.case_number || c.id)}`,
     content: html,
     maxWidth: "max-w-lg"
   });
@@ -1524,7 +1504,7 @@ export function showAddActionPlanModal(caseId) {
   if (saveBtn) {
     saveBtn.onclick = async () => {
       const desc = document.getElementById("kc-ap-desc")?.value.trim();
-      const pic = document.getElementById("kc-ap-pic")?.value.trim() || "Employee";
+      const pic = document.getElementById("kc-ap-pic")?.value.trim() || "Karyawan";
       const targetDate = document.getElementById("kc-ap-target")?.value;
       const measure = document.getElementById("kc-ap-measurement")?.value.trim();
 
@@ -1542,22 +1522,21 @@ export function showAddActionPlanModal(caseId) {
           pic: pic,
           target_date: targetDate,
           measurement: measure || "-",
-          status: "In Progress",
+          status: "Berjalan",
           created_at: new Date().toISOString()
         });
 
-        // Update case status to 'Action Plan' if still Open/Counseling
-        if (["Open", "Counseling", "Coaching"].includes(c.status)) {
-          await fsUpdate(COL.HR_CASES || "hr_cases", caseId, { status: "Action Plan" });
+        if (["Asesmen Awal", "Klarifikasi"].includes(c.status)) {
+          await fsUpdate(COL.HR_CASES || "hr_cases", caseId, { status: "Rencana Perbaikan" });
         }
 
-        await addAuditLog(caseId, c.case_number, "ADD_ACTION_PLAN", `Action plan ditambahkan: ${desc}`);
-        toast("Action plan berhasil ditambahkan", "success");
+        await addAuditLog(caseId, c.case_number, "ADD_ACTION_PLAN", `Rencana perbaikan ditambahkan: ${desc}`);
+        toast("Rencana perbaikan berhasil ditambahkan", "success");
         closeModal();
         const mainContainer = document.getElementById("view-container");
         if (mainContainer) reloadAllData(mainContainer);
       } catch (err) {
-        toast("Gagal menambah action plan: " + err.message, "error");
+        toast("Gagal menambah rencana perbaikan: " + err.message, "error");
       }
     };
   }
@@ -1571,40 +1550,37 @@ export function showAddFollowupModal(caseId) {
     <div class="space-y-4 text-xs">
       <div class="grid grid-cols-2 gap-3">
         <div>
-          <label class="block font-bold text-slate-700 mb-1">Tanggal Monitoring <span class="text-rose-500">*</span></label>
+          <label class="block font-bold text-slate-700 mb-1">Tanggal Pemantauan <span class="text-rose-500">*</span></label>
           <input type="date" id="kc-fol-date" value="${new Date().toISOString().split('T')[0]}" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white font-medium focus:border-maroon-700">
         </div>
         <div>
           <label class="block font-bold text-slate-700 mb-1">Indikator Perbaikan <span class="text-rose-500">*</span></label>
           <select id="kc-fol-improvement" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white font-bold focus:border-maroon-700">
-            <option value="Significant Improvement">Significant Improvement</option>
-            <option value="Improvement" selected>Improvement</option>
-            <option value="No Improvement">No Improvement</option>
-            <option value="Regression">Regression</option>
+            ${IMPROVEMENT_STATUSES.map((value, index) => `<option value="${value}" ${index === 1 ? "selected" : ""}>${value}</option>`).join("")}
           </select>
         </div>
       </div>
       <div>
-        <label class="block font-bold text-slate-700 mb-1">Kondisi & Progress Karyawan <span class="text-rose-500">*</span></label>
+        <label class="block font-bold text-slate-700 mb-1">Kondisi & Perkembangan Karyawan <span class="text-rose-500">*</span></label>
         <textarea id="kc-fol-progress" rows="2" placeholder="Catat perubahan perilaku atau peningkatan kinerja..." class="w-full border border-slate-200 rounded-xl p-2.5 bg-white font-medium focus:border-maroon-700"></textarea>
       </div>
       <div>
-        <label class="block font-bold text-slate-700 mb-1">Feedback Supervisor / HR</label>
+        <label class="block font-bold text-slate-700 mb-1">Umpan Balik Atasan / HR</label>
         <textarea id="kc-fol-feedback" rows="2" placeholder="Umpan balik dari atasan langsung..." class="w-full border border-slate-200 rounded-xl p-2.5 bg-white font-medium focus:border-maroon-700"></textarea>
       </div>
       <div>
-        <label class="block font-bold text-slate-700 mb-1">Jadwal Follow-up Berikutnya</label>
+        <label class="block font-bold text-slate-700 mb-1">Jadwal Tindak Lanjut Berikutnya</label>
         <input type="date" id="kc-fol-next-date" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white font-medium focus:border-maroon-700">
       </div>
       <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
         <button type="button" onclick="window.kcCloseModal()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold">Batal</button>
-        <button type="button" id="kc-fol-btn-save" class="px-5 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-bold shadow-xs">Simpan Follow-up</button>
+        <button type="button" id="kc-fol-btn-save" class="px-5 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-bold shadow-xs">Simpan Tindak Lanjut</button>
       </div>
     </div>
   `;
 
   openModal({
-    title: `Catat Monitoring Follow-up — ${escapeHtml(c.case_number || c.id)}`,
+    title: `Catat Pemantauan — ${escapeHtml(c.case_number || c.id)}`,
     content: html,
     maxWidth: "max-w-lg"
   });
@@ -1636,11 +1612,10 @@ export function showAddFollowupModal(caseId) {
           created_at: new Date().toISOString()
         });
 
-        // Update case status to 'Monitoring'
-        await fsUpdate(COL.HR_CASES || "hr_cases", caseId, { status: "Monitoring" });
+        await fsUpdate(COL.HR_CASES || "hr_cases", caseId, { status: "Pemantauan" });
 
         await addAuditLog(caseId, c.case_number, "ADD_FOLLOWUP", `Follow-up dicatat (${improve})`);
-        toast("Catatan follow-up berhasil disimpan", "success");
+        toast("Catatan tindak lanjut berhasil disimpan", "success");
         closeModal();
         const mainContainer = document.getElementById("view-container");
         if (mainContainer) reloadAllData(mainContainer);
@@ -1657,11 +1632,26 @@ export function showAddFollowupModal(caseId) {
 export function showCloseCaseModal(caseId) {
   const c = allCases.find(x => String(x.id) === String(caseId));
   if (!c) return;
+  const unfinishedPlans = activeActionPlans(allActionPlans.filter(plan => String(plan.case_id) === String(caseId)));
+  if (unfinishedPlans.length > 0) {
+    toast(`Kasus belum dapat ditutup. Masih ada ${unfinishedPlans.length} rencana perbaikan yang aktif.`, "warning");
+    return;
+  }
 
   const html = `
     <div class="space-y-4 text-xs">
       <div class="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-800">
-        Pastikan pembinaan dan action plan telah berjalan dengan baik sebelum menutup kasus secara resmi.
+        Pastikan hasil evaluasi telah dicatat. Kasus dengan rencana perbaikan aktif tidak dapat ditutup.
+      </div>
+      <div>
+        <label class="block font-bold text-slate-700 mb-1">Dasar Penutupan <span class="text-rose-500">*</span></label>
+        <select id="kc-close-basis" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white font-bold focus:border-maroon-700">
+          <option value="Sasaran tercapai">Sasaran tercapai</option>
+          <option value="Perbaikan konsisten">Perbaikan konsisten</option>
+          <option value="Selesai dalam satu sesi">Selesai dalam satu sesi</option>
+          <option value="Dialihkan ke proses disiplin atau SP">Dialihkan ke proses disiplin atau SP</option>
+          <option value="Tidak dapat dilanjutkan">Tidak dapat dilanjutkan</option>
+        </select>
       </div>
       <div>
         <label class="block font-bold text-slate-700 mb-1">Resolusi / Hasil Akhir Pembinaan <span class="text-rose-500">*</span></label>
@@ -1679,7 +1669,7 @@ export function showCloseCaseModal(caseId) {
   `;
 
   openModal({
-    title: `Tutup Kasus (Case Closing) — ${escapeHtml(c.case_number || c.id)}`,
+    title: `Tutup Kasus — ${escapeHtml(c.case_number || c.id)}`,
     content: html,
     maxWidth: "max-w-md"
   });
@@ -1689,6 +1679,7 @@ export function showCloseCaseModal(caseId) {
     saveBtn.onclick = async () => {
       const res = document.getElementById("kc-close-resolution")?.value.trim();
       const closeDate = document.getElementById("kc-close-date")?.value;
+      const closureBasis = document.getElementById("kc-close-basis")?.value;
 
       if (!res || !closeDate) {
         toast("Silakan isi ringkasan resolusi dan tanggal penutupan", "warning");
@@ -1697,7 +1688,8 @@ export function showCloseCaseModal(caseId) {
 
       try {
         await fsUpdate(COL.HR_CASES || "hr_cases", caseId, {
-          status: "Closed",
+          status: "Selesai",
+          closure_basis: closureBasis,
           resolution: res,
           closing_date: closeDate,
           closed_at: new Date().toISOString(),
@@ -1781,7 +1773,7 @@ export async function printCaseDossier(caseId) {
       </div>
       <div style="text-align: right;">
         <div style="font-weight: bold; font-size: 12px; color: #7a1f2b;">${escapeHtml(c.case_number || c.id)}</div>
-        <div style="font-size: 9.5px; color: #64748b;">Kerahasiaan: <b>${escapeHtml(c.confidentiality || "Normal")}</b></div>
+        <div style="font-size: 9.5px; color: #64748b;">Kerahasiaan: <b>${escapeHtml(c.confidentiality || "Terbatas")}</b></div>
       </div>
     </div>
   </div>
@@ -1834,7 +1826,7 @@ export async function printCaseDossier(caseId) {
     ${escapeHtml(c.description || "-")}
   </div>
 
-  <div class="section-title">3. Klarifikasi & Pernyataan Karyawan (Employee Statement)</div>
+  <div class="section-title">3. Klarifikasi & Pernyataan Karyawan</div>
   <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 6px 8px; font-size: 10.5px;">
     <b>Pernyataan / Penjelasan Karyawan:</b><br>
     ${escapeHtml(c.employee_statement?.explanation || "-")}<br><br>
@@ -1842,7 +1834,7 @@ export async function printCaseDossier(caseId) {
     ${escapeHtml(c.employee_statement?.employee_response || "-")}
   </div>
 
-  <div class="section-title">4. HR Assessment & Tindakan yang Diambil</div>
+  <div class="section-title">4. Asesmen HR & Tindakan yang Diambil</div>
   <table class="grid-table">
     <tr>
       <td width="20%"><b>Akar Masalah (Root Cause)</b></td>
@@ -1856,7 +1848,7 @@ export async function printCaseDossier(caseId) {
     ${escapeHtml(c.hr_assessment?.assessment_notes || "-")}
   </div>
 
-  <div class="section-title">5. Rencana Aksi (Action Plans)</div>
+  <div class="section-title">5. Rencana Perbaikan</div>
   <table class="bordered-table">
     <thead>
       <tr>
@@ -1878,13 +1870,13 @@ export async function printCaseDossier(caseId) {
     </tbody>
   </table>
 
-  <div class="section-title">6. Riwayat Monitoring & Evaluasi Follow-up</div>
+  <div class="section-title">6. Riwayat Pemantauan & Evaluasi Tindak Lanjut</div>
   <table class="bordered-table">
     <thead>
       <tr>
-        <th width="20%">Tgl Monitoring</th>
+        <th width="20%">Tanggal Pemantauan</th>
         <th width="25%">Indikator Perbaikan</th>
-        <th width="55%">Perkembangan & Feedback</th>
+        <th width="55%">Perkembangan & Umpan Balik</th>
       </tr>
     </thead>
     <tbody>
@@ -1898,7 +1890,7 @@ export async function printCaseDossier(caseId) {
     </tbody>
   </table>
 
-  ${c.status === "Closed" ? `
+  ${c.status === "Selesai" ? `
     <div class="section-title">7. Kesimpulan & Resolusi Penutupan Kasus</div>
     <div style="background: #ecfdf5; border: 1px solid #a7f3d0; padding: 6px 8px; font-size: 10.5px;">
       <b>Hasil Akhir & Resolusi (Tgl: ${fmtDateShort(c.closing_date)}):</b><br>
@@ -1942,9 +1934,9 @@ export function exportManagementPdf() {
   }
 
   const total = visible.length;
-  const closed = visible.filter(c => c.status === "Closed").length;
-  const active = visible.filter(c => c.status !== "Closed" && c.status !== "Cancelled").length;
-  const escalated = visible.filter(c => c.status === "Escalated").length;
+  const closed = visible.filter(c => c.status === "Selesai").length;
+  const active = visible.filter(c => !["Selesai", "Dibatalkan"].includes(c.status)).length;
+  const escalated = visible.filter(c => c.status === "Dieskalasikan").length;
   const resolutionRate = total > 0 ? Math.round((closed / total) * 100) : 0;
 
   // Breakdown by case type
@@ -2076,7 +2068,7 @@ export function exportManagementPdf() {
 export function showUpdateApStatusModal(actionPlanId) {
   const ap = allActionPlans.find(x => String(x.id) === String(actionPlanId));
   if (!ap) {
-    toast("Action Plan tidak ditemukan", "error");
+    toast("Rencana perbaikan tidak ditemukan", "error");
     return;
   }
 
@@ -2087,12 +2079,9 @@ export function showUpdateApStatusModal(actionPlanId) {
         <div class="text-[11px] text-slate-500 mt-1">Karyawan: <b>${escapeHtml(ap.employee_name || "-")}</b> &bull; Target: <b>${fmtDateShort(ap.target_date)}</b></div>
       </div>
       <div>
-        <label class="block font-bold text-slate-700 mb-1">Status Action Plan <span class="text-rose-500">*</span></label>
+        <label class="block font-bold text-slate-700 mb-1">Status Rencana Perbaikan <span class="text-rose-500">*</span></label>
         <select id="kc-up-ap-status" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white font-bold focus:border-maroon-700">
-          <option value="Pending" ${ap.status === "Pending" ? "selected" : ""}>Pending</option>
-          <option value="In Progress" ${ap.status === "In Progress" ? "selected" : ""}>In Progress</option>
-          <option value="Completed" ${ap.status === "Completed" ? "selected" : ""}>Completed</option>
-          <option value="Cancelled" ${ap.status === "Cancelled" ? "selected" : ""}>Cancelled</option>
+          ${ACTION_PLAN_STATUSES.map(status => `<option value="${status}" ${ap.status === status ? "selected" : ""}>${status}</option>`).join("")}
         </select>
       </div>
       <div>
@@ -2107,7 +2096,7 @@ export function showUpdateApStatusModal(actionPlanId) {
   `;
 
   openModal({
-    title: `Update Progress Action Plan`,
+    title: `Perbarui Rencana Perbaikan`,
     content: html,
     maxWidth: "max-w-md"
   });
@@ -2126,13 +2115,21 @@ export function showUpdateApStatusModal(actionPlanId) {
           updated_by: currentSession?.username || "HR"
         });
 
-        await addAuditLog(ap.case_id, ap.case_number, "UPDATE_ACTION_PLAN", `Status Action Plan diubah menjadi: ${status}`);
-        toast("Status Action Plan berhasil diperbarui", "success");
+        if (status === "Selesai") {
+          const siblings = allActionPlans.filter(item => String(item.case_id) === String(ap.case_id));
+          const everyPlanFinished = siblings.every(item => String(item.id) === String(actionPlanId) || ["Selesai", "Dibatalkan"].includes(item.status));
+          if (everyPlanFinished) {
+            await fsUpdate(COL.HR_CASES || "hr_cases", ap.case_id, { status: "Evaluasi", updated_at: new Date().toISOString() });
+          }
+        }
+
+        await addAuditLog(ap.case_id, ap.case_number, "UPDATE_ACTION_PLAN", `Status rencana perbaikan diubah menjadi: ${status}`);
+        toast("Status rencana perbaikan berhasil diperbarui", "success");
         closeModal();
         const mainContainer = document.getElementById("view-container");
         if (mainContainer) reloadAllData(mainContainer);
       } catch (err) {
-        toast("Gagal mengupdate Action Plan: " + err.message, "error");
+        toast("Gagal memperbarui rencana perbaikan: " + err.message, "error");
       }
     };
   }
@@ -2164,7 +2161,7 @@ export function exportCasesToExcel() {
     "Tgl Lapor": c.report_date || c.created_at,
     "Akar Masalah": c.hr_assessment?.root_cause || "-",
     "Tindakan Diambil": c.action_taken || "-",
-    Kerahasiaan: c.confidentiality || "Normal",
+    Kerahasiaan: c.confidentiality || "Terbatas",
     "HR Officer": c.hr_officer || "-",
     Resolusi: c.resolution || "-"
   }));
