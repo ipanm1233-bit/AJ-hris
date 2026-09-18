@@ -10,6 +10,7 @@ import { attendanceImportValues, attendanceImportScan } from "../attendance-impo
 import { buildAttendanceStatusRows } from "../attendance-status.mjs";
 import { attendanceDeductionSource, calculateAttendancePenalty } from "../attendance-penalty.mjs";
 import { buildAttendanceAnalytics } from "../attendance-analytics.mjs";
+import { buildMissingAttendanceToday } from "../attendance-missing.mjs";
 
 function normalizeToken(value) {
  return String(value || "").trim().toUpperCase();
@@ -113,6 +114,8 @@ export async function mount(container, { session } = {}) {
  const dashboardTrend = container.querySelector("#attendance-dashboard-trend");
  const dashboardTopLate = container.querySelector("#attendance-dashboard-top-late");
  const dashboardDivisions = container.querySelector("#attendance-dashboard-divisions");
+ const dashboardMissingToday = container.querySelector("#attendance-dashboard-missing-today");
+ const dashboardMissingMeta = container.querySelector("#attendance-dashboard-missing-meta");
 
  const { startStr: twoMonthsStart, endStr: twoMonthsEnd } = getTwoRunningMonthsRange();
 
@@ -195,6 +198,23 @@ export async function mount(container, { session } = {}) {
   dashboardTopLate.innerHTML = analytics.top_late.length ? `<table class="w-full text-xs"><thead class="text-[10px] uppercase text-slate-400 border-b"><tr><th class="pb-2 text-left">Karyawan</th><th class="pb-2 text-right">Kali</th><th class="pb-2 text-right">Menit</th><th class="pb-2 text-right">Denda</th></tr></thead><tbody class="divide-y divide-slate-100">${analytics.top_late.map(row => `<tr><td class="py-2 pr-2"><strong class="text-slate-700">${escapeHtml(row.name)}</strong><p class="text-[9px] text-slate-400">${escapeHtml(row.branch)} • ${escapeHtml(row.division)}</p></td><td class="py-2 text-right font-bold">${row.occurrences}</td><td class="py-2 text-right text-rose-700 font-bold">${row.minutes}</td><td class="py-2 text-right font-mono">Rp ${formatNumber(row.penalty)}</td></tr>`).join("")}</tbody></table>` : `<div class="h-40 flex items-center justify-center text-xs text-slate-400">Tidak ada keterlambatan.</div>`;
 
   dashboardDivisions.innerHTML = analytics.divisions.length ? `<table class="w-full text-xs"><thead class="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th class="p-2 text-left">Divisi</th><th class="p-2 text-right">Hari Tercatat</th><th class="p-2 text-right">Scan Lengkap</th><th class="p-2 text-right">Terlambat</th><th class="p-2 text-right">Cuti/Izin</th><th class="p-2 text-right">Perlu Koreksi</th><th class="p-2 text-right">Denda</th><th class="p-2 text-left min-w-36">Kelengkapan</th></tr></thead><tbody class="divide-y divide-slate-100">${analytics.divisions.map(row => `<tr><td class="p-2 font-bold text-slate-700">${escapeHtml(row.division)}</td><td class="p-2 text-right">${row.employee_days}</td><td class="p-2 text-right text-emerald-700 font-bold">${row.complete}</td><td class="p-2 text-right text-rose-700 font-bold">${row.late}</td><td class="p-2 text-right">${row.absence}</td><td class="p-2 text-right text-orange-700">${row.review}</td><td class="p-2 text-right font-mono">Rp ${formatNumber(row.penalty)}</td><td class="p-2"><div class="flex items-center gap-2"><div class="h-2 flex-1 rounded-full bg-slate-100 overflow-hidden"><div class="h-full bg-emerald-500" style="width:${Math.min(100, row.completeness_rate)}%"></div></div><span class="text-[10px] font-bold text-slate-600">${row.completeness_rate}%</span></div></td></tr>`).join("")}</tbody></table>` : `<p class="py-8 text-center text-xs text-slate-400">Belum ada data divisi pada filter ini.</p>`;
+
+  const jakartaNowParts = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).map(part => [part.type, part.value]));
+  const today = `${jakartaNowParts.year}-${jakartaNowParts.month}-${jakartaNowParts.day}`;
+  const currentTime = `${jakartaNowParts.hour}:${jakartaNowParts.minute}`;
+  const missingToday = buildMissingAttendanceToday({
+   employees: employeeRowsGlobal,
+   attendanceRows: listAbsensiGlobal,
+   schedules: scheduleRowsGlobal,
+   date: today,
+   currentTime,
+   branch: dashboardState.branch,
+   division: dashboardState.division
+  });
+  if (dashboardMissingMeta) dashboardMissingMeta.innerHTML = `<span class="inline-flex items-center rounded-full px-2.5 py-1 font-bold ${missingToday.length ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'}">${missingToday.length} karyawan</span><span>${escapeHtml(new Date(`${today}T12:00:00`).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" }))} • pembaruan ${escapeHtml(currentTime)} WIB</span>`;
+  if (dashboardMissingToday) dashboardMissingToday.innerHTML = missingToday.length
+   ? `<table class="w-full text-xs"><thead class="bg-rose-50 text-[10px] uppercase text-rose-700"><tr><th class="p-2.5 text-left">Karyawan</th><th class="p-2.5 text-left">Cabang</th><th class="p-2.5 text-left">Divisi / Jabatan</th><th class="p-2.5 text-center">Jadwal Masuk</th><th class="p-2.5 text-left">Status</th></tr></thead><tbody class="divide-y divide-slate-100">${missingToday.map(row => `<tr class="hover:bg-rose-50/50"><td class="p-2.5"><strong class="text-slate-800">${escapeHtml(row.name)}</strong><p class="text-[9px] text-slate-400">NIK ${escapeHtml(row.nik || "-")}</p></td><td class="p-2.5 font-semibold text-slate-600">${escapeHtml(row.branch)}</td><td class="p-2.5"><span class="text-slate-700">${escapeHtml(row.division)}</span><p class="text-[9px] text-slate-400">${escapeHtml(row.position)}</p></td><td class="p-2.5 text-center font-mono font-bold text-slate-700">${escapeHtml(row.scheduled_start)}</td><td class="p-2.5"><span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${row.needs_review ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'}">${escapeHtml(row.status)}</span></td></tr>`).join("")}</tbody></table>`
+   : `<div class="py-10 text-center"><p class="text-sm font-bold text-emerald-700">Semua karyawan terjadwal sudah melakukan absensi</p><p class="text-xs text-slate-400 mt-1">Karyawan cuti/izin penuh dan yang belum memasuki jam kerja tidak dihitung.</p></div>`;
 
   const archiveLoaded = archiveMonthsLoaded.has(dashboardState.month);
   dashboardSource.innerHTML = `<div class="flex flex-wrap items-center gap-2"><span class="px-2 py-1 rounded-full bg-slate-100 text-slate-600 font-semibold">${formatNumber(totals.employee_days)} hari-karyawan</span><span class="px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold">Kelengkapan scan ${totals.completeness_rate}%</span><span class="px-2 py-1 rounded-full ${archiveLoaded ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'} font-semibold">${archiveLoaded ? `${formatNumber(totals.spreadsheet_rows)} data arsip Spreadsheet tergabung` : 'Arsip Spreadsheet belum dimuat'}</span></div>`;
