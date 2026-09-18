@@ -11,6 +11,7 @@ import { buildAttendanceStatusRows } from "../attendance-status.mjs";
 import { attendanceDeductionSource, calculateAttendancePenalty } from "../attendance-penalty.mjs";
 import { buildAttendanceAnalytics } from "../attendance-analytics.mjs";
 import { buildMissingAttendanceToday } from "../attendance-missing.mjs";
+import { attendanceSelectionKey as attendanceRowKey, selectedDeletableAttendanceRows } from "../attendance-bulk.mjs";
 
 function normalizeToken(value) {
  return String(value || "").trim().toUpperCase();
@@ -102,6 +103,7 @@ export async function mount(container, { session } = {}) {
  const bulkToolbar = container.querySelector("#absen-bulk-toolbar");
  const selectedCountEl = container.querySelector("#absen-selected-count");
  const btnBulkEdit = container.querySelector("#btn-bulk-edit-absen");
+ const btnBulkDelete = container.querySelector("#btn-bulk-delete-absen");
  const btnClearSelected = container.querySelector("#btn-clear-selected-absen");
  const selectAllVisible = container.querySelector("#absen-select-all-visible");
  const dashboardSection = container.querySelector("#attendance-dashboard");
@@ -266,12 +268,6 @@ export async function mount(container, { session } = {}) {
   }
  }
 
- function attendanceRowKey(row) {
-  return row.is_status_only
-   ? `STATUS:${String(row.nik || row.id)}:${row.tanggal}`
-   : `DATA:${row.id}`;
- }
-
  function updateBulkToolbar() {
   const count = selectedAttendanceKeys.size;
   if (selectedCountEl) selectedCountEl.textContent = String(count);
@@ -285,6 +281,12 @@ export async function mount(container, { session } = {}) {
    selectAllVisible.checked = selectable.length > 0 && selectedVisible === selectable.length;
    selectAllVisible.indeterminate = selectedVisible > 0 && selectedVisible < selectable.length;
    selectAllVisible.disabled = selectable.length === 0;
+  }
+  if (btnBulkDelete) {
+   const deletableCount = selectedDeletableAttendanceRows(listAbsensiGlobal, selectedAttendanceKeys).length;
+   btnBulkDelete.classList.toggle("hidden", !roleIsHrdOrAdmin);
+   btnBulkDelete.disabled = deletableCount === 0;
+   btnBulkDelete.textContent = deletableCount ? `Hapus ${deletableCount} Baris` : "Hapus Baris Terpilih";
   }
  }
 
@@ -784,6 +786,9 @@ export async function mount(container, { session } = {}) {
  if (btnBulkEdit) {
  btnBulkEdit.onclick = () => openBulkEditAbsensiModal();
  }
+ if (btnBulkDelete) {
+ btnBulkDelete.onclick = () => openBulkDeleteAbsensiModal();
+ }
  if (thSortNama) {
  thSortNama.onclick = () => {
  // siklus: default (tanggal) -> A-Z -> Z-A -> default
@@ -951,6 +956,54 @@ export async function mount(container, { session } = {}) {
      toast("Koreksi massal gagal: " + error.message, "error");
      saveBtn.disabled = false;
      saveBtn.textContent = `Simpan ${selectedRows.length} Baris`;
+    }
+   };
+  }
+ });
+ }
+
+ function openBulkDeleteAbsensiModal() {
+ if (!roleIsHrdOrAdmin) return toast("Hanya HRD/Admin yang dapat menghapus data absensi.", "warning");
+ const selectedRows = listAbsensiGlobal.filter(row => selectedAttendanceKeys.has(attendanceRowKey(row)));
+ const deletableRows = selectedDeletableAttendanceRows(listAbsensiGlobal, selectedAttendanceKeys);
+ const skippedCount = selectedRows.length - deletableRows.length;
+ if (!deletableRows.length) return toast("Pilihan hanya berisi status cuti/izin virtual atau data arsip Spreadsheet yang tidak dapat dihapus dari sini.", "warning");
+ const previewRows = deletableRows.slice(0, 12);
+
+ openModal({
+  title: `Hapus Massal Absensi (${deletableRows.length} Baris)`,
+  bodyHtml: `
+   <div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+    <p class="font-bold">Data berikut akan dihapus permanen dari Data Absensi.</p>
+    <p class="text-xs text-rose-700 mt-1">Tindakan ini tidak dapat dibatalkan. Data dari mesin fingerprint dapat muncul kembali jika bridge melakukan sinkronisasi ulang.</p>
+   </div>
+   ${skippedCount ? `<p class="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">${skippedCount} baris status cuti/izin virtual atau arsip Spreadsheet dilewati dan tidak akan dihapus.</p>` : ""}
+   <div class="mt-3 max-h-64 overflow-auto border border-slate-200 rounded-xl">
+    <table class="w-full text-xs"><thead class="sticky top-0 bg-slate-100 text-slate-500"><tr><th class="p-2 text-left">Karyawan</th><th class="p-2 text-left">NIK</th><th class="p-2 text-left">Tanggal</th><th class="p-2 text-left">Cabang</th></tr></thead><tbody class="divide-y divide-slate-100">${previewRows.map(row => `<tr><td class="p-2 font-semibold text-slate-800">${escapeHtml(row.nama || "-")}</td><td class="p-2">${escapeHtml(row.nik || "-")}</td><td class="p-2">${escapeHtml(row.tanggal || "-")}</td><td class="p-2">${escapeHtml(row.cabang || "-")}</td></tr>`).join("")}</tbody></table>
+   </div>
+   ${deletableRows.length > previewRows.length ? `<p class="mt-2 text-[11px] text-slate-500">Dan ${deletableRows.length - previewRows.length} baris lainnya.</p>` : ""}`,
+  footerHtml: `<button id="btn-bulk-delete-cancel" class="px-4 py-2 text-sm text-slate-600 rounded-lg hover:bg-slate-100">Batal</button><button id="btn-bulk-delete-confirm" class="px-4 py-2 text-sm font-bold text-white bg-rose-700 hover:bg-rose-800 rounded-lg">Hapus ${deletableRows.length} Baris</button>`,
+  onMount: modal => {
+   modal.querySelector("#btn-bulk-delete-cancel").onclick = closeModal;
+   modal.querySelector("#btn-bulk-delete-confirm").onclick = async event => {
+    const deleteButton = event.currentTarget;
+    deleteButton.disabled = true;
+    deleteButton.textContent = "Menghapus...";
+    try {
+     for (let index = 0; index < deletableRows.length; index += 400) {
+      const batch = writeBatch(db);
+      deletableRows.slice(index, index + 400).forEach(row => batch.delete(doc(db, COL.DATA_ABSENSI, row.id)));
+      await batch.commit();
+     }
+     selectedAttendanceKeys.clear();
+     closeModal();
+     toast(`${deletableRows.length} baris absensi berhasil dihapus.`, "success");
+     await loadRawAbsensiTable();
+    } catch (error) {
+     console.error("Hapus massal absensi gagal:", error);
+     toast("Hapus massal gagal: " + error.message, "error");
+     deleteButton.disabled = false;
+     deleteButton.textContent = `Hapus ${deletableRows.length} Baris`;
     }
    };
   }
