@@ -15,12 +15,14 @@ import { auth } from "./firebase-config.js";
 
 // Ubah versi ini setiap ada perubahan struktur view agar browser tidak
 // mencampur HTML terbaru dengan modul JavaScript lama dari cache.
-const APP_ASSET_VERSION = "20260916-malang-leave-scope-v5";
+const APP_ASSET_VERSION = "20260918-navigation-performance-v1";
 const viewContainer = document.getElementById("view-container");
 let currentUnmount = null;
 let currentRoute = null;
 const viewHtmlCache = new Map();
+const routeModuleCache = new Map();
 let routeRequestId = 0;
+let renderedShellSignature = "";
 
 const PUBLIC_CAREER_ROUTES = ["karir", "lowongan", "portal-karir", "loker", "karir-online", "career"];
 
@@ -386,16 +388,37 @@ async function loadViewHtml(viewName) {
 }
 
 async function loadRouteModule(viewName) {
+ if (routeModuleCache.has(viewName)) return routeModuleCache.get(viewName);
  const modulePath = `./views/${viewName}.js?v=${APP_ASSET_VERSION}`;
- try {
-  return await import(modulePath);
- } catch (error) {
+ const promise = import(modulePath).catch(async error => {
   // Kode modul valid di build, tetapi file terunduh dapat tertinggal/rusak di
   // cache browser. Hanya cuti yang dicoba ulang sekali dengan URL berbeda.
-  if (viewName !== "cuti" || !(error instanceof SyntaxError)) throw error;
+  if (viewName !== "cuti" || !(error instanceof SyntaxError)) {
+   routeModuleCache.delete(viewName);
+   throw error;
+  }
   console.warn("Modul cuti gagal diparse; mencoba unduhan ulang sekali.", error);
   return import(`${modulePath}-retry-${Date.now()}`);
- }
+ });
+ routeModuleCache.set(viewName, promise);
+ return promise;
+}
+
+function routeViewName(route) {
+ const value = String(route || "").split("?")[0];
+ if (value === "manajemen-cuti") return "cuti";
+ if (["lembur", "sppkl", "spl", "overtime", "perintah-lembur"].includes(value)) return "lembur-kasbon";
+ if (["konseling", "coaching", "counseling", "case-management", "hr-case", "hr-cases"].includes(value)) return "konseling-coaching";
+ if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(value)) return "pemanggilan";
+ if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi"].includes(value)) return "penilaian-kontrak";
+ return value;
+}
+
+function prefetchRoute(route) {
+ const viewName = routeViewName(route);
+ if (!viewName) return;
+ void loadViewHtml(viewName).catch(() => {});
+ void loadRouteModule(viewName).catch(() => {});
 }
 
 /* ---------------------------------------------------------------------
@@ -452,6 +475,13 @@ async function renderShellForUser(session) {
  }
 
  const menus = await computeVisibleMenus(session);
+ const shellSignature = JSON.stringify({
+  user: session.uid || session.username || session.nik,
+  role: session.role,
+  name: session.nama,
+  photo: session.foto_url || "",
+  menus: menus.map(menu => menu.id)
+ });
 
  const roleUpper = (session?.role || "").toUpperCase();
  let displayMenus = menus;
@@ -465,6 +495,7 @@ async function renderShellForUser(session) {
  }, {});
 
  const nav = document.getElementById("sidebar-nav");
+ if (nav && renderedShellSignature === shellSignature) return;
  let html = "";
 
  // 2. Render HTML menggunakan elemen <details> untuk efek Accordion (Buka/Tutup)
@@ -493,7 +524,19 @@ async function renderShellForUser(session) {
  </details>`;
  }
 
- if (nav) nav.innerHTML = html;
+ if (nav) {
+  nav.innerHTML = html;
+  renderedShellSignature = shellSignature;
+  if (nav.dataset.prefetchBound !== "true") {
+   const warmRoute = event => {
+    const link = event.target.closest?.("[data-route]");
+    if (link && nav.contains(link)) prefetchRoute(link.dataset.route);
+   };
+   nav.addEventListener("pointerover", warmRoute, { passive: true });
+   nav.addEventListener("focusin", warmRoute);
+   nav.dataset.prefetchBound = "true";
+  }
+ }
 }
 
 function highlightActive(route) {
@@ -579,8 +622,7 @@ async function router(session) {
 	if (!container) return;
 	const requestId = ++routeRequestId;
 
-	const activeSession = (await syncSessionWithDb(session)) || session;
-	if (requestId !== routeRequestId) return;
+	const activeSession = session;
 
 	let { path, params } = parseHash();
 	let cleanPath = String(path || "").replace(/^[\/#]+/, "").replace(/[\/#]+$/, "").trim();
@@ -631,12 +673,13 @@ async function router(session) {
 	try {
 		if (typeof currentUnmount === "function") { currentUnmount(); currentUnmount = null; }
 		
-		const [html, mod] = await Promise.all([
-			loadViewHtml(mappedPath),
-			loadRouteModule(mappedPath).catch(error => ({ __loadError: error }))
-		]);
+		const htmlPromise = loadViewHtml(mappedPath);
+		const modulePromise = loadRouteModule(mappedPath).catch(error => ({ __loadError: error }));
+		const html = await htmlPromise;
 		if (requestId !== routeRequestId) return;
 		container.innerHTML = html;
+		const mod = await modulePromise;
+		if (requestId !== routeRequestId) return;
 		
 		try {
 			if (mod.__loadError) throw mod.__loadError;

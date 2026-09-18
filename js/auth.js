@@ -610,68 +610,95 @@ export async function logout() {
  * RBAC — MENU VISIBILITY & PERMISSION OVERRIDES
  * ------------------------------------------------------------------- */
 let _permCache = null; // Map of key -> permission record
+let _permCacheAt = 0;
+let _permLoadPromise = null;
+const PERMISSION_CACHE_TTL_MS = 15_000;
 
 export async function loadPermissionOverrides(force = false) {
- if (_permCache && !force) return _permCache;
- const session = getSession();
- const role = String(session?.role || '').toUpperCase();
- const rows = ['HRD', 'SUPERADMIN'].includes(role)
-  ? await fsGetAll(COL.USER_PERMISSIONS)
-  : (await Promise.all([...new Set([auth.currentUser?.uid, session?.username, session?.nik].filter(k => k && k !== 'UNLINKED' && k !== '-'))]
-      .map(async key => {
-       const snap = await getDoc(doc(db, COL.USER_PERMISSIONS, String(key)));
-       return snap.exists() ? { ...snap.data(), id: snap.id } : null;
-      }))).filter(Boolean);
- _permCache = {};
- // Dokumen alias lama bisa berisi revisi berbeda. Dahulukan revisi terbaru
- // dan identitas akun (UID/username/NIK), bukan kecocokan nama atau email.
- rows.sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || ''))).forEach(r => {
-  if (!r) return;
-  const targetKeys = new Set();
-  if (r.id) {
-   const strId = String(r.id).trim();
-   targetKeys.add(strId);
-   targetKeys.add(strId.toLowerCase());
-   targetKeys.add(strId.toUpperCase());
-  }
-  if (r.username) {
-   const strUn = String(r.username).trim();
-   targetKeys.add(strUn);
-   targetKeys.add(strUn.toLowerCase());
-   targetKeys.add(strUn.toUpperCase());
-   if (strUn.includes(".")) {
-    targetKeys.add(strUn.replace(/\./g, " ").toLowerCase());
-    targetKeys.add(strUn.replace(/\./g, " ").toUpperCase());
+ if (_permCache && !force && Date.now() - _permCacheAt < PERMISSION_CACHE_TTL_MS) return _permCache;
+ if (_permLoadPromise && !force) return _permLoadPromise;
+ _permLoadPromise = (async () => {
+  const session = getSession();
+  const role = String(session?.role || '').toUpperCase();
+  const rows = ['HRD', 'SUPERADMIN'].includes(role)
+   ? await fsGetAll(COL.USER_PERMISSIONS)
+   : (await Promise.all([...new Set([auth.currentUser?.uid, session?.username, session?.nik].filter(k => k && k !== 'UNLINKED' && k !== '-'))]
+       .map(async key => {
+        const snap = await getDoc(doc(db, COL.USER_PERMISSIONS, String(key)));
+        return snap.exists() ? { ...snap.data(), id: snap.id } : null;
+       }))).filter(Boolean);
+  const nextCache = {};
+  // Dokumen alias lama bisa berisi revisi berbeda. Dahulukan revisi terbaru
+  // dan identitas akun (UID/username/NIK), bukan kecocokan nama atau email.
+  rows.sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || ''))).forEach(r => {
+   if (!r) return;
+   const targetKeys = new Set();
+   if (r.id) {
+    const strId = String(r.id).trim();
+    targetKeys.add(strId);
+    targetKeys.add(strId.toLowerCase());
+    targetKeys.add(strId.toUpperCase());
    }
-  }
-  if (r.nik && r.nik !== "-" && r.nik !== "null" && r.nik !== "undefined") {
-   const strNik = String(r.nik).trim();
-   targetKeys.add(strNik);
-   targetKeys.add(strNik.toLowerCase());
-   targetKeys.add(strNik.toUpperCase());
-  }
-  if (r.user_id) {
-   const strUid = String(r.user_id).trim();
-   targetKeys.add(strUid);
-   targetKeys.add(strUid.toLowerCase());
-   targetKeys.add(strUid.toUpperCase());
-  }
-  if (r.firebase_uid) targetKeys.add(String(r.firebase_uid).trim());
+   if (r.username) {
+    const strUn = String(r.username).trim();
+    targetKeys.add(strUn);
+    targetKeys.add(strUn.toLowerCase());
+    targetKeys.add(strUn.toUpperCase());
+    if (strUn.includes(".")) {
+     targetKeys.add(strUn.replace(/\./g, " ").toLowerCase());
+     targetKeys.add(strUn.replace(/\./g, " ").toUpperCase());
+    }
+   }
+   if (r.nik && r.nik !== "-" && r.nik !== "null" && r.nik !== "undefined") {
+    const strNik = String(r.nik).trim();
+    targetKeys.add(strNik);
+    targetKeys.add(strNik.toLowerCase());
+    targetKeys.add(strNik.toUpperCase());
+   }
+   if (r.user_id) {
+    const strUid = String(r.user_id).trim();
+    targetKeys.add(strUid);
+    targetKeys.add(strUid.toLowerCase());
+    targetKeys.add(strUid.toUpperCase());
+   }
+   if (r.firebase_uid) targetKeys.add(String(r.firebase_uid).trim());
 
-  targetKeys.forEach(k => {
-   if (k) _permCache[k] = r;
+   targetKeys.forEach(k => {
+    if (k) nextCache[k] = r;
+   });
   });
- });
- return _permCache;
+  _permCache = nextCache;
+  _permCacheAt = Date.now();
+  return _permCache;
+ })();
+ try {
+  return await _permLoadPromise;
+ } finally {
+  _permLoadPromise = null;
+ }
 }
 
 /** Apakah user adalah "atasan" (punya bawahan) berdasarkan field ATASAN di master_karyawan */
+const _atasanCache = new Map();
+const ATASAN_CACHE_TTL_MS = 60_000;
+
 export async function isAtasan(namaUser) {
+ const cacheKey = String(namaUser || "").trim().toUpperCase();
+ if (!cacheKey) return false;
+ const cached = _atasanCache.get(cacheKey);
+ if (cached?.promise) return cached.promise;
+ if (cached && Date.now() - cached.at < ATASAN_CACHE_TTL_MS) return cached.value;
+ const promise = (async () => {
  try {
   const q = query(collection(db, COL.MASTER_KARYAWAN), where("atasan", "==", namaUser));
   const snap = await getDocs(q);
-  return !snap.empty;
+  const value = !snap.empty;
+  _atasanCache.set(cacheKey, { value, at: Date.now() });
+  return value;
  } catch { return false; }
+ })();
+ _atasanCache.set(cacheKey, { promise, at: Date.now() });
+ return promise;
 }
 
 /**
@@ -763,7 +790,7 @@ function _permOverrideSearchKeys(session) {
 }
 
 export async function findUserOverride(session) {
- const overrides = await loadPermissionOverrides(true);
+ const overrides = await loadPermissionOverrides(false);
  const keys = _permOverrideSearchKeys(session);
  for (const k of keys) {
   if (overrides[k]) return overrides[k];
@@ -776,8 +803,20 @@ export const _findUserOverride = findUserOverride;
  * Sinkronisasi data sesi aktif dari USERS & MASTER_KARYAWAN secara real-time
  * Menjamin perubahan Role, NIK, Jabatan, dan Cabang oleh Super Admin langsung terefleksi
  */
-export async function syncSessionWithDb(session) {
+let _sessionSyncCache = null;
+let _sessionSyncCacheAt = 0;
+let _sessionSyncPromise = null;
+const SESSION_SYNC_TTL_MS = 30_000;
+
+export async function syncSessionWithDb(session, force = false) {
  if (!session) return null;
+ const sessionKey = String(session.uid || session.username || session.nik || "");
+ const cachedKey = String(_sessionSyncCache?.uid || _sessionSyncCache?.username || _sessionSyncCache?.nik || "");
+ if (!force && _sessionSyncCache && sessionKey && sessionKey === cachedKey && Date.now() - _sessionSyncCacheAt < SESSION_SYNC_TTL_MS) {
+  return _sessionSyncCache;
+ }
+ if (!force && _sessionSyncPromise) return _sessionSyncPromise;
+ _sessionSyncPromise = (async () => {
  try {
   await waitForAuthReady();
   if (!auth.currentUser) {
@@ -804,11 +843,19 @@ export async function syncSessionWithDb(session) {
    foto_url: p.foto_url || null
   };
   setSession(current);
+  _sessionSyncCache = current;
+  _sessionSyncCacheAt = Date.now();
   return current;
  } catch (err) {
   console.warn("syncSessionWithDb error:", err);
   clearSession();
   return null;
+ }
+ })();
+ try {
+  return await _sessionSyncPromise;
+ } finally {
+  _sessionSyncPromise = null;
  }
 }
 
@@ -944,7 +991,7 @@ export async function canAccessRoute(routeId, session) {
  * RBAC — AKSES FORM PENGAJUAN (Katalog ISO)
  * ------------------------------------------------------------------- */
 export async function canAccessForm(formConfig, session) {
- const overrides = await loadPermissionOverrides(true);
+ const overrides = await loadPermissionOverrides(false);
  const searchKeys = [
  session.username,
  session.username ? String(session.username).toLowerCase() : null,
