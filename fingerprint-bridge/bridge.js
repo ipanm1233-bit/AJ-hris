@@ -227,7 +227,7 @@ function resolveSyncStartDate(latestDate, today, overlapDays = 1) {
 }
 
 async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {}) {
-  await refreshCentralConfig();
+  const centralConfig = await refreshCentralConfig();
   const startedAt = new Date();
   const result = await readDevice();
   console.log(`[${startedAt.toISOString()}] Solution X150 terhubung via ${result.protocol.toUpperCase()}; log terbaca ${result.logs.length}.`);
@@ -240,6 +240,13 @@ async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {
   const branch = String(process.env.FINGERPRINT_BRANCH || 'CIREBON').trim().toUpperCase();
   let startDate = fromDate;
   let endDate = toDate || today;
+  const resyncRequest = centralConfig?.resyncRequest;
+  const requestId = String(resyncRequest?.id || '').trim();
+  if (!startDate && requestId && validDate(resyncRequest?.fromDate) && validDate(resyncRequest?.toDate)) {
+    startDate = resyncRequest.fromDate;
+    endDate = resyncRequest.toDate;
+    console.log(`Permintaan tarik ulang dari HRIS diterima: ${startDate} s.d. ${endDate}.`);
+  }
 
   if (startDate && !validDate(startDate)) throw new Error('Format --from wajib YYYY-MM-DD');
   if (!validDate(endDate)) throw new Error('Format --to wajib YYYY-MM-DD');
@@ -274,6 +281,11 @@ async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {
   }
   if (!recentLogs.length) {
     console.log('Tidak ada log mesin pada periode tersebut.');
+    if (requestId) await sendPayload({
+      action: 'sync_complete',
+      requestId,
+      error: `Tidak ada log mesin pada periode ${startDate} s.d. ${endDate}.`
+    });
     return;
   }
 
@@ -291,6 +303,7 @@ async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {
     }
   }
   console.log(`Sinkronisasi selesai: ${recentLogs.length} scan dikirim, ${processed} hari-karyawan diproses.`);
+  if (requestId) await sendPayload({ action: 'sync_complete', requestId });
   if (duplicatesRemoved) console.log(`Pembersihan data ganda: ${duplicatesRemoved} baris lama dihapus.`);
   if (unmatched.size) {
     const labels = [...unmatched].map(id => unmatchedNames.get(id) ? `${id} (${unmatchedNames.get(id)})` : id);

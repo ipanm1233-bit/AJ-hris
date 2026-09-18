@@ -47,6 +47,18 @@ function cleanDeviceId(value) {
   return String(value || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
 }
 
+function validIsoDate(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return date.getUTCFullYear() === Number(match[1]) &&
+    date.getUTCMonth() === Number(match[2]) - 1 && date.getUTCDate() === Number(match[3]);
+}
+
+function dateDistanceDays(fromDate, toDate) {
+  return Math.round((Date.parse(`${toDate}T00:00:00Z`) - Date.parse(`${fromDate}T00:00:00Z`)) / 86_400_000);
+}
+
 function validPrivateIpv4(value) {
   const parts = String(value || '').trim().split('.').map(Number);
   if (parts.length !== 4 || parts.some(part => !Number.isInteger(part) || part < 0 || part > 255)) return false;
@@ -78,7 +90,12 @@ function publicDeviceConfig(snapshot) {
     lastSeenAt,
     online,
     lastSyncAt: data.lastSyncAt?.toDate?.()?.toISOString?.() || data.lastSyncAt || null,
-    lastError: String(data.lastError || '').slice(0, 300)
+    lastError: String(data.lastError || '').slice(0, 300),
+    resyncRequest: data.resyncRequest && validIsoDate(data.resyncRequest.fromDate) ? {
+      id: String(data.resyncRequest.id || ''),
+      fromDate: String(data.resyncRequest.fromDate),
+      toDate: String(data.resyncRequest.toDate || data.resyncRequest.fromDate)
+    } : null
   };
 }
 
@@ -175,6 +192,33 @@ async function handleAdminDeviceAction(req, res, body) {
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
     res.status(200).json({ success: true, pairingCode: code, expiresInMinutes: 30 });
+    return true;
+  }
+
+  if (body.action === 'admin_request_sync') {
+    const fromDate = String(body.fromDate || '').trim();
+    const toDate = String(body.toDate || fromDate).trim();
+    const span = validIsoDate(fromDate) && validIsoDate(toDate) ? dateDistanceDays(fromDate, toDate) : -1;
+    if (span < 0 || span > 31) {
+      res.status(400).json({ success: false, error: 'Periode tarik ulang tidak valid atau lebih dari 31 hari.' });
+      return true;
+    }
+    const requestId = crypto.randomBytes(12).toString('hex');
+    await ref.set({
+      resyncRequest: {
+        id: requestId,
+        fromDate,
+        toDate,
+        requestedAt: new Date().toISOString(),
+        requestedBy: context.user.uid
+      },
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    await writeAuditLog(context.db, req, context.user, {
+      action: 'FINGERPRINT_RESYNC_REQUESTED', module: 'ATTENDANCE', recordId: id,
+      metadata: { from_date: fromDate, to_date: toDate }
+    });
+    res.status(200).json({ success: true, requestId, fromDate, toDate });
     return true;
   }
 
@@ -333,6 +377,22 @@ module.exports = async function handler(req, res) {
     if (req.body?.action === 'config') {
       if (!pairedDevice) return res.status(400).json({ success: false, error: 'Konfigurasi pusat hanya tersedia untuk mesin yang sudah dipasangkan.' });
       return res.status(200).json({ success: true, config: publicDeviceConfig(pairedDevice.snapshot) });
+    }
+
+    if (req.body?.action === 'sync_complete') {
+      if (!pairedDevice) return res.status(400).json({ success: false, error: 'Konfirmasi sinkronisasi memerlukan mesin yang dipasangkan.' });
+      const requestId = String(req.body?.requestId || '').trim();
+      const pendingId = String(pairedDevice.snapshot.data()?.resyncRequest?.id || '');
+      if (requestId && pendingId && timingSafeTextEqual(requestId, pendingId)) {
+        const syncError = String(req.body?.error || '').trim().slice(0, 300);
+        await pairedDevice.snapshot.ref.set({
+          resyncRequest: admin.firestore.FieldValue.delete(),
+          lastSyncAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastError: syncError
+        }, { merge: true });
+      }
+      return res.status(200).json({ success: true });
     }
 
     if (req.body?.action === 'status') {
@@ -578,4 +638,4 @@ module.exports = async function handler(req, res) {
   }
 };
 
-module.exports._test = { validPrivateIpv4, cleanDeviceId, pairingCode, secretHash, normalizeBranch };
+module.exports._test = { validPrivateIpv4, validIsoDate, dateDistanceDays, cleanDeviceId, pairingCode, secretHash, normalizeBranch };

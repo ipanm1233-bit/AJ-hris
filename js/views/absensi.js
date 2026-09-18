@@ -43,6 +43,11 @@ function fingerprintInstallCommand(pairingCode) {
  return `Invoke-WebRequest "${installer}" -OutFile "$env:TEMP\\ajhris-fingerprint-install.ps1"; powershell -ExecutionPolicy Bypass -File "$env:TEMP\\ajhris-fingerprint-install.ps1" -HrisUrl "${origin}" -PairingCode "${pairingCode}"`;
 }
 
+function fingerprintUpdateCommand() {
+ const updater = 'https://raw.githubusercontent.com/ipanm1233-bit/AJ-hris/main/fingerprint-bridge/update.ps1';
+ return `Invoke-WebRequest "${updater}" -OutFile "$env:TEMP\\ajhris-fingerprint-update.ps1"; powershell -ExecutionPolicy Bypass -File "$env:TEMP\\ajhris-fingerprint-update.ps1"`;
+}
+
 function getTwoRunningMonthsRange() {
  const now = new Date();
  // Tanggal 1 dari 1 bulan sebelum bulan ini
@@ -1431,6 +1436,7 @@ export async function mount(container, { session } = {}) {
  <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-xs text-indigo-800">
  <p class="font-bold">Connector per Cabang</p>
  <p class="mt-1">Tambahkan mesin, lalu jalankan satu perintah pemasangan pada komputer yang satu jaringan dengan mesin. Setelah itu sinkronisasi berjalan otomatis.</p>
+ <button id="fp-copy-update" type="button" class="mt-2 font-semibold text-indigo-700 hover:underline">Salin perintah pembaruan connector</button>
  </div>
 
  <div id="fp-device-list" class="space-y-3">
@@ -1475,6 +1481,14 @@ export async function mount(container, { session } = {}) {
  `,
  onMount: m => {
  m.querySelector("#btn-cfg-fp-close").onclick = closeModal;
+ m.querySelector('#fp-copy-update').onclick = async () => {
+   try {
+     await navigator.clipboard.writeText(fingerprintUpdateCommand());
+     toast('Perintah pembaruan connector berhasil disalin.', 'success');
+   } catch (_) {
+     toast('Browser tidak mengizinkan clipboard. Gunakan perintah pemasangan ulang.', 'warning');
+   }
+ };
 
  const listEl = m.querySelector('#fp-device-list');
  const pairingBox = m.querySelector('#fp-pairing-result');
@@ -1514,6 +1528,10 @@ export async function mount(container, { session } = {}) {
              ${device.lastError ? `<p class="text-[10px] text-red-600 mt-0.5">${escapeHtml(device.lastError)}</p>` : ''}
            </div>
            <div class="flex gap-2">
+             <label class="flex items-center gap-1 text-[10px] text-slate-500">Tanggal
+               <input data-field="resyncDate" type="date" value="${new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)}" class="px-2 py-1 border rounded text-[11px]">
+             </label>
+             <button type="button" data-action="resync" class="text-[11px] font-semibold text-amber-700 hover:underline">Tarik ulang log</button>
              <button type="button" data-action="save" class="text-[11px] font-semibold text-indigo-700 hover:underline">Simpan konfigurasi</button>
              <button type="button" data-action="pair" class="text-[11px] font-semibold text-emerald-700 hover:underline">${device.paired ? 'Pasangkan ulang' : 'Buat kode pairing'}</button>
            </div>
@@ -1546,6 +1564,22 @@ export async function mount(container, { session } = {}) {
          showPairing(result.pairingCode);
        } catch (error) { toast(error.message, 'error'); }
        button.disabled = false;
+     };
+   });
+   listEl.querySelectorAll('[data-action="resync"]').forEach(button => {
+     button.onclick = async () => {
+       const card = button.closest('.fp-device-card');
+       const date = card.querySelector('[data-field="resyncDate"]').value;
+       if (!date) return toast('Pilih tanggal yang akan ditarik ulang.', 'warning');
+       button.disabled = true;
+       const original = button.textContent;
+       button.textContent = 'Meminta...';
+       try {
+         await fingerprintApi('admin_request_sync', { deviceId: card.dataset.deviceId, fromDate: date, toDate: date });
+         toast(`Permintaan tarik ulang ${date} dikirim. Connector akan memprosesnya pada siklus berikutnya.`, 'success');
+       } catch (error) { toast(error.message, 'error'); }
+       button.disabled = false;
+       button.textContent = original;
      };
    });
  };

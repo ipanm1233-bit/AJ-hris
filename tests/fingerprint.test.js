@@ -24,6 +24,12 @@ test('creates strong human-readable one-time pairing codes', () => {
   assert.notEqual(fingerprintApiHelpers.secretHash(code), code);
 });
 
+test('validates bounded manual fingerprint resync ranges', () => {
+  assert.equal(fingerprintApiHelpers.validIsoDate('2026-09-17'), true);
+  assert.equal(fingerprintApiHelpers.validIsoDate('2026-02-30'), false);
+  assert.equal(fingerprintApiHelpers.dateDistanceDays('2026-09-17', '2026-09-18'), 1);
+});
+
 test('keeps device-local timestamps unchanged instead of shifting them by seven hours', () => {
   assert.deepEqual(parseFingerprintTimestamp('2026-09-07 07:55:12'), {
     tanggal: '2026-09-07', jam: '07:55', detik: 12, minutes: 475
