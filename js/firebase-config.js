@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
 import {
  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
- collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc,
+ collection, doc, getDoc, getDocs, getDocsFromCache, addDoc, setDoc, updateDoc, deleteDoc,
  query, where, orderBy, limit, onSnapshot, writeBatch, serverTimestamp,
  Timestamp, increment, arrayUnion
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
@@ -103,7 +103,7 @@ export const storage = getStorage(app);
 
 // Helper exports (tambahkan ref, uploadBytes, getDownloadURL)
 export {
- collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc,
+ collection, doc, getDoc, getDocs, getDocsFromCache, addDoc, setDoc, updateDoc, deleteDoc,
  query, where, orderBy, limit, onSnapshot, writeBatch, serverTimestamp,
  Timestamp, increment, ref, uploadBytes, getDownloadURL, arrayUnion
 };

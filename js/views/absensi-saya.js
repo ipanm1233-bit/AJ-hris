@@ -1,5 +1,5 @@
-import { db, COL, doc, getDoc } from "../firebase-config.js";
-import { fsGetAll, escapeHtml, fmtDateShort } from "../utils.js";
+import { db, COL, collection, doc, getDoc, getDocs, query, where } from "../firebase-config.js";
+import { escapeHtml, fmtDateShort } from "../utils.js";
 import { badge, emptyState } from "../components.js";
 
 function parseTimeToMinutes(timeStr) {
@@ -75,8 +75,13 @@ export async function mount(container, { session }) {
   let myShift = { masuk: "08:00", pulang: "17:00" };
 
   try {
+    const nik = String(session?.nik || "").trim();
+    const attendanceRequest = nik ? Promise.all([
+      getDocs(query(collection(db, COL.DATA_ABSENSI), where("nik", "==", nik))),
+      getDocs(query(collection(db, COL.DATA_ABSENSI), where("nik_karyawan", "==", nik)))
+    ]).then(snaps => [...new Map(snaps.flatMap(snap => snap.docs).map(item => [item.id, { ...item.data(), id: item.id }])).values()]) : Promise.resolve([]);
     const [all, cfgSnap] = await Promise.all([
-      fsGetAll(COL.DATA_ABSENSI),
+      attendanceRequest,
       getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(() => null)
     ]);
 

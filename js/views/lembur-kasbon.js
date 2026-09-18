@@ -8,7 +8,7 @@
  * serta verifikasi Jam Lembur Disetujui HR (Maksimum 4 Jam / Hari).
  * =====================================================================
  */
-import { db, COL, doc, getDoc, setDoc, deleteDoc, updateDoc } from "../firebase-config.js";
+import { db, COL, collection, doc, getDoc, getDocs, query, where, setDoc, deleteDoc, updateDoc } from "../firebase-config.js";
 import {
   fsGetAll, fsAdd, fsUpdate, fsDelete, toast, fmtDateShort, genId,
   escapeHtml, confirmDialog, openModal, closeModal, downloadXlsx
@@ -135,12 +135,18 @@ export async function mount(container, context = {}) {
   // Main Data Loader
   async function loadAllData() {
     try {
+      const attendanceSince = new Date();
+      attendanceSince.setDate(attendanceSince.getDate() - 60);
+      const attendanceRequest = getDocs(query(
+        collection(db, COL.DATA_ABSENSI || "data_absensi"),
+        where("tanggal", ">=", attendanceSince.toISOString().slice(0, 10))
+      )).then(snap => snap.docs.map(item => ({ id: item.id, ...item.data() }))).catch(() => []);
       const [karyawanRes, ordersRes, proposalsRes, batchesRes, absensiRes, settingsDoc] = await Promise.all([
         fsGetAll(COL.MASTER_KARYAWAN).catch(() => []),
         fsGetAll(COL.OVERTIME_ORDERS || "overtime_orders").catch(() => []),
         fsGetAll(COL.OVERTIME_PROPOSALS || "overtime_proposals").catch(() => []),
         fsGetAll(COL.OVERTIME_EXPORT_BATCHES || "overtime_export_batches").catch(() => []),
-        fsGetAll(COL.DATA_ABSENSI || "data_absensi").catch(() => []),
+        attendanceRequest,
         getDoc(doc(db, COL.APP_SETTINGS || "app_settings", "overtime_settings")).catch(() => null)
       ]);
 

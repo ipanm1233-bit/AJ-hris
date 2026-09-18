@@ -1028,8 +1028,7 @@ async function loadAttendanceAnalytics(container, session) {
   if (!bodyEl) return;
 
   try {
-    const [rawAllAbsen, allKaryawan, cfgSnap] = await Promise.all([
-      fsGetAll(COL.DATA_ABSENSI),
+    const [allKaryawan, cfgSnap] = await Promise.all([
       fsGetAll(COL.MASTER_KARYAWAN).catch(() => []),
       getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(() => null)
     ]);
@@ -1054,6 +1053,21 @@ async function loadAttendanceAnalytics(container, session) {
       if (sNama && (sNama.includes("jannah") || sNama.includes("amaliatul")) && (kNama.includes("jannah") || kNama.includes("amaliatul"))) return true;
       return false;
     });
+
+    const employeeNik = String(userEmpObj?.nik || userEmpObj?.nik_karyawan || session?.nik || "").trim();
+    let rawAllAbsen = [];
+    if (isHrd) {
+      const since = new Date();
+      since.setDate(since.getDate() - 60);
+      const snap = await getDocs(query(collection(db, COL.DATA_ABSENSI), where("tanggal", ">=", since.toISOString().slice(0, 10))));
+      rawAllAbsen = snap.docs.map(item => ({ id: item.id, ...item.data() }));
+    } else if (employeeNik) {
+      const snaps = await Promise.all([
+        getDocs(query(collection(db, COL.DATA_ABSENSI), where("nik", "==", employeeNik))),
+        getDocs(query(collection(db, COL.DATA_ABSENSI), where("nik_karyawan", "==", employeeNik)))
+      ]);
+      rawAllAbsen = [...new Map(snaps.flatMap(snap => snap.docs).map(item => [item.id, { id: item.id, ...item.data() }])).values()];
+    }
 
     // Annotate with normalized dates & month prefixes
     const annotatedAll = rawAllAbsen.map(item => {

@@ -1,4 +1,4 @@
-import { db, COL, collection, getDocs, writeBatch, doc, getDoc, query, where, setDoc, deleteDoc } from "../firebase-config.js";
+import { db, COL, collection, getDocs, getDocsFromCache, writeBatch, doc, getDoc, query, where, setDoc, deleteDoc } from "../firebase-config.js";
 import { toast, genId, fsGetAll, escapeHtml, openModal, closeModal, formatUangJalanEkspedisiRows } from "../utils.js";
 import { skeletonRows, emptyState } from "../components.js";
 import { callGasArchiveWebApp } from "../gas-integration.js";
@@ -123,6 +123,7 @@ export async function mount(container, { session } = {}) {
  const dashboardDivisions = container.querySelector("#attendance-dashboard-divisions");
  const dashboardMissingToday = container.querySelector("#attendance-dashboard-missing-today");
  const dashboardMissingMeta = container.querySelector("#attendance-dashboard-missing-meta");
+ let attendanceLoadedAt = 0;
 
  const { startStr: twoMonthsStart, endStr: twoMonthsEnd } = getTwoRunningMonthsRange();
 
@@ -434,16 +435,35 @@ export async function mount(container, { session } = {}) {
  };
  });
 
- if (canViewDashboard) loadRawAbsensiTable();
+ if (roleIsHrdOrAdmin && canViewDashboard) loadRawAbsensiTable();
 
- async function loadRawAbsensiTable() {
+ async function loadRawAbsensiTable(force = false) {
+ if (!force && attendanceLoadedAt && Date.now() - attendanceLoadedAt < 60_000) {
+  applyFiltersAbsen();
+  renderAttendanceDashboard();
+  return;
+ }
  rawTbody.innerHTML = `<tr><td colspan="18" class="p-4">${skeletonRows(4)}</td></tr>`;
  if (canViewAll && !roleIsHrdOrAdmin && !scopedBranch) {
   rawTbody.innerHTML = `<tr><td colspan="18" class="p-4 text-amber-800">Cabang akun belum terdaftar. Hubungi HRD agar akses PIC absensi dapat dibatasi ke cabang yang tepat.</td></tr>`;
   return;
  }
+ const sixtyDaysAgo = new Date();
+ sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+ const thresholdStr = sixtyDaysAgo.toISOString().substring(0, 10);
  const attendanceRef = collection(db, COL.DATA_ABSENSI);
- const attendanceRequest = roleIsHrdOrAdmin ? fsGetAll(COL.DATA_ABSENSI)
+ const liveAttendanceQuery = query(attendanceRef, where("tanggal", ">=", thresholdStr));
+ const attendanceRequest = roleIsHrdOrAdmin
+  ? getDocs(liveAttendanceQuery)
+    .catch(async error => {
+      const cached = await getDocsFromCache(liveAttendanceQuery).catch(() => null);
+      if (cached?.docs?.length) {
+       toast("Kuota Firebase sedang habis; menampilkan data absensi tersimpan di perangkat ini.", "warning");
+       return cached;
+      }
+      throw error;
+    })
+    .then(snap => snap.docs.map(item => ({ ...item.data(), id: item.id, _docId: item.id })))
   : isPicBranch ? attendanceAccessApi("attendance_list").then(result => result.rows || [])
   : session?.nik ? Promise.all([
       getDocs(query(attendanceRef, where("nik", "==", String(session.nik)))),
@@ -461,7 +481,10 @@ export async function mount(container, { session } = {}) {
  ]);
  } catch (error) {
   console.error("Gagal membaca data absensi:", error);
-  rawTbody.innerHTML = `<tr><td colspan="18" class="p-4 text-rose-700">Data absensi belum dapat dibaca oleh akun ini. Periksa izin data dan cabang akun di Pengaturan Hak Akses. (${escapeHtml(error.message || 'Akses ditolak')})</td></tr>`;
+  const quotaExceeded = /quota|resource-exhausted|daily read/i.test(String(error?.message || error));
+  rawTbody.innerHTML = `<tr><td colspan="18" class="p-4 text-rose-700">${quotaExceeded
+   ? 'Kuota baca Firebase hari ini sudah habis. Ini bukan masalah hak akses akun. Sistem akan normal kembali setelah kuota Firebase direset; query absensi sudah dibatasi agar kejadian ini tidak berulang.'
+   : `Data absensi belum dapat dibaca oleh akun ini. Periksa izin data dan cabang akun di Pengaturan Hak Akses. (${escapeHtml(error.message || 'Akses ditolak')})`}</td></tr>`;
   return;
  }
  employeeRowsGlobal = isPicBranch ? employeeRows.filter(k => normalizeToken(k.cabang) === normalizeToken(scopedBranch)) : employeeRows;
@@ -480,48 +503,38 @@ export async function mount(container, { session } = {}) {
  renderAttendanceDashboard();
  if (canViewDashboard && !archiveMonthsLoaded.has(dashboardState.month)) loadAttendanceArchiveForDashboard();
 
- // Check for records older than 60 days per employee to keep Firebase lightweight
- const sixtyDaysAgo = new Date();
- sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
- const thresholdStr = sixtyDaysAgo.toISOString().substring(0, 10);
- 
- // Select records older than 60 days from today
- const oldRecords = roleIsHrdOrAdmin ? listAbsensiGlobal.filter(x => !x.is_status_only && x.tanggal && x.tanggal < thresholdStr) : [];
-
+ // Data live sengaja hanya memuat 60 hari terakhir. Riwayat yang lebih lama
+ // tersedia melalui arsip Spreadsheet agar halaman ini tidak membaca seluruh
+ // koleksi pada setiap pembukaan.
  if (archiveAlertBox) {
- const hasOld = oldRecords.length > 0;
- archiveAlertBox.className = hasOld
- ? "bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between gap-4 mb-4 text-xs"
- : "bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center justify-between gap-4 mb-4 text-xs";
+ archiveAlertBox.className = "bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center justify-between gap-4 mb-4 text-xs";
  archiveAlertBox.innerHTML = `
  <div class="flex items-start gap-3 text-left">
  <div>
- <p class="font-bold ${hasOld ? 'text-amber-900' : 'text-slate-700'}">
- ${hasOld ? `Penyimpanan Firebase Hemat: Ditemukan ${oldRecords.length} data absensi >60 hari` : 'Arsip Absensi ke Spreadsheet'}
+ <p class="font-bold text-slate-700">
+ Data live dibatasi 60 hari terakhir
  </p>
- <p class="${hasOld ? 'text-amber-700' : 'text-slate-500'} mt-0.5">
- ${hasOld
- ? 'Sistem menjaga data di Firebase maksimal 60 hari per karyawan agar database tetap ringan. Klik tombol di kanan untuk memindahkan data usang ini ke Google Spreadsheet. Data tetap aman dan dapat ditarik kembali kapan saja.'
- : 'Belum ada data yang lewat 60 hari saat ini. Tombol ini HANYA akan mengarsipkan data >60 hari kapan pun itu muncul -- 2 bulan terakhir (termasuk bulan berjalan) tidak akan pernah ikut terarsip.'}
+ <p class="text-slate-500 mt-0.5">
+ Riwayat lama dapat diarsipkan dengan pemeriksaan manual satu kali, dan dapat ditarik kembali melalui tombol Tarik Arsip Spreadsheet.
  </p>
  </div>
  </div>
- <button id="btn-archive-now" class="shrink-0 ${hasOld ? 'bg-amber-700 hover:bg-amber-800' : 'bg-slate-300 text-slate-500 cursor-not-allowed'} text-white font-semibold px-3.5 py-2 rounded-lg shadow-sm transition flex items-center gap-1.5" ${hasOld ? '' : 'disabled title="Belum ada data >60 hari untuk diarsipkan"'}>
- Arsipkan ke Spreadsheet
+ <button id="btn-archive-now" class="shrink-0 bg-amber-700 hover:bg-amber-800 text-white font-semibold px-3.5 py-2 rounded-lg shadow-sm transition flex items-center gap-1.5">
+ Periksa & Arsipkan Data Lama
  </button>
  `;
  archiveAlertBox.querySelector("#btn-archive-now").onclick = async () => {
- // PENTING: SELALU pakai oldRecords (data >60 hari) yang dihitung ulang
- // dari listAbsensiGlobal -- JANGAN PERNAH pakai data hasil filter/tampilan
- // layar saat ini, supaya data 2 bulan terakhir/bulan berjalan tidak
- // pernah ikut kearsip walau apapun filter yang sedang aktif di tabel.
- if (!hasOld || oldRecords.length === 0) {
- toast("Tidak ada data >60 hari untuk diarsipkan.", "warning");
- return;
- }
- const rowsToArchive = oldRecords; const btn = archiveAlertBox.querySelector("#btn-archive-now");
- btn.disabled = true; btn.textContent = "Mengarsipkan...";
+ const btn = archiveAlertBox.querySelector("#btn-archive-now");
+ btn.disabled = true; btn.textContent = "Memeriksa data lama...";
  try {
+ const oldSnapshot = await getDocs(query(attendanceRef, where("tanggal", "<", thresholdStr)));
+ const rowsToArchive = oldSnapshot.docs.map(item => ({ id: item.id, ...item.data() }));
+ if (!rowsToArchive.length) {
+  toast("Tidak ada data >60 hari untuk diarsipkan.", "success");
+  btn.disabled = false; btn.textContent = "Periksa & Arsipkan Data Lama";
+  return;
+ }
+ btn.textContent = `Mengarsipkan ${rowsToArchive.length} data...`;
  // Call Apps Script web app (project GAS Arsip Absensi, terpisah)
  await callGasArchiveWebApp({
  action: "archive_attendance",
@@ -543,14 +556,15 @@ export async function mount(container, { session } = {}) {
  }
 
  toast(`Berhasil memindahkan ${rowsToArchive.length} data absensi ke Google Spreadsheet! Database Firebase tetap efisien.`, "success");
- loadRawAbsensiTable();
+ loadRawAbsensiTable(true);
  } catch (err) {
  toast("Gagal mengarsipkan: " + err.message, "error");
- btn.disabled = false; btn.textContent = "Arsipkan ke Spreadsheet";
+ btn.disabled = false; btn.textContent = "Periksa & Arsipkan Data Lama";
  }
  };
  }
 
+ attendanceLoadedAt = Date.now();
  applyFiltersAbsen();
  }
 
@@ -707,7 +721,7 @@ export async function mount(container, { session } = {}) {
  if(confirm("Hapus baris absensi ini?")) {
  await deleteDoc(doc(db, COL.DATA_ABSENSI, btn.dataset.delId));
  toast("Data absensi berhasil dihapus", "success");
- loadRawAbsensiTable();
+ loadRawAbsensiTable(true);
  }
  };
  });
@@ -954,7 +968,7 @@ export async function mount(container, { session } = {}) {
      selectedAttendanceKeys.clear();
      closeModal();
      toast(`${changes.length} baris absensi berhasil dikoreksi.`, "success");
-     await loadRawAbsensiTable();
+     await loadRawAbsensiTable(true);
     } catch (error) {
      console.error("Koreksi massal absensi gagal:", error);
      toast("Koreksi massal gagal: " + error.message, "error");
@@ -1002,7 +1016,7 @@ export async function mount(container, { session } = {}) {
      selectedAttendanceKeys.clear();
      closeModal();
      toast(`${deletableRows.length} baris absensi berhasil dihapus.`, "success");
-     await loadRawAbsensiTable();
+     await loadRawAbsensiTable(true);
     } catch (error) {
      console.error("Hapus massal absensi gagal:", error);
      toast("Hapus massal gagal: " + error.message, "error");
@@ -1062,7 +1076,7 @@ export async function mount(container, { session } = {}) {
  }
  toast("Koreksi absensi berhasil disimpan", "success");
  closeModal();
- loadRawAbsensiTable();
+ loadRawAbsensiTable(true);
  };
  }
  });
@@ -1416,7 +1430,7 @@ export async function mount(container, { session } = {}) {
  const origText = btnSyncFingerprint.innerHTML;
  btnSyncFingerprint.innerHTML = `Memuat data terbaru...`;
  try {
- await loadRawAbsensiTable();
+ await loadRawAbsensiTable(true);
  toast("Data absensi terbaru sudah dimuat. Penarikan dari mesin dilakukan otomatis oleh agent komputer kantor.", "success");
  } catch (err) {
  toast("Gagal memuat data absensi: " + err.message, "error");
