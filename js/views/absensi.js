@@ -6,7 +6,7 @@ import { hasSubMenuAccess, hasPermission, canEditModuleData } from "../auth.js";
 import { authFetch } from "../api-client.js";
 import { resolveWorkSchedule } from "../work-schedule.mjs";
 import { buildRawAttendanceExport } from "../attendance-export.mjs";
-import { attendanceImportValues, attendanceImportScan } from "../attendance-import.mjs";
+import { attendanceImportDate, attendanceImportValues, attendanceImportScan } from "../attendance-import.mjs";
 import { buildAttendanceStatusRows } from "../attendance-status.mjs";
 import { attendanceDeductionSource, calculateAttendancePenalty } from "../attendance-penalty.mjs";
 import { buildAttendanceAnalytics } from "../attendance-analytics.mjs";
@@ -525,7 +525,6 @@ export async function mount(container, { session } = {}) {
  
  // Delete from Firebase in batches
  const chunks = []; let tempArr = [];
- let importedCount = 0;
  rowsToArchive.forEach(r => {
  tempArr.push(r.id);
  if (tempArr.length === 400) { chunks.push(tempArr); tempArr = []; }
@@ -1077,62 +1076,16 @@ export async function mount(container, { session } = {}) {
  const sheet = workbook.Sheets[workbook.SheetNames[0]];
  const rows = window.XLSX.utils.sheet_to_json(sheet, { raw: false });
 
- // Konversi berbagai kemungkinan format tanggal (ISO, dd/mm/yyyy,
- // dd-mm-yyyy, ATAU angka serial Excel mentah seperti "46240" yang
- // muncul kalau file sumber tidak memformat kolom tanggalnya sebagai
- // Date -- SheetJS pun tidak bisa menebak konversinya tanpa itu) jadi
- // SATU format baku "yyyy-MM-dd".
- function parseTanggalImport(raw) {
- if (!raw) return null;
- const s = String(raw).trim();
- if (!s) return null;
-
- // Sudah format ISO yyyy-MM-dd
- if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
-
- // Format dd/mm/yyyy atau d/m/yyyy
- let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
- if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
-
- // Format dd-mm-yyyy atau d-m-yyyy
- m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
- if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
-
- // Angka serial Excel mentah (mis. "46240") -- terjadi kalau kolom
- // tanggal di file sumber TIDAK diformat sebagai Date, cuma General/
- // Number, sehingga SheetJS ikut membaca apa adanya sebagai angka.
- if (/^\d{4,6}$/.test(s)) {
- const serial = parseInt(s, 10);
- // Epoch Excel (dengan bug tahun kabisat 1900): 30 Des 1899.
- // 25569 = jumlah hari antara 1899-12-30 dan 1970-01-01 (epoch JS).
- const utcMs = Math.round((serial - 25569) * 86400 * 1000);
- const d = new Date(utcMs);
- if (!isNaN(d.getTime()) && d.getFullYear() > 1990 && d.getFullYear() < 2100) {
- const yyyy = d.getUTCFullYear();
- const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
- const dd = String(d.getUTCDate()).padStart(2, '0');
- return `${yyyy}-${mm}-${dd}`;
- }
- }
-
- // Fallback terakhir: coba parse umum
- const d2 = new Date(s);
- if (!isNaN(d2.getTime())) {
- return `${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,'0')}-${String(d2.getDate()).padStart(2,'0')}`;
- }
- return s; // tidak bisa dikenali -- kembalikan apa adanya, jangan gagalkan baris
- }
-
  const [allKaryawan, snapCfg] = await Promise.all([
  fsGetAll(COL.MASTER_KARYAWAN).catch(() => []),
  getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(() => null)
  ]);
  const cfgJadwal = (snapCfg && snapCfg.exists()) ? (snapCfg.data()?.jadwal || []) : [];
 
- const chunks = []; let tempArr = [];
+ const chunks = []; let tempArr = []; let importedCount = 0;
  rows.forEach(r => {
  const values = attendanceImportValues(r);
- const tglStr = parseTanggalImport(values.tanggal);
+ const tglStr = attendanceImportDate(values.tanggal);
  const empNama = values.nama;
  const empNik = values.nik;
  const sameBranch = k => !values.cabang || attendanceKey(k.cabang) === attendanceKey(values.cabang);
