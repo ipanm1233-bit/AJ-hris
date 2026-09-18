@@ -75,6 +75,47 @@ test('merges later synchronization into the existing morning scan', () => {
   assert.equal(attendance.needs_review, false);
 });
 
+test('treats a later X150 check-in marker as checkout when the machine keeps sending state zero', () => {
+  const attendance = computeAttendance([
+    { jam: '17:05', minutes: 1025, direction: 'IN' }
+  ], { scan_masuk: '07:58', scan_keluar: null }, 120, { masuk: '08:00', pulang: '17:00' });
+  assert.equal(attendance.scan_masuk, '07:58');
+  assert.equal(attendance.scan_keluar, '17:05');
+  assert.equal(attendance.needs_review, false);
+});
+
+test('uses first and last scan when every X150 event has the same check-in marker', () => {
+  const attendance = computeAttendance([
+    { jam: '07:58', minutes: 478, direction: 'IN' },
+    { jam: '12:01', minutes: 721, direction: 'IN' },
+    { jam: '17:05', minutes: 1025, direction: 'IN' }
+  ], {}, 120, { masuk: '08:00', pulang: '17:00' });
+  assert.equal(attendance.scan_masuk, '07:58');
+  assert.equal(attendance.scan_keluar, '17:05');
+  assert.equal(attendance.needs_review, false);
+  assert.equal(attendance.classification, 'SAME_DIRECTION_IN_OUT');
+});
+
+test('does not turn nearby repeated check-in scans into a checkout', () => {
+  const attendance = computeAttendance([
+    { jam: '07:58', minutes: 478, direction: 'IN' },
+    { jam: '08:03', minutes: 483, direction: 'IN' }
+  ], {}, 120, { masuk: '08:00', pulang: '17:00' });
+  assert.equal(attendance.scan_masuk, '07:58');
+  assert.equal(attendance.scan_keluar, null);
+  assert.equal(attendance.needs_review, true);
+});
+
+test('classifies a lone afternoon scan as checkout even if X150 marks it check-in', () => {
+  const attendance = computeAttendance([
+    { jam: '17:03', minutes: 1023, direction: 'IN' }
+  ], {}, 120, { masuk: '08:00', pulang: '17:00' });
+  assert.equal(attendance.scan_masuk, null);
+  assert.equal(attendance.scan_keluar, '17:03');
+  assert.equal(attendance.classification, 'SINGLE_SCAN_OUT');
+  assert.equal(attendance.needs_review, true);
+});
+
 test('respects explicit check-in and check-out markers', () => {
   const attendance = computeAttendance([
     { jam: '08:02', minutes: 482, direction: 'IN' },
