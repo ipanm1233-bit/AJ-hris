@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { _test } = require('../api/training.js');
+const { _test } = require('../lib/training-access.js');
 
 const employee = { role: 'STAFF', nik: '001', branch: 'Cirebon' };
 const manager = { role: 'SPV', nik: '010', branch: 'Cirebon' };

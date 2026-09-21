@@ -4,6 +4,7 @@ const { enforceRateLimit, writeAuditLog, requireFirebaseAuth } = require('../lib
 const { aggregateFingerprintLogs, computeAttendance } = require('../lib/fingerprint-normalizer.js');
 const { handleAttendanceAccess } = require('../lib/attendance-access.js');
 const { handleIzinAccess } = require('../lib/izin-access.js');
+const { handleTrainingAccess } = require('../lib/training-access.js');
 const { supabaseEnabled } = require('../lib/supabase.js');
 const { listAttendance, upsertAttendance } = require('../lib/attendance-supabase.js');
 
@@ -332,6 +333,11 @@ module.exports = async function handler(req, res) {
 
     if (String(body?.action || '').startsWith('attendance_')) {
       await handleAttendanceAccess(req, res, body);
+      return;
+    }
+
+    if (String(body?.action || '').startsWith('training_')) {
+      await handleTrainingAccess(req, res, body);
       return;
     }
 

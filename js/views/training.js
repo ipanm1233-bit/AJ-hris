@@ -31,7 +31,7 @@ function collectionType(name) {
 }
 
 async function trainingApi(body) {
-  const response = await authFetch("/api/training", { method: "POST", body: JSON.stringify(body) });
+  const response = await authFetch("/api/sync-absen", { method: "POST", body: JSON.stringify({ ...body, action: `training_${body.action}` }) });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload.success === false) throw new Error(payload.error || "Operasi pelatihan gagal.");
   return payload;
