@@ -325,7 +325,7 @@ service cloud.firestore {
         && onlyChanges(['current_level', 'urgency', 'manager_note', 'validation_status', 'validated_by_nik', 'validated_at', 'updated_at']));
       allow delete: if isHrd();
     }
-    match /training_plans/{id} {
+    match /training_tna_plans/{id} {
       allow read: if signedIn();
       allow create: if isHrd();
       allow update: if isHrd()
@@ -333,7 +333,7 @@ service cloud.firestore {
         || (role() == 'FINANCE' && onlyChanges(['status', 'finance_status', 'finance_by', 'finance_at', 'updated_at']));
       allow delete: if isHrd();
     }
-    match /training_progress/{id} {
+    match /training_tna_progress/{id} {
       allow read: if signedIn() && (
         isHrd() || role() in ['GM', 'DIREKTUR'] || owns(resource.data) ||
         (isManagement() && sameBranch(resource.data))

@@ -81,9 +81,9 @@ test('training workflow uses scoped Firestore rules instead of signed-in global 
   const rules = fs.readFileSync(path.join(__dirname, '..', 'firestore.rules'), 'utf8');
   assert.match(rules, /match \/training_tna_assignments\/\{id\}/);
   assert.match(rules, /match \/training_needs\/\{id\}/);
-  assert.match(rules, /match \/training_plans\/\{id\}/);
-  assert.match(rules, /match \/training_progress\/\{id\}/);
-  assert.match(rules, /training_plans[\s\S]*role\(\) in \['GM', 'DIREKTUR'\][\s\S]*role\(\) == 'FINANCE'/);
+  assert.match(rules, /match \/training_tna_plans\/\{id\}/);
+  assert.match(rules, /match \/training_tna_progress\/\{id\}/);
+  assert.match(rules, /training_tna_plans[\s\S]*role\(\) in \['GM', 'DIREKTUR'\][\s\S]*role\(\) == 'FINANCE'/);
   assert.doesNotMatch(rules, /collectionName in \['training_plans', 'training_progress'\]/);
   assert.doesNotMatch(rules, /'uang_makan_expedisi', 'data_training'/);
 });

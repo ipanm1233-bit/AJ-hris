@@ -1,5 +1,6 @@
-import { COL, db, collection, query, where, getDocs } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, openModal, closeModal, toast, escapeHtml, genId, notifyUser } from "../utils.js";
+import { COL } from "../firebase-config.js";
+import { fsGetAll as firebaseGetAll, openModal, closeModal, toast, escapeHtml, genId, notifyUser } from "../utils.js";
+import { authFetch } from "../api-client.js";
 import { hasPermission } from "../auth.js";
 import {
   TRAINING_STATUS, aggregateNeeds, campaignTargetsEmployee, competencyGap,
@@ -8,7 +9,7 @@ import {
 
 const C = {
   campaigns: "training_tna_campaigns", assignments: "training_tna_assignments",
-  needs: "training_needs", plans: "training_plans", progress: "training_progress",
+  needs: "training_needs", plans: "training_tna_plans", progress: "training_tna_progress",
   audit: "training_audit_logs"
 };
 
@@ -25,26 +26,36 @@ const empty = text => `<div class="rounded-xl border border-dashed border-slate-
 const field = (label, id, type = "text", attrs = "") => `<label class="block text-xs font-semibold text-slate-600">${esc(label)}<input id="${id}" type="${type}" ${attrs} class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm"></label>`;
 const select = (label, id, options) => `<label class="block text-xs font-semibold text-slate-600">${esc(label)}<select id="${id}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm bg-white">${options.map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("")}</select></label>`;
 
-async function scopedRows(collectionName, field, value) {
-  if (!value) return [];
-  const snap = await getDocs(query(collection(db, collectionName), where(field, "==", value)));
-  return snap.docs.map(item => ({ ...item.data(), id: item.id, _docId: item.id }));
+function collectionType(name) {
+  return Object.entries(C).find(([, value]) => value === name)?.[0] || "";
+}
+
+async function trainingApi(body) {
+  const response = await authFetch("/api/training", { method: "POST", body: JSON.stringify(body) });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.success === false) throw new Error(payload.error || "Operasi pelatihan gagal.");
+  return payload;
+}
+
+async function fsAdd(collectionName, data, customId) {
+  return (await trainingApi({ action: "create", type: collectionType(collectionName), id: customId || genId("TRN"), data })).id;
+}
+
+async function fsUpdate(collectionName, id, data) {
+  return (await trainingApi({ action: "update", type: collectionType(collectionName), id, data })).id;
 }
 
 async function allData(session) {
-  const employeeView = !isManagement(session);
-  const branchManager = isManagement(session) && !roleIn(session, ["HRD", "SUPERADMIN", "GM", "DIREKTUR"]);
-  const assignmentsPromise = employeeView ? scopedRows(C.assignments, "nik", myNik(session)) : fsGetAll(C.assignments);
-  const needsPromise = employeeView ? scopedRows(C.needs, "nik", myNik(session)) : branchManager ? scopedRows(C.needs, "cabang", session.cabang) : fsGetAll(C.needs);
-  const progressPromise = employeeView ? scopedRows(C.progress, "nik", myNik(session)) : branchManager ? scopedRows(C.progress, "cabang", session.cabang) : fsGetAll(C.progress);
-  const [campaigns, assignments, needs, plans, progress, employees] = await Promise.all([
-    fsGetAll(C.campaigns), assignmentsPromise, needsPromise, fsGetAll(C.plans), progressPromise, fsGetAll(COL.MASTER_KARYAWAN)
+  const [workflow, employees] = await Promise.all([
+    trainingApi({ action: "list" }),
+    isHrd(session) ? firebaseGetAll(COL.MASTER_KARYAWAN) : Promise.resolve([])
   ]);
-  return { campaigns, assignments, needs, plans, progress, employees };
+  return { ...workflow.data, employees };
 }
 
 async function audit(session, action, entity, entityId, detail = {}) {
-  await fsAdd(C.audit, { action, entity, entity_id: entityId, actor_nik: myNik(session), actor_name: session.nama || "", actor_role: session.role || "", detail });
+  // Mutasi dicatat server-side agar audit log tidak dapat dipalsukan browser.
+  return Promise.resolve({ session, action, entity, entityId, detail });
 }
 
 function planParticipants(plan) {
@@ -124,10 +135,11 @@ async function renderSurvey(wrap, session, data, reload) {
     const targets = data.employees.filter(e => campaignTargetsEmployee(campaign, e) && !["NONAKTIF", "RESIGN"].includes(String(e.aktif_tdk_aktif || e.status || "").toUpperCase()));
     if (!targets.length) return toast("Tidak ada karyawan yang sesuai target survey.", "warning");
     btn.disabled = true;
-    await Promise.all(targets.map(employee => {
+    const rows = targets.map(employee => {
       const person = safeParticipantSnapshot(employee);
-      return fsAdd(C.assignments, { campaign_id: campaign.id, ...person, username: employee.username || "", status: "PENDING", competencies: campaign.competencies || [], cabang: person.cabang, divisi: person.divisi }, `${campaign.id}_${person.nik}`);
-    }));
+      return { id: `${campaign.id}_${person.nik}`, data: { campaign_id: campaign.id, ...person, username: employee.username || "", status: "PENDING", competencies: campaign.competencies || [], cabang: person.cabang, divisi: person.divisi } };
+    });
+    await trainingApi({ action: "bulk_assignments", campaignId: campaign.id, rows });
     await fsUpdate(C.campaigns, campaign.id, { status: "PUBLISHED", published_at: new Date().toISOString(), assigned_count: targets.length });
     await Promise.all(targets.filter(e => e.username).map(e => notifyUser(e.username, "Survey kebutuhan pelatihan", `Mohon isi survey ${campaign.title} sebelum ${dateText(campaign.deadline)}.`, "#training")));
     await audit(session, "PUBLISH_CAMPAIGN", "campaign", campaign.id, { target_count: targets.length });
