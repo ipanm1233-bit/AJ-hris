@@ -45,6 +45,21 @@ test("TNA survey distribution uses searchable checkbox targets and explicit emai
   assert.match(source, /\{ manual: true, sendEmail: true \}/);
 });
 
+test("TNA surveys support templates, clickable scales, deletion, and management exports", () => {
+  const source = readFileSync(new URL("../js/views/training.js", import.meta.url), "utf8");
+  assert.match(source, /id="c-template"/);
+  assert.match(source, /id="apply-competency-template"/);
+  assert.match(source, /templateCompetencyText\(templateKey\)/);
+  assert.match(source, /function clickableScale/);
+  assert.match(source, /type="radio"/);
+  assert.match(source, /data-export-xlsx/);
+  assert.match(source, /data-export-pdf/);
+  assert.match(source, /data-delete-survey/);
+  assert.match(source, /action: "delete_campaign"/);
+  assert.match(source, /downloadHtmlAsPdf/);
+  assert.match(source, /XLSX\.writeFile/);
+});
+
 test("mass publication delivery is batched and does not overload browser transactions", () => {
   const source = readFileSync(new URL("../js/views/broadcast.js", import.meta.url), "utf8");
   assert.match(source, /runInBatches\(targetUserIds, 10/);

@@ -5,6 +5,64 @@ export const TRAINING_STATUS = Object.freeze({
   REJECTED_GM: 'REJECTED_GM', REJECTED_FINANCE: 'REJECTED_FINANCE', CANCELLED: 'CANCELLED'
 });
 
+export const TNA_COMPETENCY_TEMPLATES = Object.freeze({
+  lengkap: {
+    label: 'Paket Lengkap Pengembangan Karyawan',
+    competencies: [
+      ['Komunikasi Efektif', 4, 5], ['Microsoft Excel', 4, 5], ['Microsoft Word & Dokumentasi', 4, 4],
+      ['Leadership & Pengambilan Keputusan', 4, 5], ['Kolaborasi Lintas Divisi', 4, 5],
+      ['Problem Solving', 4, 5], ['Manajemen Waktu & Prioritas', 4, 4], ['Adaptasi terhadap Perubahan', 4, 4]
+    ]
+  },
+  komunikasi: {
+    label: 'Komunikasi & Pelayanan',
+    competencies: [['Komunikasi Efektif', 4, 5], ['Presentasi Profesional', 4, 4], ['Negosiasi', 4, 5], ['Pelayanan Pelanggan', 4, 5], ['Penanganan Konflik', 4, 4]]
+  },
+  digital: {
+    label: 'Digital & Administrasi Perkantoran',
+    competencies: [['Microsoft Excel', 4, 5], ['Microsoft Word & Dokumentasi', 4, 4], ['Microsoft PowerPoint', 3, 3], ['Pengolahan & Analisis Data', 4, 5], ['Ketelitian Administrasi', 5, 5]]
+  },
+  leadership: {
+    label: 'Leadership & Supervisory',
+    competencies: [['Leadership', 4, 5], ['Delegasi & Monitoring', 4, 5], ['Pengambilan Keputusan', 4, 5], ['Coaching & Feedback', 4, 4], ['Manajemen Konflik Tim', 4, 4]]
+  },
+  collaboration: {
+    label: 'Kolaborasi & Efektivitas Kerja',
+    competencies: [['Kolaborasi Lintas Divisi', 4, 5], ['Kerja Sama Tim', 4, 5], ['Problem Solving', 4, 5], ['Manajemen Waktu & Prioritas', 4, 4], ['Adaptasi terhadap Perubahan', 4, 4]]
+  },
+  sales: {
+    label: 'Sales & Customer Management',
+    competencies: [['Product Knowledge', 5, 5], ['Teknik Penjualan', 4, 5], ['Negosiasi Penjualan', 4, 5], ['Pengelolaan Piutang & Collection', 4, 5], ['Perencanaan Kunjungan & Area', 4, 4]]
+  },
+  operasional: {
+    label: 'Operasional, Warehouse & K3',
+    competencies: [['Kepatuhan SOP', 5, 5], ['Keselamatan dan Kesehatan Kerja (K3)', 5, 5], ['Manajemen Persediaan', 4, 5], ['Ketelitian Barang & Dokumen', 5, 5], ['Koordinasi Pengiriman', 4, 4]]
+  }
+});
+
+export function templateCompetencyText(templateKey) {
+  const template = TNA_COMPETENCY_TEMPLATES[templateKey];
+  return template ? template.competencies.map(row => row.join(' | ')).join('\n') : '';
+}
+
+export function surveyReportRows(campaign = {}, assignments = []) {
+  return assignments.flatMap(assignment => {
+    const responses = Array.isArray(assignment.responses) ? assignment.responses : [];
+    if (!responses.length) return [{
+      survey: campaign.title || '', period: campaign.period || '', nik: assignment.nik || '', nama: assignment.nama || '',
+      cabang: assignment.cabang || '', divisi: assignment.divisi || '', jabatan: assignment.jabatan || '', status: assignment.status || 'PENDING',
+      competency: '', expected_level: '', current_level: '', gap: '', urgency: '', business_impact: '', priority_score: '', reason: '', submitted_at: assignment.submitted_at || ''
+    }];
+    return responses.map(response => ({
+      survey: campaign.title || '', period: campaign.period || '', nik: assignment.nik || '', nama: assignment.nama || '',
+      cabang: assignment.cabang || '', divisi: assignment.divisi || '', jabatan: assignment.jabatan || '', status: assignment.status || '',
+      competency: response.competency_name || '', expected_level: Number(response.expected_level || 0), current_level: Number(response.current_level || 0),
+      gap: competencyGap(response.expected_level, response.current_level), urgency: Number(response.urgency || 0), business_impact: Number(response.business_impact || 0),
+      priority_score: needPriorityScore(response), reason: response.reason || '', submitted_at: assignment.submitted_at || ''
+    }));
+  });
+}
+
 export function normalizeToken(value) {
   return String(value || '').trim().toUpperCase().replace(/\s+/g, ' ');
 }

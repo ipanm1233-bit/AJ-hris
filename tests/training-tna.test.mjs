@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  aggregateNeeds, campaignTargetsEmployee, competencyGap, learningGain,
-  needPriorityScore, participantMatchesSession, priorityLabel, safeParticipantSnapshot, trainingMetrics
+  TNA_COMPETENCY_TEMPLATES, aggregateNeeds, campaignTargetsEmployee, competencyGap, learningGain,
+  needPriorityScore, participantMatchesSession, priorityLabel, safeParticipantSnapshot, surveyReportRows,
+  templateCompetencyText, trainingMetrics
 } from '../js/training-tna.mjs';
 
 test('campaign targets employees by branch and division', () => {
@@ -64,4 +65,26 @@ test('participant identity is stored with NIK and organization snapshot', () => 
   assert.deepEqual(safeParticipantSnapshot({ nik_karyawan: '99', nama_karyawan: 'Budi', cabang: 'Cirebon', divisi: 'Sales', jabatan: 'Salesman' }), {
     nik: '99', nama: 'Budi', cabang: 'Cirebon', divisi: 'Sales', jabatan: 'Salesman', atasan: '', email: ''
   });
+});
+
+test('default competency templates cover core employee development needs', () => {
+  const complete = TNA_COMPETENCY_TEMPLATES.lengkap.competencies.map(row => row[0]).join(' ');
+  assert.match(complete, /Komunikasi/);
+  assert.match(complete, /Excel/);
+  assert.match(complete, /Word/);
+  assert.match(complete, /Leadership/);
+  assert.match(complete, /Kolaborasi/);
+  assert.match(templateCompetencyText('digital'), /Microsoft Excel \| 4 \| 5/);
+});
+
+test('survey report rows include submitted answers and pending recipients', () => {
+  const rows = surveyReportRows({ title: 'TNA 2027', period: 'Semester I' }, [
+    { nik: '01', nama: 'Ani', status: 'SUBMITTED', responses: [{ competency_name: 'Excel', expected_level: 5, current_level: 2, urgency: 4, business_impact: 5, reason: 'Pelaporan' }] },
+    { nik: '02', nama: 'Budi', status: 'PENDING' }
+  ]);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].gap, 3);
+  assert.equal(rows[0].priority_score, 30);
+  assert.equal(rows[1].status, 'PENDING');
+  assert.equal(rows[1].competency, '');
 });

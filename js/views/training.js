@@ -1,10 +1,11 @@
 import { COL } from "../firebase-config.js";
-import { fsGetAll as firebaseGetAll, openModal, closeModal, toast, escapeHtml, genId, notifyUser } from "../utils.js";
+import { fsGetAll as firebaseGetAll, openModal, closeModal, confirmDialog, toast, escapeHtml, genId, notifyUser, ensureXlsxLoaded, downloadHtmlAsPdf } from "../utils.js";
 import { authFetch } from "../api-client.js";
 import { hasPermission } from "../auth.js";
 import {
-  TRAINING_STATUS, aggregateNeeds, campaignTargetsEmployee, competencyGap,
-  needPriorityScore, participantMatchesSession, priorityLabel, safeParticipantSnapshot, trainingMetrics
+  TRAINING_STATUS, TNA_COMPETENCY_TEMPLATES, aggregateNeeds, campaignTargetsEmployee, competencyGap,
+  needPriorityScore, participantMatchesSession, priorityLabel, safeParticipantSnapshot, surveyReportRows,
+  templateCompetencyText, trainingMetrics
 } from "../training-tna.mjs";
 
 const C = {
@@ -110,6 +111,70 @@ async function sendSurveyEmails(campaign, assignments, reminder = false) {
   return sent;
 }
 
+const safeFileName = value => String(value || "survey-tna").trim().replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 80) || "survey-tna";
+
+function surveyCompetencySummary(rows) {
+  const groups = new Map();
+  rows.filter(row => row.competency).forEach(row => {
+    const item = groups.get(row.competency) || { competency: row.competency, count: 0, current: 0, expected: 0, gap: 0, urgency: 0, priority: 0 };
+    item.count += 1;
+    item.current += Number(row.current_level || 0);
+    item.expected += Number(row.expected_level || 0);
+    item.gap += Number(row.gap || 0);
+    item.urgency += Number(row.urgency || 0);
+    item.priority += Number(row.priority_score || 0);
+    groups.set(row.competency, item);
+  });
+  return [...groups.values()].map(item => ({
+    Kompetensi: item.competency, Responden: item.count,
+    "Rata-rata Level Saat Ini": Number((item.current / item.count).toFixed(2)),
+    "Rata-rata Level Harapan": Number((item.expected / item.count).toFixed(2)),
+    "Rata-rata Gap": Number((item.gap / item.count).toFixed(2)),
+    "Rata-rata Urgensi": Number((item.urgency / item.count).toFixed(2)),
+    "Skor Prioritas": Number((item.priority / item.count).toFixed(2))
+  })).sort((a, b) => b["Skor Prioritas"] - a["Skor Prioritas"]);
+}
+
+async function exportSurveyExcel(campaign, assignments) {
+  await ensureXlsxLoaded();
+  const rows = surveyReportRows(campaign, assignments);
+  const submitted = assignments.filter(item => item.status === "SUBMITTED").length;
+  const summary = surveyCompetencySummary(rows);
+  const workbook = window.XLSX.utils.book_new();
+  const overview = [
+    ["LAPORAN TRAINING NEED ANALYSIS"], ["Judul Survey", campaign.title || ""], ["Periode", campaign.period || ""],
+    ["Batas Pengisian", dateText(campaign.deadline)], ["Target", campaignTargetText(campaign)],
+    ["Jumlah Penerima", assignments.length], ["Jumlah Respon", submitted], ["Response Rate", assignments.length ? `${Math.round(submitted / assignments.length * 100)}%` : "0%"], []
+  ];
+  const wsOverview = window.XLSX.utils.aoa_to_sheet(overview);
+  const wsSummary = window.XLSX.utils.json_to_sheet(summary.length ? summary : [{ Keterangan: "Belum ada respons survey" }]);
+  const wsDetail = window.XLSX.utils.json_to_sheet(rows.map(row => ({
+    NIK: row.nik, Nama: row.nama, Cabang: row.cabang, Divisi: row.divisi, Jabatan: row.jabatan, Status: row.status,
+    Kompetensi: row.competency, "Level Harapan": row.expected_level, "Level Saat Ini": row.current_level, Gap: row.gap,
+    Urgensi: row.urgency, "Dampak Bisnis": row.business_impact, "Skor Prioritas": row.priority_score,
+    Alasan: row.reason, "Waktu Mengisi": row.submitted_at
+  })));
+  window.XLSX.utils.book_append_sheet(workbook, wsOverview, "Ringkasan");
+  window.XLSX.utils.book_append_sheet(workbook, wsSummary, "Analisis Kompetensi");
+  window.XLSX.utils.book_append_sheet(workbook, wsDetail, "Detail Respon");
+  window.XLSX.writeFile(workbook, `Laporan_TNA_${safeFileName(campaign.title)}.xlsx`);
+}
+
+async function exportSurveyPdf(campaign, assignments) {
+  const rows = surveyReportRows(campaign, assignments);
+  const summary = surveyCompetencySummary(rows);
+  const submitted = assignments.filter(item => item.status === "SUBMITTED").length;
+  const rate = assignments.length ? Math.round(submitted / assignments.length * 100) : 0;
+  const tableStyle = "border-collapse:collapse;width:100%;font-size:10px";
+  const cellStyle = "border:1px solid #cbd5e1;padding:6px;text-align:left;vertical-align:top";
+  const html = `<div style="padding:28px;font-family:Arial,sans-serif;color:#1e293b"><div style="border-bottom:3px solid #7f1d1d;padding-bottom:14px"><h1 style="margin:0;font-size:22px;color:#7f1d1d">Laporan Training Need Analysis</h1><p style="margin:6px 0 0;font-size:13px">${esc(campaign.title)} · ${esc(campaign.period || "-")}</p></div><table style="${tableStyle};margin-top:18px"><tr><td style="${cellStyle}"><b>Target</b><br>${esc(campaignTargetText(campaign))}</td><td style="${cellStyle}"><b>Batas Pengisian</b><br>${dateText(campaign.deadline)}</td><td style="${cellStyle}"><b>Response Rate</b><br>${submitted}/${assignments.length} (${rate}%)</td></tr></table><h2 style="font-size:15px;margin-top:22px">Ringkasan Kebutuhan Kompetensi</h2><table style="${tableStyle}"><thead><tr style="background:#f1f5f9">${["Kompetensi","Responden","Level Saat Ini","Level Harapan","Gap","Urgensi","Prioritas"].map(label=>`<th style="${cellStyle}">${label}</th>`).join("")}</tr></thead><tbody>${summary.map(item=>`<tr><td style="${cellStyle}">${esc(item.Kompetensi)}</td><td style="${cellStyle}">${item.Responden}</td><td style="${cellStyle}">${item["Rata-rata Level Saat Ini"]}</td><td style="${cellStyle}">${item["Rata-rata Level Harapan"]}</td><td style="${cellStyle}">${item["Rata-rata Gap"]}</td><td style="${cellStyle}">${item["Rata-rata Urgensi"]}</td><td style="${cellStyle}">${item["Skor Prioritas"]}</td></tr>`).join("") || `<tr><td colspan="7" style="${cellStyle}">Belum ada respons.</td></tr>`}</tbody></table><h2 style="font-size:15px;margin-top:22px">Detail Responden</h2><table style="${tableStyle}"><thead><tr style="background:#f1f5f9">${["Nama","Unit","Kompetensi","Saat Ini / Harapan","Urgensi","Alasan"].map(label=>`<th style="${cellStyle}">${label}</th>`).join("")}</tr></thead><tbody>${rows.map(row=>`<tr><td style="${cellStyle}"><b>${esc(row.nama)}</b><br>${esc(row.nik)}</td><td style="${cellStyle}">${esc(row.cabang)}<br>${esc(row.divisi)}</td><td style="${cellStyle}">${esc(row.competency || "Belum mengisi")}</td><td style="${cellStyle}">${row.current_level || "-"} / ${row.expected_level || "-"}</td><td style="${cellStyle}">${row.urgency || "-"}</td><td style="${cellStyle}">${esc(row.reason || row.status)}</td></tr>`).join("")}</tbody></table><p style="margin-top:22px;font-size:9px;color:#64748b">Dokumen dibuat melalui HRIS CV Andela Jaya pada ${new Date().toLocaleString("id-ID")}.</p></div>`;
+  await downloadHtmlAsPdf(html, `Laporan_TNA_${safeFileName(campaign.title)}.pdf`, "landscape");
+}
+
+function clickableScale(name, label, descriptions = ["Sangat rendah", "Rendah", "Cukup", "Baik", "Sangat tinggi"]) {
+  return `<fieldset><legend class="text-xs font-semibold text-slate-600">${esc(label)} *</legend><div class="mt-2 grid grid-cols-5 gap-2">${descriptions.map((description, index) => { const score = index + 1; return `<label class="cursor-pointer"><input type="radio" name="${esc(name)}" value="${score}" class="peer sr-only"><span class="flex min-h-16 flex-col items-center justify-center rounded-lg border border-slate-200 px-1 text-center text-[10px] text-slate-500 transition peer-checked:border-maroon-700 peer-checked:bg-maroon-700 peer-checked:text-white"><b class="text-base">${score}</b>${esc(description)}</span></label>`; }).join("")}</div></fieldset>`;
+}
+
 export async function mount(container, { session }) {
   const header = container.querySelector("#training-tab-header");
   const body = container.querySelector("#training-content");
@@ -168,7 +233,7 @@ async function renderSurvey(wrap, session, data, reload) {
     <div class="grid md:grid-cols-2 gap-4">${data.campaigns.sort((a,b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))).map(c => {
       const assigned = data.assignments.filter(a => a.campaign_id === c.id);
       const submitted = assigned.filter(a => a.status === "SUBMITTED").length;
-      return `<article class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm"><div class="flex justify-between gap-3"><div><span class="text-[10px] font-bold text-maroon-700">${esc(c.period)}</span><h3 class="font-bold text-slate-800">${esc(c.title)}</h3></div><span class="text-xs font-bold ${c.status === "PUBLISHED" ? "text-emerald-600" : "text-slate-400"}">${esc(c.status)}</span></div><p class="mt-2 text-xs text-slate-500">Target: ${esc(campaignTargetText(c))} · Batas ${dateText(c.deadline)}</p><div class="mt-4 h-2 rounded bg-slate-100"><div class="h-2 rounded bg-emerald-500" style="width:${assigned.length ? submitted / assigned.length * 100 : 0}%"></div></div><p class="mt-1 text-[11px] text-slate-400">${submitted}/${assigned.length} respon</p><div class="mt-4 flex flex-wrap gap-2">${c.status === "DRAFT" ? `<button data-publish="${c.id}" class="rounded-lg bg-maroon-700 px-3 py-2 text-xs font-semibold text-white">Publikasikan</button>` : `<button data-manage-email="${c.id}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">Email &amp; Pengingat</button>`}${c.status === "PUBLISHED" ? `<button data-close="${c.id}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">Tutup</button>` : ""}</div></article>`;
+      return `<article class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm"><div class="flex justify-between gap-3"><div><span class="text-[10px] font-bold text-maroon-700">${esc(c.period)}</span><h3 class="font-bold text-slate-800">${esc(c.title)}</h3></div><span class="text-xs font-bold ${c.status === "PUBLISHED" ? "text-emerald-600" : "text-slate-400"}">${esc(c.status)}</span></div><p class="mt-2 text-xs text-slate-500">Target: ${esc(campaignTargetText(c))} · Batas ${dateText(c.deadline)}</p><div class="mt-4 h-2 rounded bg-slate-100"><div class="h-2 rounded bg-emerald-500" style="width:${assigned.length ? submitted / assigned.length * 100 : 0}%"></div></div><p class="mt-1 text-[11px] text-slate-400">${submitted}/${assigned.length} respon</p><div class="mt-4 flex flex-wrap gap-2">${c.status === "DRAFT" ? `<button data-publish="${c.id}" class="rounded-lg bg-maroon-700 px-3 py-2 text-xs font-semibold text-white">Publikasikan</button>` : `<button data-manage-email="${c.id}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">Email &amp; Pengingat</button>`}${c.status === "PUBLISHED" ? `<button data-close="${c.id}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">Tutup</button>` : ""}${assigned.length ? `<button data-export-xlsx="${c.id}" class="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700">Excel</button><button data-export-pdf="${c.id}" class="rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700">PDF</button>` : ""}<button data-delete-survey="${c.id}" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700">Hapus</button></div></article>`;
     }).join("") || empty("Belum ada survey TNA.")}</div>`;
   wrap.querySelector("#new-campaign").onclick = () => campaignModal(session, data.employees, reload);
   wrap.querySelectorAll("[data-publish]").forEach(btn => btn.onclick = async () => {
@@ -200,6 +265,33 @@ async function renderSurvey(wrap, session, data, reload) {
     reload
   ));
   wrap.querySelectorAll("[data-close]").forEach(btn => btn.onclick = async () => { await fsUpdate(C.campaigns, btn.dataset.close, { status: "CLOSED", closed_at: new Date().toISOString() }); await audit(session, "CLOSE_CAMPAIGN", "campaign", btn.dataset.close); reload(); });
+  wrap.querySelectorAll("[data-export-xlsx]").forEach(btn => btn.onclick = async () => {
+    const campaign = data.campaigns.find(item => item.id === btn.dataset.exportXlsx);
+    const assignments = data.assignments.filter(item => item.campaign_id === campaign.id);
+    try { await exportSurveyExcel(campaign, assignments); } catch (error) { console.error(error); toast(error.message || "Export Excel gagal.", "error"); }
+  });
+  wrap.querySelectorAll("[data-export-pdf]").forEach(btn => btn.onclick = async () => {
+    const campaign = data.campaigns.find(item => item.id === btn.dataset.exportPdf);
+    const assignments = data.assignments.filter(item => item.campaign_id === campaign.id);
+    try { await exportSurveyPdf(campaign, assignments); } catch (error) { console.error(error); toast(error.message || "Export PDF gagal.", "error"); }
+  });
+  wrap.querySelectorAll("[data-delete-survey]").forEach(btn => btn.onclick = async () => {
+    const campaign = data.campaigns.find(item => item.id === btn.dataset.deleteSurvey);
+    const assignments = data.assignments.filter(item => item.campaign_id === campaign.id);
+    const submitted = assignments.filter(item => item.status === "SUBMITTED").length;
+    const confirmed = await confirmDialog(`Hapus survey "${campaign.title}" secara permanen?\n\n${assignments.length} penugasan dan ${submitted} respons yang sudah masuk akan ikut dihapus. Data ini tidak dapat dipulihkan.`, { title: "Hapus Survey TNA", danger: true });
+    if (!confirmed) return;
+    btn.disabled = true;
+    try {
+      const result = await trainingApi({ action: "delete_campaign", campaignId: campaign.id });
+      closeModal();
+      toast(`Survey dihapus bersama ${result.deleted.assignments} penugasan dan ${result.deleted.needs} data kebutuhan.`, "success");
+      reload();
+    } catch (error) {
+      toast(error.message || "Survey gagal dihapus.", "error");
+      btn.disabled = false;
+    }
+  });
 }
 
 function campaignModal(session, employees, reload) {
@@ -208,7 +300,8 @@ function campaignModal(session, employees, reload) {
   const divisions = uniqueValues(candidates.map(person => person.divisi));
   const positions = uniqueValues(candidates.map(person => person.jabatan));
   const employeeItems = candidates.map((person, index) => `<label data-employee-row data-employee-index="${index}" class="flex items-start gap-2 rounded-lg border border-slate-100 px-3 py-2 text-xs hover:bg-slate-50"><input type="checkbox" data-target-group="employees" value="${esc(person.nik)}" class="mt-0.5 rounded border-slate-300"><span><b>${esc(person.nama)}</b> · ${esc(person.nik)}<br><span class="text-slate-400">${esc(person.cabang || "-")} · ${esc(person.divisi || "-")} · ${esc(person.jabatan || "-")}</span></span></label>`).join("");
-  openModal({ title: "Buat Survey Training Need Analysis", size: "xl", bodyHtml: `<div id="campaign-form" class="space-y-5"><div class="grid md:grid-cols-3 gap-4">${field("Judul survey", "c-title", "text", "placeholder='TNA Semester I 2027'")}${field("Periode", "c-period", "text", "placeholder='Semester I 2027'")}${field("Batas pengisian", "c-deadline", "date")}</div><div><p class="text-sm font-bold text-slate-800">Sasaran survey</p><p class="mt-1 text-xs text-slate-400">Kosongkan kelompok untuk mencakup semua. Pilihan karyawan akan mempersempit hasil filter organisasi.</p><div class="mt-3 grid md:grid-cols-3 gap-3">${targetPicker("branches", "Cabang", branches)}${targetPicker("divisions", "Divisi", divisions)}${targetPicker("positions", "Jabatan", positions)}</div><section class="mt-3 rounded-xl border border-slate-200 p-3"><div class="flex flex-wrap items-center justify-between gap-2"><div><p class="text-xs font-bold text-slate-700">Karyawan</p><p id="c-target-count" class="text-[11px] text-slate-400"></p></div><div class="flex gap-3"><button type="button" data-clear-group="employees" class="text-[10px] font-semibold text-maroon-700">Kosongkan</button><button type="button" data-check-visible="employees" class="text-[10px] font-semibold text-slate-600">Pilih semua yang tampil</button></div></div><input id="c-employee-search" type="search" placeholder="Cari nama, NIK, cabang, divisi, atau jabatan…" class="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"><div id="c-employee-list" class="mt-2 grid max-h-64 gap-2 overflow-y-auto md:grid-cols-2">${employeeItems || `<p class="text-xs text-slate-400">Data karyawan aktif belum tersedia.</p>`}</div></section></div><label class="block text-xs font-semibold text-slate-600">Kompetensi yang dinilai<textarea id="c-competencies" rows="5" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Advanced Excel | 4 | 5&#10;Keselamatan Kerja | 5 | 5"></textarea><span class="font-normal text-slate-400">Satu baris: kompetensi | level harapan (1–5) | dampak bisnis (1–5)</span></label><label class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><input id="c-email-on-publish" type="checkbox" class="mt-0.5 rounded border-amber-300"><span><b>Kirim email segera saat survey dipublikasikan</b><br>Opsional dan tidak dicentang secara default. Jika tidak dipilih, email dapat dikirim satu per satu setelah publikasi.</span></label></div>`, footerHtml: `<button id="save-campaign" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">Simpan Draft</button>`, onMount: modal => {
+  const templateOptions = Object.entries(TNA_COMPETENCY_TEMPLATES).map(([key, template]) => `<option value="${esc(key)}">${esc(template.label)}</option>`).join("");
+  openModal({ title: "Buat Survey Training Need Analysis", size: "xl", bodyHtml: `<div id="campaign-form" class="space-y-5"><div class="grid md:grid-cols-3 gap-4">${field("Judul survey", "c-title", "text", "placeholder='TNA Semester I 2027'")}${field("Periode", "c-period", "text", "placeholder='Semester I 2027'")}${field("Batas pengisian", "c-deadline", "date")}</div><div><p class="text-sm font-bold text-slate-800">Sasaran survey</p><p class="mt-1 text-xs text-slate-400">Kosongkan kelompok untuk mencakup semua. Pilihan karyawan akan mempersempit hasil filter organisasi.</p><div class="mt-3 grid md:grid-cols-3 gap-3">${targetPicker("branches", "Cabang", branches)}${targetPicker("divisions", "Divisi", divisions)}${targetPicker("positions", "Jabatan", positions)}</div><section class="mt-3 rounded-xl border border-slate-200 p-3"><div class="flex flex-wrap items-center justify-between gap-2"><div><p class="text-xs font-bold text-slate-700">Karyawan</p><p id="c-target-count" class="text-[11px] text-slate-400"></p></div><div class="flex gap-3"><button type="button" data-clear-group="employees" class="text-[10px] font-semibold text-maroon-700">Kosongkan</button><button type="button" data-check-visible="employees" class="text-[10px] font-semibold text-slate-600">Pilih semua yang tampil</button></div></div><input id="c-employee-search" type="search" placeholder="Cari nama, NIK, cabang, divisi, atau jabatan…" class="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"><div id="c-employee-list" class="mt-2 grid max-h-64 gap-2 overflow-y-auto md:grid-cols-2">${employeeItems || `<p class="text-xs text-slate-400">Data karyawan aktif belum tersedia.</p>`}</div></section></div><div class="rounded-xl border border-blue-100 bg-blue-50 p-3"><p class="text-xs font-bold text-blue-900">Template kebutuhan pengembangan</p><div class="mt-2 flex flex-col gap-2 sm:flex-row"><select id="c-template" class="min-w-0 flex-1 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm"><option value="">Pilih template kompetensi…</option>${templateOptions}</select><button type="button" id="apply-competency-template" class="rounded-lg bg-blue-700 px-4 py-2 text-xs font-semibold text-white">Gunakan Template</button></div><p class="mt-2 text-[11px] text-blue-700">Template dapat disesuaikan kembali sebelum survey disimpan.</p></div><label class="block text-xs font-semibold text-slate-600">Kompetensi yang dinilai<textarea id="c-competencies" rows="7" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Advanced Excel | 4 | 5&#10;Keselamatan Kerja | 5 | 5"></textarea><span class="font-normal text-slate-400">Satu baris: kompetensi | level harapan (1–5) | dampak bisnis (1–5)</span></label><label class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><input id="c-email-on-publish" type="checkbox" class="mt-0.5 rounded border-amber-300"><span><b>Kirim email segera saat survey dipublikasikan</b><br>Opsional dan tidak dicentang secara default. Jika tidak dipilih, email dapat dikirim satu per satu setelah publikasi.</span></label></div>`, footerHtml: `<button id="save-campaign" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">Simpan Draft</button>`, onMount: modal => {
     const root = modal.querySelector("#campaign-form");
     const selectedSet = group => new Set(checkedValues(root, group));
     const matchesOrg = person => {
@@ -239,6 +332,18 @@ function campaignModal(session, employees, reload) {
       scope?.querySelectorAll(`[data-target-group="${group}"]`).forEach(input => { if (!input.closest("label")?.classList.contains("hidden")) input.checked = true; });
       refreshEmployees();
     });
+    root.querySelector("#apply-competency-template").onclick = async () => {
+      const templateKey = val(root, "#c-template");
+      if (!templateKey) return toast("Pilih template kompetensi terlebih dahulu.", "warning");
+      const textarea = root.querySelector("#c-competencies");
+      if (textarea.value.trim()) {
+        const replace = await confirmDialog("Kompetensi yang sudah ditulis akan diganti oleh template pilihan. Lanjutkan?", { title: "Gunakan Template Kompetensi" });
+        if (!replace) return;
+      }
+      textarea.value = templateCompetencyText(templateKey);
+      textarea.focus();
+      toast("Template kompetensi diterapkan dan masih dapat diedit.", "success");
+    };
     refreshEmployees();
     modal.querySelector("#save-campaign").onclick = async () => {
       const competencies = val(root, "#c-competencies").split("\n").map(line => { const [name, expected, impact] = line.split("|").map(x => x.trim()); return { name, expected_level: Math.min(5, Math.max(1, Number(expected || 3))), business_impact: Math.min(5, Math.max(1, Number(impact || 3))) }; }).filter(x => x.name);
@@ -354,8 +459,44 @@ async function renderMy(wrap, session, data, reload) {
 }
 
 function surveyResponseModal(assignment, session, reload) {
-  const competencies=assignment.competencies||[];
-  openModal({title:"Isi Survey Kebutuhan Pelatihan",size:"lg",bodyHtml:`<div id="survey-response" class="space-y-4">${competencies.map((c,i)=>`<div class="rounded-xl border p-4"><b class="text-sm">${esc(c.name)}</b><p class="text-xs text-slate-400">Level harapan ${c.expected_level}/5</p><div class="mt-3 grid grid-cols-2 gap-3">${field("Level saat ini","current-${i}","number","min='1' max='5' value='1'")}${field("Urgensi","urgency-${i}","number","min='1' max='5' value='3'")}</div>${field("Alasan / contoh pekerjaan","reason-${i}","text")}</div>`).join("")}</div>`,footerHtml:`<button id="submit-survey" class="rounded bg-maroon-700 px-4 py-2 text-sm text-white">Kirim survey</button>`,onMount:modal=>modal.querySelector("#submit-survey").onclick=async()=>{const root=modal.querySelector("#survey-response"),responses=competencies.map((c,i)=>({competency_name:c.name,expected_level:Number(c.expected_level),business_impact:Number(c.business_impact||3),current_level:Number(val(root,`#current-${i}`)),urgency:Number(val(root,`#urgency-${i}`)),reason:val(root,`#reason-${i}`)}));await Promise.all(responses.map(r=>fsAdd(C.needs,{...r,campaign_id:assignment.campaign_id,assignment_id:assignment.id,nik:assignment.nik,username:assignment.username||session.username||"",email:assignment.email||session.email||"",nama:assignment.nama,cabang:assignment.cabang,divisi:assignment.divisi,jabatan:assignment.jabatan,validation_status:"PENDING"},`${assignment.id}_${r.competency_name.toUpperCase().replace(/[^A-Z0-9]+/g,"_")}`)));await fsUpdate(C.assignments,assignment.id,{status:"SUBMITTED",responses,submitted_at:new Date().toISOString()});await audit(session,"SUBMIT_SURVEY","assignment",assignment.id,{needs:responses.length});closeModal();toast("Survey berhasil dikirim.","success");reload();}});
+  const competencies = assignment.competencies || [];
+  const levelDescriptions = ["Belum menguasai", "Dasar", "Cukup", "Baik", "Sangat mahir"];
+  const urgencyDescriptions = ["Tidak mendesak", "Rendah", "Sedang", "Tinggi", "Sangat mendesak"];
+  openModal({
+    title: "Isi Survey Kebutuhan Pelatihan",
+    size: "lg",
+    bodyHtml: `<div id="survey-response" class="space-y-4"><div class="rounded-xl bg-blue-50 p-3 text-xs text-blue-800">Klik satu angka 1–5 pada setiap skala. Semua skala wajib dijawab sebelum survey dikirim.</div>${competencies.map((competency, index) => `<section class="rounded-xl border border-slate-200 p-4"><div><b class="text-sm text-slate-800">${index + 1}. ${esc(competency.name)}</b><p class="text-xs text-slate-400">Level yang dibutuhkan perusahaan: ${Number(competency.expected_level || 3)}/5</p></div><div class="mt-4 space-y-4">${clickableScale(`current-${index}`, "Level kemampuan Anda saat ini", levelDescriptions)}${clickableScale(`urgency-${index}`, "Seberapa mendesak pelatihan ini bagi pekerjaan Anda", urgencyDescriptions)}<label class="block text-xs font-semibold text-slate-600">Alasan / contoh kebutuhan dalam pekerjaan<textarea data-reason="${index}" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Opsional: jelaskan tugas atau kendala yang terkait"></textarea></label></div></section>`).join("")}</div>`,
+    footerHtml: `<button id="submit-survey" class="rounded bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">Kirim survey</button>`,
+    onMount: modal => modal.querySelector("#submit-survey").onclick = async event => {
+      const root = modal.querySelector("#survey-response");
+      const responses = competencies.map((competency, index) => ({
+        competency_name: competency.name,
+        expected_level: Number(competency.expected_level),
+        business_impact: Number(competency.business_impact || 3),
+        current_level: Number(root.querySelector(`[name="current-${index}"]:checked`)?.value || 0),
+        urgency: Number(root.querySelector(`[name="urgency-${index}"]:checked`)?.value || 0),
+        reason: root.querySelector(`[data-reason="${index}"]`)?.value?.trim() || ""
+      }));
+      if (responses.some(response => response.current_level < 1 || response.urgency < 1)) return toast("Pilih nilai kemampuan dan urgensi untuk seluruh kompetensi.", "warning");
+      const button = event.currentTarget;
+      button.disabled = true;
+      try {
+        await Promise.all(responses.map(response => fsAdd(C.needs, {
+          ...response, campaign_id: assignment.campaign_id, assignment_id: assignment.id,
+          nik: assignment.nik, username: assignment.username || session.username || "", email: assignment.email || session.email || "",
+          nama: assignment.nama, cabang: assignment.cabang, divisi: assignment.divisi, jabatan: assignment.jabatan, validation_status: "PENDING"
+        }, `${assignment.id}_${response.competency_name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`)));
+        await fsUpdate(C.assignments, assignment.id, { status: "SUBMITTED", responses, submitted_at: new Date().toISOString() });
+        await audit(session, "SUBMIT_SURVEY", "assignment", assignment.id, { needs: responses.length });
+        closeModal();
+        toast("Survey berhasil dikirim.", "success");
+        reload();
+      } catch (error) {
+        toast(error.message || "Survey gagal dikirim.", "error");
+        button.disabled = false;
+      }
+    }
+  });
 }
 
 function assessmentModal(plan, progress={}, kind, session, reload) {
