@@ -60,7 +60,7 @@ test('attendance PIC endpoint enforces auth, explicit actions, branch scope, and
   assert.match(source, /requireFirebaseAuth\(req, res\)/);
   assert.match(source, /absensi\.data\.view_all/);
   assert.match(source, /absensi\.data\.edit/);
-  assert.match(source, /normalizeBranch\(snap\.data\(\)\.cabang\).*normalizeBranch\(branch\)/s);
+  assert.match(source, /normalizeBranch\(cabang\).*normalizeBranch\(userBranch\)/s);
   assert.match(source, /changes\.length > 400/);
   assert.match(source, /BULK_ATTENDANCE_CORRECTION/);
   assert.match(endpoint, /startsWith\('attendance_'\)/);

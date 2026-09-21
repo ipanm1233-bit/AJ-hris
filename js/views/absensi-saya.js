@@ -1,6 +1,7 @@
 import { db, COL, collection, doc, getDoc, getDocs, query, where } from "../firebase-config.js";
 import { escapeHtml, fmtDateShort } from "../utils.js";
 import { badge, emptyState } from "../components.js";
+import { listAttendance } from "../attendance-api.mjs";
 
 function parseTimeToMinutes(timeStr) {
   if (!timeStr) return null;
@@ -76,10 +77,7 @@ export async function mount(container, { session }) {
 
   try {
     const nik = String(session?.nik || "").trim();
-    const attendanceRequest = nik ? Promise.all([
-      getDocs(query(collection(db, COL.DATA_ABSENSI), where("nik", "==", nik))),
-      getDocs(query(collection(db, COL.DATA_ABSENSI), where("nik_karyawan", "==", nik)))
-    ]).then(snaps => [...new Map(snaps.flatMap(snap => snap.docs).map(item => [item.id, { ...item.data(), id: item.id }])).values()]) : Promise.resolve([]);
+    const attendanceRequest = nik ? listAttendance({ nik, limit: 5000 }) : Promise.resolve([]);
     const [all, cfgSnap] = await Promise.all([
       attendanceRequest,
       getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(() => null)

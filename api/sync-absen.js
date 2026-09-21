@@ -4,6 +4,8 @@ const { enforceRateLimit, writeAuditLog, requireFirebaseAuth } = require('../lib
 const { aggregateFingerprintLogs, computeAttendance } = require('../lib/fingerprint-normalizer.js');
 const { handleAttendanceAccess } = require('../lib/attendance-access.js');
 const { handleIzinAccess } = require('../lib/izin-access.js');
+const { supabaseEnabled } = require('../lib/supabase.js');
+const { listAttendance, upsertAttendance } = require('../lib/attendance-supabase.js');
 
 function normalizePersonName(value) {
   return String(value || '')
@@ -399,11 +401,16 @@ module.exports = async function handler(req, res) {
       const stateSnap = await syncStateRef.get();
       let latestDate = stateSnap.exists ? String(stateSnap.data()?.latestDate || '') : '';
       if (!/^\d{4}-\d{2}-\d{2}$/.test(latestDate)) {
-        const branchSnap = await db.collection('data_absensi').where('cabang', '==', branch).select('tanggal').get();
-        latestDate = branchSnap.docs.reduce((latest, doc) => {
-          const date = String(doc.data()?.tanggal || '');
-          return date > latest ? date : latest;
-        }, '');
+        if (supabaseEnabled()) {
+          const rows = await listAttendance({ branch, limit: 1 });
+          latestDate = String(rows[0]?.tanggal || '');
+        } else {
+          const branchSnap = await db.collection('data_absensi').where('cabang', '==', branch).select('tanggal').get();
+          latestDate = branchSnap.docs.reduce((latest, doc) => {
+            const date = String(doc.data()?.tanggal || '');
+            return date > latest ? date : latest;
+          }, '');
+        }
       }
       return res.status(200).json({ success: true, latestDate });
     }
@@ -506,6 +513,15 @@ module.exports = async function handler(req, res) {
     const chunkSize = 50;
     let count = 0;
     let duplicatesRemoved = 0;
+    const useSupabaseAttendance = supabaseEnabled();
+    const groupDates = groupList.map(group => group.tanggal).sort();
+    const existingSupabaseRows = useSupabaseAttendance
+      ? await listAttendance({ branch, fromDate: groupDates[0], toDate: groupDates[groupDates.length - 1], limit: 5000 })
+      : [];
+    const supabaseByEmployeeDate = new Map(existingSupabaseRows.map(row => [
+      `${String(row.nik || '').trim().toUpperCase()}|${String(row.tanggal || '').trim()}`,
+      row
+    ]));
     for (let i = 0; i < groupList.length; i += chunkSize) {
       const chunk = groupList.slice(i, i + chunkSize);
       const chunkItems = chunk.map(group => {
@@ -519,6 +535,42 @@ module.exports = async function handler(req, res) {
         return { group, employee, machineUser, nik, ref, legacyRef };
       });
       const resolvedChunk = chunkItems.filter(item => item.employee);
+      if (useSupabaseAttendance) {
+        const rows = resolvedChunk.map(item => {
+          const { group: g, employee, machineUser, nik, ref } = item;
+          const key = `${String(nik).trim().toUpperCase()}|${g.tanggal}`;
+          const oldData = supabaseByEmployeeDate.get(key) || {};
+          const schedule = resolveWorkSchedule(employee, scheduleRows, g.tanggal);
+          const attendance = computeAttendance(g.events, oldData, minWorkGapMinutes, schedule);
+          const row = {
+            ...oldData,
+            id: ref.id,
+            nik,
+            fingerprint_user_id: g.deviceUserId,
+            fingerprint_emp_no: machineUser?.empNo || g.deviceUserId,
+            fingerprint_no_id: machineUser?.noId || g.deviceUserId,
+            fingerprint_name: machineUser?.name || employee?.finger_name || '',
+            auto_assign: true,
+            nama: employee?.nama_karyawan || employee?.nama || oldData.nama || `ID Finger ${g.deviceUserId} (belum dipetakan)`,
+            tanggal: g.tanggal,
+            scan_masuk: attendance.scan_masuk,
+            scan_keluar: attendance.scan_keluar,
+            perlu_koreksi: attendance.needs_review,
+            alasan_koreksi: attendance.review_reason,
+            klasifikasi_scan: attendance.classification,
+            cabang: employee.cabang || branch,
+            divisi: employee?.divisi || employee?.departemen || oldData.divisi || '',
+            jabatan: employee?.jabatan || employee?.posisi || oldData.jabatan || '',
+            sumber: 'FINGERPRINT',
+            disinkron_pada: new Date().toISOString()
+          };
+          supabaseByEmployeeDate.set(key, row);
+          return row;
+        });
+        if (rows.length) await upsertAttendance(rows);
+        count += rows.length;
+        continue;
+      }
       const existingSnapshots = resolvedChunk.length
         ? await db.getAll(...resolvedChunk.map(item => item.ref))
         : [];

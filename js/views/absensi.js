@@ -452,24 +452,10 @@ export async function mount(container, { session } = {}) {
  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
  const thresholdStr = sixtyDaysAgo.toISOString().substring(0, 10);
  const attendanceRef = collection(db, COL.DATA_ABSENSI);
- const liveAttendanceQuery = query(attendanceRef, where("tanggal", ">=", thresholdStr));
- const attendanceRequest = roleIsHrdOrAdmin
-  ? getDocs(liveAttendanceQuery)
-    .catch(async error => {
-      const cached = await getDocsFromCache(liveAttendanceQuery).catch(() => null);
-      if (cached?.docs?.length) {
-       toast("Kuota Firebase sedang habis; menampilkan data absensi tersimpan di perangkat ini.", "warning");
-       return cached;
-      }
-      throw error;
-    })
-    .then(snap => snap.docs.map(item => ({ ...item.data(), id: item.id, _docId: item.id })))
-  : isPicBranch ? attendanceAccessApi("attendance_list").then(result => result.rows || [])
-  : session?.nik ? Promise.all([
-      getDocs(query(attendanceRef, where("nik", "==", String(session.nik)))),
-      getDocs(query(attendanceRef, where("nik_karyawan", "==", String(session.nik))))
-    ]).then(snaps => [...new Map(snaps.flatMap(snap => snap.docs).map(d => [d.id, { ...d.data(), id: d.id }])).values()])
-  : Promise.resolve([]);
+ const attendanceRequest = attendanceAccessApi("attendance_list", {
+  fromDate: thresholdStr,
+  limit: 5000
+ }).then(result => result.rows || []);
  let attendanceRows, employeeRows, scheduleSnapshot, leaveRows, submissionRows;
  try {
  [attendanceRows, employeeRows, scheduleSnapshot, leaveRows, submissionRows] = await Promise.all([
@@ -719,7 +705,7 @@ export async function mount(container, { session } = {}) {
  rawTbody.querySelectorAll("[data-del-id]").forEach(btn => {
  btn.onclick = async () => {
  if(confirm("Hapus baris absensi ini?")) {
- await deleteDoc(doc(db, COL.DATA_ABSENSI, btn.dataset.delId));
+ await attendanceAccessApi("attendance_delete", { ids: [btn.dataset.delId] });
  toast("Data absensi berhasil dihapus", "success");
  loadRawAbsensiTable(true);
  }
@@ -944,27 +930,7 @@ export async function mount(container, { session } = {}) {
        ...(roleIsHrdOrAdmin ? { late_penalty_waived, late_penalty_note } : {}),
       };
      });
-     if (roleIsHrdOrAdmin) {
-      const batch = writeBatch(db);
-      changes.forEach(({ row, scan_masuk, scan_keluar, late_penalty_waived, late_penalty_note }, index) => {
-       const data = apiChanges[index];
-       const update = {
-        scan_masuk: scan_masuk || null,
-        scan_keluar: scan_keluar || null,
-        late_penalty_waived,
-        late_penalty_note: late_penalty_waived ? late_penalty_note : "",
-        late_penalty_updated_by: session?.nama || session?.username || "HRD",
-        late_penalty_updated_at: new Date().toISOString()
-       };
-       batch.set(doc(db, COL.DATA_ABSENSI, data.id), row.is_status_only ? {
-        nik: data.nik, nama: data.nama, tanggal: data.tanggal, cabang: data.cabang,
-        divisi: data.divisi, jabatan: data.jabatan, sumber: "KOREKSI HRD", ...update
-       } : update, { merge: true });
-      });
-      await batch.commit();
-     } else {
-      await attendanceAccessApi("attendance_patch", { changes: apiChanges });
-     }
+     await attendanceAccessApi("attendance_patch", { changes: apiChanges });
      selectedAttendanceKeys.clear();
      closeModal();
      toast(`${changes.length} baris absensi berhasil dikoreksi.`, "success");
@@ -1008,11 +974,7 @@ export async function mount(container, { session } = {}) {
     deleteButton.disabled = true;
     deleteButton.textContent = "Menghapus...";
     try {
-     for (let index = 0; index < deletableRows.length; index += 400) {
-      const batch = writeBatch(db);
-      deletableRows.slice(index, index + 400).forEach(row => batch.delete(doc(db, COL.DATA_ABSENSI, row.id)));
-      await batch.commit();
-     }
+     await attendanceAccessApi("attendance_delete", { ids: deletableRows.map(row => row.id) });
      selectedAttendanceKeys.clear();
      closeModal();
      toast(`${deletableRows.length} baris absensi berhasil dihapus.`, "success");
@@ -1062,18 +1024,11 @@ export async function mount(container, { session } = {}) {
  const targetId = item.is_status_only
  ? `ABS-MANUAL-${String(item.nik || item.id).replace(/[^a-zA-Z0-9._-]/g, '_')}-${item.tanggal}`
  : item.id;
- if (roleIsHrdOrAdmin) {
-  await setDoc(doc(db, COL.DATA_ABSENSI, targetId), item.is_status_only ? {
-   nik: item.nik, nama: item.nama, tanggal: item.tanggal, cabang: item.cabang || "",
-   divisi: item.divisi || "", jabatan: item.jabatan || "", sumber: "KOREKSI HRD", ...dataUpdate
-  } : dataUpdate, { merge: true });
- } else {
-  await attendanceAccessApi("attendance_patch", { changes: [{
-   id: targetId, nik: item.nik || "", nama: item.nama || "", tanggal: item.tanggal,
-   cabang: item.cabang || "", divisi: item.divisi || "", jabatan: item.jabatan || "",
-   ...dataUpdate
-  }] });
- }
+ await attendanceAccessApi("attendance_patch", { changes: [{
+  id: targetId, nik: item.nik || "", nama: item.nama || "", tanggal: item.tanggal,
+  cabang: item.cabang || "", divisi: item.divisi || "", jabatan: item.jabatan || "",
+  ...dataUpdate
+ }] });
  toast("Koreksi absensi berhasil disimpan", "success");
  closeModal();
  loadRawAbsensiTable(true);
@@ -1151,7 +1106,7 @@ export async function mount(container, { session } = {}) {
  scan_keluar: attendanceImportScan(values.scanPulang)
  };
 
- if (payload.nama && /^\d{4}-\d{2}-\d{2}$/.test(payload.tanggal) && (payload.scan_masuk || payload.scan_keluar)) {
+ if (payload.nik && payload.nama && /^\d{4}-\d{2}-\d{2}$/.test(payload.tanggal) && (payload.scan_masuk || payload.scan_keluar)) {
  tempArr.push(payload);
  importedCount++;
  if (tempArr.length === 400) { chunks.push(tempArr); tempArr = []; }
@@ -1159,11 +1114,7 @@ export async function mount(container, { session } = {}) {
  });
  if (tempArr.length > 0) chunks.push(tempArr);
 
- for (const chunk of chunks) {
- const batch = writeBatch(db);
- chunk.forEach(p => { batch.set(doc(db, COL.DATA_ABSENSI, p.id), p); });
- await batch.commit();
- }
+ for (const chunk of chunks) await attendanceAccessApi("attendance_upsert", { rows: chunk });
  toast(`${importedCount} baris scan diimpor; ${rows.length - importedCount} baris tanpa scan/tanggal valid tidak dibuat menjadi finger palsu.`, "success");
  } catch (err) { toast("Gagal: " + err.message, "error"); }
  btnImport.disabled = false; btnImport.innerHTML = `Pilih & Unggah File Excel`;
@@ -1178,15 +1129,15 @@ export async function mount(container, { session } = {}) {
  btnExport.disabled = true; btnExport.textContent = "Menyusun Laporan Terstruktur...";
 
  try {
- const [allKaryawan, snapAbsen, snapCuti, snapUme, snapSettings] = await Promise.all([
+ const [allKaryawan, attendanceResult, snapCuti, snapUme, snapSettings] = await Promise.all([
  fsGetAll(COL.MASTER_KARYAWAN),
- getDocs(query(collection(db, COL.DATA_ABSENSI), where("tanggal", ">=", start), where("tanggal", "<=", end))),
+ attendanceAccessApi("attendance_list", { fromDate: start, toDate: end, limit: 5000 }),
  getDocs(collection(db, COL.MASTER_CUTI)),
  getDocs(collection(db, COL.UANG_MAKAN_EXPEDISI)),
  getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(() => null)
  ]);
 
- const listAbsen = snapAbsen.docs.map(d => d.data());
+ const listAbsen = attendanceResult.rows || [];
  // PERBAIKAN: sebelumnya hanya mengambil record cuti yang TANGGAL MULAI-nya
  // ada di dalam rentang export. Cuti multi-hari yang MULAI sebelum rentang
  // tapi masih BERLANGSUNG di dalam rentang jadi tidak terbawa -> hari-hari

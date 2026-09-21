@@ -15,6 +15,7 @@ import {
 } from "../utils.js";
 import { badge, icon, avatar } from "../components.js";
 import { getSession, hasSubMenuAccess } from "../auth.js";
+import { listAttendance } from "../attendance-api.mjs";
 import {
   DAY_TYPES, DEFAULT_OVERTIME_CONFIG, calculateDurationMinutes, fmtMinutesToDisplay,
   formatOtDuration, getIndonesianDayName, getIndonesianMonthName,
@@ -137,10 +138,10 @@ export async function mount(container, context = {}) {
     try {
       const attendanceSince = new Date();
       attendanceSince.setDate(attendanceSince.getDate() - 60);
-      const attendanceRequest = getDocs(query(
-        collection(db, COL.DATA_ABSENSI || "data_absensi"),
-        where("tanggal", ">=", attendanceSince.toISOString().slice(0, 10))
-      )).then(snap => snap.docs.map(item => ({ id: item.id, ...item.data() }))).catch(() => []);
+      const attendanceRequest = listAttendance({
+        fromDate: attendanceSince.toISOString().slice(0, 10),
+        limit: 5000
+      }).catch(() => []);
       const [karyawanRes, ordersRes, proposalsRes, batchesRes, absensiRes, settingsDoc] = await Promise.all([
         fsGetAll(COL.MASTER_KARYAWAN).catch(() => []),
         fsGetAll(COL.OVERTIME_ORDERS || "overtime_orders").catch(() => []),

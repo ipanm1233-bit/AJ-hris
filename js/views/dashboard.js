@@ -2,6 +2,7 @@ import { db, COL, collection, query, where, getDocs, orderBy, limit, getDoc, doc
 import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, getTargetsForRole, toast, fsUpdate, fsAdd, fsGetAll, fsDelete, deleteBroadcastMemoAndNotifs, genId, localDateStr, getCalculatedJatahCuti, calculateAge, calculateTenure, cleanSalesName, calculateSalesRouteMetrics, normalizeCheckinItem, getDirectImageUrl } from "../utils.js";
 import { avatar, badge, icon, emptyState, skeletonRows, getDismissedAnnouncements, dismissAnnouncementForUser, openPenilaianFormFromNotif } from "../components.js";
 import { MANAJEMEN_ROLES, computeVisibleMenus, MENU_CONFIG } from "../auth.js";
+import { listAttendance } from "../attendance-api.mjs";
 // IMPORT BARU UNTUK MENDAPATKAN TOKEN HP (FCM)
 import { getToken } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js";
 
@@ -1055,19 +1056,13 @@ async function loadAttendanceAnalytics(container, session) {
     });
 
     const employeeNik = String(userEmpObj?.nik || userEmpObj?.nik_karyawan || session?.nik || "").trim();
-    let rawAllAbsen = [];
-    if (isHrd) {
-      const since = new Date();
-      since.setDate(since.getDate() - 60);
-      const snap = await getDocs(query(collection(db, COL.DATA_ABSENSI), where("tanggal", ">=", since.toISOString().slice(0, 10))));
-      rawAllAbsen = snap.docs.map(item => ({ id: item.id, ...item.data() }));
-    } else if (employeeNik) {
-      const snaps = await Promise.all([
-        getDocs(query(collection(db, COL.DATA_ABSENSI), where("nik", "==", employeeNik))),
-        getDocs(query(collection(db, COL.DATA_ABSENSI), where("nik_karyawan", "==", employeeNik)))
-      ]);
-      rawAllAbsen = [...new Map(snaps.flatMap(snap => snap.docs).map(item => [item.id, { id: item.id, ...item.data() }])).values()];
-    }
+    const since = new Date();
+    since.setDate(since.getDate() - 60);
+    const rawAllAbsen = await listAttendance({
+      fromDate: isHrd ? since.toISOString().slice(0, 10) : undefined,
+      nik: isHrd ? undefined : employeeNik,
+      limit: 5000
+    });
 
     // Annotate with normalized dates & month prefixes
     const annotatedAll = rawAllAbsen.map(item => {
