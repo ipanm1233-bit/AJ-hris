@@ -26,6 +26,8 @@ test('employee training tasks match a stable account identity', () => {
   assert.equal(participantMatchesSession({ username: 'ani.staff' }, { username: 'ANI.STAFF' }), true);
   assert.equal(participantMatchesSession({ email: 'ani@andela.id' }, { email: 'ANI@ANDELA.ID' }), true);
   assert.equal(participantMatchesSession({ nik: '001', nama: 'Nama Sama' }, { nik: '002', nama: 'Nama Sama' }), false);
+  assert.equal(participantMatchesSession({ nik: '001', nama: 'Ipan Maulana' }, { nik: '009', nama: 'IPAN MAULANA', role: 'HRD' }), true);
+  assert.equal(participantMatchesSession({ nik: '001', nama: 'Nama Sama' }, { nik: '002', nama: 'Nama Sama', role: 'STAFF' }), false);
 });
 
 test('TNA gap and priority never invert expected minus current', () => {

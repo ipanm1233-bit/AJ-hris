@@ -32,6 +32,10 @@ export function participantMatchesSession(participant = {}, session = {}) {
     [participant.email, session.email]
   ];
   if (identityPairs.some(([left, right]) => normalizeToken(left) && normalizeToken(left) === normalizeToken(right))) return true;
+  const privilegedSelfPreview = ['HRD', 'SUPERADMIN'].includes(normalizeToken(session.role))
+    && normalizeToken(participant.nama)
+    && normalizeToken(participant.nama) === normalizeToken(session.nama);
+  if (privilegedSelfPreview) return true;
   const participantHasStableIdentity = identityPairs.some(([left]) => normalizeToken(left));
   const sessionHasStableIdentity = identityPairs.some(([, right]) => normalizeToken(right));
   return !participantHasStableIdentity && !sessionHasStableIdentity && normalizeToken(participant.nama) === normalizeToken(session.nama);
