@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   aggregateNeeds, campaignTargetsEmployee, competencyGap, learningGain,
-  needPriorityScore, priorityLabel, safeParticipantSnapshot, trainingMetrics
+  needPriorityScore, participantMatchesSession, priorityLabel, safeParticipantSnapshot, trainingMetrics
 } from '../js/training-tna.mjs';
 
 test('campaign targets employees by branch and division', () => {
@@ -19,6 +19,13 @@ test('campaign supports checkbox targets and an explicit employee selection', ()
   }, employee), true);
   assert.equal(campaignTargetsEmployee({ target_branches: ['Malang'], target_niks: ['02'] }, employee), false);
   assert.equal(campaignTargetsEmployee({ target_branches: [], target_divisions: [], target_positions: [], target_niks: [] }, employee), true);
+});
+
+test('employee training tasks match a stable account identity', () => {
+  assert.equal(participantMatchesSession({ nik: '001' }, { nik: '001' }), true);
+  assert.equal(participantMatchesSession({ username: 'ani.staff' }, { username: 'ANI.STAFF' }), true);
+  assert.equal(participantMatchesSession({ email: 'ani@andela.id' }, { email: 'ANI@ANDELA.ID' }), true);
+  assert.equal(participantMatchesSession({ nik: '001', nama: 'Nama Sama' }, { nik: '002', nama: 'Nama Sama' }), false);
 });
 
 test('TNA gap and priority never invert expected minus current', () => {

@@ -25,6 +25,18 @@ export function employeeDivision(employee = {}) {
   return String(employee.divisi || employee.departemen || employee.department || '').trim();
 }
 
+export function participantMatchesSession(participant = {}, session = {}) {
+  const identityPairs = [
+    [participant.nik, session.nik || session.nik_karyawan],
+    [participant.username, session.username],
+    [participant.email, session.email]
+  ];
+  if (identityPairs.some(([left, right]) => normalizeToken(left) && normalizeToken(left) === normalizeToken(right))) return true;
+  const participantHasStableIdentity = identityPairs.some(([left]) => normalizeToken(left));
+  const sessionHasStableIdentity = identityPairs.some(([, right]) => normalizeToken(right));
+  return !participantHasStableIdentity && !sessionHasStableIdentity && normalizeToken(participant.nama) === normalizeToken(session.nama);
+}
+
 function normalizedTargets(values, legacyValue) {
   const source = Array.isArray(values) ? values : [legacyValue];
   return source.map(normalizeToken).filter(value => value && value !== 'SEMUA');
