@@ -12,9 +12,20 @@ const DEFAULT_LEAVE_TYPES = [
   { id: "S- - Sakit tanpa Surat Dokter", name: "Sakit tanpa Surat Dokter (Potong Cuti)", potong_jatah: "Tahunan", count: 1 },
   { id: "CB - Cuti Bersama", name: "Cuti Bersama", potong_jatah: "Tahunan", count: 1 },
   { id: "C- - Potong Gaji", name: "Cuti Potong Gaji / Unpaid Leave", potong_jatah: "Potong Gaji", count: 1 },
+  { id: "C-1/2 - Potong Gaji Setengah Hari", name: "Cuti Potong Gaji Setengah Hari", potong_jatah: "Potong Gaji", count: 0.5, requires_payroll_consent: true },
+  { id: "A - Alfa", name: "Alfa / Tidak Hadir Tanpa Keterangan", potong_jatah: "Tidak Dipotong", count: 0, discipline_impact: true, salary_deduction_review: true },
   { id: "C-BESAR - Cuti Besar", name: "Cuti Besar (Umroh / Haji / Masa Kerja)", potong_jatah: "Tidak Dipotong", count: 0, has_subcategory: true },
   { id: "D - Dinas Luar Kota", name: "Dinas Luar Kota / Tugas Lapangan", potong_jatah: "Tidak Dipotong", count: 0 }
 ];
+
+function withMandatoryLeaveTypes(configured = []) {
+  const merged = [...configured];
+  DEFAULT_LEAVE_TYPES.forEach(required => {
+    const requiredCode = String(required.id || "").split(" - ")[0].trim().toUpperCase();
+    if (!merged.some(item => String(item.id || "").split(" - ")[0].trim().toUpperCase() === requiredCode)) merged.push({ ...required });
+  });
+  return merged;
+}
 
 export async function mount(container, { session }) {
   const btnOpen = container.querySelector("#btn-open-cuti-modal");
@@ -50,9 +61,9 @@ export async function mount(container, { session }) {
         if (setSnap.exists()) {
           const sData = setSnap.data();
           if (Array.isArray(sData.types) && sData.types.length) {
-            leaveCategories = sData.types;
+            leaveCategories = withMandatoryLeaveTypes(sData.types);
           } else if (Array.isArray(sData.items) && sData.items.length) {
-            leaveCategories = sData.items;
+            leaveCategories = withMandatoryLeaveTypes(sData.items);
           }
         }
       } catch (e) {
@@ -571,12 +582,23 @@ export async function mount(container, { session }) {
       }
 
       const catObj = leaveCategories.find(c => c.id === val || c.name === val) || {};
+      const isAlphaCategory = catObj.discipline_impact === true || val.startsWith("A -") || val.toLowerCase().includes("alfa");
       const catPotong = catObj.potong_jatah || (
         val.includes("Khusus") || val.startsWith("C+ -") ? "Khusus" :
         val.includes("Akumulasi") || val.includes("Cuti Sisa") || val.startsWith("CS -") ? "Akumulasi" :
         val.includes("Potong Gaji") || val.startsWith("C- -") ? "Potong Gaji" :
         val.includes("Surat Dokter") || val.startsWith("S -") || val.includes("Dinas") || val.startsWith("D -") || val.includes("Cuti Besar") || val.startsWith("C-BESAR") ? "Tidak Dipotong" : "Tahunan"
       );
+
+      if (isAlphaCategory) {
+        warnWrap.classList.remove("hidden");
+        warnWrap.innerHTML = `
+          <div class="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-xl text-left">
+            <p class="text-xs font-black text-amber-950 uppercase">Alfa — Catatan Kedisiplinan</p>
+            <p class="mt-1 text-[11.5px] leading-relaxed text-amber-900">Alfa tidak mengurangi jatah cuti. Record ini masuk ke indikator kedisiplinan kinerja dan akan ditinjau HRD/Payroll karena berpotensi menimbulkan pemotongan gaji.</p>
+          </div>`;
+        return;
+      }
 
       // If category is "Tidak Dipotong", hide warning
       if (catPotong === "Tidak Dipotong") {
@@ -756,6 +778,7 @@ export async function mount(container, { session }) {
       const catObj = leaveCategories.find(c => c.id === catVal || c.name === catVal) || {};
       const catName = catObj.name || catObj.id || catVal;
       const isHalfDay = catName.includes("Setengah Hari") || catName.includes("1/2");
+      const isAlphaCategory = catObj.discipline_impact === true || catVal.startsWith("A -") || catName.toLowerCase().includes("alfa");
 
       let count = 0;
       if (isHalfDay) {
@@ -900,6 +923,12 @@ export async function mount(container, { session }) {
           potong_gaji_hari: isPotongGajiApplied ? excessDays : 0,
           tipe_potong: isPotongGajiApplied ? "Potong Gaji" : catPotong,
           catatan_potong_gaji: potongGajiNote,
+          payroll_consent: isPotongGajiApplied,
+          payroll_consent_at: isPotongGajiApplied ? nowIso : null,
+          payroll_consent_text: isPotongGajiApplied ? `Saya memahami dan menyetujui pemotongan gaji secara proporsional sebesar ${excessDays} hari kerja.` : null,
+          is_alfa: isAlphaCategory,
+          discipline_impact: isAlphaCategory,
+          salary_deduction_review_required: isAlphaCategory,
 
           detail: {
             jenis_cuti: catVal,
@@ -928,7 +957,12 @@ export async function mount(container, { session }) {
             is_potong_gaji: isPotongGajiApplied,
             potong_gaji: isPotongGajiApplied,
             potong_gaji_hari: isPotongGajiApplied ? excessDays : 0,
-            catatan_potong_gaji: potongGajiNote
+            catatan_potong_gaji: potongGajiNote,
+            payroll_consent: isPotongGajiApplied,
+            payroll_consent_at: isPotongGajiApplied ? nowIso : null,
+            is_alfa: isAlphaCategory,
+            discipline_impact: isAlphaCategory,
+            salary_deduction_review_required: isAlphaCategory
           },
           approval_flow: approvalFlow,
           approval_steps: isAutoReject ? ["REJECTED", "REJECTED"] : ["PENDING", "PENDING"],

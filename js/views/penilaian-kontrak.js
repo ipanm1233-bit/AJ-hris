@@ -5,6 +5,7 @@ import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames, hasPermission, c
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 import { aggregateKpiByPeriod, DEFAULT_KPI_GRADE_RULES, evaluateKpiGrade, getLatestKpiSummary, validateGradeRulesMap, assessKpiDecisionReadiness } from "../kpi-scoring.mjs";
+import { buildPerformanceMonitorRows } from "../performance-monitor.mjs";
 
 // =====================================================================
 // MASTER INDIKATOR PENILAIAN HARIAN & TARGET BULANAN
@@ -421,9 +422,66 @@ export async function mount(container, { session, params }) {
  evaluasi: container.querySelector("#pk-panel-evaluasi"),
  daily: container.querySelector("#pk-panel-daily"),
  template: container.querySelector("#pk-panel-template"),
+ monitoring: container.querySelector("#pk-panel-monitoring"),
  grafik: container.querySelector("#pk-panel-employee-grafik"),
  };
  const loaded = {};
+
+ async function loadPerformanceMonitoring() {
+  const wrap = panels.monitoring;
+  if (!wrap) return;
+  wrap.innerHTML = `<div class="p-8">${skeletonRows(6)}</div>`;
+  try {
+   const [employeesRaw, kpiLogs, dailyLogs, leaveRecords, attendanceRecords] = await Promise.all([
+    fsGetAll(COL.MASTER_KARYAWAN),
+    fsGetAll(COL.LOG_PENILAIAN_KPI).catch(() => []),
+    fsGetAll(COL.LOG_PENILAIAN_HARIAN).catch(() => []),
+    fsGetAll(COL.MASTER_CUTI).catch(() => []),
+    fsGetAll(COL.DATA_ABSENSI).catch(() => [])
+   ]);
+   const employees = employeesRaw.filter(employee => !["NONAKTIF", "RESIGN"].includes(String(employee.aktif_tdk_aktif || employee.status_aktif || "AKTIF").toUpperCase()));
+   const branches = [...new Set(employees.map(item => item.cabang).filter(Boolean))].sort((a, b) => a.localeCompare(b, "id"));
+   const divisions = [...new Set(employees.map(item => item.divisi || item.departemen).filter(Boolean))].sort((a, b) => a.localeCompare(b, "id"));
+   const statuses = ["TETAP", "KONTRAK", "PROBATION", "MAGANG", "LAINNYA"];
+   const currentMonth = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit" }).format(new Date());
+   wrap.innerHTML = `
+    <div class="space-y-5">
+     <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><div><h2 class="text-lg font-black text-slate-800">Monitoring Kinerja Karyawan</h2><p class="mt-1 text-xs text-slate-500">Pantau target kerja, indikator pendukung, dan kedisiplinan seluruh karyawan tetap, kontrak, probation, magang, atau status lainnya.</p></div><div class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">Skor disiplin: 100 − 10 poin/hari Alfa − 2 poin/kejadian terlambat. Alfa tidak mengurangi jatah cuti.</div></div>
+     <div class="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-5">
+      <label class="text-xs font-bold text-slate-600">Periode<input id="pm-period" type="month" value="${currentMonth}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-medium"></label>
+      <label class="text-xs font-bold text-slate-600">Cabang<select id="pm-branch" class="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"><option value="">Semua Cabang</option>${branches.map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}</select></label>
+      <label class="text-xs font-bold text-slate-600">Divisi<select id="pm-division" class="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"><option value="">Semua Divisi</option>${divisions.map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}</select></label>
+      <label class="text-xs font-bold text-slate-600">Status<select id="pm-status" class="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"><option value="">Semua Status</option>${statuses.map(value => `<option value="${value}">${value}</option>`).join("")}</select></label>
+      <label class="text-xs font-bold text-slate-600">Cari Karyawan<input id="pm-search" type="search" placeholder="Nama atau NIK…" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-medium"></label>
+     </div>
+     <div id="pm-summary" class="grid grid-cols-2 gap-3 lg:grid-cols-4"></div>
+     <div id="pm-table"></div>
+    </div>`;
+
+   const draw = () => {
+    const period = wrap.querySelector("#pm-period").value;
+    const branch = wrap.querySelector("#pm-branch").value;
+    const division = wrap.querySelector("#pm-division").value;
+    const status = wrap.querySelector("#pm-status").value;
+    const search = wrap.querySelector("#pm-search").value.trim().toLowerCase();
+    let rows = buildPerformanceMonitorRows({ employees, kpiLogs, dailyLogs, leaveRecords, attendanceRecords, period });
+    rows = rows.filter(row => (!branch || row.cabang === branch) && (!division || row.divisi === division) && (!status || row.status === status) && (!search || `${row.nama} ${row.nik}`.toLowerCase().includes(search)));
+    if (isAtasan && session.cabang) rows = rows.filter(row => String(row.cabang).toUpperCase() === String(session.cabang).toUpperCase());
+    const avg = key => rows.length ? (rows.reduce((sum, row) => sum + Number(row[key] || 0), 0) / rows.length).toFixed(1) : "0.0";
+    wrap.querySelector("#pm-summary").innerHTML = `
+     <div class="rounded-xl border bg-white p-4"><p class="text-[10px] font-bold uppercase text-slate-400">Karyawan Dipantau</p><p class="text-2xl font-black text-slate-800">${rows.length}</p></div>
+     <div class="rounded-xl border bg-white p-4"><p class="text-[10px] font-bold uppercase text-slate-400">Skor Keseluruhan</p><p class="text-2xl font-black text-indigo-700">${avg("overallScore")}</p></div>
+     <div class="rounded-xl border bg-white p-4"><p class="text-[10px] font-bold uppercase text-slate-400">Skor Disiplin</p><p class="text-2xl font-black text-emerald-700">${avg("disciplineScore")}</p></div>
+     <div class="rounded-xl border bg-white p-4"><p class="text-[10px] font-bold uppercase text-slate-400">Total Alfa</p><p class="text-2xl font-black text-rose-700">${rows.reduce((sum, row) => sum + row.alphaDays, 0)} hari</p></div>`;
+    wrap.querySelector("#pm-table").innerHTML = `<div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white"><table class="min-w-full text-xs"><thead class="bg-slate-50 text-slate-500"><tr>${["Karyawan", "Status", "Unit", "Target/KPI", "Pendukung", "Kedisiplinan", "Skor Total", "Bukti"].map(label => `<th class="px-4 py-3 text-left font-bold uppercase">${label}</th>`).join("")}</tr></thead><tbody>${rows.sort((a, b) => a.overallScore - b.overallScore).map(row => `<tr class="border-t border-slate-100"><td class="px-4 py-3"><b class="text-slate-800">${escapeHtml(row.nama)}</b><br><span class="text-slate-400">${escapeHtml(row.nik)}</span></td><td class="px-4 py-3"><span class="rounded bg-slate-100 px-2 py-1 font-bold">${escapeHtml(row.status)}</span></td><td class="px-4 py-3">${escapeHtml(row.cabang || "-")}<br><span class="text-slate-400">${escapeHtml(row.divisi || row.jabatan || "-")}</span></td><td class="px-4 py-3 font-black ${row.performanceScore === null ? "text-slate-400" : "text-blue-700"}">${row.performanceScore === null ? "Belum ada data" : `${row.performanceScore}/100`}</td><td class="px-4 py-3 font-black ${row.supportScore === null ? "text-slate-400" : "text-purple-700"}">${row.supportScore === null ? "Belum ada data" : `${row.supportScore}/100`}</td><td class="px-4 py-3"><b class="${row.disciplineScore < 80 ? "text-rose-700" : "text-emerald-700"}">${row.disciplineScore}/100</b><br><span class="text-[10px] text-slate-500">Alfa ${row.alphaDays} hari · Telat ${row.lateIncidents}x</span></td><td class="px-4 py-3"><span class="text-base font-black ${row.overallScore < 70 ? "text-rose-700" : row.overallScore < 85 ? "text-amber-700" : "text-emerald-700"}">${row.overallScore}</span></td><td class="px-4 py-3 text-center">${row.evidenceCount}</td></tr>`).join("") || `<tr><td colspan="8" class="p-8 text-center text-slate-400">Tidak ada karyawan sesuai filter.</td></tr>`}</tbody></table></div>`;
+   };
+   wrap.querySelectorAll("input, select").forEach(input => input.addEventListener(input.type === "search" ? "input" : "change", draw));
+   draw();
+  } catch (error) {
+   console.error("performance-monitor", error);
+   wrap.innerHTML = emptyState("Gagal memuat monitoring kinerja: " + error.message);
+  }
+ }
 
  async function loadEmployeeGrafik() {
  const wrap = container.querySelector("#pk-panel-employee-grafik");
@@ -7125,6 +7183,7 @@ export async function mount(container, { session, params }) {
   if (tabKey === "hasil" && !loaded.hasil) { loaded.hasil = true; loadHasilPenilaian(); }
   if (tabKey === "evaluasi" && !loaded.evaluasi) { loaded.evaluasi = true; loadEvaluasiKontrak(); }
   if (tabKey === "daily" && !loaded.daily) { loaded.daily = true; loadDailyTarget(); }
+  if (tabKey === "monitoring" && !loaded.monitoring) { loaded.monitoring = true; loadPerformanceMonitoring(); }
   }
 
   container.querySelectorAll(".pk-tab").forEach(btn => {

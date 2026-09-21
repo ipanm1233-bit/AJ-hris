@@ -2185,6 +2185,8 @@ export function generateStandardFormCutiHtml(opts = {}) {
 	const hakBesar = toNumber(sisaBesar);
 
 	const jenisLower = (jenisCuti || "").toLowerCase();
+	const isSalaryDeduction = jenisLower.includes("potong gaji") || jenisLower.includes("unpaid") || /^c-(?:1\/2)?(?:\s|$)/.test(jenisLower);
+	const isAlpha = jenisLower.includes("alfa") || jenisLower.includes("mangkir") || /^a\s*-/.test(jenisLower);
 	let targetCat = "Tahunan";
 	if (jenisLower.includes("khusus")) targetCat = "Khusus";
 	else if (jenisLower.includes("akumulasi") || jenisLower.includes("carry") || jenisLower.includes("cuti sisa") || jenisLower.startsWith("cs")) targetCat = "Akumulasi";
@@ -2798,6 +2800,17 @@ export function generateStandardFormCutiHtml(opts = {}) {
 				</tr>
 				` : ""}
 			</table>
+
+			${isSalaryDeduction ? `
+			<div style="margin:8px 0 10px;padding:7px 9px;border:1.5px solid #be123c;background:#fff1f2;color:#881337;font-size:10.5px;line-height:1.45;border-radius:4px;">
+				<strong>PERNYATAAN PERSETUJUAN PEMOTONGAN GAJI:</strong><br>
+				Dengan mengajukan dan menandatangani formulir ini, karyawan menyatakan telah memahami dan menyetujui pemotongan gaji secara proporsional sebesar <strong>${formatCutiNum(usedCount)} hari kerja</strong>, sesuai persetujuan perusahaan dan ketentuan payroll yang berlaku.
+			</div>` : ""}
+
+			${isAlpha ? `
+			<div style="margin:8px 0 10px;padding:7px 9px;border:1.5px solid #b45309;background:#fffbeb;color:#78350f;font-size:10.5px;line-height:1.45;border-radius:4px;">
+				<strong>CATATAN KEDISIPLINAN:</strong> Alfa tidak mengurangi jatah cuti, dicatat sebagai kejadian kedisiplinan, masuk dalam indikator kinerja, dan dapat menjadi dasar peninjauan pemotongan gaji sesuai keputusan HRD/Payroll.
+			</div>` : ""}
 
 			<!-- BAGIAN 3: TABEL REKAPITULASI HAK & PENGAMBILAN CUTI -->
 			<div class="sec-head">III. REKAPITULASI HAK & PENGAMBILAN CUTI</div>

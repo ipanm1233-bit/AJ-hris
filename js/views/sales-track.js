@@ -9,6 +9,7 @@ import { isoDocHeaderTable, COMPANY_NAME, logoImgTag } from "../branding.js";
 import { getSession } from "../auth.js";
 import { authFetch } from "../api-client.js";
 import { callGasArchiveWebApp } from "../gas-integration.js";
+import { applyDailyRouteOverride, buildDailyRouteReconciliation } from "../sales-route.mjs";
 
 // Beautiful SVG D3 visualization loaded from ESM
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
@@ -203,6 +204,50 @@ export async function mount(container, { session } = {}) {
       isManual: false,
       calculatedKm: Math.round(Number(calculatedKm) * 10) / 10
     };
+  }
+
+  function getDailyDepartureConfig(salesNik, tanggal) {
+    return applyDailyRouteOverride(departureConfig, odometerLogsMap.get(`${salesNik}_${tanggal}`) || {}, salesNik);
+  }
+
+  function calculateDailyRouteMetrics(visits, salesNik, tanggal) {
+    return calculateSalesRouteMetrics(visits, getDailyDepartureConfig(salesNik, tanggal), salesNik);
+  }
+
+  async function saveDailyRoutePoint(salesNik, salesNama, tanggal, isStart, rawGps) {
+    if (isStandardKaryawan) return false;
+    const coords = parseGpsCoordinates(String(rawGps || "").trim());
+    if (!salesNik || !tanggal || !coords) {
+      toast("Format GPS tidak valid. Gunakan Latitude, Longitude.", "error");
+      return false;
+    }
+    const key = `${salesNik}_${tanggal}`;
+    const docId = `ODM-${salesNik}-${tanggal}`;
+    const existing = odometerLogsMap.get(key) || {};
+    const basePoint = departureConfig.sales_points?.[salesNik] || {};
+    const validGps = `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`;
+    const record = {
+      ...existing,
+      id: docId,
+      sales_nik: salesNik,
+      sales_nama: salesNama || existing.sales_nama || "Salesman",
+      tanggal,
+      ...(isStart ? {
+        start_gps: validGps,
+        start_nama: existing.start_nama || basePoint.start_nama || `Titik awal ${salesNama || salesNik}`,
+        start_type: "CUSTOM HARIAN"
+      } : {
+        end_gps: validGps,
+        end_nama: existing.end_nama || basePoint.end_nama || `Titik akhir ${salesNama || salesNik}`,
+        end_type: "CUSTOM HARIAN"
+      }),
+      updated_at: new Date().toISOString()
+    };
+    await fsUpdate("sales_odometer", docId, record).catch(() => fsAdd("sales_odometer", record, docId));
+    odometerLogsMap.set(key, record);
+    toast(`Titik ${isStart ? "awal" : "akhir"} khusus tanggal ${tanggal} berhasil disimpan.`, "success");
+    applyAndRenderDashboard();
+    return true;
   }
 
   // Helper: Save/Update Custom Daily GPS Distance (e.g. from Google Maps route discrepancy)
@@ -742,8 +787,8 @@ export async function mount(container, { session } = {}) {
 
     let cumulativeKm = 0;
     salesGroup.forEach((grp, key) => {
-      const metrics = calculateSalesRouteMetrics(grp.visits, departureConfig, grp.nik);
       const sampleTgl = grp.visits[0]?.tanggal || todayStr;
+      const metrics = calculateDailyRouteMetrics(grp.visits, grp.nik, sampleTgl);
       const eff = getEffectiveDailyGpsDistance(grp.nik, sampleTgl, metrics.totalKm);
       cumulativeKm += eff.totalKm;
     });
@@ -822,7 +867,7 @@ export async function mount(container, { session } = {}) {
       if (salesDates.length > 0) {
         salesDates.forEach(d => {
           const dVisits = s.visits.filter(v => v.tanggal === d);
-          const dMet = calculateSalesRouteMetrics(dVisits, departureConfig, s.nik);
+          const dMet = calculateDailyRouteMetrics(dVisits, s.nik, d);
           const eff = getEffectiveDailyGpsDistance(s.nik, d, dMet.totalKm);
           salesmanEffectiveTotalKm += eff.totalKm;
           if (eff.isManual) hasCustomGps = true;
@@ -1845,7 +1890,7 @@ export async function mount(container, { session } = {}) {
       let totalOverallGpsKm = 0;
       sortedDates.forEach(d => {
         const dVisits = allSalesVisits.filter(v => v.tanggal === d);
-        const dMet = calculateSalesRouteMetrics(dVisits, departureConfig, salesNik);
+        const dMet = calculateDailyRouteMetrics(dVisits, salesNik, d);
         const eff = getEffectiveDailyGpsDistance(salesNik, d, dMet.totalKm);
         totalOverallGpsKm += eff.totalKm;
       });
@@ -1865,7 +1910,7 @@ export async function mount(container, { session } = {}) {
         </div>
       ` : datesToRender.map(tgl => {
         const dailyVisits = allSalesVisits.filter(v => v.tanggal === tgl);
-        const dailyMetrics = calculateSalesRouteMetrics(dailyVisits, departureConfig, salesNik);
+        const dailyMetrics = calculateDailyRouteMetrics(dailyVisits, salesNik, tgl);
         const effectiveGps = getEffectiveDailyGpsDistance(salesNik, tgl, dailyMetrics.totalKm);
         const effectiveGpsKm = effectiveGps.totalKm;
         const isCustomGps = effectiveGps.isManual;
@@ -2649,7 +2694,7 @@ export async function mount(container, { session } = {}) {
         btn.onclick = () => {
           const tgl = btn.dataset.date;
           const inp = modalEl.querySelector(`.input-daily-start-gps[data-date="${tgl}"]`);
-          if (inp) saveBaseGps(true, inp.value);
+          if (inp) saveDailyRoutePoint(salesNik, salesName, tgl, true, inp.value).then(refreshModalView);
         };
       });
 
@@ -2657,7 +2702,7 @@ export async function mount(container, { session } = {}) {
         input.onkeydown = (e) => {
           if (e.key === "Enter") {
             e.preventDefault();
-            saveBaseGps(true, input.value);
+            saveDailyRoutePoint(salesNik, salesName, input.dataset.date, true, input.value).then(refreshModalView);
           }
         };
       });
@@ -2666,7 +2711,7 @@ export async function mount(container, { session } = {}) {
         btn.onclick = () => {
           const tgl = btn.dataset.date;
           const inp = modalEl.querySelector(`.input-daily-end-gps[data-date="${tgl}"]`);
-          if (inp) saveBaseGps(false, inp.value);
+          if (inp) saveDailyRoutePoint(salesNik, salesName, tgl, false, inp.value).then(refreshModalView);
         };
       });
 
@@ -2674,7 +2719,7 @@ export async function mount(container, { session } = {}) {
         input.onkeydown = (e) => {
           if (e.key === "Enter") {
             e.preventDefault();
-            saveBaseGps(false, input.value);
+            saveDailyRoutePoint(salesNik, salesName, input.dataset.date, false, input.value).then(refreshModalView);
           }
         };
       });
@@ -2850,20 +2895,32 @@ export async function mount(container, { session } = {}) {
     // Compute Summary Stats per Salesman
     const salesmanSummaries = [];
     let grandTotalKm = 0;
+    let grandTotalOdometer = 0;
+    let grandTotalClaim = 0;
     let grandTotalVisits = 0;
     let grandTotalEc = 0;
 
     salesGroup.forEach((sData, sName) => {
       let salesTotalKm = 0;
+      let salesTotalOdometer = 0;
+      let salesTotalClaim = 0;
       let salesTotalVisits = 0;
       let salesEcCount = 0;
       const dates = Array.from(sData.byDate.keys()).sort((a,b) => b.localeCompare(a));
 
       dates.forEach(dStr => {
         const visits = sData.byDate.get(dStr);
-        const metrics = calculateSalesRouteMetrics(visits, departureConfig, sData.nik);
+        const metrics = calculateDailyRouteMetrics(visits, sData.nik, dStr);
         const eff = getEffectiveDailyGpsDistance(sData.nik, dStr, metrics.totalKm);
+        const odometer = odometerLogsMap.get(`${sData.nik}_${dStr}`) || {};
+        const reconciliation = buildDailyRouteReconciliation({
+          gpsKm: eff.totalKm,
+          odometerKm: odometer.jarak_odometer || Math.max(0, Number(odometer.km_akhir || 0) - Number(odometer.km_awal || 0)),
+          storeCount: new Set(visits.map(item => cleanStoreName(item.toko_outlet || ""))).size
+        });
         salesTotalKm += eff.totalKm;
+        salesTotalOdometer += reconciliation.odometerKm;
+        salesTotalClaim += reconciliation.claimAmount;
         salesTotalVisits += visits.length;
         visits.forEach(v => {
           if ((v.status_kunjungan || "").toLowerCase().includes("effective")) salesEcCount++;
@@ -2871,6 +2928,8 @@ export async function mount(container, { session } = {}) {
       });
 
       grandTotalKm += salesTotalKm;
+      grandTotalOdometer += salesTotalOdometer;
+      grandTotalClaim += salesTotalClaim;
       grandTotalVisits += salesTotalVisits;
       grandTotalEc += salesEcCount;
 
@@ -2879,7 +2938,11 @@ export async function mount(container, { session } = {}) {
         nik: sData.nik,
         activeDays: dates.length,
         totalVisits: salesTotalVisits,
+        totalStores: new Set(Array.from(sData.byDate.values()).flat().map(item => cleanStoreName(item.toko_outlet || ""))).size,
         totalKm: Number(salesTotalKm.toFixed(1)),
+        totalOdometer: Number(salesTotalOdometer.toFixed(1)),
+        totalDifference: Number((salesTotalOdometer - salesTotalKm).toFixed(1)),
+        totalClaim: salesTotalClaim,
         avgKmPerDay: dates.length > 0 ? Number((salesTotalKm / dates.length).toFixed(1)) : 0,
         ecCount: salesEcCount,
         ecPct: salesTotalVisits > 0 ? Math.round((salesEcCount / salesTotalVisits) * 100) : 0,
@@ -2890,10 +2953,13 @@ export async function mount(container, { session } = {}) {
     const grandEcPct = grandTotalVisits > 0 ? Math.round((grandTotalEc / grandTotalVisits) * 100) : 0;
     const reportDateStr = new Intl.DateTimeFormat("id-ID", { dateStyle: "full", timeZone: "Asia/Jakarta" }).format(new Date());
 
-    const periodLabel = periodFilter === "TODAY" ? `Hari Ini (${todayStr})`
-      : periodFilter === "WEEK" ? "7 Hari Terakhir"
-      : periodFilter === "MONTH" ? `Bulan ${todayStr.substring(0, 7)}`
-      : "Seluruh Periode Terdaftar";
+    const reportDates = [...new Set(filteredRecords.map(item => item.tanggal).filter(Boolean))].sort();
+    const periodLabel = recordsOverride && reportDates.length
+      ? `${reportDates[0]} s.d. ${reportDates[reportDates.length - 1]}`
+      : periodFilter === "TODAY" ? `Hari Ini (${todayStr})`
+        : periodFilter === "WEEK" ? "7 Hari Terakhir"
+        : periodFilter === "MONTH" ? `Bulan ${todayStr.substring(0, 7)}`
+        : "Seluruh Periode Terdaftar";
 
     // Build SVG Bar Chart for PDF Analitik Visual
     const maxKm = Math.max(...salesmanSummaries.map(s => s.totalKm), 1);
@@ -2918,11 +2984,12 @@ export async function mount(container, { session } = {}) {
         <td style="padding: 6px 8px; text-align: center; font-weight: bold;">${idx + 1}</td>
         <td style="padding: 6px 8px; font-family: monospace;">${escapeHtml(s.nik)}</td>
         <td style="padding: 6px 8px; font-weight: bold; color: #1e293b;">${escapeHtml(s.nama)}</td>
-        <td style="padding: 6px 8px; text-align: center;">${s.totalVisits} Outlet</td>
+        <td style="padding: 6px 8px; text-align: center;">${s.totalVisits} Visit / ${s.totalStores} Toko</td>
         <td style="padding: 6px 8px; text-align: center;">${s.activeDays} Hari</td>
         <td style="padding: 6px 8px; text-align: right; font-weight: bold; color: #4338ca;">${s.totalKm} KM</td>
-        <td style="padding: 6px 8px; text-align: right; color: #475569;">${s.avgKmPerDay} KM/Hari</td>
-        <td style="padding: 6px 8px; text-align: center; font-weight: bold; color: ${s.ecPct >= 70 ? '#15803d' : '#b45309'};">${s.ecPct}% EC</td>
+        <td style="padding: 6px 8px; text-align: right; color: #475569;">${s.totalOdometer} KM</td>
+        <td style="padding: 6px 8px; text-align: right; color: ${Math.abs(s.totalDifference) > 5 ? '#b91c1c' : '#475569'};">${s.totalDifference > 0 ? '+' : ''}${s.totalDifference} KM</td>
+        <td style="padding: 6px 8px; text-align: right; font-weight: bold; color: #15803d;">Rp${Number(s.totalClaim).toLocaleString('id-ID')}</td>
       </tr>
     `).join("");
 
@@ -2947,8 +3014,14 @@ export async function mount(container, { session } = {}) {
         const dates = Array.from(s.byDate.keys()).sort((a,b) => b.localeCompare(a));
         dates.forEach(dStr => {
           const visits = s.byDate.get(dStr);
-          const metrics = calculateSalesRouteMetrics(visits, departureConfig, s.nik);
+          const metrics = calculateDailyRouteMetrics(visits, s.nik, dStr);
           const effGps = getEffectiveDailyGpsDistance(s.nik, dStr, metrics.totalKm);
+          const dailyOdometer = odometerLogsMap.get(`${s.nik}_${dStr}`) || {};
+          const dailyRecon = buildDailyRouteReconciliation({
+            gpsKm: effGps.totalKm,
+            odometerKm: dailyOdometer.jarak_odometer || Math.max(0, Number(dailyOdometer.km_akhir || 0) - Number(dailyOdometer.km_awal || 0)),
+            storeCount: new Set(visits.map(item => cleanStoreName(item.toko_outlet || ""))).size
+          });
 
           const pdfStartRow = `
             <tr style="border-bottom: 1px solid #e2e8f0; font-size: 10px; background-color: #e0e7ff; font-weight: bold;">
@@ -3030,6 +3103,13 @@ export async function mount(container, { session } = {}) {
                 <span style="font-weight: bold; color: #1e293b;">Tanggal: ${escapeHtml(dStr)}</span>
                 <span style="font-size: 9.5px; color: #475569;">Keberangkatan: <b>${escapeHtml(metrics.startPoint.nama)}</b> | Total Jarak GPS: <b style="color:#4338ca;">${effGps.totalKm} KM</b> ${effGps.isManual ? '<span style="color:#d97706;font-weight:bold;">(Custom Google Maps)</span>' : ''}</span>
               </div>
+              <div style="display:flex; gap:6px; padding:6px 10px; background:#fffbeb; border-bottom:1px solid #fde68a; font-size:9px; font-weight:bold;">
+                <span style="flex:1;">Kunjungan: ${visits.length} / ${dailyRecon.storeCount} toko</span>
+                <span style="flex:1;">Google Maps: ${dailyRecon.gpsKm} KM</span>
+                <span style="flex:1;">Odometer: ${dailyRecon.odometerKm} KM</span>
+                <span style="flex:1; color:${Math.abs(dailyRecon.differenceKm) > 5 ? '#b91c1c' : '#475569'};">Selisih: ${dailyRecon.differenceKm > 0 ? '+' : ''}${dailyRecon.differenceKm} KM</span>
+                <span style="flex:1; color:#15803d;">Klaim: Rp${dailyRecon.claimAmount.toLocaleString('id-ID')}</span>
+              </div>
               <table style="width: 100%; border-collapse: collapse; text-align: left;">
                 <thead>
                   <tr style="background-color: #f8fafc; color: #64748b; font-size: 8.5px; text-transform: uppercase; border-bottom: 1px solid #e2e8f0;">
@@ -3086,12 +3166,16 @@ export async function mount(container, { session } = {}) {
             <div style="font-size: 13px; font-weight: 900; color: #0f172a;">${grandTotalVisits} Visit</div>
           </div>
           <div style="flex: 1; background-color: #ffffff; border: 1px solid #cbd5e1; padding: 6px 8px; border-radius: 4px; text-align: center;">
-            <div style="font-size: 8.5px; color: #64748b; font-weight: bold; text-transform: uppercase;">Total Jarak Tempuh</div>
+            <div style="font-size: 8.5px; color: #64748b; font-weight: bold; text-transform: uppercase;">Jarak Google Maps</div>
             <div style="font-size: 13px; font-weight: 900; color: #4338ca;">${grandTotalKm.toFixed(1)} KM</div>
           </div>
           <div style="flex: 1; background-color: #ffffff; border: 1px solid #cbd5e1; padding: 6px 8px; border-radius: 4px; text-align: center;">
-            <div style="font-size: 8.5px; color: #64748b; font-weight: bold; text-transform: uppercase;">Overall EC Rate</div>
-            <div style="font-size: 13px; font-weight: 900; color: ${grandEcPct >= 70 ? '#15803d' : '#b45309'};">${grandEcPct}% EC</div>
+            <div style="font-size: 8.5px; color: #64748b; font-weight: bold; text-transform: uppercase;">Odometer / Selisih</div>
+            <div style="font-size: 13px; font-weight: 900; color: #0f172a;">${grandTotalOdometer.toFixed(1)} / ${(grandTotalOdometer - grandTotalKm) > 0 ? '+' : ''}${(grandTotalOdometer - grandTotalKm).toFixed(1)} KM</div>
+          </div>
+          <div style="flex: 1; background-color: #ffffff; border: 1px solid #cbd5e1; padding: 6px 8px; border-radius: 4px; text-align: center;">
+            <div style="font-size: 8.5px; color: #64748b; font-weight: bold; text-transform: uppercase;">Total Klaim / EC</div>
+            <div style="font-size: 13px; font-weight: 900; color: #15803d;">Rp${grandTotalClaim.toLocaleString('id-ID')} · ${grandEcPct}%</div>
           </div>
         </div>
 
@@ -3112,11 +3196,12 @@ export async function mount(container, { session } = {}) {
                 <th style="padding: 5px 6px; text-align: center; width: 25px;">#</th>
                 <th style="padding: 5px 6px; width: 65px;">NIK</th>
                 <th style="padding: 5px 6px;">Nama Salesman</th>
-                <th style="padding: 5px 6px; text-align: center;">Total Visit</th>
+                <th style="padding: 5px 6px; text-align: center;">Visit / Toko</th>
                 <th style="padding: 5px 6px; text-align: center;">Hari Aktif</th>
-                <th style="padding: 5px 6px; text-align: right;">Total Jarak</th>
-                <th style="padding: 5px 6px; text-align: right;">Rata-Rata/Hari</th>
-                <th style="padding: 5px 6px; text-align: center;">EC Rate</th>
+                <th style="padding: 5px 6px; text-align: right;">Google Maps</th>
+                <th style="padding: 5px 6px; text-align: right;">Odometer</th>
+                <th style="padding: 5px 6px; text-align: right;">Selisih</th>
+                <th style="padding: 5px 6px; text-align: right;">Klaim</th>
               </tr>
             </thead>
             <tbody>
@@ -3250,7 +3335,7 @@ export async function mount(container, { session } = {}) {
               </label>
 
               <label class="flex items-start gap-3 p-2.5 border rounded-xl cursor-pointer hover:bg-slate-50 border-slate-200 has-[:checked]:border-red-600 has-[:checked]:bg-red-50/50 transition">
-                <input type="radio" name="export-format" value="PDF_SUMMARY" ${defaultFormat === "PDF" ? "checked" : ""} class="accent-red-600 mt-1" />
+                <input type="radio" name="export-format" value="PDF_SUMMARY" class="accent-red-600 mt-1" />
                 <div>
                   <p class="font-bold text-slate-800">📄 PDF Versi 1: Rekapan & Analitik (Ringkas / Simple)</p>
                   <p class="text-[10.5px] text-slate-500">Rangkuman statistik 1-2 halaman, grafik visual jarak sales, dan tabel akumulasi (tanpa rincian toko per toko).</p>
@@ -3258,10 +3343,10 @@ export async function mount(container, { session } = {}) {
               </label>
 
               <label class="flex items-start gap-3 p-2.5 border rounded-xl cursor-pointer hover:bg-slate-50 border-slate-200 has-[:checked]:border-indigo-600 has-[:checked]:bg-indigo-50/50 transition">
-                <input type="radio" name="export-format" value="PDF_FULL" class="accent-indigo-600 mt-1" />
+                <input type="radio" name="export-format" value="PDF_FULL" ${defaultFormat === "PDF" ? "checked" : ""} class="accent-indigo-600 mt-1" />
                 <div>
                   <p class="font-bold text-slate-800">📋 PDF Versi 2: Lengkap Detail Rute + Foto Kunjungan</p>
-                  <p class="text-[10.5px] text-slate-500">Laporan lengkap berisi ringkasan, grafik, rincian rute harian, koordinat GPS, dan foto bukti check-in tiap toko.</p>
+                  <p class="text-[10.5px] text-slate-500">Laporan mingguan lengkap: detail kunjungan harian, total toko, Google Maps, odometer, selisih, klaim, koordinat, dan foto.</p>
                 </div>
               </label>
             </div>

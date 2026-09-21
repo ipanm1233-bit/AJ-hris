@@ -17,11 +17,21 @@ const DEFAULT_LEAVE_TYPES = [
  { id: "S-", name: "Sakit tanpa Surat Dokter", potong: "Tahunan", count: 1 },
  { id: "CB", name: "Cuti Bersama", potong: "Tahunan", count: 1 },
  { id: "C-", name: "Cuti Potong Gaji", potong: "Potong Gaji", count: 1 },
+ { id: "C-1/2", name: "Cuti Potong Gaji Setengah Hari", potong: "Potong Gaji", count: 0.5, requires_payroll_consent: true },
+ { id: "A", name: "Alfa", potong: "Tidak Dipotong", count: 0, discipline_impact: true, salary_deduction_review: true },
  { id: "CS", name: "Cuti Sisa", potong: "Akumulasi", count: 1 },
  { id: "C+1/2", name: "Cuti Khusus Setengah Hari", potong: "Khusus", count: 0.5 },
  { id: "D", name: "Dinas Luar Kota", potong: "Tidak Dipotong", count: 0 },
  { id: "C-BESAR", name: "Cuti Besar", potong: "Tidak Dipotong", count: 0 }
 ];
+
+function withMandatoryLeaveTypes(configured = []) {
+ const merged = [...configured];
+ DEFAULT_LEAVE_TYPES.forEach(required => {
+  if (!merged.some(item => String(item.id || "").trim().toUpperCase() === required.id)) merged.push({ ...required });
+ });
+ return merged;
+}
 
 export function checkIsHalfDay(cfgOrNameOrId) {
   if (!cfgOrNameOrId) return false;
@@ -440,7 +450,7 @@ export async function mount(container, { session }) {
   : isFullAccess ? snapC : filterLeaveRowsForEmployees(snapC, allKaryawan);
  
  if (snapCfg.exists() && snapCfg.data().types) {
- leaveConfig = snapCfg.data().types;
+ leaveConfig = withMandatoryLeaveTypes(snapCfg.data().types);
  } else {
  leaveConfig = [...DEFAULT_LEAVE_TYPES];
  }
@@ -2427,6 +2437,20 @@ export async function mount(container, { session }) {
             const sesiCutiVal = isHalf ? (selSesi?.value || "Cuti Pagi") : null;
 
             const sickRecord = isDoctorCertifiedSickLeave(curCfg);
+            const isAlphaRecord = curCfg.discipline_impact === true || curCfg.id === "A";
+            const isSalaryDeduction = curCfg.potong === "Potong Gaji";
+            if (isSalaryDeduction) {
+              const approved = await confirmDialog(
+                `Karyawan menyetujui pemotongan gaji secara proporsional sebesar ${countVal} hari kerja untuk pengajuan ini? Pernyataan persetujuan akan dicantumkan pada Form Cuti.`,
+                { title: "Persetujuan Pemotongan Gaji", danger: true }
+              );
+              if (!approved) {
+                btnSimpan.disabled = false;
+                btnSimpan.textContent = "Simpan Catatan Cuti";
+                return;
+              }
+            }
+            const consentAt = isSalaryDeduction ? new Date().toISOString() : null;
             const payload = {
               nama_karyawan: k.nama_karyawan,
               tanggal: tglAwal,
@@ -2453,6 +2477,15 @@ export async function mount(container, { session }) {
               nik: k.nik || "-",
               cabang: k.cabang || "-",
               jabatan: k.jabatan || "-",
+              is_potong_gaji: isSalaryDeduction,
+              potong_gaji_hari: isSalaryDeduction ? countVal : 0,
+              payroll_consent: isSalaryDeduction,
+              payroll_consent_at: consentAt,
+              payroll_consent_text: isSalaryDeduction ? `Karyawan menyetujui pemotongan gaji secara proporsional sebesar ${countVal} hari kerja.` : null,
+              is_alfa: isAlphaRecord,
+              alpha_days: isAlphaRecord ? countVal : 0,
+              discipline_impact: isAlphaRecord,
+              salary_deduction_review_required: isAlphaRecord,
               createdAt: new Date().toISOString(),
               diinput_oleh: session?.nama || session?.username || "HRD"
             };

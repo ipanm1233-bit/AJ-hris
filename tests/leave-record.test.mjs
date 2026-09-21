@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { isSickLeave, isDoctorCertifiedSickLeave, resolveEffectiveLeaveDeduction } from "../js/leave-policy.mjs";
+import { isSickLeave, isDoctorCertifiedSickLeave, resolveEffectiveLeaveDeduction, isAlphaLeave, isSalaryDeductionLeave } from "../js/leave-policy.mjs";
 import { leaveInputDate, leaveInputDisplay, matchesLeaveExportPeriod } from "../js/leave-export.mjs";
 
 test("sick with a doctor's note never deducts leave, even if stored config is wrong", () => {
@@ -10,6 +10,18 @@ test("sick with a doctor's note never deducts leave, even if stored config is wr
   assert.equal(isSickLeave({ id: "S-", name: "Sakit tanpa Surat Dokter" }), true);
   assert.equal(isDoctorCertifiedSickLeave({ id: "S-", name: "Sakit tanpa Surat Dokter" }), false);
   assert.equal(resolveEffectiveLeaveDeduction({ id: "S-", name: "Sakit tanpa Surat Dokter", potong: "Tahunan" }), "Tahunan");
+});
+
+test("alpha and half-day salary deduction are mandatory leave policies", () => {
+  assert.equal(isAlphaLeave({ id: "A", name: "Alfa" }), true);
+  assert.equal(resolveEffectiveLeaveDeduction({ id: "A", name: "Alfa", potong: "Tidak Dipotong" }), "Tidak Dipotong");
+  assert.equal(isSalaryDeductionLeave({ id: "C-1/2", name: "Cuti Potong Gaji Setengah Hari" }), true);
+  assert.equal(isSalaryDeductionLeave({ id: "C-BESAR", name: "Cuti Besar" }), false);
+  const leaveForm = readFileSync(new URL("../js/views/pengajuan-cuti.js", import.meta.url), "utf8");
+  assert.match(leaveForm, /A - Alfa/);
+  assert.match(leaveForm, /C-1\/2 - Potong Gaji Setengah Hari/);
+  assert.match(leaveForm, /payroll_consent_text/);
+  assert.match(leaveForm, /discipline_impact/);
 });
 
 test("input-based export selects HRD input timestamp instead of leave date", () => {
