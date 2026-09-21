@@ -1,1521 +1,260 @@
-import { db, COL, collection, query, where, getDocs, orderBy, limit, doc, setDoc, updateDoc } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, fmtDateShort, escapeHtml, genId, notifyUser } from "../utils.js";
-import { avatar, badge, emptyState } from "../components.js";
-import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
+import { COL, db, collection, query, where, getDocs } from "../firebase-config.js";
+import { fsGetAll, fsAdd, fsUpdate, openModal, closeModal, toast, escapeHtml, genId, notifyUser } from "../utils.js";
+import { hasPermission } from "../auth.js";
+import {
+  TRAINING_STATUS, aggregateNeeds, campaignTargetsEmployee, competencyGap,
+  needPriorityScore, priorityLabel, safeParticipantSnapshot, trainingMetrics
+} from "../training-tna.mjs";
 
-const PLAN_COLL = "training_plans";
-const PROGRESS_COLL = "training_progress";
+const C = {
+  campaigns: "training_tna_campaigns", assignments: "training_tna_assignments",
+  needs: "training_needs", plans: "training_plans", progress: "training_progress",
+  audit: "training_audit_logs"
+};
+
+const esc = value => escapeHtml(value ?? "");
+const val = (root, selector) => root.querySelector(selector)?.value?.trim() || "";
+const roleIn = (session, roles) => roles.includes(String(session.role || "").toUpperCase());
+const isHrd = session => roleIn(session, ["HRD", "SUPERADMIN"]);
+const isManagement = session => roleIn(session, ["HRD", "SUPERADMIN", "GM", "DIREKTUR", "MANAGER", "BRANCH MANAGER", "SPV", "ATASAN"]);
+const myNik = session => String(session.nik || session.nik_karyawan || "").trim();
+const money = value => `Rp${Number(value || 0).toLocaleString("id-ID")}`;
+const dateText = value => value ? new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString("id-ID") : "-";
+const statCard = (label, value, note = "") => `<div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm"><p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">${esc(label)}</p><p class="mt-1 text-2xl font-bold text-slate-800">${esc(value)}</p><p class="mt-1 text-xs text-slate-400">${esc(note)}</p></div>`;
+const empty = text => `<div class="rounded-xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-400">${esc(text)}</div>`;
+const field = (label, id, type = "text", attrs = "") => `<label class="block text-xs font-semibold text-slate-600">${esc(label)}<input id="${id}" type="${type}" ${attrs} class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm"></label>`;
+const select = (label, id, options) => `<label class="block text-xs font-semibold text-slate-600">${esc(label)}<select id="${id}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm bg-white">${options.map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("")}</select></label>`;
+
+async function scopedRows(collectionName, field, value) {
+  if (!value) return [];
+  const snap = await getDocs(query(collection(db, collectionName), where(field, "==", value)));
+  return snap.docs.map(item => ({ ...item.data(), id: item.id, _docId: item.id }));
+}
+
+async function allData(session) {
+  const employeeView = !isManagement(session);
+  const branchManager = isManagement(session) && !roleIn(session, ["HRD", "SUPERADMIN", "GM", "DIREKTUR"]);
+  const assignmentsPromise = employeeView ? scopedRows(C.assignments, "nik", myNik(session)) : fsGetAll(C.assignments);
+  const needsPromise = employeeView ? scopedRows(C.needs, "nik", myNik(session)) : branchManager ? scopedRows(C.needs, "cabang", session.cabang) : fsGetAll(C.needs);
+  const progressPromise = employeeView ? scopedRows(C.progress, "nik", myNik(session)) : branchManager ? scopedRows(C.progress, "cabang", session.cabang) : fsGetAll(C.progress);
+  const [campaigns, assignments, needs, plans, progress, employees] = await Promise.all([
+    fsGetAll(C.campaigns), assignmentsPromise, needsPromise, fsGetAll(C.plans), progressPromise, fsGetAll(COL.MASTER_KARYAWAN)
+  ]);
+  return { campaigns, assignments, needs, plans, progress, employees };
+}
+
+async function audit(session, action, entity, entityId, detail = {}) {
+  await fsAdd(C.audit, { action, entity, entity_id: entityId, actor_nik: myNik(session), actor_name: session.nama || "", actor_role: session.role || "", detail });
+}
+
+function planParticipants(plan) {
+  if (Array.isArray(plan.participants)) return plan.participants;
+  return (plan.peserta || []).map(nama => ({ nik: "", nama, cabang: "", divisi: "", jabatan: "" }));
+}
+
+function planQuestions(plan) {
+  return Array.isArray(plan.assessment_questions) && plan.assessment_questions.length
+    ? plan.assessment_questions
+    : [{ question: "Saya memahami tujuan dan materi utama pelatihan ini.", answer: "Benar" }];
+}
 
 export async function mount(container, { session }) {
- const roleIsHrd = session.role === "HRD" || session.role === "SUPERADMIN";
- const isHrd = roleIsHrd || await hasSubMenuAccess("training", "tna_dashboard", session);
- const canEdit = await canEditModuleData(session);
- const isGm = session.role === "GM" || session.role === "SUPERADMIN";
- const isFinance = session.role === "FINANCE" || session.role === "SUPERADMIN";
- const tabHeader = container.querySelector("#training-tab-header");
- const contentWrap = container.querySelector("#training-content");
+  const header = container.querySelector("#training-tab-header");
+  const body = container.querySelector("#training-content");
+  const tabs = [{ id: "my", label: "Pelatihan Saya" }];
+  if (isHrd(session)) tabs.unshift(
+    { id: "dashboard", label: "Dashboard TNA" }, { id: "survey", label: "Distribusi Survey" },
+    { id: "analysis", label: "Analisis" }, { id: "planning", label: "Planning" },
+    { id: "execution", label: "Pelaksanaan" }, { id: "report", label: "Laporan" }
+  );
+  else if (isManagement(session)) tabs.unshift(
+    { id: "analysis", label: "Analisis" }, { id: "planning", label: "Planning" },
+    { id: "execution", label: "Pelaksanaan" }, { id: "report", label: "Laporan" }
+  );
+  let active = tabs[0].id;
 
- let activeTab = isHrd ? "tna" : ((isGm || isFinance) ? "requests" : "my-requests");
-
- function renderTabs() {
- let tabsHtml = "";
- if (isHrd) {
- tabsHtml += `
- <button id="tab-tna" class="px-4 py-2 text-sm font-semibold rounded-lg transition ${activeTab === 'tna' ? 'bg-maroon-700 text-white shadow-md' : 'bg-white border border-slate-100 text-slate-600 hover:bg-slate-50'}">
- TNA Dashboard & Kelas
- </button>
- `;
- }
- if (isHrd || isGm || isFinance) {
- tabsHtml += `
- <button id="tab-requests" class="px-4 py-2 text-sm font-semibold rounded-lg transition ${activeTab === 'requests' ? 'bg-maroon-700 text-white shadow-md' : 'bg-white border border-slate-100 text-slate-600 hover:bg-slate-50'}">
- Review Pengajuan
- </button>
- `;
- }
- tabsHtml += `
- <button id="tab-my-requests" class="px-4 py-2 text-sm font-semibold rounded-lg transition ${activeTab === 'my-requests' ? 'bg-maroon-700 text-white shadow-md' : 'bg-white border border-slate-100 text-slate-600 hover:bg-slate-50'}">
- Kelas & Pengajuan Saya
- </button>
- `;
- tabHeader.innerHTML = tabsHtml;
-
- // Register Tab Listeners
- if (isHrd) {
- container.querySelector("#tab-tna").onclick = () => { activeTab = "tna"; renderTabs(); loadActiveTab(); };
- }
- if (isHrd || isGm || isFinance) {
- container.querySelector("#tab-requests").onclick = () => { activeTab = "requests"; renderTabs(); loadActiveTab(); };
- }
- container.querySelector("#tab-my-requests").onclick = () => { activeTab = "my-requests"; renderTabs(); loadActiveTab(); };
- }
-
- async function loadActiveTab() {
- contentWrap.innerHTML = `
- <div class="flex items-center justify-center py-20">
- <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-maroon-700"></div>
- </div>
- `;
-
- try {
- if (activeTab === "tna") {
- await renderTnaDashboard(contentWrap, session);
- } else if (activeTab === "requests") {
- await renderAllRequests(contentWrap, session);
- } else {
- await renderMyRequests(contentWrap, session);
- }
- } catch (err) {
- console.error("Failed to load training tab:", err);
- contentWrap.innerHTML = `<div class="p-4 bg-red-50 text-red-700 rounded-xl">Error: ${err.message}</div>`;
- }
- }
-
- renderTabs();
- await loadActiveTab();
+  async function load() {
+    header.innerHTML = tabs.map(t => `<button data-tab="${t.id}" class="px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap ${active === t.id ? "bg-maroon-700 text-white shadow" : "bg-white border border-slate-200 text-slate-600"}">${t.label}</button>`).join("");
+    header.className = "flex items-center gap-2 flex-wrap justify-end";
+    header.querySelectorAll("[data-tab]").forEach(button => button.onclick = () => { active = button.dataset.tab; load(); });
+    body.innerHTML = `<div class="py-20 text-center text-sm text-slate-400">Memuat data pelatihan…</div>`;
+    try {
+      const data = await allData(session);
+      const renderers = { dashboard: renderDashboard, survey: renderSurvey, analysis: renderAnalysis, planning: renderPlanning, execution: renderExecution, report: renderReport, my: renderMy };
+      await renderers[active](body, session, data, load);
+    } catch (error) {
+      console.error("training", error);
+      body.innerHTML = `<div class="rounded-xl bg-red-50 p-4 text-sm text-red-700">Gagal memuat modul Pelatihan: ${esc(error.message)}</div>`;
+    }
+  }
+  await load();
 }
 
-/* ---------------------------------------------------------------------
- * 1. SEED DATA FUNCTION (FOR DEMONSTRATION & PERSISTENCE)
- * ------------------------------------------------------------------- */
-async function seedTrainingDataIfEmpty() {
- const existing = await fsGetAll(COL.DATA_TRAINING);
- if (existing.length > 0) return;
-
- const mockData = [
- {
- id: "TNA-001",
- nama_karyawan: "Budi Santoso",
- nik: "10291",
- kompetensi: "Advanced Microsoft Excel",
- kategori: "Soft & Technical Skills",
- level_sekarang: 2,
- level_diharapkan: 5,
- alasan: "Mempercepat pembuatan laporan rekap bulanan HRGA agar tidak manual.",
- status: "PENDING",
- tanggal_pengajuan: new Date(Date.now() - 3 * 24 * 3600000).toISOString(),
- },
- {
- id: "TNA-002",
- nama_karyawan: "Ani Wijaya",
- nik: "10292",
- kompetensi: "Advanced Microsoft Excel",
- kategori: "Soft & Technical Skills",
- level_sekarang: 3,
- level_diharapkan: 5,
- alasan: "Sering mengolah pivot table besar untuk analisis data gudang.",
- status: "APPROVED",
- tanggal_pengajuan: new Date(Date.now() - 5 * 24 * 3600000).toISOString(),
- },
- {
- id: "TNA-003",
- nama_karyawan: "Citra Lestari",
- nik: "10293",
- kompetensi: "Sertifikasi Audit Mutu ISO 9001",
- kategori: "Operational & Safety",
- level_sekarang: 1,
- level_diharapkan: 4,
- alasan: "Kebutuhan internal audit tahunan dari departemen jaminan kualitas.",
- status: "SCHEDULED",
- tanggal_pengajuan: new Date(Date.now() - 10 * 24 * 3600000).toISOString(),
- training_plan_id: "PLAN-101"
- }
- ];
-
- for (const item of mockData) {
- await fsAdd(COL.DATA_TRAINING, item, item.id);
- }
-
- // Also seed some training plans
- const existingPlans = await fsGetAll(PLAN_COLL);
- if (existingPlans.length === 0) {
- const mockPlans = [
- {
- id: "PLAN-101",
- judul: "Sertifikasi ISO 9001:2015 Lead Auditor",
- kategori: "Operational & Safety",
- trainer: "Sentra Sertifikasi Indonesia",
- tanggal: new Date(Date.now() + 15 * 24 * 3600000).toISOString().split('T')[0],
- peserta: ["Citra Lestari"],
- estimasi_biaya: 4500000,
- status: "SCHEDULED"
- }
- ];
- for (const plan of mockPlans) {
- await fsAdd(PLAN_COLL, plan, plan.id);
- }
- }
+async function renderDashboard(wrap, session, data, reload) {
+  const metrics = trainingMetrics(data);
+  const urgent = data.needs.filter(n => needPriorityScore(n) >= 20).length;
+  wrap.innerHTML = `
+    <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      ${statCard("Respon survey", `${metrics.responseRate}%`, `${metrics.submitted}/${metrics.assigned} selesai`)}
+      ${statCard("Kebutuhan", metrics.needs, `${urgent} prioritas tinggi/kritis`)}
+      ${statCard("Program", metrics.plans, `${metrics.completedPlans} selesai`)}
+      ${statCard("Learning gain", `${metrics.averageLearningGain.toFixed(1)} poin`, "Rata-rata post-test − pre-test")}
+      ${statCard("Kampanye aktif", data.campaigns.filter(c => c.status === "PUBLISHED").length, "Survey sedang berjalan")}
+    </div>
+    <div class="grid lg:grid-cols-2 gap-5">
+      <section class="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm"><h3 class="font-bold text-slate-800">Alur Training Need Analysis</h3><div class="mt-4 space-y-3 text-sm">${[
+        ["1", "Survey kebutuhan", "HRD distribusikan kompetensi sasaran"], ["2", "Validasi & analitik", "Atasan mengonfirmasi gap dan urgensi"],
+        ["3", "Planning & approval", "Program disusun, GM dan Finance menyetujui"], ["4", "Pelaksanaan", "Absensi, bukti, biaya aktual, pre/post-test"],
+        ["5", "Evaluasi", "Feedback dan perubahan perilaku 30–60 hari"], ["6", "Laporan", "Efektivitas, biaya, cabang, divisi untuk manajemen"]
+      ].map(([n,t,d]) => `<div class="flex gap-3"><span class="w-7 h-7 rounded-full bg-maroon-50 text-maroon-700 grid place-items-center font-bold">${n}</span><div><b>${t}</b><p class="text-xs text-slate-400">${d}</p></div></div>`).join("")}</div></section>
+      <section class="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm"><h3 class="font-bold text-slate-800">Prioritas Kompetensi</h3><div class="mt-4 space-y-3">${aggregateNeeds(data.needs).slice(0, 7).map(row => `<div><div class="flex justify-between text-xs"><b>${esc(row.key)}</b><span>${row.count} karyawan · gap ${row.averageGap.toFixed(1)}</span></div><div class="mt-1 h-2 rounded bg-slate-100"><div class="h-2 rounded bg-maroon-600" style="width:${Math.min(100, row.averagePriority / 36 * 100)}%"></div></div></div>`).join("") || empty("Belum ada data kebutuhan.")}</div></section>
+    </div>`;
 }
 
-/* ---------------------------------------------------------------------
- * 2. STAFF VIEW: ACTIVE CLASSES & PRE-POST TEST PROGRESS
- * ------------------------------------------------------------------- */
-async function renderMyRequests(wrap, session) {
- const allData = await fsGetAll(COL.DATA_TRAINING);
- const myData = allData.filter(x => x.nik === session.nik || x.nama_karyawan === session.nama)
- .sort((a, b) => new Date(b.tanggal_pengajuan) - new Date(a.tanggal_pengajuan));
-
- // Get active plans where this user is listed as participant
- const allPlans = await fsGetAll(PLAN_COLL);
- const myPlans = allPlans.filter(p => (p.peserta || []).includes(session.nama));
-
- // Fetch my progress records
- const allProgress = await fsGetAll(PROGRESS_COLL);
- const myProgressMap = {};
- allProgress.forEach(pr => {
- if (pr.nama === session.nama || pr.nik === session.nik) {
- myProgressMap[pr.plan_id] = pr;
- }
- });
-
- const statsApproved = myData.filter(x => x.status === "APPROVED" || x.status === "SCHEDULED").length;
- const statsPending = myData.filter(x => x.status === "PENDING").length;
-
- wrap.innerHTML = `
- <!-- Top Stats -->
- <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
- <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
- <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Total Pengajuan Kompetensi</p>
- <p class="text-2xl font-bold text-slate-800">${myData.length}</p>
- </div>
- <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
- <p class="text-xs font-bold text-emerald-500 uppercase tracking-wider mb-1">Disetujui / Terjadwal</p>
- <p class="text-2xl font-bold text-emerald-600">${statsApproved}</p>
- </div>
- <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
- <p class="text-xs font-bold text-amber-500 uppercase tracking-wider mb-1">Menunggu Review</p>
- <p class="text-2xl font-bold text-amber-600">${statsPending}</p>
- </div>
- </div>
-
- <!-- ACTIVE TRAINING CLASSES SECTION -->
- <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
- <h3 class="font-bold text-slate-800 flex items-center gap-2">
- <span class="w-1.5 h-4 bg-maroon-700 rounded-full"></span>
- Kelas Pelatihan Aktif & Progress Saya
- </h3>
- <p class="text-xs text-slate-400">Ikuti pre-test sebelum kelas, post-test sesudah kelas, dan isi kuesioner feedback untuk menyelesaikan program.</p>
-
- ${myPlans.length === 0 ? `
- <div class="border border-dashed border-slate-200 rounded-xl p-8 text-center text-slate-400 text-xs">
- Anda belum terdaftar di kelas pelatihan aktif mana pun saat ini.
- </div>
- ` : `
- <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
- ${myPlans.map(p => {
- const prog = myProgressMap[p.id] || { pretest_score: null, posttest_score: null, feedback: null };
- 
- // Calculate progress percentage
- let pct = 0;
- if (prog.pretest_score !== null && prog.pretest_score !== undefined) pct += 33;
- if (prog.posttest_score !== null && prog.posttest_score !== undefined) pct += 33;
- if (prog.feedback !== null && prog.feedback !== undefined) pct += 34;
-
- return `
- <div class="border border-slate-100 rounded-2xl p-4 bg-slate-50/50 hover:border-maroon-200 transition flex flex-col justify-between space-y-4">
- <div class="space-y-1">
- <div class="flex justify-between items-start gap-2">
- <span class="px-2 py-0.5 bg-maroon-50 text-maroon-700 rounded text-[9px] font-bold uppercase">${escapeHtml(p.kategori)}</span>
- <span class="text-xs font-bold text-maroon-700">${pct}% Selesai</span>
- </div>
- <h4 class="font-bold text-slate-800 text-sm">${escapeHtml(p.judul)}</h4>
- <p class="text-xs text-slate-500">Trainer: <b>${escapeHtml(p.trainer)}</b></p>
- <p class="text-xs text-slate-400">Jadwal: ${p.tanggal ? fmtDateShort(p.tanggal) : "-"}</p>
- </div>
-
- <!-- Progress Bar -->
- <div class="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
- <div class="bg-gradient-to-r from-maroon-600 to-red-500 h-full rounded-full transition-all" style="width: ${pct}%"></div>
- </div>
-
- <!-- Test Actions -->
- <div class="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100/60">
- <div class="flex flex-col items-center">
- <span class="text-[9px] text-slate-400 mb-1">Pre-Test</span>
- ${prog.pretest_score !== null && prog.pretest_score !== undefined ? `
- <span class="text-emerald-600 font-bold text-xs bg-emerald-50 px-2 py-0.5 border border-emerald-200 rounded">Skor: ${prog.pretest_score}</span>
- ` : `
- <button class="btn-pretest bg-maroon-700 hover:bg-maroon-800 text-white font-semibold text-[9px] px-2 py-1 rounded-lg w-full text-center transition" data-plan-id="${p.id}" data-judul="${escapeHtml(p.judul)}" data-kategori="${escapeHtml(p.kategori)}">Ikut</button>
- `}
- </div>
-
- <div class="flex flex-col items-center">
- <span class="text-[9px] text-slate-400 mb-1">Post-Test</span>
- ${prog.posttest_score !== null && prog.posttest_score !== undefined ? `
- <span class="text-emerald-600 font-bold text-xs bg-emerald-50 px-2 py-0.5 border border-emerald-200 rounded">Skor: ${prog.posttest_score}</span>
- ` : (prog.pretest_score !== null && prog.pretest_score !== undefined ? `
- <button class="btn-posttest bg-blue-600 hover:bg-blue-700 text-white font-semibold text-[9px] px-2 py-1 rounded-lg w-full text-center transition" data-plan-id="${p.id}" data-judul="${escapeHtml(p.judul)}" data-kategori="${escapeHtml(p.kategori)}">Ikut</button>
- ` : `
- <button disabled class="bg-slate-200 text-slate-400 cursor-not-allowed font-semibold text-[9px] px-2 py-1 rounded-lg w-full text-center">Locked</button>
- `)}
- </div>
-
- <div class="flex flex-col items-center">
- <span class="text-[9px] text-slate-400 mb-1">Kuesioner</span>
- ${prog.feedback !== null && prog.feedback !== undefined ? `
- <span class="text-emerald-600 font-bold text-[9px] bg-emerald-50 px-2 py-1 border border-emerald-200 rounded text-center">Selesai</span>
- ` : (prog.posttest_score !== null && prog.posttest_score !== undefined ? `
- <button class="btn-feedback bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[9px] px-2 py-1 rounded-lg w-full text-center transition" data-plan-id="${p.id}" data-judul="${escapeHtml(p.judul)}">Isi</button>
- ` : `
- <button disabled class="bg-slate-200 text-slate-400 cursor-not-allowed font-semibold text-[9px] px-2 py-1 rounded-lg w-full text-center">Locked</button>
- `)}
- </div>
- </div>
- </div>
- `;
- }).join("")}
- </div>
- `}
- </div>
-
- <!-- MY COMPETENCY REQUESTS SECTION -->
- <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
- <div class="flex items-center justify-between">
- <h3 class="font-bold text-slate-800">Daftar Pengajuan Kompetensi Saya</h3>
- <button id="btn-add-tna" class="px-4 py-2 bg-maroon-700 hover:bg-maroon-800 text-white text-sm font-semibold rounded-lg shadow-sm transition flex items-center gap-2">
- <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
- Ajukan Kompetensi Baru
- </button>
- </div>
-
- <div class="overflow-x-auto">
- <table class="w-full text-left border-collapse">
- <thead>
- <tr class="border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wide">
- <th class="py-3 px-4">Kompetensi</th>
- <th class="py-3 px-4">Kategori</th>
- <th class="py-3 px-4 text-center">Tingkat Saat Ini</th>
- <th class="py-3 px-4 text-center">Ekspektasi</th>
- <th class="py-3 px-4 text-center">Gap</th>
- <th class="py-3 px-4">Tanggal Pengajuan</th>
- <th class="py-3 px-4">Status</th>
- </tr>
- </thead>
- <tbody class="divide-y divide-slate-50 text-sm">
- ${myData.length === 0 ? `
- <tr>
- <td colspan="7" class="py-12 text-center text-slate-400">Belum ada pengajuan kompetensi. Silakan buat pengajuan kompetensi baru.</td>
- </tr>
- ` : myData.map(r => {
- const gap = r.level_sekarang - r.level_diharapkan;
- let statusTone = "slate";
- if (r.status === "PENDING") statusTone = "amber";
- if (r.status === "APPROVED") statusTone = "blue";
- if (r.status === "SCHEDULED") statusTone = "green";
- if (r.status === "REJECTED") statusTone = "red";
-
- return `
- <tr class="hover:bg-slate-50/50 transition">
- <td class="py-3.5 px-4 font-semibold text-slate-800">${escapeHtml(r.kompetensi)}</td>
- <td class="py-3.5 px-4 text-slate-500">${escapeHtml(r.kategori || "Lain-lain")}</td>
- <td class="py-3.5 px-4 text-center font-semibold text-amber-600">${r.level_sekarang} / 5</td>
- <td class="py-3.5 px-4 text-center font-semibold text-blue-600">${r.level_diharapkan} / 5</td>
- <td class="py-3.5 px-4 text-center font-bold text-rose-600">${gap}</td>
- <td class="py-3.5 px-4 text-slate-400">${fmtDateShort(r.tanggal_pengajuan)}</td>
- <td class="py-3.5 px-4">${badge(r.status, statusTone)}</td>
- </tr>
- `;
- }).join("")}
- </tbody>
- </table>
- </div>
- </div>
- `;
-
- // Attach button action
- wrap.querySelector("#btn-add-tna").onclick = () => openAddCompetencyModal(session, async () => {
- await renderMyRequests(wrap, session);
- });
-
- // Attach interactive test events
- wrap.querySelectorAll(".btn-pretest").forEach(btn => {
- btn.onclick = () => {
- const planId = btn.dataset.planId;
- const planJudul = btn.dataset.judul;
- const kategori = btn.dataset.kategori;
- openQuizModal("PRE-TEST", planId, planJudul, kategori, session, async () => {
- await renderMyRequests(wrap, session);
- });
- };
- });
-
- wrap.querySelectorAll(".btn-posttest").forEach(btn => {
- btn.onclick = () => {
- const planId = btn.dataset.planId;
- const planJudul = btn.dataset.judul;
- const kategori = btn.dataset.kategori;
- openQuizModal("POST-TEST", planId, planJudul, kategori, session, async () => {
- await renderMyRequests(wrap, session);
- });
- };
- });
-
- wrap.querySelectorAll(".btn-feedback").forEach(btn => {
- btn.onclick = () => {
- const planId = btn.dataset.planId;
- const planJudul = btn.dataset.judul;
- openFeedbackModal(planId, planJudul, session, async () => {
- await renderMyRequests(wrap, session);
- });
- };
- });
+async function renderSurvey(wrap, session, data, reload) {
+  wrap.innerHTML = `<div class="flex justify-between items-center"><div><h2 class="text-lg font-bold text-slate-800">Distribusi Survey TNA</h2><p class="text-xs text-slate-400">Buat periode, sasaran, dan daftar kompetensi yang dinilai.</p></div><button id="new-campaign" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">+ Buat Survey</button></div>
+    <div class="grid md:grid-cols-2 gap-4">${data.campaigns.sort((a,b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))).map(c => {
+      const assigned = data.assignments.filter(a => a.campaign_id === c.id);
+      const submitted = assigned.filter(a => a.status === "SUBMITTED").length;
+      return `<article class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm"><div class="flex justify-between gap-3"><div><span class="text-[10px] font-bold text-maroon-700">${esc(c.period)}</span><h3 class="font-bold text-slate-800">${esc(c.title)}</h3></div><span class="text-xs font-bold ${c.status === "PUBLISHED" ? "text-emerald-600" : "text-slate-400"}">${esc(c.status)}</span></div><p class="mt-2 text-xs text-slate-500">Target: ${esc(c.target_branch || "Semua")} · ${esc(c.target_division || "Semua")} · Batas ${dateText(c.deadline)}</p><div class="mt-4 h-2 rounded bg-slate-100"><div class="h-2 rounded bg-emerald-500" style="width:${assigned.length ? submitted / assigned.length * 100 : 0}%"></div></div><p class="mt-1 text-[11px] text-slate-400">${submitted}/${assigned.length} respon</p><div class="mt-4 flex gap-2">${c.status === "DRAFT" ? `<button data-publish="${c.id}" class="rounded-lg bg-maroon-700 px-3 py-2 text-xs font-semibold text-white">Publikasikan</button>` : `<button data-remind="${c.id}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">Kirim pengingat</button>`}${c.status === "PUBLISHED" ? `<button data-close="${c.id}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">Tutup</button>` : ""}</div></article>`;
+    }).join("") || empty("Belum ada survey TNA.")}</div>`;
+  wrap.querySelector("#new-campaign").onclick = () => campaignModal(session, reload);
+  wrap.querySelectorAll("[data-publish]").forEach(btn => btn.onclick = async () => {
+    const campaign = data.campaigns.find(c => c.id === btn.dataset.publish);
+    const targets = data.employees.filter(e => campaignTargetsEmployee(campaign, e) && !["NONAKTIF", "RESIGN"].includes(String(e.aktif_tdk_aktif || e.status || "").toUpperCase()));
+    if (!targets.length) return toast("Tidak ada karyawan yang sesuai target survey.", "warning");
+    btn.disabled = true;
+    await Promise.all(targets.map(employee => {
+      const person = safeParticipantSnapshot(employee);
+      return fsAdd(C.assignments, { campaign_id: campaign.id, ...person, username: employee.username || "", status: "PENDING", competencies: campaign.competencies || [], cabang: person.cabang, divisi: person.divisi }, `${campaign.id}_${person.nik}`);
+    }));
+    await fsUpdate(C.campaigns, campaign.id, { status: "PUBLISHED", published_at: new Date().toISOString(), assigned_count: targets.length });
+    await Promise.all(targets.filter(e => e.username).map(e => notifyUser(e.username, "Survey kebutuhan pelatihan", `Mohon isi survey ${campaign.title} sebelum ${dateText(campaign.deadline)}.`, "#training")));
+    await audit(session, "PUBLISH_CAMPAIGN", "campaign", campaign.id, { target_count: targets.length });
+    toast(`Survey dikirim ke ${targets.length} karyawan.`, "success"); reload();
+  });
+  wrap.querySelectorAll("[data-remind]").forEach(btn => btn.onclick = async () => {
+    const pending = data.assignments.filter(a => a.campaign_id === btn.dataset.remind && a.status !== "SUBMITTED");
+    await Promise.all(pending.filter(a => a.username).map(a => notifyUser(a.username, "Pengingat survey pelatihan", "Survey TNA Anda belum diselesaikan.", "#training")));
+    await audit(session, "REMIND_CAMPAIGN", "campaign", btn.dataset.remind, { pending: pending.length });
+    toast(`Pengingat diproses untuk ${pending.length} karyawan.`, "success");
+  });
+  wrap.querySelectorAll("[data-close]").forEach(btn => btn.onclick = async () => { await fsUpdate(C.campaigns, btn.dataset.close, { status: "CLOSED", closed_at: new Date().toISOString() }); await audit(session, "CLOSE_CAMPAIGN", "campaign", btn.dataset.close); reload(); });
 }
 
-function openAddCompetencyModal(session, onSuccess) {
- openModal({
- title: "Ajukan Peningkatan Kompetensi",
- size: "md",
- bodyHtml: `
- <form id="form-tna-request" class="space-y-4 text-left">
- <div>
- <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Nama Kompetensi / Deskripsi Pelatihan</label>
- <input type="text" id="tna-kompetensi" required class="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-maroon-500" placeholder="Contoh: Flutter Mobile Development, Advanced Excel, dsb.">
- </div>
- <div>
- <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Kategori Kompetensi</label>
- <select id="tna-kategori" class="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
- <option value="Soft & Technical Skills">Soft & Technical Skills</option>
- <option value="IT & Software">IT & Software</option>
- <option value="Operational & Safety">Operational & Safety</option>
- <option value="Leadership">Leadership</option>
- <option value="Lain-lain">Lain-lain</option>
- </select>
- </div>
- <div class="grid grid-cols-2 gap-4">
- <div>
- <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Skor Kompetensi Sekarang</label>
- <select id="tna-level-sekarang" class="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
- <option value="1">1 - Pemula Sekali (No Knowledge)</option>
- <option value="2" selected>2 - Tingkat Dasar (Basic)</option>
- <option value="3">3 - Menengah (Intermediate)</option>
- <option value="4">4 - Mahir (Advanced)</option>
- <option value="5">5 - Ahli / Konsultan (Expert)</option>
- </select>
- </div>
- <div>
- <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Tingkat yang Diharapkan</label>
- <select id="tna-level-diharapkan" class="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
- <option value="2">2 - Tingkat Dasar</option>
- <option value="3">3 - Menengah</option>
- <option value="4" selected>4 - Mahir (Advanced)</option>
- <option value="5">5 - Ahli / Konsultan (Expert)</option>
- </select>
- </div>
- </div>
- <div>
- <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Tujuan & Alasan Peningkatan</label>
- <textarea id="tna-alasan" rows="3" required class="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-maroon-500" placeholder="Kenapa kompetensi ini penting bagi pekerjaan Anda saat ini?"></textarea>
- </div>
- </form>
- `,
- footerHtml: `
- <button id="btn-cancel-tna" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition">Batal</button>
- <button id="btn-save-tna" class="px-5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white text-sm font-medium rounded-lg transition shadow">Kirim Pengajuan</button>
- `,
- onMount: (m) => {
- m.querySelector("#btn-cancel-tna").onclick = closeModal;
- m.querySelector("#btn-save-tna").onclick = async () => {
- const form = m.querySelector("#form-tna-request");
- if (!form.reportValidity()) return;
-
- const kompetensi = m.querySelector("#tna-kompetensi").value.trim();
- const kategori = m.querySelector("#tna-kategori").value;
- const level_sekarang = parseInt(m.querySelector("#tna-level-sekarang").value);
- const level_diharapkan = parseInt(m.querySelector("#tna-level-diharapkan").value);
- const alasan = m.querySelector("#tna-alasan").value.trim();
-
- if (level_sekarang >= level_diharapkan) {
- toast("Tingkat kompetensi yang diharapkan harus lebih tinggi dari saat ini", "warning");
- return;
- }
-
- const btn = m.querySelector("#btn-save-tna");
- btn.disabled = true;
- btn.textContent = "Mengirim...";
-
- try {
- const newId = genId("TNA");
- await fsAdd(COL.DATA_TRAINING, {
- id: newId,
- nama_karyawan: session.nama,
- nik: session.nik || "STAFF",
- kompetensi,
- kategori,
- level_sekarang,
- level_diharapkan,
- alasan,
- status: "PENDING",
- tanggal_pengajuan: new Date().toISOString()
- }, newId);
-
- toast("Pengajuan kompetensi berhasil dikirim!", "success");
- closeModal();
- if (onSuccess) onSuccess();
- } catch (err) {
- toast("Error: " + err.message, "error");
- btn.disabled = false;
- btn.textContent = "Kirim Pengajuan";
- }
- };
- }
- });
+function campaignModal(session, reload) {
+  openModal({ title: "Buat Survey Training Need Analysis", size: "lg", bodyHtml: `<div id="campaign-form" class="space-y-4"><div class="grid md:grid-cols-2 gap-4">${field("Judul survey", "c-title", "text", "placeholder='TNA Semester I 2027'")}${field("Periode", "c-period", "text", "placeholder='Semester I 2027'")}${field("Batas pengisian", "c-deadline", "date")}${field("Target cabang", "c-branch", "text", "placeholder='Semua / Cirebon / Malang'")}${field("Target divisi", "c-division", "text", "placeholder='Semua / Sales / Warehouse'")}${field("Target jabatan", "c-position", "text", "placeholder='Semua / Staff / SPV'")}</div><label class="block text-xs font-semibold text-slate-600">Kompetensi yang dinilai<textarea id="c-competencies" rows="6" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Advanced Excel | 4 | 5&#10;Keselamatan Kerja | 5 | 5"></textarea><span class="font-normal text-slate-400">Satu baris: kompetensi | level harapan (1–5) | dampak bisnis (1–5)</span></label></div>`, footerHtml: `<button id="save-campaign" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">Simpan Draft</button>`, onMount: modal => {
+    modal.querySelector("#save-campaign").onclick = async () => {
+      const root = modal.querySelector("#campaign-form");
+      const competencies = val(root, "#c-competencies").split("\n").map(line => { const [name, expected, impact] = line.split("|").map(x => x.trim()); return { name, expected_level: Math.min(5, Math.max(1, Number(expected || 3))), business_impact: Math.min(5, Math.max(1, Number(impact || 3))) }; }).filter(x => x.name);
+      if (!val(root, "#c-title") || !val(root, "#c-deadline") || !competencies.length) return toast("Judul, batas pengisian, dan kompetensi wajib diisi.", "warning");
+      const id = genId("TNA");
+      await fsAdd(C.campaigns, { title: val(root,"#c-title"), period: val(root,"#c-period"), deadline: val(root,"#c-deadline"), target_branch: val(root,"#c-branch") || "Semua", target_division: val(root,"#c-division") || "Semua", target_position: val(root,"#c-position") || "Semua", competencies, status: "DRAFT", created_by_nik: myNik(session) }, id);
+      await audit(session, "CREATE_CAMPAIGN", "campaign", id); closeModal(); toast("Draft survey disimpan.", "success"); reload();
+    };
+  }});
 }
 
-/* ---------------------------------------------------------------------
- * 3. INTERACTIVE QUIZZES & QUESTIONNAIRES GENERATOR
- * ------------------------------------------------------------------- */
-function openQuizModal(type, planId, planJudul, kategori, session, onDone) {
- const quizzes = {
- "Soft & Technical Skills": [
- { q: "Apakah kepanjangan dari metode target SMART?", a: "Specific, Measurable, Achievable, Relevant, Time-bound", b: "Simple, Managed, Active, Regular, Test-ready", c: "Super, Model, Active, Run, Time", correct: "a" },
- { q: "Mana durasi fokus optimal sebelum butuh rehat menurut teknik Pomodoro?", a: "25 Menit", b: "60 Menit", c: "120 Menit", correct: "a" },
- { q: "Mana dari berikut yang merupakan elemen komunikasi efektif?", a: "Active listening & feedback", b: "Bicara tanpa henti", c: "Mengirim email formal saja", correct: "a" }
- ],
- "IT & Software": [
- { q: "Apakah kegunaan utama dari Git?", a: "Version Control System", b: "Web Server hosting", c: "Database Relasional", correct: "a" },
- { q: "Apakah arti dari akronim API?", a: "Application Programming Interface", b: "Active Program Internals", c: "Access Point Intranet", correct: "a" },
- { q: "Mana yang merupakan framework CSS yang populer?", a: "Tailwind CSS", b: "Python", c: "Node JS", correct: "a" }
- ],
- "Operational & Safety": [
- { q: "Apa tindakan pertama Anda saat mendeteksi kebocoran gas di area kerja?", a: "Buka ventilasi & matikan sumber api", b: "Menyiramnya dengan air", c: "Melanjutkan pekerjaan dengan cepat", correct: "a" },
- { q: "Apakah arti simbol segitiga api K3?", a: "Bahan mudah terbakar", b: "Area aman berkumpul", c: "Arah evakuasi keluar", correct: "a" },
- { q: "Helm proyek warna merah biasanya dipakai oleh siapa?", a: "Safety Officer / K3", b: "Pekerja umum", c: "Tamu kunjungan", correct: "a" }
- ],
- "default": [
- { q: "Mengapa standardisasi pekerjaan (SOP) itu penting?", a: "Menjamin keselamatan & kualitas konsisten", b: "Membatasi kreativitas karyawan", c: "Agar admin dapat menghukum bawahan", correct: "a" },
- { q: "Sikap asertif saat bekerja berarti...", a: "Menyampaikan pendapat dengan sopan namun tegas", b: "Menyetujui segala perintah tanpa tanya", c: "Marah jika tidak disetujui", correct: "a" },
- { q: "Langkah pertama menyelesaikan konflik tim adalah...", a: "Mendiskusikan inti masalah secara kekeluargaan", b: "Saling menyalahkan", c: "Melapor ke direktur utama langsung", correct: "a" }
- ]
- };
-
- const selectedQuiz = quizzes[kategori] || quizzes["default"];
-
- openModal({
- title: `${type} — ${escapeHtml(planJudul)}`,
- size: "md",
- bodyHtml: `
- <div class="space-y-4 text-left">
- <p class="text-xs text-slate-500 leading-normal">Uji pemahaman Anda tentang materi training ini. Pilih satu jawaban terbaik untuk setiap pertanyaan.</p>
- <form id="quiz-form" class="space-y-4">
- ${selectedQuiz.map((q, idx) => `
- <div class="p-3.5 bg-slate-50 border border-slate-100 rounded-xl space-y-2">
- <p class="text-xs font-bold text-slate-800">${idx + 1}. ${escapeHtml(q.q)}</p>
- <div class="space-y-1.5 text-xs text-slate-600 font-medium">
- <label class="flex items-center gap-2 cursor-pointer hover:text-slate-800">
- <input type="radio" name="q-${idx}" value="a" required class="accent-maroon-700">
- <span>A. ${escapeHtml(q.a)}</span>
- </label>
- <label class="flex items-center gap-2 cursor-pointer hover:text-slate-800">
- <input type="radio" name="q-${idx}" value="b" class="accent-maroon-700">
- <span>B. ${escapeHtml(q.b)}</span>
- </label>
- <label class="flex items-center gap-2 cursor-pointer hover:text-slate-800">
- <input type="radio" name="q-${idx}" value="c" class="accent-maroon-700">
- <span>C. ${escapeHtml(q.c)}</span>
- </label>
- </div>
- </div>
- `).join("")}
- </form>
- </div>`,
- footerHtml: `
- <button id="btn-quiz-cancel" class="px-4 py-2 text-slate-500 text-sm hover:bg-slate-100 rounded-lg">Batal</button>
- <button id="btn-quiz-submit" class="bg-maroon-700 hover:bg-maroon-800 text-white font-bold text-sm px-5 py-2 rounded-lg shadow-md">Kirim Jawaban</button>`,
- onMount: m => {
- m.querySelector("#btn-quiz-cancel").onclick = closeModal;
- m.querySelector("#btn-quiz-submit").onclick = async () => {
- const form = m.querySelector("#quiz-form");
- if (!form.reportValidity()) return;
-
- let correctCount = 0;
- selectedQuiz.forEach((q, idx) => {
- const selected = form.querySelector(`input[name="q-${idx}"]:checked`).value;
- if (selected === q.correct) correctCount++;
- });
-
- const score = Math.round((correctCount / selectedQuiz.length) * 100);
- const submitBtn = m.querySelector("#btn-quiz-submit");
- submitBtn.disabled = true; submitBtn.textContent = "Menyimpan...";
-
- try {
- const docId = `${planId}_${session.nik}`;
- const currentProgressList = await fsGetAll(PROGRESS_COLL);
- const currentProg = currentProgressList.find(x => x.id === docId) || {
- id: docId,
- plan_id: planId,
- judul_training: planJudul,
- nik: session.nik,
- nama: session.nama,
- pretest_score: null,
- posttest_score: null,
- feedback: null,
- completed_at: null
- };
-
- if (type === "PRE-TEST") {
- currentProg.pretest_score = score;
- } else {
- currentProg.posttest_score = score;
- }
-
- await setDoc(doc(db, PROGRESS_COLL, docId), currentProg);
- toast(`Jawaban ${type} berhasil dikirim! Skor Anda: ${score}/100`, "success");
- closeModal();
- if (onDone) onDone();
- } catch (err) {
- toast("Gagal menyimpan jawaban: " + err.message, "error");
- submitBtn.disabled = false; submitBtn.textContent = "Kirim Jawaban";
- }
- };
- }
- });
+async function renderAnalysis(wrap, session, data, reload) {
+  const branches = [...new Set(data.needs.map(n => n.cabang).filter(Boolean))].sort();
+  const divisions = [...new Set(data.needs.map(n => n.divisi).filter(Boolean))].sort();
+  wrap.innerHTML = `<div><h2 class="text-lg font-bold text-slate-800">Analisis Kebutuhan Pelatihan</h2><p class="text-xs text-slate-400">Gap = level harapan − level saat ini; prioritas mempertimbangkan gap, urgensi, dan dampak bisnis.</p></div><div class="bg-white rounded-2xl border border-slate-100 p-4 flex flex-wrap gap-3">${select("Cabang", "filter-branch", [["","Semua"], ...branches.map(x=>[x,x])])}${select("Divisi", "filter-division", [["","Semua"], ...divisions.map(x=>[x,x])])}</div><div id="analysis-table"></div>`;
+  const draw = () => {
+    const branch = val(wrap,"#filter-branch"), division = val(wrap,"#filter-division");
+    const rows = data.needs.filter(n => (!branch || n.cabang === branch) && (!division || n.divisi === division) && (!isManagement(session) || roleIn(session,["HRD","SUPERADMIN","GM","DIREKTUR"]) || !session.cabang || n.cabang === session.cabang));
+    wrap.querySelector("#analysis-table").innerHTML = `<div class="overflow-x-auto bg-white rounded-2xl border border-slate-100 shadow-sm"><table class="min-w-full text-xs"><thead class="bg-slate-50 text-slate-500"><tr>${["Karyawan","Cabang / Divisi","Kompetensi","Level","Prioritas","Validasi atasan"].map(h=>`<th class="px-4 py-3 text-left">${h}</th>`).join("")}</tr></thead><tbody>${rows.sort((a,b)=>needPriorityScore(b)-needPriorityScore(a)).map(n => `<tr class="border-t border-slate-100"><td class="px-4 py-3"><b>${esc(n.nama)}</b><br><span class="text-slate-400">${esc(n.nik)}</span></td><td class="px-4 py-3">${esc(n.cabang)}<br>${esc(n.divisi)}</td><td class="px-4 py-3"><b>${esc(n.competency_name)}</b><br><span class="text-slate-400">${esc(n.reason)}</span></td><td class="px-4 py-3">${n.current_level} → ${n.expected_level}<br><b>Gap ${competencyGap(n.expected_level,n.current_level)}</b></td><td class="px-4 py-3"><b>${priorityLabel(needPriorityScore(n))}</b><br>${needPriorityScore(n)} poin</td><td class="px-4 py-3">${n.validation_status === "VALIDATED" ? `<span class="text-emerald-600 font-bold">Tervalidasi</span><br>${esc(n.manager_note)}` : isManagement(session) ? `<button data-validate="${n.id}" class="rounded bg-maroon-700 px-3 py-2 text-white">Validasi</button>` : "Menunggu"}</td></tr>`).join("") || `<tr><td colspan="6" class="p-8 text-center text-slate-400">Belum ada data sesuai filter.</td></tr>`}</tbody></table></div>`;
+    wrap.querySelectorAll("[data-validate]").forEach(btn => btn.onclick = () => validationModal(rows.find(n=>n.id===btn.dataset.validate), session, reload));
+  };
+  wrap.querySelectorAll("select").forEach(el => el.onchange = draw); draw();
 }
 
-function openFeedbackModal(planId, planJudul, session, onDone) {
- openModal({
- title: `Feedback Pelatihan — ${escapeHtml(planJudul)}`,
- size: "md",
- bodyHtml: `
- <form id="feedback-form" class="space-y-4 text-left">
- <p class="text-xs text-slate-500 leading-normal">Berikan umpan balik obyektif Anda agar kami dapat menyelenggarakan pelatihan yang lebih berkualitas.</p>
- <div>
- <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">1. Bagaimana Anda menilai kinerja Trainer / Pembicara?</label>
- <select id="fb-rating" required class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:border-maroon-500">
- <option value="5">Sangat Puas (5/5)</option>
- <option value="4">Puas (4/5)</option>
- <option value="3">Cukup (3/5)</option>
- <option value="2">Kurang Puas (2/5)</option>
- <option value="1">Sangat Kurang (1/5)</option>
- </select>
- </div>
- <div>
- <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">2. Apakah materi pelatihan relevan dengan tugas harian Anda?</label>
- <select id="fb-relevance" required class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:border-maroon-500">
- <option value="Sangat Relevan">Sangat Relevan & Bermanfaat</option>
- <option value="Cukup Relevan">Cukup Relevan</option>
- <option value="Kurang Relevan">Kurang Relevan</option>
- </select>
- </div>
- <div>
- <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">3. Tuliskan saran, kritik, atau masukan berharga lainnya</label>
- <textarea id="fb-comments" rows="3" required placeholder="Cth: Penjelasan sudah sangat baik, alangkah baiknya jika ditambahkan modul latihan tertulis..." class="w-full px-3 py-2 border rounded-lg text-xs outline-none focus:border-maroon-500"></textarea>
- </div>
- </form>`,
- footerHtml: `
- <button id="btn-fb-cancel" class="px-4 py-2 text-slate-500 text-sm hover:bg-slate-100 rounded-lg">Batal</button>
- <button id="btn-fb-submit" class="bg-maroon-700 hover:bg-maroon-800 text-white font-bold text-sm px-5 py-2 rounded-lg shadow-md">Kirim Feedback</button>`,
- onMount: m => {
- m.querySelector("#btn-fb-cancel").onclick = closeModal;
- m.querySelector("#btn-fb-submit").onclick = async () => {
- const form = m.querySelector("#feedback-form");
- if (!form.reportValidity()) return;
-
- const rating = parseInt(m.querySelector("#fb-rating").value);
- const relevance = m.querySelector("#fb-relevance").value;
- const comments = m.querySelector("#fb-comments").value.trim();
-
- const btn = m.querySelector("#btn-fb-submit");
- btn.disabled = true; btn.textContent = "Menyimpan...";
-
- try {
- const docId = `${planId}_${session.nik}`;
- const currentProgressList = await fsGetAll(PROGRESS_COLL);
- const currentProg = currentProgressList.find(x => x.id === docId) || {
- id: docId,
- plan_id: planId,
- judul_training: planJudul,
- nik: session.nik,
- nama: session.nama,
- pretest_score: null,
- posttest_score: null
- };
-
- currentProg.feedback = { rating, relevance, comments };
- currentProg.completed_at = new Date().toISOString();
-
- await setDoc(doc(db, PROGRESS_COLL, docId), currentProg);
- toast("Terima kasih atas feedback berharga Anda!", "success");
- closeModal();
- if (onDone) onDone();
- } catch (err) {
- toast("Gagal: " + err.message, "error");
- btn.disabled = false; btn.textContent = "Kirim Feedback";
- }
- };
- }
- });
+function validationModal(need, session, reload) {
+  openModal({ title: `Validasi: ${esc(need.competency_name)}`, bodyHtml: `<div id="validation" class="grid gap-4">${field("Level saat ini hasil validasi (1–5)","v-level","number",`min='1' max='5' value='${need.current_level}'`)}${field("Urgensi (1–5)","v-urgency","number",`min='1' max='5' value='${need.urgency || 3}'`)}<label class="text-xs font-semibold text-slate-600">Catatan atasan<textarea id="v-note" rows="4" class="mt-1 w-full rounded-lg border px-3 py-2" placeholder="Observasi kinerja dan intervensi yang disarankan"></textarea></label></div>`, footerHtml: `<button id="save-validation" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">Simpan validasi</button>`, onMount: modal => modal.querySelector("#save-validation").onclick = async () => {
+    const root = modal.querySelector("#validation");
+    await fsUpdate(C.needs, need.id, { current_level: Number(val(root,"#v-level")), urgency: Number(val(root,"#v-urgency")), manager_note: val(root,"#v-note"), validation_status: "VALIDATED", validated_by_nik: myNik(session), validated_at: new Date().toISOString() });
+    await audit(session,"VALIDATE_NEED","need",need.id); closeModal(); toast("Kebutuhan tervalidasi.","success"); reload();
+  }});
 }
 
-/* ---------------------------------------------------------------------
- * 4. HRD TNA DASHBOARD & ANALYTICS
- * ------------------------------------------------------------------- */
-async function renderTnaDashboard(wrap, session) {
- const allRequests = await fsGetAll(COL.DATA_TRAINING);
- const allPlans = await fsGetAll(PLAN_COLL);
-
- // Calculate Metrics
- const totalCompetencyRequests = allRequests.length;
- const pendingCount = allRequests.filter(x => x.status === "PENDING").length;
-
- let totalGap = 0;
- let gapCount = 0;
- allRequests.forEach(r => {
- const gap = r.level_diharapkan - r.level_sekarang;
- if (gap > 0) {
- totalGap += gap;
- gapCount++;
- }
- });
- const avgGap = gapCount > 0 ? (totalGap / gapCount).toFixed(1) : "0.0";
-
- // Group by competency title
- const compGroups = {};
- allRequests.forEach(r => {
- const title = (r.kompetensi || "").trim().toUpperCase();
- if (!title) return;
- if (!compGroups[title]) {
- compGroups[title] = {
- name: r.kompetensi,
- kategori: r.kategori,
- count: 0,
- requests: [],
- gaps: []
- };
- }
- compGroups[title].count++;
- compGroups[title].requests.push(r);
- compGroups[title].gaps.push(r.level_diharapkan - r.level_sekarang);
- });
-
- const recommendations = Object.values(compGroups)
- .map(g => {
- const avgG = g.gaps.reduce((a, b) => a + b, 0) / g.gaps.length;
- return {
- ...g,
- avgGap: avgG.toFixed(1)
- };
- })
- .sort((a, b) => b.count - a.count);
-
- wrap.innerHTML = `
- <!-- Top Stats -->
- <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
- <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
- <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Gap Keahlian Teridentifikasi</p>
- <p class="text-2xl font-bold text-slate-800">${totalCompetencyRequests}</p>
- </div>
- <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
- <p class="text-xs font-bold text-red-500 uppercase tracking-wider mb-1">Rata-rata Gap Keahlian</p>
- <p class="text-2xl font-bold text-rose-600">-${avgGap} Level</p>
- </div>
- <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
- <p class="text-xs font-bold text-amber-500 uppercase tracking-wider mb-1">Pengajuan Perlu Review</p>
- <p class="text-2xl font-bold text-amber-600">${pendingCount}</p>
- </div>
- <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
- <p class="text-xs font-bold text-emerald-500 uppercase tracking-wider mb-1">Program Pelatihan Aktif</p>
- <p class="text-2xl font-bold text-emerald-600">${allPlans.length}</p>
- </div>
- </div>
-
- <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
- <!-- RECOMMENDATION ENGINE PANEL (TNA) -->
- <div class="lg:col-span-2 space-y-6">
- <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
- <div class="flex items-center justify-between border-b border-slate-100 pb-3">
- <div>
- <h3 class="font-bold text-slate-800 flex items-center gap-2">
- TNA Analytical Intelligence Engine
- </h3>
- <p class="text-xs text-slate-400 mt-0.5">Pengelompokan gap keahlian mayoritas otomatis untuk penghematan budget training.</p>
- </div>
- <button id="btn-create-shared-class" class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm transition">
- + Jadwalkan Kelas Bersama
- </button>
- </div>
-
- <div class="space-y-3">
- ${recommendations.length === 0 ? `
- <p class="text-center text-sm text-slate-400 py-10">Belum ada data kompetensi untuk dianalisis.</p>
- ` : recommendations.slice(0, 3).map((rec, i) => {
- const bgTones = ["bg-rose-50 border-rose-100", "bg-amber-50 border-amber-100", "bg-blue-50 border-blue-100"];
- const borderTone = bgTones[i % bgTones.length] || "bg-slate-50 border-slate-100";
-
- return `
- <div class="p-4 rounded-xl border ${borderTone} flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
- <div class="space-y-1 flex-1">
- <div class="flex items-center gap-2">
- <span class="px-2 py-0.5 bg-slate-200/60 text-slate-700 rounded text-[10px] font-bold uppercase tracking-wider">${escapeHtml(rec.kategori)}</span>
- <span class="text-xs text-slate-400">Diminta oleh <b>${rec.count} Karyawan</b></span>
- </div>
- <h4 class="font-bold text-slate-800 text-sm">${escapeHtml(rec.name)}</h4>
- <p class="text-xs text-slate-500">Rata-rata gap keahlian adalah <span class="font-semibold text-rose-600">-${rec.avgGap} tingkat</span>.</p>
- </div>
- <button data-rec-name="${escapeHtml(rec.name)}" data-rec-cat="${escapeHtml(rec.kategori)}" class="btn-create-plan-from-rec shrink-0 px-3.5 py-1.5 bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-700 text-xs font-semibold rounded-lg transition shadow-xs">
- Buat Jadwal Pelatihan
- </button>
- </div>
- `;
- }).join("")}
- </div>
- </div>
-
- <!-- LIST OF SCHEDULED TRAINING PLANS WITH PROGRESS TRACKING -->
- <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
- <h3 class="font-bold text-slate-800">Daftar Jadwal Program Pelatihan & Progress Peserta</h3>
- <div class="overflow-x-auto">
- <table class="w-full text-left border-collapse">
- <thead>
- <tr class="border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wide">
- <th class="py-3 px-4">Nama Pelatihan</th>
- <th class="py-3 px-4">Trainer / Lembaga</th>
- <th class="py-3 px-4">Tanggal Pelaksanaan</th>
- <th class="py-3 px-4 text-right">Biaya (Est)</th>
- <th class="py-3 px-4 text-center">Peserta</th>
- <th class="py-3 px-4 text-center">Progress TTD/Test</th>
- <th class="py-3 px-4">Status</th>
- </tr>
- </thead>
- <tbody class="divide-y divide-slate-50 text-sm">
- ${allPlans.length === 0 ? `
- <tr>
- <td colspan="7" class="py-10 text-center text-slate-400">Belum ada program pelatihan terjadwal.</td>
- </tr>
- ` : allPlans.map(p => {
- let statusTone = "slate";
- if (p.status === "SCHEDULED") statusTone = "amber";
- if (p.status === "ONGOING") statusTone = "blue";
- if (p.status === "COMPLETED") statusTone = "green";
-
- return `
- <tr class="hover:bg-slate-50/50 transition">
- <td class="py-3.5 px-4 font-semibold text-slate-800">
- <div class="font-bold">${escapeHtml(p.judul)}</div>
- <div class="text-[10px] text-slate-400">ID: ${p.id}</div>
- </td>
- <td class="py-3.5 px-4 text-slate-500">${escapeHtml(p.trainer || "-")}</td>
- <td class="py-3.5 px-4 text-slate-400">${p.tanggal ? fmtDateShort(p.tanggal) : "-"}</td>
- <td class="py-3.5 px-4 text-right font-medium text-slate-600">${p.estimasi_biaya ? "Rp " + p.estimasi_biaya.toLocaleString("id-ID") : "-"}</td>
- <td class="py-3.5 px-4 text-center font-bold text-blue-600">${(p.peserta || []).length} Orang</td>
- <td class="py-3.5 px-4 text-center">
- <button class="btn-view-participants text-xs text-maroon-700 hover:underline font-bold" data-plan-id="${p.id}" data-judul="${escapeHtml(p.judul)}">
- Lihat Progress
- </button>
- </td>
- <td class="py-3.5 px-4">${badge(p.status, statusTone)}</td>
- </tr>
- `;
- }).join("")}
- </tbody>
- </table>
- </div>
- </div>
- </div>
-
- <!-- DISTRIBUTIONS SIDEBAR -->
- <div class="space-y-6">
- <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
- <h4 class="font-bold text-slate-800 text-sm border-b border-slate-100 pb-2">Distribusi Berdasarkan Kategori</h4>
- <div class="space-y-3">
- ${Object.entries(
- allRequests.reduce((acc, r) => {
- acc[r.kategori || "Lain-lain"] = (acc[r.kategori || "Lain-lain"] || 0) + 1;
- return acc;
- }, {})
- ).map(([cat, count]) => {
- const pct = totalCompetencyRequests > 0 ? (count / totalCompetencyRequests) * 100 : 0;
- return `
- <div class="space-y-1 text-xs">
- <div class="flex justify-between text-slate-600 font-medium">
- <span>${escapeHtml(cat)}</span>
- <span class="font-semibold text-slate-800">${count} (${pct.toFixed(0)}%)</span>
- </div>
- <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
- <div class="bg-maroon-700 h-full rounded-full" style="width: ${pct}%"></div>
- </div>
- </div>
- `;
- }).join("")}
- </div>
- </div>
-
- <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-3 text-xs leading-relaxed text-slate-500">
- <h4 class="font-bold text-slate-800 text-sm">Informasi Kompetensi & TNA</h4>
- <p>TNA (Training Need Analysis) mengumpulkan gap antara kemampuan riil staf sekarang dan performa yang diharapkan agar rencana pelatihan tepat sasaran & hemat budget.</p>
- </div>
- </div>
- </div>
- `;
-
- // Attach click listeners to create training plans
- wrap.querySelectorAll(".btn-create-plan-from-rec").forEach(btn => {
- btn.onclick = async () => {
- const recName = btn.dataset.recName;
- const recCat = btn.dataset.recCat;
- await openCreatePlanModal(recName, recCat, async () => {
- await renderTnaDashboard(wrap, session);
- });
- };
- });
-
- wrap.querySelector("#btn-create-shared-class").onclick = async () => {
- await openCreatePlanModal("", "", async () => {
- await renderTnaDashboard(wrap, session);
- });
- };
-
- // View interactive participant progress
- wrap.querySelectorAll(".btn-view-participants").forEach(btn => {
- btn.onclick = () => {
- const planId = btn.dataset.planId;
- const planJudul = btn.dataset.judul;
- openParticipantsProgressModal(planId, planJudul);
- };
- });
+async function renderPlanning(wrap, session, data, reload) {
+  const canCreate = isHrd(session) || await hasPermission("training.planning.create", session);
+  wrap.innerHTML = `<div class="flex justify-between items-center"><div><h2 class="text-lg font-bold text-slate-800">Planning & Persetujuan</h2><p class="text-xs text-slate-400">Rencana berbasis kebutuhan tervalidasi dengan peserta ber-NIK.</p></div>${canCreate ? `<button id="new-plan" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">+ Buat Program</button>` : ""}</div><div class="grid lg:grid-cols-2 gap-4">${data.plans.map(p => `<article class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm"><div class="flex justify-between gap-3"><div><span class="text-[10px] font-bold text-maroon-700">${esc(p.competency_name || p.kategori || "PROGRAM")}</span><h3 class="font-bold text-slate-800">${esc(p.title || p.judul)}</h3></div><b class="text-xs text-slate-500">${esc(p.status)}</b></div><p class="mt-2 text-xs text-slate-500">${dateText(p.start_date || p.tanggal)} · ${esc(p.trainer)} · ${planParticipants(p).length} peserta</p><p class="mt-1 text-xs">Estimasi ${money(p.budget_estimate || p.estimasi_biaya)}</p><div class="mt-4 flex flex-wrap gap-2">${approvalButtons(p,session)}</div></article>`).join("") || empty("Belum ada rencana program.")}</div>`;
+  if (wrap.querySelector("#new-plan")) wrap.querySelector("#new-plan").onclick = () => planModal(session,data,reload);
+  wrap.querySelectorAll("[data-decision]").forEach(btn => btn.onclick = async () => {
+    const [decision, planId] = btn.dataset.decision.split(":"); const plan = data.plans.find(p=>p.id===planId);
+    let update = {};
+    if (decision === "gm-ok") update = { status: TRAINING_STATUS.PENDING_FINANCE, gm_status:"APPROVED", gm_by:session.nama, gm_at:new Date().toISOString() };
+    if (decision === "gm-no") update = { status: TRAINING_STATUS.REJECTED_GM, gm_status:"REJECTED", gm_by:session.nama, gm_at:new Date().toISOString() };
+    if (decision === "fin-ok") update = { status: TRAINING_STATUS.SCHEDULED, finance_status:"APPROVED", finance_by:session.nama, finance_at:new Date().toISOString() };
+    if (decision === "fin-no") update = { status: TRAINING_STATUS.REJECTED_FINANCE, finance_status:"REJECTED", finance_by:session.nama, finance_at:new Date().toISOString() };
+    await fsUpdate(C.plans, plan.id, update); await audit(session,"PLAN_DECISION","plan",plan.id,{decision}); toast("Keputusan tersimpan.","success"); reload();
+  });
 }
 
-async function openParticipantsProgressModal(planId, planJudul) {
- openModal({
- title: `Progress Peserta — ${escapeHtml(planJudul)}`,
- size: "lg",
- bodyHtml: `
- <div class="space-y-4 text-left">
- <p class="text-xs text-slate-500">Berikut adalah daftar peserta beserta progress pengisian Pre-Test, Post-Test, dan rating kuesioner feedback dari database.</p>
- <div id="participants-list-wrap" class="overflow-x-auto border rounded-xl">
- <table class="w-full text-sm">
- <thead class="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-wide">
- <tr class="border-b">
- <th class="py-3 px-4 text-left">Nama Peserta</th>
- <th class="py-3 px-4 text-center">Skor Pre-Test</th>
- <th class="py-3 px-4 text-center">Skor Post-Test</th>
- <th class="py-3 px-4 text-center">Rating Kuesioner</th>
- <th class="py-3 px-4 text-left">Saran / Masukan</th>
- <th class="py-3 px-4 text-center">Progress</th>
- </tr>
- </thead>
- <tbody id="tbl-participants-body" class="divide-y text-xs text-slate-700">
- <tr><td colspan="6" class="p-6 text-center text-slate-400">Loading progress data...</td></tr>
- </tbody>
- </table>
- </div>
- </div>`,
- footerHtml: `
- <button id="btn-part-close" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-lg text-sm">Tutup</button>`,
- onMount: async m => {
- m.querySelector("#btn-part-close").onclick = closeModal;
- const tbody = m.querySelector("#tbl-participants-body");
-
- try {
- // Fetch plan to get registered attendees
- const plans = await fsGetAll(PLAN_COLL);
- const plan = plans.find(x => x.id === planId);
- if (!plan) {
- tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-red-600 font-bold">Plan tidak ditemukan!</td></tr>`;
- return;
- }
-
- const attendees = plan.peserta || [];
- if (attendees.length === 0) {
- tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-400">Belum ada peserta yang didaftarkan.</td></tr>`;
- return;
- }
-
- // Fetch progress records
- const allProgress = await fsGetAll(PROGRESS_COLL);
- const planProgress = allProgress.filter(x => x.plan_id === planId);
-
- tbody.innerHTML = attendees.map(att => {
- const prog = planProgress.find(x => x.nama === att) || { pretest_score: null, posttest_score: null, feedback: null };
- 
- let pct = 0;
- if (prog.pretest_score !== null && prog.pretest_score !== undefined) pct += 33;
- if (prog.posttest_score !== null && prog.posttest_score !== undefined) pct += 33;
- if (prog.feedback !== null && prog.feedback !== undefined) pct += 34;
-
- const preText = prog.pretest_score !== null ? `${prog.pretest_score}/100` : "-";
- const postText = prog.posttest_score !== null ? `${prog.posttest_score}/100` : "-";
- const ratingText = prog.feedback ? `${prog.feedback.rating}/5` : "-";
- const commentsText = prog.feedback ? escapeHtml(prog.feedback.comments) : "-";
-
- return `
- <tr class="hover:bg-slate-50 transition">
- <td class="py-3 px-4 font-semibold text-slate-800">${escapeHtml(att)}</td>
- <td class="py-3 px-4 text-center font-bold text-amber-600">${preText}</td>
- <td class="py-3 px-4 text-center font-bold text-emerald-600">${postText}</td>
- <td class="py-3 px-4 text-center">${ratingText}</td>
- <td class="py-3 px-4 max-w-xs truncate" title="${commentsText}">${commentsText}</td>
- <td class="py-3 px-4 text-center">
- <span class="px-2 py-0.5 bg-slate-100 text-slate-800 rounded font-bold">${pct}%</span>
- </td>
- </tr>`;
- }).join("");
-
- } catch (err) {
- tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-red-500">Error: ${err.message}</td></tr>`;
- }
- }
- });
+function approvalButtons(plan, session) {
+  const role = String(session.role || "").toUpperCase();
+  if (plan.status === TRAINING_STATUS.PENDING_GM && ["GM","DIREKTUR","SUPERADMIN"].includes(role)) return `<button data-decision="gm-ok:${plan.id}" class="rounded bg-emerald-600 px-3 py-2 text-xs text-white">Setujui GM</button><button data-decision="gm-no:${plan.id}" class="rounded bg-red-600 px-3 py-2 text-xs text-white">Tolak</button>`;
+  if (plan.status === TRAINING_STATUS.PENDING_FINANCE && ["FINANCE","SUPERADMIN"].includes(role)) return `<button data-decision="fin-ok:${plan.id}" class="rounded bg-emerald-600 px-3 py-2 text-xs text-white">Setujui Finance</button><button data-decision="fin-no:${plan.id}" class="rounded bg-red-600 px-3 py-2 text-xs text-white">Tolak</button>`;
+  return `<span class="text-xs text-slate-400">GM: ${esc(plan.gm_status || "Menunggu")} · Finance: ${esc(plan.finance_status || "Menunggu")}</span>`;
 }
 
-async function openCreatePlanModal(defaultJudul = "", defaultKategori = "", onSuccess) {
- let activeKaryawan = [];
- try {
- const allKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
- activeKaryawan = allKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF");
- activeKaryawan.sort((a,b) => (a.nama_karyawan||"").localeCompare(b.nama_karyawan||""));
- } catch(e) {
- console.warn("Gagal mengambil daftar karyawan dari database:", e);
- }
-
- openModal({
- title: "Susun Rencana & Jadwalkan Pelatihan",
- size: "lg",
- bodyHtml: `
- <form id="form-create-plan" class="space-y-4 text-left">
- <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
- <!-- Sisi Kiri: Detail Program -->
- <div class="space-y-4">
- <div>
- <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Nama Program Pelatihan</label>
- <input type="text" id="plan-judul" required value="${escapeHtml(defaultJudul)}" class="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-blue-500" placeholder="Contoh: Pelatihan Ahli Excel & VBA">
- </div>
- <div>
- <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Kategori Pelatihan</label>
- <select id="plan-kategori" class="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-blue-500 bg-white">
- <option value="Soft & Technical Skills" ${defaultKategori === 'Soft & Technical Skills' ? 'selected' : ''}>Soft & Technical Skills</option>
- <option value="IT & Software" ${defaultKategori === 'IT & Software' ? 'selected' : ''}>IT & Software</option>
- <option value="Operational & Safety" ${defaultKategori === 'Operational & Safety' ? 'selected' : ''}>Operational & Safety</option>
- <option value="Leadership" ${defaultKategori === 'Leadership' ? 'selected' : ''}>Leadership</option>
- <option value="Lain-lain" ${defaultKategori === 'Lain-lain' ? 'selected' : ''}>Lain-lain</option>
- <option value="NEW_CATEGORY">+ Tambah Kategori Baru...</option>
- </select>
- <div id="wrap-kategori-baru" class="hidden mt-2">
- <input type="text" id="plan-kategori-baru" class="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-blue-500 text-xs" placeholder="Ketik Kategori Baru...">
- </div>
- </div>
- <div class="grid grid-cols-2 gap-3">
- <div>
- <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Trainer / Lembaga</label>
- <input type="text" id="plan-trainer" required class="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-blue-500" placeholder="Lembaga Pelaksana">
- </div>
- <div>
- <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Tanggal Pelaksanaan</label>
- <input type="date" id="plan-tanggal" required class="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-blue-500">
- </div>
- </div>
- <div>
- <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Estimasi Biaya (Rp)</label>
- <input type="number" id="plan-biaya" required class="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-blue-500" placeholder="Anggaran Pelatihan">
- </div>
- 
- <!-- Lampiran Dokumen dan Link -->
- <div class="border-t border-slate-100 pt-3 mt-3 space-y-3">
- <p class="text-xs font-bold text-maroon-700 uppercase">Lampiran & Tautan Pelatihan</p>
- <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
- <div>
- <label class="block text-xs font-bold text-slate-600 mb-1">URL / Link Dokumen (Drive/PDF)</label>
- <input type="url" id="plan-dokumen-url" class="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-blue-500" placeholder="https://drive.google.com/...">
- </div>
- <div>
- <label class="block text-xs font-bold text-slate-600 mb-1">URL / Link Pelatihan (Zoom/Referensi)</label>
- <input type="url" id="plan-link-url" class="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-blue-500" placeholder="https://zoom.us/...">
- </div>
- </div>
- </div>
- </div>
- 
- <!-- Sisi Kanan: Daftar Checkbox Karyawan -->
- <div class="flex flex-col h-full border-l border-slate-100 pl-4">
- <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Pilih Daftar Karyawan Terpilih</label>
- <p class="text-[10px] text-slate-400 mb-2">Pilih karyawan dari database untuk diikutsertakan dalam rencana pelatihan ini.</p>
- <div id="plan-peserta-checkbox-container" class="flex-1 max-h-80 overflow-y-auto border border-slate-200 rounded-xl p-3 space-y-2 bg-slate-50">
- ${activeKaryawan.length === 0 ? `
- <p class="text-xs text-slate-400 text-center py-10">Belum ada karyawan aktif terdaftar di database.</p>
- ` : activeKaryawan.map(k => `
- <label class="flex items-start gap-2.5 text-xs text-slate-700 cursor-pointer p-1.5 hover:bg-white rounded transition">
- <input type="checkbox" name="plan-peserta-checkbox" value="${escapeHtml(k.nama_karyawan)}" class="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500">
- <div>
- <span class="font-bold text-slate-800">${escapeHtml(k.nama_karyawan)}</span>
- <div class="text-[10px] text-slate-400">${escapeHtml(k.jabatan || "-")} (${escapeHtml(k.cabang || "-")})</div>
- </div>
- </label>
- `).join("")}
- </div>
- </div>
- </div>
- </form>
- `,
- footerHtml: `
- <button id="btn-cancel-plan" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition">Batal</button>
- <button id="btn-save-plan" class="px-5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white text-sm font-semibold rounded-lg transition shadow-md">Ajukan Ke GM & Finance</button>
- `,
- onMount: (m) => {
- m.querySelector("#btn-cancel-plan").onclick = closeModal;
-
- // Handle custom category toggling
- const selectKategori = m.querySelector("#plan-kategori");
- const wrapKategoriBaru = m.querySelector("#wrap-kategori-baru");
- const inputKategoriBaru = m.querySelector("#plan-kategori-baru");
-
- selectKategori.onchange = () => {
- const isNew = selectKategori.value === "NEW_CATEGORY";
- wrapKategoriBaru.classList.toggle("hidden", !isNew);
- if (isNew) {
- inputKategoriBaru.focus();
- }
- };
-
- m.querySelector("#btn-save-plan").onclick = async () => {
- const form = m.querySelector("#form-create-plan");
- if (!form.reportValidity()) return;
-
- const judul = m.querySelector("#plan-judul").value.trim();
- const trainer = m.querySelector("#plan-trainer").value.trim();
- const tanggal = m.querySelector("#plan-tanggal").value;
- const estimasi_biaya = parseFloat(m.querySelector("#plan-biaya").value) || 0;
- const dokumen_url = m.querySelector("#plan-dokumen-url").value.trim();
- const link_url = m.querySelector("#plan-link-url").value.trim();
-
- // Get selected category
- let kategori = selectKategori.value;
- if (kategori === "NEW_CATEGORY") {
- kategori = inputKategoriBaru.value.trim();
- if (!kategori) {
- return toast("Silakan masukkan kategori baru!", "warning");
- }
- }
-
- // Get selected participants from checkboxes
- const selectedCheckboxes = m.querySelectorAll('input[name="plan-peserta-checkbox"]:checked');
- const peserta = Array.from(selectedCheckboxes).map(cb => cb.value);
-
- if (peserta.length === 0) {
- return toast("Pilih minimal satu karyawan sebagai peserta pelatihan!", "warning");
- }
-
- const btn = m.querySelector("#btn-save-plan");
- btn.disabled = true;
- btn.textContent = "Mengajukan...";
-
- try {
- const planId = genId("PLAN");
- await fsAdd(PLAN_COLL, {
- id: planId,
- judul,
- kategori,
- trainer,
- tanggal,
- peserta,
- estimasi_biaya,
- dokumen_url,
- link_url,
- status: "PENDING_GM", // Starts with GM approval
- created_at: new Date().toISOString()
- }, planId);
-
- toast("Rencana pelatihan diajukan! Menunggu persetujuan GM.", "success");
- closeModal();
- if (onSuccess) onSuccess();
-
- } catch (err) {
- toast("Error: " + err.message, "error");
- btn.disabled = false;
- btn.textContent = "Ajukan Ke GM & Finance";
- }
- };
- }
- });
+function planModal(session, data, reload) {
+  const candidates = data.employees.map(safeParticipantSnapshot).filter(p=>p.nik && p.nama);
+  openModal({ title:"Buat Rencana Program Pelatihan", size:"xl", bodyHtml:`<div id="plan-form" class="space-y-4"><div class="grid md:grid-cols-2 gap-4">${field("Nama program","p-title")}${field("Kompetensi utama","p-competency")}${field("Trainer / vendor","p-trainer")}${field("Tanggal mulai","p-date","date")}${field("Metode","p-method","text","placeholder='Kelas / OJT / Coaching'")}${field("Estimasi biaya","p-budget","number","min='0'")}${field("Nilai kelulusan","p-pass","number","min='0' max='100' value='70'")}</div><label class="block text-xs font-semibold text-slate-600">Tujuan terukur<textarea id="p-objective" class="mt-1 w-full rounded-lg border px-3 py-2" rows="3"></textarea></label><label class="block text-xs font-semibold text-slate-600">Pertanyaan asesmen<textarea id="p-questions" class="mt-1 w-full rounded-lg border px-3 py-2" rows="4" placeholder="Pertanyaan | Benar"></textarea></label><div><p class="text-xs font-semibold text-slate-600 mb-2">Peserta</p><div class="max-h-56 overflow-y-auto grid md:grid-cols-2 gap-2 border rounded-xl p-3">${candidates.map((p,i)=>`<label class="flex items-center gap-2 text-xs"><input type="checkbox" data-person="${i}"><span><b>${esc(p.nama)}</b> · ${esc(p.nik)} · ${esc(p.cabang)}</span></label>`).join("")}</div></div></div>`, footerHtml:`<button id="save-plan" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">Kirim ke GM</button>`, onMount: modal => modal.querySelector("#save-plan").onclick = async () => {
+    const root = modal.querySelector("#plan-form"); const participants = [...root.querySelectorAll("[data-person]:checked")].map(x=>candidates[Number(x.dataset.person)]);
+    const questions = val(root,"#p-questions").split("\n").map(line=>{const [question,answer]=line.split("|").map(x=>x.trim()); return {question,answer:answer||"Benar"};}).filter(q=>q.question);
+    if (!val(root,"#p-title") || !val(root,"#p-date") || !participants.length) return toast("Nama, tanggal, dan peserta wajib dipilih.","warning");
+    const id=genId("PLAN"); await fsAdd(C.plans,{ title:val(root,"#p-title"), competency_name:val(root,"#p-competency"), trainer:val(root,"#p-trainer"), start_date:val(root,"#p-date"), method:val(root,"#p-method"), budget_estimate:Number(val(root,"#p-budget")||0), passing_grade:Number(val(root,"#p-pass")||70), objective:val(root,"#p-objective"), assessment_questions:questions, participants, participant_niks:participants.map(p=>p.nik), status:TRAINING_STATUS.PENDING_GM, gm_status:"PENDING", finance_status:"PENDING", created_by_nik:myNik(session)},id); await audit(session,"CREATE_PLAN","plan",id,{participants:participants.length}); closeModal(); toast("Rencana dikirim ke GM.","success"); reload();
+  }});
 }
 
-/* ---------------------------------------------------------------------
- * 5. ALL EMPLOYEE REQUESTS (HRD WORKSPACE)
- * ------------------------------------------------------------------- */
-/* ---------------------------------------------------------------------
- * 5. ALL EMPLOYEE REQUESTS (HRD WORKSPACE & GM / FINANCE APPROVALS)
- * ------------------------------------------------------------------- */
-async function renderAllRequests(wrap, session) {
- const userRole = (session.role || "").toUpperCase();
- const isHrd = ["HRD", "SUPERADMIN", "ADMIN", "MANAGER", "ATASAN", "SPV", "DIRECTOR", "GM", "FINANCE"].includes(userRole);
- const isGm = ["GM", "SUPERADMIN", "DIRECTOR", "MANAGER", "ADMIN"].includes(userRole);
- const isFinance = ["FINANCE", "SUPERADMIN", "ADMIN", "MANAGER"].includes(userRole);
+async function renderExecution(wrap, session, data, reload) {
+  const plans = data.plans.filter(p=>[TRAINING_STATUS.SCHEDULED,TRAINING_STATUS.ONGOING,TRAINING_STATUS.COMPLETED,TRAINING_STATUS.CANCELLED].includes(p.status));
+  wrap.innerHTML=`<div><h2 class="text-lg font-bold text-slate-800">Pelaksanaan Training</h2><p class="text-xs text-slate-400">Catat status, kehadiran, bukti pelaksanaan, dan biaya aktual.</p></div><div class="space-y-4">${plans.map(p=>{const attendees=planParticipants(p);return `<article class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm"><div class="flex flex-wrap justify-between gap-3"><div><h3 class="font-bold">${esc(p.title||p.judul)}</h3><p class="text-xs text-slate-400">${dateText(p.start_date||p.tanggal)} · ${esc(p.trainer)} · ${attendees.length} peserta</p></div><b class="text-xs">${esc(p.status)}</b></div><div class="mt-3 text-xs text-slate-500">Hadir: ${(p.attendance_niks||[]).length}/${attendees.length} · Biaya aktual: ${money(p.actual_cost)}</div>${isHrd(session)?`<div class="mt-4 flex gap-2"><button data-execute="${p.id}" class="rounded bg-maroon-700 px-3 py-2 text-xs text-white">Update pelaksanaan</button></div>`:""}</article>`}).join("")||empty("Belum ada program yang lolos persetujuan.")}</div>`;
+  wrap.querySelectorAll("[data-execute]").forEach(btn=>btn.onclick=()=>executionModal(data.plans.find(p=>p.id===btn.dataset.execute),session,reload));
+}
 
- const allData = await fsGetAll(COL.DATA_TRAINING);
- const allPlans = await fsGetAll(PLAN_COLL);
+function executionModal(plan, session, reload) {
+  const people=planParticipants(plan), present=new Set(plan.attendance_niks||[]);
+  openModal({title:`Pelaksanaan: ${esc(plan.title||plan.judul)}`,size:"lg",bodyHtml:`<div id="exec" class="space-y-4">${select("Status","e-status",[["SCHEDULED","Terjadwal"],["ONGOING","Berjalan"],["COMPLETED","Selesai"],["CANCELLED","Dibatalkan"]])}${field("Biaya aktual","e-cost","number",`min='0' value='${Number(plan.actual_cost||0)}'`)}${field("Tautan bukti / dokumentasi","e-evidence","url",`value='${esc(plan.evidence_url||"")}'`)}<label class="block text-xs font-semibold text-slate-600">Catatan<textarea id="e-notes" rows="3" class="mt-1 w-full rounded-lg border px-3 py-2">${esc(plan.execution_notes||"")}</textarea></label><div><p class="text-xs font-semibold mb-2">Kehadiran peserta</p>${people.map((p,i)=>`<label class="flex gap-2 py-1 text-xs"><input type="checkbox" data-attendee="${i}" ${present.has(p.nik)?"checked":""}>${esc(p.nama)} · ${esc(p.nik)}</label>`).join("")}</div></div>`,footerHtml:`<button id="save-exec" class="rounded bg-maroon-700 px-4 py-2 text-sm text-white">Simpan</button>`,onMount:modal=>{modal.querySelector("#e-status").value=plan.status;modal.querySelector("#save-exec").onclick=async()=>{const root=modal.querySelector("#exec"),attendance=[...root.querySelectorAll("[data-attendee]:checked")].map(x=>people[Number(x.dataset.attendee)].nik).filter(Boolean);await fsUpdate(C.plans,plan.id,{status:val(root,"#e-status"),actual_cost:Number(val(root,"#e-cost")||0),evidence_url:val(root,"#e-evidence"),execution_notes:val(root,"#e-notes"),attendance_niks:attendance});await audit(session,"UPDATE_EXECUTION","plan",plan.id,{status:val(root,"#e-status"),attendance:attendance.length});closeModal();toast("Pelaksanaan diperbarui.","success");reload();};}});
+}
 
- let html = `<div class="space-y-6 pb-10">`;
+async function renderMy(wrap, session, data, reload) {
+  const nik=myNik(session), assignments=data.assignments.filter(a=>String(a.nik)===nik), plans=data.plans.filter(p=>planParticipants(p).some(x=>String(x.nik)===nik || (!x.nik&&x.nama===session.nama))), progressMap=Object.fromEntries(data.progress.filter(p=>String(p.nik)===nik).map(p=>[p.plan_id,p]));
+  wrap.innerHTML=`<div><h2 class="text-lg font-bold text-slate-800">Pelatihan Saya</h2><p class="text-xs text-slate-400">Isi survey kebutuhan, pre-test, post-test, dan evaluasi pelatihan.</p></div><section class="bg-white rounded-2xl border p-5"><h3 class="font-bold">Survey TNA</h3><div class="mt-4 grid md:grid-cols-2 gap-3">${assignments.map(a=>`<div class="rounded-xl border p-4"><b class="text-sm">${esc(data.campaigns.find(c=>c.id===a.campaign_id)?.title||"Survey TNA")}</b><p class="text-xs text-slate-400">${esc(a.status)}</p>${a.status!=="SUBMITTED"?`<button data-survey="${a.id}" class="mt-3 rounded bg-maroon-700 px-3 py-2 text-xs text-white">Isi survey</button>`:`<span class="mt-3 inline-block text-xs font-bold text-emerald-600">Sudah dikirim</span>`}</div>`).join("")||empty("Tidak ada survey yang perlu diisi.")}</div></section><section class="bg-white rounded-2xl border p-5"><h3 class="font-bold">Program & Evaluasi</h3><div class="mt-4 grid lg:grid-cols-2 gap-3">${plans.map(p=>{const pr=progressMap[p.id]||{};return `<div class="rounded-xl border p-4"><b>${esc(p.title||p.judul)}</b><p class="text-xs text-slate-400">${dateText(p.start_date||p.tanggal)} · ${esc(p.status)}</p><div class="mt-3 flex flex-wrap gap-2"><button data-assess="pre:${p.id}" class="rounded border px-3 py-2 text-xs">${pr.pretest_score==null?"Isi pre-test":`Pre-test ${pr.pretest_score}`}</button><button data-assess="post:${p.id}" class="rounded border px-3 py-2 text-xs" ${pr.pretest_score==null?"disabled":""}>${pr.posttest_score==null?"Isi post-test":`Post-test ${pr.posttest_score}`}</button><button data-feedback="${p.id}" class="rounded border px-3 py-2 text-xs">${pr.feedback_score?`Feedback ${pr.feedback_score}/5`:"Isi feedback"}</button></div></div>`}).join("")||empty("Anda belum terdaftar dalam program pelatihan.")}</div></section>`;
+  wrap.querySelectorAll("[data-survey]").forEach(btn=>btn.onclick=()=>surveyResponseModal(assignments.find(a=>a.id===btn.dataset.survey),session,reload));
+  wrap.querySelectorAll("[data-assess]").forEach(btn=>btn.onclick=()=>{const [kind,id]=btn.dataset.assess.split(":");assessmentModal(data.plans.find(p=>p.id===id),progressMap[id],kind,session,reload);});
+  wrap.querySelectorAll("[data-feedback]").forEach(btn=>btn.onclick=()=>feedbackModal(data.plans.find(p=>p.id===btn.dataset.feedback),progressMap[btn.dataset.feedback],session,reload));
+}
 
- // SECTION 1: HRD Review of Employee-initiated competency requests
- if (isHrd) {
- const pendingData = allData.filter(x => x.status === "PENDING")
- .sort((a, b) => new Date(b.tanggal_pengajuan) - new Date(a.tanggal_pengajuan));
+function surveyResponseModal(assignment, session, reload) {
+  const competencies=assignment.competencies||[];
+  openModal({title:"Isi Survey Kebutuhan Pelatihan",size:"lg",bodyHtml:`<div id="survey-response" class="space-y-4">${competencies.map((c,i)=>`<div class="rounded-xl border p-4"><b class="text-sm">${esc(c.name)}</b><p class="text-xs text-slate-400">Level harapan ${c.expected_level}/5</p><div class="mt-3 grid grid-cols-2 gap-3">${field("Level saat ini","current-${i}","number","min='1' max='5' value='1'")}${field("Urgensi","urgency-${i}","number","min='1' max='5' value='3'")}</div>${field("Alasan / contoh pekerjaan","reason-${i}","text")}</div>`).join("")}</div>`,footerHtml:`<button id="submit-survey" class="rounded bg-maroon-700 px-4 py-2 text-sm text-white">Kirim survey</button>`,onMount:modal=>modal.querySelector("#submit-survey").onclick=async()=>{const root=modal.querySelector("#survey-response"),responses=competencies.map((c,i)=>({competency_name:c.name,expected_level:Number(c.expected_level),business_impact:Number(c.business_impact||3),current_level:Number(val(root,`#current-${i}`)),urgency:Number(val(root,`#urgency-${i}`)),reason:val(root,`#reason-${i}`)}));await Promise.all(responses.map(r=>fsAdd(C.needs,{...r,campaign_id:assignment.campaign_id,assignment_id:assignment.id,nik:assignment.nik,nama:assignment.nama,cabang:assignment.cabang,divisi:assignment.divisi,jabatan:assignment.jabatan,validation_status:"PENDING"},`${assignment.id}_${r.competency_name.toUpperCase().replace(/[^A-Z0-9]+/g,"_")}`)));await fsUpdate(C.assignments,assignment.id,{status:"SUBMITTED",responses,submitted_at:new Date().toISOString()});await audit(session,"SUBMIT_SURVEY","assignment",assignment.id,{needs:responses.length});closeModal();toast("Survey berhasil dikirim.","success");reload();}});
+}
 
- html += `
- <!-- Pending Demands -->
- <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
- <h3 class="font-bold text-slate-800 flex items-center gap-2">
- <span class="w-1.5 h-4 bg-maroon-700 rounded-full"></span>
- Review Pengajuan Kompetensi Karyawan (${pendingData.length})
- </h3>
- <p class="text-xs text-slate-400">Tinjau kesenjangan keahlian yang diajukan oleh karyawan sebelum diubah menjadi Program Rencana Pelatihan.</p>
- <div class="overflow-x-auto">
- <table class="w-full text-left border-collapse">
- <thead>
- <tr class="border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wide">
- <th class="py-3 px-4">Karyawan</th>
- <th class="py-3 px-4">Kompetensi</th>
- <th class="py-3 px-4 text-center">Tingkat Saat Ini</th>
- <th class="py-3 px-4 text-center">Ekspektasi</th>
- <th class="py-3 px-4">Alasan Kebutuhan</th>
- <th class="py-3 px-4">Aksi</th>
- </tr>
- </thead>
- <tbody class="divide-y divide-slate-50 text-sm">
- ${pendingData.length === 0 ? `
- <tr>
- <td colspan="6" class="py-10 text-center text-slate-400">Tidak ada pengajuan kompetensi baru yang tertunda.</td>
- </tr>
- ` : pendingData.map(r => {
- return `
- <tr class="hover:bg-slate-50/50 transition">
- <td class="py-3.5 px-4 font-semibold text-slate-800">${escapeHtml(r.nama_karyawan)}</td>
- <td class="py-3.5 px-4 font-medium text-slate-700">${escapeHtml(r.kompetensi)}</td>
- <td class="py-3.5 px-4 text-center text-amber-600 font-semibold">${r.level_sekarang} / 5</td>
- <td class="py-3.5 px-4 text-center text-blue-600 font-semibold">${r.level_diharapkan} / 5</td>
- <td class="py-3.5 px-4 text-slate-500 max-w-xs truncate" title="${escapeHtml(r.alasan)}">${escapeHtml(r.alasan)}</td>
- <td class="py-3.5 px-4 flex items-center gap-2">
- <button data-action="approve" data-id="${r.id}" class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded transition shadow-sm">Setuju</button>
- <button data-action="reject" data-id="${r.id}" class="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded transition shadow-sm">Tolak</button>
- </td>
- </tr>
- `;
- }).join("")}
- </tbody>
- </table>
- </div>
- </div>
- `;
- }
+function assessmentModal(plan, progress={}, kind, session, reload) {
+  const questions=planQuestions(plan),label=kind==="pre"?"Pre-test":"Post-test";
+  openModal({title:`${label}: ${esc(plan.title||plan.judul)}`,size:"lg",bodyHtml:`<div id="assessment" class="space-y-4">${questions.map((q,i)=>`<div><p class="text-sm font-semibold">${i+1}. ${esc(q.question)}</p><select data-answer="${i}" class="mt-2 rounded-lg border px-3 py-2 text-sm"><option value="Benar">Benar</option><option value="Salah">Salah</option></select></div>`).join("")}</div>`,footerHtml:`<button id="submit-assessment" class="rounded bg-maroon-700 px-4 py-2 text-sm text-white">Kirim jawaban</button>`,onMount:modal=>modal.querySelector("#submit-assessment").onclick=async()=>{const answers=[...modal.querySelectorAll("[data-answer]")].map(x=>x.value),correct=answers.filter((a,i)=>a.toLowerCase()===String(questions[i].answer||"Benar").toLowerCase()).length,score=Math.round(correct/questions.length*100),id=`${plan.id}_${myNik(session)}`;await fsUpdate(C.progress,id,{plan_id:plan.id,nik:myNik(session),nama:session.nama,cabang:session.cabang||"",divisi:session.divisi||"",[`${kind}test_score`]:score,[`${kind}test_at`]:new Date().toISOString()});await audit(session,`SUBMIT_${kind.toUpperCase()}TEST`,"progress",id,{score});closeModal();toast(`${label} selesai. Nilai: ${score}`,"success");reload();}});
+}
 
- // SECTION 2: GM Review of HRD Training Plans
- if (isGm) {
- const pendingGmPlans = allPlans.filter(p => p.status === "PENDING_GM");
- html += `
- <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
- <h3 class="font-bold text-slate-800 flex items-center gap-2">
- <span class="w-1.5 h-4 bg-blue-600 rounded-full"></span>
- Antrean Persetujuan Rencana Pelatihan (General Manager) (${pendingGmPlans.length})
- </h3>
- <p class="text-xs text-slate-400">Setujui program pelatihan yang disusun HRD agar dapat diteruskan ke Finance untuk pencairan anggaran.</p>
- <div class="overflow-x-auto">
- <table class="w-full text-left border-collapse">
- <thead>
- <tr class="border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wide">
- <th class="py-3 px-4">Nama Pelatihan</th>
- <th class="py-3 px-4">Trainer / Lembaga</th>
- <th class="py-3 px-4">Tanggal Pelaksanaan</th>
- <th class="py-3 px-4 text-right">Estimasi Biaya</th>
- <th class="py-3 px-4">Peserta Terpilih</th>
- <th class="py-3 px-4">Dokumen & Tautan</th>
- <th class="py-3 px-4 text-center">Keputusan GM</th>
- </tr>
- </thead>
- <tbody class="divide-y divide-slate-50 text-sm">
- ${pendingGmPlans.length === 0 ? `
- <tr>
- <td colspan="7" class="py-10 text-center text-slate-400">Tidak ada pengajuan rencana pelatihan untuk disetujui GM saat ini.</td>
- </tr>
- ` : pendingGmPlans.map(p => {
- return `
- <tr class="hover:bg-slate-50/50 transition">
- <td class="py-3.5 px-4">
- <div class="font-bold text-slate-800">${escapeHtml(p.judul)}</div>
- <span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-bold uppercase">${escapeHtml(p.kategori)}</span>
- </td>
- <td class="py-3.5 px-4 text-slate-500">${escapeHtml(p.trainer || "-")}</td>
- <td class="py-3.5 px-4 text-slate-400">${p.tanggal ? fmtDateShort(p.tanggal) : "-"}</td>
- <td class="py-3.5 px-4 text-right font-bold text-slate-700">Rp ${(p.estimasi_biaya || 0).toLocaleString("id-ID")}</td>
- <td class="py-3.5 px-4 text-xs max-w-xs truncate" title="${(p.peserta || []).join(", ")}">
- ${(p.peserta || []).join(", ")}
- </td>
- <td class="py-3.5 px-4 space-y-1">
- ${p.dokumen_url ? `<a href="${p.dokumen_url}" target="_blank" class="text-xs text-maroon-700 hover:underline block font-bold">Buka Dokumen</a>` : ""}
- ${p.link_url ? `<a href="${p.link_url}" target="_blank" class="text-xs text-blue-600 hover:underline block font-bold"> Buka Link</a>` : ""}
- ${!p.dokumen_url && !p.link_url ? `<span class="text-slate-300 text-xs">-</span>` : ""}
- </td>
- <td class="py-3.5 px-4 text-center">
- <div class="flex items-center justify-center gap-2">
- <button data-plan-action="gm-approve" data-id="${p.id}" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition shadow-sm">Setujui GM</button>
- <button data-plan-action="gm-reject" data-id="${p.id}" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg transition shadow-sm">Tolak</button>
- </div>
- </td>
- </tr>
- `;
- }).join("")}
- </tbody>
- </table>
- </div>
- </div>
- `;
- }
+function feedbackModal(plan, progress={}, session, reload) {
+  openModal({title:`Evaluasi: ${esc(plan.title||plan.judul)}`,bodyHtml:`<div id="feedback" class="space-y-4">${field("Nilai kepuasan (1–5)","f-score","number","min='1' max='5' value='5'")}<label class="text-xs font-semibold text-slate-600">Manfaat dan saran<textarea id="f-note" rows="4" class="mt-1 w-full rounded-lg border px-3 py-2"></textarea></label></div>`,footerHtml:`<button id="save-feedback" class="rounded bg-maroon-700 px-4 py-2 text-sm text-white">Kirim evaluasi</button>`,onMount:modal=>modal.querySelector("#save-feedback").onclick=async()=>{const root=modal.querySelector("#feedback"),id=`${plan.id}_${myNik(session)}`;await fsUpdate(C.progress,id,{plan_id:plan.id,nik:myNik(session),nama:session.nama,cabang:session.cabang||"",divisi:session.divisi||"",feedback_score:Number(val(root,"#f-score")),feedback_note:val(root,"#f-note"),feedback_at:new Date().toISOString()});await audit(session,"SUBMIT_FEEDBACK","progress",id);closeModal();toast("Evaluasi berhasil dikirim.","success");reload();}});
+}
 
- // SECTION 3: Finance Review of Training Plan budgets
- if (isFinance) {
- const pendingFinancePlans = allPlans.filter(p => p.status === "PENDING_FINANCE");
- html += `
- <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
- <h3 class="font-bold text-slate-800 flex items-center gap-2">
- <span class="w-1.5 h-4 bg-emerald-600 rounded-full"></span>
- Antrean Persetujuan Anggaran (Finance) (${pendingFinancePlans.length})
- </h3>
- <p class="text-xs text-slate-400">Verifikasi dan setujui anggaran biaya pelatihan yang sudah disetujui oleh GM agar program dapat resmi terlaksana.</p>
- <div class="overflow-x-auto">
- <table class="w-full text-left border-collapse">
- <thead>
- <tr class="border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wide">
- <th class="py-3 px-4">Nama Pelatihan</th>
- <th class="py-3 px-4">Trainer / Lembaga</th>
- <th class="py-3 px-4">Tanggal Pelaksanaan</th>
- <th class="py-3 px-4 text-right">Anggaran Pelatihan</th>
- <th class="py-3 px-4">Peserta Terpilih</th>
- <th class="py-3 px-4">Dokumen & Tautan</th>
- <th class="py-3 px-4 text-center">Keputusan Budget</th>
- </tr>
- </thead>
- <tbody class="divide-y divide-slate-50 text-sm">
- ${pendingFinancePlans.length === 0 ? `
- <tr>
- <td colspan="7" class="py-10 text-center text-slate-400">Tidak ada anggaran pelatihan yang menunggu keputusan saat ini.</td>
- </tr>
- ` : pendingFinancePlans.map(p => {
- return `
- <tr class="hover:bg-slate-50/50 transition">
- <td class="py-3.5 px-4">
- <div class="font-bold text-slate-800">${escapeHtml(p.judul)}</div>
- <span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-bold uppercase">${escapeHtml(p.kategori)}</span>
- </td>
- <td class="py-3.5 px-4 text-slate-500">${escapeHtml(p.trainer || "-")}</td>
- <td class="py-3.5 px-4 text-slate-400">${p.tanggal ? fmtDateShort(p.tanggal) : "-"}</td>
- <td class="py-3.5 px-4 text-right font-black text-rose-600">Rp ${(p.estimasi_biaya || 0).toLocaleString("id-ID")}</td>
- <td class="py-3.5 px-4 text-xs max-w-xs truncate" title="${(p.peserta || []).join(", ")}">
- ${(p.peserta || []).join(", ")}
- </td>
- <td class="py-3.5 px-4 space-y-1">
- ${p.dokumen_url ? `<a href="${p.dokumen_url}" target="_blank" class="text-xs text-maroon-700 hover:underline block font-bold">Buka Dokumen</a>` : ""}
- ${p.link_url ? `<a href="${p.link_url}" target="_blank" class="text-xs text-blue-600 hover:underline block font-bold"> Buka Link</a>` : ""}
- ${!p.dokumen_url && !p.link_url ? `<span class="text-slate-300 text-xs">-</span>` : ""}
- </td>
- <td class="py-3.5 px-4 text-center">
- <div class="flex items-center justify-center gap-2">
- <button data-plan-action="finance-approve" data-id="${p.id}" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition shadow-sm">Setujui Budget</button>
- <button data-plan-action="finance-reject" data-id="${p.id}" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg transition shadow-sm">Tolak</button>
- </div>
- </td>
- </tr>
- `;
- }).join("")}
- </tbody>
- </table>
- </div>
- </div>
- `;
- }
+async function renderReport(wrap, session, data, reload) {
+  const metrics=trainingMetrics(data),byBranch=aggregateNeeds(data.needs,"cabang"),byDivision=aggregateNeeds(data.needs,"divisi"),totalBudget=data.plans.reduce((s,p)=>s+Number(p.actual_cost||p.budget_estimate||p.estimasi_biaya||0),0),passed=data.progress.filter(p=>p.posttest_score>=Number(data.plans.find(x=>x.id===p.plan_id)?.passing_grade||70)).length;
+  wrap.innerHTML=`<div class="flex justify-between items-center"><div><h2 class="text-lg font-bold text-slate-800">Laporan Manajemen</h2><p class="text-xs text-slate-400">Ringkasan efektivitas, kebutuhan organisasi, dan investasi pelatihan.</p></div><button id="export-report" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">Export CSV</button></div><div class="grid grid-cols-2 lg:grid-cols-4 gap-4">${statCard("Response rate",`${metrics.responseRate}%`)}${statCard("Program selesai",`${metrics.completedPlans}/${metrics.plans}`)}${statCard("Lulus post-test",passed)}${statCard("Total investasi",money(totalBudget))}</div><div class="grid lg:grid-cols-2 gap-5">${reportTable("Prioritas per cabang",byBranch)}${reportTable("Prioritas per divisi",byDivision)}</div><section class="bg-white rounded-2xl border p-5"><h3 class="font-bold">Evaluasi dampak 30–60 hari</h3><p class="mt-1 text-xs text-slate-400">Atasan mencatat perubahan perilaku dan hasil kerja setelah pelatihan.</p><div class="mt-4 space-y-2">${data.progress.map(p=>`<div class="rounded-xl border p-3 flex justify-between items-center gap-3"><div class="text-xs"><b>${esc(p.nama)}</b> · ${esc(data.plans.find(x=>x.id===p.plan_id)?.title||p.plan_id)}<br><span class="text-slate-400">Perilaku: ${esc(p.behavior_score||"-")}/5 · ${esc(p.behavior_note||"Belum dinilai")}</span></div>${isManagement(session)?`<button data-followup="${p.id}" class="rounded border px-3 py-2 text-xs">Nilai dampak</button>`:""}</div>`).join("")||empty("Belum ada peserta yang dievaluasi.")}</div></section>`;
+  wrap.querySelector("#export-report").onclick=()=>exportReport(data);
+  wrap.querySelectorAll("[data-followup]").forEach(btn=>btn.onclick=()=>followupModal(data.progress.find(p=>p.id===btn.dataset.followup),session,reload));
+}
 
- // SECTION 4: HRD tracking of created Training Plans and their approval status
- if (isHrd) {
- const trackedPlans = allPlans.filter(p => ["PENDING_GM", "PENDING_FINANCE", "REJECTED_GM", "REJECTED_FINANCE"].includes(p.status));
- html += `
- <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
- <h3 class="font-bold text-slate-800 flex items-center gap-2">
- <span class="w-1.5 h-4 bg-slate-500 rounded-full"></span>
- Tracking Persetujuan Rencana Pelatihan HRD
- </h3>
- <p class="text-xs text-slate-400">Pantau proses persetujuan berjenjang dari General Manager (GM) dan Finance.</p>
- <div class="overflow-x-auto">
- <table class="w-full text-left border-collapse">
- <thead>
- <tr class="border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wide">
- <th class="py-3 px-4">Nama Pelatihan</th>
- <th class="py-3 px-4">Trainer / Lembaga</th>
- <th class="py-3 px-4">Tanggal Pelaksanaan</th>
- <th class="py-3 px-4 text-right">Biaya (Est)</th>
- <th class="py-3 px-4">Peserta</th>
- <th class="py-3 px-4">Status Pengajuan</th>
- </tr>
- </thead>
- <tbody class="divide-y divide-slate-50 text-sm">
- ${trackedPlans.length === 0 ? `
- <tr>
- <td colspan="6" class="py-10 text-center text-slate-400">Tidak ada pengajuan rencana aktif yang sedang dilacak.</td>
- </tr>
- ` : trackedPlans.map(p => {
- let badgeTone = "slate";
- let statusLabel = p.status;
- if (p.status === "PENDING_GM") { badgeTone = "blue"; statusLabel = "Menunggu GM"; }
- else if (p.status === "PENDING_FINANCE") { badgeTone = "amber"; statusLabel = "Menunggu Finance (Budget)"; }
- else if (p.status === "REJECTED_GM") { badgeTone = "red"; statusLabel = "Ditolak GM"; }
- else if (p.status === "REJECTED_FINANCE") { badgeTone = "red"; statusLabel = "Ditolak Finance"; }
+function reportTable(title, rows) { return `<section class="bg-white rounded-2xl border p-5"><h3 class="font-bold">${title}</h3><table class="mt-3 w-full text-xs"><thead><tr class="text-slate-400"><th class="py-2 text-left">Unit</th><th>Orang</th><th>Gap</th><th>Prioritas</th></tr></thead><tbody>${rows.map(r=>`<tr class="border-t"><td class="py-2 font-semibold">${esc(r.key)}</td><td class="text-center">${r.count}</td><td class="text-center">${r.averageGap.toFixed(1)}</td><td class="text-center">${r.averagePriority.toFixed(1)}</td></tr>`).join("")}</tbody></table></section>`; }
 
- return `
- <tr class="hover:bg-slate-50/50 transition">
- <td class="py-3.5 px-4 font-semibold text-slate-800">
- <div>${escapeHtml(p.judul)}</div>
- </td>
- <td class="py-3.5 px-4 text-slate-500">${escapeHtml(p.trainer || "-")}</td>
- <td class="py-3.5 px-4 text-slate-400">${p.tanggal ? fmtDateShort(p.tanggal) : "-"}</td>
- <td class="py-3.5 px-4 text-right font-medium text-slate-600">Rp ${(p.estimasi_biaya || 0).toLocaleString("id-ID")}</td>
- <td class="py-3.5 px-4 text-xs font-bold text-blue-600">${(p.peserta || []).length} Orang</td>
- <td class="py-3.5 px-4">${badge(statusLabel, badgeTone)}</td>
- </tr>
- `;
- }).join("")}
- </tbody>
- </table>
- </div>
- </div>
- `;
- }
+function followupModal(progress, session, reload) {
+  openModal({title:`Evaluasi Dampak: ${esc(progress.nama)}`,bodyHtml:`<div id="followup" class="space-y-4">${field("Perubahan perilaku (1–5)","b-score","number",`min='1' max='5' value='${progress.behavior_score||3}'`)}<label class="text-xs font-semibold">Bukti perubahan / hasil kerja<textarea id="b-note" rows="4" class="mt-1 w-full rounded-lg border px-3 py-2">${esc(progress.behavior_note||"")}</textarea></label></div>`,footerHtml:`<button id="save-followup" class="rounded bg-maroon-700 px-4 py-2 text-sm text-white">Simpan</button>`,onMount:modal=>modal.querySelector("#save-followup").onclick=async()=>{const root=modal.querySelector("#followup");await fsUpdate(C.progress,progress.id,{behavior_score:Number(val(root,"#b-score")),behavior_note:val(root,"#b-note"),behavior_reviewed_by:session.nama,behavior_reviewed_at:new Date().toISOString()});await audit(session,"BEHAVIOR_REVIEW","progress",progress.id);closeModal();toast("Evaluasi dampak tersimpan.","success");reload();}});
+}
 
- // SECTION 5: All approved competency demands resolved
- if (isHrd) {
- const otherData = allData.filter(x => x.status !== "PENDING")
- .sort((a, b) => new Date(b.tanggal_pengajuan) - new Date(a.tanggal_pengajuan));
- html += `
- <!-- Approved / Managed History -->
- <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
- <h3 class="font-bold text-slate-800">Riwayat Pengajuan Terselesaikan</h3>
- <div class="overflow-x-auto">
- <table class="w-full text-left border-collapse">
- <thead>
- <tr class="border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wide">
- <th class="py-3 px-4">Karyawan</th>
- <th class="py-3 px-4">Kompetensi</th>
- <th class="py-3 px-4">Kategori</th>
- <th class="py-3 px-4 text-center">Gap</th>
- <th class="py-3 px-4">Status</th>
- </tr>
- </thead>
- <tbody class="divide-y divide-slate-50 text-sm">
- ${otherData.length === 0 ? `
- <tr>
- <td colspan="5" class="py-8 text-center text-slate-400">Belum ada riwayat pengajuan terselesaikan.</td>
- </tr>
- ` : otherData.map(r => {
- const gap = r.level_sekarang - r.level_diharapkan;
- let statusTone = "slate";
- if (r.status === "APPROVED") statusTone = "blue";
- if (r.status === "SCHEDULED") statusTone = "green";
- if (r.status === "REJECTED") statusTone = "red";
-
- return `
- <tr class="hover:bg-slate-50/50 transition">
- <td class="py-3 px-4 font-semibold text-slate-800">${escapeHtml(r.nama_karyawan)}</td>
- <td class="py-3 px-4 text-slate-700 font-medium">${escapeHtml(r.kompetensi)}</td>
- <td class="py-3 px-4 text-slate-500">${escapeHtml(r.kategori)}</td>
- <td class="py-3 px-4 text-center font-semibold text-rose-600">${gap}</td>
- <td class="py-3 px-4">${badge(r.status, statusTone)}</td>
- </tr>
- `;
- }).join("")}
- </tbody>
- </table>
- </div>
- </div>
- `;
- }
-
- html += `</div>`;
- wrap.innerHTML = html;
-
- // Attach Approval Events for competency requests
- wrap.querySelectorAll("[data-action]").forEach(btn => {
- btn.onclick = async () => {
- const id = btn.dataset.id;
- const action = btn.dataset.action;
-
- const actionText = action === "approve" ? "APPROVED" : "REJECTED";
- const actionName = action === "approve" ? "menyetujui" : "menolak";
-
- if (confirm(`Apakah Anda yakin ingin ${actionName} pengajuan kompetensi ini?`)) {
- try {
- await fsUpdate(COL.DATA_TRAINING, id, { status: actionText });
- toast(`Pengajuan kompetensi ${actionText}!`, "success");
- await renderAllRequests(wrap, session);
- } catch (err) {
- toast("Error: " + err.message, "error");
- }
- }
- };
- });
-
- // Attach Approval Events for Training Plans (GM / Finance)
- wrap.querySelectorAll("[data-plan-action]").forEach(btn => {
- btn.onclick = async () => {
- const planId = btn.dataset.id;
- const act = btn.dataset.planAction;
-
- let nextStatus = "";
- let confirmMsg = "";
- let toastMsg = "";
-
- if (act === "gm-approve") {
- nextStatus = "PENDING_FINANCE";
- confirmMsg = "Setujui rencana pelatihan ini dan teruskan ke Finance untuk review budget?";
- toastMsg = "Rencana pelatihan disetujui GM & diteruskan ke Finance!";
- } else if (act === "gm-reject") {
- nextStatus = "REJECTED_GM";
- confirmMsg = "Tolak rencana pelatihan ini?";
- toastMsg = "Rencana pelatihan ditolak oleh GM.";
- } else if (act === "finance-approve") {
- nextStatus = "SCHEDULED";
- confirmMsg = "Setujui anggaran untuk program pelatihan ini dan aktifkan jadwal pelaksanaan secara resmi?";
- toastMsg = "Anggaran disetujui! Program pelatihan sekarang aktif & dijadwalkan.";
- } else if (act === "finance-reject") {
- nextStatus = "REJECTED_FINANCE";
- confirmMsg = "Tolak anggaran program pelatihan ini?";
- toastMsg = "Anggaran program ditolak oleh Finance.";
- }
-
- if (confirm(confirmMsg)) {
- try {
- await fsUpdate(PLAN_COLL, planId, { status: nextStatus });
- toast(toastMsg, "success");
-
- // If Finance approved, also mark related requests as SCHEDULED in database and send alerts to employees
- if (nextStatus === "SCHEDULED") {
- const plans = await fsGetAll(PLAN_COLL);
- const p = plans.find(x => x.id === planId);
- if (p) {
- const allReqs = await fsGetAll(COL.DATA_TRAINING);
- for (const req of allReqs) {
- if ((p.peserta || []).includes(req.nama_karyawan) && req.kompetensi.toLowerCase().includes(p.judul.split(" ")[0].toLowerCase())) {
- await fsUpdate(COL.DATA_TRAINING, req.id, {
- status: "SCHEDULED",
- training_plan_id: planId
- });
- }
- }
-
- // Send push notifications and in-app alerts to each added participant
- for (const name of (p.peserta || [])) {
- try {
- const userQ = query(collection(db, COL.USERS), where("nama", "==", name), limit(1));
- const userSnap = await getDocs(userQ);
- if (!userSnap.empty) {
- const targetUser = userSnap.docs[0].id;
- await notifyUser(targetUser, "Undangan Pelatihan Baru", `Anda terpilih mengikuti program "${p.judul}" oleh trainer ${p.trainer || "-"} pada tanggal ${p.tanggal}. Silakan cek tab Program Pelatihan Anda.`, "/#training");
- }
- } catch(e) {
- console.warn("Gagal mengirim notifikasi ke user:", name, e);
- }
- }
- }
- }
-
- await renderAllRequests(wrap, session);
- } catch (err) {
- toast("Error: " + err.message, "error");
- }
- }
- };
- });
+function exportReport(data) {
+  const rows=[["Jenis","Unit/Program","Jumlah","Gap Rata-rata","Biaya","Status"],...aggregateNeeds(data.needs,"cabang").map(r=>["Cabang",r.key,r.count,r.averageGap.toFixed(1),"",""]),...aggregateNeeds(data.needs,"divisi").map(r=>["Divisi",r.key,r.count,r.averageGap.toFixed(1),"",""]),...data.plans.map(p=>["Program",p.title||p.judul,planParticipants(p).length,"",p.actual_cost||p.budget_estimate||p.estimasi_biaya||0,p.status])];
+  const csv=rows.map(row=>row.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\n"),blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`laporan-training-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href);
 }

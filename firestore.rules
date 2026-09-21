@@ -263,21 +263,21 @@ service cloud.firestore {
       allow read: if collectionName in [
         'log_kendaraan_fuel', 'log_kendaraan_service', 'log_kendaraan_compliance',
         'log_inventory_pengambilan', 'stock_opname', 'gimmick_sop', 'kalender_hr_events',
-        'uang_makan_expedisi', 'data_training', 'master_reimbursement_type',
+        'uang_makan_expedisi', 'master_reimbursement_type',
         'sales_orders', 'sales_outlets', 'sales_items', 'sales_tasks', 'sales_tracking',
         'kanal_data', 'kanal_checkins', 'sales_odometer'
       ] && signedIn();
       allow create, update: if collectionName in [
         'log_kendaraan_fuel', 'log_kendaraan_service', 'log_kendaraan_compliance',
         'log_inventory_pengambilan', 'stock_opname', 'gimmick_sop', 'kalender_hr_events',
-        'uang_makan_expedisi', 'data_training', 'master_reimbursement_type',
+        'uang_makan_expedisi', 'master_reimbursement_type',
         'sales_orders', 'sales_outlets', 'sales_items', 'sales_tasks', 'sales_tracking',
         'kanal_data', 'kanal_checkins', 'sales_odometer'
       ] && signedIn();
       allow delete: if collectionName in [
         'log_kendaraan_fuel', 'log_kendaraan_service', 'log_kendaraan_compliance',
         'log_inventory_pengambilan', 'stock_opname', 'gimmick_sop', 'kalender_hr_events',
-        'uang_makan_expedisi', 'data_training', 'master_reimbursement_type',
+        'uang_makan_expedisi', 'master_reimbursement_type',
         'sales_orders', 'sales_outlets', 'sales_items', 'sales_tasks', 'sales_tracking',
         'kanal_data', 'kanal_checkins', 'sales_odometer'
       ] && isHrd();
@@ -289,9 +289,78 @@ service cloud.firestore {
       ] && isHrd();
       allow read, write: if collectionName == 'interview_scorecards'
         && (isHrd() || role() in ['GM', 'MANAGER']);
-      allow read: if collectionName in ['training_plans', 'training_progress'] && signedIn();
-      allow create, update: if collectionName in ['training_plans', 'training_progress'] && signedIn();
-      allow delete: if collectionName in ['training_plans', 'training_progress'] && isHrd();
+    }
+    match /data_training/{id} {
+      allow read: if signedIn() && (isHrd() || isManagement() || owns(resource.data));
+      allow create: if signedIn() && (isHrd() || owns(request.resource.data));
+      allow update: if isHrd() || (isManagement() && sameBranch(request.resource.data));
+      allow delete: if isHrd();
+    }
+    match /training_tna_campaigns/{id} {
+      allow read: if signedIn();
+      allow write: if isHrd();
+    }
+    match /training_tna_assignments/{id} {
+      allow read: if signedIn() && (
+        isHrd() || role() in ['GM', 'DIREKTUR'] || owns(resource.data) ||
+        (isManagement() && sameBranch(resource.data))
+      );
+      allow create, delete: if isHrd();
+      allow update: if isHrd() || (owns(resource.data) && owns(request.resource.data)
+        && onlyChanges(['status', 'responses', 'submitted_at', 'updated_at']));
+    }
+    match /training_needs/{id} {
+      allow read: if signedIn() && (
+        isHrd() || role() in ['GM', 'DIREKTUR'] || owns(resource.data) ||
+        (isManagement() && sameBranch(resource.data))
+      );
+      allow create: if signedIn() && owns(request.resource.data)
+        && request.resource.data.keys().hasOnly([
+          'campaign_id', 'assignment_id', 'nik', 'nama', 'cabang', 'divisi', 'jabatan',
+          'competency_name', 'expected_level', 'business_impact', 'current_level',
+          'urgency', 'reason', 'validation_status', 'created_at'
+        ]);
+      allow update: if isHrd() || (isManagement() && sameBranch(resource.data)
+        && sameBranch(request.resource.data)
+        && onlyChanges(['current_level', 'urgency', 'manager_note', 'validation_status', 'validated_by_nik', 'validated_at', 'updated_at']));
+      allow delete: if isHrd();
+    }
+    match /training_plans/{id} {
+      allow read: if signedIn();
+      allow create: if isHrd();
+      allow update: if isHrd()
+        || (role() in ['GM', 'DIREKTUR'] && onlyChanges(['status', 'gm_status', 'gm_by', 'gm_at', 'updated_at']))
+        || (role() == 'FINANCE' && onlyChanges(['status', 'finance_status', 'finance_by', 'finance_at', 'updated_at']));
+      allow delete: if isHrd();
+    }
+    match /training_progress/{id} {
+      allow read: if signedIn() && (
+        isHrd() || role() in ['GM', 'DIREKTUR'] || owns(resource.data) ||
+        (isManagement() && sameBranch(resource.data))
+      );
+      allow create: if signedIn() && owns(request.resource.data)
+        && request.resource.data.keys().hasOnly([
+          'plan_id', 'nik', 'nama', 'cabang', 'divisi',
+          'pretest_score', 'pretest_at', 'posttest_score', 'posttest_at',
+          'feedback_score', 'feedback_note', 'feedback_at', 'created_at', 'updated_at'
+        ]);
+      allow update: if isHrd()
+        || (owns(resource.data) && owns(request.resource.data) && onlyChanges([
+          'plan_id', 'nik', 'nama', 'cabang', 'divisi',
+          'pretest_score', 'pretest_at', 'posttest_score', 'posttest_at',
+          'feedback_score', 'feedback_note', 'feedback_at', 'updated_at'
+        ]))
+        || (isManagement() && sameBranch(resource.data) && sameBranch(request.resource.data) && onlyChanges([
+          'behavior_score', 'behavior_note', 'behavior_reviewed_by', 'behavior_reviewed_at', 'updated_at'
+        ]));
+      allow delete: if isHrd();
+    }
+    match /training_audit_logs/{id} {
+      allow read: if isHrd();
+      allow create: if signedIn()
+        && request.resource.data.get('actor_nik', '') == nik()
+        && request.resource.data.get('actor_role', '') == role();
+      allow update, delete: if false;
     }
     match /user_documents/{id} {
       allow read: if signedIn() && (isHrd() || owns(resource.data));

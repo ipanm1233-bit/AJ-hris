@@ -76,3 +76,14 @@ test('izin endpoint validates calendar dates and uses authenticated server acces
   assert.match(source, /IZIN_CREATED/);
   assert.match(endpoint, /startsWith\('izin_'\)/);
 });
+
+test('training workflow uses scoped Firestore rules instead of signed-in global writes', () => {
+  const rules = fs.readFileSync(path.join(__dirname, '..', 'firestore.rules'), 'utf8');
+  assert.match(rules, /match \/training_tna_assignments\/\{id\}/);
+  assert.match(rules, /match \/training_needs\/\{id\}/);
+  assert.match(rules, /match \/training_plans\/\{id\}/);
+  assert.match(rules, /match \/training_progress\/\{id\}/);
+  assert.match(rules, /training_plans[\s\S]*role\(\) in \['GM', 'DIREKTUR'\][\s\S]*role\(\) == 'FINANCE'/);
+  assert.doesNotMatch(rules, /collectionName in \['training_plans', 'training_progress'\]/);
+  assert.doesNotMatch(rules, /'uang_makan_expedisi', 'data_training'/);
+});

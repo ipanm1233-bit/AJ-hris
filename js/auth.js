@@ -34,6 +34,7 @@ export const DEFAULT_EMPLOYEE_MENU_IDS = [
  "absensi",
  "pengajuan-cuti",
  "izin",
+ "training",
  "performance-review"
 ];
 
@@ -80,8 +81,13 @@ export const MENU_CONFIG = [
  { id: "performance-review", label: "Review Kinerja", icon: "gauge", kategori: "Karyawan & Kinerja", roles: ["ALL"], subMenus: [
   { id: "semua_review", label: "Semua Review Kinerja" }
  ] },
- { id: "training", label: "Pelatihan", icon: "book", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"], subMenus: [
-  { id: "tna_dashboard", label: "Program Pelatihan" }
+ { id: "training", label: "Pelatihan", icon: "book", kategori: "Karyawan & Kinerja", roles: ["ALL"], subMenus: [
+  { id: "my", label: "Pelatihan Saya" },
+  { id: "survey", label: "Distribusi Survey TNA" },
+  { id: "analysis", label: "Analisis Kebutuhan" },
+  { id: "planning", label: "Planning & Persetujuan" },
+  { id: "execution", label: "Pelaksanaan" },
+  { id: "report", label: "Laporan Manajemen" }
  ] },
  { id: "konseling-coaching", label: "Konseling & Coaching", icon: "user-plus", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"], subMenus: [
     { id: "dashboard", label: "Dashboard Kasus" },
@@ -1354,13 +1360,43 @@ export const PERMISSION_CATALOG = [
   ],
   subMenus: [
    {
-    id: "tna_dashboard",
-    label: "Program Pelatihan",
+    id: "survey",
+    label: "Distribusi Survey TNA",
     actions: [
-     { key: "training.tna_dashboard.create_class", label: "Buat Jadwal & Kelas Pelatihan Bersama", type: "create" },
-     { key: "training.tna_dashboard.view_progress", label: "Lihat Progres Seluruh Peserta Kelas", type: "view_all" },
-     { key: "training.requests.approve", label: "Setujui Pengajuan Pelatihan (Atasan/GM/Finance)", type: "approve" },
-     { key: "training.requests.reject", label: "Tolak Pengajuan Pelatihan", type: "reject" }
+     { key: "training.survey.manage", label: "Buat, Publikasikan, Tutup & Ingatkan Survey", type: "publish" }
+    ]
+   },
+   {
+    id: "analysis",
+    label: "Analisis Kebutuhan",
+    actions: [
+     { key: "training.analysis.view", label: "Lihat Analitik Kebutuhan", type: "view_all" },
+     { key: "training.analysis.validate", label: "Validasi Kebutuhan Tim / Cabang", type: "approve" }
+    ]
+   },
+   {
+    id: "planning",
+    label: "Planning & Persetujuan",
+    actions: [
+     { key: "training.planning.create", label: "Buat Rencana Program", type: "create" },
+     { key: "training.planning.approve_gm", label: "Persetujuan GM / Direktur", type: "approve" },
+     { key: "training.planning.approve_finance", label: "Persetujuan Anggaran Finance", type: "approve" }
+    ]
+   },
+   {
+    id: "execution",
+    label: "Pelaksanaan",
+    actions: [
+     { key: "training.execution.manage", label: "Kelola Pelaksanaan, Kehadiran & Biaya Aktual", type: "edit" },
+     { key: "training.execution.followup", label: "Nilai Dampak Perilaku 30–60 Hari", type: "approve" }
+    ]
+   },
+   {
+    id: "report",
+    label: "Laporan Manajemen",
+    actions: [
+     { key: "training.report.view", label: "Lihat Laporan Efektivitas", type: "view_all" },
+     { key: "training.report.export", label: "Export Laporan Pelatihan", type: "export" }
     ]
    }
   ]
@@ -1848,7 +1884,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "rekrutmen.dashboard.view", "rekrutmen.lowongan.create", "rekrutmen.lowongan.edit", "rekrutmen.lowongan.publish", "rekrutmen.lowongan.delete", "rekrutmen.kandidat.create", "rekrutmen.kandidat.view", "rekrutmen.kandidat.edit", "rekrutmen.kandidat.delete", "rekrutmen.kandidat.convert_employee", "rekrutmen.screening.run", "rekrutmen.screening.save", "rekrutmen.pipeline.view", "rekrutmen.pipeline.move", "rekrutmen.interview.score", "rekrutmen.interview.invite", "rekrutmen.analytics.view", "rekrutmen.analytics.export", "rekrutmen.rules.configure",
   "penilaian_kontrak.hasil_saya.view", "penilaian_kontrak.kontrak_saya.view", "penilaian_kontrak.kontrak.view_all", "penilaian_kontrak.kontrak.create", "penilaian_kontrak.kontrak.edit", "penilaian_kontrak.kontrak.delete", "penilaian_kontrak.standar_grade.configure", "penilaian_kontrak.template_soal.configure", "penilaian_kontrak.distribusi_kpi360.create", "penilaian_kontrak.distribusi_kpi360.remind", "penilaian_kontrak.distribusi_kpi360.delete", "penilaian_kontrak.evaluasi.edit", "penilaian_kontrak.evaluasi.execute_renewal", "penilaian_kontrak.daily.manage", "penilaian_kontrak.target.configure", "penilaian_kontrak.daily.export",
   "performance_review.my.view", "performance_review.my.print", "performance_review.semua_review.view", "performance_review.semua_review.create", "performance_review.semua_review.publish", "performance_review.semua_review.delete",
-  "training.my.submit", "training.my.participate", "training.tna_dashboard.create_class", "training.tna_dashboard.view_progress", "training.requests.approve", "training.requests.reject",
+  "training.my.submit", "training.my.participate", "training.survey.manage", "training.analysis.view", "training.analysis.validate", "training.planning.create", "training.planning.approve_gm", "training.planning.approve_finance", "training.execution.manage", "training.execution.followup", "training.report.view", "training.report.export",
   "konseling.dashboard.view", "konseling.case_management.create", "konseling.case_management.edit", "konseling.case_management.close", "konseling.action_plan.manage", "konseling.follow_up.manage", "konseling.reports.export",
   "pemanggilan.sp.view", "pemanggilan.sp.create", "pemanggilan.sp.edit", "pemanggilan.sp.delete", "pemanggilan.panggil.view", "pemanggilan.panggil.create", "pemanggilan.panggil.edit", "pemanggilan.panggil.delete",
   "dokumen.drafts.create", "dokumen.drafts.edit", "dokumen.drafts.delete", "dokumen.drafts.publish", "dokumen.drafts.print", "dokumen.signed.view", "dokumen.signed.print", "dokumen.templates.configure", "dokumen.placeholders.configure",
@@ -1879,7 +1915,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "rekrutmen.dashboard.view", "rekrutmen.lowongan.view", "rekrutmen.kandidat.view", "rekrutmen.pipeline.view", "rekrutmen.interview.score", "rekrutmen.analytics.view", "rekrutmen.analytics.export",
   "penilaian_kontrak.hasil_saya.view", "penilaian_kontrak.kontrak_saya.view", "penilaian_kontrak.kontrak.view_all", "penilaian_kontrak.distribusi_kpi360.create", "penilaian_kontrak.daily.export",
   "performance_review.my.view", "performance_review.semua_review.view", "performance_review.semua_review.create", "performance_review.semua_review.publish",
-  "training.my.submit", "training.my.participate", "training.tna_dashboard.view_progress", "training.requests.approve", "training.requests.reject",
+  "training.my.submit", "training.my.participate", "training.analysis.view", "training.planning.approve_gm", "training.execution.followup", "training.report.view", "training.report.export",
   "konseling.dashboard.view", "konseling.reports.export",
   "pemanggilan.sp.view", "pemanggilan.panggil.view",
   "dokumen.signed.view", "dokumen.signed.print",
@@ -1905,7 +1941,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "izin.create", "izin.print",
   "penilaian_kontrak.hasil_saya.view", "penilaian_kontrak.kontrak_saya.view",
   "performance_review.my.view",
-  "training.my.submit", "training.my.participate", "training.requests.approve", "training.requests.reject",
+  "training.my.submit", "training.my.participate", "training.planning.approve_finance", "training.report.view", "training.report.export",
   "reimbursement.my.create", "reimbursement.my.view", "reimbursement.daftar_semua.view", "reimbursement.daftar_semua.approve", "reimbursement.daftar_semua.reject", "reimbursement.daftar_semua.mark_paid", "reimbursement.pengaturan_jenis.configure",
   "kasbon.my.create", "kasbon.my.print", "kasbon.all.view", "kasbon.all.approve", "kasbon.all.reject", "kasbon.all.mark_paid", "kasbon.pengaturan_kategori.configure",
   "klaim_bensin.form.create", "klaim_bensin.form.print", "klaim_bensin.admin_cabang.view", "klaim_bensin.admin_cabang.approve", "klaim_bensin.admin_cabang.reject", "klaim_bensin.admin_cabang.print",
@@ -1928,7 +1964,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "rekrutmen.kandidat.view", "rekrutmen.interview.score",
   "penilaian_kontrak.hasil_saya.view", "penilaian_kontrak.kontrak_saya.view", "penilaian_kontrak.distribusi_kpi360.create", "penilaian_kontrak.daily.manage",
   "performance_review.my.view", "performance_review.semua_review.view",
-  "training.my.submit", "training.my.participate", "training.requests.approve",
+  "training.my.submit", "training.my.participate", "training.analysis.view", "training.analysis.validate", "training.execution.followup", "training.report.view",
   "konseling.dashboard.view", "konseling.case_management.create", "konseling.action_plan.manage", "konseling.follow_up.manage",
   "reimbursement.my.create", "reimbursement.my.view",
   "kasbon.my.create", "kasbon.my.print",
@@ -1987,6 +2023,7 @@ ROLE_PERMISSIONS_PRESETS.DEFAULT_KARYAWAN = [
  "pengajuan_cuti.create", "pengajuan_cuti.print",
  "izin.create", "izin.print",
  "performance_review.my.view",
+ "training.my.submit", "training.my.participate",
  "profile.view", "profile.edit", "profile.documents.view", "profile.sign_document"
 ];
 ROLE_PERMISSIONS_PRESETS.BACK_OFFICE = [
