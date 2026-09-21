@@ -9,6 +9,7 @@ import {
  toast, fmtDateShort, fmtRupiah, toNumber, genId, escapeHtml, localDateStr
 } from "./utils.js";
 import { getSession, canDeleteModuleData } from "./auth.js";
+import { authFetch } from "./api-client.js";
 import { DEFAULT_KPI_GRADE_RULES, evaluateKpiGrade } from "./kpi-scoring.mjs";
 
 /* ---------------------------------------------------------------------
@@ -1133,7 +1134,9 @@ function bindFeedEvents(modalDiv, currentList, session) {
  const notifId = btn.dataset.delNotifId;
  if (!notifId) return;
  try {
- await fsDelete(COL.NOTIFICATIONS, notifId);
+ const response = await authFetch("/api/sync-absen", { method: "POST", body: JSON.stringify({ action: "notification_delete", id: notifId }) });
+ const result = await response.json().catch(() => ({}));
+ if (!response.ok) throw new Error(result.error || "Gagal menghapus notifikasi.");
  toast("Notifikasi berhasil dihapus", "success");
  openNotificationCenter(session);
  } catch (err) {
@@ -1151,7 +1154,8 @@ function bindFeedEvents(modalDiv, currentList, session) {
  // Mark notification as read if it is a personal notification
  if (item.id && !item.id.includes("-group")) {
  try {
- await fsUpdate(COL.NOTIFICATIONS, item.id, { dibaca: true });
+ const response = await authFetch("/api/sync-absen", { method: "POST", body: JSON.stringify({ action: "notification_mark_read", id: item.id }) });
+ if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || "Gagal menandai notifikasi.");
  } catch (e) {
  console.warn("Failed to mark notification read", e);
  }

@@ -5,6 +5,7 @@ const { aggregateFingerprintLogs, computeAttendance } = require('../lib/fingerpr
 const { handleAttendanceAccess } = require('../lib/attendance-access.js');
 const { handleIzinAccess } = require('../lib/izin-access.js');
 const { handleTrainingAccess } = require('../lib/training-access.js');
+const { handleNotificationAccess } = require('../lib/notification-access.js');
 const { supabaseEnabled } = require('../lib/supabase.js');
 const { listAttendance, upsertAttendance } = require('../lib/attendance-supabase.js');
 
@@ -338,6 +339,11 @@ module.exports = async function handler(req, res) {
 
     if (String(body?.action || '').startsWith('training_')) {
       await handleTrainingAccess(req, res, body);
+      return;
+    }
+
+    if (String(body?.action || '').startsWith('notification_')) {
+      await handleNotificationAccess(req, res, body);
       return;
     }
 
