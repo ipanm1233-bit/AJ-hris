@@ -69,6 +69,47 @@ function planQuestions(plan) {
     : [{ question: "Saya memahami tujuan dan materi utama pelatihan ini.", answer: "Benar" }];
 }
 
+const activeEmployee = employee => !["NONAKTIF", "RESIGN"].includes(String(employee.aktif_tdk_aktif || employee.status || "").toUpperCase());
+const employeePosition = employee => String(employee.jabatan || employee.posisi || "").trim();
+const uniqueValues = values => [...new Set(values.map(value => String(value || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "id"));
+const checkedValues = (root, group) => [...root.querySelectorAll(`[data-target-group="${group}"]:checked`)].map(input => input.value);
+
+function targetPicker(id, label, values) {
+  return `<section data-picker-panel="${id}" class="rounded-xl border border-slate-200 p-3"><div class="flex items-center justify-between gap-2"><p class="text-xs font-bold text-slate-700">${esc(label)}</p><button type="button" data-clear-group="${id}" class="text-[10px] font-semibold text-maroon-700">Kosongkan</button></div><input type="search" data-picker-search="${id}" placeholder="Cari ${esc(label.toLowerCase())}…" class="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"><div data-picker-list="${id}" class="mt-2 max-h-40 space-y-1 overflow-y-auto">${values.map(value => `<label data-picker-item data-search="${esc(value.toLowerCase())}" class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs hover:bg-slate-50"><input type="checkbox" data-target-group="${id}" value="${esc(value)}" class="rounded border-slate-300"><span>${esc(value)}</span></label>`).join("") || `<p class="px-2 py-3 text-xs text-slate-400">Data belum tersedia.</p>`}</div><button type="button" data-check-visible="${id}" class="mt-2 text-[10px] font-semibold text-slate-600">Pilih semua hasil pencarian</button></section>`;
+}
+
+function campaignTargetText(campaign) {
+  const parts = [
+    Array.isArray(campaign.target_branches) && campaign.target_branches.length ? campaign.target_branches.join(", ") : campaign.target_branch || "Semua cabang",
+    Array.isArray(campaign.target_divisions) && campaign.target_divisions.length ? campaign.target_divisions.join(", ") : campaign.target_division || "Semua divisi",
+    Array.isArray(campaign.target_positions) && campaign.target_positions.length ? campaign.target_positions.join(", ") : campaign.target_position || "Semua jabatan"
+  ];
+  if (Array.isArray(campaign.target_niks) && campaign.target_niks.length) parts.push(`${campaign.target_niks.length} karyawan dipilih`);
+  return parts.join(" · ");
+}
+
+async function sendSurveyEmail(campaign, assignment, reminder = false) {
+  if (!assignment.email) return false;
+  const sent = await notifyUser(
+    { username: assignment.username, email: assignment.email, nama: assignment.nama, nik: assignment.nik, id: assignment.id },
+    reminder ? "Pengingat survey kebutuhan pelatihan" : "Survey kebutuhan pelatihan",
+    reminder ? `Survey ${campaign.title} belum diselesaikan. Mohon isi sebelum ${dateText(campaign.deadline)}.` : `Mohon isi survey ${campaign.title} sebelum ${dateText(campaign.deadline)}.`,
+    "#training",
+    { manual: true, sendEmail: true }
+  );
+  if (sent) await fsUpdate(C.assignments, assignment.id, { email_sent_at: new Date().toISOString(), email_status: "SENT" });
+  return sent;
+}
+
+async function sendSurveyEmails(campaign, assignments, reminder = false) {
+  let sent = 0;
+  for (let index = 0; index < assignments.length; index += 5) {
+    const results = await Promise.all(assignments.slice(index, index + 5).map(item => sendSurveyEmail(campaign, item, reminder)));
+    sent += results.filter(Boolean).length;
+  }
+  return sent;
+}
+
 export async function mount(container, { session }) {
   const header = container.querySelector("#training-tab-header");
   const body = container.querySelector("#training-content");
@@ -123,48 +164,121 @@ async function renderDashboard(wrap, session, data, reload) {
 }
 
 async function renderSurvey(wrap, session, data, reload) {
-  wrap.innerHTML = `<div class="flex justify-between items-center"><div><h2 class="text-lg font-bold text-slate-800">Distribusi Survey TNA</h2><p class="text-xs text-slate-400">Buat periode, sasaran, dan daftar kompetensi yang dinilai.</p></div><button id="new-campaign" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">+ Buat Survey</button></div>
+  wrap.innerHTML = `<div class="flex justify-between items-center"><div><h2 class="text-lg font-bold text-slate-800">Distribusi Survey TNA</h2><p class="text-xs text-slate-400">Pilih sasaran dengan checkbox. Publikasi tidak otomatis mengirim email.</p></div><button id="new-campaign" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">+ Buat Survey</button></div>
     <div class="grid md:grid-cols-2 gap-4">${data.campaigns.sort((a,b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))).map(c => {
       const assigned = data.assignments.filter(a => a.campaign_id === c.id);
       const submitted = assigned.filter(a => a.status === "SUBMITTED").length;
-      return `<article class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm"><div class="flex justify-between gap-3"><div><span class="text-[10px] font-bold text-maroon-700">${esc(c.period)}</span><h3 class="font-bold text-slate-800">${esc(c.title)}</h3></div><span class="text-xs font-bold ${c.status === "PUBLISHED" ? "text-emerald-600" : "text-slate-400"}">${esc(c.status)}</span></div><p class="mt-2 text-xs text-slate-500">Target: ${esc(c.target_branch || "Semua")} · ${esc(c.target_division || "Semua")} · Batas ${dateText(c.deadline)}</p><div class="mt-4 h-2 rounded bg-slate-100"><div class="h-2 rounded bg-emerald-500" style="width:${assigned.length ? submitted / assigned.length * 100 : 0}%"></div></div><p class="mt-1 text-[11px] text-slate-400">${submitted}/${assigned.length} respon</p><div class="mt-4 flex gap-2">${c.status === "DRAFT" ? `<button data-publish="${c.id}" class="rounded-lg bg-maroon-700 px-3 py-2 text-xs font-semibold text-white">Publikasikan</button>` : `<button data-remind="${c.id}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">Kirim pengingat</button>`}${c.status === "PUBLISHED" ? `<button data-close="${c.id}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">Tutup</button>` : ""}</div></article>`;
+      return `<article class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm"><div class="flex justify-between gap-3"><div><span class="text-[10px] font-bold text-maroon-700">${esc(c.period)}</span><h3 class="font-bold text-slate-800">${esc(c.title)}</h3></div><span class="text-xs font-bold ${c.status === "PUBLISHED" ? "text-emerald-600" : "text-slate-400"}">${esc(c.status)}</span></div><p class="mt-2 text-xs text-slate-500">Target: ${esc(campaignTargetText(c))} · Batas ${dateText(c.deadline)}</p><div class="mt-4 h-2 rounded bg-slate-100"><div class="h-2 rounded bg-emerald-500" style="width:${assigned.length ? submitted / assigned.length * 100 : 0}%"></div></div><p class="mt-1 text-[11px] text-slate-400">${submitted}/${assigned.length} respon</p><div class="mt-4 flex flex-wrap gap-2">${c.status === "DRAFT" ? `<button data-publish="${c.id}" class="rounded-lg bg-maroon-700 px-3 py-2 text-xs font-semibold text-white">Publikasikan</button>` : `<button data-manage-email="${c.id}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">Email &amp; Pengingat</button>`}${c.status === "PUBLISHED" ? `<button data-close="${c.id}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">Tutup</button>` : ""}</div></article>`;
     }).join("") || empty("Belum ada survey TNA.")}</div>`;
-  wrap.querySelector("#new-campaign").onclick = () => campaignModal(session, reload);
+  wrap.querySelector("#new-campaign").onclick = () => campaignModal(session, data.employees, reload);
   wrap.querySelectorAll("[data-publish]").forEach(btn => btn.onclick = async () => {
     const campaign = data.campaigns.find(c => c.id === btn.dataset.publish);
-    const targets = data.employees.filter(e => campaignTargetsEmployee(campaign, e) && !["NONAKTIF", "RESIGN"].includes(String(e.aktif_tdk_aktif || e.status || "").toUpperCase()));
+    const targets = data.employees.filter(e => campaignTargetsEmployee(campaign, e) && activeEmployee(e));
     if (!targets.length) return toast("Tidak ada karyawan yang sesuai target survey.", "warning");
     btn.disabled = true;
-    const rows = targets.map(employee => {
-      const person = safeParticipantSnapshot(employee);
-      return { id: `${campaign.id}_${person.nik}`, data: { campaign_id: campaign.id, ...person, username: employee.username || "", status: "PENDING", competencies: campaign.competencies || [], cabang: person.cabang, divisi: person.divisi } };
-    });
-    await trainingApi({ action: "bulk_assignments", campaignId: campaign.id, rows });
-    await fsUpdate(C.campaigns, campaign.id, { status: "PUBLISHED", published_at: new Date().toISOString(), assigned_count: targets.length });
-    await Promise.all(targets.filter(e => e.username).map(e => notifyUser(e.username, "Survey kebutuhan pelatihan", `Mohon isi survey ${campaign.title} sebelum ${dateText(campaign.deadline)}.`, "#training")));
-    await audit(session, "PUBLISH_CAMPAIGN", "campaign", campaign.id, { target_count: targets.length });
-    toast(`Survey dikirim ke ${targets.length} karyawan.`, "success"); reload();
+    try {
+      const rows = targets.map(employee => {
+        const person = safeParticipantSnapshot(employee);
+        return { id: `${campaign.id}_${person.nik}`, data: { campaign_id: campaign.id, ...person, username: employee.username || "", status: "PENDING", competencies: campaign.competencies || [], cabang: person.cabang, divisi: person.divisi } };
+      });
+      await trainingApi({ action: "bulk_assignments", campaignId: campaign.id, rows });
+      await fsUpdate(C.campaigns, campaign.id, { status: "PUBLISHED", published_at: new Date().toISOString(), assigned_count: targets.length });
+      const sent = campaign.email_on_publish === true ? await sendSurveyEmails(campaign, rows.map(row => ({ id: row.id, ...row.data }))) : 0;
+      await audit(session, "PUBLISH_CAMPAIGN", "campaign", campaign.id, { target_count: targets.length, email_sent: sent });
+      toast(campaign.email_on_publish === true ? `Survey dibagikan ke ${targets.length} karyawan; ${sent} email terkirim.` : `Survey dibagikan ke ${targets.length} karyawan tanpa email.`, "success");
+      reload();
+    } catch (error) {
+      console.error("publish training survey", error);
+      toast(error.message || "Publikasi survey gagal.", "error");
+      btn.disabled = false;
+    }
   });
-  wrap.querySelectorAll("[data-remind]").forEach(btn => btn.onclick = async () => {
-    const pending = data.assignments.filter(a => a.campaign_id === btn.dataset.remind && a.status !== "SUBMITTED");
-    await Promise.all(pending.filter(a => a.username).map(a => notifyUser(a.username, "Pengingat survey pelatihan", "Survey TNA Anda belum diselesaikan.", "#training")));
-    await audit(session, "REMIND_CAMPAIGN", "campaign", btn.dataset.remind, { pending: pending.length });
-    toast(`Pengingat diproses untuk ${pending.length} karyawan.`, "success");
-  });
+  wrap.querySelectorAll("[data-manage-email]").forEach(btn => btn.onclick = () => campaignEmailModal(
+    data.campaigns.find(c => c.id === btn.dataset.manageEmail),
+    data.assignments.filter(a => a.campaign_id === btn.dataset.manageEmail),
+    session,
+    reload
+  ));
   wrap.querySelectorAll("[data-close]").forEach(btn => btn.onclick = async () => { await fsUpdate(C.campaigns, btn.dataset.close, { status: "CLOSED", closed_at: new Date().toISOString() }); await audit(session, "CLOSE_CAMPAIGN", "campaign", btn.dataset.close); reload(); });
 }
 
-function campaignModal(session, reload) {
-  openModal({ title: "Buat Survey Training Need Analysis", size: "lg", bodyHtml: `<div id="campaign-form" class="space-y-4"><div class="grid md:grid-cols-2 gap-4">${field("Judul survey", "c-title", "text", "placeholder='TNA Semester I 2027'")}${field("Periode", "c-period", "text", "placeholder='Semester I 2027'")}${field("Batas pengisian", "c-deadline", "date")}${field("Target cabang", "c-branch", "text", "placeholder='Semua / Cirebon / Malang'")}${field("Target divisi", "c-division", "text", "placeholder='Semua / Sales / Warehouse'")}${field("Target jabatan", "c-position", "text", "placeholder='Semua / Staff / SPV'")}</div><label class="block text-xs font-semibold text-slate-600">Kompetensi yang dinilai<textarea id="c-competencies" rows="6" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Advanced Excel | 4 | 5&#10;Keselamatan Kerja | 5 | 5"></textarea><span class="font-normal text-slate-400">Satu baris: kompetensi | level harapan (1–5) | dampak bisnis (1–5)</span></label></div>`, footerHtml: `<button id="save-campaign" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">Simpan Draft</button>`, onMount: modal => {
+function campaignModal(session, employees, reload) {
+  const candidates = employees.filter(activeEmployee).map(employee => ({ source: employee, ...safeParticipantSnapshot(employee) })).filter(person => person.nik && person.nama);
+  const branches = uniqueValues(candidates.map(person => person.cabang));
+  const divisions = uniqueValues(candidates.map(person => person.divisi));
+  const positions = uniqueValues(candidates.map(person => person.jabatan));
+  const employeeItems = candidates.map((person, index) => `<label data-employee-row data-employee-index="${index}" class="flex items-start gap-2 rounded-lg border border-slate-100 px-3 py-2 text-xs hover:bg-slate-50"><input type="checkbox" data-target-group="employees" value="${esc(person.nik)}" class="mt-0.5 rounded border-slate-300"><span><b>${esc(person.nama)}</b> · ${esc(person.nik)}<br><span class="text-slate-400">${esc(person.cabang || "-")} · ${esc(person.divisi || "-")} · ${esc(person.jabatan || "-")}</span></span></label>`).join("");
+  openModal({ title: "Buat Survey Training Need Analysis", size: "xl", bodyHtml: `<div id="campaign-form" class="space-y-5"><div class="grid md:grid-cols-3 gap-4">${field("Judul survey", "c-title", "text", "placeholder='TNA Semester I 2027'")}${field("Periode", "c-period", "text", "placeholder='Semester I 2027'")}${field("Batas pengisian", "c-deadline", "date")}</div><div><p class="text-sm font-bold text-slate-800">Sasaran survey</p><p class="mt-1 text-xs text-slate-400">Kosongkan kelompok untuk mencakup semua. Pilihan karyawan akan mempersempit hasil filter organisasi.</p><div class="mt-3 grid md:grid-cols-3 gap-3">${targetPicker("branches", "Cabang", branches)}${targetPicker("divisions", "Divisi", divisions)}${targetPicker("positions", "Jabatan", positions)}</div><section class="mt-3 rounded-xl border border-slate-200 p-3"><div class="flex flex-wrap items-center justify-between gap-2"><div><p class="text-xs font-bold text-slate-700">Karyawan</p><p id="c-target-count" class="text-[11px] text-slate-400"></p></div><div class="flex gap-3"><button type="button" data-clear-group="employees" class="text-[10px] font-semibold text-maroon-700">Kosongkan</button><button type="button" data-check-visible="employees" class="text-[10px] font-semibold text-slate-600">Pilih semua yang tampil</button></div></div><input id="c-employee-search" type="search" placeholder="Cari nama, NIK, cabang, divisi, atau jabatan…" class="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"><div id="c-employee-list" class="mt-2 grid max-h-64 gap-2 overflow-y-auto md:grid-cols-2">${employeeItems || `<p class="text-xs text-slate-400">Data karyawan aktif belum tersedia.</p>`}</div></section></div><label class="block text-xs font-semibold text-slate-600">Kompetensi yang dinilai<textarea id="c-competencies" rows="5" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Advanced Excel | 4 | 5&#10;Keselamatan Kerja | 5 | 5"></textarea><span class="font-normal text-slate-400">Satu baris: kompetensi | level harapan (1–5) | dampak bisnis (1–5)</span></label><label class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><input id="c-email-on-publish" type="checkbox" class="mt-0.5 rounded border-amber-300"><span><b>Kirim email segera saat survey dipublikasikan</b><br>Opsional dan tidak dicentang secara default. Jika tidak dipilih, email dapat dikirim satu per satu setelah publikasi.</span></label></div>`, footerHtml: `<button id="save-campaign" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">Simpan Draft</button>`, onMount: modal => {
+    const root = modal.querySelector("#campaign-form");
+    const selectedSet = group => new Set(checkedValues(root, group));
+    const matchesOrg = person => {
+      const selectedBranches = selectedSet("branches"), selectedDivisions = selectedSet("divisions"), selectedPositions = selectedSet("positions");
+      return (!selectedBranches.size || selectedBranches.has(person.cabang)) && (!selectedDivisions.size || selectedDivisions.has(person.divisi)) && (!selectedPositions.size || selectedPositions.has(person.jabatan));
+    };
+    const refreshEmployees = () => {
+      const query = String(root.querySelector("#c-employee-search")?.value || "").trim().toLowerCase();
+      root.querySelectorAll("[data-employee-row]").forEach(row => {
+        const person = candidates[Number(row.dataset.employeeIndex)];
+        const haystack = [person.nama, person.nik, person.cabang, person.divisi, person.jabatan].join(" ").toLowerCase();
+        row.classList.toggle("hidden", !matchesOrg(person) || (query && !haystack.includes(query)));
+      });
+      const selectedNiks = selectedSet("employees");
+      const total = candidates.filter(person => matchesOrg(person) && (!selectedNiks.size || selectedNiks.has(person.nik))).length;
+      root.querySelector("#c-target-count").textContent = selectedNiks.size ? `${total} karyawan terpilih sesuai filter` : `${total} karyawan sesuai filter organisasi`;
+    };
+    root.querySelectorAll("[data-picker-search]").forEach(input => input.oninput = () => {
+      const query = input.value.trim().toLowerCase();
+      root.querySelectorAll(`[data-picker-list="${input.dataset.pickerSearch}"] [data-picker-item]`).forEach(item => item.classList.toggle("hidden", query && !item.dataset.search.includes(query)));
+    });
+    root.querySelectorAll('[data-target-group="branches"],[data-target-group="divisions"],[data-target-group="positions"],[data-target-group="employees"]').forEach(input => input.onchange = refreshEmployees);
+    root.querySelector("#c-employee-search").oninput = refreshEmployees;
+    root.querySelectorAll("[data-clear-group]").forEach(button => button.onclick = () => { root.querySelectorAll(`[data-target-group="${button.dataset.clearGroup}"]`).forEach(input => { input.checked = false; }); refreshEmployees(); });
+    root.querySelectorAll("[data-check-visible]").forEach(button => button.onclick = () => {
+      const group = button.dataset.checkVisible;
+      const scope = group === "employees" ? root.querySelector("#c-employee-list") : root.querySelector(`[data-picker-list="${group}"]`);
+      scope?.querySelectorAll(`[data-target-group="${group}"]`).forEach(input => { if (!input.closest("label")?.classList.contains("hidden")) input.checked = true; });
+      refreshEmployees();
+    });
+    refreshEmployees();
     modal.querySelector("#save-campaign").onclick = async () => {
-      const root = modal.querySelector("#campaign-form");
       const competencies = val(root, "#c-competencies").split("\n").map(line => { const [name, expected, impact] = line.split("|").map(x => x.trim()); return { name, expected_level: Math.min(5, Math.max(1, Number(expected || 3))), business_impact: Math.min(5, Math.max(1, Number(impact || 3))) }; }).filter(x => x.name);
       if (!val(root, "#c-title") || !val(root, "#c-deadline") || !competencies.length) return toast("Judul, batas pengisian, dan kompetensi wajib diisi.", "warning");
       const id = genId("TNA");
-      await fsAdd(C.campaigns, { title: val(root,"#c-title"), period: val(root,"#c-period"), deadline: val(root,"#c-deadline"), target_branch: val(root,"#c-branch") || "Semua", target_division: val(root,"#c-division") || "Semua", target_position: val(root,"#c-position") || "Semua", competencies, status: "DRAFT", created_by_nik: myNik(session) }, id);
+      await fsAdd(C.campaigns, { title: val(root,"#c-title"), period: val(root,"#c-period"), deadline: val(root,"#c-deadline"), target_branches: checkedValues(root,"branches"), target_divisions: checkedValues(root,"divisions"), target_positions: checkedValues(root,"positions"), target_niks: checkedValues(root,"employees"), email_on_publish: root.querySelector("#c-email-on-publish").checked, competencies, status: "DRAFT", created_by_nik: myNik(session) }, id);
       await audit(session, "CREATE_CAMPAIGN", "campaign", id); closeModal(); toast("Draft survey disimpan.", "success"); reload();
     };
   }});
+}
+
+function campaignEmailModal(campaign, assignments, session, reload) {
+  const rows = assignments.slice().sort((a, b) => String(a.nama || "").localeCompare(String(b.nama || ""), "id"));
+  openModal({ title: `Email Survey: ${esc(campaign.title)}`, size: "lg", bodyHtml: `<div class="space-y-4"><div class="rounded-xl bg-blue-50 p-3 text-xs text-blue-800">Email tidak dikirim otomatis dari halaman ini. Pilih karyawan lalu tekan tombol kirim, atau gunakan tombol <b>Kirim</b> pada satu karyawan.</div><input id="survey-email-search" type="search" placeholder="Cari nama, NIK, cabang, atau divisi…" class="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm"><div class="flex items-center justify-between"><label class="flex items-center gap-2 text-xs font-semibold"><input id="survey-email-all" type="checkbox" class="rounded border-slate-300"> Pilih semua yang tampil</label><span id="survey-email-count" class="text-xs text-slate-400">0 dipilih</span></div><div id="survey-email-list" class="max-h-[50vh] space-y-2 overflow-y-auto">${rows.map((item, index) => `<div data-email-row data-email-index="${index}" class="flex items-center gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" data-email-select="${index}" class="rounded border-slate-300" ${item.email ? "" : "disabled"}><div class="min-w-0 flex-1 text-xs"><b>${esc(item.nama)}</b> · ${esc(item.nik)}<br><span class="text-slate-400">${esc(item.cabang || "-")} · ${esc(item.divisi || "-")} · ${esc(item.email || "Email belum tersedia")}</span><br><span data-email-status="${index}" class="${item.email_sent_at ? "text-emerald-600" : "text-slate-400"}">${item.email_sent_at ? `Terakhir dikirim ${esc(new Date(item.email_sent_at).toLocaleString("id-ID"))}` : "Belum dikirim"}</span></div><button type="button" data-send-one="${index}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold ${item.email ? "" : "cursor-not-allowed opacity-40"}" ${item.email ? "" : "disabled"}>Kirim</button></div>`).join("") || empty("Belum ada karyawan penerima survey.")}</div></div>`, footerHtml: `<button id="send-selected-survey-email" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">Kirim ke yang dipilih</button>`, onMount: modal => {
+    const updateCount = () => { modal.querySelector("#survey-email-count").textContent = `${modal.querySelectorAll("[data-email-select]:checked").length} dipilih`; };
+    modal.querySelector("#survey-email-search").oninput = event => {
+      const query = event.target.value.trim().toLowerCase();
+      modal.querySelectorAll("[data-email-row]").forEach(row => {
+        const item = rows[Number(row.dataset.emailIndex)];
+        row.classList.toggle("hidden", query && ![item.nama, item.nik, item.cabang, item.divisi, item.email].join(" ").toLowerCase().includes(query));
+      });
+    };
+    modal.querySelector("#survey-email-all").onchange = event => {
+      modal.querySelectorAll("[data-email-row]").forEach(row => { const input = row.querySelector("[data-email-select]"); if (!row.classList.contains("hidden") && !input.disabled) input.checked = event.target.checked; });
+      updateCount();
+    };
+    modal.querySelectorAll("[data-email-select]").forEach(input => input.onchange = updateCount);
+    const deliver = async (items, button) => {
+      if (!items.length) return toast("Pilih minimal satu karyawan yang memiliki email.", "warning");
+      button.disabled = true;
+      try {
+        const sent = await sendSurveyEmails(campaign, items, true);
+        items.forEach(item => { const index = rows.indexOf(item), status = modal.querySelector(`[data-email-status="${index}"]`); if (status) { status.textContent = sent ? "Pengiriman telah diproses" : "Pengiriman gagal"; status.className = sent ? "text-emerald-600" : "text-red-600"; } });
+        await audit(session, "SEND_CAMPAIGN_EMAIL", "campaign", campaign.id, { selected: items.length, sent });
+        toast(`${sent} dari ${items.length} email berhasil diproses.`, sent ? "success" : "error");
+      } finally { button.disabled = false; }
+    };
+    modal.querySelectorAll("[data-send-one]").forEach(button => button.onclick = () => deliver([rows[Number(button.dataset.sendOne)]], button));
+    modal.querySelector("#send-selected-survey-email").onclick = event => deliver([...modal.querySelectorAll("[data-email-select]:checked")].map(input => rows[Number(input.dataset.emailSelect)]), event.currentTarget);
+  }, onClose: reload });
 }
 
 async function renderAnalysis(wrap, session, data, reload) {

@@ -25,14 +25,22 @@ export function employeeDivision(employee = {}) {
   return String(employee.divisi || employee.departemen || employee.department || '').trim();
 }
 
+function normalizedTargets(values, legacyValue) {
+  const source = Array.isArray(values) ? values : [legacyValue];
+  return source.map(normalizeToken).filter(value => value && value !== 'SEMUA');
+}
+
 export function campaignTargetsEmployee(campaign = {}, employee = {}) {
-  const branch = normalizeToken(campaign.target_branch);
-  const division = normalizeToken(campaign.target_division);
-  const position = normalizeToken(campaign.target_position);
+  const branches = normalizedTargets(campaign.target_branches, campaign.target_branch);
+  const divisions = normalizedTargets(campaign.target_divisions, campaign.target_division);
+  const positions = normalizedTargets(campaign.target_positions, campaign.target_position);
+  const niks = normalizedTargets(campaign.target_niks, '');
+  const employeeNikValue = normalizeToken(employeeNik(employee));
   const employeePosition = normalizeToken(employee.jabatan || employee.posisi);
-  return (!branch || branch === 'SEMUA' || branch === normalizeToken(employeeBranch(employee)))
-    && (!division || division === 'SEMUA' || division === normalizeToken(employeeDivision(employee)))
-    && (!position || position === 'SEMUA' || position === employeePosition);
+  return (!branches.length || branches.includes(normalizeToken(employeeBranch(employee))))
+    && (!divisions.length || divisions.includes(normalizeToken(employeeDivision(employee))))
+    && (!positions.length || positions.includes(employeePosition))
+    && (!niks.length || niks.includes(employeeNikValue));
 }
 
 export function competencyGap(expected, current) {

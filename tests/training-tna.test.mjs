@@ -11,6 +11,16 @@ test('campaign targets employees by branch and division', () => {
   assert.equal(campaignTargetsEmployee({ target_branch: 'Cirebon', target_division: 'Semua' }, employee), false);
 });
 
+test('campaign supports checkbox targets and an explicit employee selection', () => {
+  const employee = { nik: '01', nama_karyawan: 'Ani', cabang: 'Malang', divisi: 'Warehouse', jabatan: 'Admin' };
+  assert.equal(campaignTargetsEmployee({
+    target_branches: ['Cirebon', 'Malang'], target_divisions: ['Warehouse'],
+    target_positions: ['Admin'], target_niks: ['01', '02']
+  }, employee), true);
+  assert.equal(campaignTargetsEmployee({ target_branches: ['Malang'], target_niks: ['02'] }, employee), false);
+  assert.equal(campaignTargetsEmployee({ target_branches: [], target_divisions: [], target_positions: [], target_niks: [] }, employee), true);
+});
+
 test('TNA gap and priority never invert expected minus current', () => {
   assert.equal(competencyGap(5, 2), 3);
   assert.equal(competencyGap(2, 5), 0);

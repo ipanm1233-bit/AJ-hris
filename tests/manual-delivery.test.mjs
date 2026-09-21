@@ -30,6 +30,21 @@ test("shared email and notification helpers require an explicit manual action", 
   assert.match(source, /notifyUser[\s\S]*opts\.manual\s*!==\s*true/);
 });
 
+test("TNA survey distribution uses searchable checkbox targets and explicit email delivery", () => {
+  const source = readFileSync(new URL("../js/views/training.js", import.meta.url), "utf8");
+  assert.match(source, /data-target-group="branches"/);
+  assert.match(source, /data-target-group="divisions"/);
+  assert.match(source, /data-target-group="positions"/);
+  assert.match(source, /data-target-group="employees"/);
+  assert.match(source, /id="c-employee-search"/);
+  assert.match(source, /id="c-email-on-publish"/);
+  assert.match(source, /email_on_publish:\s*root\.querySelector/);
+  assert.match(source, /campaign\.email_on_publish === true/);
+  assert.match(source, /data-send-one/);
+  assert.match(source, /Kirim ke yang dipilih/);
+  assert.match(source, /\{ manual: true, sendEmail: true \}/);
+});
+
 test("mass publication delivery is batched and does not overload browser transactions", () => {
   const source = readFileSync(new URL("../js/views/broadcast.js", import.meta.url), "utf8");
   assert.match(source, /runInBatches\(targetUserIds, 10/);
