@@ -525,11 +525,19 @@ module.exports = async function handler(req, res) {
     const chunkSize = 50;
     let count = 0;
     let duplicatesRemoved = 0;
-    const useSupabaseAttendance = supabaseEnabled();
+    let useSupabaseAttendance = supabaseEnabled();
     const groupDates = groupList.map(group => group.tanggal).sort();
-    const existingSupabaseRows = useSupabaseAttendance
-      ? await listAttendance({ branch, fromDate: groupDates[0], toDate: groupDates[groupDates.length - 1], limit: 5000 })
-      : [];
+    let existingSupabaseRows = [];
+    if (useSupabaseAttendance) {
+      try {
+        existingSupabaseRows = await listAttendance({ branch, fromDate: groupDates[0], toDate: groupDates[groupDates.length - 1], limit: 5000 });
+      } catch (error) {
+        const fallbackEnabled = String(process.env.ATTENDANCE_FIRESTORE_FALLBACK || 'true').toLowerCase() !== 'false';
+        if (!fallbackEnabled) throw error;
+        console.warn('[sync-absen] Supabase unavailable, continuing fingerprint sync in Firestore:', error.message);
+        useSupabaseAttendance = false;
+      }
+    }
     const supabaseByEmployeeDate = new Map(existingSupabaseRows.map(row => [
       `${String(row.nik || '').trim().toUpperCase()}|${String(row.tanggal || '').trim()}`,
       row

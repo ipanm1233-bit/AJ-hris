@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { cleanBaseUrl, getSupabaseConfig, supabaseEnabled, encodeQuery } = require('../lib/supabase.js');
 const { attendanceToSupabase, attendanceFromSupabase } = require('../lib/attendance-supabase.js');
-const { loadAttendance } = require('../lib/attendance-access.js');
+const { loadAttendance, writeAttendance, dedupeAttendanceRows } = require('../lib/attendance-access.js');
 
 test('Supabase attendance provider only enables with complete server configuration', () => {
   const env = { ATTENDANCE_DB_PROVIDER: 'supabase', SUPABASE_URL: 'https://aj-hris.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'x'.repeat(60) };
@@ -39,14 +39,83 @@ test('attendance read falls back to Firestore when Supabase rejects access', asy
   try {
     const rows = await loadAttendance({ db: {} }, { branch: 'Cirebon' }, {
       listAttendance: async () => { throw new Error('Supabase: permission denied for table attendance'); },
-      firestoreAttendance: async () => [{ id: 'ABS-1', nik: '001', cabang: 'CIREBON' }]
+      firestoreAttendance: async () => [
+        { id: 'ABS-1', nik: '001', tanggal: '2026-09-18', cabang: 'CIREBON', scan_masuk: '08:00' },
+        { id: 'ABS-OLD', nik: '001', tanggal: '2026-09-18', cabang: 'CIREBON', scan_keluar: '17:00' }
+      ]
     });
     assert.equal(rows.length, 1);
     assert.equal(rows._provider, 'firestore-fallback');
+    assert.equal(rows[0].scan_masuk, '08:00');
+    assert.equal(rows[0].scan_keluar, '17:00');
   } finally {
     if (previousProvider === undefined) delete process.env.ATTENDANCE_DB_PROVIDER; else process.env.ATTENDANCE_DB_PROVIDER = previousProvider;
     if (previousUrl === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = previousUrl;
     if (previousKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY; else process.env.SUPABASE_SERVICE_ROLE_KEY = previousKey;
     if (previousFallback === undefined) delete process.env.ATTENDANCE_FIRESTORE_FALLBACK; else process.env.ATTENDANCE_FIRESTORE_FALLBACK = previousFallback;
+  }
+});
+
+test('attendance merge removes duplicate employee-date rows across providers', async () => {
+  const previousProvider = process.env.ATTENDANCE_DB_PROVIDER;
+  const previousUrl = process.env.SUPABASE_URL;
+  const previousKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.ATTENDANCE_DB_PROVIDER = 'supabase';
+  process.env.SUPABASE_URL = 'https://aj-hris.supabase.co';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'x'.repeat(60);
+  try {
+    const rows = await loadAttendance({ db: {} }, { fromDate: '2026-09-22', toDate: '2026-09-22' }, {
+      listAttendance: async () => [{ id: 'SUPA-1', nik: '001', tanggal: '2026-09-22', scan_masuk: '07:45', sumber: 'FINGERPRINT' }],
+      firestoreAttendance: async () => [{ id: 'OLD-RANDOM-ID', nik: '001', tanggal: '2026-09-22', scan_keluar: '16:02', sumber: 'IMPORT' }],
+      upsertAttendance: async () => []
+    });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].id, 'SUPA-1');
+    assert.equal(rows[0].scan_masuk, '07:45');
+    assert.equal(rows[0].scan_keluar, '16:02');
+  } finally {
+    if (previousProvider === undefined) delete process.env.ATTENDANCE_DB_PROVIDER; else process.env.ATTENDANCE_DB_PROVIDER = previousProvider;
+    if (previousUrl === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = previousUrl;
+    if (previousKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY; else process.env.SUPABASE_SERVICE_ROLE_KEY = previousKey;
+  }
+});
+
+test('dedupe keeps separate dates but one row for the same NIK and date', () => {
+  const rows = dedupeAttendanceRows([
+    { id: 'A', nik: '001', tanggal: '2026-09-21' },
+    { id: 'B', nik: '001', tanggal: '2026-09-22', scan_masuk: '08:00' },
+    { id: 'C', nik: '001', tanggal: '2026-09-22', scan_keluar: '17:00', sumber: 'FINGERPRINT' }
+  ]);
+  assert.equal(rows.length, 2);
+  assert.equal(rows.find(row => row.tanggal === '2026-09-22').scan_masuk, '08:00');
+  assert.equal(rows.find(row => row.tanggal === '2026-09-22').scan_keluar, '17:00');
+});
+
+test('attendance correction falls back to Firestore when Supabase write is denied', async () => {
+  const previousProvider = process.env.ATTENDANCE_DB_PROVIDER;
+  const previousUrl = process.env.SUPABASE_URL;
+  const previousKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.ATTENDANCE_DB_PROVIDER = 'supabase';
+  process.env.SUPABASE_URL = 'https://aj-hris.supabase.co';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'x'.repeat(60);
+  const writes = [];
+  const db = {
+    batch: () => ({
+      set: (ref, payload) => writes.push({ ref, payload }),
+      commit: async () => {}
+    }),
+    collection: () => ({ doc: id => ({ id }) })
+  };
+  try {
+    await writeAttendance({ db }, [{ id: 'ABS-1', nik: '001', tanggal: '2026-09-22', scan_masuk: '08:00' }], {
+      upsertAttendance: async () => { throw new Error('Supabase: permission denied for table attendance'); }
+    });
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].ref.id, 'ABS-1');
+    assert.equal(writes[0].payload.scan_masuk, '08:00');
+  } finally {
+    if (previousProvider === undefined) delete process.env.ATTENDANCE_DB_PROVIDER; else process.env.ATTENDANCE_DB_PROVIDER = previousProvider;
+    if (previousUrl === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = previousUrl;
+    if (previousKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY; else process.env.SUPABASE_SERVICE_ROLE_KEY = previousKey;
   }
 });
