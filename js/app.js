@@ -15,7 +15,7 @@ import { auth } from "./firebase-config.js";
 
 // Ubah versi ini setiap ada perubahan struktur view agar browser tidak
 // mencampur HTML terbaru dengan modul JavaScript lama dari cache.
-const APP_ASSET_VERSION = "20260918-navigation-performance-v1";
+const APP_ASSET_VERSION = "20260922-sales-pdf-daily-v2";
 const viewContainer = document.getElementById("view-container");
 let currentUnmount = null;
 let currentRoute = null;
@@ -392,13 +392,19 @@ async function loadRouteModule(viewName) {
  const modulePath = `./views/${viewName}.js?v=${APP_ASSET_VERSION}`;
  const promise = import(modulePath).catch(async error => {
   // Kode modul valid di build, tetapi file terunduh dapat tertinggal/rusak di
-  // cache browser. Hanya cuti yang dicoba ulang sekali dengan URL berbeda.
-  if (viewName !== "cuti" || !(error instanceof SyntaxError)) {
+  // cache browser/CDN. Coba unduh ulang sekali dengan URL unik untuk semua
+  // view apabila browser gagal mem-parse modul yang diterima.
+  if (!(error instanceof SyntaxError)) {
    routeModuleCache.delete(viewName);
    throw error;
   }
-  console.warn("Modul cuti gagal diparse; mencoba unduhan ulang sekali.", error);
-  return import(`${modulePath}-retry-${Date.now()}`);
+  console.warn(`Modul ${viewName} gagal diparse; mencoba unduhan ulang sekali.`, error);
+  try {
+   return await import(`${modulePath}-retry-${Date.now()}`);
+  } catch (retryError) {
+   routeModuleCache.delete(viewName);
+   throw retryError;
+  }
  });
  routeModuleCache.set(viewName, promise);
  return promise;

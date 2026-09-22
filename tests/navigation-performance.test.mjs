@@ -22,6 +22,12 @@ test("router avoids duplicate session sync and warms route assets", () => {
   assert.match(routerBlock, /container\.innerHTML = html;[\s\S]*const mod = await modulePromise/);
 });
 
+test("all route modules retry once with a fresh URL after a parse failure", () => {
+  assert.match(app, /if \(!\(error instanceof SyntaxError\)\)/);
+  assert.match(app, /import\(`\$\{modulePath\}-retry-\$\{Date\.now\(\)\}`\)/);
+  assert.doesNotMatch(app, /viewName !== ["']cuti["']/);
+});
+
 test("unchanged navigation shell is not rebuilt", () => {
   assert.match(app, /renderedShellSignature === shellSignature/);
   assert.match(app, /renderedShellSignature = shellSignature/);
