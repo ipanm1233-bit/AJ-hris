@@ -25,8 +25,14 @@ test("weekly reconciliation uses odometer as the fuel claim basis", () => {
 test("sales PDF contains daily visit, distance, claim and reconciliation details", () => {
   const source = readFileSync(new URL("../js/views/sales-track.js", import.meta.url), "utf8");
   assert.match(source, /Titik awal.*khusus tanggal|khusus tanggal.*berhasil disimpan/i);
-  assert.match(source, /Google Maps:.*dailyRecon\.gpsKm/);
-  assert.match(source, /Odometer:.*dailyRecon\.odometerKm/);
-  assert.match(source, /Klaim: Rp.*dailyRecon\.claimAmount/);
+  assert.match(source, /Total Tracking:.*dailyRecon\.gpsKm/);
+  assert.match(source, /Total Odometer:.*dailyRecon\.odometerKm/);
+  assert.match(source, /Klaim Harian: Rp.*dailyRecon\.claimAmount/);
+  assert.match(source, /REKONSILIASI HARIAN ODOMETER VS PERHITUNGAN TRACKING/);
+  assert.match(source, /KM Awal/);
+  assert.match(source, /KM Akhir/);
+  assert.match(source, /Selisih Odo - Tracking/);
+  assert.match(source, /dailyReconciliationRowsHtml/);
+  assert.match(source, /Laporan_Rute_Sales_.*"landscape"/);
   assert.match(source, /value="PDF_FULL" \$\{defaultFormat === "PDF" \? "checked"/);
 });
