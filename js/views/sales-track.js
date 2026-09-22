@@ -93,6 +93,21 @@ export async function mount(container, { session } = {}) {
   let karyawanList = [];
   let odometerLogsMap = new Map();
 
+  async function salesTrackingApi(action, payload = {}) {
+    const response = await authFetch('/api/sync-absen', {
+      method: 'POST',
+      body: JSON.stringify({ action, ...payload })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.success === false) throw new Error(result.error || `HTTP ${response.status}`);
+    return result;
+  }
+
+  const upsertSalesVisits = rows => salesTrackingApi('sales_track_upsert_visits', { rows });
+  const patchSalesVisits = changes => salesTrackingApi('sales_track_patch_visits', { changes });
+  const deleteSalesVisits = ids => salesTrackingApi('sales_track_delete_visits', { ids });
+  const upsertSalesOdometer = rows => salesTrackingApi('sales_track_upsert_odometer', { rows });
+
   function kanalArchiveKey(item) {
     return String(item?.id || item?._docId || [item?.sales_nik, item?.tanggal, item?.waktu_checkin, item?.toko_outlet].join("|")).trim();
   }
@@ -121,7 +136,7 @@ export async function mount(container, { session } = {}) {
   // Function to purge all dummy/mock checkin visits from the database
   async function purgeDummyVisits() {
     try {
-      const rawCheckins = await fsGetAll("kanal_checkins").catch(() => []);
+      const rawCheckins = (await salesTrackingApi('sales_track_list', { limit: 10000 }).catch(() => ({ visits: [] }))).visits || [];
       const dummyIds = [];
       for (const c of rawCheckins) {
         const id = String(c.id || "");
@@ -145,7 +160,7 @@ export async function mount(container, { session } = {}) {
 
       if (dummyIds.length > 0) {
         for (const dId of dummyIds) {
-          await fsDelete("kanal_checkins", dId).catch(() => {});
+          await deleteSalesVisits([dId]).catch(() => {});
         }
         console.log(`[SALES TRACK] Purged ${dummyIds.length} dummy visit records.`);
       }
@@ -231,6 +246,7 @@ export async function mount(container, { session } = {}) {
       id: docId,
       sales_nik: salesNik,
       sales_nama: salesNama || existing.sales_nama || "Salesman",
+      cabang: existing.cabang || userCabang,
       tanggal,
       ...(isStart ? {
         start_gps: validGps,
@@ -243,7 +259,7 @@ export async function mount(container, { session } = {}) {
       }),
       updated_at: new Date().toISOString()
     };
-    await fsUpdate("sales_odometer", docId, record).catch(() => fsAdd("sales_odometer", record, docId));
+    await upsertSalesOdometer([record]);
     odometerLogsMap.set(key, record);
     toast(`Titik ${isStart ? "awal" : "akhir"} khusus tanggal ${tanggal} berhasil disimpan.`, "success");
     applyAndRenderDashboard();
@@ -286,6 +302,7 @@ export async function mount(container, { session } = {}) {
       id: docId,
       sales_nik: salesNik,
       sales_nama: salesNama || existingOdm.sales_nama || "Salesman",
+      cabang: existingOdm.cabang || userCabang,
       tanggal: tanggal,
       km_awal: kmAwal,
       km_akhir: kmAkhir,
@@ -298,9 +315,7 @@ export async function mount(container, { session } = {}) {
     };
 
     try {
-      await fsUpdate("sales_odometer", docId, odmRecord).catch(async () => {
-        await fsAdd("sales_odometer", odmRecord, docId);
-      });
+      await upsertSalesOdometer([odmRecord]);
 
       odometerLogsMap.set(key, odmRecord);
 
@@ -352,6 +367,7 @@ export async function mount(container, { session } = {}) {
       id: docId,
       sales_nik: salesNik,
       sales_nama: salesNama || existingOdm.sales_nama || "Salesman",
+      cabang: existingOdm.cabang || userCabang,
       tanggal: tanggal,
       km_awal: kmAwal,
       km_akhir: kmAkhir,
@@ -364,9 +380,7 @@ export async function mount(container, { session } = {}) {
     };
 
     try {
-      await fsUpdate("sales_odometer", docId, odmRecord).catch(async () => {
-        await fsAdd("sales_odometer", odmRecord, docId);
-      });
+      await upsertSalesOdometer([odmRecord]);
 
       odometerLogsMap.set(key, odmRecord);
       toast(`Data Odometer ${salesNama} (${tanggal}) berhasil disimpan! Jarak Odometer: ${jarakOdometer.toFixed(1)} KM, Selisih: ${selisih >= 0 ? '+' : ''}${selisih.toFixed(1)} KM`, "success");
@@ -513,6 +527,7 @@ export async function mount(container, { session } = {}) {
           id: String(chkId),
           sales_nik: item.nik || item.sales_nik || item.user_id || "SLS-KNL",
           sales_nama: item.nama || item.sales_nama || item.user_name || "Sales Kanal",
+          cabang: item.cabang || item.branch || ((karyawanList || []).find(k => String(k.nik_karyawan || k.nik || '') === String(item.nik || item.sales_nik || item.user_id || ''))?.cabang) || userCabang,
           toko_outlet: storeName,
           alamat_toko: rawAddr,
           koordinat_gps: finalGps,
@@ -532,10 +547,8 @@ export async function mount(container, { session } = {}) {
       console.log("[SALES TRACK] Tidak ada data live checkin dari server Kanal.work API. Tidak menambahkan data dummy.");
     }
 
-    for (const chk of fetchedCheckins) {
-      await fsUpdate("kanal_checkins", chk.id, chk).catch(async () => {
-        await fsAdd("kanal_checkins", chk, chk.id);
-      });
+    for (let index = 0; index < fetchedCheckins.length; index += 500) {
+      await upsertSalesVisits(fetchedCheckins.slice(index, index + 500));
     }
 
     if (fetchedCheckins.length > 0) {
@@ -570,7 +583,11 @@ export async function mount(container, { session } = {}) {
       if (subtitleEl) subtitleEl.innerHTML = `Terhubung ke cloud server <b>API Kanal (${escapeHtml(companyName)})</b>. Geocoding alamat otomatis & kalkulasi jarak tempuh sales aktif.`;
       if (companyBadgeEl) companyBadgeEl.textContent = companyName;
 
-      const rawCheckins = await fsGetAll("kanal_checkins").catch(() => []);
+      const trackingResult = await salesTrackingApi('sales_track_list', { limit: 10000 }).catch(error => {
+        console.warn('Tracking Sales API fallback gagal:', error);
+        return { visits: [], odometers: [], provider: 'unavailable' };
+      });
+      const rawCheckins = trackingResult.visits || [];
       allCheckinsList = rawCheckins.map(c => {
         const item = normalizeCheckinItem(c);
         const sInfo = resolveSalesmanInfo(item.sales_nama, item.sales_nik);
@@ -598,7 +615,7 @@ export async function mount(container, { session } = {}) {
               item.koordinat_gps = matchOutlet.koordinat_gps;
               item.lat = matchParsed.lat;
               item.lng = matchParsed.lng;
-              fsUpdate("kanal_checkins", item.id, { koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng }).catch(() => {});
+              patchSalesVisits([{ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng }]).catch(() => {});
               continue;
             }
           }
@@ -610,20 +627,20 @@ export async function mount(container, { session } = {}) {
             const mp = parseGpsCoordinates(matchOutlet.koordinat_gps);
             item.lat = mp?.lat;
             item.lng = mp?.lng;
-            fsUpdate("kanal_checkins", item.id, { koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng }).catch(() => {});
+            patchSalesVisits([{ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng }]).catch(() => {});
           } else {
             const queryAddr = [item.alamat_toko, item.toko_outlet].filter(Boolean).join(", ");
             const geoRes = await geocodeAddressSmart(queryAddr || "Klampok Wanasari Brebes Tegal", i);
             item.koordinat_gps = `${geoRes.lat}, ${geoRes.lng}`;
             item.lat = geoRes.lat;
             item.lng = geoRes.lng;
-            fsUpdate("kanal_checkins", item.id, { koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng }).catch(() => {});
+            patchSalesVisits([{ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng }]).catch(() => {});
           }
         }
       }
 
       // Load Sales Odometer logs
-      const rawOdm = await fsGetAll("sales_odometer").catch(() => []);
+      const rawOdm = trackingResult.odometers || [];
       odometerLogsMap.clear();
       rawOdm.forEach(o => {
         if (o.sales_nik && o.tanggal) {
@@ -1584,17 +1601,19 @@ export async function mount(container, { session } = {}) {
     }
 
     const validGpsStr = `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`;
+    const foundInAll = allCheckinsList.find(c => (c._docId || c.id) === visitId);
 
     try {
-      await fsUpdate("kanal_checkins", visitId, {
+      await patchSalesVisits([{
+        id: visitId,
+        tanggal: foundInAll?.tanggal || todayStr,
         koordinat_gps: validGpsStr,
         lat: coords.lat,
         lng: coords.lng,
         manual_gps_edited: true,
         updated_at: new Date().toISOString()
-      });
+      }]);
 
-      const foundInAll = allCheckinsList.find(c => (c._docId || c.id) === visitId);
       if (foundInAll) {
         foundInAll.koordinat_gps = validGpsStr;
         foundInAll.lat = coords.lat;
@@ -1612,13 +1631,15 @@ export async function mount(container, { session } = {}) {
             chk.lat = coords.lat;
             chk.lng = coords.lng;
             chk.manual_gps_edited = true;
-            fsUpdate("kanal_checkins", chk._docId || chk.id, {
+            patchSalesVisits([{
+              id: chk._docId || chk.id,
+              tanggal: chk.tanggal,
               koordinat_gps: validGpsStr,
               lat: coords.lat,
               lng: coords.lng,
               manual_gps_edited: true,
               updated_at: new Date().toISOString()
-            }).catch(() => {});
+            }]).catch(() => {});
           }
         }
       }
@@ -1689,7 +1710,7 @@ export async function mount(container, { session } = {}) {
     if (!confirmed) return false;
 
     try {
-      await fsDelete("kanal_checkins", visitId);
+      await deleteSalesVisits([visitId]);
 
       // Remove from memory list
       const idx = allCheckinsList.findIndex(c => String(c._docId || c.id) === String(visitId) || String(c.id) === String(visitId));
@@ -1719,15 +1740,17 @@ export async function mount(container, { session } = {}) {
     }
 
     const newStatus = isChecked ? "Effective Call (Order Toko)" : "Visit Toko (Tanpa Order)";
+    const foundInAll = allCheckinsList.find(c => String(c._docId || c.id) === String(visitId) || String(c.id) === String(visitId));
 
     try {
-      await fsUpdate("kanal_checkins", visitId, {
+      await patchSalesVisits([{
+        id: visitId,
+        tanggal: foundInAll?.tanggal || todayStr,
         status_kunjungan: newStatus,
         is_effective_call: isChecked,
         updated_at: new Date().toISOString()
-      });
+      }]);
 
-      const foundInAll = allCheckinsList.find(c => String(c._docId || c.id) === String(visitId) || String(c.id) === String(visitId));
       if (foundInAll) {
         foundInAll.status_kunjungan = newStatus;
         foundInAll.is_effective_call = isChecked;
@@ -1824,7 +1847,7 @@ export async function mount(container, { session } = {}) {
       if (!confirmed) return;
 
       try {
-        await fsDelete("kanal_checkins", visitId);
+        await deleteSalesVisits([visitId]);
 
         const idx = allCheckinsList.findIndex(c => String(c._docId || c.id) === String(visitId) || String(c.id) === String(visitId));
         if (idx !== -1) allCheckinsList.splice(idx, 1);
@@ -1861,18 +1884,15 @@ export async function mount(container, { session } = {}) {
 
       toast(`Menghapus ${list.length} titik kunjungan...`, "info");
       let deletedCount = 0;
-
-      for (const vid of list) {
-        try {
-          await fsDelete("kanal_checkins", vid);
-          deletedCount++;
-          const idx = allCheckinsList.findIndex(c => String(c._docId || c.id) === String(vid) || String(c.id) === String(vid));
-          if (idx !== -1) allCheckinsList.splice(idx, 1);
-          allSalesVisits = allSalesVisits.filter(v => String(v._docId || v.id) !== String(vid) && String(v.id) !== String(vid));
-          selectedVisitIds.delete(String(vid));
-        } catch (err) {
-          console.error("Gagal menghapus visit id:", vid, err);
-        }
+      try {
+        await deleteSalesVisits(list);
+        const deletedIds = new Set(list.map(String));
+        allCheckinsList = allCheckinsList.filter(c => !deletedIds.has(String(c._docId || c.id)) && !deletedIds.has(String(c.id)));
+        allSalesVisits = allSalesVisits.filter(v => !deletedIds.has(String(v._docId || v.id)) && !deletedIds.has(String(v.id)));
+        list.forEach(id => selectedVisitIds.delete(String(id)));
+        deletedCount = list.length;
+      } catch (err) {
+        console.error("Gagal menghapus kunjungan massal:", err);
       }
 
       toast(`${deletedCount} titik kunjungan berhasil dihapus.`, "success");
@@ -3539,6 +3559,7 @@ export async function mount(container, { session } = {}) {
         const masterOutlets = await fsGetAll("sales_outlets").catch(() => []);
 
         let successCount = 0;
+        const importedVisits = [];
 
         for (let idx = 0; idx < rows.length; idx++) {
           const row = rows[idx];
@@ -3659,6 +3680,7 @@ export async function mount(container, { session } = {}) {
             id: checkinId,
             sales_nik: salesNik,
             sales_nama: finalSalesName,
+            cabang: ((karyawanList || []).find(k => String(k.nik_karyawan || k.nik || '') === String(salesNik))?.cabang) || userCabang,
             sales_jabatan: jabatanSales || "Sales Canvassing",
             toko_outlet: rawCustomer || "Pelanggan / Toko",
             alamat_toko: rawAddress || "Cirebon",
@@ -3675,11 +3697,12 @@ export async function mount(container, { session } = {}) {
             updated_at: new Date().toISOString()
           });
 
-          await fsUpdate("kanal_checkins", checkinDoc.id, checkinDoc).catch(async () => {
-            await fsAdd("kanal_checkins", checkinDoc, checkinDoc.id);
-          });
-
+          importedVisits.push(checkinDoc);
           successCount++;
+        }
+
+        for (let index = 0; index < importedVisits.length; index += 500) {
+          await upsertSalesVisits(importedVisits.slice(index, index + 500));
         }
 
         closeModal();
@@ -3750,7 +3773,9 @@ export async function mount(container, { session } = {}) {
           btnArchiveKanal.textContent = `Mengarsipkan ${Math.min(index + chunk.length, rows.length)}/${rows.length}...`;
           await callGasArchiveWebApp({ action: "archive_kanal_checkins", rows: chunk });
         }
-        for (const row of rows) await fsDelete("kanal_checkins", row._docId || row.id);
+        for (let index = 0; index < rows.length; index += 500) {
+          await deleteSalesVisits(rows.slice(index, index + 500).map(row => row._docId || row.id));
+        }
         toast(`${rows.length} data check-in Kanal berhasil dipindahkan ke Spreadsheet.`, "success");
         await loadAndRenderTrack();
       } catch (error) {
