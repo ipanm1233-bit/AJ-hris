@@ -1,6 +1,6 @@
 const { admin, getFirebaseAdmin } = require('../lib/firebase-admin.js');
 const crypto = require('crypto');
-const { enforceRateLimit, writeAuditLog, requireFirebaseAuth } = require('../lib/security.js');
+const { enforceRateLimit, writeAuditLog, requireFirebaseAuth, isFirestoreQuotaError } = require('../lib/security.js');
 const { aggregateFingerprintLogs, computeAttendance } = require('../lib/fingerprint-normalizer.js');
 const { handleAttendanceAccess } = require('../lib/attendance-access.js');
 const { handleIzinAccess } = require('../lib/izin-access.js');
@@ -416,13 +416,17 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.body?.action === 'status') {
-      const stateSnap = await syncStateRef.get();
-      let latestDate = stateSnap.exists ? String(stateSnap.data()?.latestDate || '') : '';
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(latestDate)) {
-        if (supabaseEnabled()) {
-          const rows = await listAttendance({ branch, limit: 1 });
-          latestDate = String(rows[0]?.tanggal || '');
-        } else {
+      let latestDate = '';
+      if (supabaseEnabled()) {
+        // Status bridge tidak boleh bergantung pada Firestore setelah provider
+        // absensi dipindahkan. Ini juga membuat npm start tetap berjalan saat
+        // kuota database lama sudah habis.
+        const rows = await listAttendance({ branch, limit: 1 });
+        latestDate = String(rows[0]?.tanggal || '');
+      } else {
+        const stateSnap = await syncStateRef.get();
+        latestDate = stateSnap.exists ? String(stateSnap.data()?.latestDate || '') : '';
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(latestDate)) {
           const branchSnap = await db.collection('data_absensi').where('cabang', '==', branch).select('tanggal').get();
           latestDate = branchSnap.docs.reduce((latest, doc) => {
             const date = String(doc.data()?.tanggal || '');
@@ -449,23 +453,39 @@ module.exports = async function handler(req, res) {
 
     // --- 2) Resolve ID mesin -> master karyawan. Mendukung NIK, doc ID,
     // nik_karyawan, dan beberapa nama field fingerprint yang umum.
-    const employeeSnap = await db.collection('master_karyawan').get();
-    const settingsSnap = await db.collection('app_settings').doc('main').get();
-    const scheduleRows = settingsSnap.exists && Array.isArray(settingsSnap.data()?.jadwal)
-      ? settingsSnap.data().jadwal
-      : [];
+    let employeeDocs = [];
+    let scheduleRows = [];
+    try {
+      const [employeeSnap, settingsSnap] = await Promise.all([
+        db.collection('master_karyawan').get(),
+        db.collection('app_settings').doc('main').get()
+      ]);
+      employeeDocs = employeeSnap.docs;
+      scheduleRows = settingsSnap.exists && Array.isArray(settingsSnap.data()?.jadwal)
+        ? settingsSnap.data().jadwal
+        : [];
+    } catch (error) {
+      if (!supabaseEnabled() || !isFirestoreQuotaError(error)) throw error;
+      console.warn('[sync-absen] Firestore master unavailable; resolving fingerprint identity from Supabase history.');
+    }
+    let identityHistoryRows = [];
+    if (supabaseEnabled()) {
+      identityHistoryRows = await listAttendance({ branch, limit: 5000 });
+    }
     const { resolveWorkSchedule } = await import('../js/work-schedule.mjs');
     const employeeMap = new Map();
     const numericEmployeeMap = new Map();
     const employeeNameMap = new Map();
     const employees = [];
     const { machineNameAgrees, addUniqueIdentifier } = require('../lib/fingerprint-identity');
-    const fingerprintFields = ['nik', 'nik_karyawan', 'finger_id', 'kode_finger', 'no_finger', 'id_finger', 'pin'];
-    employeeSnap.forEach(snapshot => {
-      const employee = { ...snapshot.data(), _docId: snapshot.id };
+    const fingerprintFields = [
+      'nik', 'nik_karyawan', 'finger_id', 'kode_finger', 'no_finger', 'id_finger', 'pin',
+      'fingerprint_user_id', 'fingerprint_emp_no', 'fingerprint_no_id'
+    ];
+    const registerEmployee = employee => {
       if (normalizeBranch(employee.cabang) !== branch) return;
       employees.push(employee);
-      const identifiers = [snapshot.id, ...fingerprintFields.map(field => employee[field])];
+      const identifiers = [employee._docId, ...fingerprintFields.map(field => employee[field])];
       identifiers.forEach(value => {
         const key = String(value || '').trim().toUpperCase();
         if (!key) return;
@@ -476,14 +496,40 @@ module.exports = async function handler(req, res) {
           else if (numericEmployeeMap.get(numericKey)?._docId !== employee._docId) numericEmployeeMap.set(numericKey, null);
         }
       });
-      const names = [employee.nama_karyawan, employee.nama, employee.finger_name];
+      const names = [employee.nama_karyawan, employee.nama, employee.finger_name, employee.fingerprint_name];
       names.forEach(value => {
         const nameKey = normalizePersonName(value);
         if (!nameKey) return;
         if (!employeeNameMap.has(nameKey)) employeeNameMap.set(nameKey, employee);
         else if (employeeNameMap.get(nameKey)?._docId !== employee._docId) employeeNameMap.set(nameKey, null);
       });
-    });
+    };
+    employeeDocs.forEach(snapshot => registerEmployee({ ...snapshot.data(), _docId: snapshot.id }));
+    if (!employeeDocs.length) {
+      const historyByNik = new Map();
+      identityHistoryRows.forEach(row => {
+        const nik = String(row.nik || '').trim();
+        if (!nik) return;
+        const current = historyByNik.get(nik) || {};
+        historyByNik.set(nik, {
+          ...current,
+          _docId: `SUPABASE-${nik}`,
+          nik,
+          nik_karyawan: nik,
+          nama: row.nama || current.nama || '',
+          nama_karyawan: row.nama || current.nama_karyawan || '',
+          cabang: row.cabang || current.cabang || branch,
+          divisi: row.divisi || current.divisi || '',
+          jabatan: row.jabatan || current.jabatan || '',
+          finger_name: row.fingerprint_name || current.finger_name || '',
+          fingerprint_name: row.fingerprint_name || current.fingerprint_name || '',
+          fingerprint_user_id: row.fingerprint_user_id || current.fingerprint_user_id || '',
+          fingerprint_emp_no: row.fingerprint_emp_no || current.fingerprint_emp_no || '',
+          fingerprint_no_id: row.fingerprint_no_id || current.fingerprint_no_id || ''
+        });
+      });
+      historyByNik.forEach(registerEmployee);
+    }
     const deviceUserNameMap = new Map();
     const deviceUserMetadataMap = new Map();
     deviceUsers.forEach(user => {
@@ -536,7 +582,9 @@ module.exports = async function handler(req, res) {
     let existingSupabaseRows = [];
     if (useSupabaseAttendance) {
       try {
-        existingSupabaseRows = await listAttendance({ branch, fromDate: groupDates[0], toDate: groupDates[groupDates.length - 1], limit: 5000 });
+        existingSupabaseRows = identityHistoryRows.filter(row =>
+          String(row.tanggal || '') >= groupDates[0] && String(row.tanggal || '') <= groupDates[groupDates.length - 1]
+        );
       } catch (error) {
         const fallbackEnabled = String(process.env.ATTENDANCE_FIRESTORE_FALLBACK || 'true').toLowerCase() !== 'false';
         if (!fallbackEnabled) throw error;
@@ -674,29 +722,36 @@ module.exports = async function handler(req, res) {
     }));
 
     const newestDate = groupList.reduce((latest, group) => group.tanggal > latest ? group.tanggal : latest, '');
-    if (newestDate) {
+    if (newestDate && !supabaseEnabled()) {
       await db.runTransaction(async transaction => {
         const stateSnap = await transaction.get(syncStateRef);
         const currentDate = stateSnap.exists ? String(stateSnap.data()?.latestDate || '') : '';
-        if (newestDate > currentDate) {
-          transaction.set(syncStateRef, {
-            latestDate: newestDate,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          }, { merge: true });
-        }
+        if (newestDate > currentDate) transaction.set(syncStateRef, {
+          latestDate: newestDate,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
       });
     }
 
-    await writeAuditLog(db, req, null, {
-      action: 'FINGERPRINT_SYNC', module: 'ATTENDANCE',
-      metadata: { branch, processed_records: count, raw_scans: logs.length, invalid_logs: invalidLogs, unmatched_count: unmatchedIds.length, duplicates_removed: duplicatesRemoved }
-    });
+    try {
+      await writeAuditLog(db, req, null, {
+        action: 'FINGERPRINT_SYNC', module: 'ATTENDANCE',
+        metadata: { branch, processed_records: count, raw_scans: logs.length, invalid_logs: invalidLogs, unmatched_count: unmatchedIds.length, duplicates_removed: duplicatesRemoved }
+      });
+    } catch (error) {
+      if (!supabaseEnabled() || !isFirestoreQuotaError(error)) throw error;
+      console.warn('[sync-absen] Firestore audit deferred; attendance data already stored in Supabase.');
+    }
     if (pairedDevice) {
-      await pairedDevice.snapshot.ref.set({
-        lastSyncAt: admin.firestore.FieldValue.serverTimestamp(),
-        lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
-        lastError: ''
-      }, { merge: true });
+      try {
+        await pairedDevice.snapshot.ref.set({
+          lastSyncAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastError: ''
+        }, { merge: true });
+      } catch (error) {
+        if (!supabaseEnabled() || !isFirestoreQuotaError(error)) throw error;
+      }
     }
     res.status(200).json({
       success: true,
