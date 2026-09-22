@@ -30,6 +30,12 @@ test('validates bounded manual fingerprint resync ranges', () => {
   assert.equal(fingerprintApiHelpers.dateDistanceDays('2026-09-17', '2026-09-18'), 1);
 });
 
+test('creates stable provisional identities without treating them as employee master', () => {
+  assert.equal(fingerprintApiHelpers.provisionalFingerprintNik('Cirebon', ' 11 '), 'FINGER-CIREBON-11');
+  assert.equal(fingerprintApiHelpers.isProvisionalFingerprintNik('FINGER-CIREBON-11'), true);
+  assert.equal(fingerprintApiHelpers.isProvisionalFingerprintNik('1112307980'), false);
+});
+
 test('keeps device-local timestamps unchanged instead of shifting them by seven hours', () => {
   assert.deepEqual(parseFingerprintTimestamp('2026-09-07 07:55:12'), {
     tanggal: '2026-09-07', jam: '07:55', detik: 12, minutes: 475

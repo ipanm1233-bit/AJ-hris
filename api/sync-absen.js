@@ -8,7 +8,7 @@ const { handleTrainingAccess } = require('../lib/training-access.js');
 const { handleNotificationAccess } = require('../lib/notification-access.js');
 const { handleSalesTrackingAccess } = require('../lib/sales-tracking-access.js');
 const { supabaseEnabled } = require('../lib/supabase.js');
-const { listAttendance, upsertAttendance } = require('../lib/attendance-supabase.js');
+const { listAttendance, upsertAttendance, deleteAttendance } = require('../lib/attendance-supabase.js');
 
 function normalizePersonName(value) {
   return String(value || '')
@@ -22,6 +22,16 @@ function normalizePersonName(value) {
 
 function normalizeBranch(value) {
   return String(value || '').trim().toUpperCase();
+}
+
+function provisionalFingerprintNik(branch, deviceUserId) {
+  const safeBranch = normalizeBranch(branch).replace(/[^A-Z0-9_-]/g, '_').slice(0, 40);
+  const safeId = String(deviceUserId || '').trim().toUpperCase().replace(/[^A-Z0-9._-]/g, '_').slice(0, 60);
+  return `FINGER-${safeBranch}-${safeId}`;
+}
+
+function isProvisionalFingerprintNik(value) {
+  return String(value || '').toUpperCase().startsWith('FINGER-');
 }
 
 function verifyBridgeSignature(req, rawBody) {
@@ -509,7 +519,9 @@ module.exports = async function handler(req, res) {
       const historyByNik = new Map();
       identityHistoryRows.forEach(row => {
         const nik = String(row.nik || '').trim();
-        if (!nik) return;
+        // Baris sementara menjaga scan tidak hilang, tetapi tidak boleh dipakai
+        // sebagai master identitas pada sinkronisasi berikutnya.
+        if (!nik || row.auto_assign === false || isProvisionalFingerprintNik(nik)) return;
         const current = historyByNik.get(nik) || {};
         historyByNik.set(nik, {
           ...current,
@@ -596,22 +608,35 @@ module.exports = async function handler(req, res) {
       `${String(row.nik || '').trim().toUpperCase()}|${String(row.tanggal || '').trim()}`,
       row
     ]));
+    const pendingByFingerprintDate = new Map(existingSupabaseRows
+      .filter(row => row.auto_assign === false || isProvisionalFingerprintNik(row.nik))
+      .map(row => [`${String(row.fingerprint_user_id || '').trim().toUpperCase()}|${String(row.tanggal || '').trim()}`, row]));
     for (let i = 0; i < groupList.length; i += chunkSize) {
       const chunk = groupList.slice(i, i + chunkSize);
       const chunkItems = chunk.map(group => {
-        const employee = resolveEmployee(group.deviceUserId);
+        const matchedEmployee = resolveEmployee(group.deviceUserId);
+        const machineUser = deviceUserMetadataMap.get(String(group.deviceUserId).trim().toUpperCase()) || null;
+        const employee = matchedEmployee || (useSupabaseAttendance ? {
+          _docId: `PENDING-${group.deviceUserId}`,
+          _fingerprintPending: true,
+          nik_karyawan: provisionalFingerprintNik(branch, group.deviceUserId),
+          nama_karyawan: machineUser?.name || `ID Finger ${group.deviceUserId}`,
+          finger_name: machineUser?.name || '',
+          cabang: branch,
+          divisi: '',
+          jabatan: ''
+        } : null);
         const nik = String(employee?.nik_karyawan || employee?.nik || group.deviceUserId).trim();
         const safeNik = nik.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);
         const ref = db.collection('data_absensi').doc(`ABS-FP-${safeNik}-${group.tanggal}`);
         const safeDeviceId = String(group.deviceUserId).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);
         const legacyRef = db.collection('data_absensi').doc(`ABS-FP-${safeDeviceId}-${group.tanggal}`);
-        const machineUser = deviceUserMetadataMap.get(String(group.deviceUserId).trim().toUpperCase()) || null;
-        return { group, employee, machineUser, nik, ref, legacyRef };
+        return { group, employee, matchedEmployee, machineUser, nik, ref, legacyRef };
       });
       const resolvedChunk = chunkItems.filter(item => item.employee);
       if (useSupabaseAttendance) {
         const rows = resolvedChunk.map(item => {
-          const { group: g, employee, machineUser, nik, ref } = item;
+          const { group: g, employee, matchedEmployee, machineUser, nik, ref } = item;
           const key = `${String(nik).trim().toUpperCase()}|${g.tanggal}`;
           const oldData = supabaseByEmployeeDate.get(key) || {};
           const schedule = resolveWorkSchedule(employee, scheduleRows, g.tanggal);
@@ -624,14 +649,18 @@ module.exports = async function handler(req, res) {
             fingerprint_emp_no: machineUser?.empNo || g.deviceUserId,
             fingerprint_no_id: machineUser?.noId || g.deviceUserId,
             fingerprint_name: machineUser?.name || employee?.finger_name || '',
-            auto_assign: true,
-            nama: employee?.nama_karyawan || employee?.nama || oldData.nama || `ID Finger ${g.deviceUserId} (belum dipetakan)`,
+            auto_assign: Boolean(matchedEmployee),
+            nama: employee?._fingerprintPending
+              ? `${employee.nama_karyawan} (BELUM DIPETAKAN)`
+              : employee?.nama_karyawan || employee?.nama || oldData.nama || `ID Finger ${g.deviceUserId}`,
             tanggal: g.tanggal,
             scan_masuk: attendance.scan_masuk,
             scan_keluar: attendance.scan_keluar,
-            perlu_koreksi: attendance.needs_review,
-            alasan_koreksi: attendance.review_reason,
-            klasifikasi_scan: attendance.classification,
+            perlu_koreksi: employee?._fingerprintPending || attendance.needs_review,
+            alasan_koreksi: employee?._fingerprintPending
+              ? 'Identitas finger belum dipetakan ke master karyawan. Scan tetap disimpan dan wajib direkonsiliasi HRD.'
+              : attendance.review_reason,
+            klasifikasi_scan: employee?._fingerprintPending ? 'IDENTITY_PENDING' : attendance.classification,
             cabang: employee.cabang || branch,
             divisi: employee?.divisi || employee?.departemen || oldData.divisi || '',
             jabatan: employee?.jabatan || employee?.posisi || oldData.jabatan || '',
@@ -642,6 +671,11 @@ module.exports = async function handler(req, res) {
           return row;
         });
         if (rows.length) await upsertAttendance(rows);
+        const resolvedPendingIds = resolvedChunk
+          .filter(item => item.matchedEmployee)
+          .map(item => pendingByFingerprintDate.get(`${String(item.group.deviceUserId).trim().toUpperCase()}|${item.group.tanggal}`)?.id)
+          .filter(Boolean);
+        if (resolvedPendingIds.length) await deleteAttendance(resolvedPendingIds);
         count += rows.length;
         continue;
       }
@@ -771,4 +805,7 @@ module.exports = async function handler(req, res) {
   }
 };
 
-module.exports._test = { validPrivateIpv4, validIsoDate, dateDistanceDays, cleanDeviceId, pairingCode, secretHash, normalizeBranch };
+module.exports._test = {
+  validPrivateIpv4, validIsoDate, dateDistanceDays, cleanDeviceId, pairingCode, secretHash,
+  normalizeBranch, provisionalFingerprintNik, isProvisionalFingerprintNik
+};
