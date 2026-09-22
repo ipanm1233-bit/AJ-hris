@@ -34,6 +34,39 @@ function isProvisionalFingerprintNik(value) {
   return String(value || '').toUpperCase().startsWith('FINGER-');
 }
 
+function mergeSyncAttendanceRows(rows = [], minWorkGapMinutes = 120) {
+  const merged = new Map();
+  rows.forEach(row => {
+    const key = `${String(row.nik || '').trim().toUpperCase()}|${String(row.tanggal || '').trim()}`;
+    const current = merged.get(key);
+    if (!current) {
+      merged.set(key, { ...row });
+      return;
+    }
+    const values = [
+      current.scan_masuk, current.scan_keluar || current.scan_pulang,
+      row.scan_masuk, row.scan_keluar || row.scan_pulang
+    ].map(value => String(value || '').slice(0, 5))
+      .filter(value => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value))
+      .sort();
+    const first = values[0] || null;
+    const last = values[values.length - 1] || null;
+    const minutes = value => Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5));
+    const complete = first && last && minutes(last) - minutes(first) >= minWorkGapMinutes;
+    merged.set(key, {
+      ...current,
+      ...row,
+      id: current.id || row.id,
+      scan_masuk: first,
+      scan_keluar: complete ? last : (current.scan_keluar || row.scan_keluar || null),
+      perlu_koreksi: complete ? false : (current.perlu_koreksi || row.perlu_koreksi),
+      alasan_koreksi: complete ? '' : (current.alasan_koreksi || row.alasan_koreksi || ''),
+      klasifikasi_scan: complete ? 'MERGED_FINGER_IDS' : (current.klasifikasi_scan || row.klasifikasi_scan || '')
+    });
+  });
+  return [...merged.values()];
+}
+
 function verifyBridgeSignature(req, rawBody) {
   const secret = String(process.env.FINGERPRINT_BRIDGE_SECRET || '').trim();
   const timestamp = String(req.headers?.['x-bridge-timestamp'] || '');
@@ -641,7 +674,7 @@ module.exports = async function handler(req, res) {
       });
       const resolvedChunk = chunkItems.filter(item => item.employee);
       if (useSupabaseAttendance) {
-        const rows = resolvedChunk.map(item => {
+        const rows = mergeSyncAttendanceRows(resolvedChunk.map(item => {
           const { group: g, employee, matchedEmployee, machineUser, nik, ref } = item;
           const key = `${String(nik).trim().toUpperCase()}|${g.tanggal}`;
           const fingerDateKey = `${String(g.deviceUserId).trim().toUpperCase()}|${g.tanggal}`;
@@ -690,7 +723,7 @@ module.exports = async function handler(req, res) {
           };
           supabaseByEmployeeDate.set(key, row);
           return row;
-        });
+        }), minWorkGapMinutes);
         if (rows.length) await upsertAttendance(rows);
         const duplicateIds = resolvedChunk.flatMap(item => {
           if (!item.matchedEmployee) return [];
@@ -839,5 +872,5 @@ module.exports = async function handler(req, res) {
 
 module.exports._test = {
   validPrivateIpv4, validIsoDate, dateDistanceDays, cleanDeviceId, pairingCode, secretHash,
-  normalizeBranch, provisionalFingerprintNik, isProvisionalFingerprintNik
+  normalizeBranch, provisionalFingerprintNik, isProvisionalFingerprintNik, mergeSyncAttendanceRows
 };

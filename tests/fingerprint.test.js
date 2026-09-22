@@ -36,6 +36,17 @@ test('creates stable provisional identities without treating them as employee ma
   assert.equal(fingerprintApiHelpers.isProvisionalFingerprintNik('1112307980'), false);
 });
 
+test('coalesces multiple machine IDs mapped to one employee-day before Supabase upsert', () => {
+  const rows = fingerprintApiHelpers.mergeSyncAttendanceRows([
+    { id: 'A', nik: '1112307980', tanggal: '2026-09-21', scan_masuk: '07:45', fingerprint_user_id: '110' },
+    { id: 'B', nik: '1112307980', tanggal: '2026-09-21', scan_keluar: '16:03', fingerprint_user_id: '79' }
+  ]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, 'A');
+  assert.equal(rows[0].scan_masuk, '07:45');
+  assert.equal(rows[0].scan_keluar, '16:03');
+});
+
 test('keeps device-local timestamps unchanged instead of shifting them by seven hours', () => {
   assert.deepEqual(parseFingerprintTimestamp('2026-09-07 07:55:12'), {
     tanggal: '2026-09-07', jam: '07:55', detik: 12, minutes: 475
