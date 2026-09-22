@@ -6,6 +6,7 @@ import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 import { aggregateKpiByPeriod, DEFAULT_KPI_GRADE_RULES, evaluateKpiGrade, getLatestKpiSummary, validateGradeRulesMap, assessKpiDecisionReadiness } from "../kpi-scoring.mjs";
 import { buildPerformanceMonitorRows } from "../performance-monitor.mjs";
+import { KPI_ROLE_STANDARDS, mapEmployeesToKpiStandards, resolveKpiStandard, standardToTemplatePayload, validateKpiStandards } from "../kpi-role-standards.mjs";
 
 // =====================================================================
 // MASTER INDIKATOR PENILAIAN HARIAN & TARGET BULANAN
@@ -464,16 +465,18 @@ export async function mount(container, { session, params }) {
     const division = wrap.querySelector("#pm-division").value;
     const status = wrap.querySelector("#pm-status").value;
     const search = wrap.querySelector("#pm-search").value.trim().toLowerCase();
-    let rows = buildPerformanceMonitorRows({ employees, kpiLogs, dailyLogs, leaveRecords, attendanceRecords, period });
+    let rows = buildPerformanceMonitorRows({ employees, kpiLogs, dailyLogs, leaveRecords, attendanceRecords, period })
+      .map(row => ({ ...row, kpiStandard: resolveKpiStandard(row) }));
     rows = rows.filter(row => (!branch || row.cabang === branch) && (!division || row.divisi === division) && (!status || row.status === status) && (!search || `${row.nama} ${row.nik}`.toLowerCase().includes(search)));
     if (isAtasan && session.cabang) rows = rows.filter(row => String(row.cabang).toUpperCase() === String(session.cabang).toUpperCase());
     const avg = key => rows.length ? (rows.reduce((sum, row) => sum + Number(row[key] || 0), 0) / rows.length).toFixed(1) : "0.0";
+    const specificStandardCount = rows.filter(row => row.kpiStandard?.key !== "generic_staff").length;
     wrap.querySelector("#pm-summary").innerHTML = `
      <div class="rounded-xl border bg-white p-4"><p class="text-[10px] font-bold uppercase text-slate-400">Karyawan Dipantau</p><p class="text-2xl font-black text-slate-800">${rows.length}</p></div>
      <div class="rounded-xl border bg-white p-4"><p class="text-[10px] font-bold uppercase text-slate-400">Skor Keseluruhan</p><p class="text-2xl font-black text-indigo-700">${avg("overallScore")}</p></div>
      <div class="rounded-xl border bg-white p-4"><p class="text-[10px] font-bold uppercase text-slate-400">Skor Disiplin</p><p class="text-2xl font-black text-emerald-700">${avg("disciplineScore")}</p></div>
-     <div class="rounded-xl border bg-white p-4"><p class="text-[10px] font-bold uppercase text-slate-400">Total Alfa</p><p class="text-2xl font-black text-rose-700">${rows.reduce((sum, row) => sum + row.alphaDays, 0)} hari</p></div>`;
-    wrap.querySelector("#pm-table").innerHTML = `<div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white"><table class="min-w-full text-xs"><thead class="bg-slate-50 text-slate-500"><tr>${["Karyawan", "Status", "Unit", "Target/KPI", "Pendukung", "Kedisiplinan", "Skor Total", "Bukti"].map(label => `<th class="px-4 py-3 text-left font-bold uppercase">${label}</th>`).join("")}</tr></thead><tbody>${rows.sort((a, b) => a.overallScore - b.overallScore).map(row => `<tr class="border-t border-slate-100"><td class="px-4 py-3"><b class="text-slate-800">${escapeHtml(row.nama)}</b><br><span class="text-slate-400">${escapeHtml(row.nik)}</span></td><td class="px-4 py-3"><span class="rounded bg-slate-100 px-2 py-1 font-bold">${escapeHtml(row.status)}</span></td><td class="px-4 py-3">${escapeHtml(row.cabang || "-")}<br><span class="text-slate-400">${escapeHtml(row.divisi || row.jabatan || "-")}</span></td><td class="px-4 py-3 font-black ${row.performanceScore === null ? "text-slate-400" : "text-blue-700"}">${row.performanceScore === null ? "Belum ada data" : `${row.performanceScore}/100`}</td><td class="px-4 py-3 font-black ${row.supportScore === null ? "text-slate-400" : "text-purple-700"}">${row.supportScore === null ? "Belum ada data" : `${row.supportScore}/100`}</td><td class="px-4 py-3"><b class="${row.disciplineScore < 80 ? "text-rose-700" : "text-emerald-700"}">${row.disciplineScore}/100</b><br><span class="text-[10px] text-slate-500">Alfa ${row.alphaDays} hari · Telat ${row.lateIncidents}x</span></td><td class="px-4 py-3"><span class="text-base font-black ${row.overallScore < 70 ? "text-rose-700" : row.overallScore < 85 ? "text-amber-700" : "text-emerald-700"}">${row.overallScore}</span></td><td class="px-4 py-3 text-center">${row.evidenceCount}</td></tr>`).join("") || `<tr><td colspan="8" class="p-8 text-center text-slate-400">Tidak ada karyawan sesuai filter.</td></tr>`}</tbody></table></div>`;
+     <div class="rounded-xl border bg-white p-4"><p class="text-[10px] font-bold uppercase text-slate-400">Cakupan Standar Jabatan</p><p class="text-2xl font-black text-rose-700">${specificStandardCount}/${rows.length}</p><p class="text-[10px] text-slate-400">Alfa ${rows.reduce((sum, row) => sum + row.alphaDays, 0)} hari</p></div>`;
+    wrap.querySelector("#pm-table").innerHTML = `<div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white"><table class="min-w-full text-xs"><thead class="bg-slate-50 text-slate-500"><tr>${["Karyawan", "Status", "Unit", "Standar KPI", "Target/KPI", "Pendukung", "Kedisiplinan", "Skor Total", "Bukti"].map(label => `<th class="px-4 py-3 text-left font-bold uppercase">${label}</th>`).join("")}</tr></thead><tbody>${rows.sort((a, b) => a.overallScore - b.overallScore).map(row => `<tr class="border-t border-slate-100"><td class="px-4 py-3"><b class="text-slate-800">${escapeHtml(row.nama)}</b><br><span class="text-slate-400">${escapeHtml(row.nik)}</span></td><td class="px-4 py-3"><span class="rounded bg-slate-100 px-2 py-1 font-bold">${escapeHtml(row.status)}</span></td><td class="px-4 py-3">${escapeHtml(row.cabang || "-")}<br><span class="text-slate-400">${escapeHtml(row.divisi || row.jabatan || "-")}</span></td><td class="px-4 py-3"><b class="${row.kpiStandard?.key === "generic_staff" ? "text-amber-700" : "text-slate-700"}">${escapeHtml(row.kpiStandard?.name?.replace("Standar KPI — ", "") || "-")}</b><br><span class="text-[10px] text-slate-400">${escapeHtml(row.jabatan || "Jabatan belum diisi")}</span></td><td class="px-4 py-3 font-black ${row.performanceScore === null ? "text-slate-400" : "text-blue-700"}">${row.performanceScore === null ? "Belum ada data" : `${row.performanceScore}/100`}</td><td class="px-4 py-3 font-black ${row.supportScore === null ? "text-slate-400" : "text-purple-700"}">${row.supportScore === null ? "Belum ada data" : `${row.supportScore}/100`}</td><td class="px-4 py-3"><b class="${row.disciplineScore < 80 ? "text-rose-700" : "text-emerald-700"}">${row.disciplineScore}/100</b><br><span class="text-[10px] text-slate-500">Alfa ${row.alphaDays} hari · Telat ${row.lateIncidents}x</span></td><td class="px-4 py-3"><span class="text-base font-black ${row.overallScore < 70 ? "text-rose-700" : row.overallScore < 85 ? "text-amber-700" : "text-emerald-700"}">${row.overallScore}</span></td><td class="px-4 py-3 text-center">${row.evidenceCount}</td></tr>`).join("") || `<tr><td colspan="9" class="p-8 text-center text-slate-400">Tidak ada karyawan sesuai filter.</td></tr>`}</tbody></table></div>`;
    };
    wrap.querySelectorAll("input, select").forEach(input => input.addEventListener(input.type === "search" ? "input" : "change", draw));
    draw();
@@ -1503,6 +1506,8 @@ export async function mount(container, { session, params }) {
 
  const activeKaryawan = allKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF" && k.nama_karyawan);
  activeKaryawan.sort((a, b) => (a.nama_karyawan || "").localeCompare(b.nama_karyawan || "", "id", { sensitivity: "base" }));
+ const roleMappings = mapEmployeesToKpiStandards(activeKaryawan);
+ const specificMappings = roleMappings.filter(item => item.standard.key !== "generic_staff");
 
  function renderView() {
  let html = `
@@ -1522,11 +1527,22 @@ export async function mount(container, { session, params }) {
  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
  Import Excel
  </button>
+ <button id="btn-preview-kpi-standard" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-2 rounded-xl text-xs font-semibold transition">
+ Pemetaan Jabatan
+ </button>
+ <button id="btn-install-kpi-standard" class="bg-indigo-700 hover:bg-indigo-800 text-white px-3 py-2 rounded-xl text-xs font-semibold transition shadow-sm">
+ Instal / Perbarui Standar
+ </button>
  <button id="btn-add-template" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2 rounded-xl text-xs font-semibold transition shadow-sm flex items-center gap-1.5">
  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
  Buat Template Baru
  </button>
  </div>
+ </div>
+
+ <div class="rounded-2xl border ${specificMappings.length === activeKaryawan.length ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"} p-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+  <div><p class="text-xs font-black text-slate-800">Cakupan standar jabatan: ${specificMappings.length} dari ${activeKaryawan.length} karyawan aktif</p><p class="mt-1 text-[11px] text-slate-600">${activeKaryawan.length - specificMappings.length} karyawan masih menggunakan standar Staf Umum. Periksa jabatan/divisinya melalui tombol Pemetaan Jabatan.</p></div>
+  <span class="rounded-full bg-white px-3 py-1 text-[11px] font-bold text-indigo-700 border border-indigo-100">${KPI_ROLE_STANDARDS.length} standar tersedia · versi 2026.1</span>
  </div>
 
  <!-- Search & Filter Bar -->
@@ -1559,7 +1575,63 @@ export async function mount(container, { session, params }) {
  const isHrdRole = ["HRD", "SUPERADMIN", "ADMIN"].includes(userRole);
  const btnSample = wrap.querySelector("#btn-download-sample-kpi");
  const btnImport = wrap.querySelector("#btn-import-template");
+ const btnPreviewStandard = wrap.querySelector("#btn-preview-kpi-standard");
+ const btnInstallStandard = wrap.querySelector("#btn-install-kpi-standard");
  const inputExcel = wrap.querySelector("#kpi-excel-upload");
+
+ const previewRoleMappings = () => {
+  openModal({
+   title: "Pemetaan Standar KPI per Jabatan",
+   size: "lg",
+   bodyHtml: `<div class="space-y-3"><div class="rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-xs text-indigo-900">Pemetaan dipilih dari jabatan, divisi, dan cabang. Baris kuning berarti data jabatan belum cukup spesifik dan menggunakan standar fallback.</div><input id="kpi-map-search" type="search" placeholder="Cari nama, jabatan, divisi, atau standar…" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-400"><div id="kpi-map-list" class="max-h-[55vh] overflow-y-auto rounded-xl border border-slate-200"></div></div>`,
+   footerHtml: `<button id="btn-kpi-map-close" class="rounded-xl bg-slate-800 px-4 py-2 text-xs font-bold text-white">Tutup</button>`,
+   onMount: modal => {
+    const search = modal.querySelector("#kpi-map-search");
+    const list = modal.querySelector("#kpi-map-list");
+    const draw = () => {
+     const term = search.value.trim().toLowerCase();
+     const filtered = roleMappings.filter(({ employee, standard }) => `${employee.nama_karyawan} ${employee.nik_karyawan} ${employee.jabatan} ${employee.divisi} ${employee.cabang} ${standard.name}`.toLowerCase().includes(term));
+     list.innerHTML = `<table class="min-w-full text-xs"><thead class="sticky top-0 bg-slate-50 text-slate-500"><tr><th class="px-3 py-2 text-left">Karyawan</th><th class="px-3 py-2 text-left">Jabatan / Unit</th><th class="px-3 py-2 text-left">Standar</th></tr></thead><tbody>${filtered.map(({ employee, standard }) => `<tr class="border-t border-slate-100 ${standard.key === "generic_staff" ? "bg-amber-50" : "bg-white"}"><td class="px-3 py-2"><b>${escapeHtml(employee.nama_karyawan || "-")}</b><br><span class="text-slate-400">${escapeHtml(employee.nik_karyawan || employee.nik || "-")}</span></td><td class="px-3 py-2">${escapeHtml(employee.jabatan || "Belum diisi")}<br><span class="text-slate-400">${escapeHtml(employee.divisi || "-")} · ${escapeHtml(employee.cabang || "-")}</span></td><td class="px-3 py-2 font-bold ${standard.key === "generic_staff" ? "text-amber-700" : "text-indigo-700"}">${escapeHtml(standard.name.replace("Standar KPI — ", ""))}</td></tr>`).join("") || `<tr><td colspan="3" class="p-6 text-center text-slate-400">Tidak ada hasil.</td></tr>`}</tbody></table>`;
+    };
+    search.oninput = draw;
+    modal.querySelector("#btn-kpi-map-close").onclick = closeModal;
+    draw();
+   }
+  });
+ };
+
+ const installRoleStandards = async () => {
+  const validationErrors = validateKpiStandards();
+  if (validationErrors.length) return toast(`Standar tidak valid: ${validationErrors.join(", ")}`, "error");
+  const approved = await confirmDialog(`Instal atau perbarui ${KPI_ROLE_STANDARDS.length} standar KPI jabatan? Template manual tidak akan dihapus. Daftar karyawan pada standar sistem akan disesuaikan dengan jabatan, divisi, dan cabang terkini.`);
+  if (!approved) return;
+  btnInstallStandard.disabled = true;
+  btnInstallStandard.textContent = "Memperbarui…";
+  try {
+   for (const item of KPI_ROLE_STANDARDS) {
+    const assigned = roleMappings.filter(mapping => mapping.standard.key === item.key).map(mapping => mapping.employee);
+    const payload = standardToTemplatePayload(item, assigned);
+    const existing = templates.find(template => template.standard_key === item.key);
+    if (existing?.id) await fsUpdate(COL.MASTER_SOAL_KPI, existing.id, payload);
+    else await fsAdd(COL.MASTER_SOAL_KPI, payload, `STD-KPI-${item.key.toUpperCase()}`);
+   }
+   toast("Standar KPI jabatan berhasil dipasang dan pemetaan karyawan diperbarui.", "success");
+   loadTemplateKpi();
+  } catch (error) {
+   console.error("install-kpi-role-standards", error);
+   toast("Gagal memasang standar KPI: " + error.message, "error");
+   btnInstallStandard.disabled = false;
+   btnInstallStandard.textContent = "Instal / Perbarui Standar";
+  }
+ };
+
+ if (!isHrdRole) {
+  if (btnPreviewStandard) btnPreviewStandard.style.display = "none";
+  if (btnInstallStandard) btnInstallStandard.style.display = "none";
+ } else {
+  if (btnPreviewStandard) btnPreviewStandard.onclick = previewRoleMappings;
+  if (btnInstallStandard) btnInstallStandard.onclick = installRoleStandards;
+ }
 
  if (btnSample) {
  if (!isHrdRole) btnSample.style.display = "none";
@@ -1667,6 +1739,7 @@ export async function mount(container, { session, params }) {
 
  <!-- Category Tag Badge & Skala Badge -->
  <div class="mb-3 flex flex-wrap gap-1.5 items-center">
+ ${t.is_system_standard ? `<span class="inline-flex items-center text-[11px] font-bold px-2.5 py-0.5 rounded-lg border bg-indigo-50 text-indigo-700 border-indigo-200">Standar Sistem v${escapeHtml(t.standard_version || "2026.1")}</span>` : ""}
  <span class="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-lg border ${catConfig.badgeClass}">
  ${catConfig.icon} ${catConfig.label}
  </span>
@@ -2239,6 +2312,10 @@ export async function mount(container, { session, params }) {
  function addSoalUI(data = { aspek: "", indikator: "", bobot: "" }) {
  const div = document.createElement("div");
  div.className = "flex gap-2 items-start bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs";
+ div.dataset.source = data.source || "BUKTI_DAN_VALIDASI_ATASAN";
+ div.dataset.unit = data.unit || "%";
+ div.dataset.cap = String(data.cap || 120);
+ div.dataset.evidenceRequired = String(data.evidence_required !== false);
  div.innerHTML = `
  <div class="flex-1 space-y-2">
  <input type="text" placeholder="Aspek Penilaian (Cth: Kedisiplinan / Target)" value="${escapeHtml(data.aspek || '')}" class="soal-aspek w-full px-2.5 py-1.5 text-xs border rounded-lg outline-none focus:border-maroon-400 font-medium" required>
@@ -2283,7 +2360,11 @@ export async function mount(container, { session, params }) {
  aspek: asp || "Umum",
  indikator: ind || asp,
  bobot: bbt,
- nilai_diberikan: 0
+ nilai_diberikan: 0,
+ source: row.dataset.source || "BUKTI_DAN_VALIDASI_ATASAN",
+ unit: row.dataset.unit || "%",
+ cap: Number(row.dataset.cap || 120),
+ evidence_required: row.dataset.evidenceRequired !== "false"
  });
  }
  });
@@ -2298,7 +2379,16 @@ export async function mount(container, { session, params }) {
  kategori_penilaian: kategoriPenilaian,
  skala_penilaian: skalaPenilaian,
  soal_json: soalArray,
- karyawan_assigned: checkedEmployees
+ karyawan_assigned: checkedEmployees,
+ ...(existingData?.is_system_standard ? {
+  standard_key: existingData.standard_key,
+  standard_version: existingData.standard_version,
+  standard_divisions: existingData.standard_divisions || [],
+  standard_branches: existingData.standard_branches || [],
+  recommended_cycle: existingData.recommended_cycle || "BULANAN",
+  is_system_standard: true,
+  decision_policy: existingData.decision_policy || "REKOMENDASI_HRD_DENGAN_VALIDASI_BUKTI"
+ } : {})
  };
 
  const btnSave = m.querySelector("#btn-tpl-simpan");

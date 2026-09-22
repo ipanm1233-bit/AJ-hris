@@ -80,7 +80,10 @@ export function buildPerformanceMonitorRows({ employees = [], kpiLogs = [], dail
       return [scores.sop_tugas, scores.respon_divisi, scores.inisiatif_team].map(Number).filter(Number.isFinite);
     });
     const support = supportValues.length ? supportValues.reduce((sum, value) => sum + value, 0) / supportValues.length : null;
-    const weightedParts = [{ value: performance, weight: 50 }, { value: discipline, weight: 30 }, { value: support, weight: 20 }].filter(part => Number.isFinite(part.value));
+    // Kerangka perusahaan: hasil kerja 60%, kedisiplinan 20%, indikator pendukung 20%.
+    // Jika salah satu komponen belum tersedia, bobot komponen yang tersedia dinormalisasi
+    // agar data kosong tidak diam-diam dianggap bernilai nol.
+    const weightedParts = [{ value: performance, weight: 60 }, { value: discipline, weight: 20 }, { value: support, weight: 20 }].filter(part => Number.isFinite(part.value));
     const overall = weightedParts.length ? weightedParts.reduce((sum, part) => sum + part.value * part.weight, 0) / weightedParts.reduce((sum, part) => sum + part.weight, 0) : 0;
     return {
       nik: employee.nik_karyawan || employee.nik || "",
