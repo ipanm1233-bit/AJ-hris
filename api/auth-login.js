@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { getFirebaseAdmin } = require('../lib/firebase-admin.js');
-const { enforceRateLimit, writeAuditLog, assertAllowedKeys, verifyAppCheck } = require('../lib/security.js');
+const { enforceRateLimit, writeAuditLog, assertAllowedKeys, verifyAppCheck, isFirestoreQuotaError } = require('../lib/security.js');
 const { strongPassword } = require('../lib/password-policy.js');
 
 function cleanIdentifier(value) {
@@ -133,6 +133,54 @@ async function verifyFirebasePassword(email, password) {
   return payload;
 }
 
+function profileFromFirebaseUser(authUser) {
+  const claims = authUser.customClaims || {};
+  const authEmail = String(authUser.email || '');
+  const publicEmail = authEmail.endsWith('@auth.andelajaya.internal') ? '' : authEmail;
+  return {
+    uid: authUser.uid,
+    id: claims.username || authUser.uid,
+    username: String(claims.username || '').trim(),
+    nik: String(claims.nik || '').trim(),
+    nama: authUser.displayName || claims.username || claims.nik || 'Karyawan',
+    email: publicEmail,
+    auth_email: authEmail,
+    role: normalizeRole(claims.role),
+    posisi: '-',
+    cabang: String(claims.branch || '').trim(),
+    divisi: String(claims.division || '').trim(),
+    foto_url: authUser.photoURL || null,
+    active: authUser.disabled !== true && claims.active !== false,
+    must_change_password: claims.password_change_required === true
+  };
+}
+
+async function findFirebaseAuthUser(admin, identifier) {
+  const wanted = cleanIdentifier(identifier).toLowerCase();
+  let pageToken;
+  do {
+    const page = await admin.auth().listUsers(1000, pageToken);
+    const match = page.users.find(authUser => {
+      const claims = authUser.customClaims || {};
+      return [authUser.uid, authUser.email, claims.username, claims.nik]
+        .filter(Boolean)
+        .some(value => String(value).trim().toLowerCase() === wanted);
+    });
+    if (match) return match;
+    pageToken = page.pageToken;
+  } while (pageToken);
+  return null;
+}
+
+async function verifyWithoutFirestore(admin, identifier, password) {
+  const authUser = await findFirebaseAuthUser(admin, identifier);
+  if (!authUser?.email) throw new Error('Username/NIK atau password salah.');
+  const profile = profileFromFirebaseUser(authUser);
+  if (!profile.active) throw new Error('Akun sudah dinonaktifkan.');
+  await verifyFirebasePassword(authUser.email, password);
+  return profile;
+}
+
 async function migrateOrVerifyUser(admin, db, legacy, identifier, password) {
   const user = legacy.data;
   const employee = await getEmployee(db, user, identifier);
@@ -215,10 +263,16 @@ module.exports = async function handler(req, res) {
     const { admin, db, error } = getFirebaseAdmin();
     if (!admin || !db) throw new Error(error || 'Firebase Admin belum dikonfigurasi.');
     await verifyAppCheck(req, admin);
-    const legacy = await findLegacyUser(db, identifier);
-    if (!legacy) return res.status(401).json({ success: false, error: 'Username/NIK atau password salah.' });
-
-    const profile = await migrateOrVerifyUser(admin, db, legacy, identifier, password);
+    let profile;
+    try {
+      const legacy = await findLegacyUser(db, identifier);
+      if (!legacy) return res.status(401).json({ success: false, error: 'Username/NIK atau password salah.' });
+      profile = await migrateOrVerifyUser(admin, db, legacy, identifier, password);
+    } catch (error) {
+      if (!isFirestoreQuotaError(error)) throw error;
+      console.warn('[auth-login] Firestore quota exhausted; verifying against Firebase Authentication only.');
+      profile = await verifyWithoutFirestore(admin, identifier, password);
+    }
     const customToken = verifyOnly ? null : await admin.auth().createCustomToken(profile.uid);
     await writeAuditLog(db, req, profile, {
       action: verifyOnly ? 'PASSWORD_REAUTH_SUCCESS' : 'LOGIN_SUCCESS',
@@ -232,3 +286,5 @@ module.exports = async function handler(req, res) {
     return res.status(401).json({ success: false, error: 'Username/NIK atau password salah.' });
   }
 };
+
+module.exports._test = { profileFromFirebaseUser, findFirebaseAuthUser, verifyWithoutFirestore };

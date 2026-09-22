@@ -7,8 +7,11 @@ const {
   enforceRateLimit,
   requireCronSecret,
   normalizeRole,
-  normalizeBranch
+  normalizeBranch,
+  isFirestoreQuotaError,
+  authProfileFromClaims
 } = require('../lib/security.js');
+const { _test: authLoginTest } = require('../api/auth-login.js');
 const { _test: izinAccessTest } = require('../lib/izin-access.js');
 
 function responseMock() {
@@ -25,6 +28,24 @@ function responseMock() {
 test('normalizes role and branch values', () => {
   assert.equal(normalizeRole(' hrd '), 'HRD');
   assert.equal(normalizeBranch(' Cirebon '), 'cirebon');
+});
+
+test('recognizes Firestore quota exhaustion and preserves verified Firebase claims', () => {
+  assert.equal(isFirestoreQuotaError({ code: 8, details: 'Quota exceeded.' }), true);
+  const profile = authProfileFromClaims('UID-1', { role: 'hrd', username: 'IPAN', nik: '001', branch: 'Cirebon', active: true });
+  assert.equal(profile.role, 'HRD');
+  assert.equal(profile.username, 'IPAN');
+  assert.equal(profile.branch, 'Cirebon');
+});
+
+test('Firebase-only login profile does not expose the internal authentication email', () => {
+  const profile = authLoginTest.profileFromFirebaseUser({
+    uid: 'UID-1', email: 'user_hash@auth.andelajaya.internal', displayName: 'Ipan', disabled: false,
+    customClaims: { username: 'IPAN', nik: '001', role: 'HRD', branch: 'Cirebon', division: 'HR', active: true }
+  });
+  assert.equal(profile.email, '');
+  assert.equal(profile.auth_email, 'user_hash@auth.andelajaya.internal');
+  assert.equal(profile.role, 'HRD');
 });
 
 test('rejects unexpected request fields', () => {

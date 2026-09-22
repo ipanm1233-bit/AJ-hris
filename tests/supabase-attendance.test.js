@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { cleanBaseUrl, getSupabaseConfig, supabaseEnabled, encodeQuery } = require('../lib/supabase.js');
+const { cleanBaseUrl, getSupabaseConfig, supabaseEnabled, encodeQuery, supabaseRequest } = require('../lib/supabase.js');
 const { attendanceToSupabase, attendanceFromSupabase } = require('../lib/attendance-supabase.js');
 const { loadAttendance, writeAttendance, dedupeAttendanceRows } = require('../lib/attendance-access.js');
 
@@ -14,6 +14,19 @@ test('Supabase attendance provider only enables with complete server configurati
 
 test('Supabase query encoder keeps PostgREST filters encoded', () => {
   assert.equal(encodeQuery({ nik: 'eq.001', order: 'tanggal.desc' }), '?nik=eq.001&order=tanggal.desc');
+});
+
+test('new Supabase secret key is sent as apikey and never as a bearer JWT', async () => {
+  let request;
+  await supabaseRequest('attendance', {
+    env: { SUPABASE_URL: 'https://aj-hris.supabase.co', SUPABASE_SECRET_KEY: `sb_secret_${'x'.repeat(48)}` },
+    fetchImpl: async (url, options) => {
+      request = { url, options };
+      return { ok: true, status: 200, text: async () => '[]' };
+    }
+  });
+  assert.match(request.options.headers.apikey, /^sb_secret_/);
+  assert.equal(request.options.headers.authorization, undefined);
 });
 
 test('attendance mapping preserves operational fields and normalizes time', () => {
