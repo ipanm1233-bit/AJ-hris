@@ -9,9 +9,8 @@ export async function authFetch(url, options = {}) {
   await waitForAuthReady();
   const user = auth.currentUser;
   if (!user) throw new Error('Sesi login telah berakhir. Silakan login kembali.');
-  const token = await user.getIdToken();
   const headers = new Headers(options.headers || {});
-  headers.set('Authorization', `Bearer ${token}`);
+  headers.set('Authorization', `Bearer ${await user.getIdToken()}`);
   if (appCheck) {
     try {
       const appCheckResult = await getAppCheckToken(appCheck, false);
@@ -23,9 +22,22 @@ export async function authFetch(url, options = {}) {
   if (options.body && !headers.has('Content-Type') && typeof options.body === 'string') {
     headers.set('Content-Type', 'application/json');
   }
-  const response = await fetch(url, { ...options, headers });
-  if (response.status === 401) {
+  let response = await fetch(url, { ...options, headers });
+  if (response.status !== 401) return response;
+
+  // A deployment or a long-open tab may still hold a cached Firebase ID
+  // token. Refresh exactly once and repeat the same request. A genuinely
+  // revoked/invalid session remains rejected by the server on the retry.
+  const activeUser = auth.currentUser;
+  if (!activeUser || activeUser.uid !== user.uid) {
     throw new Error('Sesi login tidak valid atau telah berakhir. Silakan login kembali.');
+  }
+  const refreshedToken = await activeUser.getIdToken(true);
+  const retryHeaders = new Headers(headers);
+  retryHeaders.set('Authorization', `Bearer ${refreshedToken}`);
+  response = await fetch(url, { ...options, headers: retryHeaders });
+  if (response.status === 401) {
+    throw new Error('Sesi login tidak valid atau telah berakhir. Silakan keluar lalu login kembali.');
   }
   return response;
 }
