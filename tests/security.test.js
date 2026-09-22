@@ -12,6 +12,7 @@ const {
   authProfileFromClaims
 } = require('../lib/security.js');
 const { _test: authLoginTest } = require('../api/auth-login.js');
+const { _test: authSessionTest } = require('../api/auth-session.js');
 const { _test: izinAccessTest } = require('../lib/izin-access.js');
 
 function responseMock() {
@@ -45,6 +46,16 @@ test('Firebase-only login profile does not expose the internal authentication em
   });
   assert.equal(profile.email, '');
   assert.equal(profile.auth_email, 'user_hash@auth.andelajaya.internal');
+  assert.equal(profile.role, 'HRD');
+});
+
+test('session profile can be built entirely from verified Firebase claims', () => {
+  const profile = authSessionTest.sessionProfile({
+    uid: 'UID-1', username: 'IPAN', nik: '001', name: 'Ipan', role: 'HRD',
+    branch: 'Cirebon', division: 'HR', active: true, must_change_password: false
+  });
+  assert.equal(profile.nama, 'Ipan');
+  assert.equal(profile.cabang, 'Cirebon');
   assert.equal(profile.role, 'HRD');
 });
 
