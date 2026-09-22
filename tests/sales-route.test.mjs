@@ -13,6 +13,8 @@ test("daily route override does not mutate the shared salesman route", () => {
 
 test("weekly reconciliation uses odometer as the fuel claim basis", () => {
   assert.equal(calculateFuelClaim(25), 10000);
+  assert.equal(calculateFuelClaim(30), 12000);
+  assert.equal(calculateFuelClaim(47.6), 19040);
   assert.deepEqual(buildDailyRouteReconciliation({ gpsKm: 20.2, odometerKm: 25, storeCount: 8 }), {
     storeCount: 8,
     gpsKm: 20.2,
@@ -35,4 +37,7 @@ test("sales PDF contains daily visit, distance, claim and reconciliation details
   assert.match(source, /dailyReconciliationRowsHtml/);
   assert.match(source, /Laporan_Rute_Sales_.*"landscape"/);
   assert.match(source, /value="PDF_FULL" \$\{defaultFormat === "PDF" \? "checked"/);
+  assert.match(source, /value="JPG_PER_SALES"/);
+  assert.match(source, /exportSalesReconciliationJpg/);
+  assert.match(source, /Rp10\.000 per 25 KM/);
 });

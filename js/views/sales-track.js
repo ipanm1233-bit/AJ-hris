@@ -2834,6 +2834,172 @@ export async function mount(container, { session } = {}) {
     return null;
   }
 
+  async function exportSalesReconciliationJpg(records) {
+    const grouped = new Map();
+    records.forEach(item => {
+      const nama = cleanSalesName(item.sales_nama) || "Sales";
+      const nik = String(item.sales_nik || "-").trim();
+      const key = nik && nik !== "-" && nik !== "SLS-IMP" ? nik : nama;
+      if (!grouped.has(key)) grouped.set(key, { nama, nik, byDate: new Map(), records: [] });
+      const sales = grouped.get(key);
+      const tanggal = item.tanggal || todayStr;
+      if (!sales.byDate.has(tanggal)) sales.byDate.set(tanggal, []);
+      sales.byDate.get(tanggal).push(item);
+      sales.records.push(item);
+    });
+
+    if (!grouped.size) return toast("Tidak ada data sales untuk dibuatkan JPG.", "warning");
+    toast(`Menyiapkan ${grouped.size} JPG rekonsiliasi per sales...`, "info");
+
+    const rupiah = value => `Rp${Math.round(Number(value || 0)).toLocaleString("id-ID")}`;
+    const km = value => `${Number(value || 0).toFixed(1)} KM`;
+    const safeFilePart = value => String(value || "Sales").replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
+
+    for (const sales of grouped.values()) {
+      const dates = Array.from(sales.byDate.keys()).sort((a, b) => b.localeCompare(a));
+      const rows = dates.map(tanggal => {
+        const visits = sales.byDate.get(tanggal);
+        const metrics = calculateDailyRouteMetrics(visits, sales.nik, tanggal);
+        const effectiveGps = getEffectiveDailyGpsDistance(sales.nik, tanggal, metrics.totalKm);
+        const odometer = odometerLogsMap.get(`${sales.nik}_${tanggal}`) || {};
+        const hasStart = odometer.km_awal !== undefined && odometer.km_awal !== null && odometer.km_awal !== "";
+        const hasEnd = odometer.km_akhir !== undefined && odometer.km_akhir !== null && odometer.km_akhir !== "";
+        const kmStart = hasStart ? Number(odometer.km_awal) : null;
+        const kmEnd = hasEnd ? Number(odometer.km_akhir) : null;
+        const odometerDistance = odometer.jarak_odometer !== undefined && odometer.jarak_odometer !== null
+          ? Number(odometer.jarak_odometer)
+          : Math.max(0, Number(odometer.km_akhir || 0) - Number(odometer.km_awal || 0));
+        const storeCount = new Set(visits.map(item => cleanStoreName(item.toko_outlet || ""))).size;
+        return {
+          tanggal,
+          visits: visits.length,
+          stores: storeCount,
+          kmStart,
+          kmEnd,
+          hasOdometer: hasStart && hasEnd,
+          ...buildDailyRouteReconciliation({ gpsKm: effectiveGps.totalKm, odometerKm: odometerDistance, storeCount })
+        };
+      });
+
+      const totals = rows.reduce((acc, row) => {
+        acc.visits += row.visits;
+        acc.odometer += row.odometerKm;
+        acc.tracking += row.gpsKm;
+        acc.claim += row.claimAmount;
+        return acc;
+      }, { visits: 0, odometer: 0, tracking: 0, claim: 0 });
+      const totalStores = new Set(sales.records.map(item => cleanStoreName(item.toko_outlet || ""))).size;
+      const totalDifference = totals.odometer - totals.tracking;
+      const period = dates.length ? `${[...dates].sort()[0]} s.d. ${[...dates].sort().at(-1)}` : "-";
+
+      const width = 1800;
+      const margin = 70;
+      const rowHeight = 84;
+      const headerHeight = 405;
+      const tableHeaderHeight = 62;
+      const footerHeight = 160;
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = headerHeight + tableHeaderHeight + (rows.length * rowHeight) + footerHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.textBaseline = "middle";
+
+      const text = (value, x, y, { size = 24, weight = 400, color = "#1e293b", align = "left" } = {}) => {
+        ctx.font = `${weight} ${size}px Arial, sans-serif`;
+        ctx.fillStyle = color;
+        ctx.textAlign = align;
+        ctx.fillText(String(value), x, y);
+      };
+      const box = (x, y, w, h, fill = "#ffffff", stroke = "#cbd5e1") => {
+        ctx.fillStyle = fill;
+        ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, w, h);
+      };
+
+      text("CV ANDELA JAYA", margin, 58, { size: 28, weight: 800, color: "#7a1f2b" });
+      text("LAPORAN REKONSILIASI KUNJUNGAN SALES", margin, 105, { size: 37, weight: 900, color: "#0f172a" });
+      text(`Periode: ${period}`, margin, 148, { size: 21, color: "#64748b" });
+      text(`Dicetak: ${new Intl.DateTimeFormat("id-ID", { dateStyle: "full", timeZone: "Asia/Jakarta" }).format(new Date())}`, width - margin, 148, { size: 20, color: "#64748b", align: "right" });
+
+      box(margin, 180, width - (margin * 2), 92, "#f8fafc");
+      text(sales.nama, margin + 24, 215, { size: 30, weight: 900 });
+      text(`NIK: ${sales.nik}`, margin + 24, 250, { size: 19, color: "#64748b" });
+
+      const cards = [
+        ["VISIT / TOKO", `${totals.visits} Visit / ${totalStores} Toko`, "#0f172a"],
+        ["HARI AKTIF", `${rows.length} Hari`, "#0f172a"],
+        ["TOTAL ODOMETER", km(totals.odometer), "#0f172a"],
+        ["TOTAL TRACKING", km(totals.tracking), "#4338ca"],
+        ["SELISIH", `${totalDifference > 0 ? "+" : ""}${km(totalDifference)}`, Math.abs(totalDifference) > 5 ? "#b91c1c" : "#15803d"],
+        ["TOTAL KLAIM", rupiah(totals.claim), "#15803d"]
+      ];
+      const cardGap = 12;
+      const cardWidth = (width - (margin * 2) - (cardGap * (cards.length - 1))) / cards.length;
+      cards.forEach((card, index) => {
+        const x = margin + index * (cardWidth + cardGap);
+        box(x, 292, cardWidth, 88, "#ffffff");
+        text(card[0], x + cardWidth / 2, 318, { size: 15, weight: 800, color: "#64748b", align: "center" });
+        text(card[1], x + cardWidth / 2, 352, { size: 22, weight: 900, color: card[2], align: "center" });
+      });
+
+      const columns = [
+        ["TANGGAL", 160], ["VISIT/TOKO", 150], ["KM AWAL", 170], ["KM AKHIR", 170],
+        ["TOTAL ODO", 170], ["TRACKING", 170], ["SELISIH", 165], ["KLAIM", 190], ["STATUS", 315]
+      ];
+      let tableY = headerHeight;
+      let x = margin;
+      columns.forEach(([label, colWidth]) => {
+        box(x, tableY, colWidth, tableHeaderHeight, "#e2e8f0", "#94a3b8");
+        text(label, x + colWidth / 2, tableY + tableHeaderHeight / 2, { size: 17, weight: 900, align: "center" });
+        x += colWidth;
+      });
+
+      rows.forEach((row, rowIndex) => {
+        const y = tableY + tableHeaderHeight + rowIndex * rowHeight;
+        const differenceColor = Math.abs(row.differenceKm) > 5 ? "#b91c1c" : "#334155";
+        const status = !row.hasOdometer ? "Odometer belum lengkap" : Math.abs(row.differenceKm) > 5 ? "Perlu pemeriksaan" : "Sesuai toleransi";
+        const statusColor = !row.hasOdometer ? "#b45309" : Math.abs(row.differenceKm) > 5 ? "#b91c1c" : "#15803d";
+        const cells = [
+          [row.tanggal, "#1e293b"], [`${row.visits} visit / ${row.stores} toko`, "#334155"],
+          [row.kmStart === null ? "-" : km(row.kmStart), "#334155"], [row.kmEnd === null ? "-" : km(row.kmEnd), "#334155"],
+          [km(row.odometerKm), "#0f172a"], [km(row.gpsKm), "#4338ca"],
+          [`${row.differenceKm > 0 ? "+" : ""}${km(row.differenceKm)}`, differenceColor],
+          [rupiah(row.claimAmount), "#15803d"], [status, statusColor]
+        ];
+        x = margin;
+        cells.forEach(([value, color], cellIndex) => {
+          const colWidth = columns[cellIndex][1];
+          box(x, y, colWidth, rowHeight, rowIndex % 2 ? "#f8fafc" : "#ffffff", "#cbd5e1");
+          text(value, x + colWidth / 2, y + rowHeight / 2, { size: cellIndex === 8 ? 16 : 18, weight: cellIndex >= 4 ? 800 : 600, color, align: "center" });
+          x += colWidth;
+        });
+      });
+
+      const totalY = tableY + tableHeaderHeight + rows.length * rowHeight;
+      box(margin, totalY, width - (margin * 2), 68, "#f1f5f9", "#94a3b8");
+      text("TOTAL PERIODE", margin + 20, totalY + 34, { size: 20, weight: 900 });
+      text(`Odometer ${km(totals.odometer)}  |  Tracking ${km(totals.tracking)}  |  Selisih ${totalDifference > 0 ? "+" : ""}${km(totalDifference)}  |  Klaim ${rupiah(totals.claim)}`, width - margin - 20, totalY + 34, { size: 20, weight: 900, color: "#334155", align: "right" });
+      text("Rumus klaim: jarak odometer ÷ 25 KM × Rp10.000 (prorata Rp400/KM).", margin, totalY + 105, { size: 18, color: "#64748b" });
+
+      const blob = await new Promise((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error("Canvas JPG gagal dibuat.")), "image/jpeg", 0.94));
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Rekonsiliasi_Sales_${safeFilePart(sales.nama)}_${safeFilePart(sales.nik)}_${safeFilePart(period)}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+
+    toast(`${grouped.size} file JPG rekonsiliasi per sales berhasil dibuat.`, "success");
+  }
+
   // PDF Report Export Function (2 Versi: SUMMARY vs FULL)
   async function exportSalesVisitsPdf(recordsOverride = null, pdfVersion = "FULL") {
     if (allCheckinsList.length === 0) {
@@ -3462,6 +3628,14 @@ export async function mount(container, { session } = {}) {
                   <p class="text-[10.5px] text-slate-500">Laporan mingguan lengkap: detail kunjungan harian, total toko, Google Maps, odometer, selisih, klaim, koordinat, dan foto.</p>
                 </div>
               </label>
+
+              <label class="flex items-start gap-3 p-2.5 border rounded-xl cursor-pointer hover:bg-slate-50 border-slate-200 has-[:checked]:border-amber-600 has-[:checked]:bg-amber-50/50 transition">
+                <input type="radio" name="export-format" value="JPG_PER_SALES" class="accent-amber-600 mt-1" />
+                <div>
+                  <p class="font-bold text-slate-800">🖼️ JPG Rekonsiliasi Per Sales</p>
+                  <p class="text-[10.5px] text-slate-500">Satu gambar per sales berisi data harian KM awal/akhir, odometer, tracking, selisih, klaim Rp10.000 per 25 KM, status, dan total periode.</p>
+                </div>
+              </label>
             </div>
           </div>
         </div>
@@ -3584,6 +3758,8 @@ export async function mount(container, { session } = {}) {
         await exportSalesVisitsPdf(targetRecords, "SUMMARY");
       } else if (selectedFormat === "PDF_FULL") {
         await exportSalesVisitsPdf(targetRecords, "FULL");
+      } else if (selectedFormat === "JPG_PER_SALES") {
+        await exportSalesReconciliationJpg(targetRecords);
       } else {
         await exportSalesVisitsPdf(targetRecords, "FULL");
       }

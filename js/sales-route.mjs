@@ -26,9 +26,16 @@ export function applyDailyRouteOverride(departureConfig = {}, odometerRecord = {
   };
 }
 
-export function calculateFuelClaim(distanceKm, { price = 10000, ratio = 25 } = {}) {
+export const FUEL_CLAIM_PRICE = 10000;
+export const FUEL_CLAIM_DISTANCE_KM = 25;
+
+export function calculateFuelClaim(distanceKm, { price = FUEL_CLAIM_PRICE, ratio = FUEL_CLAIM_DISTANCE_KM } = {}) {
   const distance = Math.max(0, Number(distanceKm || 0));
-  return Math.round(distance * (Number(price) / Number(ratio)));
+  const validPrice = Math.max(0, Number(price) || 0);
+  const validRatio = Math.max(0, Number(ratio) || 0);
+  if (!validRatio) return 0;
+  // Ketentuan perusahaan: Rp10.000 per 25 KM, dihitung prorata (Rp400/KM).
+  return Math.round((distance / validRatio) * validPrice);
 }
 
 export function buildDailyRouteReconciliation({ gpsKm = 0, odometerKm = 0, storeCount = 0 } = {}) {
