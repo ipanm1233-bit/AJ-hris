@@ -29,6 +29,20 @@ test('new Supabase secret key is sent as apikey and never as a bearer JWT', asyn
   assert.equal(request.options.headers.authorization, undefined);
 });
 
+test('Supabase server configuration rejects publishable and legacy anon keys', () => {
+  const base = { SUPABASE_URL: 'https://aj-hris.supabase.co' };
+  assert.throws(
+    () => getSupabaseConfig({ ...base, SUPABASE_SERVICE_ROLE_KEY: `sb_publishable_${'x'.repeat(48)}` }),
+    /Secret key/
+  );
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ role: 'anon' })).toString('base64url');
+  assert.throws(
+    () => getSupabaseConfig({ ...base, SUPABASE_SERVICE_ROLE_KEY: `${header}.${payload}.${'x'.repeat(48)}` }),
+    /service_role key/
+  );
+});
+
 test('attendance mapping preserves operational fields and normalizes time', () => {
   const row = attendanceToSupabase({ id: 'A1', nik_karyawan: '001', nama: 'Budi', tanggal: '2026-09-18', scan_masuk: '08:01:10', scan_pulang: '17:03', cabang: 'cirebon' });
   assert.equal(row.nik, '001');
