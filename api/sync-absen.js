@@ -608,9 +608,15 @@ module.exports = async function handler(req, res) {
       `${String(row.nik || '').trim().toUpperCase()}|${String(row.tanggal || '').trim()}`,
       row
     ]));
-    const pendingByFingerprintDate = new Map(existingSupabaseRows
-      .filter(row => row.auto_assign === false || isProvisionalFingerprintNik(row.nik))
-      .map(row => [`${String(row.fingerprint_user_id || '').trim().toUpperCase()}|${String(row.tanggal || '').trim()}`, row]));
+    const rowsByFingerprintDate = new Map();
+    existingSupabaseRows.forEach(row => {
+      const fingerId = String(row.fingerprint_user_id || '').trim().toUpperCase();
+      const date = String(row.tanggal || '').trim();
+      if (!fingerId || !date) return;
+      const key = `${fingerId}|${date}`;
+      if (!rowsByFingerprintDate.has(key)) rowsByFingerprintDate.set(key, []);
+      rowsByFingerprintDate.get(key).push(row);
+    });
     for (let i = 0; i < groupList.length; i += chunkSize) {
       const chunk = groupList.slice(i, i + chunkSize);
       const chunkItems = chunk.map(group => {
@@ -638,9 +644,24 @@ module.exports = async function handler(req, res) {
         const rows = resolvedChunk.map(item => {
           const { group: g, employee, matchedEmployee, machineUser, nik, ref } = item;
           const key = `${String(nik).trim().toUpperCase()}|${g.tanggal}`;
-          const oldData = supabaseByEmployeeDate.get(key) || {};
+          const fingerDateKey = `${String(g.deviceUserId).trim().toUpperCase()}|${g.tanggal}`;
+          const fingerprintRows = rowsByFingerprintDate.get(fingerDateKey) || [];
+          const oldData = supabaseByEmployeeDate.get(key) || fingerprintRows[0] || {};
           const schedule = resolveWorkSchedule(employee, scheduleRows, g.tanggal);
-          const attendance = computeAttendance(g.events, oldData, minWorkGapMinutes, schedule);
+          // Gabungkan seluruh jam dari baris duplikat/parsial sebelum menghitung
+          // ulang. Ini membuat scan pulang yang baru terbaca melengkapi scan
+          // masuk hari sebelumnya, bukan membentuk baris baru.
+          const historyEvents = fingerprintRows.flatMap(row => {
+            const result = [];
+            const pushTime = (value, direction) => {
+              const match = String(value || '').slice(0, 5).match(/^(\d{2}):([0-5]\d)$/);
+              if (match) result.push({ jam: match[0], minutes: Number(match[1]) * 60 + Number(match[2]), direction });
+            };
+            pushTime(row.scan_masuk, 'IN');
+            pushTime(row.scan_keluar || row.scan_pulang, 'OUT');
+            return result;
+          });
+          const attendance = computeAttendance([...historyEvents, ...g.events], oldData, minWorkGapMinutes, schedule);
           const row = {
             ...oldData,
             id: ref.id,
@@ -671,11 +692,22 @@ module.exports = async function handler(req, res) {
           return row;
         });
         if (rows.length) await upsertAttendance(rows);
-        const resolvedPendingIds = resolvedChunk
-          .filter(item => item.matchedEmployee)
-          .map(item => pendingByFingerprintDate.get(`${String(item.group.deviceUserId).trim().toUpperCase()}|${item.group.tanggal}`)?.id)
-          .filter(Boolean);
-        if (resolvedPendingIds.length) await deleteAttendance(resolvedPendingIds);
+        const duplicateIds = resolvedChunk.flatMap(item => {
+          if (!item.matchedEmployee) return [];
+          const fingerDateKey = `${String(item.group.deviceUserId).trim().toUpperCase()}|${item.group.tanggal}`;
+          const canonicalNik = String(item.nik || '').trim().toUpperCase();
+          return (rowsByFingerprintDate.get(fingerDateKey) || [])
+            // NIK yang sama ditangani ON CONFLICT Supabase; yang dihapus hanya
+            // baris sementara/identitas lama agar hasil upsert tidak ikut terhapus.
+            .filter(row => String(row.nik || '').trim().toUpperCase() !== canonicalNik)
+            .map(row => row.id)
+            .filter(Boolean);
+        });
+        const uniqueDuplicateIds = [...new Set(duplicateIds)];
+        if (uniqueDuplicateIds.length) {
+          await deleteAttendance(uniqueDuplicateIds);
+          duplicatesRemoved += uniqueDuplicateIds.length;
+        }
         count += rows.length;
         continue;
       }

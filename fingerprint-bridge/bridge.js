@@ -219,6 +219,20 @@ function dateFromLog(log) {
   return match?.[1] || '';
 }
 
+function dedupeDeviceLogs(logs = []) {
+  const seen = new Set();
+  return logs.filter(log => {
+    const key = [
+      String(log?.deviceUserId || '').trim(),
+      String(log?.recordTime || '').trim(),
+      String(log?.punchState ?? '').trim()
+    ].join('|');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function resolveSyncStartDate(latestDate, today, overlapDays = 1) {
   if (!validDate(latestDate)) return '';
   const safeOverlapDays = Math.max(1, Math.floor(Number(overlapDays) || 1));
@@ -254,7 +268,9 @@ async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {
     const state = await getSyncState(branch);
     const latestDate = validDate(state.latestDate) ? state.latestDate : '';
     if (latestDate) {
-      const overlapDays = positiveNumber('FINGERPRINT_RESYNC_DAYS', 1);
+      // Tiga hari memberi kesempatan scan pulang yang terlambat terbaca atau
+      // sempat gagal terkirim untuk melengkapi baris hari sebelumnya.
+      const overlapDays = positiveNumber('FINGERPRINT_RESYNC_DAYS', 3);
       startDate = resolveSyncStartDate(latestDate, today, overlapDays);
     }
   }
@@ -287,6 +303,12 @@ async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {
       error: `Tidak ada log mesin pada periode ${startDate} s.d. ${endDate}.`
     });
     return;
+  }
+
+  const rawPeriodCount = recentLogs.length;
+  recentLogs = dedupeDeviceLogs(recentLogs);
+  if (recentLogs.length !== rawPeriodCount) {
+    console.log(`Duplikasi scan mentah di mesin dibersihkan: ${rawPeriodCount - recentLogs.length} scan.`);
   }
 
   let processed = 0;
@@ -354,4 +376,7 @@ if (require.main === module) {
   });
 }
 
-module.exports = { normalizeDeviceLog, normalizeDeviceUser, attendanceRows, userRows, localDateTime, signedHeaders, addDays, dateFromLog, resolveSyncStartDate, refreshCentralConfig };
+module.exports = {
+  normalizeDeviceLog, normalizeDeviceUser, attendanceRows, userRows, localDateTime, signedHeaders,
+  addDays, dateFromLog, dedupeDeviceLogs, resolveSyncStartDate, refreshCentralConfig
+};

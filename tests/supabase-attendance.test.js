@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { cleanBaseUrl, getSupabaseConfig, supabaseEnabled, encodeQuery, supabaseRequest } = require('../lib/supabase.js');
 const { attendanceToSupabase, attendanceFromSupabase } = require('../lib/attendance-supabase.js');
-const { loadAttendance, writeAttendance, dedupeAttendanceRows } = require('../lib/attendance-access.js');
+const { loadAttendance, writeAttendance, dedupeAttendanceRows, buildAttendanceDedupePlan } = require('../lib/attendance-access.js');
 
 test('Supabase attendance provider only enables with complete server configuration', () => {
   const env = { ATTENDANCE_DB_PROVIDER: 'supabase', SUPABASE_URL: 'https://aj-hris.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'x'.repeat(60) };
@@ -116,6 +116,24 @@ test('dedupe keeps separate dates but one row for the same NIK and date', () => 
   assert.equal(rows.length, 2);
   assert.equal(rows.find(row => row.tanggal === '2026-09-22').scan_masuk, '08:00');
   assert.equal(rows.find(row => row.tanggal === '2026-09-22').scan_keluar, '17:00');
+});
+
+test('dedupe plan merges provisional and mapped fingerprint rows into a complete workday', () => {
+  const plan = buildAttendanceDedupePlan([
+    {
+      id: 'ABS-FP-FINGER-CIREBON-110-2026-09-21', nik: 'FINGER-CIREBON-110', tanggal: '2026-09-21',
+      cabang: 'CIREBON', fingerprint_user_id: '110', scan_masuk: '07:45', auto_assign: false
+    },
+    {
+      id: 'ABS-FP-1112307980-2026-09-21', nik: '1112307980', tanggal: '2026-09-21',
+      cabang: 'CIREBON', fingerprint_user_id: '110', scan_keluar: '16:03', auto_assign: true, sumber: 'FINGERPRINT'
+    }
+  ]);
+  assert.equal(plan.groups, 1);
+  assert.deepEqual(plan.deleteIds, ['ABS-FP-FINGER-CIREBON-110-2026-09-21']);
+  assert.equal(plan.updates[0].nik, '1112307980');
+  assert.equal(plan.updates[0].scan_masuk, '07:45');
+  assert.equal(plan.updates[0].scan_keluar, '16:03');
 });
 
 test('attendance correction falls back to Firestore when Supabase write is denied', async () => {

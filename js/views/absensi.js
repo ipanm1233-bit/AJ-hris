@@ -98,6 +98,7 @@ export async function mount(container, { session } = {}) {
  const filterCompleteness = container.querySelector("#filter-absen-kelengkapan");
  const btnResetFilterAbsen = container.querySelector("#btn-reset-filter-absen");
  const btnExportRawAbsen = container.querySelector("#btn-export-raw-absen");
+ const btnDedupeAbsen = container.querySelector("#btn-dedupe-absen");
  const thSortNama = container.querySelector("#th-sort-nama");
  const iconSortNama = container.querySelector("#th-sort-nama-icon");
 
@@ -148,6 +149,33 @@ export async function mount(container, { session } = {}) {
  completeness: "",
  sortNama: null
  };
+
+ if (btnDedupeAbsen && roleIsHrdOrAdmin) {
+  btnDedupeAbsen.classList.remove("hidden");
+  btnDedupeAbsen.onclick = async () => {
+   const scope = [filterState.start || "semua tanggal", filterState.end || "sekarang"];
+   if (!confirm(`Periksa dan gabungkan data absensi duplikat untuk periode ${scope[0]} s.d. ${scope[1]}? Jam paling awal menjadi scan masuk dan jam paling akhir menjadi scan pulang.`)) return;
+   btnDedupeAbsen.disabled = true;
+   const originalText = btnDedupeAbsen.textContent;
+   btnDedupeAbsen.textContent = "Memeriksa...";
+   try {
+    const result = await attendanceAccessApi("attendance_dedupe", {
+     fromDate: filterState.start,
+     toDate: filterState.end,
+     branch: filterState.branch
+    });
+    toast(result.removed
+     ? `${result.removed} baris duplikat dari ${result.groups} kelompok berhasil digabungkan.`
+     : "Tidak ditemukan data absensi duplikat pada filter tersebut.", "success");
+    await loadRawAbsensiTable(true);
+   } catch (error) {
+    toast("Pembersihan duplikasi gagal: " + error.message, "error");
+   } finally {
+    btnDedupeAbsen.disabled = false;
+    btnDedupeAbsen.textContent = originalText;
+   }
+  };
+ }
 
  function dashboardMonthRange(month) {
   const match = String(month || "").match(/^(\d{4})-(\d{2})$/);

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const { normalizeDeviceLog, normalizeDeviceUser, attendanceRows, userRows, localDateTime, signedHeaders, addDays, dateFromLog, resolveSyncStartDate } = require('./bridge.js');
+const { normalizeDeviceLog, normalizeDeviceUser, attendanceRows, userRows, localDateTime, signedHeaders, addDays, dateFromLog, dedupeDeviceLogs, resolveSyncStartDate } = require('./bridge.js');
 
 test('normalizes node-zklib attendance records for the HRIS endpoint', () => {
   const result = normalizeDeviceLog({
@@ -44,6 +44,16 @@ test('rechecks the previous day so late checkout scans update existing attendanc
   assert.equal(resolveSyncStartDate('2026-09-09', '2026-09-09', 2), '2026-09-07');
   assert.equal(resolveSyncStartDate('2026-08-06', '2026-09-09'), '2026-08-06');
   assert.equal(resolveSyncStartDate('', '2026-09-09'), '');
+});
+
+test('raw machine duplicates are removed without dropping a real checkout', () => {
+  const rows = dedupeDeviceLogs([
+    { deviceUserId: '110', recordTime: '2026-09-21 07:45:00', punchState: 0 },
+    { deviceUserId: '110', recordTime: '2026-09-21 07:45:00', punchState: 0 },
+    { deviceUserId: '110', recordTime: '2026-09-21 16:03:00', punchState: 0 }
+  ]);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[1].recordTime, '2026-09-21 16:03:00');
 });
 
 test('signs the exact request body using the configured bridge secret', () => {
