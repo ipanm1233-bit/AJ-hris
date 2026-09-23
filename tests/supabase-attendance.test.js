@@ -118,6 +118,43 @@ test('dedupe keeps separate dates but one row for the same NIK and date', () => 
   assert.equal(rows.find(row => row.tanggal === '2026-09-22').scan_keluar, '17:00');
 });
 
+test('attendance read keeps the mapped ARIP scan and does not backfill a provisional copy', async () => {
+  const keys = ['ATTENDANCE_DB_PROVIDER', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'ATTENDANCE_FIRESTORE_FALLBACK'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  Object.assign(process.env, {
+    ATTENDANCE_DB_PROVIDER: 'supabase', SUPABASE_URL: 'https://aj-hris.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'x'.repeat(60), ATTENDANCE_FIRESTORE_FALLBACK: 'true'
+  });
+  const pending = { id: 'ABS-FP-FINGER-CIREBON-66-2026-09-23', nik: 'FINGER-CIREBON-66',
+    nama: 'ARIP (BELUM DIPETAKAN)', tanggal: '2026-09-23', cabang: 'CIREBON',
+    fingerprint_user_id: '66', sumber: 'FINGERPRINT', klasifikasi_scan: 'IDENTITY_PENDING', scan_masuk: '07:30' };
+  const mapped = { id: 'ABS-FP-1022009980-2026-09-23', nik: '1022009980',
+    nama: 'ARIP RIYANTO', tanggal: '2026-09-23', cabang: 'CIREBON',
+    fingerprint_user_id: '66', sumber: 'FINGERPRINT', auto_assign: true, scan_masuk: '07:30' };
+  const migrated = [];
+  try {
+    const rows = await loadAttendance({ db: {} }, { fromDate: '2026-09-23' }, {
+      listAttendance: async () => [pending, mapped],
+      firestoreAttendance: async () => [pending],
+      upsertAttendance: async values => { migrated.push(...values); return []; }
+    });
+    assert.deepEqual(rows.map(row => row.nama), ['ARIP RIYANTO']);
+    assert.equal(migrated.length, 0);
+  } finally {
+    keys.forEach(key => previous[key] === undefined ? delete process.env[key] : process.env[key] = previous[key]);
+  }
+});
+
+test('keeps both rows when machine name and historical owner disagree', () => {
+  const rows = dedupeAttendanceRows([
+    { id: 'PENDING-95', nik: 'FINGER-CIREBON-95', nama: 'MALATRI (BELUM DIPETAKAN)',
+      fingerprint_name: 'MALATRI', fingerprint_user_id: '95', tanggal: '2026-09-22', cabang: 'CIREBON', sumber: 'FINGERPRINT' },
+    { id: 'IRINE-95', nik: '1082204940', nama: 'IRINE APRILIA DEWI',
+      fingerprint_name: 'IRINE', fingerprint_user_id: '95', tanggal: '2026-09-22', cabang: 'CIREBON', sumber: 'FINGERPRINT' }
+  ]);
+  assert.equal(rows.length, 2);
+});
+
 test('dedupe plan merges provisional and mapped fingerprint rows into a complete workday', () => {
   const plan = buildAttendanceDedupePlan([
     {

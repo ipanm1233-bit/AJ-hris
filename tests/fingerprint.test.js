@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { machineNameAgrees, addUniqueIdentifier } = require('../lib/fingerprint-identity');
+const { machineNameAgrees, addUniqueIdentifier, historicalFingerprintOwnerConflict } = require('../lib/fingerprint-identity');
 const {
   getDeviceUserId,
   parseFingerprintTimestamp,
@@ -28,6 +28,16 @@ test('validates bounded manual fingerprint resync ranges', () => {
   assert.equal(fingerprintApiHelpers.validIsoDate('2026-09-17'), true);
   assert.equal(fingerprintApiHelpers.validIsoDate('2026-02-30'), false);
   assert.equal(fingerprintApiHelpers.dateDistanceDays('2026-09-17', '2026-09-18'), 1);
+});
+
+test('blocks finger 95 when stale machine name MALATRI disagrees with IRINE history', () => {
+  const history = [
+    { nik: '1082204940', nama: 'IRINE APRILIA DEWI', fingerprint_name: 'IRINE', fingerprint_user_id: '95' },
+    { nik: 'FINGER-CIREBON-95', nama: 'MALATRI (BELUM DIPETAKAN)', fingerprint_name: 'MALATRI', fingerprint_user_id: '95' }
+  ];
+  assert.equal(historicalFingerprintOwnerConflict(history, '95', 'MALATRI'), true);
+  assert.equal(historicalFingerprintOwnerConflict(history.slice(1), '95', 'MALATRI'), false);
+  assert.equal(historicalFingerprintOwnerConflict(history, '66', 'ARIP'), false);
 });
 
 test('creates stable provisional identities without treating them as employee master', () => {

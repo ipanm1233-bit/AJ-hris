@@ -47,7 +47,7 @@ export function buildMissingAttendanceToday({
     .map(employee => {
       const shift = resolveWorkSchedule(employee, schedules, date);
       const scheduledStart = timeMinutes(shift.masuk);
-      if (scheduledStart === null || (nowMinutes !== null && scheduledStart > nowMinutes)) return null;
+      if (scheduledStart === null) return null;
 
       const rows = employeeRows(employee, attendanceRows, date);
       const hasAnyScan = rows.some(row => Boolean(row?.scan_masuk || row?.scan_keluar || row?.scan_pulang));
@@ -62,7 +62,8 @@ export function buildMissingAttendanceToday({
         division: employee?.divisi || employee?.departemen || "-",
         position: employee?.jabatan || employee?.posisi || "-",
         scheduled_start: shift.masuk || "-",
-        status: reviewRow?.attendance_status || "Belum ada scan masuk",
+        status: reviewRow?.attendance_status || (nowMinutes !== null && scheduledStart > nowMinutes
+          ? "Belum scan — jam kerja belum mulai" : "Belum ada scan masuk"),
         needs_review: Boolean(reviewRow)
       };
     })

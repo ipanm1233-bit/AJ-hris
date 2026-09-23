@@ -23,16 +23,17 @@ test("lists active scheduled employees without a scan and filters by branch", ()
     { nik: "3", nama: "CICI", tanggal: "2026-09-18", scan_masuk: "", scan_keluar: "" }
   ];
   const result = buildMissingAttendanceToday({ employees, attendanceRows: rows, schedules, date: "2026-09-18", currentTime: "09:00", branch: "CIREBON" });
-  assert.deepEqual(result.map(row => row.name), ["ANI"]);
+  assert.deepEqual(result.map(row => row.name), ["ANI", "ERNA"]);
 });
 
-test("excludes approved full-day absence, future shifts, and inactive employees", () => {
+test("shows scheduled employees before their shift without marking them late", () => {
   const rows = [
     { nik: "1", nama: "ANI", tanggal: "2026-09-18", ketidakhadiran: "CUTI TAHUNAN", status_kind: "absence" }
   ];
   const result = buildMissingAttendanceToday({ employees, attendanceRows: rows, schedules, date: "2026-09-18", currentTime: "09:00", branch: "CIREBON" });
-  assert.deepEqual(result.map(row => row.name), ["BUDI"]);
-  assert.ok(!result.some(row => ["ANI", "DODI", "ERNA"].includes(row.name)));
+  assert.deepEqual(result.map(row => row.name), ["BUDI", "ERNA"]);
+  assert.equal(result[1].status, "Belum scan — jam kerja belum mulai");
+  assert.ok(!result.some(row => ["ANI", "DODI"].includes(row.name)));
 });
 
 test("keeps approved partial-day cases with no scan visible for HRD review", () => {
@@ -40,7 +41,7 @@ test("keeps approved partial-day cases with no scan visible for HRD review", () 
     { nik: "1", nama: "ANI", tanggal: "2026-09-18", ketidakhadiran: "IZIN DATANG TERLAMBAT", status_kind: "review", perlu_koreksi: true, attendance_status: "IZIN TERLAMBAT — TIDAK ADA SCAN" }
   ];
   const result = buildMissingAttendanceToday({ employees, attendanceRows: rows, schedules, date: "2026-09-18", currentTime: "09:00", branch: "CIREBON", division: "SALES" });
-  assert.equal(result.length, 1);
+  assert.equal(result.length, 2);
   assert.equal(result[0].needs_review, true);
   assert.match(result[0].status, /TIDAK ADA SCAN/);
 });

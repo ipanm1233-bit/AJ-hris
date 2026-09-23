@@ -520,7 +520,7 @@ module.exports = async function handler(req, res) {
     const numericEmployeeMap = new Map();
     const employeeNameMap = new Map();
     const employees = [];
-    const { machineNameAgrees, addUniqueIdentifier } = require('../lib/fingerprint-identity');
+    const { machineNameAgrees, addUniqueIdentifier, historicalFingerprintOwnerConflict } = require('../lib/fingerprint-identity');
     const fingerprintFields = [
       'nik', 'nik_karyawan', 'finger_id', 'kode_finger', 'no_finger', 'id_finger', 'pin',
       'fingerprint_user_id', 'fingerprint_emp_no', 'fingerprint_no_id'
@@ -588,6 +588,8 @@ module.exports = async function handler(req, res) {
         if (name) deviceUserNameMap.set(alias, name);
       });
     });
+    const conflictingFingerIds = new Set(groupList.map(group => String(group.deviceUserId).trim().toUpperCase())
+      .filter(id => historicalFingerprintOwnerConflict(identityHistoryRows, id, deviceUserNameMap.get(id))));
     const resolveEmployeeByMachineName = machineName => {
       const exact = employeeNameMap.get(machineName);
       if (exact) return exact;
@@ -604,6 +606,9 @@ module.exports = async function handler(req, res) {
     };
     const resolveEmployee = deviceUserId => {
       const exactKey = String(deviceUserId).trim().toUpperCase();
+      // Nama mesin adalah kondisi saat ini, bukan bukti pemilik seluruh log
+      // historis. ID yang pernah tercatat atas nama lain harus direkonsiliasi.
+      if (conflictingFingerIds.has(exactKey)) return null;
       const machineName = deviceUserNameMap.get(exactKey);
       if (employeeMap.has(exactKey)) {
         const matched = employeeMap.get(exactKey);
@@ -679,12 +684,17 @@ module.exports = async function handler(req, res) {
           const key = `${String(nik).trim().toUpperCase()}|${g.tanggal}`;
           const fingerDateKey = `${String(g.deviceUserId).trim().toUpperCase()}|${g.tanggal}`;
           const fingerprintRows = rowsByFingerprintDate.get(fingerDateKey) || [];
-          const oldData = supabaseByEmployeeDate.get(key) || fingerprintRows[0] || {};
+          const relatedFingerprintRows = fingerprintRows.filter(row => {
+            if (String(row.nik || '').trim().toUpperCase() === String(nik).trim().toUpperCase()) return true;
+            return matchedEmployee && isProvisionalFingerprintNik(row.nik) &&
+              machineNameAgrees(matchedEmployee, row.fingerprint_name || row.nama);
+          });
+          const oldData = supabaseByEmployeeDate.get(key) || relatedFingerprintRows[0] || {};
           const schedule = resolveWorkSchedule(employee, scheduleRows, g.tanggal);
           // Gabungkan seluruh jam dari baris duplikat/parsial sebelum menghitung
           // ulang. Ini membuat scan pulang yang baru terbaca melengkapi scan
           // masuk hari sebelumnya, bukan membentuk baris baru.
-          const historyEvents = fingerprintRows.flatMap(row => {
+          const historyEvents = relatedFingerprintRows.flatMap(row => {
             const result = [];
             const pushTime = (value, direction) => {
               const match = String(value || '').slice(0, 5).match(/^(\d{2}):([0-5]\d)$/);
@@ -861,12 +871,21 @@ module.exports = async function handler(req, res) {
       invalidLogs,
       duplicatesRemoved,
       unmatchedFingerprintIds: unmatchedIds,
-      unmatchedFingerprintUsers
+      unmatchedFingerprintUsers,
+      identityConflictIds: [...conflictingFingerIds]
     });
 
   } catch (error) {
     console.error("CRASH SYNC ABSEN:", error);
-    res.status(500).json({ success: false, error: "Gagal memproses sinkronisasi fingerprint." });
+    const quotaExceeded = isFirestoreQuotaError(error);
+    const adminAction = String(req.body?.action || '').startsWith('admin_');
+    res.status(quotaExceeded ? 503 : 500).json({
+      success: false,
+      error: quotaExceeded
+        ? 'Kuota baca Firestore sedang habis. Konfigurasi mesin belum dapat dimuat; sinkronisasi bridge dapat tetap berjalan melalui Supabase.'
+        : adminAction ? 'Konfigurasi mesin gagal dimuat. Periksa log fungsi sync-absen di Vercel.'
+          : 'Gagal memproses sinkronisasi fingerprint.'
+    });
   }
 };
 

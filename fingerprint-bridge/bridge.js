@@ -315,6 +315,7 @@ async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {
   let duplicatesRemoved = 0;
   const unmatched = new Set();
   const unmatchedNames = new Map();
+  const identityConflicts = new Set();
   for (let index = 0; index < recentLogs.length; index += 1000) {
     const response = await sendChunk(recentLogs.slice(index, index + 1000), result.users, branch);
     processed += Number(response.processedRecords || 0);
@@ -323,6 +324,7 @@ async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {
     for (const user of response.unmatchedFingerprintUsers || []) {
       if (user?.id) unmatchedNames.set(String(user.id), String(user.fingerName || '').trim());
     }
+    for (const id of response.identityConflictIds || []) identityConflicts.add(String(id));
   }
   console.log(`Sinkronisasi selesai: ${recentLogs.length} scan dikirim, ${processed} hari-karyawan diproses.`);
   if (requestId) await sendPayload({ action: 'sync_complete', requestId });
@@ -331,6 +333,7 @@ async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {
     const labels = [...unmatched].map(id => unmatchedNames.get(id) ? `${id} (${unmatchedNames.get(id)})` : id);
     console.warn(`Finger Name mesin belum terpetakan: ${labels.join(', ')}`);
   }
+  if (identityConflicts.size) console.warn(`Nama pengguna mesin tidak cocok dengan riwayat ID finger: ${[...identityConflicts].join(', ')}. Periksa nama pada mesin dan master karyawan sebelum sinkronisasi ulang.`);
 }
 
 async function main() {
