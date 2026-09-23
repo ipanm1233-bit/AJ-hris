@@ -2,9 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { salesTrackingSupabaseEnabled } = require('../lib/supabase.js');
 const {
-  visitToSupabase, visitFromSupabase, odometerToSupabase, odometerFromSupabase
+  visitToSupabase, visitFromSupabase, getSalesVisitsByIds, odometerToSupabase, odometerFromSupabase
 } = require('../lib/sales-tracking-supabase.js');
-const { loadProviderRows, writeProviderRows, mergeRows, applyScope } = require('../lib/sales-tracking-access.js');
+const { loadProviderRows, loadVisitsForPatch, writeProviderRows, mergeRows, applyScope } = require('../lib/sales-tracking-access.js');
 
 const configuredEnv = {
   SALES_TRACKING_DB_PROVIDER: 'supabase',
@@ -100,3 +100,36 @@ test('employee scope permits only the authenticated NIK', async () => {
   );
   assert.deepEqual(rows.map(row => row.id), ['V1']);
 });
+
+test('patch lookup fetches only requested IDs and avoids Firestore when Supabase has them', async () => withSalesEnv(async () => {
+  const requested = [];
+  const result = await loadVisitsForPatch({ db: {} }, ['V1', 'V2'], {
+    getPrimary: async ids => { requested.push(...ids); return ids.map(id => ({ id, sales_nik: 'S01' })); },
+    getLegacy: async () => { throw new Error('Firestore should not be read'); }
+  });
+  assert.deepEqual(requested, ['V1', 'V2']);
+  assert.equal(result.size, 2);
+}));
+
+test('patch lookup reads only missing visit documents from legacy storage', async () => withSalesEnv(async () => {
+  const requested = [];
+  const result = await loadVisitsForPatch({ db: {} }, ['V1', 'V2'], {
+    getPrimary: async () => [{ id: 'V1', sales_nik: 'S01' }],
+    getLegacy: async ids => { requested.push(...ids); return [{ id: 'V2', sales_nik: 'S02' }]; }
+  });
+  assert.deepEqual(requested, ['V2']);
+  assert.equal(result.get('V2').sales_nik, 'S02');
+}));
+
+test('Supabase patch lookup filters by visit IDs instead of reading the whole table', async () => withSalesEnv(async () => {
+  let requestedUrl;
+  await getSalesVisitsByIds(['V1', 'V2'], {
+    fetchImpl: async url => {
+      requestedUrl = new URL(url);
+      return { ok: true, text: async () => '[]' };
+    }
+  });
+  assert.equal(requestedUrl.pathname, '/rest/v1/sales_visits');
+  assert.equal(requestedUrl.searchParams.get('id'), 'in.("V1","V2")');
+  assert.equal(requestedUrl.searchParams.get('select'), '*');
+}));

@@ -92,6 +92,7 @@ export async function mount(container, { session } = {}) {
   let allCheckinsList = [];
   let karyawanList = [];
   let odometerLogsMap = new Map();
+  let masterOutletsList = [];
 
   async function salesTrackingApi(action, payload = {}) {
     const response = await authFetch('/api/sync-absen', {
@@ -600,8 +601,10 @@ export async function mount(container, { session } = {}) {
 
       // Preload Master Outlets to prioritize coordinates registered in Master Outlet database
       const masterOutlets = await fsGetAll("sales_outlets").catch(() => []);
+      masterOutletsList = masterOutlets;
 
       // Auto-correct invalid or non-operational GPS coordinates, prioritizing Master Outlet coordinates
+      const gpsCorrections = [];
       for (let i = 0; i < allCheckinsList.length; i++) {
         const item = allCheckinsList[i];
         const parsed = parseGpsCoordinates(item.koordinat_gps);
@@ -615,7 +618,7 @@ export async function mount(container, { session } = {}) {
               item.koordinat_gps = matchOutlet.koordinat_gps;
               item.lat = matchParsed.lat;
               item.lng = matchParsed.lng;
-              patchSalesVisits([{ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng }]).catch(() => {});
+              if (!isStandardKaryawan && item.id) gpsCorrections.push({ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng });
               continue;
             }
           }
@@ -627,16 +630,23 @@ export async function mount(container, { session } = {}) {
             const mp = parseGpsCoordinates(matchOutlet.koordinat_gps);
             item.lat = mp?.lat;
             item.lng = mp?.lng;
-            patchSalesVisits([{ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng }]).catch(() => {});
+            if (!isStandardKaryawan && item.id) gpsCorrections.push({ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng });
           } else {
             const queryAddr = [item.alamat_toko, item.toko_outlet].filter(Boolean).join(", ");
             const geoRes = await geocodeAddressSmart(queryAddr || "Klampok Wanasari Brebes Tegal", i);
             item.koordinat_gps = `${geoRes.lat}, ${geoRes.lng}`;
             item.lat = geoRes.lat;
             item.lng = geoRes.lng;
-            patchSalesVisits([{ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng }]).catch(() => {});
+            if (!isStandardKaryawan && item.id) gpsCorrections.push({ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng });
           }
         }
+      }
+      if (gpsCorrections.length) {
+        (async () => {
+          for (let index = 0; index < gpsCorrections.length; index += 500) {
+            await patchSalesVisits(gpsCorrections.slice(index, index + 500));
+          }
+        })().catch(error => console.warn('Gagal menyimpan koreksi GPS otomatis:', error));
       }
 
       // Load Sales Odometer logs
@@ -1604,49 +1614,32 @@ export async function mount(container, { session } = {}) {
     const foundInAll = allCheckinsList.find(c => (c._docId || c.id) === visitId);
 
     try {
-      await patchSalesVisits([{
-        id: visitId,
-        tanggal: foundInAll?.tanggal || todayStr,
-        koordinat_gps: validGpsStr,
-        lat: coords.lat,
-        lng: coords.lng,
-        manual_gps_edited: true,
-        updated_at: new Date().toISOString()
-      }]);
-
-      if (foundInAll) {
-        foundInAll.koordinat_gps = validGpsStr;
-        foundInAll.lat = coords.lat;
-        foundInAll.lng = coords.lng;
-        foundInAll.manual_gps_edited = true;
-      }
-
-      // Propagate to all visits of the same store in current list & database
       const cleanTarget = cleanStoreName(storeName);
-      if (cleanTarget) {
-        for (const chk of allCheckinsList) {
-          const chkClean = cleanStoreName(chk.toko_outlet);
-          if (chkClean === cleanTarget && (chk._docId || chk.id) !== visitId) {
-            chk.koordinat_gps = validGpsStr;
-            chk.lat = coords.lat;
-            chk.lng = coords.lng;
-            chk.manual_gps_edited = true;
-            patchSalesVisits([{
-              id: chk._docId || chk.id,
-              tanggal: chk.tanggal,
-              koordinat_gps: validGpsStr,
-              lat: coords.lat,
-              lng: coords.lng,
-              manual_gps_edited: true,
-              updated_at: new Date().toISOString()
-            }]).catch(() => {});
-          }
-        }
+      const matchingVisits = allCheckinsList.filter(chk =>
+        (chk._docId || chk.id) === visitId ||
+        (cleanTarget && cleanStoreName(chk.toko_outlet) === cleanTarget)
+      );
+      const updatedAt = new Date().toISOString();
+      const changes = (matchingVisits.length ? matchingVisits : [{ id: visitId, tanggal: foundInAll?.tanggal || todayStr }])
+        .map(chk => ({
+          id: chk._docId || chk.id, tanggal: chk.tanggal,
+          koordinat_gps: validGpsStr, lat: coords.lat, lng: coords.lng,
+          manual_gps_edited: true, updated_at: updatedAt
+        }));
+      // One request for the store instead of a separate request per visit.
+      for (let index = 0; index < changes.length; index += 500) {
+        await patchSalesVisits(changes.slice(index, index + 500));
       }
+      matchingVisits.forEach(chk => {
+        chk.koordinat_gps = validGpsStr;
+        chk.lat = coords.lat;
+        chk.lng = coords.lng;
+        chk.manual_gps_edited = true;
+      });
 
       // CRITICAL: Synchronize / update Master Outlet database (sales_outlets)
       try {
-        const allOutlets = await fsGetAll("sales_outlets").catch(() => []);
+        const allOutlets = masterOutletsList;
         const matchingOutlet = findMatchingMasterOutlet(storeName, allOutlets);
 
         if (matchingOutlet) {
@@ -1656,6 +1649,9 @@ export async function mount(container, { session } = {}) {
             lng: coords.lng,
             updated_at: new Date().toISOString()
           });
+          matchingOutlet.koordinat_gps = validGpsStr;
+          matchingOutlet.lat = coords.lat;
+          matchingOutlet.lng = coords.lng;
         } else {
           // If not in Master Outlet database, auto-register it so future imports will use this coordinate
           const nextIdx = allOutlets.length + 1;
@@ -1677,6 +1673,7 @@ export async function mount(container, { session } = {}) {
             updated_at: new Date().toISOString()
           };
           await fsAdd("sales_outlets", newOutlet, newOutlet.id);
+          masterOutletsList.push(newOutlet);
         }
       } catch (outletSyncErr) {
         console.warn("Gagal update master outlet database:", outletSyncErr);
