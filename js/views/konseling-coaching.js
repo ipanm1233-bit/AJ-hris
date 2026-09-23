@@ -8,6 +8,7 @@ import {
 } from "../utils.js";
 import { isoDocHeaderTable } from "../branding.js";
 import { getSession } from "../auth.js";
+import { COMPANY_POLICY, POLICY_ARTICLES, POLICY_BASIS, POLICY_DECISIONS, assessPolicyDecision } from "../hr-case-policy.mjs";
 import {
   CASE_CATEGORIES, CASE_SOURCES, ROOT_CAUSES, ACTION_TAKENS, CASE_STATUSES, PRIORITIES,
   ACTION_PLAN_STATUSES, IMPROVEMENT_STATUSES,
@@ -1163,6 +1164,43 @@ function showCaseFormModal(caseId = null, prefill = {}) {
         ` : ""}
       </div>
 
+      <!-- Rujukan kebijakan dan keputusan HR -->
+      <div class="bg-amber-50 p-4 rounded-xl border border-amber-200 space-y-3 text-xs">
+        <h3 class="font-black text-slate-800 uppercase tracking-wider">5. Dasar aturan & pertimbangan tindak lanjut</h3>
+        <p class="text-amber-900">Rujukan PP: ${escapeHtml(COMPANY_POLICY.title)} (${escapeHtml(COMPANY_POLICY.period)}). Dokumen arsip; verifikasi PP/SOP yang berlaku sebelum mengusulkan SP. Rujukan pasal tidak menentukan sanksi secara otomatis.</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <label class="font-semibold text-slate-700">Hubungan dengan pelanggaran
+            <select id="kc-policy-basis" class="w-full mt-1 border border-slate-200 rounded-lg p-2 bg-white">
+              ${POLICY_BASIS.map(v => `<option value="${v}" ${v === (existing?.policy_review?.basis || POLICY_BASIS[0]) ? 'selected' : ''}>${v}</option>`).join('')}
+            </select>
+          </label>
+          <label class="font-semibold text-slate-700">Pasal PP terkait (dokumen arsip)
+            <select id="kc-policy-article" class="w-full mt-1 border border-slate-200 rounded-lg p-2 bg-white">
+              <option value="">Pilih jika terkait PP</option>
+              ${POLICY_ARTICLES.map(a => `<option value="${a.id}" ${a.id === existing?.policy_review?.article_id ? 'selected' : ''}>${escapeHtml(a.label)} (PDF hlm. ${a.page})</option>`).join('')}
+            </select>
+          </label>
+          <label class="font-semibold text-slate-700">Nomor, versi, dan butir SOP
+            <input id="kc-policy-sop" type="text" value="${escapeHtml(existing?.policy_review?.sop_reference || '')}" placeholder="Contoh: SOP-GUD-03 rev. 2, butir 4.1" class="w-full mt-1 border border-slate-200 rounded-lg p-2 bg-white">
+          </label>
+          <label class="font-semibold text-slate-700">Bukti yang dapat diperiksa
+            <input id="kc-policy-evidence" type="text" value="${escapeHtml(existing?.policy_review?.evidence || '')}" placeholder="Contoh: log absensi 23/09, berita acara" class="w-full mt-1 border border-slate-200 rounded-lg p-2 bg-white">
+          </label>
+        </div>
+        <label class="block font-semibold text-slate-700">Pertimbangan HR dan riwayat pembinaan
+          <textarea id="kc-policy-rationale" rows="2" class="w-full mt-1 border border-slate-200 rounded-lg p-2 bg-white" placeholder="Jelaskan kronologi, dampak, upaya coaching sebelumnya, dan alasan tindak lanjut">${escapeHtml(existing?.policy_review?.rationale || '')}</textarea>
+        </label>
+        ${["HRD", "SUPERADMIN"].includes((currentSession?.role || "").toUpperCase()) ? `
+          <label class="block font-semibold text-slate-700">Rekomendasi HR
+            <select id="kc-policy-decision" class="w-full mt-1 border border-slate-200 rounded-lg p-2 bg-white">
+              ${POLICY_DECISIONS.map(v => `<option value="${v}" ${v === (existing?.policy_review?.decision || POLICY_DECISIONS[0]) ? 'selected' : ''}>${v}</option>`).join('')}
+            </select>
+          </label>
+          <label class="flex items-start gap-2 font-semibold text-amber-900"><input id="kc-policy-confirmed" type="checkbox" class="mt-0.5" ${existing?.policy_review?.current_rule_confirmed ? 'checked' : ''}>Saya telah memverifikasi PP/SOP yang berlaku untuk kejadian ini; referensi 2024–2025 hanya arsip.</label>
+        ` : `<p class="text-slate-600">Keputusan untuk meninjau SP dicatat oleh HRD.</p>`}
+        <p class="text-slate-600">“Tinjau untuk SP” hanya usulan asesmen; penerbitan surat dilakukan terpisah setelah peninjauan HR.</p>
+      </div>
+
       <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
         <button type="button" id="kc-modal-btn-cancel" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition">Batal</button>
         <button type="button" id="kc-modal-btn-save" class="px-5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white rounded-xl text-xs font-bold shadow-xs transition">Simpan Kasus</button>
@@ -1241,9 +1279,34 @@ function showCaseFormModal(caseId = null, prefill = {}) {
       const rootCause = document.getElementById("kc-form-root-cause")?.value || "Kedisiplinan";
       const actionTaken = document.getElementById("kc-form-action-taken")?.value || "Coaching";
       const assessNotes = document.getElementById("kc-form-assessment-notes")?.value.trim() || "";
+      const policyBasis = document.getElementById("kc-policy-basis")?.value || POLICY_BASIS[0];
+      const policyDecision = document.getElementById("kc-policy-decision")?.value || existing?.policy_review?.decision || POLICY_DECISIONS[0];
+      const policyReview = {
+        basis: policyBasis,
+        article_id: policyBasis.includes("Peraturan Perusahaan") ? document.getElementById("kc-policy-article")?.value || "" : "",
+        sop_reference: policyBasis.includes("SOP") ? document.getElementById("kc-policy-sop")?.value.trim() || "" : "",
+        evidence: document.getElementById("kc-policy-evidence")?.value.trim() || "",
+        rationale: document.getElementById("kc-policy-rationale")?.value.trim() || "",
+        decision: policyDecision,
+        current_rule_confirmed: document.getElementById("kc-policy-confirmed")?.checked ?? existing?.policy_review?.current_rule_confirmed ?? false,
+        document_period: policyBasis.includes("Peraturan Perusahaan") ? COMPANY_POLICY.period : ""
+      };
 
       if (!nama || !desc) {
         toast("Silakan isi nama karyawan dan deskripsi fakta masalah.", "warning");
+        return;
+      }
+      if (policyDecision === "Tinjau untuk SP" && !["HRD", "SUPERADMIN"].includes((currentSession?.role || "").toUpperCase())) {
+        toast("Hanya HRD yang dapat mengusulkan peninjauan SP.", "warning");
+        return;
+      }
+      const missing = assessPolicyDecision({ ...policyReview, articleId: policyReview.article_id, sopReference: policyReview.sop_reference, employeeStatement: empExpl, currentRuleConfirmed: policyReview.current_rule_confirmed });
+      if (missing.length) {
+        toast("Lengkapi asesmen SP: " + missing.join(", "), "warning");
+        return;
+      }
+      if (actionTaken === "Rekomendasi Surat Peringatan" && policyDecision !== "Tinjau untuk SP" && actionTaken !== existing?.action_taken) {
+        toast("Untuk mengusulkan SP, pilih 'Tinjau untuk SP' dan lengkapi dasar serta klarifikasi kasus.", "warning");
         return;
       }
 
@@ -1262,6 +1325,7 @@ function showCaseFormModal(caseId = null, prefill = {}) {
         priority: priority,
         confidentiality: confidentiality,
         description: desc,
+        policy_review: policyReview,
         employee_statement: {
           explanation: empExpl,
           employee_response: empResp
@@ -1394,6 +1458,18 @@ export function showCaseDetail(caseId) {
             <p class="text-slate-700 mt-0.5 font-medium">${escapeHtml(c.hr_assessment?.assessment_notes || "-")}</p>
           </div>
         </div>
+      </div>
+
+      <div class="bg-amber-50 p-4 rounded-xl border border-amber-200 space-y-2 text-xs">
+        <h4 class="font-black text-slate-800 uppercase">Dasar aturan & rekomendasi HR</h4>
+        <p>Dasar: <b>${escapeHtml(c.policy_review?.basis || "Belum dinilai")}</b></p>
+        ${c.policy_review?.article_id ? `<p>PP: <b>${escapeHtml(POLICY_ARTICLES.find(a => a.id === c.policy_review.article_id)?.label || c.policy_review.article_id)}</b> (${escapeHtml(c.policy_review.document_period || COMPANY_POLICY.period)}, arsip)</p>` : ''}
+        ${c.policy_review?.sop_reference ? `<p>SOP: <b>${escapeHtml(c.policy_review.sop_reference)}</b></p>` : ''}
+        <p>Bukti: ${escapeHtml(c.policy_review?.evidence || "Belum dicatat")}</p>
+        <p>Pertimbangan: ${escapeHtml(c.policy_review?.rationale || "Belum dicatat")}</p>
+        <p>Rekomendasi: <b>${escapeHtml(c.policy_review?.decision || "Belum ditentukan")}</b></p>
+        ${c.policy_review?.decision === "Tinjau untuk SP" ? `<p class="font-semibold text-amber-900">Usulan untuk ditinjau HR, belum merupakan penerbitan SP. Verifikasi aturan berlaku: ${c.policy_review?.current_rule_confirmed ? 'dicatat oleh HR' : 'belum dicatat'}.</p>` : ''}
+        <p class="text-amber-900">${escapeHtml(COMPANY_POLICY.title)} ${escapeHtml(COMPANY_POLICY.period)} adalah arsip; periksa versi yang berlaku sebelum keputusan.</p>
       </div>
 
       <!-- Action Plans Section -->
@@ -1833,6 +1909,17 @@ export async function printCaseDossier(caseId) {
     <b>Respon & Komitmen Karyawan:</b><br>
     ${escapeHtml(c.employee_statement?.employee_response || "-")}
   </div>
+
+  <div class="section-title">Dasar Aturan & Rekomendasi HR</div>
+  <table class="grid-table">
+    <tr><td width="25%"><b>Hubungan pelanggaran</b></td><td>: ${escapeHtml(c.policy_review?.basis || "Belum dinilai")}</td></tr>
+    <tr><td><b>Pasal PP (arsip)</b></td><td>: ${escapeHtml(POLICY_ARTICLES.find(a => a.id === c.policy_review?.article_id)?.label || "-")} ${c.policy_review?.article_id ? `(${escapeHtml(COMPANY_POLICY.period)})` : ''}</td></tr>
+    <tr><td><b>SOP terkait</b></td><td>: ${escapeHtml(c.policy_review?.sop_reference || "-")}</td></tr>
+    <tr><td><b>Bukti</b></td><td>: ${escapeHtml(c.policy_review?.evidence || "-")}</td></tr>
+    <tr><td><b>Pertimbangan</b></td><td>: ${escapeHtml(c.policy_review?.rationale || "-")}</td></tr>
+    <tr><td><b>Rekomendasi</b></td><td>: ${escapeHtml(c.policy_review?.decision || "Belum ditentukan")}; verifikasi aturan berlaku: ${c.policy_review?.current_rule_confirmed ? 'dicatat HR' : 'belum dicatat'}</td></tr>
+  </table>
+  <p style="font-size: 9px; color: #92400e;">${escapeHtml(COMPANY_POLICY.title)} ${escapeHtml(COMPANY_POLICY.period)} merupakan arsip. Usulan peninjauan SP bukan surat peringatan; HR harus memeriksa aturan yang berlaku sebelum keputusan.</p>
 
   <div class="section-title">4. Asesmen HR & Tindakan yang Diambil</div>
   <table class="grid-table">
