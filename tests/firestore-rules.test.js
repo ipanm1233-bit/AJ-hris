@@ -117,6 +117,18 @@ test('manager branch access is fail-closed for HR case data', async () => {
   await assertFails(getDoc(doc(spv, 'hr_cases', 'other')));
 });
 
+test('only HRD can mark a coaching case for SP review or confirm the current rule', async () => {
+  const spv = env.authenticatedContext('spv', claims({ role: 'SPV' })).firestore();
+  const hrd = env.authenticatedContext('hrd', claims({ role: 'HRD' })).firestore();
+  const base = { cabang: 'Cirebon', description: 'Klarifikasi absensi', policy_review: { basis: 'Peraturan Perusahaan', decision: 'Belum ditentukan', current_rule_confirmed: false } };
+  await assertSucceeds(setDoc(doc(spv, 'hr_cases', 'case1'), base));
+  await assertFails(setDoc(doc(spv, 'hr_cases', 'case2'), { ...base, policy_review: { ...base.policy_review, decision: 'Tinjau untuk SP' } }));
+  await assertFails(updateDoc(doc(spv, 'hr_cases', 'case1'), { 'policy_review.current_rule_confirmed': true }));
+  await assertSucceeds(updateDoc(doc(spv, 'hr_cases', 'case1'), { description: 'Klarifikasi lanjutan' }));
+  await assertSucceeds(updateDoc(doc(hrd, 'hr_cases', 'case1'), { 'policy_review.decision': 'Tinjau untuk SP', 'policy_review.current_rule_confirmed': true }));
+  await assertFails(updateDoc(doc(spv, 'hr_cases', 'case1'), { 'policy_review.decision': 'Coaching / konseling' }));
+});
+
 test('browser cannot forge audit logs', async () => {
   const hrd = env.authenticatedContext('hrd', claims({ role: 'HRD' })).firestore();
   await assertFails(setDoc(doc(hrd, 'audit_logs', 'forged'), { action: 'FORGED' }));
