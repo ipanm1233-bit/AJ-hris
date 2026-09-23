@@ -13,6 +13,9 @@ import { buildAttendanceAnalytics } from "../attendance-analytics.mjs";
 import { buildMissingAttendanceToday } from "../attendance-missing.mjs";
 import { attendanceSelectionKey as attendanceRowKey, selectedDeletableAttendanceRows } from "../attendance-bulk.mjs";
 
+let recentAttendanceRead = null;
+const ATTENDANCE_READ_TTL_MS = 30_000;
+
 function normalizeToken(value) {
  return String(value || "").trim().toUpperCase();
 }
@@ -89,6 +92,12 @@ export async function mount(container, { session } = {}) {
  const panelDashboard = container.querySelector("#absen-panel-dashboard");
  const panelData = container.querySelector("#absen-panel-data");
  const rawTbody = container.querySelector("#absen-raw-tbody");
+ const pageBar = container.querySelector("#absen-table-pagination");
+ const pageInfo = container.querySelector("#absen-page-info");
+ const pagePrev = container.querySelector("#absen-page-prev");
+ const pageNext = container.querySelector("#absen-page-next");
+ const pageSize = 100;
+ let pageIndex = 0;
  const searchRaw = container.querySelector("#search-absen-raw");
  const filterStart = container.querySelector("#filter-absen-start");
  const filterEnd = container.querySelector("#filter-absen-end");
@@ -125,6 +134,7 @@ export async function mount(container, { session } = {}) {
  const dashboardMissingToday = container.querySelector("#attendance-dashboard-missing-today");
  const dashboardMissingMeta = container.querySelector("#attendance-dashboard-missing-meta");
  let attendanceLoadedAt = 0;
+ let attendanceLoadPromise = null;
 
  const { startStr: twoMonthsStart, endStr: twoMonthsEnd } = getTwoRunningMonthsRange();
 
@@ -313,7 +323,8 @@ export async function mount(container, { session } = {}) {
    bulkToolbar.classList.toggle("flex", canEdit && count > 0);
   }
   if (selectAllVisible) {
-   const selectable = currentFilteredRows.filter(row => canEdit && (roleIsHrdOrAdmin || isPicBranch));
+   const selectable = currentFilteredRows.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize)
+    .filter(row => canEdit && (roleIsHrdOrAdmin || isPicBranch));
    const selectedVisible = selectable.filter(row => selectedAttendanceKeys.has(attendanceRowKey(row))).length;
    selectAllVisible.checked = selectable.length > 0 && selectedVisible === selectable.length;
    selectAllVisible.indeterminate = selectedVisible > 0 && selectedVisible < selectable.length;
@@ -468,7 +479,13 @@ export async function mount(container, { session } = {}) {
 
  if (roleIsHrdOrAdmin && canViewDashboard) loadRawAbsensiTable();
 
- async function loadRawAbsensiTable(force = false) {
+ function loadRawAbsensiTable(force = false) {
+  if (attendanceLoadPromise) return attendanceLoadPromise;
+  attendanceLoadPromise = loadRawAbsensiTableNow(force).finally(() => { attendanceLoadPromise = null; });
+  return attendanceLoadPromise;
+ }
+
+ async function loadRawAbsensiTableNow(force = false) {
  if (!force && attendanceLoadedAt && Date.now() - attendanceLoadedAt < 60_000) {
   applyFiltersAbsen();
   renderAttendanceDashboard();
@@ -482,22 +499,26 @@ export async function mount(container, { session } = {}) {
  const sixtyDaysAgo = new Date();
  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
  const thresholdStr = sixtyDaysAgo.toISOString().substring(0, 10);
- const attendanceRef = collection(db, COL.DATA_ABSENSI);
- const attendanceRequest = attendanceAccessApi("attendance_list", {
-  fromDate: thresholdStr,
-  limit: 5000
- }).then(result => result.rows || []);
  let attendanceRows, employeeRows, scheduleSnapshot, leaveRows, submissionRows;
  dashboardRosterError = false;
  try {
- [attendanceRows, employeeRows, scheduleSnapshot, leaveRows, submissionRows] = await Promise.all([
- attendanceRequest,
- fsGetAll(COL.MASTER_KARYAWAN).catch(error => { dashboardRosterError = true; console.error("Master karyawan tidak dapat dimuat:", error); return []; }),
- getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(error => { dashboardRosterError = true; console.error("Jadwal absensi tidak dapat dimuat:", error); return null; }),
- fsGetAll(COL.MASTER_CUTI).catch(() => []),
- fsGetAll(COL.DATA_PENGAJUAN).catch(() => [])
- ]);
+  const readKey = [session?.uid || session?.username || session?.nik, userRole, scopedBranch, thresholdStr].join("|");
+  if (force || recentAttendanceRead?.key !== readKey || Date.now() - recentAttendanceRead.at > ATTENDANCE_READ_TTL_MS) {
+   const request = Promise.all([
+    attendanceAccessApi("attendance_list", { fromDate: thresholdStr, limit: 5000 }).then(result => result.rows || []),
+    fsGetAll(COL.MASTER_KARYAWAN).catch(error => { console.error("Master karyawan tidak dapat dimuat:", error); return null; }),
+    getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(error => { console.error("Jadwal absensi tidak dapat dimuat:", error); return null; }),
+    fsGetAll(COL.MASTER_CUTI).catch(() => []),
+    fsGetAll(COL.DATA_PENGAJUAN).catch(() => [])
+   ]);
+   recentAttendanceRead = { key: readKey, at: Date.now(), request };
+  }
+  [attendanceRows, employeeRows, scheduleSnapshot, leaveRows, submissionRows] = await recentAttendanceRead.request;
+  dashboardRosterError = employeeRows === null || scheduleSnapshot === null;
+  if (dashboardRosterError) recentAttendanceRead = null;
+  employeeRows ||= [];
  } catch (error) {
+  recentAttendanceRead = null;
   console.error("Gagal membaca data absensi:", error);
   const quotaExceeded = /quota|resource-exhausted|daily read/i.test(String(error?.message || error));
   rawTbody.innerHTML = `<tr><td colspan="18" class="p-4 text-rose-700">${quotaExceeded
@@ -678,17 +699,29 @@ export async function mount(container, { session } = {}) {
  }
 
  currentFilteredRows = data;
+ pageIndex = 0;
  renderRawTable(data);
  updateBulkToolbar();
  return data;
  }
 
  function renderRawTable(data) {
+ pageIndex = Math.min(pageIndex, Math.max(0, Math.ceil(data.length / pageSize) - 1));
+ const visibleRows = data.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize);
+ if (pageBar) {
+  pageBar.classList.toggle("hidden", data.length <= pageSize);
+  pageBar.classList.toggle("flex", data.length > pageSize);
+ }
+ if (pageInfo) pageInfo.textContent = data.length
+  ? `Menampilkan ${pageIndex * pageSize + 1}–${pageIndex * pageSize + visibleRows.length} dari ${data.length} baris`
+  : "Tidak ada baris";
+ if (pagePrev) pagePrev.disabled = pageIndex === 0;
+ if (pageNext) pageNext.disabled = (pageIndex + 1) * pageSize >= data.length;
  if(!data.length) {
  rawTbody.innerHTML = `<tr><td colspan="18" class="p-8 text-center">${emptyState("Tidak ada data absensi pada filter ini")}</td></tr>`;
  return;
  }
- rawTbody.innerHTML = data.map(r => `
+ rawTbody.innerHTML = visibleRows.map(r => `
  <tr class="transition text-xs ${r.status_kind === 'review' ? 'bg-amber-50 hover:bg-amber-100' : r.status_kind === 'absence' ? 'bg-blue-50 hover:bg-blue-100' : ['half-day', 'permission', 'late-half-day'].includes(r.status_kind) ? 'bg-violet-50 hover:bg-violet-100' : r.status_kind === 'late-waived' ? 'bg-emerald-50 hover:bg-emerald-100' : r.status_kind === 'late' ? 'bg-rose-50 hover:bg-rose-100' : 'hover:bg-slate-50'}">
  <td class="px-3 py-3 text-center">${canEdit && (roleIsHrdOrAdmin || isPicBranch) ? `<input type="checkbox" data-select-absen="${escapeHtml(attendanceRowKey(r))}" class="rounded border-slate-300 text-maroon-700" ${selectedAttendanceKeys.has(attendanceRowKey(r)) ? 'checked' : ''}>` : ''}</td>
  <td class="px-4 py-3 text-slate-500">${escapeHtml(r.emp_no || "-")}</td>
@@ -803,7 +836,7 @@ export async function mount(container, { session } = {}) {
  }
  if (selectAllVisible) {
  selectAllVisible.onchange = () => {
-  currentFilteredRows.forEach(row => {
+  currentFilteredRows.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize).forEach(row => {
    const key = attendanceRowKey(row);
    if (selectAllVisible.checked) selectedAttendanceKeys.add(key);
    else selectedAttendanceKeys.delete(key);
@@ -812,6 +845,16 @@ export async function mount(container, { session } = {}) {
   updateBulkToolbar();
  };
  }
+ if (pagePrev) pagePrev.onclick = () => {
+  if (pageIndex > 0) pageIndex--;
+  renderRawTable(currentFilteredRows);
+  updateBulkToolbar();
+ };
+ if (pageNext) pageNext.onclick = () => {
+  if ((pageIndex + 1) * pageSize < currentFilteredRows.length) pageIndex++;
+  renderRawTable(currentFilteredRows);
+  updateBulkToolbar();
+ };
  if (btnClearSelected) {
  btnClearSelected.onclick = () => {
   selectedAttendanceKeys.clear();
