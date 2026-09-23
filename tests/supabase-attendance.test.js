@@ -155,6 +155,54 @@ test('keeps both rows when machine name and historical owner disagree', () => {
   assert.equal(rows.length, 2);
 });
 
+test('mapped NIK replaces provisional machine identity even if its source is imported', () => {
+  const rows = dedupeAttendanceRows([
+    { id: 'PENDING-11', nik: 'FINGER-CIREBON-11', nama: 'HELMI PRASTIYAN (BELUM DIPETAKAN)',
+      fingerprint_user_id: '11', tanggal: '2026-09-22', cabang: 'CIREBON', sumber: 'FINGERPRINT',
+      scan_masuk: '07:31', scan_keluar: '16:01' },
+    { id: 'MAPPED-11', nik: '11111012750', nama: 'HELMI PRASTIYAN',
+      fingerprint_user_id: '11', tanggal: '2026-09-22', cabang: 'CIREBON', sumber: 'IMPORT',
+      scan_masuk: '07:31' }
+  ]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].nik, '11111012750');
+  assert.equal(rows[0].scan_keluar, '16:01');
+});
+
+test('keeps provisional identity if the machine ID has multiple mapped owners that day', () => {
+  const rows = dedupeAttendanceRows([
+    { nik: 'FINGER-CIREBON-11', nama: 'HELMI (BELUM DIPETAKAN)', fingerprint_user_id: '11',
+      tanggal: '2026-09-22', cabang: 'CIREBON' },
+    { nik: '001', nama: 'HELMI', fingerprint_user_id: '11', tanggal: '2026-09-22', cabang: 'CIREBON' },
+    { nik: '002', nama: 'HELMI', fingerprint_user_id: '11', tanggal: '2026-09-22', cabang: 'CIREBON' }
+  ]);
+  assert.equal(rows.length, 3);
+});
+
+test('Supabase-only attendance read also resolves provisional machine identities', async () => {
+  const keys = ['ATTENDANCE_DB_PROVIDER', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'ATTENDANCE_FIRESTORE_FALLBACK'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  Object.assign(process.env, {
+    ATTENDANCE_DB_PROVIDER: 'supabase', SUPABASE_URL: 'https://aj-hris.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'x'.repeat(60), ATTENDANCE_FIRESTORE_FALLBACK: 'false'
+  });
+  try {
+    const rows = await loadAttendance({ db: {} }, { fromDate: '2026-09-22' }, {
+      listAttendance: async () => [
+        { nik: 'FINGER-CIREBON-11', nama: 'HELMI (BELUM DIPETAKAN)', fingerprint_user_id: '11',
+          tanggal: '2026-09-22', cabang: 'CIREBON', sumber: 'FINGERPRINT' },
+        { nik: '11111012750', nama: 'HELMI PRASTIYAN', fingerprint_user_id: '11',
+          tanggal: '2026-09-22', cabang: 'CIREBON', sumber: 'IMPORT' }
+      ]
+    });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].nik, '11111012750');
+    assert.equal(rows._provider, 'supabase');
+  } finally {
+    keys.forEach(key => previous[key] === undefined ? delete process.env[key] : process.env[key] = previous[key]);
+  }
+});
+
 test('dedupe plan merges provisional and mapped fingerprint rows into a complete workday', () => {
   const plan = buildAttendanceDedupePlan([
     {
