@@ -7,6 +7,9 @@ import { uploadFileToDrive } from "../gas-integration.js";
 import { aggregateKpiByPeriod, DEFAULT_KPI_GRADE_RULES, evaluateKpiGrade, getLatestKpiSummary, validateGradeRulesMap, assessKpiDecisionReadiness } from "../kpi-scoring.mjs";
 import { buildPerformanceMonitorRows } from "../performance-monitor.mjs";
 import { KPI_ROLE_STANDARDS, mapEmployeesToKpiStandards, resolveKpiStandard, standardToTemplatePayload, validateKpiStandards } from "../kpi-role-standards.mjs";
+import { runConfirmedAction } from "../confirmed-action.mjs";
+
+const confirmThen = (message, action) => runConfirmedAction(confirmDialog, message, action);
 
 // =====================================================================
 // MASTER INDIKATOR PENILAIAN HARIAN & TARGET BULANAN
@@ -2808,7 +2811,7 @@ export async function mount(container, { session, params }) {
             const taskObj = tasks.find(x => x.id === tid);
             if (!taskObj) return;
 
-            confirmDialog(
+            confirmThen(
               `Apakah Anda yakin ingin membatalkan & menghapus tugas penilaian untuk <b>${escapeHtml(taskObj.nama_penilai)}</b> menilai <b>${escapeHtml(taskObj.nama_dinilai)}</b>?`,
               async () => {
                 try {
@@ -2837,7 +2840,7 @@ export async function mount(container, { session, params }) {
             return toast("Seluruh tugas penilaian telah selesai! Tidak ada yang pending.", "info");
           }
 
-          confirmDialog(
+          confirmThen(
             `Kirimkan email pengingat kepada <b>${pendingTasks.length} penugasan pending</b> yang belum mengisi evaluasi?`,
             async () => {
               btnBroadcast.disabled = true;
@@ -3789,7 +3792,7 @@ export async function mount(container, { session, params }) {
         const logObj = filteredLogs.find(x => x.id === lid);
         if (!logObj) return;
 
-        confirmDialog(
+        confirmThen(
           `Apakah Anda yakin ingin menghapus log penilaian KPI untuk <b>${escapeHtml(logObj.nama_dinilai)}</b> (Periode: ${escapeHtml(logObj.periode || "-")})?<br/><br/><span class="text-xs text-rose-500 font-semibold">Data yang dihapus tidak dapat dikembalikan.</span>`,
           async () => {
             try {
@@ -3881,7 +3884,7 @@ export async function mount(container, { session, params }) {
       m.querySelector("#btn-edit-log-batal").onclick = closeModal;
       m.querySelector("#btn-edit-log-delete").onclick = () => {
         closeModal();
-        confirmDialog(
+        confirmThen(
           `Apakah Anda yakin ingin menghapus log penilaian KPI untuk <b>${escapeHtml(logObj.nama_dinilai)}</b>?`,
           async () => {
             try {
@@ -5019,7 +5022,7 @@ export async function mount(container, { session, params }) {
         }
 
         if (keputusan === "TIDAK_DIPERPANJANG") {
-          confirmDialog(
+          confirmThen(
             `Apakah Anda yakin ingin memproses status <b>TIDAK DIPERPANJANG</b> untuk karyawan <b>${escapeHtml(empData.nama_karyawan)}</b>?`,
             async () => {
               try {
@@ -5057,7 +5060,7 @@ export async function mount(container, { session, params }) {
           return;
         }
 
-        confirmDialog(
+        confirmThen(
           `Terbitkan Kontrak Baru untuk <b>${escapeHtml(empData.nama_karyawan)}</b>?<br><br>
            • Keputusan: <b>${keputusan === 'DISETUJUI_KARTAP' ? 'Pengangkatan Karyawan Tetap' : 'Perpanjang Kontrak'} (${durasi})</b><br>
            • Periode Baru: <b>${fmtDateShort(tglMulai)} s/d ${fmtDateShort(tglAkhir)}</b><br>
@@ -5750,7 +5753,7 @@ export async function mount(container, { session, params }) {
         btn.onclick = () => {
           const lObj = allLogs.find(x => x.id === btn.dataset.id);
           if (!lObj) return;
-          confirmDialog(
+          confirmThen(
             `Apakah Anda yakin ingin menghapus log penilaian harian untuk <b>${escapeHtml(lObj.nama_karyawan)}</b> (Tanggal: ${fmtDateShort(lObj.tanggal)})?`,
             async () => {
               try {
@@ -6011,7 +6014,7 @@ export async function mount(container, { session, params }) {
         btn.onclick = () => {
           const tObj = allTargets.find(x => x.id === btn.dataset.id);
           if (!tObj) return;
-          confirmDialog(
+          confirmThen(
             `Apakah Anda yakin ingin menghapus target bulanan untuk <b>${escapeHtml(tObj.nama_karyawan)}</b> (Periode: ${escapeHtml(tObj.periode)})?`,
             async () => {
               try {
