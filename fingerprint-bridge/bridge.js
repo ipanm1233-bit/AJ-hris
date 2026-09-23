@@ -333,7 +333,7 @@ async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {
     const labels = [...unmatched].map(id => unmatchedNames.get(id) ? `${id} (${unmatchedNames.get(id)})` : id);
     console.warn(`Finger Name mesin belum terpetakan: ${labels.join(', ')}`);
   }
-  if (identityConflicts.size) console.warn(`ID finger pernah dipakai nama berbeda di riwayat: ${[...identityConflicts].join(', ')}. Periksa periode kepemilikan sebelum memetakan ulang.`);
+  if (identityConflicts.size) console.warn(`Nama pengguna mesin tidak cocok dengan riwayat ID finger: ${[...identityConflicts].join(', ')}. Periksa nama pada mesin dan master karyawan sebelum sinkronisasi ulang.`);
 }
 
 async function main() {

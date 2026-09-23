@@ -145,7 +145,7 @@ test('attendance read keeps the mapped ARIP scan and does not backfill a provisi
   }
 });
 
-test('keeps both rows for a reused finger ID when historical owners disagree', () => {
+test('keeps both rows when machine name and historical owner disagree', () => {
   const rows = dedupeAttendanceRows([
     { id: 'PENDING-95', nik: 'FINGER-CIREBON-95', nama: 'MALATRI (BELUM DIPETAKAN)',
       fingerprint_name: 'MALATRI', fingerprint_user_id: '95', tanggal: '2026-09-22', cabang: 'CIREBON', sumber: 'FINGERPRINT' },

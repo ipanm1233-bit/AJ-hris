@@ -30,7 +30,7 @@ test('validates bounded manual fingerprint resync ranges', () => {
   assert.equal(fingerprintApiHelpers.dateDistanceDays('2026-09-17', '2026-09-18'), 1);
 });
 
-test('blocks reused finger 95 when machine now says MALATRI but history belongs to IRINE', () => {
+test('blocks finger 95 when stale machine name MALATRI disagrees with IRINE history', () => {
   const history = [
     { nik: '1082204940', nama: 'IRINE APRILIA DEWI', fingerprint_name: 'IRINE', fingerprint_user_id: '95' },
     { nik: 'FINGER-CIREBON-95', nama: 'MALATRI (BELUM DIPETAKAN)', fingerprint_name: 'MALATRI', fingerprint_user_id: '95' }
