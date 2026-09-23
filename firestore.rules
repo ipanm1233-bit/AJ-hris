@@ -30,6 +30,13 @@ service cloud.firestore {
       );
     }
     function onlyChanges(fields) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields); }
+    function hrCaseReviewAllowed(createCase) {
+      let review = request.resource.data.get('policy_review', {});
+      return isHrd() || (
+        review.get('decision', 'Belum ditentukan') == (createCase ? 'Belum ditentukan' : resource.data.get('policy_review', {}).get('decision', 'Belum ditentukan'))
+        && review.get('current_rule_confirmed', false) == (createCase ? false : resource.data.get('policy_review', {}).get('current_rule_confirmed', false))
+      );
+    }
     function attendancePermissionDoc() {
       return /databases/$(database)/documents/user_permissions/$(username());
     }
@@ -249,8 +256,12 @@ service cloud.firestore {
     match /{collectionName}/{id} {
       allow read: if collectionName in ['hr_cases', 'hr_case_action_plans', 'hr_case_followups']
         && (isHrd() || (isManagement() && sameBranch(resource.data)));
-      allow create, update: if collectionName in ['hr_cases', 'hr_case_action_plans', 'hr_case_followups']
-        && (isHrd() || (isManagement() && sameBranch(request.resource.data)));
+      allow create: if collectionName in ['hr_cases', 'hr_case_action_plans', 'hr_case_followups']
+        && (isHrd() || (isManagement() && sameBranch(request.resource.data)
+          && (collectionName != 'hr_cases' || hrCaseReviewAllowed(true))));
+      allow update: if collectionName in ['hr_cases', 'hr_case_action_plans', 'hr_case_followups']
+        && (isHrd() || (isManagement() && sameBranch(request.resource.data)
+          && (collectionName != 'hr_cases' || hrCaseReviewAllowed(false))));
       allow delete: if collectionName in ['hr_cases', 'hr_case_action_plans', 'hr_case_followups'] && isHrd();
     }
     match /hr_case_audit_logs/{id} {
