@@ -316,6 +316,7 @@ async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {
   const unmatched = new Set();
   const unmatchedNames = new Map();
   const identityConflicts = new Set();
+  let masterUnavailable = false;
   for (let index = 0; index < recentLogs.length; index += 1000) {
     const response = await sendChunk(recentLogs.slice(index, index + 1000), result.users, branch);
     processed += Number(response.processedRecords || 0);
@@ -325,6 +326,7 @@ async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {
       if (user?.id) unmatchedNames.set(String(user.id), String(user.fingerName || '').trim());
     }
     for (const id of response.identityConflictIds || []) identityConflicts.add(String(id));
+    masterUnavailable ||= response.masterUnavailable === true;
   }
   console.log(`Sinkronisasi selesai: ${recentLogs.length} scan dikirim, ${processed} hari-karyawan diproses.`);
   if (requestId) await sendPayload({ action: 'sync_complete', requestId });
@@ -334,6 +336,7 @@ async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {
     console.warn(`Finger Name mesin belum terpetakan: ${labels.join(', ')}`);
   }
   if (identityConflicts.size) console.warn(`Nama pengguna mesin tidak cocok dengan riwayat ID finger: ${[...identityConflicts].join(', ')}. Periksa nama pada mesin dan master karyawan sebelum sinkronisasi ulang.`);
+  if (masterUnavailable) console.warn('Master karyawan Firestore tidak terbaca; pemetaan memakai riwayat Supabase yang cocok nama dan ID. Periksa kuota Firestore.');
 }
 
 async function main() {

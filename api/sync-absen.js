@@ -498,6 +498,7 @@ module.exports = async function handler(req, res) {
     // nik_karyawan, dan beberapa nama field fingerprint yang umum.
     let employeeDocs = [];
     let scheduleRows = [];
+    let masterUnavailable = false;
     try {
       const [employeeSnap, settingsSnap] = await Promise.all([
         db.collection('master_karyawan').get(),
@@ -509,6 +510,7 @@ module.exports = async function handler(req, res) {
         : [];
     } catch (error) {
       if (!supabaseEnabled() || !isFirestoreQuotaError(error)) throw error;
+      masterUnavailable = true;
       console.warn('[sync-absen] Firestore master unavailable; resolving fingerprint identity from Supabase history.');
     }
     let identityHistoryRows = [];
@@ -520,7 +522,7 @@ module.exports = async function handler(req, res) {
     const numericEmployeeMap = new Map();
     const employeeNameMap = new Map();
     const employees = [];
-    const { machineNameAgrees, addUniqueIdentifier, historicalFingerprintOwnerConflict } = require('../lib/fingerprint-identity');
+    const { machineNameAgrees, addUniqueIdentifier, historicalFingerprintOwnerConflict, eligibleHistoryForFingerprintFallback } = require('../lib/fingerprint-identity');
     const fingerprintFields = [
       'nik', 'nik_karyawan', 'finger_id', 'kode_finger', 'no_finger', 'id_finger', 'pin',
       'fingerprint_user_id', 'fingerprint_emp_no', 'fingerprint_no_id'
@@ -547,34 +549,6 @@ module.exports = async function handler(req, res) {
         else if (employeeNameMap.get(nameKey)?._docId !== employee._docId) employeeNameMap.set(nameKey, null);
       });
     };
-    employeeDocs.forEach(snapshot => registerEmployee({ ...snapshot.data(), _docId: snapshot.id }));
-    if (!employeeDocs.length) {
-      const historyByNik = new Map();
-      identityHistoryRows.forEach(row => {
-        const nik = String(row.nik || '').trim();
-        // Baris sementara menjaga scan tidak hilang, tetapi tidak boleh dipakai
-        // sebagai master identitas pada sinkronisasi berikutnya.
-        if (!nik || row.auto_assign === false || isProvisionalFingerprintNik(nik)) return;
-        const current = historyByNik.get(nik) || {};
-        historyByNik.set(nik, {
-          ...current,
-          _docId: `SUPABASE-${nik}`,
-          nik,
-          nik_karyawan: nik,
-          nama: row.nama || current.nama || '',
-          nama_karyawan: row.nama || current.nama_karyawan || '',
-          cabang: row.cabang || current.cabang || branch,
-          divisi: row.divisi || current.divisi || '',
-          jabatan: row.jabatan || current.jabatan || '',
-          finger_name: row.fingerprint_name || current.finger_name || '',
-          fingerprint_name: row.fingerprint_name || current.fingerprint_name || '',
-          fingerprint_user_id: row.fingerprint_user_id || current.fingerprint_user_id || '',
-          fingerprint_emp_no: row.fingerprint_emp_no || current.fingerprint_emp_no || '',
-          fingerprint_no_id: row.fingerprint_no_id || current.fingerprint_no_id || ''
-        });
-      });
-      historyByNik.forEach(registerEmployee);
-    }
     const deviceUserNameMap = new Map();
     const deviceUserMetadataMap = new Map();
     deviceUsers.forEach(user => {
@@ -588,6 +562,35 @@ module.exports = async function handler(req, res) {
         if (name) deviceUserNameMap.set(alias, name);
       });
     });
+    employeeDocs.forEach(snapshot => registerEmployee({ ...snapshot.data(), _docId: snapshot.id }));
+    if (!employeeDocs.length) {
+      const historyByNik = new Map();
+      identityHistoryRows.forEach(row => {
+        const nik = String(row.nik || '').trim();
+        // Baris sementara menjaga scan tidak hilang, tetapi tidak boleh dipakai
+        // sebagai master identitas pada sinkronisasi berikutnya.
+        const fingerId = String(row.fingerprint_user_id || row.fingerprint_no_id || '').trim().toUpperCase();
+        if (!nik || !eligibleHistoryForFingerprintFallback(row, deviceUserNameMap.get(fingerId))) return;
+        const current = historyByNik.get(nik) || {};
+        historyByNik.set(nik, {
+          ...current,
+          _docId: `SUPABASE-${nik}`,
+          nik,
+          nik_karyawan: nik,
+          nama: current.nama || row.nama || '',
+          nama_karyawan: current.nama_karyawan || row.nama || '',
+          cabang: row.cabang || current.cabang || branch,
+          divisi: row.divisi || current.divisi || '',
+          jabatan: row.jabatan || current.jabatan || '',
+          finger_name: current.finger_name || row.fingerprint_name || '',
+          fingerprint_name: current.fingerprint_name || row.fingerprint_name || '',
+          fingerprint_user_id: current.fingerprint_user_id || row.fingerprint_user_id || '',
+          fingerprint_emp_no: current.fingerprint_emp_no || row.fingerprint_emp_no || '',
+          fingerprint_no_id: current.fingerprint_no_id || row.fingerprint_no_id || ''
+        });
+      });
+      historyByNik.forEach(registerEmployee);
+    }
     const conflictingFingerIds = new Set(groupList.map(group => String(group.deviceUserId).trim().toUpperCase())
       .filter(id => historicalFingerprintOwnerConflict(identityHistoryRows, id, deviceUserNameMap.get(id))));
     const resolveEmployeeByMachineName = machineName => {
@@ -872,7 +875,8 @@ module.exports = async function handler(req, res) {
       duplicatesRemoved,
       unmatchedFingerprintIds: unmatchedIds,
       unmatchedFingerprintUsers,
-      identityConflictIds: [...conflictingFingerIds]
+      identityConflictIds: [...conflictingFingerIds],
+      masterUnavailable
     });
 
   } catch (error) {

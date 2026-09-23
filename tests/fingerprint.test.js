@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { machineNameAgrees, addUniqueIdentifier, historicalFingerprintOwnerConflict } = require('../lib/fingerprint-identity');
+const { machineNameAgrees, addUniqueIdentifier, historicalFingerprintOwnerConflict, eligibleHistoryForFingerprintFallback } = require('../lib/fingerprint-identity');
 const {
   getDeviceUserId,
   parseFingerprintTimestamp,
@@ -38,6 +38,13 @@ test('blocks finger 95 when stale machine name MALATRI disagrees with IRINE hist
   assert.equal(historicalFingerprintOwnerConflict(history, '95', 'MALATRI'), true);
   assert.equal(historicalFingerprintOwnerConflict(history.slice(1), '95', 'MALATRI'), false);
   assert.equal(historicalFingerprintOwnerConflict(history, '66', 'ARIP'), false);
+});
+
+test('recovers uniquely named historical employees when Firestore master is unavailable', () => {
+  assert.equal(eligibleHistoryForFingerprintFallback({ nik: '1082204940', nama: 'IRINE APRILIA DEWI', fingerprint_name: 'IRINE', fingerprint_user_id: '95', auto_assign: false }, 'IRINE'), true);
+  assert.equal(eligibleHistoryForFingerprintFallback({ nik: '1082204940', nama: 'IRINE APRILIA DEWI', fingerprint_name: 'MALATRI', fingerprint_user_id: '95', auto_assign: false }, 'MALATRI'), false);
+  assert.equal(eligibleHistoryForFingerprintFallback({ nik: 'FINGER-CIREBON-95', nama: 'MALATRI', fingerprint_user_id: '95', auto_assign: false }, 'MALATRI'), false);
+  assert.equal(eligibleHistoryForFingerprintFallback({ nik: '1082204940', nama: 'IRINE APRILIA DEWI', fingerprint_user_id: '95', auto_assign: false }, ''), false);
 });
 
 test('creates stable provisional identities without treating them as employee master', () => {
