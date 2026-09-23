@@ -132,6 +132,7 @@ export async function mount(container, { session } = {}) {
  let employeeRowsGlobal = [];
  let scheduleRowsGlobal = [];
  let absenceRowsGlobal = [];
+ let dashboardRosterError = false;
  let archiveAttendanceRowsGlobal = [];
  let currentFilteredRows = [];
  const archiveMonthsLoaded = new Set();
@@ -247,10 +248,12 @@ export async function mount(container, { session } = {}) {
    branch: dashboardState.branch,
    division: dashboardState.division
   });
-  if (dashboardMissingMeta) dashboardMissingMeta.innerHTML = `<span class="inline-flex items-center rounded-full px-2.5 py-1 font-bold ${missingToday.length ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'}">${missingToday.length} karyawan</span><span>${escapeHtml(new Date(`${today}T12:00:00`).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" }))} • pembaruan ${escapeHtml(currentTime)} WIB</span>`;
-  if (dashboardMissingToday) dashboardMissingToday.innerHTML = missingToday.length
+  if (dashboardMissingMeta) dashboardMissingMeta.innerHTML = `<span class="inline-flex items-center rounded-full px-2.5 py-1 font-bold ${dashboardRosterError ? 'bg-amber-100 text-amber-800' : missingToday.length ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'}">${dashboardRosterError ? 'Data belum lengkap' : `${missingToday.length} karyawan`}</span><span>${escapeHtml(new Date(`${today}T12:00:00`).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" }))} • pembaruan ${escapeHtml(currentTime)} WIB</span>`;
+  if (dashboardMissingToday) dashboardMissingToday.innerHTML = dashboardRosterError
+   ? `<p class="p-5 text-sm text-amber-800">Daftar karyawan atau jadwal kerja gagal dimuat. Muat ulang halaman untuk menghitung karyawan yang belum scan.</p>`
+   : missingToday.length
    ? `<table class="w-full text-xs"><thead class="bg-rose-50 text-[10px] uppercase text-rose-700"><tr><th class="p-2.5 text-left">Karyawan</th><th class="p-2.5 text-left">Cabang</th><th class="p-2.5 text-left">Divisi / Jabatan</th><th class="p-2.5 text-center">Jadwal Masuk</th><th class="p-2.5 text-left">Status</th></tr></thead><tbody class="divide-y divide-slate-100">${missingToday.map(row => `<tr class="hover:bg-rose-50/50"><td class="p-2.5"><strong class="text-slate-800">${escapeHtml(row.name)}</strong><p class="text-[9px] text-slate-400">NIK ${escapeHtml(row.nik || "-")}</p></td><td class="p-2.5 font-semibold text-slate-600">${escapeHtml(row.branch)}</td><td class="p-2.5"><span class="text-slate-700">${escapeHtml(row.division)}</span><p class="text-[9px] text-slate-400">${escapeHtml(row.position)}</p></td><td class="p-2.5 text-center font-mono font-bold text-slate-700">${escapeHtml(row.scheduled_start)}</td><td class="p-2.5"><span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${row.needs_review ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'}">${escapeHtml(row.status)}</span></td></tr>`).join("")}</tbody></table>`
-   : `<div class="py-10 text-center"><p class="text-sm font-bold text-emerald-700">Semua karyawan terjadwal sudah melakukan absensi</p><p class="text-xs text-slate-400 mt-1">Karyawan cuti/izin penuh dan yang belum memasuki jam kerja tidak dihitung.</p></div>`;
+   : `<div class="py-10 text-center"><p class="text-sm font-bold text-emerald-700">Semua karyawan terjadwal sudah memiliki scan hari ini</p><p class="text-xs text-slate-400 mt-1">Karyawan cuti/izin penuh tidak dihitung.</p></div>`;
 
   const archiveLoaded = archiveMonthsLoaded.has(dashboardState.month);
   dashboardSource.innerHTML = `<div class="flex flex-wrap items-center gap-2"><span class="px-2 py-1 rounded-full bg-slate-100 text-slate-600 font-semibold">${formatNumber(totals.employee_days)} hari-karyawan</span><span class="px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold">Kelengkapan scan ${totals.completeness_rate}%</span><span class="px-2 py-1 rounded-full ${archiveLoaded ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'} font-semibold">${archiveLoaded ? `${formatNumber(totals.spreadsheet_rows)} data arsip Spreadsheet tergabung` : 'Arsip Spreadsheet belum dimuat'}</span></div>`;
@@ -485,11 +488,12 @@ export async function mount(container, { session } = {}) {
   limit: 5000
  }).then(result => result.rows || []);
  let attendanceRows, employeeRows, scheduleSnapshot, leaveRows, submissionRows;
+ dashboardRosterError = false;
  try {
  [attendanceRows, employeeRows, scheduleSnapshot, leaveRows, submissionRows] = await Promise.all([
  attendanceRequest,
- fsGetAll(COL.MASTER_KARYAWAN).catch(() => []),
- getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(() => null),
+ fsGetAll(COL.MASTER_KARYAWAN).catch(error => { dashboardRosterError = true; console.error("Master karyawan tidak dapat dimuat:", error); return []; }),
+ getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(error => { dashboardRosterError = true; console.error("Jadwal absensi tidak dapat dimuat:", error); return null; }),
  fsGetAll(COL.MASTER_CUTI).catch(() => []),
  fsGetAll(COL.DATA_PENGAJUAN).catch(() => [])
  ]);
@@ -1520,11 +1524,14 @@ export async function mount(container, { session } = {}) {
              <p class="text-[10px] text-slate-500">Terakhir terhubung: ${escapeHtml(lastSeen)}</p>
              ${device.lastError ? `<p class="text-[10px] text-red-600 mt-0.5">${escapeHtml(device.lastError)}</p>` : ''}
            </div>
-           <div class="flex gap-2">
-             <label class="flex items-center gap-1 text-[10px] text-slate-500">Tanggal
-               <input data-field="resyncDate" type="date" value="${new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)}" class="px-2 py-1 border rounded text-[11px]">
+           <div class="flex gap-2 items-end flex-wrap">
+             <label class="flex flex-col gap-1 text-[10px] text-slate-500">Dari tanggal
+               <input data-field="resyncFrom" type="date" value="${new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)}" class="px-2 py-1 border rounded text-[11px]">
              </label>
-             <button type="button" data-action="resync" class="text-[11px] font-semibold text-amber-700 hover:underline">Tarik ulang log</button>
+             <label class="flex flex-col gap-1 text-[10px] text-slate-500">Sampai tanggal
+               <input data-field="resyncTo" type="date" value="${new Date().toISOString().slice(0, 10)}" class="px-2 py-1 border rounded text-[11px]">
+             </label>
+             <button type="button" data-action="resync" class="text-[11px] font-semibold text-amber-700 hover:underline">Tarik ulang periode</button>
              <button type="button" data-action="save" class="text-[11px] font-semibold text-indigo-700 hover:underline">Simpan konfigurasi</button>
              <button type="button" data-action="pair" class="text-[11px] font-semibold text-emerald-700 hover:underline">${device.paired ? 'Pasangkan ulang' : 'Buat kode pairing'}</button>
            </div>
@@ -1562,14 +1569,17 @@ export async function mount(container, { session } = {}) {
    listEl.querySelectorAll('[data-action="resync"]').forEach(button => {
      button.onclick = async () => {
        const card = button.closest('.fp-device-card');
-       const date = card.querySelector('[data-field="resyncDate"]').value;
-       if (!date) return toast('Pilih tanggal yang akan ditarik ulang.', 'warning');
+       const fromDate = card.querySelector('[data-field="resyncFrom"]').value;
+       const toDate = card.querySelector('[data-field="resyncTo"]').value;
+       if (!fromDate || !toDate || fromDate > toDate) return toast('Pilih periode tanggal yang valid.', 'warning');
+       const days = Math.round((Date.parse(`${toDate}T12:00:00Z`) - Date.parse(`${fromDate}T12:00:00Z`)) / 86_400_000);
+       if (days > 31) return toast('Tarik ulang maksimal 31 hari per permintaan.', 'warning');
        button.disabled = true;
        const original = button.textContent;
        button.textContent = 'Meminta...';
        try {
-         await fingerprintApi('admin_request_sync', { deviceId: card.dataset.deviceId, fromDate: date, toDate: date });
-         toast(`Permintaan tarik ulang ${date} dikirim. Connector akan memprosesnya pada siklus berikutnya.`, 'success');
+         await fingerprintApi('admin_request_sync', { deviceId: card.dataset.deviceId, fromDate, toDate });
+         toast(`Permintaan tarik ulang ${fromDate} s.d. ${toDate} dikirim. Connector akan memprosesnya pada siklus berikutnya jika log masih ada di mesin.`, 'success');
        } catch (error) { toast(error.message, 'error'); }
        button.disabled = false;
        button.textContent = original;
