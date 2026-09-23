@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { cleanBaseUrl, getSupabaseConfig, supabaseEnabled, encodeQuery, supabaseRequest } = require('../lib/supabase.js');
 const { attendanceToSupabase, attendanceFromSupabase } = require('../lib/attendance-supabase.js');
-const { loadAttendance, writeAttendance, dedupeAttendanceRows, buildAttendanceDedupePlan } = require('../lib/attendance-access.js');
+const { loadAttendance, firestoreAttendance, writeAttendance, dedupeAttendanceRows, buildAttendanceDedupePlan } = require('../lib/attendance-access.js');
 
 test('Supabase attendance provider only enables with complete server configuration', () => {
   const env = { ATTENDANCE_DB_PROVIDER: 'supabase', SUPABASE_URL: 'https://aj-hris.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'x'.repeat(60) };
@@ -198,6 +198,50 @@ test('Supabase-only attendance read also resolves provisional machine identities
     assert.equal(rows.length, 1);
     assert.equal(rows[0].nik, '11111012750');
     assert.equal(rows._provider, 'supabase');
+  } finally {
+    keys.forEach(key => previous[key] === undefined ? delete process.env[key] : process.env[key] = previous[key]);
+  }
+});
+
+test('legacy attendance query limits database reads to the requested date window', async () => {
+  const calls = [];
+  const request = {
+    where: (field, operator, value) => { calls.push(['where', field, operator, value]); return request; },
+    orderBy: (field, direction) => { calls.push(['orderBy', field, direction]); return request; },
+    limit: value => { calls.push(['limit', value]); return request; },
+    get: async () => ({ docs: [] })
+  };
+  const rows = await firestoreAttendance({ collection: () => request }, {
+    fromDate: '2026-09-01', toDate: '2026-09-23', limit: 5000
+  });
+  assert.deepEqual(rows, []);
+  assert.deepEqual(calls, [
+    ['where', 'tanggal', '>=', '2026-09-01'],
+    ['where', 'tanggal', '<=', '2026-09-23'],
+    ['orderBy', 'tanggal', 'desc'],
+    ['limit', 5000]
+  ]);
+});
+
+test('attendance starts the legacy read while the primary read is still pending', async () => {
+  const keys = ['ATTENDANCE_DB_PROVIDER', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'ATTENDANCE_FIRESTORE_FALLBACK'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  Object.assign(process.env, {
+    ATTENDANCE_DB_PROVIDER: 'supabase', SUPABASE_URL: 'https://aj-hris.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'x'.repeat(60), ATTENDANCE_FIRESTORE_FALLBACK: 'true'
+  });
+  let finishPrimary;
+  let legacyStarted = false;
+  try {
+    const pending = loadAttendance({ db: {} }, {}, {
+      listAttendance: () => new Promise(resolve => { finishPrimary = resolve; }),
+      firestoreAttendance: async () => { legacyStarted = true; return []; }
+    });
+    assert.equal(legacyStarted, true);
+    finishPrimary([]);
+    const rows = await pending;
+    assert.equal(rows.length, 0);
+    assert.equal(rows._provider, 'supabase+firestore');
   } finally {
     keys.forEach(key => previous[key] === undefined ? delete process.env[key] : process.env[key] = previous[key]);
   }
