@@ -122,6 +122,7 @@ export async function mount(container, { session } = {}) {
  const selectedCountEl = container.querySelector("#absen-selected-count");
  const btnBulkEdit = container.querySelector("#btn-bulk-edit-absen");
  const btnBulkDelete = container.querySelector("#btn-bulk-delete-absen");
+ const btnBulkMapFinger = container.querySelector("#btn-bulk-map-finger");
  const btnClearSelected = container.querySelector("#btn-clear-selected-absen");
  const selectAllVisible = container.querySelector("#absen-select-all-visible");
  const dashboardSection = container.querySelector("#attendance-dashboard");
@@ -275,6 +276,73 @@ export async function mount(container, { session } = {}) {
    } });
  }
 
+ function openBulkFingerMappingModal() {
+  if (!roleIsHrdOrAdmin || !canEdit) return;
+  const rows = listAbsensiGlobal.filter(row => selectedAttendanceKeys.has(attendanceRowKey(row)) &&
+   String(row.nik || '').toUpperCase().startsWith('FINGER-') && !row._archive_source && row.id);
+  const groups = new Map();
+  for (const row of rows) {
+   const empNo = String(row.emp_no || row.fingerprint_user_id || '').trim();
+   const noId = String(row.no_id || row.fingerprint_no_id || '').trim();
+   const fingerName = String(row.nama_finger || row.fingerprint_name || '').trim();
+   if (!empNo || !noId || !fingerName) return toast('Ada baris tanpa Emp No., No. ID, atau nama finger. Periksa datanya terlebih dahulu.', 'warning');
+   const key = [normalizeToken(row.cabang), normalizeToken(empNo), normalizeToken(noId), normalizeToken(fingerName)].join('|');
+   if (!groups.has(key)) groups.set(key, { row, count: 0, firstDate: row.tanggal });
+   const group = groups.get(key);
+   group.count++;
+   if (row.tanggal < group.firstDate) group.firstDate = row.tanggal;
+  }
+  const entries = [...groups.values()];
+  if (!entries.length) return toast('Pilih baris finger berstatus belum terpetakan terlebih dahulu.', 'warning');
+  if (entries.length > 10) return toast('Maksimal 10 identitas mesin per proses. Pilih sebagian baris lalu ulangi untuk sisanya.', 'warning');
+  const employeeOptions = entry => employeeRowsGlobal.filter(emp => normalizeToken(emp.cabang) === normalizeToken(entry.row.cabang) &&
+   (emp.nik || emp.nik_karyawan) && (emp.nama_karyawan || emp.nama))
+   .sort((a, b) => String(a.nama_karyawan || a.nama).localeCompare(String(b.nama_karyawan || b.nama), 'id'))
+   .map(emp => `<option value="${escapeHtml(emp.nik || emp.nik_karyawan)}">${escapeHtml(emp.nama_karyawan || emp.nama)} · NIK ${escapeHtml(emp.nik || emp.nik_karyawan)}</option>`).join('');
+  if (entries.some(entry => !employeeOptions(entry))) return toast('Master karyawan untuk salah satu cabang belum dimuat. Coba lagi setelah data karyawan tersedia.', 'warning');
+  openModal({ title: `Petakan ${entries.length} Identitas Finger`, size: 'xl', bodyHtml: `
+   <form id="bulk-finger-mapping-form" class="text-left text-xs text-slate-700 space-y-3">
+    <p class="rounded-lg bg-amber-50 border border-amber-200 p-3">${rows.length} baris dipilih, menjadi ${entries.length} identitas mesin. Verifikasi setiap NIK dan periode; ID mesin dapat pernah digunakan orang lain.</p>
+    <div class="max-h-80 overflow-auto space-y-3">${entries.map((entry, index) => `<div class="rounded-lg border border-slate-200 p-3 space-y-2">
+      <strong>${escapeHtml(entry.row.nama_finger || entry.row.fingerprint_name)} · ${escapeHtml(entry.row.cabang)}</strong>
+      <p>Emp No. ${escapeHtml(entry.row.emp_no || entry.row.fingerprint_user_id)} · No. ID ${escapeHtml(entry.row.no_id || entry.row.fingerprint_no_id)} · ${entry.count} baris terpilih</p>
+      <label class="block">Karyawan yang benar<select data-map-nik="${index}" required class="mt-1 w-full rounded-lg border border-slate-300 px-2 py-2"><option value="">Pilih karyawan</option>${employeeOptions(entry)}</select></label>
+      <div class="grid grid-cols-2 gap-2"><label>Mulai berlaku<input data-map-from="${index}" type="date" required value="${escapeHtml(entry.firstDate)}" class="mt-1 w-full rounded-lg border border-slate-300 px-2 py-2"></label>
+      <label>Akhir (opsional)<input data-map-to="${index}" type="date" class="mt-1 w-full rounded-lg border border-slate-300 px-2 py-2"></label></div>
+     </div>`).join('')}</div>
+    <label class="block">Alasan dan bukti verifikasi untuk seluruh pilihan<textarea id="bulk-finger-reason" minlength="10" maxlength="1000" required rows="2" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Contoh: Cocokkan pengguna mesin dengan master karyawan bersama HRD"></textarea></label>
+    <p class="text-slate-500">Pemetaan berlaku untuk scan dari bridge berikutnya dan riwayat yang cocok. Identitas serta sidik jari di mesin tidak diubah.</p>
+    <button type="submit" class="rounded-lg bg-indigo-700 text-white font-bold px-4 py-2">Simpan ${entries.length} Pemetaan</button>
+   </form>`, onMount: modal => {
+    const form = modal.querySelector('#bulk-finger-mapping-form');
+    form.onsubmit = async event => {
+     event.preventDefault();
+     const button = form.querySelector('button[type="submit"]');
+     const reason = form.querySelector('#bulk-finger-reason').value.trim();
+     const mappings = entries.map((entry, index) => ({ pendingId: entry.row.id,
+      nik: form.querySelector(`[data-map-nik="${index}"]`).value,
+      effectiveFrom: form.querySelector(`[data-map-from="${index}"]`).value,
+      effectiveTo: form.querySelector(`[data-map-to="${index}"]`).value, reason }));
+     button.disabled = true;
+     try {
+      const { results } = await attendanceAccessApi('attendance_mapping_save_bulk', { mappings });
+      const succeeded = results.filter(result => result.saved);
+      const failed = results.filter(result => !result.saved);
+      selectedAttendanceKeys.clear();
+      const failedIds = new Set(failed.map(item => String(item.pendingId)));
+      entries.filter(entry => failedIds.has(String(entry.row.id))).forEach(entry => selectedAttendanceKeys.add(attendanceRowKey(entry.row)));
+      closeModal();
+      recentAttendanceRead = null;
+      await loadRawAbsensiTable(true);
+      const mapped = succeeded.reduce((sum, item) => sum + item.mapped, 0);
+      const warnings = [...failed.map(item => item.error), ...succeeded.map(item => item.warning).filter(Boolean),
+       ...succeeded.filter(item => item.skipped).map(item => `${item.skipped} konflik identitas perlu ditinjau`)];
+      toast(`${succeeded.length} pemetaan tersimpan; ${mapped} hari-karyawan diperbarui.${warnings.length ? ` ${warnings.length} perlu ditinjau: ${warnings[0]}` : ''}`, warnings.length ? 'warning' : 'success');
+     } catch (error) { button.disabled = false; toast('Pemetaan massal gagal: ' + error.message, 'error'); }
+    };
+   } });
+ }
+
  function dashboardMonthRange(month) {
   const match = String(month || "").match(/^(\d{4})-(\d{2})$/);
   if (!match) return null;
@@ -422,6 +490,12 @@ export async function mount(container, { session } = {}) {
    btnBulkDelete.classList.toggle("hidden", !roleIsHrdOrAdmin);
    btnBulkDelete.disabled = deletableCount === 0;
    btnBulkDelete.textContent = deletableCount ? `Hapus ${deletableCount} Baris` : "Hapus Baris Terpilih";
+  }
+  if (btnBulkMapFinger) {
+   const pendingCount = listAbsensiGlobal.filter(row => selectedAttendanceKeys.has(attendanceRowKey(row)) &&
+    String(row.nik || '').toUpperCase().startsWith('FINGER-') && !row._archive_source && row.id).length;
+   btnBulkMapFinger.classList.toggle('hidden', !roleIsHrdOrAdmin || !canEdit || !pendingCount);
+   btnBulkMapFinger.textContent = `Petakan Finger Terpilih (${pendingCount})`;
   }
  }
 
@@ -766,6 +840,7 @@ export async function mount(container, { session } = {}) {
  if (filterState.branch) data = data.filter(x => String(x.cabang || "").trim().toUpperCase() === filterState.branch.toUpperCase());
  if (filterState.division) data = data.filter(x => String(x.divisi || "").trim().toUpperCase() === filterState.division.toUpperCase());
  if (filterState.employee) data = data.filter(x => String(x.nik || x.nama || "").trim() === filterState.employee);
+ if (filterState.completeness === 'unmapped') data = data.filter(x => String(x.nik || '').toUpperCase().startsWith('FINGER-') && !x._archive_source && x.id);
  if (filterState.completeness === "incomplete") data = data.filter(x => !x.ketidakhadiran && (x.perlu_koreksi || !x.scan_masuk || !x.scan_keluar));
  if (filterState.completeness === "missing_in") data = data.filter(x => !x.ketidakhadiran && !x.scan_masuk);
  if (filterState.completeness === "missing_out") data = data.filter(x => !x.ketidakhadiran && !x.scan_keluar);
@@ -955,6 +1030,7 @@ export async function mount(container, { session } = {}) {
  if (btnBulkEdit) {
  btnBulkEdit.onclick = () => openBulkEditAbsensiModal();
  }
+ if (btnBulkMapFinger) btnBulkMapFinger.onclick = () => openBulkFingerMappingModal();
  if (btnBulkDelete) {
  btnBulkDelete.onclick = () => openBulkDeleteAbsensiModal();
  }
