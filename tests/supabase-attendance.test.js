@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { cleanBaseUrl, getSupabaseConfig, supabaseEnabled, encodeQuery, supabaseRequest } = require('../lib/supabase.js');
-const { attendanceToSupabase, attendanceFromSupabase } = require('../lib/attendance-supabase.js');
+const { attendanceToSupabase, attendanceFromSupabase, listAttendance } = require('../lib/attendance-supabase.js');
 const { loadAttendance, firestoreAttendance, writeAttendance, dedupeAttendanceRows, buildAttendanceDedupePlan } = require('../lib/attendance-access.js');
 
 test('Supabase attendance provider only enables with complete server configuration', () => {
@@ -52,6 +52,20 @@ test('attendance mapping preserves operational fields and normalizes time', () =
   const restored = attendanceFromSupabase({ ...row, scan_masuk: '08:01:00', scan_keluar: '17:03:00' });
   assert.equal(restored.scan_masuk, '08:01');
   assert.equal(restored.scan_keluar, '17:03');
+});
+
+test('old attendance archive can read a second Supabase page without repeating the first', async () => {
+  let params;
+  await listAttendance({ fromDate: '2026-01-01', toDate: '2026-07-25', limit: 500, offset: 500 }, {
+    env: { SUPABASE_URL: 'https://aj-hris.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'x'.repeat(60) },
+    fetchImpl: async url => {
+      params = new URL(url).searchParams;
+      return { ok: true, status: 200, text: async () => '[]' };
+    }
+  });
+  assert.equal(params.get('limit'), '500');
+  assert.equal(params.get('offset'), '500');
+  assert.equal(params.get('and'), '(tanggal.gte.2026-01-01,tanggal.lte.2026-07-25)');
 });
 
 test('attendance read falls back to Firestore when Supabase rejects access', async () => {
