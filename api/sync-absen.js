@@ -520,17 +520,23 @@ module.exports = async function handler(req, res) {
     const { resolveWorkSchedule } = await import('../js/work-schedule.mjs');
     const employeeMap = new Map();
     const numericEmployeeMap = new Map();
+    const fingerEmployeeMap = new Map();
+    const numericFingerEmployeeMap = new Map();
     const employeeNameMap = new Map();
     const employees = [];
-    const { machineNameAgrees, addUniqueIdentifier, historicalFingerprintOwnerConflict, eligibleHistoryForFingerprintFallback } = require('../lib/fingerprint-identity');
-    const fingerprintFields = [
-      'nik', 'nik_karyawan', 'finger_id', 'kode_finger', 'no_finger', 'id_finger', 'pin',
-      'fingerprint_user_id', 'fingerprint_emp_no', 'fingerprint_no_id'
-    ];
+    const { machineNameAgrees, addUniqueIdentifier, historicalFingerprintOwnerConflict, eligibleHistoryForFingerprintFallback, resolveFingerprintEmployee } = require('../lib/fingerprint-identity');
+    const fingerprintFields = ['finger_id', 'kode_finger', 'no_finger', 'id_finger', 'pin',
+      'fingerprint_user_id', 'fingerprint_emp_no', 'fingerprint_no_id'];
     const registerEmployee = employee => {
       if (normalizeBranch(employee.cabang) !== branch) return;
       employees.push(employee);
-      const identifiers = [employee._docId, ...fingerprintFields.map(field => employee[field])];
+      const identifiers = [employee._docId, employee.nik, employee.nik_karyawan];
+      fingerprintFields.forEach(field => {
+        const value = employee[field];
+        addUniqueIdentifier(fingerEmployeeMap, value, employee);
+        const key = String(value || '').trim().toUpperCase();
+        if (/^\d+$/.test(key)) addUniqueIdentifier(numericFingerEmployeeMap, key.replace(/^0+(?=\d)/, ''), employee);
+      });
       identifiers.forEach(value => {
         const key = String(value || '').trim().toUpperCase();
         if (!key) return;
@@ -611,17 +617,10 @@ module.exports = async function handler(req, res) {
       const exactKey = String(deviceUserId).trim().toUpperCase();
       // Nama mesin adalah kondisi saat ini, bukan bukti pemilik seluruh log
       // historis. ID yang pernah tercatat atas nama lain harus direkonsiliasi.
-      if (conflictingFingerIds.has(exactKey)) return null;
       const machineName = deviceUserNameMap.get(exactKey);
-      if (employeeMap.has(exactKey)) {
-        const matched = employeeMap.get(exactKey);
-        return matched && machineNameAgrees(matched, machineName) ? matched : null;
-      }
-      if (/^\d+$/.test(exactKey)) {
-        const numericMatch = numericEmployeeMap.get(exactKey.replace(/^0+(?=\d)/, ''));
-        if (numericMatch) return machineNameAgrees(numericMatch, machineName) ? numericMatch : null;
-      }
-      return machineName ? resolveEmployeeByMachineName(machineName) : null;
+      return resolveFingerprintEmployee({ id: exactKey, machineName, fingerMap: fingerEmployeeMap,
+        numericFingerMap: numericFingerEmployeeMap, employeeMap, numericEmployeeMap,
+        byName: resolveEmployeeByMachineName, conflictingIds: conflictingFingerIds });
     };
 
     // --- 3) Upsert per (NIK, tanggal), MERGE dgn scan lama kalau ada ----

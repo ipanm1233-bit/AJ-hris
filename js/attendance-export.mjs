@@ -113,6 +113,7 @@ function exportObject(row, employee, shift, { absence = "", review = "", reason 
     "NIK": row?.nik || row?.nik_karyawan || employee?.nik || employee?.nik_karyawan || "",
     "Nama Finger": row?.nama_finger || row?.fingerprint_name || employee?.finger_name || "",
     "Nama Karyawan": row?.nama || row?.nama_karyawan || employee?.nama_karyawan || employee?.nama || "",
+    "Cabang": row?.cabang || employee?.cabang || "",
     "Auto-Assign": row ? (row.auto_assign_label || (row.auto_assign === false ? "Tidak" : "Ya")) : "Tidak",
     "Tanggal": row?.tanggal || "",
     "Jam Kerja": row?.jam_kerja || shift.jamKerja || "",

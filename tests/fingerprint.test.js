@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { machineNameAgrees, addUniqueIdentifier, historicalFingerprintOwnerConflict, eligibleHistoryForFingerprintFallback } = require('../lib/fingerprint-identity');
+const { machineNameAgrees, addUniqueIdentifier, historicalFingerprintOwnerConflict, eligibleHistoryForFingerprintFallback, resolveFingerprintEmployee } = require('../lib/fingerprint-identity');
 const {
   getDeviceUserId,
   parseFingerprintTimestamp,
@@ -38,6 +38,15 @@ test('blocks finger 95 when stale machine name MALATRI disagrees with IRINE hist
   assert.equal(historicalFingerprintOwnerConflict(history, '95', 'MALATRI'), true);
   assert.equal(historicalFingerprintOwnerConflict(history.slice(1), '95', 'MALATRI'), false);
   assert.equal(historicalFingerprintOwnerConflict(history, '66', 'ARIP'), false);
+});
+
+test('machine identity falls back to a unique current finger name when a short generic ID belongs to someone else', () => {
+  const angga = { _docId: 'a', nik: '1062489830', nama_karyawan: 'ANGGA ARDIANSAH', finger_name: 'ANGGA' };
+  const another = { _docId: 'b', nik: '123', nama_karyawan: 'BUDI' };
+  const resolve = overrides => resolveFingerprintEmployee({ id: '81', machineName: 'ANGGA', fingerMap: new Map(), numericFingerMap: new Map(), employeeMap: new Map([['81', another]]), numericEmployeeMap: new Map(), byName: () => angga, ...overrides });
+  assert.equal(resolve({}), angga);
+  assert.equal(resolve({ fingerMap: new Map([['81', another]]) }), null);
+  assert.equal(resolve({ conflictingIds: new Set(['81']) }), null);
 });
 
 test('recovers uniquely named historical employees when Firestore master is unavailable', () => {

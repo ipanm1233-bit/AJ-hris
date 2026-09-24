@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { attendanceImportDate, attendanceImportValues, attendanceImportScan } from '../js/attendance-import.mjs';
+import { attendanceImportDate, attendanceImportValues, attendanceImportScan, resolveAttendanceImportIdentity } from '../js/attendance-import.mjs';
 
 test('raw export scheduled hours and device ID cannot masquerade as real scan, NIK or name', () => {
   const parsed = attendanceImportValues({
@@ -48,4 +48,28 @@ test('Malang Excel display dates normalize deterministically', () => {
   assert.equal(attendanceImportDate('18/09/2026'), '2026-09-18');
   assert.equal(attendanceImportDate('2026-09-18'), '2026-09-18');
   assert.equal(attendanceImportDate('31-Feb-26'), null);
+});
+
+test('raw export round trip includes branch and machine employee number', () => {
+  const parsed = attendanceImportValues({ Cabang: 'CIREBON', 'Emp No.': '81', 'No. ID': '4', NIK: 'FINGER-CIREBON-4', 'Nama Finger': 'ANGGA', 'Nama Karyawan': 'ANGGA (BELUM DIPETAKAN)', Tanggal: '2026-09-24', 'Scan Masuk': '07:35' });
+  assert.equal(parsed.cabang, 'CIREBON');
+  assert.equal(parsed.empNo, '81');
+  const result = resolveAttendanceImportIdentity(parsed, [{ nik: '1062408930', nama_karyawan: 'ANGGA ARDIANSAH', finger_name: 'ANGGA', cabang: 'CIREBON' }]);
+  assert.equal(result.employee?.nik, '1062408930');
+  assert.equal(result.provisional, true);
+});
+
+test('reused machine ID does not silently assign a different employee', () => {
+  const employees = [{ nik: '1082204940', nama_karyawan: 'IRINE APRILIA DEWI', finger_id: '95', finger_name: 'IRINE', cabang: 'CIREBON' }];
+  const result = resolveAttendanceImportIdentity({ nik: 'FINGER-CIREBON-95', fingerId: '95', fingerName: 'MALATRI', nama: 'Malatri (belum dipetakan)', cabang: 'CIREBON' }, employees);
+  assert.equal(result.employee, null);
+  assert.equal(result.conflict, true);
+});
+
+test('a supplied real NIK cannot be overwritten by a matching name for someone else', () => {
+  const result = resolveAttendanceImportIdentity({ nik: '999999999', fingerName: 'ANGGA', nama: 'ANGGA ARDIANSAH', cabang: 'CIREBON' }, [
+    { nik: '1062489830', nama_karyawan: 'ANGGA ARDIANSAH', finger_name: 'ANGGA', cabang: 'CIREBON' }
+  ]);
+  assert.equal(result.employee, null);
+  assert.equal(result.conflict, true);
 });
