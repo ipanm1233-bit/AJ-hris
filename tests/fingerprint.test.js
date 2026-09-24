@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { machineNameAgrees, addUniqueIdentifier, historicalFingerprintOwnerConflict, eligibleHistoryForFingerprintFallback, resolveFingerprintEmployee, resolveFingerprintDeviceEmployee } = require('../lib/fingerprint-identity');
+const { machineNameAgrees, addUniqueIdentifier, historicalFingerprintOwnerConflict, eligibleHistoryForFingerprintFallback, resolveFingerprintEmployee, resolveFingerprintDeviceEmployee, confirmedFingerprintOwnerForDay } = require('../lib/fingerprint-identity');
 const {
   getDeviceUserId,
   parseFingerprintTimestamp,
@@ -64,6 +64,34 @@ test('resolves PHILIP using machine No. ID when Emp No. points to a stale employ
   const base = { id: '80', noId: '211', machineName: 'PHILIP TAMZIR', fingerMap: new Map([['80', stale], ['211', philip]]), numericFingerMap: new Map(), employeeMap: new Map(), numericEmployeeMap: new Map(), byName: () => philip };
   assert.equal(resolveFingerprintDeviceEmployee(base), philip);
   assert.equal(resolveFingerprintDeviceEmployee({ ...base, conflictingIds: new Set(['80']) }), null);
+});
+
+test('historically reused Emp No. can use a confirmed same-day No. ID without assigning the old owner', () => {
+  const philip = { _docId: 'p', nik: '1052204600', nama_karyawan: 'PHILIP TAMZIR', cabang: 'CIREBON' };
+  const data = {
+    id: '80', noId: '211', machineName: 'PHILIP TAMZIR', date: '2026-09-24', branch: 'CIREBON',
+    employees: [philip],
+    rows: [
+      { nik: '1234567890', nama: 'KARYAWAN LAMA', fingerprint_name: 'KARYAWAN LAMA', fingerprint_user_id: '80', fingerprint_no_id: '210', tanggal: '2026-09-18', cabang: 'CIREBON' },
+      { nik: '1052204600', nama: 'PHILIP TAMZIR', fingerprint_name: 'PHILIP TAMZIR', fingerprint_user_id: '80', fingerprint_no_id: '211', tanggal: '2026-09-24', cabang: 'CIREBON' }
+    ]
+  };
+  assert.equal(historicalFingerprintOwnerConflict(data.rows, '80', 'PHILIP TAMZIR'), true);
+  assert.equal(confirmedFingerprintOwnerForDay(data), philip);
+  assert.equal(confirmedFingerprintOwnerForDay({ ...data, date: '2026-09-23' }), null);
+  assert.equal(confirmedFingerprintOwnerForDay({ ...data, noId: '80' }), null);
+  assert.equal(confirmedFingerprintOwnerForDay({ ...data, rows: [
+    ...data.rows, { ...data.rows[1], nik: '222', nama: 'PHILIP TAMZIR' }
+  ] }), null);
+});
+
+test('ID 95 stays pending when MALA TRI has only a different No. ID that day', () => {
+  const mala = { nik: '1022612010', nama_karyawan: 'MALA TRI AYUNINGSIH', finger_name: 'MALA', cabang: 'CIREBON' };
+  const result = confirmedFingerprintOwnerForDay({
+    id: '95', noId: '28', machineName: 'MALA TRI', date: '2026-09-24', branch: 'CIREBON', employees: [mala],
+    rows: [{ nik: '1022612010', nama: 'MALA TRI AYUNINGSIH', fingerprint_name: 'MALA', fingerprint_user_id: '94', fingerprint_no_id: '26', tanggal: '2026-09-24', cabang: 'CIREBON' }]
+  });
+  assert.equal(result, null);
 });
 
 test('recovers uniquely named historical employees when Firestore master is unavailable', () => {

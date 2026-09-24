@@ -524,7 +524,7 @@ module.exports = async function handler(req, res) {
     const numericFingerEmployeeMap = new Map();
     const employeeNameMap = new Map();
     const employees = [];
-    const { machineNameAgrees, addUniqueIdentifier, historicalFingerprintOwnerConflict, eligibleHistoryForFingerprintFallback, resolveFingerprintDeviceEmployee } = require('../lib/fingerprint-identity');
+    const { machineNameAgrees, addUniqueIdentifier, historicalFingerprintOwnerConflict, eligibleHistoryForFingerprintFallback, resolveFingerprintDeviceEmployee, confirmedFingerprintOwnerForDay } = require('../lib/fingerprint-identity');
     const fingerprintFields = ['finger_id', 'kode_finger', 'no_finger', 'id_finger', 'pin',
       'fingerprint_user_id', 'fingerprint_emp_no', 'fingerprint_no_id'];
     const registerEmployee = employee => {
@@ -613,12 +613,16 @@ module.exports = async function handler(req, res) {
       const uniqueIds = new Set(candidates.map(employee => employee._docId));
       return uniqueIds.size === 1 ? candidates[0] : null;
     };
-    const resolveEmployee = deviceUserId => {
+    const resolveEmployee = (deviceUserId, date) => {
       const exactKey = String(deviceUserId).trim().toUpperCase();
       // Nama mesin adalah kondisi saat ini, bukan bukti pemilik seluruh log
       // historis. ID yang pernah tercatat atas nama lain harus direkonsiliasi.
       const machineName = deviceUserNameMap.get(exactKey);
       const noId = deviceUserMetadataMap.get(exactKey)?.noId;
+      if (conflictingFingerIds.has(exactKey)) return confirmedFingerprintOwnerForDay({
+        rows: identityHistoryRows, employees, id: exactKey, noId, machineName,
+        date, branch
+      });
       return resolveFingerprintDeviceEmployee({ id: exactKey, noId, machineName, fingerMap: fingerEmployeeMap,
         numericFingerMap: numericFingerEmployeeMap, employeeMap, numericEmployeeMap,
         byName: resolveEmployeeByMachineName, conflictingIds: conflictingFingerIds });
@@ -661,7 +665,7 @@ module.exports = async function handler(req, res) {
     for (let i = 0; i < groupList.length; i += chunkSize) {
       const chunk = groupList.slice(i, i + chunkSize);
       const chunkItems = chunk.map(group => {
-        const matchedEmployee = resolveEmployee(group.deviceUserId);
+        const matchedEmployee = resolveEmployee(group.deviceUserId, group.tanggal);
         const machineUser = deviceUserMetadataMap.get(String(group.deviceUserId).trim().toUpperCase()) || null;
         const employee = matchedEmployee || (useSupabaseAttendance ? {
           _docId: `PENDING-${group.deviceUserId}`,
@@ -825,8 +829,8 @@ module.exports = async function handler(req, res) {
       await batch.commit();
     }
 
-    const unmatchedIds = [...new Set(groupList
-      .filter(group => !resolveEmployee(group.deviceUserId))
+    const unmatchedGroups = groupList.filter(group => !resolveEmployee(group.deviceUserId, group.tanggal));
+    const unmatchedIds = [...new Set(unmatchedGroups
       .map(group => group.deviceUserId))].slice(0, 25);
     const unmatchedFingerprintUsers = unmatchedIds.map(id => {
       const fingerName = deviceUserNameMap.get(String(id).trim().toUpperCase()) || '';
@@ -835,7 +839,8 @@ module.exports = async function handler(req, res) {
       return {
         id, fingerName,
         reason: masterUnavailable ? 'master_karyawan tidak terbaca' :
-          conflictingFingerIds.has(String(id).trim().toUpperCase()) ? 'ID pernah digunakan nama lain' :
+          conflictingFingerIds.has(String(id).trim().toUpperCase()) ?
+            `ID pernah digunakan nama lain; belum ada pasangan tepercaya untuk ${[...new Set(unmatchedGroups.filter(group => String(group.deviceUserId) === String(id)).map(group => group.tanggal))].sort().join(', ')}` :
           !fingerName ? 'nama pengguna tidak dikirim mesin' :
           possibleOwners.length > 1 ? 'nama cocok dengan lebih dari satu karyawan' :
           possibleOwners.length === 1 ? `ID mesin ${machine?.noId || id} bertentangan dengan pemetaan master` :
@@ -885,7 +890,7 @@ module.exports = async function handler(req, res) {
       duplicatesRemoved,
       unmatchedFingerprintIds: unmatchedIds,
       unmatchedFingerprintUsers,
-      identityConflictIds: [...conflictingFingerIds],
+      identityConflictIds: unmatchedIds.filter(id => conflictingFingerIds.has(String(id).trim().toUpperCase())),
       masterUnavailable
     });
 
