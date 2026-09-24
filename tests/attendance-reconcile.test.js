@@ -2,6 +2,14 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { planFingerprintReconciliation } = require('../lib/attendance-reconcile.js');
+const { loadReconciliationEmployees } = require('../lib/attendance-access.js');
+
+test('Firestore quota allows verified Supabase reconciliation; other database errors still fail', async () => {
+  const db = error => ({ collection: () => ({ get: async () => { throw error; } }) });
+  const quota = await loadReconciliationEmployees(db({ code: 8, details: 'Quota exceeded.' }));
+  assert.deepEqual(quota, { employees: [], masterUnavailable: true });
+  await assert.rejects(() => loadReconciliationEmployees(db(new Error('permission denied'))), /permission denied/);
+});
 
 test('reconciles uniquely named current owner and preserves an existing morning scan', () => {
   const rows = [
@@ -47,4 +55,28 @@ test('another employee with No. ID 80 does not block PHILIP Emp No. 80', () => {
   const plan = planFingerprintReconciliation(rows, [{ nik: '1052204600', nama_karyawan: 'PHILIP TAMZIR', cabang: 'CIREBON' }]);
   assert.equal(plan.unresolved, 0);
   assert.equal(plan.updates[0].nik, '1052204600');
+});
+
+test('Firestore quota fallback merges only a confirmed same-day Supabase pair', () => {
+  const rows = [
+    { id: 'TEMP-80', nik: 'FINGER-CIREBON-80', nama: 'PHILIP TAMZIR (BELUM DIPETAKAN)', tanggal: '2026-09-24', cabang: 'CIREBON', fingerprint_user_id: '80', fingerprint_no_id: '211', fingerprint_name: 'PHILIP TAMZIR', scan_masuk: '07:36' },
+    { id: 'REAL-80', nik: '1052204600', nama: 'PHILIP TAMZIR', tanggal: '2026-09-24', cabang: 'CIREBON', fingerprint_no_id: '211', fingerprint_name: 'PHILIP TAMZIR', auto_assign: true, scan_masuk: '07:59' },
+    { id: 'OLD-80', nik: '1234567890', nama: 'PEMILIK LAMA', tanggal: '2026-09-21', cabang: 'CIREBON', fingerprint_user_id: '80', fingerprint_name: 'PEMILIK LAMA' }
+  ];
+  const plan = planFingerprintReconciliation(rows, [], { verifiedRowsOnly: true });
+  assert.equal(plan.unresolved, 0);
+  assert.equal(plan.updates[0].nik, '1052204600');
+  assert.equal(plan.updates[0].scan_masuk, '07:36');
+  assert.deepEqual(plan.deleteIds, ['TEMP-80']);
+  assert.equal(planFingerprintReconciliation(rows, [], { verifiedRowsOnly: false }).updates.length, 0);
+});
+
+test('quota fallback keeps ID 95 and ambiguous No. ID owners pending', () => {
+  const pending = { id: 'TEMP-95', nik: 'FINGER-CIREBON-95', nama: 'MALATRI (BELUM DIPETAKAN)', tanggal: '2026-09-24', cabang: 'CIREBON', fingerprint_user_id: '95', fingerprint_no_id: '28', fingerprint_name: 'MALATRI' };
+  const mala = { id: 'MALA', nik: '1022612010', nama: 'MALA TRI AYUNINGSIH', tanggal: '2026-09-24', cabang: 'CIREBON', fingerprint_user_id: '94', fingerprint_no_id: '26', fingerprint_name: 'MALA', auto_assign: true };
+  assert.equal(planFingerprintReconciliation([pending, mala], [], { verifiedRowsOnly: true }).unresolved, 1);
+  const samePin = { ...mala, fingerprint_no_id: '28', fingerprint_name: 'MALATRI', nama: 'MALATRI' };
+  const conflicting = { ...samePin, id: 'OTHER', nik: '9999999' };
+  assert.equal(planFingerprintReconciliation([pending, samePin, conflicting], [], { verifiedRowsOnly: true }).updates.length, 0);
+  assert.equal(planFingerprintReconciliation([pending, { ...samePin, auto_assign: false }], [], { verifiedRowsOnly: true }).updates.length, 0);
 });
