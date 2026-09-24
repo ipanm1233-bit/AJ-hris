@@ -8,6 +8,7 @@ import { resolveWorkSchedule } from "../work-schedule.mjs";
 import { buildRawAttendanceExport } from "../attendance-export.mjs";
 import { attendanceImportDate, attendanceImportValues, attendanceImportScan, resolveAttendanceImportIdentity } from "../attendance-import.mjs";
 import { buildAttendanceStatusRows } from "../attendance-status.mjs";
+import { mergeAttendanceArchive } from "../attendance-archive-merge.mjs";
 import { attendanceDeductionSource, calculateAttendancePenalty } from "../attendance-penalty.mjs";
 import { buildAttendanceAnalytics } from "../attendance-analytics.mjs";
 import { buildMissingAttendanceToday } from "../attendance-missing.mjs";
@@ -299,10 +300,10 @@ export async function mount(container, { session } = {}) {
    absenceRecords: absenceRowsGlobal,
    schedules: scheduleRowsGlobal
   }).filter(row => !row.is_status_only);
-  const existing = new Set([...listAbsensiGlobal, ...archiveAttendanceRowsGlobal].map(row => String(row.id || "")).filter(Boolean));
-  const additions = processed.filter(row => !row.id || !existing.has(String(row.id)));
-  archiveAttendanceRowsGlobal.push(...additions);
-  listAbsensiGlobal.push(...additions);
+  const merged = mergeAttendanceArchive(listAbsensiGlobal, processed);
+  const additions = merged.slice(listAbsensiGlobal.length);
+  archiveAttendanceRowsGlobal = mergeAttendanceArchive(archiveAttendanceRowsGlobal, additions);
+  listAbsensiGlobal = merged;
   return additions.length;
  }
 
@@ -552,8 +553,7 @@ export async function mount(container, { session } = {}) {
  absenceRecords: absenceRowsGlobal,
  schedules: scheduleRowsGlobal
  });
- const liveIds = new Set(liveAttendanceRows.map(row => String(row.id || "")).filter(Boolean));
- listAbsensiGlobal = [...liveAttendanceRows, ...archiveAttendanceRowsGlobal.filter(row => !row.id || !liveIds.has(String(row.id)))];
+ listAbsensiGlobal = mergeAttendanceArchive(liveAttendanceRows, archiveAttendanceRowsGlobal);
  populateAttendanceFilterOptions();
  populateDashboardFilters();
  renderAttendanceDashboard();

@@ -167,6 +167,16 @@ test('keeps both rows when machine name and historical owner disagree', () => {
   assert.equal(rows.length, 2);
 });
 
+test('mapped PHILIP scan supersedes provisional Emp No. row via shared No. ID and keeps first scan', () => {
+  const rows = dedupeAttendanceRows([
+    { nik: 'FINGER-CIREBON-80', nama: 'PHILIP TAMZIR (BELUM DIPETAKAN)', fingerprint_user_id: '80', fingerprint_no_id: '211', tanggal: '2026-09-24', cabang: 'CIREBON', scan_masuk: '07:36' },
+    { nik: '1052204600', nama: 'PHILIP TAMZIR', fingerprint_no_id: '211', tanggal: '2026-09-24', cabang: 'CIREBON', scan_masuk: '07:59' }
+  ]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].nik, '1052204600');
+  assert.equal(rows[0].scan_masuk, '07:36');
+});
+
 test('mapped NIK replaces provisional machine identity even if its source is imported', () => {
   const rows = dedupeAttendanceRows([
     { id: 'PENDING-11', nik: 'FINGER-CIREBON-11', nama: 'HELMI PRASTIYAN (BELUM DIPETAKAN)',
