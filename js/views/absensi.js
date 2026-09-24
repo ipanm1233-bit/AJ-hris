@@ -1,4 +1,4 @@
-import { db, COL, collection, getDocs, getDocsFromCache, writeBatch, doc, getDoc, query, where, setDoc, deleteDoc } from "../firebase-config.js";
+import { db, COL, collection, getDocs, getDocsFromCache, doc, getDoc, setDoc, deleteDoc } from "../firebase-config.js";
 import { toast, genId, fsGetAll, escapeHtml, openModal, closeModal, formatUangJalanEkspedisiRows } from "../utils.js";
 import { skeletonRows, emptyState } from "../components.js";
 import { callGasArchiveWebApp } from "../gas-integration.js";
@@ -9,6 +9,7 @@ import { buildRawAttendanceExport } from "../attendance-export.mjs";
 import { attendanceImportDate, attendanceImportValues, attendanceImportScan, resolveAttendanceImportIdentity } from "../attendance-import.mjs";
 import { buildAttendanceStatusRows } from "../attendance-status.mjs";
 import { mergeAttendanceArchive } from "../attendance-archive-merge.mjs";
+import { planAttendanceArchive } from "../attendance-archive-plan.mjs";
 import { attendanceDeductionSource, calculateAttendancePenalty } from "../attendance-penalty.mjs";
 import { buildAttendanceAnalytics } from "../attendance-analytics.mjs";
 import { buildMissingAttendanceToday } from "../attendance-missing.mjs";
@@ -705,7 +706,7 @@ export async function mount(container, { session } = {}) {
  // Data live sengaja hanya memuat 60 hari terakhir. Riwayat yang lebih lama
  // tersedia melalui arsip Spreadsheet agar halaman ini tidak membaca seluruh
  // koleksi pada setiap pembukaan.
- if (archiveAlertBox) {
+ if (archiveAlertBox && roleIsHrdOrAdmin) {
  archiveAlertBox.className = "bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center justify-between gap-4 mb-4 text-xs";
  archiveAlertBox.innerHTML = `
  <div class="flex items-start gap-3 text-left">
@@ -714,7 +715,7 @@ export async function mount(container, { session } = {}) {
  Data live dibatasi 60 hari terakhir
  </p>
  <p class="text-slate-500 mt-0.5">
- Riwayat lama dapat diarsipkan dengan pemeriksaan manual satu kali, dan dapat ditarik kembali melalui tombol Tarik Arsip Spreadsheet.
+ Riwayat lama dapat disalin ke Spreadsheet dan ditarik kembali untuk pemeriksaan. Data di HRIS tetap tersimpan.
  </p>
  </div>
  </div>
@@ -726,39 +727,45 @@ export async function mount(container, { session } = {}) {
  const btn = archiveAlertBox.querySelector("#btn-archive-now");
  btn.disabled = true; btn.textContent = "Memeriksa data lama...";
  try {
- const oldSnapshot = await getDocs(query(attendanceRef, where("tanggal", "<", thresholdStr)));
- const rowsToArchive = oldSnapshot.docs.map(item => ({ id: item.id, ...item.data() }));
- if (!rowsToArchive.length) {
+ const previousDay = new Date(`${thresholdStr}T00:00:00Z`);
+ previousDay.setUTCDate(previousDay.getUTCDate() - 1);
+ const endDate = filterEnd?.value && filterEnd.value < thresholdStr ? filterEnd.value : previousDay.toISOString().slice(0, 10);
+ const startDate = filterStart?.value || "2020-01-01";
+ if (startDate > endDate) throw new Error("Pilih periode sebelum batas 60 hari terakhir untuk diarsipkan.");
+ const oldRows = [];
+ const pageSize = 500;
+ while (oldRows.length < 5000) {
+  const result = await attendanceAccessApi("attendance_list", {
+   fromDate: startDate, toDate: endDate, limit: pageSize, offset: oldRows.length, requireSupabase: true
+  });
+  const page = result.rows || [];
+  oldRows.push(...page);
+  if (page.length < pageSize) break;
+ }
+ const plan = planAttendanceArchive(oldRows, thresholdStr);
+ if (!plan.count) {
   toast("Tidak ada data >60 hari untuk diarsipkan.", "success");
-  btn.disabled = false; btn.textContent = "Periksa & Arsipkan Data Lama";
   return;
  }
- btn.textContent = `Mengarsipkan ${rowsToArchive.length} data...`;
- // Call Apps Script web app (project GAS Arsip Absensi, terpisah)
- await callGasArchiveWebApp({
- action: "archive_attendance",
- rows: rowsToArchive
- });
- 
- // Delete from Firebase in batches
- const chunks = []; let tempArr = [];
- rowsToArchive.forEach(r => {
- tempArr.push(r.id);
- if (tempArr.length === 400) { chunks.push(tempArr); tempArr = []; }
- });
- if (tempArr.length > 0) chunks.push(tempArr);
-
- for (const chunk of chunks) {
- const batch = writeBatch(db);
- chunk.forEach(id => { batch.delete(doc(db, COL.DATA_ABSENSI, id)); });
- await batch.commit();
+ let archived = 0;
+ let added = 0;
+ let countReported = true;
+ for (const chunk of plan.chunks) {
+  btn.textContent = `Mengarsipkan ${archived}/${plan.count}...`;
+  try {
+   const response = await callGasArchiveWebApp({ action: "archive_attendance", rows: chunk });
+   if (Number.isInteger(response.count)) added += response.count;
+   else countReported = false;
+  } catch (error) {
+   throw new Error(`${archived} dari ${plan.count} baris telah dikirim. Sisa batch gagal: ${error.message} Ulangi proses; ID yang sudah ada akan dilewati.`);
+  }
+  archived += chunk.length;
  }
-
- toast(`Berhasil memindahkan ${rowsToArchive.length} data absensi ke Google Spreadsheet! Database Firebase tetap efisien.`, "success");
- loadRawAbsensiTable(true);
+ toast(`${archived} data lama diperiksa di Spreadsheet${countReported ? `; ${added} baris baru ditambahkan` : ''}. Data asli tetap di HRIS.`, "success");
  } catch (err) {
  toast("Gagal mengarsipkan: " + err.message, "error");
- btn.disabled = false; btn.textContent = "Periksa & Arsipkan Data Lama";
+ } finally {
+  btn.disabled = false; btn.textContent = "Periksa & Arsipkan Data Lama";
  }
  };
  }
