@@ -1186,9 +1186,9 @@ export async function mount(container, { session } = {}) {
  const sourceNik = String(values.nik || "").trim();
  const provisional = sourceNik.toUpperCase().startsWith('FINGER-');
  const safeBranch = branch.toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
- const safeFingerId = String(values.fingerId || '').trim().toUpperCase().replace(/[^A-Z0-9._-]/g, '_');
+ const safeMachineId = String(values.empNo || values.fingerId || '').trim().toUpperCase().replace(/[^A-Z0-9._-]/g, '_');
  const resolvedNik = String(empObj?.nik || empObj?.nik_karyawan || (!provisional && !conflictingIdentity && sourceNik) ||
-   (safeBranch && safeFingerId ? `FINGER-${safeBranch}-${safeFingerId}` : '')).trim();
+   (safeBranch && safeMachineId ? `FINGER-${safeBranch}-${safeMachineId}` : '')).trim();
  const stableEmployeeKey = resolvedNik
  .normalize("NFKD")
  .replace(/[\u0300-\u036f]/g, "")
@@ -1203,7 +1203,7 @@ export async function mount(container, { session } = {}) {
  tanggal: tglStr,
  cabang: branch,
  sumber: "IMPORT_EXCEL",
- fingerprint_user_id: values.fingerId || "",
+ fingerprint_user_id: values.empNo || values.fingerId || "",
  fingerprint_emp_no: values.empNo || "",
  fingerprint_no_id: values.fingerId || "",
  fingerprint_name: values.fingerName || "",
