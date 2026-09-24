@@ -88,6 +88,7 @@ export async function mount(container, { session } = {}) {
  const btnImport = container.querySelector("#btn-import-absen");
  const inputUpload = container.querySelector("#absen-upload");
  const btnExport = container.querySelector("#btn-export-absen");
+ const btnManageFingerMappings = container.querySelector("#btn-manage-finger-mappings");
  
  const panelProses = container.querySelector("#absen-panel-proses");
  const panelDashboard = container.querySelector("#absen-panel-dashboard");
@@ -204,6 +205,74 @@ export async function mount(container, { session } = {}) {
    } catch (error) { toast('Pemetaan finger gagal: ' + error.message, 'error'); }
    finally { btnReconcileFinger.disabled = false; btnReconcileFinger.textContent = 'Petakan ulang finger'; }
   };
+ }
+ if (btnManageFingerMappings && roleIsHrdOrAdmin) {
+  btnManageFingerMappings.classList.remove('hidden');
+  btnManageFingerMappings.onclick = async () => {
+   try {
+    const { mappings } = await attendanceAccessApi('attendance_mapping_list', { branch: filterState.branch || '' });
+    openModal({ title: 'Pemetaan Finger oleh HRD', size: 'lg', bodyHtml: `
+     <div class="text-left text-xs text-slate-600 space-y-3">
+      <p>Pemetaan berlaku sejak tanggal efektif untuk scan berikutnya. Menonaktifkan pemetaan tidak menghapus riwayat absensi yang sudah dicatat.</p>
+      <div class="max-h-80 overflow-auto divide-y divide-slate-100">${mappings.length ? mappings.map(item => `
+       <div class="py-3 flex items-center justify-between gap-3">
+        <div><strong>${escapeHtml(item.finger_name)} → ${escapeHtml(item.nama_karyawan)}</strong>
+         <p>${escapeHtml(item.cabang)} · Emp No. ${escapeHtml(item.emp_no)} · No. ID ${escapeHtml(item.no_id)} · ${escapeHtml(item.effective_from)} s.d. ${escapeHtml(item.effective_to || 'berlaku seterusnya')}</p>
+         <p>${escapeHtml(item.active ? 'Aktif' : 'Dinonaktifkan')} · ${escapeHtml(item.reason)}</p>
+         <p>Ditetapkan: ${escapeHtml(item.created_by || '-')} · ${escapeHtml(String(item.created_at || '').slice(0, 16).replace('T', ' '))}${item.revoked_at ? ` · Dinonaktifkan: ${escapeHtml(item.revoked_by || '-')} · ${escapeHtml(String(item.revoked_at).slice(0, 16).replace('T', ' '))}` : ''}</p></div>
+        ${item.active ? `<button type="button" data-revoke-mapping="${escapeHtml(item.id)}" class="text-rose-700 font-bold hover:underline">Nonaktifkan</button>` : ''}
+       </div>`).join('') : '<p class="p-3">Belum ada pemetaan manual.</p>'}</div>
+     </div>`, onMount: modal => {
+      modal.querySelectorAll('[data-revoke-mapping]').forEach(button => {
+       button.onclick = async () => {
+        if (!confirm('Nonaktifkan pemetaan ini untuk sinkronisasi berikutnya? Riwayat absensi tidak dihapus.')) return;
+        button.disabled = true;
+        try { await attendanceAccessApi('attendance_mapping_revoke', { id: button.dataset.revokeMapping }); closeModal(); toast('Pemetaan finger dinonaktifkan.', 'success'); }
+        catch (error) { button.disabled = false; toast(error.message, 'error'); }
+       };
+      });
+     } });
+   } catch (error) { toast('Daftar pemetaan gagal dimuat: ' + error.message, 'error'); }
+  };
+ }
+
+ function openFingerMappingModal(row) {
+  if (!roleIsHrdOrAdmin || !row?.id || !String(row.nik || '').toUpperCase().startsWith('FINGER-')) return;
+  const employees = employeeRowsGlobal.filter(emp => normalizeToken(emp.cabang) === normalizeToken(row.cabang) &&
+   (emp.nik || emp.nik_karyawan) && (emp.nama_karyawan || emp.nama));
+  if (!employees.length) return toast('Master karyawan cabang ini belum berhasil dimuat. Coba lagi setelah data karyawan tersedia.', 'warning');
+  const options = employees.sort((a, b) => String(a.nama_karyawan || a.nama).localeCompare(String(b.nama_karyawan || b.nama), 'id'))
+   .map(emp => `<option value="${escapeHtml(emp.nik || emp.nik_karyawan)}">${escapeHtml(emp.nama_karyawan || emp.nama)} · NIK ${escapeHtml(emp.nik || emp.nik_karyawan)}</option>`).join('');
+  openModal({ title: 'Petakan Finger Secara Manual', size: 'lg', bodyHtml: `
+   <form id="finger-manual-form" class="space-y-3 text-left text-xs text-slate-700">
+    <div class="rounded-lg border border-amber-200 bg-amber-50 p-3">
+     <strong>${escapeHtml(row.nama_finger || row.fingerprint_name || row.nama)}</strong>
+     <p>${escapeHtml(row.cabang)} · Emp No. ${escapeHtml(row.emp_no || row.fingerprint_user_id || '-')} · No. ID ${escapeHtml(row.no_id || row.fingerprint_no_id || '-')} · scan ${escapeHtml(row.tanggal)}</p>
+    </div>
+    <label class="block">Karyawan yang benar<select name="nik" required class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2"><option value="">Pilih karyawan</option>${options}</select></label>
+    <div class="grid grid-cols-2 gap-3">
+     <label>Tanggal mulai berlaku<input name="effectiveFrom" type="date" required value="${escapeHtml(row.tanggal)}" class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2"></label>
+     <label>Tanggal akhir (opsional)<input name="effectiveTo" type="date" class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2"></label>
+    </div>
+    <label class="block">Alasan dan bukti verifikasi<textarea name="reason" required minlength="10" maxlength="1000" rows="3" placeholder="Contoh: Diperiksa dengan daftar pengguna mesin dan data karyawan oleh HRD" class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2"></textarea></label>
+    <p class="text-slate-500">Scan mesin berikutnya otomatis menggunakan NIK ini pada periode yang dipilih. Data sidik jari dan nama di layar mesin tidak diubah.</p>
+    <button type="submit" class="rounded-lg bg-indigo-700 px-4 py-2 font-bold text-white">Simpan Pemetaan</button>
+   </form>`, onMount: modal => {
+    const form = modal.querySelector('#finger-manual-form');
+    form.onsubmit = async event => {
+     event.preventDefault();
+     const button = form.querySelector('button[type="submit"]');
+     button.disabled = true;
+     try {
+      const values = Object.fromEntries(new FormData(form));
+      const result = await attendanceAccessApi('attendance_mapping_save', { pendingId: row.id, ...values });
+      closeModal();
+      recentAttendanceRead = null;
+      await loadRawAbsensiTable(true);
+      toast(result.backfillError || `Pemetaan tersimpan. ${result.mapped} hari-karyawan diperbarui; ${result.skipped} konflik perlu ditinjau.`, result.backfillError || result.skipped ? 'warning' : 'success');
+     } catch (error) { button.disabled = false; toast('Pemetaan gagal: ' + error.message, 'error'); }
+    };
+   } });
  }
 
  function dashboardMonthRange(month) {
@@ -765,6 +834,7 @@ export async function mount(container, { session } = {}) {
  </td>
  <td class="px-4 py-3 text-right">
  ${canEdit && (roleIsHrdOrAdmin || isPicBranch) ? `
+ ${roleIsHrdOrAdmin && String(r.nik || '').toUpperCase().startsWith('FINGER-') && !r._archive_source ? `<button data-map-id="${escapeHtml(r.id)}" class="text-indigo-700 font-semibold hover:underline mr-3">Petakan</button>` : ''}
  <button data-edit-id="${r.id}" class="text-maroon-700 font-medium hover:underline mr-3">Koreksi</button>
  ${roleIsHrdOrAdmin && !r.is_status_only ? `<button data-del-id="${r.id}" class="text-red-500 hover:underline">Hapus</button>` : ''}
  ` : `<span class="text-slate-300">-</span>`}
@@ -774,6 +844,9 @@ export async function mount(container, { session } = {}) {
 
  rawTbody.querySelectorAll("[data-edit-id]").forEach(btn => {
  btn.onclick = () => openEditAbsenModal(data.find(x => x.id === btn.dataset.editId));
+ });
+ rawTbody.querySelectorAll('[data-map-id]').forEach(btn => {
+  btn.onclick = () => openFingerMappingModal(data.find(row => String(row.id) === btn.dataset.mapId));
  });
 
  rawTbody.querySelectorAll("[data-select-absen]").forEach(cb => {
