@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { mappingForScan, planManualFingerprintRows, validateManualMapping } = require('../lib/fingerprint-mappings.js');
+const { fingerprintAttendanceByIds, mappingForScan, planManualFingerprintRows, validateManualMapping } = require('../lib/fingerprint-mappings.js');
 
 const employee = { nik: '1052204600', nama_karyawan: 'PHILIP TAMZIR', cabang: 'CIREBON' };
 const input = { cabang: 'CIREBON', empNo: '80', noId: '211', fingerName: 'PHILIP TAMZIR',
@@ -24,6 +24,18 @@ test('HR cannot map a NIK outside the branch or overlap a reused machine ID', ()
   assert.throws(() => validateManualMapping({ ...input, fingerName: 'BARU' }, [employee], [saved]), /pemetaan aktif/);
   assert.throws(() => validateManualMapping(input, [employee], [saved]), /Sudah ada/);
   assert.equal(validateManualMapping({ ...input, effectiveFrom: '2026-09-25' }, [employee], [{ ...saved, effective_to: '2026-09-24' }]).nik, employee.nik);
+});
+
+test('bulk lookup verifies every selected Supabase row before any mapping is saved', async () => {
+  const fetchImpl = async url => {
+    const request = new URL(url);
+    assert.equal(request.pathname, '/rest/v1/attendance');
+    assert.equal(request.searchParams.get('id'), 'in.("PENDING-1","PENDING-2")');
+    return { ok: true, text: async () => JSON.stringify([{ id: 'PENDING-1', nik: 'FINGER-CIREBON-80', tanggal: '2026-09-24' }]) };
+  };
+  const options = { env: { SUPABASE_URL: 'https://test.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'x'.repeat(50) }, fetchImpl };
+  await assert.rejects(fingerprintAttendanceByIds(['PENDING-1', 'PENDING-2'], options), /Sebagian baris absensi/);
+  await assert.rejects(fingerprintAttendanceByIds(['PENDING-1', 'PENDING-1'], options), /berulang/);
 });
 
 test('manual mapping retains the first machine scan and never overwrites another NIK', () => {
