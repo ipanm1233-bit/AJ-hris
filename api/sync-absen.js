@@ -9,6 +9,7 @@ const { handleNotificationAccess } = require('../lib/notification-access.js');
 const { handleSalesTrackingAccess } = require('../lib/sales-tracking-access.js');
 const { supabaseEnabled } = require('../lib/supabase.js');
 const { listAttendance, upsertAttendance, deleteAttendance } = require('../lib/attendance-supabase.js');
+const { listFingerprintMappings, mappingForScan } = require('../lib/fingerprint-mappings.js');
 
 function normalizePersonName(value) {
   return String(value || '')
@@ -514,8 +515,15 @@ module.exports = async function handler(req, res) {
       console.warn('[sync-absen] Firestore master unavailable; resolving fingerprint identity from Supabase history.');
     }
     let identityHistoryRows = [];
+    let manualMappings = [];
     if (supabaseEnabled()) {
       identityHistoryRows = await listAttendance({ branch, limit: 5000 });
+      try {
+        manualMappings = await listFingerprintMappings(branch);
+      } catch (error) {
+        if (!/Tabel pemetaan finger belum terpasang/.test(error.message)) throw error;
+        console.warn('[sync-absen] Manual mapping table not installed; continuing with automatic identity matching.');
+      }
     }
     const { resolveWorkSchedule } = await import('../js/work-schedule.mjs');
     const employeeMap = new Map();
@@ -619,6 +627,17 @@ module.exports = async function handler(req, res) {
       // historis. ID yang pernah tercatat atas nama lain harus direkonsiliasi.
       const machineName = deviceUserNameMap.get(exactKey);
       const noId = deviceUserMetadataMap.get(exactKey)?.noId;
+      const mapping = mappingForScan(manualMappings, {
+        branch, empNo: exactKey, noId, fingerName: machineName, date
+      });
+      if (mapping) {
+        const registered = employees.filter(employee => String(employee.nik || employee.nik_karyawan || '').trim() === mapping.nik &&
+          normalizeBranch(employee.cabang) === branch);
+        if (registered.length === 1) return { ...registered[0], nik_karyawan: mapping.nik };
+        if (masterUnavailable) return { _docId: `MAPPING-${mapping.id}`, nik: mapping.nik,
+          nik_karyawan: mapping.nik, nama_karyawan: mapping.nama_karyawan,
+          finger_name: mapping.finger_name, cabang: branch };
+      }
       if (conflictingFingerIds.has(exactKey)) return confirmedFingerprintOwnerForDay({
         rows: identityHistoryRows, employees, id: exactKey, noId, machineName,
         date, branch
