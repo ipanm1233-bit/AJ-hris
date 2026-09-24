@@ -8,6 +8,9 @@ import { aggregateKpiByPeriod, DEFAULT_KPI_GRADE_RULES, evaluateKpiGrade, getLat
 import { buildPerformanceMonitorRows } from "../performance-monitor.mjs";
 import { KPI_ROLE_STANDARDS, mapEmployeesToKpiStandards, resolveKpiStandard, standardToTemplatePayload, validateKpiStandards } from "../kpi-role-standards.mjs";
 import { runConfirmedAction } from "../confirmed-action.mjs";
+import { authFetch } from "../api-client.js";
+import { resolveWorkSchedule } from "../work-schedule.mjs";
+import { calculateAttendancePenalty } from "../attendance-penalty.mjs";
 
 const confirmThen = (message, action) => runConfirmedAction(confirmDialog, message, action);
 
@@ -423,10 +426,8 @@ export async function mount(container, { session, params }) {
  alur_perpanjangan: container.querySelector("#pk-panel-alur-perpanjangan"),
  kpi360: container.querySelector("#pk-panel-kpi360"),
  hasil: container.querySelector("#pk-panel-hasil"),
- evaluasi: container.querySelector("#pk-panel-evaluasi"),
  daily: container.querySelector("#pk-panel-daily"),
  template: container.querySelector("#pk-panel-template"),
- monitoring: container.querySelector("#pk-panel-monitoring"),
  grafik: container.querySelector("#pk-panel-employee-grafik"),
  };
  const loaded = {};
@@ -778,12 +779,7 @@ export async function mount(container, { session, params }) {
 
  if (titleEl) titleEl.textContent = "Penilaian & Kontrak Saya";
  if (subtitleEl) subtitleEl.textContent = "Grafik pencapaian penilaian KPI dan rincian dokumen ikatan dinas / kontrak kerja Anda.";
- if (tabHeader) {
- tabHeader.innerHTML = `
- <button data-ntab="grafik" class="pk-tab px-4 py-2.5 text-sm font-medium border-b-2 border-maroon-700 text-maroon-700 whitespace-nowrap">Hasil & Grafik KPI Saya</button>
- <button data-ntab="kontrak" class="pk-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">Kontrak Kerja Saya</button>
- `;
- }
+ if (tabHeader) tabHeader.querySelector('[data-ntab="daily"]')?.classList.add("hidden");
  }
 
  async function loadKontrak() {
@@ -795,8 +791,10 @@ export async function mount(container, { session, params }) {
  const wrap = panels.kontrak;
  wrap.innerHTML = `<div class="p-6">${skeletonRows(4)}</div>`;
 
- let allKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
- let allKontrak = await fsGetAll(COL.MASTER_KONTRAK);
+ let [allKaryawan, allKontrak, cardKpiLogs] = await Promise.all([
+  fsGetAll(COL.MASTER_KARYAWAN), fsGetAll(COL.MASTER_KONTRAK),
+  loadKpiRowsForAccess(COL.LOG_PENILAIAN_KPI).catch(() => [])
+ ]);
 
  if (isAtasanView) {
  allKaryawan = allKaryawan.filter(k => bset.has(k.nama_karyawan));
@@ -898,8 +896,9 @@ export async function mount(container, { session, params }) {
  <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
  <div>
  <h2 class="text-xl font-bold text-slate-800">Kartu Kontrak Karyawan</h2>
- <p class="text-xs text-slate-500 mt-1">Kelola ikatan dinas, riwayat kontrak per karyawan, dan status keaktifan kerja.</p>
+ <p class="text-xs text-slate-500 mt-1">Ringkasan KPI dan masa kontrak; buka kartu untuk melihat bukti penilaian dan catatan kedisiplinan.</p>
  </div>
+ ${["HRD", "SUPERADMIN"].includes(role) ? '<button id="btn-manage-kpi-logs" class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700">Kelola Log Penilaian</button>' : ''}
  ${canManageKontrak ? `
  <button id="btn-add-global-kontrak" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2.5 rounded-xl text-xs font-semibold transition shadow-sm flex items-center gap-2 self-start md:self-auto">
  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
@@ -967,6 +966,7 @@ export async function mount(container, { session, params }) {
  const isAktif = (item.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF";
  const contractCount = item.contracts.length;
  const lc = item.latestContract;
+ const latestScore = getLatestKpiSummary(cardKpiLogs, { name: item.nama_karyawan, nik: item.nik_karyawan || item.nik });
 
  let badgeContractColor = "slate";
  let daysLabel = "Tanpa ikatan kontrak aktif";
@@ -1025,7 +1025,7 @@ export async function mount(container, { session, params }) {
 
  <!-- Footer Action -->
  <div class="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
- <span class="text-xs font-semibold text-slate-500">${contractCount} Riwayat Kontrak</span>
+ <span class="text-xs font-semibold text-slate-500">${contractCount} kontrak · KPI ${latestScore ? `${latestScore.score}/100 (${latestScore.raterCount} penilai)` : "belum ada"}</span>
  <button type="button" class="text-xs font-bold text-maroon-700 hover:text-maroon-800 hover:bg-maroon-50 px-3 py-1.5 rounded-xl transition flex items-center gap-1">
  Detail & Kelola
  </button>
@@ -1047,6 +1047,14 @@ export async function mount(container, { session, params }) {
  filterStatusKaryawan.onchange = drawCards;
  filterStatusKontrak.onchange = drawCards;
  drawCards();
+ wrap.querySelector("#btn-manage-kpi-logs")?.addEventListener("click", () => {
+  const resultPanel = panels.hasil;
+  resultPanel.classList.toggle("hidden");
+  if (!resultPanel.classList.contains("hidden")) {
+   loadHasilPenilaian();
+   resultPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+ });
 
  if (canManageKontrak && wrap.querySelector("#btn-add-global-kontrak")) {
  wrap.querySelector("#btn-add-global-kontrak").onclick = () => {
@@ -1058,6 +1066,7 @@ export async function mount(container, { session, params }) {
  async function reloadData() {
  allKaryawan = await fsGetAll(COL.MASTER_KARYAWAN);
  allKontrak = await fsGetAll(COL.MASTER_KONTRAK);
+ cardKpiLogs = await loadKpiRowsForAccess(COL.LOG_PENILAIAN_KPI).catch(() => []);
  if (isAtasanView) {
  allKaryawan = allKaryawan.filter(k => bset.has(k.nama_karyawan));
  allKontrak = allKontrak.filter(k => bset.has(k.nama_karyawan));
@@ -1066,6 +1075,81 @@ export async function mount(container, { session, params }) {
  }
 
  renderCardView();
+ }
+
+ async function loadContractEvidence(employee, target) {
+  if (!target) return;
+  const nik = String(employee.nik_karyawan || employee.nik || "").trim();
+  const nama = String(employee.nama_karyawan || "").trim();
+  const samePerson = row => {
+   const rowNik = String(row.nik_dinilai || row.nik_karyawan || row.nik || row.nik_pemohon || "").trim();
+   return nik && rowNik ? rowNik === nik : String(row.nama_dinilai || row.nama_karyawan || row.nama || row.nama_pemohon || "").trim().toUpperCase() === nama.toUpperCase();
+  };
+  try {
+   const [kpi, daily, targets, leaves] = await Promise.all([
+    loadKpiRowsForAccess(COL.LOG_PENILAIAN_KPI),
+    isHrdOrAdmin ? fsGetAll(COL.LOG_PENILAIAN_HARIAN) : queryRows(COL.LOG_PENILAIAN_HARIAN, "nik_karyawan", nik),
+    isHrdOrAdmin ? fsGetAll(COL.TARGET_BULANAN_KPI) : queryRows(COL.TARGET_BULANAN_KPI, "nik_karyawan", nik),
+    Promise.all([
+     nik ? queryRows(COL.MASTER_CUTI, "nik_karyawan", nik).catch(() => []) : Promise.resolve([]),
+     nama ? queryRows(COL.MASTER_CUTI, "nama_karyawan", nama).catch(() => []) : Promise.resolve([])
+    ]).then(groups => [...new Map(groups.flat().map(row => [row.id, row])).values()])
+   ]);
+   if (!target.isConnected) return;
+   const ownKpi = kpi.filter(samePerson);
+   const ownDaily = daily.filter(samePerson);
+   const ownTargets = targets.filter(samePerson).sort((a, b) => String(b.periode || "").localeCompare(String(a.periode || "")));
+   const ownLeaves = leaves.filter(samePerson);
+   const summary = getLatestKpiSummary(ownKpi, { name: nama, nik });
+   const currentMonth = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit" }).format(new Date());
+   const candidatePeriod = String(ownTargets[0]?.periode || summary?.period || "").slice(0, 7);
+   const period = /^\d{4}-\d{2}$/.test(candidatePeriod) ? candidatePeriod : currentMonth;
+   let ownAttendance = [];
+   let attendanceAvailable = false;
+   try {
+    if (!["HRD", "SUPERADMIN", "ADMIN"].includes(role) && nik !== String(session.nik || "").trim()) throw new Error("Akses absensi karyawan lain memerlukan HRD");
+    const lastDay = new Date(Date.UTC(Number(period.slice(0, 4)), Number(period.slice(5, 7)), 0)).toISOString().slice(0, 10);
+    const response = await authFetch("/api/sync-absen", { method: "POST", body: JSON.stringify({ action: "attendance_list", fromDate: `${period}-01`, toDate: lastDay, nik, limit: 5000, requireSupabase: true }) });
+    const result = await response.json();
+    if (!response.ok || result.success === false || (result.rows || []).length >= 5000) throw new Error(result.error || "Data absensi belum lengkap");
+    attendanceAvailable = true;
+    const scheduleSnapshot = await getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(() => null);
+    const schedules = scheduleSnapshot?.data()?.jadwal || [];
+    ownAttendance = (result.rows || []).filter(samePerson).map(row => {
+     const shift = resolveWorkSchedule(employee, schedules, row.tanggal || "");
+     const withSchedule = { ...row, jadwal_masuk: row.jadwal_masuk || shift.masuk || "" };
+     return withSchedule.jadwal_masuk && withSchedule.scan_masuk && (withSchedule.scan_keluar || withSchedule.scan_pulang) && !withSchedule.perlu_koreksi
+      ? { ...withSchedule, ...calculateAttendancePenalty(withSchedule, employee) } : withSchedule;
+    });
+   } catch (error) { console.warn("Absensi kontrak tidak tersedia:", error); }
+   if (!target.isConnected) return;
+   const monitor = buildPerformanceMonitorRows({ employees: [employee], kpiLogs: ownKpi, dailyLogs: ownDaily, leaveRecords: ownLeaves, attendanceRecords: ownAttendance, period })[0];
+   const emergencyLeaves = ownLeaves.filter(row => /MENDADAK|DADAKAN|EMERGENCY/i.test([row.type_cuti, row.jenis_cuti, row.kategori_cuti, row.detail?.jenis_cuti].join(" ")) && (row.status_final || row.status || "").toUpperCase() !== "DITOLAK");
+   const monthDaily = ownDaily.filter(row => String(row.tanggal || "").startsWith(period));
+   const readiness = assessKpiDecisionReadiness(summary, monthDaily.length);
+   const scoredDaily = monthDaily.filter(row => row.total_skor !== undefined && row.total_skor !== null && row.total_skor !== "").map(row => Number(row.total_skor)).filter(Number.isFinite);
+   const dailyAverage = scoredDaily.length ? (scoredDaily.reduce((sum, score) => sum + score, 0) / scoredDaily.length).toFixed(1) : null;
+   const grade = summary && readiness.ready ? evaluateGradeRule("KONTRAK", summary.score, currentGradeRulesMap) : null;
+   target.innerHTML = `<div class="space-y-3">
+    <div><h4 class="font-bold text-slate-800">Ringkasan untuk keputusan perpanjangan</h4><p class="text-xs text-slate-500">Periode ${escapeHtml(period)} · Keputusan akhir melalui Alur Koordinasi oleh HRD dan pemberi persetujuan.</p></div>
+    <div class="grid grid-cols-2 gap-2 lg:grid-cols-4">
+     <div class="rounded-xl bg-white p-3"><span class="text-xs text-slate-500">Penilaian 360 / atasan</span><strong class="block text-lg">${summary ? `${summary.score}/100` : "Belum ada"}</strong><span class="text-xs">${summary ? `${summary.raterCount} penilai · ${escapeHtml(summary.period)}` : ""}</span></div>
+     <div class="rounded-xl bg-white p-3"><span class="text-xs text-slate-500">Target & capaian</span><strong class="block text-lg">${dailyAverage === null ? "Belum ada capaian" : `${dailyAverage}/100`}</strong><span class="text-xs">${monthDaily.length} penilaian · ${ownTargets.some(row => String(row.periode || "").startsWith(period)) ? "target ditetapkan" : "target belum ditetapkan"}</span></div>
+     <div class="rounded-xl bg-white p-3"><span class="text-xs text-slate-500">Disiplin kehadiran</span><strong class="block text-lg">${attendanceAvailable || ownLeaves.length ? `${monitor.disciplineScore}/100` : "Perlu verifikasi"}</strong><span class="text-xs">Alfa ${monitor.alphaDays} hari · Telat ${monitor.lateIncidents} kali</span></div>
+     <div class="rounded-xl bg-white p-3"><span class="text-xs text-slate-500">Cuti mendadak</span><strong class="block text-lg">${emergencyLeaves.length}</strong><span class="text-xs">Dari catatan cuti yang tersedia</span></div>
+    </div>
+    ${readiness.gaps.length ? `<div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><strong>Data perlu dilengkapi:</strong> ${readiness.gaps.map(escapeHtml).join(" · ")}</div>` : ''}
+    ${summary ? `<div class="rounded-xl bg-white p-3 text-xs"><strong>Rincian penilai:</strong> ${Object.entries(summary.relationScores || {}).map(([relation, value]) => `${escapeHtml(relation)} ${Number(value.score).toFixed(1)} (${value.count} penilai)`).join(" · ") || "Belum ada rincian"}<div class="mt-2 space-y-1">${(summary.indicatorScores || []).slice(0, 8).map(item => `<div class="flex justify-between gap-2"><span>${escapeHtml(item.aspek || "Kinerja")} — ${escapeHtml(item.indikator || "-")}</span><strong>${Number(item.nilai_diberikan || 0).toFixed(1)}</strong></div>`).join("")}</div></div>` : ''}
+    ${ownTargets[0]?.catatan_target ? `<div class="rounded-xl bg-white p-3 text-xs"><strong>Arahan target ${escapeHtml(ownTargets[0].periode || "")}: </strong>${escapeHtml(ownTargets[0].catatan_target)}</div>` : ''}
+    ${monthDaily.some(row => Number(row.potongan_kpi || 0) > 0) ? `<div class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs"><strong>Pengurangan KPI bulan ini:</strong> ${monthDaily.filter(row => Number(row.potongan_kpi || 0) > 0).map(row => `${escapeHtml(row.tanggal || "-")}: −${Number(row.potongan_kpi)} (${escapeHtml(row.alasan_potongan || "Alasan belum dicatat")})`).join(" · ")}</div>` : ''}
+    ${!isRegularEmployee ? `<div class="rounded-xl border border-blue-200 bg-white p-3 text-xs"><strong>Rekomendasi berdasarkan grade KPI:</strong> ${grade ? escapeHtml(grade.rekomendasi || grade.predikat || "Perlu review HRD") : "Perlu review HRD setelah bukti penilaian dilengkapi"}. <span class="text-slate-500">Periksa juga catatan disiplin dan masa kontrak sebelum membuat keputusan.</span></div>` : ''}
+    ${summary?.latestLog ? `<div class="rounded-xl bg-white p-3 text-xs"><strong>Catatan penilai:</strong> ${escapeHtml(summary.latestLog.catatan_penilai || summary.latestLog.catatan_perbaikan || summary.latestLog.catatan_baik || "Tidak ada catatan")}</div>` : ''}
+    ${!attendanceAvailable ? '<p class="text-xs text-amber-800">Data absensi Supabase belum dapat dimuat; verifikasi di menu Absensi sebelum mengambil keputusan.</p>' : ''}
+   </div>`;
+  } catch (error) {
+   console.error("contract-evidence", error);
+   if (target.isConnected) target.innerHTML = `<p class="text-rose-700">Ringkasan belum dapat dimuat: ${escapeHtml(error.message)}</p>`;
+  }
  }
 
  function openEmployeeContractModal(empData, reloadData) {
@@ -1078,6 +1162,7 @@ export async function mount(container, { session, params }) {
  size: "lg",
  bodyHtml: `
  <div class="space-y-6">
+ <section id="pk-contract-evidence" class="rounded-2xl border border-blue-100 bg-blue-50/50 p-4 text-sm text-slate-600" aria-live="polite">Memuat ringkasan penilaian, target, dan kedisiplinan…</section>
  <!-- Profile Header & Employee Status Update -->
  <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
  <div class="flex items-center gap-3">
@@ -1225,6 +1310,7 @@ export async function mount(container, { session, params }) {
  `,
  onMount: (m) => {
  m.querySelector("#modal-close-btn").onclick = closeModal;
+ loadContractEvidence(empData, m.querySelector("#pk-contract-evidence"));
 
  // Update Employee status button logic
  const btnSaveEmpStatus = m.querySelector("#btn-save-emp-status");
@@ -2884,13 +2970,13 @@ export async function mount(container, { session, params }) {
     const periode = representativeTask.periode || "-";
     const deadlineStr = representativeTask.deadline ? fmtDateShort(representativeTask.deadline) : "Segera";
     const catConfig = getCatConfig(representativeTask.kategori_penilaian);
-    const appUrl = `${window.location.origin + window.location.pathname}#penilaian-kontrak?tab=kpi360`;
+    const appUrl = `${window.location.origin + window.location.pathname}#penilaian-kontrak?tab=alur_perpanjangan`;
 
     // 1. Send In-App Notification (Bell) with sendEmail: false to avoid duplicate generic emails
     try {
       const notifTitle = `Tugas Penilaian ${catConfig.label}`;
       const notifMsg = `Anda menerima penugasan penilaian ${catConfig.label} untuk ${allTasksForEvaluator.length} karyawan (${allTasksForEvaluator.map(x => x.nama_dinilai).slice(0, 3).join(", ")}${allTasksForEvaluator.length > 3 ? '...' : ''}). Batas waktu: ${deadlineStr}.`;
-      await notifyUser(penilaiName, notifTitle, notifMsg, "#penilaian-kontrak?tab=kpi360", { sendEmail: false, manual: true });
+      await notifyUser(penilaiName, notifTitle, notifMsg, "#penilaian-kontrak?tab=alur_perpanjangan", { sendEmail: false, manual: true });
     } catch (e) {
       console.warn("notifyUser error:", e);
     }
@@ -3664,7 +3750,7 @@ export async function mount(container, { session, params }) {
                     const catConfig = getCatConfig(sampleTask.kategori_penilaian);
                     const notifTitle = `Tugas Penilaian ${catConfig.label}`;
                     const notifMsg = `Anda menerima penugasan penilaian ${catConfig.label} untuk ${pTaskList.length} karyawan (${pTaskList.map(x => x.nama_dinilai).slice(0, 3).join(", ")}${pTaskList.length > 3 ? '...' : ''}). Batas waktu: ${deadlineStr}.`;
-                    await notifyUser(sampleTask.nama_penilai, notifTitle, notifMsg, "#penilaian-kontrak?tab=kpi360", { sendEmail: false, manual: true });
+                    await notifyUser(sampleTask.nama_penilai, notifTitle, notifMsg, "#penilaian-kontrak?tab=alur_perpanjangan", { sendEmail: false, manual: true });
                   }
 
                   if (shouldSendEmail) {
@@ -3964,6 +4050,13 @@ export async function mount(container, { session, params }) {
   async function loadAlurPerpanjangan() {
     const wrap = panels.alur_perpanjangan;
     if (!wrap) return;
+    if (isRegularEmployee) {
+      wrap.innerHTML = '<h2 class="mb-4 text-lg font-bold text-slate-800">Tugas Penilaian Saya</h2>';
+      wrap.appendChild(panels.kpi360);
+      panels.kpi360.classList.remove("hidden");
+      await loadKpi360().catch(error => { panels.kpi360.innerHTML = emptyState("Gagal memuat tugas penilaian: " + error.message); });
+      return;
+    }
     wrap.innerHTML = `<div class="p-6">${skeletonRows(5)}</div>`;
 
     let allKaryawan = [];
@@ -4179,6 +4272,8 @@ export async function mount(container, { session, params }) {
           </div>
         </div>
       `;
+      wrap.appendChild(panels.kpi360);
+      panels.kpi360.classList.remove("hidden");
 
       // Event bindings
       wrap.querySelector("#btn-toggle-kanban").onclick = () => { currentViewMode = "kanban"; renderPipeline(); };
@@ -4209,6 +4304,8 @@ export async function mount(container, { session, params }) {
         };
       });
     }
+
+    await loadKpi360().catch(error => { panels.kpi360.innerHTML = emptyState("Gagal memuat tugas penilaian: " + error.message); });
 
     function renderKanbanView(list, stages) {
       return `
@@ -6356,7 +6453,7 @@ export async function mount(container, { session, params }) {
             <!-- Realtime Score Banner -->
             <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
               <div>
-                <span class="text-xs font-bold text-slate-500 block">Akumulasi Skor Harian:</span>
+                <span class="text-xs font-bold text-slate-500 block">Skor indikator sebelum pengurangan:</span>
                 <div class="flex items-center gap-2 mt-0.5">
                   <span id="ph-live-score" class="text-2xl font-black text-maroon-700">0.00</span>
                   <span class="text-xs text-slate-400 font-bold">/ 100</span>
@@ -6383,6 +6480,14 @@ export async function mount(container, { session, params }) {
                 <label class="block text-[11px] font-bold text-slate-700 mb-1">📝 Catatan Tambahan Penilai:</label>
                 <textarea id="ph-catatan-harian" rows="2" class="w-full px-3 py-2 text-xs border border-slate-200 bg-white rounded-lg outline-none focus:border-maroon-400 font-medium focus:ring-1 focus:ring-maroon-200" placeholder="Catatan harian lainnya...">${escapeHtml(existing?.catatan_harian || '')}</textarea>
               </div>
+            </div>
+
+            <div class="rounded-xl border border-rose-200 bg-rose-50 p-3 space-y-2">
+              <label class="block text-xs font-bold text-rose-800" for="ph-potongan-kpi">Kesalahan kerja: pengurangan poin KPI (0–100)</label>
+              <input id="ph-potongan-kpi" type="number" min="0" max="100" step="0.01" value="${Number(existing?.potongan_kpi || 0)}" class="w-28 rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs">
+              <label class="block text-xs font-bold text-rose-800" for="ph-alasan-potongan">Alasan dan bukti kesalahan</label>
+              <textarea id="ph-alasan-potongan" rows="2" class="w-full rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs" placeholder="Tuliskan kejadian dan alasan pemotongan nilai">${escapeHtml(existing?.alasan_potongan || '')}</textarea>
+              <p class="text-[11px] text-rose-700">Nilai akhir = rata-rata indikator dikurangi poin kesalahan; alasan wajib diisi.</p>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -6758,7 +6863,14 @@ export async function mount(container, { session, params }) {
               countSc++;
             });
 
-            const finalAvg = countSc > 0 ? Math.round((totalSc / countSc) * 100) / 100 : 0;
+            const rawScore = countSc > 0 ? Math.round((totalSc / countSc) * 100) / 100 : 0;
+            const deduction = Number(m.querySelector("#ph-potongan-kpi")?.value || 0);
+            const deductionReason = m.querySelector("#ph-alasan-potongan")?.value.trim() || "";
+            if (!Number.isFinite(deduction) || deduction < 0 || deduction > 100 || (deduction > 0 && !deductionReason)) {
+              toast("Masukkan pengurangan 0–100 beserta alasan kesalahannya.", "error");
+              return;
+            }
+            const finalAvg = Math.max(0, Math.round((rawScore - deduction) * 100) / 100);
             const predikat = finalAvg >= 85 ? "Sangat Baik" : finalAvg >= 70 ? "Baik" : finalAvg >= 55 ? "Cukup" : "Kurang";
 
             const cleanedIndicatorsList = activeIndicators.map(i => ({
@@ -6785,6 +6897,9 @@ export async function mount(container, { session, params }) {
               indikator_list: cleanedIndicatorsList,
               indikator_skor: indikatorSkorMap,
               total_skor: finalAvg,
+              skor_sebelum_potongan: rawScore,
+              potongan_kpi: deduction,
+              alasan_potongan: deductionReason,
               predikat: predikat,
               ringkasan_indikator: ringkasanIndikator,
               catatan_baik: catatanBaik,
@@ -7126,6 +7241,7 @@ export async function mount(container, { session, params }) {
             </div>
 
             <!-- Indikator Breakdown -->
+            ${Number(log.potongan_kpi || 0) > 0 ? `<div class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-900"><strong>Pengurangan ${Number(log.potongan_kpi)} poin</strong> dari skor ${Number(log.skor_sebelum_potongan || 0)}. ${escapeHtml(log.alasan_potongan || "Alasan belum dicatat")}</div>` : ''}
             <div class="space-y-2">
               <h5 class="text-xs font-bold uppercase tracking-wider text-slate-500">Rincian Nilai Indikator</h5>
               <div class="space-y-1.5 max-h-60 overflow-y-auto pr-1">
@@ -7252,12 +7368,17 @@ export async function mount(container, { session, params }) {
   }
 
   function switchTab(tabKey) {
+  const aliases = { kpi360: "alur_perpanjangan", evaluasi: "alur_perpanjangan", hasil: "kontrak", monitoring: "kontrak", grafik: "kontrak" };
+  tabKey = aliases[tabKey] || tabKey;
+  if (!panels[tabKey] || (tabKey === "template" && !canTemplateSoal) || (tabKey === "daily" && isRegularEmployee)) tabKey = "kontrak";
   Object.keys(panels).forEach(k => {
+    if (k === "kpi360") return;
     if (panels[k]) {
       if (k === tabKey) panels[k].classList.remove("hidden");
       else panels[k].classList.add("hidden");
     }
   });
+  panels.kpi360?.classList.toggle("hidden", tabKey !== "alur_perpanjangan");
 
   container.querySelectorAll(".pk-tab").forEach(btn => {
     const ntab = btn.dataset.ntab;
@@ -7270,13 +7391,8 @@ export async function mount(container, { session, params }) {
 
   if (tabKey === "kontrak" && !loaded.kontrak) { loaded.kontrak = true; loadKontrak(); }
   if (tabKey === "alur_perpanjangan" && !loaded.alur_perpanjangan) { loaded.alur_perpanjangan = true; loadAlurPerpanjangan(); }
-  if (tabKey === "kpi360" && !loaded.kpi360) { loaded.kpi360 = true; loadKpi360(); }
   if (tabKey === "template" && !loaded.template) { loaded.template = true; loadTemplateKpi(); }
-  if (tabKey === "grafik" && !loaded.grafik) { loaded.grafik = true; loadEmployeeGrafik(); }
-  if (tabKey === "hasil" && !loaded.hasil) { loaded.hasil = true; loadHasilPenilaian(); }
-  if (tabKey === "evaluasi" && !loaded.evaluasi) { loaded.evaluasi = true; loadEvaluasiKontrak(); }
   if (tabKey === "daily" && !loaded.daily) { loaded.daily = true; loadDailyTarget(); }
-  if (tabKey === "monitoring" && !loaded.monitoring) { loaded.monitoring = true; loadPerformanceMonitoring(); }
   }
 
   container.querySelectorAll(".pk-tab").forEach(btn => {
@@ -7286,9 +7402,6 @@ export async function mount(container, { session, params }) {
   };
   });
 
-  if (isRegularEmployee) {
-  switchTab("grafik");
-  } else {
-  switchTab("kontrak");
-  }
+  const requestedTab = params?.get?.("tab") || ({ template_soal: "template", distribusi_kpi360: "alur_perpanjangan", standar_grade: "kontrak" })[params?.get?.("sub")];
+  switchTab(requestedTab || "kontrak");
 }
