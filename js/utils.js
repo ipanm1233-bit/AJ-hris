@@ -6878,7 +6878,7 @@ export function buildKpiTaskWaMessage(task, type = "ASSIGNMENT", extra = {}) {
  const catLabel = task.kategori_penilaian ? task.kategori_penilaian.replace(/_/g, " ") : "KPI 360";
 
  if (type === "ASSIGNMENT") {
- const magicLink = extra.magicLink || `${baseUrl}#penilaian-kontrak?tab=kpi360`;
+ const magicLink = extra.magicLink || `${baseUrl}#penilaian-kontrak?tab=alur_perpanjangan`;
  let msg = `*TUGAS PENILAIAN KPI 360 - CV ANDELA JAYA*\n\n`;
  msg += `Halo *${task.nama_penilai || "Bapak/Ibu"}*,\n`;
  msg += `Anda telah ditugaskan untuk melakukan Penilaian KPI 360 pada periode *${task.periode || "-"}* terhadap karyawan berikut:\n`;
