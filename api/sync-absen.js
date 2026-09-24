@@ -524,7 +524,7 @@ module.exports = async function handler(req, res) {
     const numericFingerEmployeeMap = new Map();
     const employeeNameMap = new Map();
     const employees = [];
-    const { machineNameAgrees, addUniqueIdentifier, historicalFingerprintOwnerConflict, eligibleHistoryForFingerprintFallback, resolveFingerprintEmployee } = require('../lib/fingerprint-identity');
+    const { machineNameAgrees, addUniqueIdentifier, historicalFingerprintOwnerConflict, eligibleHistoryForFingerprintFallback, resolveFingerprintDeviceEmployee } = require('../lib/fingerprint-identity');
     const fingerprintFields = ['finger_id', 'kode_finger', 'no_finger', 'id_finger', 'pin',
       'fingerprint_user_id', 'fingerprint_emp_no', 'fingerprint_no_id'];
     const registerEmployee = employee => {
@@ -618,7 +618,8 @@ module.exports = async function handler(req, res) {
       // Nama mesin adalah kondisi saat ini, bukan bukti pemilik seluruh log
       // historis. ID yang pernah tercatat atas nama lain harus direkonsiliasi.
       const machineName = deviceUserNameMap.get(exactKey);
-      return resolveFingerprintEmployee({ id: exactKey, machineName, fingerMap: fingerEmployeeMap,
+      const noId = deviceUserMetadataMap.get(exactKey)?.noId;
+      return resolveFingerprintDeviceEmployee({ id: exactKey, noId, machineName, fingerMap: fingerEmployeeMap,
         numericFingerMap: numericFingerEmployeeMap, employeeMap, numericEmployeeMap,
         byName: resolveEmployeeByMachineName, conflictingIds: conflictingFingerIds });
     };
@@ -827,10 +828,20 @@ module.exports = async function handler(req, res) {
     const unmatchedIds = [...new Set(groupList
       .filter(group => !resolveEmployee(group.deviceUserId))
       .map(group => group.deviceUserId))].slice(0, 25);
-    const unmatchedFingerprintUsers = unmatchedIds.map(id => ({
-      id,
-      fingerName: deviceUserNameMap.get(String(id).trim().toUpperCase()) || ''
-    }));
+    const unmatchedFingerprintUsers = unmatchedIds.map(id => {
+      const fingerName = deviceUserNameMap.get(String(id).trim().toUpperCase()) || '';
+      const machine = deviceUserMetadataMap.get(String(id).trim().toUpperCase());
+      const possibleOwners = employees.filter(employee => machineNameAgrees(employee, fingerName));
+      return {
+        id, fingerName,
+        reason: masterUnavailable ? 'master_karyawan tidak terbaca' :
+          conflictingFingerIds.has(String(id).trim().toUpperCase()) ? 'ID pernah digunakan nama lain' :
+          !fingerName ? 'nama pengguna tidak dikirim mesin' :
+          possibleOwners.length > 1 ? 'nama cocok dengan lebih dari satu karyawan' :
+          possibleOwners.length === 1 ? `ID mesin ${machine?.noId || id} bertentangan dengan pemetaan master` :
+          'nama dan ID belum ditemukan pada master_karyawan'
+      };
+    });
 
     const newestDate = groupList.reduce((latest, group) => group.tanggal > latest ? group.tanggal : latest, '');
     if (newestDate && !supabaseEnabled()) {

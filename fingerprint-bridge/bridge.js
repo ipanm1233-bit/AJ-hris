@@ -323,7 +323,9 @@ async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {
     duplicatesRemoved += Number(response.duplicatesRemoved || 0);
     for (const id of response.unmatchedFingerprintIds || []) unmatched.add(String(id));
     for (const user of response.unmatchedFingerprintUsers || []) {
-      if (user?.id) unmatchedNames.set(String(user.id), String(user.fingerName || '').trim());
+      if (user?.id) unmatchedNames.set(String(user.id), {
+        name: String(user.fingerName || '').trim(), reason: String(user.reason || '').trim()
+      });
     }
     for (const id of response.identityConflictIds || []) identityConflicts.add(String(id));
     masterUnavailable ||= response.masterUnavailable === true;
@@ -332,7 +334,10 @@ async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {
   if (requestId) await sendPayload({ action: 'sync_complete', requestId });
   if (duplicatesRemoved) console.log(`Pembersihan data ganda: ${duplicatesRemoved} baris lama dihapus.`);
   if (unmatched.size) {
-    const labels = [...unmatched].map(id => unmatchedNames.get(id) ? `${id} (${unmatchedNames.get(id)})` : id);
+    const labels = [...unmatched].map(id => {
+      const detail = unmatchedNames.get(id);
+      return detail ? `${id} (${detail.name || 'tanpa nama'}: ${detail.reason || 'periksa master karyawan'})` : id;
+    });
     console.warn(`Finger Name mesin belum terpetakan: ${labels.join(', ')}`);
   }
   if (identityConflicts.size) console.warn(`Nama pengguna mesin tidak cocok dengan riwayat ID finger: ${[...identityConflicts].join(', ')}. Periksa nama pada mesin dan master karyawan sebelum sinkronisasi ulang.`);

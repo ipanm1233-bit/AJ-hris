@@ -38,3 +38,13 @@ test('reconciles a provisional scan using No. ID and retains the earliest PHILIP
   assert.equal(plan.updates[0].scan_masuk, '07:36');
   assert.deepEqual(plan.deleteIds, ['PENDING-80']);
 });
+
+test('another employee with No. ID 80 does not block PHILIP Emp No. 80', () => {
+  const rows = [
+    { id: 'PENDING-80', nik: 'FINGER-CIREBON-80', nama: 'PHILIP TAMZIR (BELUM DIPETAKAN)', tanggal: '2026-09-24', cabang: 'CIREBON', fingerprint_user_id: '80', fingerprint_no_id: '211', fingerprint_name: 'PHILIP TAMZIR', scan_masuk: '07:36' },
+    { id: 'OTHER', nik: '1234567890', nama: 'KARYAWAN LAIN', tanggal: '2026-09-23', cabang: 'CIREBON', fingerprint_user_id: '90', fingerprint_no_id: '80', fingerprint_name: 'KARYAWAN LAIN' }
+  ];
+  const plan = planFingerprintReconciliation(rows, [{ nik: '1052204600', nama_karyawan: 'PHILIP TAMZIR', cabang: 'CIREBON' }]);
+  assert.equal(plan.unresolved, 0);
+  assert.equal(plan.updates[0].nik, '1052204600');
+});
