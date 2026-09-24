@@ -200,7 +200,7 @@ export async function mount(container, { session } = {}) {
     const result = await attendanceAccessApi('attendance_reconcile', { fromDate: filterState.start, toDate: filterState.end, branch: filterState.branch });
     recentAttendanceRead = null;
     await loadRawAbsensiTable(true);
-    toast(`${result.mapped} hari-karyawan berhasil dipetakan; ${result.unresolved} tetap perlu verifikasi manual.`, 'success');
+    toast(`${result.mapped} hari-karyawan berhasil dipetakan; ${result.unresolved} tetap perlu verifikasi manual.${result.masterUnavailable ? ' Kuota Firestore habis: hanya pasangan yang sudah terbukti di Supabase diproses.' : ''}`, result.masterUnavailable ? 'warning' : 'success');
    } catch (error) { toast('Pemetaan finger gagal: ' + error.message, 'error'); }
    finally { btnReconcileFinger.disabled = false; btnReconcileFinger.textContent = 'Petakan ulang finger'; }
   };
