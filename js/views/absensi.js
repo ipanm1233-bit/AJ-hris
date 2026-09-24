@@ -6,7 +6,7 @@ import { hasSubMenuAccess, hasPermission, canEditModuleData } from "../auth.js";
 import { authFetch } from "../api-client.js";
 import { resolveWorkSchedule } from "../work-schedule.mjs";
 import { buildRawAttendanceExport } from "../attendance-export.mjs";
-import { attendanceImportDate, attendanceImportValues, attendanceImportScan } from "../attendance-import.mjs";
+import { attendanceImportDate, attendanceImportValues, attendanceImportScan, resolveAttendanceImportIdentity } from "../attendance-import.mjs";
 import { buildAttendanceStatusRows } from "../attendance-status.mjs";
 import { attendanceDeductionSource, calculateAttendancePenalty } from "../attendance-penalty.mjs";
 import { buildAttendanceAnalytics } from "../attendance-analytics.mjs";
@@ -108,6 +108,7 @@ export async function mount(container, { session } = {}) {
  const btnResetFilterAbsen = container.querySelector("#btn-reset-filter-absen");
  const btnExportRawAbsen = container.querySelector("#btn-export-raw-absen");
  const btnDedupeAbsen = container.querySelector("#btn-dedupe-absen");
+ const btnReconcileFinger = container.querySelector("#btn-reconcile-finger");
  const thSortNama = container.querySelector("#th-sort-nama");
  const iconSortNama = container.querySelector("#th-sort-nama-icon");
 
@@ -185,6 +186,22 @@ export async function mount(container, { session } = {}) {
     btnDedupeAbsen.disabled = false;
     btnDedupeAbsen.textContent = originalText;
    }
+  };
+ }
+ if (btnReconcileFinger && roleIsHrdOrAdmin) {
+  btnReconcileFinger.classList.remove('hidden');
+  btnReconcileFinger.onclick = async () => {
+   if (!filterState.start || !filterState.end) return toast('Pilih periode pemetaan finger terlebih dahulu.', 'warning');
+   if (!confirm(`Petakan ulang identitas finger dari Supabase pada ${filterState.start} s.d. ${filterState.end}? ID mesin yang pernah dimiliki orang lain tetap ditandai untuk pemeriksaan HRD.`)) return;
+   btnReconcileFinger.disabled = true;
+   btnReconcileFinger.textContent = 'Memetakan...';
+   try {
+    const result = await attendanceAccessApi('attendance_reconcile', { fromDate: filterState.start, toDate: filterState.end, branch: filterState.branch });
+    recentAttendanceRead = null;
+    await loadRawAbsensiTable(true);
+    toast(`${result.mapped} hari-karyawan berhasil dipetakan; ${result.unresolved} tetap perlu verifikasi manual.`, 'success');
+   } catch (error) { toast('Pemetaan finger gagal: ' + error.message, 'error'); }
+   finally { btnReconcileFinger.disabled = false; btnReconcileFinger.textContent = 'Petakan ulang finger'; }
   };
  }
 
@@ -900,10 +917,37 @@ export async function mount(container, { session } = {}) {
  let exportRows;
  try {
  const freshEmployees = await fsGetAll(COL.MASTER_KARYAWAN).catch(() => employeeRowsGlobal);
- const filteredAttendance = applyFiltersAbsen().filter(row => !row.is_status_only);
+ // Baca periode ekspor dari database, bukan dari cache tabel 60 hari.
+ const freshAttendance = [];
+ let monthCursor = new Date(`${filterState.start.slice(0, 7)}-01T12:00:00Z`);
+ const finalMonth = new Date(`${filterState.end.slice(0, 7)}-01T12:00:00Z`);
+ while (monthCursor <= finalMonth) {
+  const year = monthCursor.getUTCFullYear();
+  const month = monthCursor.getUTCMonth();
+  const monthStart = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+  const monthEnd = new Date(Date.UTC(year, month + 1, 0)).toISOString().slice(0, 10);
+  const result = await attendanceAccessApi('attendance_list', {
+   fromDate: monthStart < filterState.start ? filterState.start : monthStart,
+   toDate: monthEnd > filterState.end ? filterState.end : monthEnd,
+   branch: scopedBranch || filterState.branch, limit: 5000, requireSupabase: true
+  });
+  if ((result.rows || []).length >= 5000) throw new Error(`Data ${monthStart.slice(0, 7)} melebihi batas 5.000 baris. Ekspor periode lebih pendek.`);
+  freshAttendance.push(...(result.rows || []));
+  monthCursor = new Date(Date.UTC(year, month + 1, 1, 12));
+ }
+ const filteredAttendance = enrichAttendanceRows(freshAttendance).filter(row => {
+  if (row.is_status_only) return false;
+  if (filterState.division && attendanceKey(row.divisi) !== attendanceKey(filterState.division)) return false;
+  if (filterState.employee && String(row.nik || row.nama || '').trim() !== filterState.employee) return false;
+  if (filterState.search && ![row.nama, row.nik, row.nama_finger, row.emp_no, row.no_id].some(value => String(value || '').toLowerCase().includes(filterState.search))) return false;
+  return true;
+ });
+ const scopedEmployees = (isPicBranch ? freshEmployees.filter(k => normalizeToken(k.cabang) === normalizeToken(scopedBranch)) : freshEmployees).filter(k =>
+  (!filterState.employee || String(k.nik || k.nik_karyawan || k.nama_karyawan || k.nama || '').trim() === filterState.employee) &&
+  (!filterState.search || [k.nik, k.nik_karyawan, k.nama_karyawan, k.nama, k.finger_name].some(value => String(value || '').toLowerCase().includes(filterState.search))));
  exportRows = buildRawAttendanceExport({
  attendanceRows: filteredAttendance,
- employees: isPicBranch ? freshEmployees.filter(k => normalizeToken(k.cabang) === normalizeToken(scopedBranch)) : freshEmployees,
+ employees: scopedEmployees,
  leaves: absenceRowsGlobal,
  schedules: scheduleRowsGlobal,
  start: filterState.start,
@@ -927,7 +971,7 @@ export async function mount(container, { session } = {}) {
  try {
  const worksheet = window.XLSX.utils.json_to_sheet(exportRows);
  worksheet["!cols"] = [
- { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 24 }, { wch: 30 }, { wch: 14 },
+ { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 24 }, { wch: 30 }, { wch: 16 }, { wch: 14 },
  { wch: 13 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
  { wch: 34 }, { wch: 18 }, { wch: 70 }
  ];
@@ -1131,31 +1175,21 @@ export async function mount(container, { session } = {}) {
  ]);
  const cfgJadwal = (snapCfg && snapCfg.exists()) ? (snapCfg.data()?.jadwal || []) : [];
 
- const chunks = []; let tempArr = []; let importedCount = 0;
+ const pendingRows = new Map(); let skipped = 0; let pendingCount = 0;
  rows.forEach(r => {
  const values = attendanceImportValues(r);
  const tglStr = attendanceImportDate(values.tanggal);
- const empNama = values.nama;
- const empNik = values.nik;
- const sameBranch = k => !values.cabang || attendanceKey(k.cabang) === attendanceKey(values.cabang);
- const nikMatches = empNik ? (allKaryawan || []).filter(k => sameBranch(k) && attendanceKey(k.nik || k.nik_karyawan) === attendanceKey(empNik)) : [];
- const nameMatches = empNama ? (allKaryawan || []).filter(k => sameBranch(k) && attendanceKey(k.nama_karyawan || k.nama) === attendanceKey(empNama)) : [];
- const idMatches = values.fingerId ? (allKaryawan || []).filter(k => sameBranch(k) && [k.finger_id, k.no_finger, k.id_finger, k.pin].some(id => attendanceKey(id) === attendanceKey(values.fingerId))) : [];
- const empObj = empNik ? (nikMatches.length === 1 ? nikMatches[0] : null)
-   : idMatches.length === 1 ? idMatches[0] : nameMatches.length === 1 ? nameMatches[0] : null;
- const conflictingIdentity = Boolean(
-   (empNik && nikMatches.length !== 1) ||
-   (empObj && empNama && nameMatches.length && !nameMatches.includes(empObj)) ||
-   (empObj && values.fingerId && idMatches.length && !idMatches.includes(empObj)) ||
-   (empObj && values.fingerName && ![empObj.finger_name, empObj.nama_karyawan, empObj.nama]
-     .map(attendanceKey).filter(Boolean).some(alias => alias === attendanceKey(values.fingerName) ||
-       alias.startsWith(`${attendanceKey(values.fingerName)} `))) ||
-   (!empNik && !empObj && (idMatches.length > 1 || nameMatches.length > 1))
- );
+ const { employee: empObj, conflict: conflictingIdentity } = resolveAttendanceImportIdentity(values, allKaryawan || []);
+ const branch = String(values.cabang || empObj?.cabang || "").trim();
  const shift = resolveWorkSchedule(empObj, cfgJadwal, tglStr);
 
- const resolvedNik = String(empNik || empObj?.nik || empObj?.nik_karyawan || "").trim();
- const stableEmployeeKey = (resolvedNik || String(values.fingerId || empNama || empObj?.nama_karyawan || empObj?.nama || ""))
+ const sourceNik = String(values.nik || "").trim();
+ const provisional = sourceNik.toUpperCase().startsWith('FINGER-');
+ const safeBranch = branch.toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
+ const safeFingerId = String(values.fingerId || '').trim().toUpperCase().replace(/[^A-Z0-9._-]/g, '_');
+ const resolvedNik = String(empObj?.nik || empObj?.nik_karyawan || (!provisional && !conflictingIdentity && sourceNik) ||
+   (safeBranch && safeFingerId ? `FINGER-${safeBranch}-${safeFingerId}` : '')).trim();
+ const stableEmployeeKey = resolvedNik
  .normalize("NFKD")
  .replace(/[\u0300-\u036f]/g, "")
  .replace(/[^a-zA-Z0-9._-]/g, "_")
@@ -1165,15 +1199,18 @@ export async function mount(container, { session } = {}) {
  const payload = {
  id: uid,
  nik: resolvedNik,
- nama: empNama || empObj?.nama_karyawan || empObj?.nama || "",
+ nama: empObj?.nama_karyawan || empObj?.nama || String(values.nama || values.fingerName || '').replace(/\s*\(BELUM DIPETAKAN\)/i, '').trim(),
  tanggal: tglStr,
- cabang: values.cabang || empObj?.cabang || "",
+ cabang: branch,
  sumber: "IMPORT_EXCEL",
+ fingerprint_user_id: values.fingerId || "",
+ fingerprint_emp_no: values.empNo || "",
  fingerprint_no_id: values.fingerId || "",
  fingerprint_name: values.fingerName || "",
  auto_assign: Boolean(empObj && !conflictingIdentity),
- perlu_koreksi: conflictingIdentity,
- alasan_koreksi: conflictingIdentity ? "NIK, nama, atau ID finger pada file tidak cocok dengan master karyawan; periksa sumber scan." : "",
+ perlu_koreksi: conflictingIdentity || !empObj,
+ alasan_koreksi: conflictingIdentity ? "NIK, nama, atau ID finger pada file tidak cocok dengan master karyawan; periksa sumber scan." :
+  !empObj ? "Identitas finger belum cocok secara unik dengan master karyawan; periksa cabang, NIK, dan nama finger." : "",
  jadwal_masuk: values.jadwalMasuk || shift.masuk,
  jadwal_keluar: values.jadwalPulang || shift.pulang,
  // Scan selalu berasal dari file; jangan isi jam dummy jika kolom kosong.
@@ -1181,16 +1218,31 @@ export async function mount(container, { session } = {}) {
  scan_keluar: attendanceImportScan(values.scanPulang)
  };
 
- if (payload.nik && payload.nama && /^\d{4}-\d{2}-\d{2}$/.test(payload.tanggal) && (payload.scan_masuk || payload.scan_keluar)) {
- tempArr.push(payload);
- importedCount++;
- if (tempArr.length === 400) { chunks.push(tempArr); tempArr = []; }
- }
+ if (!payload.nik || !payload.nama || !branch || !/^\d{4}-\d{2}-\d{2}$/.test(payload.tanggal) || !(payload.scan_masuk || payload.scan_keluar)) { skipped++; return; }
+ if (!empObj) pendingCount++;
+ const key = `${payload.nik.toUpperCase()}|${payload.tanggal}`;
+ const existing = pendingRows.get(key);
+ if (existing) {
+  if (existing.fingerprint_user_id && payload.fingerprint_user_id && existing.fingerprint_user_id !== payload.fingerprint_user_id) {
+   existing.perlu_koreksi = true;
+   existing.alasan_koreksi = 'Ada beberapa ID mesin untuk karyawan dan tanggal yang sama; verifikasi pemilik scan.';
+   return;
+  }
+  existing.scan_masuk = [existing.scan_masuk, payload.scan_masuk].filter(Boolean).sort()[0] || null;
+  existing.scan_keluar = [existing.scan_keluar, payload.scan_keluar].filter(Boolean).sort().at(-1) || null;
+ } else pendingRows.set(key, payload);
  });
- if (tempArr.length > 0) chunks.push(tempArr);
-
- for (const chunk of chunks) await attendanceAccessApi("attendance_upsert", { rows: chunk });
- toast(`${importedCount} baris scan diimpor; ${rows.length - importedCount} baris tanpa scan/tanggal valid tidak dibuat menjadi finger palsu.`, "success");
+ const importRows = [...pendingRows.values()];
+ if (!importRows.length) throw new Error('Tidak ada baris valid. Pastikan kolom Cabang, identitas, tanggal, dan scan terisi.');
+ let saved = 0;
+ for (let i = 0; i < importRows.length; i += 200) {
+  const result = await attendanceAccessApi("attendance_upsert", { rows: importRows.slice(i, i + 200), requireSupabase: true });
+  saved += Number(result.count || 0);
+ }
+ if (saved !== importRows.length) throw new Error(`Hanya ${saved} dari ${importRows.length} baris yang dikonfirmasi tersimpan.`);
+ recentAttendanceRead = null;
+ await loadRawAbsensiTable(true);
+ toast(`${saved} hari-karyawan tersimpan di Supabase; ${pendingCount} baris sumber perlu verifikasi identitas, ${skipped} baris tidak lengkap dilewati.`, "success");
  } catch (err) { toast("Gagal: " + err.message, "error"); }
  btnImport.disabled = false; btnImport.innerHTML = `Pilih & Unggah File Excel`;
  inputUpload.value = "";

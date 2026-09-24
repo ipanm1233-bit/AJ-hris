@@ -83,6 +83,18 @@ test('attendance read falls back to Firestore when Supabase rejects access', asy
   }
 });
 
+test('Excel import fails visibly when Supabase rejects the write, even if Firestore fallback is enabled', async () => {
+  const previous = Object.fromEntries(['ATTENDANCE_DB_PROVIDER', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'ATTENDANCE_FIRESTORE_FALLBACK'].map(k => [k, process.env[k]]));
+  Object.assign(process.env, { ATTENDANCE_DB_PROVIDER: 'supabase', SUPABASE_URL: 'https://aj-hris.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'x'.repeat(60), ATTENDANCE_FIRESTORE_FALLBACK: 'true' });
+  try {
+    await assert.rejects(() => writeAttendance({ db: { batch: () => { throw new Error('Firestore fallback must not run'); } } }, [{ id: 'IMPORT-1', nik: '001', tanggal: '2026-09-24' }], {
+      requireSupabase: true, upsertAttendance: async () => { throw new Error('Supabase unavailable'); }
+    }), /Supabase unavailable/);
+  } finally {
+    for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+  }
+});
+
 test('attendance merge removes duplicate employee-date rows across providers', async () => {
   const previousProvider = process.env.ATTENDANCE_DB_PROVIDER;
   const previousUrl = process.env.SUPABASE_URL;
