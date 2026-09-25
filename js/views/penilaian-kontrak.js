@@ -13,6 +13,7 @@ import { resolveWorkSchedule } from "../work-schedule.mjs";
 import { calculateAttendancePenalty } from "../attendance-penalty.mjs";
 import { MONTHLY_METRICS, monthlyMetricRows, validateMonthlyAchievement } from "../monthly-achievement.mjs";
 import { summarizeReviewTasks, resolveCoordinationStage } from "../contract-coordination.mjs";
+import { employeeHistoryRows } from "../employee-history.mjs";
 
 const confirmThen = (message, action) => runConfirmedAction(confirmDialog, message, action);
 
@@ -937,6 +938,7 @@ export async function mount(container, { session, params }) {
 
  const cardsContainer = wrap.querySelector("#ktr-cards-container");
  const searchInput = wrap.querySelector("#ktr-search-input");
+ if (params?.get("nama")) searchInput.value = params.get("nama");
  const filterStatusKaryawan = wrap.querySelector("#ktr-filter-status-karyawan");
  const filterStatusKontrak = wrap.querySelector("#ktr-filter-status-kontrak");
 
@@ -4543,6 +4545,75 @@ export async function mount(container, { session, params }) {
   // -------------------------------------------------------------
   // MODAL LEMBAR KOORDINASI PERPANJANGAN KONTRAK (5 TAHAPAN LENGKAP)
   // -------------------------------------------------------------
+  async function loadEmployeeCoordinationHistory(employee, target, kpiLogs, dailyLogs) {
+    const employeeNik = String(employee.nik_karyawan || employee.nik || "").trim();
+    const employeeName = String(employee.nama_karyawan || "").trim();
+    const start = new Date();
+    start.setDate(start.getDate() - 89);
+    const fromDate = start.toISOString().slice(0, 10);
+    const toDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    const link = (hash, text) => `<a class="pk-history-link text-maroon-700 hover:underline font-bold" href="${hash}">${text} ↗</a>`;
+    const attendanceLink = link(`#absensi?tab=data&${employeeNik ? `nik=${encodeURIComponent(employeeNik)}` : `nama=${encodeURIComponent(employeeName)}`}`, "Buka Absensi");
+    const casesLink = link(`#konseling-coaching?tab=case_management&${employeeNik ? `nik=${encodeURIComponent(employeeNik)}` : `nama=${encodeURIComponent(employeeName)}`}`, "Buka Konseling & Coaching");
+    const spLink = link(`#pemanggilan?tab=sp&nama=${encodeURIComponent(employeeName)}`, "Buka Disiplin & SP");
+    const contractLink = link(`#penilaian-kontrak?tab=kontrak&nama=${encodeURIComponent(employeeName)}`, "Buka Kontrak Karyawan");
+    const individualKpi = employeeHistoryRows(kpiLogs, employee).sort((a, b) => String(b.tanggal || b.created_at || "").localeCompare(String(a.tanggal || a.created_at || "")));
+    const individualDaily = employeeHistoryRows(dailyLogs, employee).sort((a, b) => String(b.tanggal || "").localeCompare(String(a.tanggal || "")));
+
+    const attendancePromise = employeeNik ? authFetch("/api/sync-absen", {
+      method: "POST", body: JSON.stringify({ action: "attendance_list", fromDate, toDate, nik: employeeNik, limit: 5000, requireSupabase: true })
+    }).then(async response => {
+      const data = await response.json();
+      if (!response.ok || data.success === false || !Array.isArray(data.rows) || data.rows.length >= 5000) throw new Error(data.error || "Data absensi belum lengkap");
+      return employeeHistoryRows(data.rows, employee);
+    }) : Promise.reject(new Error("NIK karyawan belum tercatat"));
+    const leavePromise = Promise.all([
+      employeeNik ? queryRows(COL.MASTER_CUTI, "nik_karyawan", employeeNik).catch(() => []) : Promise.resolve([]),
+      employeeName ? queryRows(COL.MASTER_CUTI, "nama_karyawan", employeeName).catch(() => []) : Promise.resolve([])
+    ]).then(groups => employeeHistoryRows([...new Map(groups.flat().map(item => [item.id, item])).values()], employee));
+    const [attendance, leaves, cases, sanctions] = await Promise.allSettled([
+      attendancePromise,
+      leavePromise,
+      fsGetAll(COL.HR_CASES || "hr_cases").then(rows => employeeHistoryRows(rows, employee)),
+      fsGetAll(COL.LOG_SP_KONSELING).then(rows => employeeHistoryRows(rows, employee))
+    ]);
+    if (!target.isConnected) return;
+    const attendanceRows = attendance.status === "fulfilled" ? attendance.value : [];
+    const leaveRows = leaves.status === "fulfilled" ? leaves.value : [];
+    const caseRows = cases.status === "fulfilled" ? cases.value : [];
+    const spRows = sanctions.status === "fulfilled" ? sanctions.value : [];
+    const sortRecent = (rows, dateFields) => rows.sort((a, b) => String(dateFields.map(key => b[key]).find(Boolean) || "").localeCompare(String(dateFields.map(key => a[key]).find(Boolean) || "")));
+    sortRecent(caseRows, ["incident_date", "report_date", "created_at"]);
+    sortRecent(spRows, ["tanggal", "created_at"]);
+    const completeScans = attendanceRows.filter(row => row.scan_masuk && (row.scan_keluar || row.scan_pulang)).length;
+    const lateScans = attendanceRows.filter(row => Number(row.late_minutes || row.terlambat_menit || 0) > 0 || /TERLAMBAT/i.test(String(row.attendance_status || ""))).length;
+    const p = "rounded-xl border border-slate-200 bg-white p-3 space-y-2";
+    const item = (title, body) => `<div class="rounded-lg border border-slate-100 p-2"><strong class="text-slate-800">${escapeHtml(title)}</strong><div class="mt-1 whitespace-pre-wrap break-words text-slate-600">${escapeHtml(body || "Tidak ada catatan")}</div></div>`;
+    target.innerHTML = `<div class="space-y-4">
+      <div><h3 class="font-bold text-slate-900">Riwayat ${escapeHtml(employeeName)}</h3><p class="text-slate-500">Data yang tersedia untuk membantu HRD meninjau perpanjangan kontrak. Periksa sumber sebelum menyimpulkan keputusan.</p></div>
+      <section class="${p}"><div class="flex justify-between gap-2"><h4 class="font-bold">Penilaian & catatan kinerja</h4>${contractLink}</div>
+        <p>${individualKpi.length} hasil penilaian, ${individualDaily.length} catatan kinerja harian.</p>
+        ${individualKpi.length ? individualKpi.slice(0, 8).map(row => item(`${row.periode || fmtDateShort(row.tanggal || row.created_at) || "Periode tidak tercatat"} · ${row.penilai || row.nama_penilai || "Penilai"} · ${row.skor_akhir ?? row.total_skor ?? "-"}/100`, [row.catatan_baik && `Hal baik: ${row.catatan_baik}`, row.catatan_perbaikan && `Perlu perbaikan: ${row.catatan_perbaikan}`, row.catatan_penilai && `Catatan: ${row.catatan_penilai}`].filter(Boolean).join("\n"))).join("") : '<p>Belum ada hasil penilaian tercatat.</p>'}
+        ${individualDaily.length ? `<details><summary class="cursor-pointer font-semibold">Lihat ${Math.min(individualDaily.length, 5)} catatan kinerja harian terbaru</summary><div class="mt-2 space-y-2">${individualDaily.slice(0, 5).map(row => item(row.tanggal || "Tanpa tanggal", [row.catatan_harian, row.catatan_baik, row.catatan_perbaikan, row.alasan_potongan].filter(Boolean).join(" · "))).join("")}</div></details>` : ""}
+      </section>
+      <section class="${p}"><div class="flex justify-between gap-2"><h4 class="font-bold">Kehadiran & cuti</h4>${attendanceLink}</div>
+        <p>Periode absensi ${escapeHtml(fromDate)} s.d. ${escapeHtml(toDate)} (data Supabase).</p>
+        ${attendance.status === "fulfilled" ? `<p>${attendanceRows.length} hari tercatat · ${completeScans} scan lengkap · ${lateScans} keterlambatan yang ditandai sistem · ${attendanceRows.length - completeScans} scan belum lengkap/status tanpa scan.</p>` : '<p class="text-amber-800">Data absensi belum dapat dimuat; periksa langsung di menu Absensi.</p>'}
+        ${leaves.status === "fulfilled" ? `<p>${leaveRows.length} catatan cuti/izin terhubung.</p>${sortRecent(leaveRows, ["tanggal", "tanggal_mulai", "tgl_mulai"]).slice(0, 4).map(row => item(`${row.tanggal || row.tanggal_mulai || row.tgl_mulai || "Tanpa tanggal"} · ${row.jenis_cuti || row.type_cuti || row.kategori_cuti || "Cuti/Izin"}`, row.keterangan || row.alasan || row.status_final || row.status || "")).join("")}` : '<p class="text-amber-800">Catatan cuti/izin belum dapat dimuat.</p>'}
+      </section>
+      <section class="${p}"><div class="flex justify-between gap-2"><h4 class="font-bold">Konseling & Coaching</h4>${casesLink}</div>
+        ${cases.status === "fulfilled" ? (caseRows.length ? `<p>${caseRows.length} kasus tercatat.</p>${caseRows.slice(0, 6).map(row => item(`${row.incident_date || row.report_date || "Tanpa tanggal"} · ${row.case_type || "Kasus"} · ${row.status || "-"}`, [row.description, row.hr_assessment?.assessment_notes && `Asesmen HRD: ${row.hr_assessment.assessment_notes}`, row.action_taken && `Tindakan: ${row.action_taken}`].filter(Boolean).join("\n"))).join("")}` : '<p>Belum ada kasus tercatat.</p>') : '<p class="text-amber-800">Riwayat kasus belum dapat dimuat.</p>'}
+      </section>
+      <section class="${p}"><div class="flex justify-between gap-2"><h4 class="font-bold">Pelanggaran & surat peringatan</h4>${spLink}</div>
+        ${sanctions.status === "fulfilled" ? (spRows.length ? `<p>${spRows.length} catatan berdasarkan identitas yang tersedia. Catatan lama tanpa NIK perlu diverifikasi terhadap nama karyawan.</p>${spRows.slice(0, 6).map(row => item(`${row.tanggal || "Tanpa tanggal"} · ${row.tingkat_sp || "Catatan disiplin"}`, row.pelanggaran || row.keterangan || "")).join("")}` : '<p>Belum ada SP atau pelanggaran tercatat.</p>') : '<p class="text-amber-800">Riwayat SP belum dapat dimuat.</p>'}
+      </section>
+      <section class="${p}"><div class="flex justify-between gap-2"><h4 class="font-bold">Riwayat kontrak</h4>${contractLink}</div>
+        ${(employee.contracts || []).length ? employee.contracts.slice(0, 5).map(row => item(`Kontrak ke-${row.kontrak_ke || "-"} · ${row.tanggal_mulai || "-"} s.d. ${row.tanggal_akhir || "-"}`, row.keterangan || row.status_kolom_kontrak || "")).join("") : '<p>Belum ada riwayat kontrak terpisah.</p>'}
+      </section>
+    </div>`;
+    target.querySelectorAll(".pk-history-link").forEach(anchor => anchor.addEventListener("click", () => closeModal()));
+  }
+
   async function openModalKoordinasiPerpanjangan(empData, existingEval, onDoneCallback) {
     // Fetch users for GM & Direktur dropdowns, and KPI logs for performance review
     const ev = existingEval || {};
@@ -4696,6 +4767,7 @@ export async function mount(container, { session, params }) {
             <button id="modal-tab-performance" class="px-4 py-2 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition">
               📊 Riwayat Nilai KPI & Log Kinerja
             </button>
+            ${["HRD", "SUPERADMIN"].includes(role) ? `<button id="modal-tab-history" class="px-4 py-2 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition">📁 Riwayat Karyawan</button>` : ""}
           </div>
 
           <!-- Panel 1: Workflow Forms -->
@@ -4989,6 +5061,7 @@ export async function mount(container, { session, params }) {
               `}
             </div>
           </div>
+          ${["HRD", "SUPERADMIN"].includes(role) ? `<div id="modal-panel-history" class="hidden rounded-2xl bg-slate-50 p-4 text-xs text-slate-600" aria-live="polite">Memuat riwayat penilaian, kehadiran, konseling, dan pelanggaran…</div>` : ""}
         </div>
       `,
       footerHtml: `
@@ -5003,6 +5076,10 @@ export async function mount(container, { session, params }) {
     const modalTabPerf = document.getElementById("modal-tab-performance");
     const modalPanelWorkflow = document.getElementById("modal-panel-workflow");
     const modalPanelPerf = document.getElementById("modal-panel-performance");
+    const modalTabHistory = document.getElementById("modal-tab-history");
+    const modalPanelHistory = document.getElementById("modal-panel-history");
+    const tabActive = "px-4 py-2 text-xs font-bold border-b-2 border-maroon-700 text-maroon-700 transition";
+    const tabInactive = "px-4 py-2 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition";
 
     if (modalTabWorkflow && modalTabPerf) {
       modalTabWorkflow.onclick = () => {
@@ -5010,13 +5087,31 @@ export async function mount(container, { session, params }) {
         modalTabPerf.className = "px-4 py-2 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition";
         modalPanelWorkflow.classList.remove("hidden");
         modalPanelPerf.classList.add("hidden");
+        modalPanelHistory?.classList.add("hidden");
+        if (modalTabHistory) modalTabHistory.className = tabInactive;
       };
       modalTabPerf.onclick = () => {
         modalTabPerf.className = "px-4 py-2 text-xs font-bold border-b-2 border-maroon-700 text-maroon-700 transition";
         modalTabWorkflow.className = "px-4 py-2 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition";
         modalPanelPerf.classList.remove("hidden");
         modalPanelWorkflow.classList.add("hidden");
+        modalPanelHistory?.classList.add("hidden");
+        if (modalTabHistory) modalTabHistory.className = tabInactive;
       };
+    }
+    if (modalTabHistory && modalPanelHistory) {
+      modalTabHistory.onclick = () => {
+        modalTabHistory.className = tabActive;
+        modalTabWorkflow.className = tabInactive;
+        modalTabPerf.className = tabInactive;
+        modalPanelHistory.classList.remove("hidden");
+        modalPanelWorkflow.classList.add("hidden");
+        modalPanelPerf.classList.add("hidden");
+      };
+      loadEmployeeCoordinationHistory(empData, modalPanelHistory, kpiLogs, dailyLogs).catch(error => {
+        console.warn("Riwayat karyawan gagal dimuat:", error);
+        if (modalPanelHistory.isConnected) modalPanelHistory.textContent = "Riwayat karyawan belum dapat dimuat. Buka kembali popup untuk mencoba lagi.";
+      });
     }
     document.getElementById("btn-distribusi-review-hrd")?.addEventListener("click", () => {
       openDistribusiModal(null, {

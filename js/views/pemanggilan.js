@@ -3,7 +3,7 @@ import { fsGetAll, fsAdd, fmtDateShort, escapeHtml, notifyUser, sendEmailNotif, 
 import { renderCrudModule } from "../components.js";
 import { isoDocHeaderTable } from "../branding.js";
 
-export async function mount(container) {
+export async function mount(container, { params } = {}) {
  // Ambil Dropdown Karyawan Aktif
  const karyawan = await fsGetAll(COL.MASTER_KARYAWAN);
  const activeEmpNames = karyawan.filter(k => (k.aktif_tdk_aktif||"AKTIF").toUpperCase() === "AKTIF").map(k => k.nama_karyawan).sort();
@@ -197,6 +197,13 @@ export async function mount(container) {
  }
 
  await loadSP(); loaded.sp = true;
+ if (params?.get("nama")) {
+   const search = panels.sp.querySelector("#crud-search");
+   if (search) {
+     search.value = params.get("nama");
+     search.dispatchEvent(new Event("input", { bubbles: true }));
+   }
+ }
  container.querySelectorAll(".pm-tab").forEach(btn => {
  btn.addEventListener("click", async () => {
  const tab = btn.dataset.ptab;

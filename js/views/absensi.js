@@ -71,7 +71,7 @@ function getTwoRunningMonthsRange() {
  return { startStr, endStr };
 }
 
-export async function mount(container, { session } = {}) {
+export async function mount(container, { session, params } = {}) {
  const userRole = (session?.role || "").toUpperCase();
  const roleIsHrdOrAdmin = ["HRD", "SUPERADMIN", "ADMIN"].includes(userRole);
  const canViewDashboard = roleIsHrdOrAdmin || await hasSubMenuAccess("absensi", "dashboard", session);
@@ -156,7 +156,7 @@ export async function mount(container, { session } = {}) {
  const selectedAttendanceKeys = new Set();
  // sortNama: null (default, urut tanggal terbaru) | "asc" (A-Z) | "desc" (Z-A)
  let filterState = {
- search: "",
+ search: String(params?.get("nik") || params?.get("nama") || "").trim().toLowerCase(),
  start: isHrdOrAdmin ? "" : twoMonthsStart,
  end: isHrdOrAdmin ? "" : twoMonthsEnd,
  branch: scopedBranch,
@@ -165,6 +165,7 @@ export async function mount(container, { session } = {}) {
  completeness: "",
  sortNama: null
  };
+ if (searchRaw && filterState.search) searchRaw.value = params.get("nik") || params.get("nama");
 
  if (btnDedupeAbsen && roleIsHrdOrAdmin) {
   btnDedupeAbsen.classList.remove("hidden");
@@ -640,6 +641,7 @@ export async function mount(container, { session } = {}) {
  });
 
  if (roleIsHrdOrAdmin && canViewDashboard) loadRawAbsensiTable();
+ if (params?.get("tab") === "data") container.querySelector('[data-atab="data"]')?.click();
 
  function loadRawAbsensiTable(force = false) {
   if (attendanceLoadPromise) return attendanceLoadPromise;
