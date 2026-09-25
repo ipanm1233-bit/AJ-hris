@@ -11,6 +11,7 @@ import { runConfirmedAction } from "../confirmed-action.mjs";
 import { authFetch } from "../api-client.js";
 import { resolveWorkSchedule } from "../work-schedule.mjs";
 import { calculateAttendancePenalty } from "../attendance-penalty.mjs";
+import { MONTHLY_METRICS, monthlyMetricRows, validateMonthlyAchievement } from "../monthly-achievement.mjs";
 
 const confirmThen = (message, action) => runConfirmedAction(confirmDialog, message, action);
 
@@ -1124,23 +1125,31 @@ export async function mount(container, { session, params }) {
    } catch (error) { console.warn("Absensi kontrak tidak tersedia:", error); }
    if (!target.isConnected) return;
    const monitor = buildPerformanceMonitorRows({ employees: [employee], kpiLogs: ownKpi, dailyLogs: ownDaily, leaveRecords: ownLeaves, attendanceRecords: ownAttendance, period })[0];
-   const emergencyLeaves = ownLeaves.filter(row => /MENDADAK|DADAKAN|EMERGENCY/i.test([row.type_cuti, row.jenis_cuti, row.kategori_cuti, row.detail?.jenis_cuti].join(" ")) && (row.status_final || row.status || "").toUpperCase() !== "DITOLAK");
+   const periodLeaves = ownLeaves.filter(row => String(row.tanggal || row.tanggal_mulai || row.tgl_mulai || "").startsWith(period));
+   const emergencyLeaves = periodLeaves.filter(row => /MENDADAK|DADAKAN|EMERGENCY/i.test([row.type_cuti, row.jenis_cuti, row.kategori_cuti, row.detail?.jenis_cuti].join(" ")) && (row.status_final || row.status || "").toUpperCase() !== "DITOLAK");
    const monthDaily = ownDaily.filter(row => String(row.tanggal || "").startsWith(period));
    const readiness = assessKpiDecisionReadiness(summary, monthDaily.length);
    const scoredDaily = monthDaily.filter(row => row.total_skor !== undefined && row.total_skor !== null && row.total_skor !== "").map(row => Number(row.total_skor)).filter(Number.isFinite);
    const dailyAverage = scoredDaily.length ? (scoredDaily.reduce((sum, score) => sum + score, 0) / scoredDaily.length).toFixed(1) : null;
+   const monthTarget = ownTargets.find(row => String(row.periode || "").startsWith(period));
+   const achievementRows = monthTarget?.capaian_bulanan ? monthlyMetricRows(monthTarget) : [];
+   const evidenceGaps = [...readiness.gaps];
+   if (!monthTarget) evidenceGaps.push("Target bulanan belum ditetapkan.");
+   else if (!achievementRows.length) evidenceGaps.push("Realisasi akhir bulan belum dicatat.");
+   if (!attendanceAvailable) evidenceGaps.push("Absensi dari Supabase perlu diverifikasi.");
    const grade = summary && readiness.ready ? evaluateGradeRule("KONTRAK", summary.score, currentGradeRulesMap) : null;
    target.innerHTML = `<div class="space-y-3">
     <div><h4 class="font-bold text-slate-800">Ringkasan untuk keputusan perpanjangan</h4><p class="text-xs text-slate-500">Periode ${escapeHtml(period)} · Keputusan akhir melalui Alur Koordinasi oleh HRD dan pemberi persetujuan.</p></div>
     <div class="grid grid-cols-2 gap-2 lg:grid-cols-4">
      <div class="rounded-xl bg-white p-3"><span class="text-xs text-slate-500">Penilaian 360 / atasan</span><strong class="block text-lg">${summary ? `${summary.score}/100` : "Belum ada"}</strong><span class="text-xs">${summary ? `${summary.raterCount} penilai · ${escapeHtml(summary.period)}` : ""}</span></div>
-     <div class="rounded-xl bg-white p-3"><span class="text-xs text-slate-500">Target & capaian</span><strong class="block text-lg">${dailyAverage === null ? "Belum ada capaian" : `${dailyAverage}/100`}</strong><span class="text-xs">${monthDaily.length} penilaian · ${ownTargets.some(row => String(row.periode || "").startsWith(period)) ? "target ditetapkan" : "target belum ditetapkan"}</span></div>
-     <div class="rounded-xl bg-white p-3"><span class="text-xs text-slate-500">Disiplin kehadiran</span><strong class="block text-lg">${attendanceAvailable || ownLeaves.length ? `${monitor.disciplineScore}/100` : "Perlu verifikasi"}</strong><span class="text-xs">Alfa ${monitor.alphaDays} hari · Telat ${monitor.lateIncidents} kali</span></div>
+     <div class="rounded-xl bg-white p-3"><span class="text-xs text-slate-500">Target & capaian</span><strong class="block text-lg">${achievementRows.length ? `${achievementRows.filter(row => row.actual !== null).length}/${achievementRows.length} indikator` : "Belum ada realisasi"}</strong><span class="text-xs">Nilai harian: ${dailyAverage === null ? "belum ada" : `${dailyAverage}/100`} · ${monthDaily.length} catatan</span></div>
+     <div class="rounded-xl bg-white p-3"><span class="text-xs text-slate-500">Disiplin kehadiran</span><strong class="block text-lg">${attendanceAvailable || periodLeaves.length ? `${monitor.disciplineScore}/100` : "Perlu verifikasi"}</strong><span class="text-xs">Alfa ${monitor.alphaDays} hari · Telat ${monitor.lateIncidents} kali</span></div>
      <div class="rounded-xl bg-white p-3"><span class="text-xs text-slate-500">Cuti mendadak</span><strong class="block text-lg">${emergencyLeaves.length}</strong><span class="text-xs">Dari catatan cuti yang tersedia</span></div>
     </div>
-    ${readiness.gaps.length ? `<div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><strong>Data perlu dilengkapi:</strong> ${readiness.gaps.map(escapeHtml).join(" · ")}</div>` : ''}
+    ${evidenceGaps.length ? `<div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><strong>Data perlu dilengkapi:</strong> ${evidenceGaps.map(escapeHtml).join(" · ")}</div>` : ''}
     ${summary ? `<div class="rounded-xl bg-white p-3 text-xs"><strong>Rincian penilai:</strong> ${Object.entries(summary.relationScores || {}).map(([relation, value]) => `${escapeHtml(relation)} ${Number(value.score).toFixed(1)} (${value.count} penilai)`).join(" · ") || "Belum ada rincian"}<div class="mt-2 space-y-1">${(summary.indicatorScores || []).slice(0, 8).map(item => `<div class="flex justify-between gap-2"><span>${escapeHtml(item.aspek || "Kinerja")} — ${escapeHtml(item.indikator || "-")}</span><strong>${Number(item.nilai_diberikan || 0).toFixed(1)}</strong></div>`).join("")}</div></div>` : ''}
     ${ownTargets[0]?.catatan_target ? `<div class="rounded-xl bg-white p-3 text-xs"><strong>Arahan target ${escapeHtml(ownTargets[0].periode || "")}: </strong>${escapeHtml(ownTargets[0].catatan_target)}</div>` : ''}
+    ${achievementRows.length ? `<div class="rounded-xl bg-white p-3 text-xs"><strong>Realisasi target ${escapeHtml(period)}</strong><div class="mt-2 space-y-1">${achievementRows.map(row => `<div class="flex justify-between gap-2"><span>${escapeHtml(row.label)}</span><span>${row.actual === null ? "Belum diisi" : `${row.actual.toLocaleString("id-ID")} / ${row.target === null ? "-" : row.target.toLocaleString("id-ID")} ${escapeHtml(row.unit)}${row.attainment === null ? "" : ` · ${row.attainment}%`}`}</span></div>`).join("")}</div>${monthTarget.capaian_bulanan.catatan ? `<p class="mt-2 text-slate-600">${escapeHtml(monthTarget.capaian_bulanan.catatan)}</p>` : ''}</div>` : ''}
     ${monthDaily.some(row => Number(row.potongan_kpi || 0) > 0) ? `<div class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs"><strong>Pengurangan KPI bulan ini:</strong> ${monthDaily.filter(row => Number(row.potongan_kpi || 0) > 0).map(row => `${escapeHtml(row.tanggal || "-")}: −${Number(row.potongan_kpi)} (${escapeHtml(row.alasan_potongan || "Alasan belum dicatat")})`).join(" · ")}</div>` : ''}
     ${!isRegularEmployee ? `<div class="rounded-xl border border-blue-200 bg-white p-3 text-xs"><strong>Rekomendasi berdasarkan grade KPI:</strong> ${grade ? escapeHtml(grade.rekomendasi || grade.predikat || "Perlu review HRD") : "Perlu review HRD setelah bukti penilaian dilengkapi"}. <span class="text-slate-500">Periksa juga catatan disiplin dan masa kontrak sebelum membuat keputusan.</span></div>` : ''}
     ${summary?.latestLog ? `<div class="rounded-xl bg-white p-3 text-xs"><strong>Catatan penilai:</strong> ${escapeHtml(summary.latestLog.catatan_penilai || summary.latestLog.catatan_perbaikan || summary.latestLog.catatan_baik || "Tidak ada catatan")}</div>` : ''}
@@ -2964,7 +2973,7 @@ export async function mount(container, { session, params }) {
   /**
    * Helper to send HTML Email & In-App Notification for KPI 360 Task Assignments
    */
-  async function sendKpiAssignmentNotification(representativeTask, allTasksForEvaluator) {
+  async function sendKpiAssignmentNotification(representativeTask, allTasksForEvaluator, { sendInApp = true } = {}) {
     const penilaiName = representativeTask.nama_penilai;
     const targetEmail = representativeTask.email_penilai;
     const periode = representativeTask.periode || "-";
@@ -2973,12 +2982,14 @@ export async function mount(container, { session, params }) {
     const appUrl = `${window.location.origin + window.location.pathname}#penilaian-kontrak?tab=alur_perpanjangan`;
 
     // 1. Send In-App Notification (Bell) with sendEmail: false to avoid duplicate generic emails
-    try {
-      const notifTitle = `Tugas Penilaian ${catConfig.label}`;
-      const notifMsg = `Anda menerima penugasan penilaian ${catConfig.label} untuk ${allTasksForEvaluator.length} karyawan (${allTasksForEvaluator.map(x => x.nama_dinilai).slice(0, 3).join(", ")}${allTasksForEvaluator.length > 3 ? '...' : ''}). Batas waktu: ${deadlineStr}.`;
-      await notifyUser(penilaiName, notifTitle, notifMsg, "#penilaian-kontrak?tab=alur_perpanjangan", { sendEmail: false, manual: true });
-    } catch (e) {
-      console.warn("notifyUser error:", e);
+    if (sendInApp) {
+      try {
+        const notifTitle = `Tugas Penilaian ${catConfig.label}`;
+        const notifMsg = `Anda menerima penugasan penilaian ${catConfig.label} untuk ${allTasksForEvaluator.length} karyawan (${allTasksForEvaluator.map(x => x.nama_dinilai).slice(0, 3).join(", ")}${allTasksForEvaluator.length > 3 ? '...' : ''}). Batas waktu: ${deadlineStr}.`;
+        await notifyUser(penilaiName, notifTitle, notifMsg, "#penilaian-kontrak?tab=alur_perpanjangan", { sendEmail: false, manual: true });
+      } catch (e) {
+        console.warn("notifyUser error:", e);
+      }
     }
 
     // 2. Send Email if email address exists
@@ -3665,9 +3676,17 @@ export async function mount(container, { session, params }) {
           if (!tplId) return toast("Harap pilih Template Soal KPI terlebih dahulu!", "warning");
           if (selectedPenilai.length === 0) return toast("Pilih minimal 1 Penilai (Evaluator)!", "warning");
           if (selectedDinilai.length === 0) return toast("Pilih minimal 1 Karyawan yang Dinilai!", "warning");
+          const selectedIds = new Set([...selectedPenilai, ...selectedDinilai]);
+          if ([...selectedIds].some(id => {
+            const matches = activeEmps.filter(emp => String(emp.nik_karyawan || emp.nik || emp.id) === String(id));
+            return matches.length !== 1 || !String(matches[0].nik_karyawan || matches[0].nik || "").trim();
+          })) return toast("Ada karyawan tanpa NIK atau dengan identitas ganda. Periksa master karyawan sebelum mendistribusikan penilaian.", "error");
+          const taskCount = selectedPenilai.reduce((sum, nikPenilai) => sum + selectedDinilai.filter(nikDinilai => includeSelf || nikPenilai !== nikDinilai).length, 0);
+          if (taskCount > 400) return toast("Maksimal 400 tugas dalam satu distribusi. Bagi penilaian menjadi beberapa kelompok.", "warning");
 
           const tplObj = templates.find(t => t.id === tplId);
           if (!tplObj) return toast("Template KPI tidak ditemukan!", "error");
+          if (!Array.isArray(tplObj.soal_json) || tplObj.soal_json.length === 0) return toast("Template KPI belum memiliki soal yang dapat didistribusikan.", "error");
 
           const btnSave = m.querySelector("#btn-dist-simpan");
           btnSave.disabled = true;
@@ -3676,6 +3695,7 @@ export async function mount(container, { session, params }) {
           try {
             const createdTasks = [];
             const tasksByPenilai = {};
+            const taskBatch = writeBatch(db);
 
             // Generate task records for each evaluator -> evaluatee pair
             for (const pNik of selectedPenilai) {
@@ -3722,7 +3742,7 @@ export async function mount(container, { session, params }) {
                   created_by: session.nama || "HRD"
                 };
 
-                await fsAdd(COL.TUGAS_KPI_360, taskPayload, taskId);
+                taskBatch.set(doc(db, COL.TUGAS_KPI_360, taskId), { ...taskPayload, created_at: serverTimestamp() });
                 taskPayload.id = taskId;
                 createdTasks.push(taskPayload);
 
@@ -3736,6 +3756,9 @@ export async function mount(container, { session, params }) {
               btnSave.textContent = "🚀 Distribusikan & Kirim Email";
               return toast("Tidak ada pasangan penilai dan karyawan dinilai yang valid.", "warning");
             }
+
+            // Semua penugasan ditulis bersama sebelum email/notifikasi dikirim.
+            await taskBatch.commit();
 
             // Send Email and In-App Notifications for each Evaluator
             let emailSuccessCount = 0;
@@ -3754,7 +3777,7 @@ export async function mount(container, { session, params }) {
                   }
 
                   if (shouldSendEmail) {
-                    const emailRes = await sendKpiAssignmentNotification(sampleTask, pTaskList);
+                    const emailRes = await sendKpiAssignmentNotification(sampleTask, pTaskList, { sendInApp: false });
                     if (emailRes.emailSent) {
                       emailSuccessCount++;
                     } else {
@@ -5945,6 +5968,7 @@ export async function mount(container, { session, params }) {
                     <th class="py-3 px-3.5">Karyawan</th>
                     <th class="py-3 px-3.5">Kategori</th>
                     <th class="py-3 px-3.5">Rincian Target Utama</th>
+                    <th class="py-3 px-3.5">Realisasi Bulanan</th>
                     <th class="py-3 px-3.5">Catatan Sasaran</th>
                     <th class="py-3 px-3.5">Ditetapkan Oleh</th>
                     <th class="py-3 px-3.5 text-center">Aksi</th>
@@ -5953,7 +5977,7 @@ export async function mount(container, { session, params }) {
                 <tbody class="divide-y divide-slate-50">
                   ${filteredTargets.length === 0 ? `
                     <tr>
-                      <td colspan="7" class="py-12 text-center text-slate-400 italic">
+                      <td colspan="8" class="py-12 text-center text-slate-400 italic">
                         Belum ada target bulanan KPI yang ditetapkan untuk filter ini.
                       </td>
                     </tr>
@@ -5992,6 +6016,7 @@ export async function mount(container, { session, params }) {
                             ${escapeHtml(targetSummary)}
                           </div>
                         </td>
+                        <td class="py-3 px-3.5 text-[11px]">${t.capaian_bulanan ? `${monthlyMetricRows(t).filter(row => row.actual !== null).length} indikator tercatat` : '<span class="text-amber-700">Belum diisi</span>'}</td>
                         <td class="py-3 px-3.5">
                           <div class="text-[11px] text-slate-500 max-w-xs truncate">
                             ${escapeHtml(t.catatan_target || "-")}
@@ -6007,6 +6032,7 @@ export async function mount(container, { session, params }) {
                               👁️
                             </button>
                             ${isAuthorOrAdmin ? `
+                              <button data-action="input-achievement" data-id="${t.id}" class="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg border border-emerald-200" title="Input realisasi target akhir bulan">Input Capaian</button>
                               <button data-action="edit-target" data-id="${t.id}" class="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition border border-blue-200" title="Edit Target">
                                 ✏️
                               </button>
@@ -6068,7 +6094,8 @@ export async function mount(container, { session, params }) {
             return;
           }
           await ensureXlsxLoaded();
-          const headers = ["Periode", "Nama Karyawan", "NIK", "Jabatan", "Kategori", "Target Vol Dulux", "Target Vol Catylac", "Target Vol Maxilite", "Target Vol Aquashield", "Target Value Penjualan", "Target Overdue Limit", "Target AO", "Target SOP %", "Target SLA Respon %", "Catatan Target", "Ditetapkan Oleh"];
+          const achievementMetrics = [...MONTHLY_METRICS.SALES, ...MONTHLY_METRICS.NON_SALES];
+          const headers = ["Periode", "Nama Karyawan", "NIK", "Jabatan", "Kategori", "Target Vol Dulux", "Target Vol Catylac", "Target Vol Maxilite", "Target Vol Aquashield", "Target Value Penjualan", "Target Overdue Limit", "Target AO", "Target SOP %", "Target SLA Respon %", "Catatan Target", "Ditetapkan Oleh", ...achievementMetrics.map(metric => `Realisasi ${metric.label}`), "Catatan Realisasi", "Dicatat Oleh"];
           const matrix = filteredTargets.map(t => [
             t.periode || "-",
             t.nama_karyawan || "-",
@@ -6085,7 +6112,10 @@ export async function mount(container, { session, params }) {
             t.target_sop_tugas || 0,
             t.target_respon_divisi || 0,
             t.catatan_target || "-",
-            t.ditetapkan_oleh || "-"
+            t.ditetapkan_oleh || "-",
+            ...achievementMetrics.map(metric => t.capaian_bulanan?.nilai?.[metric.key] ?? ""),
+            t.capaian_bulanan?.catatan || "",
+            t.capaian_bulanan?.dicatat_oleh || ""
           ]);
           await downloadXlsx(`Target_Bulanan_KPI_${filterMonth || 'Semua'}.xlsx`, headers, matrix, "Target_KPI");
           toast("File target Excel berhasil diunduh!", "success");
@@ -6104,6 +6134,13 @@ export async function mount(container, { session, params }) {
         btn.onclick = () => {
           const tObj = allTargets.find(x => x.id === btn.dataset.id);
           if (tObj) openFormTargetBulananModal(tObj);
+        };
+      });
+
+      targetEl.querySelectorAll('[data-action="input-achievement"]').forEach(btn => {
+        btn.onclick = () => {
+          const target = allTargets.find(row => row.id === btn.dataset.id);
+          if (target) openMonthlyAchievementModal(target);
         };
       });
 
@@ -6281,6 +6318,7 @@ export async function mount(container, { session, params }) {
                             <span class="text-emerald-700 font-bold text-[11px] flex items-center gap-1">
                               <span>✓</span> Sudah Diset
                             </span>
+                            <span class="text-[10px] text-slate-500">${item.target.capaian_bulanan ? `${monthlyMetricRows(item.target).filter(row => row.actual !== null).length} realisasi tercatat` : "Realisasi belum diisi"}</span>
                           ` : `
                             <span class="text-slate-400 text-[11px] italic">
                               Belum Diset
@@ -7013,19 +7051,19 @@ export async function mount(container, { session, params }) {
                   <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div>
                       <label class="block text-[11px] font-bold text-slate-600 mb-1">Dulux</label>
-                      <input type="number" step="any" id="tgt-vol-dulux" value="${existing?.target_volume_dulux || 10}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
+                      <input type="number" step="any" id="tgt-vol-dulux" value="${existing?.target_volume_dulux ?? 10}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
                     </div>
                     <div>
                       <label class="block text-[11px] font-bold text-slate-600 mb-1">Catylac</label>
-                      <input type="number" step="any" id="tgt-vol-catylac" value="${existing?.target_volume_catylac || 15}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
+                      <input type="number" step="any" id="tgt-vol-catylac" value="${existing?.target_volume_catylac ?? 15}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
                     </div>
                     <div>
                       <label class="block text-[11px] font-bold text-slate-600 mb-1">Maxilite</label>
-                      <input type="number" step="any" id="tgt-vol-maxilite" value="${existing?.target_volume_maxilite || 10}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
+                      <input type="number" step="any" id="tgt-vol-maxilite" value="${existing?.target_volume_maxilite ?? 10}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
                     </div>
                     <div>
                       <label class="block text-[11px] font-bold text-slate-600 mb-1">Aquashield</label>
-                      <input type="number" step="any" id="tgt-vol-aquashield" value="${existing?.target_volume_aquashield || 5}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
+                      <input type="number" step="any" id="tgt-vol-aquashield" value="${existing?.target_volume_aquashield ?? 5}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
                     </div>
                   </div>
 
@@ -7033,11 +7071,11 @@ export async function mount(container, { session, params }) {
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label class="block text-[11px] font-bold text-slate-600 mb-1">Value Penjualan Tertagih (Rp)</label>
-                      <input type="number" step="1000" id="tgt-val-penjualan" value="${existing?.target_value_penjualan || 100000000}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
+                      <input type="number" step="1000" id="tgt-val-penjualan" value="${existing?.target_value_penjualan ?? 100000000}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
                     </div>
                     <div>
                       <label class="block text-[11px] font-bold text-slate-600 mb-1">Batas Maksimal Overdue Piutang (Rp)</label>
-                      <input type="number" step="1000" id="tgt-overdue" value="${existing?.target_overdue_piutang || 20000000}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
+                      <input type="number" step="1000" id="tgt-overdue" value="${existing?.target_overdue_piutang ?? 20000000}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
                     </div>
                   </div>
 
@@ -7045,15 +7083,15 @@ export async function mount(container, { session, params }) {
                   <div class="grid grid-cols-3 gap-3">
                     <div>
                       <label class="block text-[11px] font-bold text-slate-600 mb-1">AO ICI (Toko)</label>
-                      <input type="number" id="tgt-ao-ici" value="${existing?.target_ao_ici || 25}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
+                      <input type="number" id="tgt-ao-ici" value="${existing?.target_ao_ici ?? 25}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
                     </div>
                     <div>
                       <label class="block text-[11px] font-bold text-slate-600 mb-1">AO PRIMA (Toko)</label>
-                      <input type="number" id="tgt-ao-prima" value="${existing?.target_ao_prima || 15}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
+                      <input type="number" id="tgt-ao-prima" value="${existing?.target_ao_prima ?? 15}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
                     </div>
                     <div>
                       <label class="block text-[11px] font-bold text-slate-600 mb-1">AO DCOTA (Toko)</label>
-                      <input type="number" id="tgt-ao-dcota" value="${existing?.target_ao_dcota || 15}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
+                      <input type="number" id="tgt-ao-dcota" value="${existing?.target_ao_dcota ?? 15}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
                     </div>
                   </div>
                 </div>
@@ -7065,19 +7103,19 @@ export async function mount(container, { session, params }) {
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label class="block text-[11px] font-bold text-slate-600 mb-1">Target Penyelesaian SOP & Tugas (%)</label>
-                      <input type="number" min="0" max="100" id="tgt-sop" value="${existing?.target_sop_tugas || 100}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
+                      <input type="number" min="0" max="100" id="tgt-sop" value="${existing?.target_sop_tugas ?? 100}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
                     </div>
                     <div>
                       <label class="block text-[11px] font-bold text-slate-600 mb-1">Target SLA Respon & Pelayanan (%)</label>
-                      <input type="number" min="0" max="100" id="tgt-respon" value="${existing?.target_respon_divisi || 100}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
+                      <input type="number" min="0" max="100" id="tgt-respon" value="${existing?.target_respon_divisi ?? 100}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
                     </div>
                     <div>
                       <label class="block text-[11px] font-bold text-slate-600 mb-1">Target Kedisiplinan & Absensi (%)</label>
-                      <input type="number" min="0" max="100" id="tgt-disiplin" value="${existing?.target_kedisiplinan || 100}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
+                      <input type="number" min="0" max="100" id="tgt-disiplin" value="${existing?.target_kedisiplinan ?? 100}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
                     </div>
                     <div>
                       <label class="block text-[11px] font-bold text-slate-600 mb-1">Target Inisiatif & Teamwork (%)</label>
-                      <input type="number" min="0" max="100" id="tgt-inisiatif" value="${existing?.target_inisiatif_team || 100}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
+                      <input type="number" min="0" max="100" id="tgt-inisiatif" value="${existing?.target_inisiatif_team ?? 100}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
                     </div>
                   </div>
                 </div>
@@ -7117,6 +7155,10 @@ export async function mount(container, { session, params }) {
 
             const periode = m.querySelector("#tb-periode").value;
             const catatanTarget = m.querySelector("#tb-catatan-target")?.value.trim() || "";
+            if (isEdit && existing.capaian_bulanan && (currentKat !== existing.kategori || periode !== existing.periode)) {
+              toast("Periode atau kategori target tidak dapat diubah setelah realisasinya dicatat.", "error");
+              return;
+            }
 
             const payload = {
               nama_karyawan: namaKaryawan,
@@ -7142,10 +7184,10 @@ export async function mount(container, { session, params }) {
               payload.target_ao_prima = parseFloat(m.querySelector("#tgt-ao-prima")?.value) || 0;
               payload.target_ao_dcota = parseFloat(m.querySelector("#tgt-ao-dcota")?.value) || 0;
             } else {
-              payload.target_sop_tugas = parseFloat(m.querySelector("#tgt-sop")?.value) || 100;
-              payload.target_respon_divisi = parseFloat(m.querySelector("#tgt-respon")?.value) || 100;
-              payload.target_kedisiplinan = parseFloat(m.querySelector("#tgt-disiplin")?.value) || 100;
-              payload.target_inisiatif_team = parseFloat(m.querySelector("#tgt-inisiatif")?.value) || 100;
+              payload.target_sop_tugas = (m.querySelector("#tgt-sop")?.value === "" ? 100 : Number(m.querySelector("#tgt-sop")?.value));
+              payload.target_respon_divisi = (m.querySelector("#tgt-respon")?.value === "" ? 100 : Number(m.querySelector("#tgt-respon")?.value));
+              payload.target_kedisiplinan = (m.querySelector("#tgt-disiplin")?.value === "" ? 100 : Number(m.querySelector("#tgt-disiplin")?.value));
+              payload.target_inisiatif_team = (m.querySelector("#tgt-inisiatif")?.value === "" ? 100 : Number(m.querySelector("#tgt-inisiatif")?.value));
             }
 
             const btnSave = m.querySelector("#btn-tb-simpan");
@@ -7283,6 +7325,55 @@ export async function mount(container, { session, params }) {
     // -------------------------------------------------------------
     // MODAL: DETAIL TARGET BULANAN
     // -------------------------------------------------------------
+    function openMonthlyAchievementModal(target) {
+      const metrics = monthlyMetricRows(target);
+      openModal({
+        title: `Realisasi Target ${escapeHtml(target.periode || "")}: ${escapeHtml(target.nama_karyawan || "")}`,
+        size: "lg",
+        bodyHtml: `<div class="space-y-4 text-left">
+          <p class="text-xs text-slate-600">Isi hasil akhir bulan untuk setiap indikator. Nilai target tetap tersimpan; perubahan realisasi dicatat atas nama penginput.</p>
+          <form id="monthly-achievement-form" class="space-y-2">
+            ${metrics.map(metric => `<label class="grid grid-cols-1 sm:grid-cols-3 items-center gap-2 rounded-lg border border-slate-200 p-2 text-xs">
+              <span class="font-bold text-slate-700">${escapeHtml(metric.label)}</span>
+              <span class="text-slate-500">Target: ${metric.target === null ? "-" : metric.target.toLocaleString("id-ID")} ${escapeHtml(metric.unit)}</span>
+              <input data-achievement-key="${metric.key}" type="number" min="0" ${metric.unit === "%" ? 'max="100"' : ''} step="any" required value="${metric.actual === null ? "" : metric.actual}" placeholder="Realisasi" class="rounded-lg border border-slate-300 px-2 py-1.5 text-xs">
+            </label>`).join("")}
+            <label class="block text-xs font-bold text-slate-700">Catatan capaian / bukti pendukung
+              <textarea id="monthly-achievement-note" rows="3" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs" placeholder="Contoh: hasil laporan penjualan atau penyelesaian pekerjaan">${escapeHtml(target.capaian_bulanan?.catatan || "")}</textarea>
+            </label>
+          </form></div>`,
+        footerHtml: `<button id="monthly-achievement-cancel" class="rounded-lg bg-slate-100 px-4 py-2 text-xs font-bold">Batal</button><button id="monthly-achievement-save" class="rounded-lg bg-maroon-700 px-4 py-2 text-xs font-bold text-white">Simpan Capaian</button>`,
+        onMount: modal => {
+          modal.querySelector("#monthly-achievement-cancel").onclick = closeModal;
+          modal.querySelector("#monthly-achievement-save").onclick = async () => {
+            const form = modal.querySelector("#monthly-achievement-form");
+            if (!form.reportValidity()) return;
+            const values = Object.fromEntries([...form.querySelectorAll("[data-achievement-key]")].map(input => [input.dataset.achievementKey, input.value]));
+            const error = validateMonthlyAchievement(target, values);
+            if (error) return toast(error, "error");
+            const button = modal.querySelector("#monthly-achievement-save");
+            button.disabled = true;
+            try {
+              const achievement = {
+                nilai: Object.fromEntries(Object.entries(values).map(([key, value]) => [key, Number(value)])),
+                catatan: modal.querySelector("#monthly-achievement-note").value.trim(),
+                dicatat_oleh: session.nama || "HRD",
+                dicatat_pada: new Date().toISOString()
+              };
+              await fsUpdate(COL.TARGET_BULANAN_KPI, target.id, { capaian_bulanan: achievement, updated_at: new Date().toISOString() });
+              Object.assign(target, { capaian_bulanan: achievement });
+              closeModal();
+              toast("Realisasi target bulanan berhasil disimpan.", "success");
+              renderDailyView();
+            } catch (saveError) {
+              toast("Gagal menyimpan realisasi: " + saveError.message, "error");
+              button.disabled = false;
+            }
+          };
+        }
+      });
+    }
+
     function openDetailTargetBulananModal(target) {
       const isSales = (target.kategori || "").toUpperCase() === "SALES";
 
@@ -7340,10 +7431,10 @@ export async function mount(container, { session, params }) {
               <div class="p-3 bg-white rounded-xl border border-slate-200 space-y-3">
                 <h5 class="text-xs font-bold text-slate-700 uppercase">Target Capaian Operasional</h5>
                 <div class="grid grid-cols-2 gap-3 text-xs">
-                  <div>Target SOP: <strong>${target.target_sop_tugas || 100}%</strong></div>
-                  <div>Target Respon: <strong>${target.target_respon_divisi || 100}%</strong></div>
-                  <div>Target Disiplin: <strong>${target.target_kedisiplinan || 100}%</strong></div>
-                  <div>Target Inisiatif: <strong>${target.target_inisiatif_team || 100}%</strong></div>
+                  <div>Target SOP: <strong>${target.target_sop_tugas ?? 100}%</strong></div>
+                  <div>Target Respon: <strong>${target.target_respon_divisi ?? 100}%</strong></div>
+                  <div>Target Disiplin: <strong>${target.target_kedisiplinan ?? 100}%</strong></div>
+                  <div>Target Inisiatif: <strong>${target.target_inisiatif_team ?? 100}%</strong></div>
                 </div>
               </div>
             `}
@@ -7354,6 +7445,11 @@ export async function mount(container, { session, params }) {
                 <p class="text-blue-800 font-medium">${escapeHtml(target.catatan_target)}</p>
               </div>
             ` : ''}
+            <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
+              <h5 class="mb-2 font-bold text-slate-700">Realisasi Akhir Bulan</h5>
+              ${target.capaian_bulanan ? monthlyMetricRows(target).map(row => `<div class="flex justify-between gap-2 py-1"><span>${escapeHtml(row.label)}</span><span class="font-semibold">${row.actual === null ? "Belum diisi" : `${row.actual.toLocaleString("id-ID")} / ${row.target === null ? "-" : row.target.toLocaleString("id-ID")} ${escapeHtml(row.unit)}${row.attainment === null ? "" : ` · ${row.attainment}%`}`}</span></div>`).join("") : '<p class="text-slate-500">Belum ada realisasi bulanan.</p>'}
+              ${target.capaian_bulanan?.catatan ? `<p class="mt-2 text-slate-600">${escapeHtml(target.capaian_bulanan.catatan)}</p>` : ''}
+            </div>
           </div>
         `,
         footerHtml: `
