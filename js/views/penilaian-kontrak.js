@@ -12,6 +12,7 @@ import { authFetch } from "../api-client.js";
 import { resolveWorkSchedule } from "../work-schedule.mjs";
 import { calculateAttendancePenalty } from "../attendance-penalty.mjs";
 import { MONTHLY_METRICS, monthlyMetricRows, validateMonthlyAchievement } from "../monthly-achievement.mjs";
+import { summarizeReviewTasks, resolveCoordinationStage } from "../contract-coordination.mjs";
 
 const confirmThen = (message, action) => runConfirmedAction(confirmDialog, message, action);
 
@@ -3059,7 +3060,13 @@ export async function mount(container, { session, params }) {
   /**
    * Modal Distribusi Tugas KPI 360° dengan Multi Penilai & Multi Dinilai (Checkbox + Search Box)
    */
-  async function openDistribusiModal(preselectedTplId = null) {
+  async function openDistribusiModal(preselectedTplId = null, options = {}) {
+    const targetEmployee = options.employee || null;
+    const targetNik = String(targetEmployee?.nik_karyawan || targetEmployee?.nik || "").trim();
+    if (targetEmployee && !targetNik) {
+      toast("Lengkapi NIK karyawan sebelum mendistribusikan penilaian.", "warning");
+      return;
+    }
     const [templates, employees, userAccounts] = await Promise.all([
       fsGetAll(COL.MASTER_SOAL_KPI),
       fsGetAll(COL.MASTER_KARYAWAN),
@@ -3110,7 +3117,7 @@ export async function mount(container, { session, params }) {
     let initialCategory = selectedTpl?.kategori_penilaian || "KPI_360";
 
     openModal({
-      title: "Distribusi Penugasan Penilaian Kinerja & KPI 360°",
+      title: targetEmployee ? `Penilaian 360°: ${escapeHtml(targetEmployee.nama_karyawan)}` : "Distribusi Penugasan Penilaian Kinerja & KPI 360°",
       size: "xl",
       bodyHtml: `
         <form id="form-distribusi-kpi" class="space-y-4 text-left">
@@ -3276,7 +3283,13 @@ export async function mount(container, { session, params }) {
                           <div class="text-[10px] text-slate-500 truncate">${escapeHtml(emp.jabatan || "-")} (${escapeHtml(emp.cabang || "Pusat")})</div>
                         </div>
                       </div>
-                      <div class="shrink-0 text-right">
+                      <div class="shrink-0 text-right flex flex-col items-end gap-1">
+                        <select class="dist-rater-relation text-[10px] border border-slate-200 rounded px-1 py-0.5 bg-white" aria-label="Hubungan penilai dengan karyawan dinilai">
+                          <option value="Atasan Langsung">Atasan</option>
+                          <option value="Bawahan">Bawahan</option>
+                          <option value="Rekan Sejawat (Peer)" selected>Rekan</option>
+                          <option value="Penilaian Mandiri">Diri sendiri</option>
+                        </select>
                         ${hasEmail ? `
                           <span class="text-[9.5px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200" title="${escapeHtml(empEmail)}">✉️ Ada Email</span>
                         ` : `
@@ -3304,15 +3317,15 @@ export async function mount(container, { session, params }) {
               <!-- Search & Quick Action for Dinilai -->
               <div class="space-y-1.5">
                 <div class="relative">
-                  <input type="text" id="search-dinilai-input" placeholder="🔍 Cari nama karyawan yang dinilai, jabatan..." class="w-full px-2.5 py-1.5 pl-8 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition">
+                  <input type="text" id="search-dinilai-input" placeholder="🔍 Cari nama karyawan yang dinilai, jabatan..." class="w-full px-2.5 py-1.5 pl-8 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition" ${targetEmployee ? 'disabled' : ''}>
                 </div>
                 <div class="flex items-center justify-between text-[11px]">
                   <div class="flex items-center gap-2">
-                    <button type="button" id="btn-select-all-dinilai" class="text-blue-700 hover:underline font-bold">Pilih Semua</button>
+                    <button type="button" id="btn-select-all-dinilai" class="text-blue-700 hover:underline font-bold" ${targetEmployee ? 'disabled' : ''}>Pilih Semua</button>
                     <span class="text-slate-300">|</span>
-                    <button type="button" id="btn-deselect-all-dinilai" class="text-slate-500 hover:underline">Batal Semua</button>
+                    <button type="button" id="btn-deselect-all-dinilai" class="text-slate-500 hover:underline" ${targetEmployee ? 'disabled' : ''}>Batal Semua</button>
                     <span class="text-slate-300">|</span>
-                    <button type="button" id="btn-use-template-assigned" class="text-emerald-700 hover:underline font-bold" title="Pilih otomatis karyawan yang terdaftar di Template ini">Pakai List Template</button>
+                    <button type="button" id="btn-use-template-assigned" class="text-emerald-700 hover:underline font-bold" title="Pilih otomatis karyawan yang terdaftar di Template ini" ${targetEmployee ? 'disabled' : ''}>Pakai List Template</button>
                   </div>
                   <span class="text-slate-400" id="info-dinilai-count">${activeEmps.length} Karyawan</span>
                 </div>
@@ -3321,9 +3334,9 @@ export async function mount(container, { session, params }) {
               <!-- Scrollable Checkbox List Dinilai -->
               <div id="list-dinilai-container" class="max-h-52 overflow-y-auto space-y-1 pr-1 border border-slate-100 rounded-lg p-1 bg-slate-50/50">
                 ${activeEmps.map(emp => `
-                  <label class="dinilai-item flex items-center justify-between gap-2 p-2 rounded-lg bg-white hover:bg-blue-50/50 border border-slate-100 transition cursor-pointer" data-nama="${escapeHtml(emp.nama_karyawan)}" data-jabatan="${escapeHtml(emp.jabatan || '')}" data-cabang="${escapeHtml(emp.cabang || '')}">
+                  <label class="dinilai-item flex items-center justify-between gap-2 p-2 rounded-lg bg-white hover:bg-blue-50/50 border border-slate-100 transition cursor-pointer" data-nama="${escapeHtml(emp.nama_karyawan)}" data-jabatan="${escapeHtml(emp.jabatan || '')}" data-cabang="${escapeHtml(emp.cabang || '')}" ${targetEmployee && String(emp.nik_karyawan || emp.nik) !== targetNik ? 'style="display:none"' : ''}>
                     <div class="flex items-center gap-2.5 min-w-0">
-                      <input type="checkbox" name="chk-dinilai" value="${escapeHtml(emp.nik_karyawan || emp.nik || emp.id)}" class="w-4 h-4 rounded text-blue-700 border-slate-300 focus:ring-blue-500 shrink-0">
+                      <input type="checkbox" name="chk-dinilai" value="${escapeHtml(emp.nik_karyawan || emp.nik || emp.id)}" class="w-4 h-4 rounded text-blue-700 border-slate-300 focus:ring-blue-500 shrink-0" ${targetEmployee ? (String(emp.nik_karyawan || emp.nik) === targetNik ? 'checked disabled' : 'disabled') : ''}>
                       <div class="truncate">
                         <div class="font-bold text-slate-800 text-xs truncate">${escapeHtml(emp.nama_karyawan)}</div>
                         <div class="text-[10px] text-slate-500 truncate">${escapeHtml(emp.jabatan || "-")} (${escapeHtml(emp.cabang || "Pusat")})</div>
@@ -3559,6 +3572,9 @@ export async function mount(container, { session, params }) {
         const calcDinilaiNum = m.querySelector("#calc-dinilai-num");
         const calcTotalTasks = m.querySelector("#calc-total-tasks");
         const chkIncludeSelf = m.querySelector("#dist-include-self");
+        m.querySelectorAll(".dist-rater-relation").forEach(select => {
+          select.addEventListener("click", e => e.stopPropagation());
+        });
 
         function updateCounts() {
           const checkedPenilai = Array.from(m.querySelectorAll('input[name="chk-penilai"]:checked')).map(c => c.value);
@@ -3642,7 +3658,7 @@ export async function mount(container, { session, params }) {
         };
 
         // Pre-check template assigned if opening for specific template
-        if (selectedTpl && Array.isArray(selectedTpl.karyawan_assigned) && selectedTpl.karyawan_assigned.length > 0) {
+        if (!targetEmployee && selectedTpl && Array.isArray(selectedTpl.karyawan_assigned) && selectedTpl.karyawan_assigned.length > 0) {
           const assignedSet = new Set(selectedTpl.karyawan_assigned.map(n => (n || "").toLowerCase().trim()));
           m.querySelectorAll('input[name="chk-dinilai"]').forEach(chk => {
             const employeeName = (chk.closest("label")?.dataset.nama || "").toLowerCase().trim();
@@ -3650,6 +3666,14 @@ export async function mount(container, { session, params }) {
               chk.checked = true;
             }
           });
+          updateCounts();
+        }
+        if (targetEmployee) {
+          if (!activeEmps.some(emp => String(emp.nik_karyawan || emp.nik) === targetNik)) {
+            toast("Karyawan tidak ditemukan dalam master aktif.", "error");
+            closeModal();
+            return;
+          }
           updateCounts();
         }
 
@@ -3672,10 +3696,17 @@ export async function mount(container, { session, params }) {
 
           const selectedPenilai = Array.from(m.querySelectorAll('input[name="chk-penilai"]:checked')).map(c => c.value);
           const selectedDinilai = Array.from(m.querySelectorAll('input[name="chk-dinilai"]:checked')).map(c => c.value);
+          if (targetEmployee && (selectedDinilai.length !== 1 || selectedDinilai[0] !== targetNik)) {
+            return toast("Penilaian ini hanya untuk karyawan pada kartu yang dipilih.", "error");
+          }
 
           if (!tplId) return toast("Harap pilih Template Soal KPI terlebih dahulu!", "warning");
           if (selectedPenilai.length === 0) return toast("Pilih minimal 1 Penilai (Evaluator)!", "warning");
           if (selectedDinilai.length === 0) return toast("Pilih minimal 1 Karyawan yang Dinilai!", "warning");
+          if (targetEmployee && selectedPenilai.some(nik => {
+            const checkbox = Array.from(m.querySelectorAll('input[name="chk-penilai"]:checked')).find(c => c.value === nik);
+            return nik !== targetNik && checkbox?.closest("label")?.querySelector(".dist-rater-relation")?.value === "Penilaian Mandiri";
+          })) return toast("Hubungan 'Diri sendiri' hanya untuk karyawan yang dinilai.", "warning");
           const selectedIds = new Set([...selectedPenilai, ...selectedDinilai]);
           if ([...selectedIds].some(id => {
             const matches = activeEmps.filter(emp => String(emp.nik_karyawan || emp.nik || emp.id) === String(id));
@@ -3702,6 +3733,8 @@ export async function mount(container, { session, params }) {
               const empPenilai = activeEmps.find(e => String(e.nik_karyawan || e.nik || e.id) === String(pNik));
               if (!empPenilai) throw new Error(`Data evaluator NIK ${pNik} tidak ditemukan.`);
               const pName = empPenilai.nama_karyawan;
+              const selectedCheckbox = Array.from(m.querySelectorAll('input[name="chk-penilai"]:checked')).find(c => c.value === pNik);
+              const relation = selectedCheckbox?.closest("label")?.querySelector(".dist-rater-relation")?.value || tipeRelasi;
               const emailPenilai = getEmpEmail(empPenilai);
 
               for (const dNik of selectedDinilai) {
@@ -3722,6 +3755,7 @@ export async function mount(container, { session, params }) {
                   nama_dinilai: dName,
                   jabatan_dinilai: empDinilai.jabatan || "",
                   nik_dinilai: empDinilai.nik_karyawan || empDinilai.nik || "",
+                  evaluation_id: options.evaluationId || "",
                   cabang_dinilai: empDinilai.cabang || "",
                   divisi_dinilai: empDinilai.divisi || "",
                   email_dinilai: emailDinilai,
@@ -3731,7 +3765,7 @@ export async function mount(container, { session, params }) {
                   cabang_penilai: empPenilai.cabang || "",
                   divisi_penilai: empPenilai.divisi || "",
                   email_penilai: emailPenilai,
-                  tipe_relasi: tipeRelasi || "360 Multi-Rater",
+                  tipe_relasi: String(pNik) === String(dNik) ? "Penilaian Mandiri" : relation,
                   periode: periode,
                   deadline: deadline,
                   soal_json: tplObj.soal_json || [],
@@ -3785,7 +3819,7 @@ export async function mount(container, { session, params }) {
                     }
                   }
                 } catch (errNotif) {
-                  console.warn("Gagal kirim notifikasi ke evaluator:", pName, errNotif);
+                  console.warn("Gagal kirim notifikasi ke evaluator:", pTaskList[0]?.nama_penilai, errNotif);
                 }
               }
             }
@@ -3802,7 +3836,8 @@ export async function mount(container, { session, params }) {
 
             toast(summaryMsg, "success");
             closeModal();
-            loadKpi360();
+            if (targetEmployee) options.onComplete?.();
+            else loadKpi360();
           } catch (e) {
             console.error("Error distributing KPI tasks:", e);
             toast("Gagal mendistribusikan: " + e.message, "error");
@@ -4324,9 +4359,6 @@ export async function mount(container, { session, params }) {
           </div>
         </div>
       `;
-      wrap.appendChild(panels.kpi360);
-      panels.kpi360.classList.remove("hidden");
-
       // Event bindings
       wrap.querySelector("#btn-toggle-kanban").onclick = () => { currentViewMode = "kanban"; renderPipeline(); };
       wrap.querySelector("#btn-toggle-table").onclick = () => { currentViewMode = "table"; renderPipeline(); };
@@ -4346,8 +4378,6 @@ export async function mount(container, { session, params }) {
 
       bindPipelineActions();
     }
-
-    await loadKpi360().catch(error => { panels.kpi360.innerHTML = emptyState("Gagal memuat tugas penilaian: " + error.message); });
 
     function renderKanbanView(list, stages) {
       return `
@@ -4515,25 +4545,49 @@ export async function mount(container, { session, params }) {
   // -------------------------------------------------------------
   async function openModalKoordinasiPerpanjangan(empData, existingEval, onDoneCallback) {
     // Fetch users for GM & Direktur dropdowns, and KPI logs for performance review
+    const ev = existingEval || {};
+    const recordId = ev.id || `KEVL-${String(empData.nik_karyawan || empData.nik || empData.nama_karyawan || "EMP").replace(/[^a-zA-Z0-9]/g, "")}-${String(empData.tglAkhir || empData.tgl_akhir_kontrak || "NOEND").replace(/[^0-9A-Za-z]/g, "")}`;
     let allUsers = [];
     let kpiLogs = [];
     let dailyLogs = [];
+    let reviewTasks = [];
+    const employeeNik = String(empData.nik_karyawan || empData.nik || "").trim();
 
     try {
-      [allUsers, kpiLogs, dailyLogs] = await Promise.all([
+      [allUsers, kpiLogs, dailyLogs, reviewTasks] = await Promise.all([
         fsGetAll(COL.USERS).catch(() => []),
         fsGetAll(COL.LOG_PENILAIAN_KPI).catch(() => []),
-        fsGetAll(COL.LOG_PENILAIAN_HARIAN).catch(() => [])
+        fsGetAll(COL.LOG_PENILAIAN_HARIAN).catch(() => []),
+        isAtasanView && session.cabang
+          ? queryRows(COL.TUGAS_KPI_360, "cabang_dinilai", session.cabang)
+              .then(rows => rows.filter(t => employeeNik ? t.nik_dinilai === employeeNik : t.nama_dinilai === empData.nama_karyawan))
+          : queryRows(COL.TUGAS_KPI_360, employeeNik ? "nik_dinilai" : "nama_dinilai", employeeNik || empData.nama_karyawan)
       ]);
     } catch (e) {
       console.warn("Error fetching modal metadata:", e);
+      toast("Status penilaian karyawan gagal dimuat. Coba buka kembali kartu sebelum melanjutkan alur.", "error");
+      return;
     }
+    // A renewal only waits for tasks distributed from its own Review HRD card.
+    const review = summarizeReviewTasks(reviewTasks, recordId);
+    reviewTasks = review.tasks;
+    const reviewAverage = review.average;
+    const reviewReady = review.ready;
+    const reviewSummary = reviewTasks.length
+      ? `${review.completed}/${reviewTasks.length} selesai${reviewAverage === null ? "" : ` • Rata-rata ${reviewAverage.toFixed(2)}`}`
+      : "Belum didistribusikan";
 
     // Filter relevant users
     const gmUsers = allUsers.filter(u => {
       const r = (u.role || "").toUpperCase();
       const j = (u.jabatan || "").toUpperCase();
       return r === "GM" || r === "SUPERADMIN" || r === "HRD" || j.includes("GM") || j.includes("GENERAL MANAGER") || j.includes("MANAGER");
+    });
+    const supervisorUsers = allUsers.filter(u => {
+      const r = String(u.role || "").toUpperCase();
+      const j = String(u.jabatan || "").toUpperCase();
+      const sameBranch = !u.cabang || !empData.cabang || String(u.cabang).toUpperCase() === String(empData.cabang).toUpperCase();
+      return sameBranch && (["MANAGER", "BRANCH MANAGER", "SPV", "KOORDINATOR", "ATASAN"].includes(r) || /MANAGER|SPV|SUPERVISOR|KOORDINATOR/.test(j));
     });
     const dirUsers = allUsers.filter(u => {
       const r = (u.role || "").toUpperCase();
@@ -4553,9 +4607,6 @@ export async function mount(container, { session, params }) {
     const decisionReadiness = assessKpiDecisionReadiness(latestKpiSummary, empDaily.length);
 
     // Existing evaluation data
-    const ev = existingEval || {};
-    const recordId = ev.id || `KEVL-${(empData.nama_karyawan || "EMP").replace(/[^a-zA-Z0-9]/g, "")}-${Date.now().toString().slice(-4)}`;
-
     // Default dates for new contract draft
     const currentEnd = empData.tglAkhir || empData.tgl_akhir_kontrak || "";
     let defaultNewStart = "";
@@ -4675,7 +4726,7 @@ export async function mount(container, { session, params }) {
                   <label class="block text-slate-600 font-semibold mb-1">Reviewer HRD & Tanggal</label>
                   <div class="grid grid-cols-2 gap-2">
                     <input type="text" id="input-nama-hrd" value="${escapeHtml(ev.nama_reviewer_hrd || session.nama || "HRD Admin")}" class="w-full px-3 py-2 rounded-xl border border-slate-200 outline-none bg-white font-medium">
-                    <input type="date" id="input-tgl-hrd" value="${ev.tgl_review_hrd || new Date().toISOString().split("T")[0]}" class="w-full px-3 py-2 rounded-xl border border-slate-200 outline-none bg-white font-medium">
+                    <input type="date" id="input-tgl-hrd" value="${ev.tgl_review_hrd || ""}" class="w-full px-3 py-2 rounded-xl border border-slate-200 outline-none bg-white font-medium">
                   </div>
                 </div>
               </div>
@@ -4686,6 +4737,14 @@ export async function mount(container, { session, params }) {
               </div>
               <div class="bg-white rounded-xl border border-blue-200 p-3 space-y-2">
                 <p class="text-xs font-bold text-blue-950">Jejak Data untuk Keputusan</p>
+                <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-blue-50 p-2">
+                  <div>
+                    <p class="text-[11px] font-bold text-blue-950">Penilaian 360°: ${escapeHtml(reviewSummary)}</p>
+                    <p class="text-[11px] text-blue-800">Pilih penilai sebagai atasan, bawahan, rekan, atau diri sendiri. Hasilnya menjadi bahan rekomendasi HRD.</p>
+                  </div>
+                  ${["HRD", "SUPERADMIN"].includes(role) && canDistribusiKpi360 && initialTahap === "REVIEW_HRD" ? `<button type="button" id="btn-distribusi-review-hrd" class="px-3 py-2 rounded-lg bg-maroon-700 text-white text-[11px] font-bold">+ Distribusikan Penilaian</button>` : ""}
+                </div>
+                ${["HRD", "SUPERADMIN"].includes(role) && reviewTasks.length ? `<div class="max-h-40 overflow-y-auto divide-y divide-blue-100 text-[11px]">${reviewTasks.map(t => `<div class="flex justify-between gap-2 py-1"><span>${escapeHtml(t.nama_penilai || "-")} · ${escapeHtml(t.tipe_relasi || "Penilai")}</span><strong class="${String(t.status).toUpperCase() === "DONE" ? "text-emerald-700" : "text-amber-700"}">${String(t.status).toUpperCase() === "DONE" ? `Selesai · ${t.skor_akhir !== null && t.skor_akhir !== undefined && t.skor_akhir !== "" && Number.isFinite(Number(t.skor_akhir)) ? Number(t.skor_akhir).toFixed(2) : "Skor belum ada"}` : "Menunggu"}</strong></div>`).join("")}</div>` : ""}
                 <p class="text-[11px] text-slate-600">KPI: ${latestKpiSummary ? `${escapeHtml(latestKpiSummary.period)} • ${latestKpiSummary.score.toFixed(2)} • ${latestKpiSummary.raterCount} penilai` : "belum ada"}; log harian: ${empDaily.length} catatan. ${decisionReadiness.ready ? "Data dasar tersedia." : "Skor sistem hanya petunjuk sementara."}</p>
                 ${decisionReadiness.gaps.length ? `<ul class="list-disc pl-4 text-[11px] text-amber-800">${decisionReadiness.gaps.map(gap => `<li>${escapeHtml(gap)}</li>`).join("")}</ul>` : ""}
                 <label class="block text-[11px] font-semibold text-slate-700" for="input-sumber-bukti-hrd">Sumber bukti yang ditinjau HRD (periode, laporan kerja, absensi terverifikasi, catatan atasan, atau tautan)</label>
@@ -4701,6 +4760,16 @@ export async function mount(container, { session, params }) {
                   <h4 class="text-xs font-black text-amber-950 uppercase tracking-wide">Tahap 2: Koordinasi dengan General Manager / Atasan</h4>
                 </div>
                 <span class="text-[11px] text-amber-700 font-semibold">${ev.tgl_koordinasi_gm ? `Koordinasi: ${fmtDateShort(ev.tgl_koordinasi_gm)}` : 'Menunggu Koordinasi'}</span>
+              </div>
+              <div class="bg-white p-3 rounded-xl border border-amber-200 space-y-2 text-xs">
+                <p class="font-bold text-amber-950">Masukan dan persetujuan atasan langsung</p>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div><label class="block text-slate-600 mb-1">Nama atasan</label><input id="input-nama-atasan" type="text" list="pk-atasan-list" value="${escapeHtml(ev.nama_atasan || "")}" placeholder="Pilih atau ketik nama" class="w-full px-3 py-2 border border-slate-200 rounded-lg"><datalist id="pk-atasan-list">${supervisorUsers.map(u => `<option value="${escapeHtml(u.nama || "")}"></option>`).join("")}</datalist></div>
+                  <div><label class="block text-slate-600 mb-1">Keputusan atasan</label><select id="input-persetujuan-atasan" class="w-full px-3 py-2 border border-slate-200 rounded-lg"><option value="" ${!ev.persetujuan_atasan ? "selected" : ""}>Menunggu</option><option value="SETUJU" ${ev.persetujuan_atasan === "SETUJU" ? "selected" : ""}>Setuju</option><option value="TIDAK_SETUJU" ${ev.persetujuan_atasan === "TIDAK_SETUJU" ? "selected" : ""}>Tidak setuju</option><option value="TINJAU_ULANG" ${ev.persetujuan_atasan === "TINJAU_ULANG" ? "selected" : ""}>Tinjau ulang</option></select></div>
+                  <div><label class="block text-slate-600 mb-1">Tanggal keputusan</label><input id="input-tgl-atasan" type="date" value="${escapeHtml(ev.tgl_persetujuan_atasan || "")}" class="w-full px-3 py-2 border border-slate-200 rounded-lg"></div>
+                </div>
+                <textarea id="input-catatan-atasan" rows="2" placeholder="Catatan atasan terhadap ringkasan penilaian dan rekomendasi HRD" class="w-full px-3 py-2 border border-slate-200 rounded-lg">${escapeHtml(ev.catatan_atasan || "")}</textarea>
+                <button type="button" id="btn-copy-wa-atasan" class="px-3 py-1.5 bg-amber-50 text-amber-900 border border-amber-200 text-[11px] font-bold rounded-lg">Salin ringkasan untuk atasan</button>
               </div>
 
               <!-- One click WA Generator -->
@@ -4949,6 +5018,13 @@ export async function mount(container, { session, params }) {
         modalPanelWorkflow.classList.add("hidden");
       };
     }
+    document.getElementById("btn-distribusi-review-hrd")?.addEventListener("click", () => {
+      openDistribusiModal(null, {
+        employee: empData,
+        evaluationId: recordId,
+        onComplete: () => openModalKoordinasiPerpanjangan(empData, ev, onDoneCallback)
+      }).catch(error => toast("Gagal membuka distribusi: " + error.message, "error"));
+    });
 
     // Select change updates phone numbers
     const selGm = document.getElementById("select-target-gm");
@@ -4979,25 +5055,36 @@ export async function mount(container, { session, params }) {
 
     // WA Helper function for GM
     function buildGmWaText() {
+      if (!reviewReady) return "";
       const recHrd = document.getElementById("input-rekomendasi-hrd")?.value || "Belum ditetapkan";
-      const catHrd = document.getElementById("input-catatan-hrd")?.value || "Kinerja dan kedisiplinan baik.";
+      const catHrd = document.getElementById("input-catatan-hrd")?.value || "Belum ada catatan HRD.";
       const gmName = inNamaGm?.value || "Bapak/Ibu GM";
-      return `Yth. ${gmName},\n\nMohon koordinasi dan masukan terkait evaluasi perpanjangan kontrak karyawan:\n- Nama: *${empData.nama_karyawan}*\n- NIK: ${empData.nik_karyawan || empData.nik || "-"}\n- Jabatan: ${empData.jabatan || "-"} (${empData.cabang || "Pusat"})\n- Kontrak Berakhir: *${empData.tglAkhir ? fmtDateShort(empData.tglAkhir) : "-"}* (Sisa ${empData.daysLeft !== null ? empData.daysLeft : '-'} Hari)\n\n*Hasil Review HRD:*\n- Rekomendasi: ${recHrd}\n- Catatan: "${catHrd}"\n\nMohon feedback dan rekomendasi Bapak/Ibu untuk kelanjutan kontrak yang bersangkutan. Terima kasih.`;
+      return `Yth. ${gmName},\n\nMohon koordinasi dan masukan terkait evaluasi perpanjangan kontrak karyawan:\n- Nama: *${empData.nama_karyawan}*\n- NIK: ${empData.nik_karyawan || empData.nik || "-"}\n- Jabatan: ${empData.jabatan || "-"} (${empData.cabang || "Pusat"})\n- Kontrak Berakhir: *${empData.tglAkhir ? fmtDateShort(empData.tglAkhir) : "-"}* (Sisa ${empData.daysLeft !== null ? empData.daysLeft : '-'} Hari)\n\n*Hasil Review HRD:*\n- Penilaian 360°: ${reviewSummary}\n- Rekomendasi: ${recHrd}\n- Catatan: "${catHrd}"\n\nMohon feedback dan rekomendasi Bapak/Ibu untuk kelanjutan kontrak yang bersangkutan. Terima kasih.`;
     }
+    document.getElementById("btn-copy-wa-atasan")?.addEventListener("click", async () => {
+      if (!reviewReady || !document.getElementById("input-rekomendasi-hrd")?.value) {
+        return toast("Selesaikan penilaian dan rekomendasi HRD sebelum meminta persetujuan atasan.", "warning");
+      }
+      const text = `Yth. ${document.getElementById("input-nama-atasan")?.value || "Bapak/Ibu Atasan"},\n\nMohon masukan dan persetujuan perpanjangan kontrak ${empData.nama_karyawan} (${employeeNik || "-"}).\nPenilaian 360°: ${reviewSummary}.\nRekomendasi HRD: ${document.getElementById("input-rekomendasi-hrd")?.value}.\nCatatan HRD: ${document.getElementById("input-catatan-hrd")?.value || "-"}.\n\nMohon sampaikan persetujuan atau catatan untuk tindak lanjut GM. Terima kasih.`;
+      try { await navigator.clipboard.writeText(text); toast("Ringkasan untuk atasan disalin.", "success"); }
+      catch { toast("Gagal menyalin ringkasan. Periksa izin clipboard browser.", "error"); }
+    });
 
     // WA Helper function for Director
     function buildDirWaText() {
+      if (!reviewReady) return "";
       const recHrd = document.getElementById("input-rekomendasi-hrd")?.value || "Belum ditetapkan";
       const recGm = document.getElementById("input-rekomendasi-gm")?.value || "Setuju Rekomendasi HRD";
       const catGm = document.getElementById("input-catatan-gm")?.value || "-";
       const dirName = inNamaDir?.value || "Bapak/Ibu Direktur";
-      return `Yth. ${dirName},\n\nBerikut kami ajukan persetujuan (ACC) perpanjangan kontrak karyawan:\n- Nama: *${empData.nama_karyawan}*\n- Jabatan: ${empData.jabatan || "-"} (${empData.cabang || "Pusat"})\n- Masa Kontrak: Berakhir *${empData.tglAkhir ? fmtDateShort(empData.tglAkhir) : "-"}* (Sisa ${empData.daysLeft !== null ? empData.daysLeft : '-'} Hari)\n\n*Ringkasan Usulan:*\n- Usulan HRD: ${recHrd}\n- Masukan & Rekomendasi GM: *${recGm}*\n- Catatan GM: "${catGm}"\n\nMohon arahan dan persetujuan (ACC) dari Bapak/Ibu Direktur. Terima kasih.`;
+      return `Yth. ${dirName},\n\nBerikut kami ajukan persetujuan (ACC) perpanjangan kontrak karyawan:\n- Nama: *${empData.nama_karyawan}*\n- Jabatan: ${empData.jabatan || "-"} (${empData.cabang || "Pusat"})\n- Masa Kontrak: Berakhir *${empData.tglAkhir ? fmtDateShort(empData.tglAkhir) : "-"}* (Sisa ${empData.daysLeft !== null ? empData.daysLeft : '-'} Hari)\n\n*Ringkasan Usulan:*\n- Penilaian 360°: ${reviewSummary}\n- Usulan HRD: ${recHrd}\n- Persetujuan atasan: ${document.getElementById("input-nama-atasan")?.value || "-"} (${document.getElementById("input-persetujuan-atasan")?.value || "Menunggu"})\n- Masukan & Rekomendasi GM: *${recGm}*\n- Catatan GM: "${catGm}"\n\nMohon arahan dan persetujuan (ACC) dari Bapak/Ibu Direktur. Terima kasih.`;
     }
 
     // Bind WhatsApp buttons
     const btnCopyWaGm = document.getElementById("btn-copy-wa-gm");
     if (btnCopyWaGm) {
       btnCopyWaGm.onclick = async () => {
+        if (!reviewReady || !document.getElementById("input-rekomendasi-hrd")?.value) return toast("Selesaikan penilaian 360° dan isi rekomendasi HRD terlebih dahulu.", "warning");
         const text = buildGmWaText();
         await navigator.clipboard.writeText(text).catch(() => {});
         toast("Format pesan WhatsApp untuk GM berhasil disalin!", "success");
@@ -5006,6 +5093,7 @@ export async function mount(container, { session, params }) {
     const btnOpenWaGm = document.getElementById("btn-open-wa-gm");
     if (btnOpenWaGm) {
       btnOpenWaGm.onclick = () => {
+        if (!reviewReady || !document.getElementById("input-rekomendasi-hrd")?.value) return toast("Selesaikan penilaian 360° dan isi rekomendasi HRD terlebih dahulu.", "warning");
         const text = buildGmWaText();
         const phone = inPhoneGm?.value || "";
         openWhatsAppMessage(phone, text);
@@ -5015,6 +5103,7 @@ export async function mount(container, { session, params }) {
     const btnCopyWaDir = document.getElementById("btn-copy-wa-dir");
     if (btnCopyWaDir) {
       btnCopyWaDir.onclick = async () => {
+        if (getCurrentStage() === "REVIEW_HRD" || getCurrentStage() === "KOORDINASI_GM") return toast("Tunggu persetujuan atasan dan masukan GM sebelum mengajukan persetujuan Direktur.", "warning");
         const text = buildDirWaText();
         await navigator.clipboard.writeText(text).catch(() => {});
         toast("Format ringkasan eksekutif untuk Direktur berhasil disalin!", "success");
@@ -5023,6 +5112,7 @@ export async function mount(container, { session, params }) {
     const btnOpenWaDir = document.getElementById("btn-open-wa-dir");
     if (btnOpenWaDir) {
       btnOpenWaDir.onclick = () => {
+        if (getCurrentStage() === "REVIEW_HRD" || getCurrentStage() === "KOORDINASI_GM") return toast("Tunggu persetujuan atasan dan masukan GM sebelum mengajukan persetujuan Direktur.", "warning");
         const text = buildDirWaText();
         const phone = inPhoneDir?.value || "";
         openWhatsAppMessage(phone, text);
@@ -5052,17 +5142,19 @@ export async function mount(container, { session, params }) {
 
     // Calculate current Stage from inputs
     function getCurrentStage() {
-      const hasDirApproval = document.getElementById("input-tgl-dir")?.value || ev.tgl_approval_direktur;
-      const hasSk = document.getElementById("input-no-sk")?.value || ev.no_sk_kontrak_baru;
-      const hasGm = document.getElementById("input-tgl-gm")?.value || ev.tgl_koordinasi_gm;
-      const hasHrd = document.getElementById("input-tgl-hrd")?.value || ev.tgl_review_hrd;
-
-      if (ev.status_final === "SELESAI") return "SELESAI";
-      if (hasSk && hasDirApproval) return "DRAFT_KONTRAK";
-      if (hasDirApproval) return "APPROVAL_DIREKTUR";
-      if (hasGm) return "APPROVAL_DIREKTUR";
-      if (hasHrd) return "KOORDINASI_GM";
-      return "REVIEW_HRD";
+      return resolveCoordinationStage({
+        finished: ev.status_final === "SELESAI",
+        reviewReady,
+        recommendation: document.getElementById("input-rekomendasi-hrd")?.value,
+        reviewDate: document.getElementById("input-tgl-hrd")?.value,
+        evidence: document.getElementById("input-sumber-bukti-hrd")?.value,
+        supervisorName: document.getElementById("input-nama-atasan")?.value.trim(),
+        supervisorDecision: document.getElementById("input-persetujuan-atasan")?.value,
+        supervisorDate: document.getElementById("input-tgl-atasan")?.value,
+        gmDate: document.getElementById("input-tgl-gm")?.value,
+        directorDate: document.getElementById("input-tgl-dir")?.value,
+        directorDecision: document.getElementById("input-keputusan-dir")?.value
+      });
     }
 
     // Save Progress Handler
@@ -5074,6 +5166,12 @@ export async function mount(container, { session, params }) {
         if (recommendation && evidence.length < 12) {
           toast("Sebutkan sumber bukti dan periode yang ditinjau sebelum menyimpan rekomendasi HRD.", "warning");
           return;
+        }
+        if (document.getElementById("input-tgl-gm")?.value && (!reviewReady || !recommendation || !document.getElementById("input-tgl-hrd")?.value)) {
+          return toast("Selesaikan penilaian 360°, rekomendasi, dan review HRD sebelum mencatat koordinasi GM.", "warning");
+        }
+        if (document.getElementById("input-tgl-dir")?.value && (!document.getElementById("input-tgl-gm")?.value || document.getElementById("input-persetujuan-atasan")?.value !== "SETUJU" || !document.getElementById("input-tgl-atasan")?.value)) {
+          return toast("Catat persetujuan atasan dan hasil koordinasi GM sebelum keputusan Direktur.", "warning");
         }
         btnSaveProgress.disabled = true;
         btnSaveProgress.textContent = "Menyimpan...";
@@ -5099,6 +5197,10 @@ export async function mount(container, { session, params }) {
           nama_reviewer_hrd: document.getElementById("input-nama-hrd")?.value || "",
           tgl_review_hrd: document.getElementById("input-tgl-hrd")?.value || "",
           nama_gm: inNamaGm?.value || "",
+          nama_atasan: document.getElementById("input-nama-atasan")?.value.trim() || "",
+          persetujuan_atasan: document.getElementById("input-persetujuan-atasan")?.value || "",
+          tgl_persetujuan_atasan: document.getElementById("input-tgl-atasan")?.value || "",
+          catatan_atasan: document.getElementById("input-catatan-atasan")?.value || "",
           rekomendasi_gm: document.getElementById("input-rekomendasi-gm")?.value || "",
           catatan_gm: document.getElementById("input-catatan-gm")?.value || "",
           tgl_koordinasi_gm: document.getElementById("input-tgl-gm")?.value || "",
@@ -5110,11 +5212,13 @@ export async function mount(container, { session, params }) {
           no_sk_kontrak_baru: document.getElementById("input-no-sk")?.value || "",
           tgl_mulai_baru: inMulaiBaru?.value || "",
           tgl_akhir_baru: inAkhirBaru?.value || "",
-          kpi_periode_referensi: latestKpiSummary?.period || "",
-          kpi_skor_agregat: latestKpiSummary?.score ?? null,
-          kpi_jumlah_penilai: latestKpiSummary?.raterCount || 0,
-          kpi_rekomendasi_sistem: latestKpiSummary
-            ? evaluateGradeRule("KONTRAK", latestKpiSummary.score, currentGradeRulesMap).rekomendasi
+          kpi_periode_referensi: reviewTasks[0]?.periode || latestKpiSummary?.period || "",
+          kpi_skor_agregat: reviewAverage ?? latestKpiSummary?.score ?? null,
+          kpi_jumlah_penilai: review.completed,
+          penilaian_360_total: reviewTasks.length,
+          penilaian_360_selesai: review.completed,
+          kpi_rekomendasi_sistem: reviewAverage !== null
+            ? evaluateGradeRule("KONTRAK", reviewAverage, currentGradeRulesMap).rekomendasi
             : "",
           status_final: ev.status_final || "PROSES",
           updated_at: new Date().toISOString()
@@ -5137,6 +5241,12 @@ export async function mount(container, { session, params }) {
     const btnExecute = document.getElementById("btn-execute-renewal");
     if (btnExecute) {
       btnExecute.onclick = () => {
+        if (!reviewReady || !document.getElementById("input-rekomendasi-hrd")?.value || !document.getElementById("input-tgl-hrd")?.value) {
+          return toast("Selesaikan seluruh penilaian 360° dan review HRD sebelum menerbitkan keputusan kontrak.", "warning");
+        }
+        if (getCurrentStage() === "REVIEW_HRD" || getCurrentStage() === "KOORDINASI_GM") {
+          return toast("Persetujuan atasan dan masukan GM harus tercatat sebelum keputusan kontrak diterbitkan.", "warning");
+        }
         const evidence = document.getElementById("input-sumber-bukti-hrd")?.value.trim() || ev.sumber_bukti_hrd || "";
         if (evidence.length < 12) {
           toast("Keputusan kontrak perlu sumber bukti HRD yang dapat ditelusuri. Lengkapi lalu simpan progres dahulu.", "warning");
@@ -5158,6 +5268,10 @@ export async function mount(container, { session, params }) {
         if (!approvalDate || !directorName) {
           toast("Lengkapi nama Direktur dan tanggal persetujuan sebelum menyelesaikan evaluasi kontrak.", "warning");
           return;
+        }
+        if (!ev.id || ev.persetujuan_atasan !== "SETUJU" || !ev.tgl_koordinasi_gm
+          || ev.keputusan_direktur !== keputusan || ev.tgl_approval_direktur !== approvalDate) {
+          return toast("Simpan progres review HRD, persetujuan atasan, koordinasi GM, dan keputusan Direktur sebelum menerbitkan kontrak.", "warning");
         }
 
         if (keputusan === "TIDAK_DIPERPANJANG") {
@@ -5253,14 +5367,14 @@ export async function mount(container, { session, params }) {
                 tgl_akhir_baru: tglAkhir,
                 keputusan_direktur: keputusan,
                 durasi_perpanjangan_disetujui: durasi,
-                kpi_periode_referensi: latestKpiSummary?.period || "",
-                kpi_skor_agregat: latestKpiSummary?.score ?? null,
-                kpi_jumlah_penilai: latestKpiSummary?.raterCount || 0,
+                kpi_periode_referensi: reviewTasks[0]?.periode || latestKpiSummary?.period || "",
+                kpi_skor_agregat: reviewAverage,
+                kpi_jumlah_penilai: review.completed,
                 sumber_bukti_hrd: evidence,
                 kelengkapan_data_kpi: decisionReadiness.ready ? "CUKUP" : "PERLU_VERIFIKASI",
                 celah_data_kpi: decisionReadiness.gaps,
-                kpi_rekomendasi_sistem: latestKpiSummary
-                  ? evaluateGradeRule("KONTRAK", latestKpiSummary.score, currentGradeRulesMap).rekomendasi
+                kpi_rekomendasi_sistem: reviewAverage !== null
+                  ? evaluateGradeRule("KONTRAK", reviewAverage, currentGradeRulesMap).rekomendasi
                   : "",
                 updated_at: serverTimestamp()
               }, { merge: true });
@@ -7493,7 +7607,7 @@ export async function mount(container, { session, params }) {
       else panels[k].classList.add("hidden");
     }
   });
-  panels.kpi360?.classList.toggle("hidden", tabKey !== "alur_perpanjangan");
+  panels.kpi360?.classList.toggle("hidden", tabKey !== "alur_perpanjangan" || !isRegularEmployee);
 
   container.querySelectorAll(".pk-tab").forEach(btn => {
     const ntab = btn.dataset.ntab;
