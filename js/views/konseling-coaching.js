@@ -34,6 +34,7 @@ let auditLogs = [];
 // =========================================================================
 export async function mount(container, { params, session }) {
   currentSession = session || getSession();
+  caseSearchKeyword = String(params?.get("nik") || params?.get("nama") || "").trim();
   
   if (params && params.get("tab")) {
     const t = params.get("tab");
