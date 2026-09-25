@@ -865,7 +865,7 @@ export function evaluateCandidateATS(candidate, vacancy = {}, customSynonyms = {
         if (candLevel >= targetLevel) {
           criterionScore = 100;
           evidence = `Pendidikan "${candEdu}" memenuhi syarat minimal "${minEdu}"`;
-          evidenceMatches.push(`✓ Pendidikan: ${candEdu} (Min. ${minEdu})`);
+          evidenceMatches.push(` Pendidikan: ${candEdu} (Min. ${minEdu})`);
         } else {
           criterionScore = Math.max(20, Math.round((candLevel / targetLevel) * 70));
           gap = `Pendidikan "${candEdu}" berada di bawah syarat minimal "${minEdu}"`;
@@ -881,7 +881,7 @@ export function evaluateCandidateATS(candidate, vacancy = {}, customSynonyms = {
         if (minExp === 0 || candExp >= minExp) {
           criterionScore = 100;
           evidence = `Pengalaman kerja total ${candExp} tahun (Target: ≥ ${minExp} tahun)`;
-          evidenceMatches.push(`✓ Pengalaman Kerja: ${candExp} Tahun (Target: ≥ ${minExp} thn)`);
+          evidenceMatches.push(` Pengalaman Kerja: ${candExp} Tahun (Target: ≥ ${minExp} thn)`);
         } else if (candExp > 0) {
           criterionScore = Math.round((candExp / minExp) * 80);
           gap = `Pengalaman ${candExp} tahun kurang dari target ${minExp} tahun`;
@@ -906,7 +906,7 @@ export function evaluateCandidateATS(candidate, vacancy = {}, customSynonyms = {
         if (hasSim) {
           criterionScore = 100;
           evidence = `Memiliki ${candSims.join(", ") || "SIM yang dipersyaratkan"}`;
-          evidenceMatches.push(`✓ Surat Izin Mengemudi: ${candSims.join(", ") || "Terpenuhi"}`);
+          evidenceMatches.push(` Surat Izin Mengemudi: ${candSims.join(", ") || "Terpenuhi"}`);
         } else {
           criterionScore = 0;
           gap = `Persyaratan ${requiredSim.join(", ")} tidak ditemukan dalam CV`;
@@ -924,7 +924,7 @@ export function evaluateCandidateATS(candidate, vacancy = {}, customSynonyms = {
         if (isLocMatch) {
           criterionScore = 100;
           evidence = `Domisili / Lokasi sesuai penempatan: ${candidate.domisili || targetLocation}`;
-          evidenceMatches.push(`✓ Domisili / Penempatan: ${candidate.domisili || targetLocation}`);
+          evidenceMatches.push(` Domisili / Penempatan: ${candidate.domisili || targetLocation}`);
         } else if (candidate.domisili && candidate.domisili !== "Tidak Tercantum") {
           criterionScore = 50; // Domisili lain tapi tercantum
           gap = `Domisili (${candidate.domisili}) berbeda dengan target cabang (${targetLocation})`;
@@ -948,7 +948,7 @@ export function evaluateCandidateATS(candidate, vacancy = {}, customSynonyms = {
 
         if (matched.length > 0) {
           evidence = `Ditemukan skill: ${matched.map(m => m.keyword).join(", ")}`;
-          evidenceMatches.push(`✓ Skill Relevan: ${matched.map(m => m.keyword).join(", ")}`);
+          evidenceMatches.push(` Skill Relevan: ${matched.map(m => m.keyword).join(", ")}`);
         }
         if (missing.length > 0) {
           gap = `Skill tidak ditemukan: ${missing.join(", ")}`;
@@ -963,7 +963,7 @@ export function evaluateCandidateATS(candidate, vacancy = {}, customSynonyms = {
         if (matched.length > 0) {
           criterionScore = 100;
           evidence = `Menguasai software perkantoran & spreadsheet`;
-          evidenceMatches.push(`✓ Software & Tool: ${matched.map(m => m.keyword).join(", ")}`);
+          evidenceMatches.push(` Software & Tool: ${matched.map(m => m.keyword).join(", ")}`);
         } else {
           criterionScore = 20;
           gap = `Penguasaan Microsoft Excel / Software tidak tertulis spesifik`;
@@ -978,7 +978,7 @@ export function evaluateCandidateATS(candidate, vacancy = {}, customSynonyms = {
         if (matched.length > 0) {
           criterionScore = 100;
           evidence = `Memiliki latar belakang industri relevan (${matched.map(m => m.keyword).join(", ")})`;
-          evidenceMatches.push(`✓ Industri Relevan: ${matched.map(m => m.keyword).join(", ")}`);
+          evidenceMatches.push(` Industri Relevan: ${matched.map(m => m.keyword).join(", ")}`);
         } else {
           criterionScore = 40;
           gap = `Belum memiliki catatan di industri sejenis (${targetIndustry.slice(0, 2).join(", ")})`;
@@ -1020,13 +1020,13 @@ export function evaluateCandidateATS(candidate, vacancy = {}, customSynonyms = {
 
     if (exclusionResult.action === "auto_reject") {
       mandatoryPassed = false;
-      potentialGaps.unshift(`⚠️ DISKUALIFIKASI ATURAN INDUSTRI: Terdeteksi kata kunci terlarang [${matchedStr}] untuk posisi ${exclusionResult.affected_position}`);
+      potentialGaps.unshift(` DISKUALIFIKASI ATURAN INDUSTRI: Terdeteksi kata kunci terlarang [${matchedStr}] untuk posisi ${exclusionResult.affected_position}`);
     } else if (exclusionResult.action === "penalty_flag") {
       const penalty = exclusionResult.penalty_points || 25;
       finalScore = Math.max(0, finalScore - penalty);
-      potentialGaps.unshift(`⚠️ PENALTI EKSKLUSI INDUSTRI (-${penalty}%): Terindikasi alumni distributor cat/kompetitor [${matchedStr}]`);
+      potentialGaps.unshift(` PENALTI EKSKLUSI INDUSTRI (-${penalty}%): Terindikasi alumni distributor cat/kompetitor [${matchedStr}]`);
     } else {
-      potentialGaps.unshift(`⚠️ PERINGATAN REVIEW HRD: Terdeteksi latar belakang industri [${matchedStr}]`);
+      potentialGaps.unshift(` PERINGATAN REVIEW HRD: Terdeteksi latar belakang industri [${matchedStr}]`);
     }
   }
 

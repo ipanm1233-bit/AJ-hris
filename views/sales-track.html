@@ -11,13 +11,13 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
           <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
-        📍 Titik Keberangkatan HRD
+         Titik Keberangkatan HRD
       </button>
       <button id="btn-import-sales-visits" class="inline-flex items-center gap-1.5 bg-blue-700 hover:bg-blue-800 text-white px-3.5 py-2.5 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
         </svg>
-        📥 Import Excel Kunjungan
+         Import Excel Kunjungan
       </button>
       <input type="file" id="file-import-sales-visits" accept=".xlsx, .xls, .csv" class="hidden" />
       <button id="btn-export-sales-visits" class="inline-flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3.5 py-2.5 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer">
@@ -28,7 +28,7 @@
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
         </svg>
-        📄 Export PDF Report
+         Export PDF Report
       </button>
       <button id="btn-purge-dummy-sales" class="inline-flex items-center gap-1.5 bg-slate-700 hover:bg-slate-800 text-white px-3.5 py-2.5 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer" title="Hapus seluruh data kunjungan dummy/contoh dan hanya sisakan data hasil import Excel">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -85,7 +85,7 @@
   <div class="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-3">
     <div class="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-slate-100">
       <h3 class="font-bold text-slate-800 text-xs uppercase tracking-wide flex items-center gap-1.5">
-        <span>🔍 Filter & Pencarian Kunjungan Sales</span>
+        <span><i class='fa-solid fa-magnifying-glass' aria-hidden='true'></i> Filter & Pencarian Kunjungan Sales</span>
         <span id="active-filter-badge" class="px-2 py-0.5 bg-maroon-50 text-maroon-700 text-[10px] font-bold rounded-full border border-maroon-200 hidden">Filter Aktif</span>
       </h3>
       <button id="btn-reset-sales-filter" class="text-xs font-bold text-maroon-700 hover:underline">Reset Filter</button>
@@ -165,7 +165,7 @@
   <div class="space-y-3">
     <div class="flex items-center justify-between">
       <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
-        <span>👤 Performans Setiap Salesman</span>
+        <span><i class='fa-solid fa-user' aria-hidden='true'></i> Performans Setiap Salesman</span>
         <span class="text-xs font-normal text-slate-400">(Klik kartu sales untuk memfilter dashboard)</span>
       </h3>
     </div>

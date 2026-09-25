@@ -330,7 +330,7 @@ export async function mount(container, { session }) {
                 Titik Koordinat GPS (Latitude, Longitude)
               </label>
               <button type="button" id="btn-generate-gps" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer">
-                📍 Generate GPS dari Alamat
+                 Generate GPS dari Alamat
               </button>
             </div>
             <div class="grid grid-cols-1 gap-2">
@@ -339,7 +339,7 @@ export async function mount(container, { session }) {
             <div id="gps-preview-box" class="text-xs text-slate-600">
               ${outlet.koordinat_gps ? `
                 <div class="flex items-center gap-2">
-                  <span class="text-emerald-700 font-semibold">✓ Koordinat terdaftar di Master Outlet</span>
+                  <span class="text-emerald-700 font-semibold"><i class='fa-solid fa-check' aria-hidden='true'></i> Koordinat terdaftar di Master Outlet</span>
                   <a href="https://www.google.com/maps?q=${encodeURIComponent(outlet.koordinat_gps)}" target="_blank" class="text-blue-600 underline font-semibold">Test di Google Maps</a>
                 </div>
               ` : `
@@ -421,7 +421,7 @@ export async function mount(container, { session }) {
             toast("Gagal geocoding: " + geoErr.message, "error");
           } finally {
             btnGen.disabled = false;
-            btnGen.textContent = "📍 Generate GPS dari Alamat";
+            btnGen.textContent = " Generate GPS dari Alamat";
           }
         };
 
@@ -607,7 +607,7 @@ export async function mount(container, { session }) {
                 Titik Koordinat GPS Master (Latitude, Longitude)
               </label>
               <button type="button" id="btn-gen-gps-new" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition cursor-pointer">
-                📍 Generate GPS
+                 Generate GPS
               </button>
             </div>
             <input name="koordinat_gps" id="new-outlet-gps" class="w-full px-3 py-2 text-sm font-mono font-bold text-emerald-900 bg-white rounded-lg border border-slate-300 focus:border-emerald-500 outline-none transition" placeholder="Contoh: -6.713500, 108.558200">
@@ -650,7 +650,7 @@ export async function mount(container, { session }) {
             toast("Gagal geocoding: " + e.message, "error");
           } finally {
             btnGen.disabled = false;
-            btnGen.textContent = "📍 Generate GPS";
+            btnGen.textContent = " Generate GPS";
           }
         };
 

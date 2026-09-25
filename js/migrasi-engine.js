@@ -630,7 +630,7 @@ async function runMigration() {
     }
     if (opCount > 0) await batch.commit();
 
-    logTo("migrate-log", `✔ Sheet "${sheetName}" selesai — ${written} dokumen ditulis ke "${mapCfg.collection}".`, "green");
+    logTo("migrate-log", ` Sheet "${sheetName}" selesai — ${written} dokumen ditulis ke "${mapCfg.collection}".`, "green");
     done++;
     bar.style.width = `${Math.round((done / sheetsToRun.length) * 100)}%`;
   }
@@ -715,9 +715,9 @@ async function seedCollection(colName, sampleRows, idPrefix, customIdField = nul
       batch.set(doc(db, colName, id), row);
     });
     await batch.commit();
-    logTo("seed-log", `✔ Koleksi "${colName}" berhasil diisi ${sampleRows.length} data contoh.`, "green");
+    logTo("seed-log", ` Koleksi "${colName}" berhasil diisi ${sampleRows.length} data contoh.`, "green");
   } catch (e) {
-    logTo("seed-log", `✘ Gagal membuat data dummy untuk "${colName}": ${e.message}`, "red");
+    logTo("seed-log", ` Gagal membuat data dummy untuk "${colName}": ${e.message}`, "red");
   }
 }
 

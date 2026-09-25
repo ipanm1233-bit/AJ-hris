@@ -9,7 +9,7 @@
     <button data-stab="menu" class="st-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">Akses Menu (RBAC)</button>
     <button data-stab="forms" class="st-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">Akses Formulir Pengajuan</button>
     <button data-stab="kanal" class="st-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap flex items-center gap-1.5">
-      <span>🔌 Integrasi API Kanal</span>
+      <span><i class='fa-solid fa-plug' aria-hidden='true'></i> Integrasi API Kanal</span>
       <span class="px-1.5 py-0.5 text-[10px] font-bold bg-maroon-100 text-maroon-800 rounded-full">Baru</span>
     </button>
   </div>
@@ -37,16 +37,16 @@
             <label class="block text-[11px] font-bold text-slate-600 mb-1">Terapkan Template Role:</label>
             <select id="rbac-preset-select" class="w-full sm:w-56 px-3 py-2 text-xs font-semibold rounded-xl border border-maroon-200 focus:border-maroon-500 outline-none bg-maroon-50 text-maroon-900 transition">
               <option value="">-- Pilih Template Role --</option>
-              <option value="DEFAULT_KARYAWAN">⚡ 6 Menu Default (Standar)</option>
-              <option value="BACK_OFFICE">🏢 Back Office (+ Lembur)</option>
-              <option value="WAREHOUSE">📦 Warehouse (+ Lembur)</option>
-              <option value="SALES">💼 Sales (Tanpa Lembur)</option>
-              <option value="STAFF">👤 Staff / Karyawan Umum</option>
-              <option value="SPV">🎖️ SPV / Supervisor</option>
-              <option value="FINANCE">💰 Finance</option>
-              <option value="GM">👔 GM / Direksi</option>
-              <option value="HRD">👥 HRD / Personalia</option>
-              <option value="SUPERADMIN">🛡️ SUPERADMIN (Semua Hak)</option>
+              <option value="DEFAULT_KARYAWAN"> 6 Menu Default (Standar)</option>
+              <option value="BACK_OFFICE"> Back Office (+ Lembur)</option>
+              <option value="WAREHOUSE"> Warehouse (+ Lembur)</option>
+              <option value="SALES"> Sales (Tanpa Lembur)</option>
+              <option value="STAFF"> Staff / Karyawan Umum</option>
+              <option value="SPV"> SPV / Supervisor</option>
+              <option value="FINANCE"> Finance</option>
+              <option value="GM"> GM / Direksi</option>
+              <option value="HRD"> HRD / Personalia</option>
+              <option value="SUPERADMIN"> SUPERADMIN (Semua Hak)</option>
             </select>
           </div>
         </div>
@@ -54,7 +54,7 @@
 
       <!-- POLICY NOTICE BANNER -->
       <div class="p-3 bg-blue-50/80 border border-blue-200/90 rounded-xl text-blue-900 text-xs flex items-start gap-2.5">
-        <span class="text-base mt-0.5">💡</span>
+        <span class="text-base mt-0.5"><i class='fa-solid fa-lightbulb' aria-hidden='true'></i></span>
         <div class="space-y-0.5">
           <div class="font-bold text-blue-950">Kebijakan Hak Akses Menu Default & Pembagian Lembur:</div>
           <div class="text-[11px] text-blue-800 leading-relaxed">
@@ -68,7 +68,7 @@
       <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/80">
         <div class="flex flex-wrap items-center gap-2">
           <button id="rbac-btn-apply-default" class="px-2.5 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg shadow-2xs transition flex items-center gap-1">
-            <span>⚡ Set 6 Menu Default</span>
+            <span><i class='fa-solid fa-bolt' aria-hidden='true'></i> Set 6 Menu Default</span>
           </button>
           <button id="rbac-btn-select-all" class="px-2.5 py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg shadow-2xs transition">
             Pilih Semua
@@ -105,7 +105,7 @@
 
         <div class="relative w-full sm:w-64">
           <input type="text" id="rbac-search-input" placeholder="Cari modul atau izin action..." class="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 focus:border-maroon-400 outline-none">
-          <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
+          <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"><i class='fa-solid fa-magnifying-glass' aria-hidden='true'></i></span>
         </div>
       </div>
 

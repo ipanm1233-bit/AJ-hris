@@ -153,7 +153,7 @@ function renderList(container, session, tab) {
         <div>
           <div class="flex items-center gap-2 flex-wrap">
             <p class="font-semibold text-slate-800">${escapeHtml(r.nama_form)}</p>
-            ${isPotongGaji ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">⚠️ POTONG GAJI (${potongHari} HARI)</span>` : ""}
+            ${isPotongGaji ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300"><i class='fa-solid fa-triangle-exclamation' aria-hidden='true'></i> POTONG GAJI (${potongHari} HARI)</span>` : ""}
           </div>
  <p class="text-sm text-slate-500 mt-0.5">Diajukan oleh <span class="font-medium text-slate-700">${escapeHtml(r.nama_pemohon)}</span> • ${fmtDateTime(r.tgl)}</p>
  </div>

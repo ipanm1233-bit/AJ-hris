@@ -828,14 +828,14 @@ function renderFollowupTab(container) {
           <span class="text-xs font-bold text-amber-700 uppercase">Tindak Lanjut Hari Ini</span>
           <div class="text-2xl font-black text-amber-800 mt-1">${todayList.length} Jadwal</div>
         </div>
-        <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold">⏰</div>
+        <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold"><i class='fa-solid fa-clock' aria-hidden='true'></i></div>
       </div>
       <div class="p-4 rounded-2xl border border-sky-200 bg-sky-50/50 shadow-xs flex items-center justify-between">
         <div>
           <span class="text-xs font-bold text-sky-700 uppercase">Jadwal Mendatang</span>
           <div class="text-2xl font-black text-sky-800 mt-1">${upcomingList.length} Jadwal</div>
         </div>
-        <div class="w-10 h-10 rounded-xl bg-sky-600 text-white flex items-center justify-center font-bold">📅</div>
+        <div class="w-10 h-10 rounded-xl bg-sky-600 text-white flex items-center justify-center font-bold"><i class='fa-solid fa-calendar' aria-hidden='true'></i></div>
       </div>
     </div>
 

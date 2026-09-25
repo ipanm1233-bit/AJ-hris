@@ -1004,7 +1004,7 @@ export async function mount(container, { session, params } = {}) {
  if (filterCompleteness) filterCompleteness.value = "";
  selectedAttendanceKeys.clear();
  populateAttendanceFilterOptions();
- if (iconSortNama) iconSortNama.textContent = "↕";
+ if (iconSortNama) iconSortNama.textContent = "Urut";
  applyFiltersAbsen();
  };
  }
@@ -1048,7 +1048,7 @@ export async function mount(container, { session, params } = {}) {
  // siklus: default (tanggal) -> A-Z -> Z-A -> default
  filterState.sortNama = filterState.sortNama === "asc" ? "desc" : filterState.sortNama === "desc" ? null : "asc";
  if (iconSortNama) {
- iconSortNama.textContent = filterState.sortNama === "asc" ? "↑ A-Z" : filterState.sortNama === "desc" ? "↓ Z-A" : "↕";
+ iconSortNama.textContent = filterState.sortNama === "asc" ? "↑ A-Z" : filterState.sortNama === "desc" ? "↓ Z-A" : "Urut";
  }
  applyFiltersAbsen();
  };

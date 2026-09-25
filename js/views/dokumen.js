@@ -868,8 +868,8 @@ async function openDocEditorModal(existingData, session, onDone) {
  <div class="flex items-center justify-between gap-2">
  <input type="text" data-clause-title="${i}" value="${escapeHtml(c.judul)}" class="w-full text-xs font-bold text-slate-800 border-b border-slate-200 focus:border-maroon-500 outline-none pb-1" placeholder="Judul Pasal...">
  <div class="flex items-center gap-1 shrink-0">
- ${i > 0 ? `<button data-clause-up="${i}" class="p-1 text-slate-400 hover:text-slate-700 text-xs" title="Naik">⬆️</button>` : ''}
- ${i < clauses.length - 1 ? `<button data-clause-down="${i}" class="p-1 text-slate-400 hover:text-slate-700 text-xs" title="Turun">⬇️</button>` : ''}
+ ${i > 0 ? `<button data-clause-up="${i}" class="p-1 text-slate-400 hover:text-slate-700 text-xs" title="Naik"><i class='fa-solid fa-arrow-up' aria-hidden='true'></i></button>` : ''}
+ ${i < clauses.length - 1 ? `<button data-clause-down="${i}" class="p-1 text-slate-400 hover:text-slate-700 text-xs" title="Turun"><i class='fa-solid fa-arrow-down' aria-hidden='true'></i></button>` : ''}
  <button data-clause-del="${i}" class="p-1 text-rose-500 hover:bg-rose-50 rounded text-xs" title="Hapus Klausul">Hapus</button>
  </div>
  </div>

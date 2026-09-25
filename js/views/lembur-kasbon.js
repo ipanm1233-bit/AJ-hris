@@ -521,7 +521,7 @@ export async function mount(container, context = {}) {
               </div>
               ` : `
               <div class="text-[11px] font-bold ${isApproved ? 'text-emerald-700' : 'text-rose-600'}">
-                ${isApproved ? '✓ Telah Disetujui Elektronik' : '✕ Menolak Penugasan Lembur'}
+                ${isApproved ? ' Telah Disetujui Elektronik' : ' Menolak Penugasan Lembur'}
               </div>
               `}
             </div>
@@ -692,7 +692,7 @@ export async function mount(container, context = {}) {
                   <div class="flex flex-col items-center gap-1">
                     ${variances.length > 0 ? variances.map(v => `
                       <span class="text-[10px] px-2 py-0.5 rounded-md font-bold ${v.severity === 'alert' ? 'bg-rose-100 text-rose-800' : v.severity === 'warning' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}">${escapeHtml(v.label)}</span>
-                    `).join("") : `<span class="text-[10px] text-emerald-600 font-bold">✓ Sesuai Rencana</span>`}
+                    `).join("") : `<span class="text-[10px] text-emerald-600 font-bold"><i class='fa-solid fa-check' aria-hidden='true'></i> Sesuai Rencana</span>`}
                   </div>
                 </td>
                 <td class="p-3 text-center space-x-1 whitespace-nowrap">

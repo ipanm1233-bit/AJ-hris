@@ -189,7 +189,7 @@ export async function generateSppklPdf(orderData, selectedEmployee = null) {
 
     ${isMealWajib ? `
     <div style="background-color: #fffbeb; border: 1px solid #fef3c7; border-radius: 4px; padding: 6px 10px; margin-bottom: 12px; font-size: 10px; color: #92400e;">
-      <strong>✓ Fasilitas Konsumsi:</strong> Lembur $\\ge$ 4 jam (240 menit) memenuhi kriteria wajib penyediaan makanan & minuman (sekurang-kurangnya 1.400 kkal) sesuai PP No 35/2021.
+      <strong><i class='fa-solid fa-check' aria-hidden='true'></i> Fasilitas Konsumsi:</strong> Lembur $\\ge$ 4 jam (240 menit) memenuhi kriteria wajib penyediaan makanan & minuman (sekurang-kurangnya 1.400 kkal) sesuai PP No 35/2021.
     </div>
     ` : ''}
 
@@ -213,7 +213,7 @@ export async function generateSppklPdf(orderData, selectedEmployee = null) {
         <td style="width: 25%; padding: 4px; vertical-align: top;">
           Persetujuan Karyawan,<br/>
           <div style="height: 42px; display: flex; align-items: center; justify-content: center; color: ${isConsentApproved ? '#059669' : '#dc2626'}; font-size: 9px; font-weight: bold;">
-            ${isConsentApproved ? `✓ E-CONSENT APPROVED<br/><span style="font-size: 8px; font-weight: normal; color: #475569;">${consentTimestamp}</span>` : `✕ ${consentStatusText}`}
+            ${isConsentApproved ? `<i class='fa-solid fa-check' aria-hidden='true'></i> E-CONSENT APPROVED<br/><span style="font-size: 8px; font-weight: normal; color: #475569;">${consentTimestamp}</span>` : `<i class='fa-solid fa-xmark' aria-hidden='true'></i> ${consentStatusText}`}
           </div>
           <strong>( ${escapeHtml(empName)} )</strong>
         </td>

@@ -791,10 +791,10 @@ ${htmlContent}
         <!-- TIPE DOKUMEN SELECTOR TABS -->
         <div class="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-2xl border border-slate-200">
           <button type="button" id="btn-tab-doc-kuasa" class="py-2.5 px-3 text-xs font-bold rounded-xl transition flex items-center justify-center gap-2 ${currentDocType === 'KUASA' ? 'bg-white text-maroon-800 shadow-sm border border-slate-200/80' : 'text-slate-500 hover:text-slate-800'}">
-            <span>📝 Surat Kuasa Khusus (STNK / KIR)</span>
+            <span><i class='fa-solid fa-pen' aria-hidden='true'></i> Surat Kuasa Khusus (STNK / KIR)</span>
           </button>
           <button type="button" id="btn-tab-doc-aset" class="py-2.5 px-3 text-xs font-bold rounded-xl transition flex items-center justify-center gap-2 ${currentDocType === 'ASET' ? 'bg-white text-maroon-800 shadow-sm border border-slate-200/80' : 'text-slate-500 hover:text-slate-800'}">
-            <span>🏢 Surat Keterangan Kepemilikan Aset</span>
+            <span><i class='fa-solid fa-building' aria-hidden='true'></i> Surat Keterangan Kepemilikan Aset</span>
           </button>
         </div>
 
@@ -816,7 +816,7 @@ ${htmlContent}
           <div class="space-y-3 border-t border-slate-200 pt-3">
             <div class="flex items-center justify-between">
               <h4 class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                <span>🏢 Pemberi Kuasa / Pejabat Penandatangan</span>
+                <span><i class='fa-solid fa-building' aria-hidden='true'></i> Pemberi Kuasa / Pejabat Penandatangan</span>
               </h4>
               <span class="text-[10px] text-slate-500">Sesuaikan dengan Master Karyawan</span>
             </div>
@@ -843,7 +843,7 @@ ${htmlContent}
           <div id="cfg-section-kuasa" class="space-y-3 ${currentDocType === 'KUASA' ? '' : 'hidden'} border-t border-slate-200 pt-3">
             <div class="flex items-center justify-between">
               <h4 class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                <span>👤 Penerima Kuasa (Driver / Petugas Pajak)</span>
+                <span><i class='fa-solid fa-user' aria-hidden='true'></i> Penerima Kuasa (Driver / Petugas Pajak)</span>
               </h4>
               <span class="text-[10px] text-slate-500">Sesuaikan dengan Master Karyawan</span>
             </div>
@@ -895,7 +895,7 @@ ${htmlContent}
           <!-- SECTION KHUSUS SURAT KET ASET -->
           <div id="cfg-section-aset" class="space-y-3 ${currentDocType === 'ASET' ? '' : 'hidden'} border-t border-slate-200 pt-3">
             <h4 class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-              <span>🏢 Keperluan Surat Keterangan Aset</span>
+              <span><i class='fa-solid fa-building' aria-hidden='true'></i> Keperluan Surat Keterangan Aset</span>
             </h4>
             <div>
               <label class="block text-[11px] font-semibold text-slate-600 mb-1">Maksud / Keperluan Penerbitan</label>
@@ -908,7 +908,7 @@ ${htmlContent}
         <div class="border border-slate-200 rounded-2xl p-4 bg-slate-100 max-h-96 overflow-y-auto shadow-inner">
           <div class="flex items-center justify-between mb-2 pb-2 border-b border-slate-200 text-xs">
             <span class="font-bold text-slate-600 flex items-center gap-1.5">
-              <span>👁️</span> Pratinjau Dokumen Format A4
+              <span><i class='fa-solid fa-eye' aria-hidden='true'></i></span> Pratinjau Dokumen Format A4
             </span>
             <span class="text-[11px] text-slate-400">Ukuran Standar: A4 Portrait</span>
           </div>
@@ -1330,7 +1330,7 @@ ${htmlContent}
           <span>Surat Kuasa (A4)</span>
         </button>
         <button id="btn-quick-gen-aset-${vDoc.id}" class="px-3 py-1.5 text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs">
-          <span>🏢 Surat Ket. Aset</span>
+          <span><i class='fa-solid fa-building' aria-hidden='true'></i> Surat Ket. Aset</span>
         </button>
         <button id="btn-export-single-excel-${vDoc.id}" class="px-3 py-1.5 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs">
  <span class="font-bold text-[10px] bg-emerald-200 text-emerald-900 px-1 py-0.2 rounded">XLS</span>

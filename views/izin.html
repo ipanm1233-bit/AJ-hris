@@ -16,28 +16,28 @@
   <!-- STAT METRIC CARDS -->
   <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
     <div class="bg-white rounded-2xl p-4 border border-slate-100 shadow-2xs flex items-center gap-3">
-      <div class="w-10 h-10 rounded-xl bg-maroon-50 text-maroon-700 flex items-center justify-center font-bold text-lg shrink-0">📋</div>
+      <div class="w-10 h-10 rounded-xl bg-maroon-50 text-maroon-700 flex items-center justify-center font-bold text-lg shrink-0"><i class='fa-solid fa-clipboard-list' aria-hidden='true'></i></div>
       <div>
         <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Total Izin</p>
         <p id="stat-total-izin" class="text-lg font-black text-slate-800">0</p>
       </div>
     </div>
     <div class="bg-white rounded-2xl p-4 border border-slate-100 shadow-2xs flex items-center gap-3">
-      <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold text-lg shrink-0">⏰</div>
+      <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold text-lg shrink-0"><i class="fa-solid fa-clock" aria-hidden="true"></i></div>
       <div>
         <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Datang Terlambat</p>
         <p id="stat-izin-terlambat" class="text-lg font-black text-amber-800">0</p>
       </div>
     </div>
     <div class="bg-white rounded-2xl p-4 border border-slate-100 shadow-2xs flex items-center gap-3">
-      <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-lg shrink-0">🏃</div>
+      <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-lg shrink-0"><i class='fa-solid fa-person-walking' aria-hidden='true'></i></div>
       <div>
         <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Pulang Cepat</p>
         <p id="stat-izin-pulang-cepat" class="text-lg font-black text-blue-800">0</p>
       </div>
     </div>
     <div class="bg-white rounded-2xl p-4 border border-slate-100 shadow-2xs flex items-center gap-3">
-      <div class="w-10 h-10 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold text-lg shrink-0">🏢</div>
+      <div class="w-10 h-10 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold text-lg shrink-0"><i class='fa-solid fa-building' aria-hidden='true'></i></div>
       <div>
         <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Keluar Kantor</p>
         <p id="stat-izin-keluar" class="text-lg font-black text-purple-800">0</p>
@@ -52,20 +52,20 @@
       <div class="flex items-center gap-2 overflow-x-auto">
         <select id="filter-jenis-izin" class="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 outline-none bg-slate-50 focus:bg-white text-slate-700">
           <option value="ALL">Semua Jenis Izin</option>
-          <option value="IZIN_TERLAMBAT">⏰ Datang Terlambat</option>
-          <option value="IZIN_PULANG_CEPAT">🏃 Pulang Cepat</option>
-          <option value="IZIN_KELUAR_KANTOR">🏢 Keluar Kantor / Dinas Samping</option>
+          <option value="IZIN_TERLAMBAT">Datang Terlambat</option>
+          <option value="IZIN_PULANG_CEPAT"> Pulang Cepat</option>
+          <option value="IZIN_KELUAR_KANTOR"> Keluar Kantor / Dinas Samping</option>
         </select>
         <select id="filter-status-izin" class="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 outline-none bg-slate-50 focus:bg-white text-slate-700">
           <option value="ALL">Semua Status</option>
-          <option value="PENDING">⏳ Menunggu Persetujuan</option>
-          <option value="APPROVED">✅ Disetujui (Approved)</option>
-          <option value="REJECTED">❌ Ditolak (Rejected)</option>
+          <option value="PENDING">Menunggu Persetujuan</option>
+          <option value="APPROVED"> Disetujui (Approved)</option>
+          <option value="REJECTED"> Ditolak (Rejected)</option>
         </select>
       </div>
       <div class="relative w-full md:w-64">
         <input type="text" id="search-izin-input" placeholder="Cari nama, No. Ref, alasan..." class="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 outline-none focus:border-maroon-500">
-        <span class="absolute left-2.5 top-2 text-slate-400">🔍</span>
+        <span class="absolute left-2.5 top-2 text-slate-400"><i class='fa-solid fa-magnifying-glass' aria-hidden='true'></i></span>
       </div>
     </div>
 

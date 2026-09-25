@@ -632,7 +632,7 @@ export function openVerifyRealisasiModal(order, state = {}, onSuccess = () => {}
         </div>
       `).join('');
     } else {
-      flagsEl.innerHTML = '<div class="p-2 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-[11px] font-bold">✓ Realisasi sesuai dengan jadwal rencana SPPKL.</div>';
+      flagsEl.innerHTML = '<div class="p-2 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-[11px] font-bold"><i class="fa-solid fa-check" aria-hidden="true"></i> Realisasi sesuai dengan jadwal rencana SPPKL.</div>';
     }
   }
 

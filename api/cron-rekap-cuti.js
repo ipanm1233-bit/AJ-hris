@@ -349,7 +349,7 @@ module.exports = async function handler(req, res) {
           ]);
 
           const htmlBody = buildEmailHtml({
-            badgeText: "🌅 REKAP PAGI (07:45 WIB) • CUTI HARI INI",
+            badgeText: "REKAP PAGI (07:45 WIB) • CUTI HARI INI",
             title: `Daftar Karyawan Cuti Hari Ini (${todayFormatted})`,
             subtitle: `Wilayah Cabang / Penempatan: ${cab.toUpperCase()}`,
             introText: listCutiCabang.length > 0
@@ -514,7 +514,7 @@ module.exports = async function handler(req, res) {
           });
 
           const htmlBody = buildEmailHtml({
-            badgeText: "🌇 REKAP SORE (17:00 WIB) • PENGAJUAN CUTI HARI INI",
+            badgeText: "REKAP SORE (17:00 WIB) • PENGAJUAN CUTI HARI INI",
             title: `Rekap Pengajuan Cuti Karyawan (${todayFormatted})`,
             subtitle: `Wilayah Cabang / Penempatan: ${cab.toUpperCase()}`,
             introText: listPengajuanCabang.length > 0

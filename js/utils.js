@@ -3706,7 +3706,7 @@ export function buildPengajuanEmailDetailHtml(row) {
         tablesListHtml += `
           <div style="margin-top: 16px;">
             <div style="background-color: #7a1f2b; color: #ffffff; padding: 6px 12px; border-radius: 6px 6px 0 0; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">
-              📋 ${escapeHtml(formattedLabel)}
+               ${escapeHtml(formattedLabel)}
             </div>
             <div style="border: 1px solid #cbd5e1; border-top: none; border-radius: 0 0 6px 6px; overflow-x: auto; background-color: #ffffff;">
               <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
@@ -3750,7 +3750,7 @@ export function buildPengajuanEmailDetailHtml(row) {
               </td>
               <td style="padding: 9px 10px; vertical-align: top;">
                 <a href="${escapeHtml(String(val))}" target="_blank" rel="noopener" style="display: inline-block; background-color: #f1f5f9; border: 1px solid #cbd5e1; color: #7a1f2b; font-weight: bold; font-size: 12px; padding: 4px 10px; border-radius: 4px; text-decoration: none;">
-                  📎 Buka Berkas Lampiran
+                   Buka Berkas Lampiran
                 </a>
               </td>
             </tr>
@@ -4333,7 +4333,7 @@ export async function sendBranchMorningLeaveDigest({ branch = null, date = null,
       : `<tr><td colspan="7" style="padding: 24px; text-align: center; color: #64748b; font-style: italic;">Tidak ada karyawan yang cuti hari ini di Cabang ${escapeHtml(cab)}.</td></tr>`;
 
     const htmlBody = buildStandardEmailHtml({
-      badgeText: "🌅 REKAP PAGI (07:45 WIB) • CUTI HARI INI",
+      badgeText: " REKAP PAGI (07:45 WIB) • CUTI HARI INI",
       badgeVariant: "maroon",
       title: `Daftar Karyawan Cuti Hari Ini (${formattedTargetDate})`,
       recipientName: `Tim Koordinator & HRD Cabang ${cab}`,
@@ -4404,7 +4404,7 @@ export async function sendBranchInstantAlert({ type, record, session = null }) {
 
   const isLate = type === "IZIN_TERLAMBAT";
   const subjectPrefix = isLate ? "IZIN DATANG TERLAMBAT" : "CUTI MENDADAK";
-  const badgeText = isLate ? "⚡ ALERT: IZIN DATANG TERLAMBAT" : "⚡ ALERT: PENGAJUAN CUTI MENDADAK";
+  const badgeText = isLate ? " ALERT: IZIN DATANG TERLAMBAT" : " ALERT: PENGAJUAN CUTI MENDADAK";
 
   const infoList = [
     { label: "Nama Karyawan", value: `<strong>${escapeHtml(nama)}</strong> (${escapeHtml(nik)})` },
@@ -4560,7 +4560,7 @@ export async function sendBranchEveningLeaveDigest({ branch = null, date = null,
       : `<tr><td colspan="8" style="padding: 24px; text-align: center; color: #64748b; font-style: italic;">Tidak ada pengajuan cuti baru yang masuk hari ini dari Cabang ${escapeHtml(cab)}.</td></tr>`;
 
     const htmlBody = buildStandardEmailHtml({
-      badgeText: "🌇 REKAP SORE (17:00 WIB) • PENGAJUAN CUTI HARI INI",
+      badgeText: " REKAP SORE (17:00 WIB) • PENGAJUAN CUTI HARI INI",
       badgeVariant: "maroon",
       title: `Rekap Pengajuan Cuti Karyawan (${formattedTargetDate})`,
       recipientName: `Tim Manajemen, Atasan & HRD Cabang ${cab}`,
@@ -6703,7 +6703,7 @@ export function dynFieldInputHtml(f) {
  <div class="space-y-1.5">
    <div class="flex items-center justify-between text-[11px] font-semibold text-slate-500">
      <span class="inline-flex items-center gap-1.5 ${listStyle === 'numbered' ? 'text-indigo-700' : 'text-slate-700'}">
-       ${listStyle === 'numbered' ? '🔢 Format: Daftar Nomor (1, 2, 3...)' : '• Format: Daftar Poin / Bullet'}
+       ${listStyle === 'numbered' ? ' Format: Daftar Nomor (1, 2, 3...)' : '• Format: Daftar Poin / Bullet'}
      </span>
      <span class="text-[10px] text-slate-400 font-normal">Tekan Enter untuk baris baru</span>
    </div>

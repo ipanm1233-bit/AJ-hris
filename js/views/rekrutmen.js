@@ -316,7 +316,7 @@ export async function mount(container, { params, session }) {
           <div>
             <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Lowongan Aktif</p>
             <p class="text-2xl font-black text-slate-800 mt-1">${activeJobs}</p>
-            <p class="text-[11px] text-emerald-600 font-bold mt-1">✓ Siap Terima Lamaran</p>
+            <p class="text-[11px] text-emerald-600 font-bold mt-1"><i class='fa-solid fa-check' aria-hidden='true'></i> Siap Terima Lamaran</p>
           </div>
           <div class="w-12 h-12 rounded-xl bg-maroon-50 text-maroon-700 flex items-center justify-center font-bold">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
@@ -503,7 +503,7 @@ export async function mount(container, { params, session }) {
           <tr>
             <td colspan="6" class="p-8 text-center text-slate-400">
               <div class="max-w-xs mx-auto space-y-2">
-                <div class="text-3xl">📂</div>
+                <div class="text-3xl"><i class='fa-solid fa-folder-open' aria-hidden='true'></i></div>
                 <p class="font-bold text-slate-600">Tidak ada data lowongan pekerjaan</p>
                 <p class="text-[11px] text-slate-400">Coba sesuaikan kata kunci pencarian atau filter status.</p>
               </div>
@@ -924,7 +924,7 @@ export async function mount(container, { params, session }) {
             <p class="text-xs text-slate-500 mt-0.5" id="bulk-result-count">0 kandidat selesai dievaluasi</p>
           </div>
           <button type="button" id="btn-save-batch-all" class="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer">
-            ✓ Simpan Semua ke Database
+             Simpan Semua ke Database
           </button>
         </div>
 
@@ -1248,16 +1248,16 @@ export async function mount(container, { params, session }) {
       return `
         <div class="flex items-center gap-2 border-b border-slate-200 pb-3 mb-5 overflow-x-auto">
           <button type="button" data-rules-subtab="synonyms" class="rules-subtab-btn px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${activeRulesSubTab === 'synonyms' ? 'bg-maroon-700 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
-            📚 Kamus Sinonim ATS (${Object.keys(atsMasterConfig.synonyms || {}).length})
+             Kamus Sinonim ATS (${Object.keys(atsMasterConfig.synonyms || {}).length})
           </button>
           <button type="button" data-rules-subtab="rules" class="rules-subtab-btn px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${activeRulesSubTab === 'rules' ? 'bg-maroon-700 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
-            ⚖️ Aturan Bobot ATS (${(atsMasterConfig.ats_rules || []).length})
+             Aturan Bobot ATS (${(atsMasterConfig.ats_rules || []).length})
           </button>
           <button type="button" data-rules-subtab="exclusions" class="rules-subtab-btn px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${activeRulesSubTab === 'exclusions' ? 'bg-maroon-700 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
-            🚫 Eksklusi Industri & Anti-Kompetitor
+             Eksklusi Industri & Anti-Kompetitor
           </button>
           <button type="button" data-rules-subtab="interviews" class="rules-subtab-btn px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${activeRulesSubTab === 'interviews' ? 'bg-maroon-700 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
-            🎙️ Master Template & Pertanyaan Wawancara (${(atsMasterConfig.interview_templates || []).length})
+             Master Template & Pertanyaan Wawancara (${(atsMasterConfig.interview_templates || []).length})
           </button>
         </div>
       `;
@@ -1311,7 +1311,7 @@ export async function mount(container, { params, session }) {
                   ${synonyms.map((s, sIdx) => `
                     <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-[11px] text-slate-700 font-medium group/pill">
                       <span>${escapeHtml(s)}</span>
-                      <button type="button" data-kw="${escapeHtml(keyword)}" data-syn="${escapeHtml(s)}" class="text-slate-400 hover:text-rose-600 font-bold ml-0.5 btn-del-syn-pill cursor-pointer">✕</button>
+                      <button type="button" data-kw="${escapeHtml(keyword)}" data-syn="${escapeHtml(s)}" class="text-slate-400 hover:text-rose-600 font-bold ml-0.5 btn-del-syn-pill cursor-pointer"><i class='fa-solid fa-xmark' aria-hidden='true'></i></button>
                     </span>
                   `).join('')}
                   <button type="button" data-kw="${escapeHtml(keyword)}" class="px-2 py-0.5 border border-dashed border-slate-300 hover:border-maroon-700 text-slate-500 hover:text-maroon-700 rounded-lg text-[11px] font-bold transition btn-add-syn-pill cursor-pointer">
@@ -1342,7 +1342,7 @@ export async function mount(container, { params, session }) {
               <div class="flex items-center gap-2">
                 <span class="font-bold text-xs ${isWeightValid ? 'text-emerald-900' : 'text-rose-900'}">Status Bobot Penilaian ATS:</span>
                 <span class="px-3 py-0.5 rounded-full text-xs font-black ${isWeightValid ? 'bg-emerald-200 text-emerald-900' : 'bg-rose-200 text-rose-900'}">
-                  Total: ${totalWeight}% ${isWeightValid ? '✓ (Valid)' : '⚠️ (Harus 100%)'}
+                  Total: ${totalWeight}% ${isWeightValid ? ' (Valid)' : ' (Harus 100%)'}
                 </span>
               </div>
               <p class="text-[11px] ${isWeightValid ? 'text-emerald-700' : 'text-rose-700'}">
@@ -1475,7 +1475,7 @@ export async function mount(container, { params, session }) {
                 ${positions.map(p => `
                   <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-800 font-bold shadow-2xs">
                     <span>${escapeHtml(p)}</span>
-                    <button type="button" data-pos="${escapeHtml(p)}" class="text-slate-400 hover:text-rose-600 font-bold ml-0.5 btn-del-excl-pos cursor-pointer">✕</button>
+                    <button type="button" data-pos="${escapeHtml(p)}" class="text-slate-400 hover:text-rose-600 font-bold ml-0.5 btn-del-excl-pos cursor-pointer"><i class='fa-solid fa-xmark' aria-hidden='true'></i></button>
                   </span>
                 `).join('')}
               </div>
@@ -1498,7 +1498,7 @@ export async function mount(container, { params, session }) {
                 ${keywords.map(kw => `
                   <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-rose-200 rounded-lg text-[11px] text-rose-900 font-bold shadow-2xs">
                     <span>${escapeHtml(kw)}</span>
-                    <button type="button" data-kw="${escapeHtml(kw)}" class="text-rose-400 hover:text-rose-700 font-bold ml-0.5 btn-del-excl-kw cursor-pointer">✕</button>
+                    <button type="button" data-kw="${escapeHtml(kw)}" class="text-rose-400 hover:text-rose-700 font-bold ml-0.5 btn-del-excl-kw cursor-pointer"><i class='fa-solid fa-xmark' aria-hidden='true'></i></button>
                   </span>
                 `).join('')}
               </div>
@@ -1603,7 +1603,7 @@ export async function mount(container, { params, session }) {
                     <!-- Pertanyaan Panduan Wawancara (Editable) -->
                     <div class="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl space-y-1">
                       <label class="block text-[11px] font-bold text-amber-900 flex items-center gap-1.5">
-                        <span class="px-1.5 py-0.5 bg-amber-200 text-amber-900 rounded font-black text-[10px] uppercase">🎙️ Panduan Pertanyaan Interviewer:</span>
+                        <span class="px-1.5 py-0.5 bg-amber-200 text-amber-900 rounded font-black text-[10px] uppercase"><i class='fa-solid fa-microphone' aria-hidden='true'></i> Panduan Pertanyaan Interviewer:</span>
                       </label>
                       <textarea rows="2" placeholder="Tuliskan contoh pertanyaan tajam yang harus diajukan pewawancara kepada kandidat..." class="w-full px-2.5 py-1.5 text-xs bg-white border border-amber-300 rounded-lg outline-none focus:border-maroon-700 text-slate-800 leading-relaxed asp-inp-question">${escapeHtml(asp.pertanyaan_panduan || '')}</textarea>
                     </div>

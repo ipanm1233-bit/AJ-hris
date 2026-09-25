@@ -1,6 +1,6 @@
 import { auth, db, COL, collection, query, where, getDocs, getDoc, setDoc, doc, limit, writeBatch, serverTimestamp } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, confirmDialog, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, buildStandardEmailHtml, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan, downloadXlsx, ensureXlsxLoaded, formatPhoneNumberForWa, openWhatsAppMessage, getEmployeePhoneByName, buildKpiTaskWaMessage, printDokumenPenilaianFisik, downloadDokumenPenilaianFisikPdf } from "../utils.js";
-import { renderCrudModule, badge, emptyState, skeletonRows, avatar, openPenilaianFormFromNotif } from "../components.js";
+import { renderCrudModule, badge, emptyState, skeletonRows, avatar, icon, openPenilaianFormFromNotif } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames, hasPermission, canEditModuleData } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
 import { uploadFileToDrive } from "../gas-integration.js";
@@ -127,7 +127,7 @@ export const JENIS_PENILAIAN_MAP = {
  PIP: {
  key: "PIP",
  label: "Penilaian PIP (Performance Improvement Plan)",
- icon: "",
+ icon: "alert",
  badgeClass: "bg-amber-50 text-amber-800 border-amber-200",
  options: [
  "Lulus PIP (Performa Membaik / Lanjut Kerja)",
@@ -138,7 +138,7 @@ export const JENIS_PENILAIAN_MAP = {
  MUTASI_DEMOSI: {
  key: "MUTASI_DEMOSI",
  label: "Penilaian Mutasi / Demosi / Promosi",
- icon: "",
+ icon: "user-plus",
  badgeClass: "bg-purple-50 text-purple-700 border-purple-200",
  options: [
  "Direkomendasikan Mutasi Jabatan / Divisi",
@@ -150,7 +150,7 @@ export const JENIS_PENILAIAN_MAP = {
  KPI_360: {
  key: "KPI_360",
  label: "Penilaian KPI 360",
- icon: "",
+ icon: "star",
  badgeClass: "bg-maroon-50 text-maroon-700 border-maroon-200",
  options: [
  "Kinerja Sangat Baik (Apresiasi / Bonus)",
@@ -160,6 +160,8 @@ export const JENIS_PENILAIAN_MAP = {
  ]
  }
 };
+
+const categoryIcon = (category) => icon(category.icon || "book", "w-4 h-4 inline-block");
 
 // =====================================================================
 // DEFAULT RULES STANDAR GRADE PENILAIAN HRD
@@ -215,7 +217,7 @@ export function openGradeRulesModal(session, rulesMap, onSaveCallback) {
  <div class="p-3 bg-slate-800 text-white rounded-xl flex items-center justify-between">
  <div>
  <h3 class="font-bold text-sm flex items-center gap-2">
- <span>${catCfg.icon}</span>
+ <span>${categoryIcon(catCfg)}</span>
  <span>${catCfg.label}</span>
  </h3>
  <p class="text-[11px] text-slate-300 mt-0.5">Atur rentang skor (misal >81 Lulus Masa Percobaan, <=80 Tidak Lulus), sebutan predikat, dan standar opsi rekomendasi otomatis.</p>
@@ -251,7 +253,7 @@ export function openGradeRulesModal(session, rulesMap, onSaveCallback) {
  <span class="text-xs font-bold text-slate-400 uppercase tracking-wider shrink-0">Kategori Evaluasi:</span>
  ${Object.keys(JENIS_PENILAIAN_MAP).map(catKey => `
  <button data-cat-rule="${catKey}" class="btn-rule-cat px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${catKey === activeCategory ? 'bg-maroon-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
- ${JENIS_PENILAIAN_MAP[catKey].icon} ${JENIS_PENILAIAN_MAP[catKey].label}
+ ${JENIS_PENILAIAN_MAP[catKey].label}
  </button>
  `).join('')}
  </div>
@@ -673,7 +675,7 @@ export async function mount(container, { session, params }) {
  historyHtml = `
  <div class="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-2xs space-y-4">
  <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
- <span></span> Riwayat Perkembangan KPI Per Periode
+ <i class='fa-solid fa-chart-line' aria-hidden='true'></i> Riwayat Perkembangan KPI Per Periode
  </h3>
  <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
  ${myKpiPeriods.slice(0, 6).map(periodSummary => {
@@ -698,7 +700,7 @@ export async function mount(container, { session, params }) {
  feedbackHtml = `
  <div class="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-2xs space-y-4">
  <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
- <span></span> Catatan & Ulasan Evaluasi Dari Penilai
+ <i class='fa-solid fa-pen' aria-hidden='true'></i> Catatan & Ulasan Evaluasi Dari Penilai
  </h3>
  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
  ${latestLog.catatan_baik ? `
@@ -747,7 +749,7 @@ export async function mount(container, { session, params }) {
  <!-- Ringkasan Nilai Per Aspek -->
  <div>
  <h3 class="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
- <span></span> Ringkasan Nilai Per Aspek Kinerja
+ <i class='fa-solid fa-chart-column' aria-hidden='true'></i> Ringkasan Nilai Per Aspek Kinerja
  </h3>
  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
  ${aspekCardsHtml}
@@ -758,7 +760,7 @@ export async function mount(container, { session, params }) {
  <div>
  <div class="flex items-center justify-between mb-3">
  <h3 class="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
- <span></span> Grafik Penilaian Indikator KPI (${detailSoal.length} Indikator)
+ <i class='fa-solid fa-chart-line' aria-hidden='true'></i> Grafik Penilaian Indikator KPI (${detailSoal.length} Indikator)
  </h3>
  </div>
  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -912,7 +914,7 @@ export async function mount(container, { session, params }) {
  <!-- Filter & Search Bar -->
  <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
  <div class="relative w-full sm:w-72">
- <input type="text" id="ktr-search-input" placeholder=" Cari nama, jabatan, cabang..." class="w-full px-3 py-2 pl-9 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition">
+ <input type="text" id="ktr-search-input" placeholder="Cari nama, jabatan, cabang..." class="w-full px-3 py-2 pl-9 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition">
  </div>
  <div class="flex items-center gap-2 w-full sm:w-auto overflow-x-auto">
  <select id="ktr-filter-status-karyawan" class="px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white outline-none focus:border-maroon-500 font-medium">
@@ -1650,12 +1652,12 @@ export async function mount(container, { session, params }) {
  <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
  <div class="flex items-center gap-2 w-full sm:w-auto flex-1">
  <div class="relative w-full sm:w-80">
- <input type="text" id="tpl-search-input" placeholder=" Cari nama template, indikator, atau karyawan..." class="w-full px-3.5 py-2 pl-9 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition">
+ <input type="text" id="tpl-search-input" placeholder="Cari nama template, indikator, atau karyawan..." class="w-full px-3.5 py-2 pl-9 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition">
  </div>
  <select id="tpl-filter-kategori" class="px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-slate-50 font-medium">
  <option value="">Semua Kategori Penilaian</option>
  ${Object.values(JENIS_PENILAIAN_MAP).map(cat => `
- <option value="${cat.key}">${cat.icon} ${cat.label}</option>
+ <option value="${cat.key}">${cat.label}</option>
  `).join('')}
  </select>
  </div>
@@ -1824,7 +1826,7 @@ export async function mount(container, { session, params }) {
  <div class="flex items-start justify-between gap-2 mb-2.5">
  <div class="flex items-center gap-2.5">
  <div class="w-10 h-10 rounded-xl bg-maroon-50 text-maroon-700 font-bold flex items-center justify-center text-lg shadow-2xs group-hover:bg-maroon-700 group-hover:text-white transition">
- ${catConfig.icon}
+ ${categoryIcon(catConfig)}
  </div>
  <div>
  <h3 class="font-bold text-slate-800 text-sm group-hover:text-maroon-700 transition leading-snug">${escapeHtml(nama)}</h3>
@@ -1842,7 +1844,7 @@ export async function mount(container, { session, params }) {
  <div class="mb-3 flex flex-wrap gap-1.5 items-center">
  ${t.is_system_standard ? `<span class="inline-flex items-center text-[11px] font-bold px-2.5 py-0.5 rounded-lg border bg-indigo-50 text-indigo-700 border-indigo-200">Standar Sistem v${escapeHtml(t.standard_version || "2026.1")}</span>` : ""}
  <span class="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-lg border ${catConfig.badgeClass}">
- ${catConfig.icon} ${catConfig.label}
+ ${categoryIcon(catConfig)} ${catConfig.label}
  </span>
  <span class="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg border bg-slate-50 text-slate-700 border-slate-200">
  Skala ${tSkala}
@@ -1882,7 +1884,7 @@ export async function mount(container, { session, params }) {
  <div class="flex flex-wrap gap-1">
  ${previewEmployees.map(emp => `
  <span class="inline-flex items-center gap-1 text-[11px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg font-medium border border-slate-200">
- <span></span> ${escapeHtml(emp)}
+ <i class='fa-solid fa-user' aria-hidden='true'></i> ${escapeHtml(emp)}
  </span>
  `).join("")}
  ${extraEmpCount > 0 ? `
@@ -2201,7 +2203,7 @@ export async function mount(container, { session, params }) {
  <label class="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Jenis / Kategori Penilaian <span class="text-red-500">*</span></label>
  <select id="tpl-kategori" class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:border-maroon-500 outline-none font-medium bg-white">
  ${Object.values(JENIS_PENILAIAN_MAP).map(cat => `
- <option value="${cat.key}" ${ (existingData?.kategori_penilaian || 'KPI_360') === cat.key ? 'selected' : '' }>${cat.icon} ${cat.label}</option>
+ <option value="${cat.key}" ${ (existingData?.kategori_penilaian || 'KPI_360') === cat.key ? 'selected' : '' }>${cat.label}</option>
  `).join('')}
  </select>
  </div>
@@ -2252,7 +2254,7 @@ export async function mount(container, { session, params }) {
  <div class="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
  <!-- Search & Quick Selection -->
  <div class="p-3 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2">
- <input type="text" id="tpl-search-karyawan" placeholder=" Cari nama karyawan, jabatan, divisi..." class="w-full sm:w-72 px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-white">
+ <input type="text" id="tpl-search-karyawan" placeholder="Cari nama karyawan, jabatan, divisi..." class="w-full sm:w-72 px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-white">
  <div class="flex items-center gap-2 self-end sm:self-auto">
  <button type="button" id="btn-check-all-karyawan" class="text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">Centang Semua</button>
  <button type="button" id="btn-uncheck-all-karyawan" class="text-[11px] font-semibold text-slate-600 bg-white hover:bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">Hapus Semua</button>
@@ -2281,7 +2283,7 @@ export async function mount(container, { session, params }) {
  const catObj = getCatConfig(catKey);
  boxPreview.innerHTML = `
  <div class="flex items-center justify-between font-bold text-slate-700">
- <span> Pilihan Keputusan & Rekomendasi di Template ini (${catObj.icon} ${catObj.label}):</span>
+ <span> Pilihan Keputusan & Rekomendasi di Template ini (${catObj.label}):</span>
  </div>
  <div class="flex flex-wrap gap-1.5 mt-1">
  ${catObj.options.map(opt => `
@@ -2566,7 +2568,7 @@ export async function mount(container, { session, params }) {
           <div>
             <div class="flex items-center gap-2">
               <div class="w-8 h-8 rounded-xl bg-maroon-50 text-maroon-700 font-bold flex items-center justify-center text-sm shadow-2xs">
-                🔄
+                <i class='fa-solid fa-rotate' aria-hidden='true'></i>
               </div>
               <div>
                 <h3 class="font-bold text-slate-800 text-base">Tugas Penilaian Kinerja & KPI 360°</h3>
@@ -2589,7 +2591,7 @@ export async function mount(container, { session, params }) {
           <div class="flex items-center justify-between flex-wrap gap-2">
             <div>
               <h4 class="font-bold text-slate-800 text-sm flex items-center gap-2">
-                <span>📝 Tugas Penilaian yang Harus Saya Isi</span>
+                <span><i class='fa-solid fa-pen' aria-hidden='true'></i> Tugas Penilaian yang Harus Saya Isi</span>
                 <span class="text-xs px-2 py-0.5 rounded-full ${myTasks.filter(t => t.status !== 'DONE').length > 0 ? 'bg-amber-100 text-amber-800 font-bold' : 'bg-slate-100 text-slate-600'}">${myTasks.filter(t => t.status !== 'DONE').length} Pending</span>
               </h4>
               <p class="text-xs text-slate-400 mt-0.5">Daftar evaluasi karyawan yang ditugaskan kepada Anda sebagai Penilai.</p>
@@ -2610,7 +2612,7 @@ export async function mount(container, { session, params }) {
                     <div class="space-y-2">
                       <div class="flex items-start justify-between gap-2">
                         <span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md border ${catCfg.badgeClass}">
-                          ${catCfg.icon} ${catCfg.label}
+                          ${categoryIcon(catCfg)} ${catCfg.label}
                         </span>
                         ${badge(isDone ? "Selesai" : "Pending", isDone ? "emerald" : "amber")}
                       </div>
@@ -2663,13 +2665,13 @@ export async function mount(container, { session, params }) {
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
               <div>
                 <h4 class="font-bold text-slate-800 text-sm flex items-center gap-2">
-                  <span>📊 Monitoring Distribusi Seluruh Tugas Penilaian (HRD)</span>
+                  <span><i class='fa-solid fa-chart-column' aria-hidden='true'></i> Monitoring Distribusi Seluruh Tugas Penilaian (HRD)</span>
                 </h4>
                 <p class="text-xs text-slate-400 mt-0.5">Pantau status pengisian penilaian oleh setiap penilai, kirim pengingat email, dan kelola penugasan.</p>
               </div>
               <div class="flex items-center gap-2 flex-wrap">
                 <button id="btn-broadcast-reminder-kpi" class="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold rounded-lg transition flex items-center gap-1.5" title="Kirim email pengingat ke seluruh penilai yang belum selesai">
-                  <span>📧</span> Kirim Email Pengingat Masal
+                  <span><i class='fa-solid fa-envelope' aria-hidden='true'></i></span> Kirim Email Pengingat Masal
                 </button>
               </div>
             </div>
@@ -2698,7 +2700,7 @@ export async function mount(container, { session, params }) {
             <div class="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-2">
               <div class="flex items-center gap-2 w-full sm:w-auto flex-1">
                 <div class="relative flex-1 sm:max-w-xs">
-                  <input type="text" id="kpi-monitor-search" placeholder="🔍 Cari penilai atau yang dinilai..." class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition">
+                  <input type="text" id="kpi-monitor-search" placeholder="Cari penilai atau yang dinilai..." class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition">
                 </div>
                 <select id="kpi-monitor-status" class="px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-slate-50 font-medium">
                   <option value="">Semua Status</option>
@@ -2825,7 +2827,7 @@ export async function mount(container, { session, params }) {
               </td>
               <td class="py-2.5 px-3">
                 <span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border ${catCfg.badgeClass} mb-0.5">
-                  ${catCfg.icon} ${catCfg.label}
+                  ${categoryIcon(catCfg)} ${catCfg.label}
                 </span>
                 <div class="text-[11px] text-slate-600 font-medium">${escapeHtml(t.nama_template || "Template KPI")}</div>
               </td>
@@ -2851,11 +2853,11 @@ export async function mount(container, { session, params }) {
                   </button>
                   ${!isDone ? `
                     <button data-action="resend-task" data-task-id="${t.id}" class="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold rounded-lg text-[11px] transition" title="Kirim Notifikasi Email & WhatsApp Ulang">
-                      📧 Pengingat
+                       Pengingat
                     </button>
                   ` : ''}
                   <button data-action="delete-task" data-task-id="${t.id}" class="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold rounded-lg text-[11px] transition" title="Hapus Tugas Ini">
-                    🗑️
+                    <i class='fa-solid fa-trash' aria-hidden='true'></i>
                   </button>
                 </div>
               </td>
@@ -2898,7 +2900,7 @@ export async function mount(container, { session, params }) {
               toast(`Notifikasi aplikasi terkirim. Email tidak terkirim: ${res.emailReason || 'Email belum diisi'}`, "info");
             }
             btn.disabled = false;
-            btn.textContent = "📧 Pengingat";
+            btn.textContent = " Pengingat";
           };
         });
 
@@ -2965,7 +2967,7 @@ export async function mount(container, { session, params }) {
 
               toast(`Berhasil mengirimkan pengingat email ke ${sentCount} evaluator!`, "success");
               btnBroadcast.disabled = false;
-              btnBroadcast.textContent = "📧 Kirim Email Pengingat Masal";
+              btnBroadcast.textContent = " Kirim Email Pengingat Masal";
             }
           );
         };
@@ -3133,7 +3135,7 @@ export async function mount(container, { session, params }) {
               <select id="dist-kategori-sel" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-bold text-slate-800 bg-white" required>
                 ${Object.values(JENIS_PENILAIAN_MAP).map(cat => `
                   <option value="${cat.key}" ${initialCategory === cat.key ? 'selected' : ''}>
-                    ${cat.icon} ${cat.label}
+                    ${cat.label}
                   </option>
                 `).join('')}
               </select>
@@ -3157,7 +3159,7 @@ export async function mount(container, { session, params }) {
                 }).join("")}
               </select>
               <div id="dist-tpl-preview-text" class="text-[11px] text-maroon-700 font-medium mt-1">
-                ${selectedTpl ? `✓ ${escapeHtml(selectedTpl.nama_template)}: ${(selectedTpl.soal_json || []).length} Indikator Soal.` : ''}
+                ${selectedTpl ? ` ${escapeHtml(selectedTpl.nama_template)}: ${(selectedTpl.soal_json || []).length} Indikator Soal.` : ''}
               </div>
             </div>
           </div>
@@ -3196,7 +3198,7 @@ export async function mount(container, { session, params }) {
             <div class="flex items-center justify-between px-3.5 py-2.5 bg-slate-50 border-b border-slate-200 cursor-pointer select-none" id="dist-soal-header-toggle" title="Klik untuk membuka/menutup rincian pertanyaan dan bobot">
               <div class="flex items-center gap-2 flex-wrap">
                 <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                  <span>📋 Rincian Soal & Bobot:</span>
+                  <span><i class='fa-solid fa-clipboard-list' aria-hidden='true'></i> Rincian Soal & Bobot:</span>
                   <span id="dist-soal-tpl-name" class="text-maroon-700 font-extrabold">${selectedTpl ? escapeHtml(selectedTpl.nama_template) : '-'}</span>
                 </span>
                 <span id="dist-soal-count-badge" class="text-[10.5px] font-bold bg-maroon-50 text-maroon-700 px-2 py-0.5 rounded-md border border-maroon-200">
@@ -3259,7 +3261,7 @@ export async function mount(container, { session, params }) {
               <!-- Search & Quick Action for Penilai -->
               <div class="space-y-1.5">
                 <div class="relative">
-                  <input type="text" id="search-penilai-input" placeholder="🔍 Cari nama penilai, jabatan, cabang..." class="w-full px-2.5 py-1.5 pl-8 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition">
+                  <input type="text" id="search-penilai-input" placeholder="Cari nama penilai, jabatan, cabang..." class="w-full px-2.5 py-1.5 pl-8 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition">
                 </div>
                 <div class="flex items-center justify-between text-[11px]">
                   <div class="flex items-center gap-2">
@@ -3293,9 +3295,9 @@ export async function mount(container, { session, params }) {
                           <option value="Penilaian Mandiri">Diri sendiri</option>
                         </select>
                         ${hasEmail ? `
-                          <span class="text-[9.5px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200" title="${escapeHtml(empEmail)}">✉️ Ada Email</span>
+                          <span class="text-[9.5px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200" title="${escapeHtml(empEmail)}"><i class='fa-solid fa-envelope' aria-hidden='true'></i> Ada Email</span>
                         ` : `
-                          <span class="text-[9.5px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200" title="Email belum tercatat di data karyawan">⚠️ Tanpa Email</span>
+                          <span class="text-[9.5px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200" title="Email belum tercatat di data karyawan"><i class='fa-solid fa-triangle-exclamation' aria-hidden='true'></i> Tanpa Email</span>
                         `}
                       </div>
                     </label>
@@ -3319,7 +3321,7 @@ export async function mount(container, { session, params }) {
               <!-- Search & Quick Action for Dinilai -->
               <div class="space-y-1.5">
                 <div class="relative">
-                  <input type="text" id="search-dinilai-input" placeholder="🔍 Cari nama karyawan yang dinilai, jabatan..." class="w-full px-2.5 py-1.5 pl-8 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition" ${targetEmployee ? 'disabled' : ''}>
+                  <input type="text" id="search-dinilai-input" placeholder="Cari nama karyawan yang dinilai, jabatan..." class="w-full px-2.5 py-1.5 pl-8 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition" ${targetEmployee ? 'disabled' : ''}>
                 </div>
                 <div class="flex items-center justify-between text-[11px]">
                   <div class="flex items-center gap-2">
@@ -3357,7 +3359,7 @@ export async function mount(container, { session, params }) {
           <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5 space-y-2">
             <div class="flex items-center justify-between flex-wrap gap-2">
               <div class="text-xs text-amber-900 font-medium">
-                📊 Kalkulasi Distribusi: <strong id="calc-penilai-num" class="text-maroon-700 font-bold">0</strong> Penilai × <strong id="calc-dinilai-num" class="text-blue-700 font-bold">0</strong> Karyawan Dinilai = <strong id="calc-total-tasks" class="text-slate-900 font-black text-sm">0</strong> Total Tugas Evaluasi.
+                <i class='fa-solid fa-chart-column' aria-hidden='true'></i> Kalkulasi Distribusi: <strong id="calc-penilai-num" class="text-maroon-700 font-bold">0</strong> Penilai × <strong id="calc-dinilai-num" class="text-blue-700 font-bold">0</strong> Karyawan Dinilai = <strong id="calc-total-tasks" class="text-slate-900 font-black text-sm">0</strong> Total Tugas Evaluasi.
               </div>
               <label class="flex items-center gap-1.5 text-xs text-slate-700 font-bold cursor-pointer">
                 <input type="checkbox" id="dist-include-self" class="rounded text-maroon-700">
@@ -3368,11 +3370,11 @@ export async function mount(container, { session, params }) {
             <div class="flex items-center gap-4 text-xs text-slate-600 pt-1 border-t border-amber-200/60 flex-wrap">
               <label class="flex items-center gap-1.5 cursor-pointer">
                 <input type="checkbox" id="dist-send-email" class="rounded text-maroon-700" checked>
-                <span class="font-semibold text-slate-800">📧 Kirim Notifikasi Email ke Evaluator</span>
+                <span class="font-semibold text-slate-800"><i class='fa-solid fa-envelope' aria-hidden='true'></i> Kirim Notifikasi Email ke Evaluator</span>
               </label>
               <label class="flex items-center gap-1.5 cursor-pointer">
                 <input type="checkbox" id="dist-send-inapp" class="rounded text-maroon-700" checked>
-                <span class="font-semibold text-slate-800">🔔 Notifikasi Lonceng & Popup di Aplikasi</span>
+                <span class="font-semibold text-slate-800"><i class='fa-solid fa-bell' aria-hidden='true'></i> Notifikasi Lonceng & Popup di Aplikasi</span>
               </label>
             </div>
           </div>
@@ -3387,7 +3389,7 @@ export async function mount(container, { session, params }) {
           <div class="flex items-center gap-2">
             <button id="btn-dist-batal" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition">Batal</button>
             <button id="btn-dist-simpan" class="px-5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold rounded-lg transition shadow-md flex items-center gap-2">
-              <span>🚀 Distribusikan & Kirim Email</span>
+              <span><i class='fa-solid fa-arrow-right' aria-hidden='true'></i> Distribusikan & Kirim Email</span>
             </button>
           </div>
         </div>
@@ -3438,10 +3440,10 @@ export async function mount(container, { session, params }) {
           if (sumBadge) {
             if (isExact100) {
               sumBadge.className = "text-[10.5px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md border border-emerald-200";
-              sumBadge.innerHTML = "✓ Total Bobot: 100%";
+              sumBadge.innerHTML = " Total Bobot: 100%";
             } else {
               sumBadge.className = "text-[10.5px] font-bold bg-rose-50 text-rose-700 px-2 py-0.5 rounded-md border border-rose-200";
-              sumBadge.innerHTML = `⚠️ Total Bobot: ${totalBobot}% (Tidak 100%)`;
+              sumBadge.innerHTML = ` Total Bobot: ${totalBobot}% (Tidak 100%)`;
             }
           }
 
@@ -3516,7 +3518,7 @@ export async function mount(container, { session, params }) {
           const tplId = selTpl.value;
           selectedTpl = templates.find(t => t.id === tplId);
           if (selectedTpl) {
-            tplPreviewText.innerHTML = `✓ <strong>${escapeHtml(selectedTpl.nama_template)}</strong>: ${(selectedTpl.soal_json || []).length} Indikator Kinerja (${selectedTpl.kategori_penilaian || 'KPI_360'}).`;
+            tplPreviewText.innerHTML = `<i class='fa-solid fa-check' aria-hidden='true'></i> <strong>${escapeHtml(selectedTpl.nama_template)}</strong>: ${(selectedTpl.soal_json || []).length} Indikator Kinerja (${selectedTpl.kategori_penilaian || 'KPI_360'}).`;
           } else {
             tplPreviewText.innerHTML = "";
           }
@@ -3723,7 +3725,7 @@ export async function mount(container, { session, params }) {
 
           const btnSave = m.querySelector("#btn-dist-simpan");
           btnSave.disabled = true;
-          btnSave.innerHTML = `<span class="inline-block animate-spin">⏳</span> Mendistribusikan & Mengirim Email...`;
+          btnSave.innerHTML = `<span class="inline-block animate-spin"><i class='fa-solid fa-hourglass-half' aria-hidden='true'></i></span> Mendistribusikan & Mengirim Email...`;
 
           try {
             const createdTasks = [];
@@ -3789,7 +3791,7 @@ export async function mount(container, { session, params }) {
 
             if (createdTasks.length === 0) {
               btnSave.disabled = false;
-              btnSave.textContent = "🚀 Distribusikan & Kirim Email";
+              btnSave.textContent = " Distribusikan & Kirim Email";
               return toast("Tidak ada pasangan penilai dan karyawan dinilai yang valid.", "warning");
             }
 
@@ -3844,7 +3846,7 @@ export async function mount(container, { session, params }) {
             console.error("Error distributing KPI tasks:", e);
             toast("Gagal mendistribusikan: " + e.message, "error");
             btnSave.disabled = false;
-            btnSave.textContent = "🚀 Distribusikan & Kirim Email";
+            btnSave.textContent = " Distribusikan & Kirim Email";
           }
         };
       }
@@ -3907,10 +3909,10 @@ export async function mount(container, { session, params }) {
                   <td class="py-3 px-4 text-center">
                     <div class="flex items-center justify-center gap-1.5">
                       <button data-action="edit-log" data-log-id="${l.id}" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs transition shadow-xs">
-                        ✏️ Edit
+                         Edit
                       </button>
                       <button data-action="delete-log" data-log-id="${l.id}" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-lg text-xs transition shadow-xs">
-                        🗑️ Hapus
+                         Hapus
                       </button>
                     </div>
                   </td>
@@ -4212,11 +4214,11 @@ export async function mount(container, { session, params }) {
     let currentViewMode = "kanban";
 
     const STAGES = [
-      { id: "REVIEW_HRD", label: "1. Review HRD", color: "blue", icon: "📋", desc: "Evaluasi performa, absensi, & usulan awal HRD" },
-      { id: "KOORDINASI_GM", label: "2. Koordinasi GM", color: "amber", icon: "👔", desc: "Masukan & rekomendasi General Manager / Atasan" },
-      { id: "APPROVAL_DIREKTUR", label: "3. Approval Direktur", color: "rose", icon: "🏛️", desc: "Persetujuan final & durasi dari Direksi" },
-      { id: "DRAFT_KONTRAK", label: "4. Draf Kontrak", color: "indigo", icon: "✍️", desc: "Penyusunan SK & tanda tangan kontrak baru" },
-      { id: "SELESAI", label: "5. Selesai", color: "emerald", icon: "✅", desc: "Kontrak baru resmi terbit & aktif di sistem" }
+      { id: "REVIEW_HRD", label: "1. Review HRD", color: "blue", icon: icon("book", "w-4 h-4"), desc: "Evaluasi performa, absensi, & usulan awal HRD" },
+      { id: "KOORDINASI_GM", label: "2. Koordinasi GM", color: "amber", icon: icon("user-plus", "w-4 h-4"), desc: "Masukan & rekomendasi General Manager / Atasan" },
+      { id: "APPROVAL_DIREKTUR", label: "3. Approval Direktur", color: "rose", icon: icon("check-circle", "w-4 h-4"), desc: "Persetujuan final & durasi dari Direksi" },
+      { id: "DRAFT_KONTRAK", label: "4. Draf Kontrak", color: "indigo", icon: icon("doc-plus", "w-4 h-4"), desc: "Penyusunan SK & tanda tangan kontrak baru" },
+      { id: "SELESAI", label: "5. Selesai", color: "emerald", icon: icon("check-circle", "w-4 h-4"), desc: "Kontrak baru resmi terbit & aktif di sistem" }
     ];
 
     function getPipelineResults() {
@@ -4286,10 +4288,10 @@ export async function mount(container, { session, params }) {
             </div>
             <div class="flex items-center gap-2 shrink-0">
               <button id="btn-toggle-kanban" class="px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${currentViewMode === 'kanban' ? 'bg-white text-slate-900 shadow' : 'bg-white/10 text-white hover:bg-white/20'}">
-                📌 Papan Kanban
+                 Papan Kanban
               </button>
               <button id="btn-toggle-table" class="px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${currentViewMode === 'table' ? 'bg-white text-slate-900 shadow' : 'bg-white/10 text-white hover:bg-white/20'}">
-                📊 Tabel Alur
+                 Tabel Alur
               </button>
             </div>
           </div>
@@ -4302,7 +4304,7 @@ export async function mount(container, { session, params }) {
                 <h3 class="text-2xl font-black text-rose-900 mt-0.5">${countKritis} <span class="text-xs font-normal text-rose-600">Staf</span></h3>
                 <p class="text-[10px] text-rose-600 mt-1 font-semibold">Harus diputuskan segera</p>
               </div>
-              <span class="text-2xl">🚨</span>
+              <span class="text-2xl"><i class='fa-solid fa-triangle-exclamation' aria-hidden='true'></i></span>
             </div>
             <div class="p-4 rounded-2xl bg-amber-50 border border-amber-200/80 flex items-center justify-between cursor-pointer hover:bg-amber-100/70 transition" id="stat-waspada">
               <div>
@@ -4310,7 +4312,7 @@ export async function mount(container, { session, params }) {
                 <h3 class="text-2xl font-black text-amber-900 mt-0.5">${countWaspada} <span class="text-xs font-normal text-amber-600">Staf</span></h3>
                 <p class="text-[10px] text-amber-600 mt-1 font-semibold">Butuh Koordinasi GM/Direktur</p>
               </div>
-              <span class="text-2xl">⏳</span>
+              <span class="text-2xl"><i class='fa-solid fa-hourglass-half' aria-hidden='true'></i></span>
             </div>
             <div class="p-4 rounded-2xl bg-blue-50 border border-blue-200/80 flex items-center justify-between cursor-pointer hover:bg-blue-100/70 transition" id="stat-persiapan">
               <div>
@@ -4318,7 +4320,7 @@ export async function mount(container, { session, params }) {
                 <h3 class="text-2xl font-black text-blue-900 mt-0.5">${countPersiapan} <span class="text-xs font-normal text-blue-600">Staf</span></h3>
                 <p class="text-[10px] text-blue-600 mt-1 font-semibold">Mulai Review Kinerja HRD</p>
               </div>
-              <span class="text-2xl">🔍</span>
+              <span class="text-2xl"><i class='fa-solid fa-magnifying-glass' aria-hidden='true'></i></span>
             </div>
             <div class="p-4 rounded-2xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-between cursor-pointer hover:bg-emerald-100/70 transition" id="stat-selesai">
               <div>
@@ -4326,7 +4328,7 @@ export async function mount(container, { session, params }) {
                 <h3 class="text-2xl font-black text-emerald-900 mt-0.5">${countSelesai} <span class="text-xs font-normal text-emerald-600">Kontrak</span></h3>
                 <p class="text-[10px] text-emerald-600 mt-1 font-semibold">Telah diperpanjang</p>
               </div>
-              <span class="text-2xl">✅</span>
+              <span class="text-2xl"><i class='fa-solid fa-circle-check' aria-hidden='true'></i></span>
             </div>
           </div>
 
@@ -4336,10 +4338,10 @@ export async function mount(container, { session, params }) {
               <input type="text" id="pk-pipeline-search" placeholder="Cari nama, jabatan, cabang..." value="${escapeHtml(currentSearch)}" class="px-3.5 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 w-full md:w-64 bg-slate-50">
               <select id="pk-pipeline-urgency" class="px-3 py-2 text-xs font-semibold rounded-xl border border-slate-200 outline-none bg-slate-50">
                 <option value="ALL" ${currentUrgencyFilter === 'ALL' ? 'selected' : ''}>Semua Urgensi</option>
-                <option value="KRITIS" ${currentUrgencyFilter === 'KRITIS' ? 'selected' : ''}>🔴 Kritis (≤14 Hari)</option>
-                <option value="WASPADA" ${currentUrgencyFilter === 'WASPADA' ? 'selected' : ''}>🟠 Waspada (15-30 Hari)</option>
-                <option value="PERSIAPAN" ${currentUrgencyFilter === 'PERSIAPAN' ? 'selected' : ''}>🔵 Persiapan (31-45 Hari)</option>
-                <option value="AMAN" ${currentUrgencyFilter === 'AMAN' ? 'selected' : ''}>🟢 Aman (>45 Hari)</option>
+                <option value="KRITIS" ${currentUrgencyFilter === 'KRITIS' ? 'selected' : ''}> Kritis (≤14 Hari)</option>
+                <option value="WASPADA" ${currentUrgencyFilter === 'WASPADA' ? 'selected' : ''}> Waspada (15-30 Hari)</option>
+                <option value="PERSIAPAN" ${currentUrgencyFilter === 'PERSIAPAN' ? 'selected' : ''}> Persiapan (31-45 Hari)</option>
+                <option value="AMAN" ${currentUrgencyFilter === 'AMAN' ? 'selected' : ''}> Aman (>45 Hari)</option>
               </select>
               <select id="pk-pipeline-stage" class="px-3 py-2 text-xs font-semibold rounded-xl border border-slate-200 outline-none bg-slate-50">
                 <option value="ALL" ${currentStageFilter === 'ALL' ? 'selected' : ''}>Semua Tahapan</option>
@@ -4418,11 +4420,11 @@ export async function mount(container, { session, params }) {
     function renderKanbanCard(item) {
       let urgencyBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">Aman</span>`;
       if (item.urgency === "KRITIS" || item.urgency === "KADALUARSA") {
-        urgencyBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-black bg-rose-500 text-white animate-pulse">🚨 ${item.daysLeft !== null && item.daysLeft < 0 ? 'Kadaluarsa' : `${item.daysLeft} Hari Lagi`}</span>`;
+        urgencyBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-black bg-rose-500 text-white animate-pulse"><i class='fa-solid fa-triangle-exclamation' aria-hidden='true'></i> ${item.daysLeft !== null && item.daysLeft < 0 ? 'Kadaluarsa' : `${item.daysLeft} Hari Lagi`}</span>`;
       } else if (item.urgency === "WASPADA") {
-        urgencyBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500 text-white">⏳ ${item.daysLeft} Hari Lagi</span>`;
+        urgencyBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500 text-white"><i class='fa-solid fa-hourglass-half' aria-hidden='true'></i> ${item.daysLeft} Hari Lagi</span>`;
       } else if (item.urgency === "PERSIAPAN") {
-        urgencyBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">🔵 ${item.daysLeft} Hari Lagi</span>`;
+        urgencyBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800"><i class='fa-solid fa-circle' aria-hidden='true'></i> ${item.daysLeft} Hari Lagi</span>`;
       }
 
       const ev = item.evalRecord;
@@ -4458,7 +4460,7 @@ export async function mount(container, { session, params }) {
 
           <div class="pt-1 flex items-center justify-between gap-1.5">
             <button type="button" data-action="open-koordinasi" data-emp-name="${escapeHtml(item.nama_karyawan)}" class="w-full py-1.5 px-2 bg-maroon-50 hover:bg-maroon-100 text-maroon-700 text-[11px] font-bold rounded-lg border border-maroon-200 transition flex items-center justify-center gap-1 shadow-2xs">
-              ⚡ Lembar Koordinasi
+               Lembar Koordinasi
             </button>
           </div>
         </div>
@@ -4487,11 +4489,11 @@ export async function mount(container, { session, params }) {
                 ` : list.map(item => {
                   let urgencyBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">Aman</span>`;
                   if (item.urgency === "KRITIS" || item.urgency === "KADALUARSA") {
-                    urgencyBadge = `<span class="px-2.5 py-1 rounded text-[10px] font-black bg-rose-500 text-white">🚨 ${item.daysLeft !== null && item.daysLeft < 0 ? 'Kadaluarsa' : `${item.daysLeft} Hari Lagi`}</span>`;
+                    urgencyBadge = `<span class="px-2.5 py-1 rounded text-[10px] font-black bg-rose-500 text-white"><i class='fa-solid fa-triangle-exclamation' aria-hidden='true'></i> ${item.daysLeft !== null && item.daysLeft < 0 ? 'Kadaluarsa' : `${item.daysLeft} Hari Lagi`}</span>`;
                   } else if (item.urgency === "WASPADA") {
-                    urgencyBadge = `<span class="px-2.5 py-1 rounded text-[10px] font-bold bg-amber-500 text-white">⏳ ${item.daysLeft} Hari Lagi</span>`;
+                    urgencyBadge = `<span class="px-2.5 py-1 rounded text-[10px] font-bold bg-amber-500 text-white"><i class='fa-solid fa-hourglass-half' aria-hidden='true'></i> ${item.daysLeft} Hari Lagi</span>`;
                   } else if (item.urgency === "PERSIAPAN") {
-                    urgencyBadge = `<span class="px-2.5 py-1 rounded text-[10px] font-bold bg-blue-100 text-blue-800">🔵 ${item.daysLeft} Hari Lagi</span>`;
+                    urgencyBadge = `<span class="px-2.5 py-1 rounded text-[10px] font-bold bg-blue-100 text-blue-800"><i class='fa-solid fa-circle' aria-hidden='true'></i> ${item.daysLeft} Hari Lagi</span>`;
                   }
 
                   const ev = item.evalRecord;
@@ -4526,7 +4528,7 @@ export async function mount(container, { session, params }) {
                       <td class="py-3 px-4 text-[11px]">${summaryDecision}</td>
                       <td class="py-3 px-4 text-center">
                         <button type="button" data-action="open-koordinasi" data-emp-name="${escapeHtml(item.nama_karyawan)}" class="px-3 py-1.5 bg-maroon-700 hover:bg-maroon-800 text-white font-bold rounded-xl text-xs transition shadow-2xs">
-                          ⚡ Lembar Koordinasi
+                           Lembar Koordinasi
                         </button>
                       </td>
                     </tr>
@@ -4552,7 +4554,7 @@ export async function mount(container, { session, params }) {
     start.setDate(start.getDate() - 89);
     const fromDate = start.toISOString().slice(0, 10);
     const toDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-    const link = (hash, text) => `<a class="pk-history-link text-maroon-700 hover:underline font-bold" href="${hash}">${text} ↗</a>`;
+    const link = (hash, text) => `<a class="pk-history-link text-maroon-700 hover:underline font-bold" href="${hash}">${text} <i class='fa-solid fa-arrow-up-right-from-square' aria-hidden='true'></i></a>`;
     const attendanceLink = link(`#absensi?tab=data&${employeeNik ? `nik=${encodeURIComponent(employeeNik)}` : `nama=${encodeURIComponent(employeeName)}`}`, "Buka Absensi");
     const casesLink = link(`#konseling-coaching?tab=case_management&${employeeNik ? `nik=${encodeURIComponent(employeeNik)}` : `nama=${encodeURIComponent(employeeName)}`}`, "Buka Konseling & Coaching");
     const spLink = link(`#pemanggilan?tab=sp&nama=${encodeURIComponent(employeeName)}`, "Buka Disiplin & SP");
@@ -4695,7 +4697,7 @@ export async function mount(container, { session, params }) {
     const initialTahap = ev.tahap || "REVIEW_HRD";
 
     openModal({
-      title: `⚡ Alur & Lembar Koordinasi Perpanjangan Kontrak: ${escapeHtml(empData.nama_karyawan)}`,
+      title: ` Alur & Lembar Koordinasi Perpanjangan Kontrak: ${escapeHtml(empData.nama_karyawan)}`,
       size: "xl",
       bodyHtml: `
         <div class="space-y-6 text-left">
@@ -4762,12 +4764,12 @@ export async function mount(container, { session, params }) {
           <!-- Section Tabs -->
           <div class="flex items-center gap-2 border-b border-slate-200">
             <button id="modal-tab-workflow" class="px-4 py-2 text-xs font-bold border-b-2 border-maroon-700 text-maroon-700 transition">
-              📋 5 Tahapan Koordinasi & Eksekusi
+               5 Tahapan Koordinasi & Eksekusi
             </button>
             <button id="modal-tab-performance" class="px-4 py-2 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition">
-              📊 Riwayat Nilai KPI & Log Kinerja
+               Riwayat Nilai KPI & Log Kinerja
             </button>
-            ${["HRD", "SUPERADMIN"].includes(role) ? `<button id="modal-tab-history" class="px-4 py-2 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition">📁 Riwayat Karyawan</button>` : ""}
+            ${["HRD", "SUPERADMIN"].includes(role) ? `<button id="modal-tab-history" class="px-4 py-2 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition"><i class='fa-solid fa-folder' aria-hidden='true'></i> Riwayat Karyawan</button>` : ""}
           </div>
 
           <!-- Panel 1: Workflow Forms -->
@@ -4847,13 +4849,13 @@ export async function mount(container, { session, params }) {
               <!-- One click WA Generator -->
               <div class="bg-white p-3 rounded-xl border border-amber-200 space-y-2">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <span class="text-xs font-bold text-slate-800">📱 Format Pesan WhatsApp / Email ke GM:</span>
+                  <span class="text-xs font-bold text-slate-800"><i class='fa-solid fa-mobile-screen' aria-hidden='true'></i> Format Pesan WhatsApp / Email ke GM:</span>
                   <div class="flex items-center gap-1.5">
                     <button type="button" id="btn-copy-wa-gm" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-lg transition flex items-center gap-1">
-                      📋 Salin Teks
+                       Salin Teks
                     </button>
                     <button type="button" id="btn-open-wa-gm" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg transition flex items-center gap-1 shadow-2xs">
-                      💬 Buka WhatsApp GM
+                       Buka WhatsApp GM
                     </button>
                   </div>
                 </div>
@@ -4914,13 +4916,13 @@ export async function mount(container, { session, params }) {
               <!-- One click WA to Direktur -->
               <div class="bg-white p-3 rounded-xl border border-rose-200 space-y-2">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <span class="text-xs font-bold text-slate-800">🏛️ Format Pengajuan Ringkasan Eksekutif ke Direktur:</span>
+                  <span class="text-xs font-bold text-slate-800"><i class='fa-solid fa-building-columns' aria-hidden='true'></i> Format Pengajuan Ringkasan Eksekutif ke Direktur:</span>
                   <div class="flex items-center gap-1.5">
                     <button type="button" id="btn-copy-wa-dir" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-lg transition flex items-center gap-1">
-                      📋 Salin Ringkasan
+                       Salin Ringkasan
                     </button>
                     <button type="button" id="btn-open-wa-dir" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg transition flex items-center gap-1 shadow-2xs">
-                      💬 Buka WhatsApp Direktur
+                       Buka WhatsApp Direktur
                     </button>
                   </div>
                 </div>
@@ -4945,10 +4947,10 @@ export async function mount(container, { session, params }) {
                 <div>
                   <label class="block text-slate-600 font-semibold mb-1">Keputusan Final Direktur</label>
                   <select id="input-keputusan-dir" class="w-full px-3 py-2 rounded-xl border border-slate-200 outline-none bg-white font-bold text-slate-800">
-                    <option value="PENDING" ${ev.keputusan_direktur === "PENDING" || !ev.keputusan_direktur ? 'selected' : ''}>⏳ PENDING - Perlu Pembahasan Lanjutan</option>
-                    <option value="DISETUJUI_PERPANJANG" ${ev.keputusan_direktur === "DISETUJUI_PERPANJANG" ? 'selected' : ''}>✅ DISETUJUI - Perpanjang Kontrak</option>
-                    <option value="DISETUJUI_KARTAP" ${ev.keputusan_direktur === "DISETUJUI_KARTAP" ? 'selected' : ''}>🌟 DISETUJUI - Pengangkatan Karyawan Tetap (Kartap)</option>
-                    <option value="TIDAK_DIPERPANJANG" ${ev.keputusan_direktur === "TIDAK_DIPERPANJANG" ? 'selected' : ''}>❌ DITOLAK - Tidak Diperpanjang</option>
+                    <option value="PENDING" ${ev.keputusan_direktur === "PENDING" || !ev.keputusan_direktur ? 'selected' : ''}>PENDING - Perlu Pembahasan Lanjutan</option>
+                    <option value="DISETUJUI_PERPANJANG" ${ev.keputusan_direktur === "DISETUJUI_PERPANJANG" ? 'selected' : ''}> DISETUJUI - Perpanjang Kontrak</option>
+                    <option value="DISETUJUI_KARTAP" ${ev.keputusan_direktur === "DISETUJUI_KARTAP" ? 'selected' : ''}> DISETUJUI - Pengangkatan Karyawan Tetap (Kartap)</option>
+                    <option value="TIDAK_DIPERPANJANG" ${ev.keputusan_direktur === "TIDAK_DIPERPANJANG" ? 'selected' : ''}> DITOLAK - Tidak Diperpanjang</option>
                   </select>
                 </div>
                 <div>
@@ -5014,10 +5016,10 @@ export async function mount(container, { session, params }) {
               </p>
               <div class="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
                 <button type="button" id="btn-save-progress-eval" class="w-full sm:w-auto px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition shadow-2xs">
-                  💾 Simpan Progres Lembar Kerja
+                   Simpan Progres Lembar Kerja
                 </button>
                 <button type="button" id="btn-execute-renewal" class="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl transition shadow-md flex items-center justify-center gap-2">
-                  🚀 Terbitkan Kontrak Baru & Selesaikan Alur
+                   Terbitkan Kontrak Baru & Selesaikan Alur
                 </button>
               </div>
             </div>
@@ -5327,7 +5329,7 @@ export async function mount(container, { session, params }) {
         } catch (e) {
           toast("Gagal menyimpan: " + e.message, "error");
           btnSaveProgress.disabled = false;
-          btnSaveProgress.textContent = "💾 Simpan Progres Lembar Kerja";
+          btnSaveProgress.textContent = " Simpan Progres Lembar Kerja";
         }
       };
     }
@@ -5491,7 +5493,7 @@ export async function mount(container, { session, params }) {
             } catch (e) {
               toast("Gagal menerbitkan kontrak baru: " + e.message, "error");
               btnExecute.disabled = false;
-              btnExecute.textContent = "🚀 Terbitkan Kontrak Baru & Selesaikan Alur";
+              btnExecute.textContent = " Terbitkan Kontrak Baru & Selesaikan Alur";
             }
           }
         );
@@ -5585,7 +5587,7 @@ export async function mount(container, { session, params }) {
             <p class="text-xs text-slate-400 mt-0.5">Monitoring perpanjangan, sisa masa berlaku, dan status tahapan koordinasi GM & Direktur.</p>
           </div>
           <button id="btn-goto-pipeline" class="px-3.5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-2xs">
-            ⚡ Buka Papan Alur Koordinasi
+             Buka Papan Alur Koordinasi
           </button>
         </div>
 
@@ -5610,7 +5612,7 @@ export async function mount(container, { session, params }) {
                 const ev = e.evalRecord;
                 let stageText = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600">Belum Ada Progres</span>`;
                 if (ev) {
-                  if (ev.status_final === "SELESAI" || ev.tahap === "SELESAI") stageText = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">✅ Selesai</span>`;
+                  if (ev.status_final === "SELESAI" || ev.tahap === "SELESAI") stageText = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"><i class='fa-solid fa-circle-check' aria-hidden='true'></i> Selesai</span>`;
                   else if (ev.tahap === "DRAFT_KONTRAK") stageText = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">4. Draf Kontrak</span>`;
                   else if (ev.tahap === "APPROVAL_DIREKTUR") stageText = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">3. Approval Direktur</span>`;
                   else if (ev.tahap === "KOORDINASI_GM") stageText = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">2. Koordinasi GM</span>`;
@@ -5635,7 +5637,7 @@ export async function mount(container, { session, params }) {
                     <td class="py-3 px-4 text-[11px]">${decisionText}</td>
                     <td class="py-3 px-4 text-center">
                       <button type="button" data-action="open-eval-coord" data-emp-name="${escapeHtml(e.nama_karyawan)}" class="px-2.5 py-1 bg-maroon-50 hover:bg-maroon-100 text-maroon-700 font-bold rounded-lg transition border border-maroon-200 text-[11px]">
-                        ⚡ Koordinasikan
+                         Koordinasikan
                       </button>
                     </td>
                   </tr>
@@ -5723,7 +5725,7 @@ export async function mount(container, { session, params }) {
           <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <div class="flex items-center gap-2">
-                <span class="p-2 rounded-xl bg-maroon-50 text-maroon-700 font-bold text-base">📊</span>
+                <span class="p-2 rounded-xl bg-maroon-50 text-maroon-700 font-bold text-base"><i class='fa-solid fa-chart-column' aria-hidden='true'></i></span>
                 <div>
                   <h3 class="font-bold text-slate-800 text-base">Penilaian Harian & Target Sales / Operasional</h3>
                   <p class="text-xs text-slate-400 mt-0.5">Pencatatan evaluasi kinerja harian, penetapan target bulanan, dan monitoring pencapaian berkala staf.</p>
@@ -5736,7 +5738,7 @@ export async function mount(container, { session, params }) {
                   <span>+</span> Input Penilaian Harian
                 </button>
                 <button id="btn-set-target-bulanan" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-2xs">
-                  <span>🎯</span> Set Target Bulanan KPI
+                  <span><i class='fa-solid fa-bullseye' aria-hidden='true'></i></span> Set Target Bulanan KPI
                 </button>
               ` : ''}
             </div>
@@ -5745,13 +5747,13 @@ export async function mount(container, { session, params }) {
           <!-- Sub-Tab Navigation -->
           <div class="flex items-center gap-2 border-b border-slate-200">
             <button id="subtab-btn-harian" class="daily-subtab-btn px-4 py-2.5 text-xs font-bold border-b-2 ${activeDailySubtab === 'harian' ? 'border-maroon-700 text-maroon-700' : 'border-transparent text-slate-500 hover:text-slate-700'} transition flex items-center gap-1.5">
-              <span>📝</span> Log Penilaian Harian
+              <span><i class='fa-solid fa-pen' aria-hidden='true'></i></span> Log Penilaian Harian
             </button>
             <button id="subtab-btn-target" class="daily-subtab-btn px-4 py-2.5 text-xs font-bold border-b-2 ${activeDailySubtab === 'target' ? 'border-maroon-700 text-maroon-700' : 'border-transparent text-slate-500 hover:text-slate-700'} transition flex items-center gap-1.5">
-              <span>🎯</span> Target Bulanan KPI
+              <span><i class='fa-solid fa-bullseye' aria-hidden='true'></i></span> Target Bulanan KPI
             </button>
             <button id="subtab-btn-rekap" class="daily-subtab-btn px-4 py-2.5 text-xs font-bold border-b-2 ${activeDailySubtab === 'rekap' ? 'border-maroon-700 text-maroon-700' : 'border-transparent text-slate-500 hover:text-slate-700'} transition flex items-center gap-1.5">
-              <span>📈</span> Rekapitulasi Capaian
+              <span><i class='fa-solid fa-chart-line' aria-hidden='true'></i></span> Rekapitulasi Capaian
             </button>
           </div>
 
@@ -5877,14 +5879,14 @@ export async function mount(container, { session, params }) {
               <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Performa Unggul (≥85)</span>
               <div class="flex items-center justify-between mt-1">
                 <span class="text-xl font-black text-emerald-600">${countHigh}</span>
-                <span class="text-xs text-emerald-600 font-bold">🌟 Sangat Baik</span>
+                <span class="text-xs text-emerald-600 font-bold"><i class='fa-solid fa-star' aria-hidden='true'></i> Sangat Baik</span>
               </div>
             </div>
             <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-2xs">
               <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Perlu Perhatian (&lt;70)</span>
               <div class="flex items-center justify-between mt-1">
                 <span class="text-xl font-black text-rose-600">${countLow}</span>
-                <span class="text-xs text-rose-600 font-bold">⚠️ Evaluasi</span>
+                <span class="text-xs text-rose-600 font-bold"><i class='fa-solid fa-triangle-exclamation' aria-hidden='true'></i> Evaluasi</span>
               </div>
             </div>
           </div>
@@ -5894,12 +5896,12 @@ export async function mount(container, { session, params }) {
             <div class="flex items-center gap-2 flex-wrap flex-1">
               <div class="relative w-full sm:w-64">
                 <input type="text" id="daily-search-input" value="${escapeHtml(searchQuery)}" placeholder="Cari nama, NIK, penilai..." class="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-medium">
-                <span class="absolute left-2.5 top-2.5 text-slate-400 text-xs">🔍</span>
+                <span class="absolute left-2.5 top-2.5 text-slate-400 text-xs"><i class='fa-solid fa-magnifying-glass' aria-hidden='true'></i></span>
               </div>
               <div class="flex items-center gap-1.5">
                 <span class="text-xs text-slate-400 font-medium">Bulan:</span>
                 <input type="month" id="daily-filter-month" value="${filterMonth}" class="px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-bold text-slate-700">
-                ${filterMonth ? `<button id="btn-clear-month" class="text-xs text-rose-500 hover:text-rose-700 font-bold px-1" title="Semua Bulan">✕</button>` : ''}
+                ${filterMonth ? `<button id="btn-clear-month" class="text-xs text-rose-500 hover:text-rose-700 font-bold px-1" title="Semua Bulan"><i class='fa-solid fa-xmark' aria-hidden='true'></i></button>` : ''}
               </div>
               <div>
                 <select id="daily-filter-kat" class="px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-medium">
@@ -5911,7 +5913,7 @@ export async function mount(container, { session, params }) {
             </div>
             <div class="flex items-center gap-2">
               <button id="btn-export-daily-xlsx" class="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg border border-emerald-200 transition flex items-center gap-1.5">
-                <span>📥</span> Unduh Excel (XLSX)
+                <span><i class='fa-solid fa-download' aria-hidden='true'></i></span> Unduh Excel (XLSX)
               </button>
             </div>
           </div>
@@ -5993,14 +5995,14 @@ export async function mount(container, { session, params }) {
                         <td class="py-3 px-3.5 text-center whitespace-nowrap">
                           <div class="flex items-center justify-center gap-1">
                             <button data-action="detail-daily" data-id="${l.id}" class="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-lg transition border border-slate-200" title="Lihat Rincian">
-                              👁️
+                              <i class='fa-solid fa-eye' aria-hidden='true'></i>
                             </button>
                             ${isAuthorOrAdmin ? `
                               <button data-action="edit-daily" data-id="${l.id}" class="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition border border-blue-200" title="Edit Log">
-                                ✏️
+                                <i class='fa-solid fa-pen' aria-hidden='true'></i>
                               </button>
                               <button data-action="delete-daily" data-id="${l.id}" class="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg transition border border-rose-200" title="Hapus Log">
-                                🗑️
+                                <i class='fa-solid fa-trash' aria-hidden='true'></i>
                               </button>
                             ` : ''}
                           </div>
@@ -6164,12 +6166,12 @@ export async function mount(container, { session, params }) {
             <div class="flex items-center gap-2 flex-wrap flex-1">
               <div class="relative w-full sm:w-64">
                 <input type="text" id="target-search-input" value="${escapeHtml(searchQuery)}" placeholder="Cari karyawan, target..." class="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-medium">
-                <span class="absolute left-2.5 top-2.5 text-slate-400 text-xs">🔍</span>
+                <span class="absolute left-2.5 top-2.5 text-slate-400 text-xs"><i class='fa-solid fa-magnifying-glass' aria-hidden='true'></i></span>
               </div>
               <div class="flex items-center gap-1.5">
                 <span class="text-xs text-slate-400 font-medium">Periode:</span>
                 <input type="month" id="target-filter-month" value="${filterMonth}" class="px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-bold text-slate-700">
-                ${filterMonth ? `<button id="btn-clear-target-month" class="text-xs text-rose-500 hover:text-rose-700 font-bold px-1" title="Semua Periode">✕</button>` : ''}
+                ${filterMonth ? `<button id="btn-clear-target-month" class="text-xs text-rose-500 hover:text-rose-700 font-bold px-1" title="Semua Periode"><i class='fa-solid fa-xmark' aria-hidden='true'></i></button>` : ''}
               </div>
               <div>
                 <select id="target-filter-kat" class="px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-medium">
@@ -6181,7 +6183,7 @@ export async function mount(container, { session, params }) {
             </div>
             <div class="flex items-center gap-2">
               <button id="btn-export-target-xlsx" class="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg border border-emerald-200 transition flex items-center gap-1.5">
-                <span>📥</span> Unduh Excel (XLSX)
+                <span><i class='fa-solid fa-download' aria-hidden='true'></i></span> Unduh Excel (XLSX)
               </button>
             </div>
           </div>
@@ -6257,15 +6259,15 @@ export async function mount(container, { session, params }) {
                         <td class="py-3 px-3.5 text-center whitespace-nowrap">
                           <div class="flex items-center justify-center gap-1">
                             <button data-action="detail-target" data-id="${t.id}" class="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-lg transition border border-slate-200" title="Lihat Rincian Target">
-                              👁️
+                              <i class='fa-solid fa-eye' aria-hidden='true'></i>
                             </button>
                             ${isAuthorOrAdmin ? `
                               <button data-action="input-achievement" data-id="${t.id}" class="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg border border-emerald-200" title="Input realisasi target akhir bulan">Input Capaian</button>
                               <button data-action="edit-target" data-id="${t.id}" class="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition border border-blue-200" title="Edit Target">
-                                ✏️
+                                <i class='fa-solid fa-pen' aria-hidden='true'></i>
                               </button>
                               <button data-action="delete-target" data-id="${t.id}" class="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg transition border border-rose-200" title="Hapus Target">
-                                🗑️
+                                <i class='fa-solid fa-trash' aria-hidden='true'></i>
                               </button>
                             ` : ''}
                           </div>
@@ -6452,7 +6454,7 @@ export async function mount(container, { session, params }) {
             <div class="flex items-center gap-2 flex-wrap flex-1">
               <div class="relative w-full sm:w-64">
                 <input type="text" id="rekap-search-input" value="${escapeHtml(searchQuery)}" placeholder="Cari nama karyawan..." class="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:border-maroon-500 font-medium">
-                <span class="absolute left-2.5 top-2.5 text-slate-400 text-xs">🔍</span>
+                <span class="absolute left-2.5 top-2.5 text-slate-400 text-xs"><i class='fa-solid fa-magnifying-glass' aria-hidden='true'></i></span>
               </div>
               <div class="flex items-center gap-1.5">
                 <span class="text-xs text-slate-400 font-medium">Periode Rekap:</span>
@@ -6461,7 +6463,7 @@ export async function mount(container, { session, params }) {
             </div>
             <div class="flex items-center gap-2">
               <button id="btn-export-rekap-xlsx" class="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg border border-emerald-200 transition flex items-center gap-1.5">
-                <span>📥</span> Unduh Rekap (XLSX)
+                <span><i class='fa-solid fa-download' aria-hidden='true'></i></span> Unduh Rekap (XLSX)
               </button>
             </div>
           </div>
@@ -6544,7 +6546,7 @@ export async function mount(container, { session, params }) {
                         <td class="py-3 px-3.5">
                           ${hasTarget ? `
                             <span class="text-emerald-700 font-bold text-[11px] flex items-center gap-1">
-                              <span>✓</span> Sudah Diset
+                              <span><i class='fa-solid fa-check' aria-hidden='true'></i></span> Sudah Diset
                             </span>
                             <span class="text-[10px] text-slate-500">${item.target.capaian_bulanan ? `${monthlyMetricRows(item.target).filter(row => row.actual !== null).length} realisasi tercatat` : "Realisasi belum diisi"}</span>
                           ` : `
@@ -6678,10 +6680,10 @@ export async function mount(container, { session, params }) {
             <!-- Kategori / Template Selector -->
             <div class="flex items-center gap-2 p-1.5 bg-slate-100 rounded-xl border border-slate-200">
               <button type="button" id="ph-tab-sales" class="flex-1 py-1.5 text-xs font-bold rounded-lg transition ${currentKat === 'SALES' ? 'bg-white text-maroon-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'}">
-                💼 Divisi Sales (Indikator Lampiran 1)
+                 Divisi Sales (Indikator Lampiran 1)
               </button>
               <button type="button" id="ph-tab-non-sales" class="flex-1 py-1.5 text-xs font-bold rounded-lg transition ${currentKat === 'NON_SALES' ? 'bg-white text-maroon-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'}">
-                🏢 Divisi Non-Sales (Operasional & Staff)
+                 Divisi Non-Sales (Operasional & Staff)
               </button>
             </div>
 
@@ -6690,7 +6692,7 @@ export async function mount(container, { session, params }) {
               <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200">
                 <div class="flex items-center gap-2 flex-wrap">
                   <span id="ph-count-badge" class="px-2.5 py-1 bg-maroon-50 text-maroon-700 border border-maroon-200 rounded-lg text-xs font-bold flex items-center gap-1.5">
-                    <span>📋</span> ${activeIndicators.length} Poin Indikator
+                    <span><i class='fa-solid fa-clipboard-list' aria-hidden='true'></i></span> ${activeIndicators.length} Poin Indikator
                   </span>
                   <span class="text-[11px] text-slate-500 font-medium">HRD dapat menambah, merubah nama, atau menghapus indikator di bawah.</span>
                 </div>
@@ -6699,7 +6701,7 @@ export async function mount(container, { session, params }) {
                     <span>+</span> Tambah Indikator Baru
                   </button>
                   <button type="button" id="btn-reset-ind-default" class="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-600 hover:text-slate-800 text-xs font-bold rounded-lg border border-slate-200 transition flex items-center gap-1" title="Kembalikan susunan indikator standar">
-                    <span>🔄</span> Reset Bawaan
+                    <span><i class='fa-solid fa-rotate' aria-hidden='true'></i></span> Reset Bawaan
                   </button>
                 </div>
               </div>
@@ -6711,7 +6713,7 @@ export async function mount(container, { session, params }) {
               <div class="p-3 bg-amber-50/70 rounded-xl border border-amber-200/80">
                 <label class="flex items-start sm:items-center gap-2 cursor-pointer text-xs font-bold text-amber-900 select-none">
                   <input type="checkbox" id="ph-save-as-default" class="mt-0.5 sm:mt-0 w-4 h-4 text-maroon-700 rounded border-amber-300 focus:ring-maroon-500" checked>
-                  <span>💾 Simpan penyesuaian poin indikator ini sebagai standar bawaan (default template) khusus untuk <strong id="ph-lbl-emp-name">${escapeHtml(selectedEmp?.nama_karyawan || "Karyawan Ini")}</strong></span>
+                  <span><i class='fa-solid fa-floppy-disk' aria-hidden='true'></i> Simpan penyesuaian poin indikator ini sebagai standar bawaan (default template) khusus untuk <strong id="ph-lbl-emp-name">${escapeHtml(selectedEmp?.nama_karyawan || "Karyawan Ini")}</strong></span>
                 </label>
               </div>
             </div>
@@ -6735,15 +6737,15 @@ export async function mount(container, { session, params }) {
             <div class="p-3.5 bg-slate-50/60 rounded-xl border border-slate-200 space-y-3">
               <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700">Catatan & Ulasan Evaluator</h4>
               <div>
-                <label class="block text-[11px] font-bold text-emerald-800 mb-1">🌟 Hal-Hal yang Sudah Baik (Kelebihan / Prestasi Hari Ini):</label>
+                <label class="block text-[11px] font-bold text-emerald-800 mb-1"><i class='fa-solid fa-star' aria-hidden='true'></i> Hal-Hal yang Sudah Baik (Kelebihan / Prestasi Hari Ini):</label>
                 <textarea id="ph-catatan-baik" rows="2" class="w-full px-3 py-2 text-xs border border-emerald-200 bg-white rounded-lg outline-none focus:border-emerald-500 font-medium focus:ring-1 focus:ring-emerald-200" placeholder="Pencapaian target, ketepatan waktu, inisiatif yang baik...">${escapeHtml(existing?.catatan_baik || '')}</textarea>
               </div>
               <div>
-                <label class="block text-[11px] font-bold text-rose-800 mb-1">🎯 Hal yang Perlu Diperbaiki (Kendala / Area Peningkatan):</label>
+                <label class="block text-[11px] font-bold text-rose-800 mb-1"><i class='fa-solid fa-bullseye' aria-hidden='true'></i> Hal yang Perlu Diperbaiki (Kendala / Area Peningkatan):</label>
                 <textarea id="ph-catatan-perbaikan" rows="2" class="w-full px-3 py-2 text-xs border border-rose-200 bg-white rounded-lg outline-none focus:border-rose-500 font-medium focus:ring-1 focus:ring-rose-200" placeholder="Kendala operasional, area yang perlu diperbaiki...">${escapeHtml(existing?.catatan_perbaikan || '')}</textarea>
               </div>
               <div>
-                <label class="block text-[11px] font-bold text-slate-700 mb-1">📝 Catatan Tambahan Penilai:</label>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1"><i class='fa-solid fa-pen' aria-hidden='true'></i> Catatan Tambahan Penilai:</label>
                 <textarea id="ph-catatan-harian" rows="2" class="w-full px-3 py-2 text-xs border border-slate-200 bg-white rounded-lg outline-none focus:border-maroon-400 font-medium focus:ring-1 focus:ring-maroon-200" placeholder="Catatan harian lainnya...">${escapeHtml(existing?.catatan_harian || '')}</textarea>
               </div>
             </div>
@@ -6768,7 +6770,7 @@ export async function mount(container, { session, params }) {
           <div class="flex items-center justify-end gap-2 w-full">
             <button type="button" id="btn-ph-batal" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">Batal</button>
             <button type="button" id="btn-ph-simpan" class="px-5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold rounded-xl transition shadow-sm flex items-center gap-1.5">
-              <span>✓</span> ${isEdit ? 'Simpan Perubahan' : 'Simpan Penilaian Harian'}
+              <span><i class='fa-solid fa-check' aria-hidden='true'></i></span> ${isEdit ? 'Simpan Perubahan' : 'Simpan Penilaian Harian'}
             </button>
           </div>
         `,
@@ -6803,7 +6805,7 @@ export async function mount(container, { session, params }) {
             readFormScores();
 
             if (countBadge) {
-              countBadge.innerHTML = `<span>📋</span> ${activeIndicators.length} Poin Indikator`;
+              countBadge.innerHTML = `<span><i class='fa-solid fa-clipboard-list' aria-hidden='true'></i></span> ${activeIndicators.length} Poin Indikator`;
             }
 
             if (activeIndicators.length === 0) {
@@ -6837,10 +6839,10 @@ export async function mount(container, { session, params }) {
                         <div class="flex items-center justify-between">
                           <span class="text-xs font-black text-amber-900 flex items-center gap-1.5">
                             <span class="w-5 h-5 rounded-md bg-amber-600 text-white text-[11px] flex items-center justify-center">${idx + 1}</span>
-                            ✏️ Edit Pengaturan Indikator #${idx + 1}
+                             Edit Pengaturan Indikator #${idx + 1}
                           </span>
                           <button type="button" data-done-edit="${ind.key}" class="px-3 py-1 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs">
-                            ✓ Selesai Ubah
+                             Selesai Ubah
                           </button>
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
@@ -6873,7 +6875,7 @@ export async function mount(container, { session, params }) {
                         </div>
                         <div class="flex items-center gap-1">
                           <button type="button" data-toggle-edit="${ind.key}" class="px-2 py-0.5 text-[11px] font-bold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 transition flex items-center gap-1" title="Ubah nama indikator atau aspek">
-                            <span>✏️</span> Edit
+                            <span><i class='fa-solid fa-pen' aria-hidden='true'></i></span> Edit
                           </button>
                           <button type="button" data-delete-ind="${ind.key}" class="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition" title="Hapus indikator ini untuk penilaian karyawan ini">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
@@ -7242,10 +7244,10 @@ export async function mount(container, { session, params }) {
             <!-- Kategori Selector -->
             <div class="flex items-center gap-2 p-1.5 bg-slate-100 rounded-xl border border-slate-200">
               <button type="button" id="tb-tab-sales" class="flex-1 py-1.5 text-xs font-bold rounded-lg transition ${currentKat === 'SALES' ? 'bg-white text-maroon-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'}">
-                💼 Target Sales (Lampiran 1)
+                 Target Sales (Lampiran 1)
               </button>
               <button type="button" id="tb-tab-non-sales" class="flex-1 py-1.5 text-xs font-bold rounded-lg transition ${currentKat === 'NON_SALES' ? 'bg-white text-maroon-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'}">
-                🏢 Target Non-Sales / Operasional
+                 Target Non-Sales / Operasional
               </button>
             </div>
 
@@ -7262,7 +7264,7 @@ export async function mount(container, { session, params }) {
           <div class="flex items-center justify-end gap-2 w-full">
             <button type="button" id="btn-tb-batal" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">Batal</button>
             <button type="button" id="btn-tb-simpan" class="px-5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold rounded-xl transition shadow-sm flex items-center gap-1.5">
-              <span>✓</span> ${isEdit ? 'Simpan Perubahan' : 'Tetapkan Target Bulanan'}
+              <span><i class='fa-solid fa-check' aria-hidden='true'></i></span> ${isEdit ? 'Simpan Perubahan' : 'Tetapkan Target Bulanan'}
             </button>
           </div>
         `,
@@ -7522,21 +7524,21 @@ export async function mount(container, { session, params }) {
             <!-- Catatan -->
             ${log.catatan_baik ? `
               <div class="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl text-xs space-y-1">
-                <span class="font-bold text-emerald-900 block">🌟 Kelebihan / Prestasi Hari Ini:</span>
+                <span class="font-bold text-emerald-900 block"><i class='fa-solid fa-star' aria-hidden='true'></i> Kelebihan / Prestasi Hari Ini:</span>
                 <p class="text-emerald-800 font-medium">${escapeHtml(log.catatan_baik)}</p>
               </div>
             ` : ''}
 
             ${log.catatan_perbaikan ? `
               <div class="p-3 bg-rose-50/70 border border-rose-200 rounded-xl text-xs space-y-1">
-                <span class="font-bold text-rose-900 block">🎯 Area Perlu Peningkatan:</span>
+                <span class="font-bold text-rose-900 block"><i class='fa-solid fa-bullseye' aria-hidden='true'></i> Area Perlu Peningkatan:</span>
                 <p class="text-rose-800 font-medium">${escapeHtml(log.catatan_perbaikan)}</p>
               </div>
             ` : ''}
 
             ${log.catatan_harian ? `
               <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
-                <span class="font-bold text-slate-800 block">📝 Catatan Penilai:</span>
+                <span class="font-bold text-slate-800 block"><i class='fa-solid fa-pen' aria-hidden='true'></i> Catatan Penilai:</span>
                 <p class="text-slate-600 font-medium">${escapeHtml(log.catatan_harian)}</p>
               </div>
             ` : ''}
@@ -7669,7 +7671,7 @@ export async function mount(container, { session, params }) {
 
             ${target.catatan_target ? `
               <div class="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs space-y-1">
-                <span class="font-bold text-blue-900 block">📌 Arahan & Sasaran Strategis:</span>
+                <span class="font-bold text-blue-900 block"><i class='fa-solid fa-thumbtack' aria-hidden='true'></i> Arahan & Sasaran Strategis:</span>
                 <p class="text-blue-800 font-medium">${escapeHtml(target.catatan_target)}</p>
               </div>
             ` : ''}
