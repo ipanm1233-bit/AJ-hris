@@ -4182,12 +4182,7 @@ export async function mount(container, { session, params }) {
       { id: "SELESAI", label: "5. Selesai", color: "emerald", icon: "✅", desc: "Kontrak baru resmi terbit & aktif di sistem" }
     ];
 
-    function renderPipeline() {
-      const countKritis = filteredList.filter(x => x.urgency === "KRITIS" || x.urgency === "KADALUARSA").length;
-      const countWaspada = filteredList.filter(x => x.urgency === "WASPADA").length;
-      const countPersiapan = filteredList.filter(x => x.urgency === "PERSIAPAN").length;
-      const countSelesai = filteredList.filter(x => (x.evalRecord && x.evalRecord.status_final === "SELESAI") || x.stage === "SELESAI").length;
-
+    function getPipelineResults() {
       let displayList = filteredList;
       if (currentUrgencyFilter !== "ALL") {
         if (currentUrgencyFilter === "KRITIS") displayList = displayList.filter(x => x.urgency === "KRITIS" || x.urgency === "KADALUARSA");
@@ -4197,7 +4192,7 @@ export async function mount(container, { session, params }) {
         displayList = displayList.filter(x => x.stage === currentStageFilter);
       }
       if (currentSearch.trim()) {
-        const q = currentSearch.toLowerCase();
+        const q = currentSearch.trim().toLowerCase();
         displayList = displayList.filter(x => 
           (x.nama_karyawan || "").toLowerCase().includes(q) ||
           (x.jabatan || "").toLowerCase().includes(q) ||
@@ -4205,6 +4200,40 @@ export async function mount(container, { session, params }) {
           (x.divisi || "").toLowerCase().includes(q)
         );
       }
+      return displayList;
+    }
+
+    function bindPipelineActions() {
+      wrap.querySelectorAll('[data-action="open-koordinasi"]').forEach(btn => {
+        btn.onclick = () => {
+          const empName = btn.dataset.empName;
+          const targetItem = pipelineData.find(x => x.nama_karyawan === empName);
+          if (targetItem) {
+            openModalKoordinasiPerpanjangan(targetItem, targetItem.evalRecord, () => {
+              loadAlurPerpanjangan();
+            });
+          }
+        };
+      });
+    }
+
+    function renderPipelineResults() {
+      const displayList = getPipelineResults();
+      const contentArea = wrap.querySelector("#pipeline-content-area");
+      const resultCount = wrap.querySelector("#pk-pipeline-result-count");
+      if (contentArea) contentArea.innerHTML = currentViewMode === 'kanban'
+        ? renderKanbanView(displayList, STAGES)
+        : renderTableView(displayList);
+      if (resultCount) resultCount.textContent = String(displayList.length);
+      bindPipelineActions();
+    }
+
+    function renderPipeline() {
+      const countKritis = filteredList.filter(x => x.urgency === "KRITIS" || x.urgency === "KADALUARSA").length;
+      const countWaspada = filteredList.filter(x => x.urgency === "WASPADA").length;
+      const countPersiapan = filteredList.filter(x => x.urgency === "PERSIAPAN").length;
+      const countSelesai = filteredList.filter(x => (x.evalRecord && x.evalRecord.status_final === "SELESAI") || x.stage === "SELESAI").length;
+      const displayList = getPipelineResults();
 
       wrap.innerHTML = `
         <div class="space-y-6">
@@ -4285,7 +4314,7 @@ export async function mount(container, { session, params }) {
               </select>
             </div>
             <div class="text-xs text-slate-500 font-medium">
-              Menampilkan <strong>${displayList.length}</strong> data staf
+              Menampilkan <strong id="pk-pipeline-result-count">${displayList.length}</strong> data staf
             </div>
           </div>
 
@@ -4301,7 +4330,8 @@ export async function mount(container, { session, params }) {
       // Event bindings
       wrap.querySelector("#btn-toggle-kanban").onclick = () => { currentViewMode = "kanban"; renderPipeline(); };
       wrap.querySelector("#btn-toggle-table").onclick = () => { currentViewMode = "table"; renderPipeline(); };
-      wrap.querySelector("#pk-pipeline-search").oninput = (e) => { currentSearch = e.target.value; renderPipeline(); };
+      // Keep the search input mounted while filtering so typing never loses focus.
+      wrap.querySelector("#pk-pipeline-search").oninput = (e) => { currentSearch = e.target.value; renderPipelineResults(); };
       wrap.querySelector("#pk-pipeline-urgency").onchange = (e) => { currentUrgencyFilter = e.target.value; renderPipeline(); };
       wrap.querySelector("#pk-pipeline-stage").onchange = (e) => { currentStageFilter = e.target.value; renderPipeline(); };
 
@@ -4314,18 +4344,7 @@ export async function mount(container, { session, params }) {
       const statSelesai = wrap.querySelector("#stat-selesai");
       if (statSelesai) statSelesai.onclick = () => { currentStageFilter = "SELESAI"; renderPipeline(); };
 
-      // Bind open modal on all action buttons
-      wrap.querySelectorAll('[data-action="open-koordinasi"]').forEach(btn => {
-        btn.onclick = () => {
-          const empName = btn.dataset.empName;
-          const targetItem = pipelineData.find(x => x.nama_karyawan === empName);
-          if (targetItem) {
-            openModalKoordinasiPerpanjangan(targetItem, targetItem.evalRecord, () => {
-              loadAlurPerpanjangan();
-            });
-          }
-        };
-      });
+      bindPipelineActions();
     }
 
     await loadKpi360().catch(error => { panels.kpi360.innerHTML = emptyState("Gagal memuat tugas penilaian: " + error.message); });
