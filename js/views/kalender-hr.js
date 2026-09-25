@@ -99,8 +99,8 @@ export async function mount(container, { session }) {
   const items = [];
   if (activeFilters.has("agenda")) lists.agenda.forEach(a => items.push({ cls: "bg-emerald-50 text-emerald-800 border-emerald-200", text: a.judul || "Agenda HR" }));
   if (activeFilters.has("cuti")) lists.cuti.forEach(c => items.push({ cls: "bg-blue-50 text-blue-800 border-blue-200", text: `${c.nama_karyawan || c.nama || "Karyawan"} • ${c.type_cuti || c.jenis_cuti || "Cuti/Izin"}` }));
-  if (activeFilters.has("bday")) lists.bday.forEach(k => items.push({ cls: "bg-pink-50 text-pink-800 border-pink-200", text: `🎂 ${k.nama_karyawan || k.nama}` }));
-  if (activeFilters.has("anniv")) lists.anniv.forEach(k => items.push({ cls: "bg-purple-50 text-purple-800 border-purple-200", text: `★ ${k.nama_karyawan || k.nama}` }));
+  if (activeFilters.has("bday")) lists.bday.forEach(k => items.push({ cls: "bg-pink-50 text-pink-800 border-pink-200", text: ` ${k.nama_karyawan || k.nama}` }));
+  if (activeFilters.has("anniv")) lists.anniv.forEach(k => items.push({ cls: "bg-purple-50 text-purple-800 border-purple-200", text: ` ${k.nama_karyawan || k.nama}` }));
   if (activeFilters.has("kontrak")) lists.kontrak.forEach(k => items.push({ cls: "bg-red-50 text-red-800 border-red-200", text: `Kontrak: ${k.nama_karyawan || k.nama}` }));
   return items;
  }
@@ -271,7 +271,7 @@ export async function mount(container, { session }) {
  htmlBody = buildStandardEmailHtml({
    badgeText: "Ulang Tahun",
    badgeVariant: "rose",
-   title: `Selamat Ulang Tahun, ${name}! 🎂`,
+   title: `Selamat Ulang Tahun, ${name}! `,
    recipientName: name,
    introText: "Segenap jajaran Direksi, Manajemen, dan seluruh keluarga besar CV Andela Jaya mengucapkan selamat ulang tahun!",
    bodyHtml: `
@@ -292,7 +292,7 @@ export async function mount(container, { session }) {
  htmlBody = buildStandardEmailHtml({
    badgeText: "Work Anniversary",
    badgeVariant: "purple",
-   title: `Happy Work Anniversary ke-${years}! 🎉`,
+   title: `Happy Work Anniversary ke-${years}! `,
    recipientName: name,
    introText: `Terima kasih atas dedikasi dan komitmen luar biasa <strong>${escapeHtml(name)}</strong> selama <strong>${escapeHtml(years)} Tahun</strong> bersama kami.`,
    bodyHtml: `

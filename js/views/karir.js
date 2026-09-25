@@ -232,7 +232,7 @@ export async function mount(container, { params, session }) {
       vacanciesGrid.innerHTML = `
         <div class="col-span-full py-16 px-6 bg-white rounded-3xl border border-slate-200 text-center space-y-3">
           <div class="w-14 h-14 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center mx-auto text-2xl">
-            📂
+            <i class='fa-solid fa-folder-open' aria-hidden='true'></i>
           </div>
           <h3 class="text-base font-bold text-slate-800">Tidak Ada Lowongan yang Cocok</h3>
           <p class="text-xs text-slate-500 max-w-md mx-auto">
@@ -381,7 +381,7 @@ export async function mount(container, { params, session }) {
           </div>
           <h2 class="text-xl font-extrabold text-slate-900">${escapeHtml(v.posisi)}</h2>
           <p class="text-xs text-slate-500 mt-1 flex items-center gap-2">
-            <span>📍 Penempatan: <strong>${escapeHtml(v.cabang || "Kantor Pusat")}</strong></span>
+            <span><i class='fa-solid fa-circle-info' aria-hidden='true'></i> Penempatan: <strong>${escapeHtml(v.cabang || "Kantor Pusat")}</strong></span>
             ${v.tanggal_tutup ? `<span>• Batas Lamaran: <strong>${fmtDateShort(v.tanggal_tutup)}</strong></span>` : ''}
           </p>
         </div>
@@ -497,7 +497,7 @@ export async function mount(container, { params, session }) {
           <div id="pub-dropzone" class="border-2 border-dashed border-slate-300 hover:border-maroon-600 bg-slate-50/60 rounded-2xl p-6 text-center cursor-pointer transition flex flex-col items-center justify-center space-y-2">
             <input type="file" id="pub-file-cv" accept=".pdf,.docx,.doc" class="hidden">
             <div class="w-12 h-12 rounded-2xl bg-white shadow-2xs border border-slate-200 text-maroon-700 flex items-center justify-center text-xl">
-              📄
+              <i class='fa-solid fa-file-lines' aria-hidden='true'></i>
             </div>
             <p id="pub-file-status" class="text-xs font-bold text-slate-700">
               Tarik file CV Anda ke sini atau <span class="text-maroon-700 underline">Pilih Berkas</span>
@@ -644,7 +644,7 @@ export async function mount(container, { params, session }) {
           if (emailEl && !emailEl.value && info.email) emailEl.value = info.email;
           if (domEl && !domEl.value && info.domisili) domEl.value = info.domisili;
 
-          fileStatus.innerHTML = `Berkas siap: <strong class="text-maroon-700">${escapeHtml(file.name)}</strong> (${Math.round(file.size/1024)} KB) — <span class="text-emerald-600 font-bold">✓ Data otomatis terbaca</span>`;
+          fileStatus.innerHTML = `Berkas siap: <strong class="text-maroon-700">${escapeHtml(file.name)}</strong> (${Math.round(file.size/1024)} KB) — <span class="text-emerald-600 font-bold"><i class='fa-solid fa-check' aria-hidden='true'></i> Data otomatis terbaca</span>`;
         } else {
           fileStatus.innerHTML = `Berkas dipilih: <strong class="text-maroon-700">${escapeHtml(file.name)}</strong> (${Math.round(file.size/1024)} KB)`;
         }
@@ -751,7 +751,7 @@ export async function mount(container, { params, session }) {
       <div class="text-center space-y-5 py-4">
         
         <div class="w-16 h-16 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto text-3xl shadow-sm animate-bounce">
-          ✓
+          <i class='fa-solid fa-check' aria-hidden='true'></i>
         </div>
 
         <div class="space-y-1">
@@ -886,7 +886,7 @@ export async function mount(container, { params, session }) {
                         return `
                           <div class="p-2.5 rounded-xl border ${isCurrent ? 'bg-maroon-50 border-maroon-300 text-maroon-800' : isDone ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-slate-50 border-slate-200 text-slate-400'} text-center space-y-1">
                             <div class="w-5 h-5 mx-auto rounded-full flex items-center justify-center text-[10px] font-bold ${isCurrent ? 'bg-maroon-700 text-white' : isDone ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'}">
-                              ${isDone ? '✓' : (sIdx + 1)}
+                              ${isDone ? '' : (sIdx + 1)}
                             </div>
                             <p class="text-[11px] font-bold truncate">${stg.label}</p>
                           </div>

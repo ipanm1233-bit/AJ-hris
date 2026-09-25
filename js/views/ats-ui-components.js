@@ -352,7 +352,7 @@ export function openCvViewerModal(candidate, vacancy) {
               <div class="flex items-center justify-between p-2 rounded-lg ${b.score_percent >= 80 ? 'bg-emerald-50 border border-emerald-200' : b.score_percent > 0 ? 'bg-blue-50 border border-blue-200' : 'bg-rose-50 border border-rose-200'}">
                 <span class="font-medium text-slate-800">${escapeHtml(b.kriteria)}</span>
                 <span class="font-bold ${b.score_percent >= 80 ? 'text-emerald-700' : b.score_percent > 0 ? 'text-blue-700' : 'text-rose-700'}">
-                  ${b.score_percent >= 80 ? '✓ Match' : b.score_percent > 0 ? 'Partial' : '— Gap'}
+                  ${b.score_percent >= 80 ? ' Match' : b.score_percent > 0 ? 'Partial' : '— Gap'}
                 </span>
               </div>
             `).join('')}
@@ -510,7 +510,7 @@ export function openInterviewScorecardModal(candidate, vacancy, { onSaveScorecar
           <label class="cursor-pointer">
             <input type="radio" name="sc_rekomendasi" value="Hire" class="sr-only peer" checked>
             <div class="py-2.5 px-3 text-center rounded-xl border border-slate-700 bg-slate-800 peer-checked:bg-emerald-600 peer-checked:border-emerald-500 font-bold text-xs transition shadow-xs">
-              ✓ Hire (Diterima / Lanjut PKWT)
+               Hire (Diterima / Lanjut PKWT)
             </div>
           </label>
           <label class="cursor-pointer">
@@ -522,7 +522,7 @@ export function openInterviewScorecardModal(candidate, vacancy, { onSaveScorecar
           <label class="cursor-pointer">
             <input type="radio" name="sc_rekomendasi" value="Reject" class="sr-only peer">
             <div class="py-2.5 px-3 text-center rounded-xl border border-slate-700 bg-slate-800 peer-checked:bg-red-600 peer-checked:border-red-500 font-bold text-xs transition shadow-xs">
-              ✕ Reject (Gugur / Tolak)
+               Reject (Gugur / Tolak)
             </div>
           </label>
         </div>
@@ -774,9 +774,9 @@ export function openCreateVacancyWizardModal({ onSaveVacancy, initialData = null
           <div>
             <label class="block font-bold text-slate-700 mb-1">Status Publikasi Lowongan *</label>
             <select id="wz-status" class="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-maroon-700 font-medium">
-              <option value="Open" ${(formData.status || 'Open') === 'Open' ? 'selected' : ''}>🚀 Publikasikan (Open - Tampil di Portal Karir)</option>
-              <option value="Draft" ${(formData.status || '') === 'Draft' ? 'selected' : ''}>🔒 Draft / Cabut Publikasi (Hanya Internal)</option>
-              <option value="Closed" ${(formData.status || '') === 'Closed' ? 'selected' : ''}>⛔ Ditutup (Closed)</option>
+              <option value="Open" ${(formData.status || 'Open') === 'Open' ? 'selected' : ''}> Publikasikan (Open - Tampil di Portal Karir)</option>
+              <option value="Draft" ${(formData.status || '') === 'Draft' ? 'selected' : ''}> Draft / Cabut Publikasi (Hanya Internal)</option>
+              <option value="Closed" ${(formData.status || '') === 'Closed' ? 'selected' : ''}> Ditutup (Closed)</option>
             </select>
           </div>
         </div>
@@ -830,7 +830,7 @@ export function openCreateVacancyWizardModal({ onSaveVacancy, initialData = null
         <div class="p-3.5 bg-rose-50/70 rounded-xl border border-rose-200 space-y-3">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
-              <span class="p-1.5 bg-rose-200 text-rose-800 rounded-lg font-bold">🚫</span>
+              <span class="p-1.5 bg-rose-200 text-rose-800 rounded-lg font-bold"><i class='fa-solid fa-ban' aria-hidden='true'></i></span>
               <div>
                 <p class="font-bold text-slate-800 text-xs">Aturan Larangan / Eksklusi Industri (Anti-Kompetitor)</p>
                 <p class="text-[11px] text-slate-500">Mendeteksi dan memberi penalti/tolak kandidat dari background terlarang (Misal: Alumni Distributor Cat untuk Sales/Admin).</p>
@@ -900,7 +900,7 @@ export function openCreateVacancyWizardModal({ onSaveVacancy, initialData = null
                     <input type="checkbox" class="wz-rule-mandatory rounded border-slate-300 text-maroon-700 cursor-pointer" ${rule.mandatory ? 'checked' : ''} data-idx="${idx}">
                   </td>
                   <td class="p-2 text-center">
-                    <button type="button" class="text-rose-600 hover:text-rose-800 font-bold px-1.5 py-0.5 rounded hover:bg-rose-50 btn-remove-rule" data-idx="${idx}">✕</button>
+                    <button type="button" class="text-rose-600 hover:text-rose-800 font-bold px-1.5 py-0.5 rounded hover:bg-rose-50 btn-remove-rule" data-idx="${idx}"><i class='fa-solid fa-xmark' aria-hidden='true'></i></button>
                   </td>
                 </tr>
               `).join('')}
@@ -961,10 +961,10 @@ export function openCreateVacancyWizardModal({ onSaveVacancy, initialData = null
           </button>
         ` : `
           <button type="button" id="btn-wz-save-draft" class="px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer" title="Simpan sebagai draft / cabut publikasi dari portal publik">
-            🔒 Cabut Publikasi (Draft)
+             Cabut Publikasi (Draft)
           </button>
           <button type="button" id="btn-wz-publish" class="px-5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1 cursor-pointer" title="Simpan dan publikasikan ke portal publik">
-            🚀 Simpan & Publikasikan (Open)
+             Simpan & Publikasikan (Open)
           </button>
         `}
       </div>
@@ -1214,7 +1214,7 @@ export function openPublicIntakeModal(vacancies = [], { onSubmitApplication, mas
       async function handleFileSelected(file) {
         if (!file) return;
         selectedFile = file;
-        label.innerHTML = `File dipilih: <strong class="text-maroon-700">${escapeHtml(selectedFile.name)}</strong> (${Math.round(selectedFile.size / 1024)} KB)<br><span class="text-[11px] text-emerald-600 font-bold">⚡ Sedang membaca & mengekstrak data otomatis...</span>`;
+        label.innerHTML = `File dipilih: <strong class="text-maroon-700">${escapeHtml(selectedFile.name)}</strong> (${Math.round(selectedFile.size / 1024)} KB)<br><span class="text-[11px] text-emerald-600 font-bold"><i class='fa-solid fa-bolt' aria-hidden='true'></i> Sedang membaca & mengekstrak data otomatis...</span>`;
         try {
           let text = "";
           if (selectedFile.name.toLowerCase().endsWith('.pdf')) {
@@ -1232,7 +1232,7 @@ export function openPublicIntakeModal(vacancies = [], { onSubmitApplication, mas
             if (emailInp && !emailInp.value && extracted.email) emailInp.value = extracted.email;
             if (hpInp && !hpInp.value && extracted.no_hp) hpInp.value = extracted.no_hp;
             if (domInp && !domInp.value && extracted.domisili) domInp.value = extracted.domisili;
-            label.innerHTML = `File siap: <strong class="text-maroon-700">${escapeHtml(selectedFile.name)}</strong> (${Math.round(selectedFile.size / 1024)} KB) — <span class="text-emerald-600 font-bold">✓ Data CV berhasil diekstrak otomatis</span>`;
+            label.innerHTML = `File siap: <strong class="text-maroon-700">${escapeHtml(selectedFile.name)}</strong> (${Math.round(selectedFile.size / 1024)} KB) — <span class="text-emerald-600 font-bold"><i class='fa-solid fa-check' aria-hidden='true'></i> Data CV berhasil diekstrak otomatis</span>`;
           }
         } catch (e) {
           console.warn("Gagal auto-parse CV:", e);

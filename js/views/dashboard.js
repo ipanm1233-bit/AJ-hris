@@ -1206,8 +1206,8 @@ async function loadAttendanceAnalytics(container, session) {
       let empSelectorHtml = "";
       if (isHrd) {
         const empOptionsHtml = [
-          `<option value="ALL" ${selectedEmpKey === "ALL" ? "selected" : ""}>👥 Seluruh Karyawan (Perusahaan)</option>`,
-          ...employeeList.map(e => `<option value="${escapeHtml(e.key)}" ${e.key === selectedEmpKey ? "selected" : ""}>👤 ${escapeHtml(e.label)}</option>`)
+          `<option value="ALL" ${selectedEmpKey === "ALL" ? "selected" : ""}> Seluruh Karyawan (Perusahaan)</option>`,
+          ...employeeList.map(e => `<option value="${escapeHtml(e.key)}" ${e.key === selectedEmpKey ? "selected" : ""}> ${escapeHtml(e.label)}</option>`)
         ].join("");
 
         empSelectorHtml = `
@@ -1364,7 +1364,7 @@ async function loadAttendanceAnalytics(container, session) {
         } else {
           lateDetailSectionHtml = `
             <div class="text-xs bg-emerald-50/80 border border-emerald-100 rounded-xl p-3 text-emerald-800 font-medium flex items-center gap-2">
-              <span class="text-base">🎉</span>
+              <span class="text-base"><i class='fa-solid fa-circle-check' aria-hidden='true'></i></span>
               <span>Luar biasa! Selalu tepat waktu dan tidak pernah keterlambatan pada periode ini.</span>
             </div>
           `;
@@ -1420,7 +1420,7 @@ async function loadAttendanceAnalytics(container, session) {
           <div class="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200/70 space-y-2">
             <div class="flex items-center justify-between flex-wrap gap-2">
               <h4 class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                <span>📊 Grafik Tren Presensi Harian</span>
+                <span><i class='fa-solid fa-chart-column' aria-hidden='true'></i> Grafik Tren Presensi Harian</span>
               </h4>
               <div class="flex items-center gap-3 text-[10px] font-bold">
                 <span class="flex items-center gap-1 text-emerald-700"><span class="w-2.5 h-2.5 bg-emerald-500 rounded-xs inline-block"></span> Tepat Waktu</span>
@@ -2348,7 +2348,7 @@ async function loadSalesPerformanceWidget(container, session, karyawanProfile = 
 
               let statusBadgeHtml = `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200">${escapeHtml(v.status_kunjungan || "Kunjungan")}</span>`;
               if (isEc) {
-                statusBadgeHtml = `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">✓ Effective Call</span>`;
+                statusBadgeHtml = `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1"><i class='fa-solid fa-check' aria-hidden='true'></i> Effective Call</span>`;
               } else if (isStok) {
                 statusBadgeHtml = `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-blue-50 text-blue-800 border border-blue-200">Cek Stok</span>`;
               } else if (isPenawaran) {

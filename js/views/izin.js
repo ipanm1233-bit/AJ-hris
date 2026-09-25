@@ -490,7 +490,7 @@ export async function mount(container, { session }) {
  if (targetEmpNama !== session.nama) {
  await notifyUser(
  targetEmpNama,
- `ℹ️ Pengajuan Izin Dibuatkan oleh HRD`,
+ `Pengajuan Izin Dibuatkan oleh HRD`,
  `Pengajuan ${JENIS_IZIN_MAP[jenisVal]?.label || 'Izin'} Anda untuk tanggal ${tglVal} telah dibuatkan oleh HRD (${session.nama}) dan dikirimkan ke atasan (${atasanVal}).`,
  `#izin`,
  { manual: true }

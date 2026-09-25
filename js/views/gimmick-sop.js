@@ -733,8 +733,8 @@ export async function mount(container) {
  <span class="font-extrabold text-slate-800 text-xs">Langkah Ke-${i + 1}</span>
  </div>
  <div class="flex items-center gap-1">
- ${i > 0 ? `<button data-step-up="${i}" class="p-1 text-slate-500 hover:text-slate-800 text-xs font-bold" title="Naik">⬆️</button>` : ''}
- ${i < steps.length - 1 ? `<button data-step-down="${i}" class="p-1 text-slate-500 hover:text-slate-800 text-xs font-bold" title="Turun">⬇️</button>` : ''}
+ ${i > 0 ? `<button data-step-up="${i}" class="p-1 text-slate-500 hover:text-slate-800 text-xs font-bold" title="Naik"><i class='fa-solid fa-arrow-up' aria-hidden='true'></i></button>` : ''}
+ ${i < steps.length - 1 ? `<button data-step-down="${i}" class="p-1 text-slate-500 hover:text-slate-800 text-xs font-bold" title="Turun"><i class='fa-solid fa-arrow-down' aria-hidden='true'></i></button>` : ''}
  <button data-step-del="${i}" class="p-1 text-rose-500 hover:bg-rose-100 rounded text-xs font-bold" title="Hapus">Hapus</button>
  </div>
  </div>

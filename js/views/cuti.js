@@ -1305,7 +1305,7 @@ export async function mount(container, { session }) {
   <td class="p-3">${escapeHtml(c.keterangan_cuti || "-")}</td>
   <td class="p-3 text-center"><span class="inline-block border px-2.5 py-0.5 rounded-full text-[11px] font-bold ${badgeClass}">${badgeLabel}</span></td>
   <td class="p-3 text-right">
-  <div class="flex flex-wrap items-center justify-end gap-1.5 min-w-[520px]">
+  <div class="flex flex-wrap items-center justify-start gap-2 max-w-[370px]">
   ${sickRecord ? (c.dokumen_sakit_url ? `<a href="${escapeHtml(c.dokumen_sakit_url)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 font-bold transition"><i class="fa-solid fa-file-medical"></i> Surat Dokter</a>` : `<span class="text-[11px] text-slate-500 px-2.5">Catatan sakit • tanpa dokumen</span>`) : `
   <button type="button" data-pdf-cuti="${c.id}" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold transition" title="Unduh Form Cuti PDF">
    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
@@ -1596,7 +1596,7 @@ export async function mount(container, { session }) {
               inCount.readOnly = true;
             }
             if (editDetailHari) {
-              editDetailHari.innerHTML = `<span class="text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200">⏱️ Cuti Setengah Hari: 0.5 Hari Kerja</span>`;
+              editDetailHari.innerHTML = `<span class="text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200"><i class='fa-solid fa-clock' aria-hidden='true'></i> Cuti Setengah Hari: 0.5 Hari Kerja</span>`;
             }
             if (editTenureWarn) {
               editTenureWarn.classList.add("hidden");
@@ -1616,7 +1616,7 @@ export async function mount(container, { session }) {
           if (editDetailHari) {
             if (detail.sundaysCount > 0 || detail.holidaysCount > 0) {
               const holNames = detail.skippedHolidays.map(h => `${h.name} (${h.date})`).join(", ");
-              editDetailHari.innerHTML = `<span class="text-emerald-700 font-semibold">✓ ${detail.totalWorkingDays} Hari Kerja Dihitung</span> <span class="text-slate-500">(Melewatkan ${detail.sundaysCount > 0 ? `${detail.sundaysCount} hari Minggu` : ''}${detail.sundaysCount > 0 && detail.holidaysCount > 0 ? ' & ' : ''}${detail.holidaysCount > 0 ? `${detail.holidaysCount} libur: ${holNames}` : ''})</span>`;
+              editDetailHari.innerHTML = `<span class="text-emerald-700 font-semibold"><i class='fa-solid fa-check' aria-hidden='true'></i> ${detail.totalWorkingDays} Hari Kerja Dihitung</span> <span class="text-slate-500">(Melewatkan ${detail.sundaysCount > 0 ? `${detail.sundaysCount} hari Minggu` : ''}${detail.sundaysCount > 0 && detail.holidaysCount > 0 ? ' & ' : ''}${detail.holidaysCount > 0 ? `${detail.holidaysCount} libur: ${holNames}` : ''})</span>`;
             } else {
               editDetailHari.innerHTML = `<span class="text-slate-500 font-medium">Total: ${detail.totalWorkingDays} Hari Kerja (tidak termasuk Minggu & Libur Nasional/Ditentukan)</span>`;
             }
@@ -1684,7 +1684,7 @@ export async function mount(container, { session }) {
 
           if (jmlHari > empTenure.maxLeaveDays) {
             const confirmOver = await confirmDialog(
-              `⚠️ PERINGATAN KETENTUAN CUTI (SK MASA KERJA)\n\n` +
+              ` PERINGATAN KETENTUAN CUTI (SK MASA KERJA)\n\n` +
               `Durasi cuti (${jmlHari} hari kerja) MELEBIHI batas ketentuan maksimal ${empTenure.maxLeaveDays} hari berturut-turut per bulan (Masa Kerja: ${empTenure.tenureText}).\n\n` +
               `Apakah Anda yakin ingin tetap menyimpan perubahan ini?`,
               { title: "Konfirmasi Perubahan Melebihi Batas Ketentuan", danger: true }
@@ -1745,7 +1745,7 @@ export async function mount(container, { session }) {
 
     openModal({
       title: "Manajemen Cuti Karyawan",
-      size: "lg",
+      size: "xl",
       bodyHtml: `
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-4 border-b border-slate-100">
           <div class="flex items-center gap-3">
@@ -1952,10 +1952,10 @@ export async function mount(container, { session }) {
 
         <!-- PANEL 2: RIWAYAT CUTI -->
         <div id="panel-riwayat-cuti" class="${canManage ? "hidden" : ""}">
-          <div class="max-h-80 overflow-auto border border-slate-100 rounded-lg">
-            <table class="w-full min-w-[760px] text-xs text-left">
+          <div class="max-h-[55vh] overflow-auto border border-slate-200 rounded-xl">
+            <table class="w-full min-w-[920px] text-xs text-left">
               <thead class="bg-slate-50 text-slate-500 border-b border-slate-100">
-                <tr><th class="p-3">Tanggal</th><th class="p-3">Jenis</th><th class="p-3">Keterangan</th><th class="p-3 text-center">Potongan</th>${canManage ? '<th class="p-3 text-right">Aksi</th>' : ''}</tr>
+                <tr><th class="p-3 w-28">Tanggal</th><th class="p-3 min-w-32">Jenis</th><th class="p-3 min-w-44">Keterangan</th><th class="p-3 text-center w-32">Potongan</th>${canManage ? '<th class="p-3 min-w-[350px]">Aksi</th>' : ''}</tr>
               </thead>
               <tbody id="tbody-riwayat-cuti" class="divide-y divide-slate-100">
                 ${renderRiwayatRows(myLeaves)}
@@ -2255,7 +2255,7 @@ export async function mount(container, { session }) {
               if (wrapDaysInfo) {
                 if (detail.sundaysCount > 0 || detail.holidaysCount > 0) {
                   const holList = detail.skippedHolidays.map(h => `${h.name} (${h.date})`).join(", ");
-                  wrapDaysInfo.innerHTML = `<span class="text-emerald-700 font-semibold">✓ ${detail.totalWorkingDays} Hari Kerja Dihitung</span> <span class="text-slate-500">(Melewatkan ${detail.sundaysCount > 0 ? `${detail.sundaysCount} hari Minggu` : ''}${detail.sundaysCount > 0 && detail.holidaysCount > 0 ? ' & ' : ''}${detail.holidaysCount > 0 ? `${detail.holidaysCount} libur: ${holList}` : ''})</span>`;
+                  wrapDaysInfo.innerHTML = `<span class="text-emerald-700 font-semibold"><i class='fa-solid fa-check' aria-hidden='true'></i> ${detail.totalWorkingDays} Hari Kerja Dihitung</span> <span class="text-slate-500">(Melewatkan ${detail.sundaysCount > 0 ? `${detail.sundaysCount} hari Minggu` : ''}${detail.sundaysCount > 0 && detail.holidaysCount > 0 ? ' & ' : ''}${detail.holidaysCount > 0 ? `${detail.holidaysCount} libur: ${holList}` : ''})</span>`;
                 } else {
                   wrapDaysInfo.innerHTML = `<span class="text-slate-500 font-medium">Total: ${detail.totalWorkingDays} Hari Kerja (tidak termasuk Minggu & Libur Nasional/Perusahaan)</span>`;
                 }
@@ -2282,7 +2282,7 @@ export async function mount(container, { session }) {
                     </div>
                     <div class="flex-1 text-xs">
                       <h4 class="font-black text-rose-900 uppercase tracking-wide flex items-center gap-1.5">
-                        ⚠️ PERINGATAN: MELEBIHI BATAS KETENTUAN CUTI BERTURUT-TURUT
+                         PERINGATAN: MELEBIHI BATAS KETENTUAN CUTI BERTURUT-TURUT
                       </h4>
                       <div class="text-[11.5px] text-rose-800 mt-1 leading-relaxed space-y-1">
                         <p>
@@ -2295,7 +2295,7 @@ export async function mount(container, { session }) {
                           Durasi yang diajukan saat ini: <b class="font-mono text-rose-950 px-1.5 py-0.5 bg-white rounded border border-rose-300 font-bold">${countVal} Hari Kerja</b> (eksklusif hari Minggu & Libur).
                         </p>
                         <div class="p-2 bg-rose-100 rounded-lg border border-rose-300 font-semibold text-rose-950 text-xs">
-                          ⚠️ Pengajuan ini melebihi batas ketentuan SOP cuti perusahaan (${countVal} &gt; ${empTenure.maxLeaveDays} Hari Kerja). Harap pastikan persetujuan khusus direksi sebelum melanjutkan.
+                           Pengajuan ini melebihi batas ketentuan SOP cuti perusahaan (${countVal} &gt; ${empTenure.maxLeaveDays} Hari Kerja). Harap pastikan persetujuan khusus direksi sebelum melanjutkan.
                         </div>
                       </div>
                     </div>
@@ -2416,7 +2416,7 @@ export async function mount(container, { session }) {
 
             if (countVal > empTenure.maxLeaveDays) {
               const confirmOver = await confirmDialog(
-                `⚠️ PERINGATAN KETENTUAN CUTI (SK MASA KERJA)\n\n` +
+                ` PERINGATAN KETENTUAN CUTI (SK MASA KERJA)\n\n` +
                 `Sesuai Tabel Tambahan Cuti Penghargaan Masa Kerja:\n` +
                 `• Karyawan: ${k.nama_karyawan}\n` +
                 `• Masa Kerja: ${empTenure.tenureText} (${empTenure.bracketLabel})\n` +
@@ -2941,7 +2941,7 @@ export async function mount(container, { session }) {
               { label: "Durasi Cuti", value: durasiStr },
               { label: "Keperluan", value: pdfData.alasan || pdfData.keterangan_cuti || "-" },
               { label: "Kontak Selama Cuti", value: kontakStr },
-              ...(sickRecord ? [] : [{ label: "Dokumen Terlampir", value: `📎 Form_Cuti_${cleanEmpName}.pdf` }])
+              ...(sickRecord ? [] : [{ label: "Dokumen Terlampir", value: ` Form_Cuti_${cleanEmpName}.pdf` }])
             ],
             secondaryNote: `Mohon pimpinan cabang dan supervisor divisi ${empDivisi || ''} Cabang ${empCabang || ''} dapat menyesuaikan jadwal dan pembagian tugas operasional selama masa cuti karyawan.`
           });

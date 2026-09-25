@@ -21,7 +21,7 @@ module.exports = async function handler(req, res) {
     const tokens = Object.values(tokenMap);
     if (tokens.length && !kontrakSnap.empty) {
       await admin.messaging().sendEachForMulticast({
-        notification: { title: "📄 Kontrak Segera Habis", body: `${kontrakSnap.size} kontrak karyawan perlu ditinjau.` },
+        notification: { title: "Kontrak Segera Habis", body: `${kontrakSnap.size} kontrak karyawan perlu ditinjau.` },
         tokens
       });
     }

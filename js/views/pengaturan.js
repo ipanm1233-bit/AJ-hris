@@ -143,7 +143,7 @@ export async function openMergeAccountsModal(onSuccess = () => {}) {
 
 			${duplicateGroups.length === 0 ? `
 				<div class="p-8 text-center bg-emerald-50/60 rounded-xl border border-emerald-200">
-					<div class="text-3xl mb-2">🎉</div>
+					<div class="text-3xl mb-2"><i class='fa-solid fa-circle-check' aria-hidden='true'></i></div>
 					<div class="text-sm font-bold text-emerald-900">Semua Akun Bersih & Tersinkronisasi!</div>
 					<div class="text-xs text-emerald-700 mt-1">Tidak ditemukan duplikasi akun antara NIK dan Nama Pengguna.</div>
 				</div>
@@ -179,7 +179,7 @@ export async function openMergeAccountsModal(onSuccess = () => {}) {
 				</button>
 				${duplicateGroups.length > 0 ? `
 					<button type="button" id="btn-merge-confirm" class="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-lg shadow-sm transition">
-						⚡ Gabungkan Semua & Sinkronkan Hak Akses
+						 Gabungkan Semua & Sinkronkan Hak Akses
 					</button>
 				` : ''}
 			</div>
@@ -286,7 +286,7 @@ export async function openMergeAccountsModal(onSuccess = () => {}) {
 						console.error("Gagal menggabungkan akun:", e);
 						toast("Gagal memproses: " + e.message, "error");
 						confirmBtn.disabled = false;
-						confirmBtn.innerHTML = "⚡ Gabungkan Semua & Sinkronkan Hak Akses";
+						confirmBtn.innerHTML = " Gabungkan Semua & Sinkronkan Hak Akses";
 					}
 				};
 			}
@@ -305,7 +305,7 @@ async function loadUsersTab(container) {
 		searchFields: ["nama", "username", "role"],
 		extraToolbarHtml: `
 			<button id="btn-merge-users" class="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs sm:text-sm font-bold px-3.5 py-2 rounded-lg transition shadow-sm">
-				⚡ Gabungkan Akun Ganda
+				 Gabungkan Akun Ganda
 			</button>
 			<button id="btn-invite-emp" class="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold px-3.5 py-2 rounded-lg transition shadow-sm">
 				Undang Karyawan

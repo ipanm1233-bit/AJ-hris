@@ -318,19 +318,19 @@ export async function mount(container, { session }) {
      <div class="flex flex-wrap gap-2">
       ${!st.includes("SETUJU") && stLunas !== "LUNAS" ? `
       <button id="btn-hrd-approve" class="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs transition shadow-xs">
-       ✓ Setujui Kasbon
+        Setujui Kasbon
       </button>` : ''}
       
       ${!st.includes("TOLAK") && stLunas !== "LUNAS" ? `
       <button id="btn-hrd-reject" class="px-3.5 py-2 bg-rose-700 hover:bg-rose-800 text-white font-bold rounded-xl text-xs transition shadow-xs">
-       ✕ Tolak Kasbon
+        Tolak Kasbon
       </button>` : ''}
 
       ${stLunas !== "LUNAS" ? `
       <button id="btn-hrd-lunas" class="px-3.5 py-2 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl text-xs transition shadow-xs">
        $ Tandai Sudah Lunas
       </button>` : `
-      <span class="px-3 py-1.5 bg-blue-100 text-blue-900 font-bold rounded-xl text-xs">✓ Status Lunas</span>`}
+      <span class="px-3 py-1.5 bg-blue-100 text-blue-900 font-bold rounded-xl text-xs"><i class='fa-solid fa-check' aria-hidden='true'></i> Status Lunas</span>`}
 
       <button id="btn-hrd-print-pdf" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs transition shadow-xs flex items-center gap-1.5">
        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
@@ -486,7 +486,7 @@ export async function mount(container, { session }) {
     <!-- GUIDANCE & FILE UPLOAD -->
     <div id="fk-guide-wrap" class="p-3.5 bg-amber-50 border border-amber-200 rounded-xl space-y-2 hidden">
      <div class="flex items-start gap-2">
-      <span class="text-amber-600 text-base">ℹ️</span>
+      <span class="text-amber-600 text-base"><i class='fa-solid fa-circle-info' aria-hidden='true'></i></span>
       <div>
        <h5 class="font-bold text-xs text-amber-900" id="fk-guide-title">Ketentuan Kategori</h5>
        <p class="text-[11px] text-amber-800 mt-0.5 leading-relaxed" id="fk-guide-desc">-</p>

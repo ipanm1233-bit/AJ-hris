@@ -651,7 +651,7 @@ function openComposeModal(container, session, karyawan, users, reload) {
  btnSend.innerHTML = `Mengirim Email (0/${targetEmails.length})...`;
  const attachmentLinkHtml = lampiranUrl ? `
    <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:14px 16px;margin:16px 0;">
-     <div style="font-size:12px;font-weight:700;color:#9a3412;margin-bottom:6px;">📎 Lampiran Memo</div>
+     <div style="font-size:12px;font-weight:700;color:#9a3412;margin-bottom:6px;"><i class='fa-solid fa-paperclip' aria-hidden='true'></i> Lampiran Memo</div>
      <a href="${escapeHtml(lampiranUrl)}" target="_blank" rel="noopener noreferrer" style="color:#7a1f2b;font-size:13px;font-weight:700;text-decoration:underline;">
        Buka ${escapeHtml(file?.name || "lampiran")} di Google Drive
      </a>

@@ -212,7 +212,7 @@ export async function mount(container) {
                 <div class="flex items-center gap-2 flex-wrap">
                   <h3 class="text-xl font-bold text-white tracking-tight truncate">${escapeHtml(empData.nama_karyawan || "-")}</h3>
                   <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold ${isAktif ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}">
-                    ${isAktif ? "● AKTIF" : "○ TIDAK AKTIF"}
+                    ${isAktif ? "● AKTIF" : " TIDAK AKTIF"}
                   </span>
                   <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-amber-400/20 text-amber-200 border border-amber-400/30">
                     ${escapeHtml(empData.status_karyawan || "Karyawan")}

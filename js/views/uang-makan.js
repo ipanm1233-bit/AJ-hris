@@ -196,9 +196,9 @@ export async function mount(container) {
         <div class="md:col-span-3">
           <label class="block text-xs font-bold text-slate-700 mb-1">Mode Penarikan</label>
           <select id="um-filter-mode" class="w-full px-3 py-2 text-xs md:text-sm font-semibold rounded-xl border border-slate-200 bg-white focus:border-maroon-500 outline-none">
-            <option value="month">📅 Berdasarkan Bulan & Tahun</option>
-            <option value="range">🗓️ Berdasarkan Rentang Tanggal</option>
-            <option value="all">🌐 Semua Periode Data</option>
+            <option value="month"> Berdasarkan Bulan & Tahun</option>
+            <option value="range"> Berdasarkan Rentang Tanggal</option>
+            <option value="all"> Semua Periode Data</option>
           </select>
         </div>
 

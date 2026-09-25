@@ -482,7 +482,7 @@ export async function mount(container, { session }) {
       if (detailEl) {
         if (detail.sundaysCount > 0 || detail.holidaysCount > 0) {
           const holList = detail.skippedHolidays.map(h => `${h.name} (${h.date})`).join(", ");
-          detailEl.innerHTML = `<span class="text-emerald-700 font-semibold">✓ ${detail.totalWorkingDays} Hari Kerja Dihitung</span> <span class="text-slate-500">(Melewatkan ${detail.sundaysCount > 0 ? `${detail.sundaysCount} hari Minggu` : ''}${detail.sundaysCount > 0 && detail.holidaysCount > 0 ? ' & ' : ''}${detail.holidaysCount > 0 ? `${detail.holidaysCount} libur: ${holList}` : ''})</span>`;
+          detailEl.innerHTML = `<span class="text-emerald-700 font-semibold"><i class='fa-solid fa-check' aria-hidden='true'></i> ${detail.totalWorkingDays} Hari Kerja Dihitung</span> <span class="text-slate-500">(Melewatkan ${detail.sundaysCount > 0 ? `${detail.sundaysCount} hari Minggu` : ''}${detail.sundaysCount > 0 && detail.holidaysCount > 0 ? ' & ' : ''}${detail.holidaysCount > 0 ? `${detail.holidaysCount} libur: ${holList}` : ''})</span>`;
         } else {
           detailEl.innerHTML = `<span class="text-slate-500 font-medium">Total: ${detail.totalWorkingDays} Hari Kerja (tidak termasuk Minggu & Libur Nasional/Perusahaan)</span>`;
         }
@@ -515,7 +515,7 @@ export async function mount(container, { session }) {
               </div>
               <div class="flex-1">
                 <h4 class="text-xs font-black text-rose-900 uppercase tracking-wide flex items-center gap-1.5">
-                  ⛔ MELEBIHI BATAS MAKSIMAL CUTI (AUTO REJECT SISTEM)
+                   MELEBIHI BATAS MAKSIMAL CUTI (AUTO REJECT SISTEM)
                 </h4>
                 <div class="text-[11.5px] text-rose-800 mt-1 leading-relaxed space-y-1.5">
                   <p>
@@ -528,7 +528,7 @@ export async function mount(container, { session }) {
                     Durasi yang Anda ajukan saat ini: <b class="font-mono text-rose-950 px-1.5 py-0.5 bg-white rounded border border-rose-300 font-bold">${durasiNum} Hari Kerja</b>.
                   </p>
                   <div class="p-2 bg-rose-100 rounded-lg border border-rose-300 font-bold text-rose-950 text-xs">
-                    ⚠️ Pengajuan ini melebihi batas ketentuan SOP cuti perusahaan (${durasiNum} &gt; ${employeeTenure.maxLeaveDays} Hari) dan akan <u>OTOMATIS DITOLAK (AUTO REJECT)</u> oleh sistem jika dikirimkan.
+                    <i class='fa-solid fa-triangle-exclamation' aria-hidden='true'></i> Pengajuan ini melebihi batas ketentuan SOP cuti perusahaan (${durasiNum} &gt; ${employeeTenure.maxLeaveDays} Hari) dan akan <u>OTOMATIS DITOLAK (AUTO REJECT)</u> oleh sistem jika dikirimkan.
                   </div>
 
                   <!-- TABEL KETENTUAN MASA KERJA -->
@@ -660,7 +660,7 @@ export async function mount(container, { session }) {
               </div>
               <div class="flex-1">
                 <h4 class="text-xs font-black text-rose-900 uppercase tracking-wide">
-                  ⚠️ PERINGATAN: JATAH ${quotaLabel.toUpperCase()} ${isHabis ? 'TELAH HABIS (0 HARI)' : 'TIDAK MENCUKUPI'}!
+                   PERINGATAN: JATAH ${quotaLabel.toUpperCase()} ${isHabis ? 'TELAH HABIS (0 HARI)' : 'TIDAK MENCUKUPI'}!
                 </h4>
                 <div class="text-[11.5px] text-rose-800 mt-1 leading-relaxed space-y-1">
                   <p>
@@ -793,7 +793,7 @@ export async function mount(container, { session }) {
       const isAutoReject = count > employeeTenure.maxLeaveDays;
       if (isAutoReject) {
         const confirmAutoReject = await confirmDialog(
-          `⛔ PERINGATAN AUTO REJECT SISTEM\n\n` +
+          ` PERINGATAN AUTO REJECT SISTEM\n\n` +
           `Sesuai ketentuan SOP Perusahaan:\n` +
           `• Masa Kerja Anda: ${employeeTenure.tenureText} (${employeeTenure.bracketLabel})\n` +
           `• Batas Maksimal Pengambilan Cuti: ${employeeTenure.maxLeaveDays} Hari Kerja (tidak termasuk Minggu & Libur Nasional)\n` +
@@ -830,7 +830,7 @@ export async function mount(container, { session }) {
         const chkAgree = document.getElementById("fc-force-potong-gaji");
         if (!chkAgree || !chkAgree.checked) {
           const okConfirm = await confirmDialog(
-            `⚠️ PERINGATAN PEMOTONGAN GAJI (UNPAID LEAVE)\n\n` +
+            ` PERINGATAN PEMOTONGAN GAJI (UNPAID LEAVE)\n\n` +
             `Jatah cuti Anda ${availableQuota <= 0 ? 'telah HABIS (0 Hari)' : 'tidak mencukupi (Sisa jatah: ' + availableQuota + ' Hari)'}.\n` +
             `Total durasi yang diajukan: ${count} Hari Kerja\n` +
             `Jumlah hari yang akan MEMOTONG GAJI: ${excessDays} Hari Kerja\n\n` +
@@ -976,7 +976,7 @@ export async function mount(container, { session }) {
         await setDoc(doc(db, COL.DATA_PENGAJUAN, refNo), payload);
 
         if (isAutoReject) {
-          toast(`⛔ Pengajuan Cuti Ditolak Otomatis (Auto Reject): Durasi ${count} hari kerja melebihi batas maksimal masa kerja Anda (${employeeTenure.maxLeaveDays} hari).`, "error");
+          toast(` Pengajuan Cuti Ditolak Otomatis (Auto Reject): Durasi ${count} hari kerja melebihi batas maksimal masa kerja Anda (${employeeTenure.maxLeaveDays} hari).`, "error");
         } else {
           toast(isPotongGajiApplied 
             ? "Pengajuan cuti potong gaji tersimpan. Email dan notifikasi menunggu dikirim manual oleh HRD."

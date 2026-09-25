@@ -308,7 +308,7 @@ export async function mount(container, { session }) {
         toast("Error kirim email: " + err.message, "error");
       }
       btnTestEmKendaraan.disabled = false;
-      btnTestEmKendaraan.textContent = "✉️ Uji Coba Kirim";
+      btnTestEmKendaraan.textContent = " Uji Coba Kirim";
     };
   }
 
@@ -384,7 +384,7 @@ export async function mount(container, { session }) {
         if (!urgentItems.length) {
           toast("Semua armada kendaraan dalam kondisi aman (tidak ada yang jatuh tempo dalam waktu dekat).", "info");
           btnScanSendKendaraan.disabled = false;
-          btnScanSendKendaraan.textContent = "🚀 Scan & Kirim Rekap Pajak Sekarang";
+          btnScanSendKendaraan.textContent = " Scan & Kirim Rekap Pajak Sekarang";
           return;
         }
 
@@ -447,7 +447,7 @@ export async function mount(container, { session }) {
       }
 
       btnScanSendKendaraan.disabled = false;
-      btnScanSendKendaraan.textContent = "🚀 Scan & Kirim Rekap Pajak Sekarang";
+      btnScanSendKendaraan.textContent = " Scan & Kirim Rekap Pajak Sekarang";
     };
   }
 
@@ -483,7 +483,7 @@ export async function mount(container, { session }) {
       else toast("Gagal mengirim email uji coba kontrak.", "error");
 
       btnTestEmKontrak.disabled = false;
-      btnTestEmKontrak.textContent = "✉️ Uji Coba Kirim";
+      btnTestEmKontrak.textContent = " Uji Coba Kirim";
     };
   }
 
@@ -529,7 +529,7 @@ export async function mount(container, { session }) {
         if (!urgentContracts.length) {
           toast("Seluruh kontrak karyawan dalam status aman (tidak ada yang habis dalam waktu dekat).", "info");
           btnScanSendKontrak.disabled = false;
-          btnScanSendKontrak.textContent = "🚀 Scan & Kirim Rekap Kontrak Sekarang";
+          btnScanSendKontrak.textContent = " Scan & Kirim Rekap Kontrak Sekarang";
           return;
         }
 
@@ -588,7 +588,7 @@ export async function mount(container, { session }) {
       }
 
       btnScanSendKontrak.disabled = false;
-      btnScanSendKontrak.textContent = "🚀 Scan & Kirim Rekap Kontrak Sekarang";
+      btnScanSendKontrak.textContent = " Scan & Kirim Rekap Kontrak Sekarang";
     };
   }
 
@@ -622,7 +622,7 @@ export async function mount(container, { session }) {
       else toast("Gagal mengirim email uji coba KPI.", "error");
 
       btnTestEmKpi.disabled = false;
-      btnTestEmKpi.textContent = "✉️ Uji Coba Kirim";
+      btnTestEmKpi.textContent = " Uji Coba Kirim";
     };
   }
 
@@ -655,7 +655,7 @@ export async function mount(container, { session }) {
       else toast("Gagal mengirim email uji coba LPJ/Kalender.", "error");
 
       btnTestEmKasbon.disabled = false;
-      btnTestEmKasbon.textContent = "✉️ Uji Coba Kirim LPJ / Kalender";
+      btnTestEmKasbon.textContent = " Uji Coba Kirim LPJ / Kalender";
     };
   }
 
@@ -853,7 +853,7 @@ export async function mount(container, { session }) {
 
         try {
           const testHtml = buildStandardEmailHtml({
-            badgeText: "✉️ UJI COBA EMAIL CABANG • HRIS ANDELA",
+            badgeText: " UJI COBA EMAIL CABANG • HRIS ANDELA",
             badgeVariant: "maroon",
             title: `Tes Notifikasi Email Otomatis Cabang ${bName}`,
             recipientName: `Koordinator & Tim Cabang ${bName}`,
