@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { fingerprintAttendanceByIds, mappingForScan, planManualFingerprintRows, validateManualMapping } = require('../lib/fingerprint-mappings.js');
+const { fingerprintAttendanceByIds, mappingForScan, planManualFingerprintRows, validateManualMapping, automaticRosterCandidate } = require('../lib/fingerprint-mappings.js');
 
 const employee = { nik: '1052204600', nama_karyawan: 'PHILIP TAMZIR', cabang: 'CIREBON' };
 const input = { cabang: 'CIREBON', empNo: '80', noId: '211', fingerName: 'PHILIP TAMZIR',
@@ -60,4 +60,15 @@ test('a machine roster mapping uses Emp No. while retaining the log user ID', ()
   assert.equal(plan.updates.length, 1);
   assert.equal(plan.updates[0].fingerprint_user_id, '4');
   assert.equal(plan.updates[0].fingerprint_emp_no, '210');
+});
+
+test('auto-maps only one matching master identity without a conflicting machine ID', () => {
+  const angga = { nik: '1062408930', nama_karyawan: 'ANGGA ARDIANSAH', finger_name: 'ANGGA', cabang: 'CIREBON' };
+  const other = { nik: '2000', nama_karyawan: 'BUDI', cabang: 'CIREBON', fingerprint_no_id: '7' };
+  const user = { deviceUserId: '4', empNo: '210', noId: '4', name: 'ANGGA' };
+  assert.equal(automaticRosterCandidate(user, 'CIREBON', [angga, other]), angga);
+  assert.equal(automaticRosterCandidate(user, 'MALANG', [angga]), null);
+  assert.equal(automaticRosterCandidate(user, 'CIREBON', [angga, { ...angga, nik: '3000' }]), null);
+  assert.equal(automaticRosterCandidate(user, 'CIREBON', [{ ...angga, fingerprint_no_id: '95' }]), null);
+  assert.equal(automaticRosterCandidate(user, 'CIREBON', [angga, { ...other, fingerprint_no_id: '4' }]), null);
 });
