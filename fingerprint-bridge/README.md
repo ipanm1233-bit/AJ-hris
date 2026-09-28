@@ -1,6 +1,8 @@
 # AJ HRIS Fingerprint Bridge — Solution X150
 
-Bridge ini dijalankan pada satu komputer Windows kantor yang berada dalam LAN yang sama dengan mesin. Bridge **hanya membaca** log; tidak menghapus log atau pengguna dari mesin.
+Bridge ini dijalankan pada satu komputer Windows kantor yang berada dalam LAN yang sama dengan mesin. Bridge **hanya membaca** log dan daftar akun pengguna; tidak membaca template sidik jari, serta tidak menghapus atau mengubah data mesin.
+
+Untuk memetakan akun mesin, buka **Absensi → Data Absensi → Pengguna Mesin Finger**, pilih mesin, lalu klik **Tarik daftar dari mesin**. Connector yang sudah diperbarui mengirim daftar pada siklus berikutnya, meskipun belum ada scan baru. Klik **Muat ulang**, periksa Nama Finger, Emp No., No. ID, dan ID log, lalu pilih **Petakan** untuk menghubungkannya ke karyawan HRIS. Pemetaan ini berlaku untuk sinkronisasi berikutnya; data absensi lama yang sudah salah harus diperiksa dan dikoreksi tersendiri. Jika daftar tidak muncul, gunakan **Perbarui Connector** pada Konfigurasi Mesin di komputer cabang.
 
 Sinkronisasi otomatis selalu memeriksa ulang sedikitnya satu hari sebelum tanggal terakhir yang tersimpan. Karena endpoint memakai upsert per karyawan per tanggal, pemeriksaan ulang tidak membuat data ganda dan memungkinkan scan pulang yang baru muncul setelah pergantian hari memperbarui absensi kemarin.
 

@@ -50,3 +50,14 @@ test('manual mapping retains the first machine scan and never overwrites another
   assert.equal(planManualFingerprintRows([pending, { ...mapped, nik: '9999' }], saved).updates.length, 0);
   assert.equal(planManualFingerprintRows([pending, { ...mapped, cabang: 'MALANG' }], saved).updates[0].nik, employee.nik);
 });
+
+test('a machine roster mapping uses Emp No. while retaining the log user ID', () => {
+  const rosterMapping = { ...saved, emp_no: '210', no_id: '4', finger_name: 'ANGGA', effective_from: '2026-09-21' };
+  const pending = { id: 'PENDING-ANGGA', nik: 'FINGER-CIREBON-4', cabang: 'CIREBON',
+    tanggal: '2026-09-21', fingerprint_user_id: '4', fingerprint_emp_no: '210',
+    fingerprint_no_id: '4', fingerprint_name: 'ANGGA', scan_masuk: '07:51' };
+  const plan = planManualFingerprintRows([pending], rosterMapping);
+  assert.equal(plan.updates.length, 1);
+  assert.equal(plan.updates[0].fingerprint_user_id, '4');
+  assert.equal(plan.updates[0].fingerprint_emp_no, '210');
+});
