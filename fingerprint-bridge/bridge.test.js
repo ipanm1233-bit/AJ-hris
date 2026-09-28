@@ -31,6 +31,12 @@ test('normalizes Solution X150 users for automatic employee mapping', () => {
     noId: '81',
     name: 'Budi Santoso'
   });
+  assert.deepEqual(normalizeDeviceUser({ uid: 210, userId: 4, name: 'ANGGA' }), {
+    deviceUserId: '4', empNo: '210', noId: '4', name: 'ANGGA'
+  });
+  assert.deepEqual(normalizeDeviceUser({ uid: 211, userId: 5 }), {
+    deviceUserId: '5', empNo: '211', noId: '5', name: ''
+  });
 });
 
 test('builds an incremental fingerprint date range', () => {

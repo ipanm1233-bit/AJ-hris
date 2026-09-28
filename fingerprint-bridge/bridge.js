@@ -60,7 +60,7 @@ function normalizeDeviceUser(user) {
   const noId = String(user?.userId ?? user?.deviceUserId ?? user?.pin ?? '').trim();
   const deviceUserId = noId || empNo;
   const name = String(user?.name ?? user?.username ?? user?.userName ?? '').trim();
-  if (!deviceUserId || !name) return null;
+  if (!deviceUserId) return null;
   return { deviceUserId, empNo, noId, name };
 }
 
@@ -191,11 +191,15 @@ async function readDevice() {
     const identity = await deviceIdentity(device);
     // X150 hanya aman menerima satu command pada satu waktu. Menjalankan
     // getUsers dan getAttendances bersamaan dapat membuat daftar log kosong.
-    const users = await device.getUsers().catch(() => ({ data: [] }));
+    let users;
+    let usersError = '';
+    try { users = await device.getUsers(); }
+    catch (error) { users = { data: [] }; usersError = String(error?.message || error); }
     const attendance = await device.getAttendances();
     return {
       ...identity,
       protocol,
+      usersError,
       logs: attendanceRows(attendance).map(normalizeDeviceLog).filter(Boolean),
       users: userRows(users).map(normalizeDeviceUser).filter(Boolean)
     };
@@ -248,6 +252,15 @@ async function synchronize({ checkOnly = false, fromDate = '', toDate = '' } = {
   if (checkOnly) {
     console.log('Info mesin:', result.info || '(tidak tersedia)');
     return;
+  }
+
+  // Inventaris pengguna mesin ditarik terpisah dari log. Permintaan HRD tetap
+  // berhasil meskipun pada periode ini tidak ada satu pun scan.
+  if (centralConfig?.rosterRequest?.id) {
+    if (result.usersError) throw new Error(`Daftar pengguna mesin gagal dibaca: ${result.usersError}`);
+    await sendPayload({ action: 'users_snapshot', requestId: centralConfig.rosterRequest.id,
+      branch: String(process.env.FINGERPRINT_BRANCH || 'CIREBON').trim().toUpperCase(), users: result.users });
+    console.log(`Daftar pengguna mesin berhasil dikirim: ${result.users.length} akun.`);
   }
 
   const today = localDateTime(new Date()).slice(0, 10);

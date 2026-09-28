@@ -90,6 +90,7 @@ export async function mount(container, { session, params } = {}) {
  const inputUpload = container.querySelector("#absen-upload");
  const btnExport = container.querySelector("#btn-export-absen");
  const btnManageFingerMappings = container.querySelector("#btn-manage-finger-mappings");
+ const btnMachineUsers = container.querySelector('#btn-machine-users');
  
  const panelProses = container.querySelector("#absen-panel-proses");
  const panelDashboard = container.querySelector("#absen-panel-dashboard");
@@ -209,6 +210,78 @@ export async function mount(container, { session, params } = {}) {
    finally { btnReconcileFinger.disabled = false; btnReconcileFinger.textContent = 'Petakan ulang finger'; }
   };
  }
+ if (btnMachineUsers && ['HRD', 'SUPERADMIN'].includes(userRole)) {
+  btnMachineUsers.classList.remove('hidden');
+  btnMachineUsers.onclick = async () => {
+   try {
+    const [{ devices }, { mappings }] = await Promise.all([
+     fingerprintApi('admin_list_devices'), attendanceAccessApi('attendance_mapping_list')
+    ]);
+    if (!devices.length) return toast('Belum ada mesin yang dipasangkan di pengaturan fingerprint.', 'warning');
+    let selectedId = devices.find(device => device.branch === filterState.branch)?.id || devices[0].id;
+    const showRoster = async () => {
+     const { device, users } = await fingerprintApi('admin_list_users', { deviceId: selectedId });
+     const activeMappings = mappings.filter(item => item.active && item.cabang === device.branch);
+     const rows = users.map((user, index) => {
+      const matching = activeMappings.filter(item => item.emp_no === (user.empNo || user.deviceUserId) &&
+       item.no_id === (user.noId || user.deviceUserId) && normalizeToken(item.finger_name) === normalizeToken(user.name));
+      return `<tr class="border-t border-slate-100" data-user-index="${index}"><td class="p-2">${escapeHtml(user.name || '(Tanpa nama)')}</td>
+       <td class="p-2">${escapeHtml(user.empNo || '-')}</td><td class="p-2">${escapeHtml(user.noId || '-')}</td>
+       <td class="p-2">${escapeHtml(user.deviceUserId)}</td><td class="p-2">${matching.length === 1 ? escapeHtml(matching[0].nama_karyawan) : matching.length ? 'Konflik pemetaan' : 'Belum dipetakan'}</td>
+       <td class="p-2">${matching.length === 1 ? '' : user.name ? `<button type="button" data-map-user="${index}" class="font-semibold text-indigo-700 hover:underline">Petakan</button>` : 'Lengkapi nama di mesin'}</td></tr>`;
+     });
+     openModal({ title: 'Pengguna Mesin Finger', size: 'xl', bodyHtml: `
+      <div class="text-left space-y-3 text-sm text-slate-700">
+       <div class="flex flex-wrap items-center gap-2"><label for="fp-roster-device">Mesin</label>
+        <select id="fp-roster-device" class="border border-slate-300 rounded-lg px-2 py-2">${devices.map(item => `<option value="${escapeHtml(item.id)}" ${item.id === selectedId ? 'selected' : ''}>${escapeHtml(item.branch)} · ${escapeHtml(item.name)}</option>`).join('')}</select>
+        <button id="fp-roster-pull" type="button" class="bg-indigo-700 text-white rounded-lg px-3 py-2 font-semibold">Tarik daftar dari mesin</button>
+        <button id="fp-roster-refresh" type="button" class="border border-slate-300 rounded-lg px-3 py-2">Muat ulang</button></div>
+       <p class="text-xs text-slate-600">${device.rosterPending ? 'Permintaan sedang menunggu connector berjalan. ' : ''}${device.rosterUpdatedAt ? `Terakhir ditarik ${escapeHtml(new Date(device.rosterUpdatedAt).toLocaleString('id-ID'))} · ${users.length} akun.` : 'Belum ada daftar tersimpan untuk mesin ini.'} Pemetaan tidak mengubah akun atau sidik jari di mesin.</p>
+       <input id="fp-roster-search" type="search" placeholder="Cari nama, Emp No., atau No. ID" class="w-full border border-slate-300 rounded-lg px-3 py-2">
+       <div class="max-h-96 overflow-auto"><table class="w-full text-left text-xs"><thead><tr><th class="p-2">Nama finger</th><th class="p-2">Emp No.</th><th class="p-2">No. ID</th><th class="p-2">ID log</th><th class="p-2">Karyawan HRIS</th><th class="p-2">Aksi</th></tr></thead><tbody>${rows.join('') || '<tr><td colspan="6" class="p-4 text-center">Daftar masih kosong.</td></tr>'}</tbody></table></div>
+      </div>`, onMount: modal => {
+       modal.querySelector('#fp-roster-device').onchange = event => { selectedId = event.target.value; showRoster().catch(error => toast(error.message, 'error')); };
+       modal.querySelector('#fp-roster-refresh').onclick = () => showRoster().catch(error => toast(error.message, 'error'));
+       modal.querySelector('#fp-roster-pull').onclick = async event => {
+        event.target.disabled = true;
+        try { await fingerprintApi('admin_request_users', { deviceId: selectedId });
+         toast('Permintaan dikirim. Jalankan atau tunggu siklus connector berikutnya, lalu pilih Muat ulang.', 'success');
+         await showRoster();
+        } catch (error) { event.target.disabled = false; toast(error.message, 'error'); }
+       };
+       modal.querySelector('#fp-roster-search').oninput = event => {
+        const term = normalizeToken(event.target.value);
+        modal.querySelectorAll('[data-user-index]').forEach(tr => { tr.hidden = !normalizeToken(tr.textContent).includes(term); });
+       };
+       modal.querySelectorAll('[data-map-user]').forEach(button => { button.onclick = () => {
+        const user = users[Number(button.dataset.mapUser)];
+        const employees = employeeRowsGlobal.filter(item => normalizeToken(item.cabang) === device.branch &&
+         (item.nik || item.nik_karyawan) && (item.nama_karyawan || item.nama));
+        if (!employees.length) return toast('Master karyawan cabang ini belum dimuat.', 'warning');
+        const options = employees.sort((a, b) => String(a.nama_karyawan || a.nama).localeCompare(String(b.nama_karyawan || b.nama), 'id'))
+         .map(item => `<option value="${escapeHtml(item.nik || item.nik_karyawan)}">${escapeHtml(item.nama_karyawan || item.nama)} · ${escapeHtml(item.nik || item.nik_karyawan)}</option>`).join('');
+        openModal({ title: `Petakan ${user.name}`, size: 'lg', bodyHtml: `<form id="fp-roster-map" class="text-left space-y-3 text-sm">
+         <p>${escapeHtml(device.branch)} · Emp No. ${escapeHtml(user.empNo || '-')} · No. ID ${escapeHtml(user.noId || '-')}</p>
+         <label class="block">Karyawan HRIS<select name="nik" required class="mt-1 w-full border rounded-lg px-3 py-2"><option value="">Pilih karyawan</option>${options}</select></label>
+         <label class="block">Berlaku mulai<input name="effectiveFrom" type="date" required value="${new Date().toISOString().slice(0, 10)}" class="mt-1 w-full border rounded-lg px-3 py-2"></label>
+         <label class="block">Berlaku sampai (opsional)<input name="effectiveTo" type="date" class="mt-1 w-full border rounded-lg px-3 py-2"></label>
+         <label class="block">Alasan verifikasi<textarea name="reason" required minlength="10" maxlength="1000" class="mt-1 w-full border rounded-lg px-3 py-2"></textarea></label>
+         <button type="submit" class="bg-indigo-700 text-white rounded-lg px-4 py-2 font-semibold">Simpan pemetaan</button></form>`, onMount: formModal => {
+          formModal.querySelector('#fp-roster-map').onsubmit = async event => {
+           event.preventDefault(); const submit = event.target.querySelector('button[type="submit"]'); submit.disabled = true;
+           try { await attendanceAccessApi('attendance_mapping_save_roster', { deviceId: device.id, deviceUserId: user.deviceUserId,
+             ...Object.fromEntries(new FormData(event.target)) });
+            toast('Pemetaan disimpan untuk sinkronisasi berikutnya.', 'success'); closeModal();
+           } catch (error) { submit.disabled = false; toast(error.message, 'error'); }
+          };
+         } });
+       }; });
+      } });
+    };
+    await showRoster();
+   } catch (error) { toast('Daftar pengguna mesin gagal dimuat: ' + error.message, 'error'); }
+  };
+ }
  if (btnManageFingerMappings && roleIsHrdOrAdmin) {
   btnManageFingerMappings.classList.remove('hidden');
   btnManageFingerMappings.onclick = async () => {
@@ -284,7 +357,7 @@ export async function mount(container, { session, params } = {}) {
    String(row.nik || '').toUpperCase().startsWith('FINGER-') && !row._archive_source && row.id);
   const groups = new Map();
   for (const row of rows) {
-   const empNo = String(row.emp_no || row.fingerprint_user_id || '').trim();
+   const empNo = String(row.fingerprint_emp_no || row.emp_no || row.fingerprint_user_id || '').trim();
    const noId = String(row.no_id || row.fingerprint_no_id || '').trim();
    const fingerName = String(row.nama_finger || row.fingerprint_name || '').trim();
    if (!empNo || !noId || !fingerName) return toast('Ada baris tanpa Emp No., No. ID, atau nama finger. Periksa datanya terlebih dahulu.', 'warning');

@@ -140,6 +140,11 @@ function publicDeviceConfig(snapshot) {
     online,
     lastSyncAt: data.lastSyncAt?.toDate?.()?.toISOString?.() || data.lastSyncAt || null,
     lastError: String(data.lastError || '').slice(0, 300),
+    rosterUpdatedAt: data.rosterUpdatedAt?.toDate?.()?.toISOString?.() || data.rosterUpdatedAt || null,
+    rosterCount: Number(data.rosterCount || 0),
+    rosterPending: Boolean(data.rosterRequest?.id),
+    rosterError: String(data.rosterError || '').slice(0, 300),
+    rosterRequest: data.rosterRequest?.id ? { id: String(data.rosterRequest.id) } : null,
     resyncRequest: data.resyncRequest && validIsoDate(data.resyncRequest.fromDate) ? {
       id: String(data.resyncRequest.id || ''),
       fromDate: String(data.resyncRequest.fromDate),
@@ -173,6 +178,16 @@ async function handleAdminDeviceAction(req, res, body) {
     const rows = snapshot.docs.map(publicDeviceConfig).sort((a, b) => a.branch.localeCompare(b.branch) || a.name.localeCompare(b.name));
     res.status(200).json({ success: true, devices: rows });
     return true;
+  }
+
+  if (body.action === 'admin_list_users') {
+    const id = cleanDeviceId(body.deviceId);
+    if (!id) return res.status(400).json({ success: false, error: 'ID mesin tidak valid.' });
+    const snapshot = await devices.doc(id).get();
+    if (!snapshot.exists) return res.status(404).json({ success: false, error: 'Mesin tidak ditemukan.' });
+    const data = snapshot.data() || {};
+    const users = Array.isArray(data.rosterUsers) ? data.rosterUsers : [];
+    return res.status(200).json({ success: true, device: publicDeviceConfig(snapshot), users });
   }
 
   if (body.action === 'admin_create_device') {
@@ -229,6 +244,18 @@ async function handleAdminDeviceAction(req, res, body) {
     const updated = await ref.get();
     res.status(200).json({ success: true, device: publicDeviceConfig(updated) });
     return true;
+  }
+
+  if (body.action === 'admin_request_users') {
+    if (!snapshot.data()?.tokenHash || snapshot.data()?.enabled === false) {
+      return res.status(400).json({ success: false, error: 'Pasangkan dan aktifkan mesin sebelum menarik daftar pengguna.' });
+    }
+    const requestId = crypto.randomBytes(12).toString('hex');
+    await ref.set({ rosterRequest: { id: requestId, requestedAt: new Date().toISOString(), requestedBy: context.user.uid },
+      rosterError: '', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    await writeAuditLog(context.db, req, context.user, { action: 'FINGERPRINT_USERS_REQUESTED',
+      module: 'ATTENDANCE', recordId: id });
+    return res.status(200).json({ success: true, requestId });
   }
 
   if (body.action === 'admin_pairing_code') {
@@ -443,6 +470,31 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ success: true, config: publicDeviceConfig(pairedDevice.snapshot) });
     }
 
+    if (req.body?.action === 'users_snapshot') {
+      if (!pairedDevice) return res.status(400).json({ success: false, error: 'Daftar pengguna memerlukan mesin yang sudah dipasangkan.' });
+      const currentRequest = pairedDevice.snapshot.data()?.rosterRequest;
+      if (!currentRequest?.id || !timingSafeTextEqual(String(req.body.requestId || ''), String(currentRequest.id))) {
+        return res.status(409).json({ success: false, error: 'Permintaan daftar pengguna tidak aktif atau sudah diganti.' });
+      }
+      const input = req.body.users;
+      if (!Array.isArray(input) || input.length > 3000) return res.status(400).json({ success: false, error: 'Daftar pengguna mesin tidak valid atau terlalu besar.' });
+      const users = input.map(item => ({
+        deviceUserId: String(item?.deviceUserId || '').trim().slice(0, 60),
+        empNo: String(item?.empNo || '').trim().slice(0, 60),
+        noId: String(item?.noId || '').trim().slice(0, 60),
+        name: String(item?.name || '').trim().slice(0, 100)
+      }));
+      if (users.some(item => !item.deviceUserId) ||
+          new Set(users.map(item => item.deviceUserId.toUpperCase())).size !== users.length ||
+          Buffer.byteLength(JSON.stringify(users)) > 700_000) {
+        return res.status(400).json({ success: false, error: 'Identitas pengguna mesin ganda, tidak lengkap, atau melebihi kapasitas.' });
+      }
+      await pairedDevice.snapshot.ref.set({ rosterUsers: users, rosterCount: users.length,
+        rosterUpdatedAt: admin.firestore.FieldValue.serverTimestamp(), rosterRequest: admin.firestore.FieldValue.delete(),
+        rosterError: '', lastSeenAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      return res.status(200).json({ success: true, count: users.length });
+    }
+
     if (req.body?.action === 'sync_complete') {
       if (!pairedDevice) return res.status(400).json({ success: false, error: 'Konfirmasi sinkronisasi memerlukan mesin yang dipasangkan.' });
       const requestId = String(req.body?.requestId || '').trim();
@@ -627,9 +679,12 @@ module.exports = async function handler(req, res) {
       // historis. ID yang pernah tercatat atas nama lain harus direkonsiliasi.
       const machineName = deviceUserNameMap.get(exactKey);
       const noId = deviceUserMetadataMap.get(exactKey)?.noId;
+      const machineEmpNo = deviceUserMetadataMap.get(exactKey)?.empNo || exactKey;
       const mapping = mappingForScan(manualMappings, {
+        branch, empNo: machineEmpNo, noId, fingerName: machineName, date
+      }) || (machineEmpNo !== exactKey ? mappingForScan(manualMappings, {
         branch, empNo: exactKey, noId, fingerName: machineName, date
-      });
+      }) : null);
       if (mapping) {
         const registered = employees.filter(employee => String(employee.nik || employee.nik_karyawan || '').trim() === mapping.nik &&
           normalizeBranch(employee.cabang) === branch);
