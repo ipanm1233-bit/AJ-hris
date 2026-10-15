@@ -19,7 +19,7 @@ const cronCheckKontrak = require('./api/cron-check-kontrak.js');
 const cronRekapCuti = require('./api/cron-rekap-cuti.js');
 const sendPush = require('./api/send-push.js');
 const syncAbsen = require('./api/sync-absen.js');
-const kanalProxy = require('./api/kanal-proxy.js');
+// Kanal API proxy removed - no longer used.
 const sendEmail = require('./api/send-email.js');
 const proxyImage = require('./api/proxy-image.js');
 const geminiProxy = require('./api/gemini.js');
@@ -95,14 +95,7 @@ app.all('/api/sync-absen', async (req, res, next) => {
   }
 });
 
-app.all('/api/kanal-proxy', async (req, res, next) => {
-  try {
-    await kanalProxy(req, res);
-  } catch (error) {
-    console.error("Error in kanal-proxy:", error);
-    next(error);
-  }
-});
+// /api/kanal-proxy endpoint removed (Kanal API no longer used).
 
 app.all('/api/send-email', async (req, res, next) => {
   try {
