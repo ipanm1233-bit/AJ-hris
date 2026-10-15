@@ -1018,30 +1018,9 @@ async function loadKanalTab(container) {
  statusBox.classList.add("bg-slate-50", "border-slate-200", "text-slate-700");
  statusBox.innerHTML = `Menghubungi Server API Kanal (${escapeHtml(company)})...`;
 
- try {
- const proxyResp = await authFetch("/api/kanal-proxy", {
- method: "POST",
- headers: { "Content-Type": "application/json" },
- body: JSON.stringify({
- url: url,
- company: company
- })
- });
-
- const proxyData = await proxyResp.json();
-
  statusBox.classList.remove("bg-slate-50", "border-slate-200", "text-slate-700");
- if (proxyData.success) {
- statusBox.classList.add("bg-emerald-50", "border-emerald-200", "text-emerald-800");
- statusBox.innerHTML = `Otentikasi & Koneksi API Kanal Berhasil! Perusahaan: <b>${escapeHtml(company)}</b> | Token Akses Valid (Aktif s.d 31 Juli 2026).`;
- } else {
- statusBox.classList.add("bg-emerald-50", "border-emerald-200", "text-emerald-800");
- statusBox.innerHTML = `Credentials API Kanal untuk <b>${escapeHtml(company)}</b> tervalidasi di sistem (API Key: ${escapeHtml(key.substring(0, 8))}...). Status HTTP: ${proxyData.statusCode || 'Valid'}.`;
- }
- } catch (e) {
- statusBox.classList.add("bg-emerald-50", "border-emerald-200", "text-emerald-800");
- statusBox.innerHTML = `Credentials API Kanal untuk <b>${escapeHtml(company)}</b> tervalidasi dan tersimpan di sistem.`;
- }
+ statusBox.classList.add("bg-amber-50", "border-amber-200", "text-amber-800");
+ statusBox.innerHTML = `API Kanal sudah tidak digunakan lagi. Konfigurasi disimpan hanya untuk arsip data lokal.`;
  });
 
  // Render synced data log table
@@ -1110,38 +1089,9 @@ async function loadKanalTab(container) {
  yesterday.setDate(yesterday.getDate() - 1);
  const yesterdayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(yesterday);
 
- // Attempt live fetch from external Kanal API via server-side proxy
- let liveItems = [];
- let isLiveSuccess = false;
- try {
- const proxyResp = await authFetch("/api/kanal-proxy", {
- method: "POST",
- headers: { "Content-Type": "application/json" },
- body: JSON.stringify({
- url: url,
- company: company,
- dataType: type
- })
- });
-
- const proxyData = await proxyResp.json();
- if (proxyData.success && proxyData.data) {
- const raw = proxyData.data;
- if (Array.isArray(raw)) liveItems = raw;
- else if (raw && Array.isArray(raw.data)) liveItems = raw.data;
- else if (raw && Array.isArray(raw.items)) liveItems = raw.items;
- else if (raw && Array.isArray(raw.checkins)) liveItems = raw.checkins;
- 
- if (liveItems.length > 0) {
- isLiveSuccess = true;
- }
- } else {
- console.log("Kanal Proxy response notice:", proxyData);
- }
- } catch (e) {
- console.log("Kanal Proxy error:", e);
- }
-
+ // Kanal API sudah tidak digunakan lagi; liveItems tetap kosong.
+ const liveItems = [];
+ const isLiveSuccess = false;
  // Fetch active employees from Master Karyawan to find Sales team
  let karyawanList = [];
  try {

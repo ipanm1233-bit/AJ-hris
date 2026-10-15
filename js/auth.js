@@ -750,7 +750,12 @@ export async function computeVisibleMenus(session) {
   return list;
  }
 
- const isAtasanRole = await isAtasan(session.nama);
+ // GM: akses semua menu, tetapi hanya sebagai penglihat (view-only).
+  if (role === "GM") {
+    return MENU_CONFIG.slice();
+  }
+
+  const isAtasanRole = await isAtasan(session.nama);
  const isManagementOrHrd = ["HRD", "SUPERADMIN", "DIREKTUR", "MANAGER", "SPV", "KOORDINATOR", "GM", "FINANCE", "GA", "BRANCH MANAGER"].includes(role) || isAtasanRole;
 
  // Sesuai instruksi: Menu Default Standar Karyawan hanya berisi:
@@ -880,7 +885,7 @@ export async function getUserPermissionSummary(session) {
   const allowedActions = isSuperadmin
     ? ["*"]
     : (isCustom && Array.isArray(override.allowed_actions) ? override.allowed_actions : (preset || []));
-  const readOnly = isSuperadmin ? false : (override?.read_only === true);
+  const readOnly = isSuperadmin ? false : (role === "GM" ? true : (override?.read_only === true));
 
   return {
     isSuperadmin: isSuperadmin,
@@ -936,6 +941,8 @@ export async function canEditModuleData(session) {
  if (userOverride && typeof userOverride.read_only === "boolean") {
  return !userOverride.read_only;
  }
+ // GM hanya sebagai penglihat (view-only), tidak boleh mengedit/input data.
+ if (role === "GM") return false;
  return _MANAGEMENT_ROLES.includes(role);
 }
 
@@ -954,10 +961,12 @@ export function canDeleteModuleData(session) {
  ) {
   return false;
  }
- return ["SUPERADMIN", "HRD", "DIREKTUR", "DIRECTOR", "GM"].includes(role);
+ return ["SUPERADMIN", "HRD", "DIREKTUR", "DIRECTOR"].includes(role);
 }
 
 export async function canAccessRoute(routeId, session) {
+ const role = (session?.role || "").toUpperCase();
+ if (role === "GM") return true;
  let targetId = routeId;
  if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(targetId)) {
  targetId = "pemanggilan";

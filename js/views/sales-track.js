@@ -444,31 +444,9 @@ export async function mount(container, { session } = {}) {
 
     const apiUrl = currentCfg.url || "https://api.kanal.work/v1/checkin";
 
-    let liveItems = [];
-    let isLiveSuccess = false;
-    try {
-      const proxyResp = await authFetch("/api/kanal-proxy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: apiUrl,
-          company: companyName,
-          dataType: "checkin_sales"
-        })
-      });
-      const proxyData = await proxyResp.json();
-      if (proxyData.success && proxyData.data) {
-        const raw = proxyData.data;
-        if (Array.isArray(raw)) liveItems = raw;
-        else if (raw && Array.isArray(raw.data)) liveItems = raw.data;
-        else if (raw && Array.isArray(raw.items)) liveItems = raw.items;
-        else if (raw && Array.isArray(raw.checkins)) liveItems = raw.checkins;
-
-        if (liveItems.length > 0) isLiveSuccess = true;
-      }
-    } catch (e) {
-      console.log("Kanal Sales Track live API proxy notice:", e);
-    }
+    // Kanal API sudah tidak digunakan lagi; sinkronisasi live dinonaktifkan.
+    const liveItems = [];
+    const isLiveSuccess = false;
 
     try {
       karyawanList = await fsGetAll(COL.MASTER_KARYAWAN);
