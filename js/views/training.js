@@ -95,7 +95,7 @@ async function sendSurveyEmail(campaign, assignment, reminder = false) {
     { username: assignment.username, email: assignment.email, nama: assignment.nama, nik: assignment.nik, id: assignment.id },
     reminder ? "Pengingat survey kebutuhan pelatihan" : "Survey kebutuhan pelatihan",
     reminder ? `Survey ${campaign.title} belum diselesaikan. Mohon isi sebelum ${dateText(campaign.deadline)}.` : `Mohon isi survey ${campaign.title} sebelum ${dateText(campaign.deadline)}.`,
-    "#training",
+    `#training?tab=my&survey=${encodeURIComponent(assignment.id)}`,
     { manual: true, sendEmail: true }
   );
   if (sent) await fsUpdate(C.assignments, assignment.id, { email_sent_at: new Date().toISOString(), email_status: "SENT" });
@@ -175,7 +175,7 @@ function clickableScale(name, label, descriptions = ["Sangat rendah", "Rendah", 
   return `<fieldset><legend class="text-xs font-semibold text-slate-600">${esc(label)} *</legend><div class="mt-2 grid grid-cols-5 gap-2">${descriptions.map((description, index) => { const score = index + 1; return `<label class="cursor-pointer"><input type="radio" name="${esc(name)}" value="${score}" class="peer sr-only"><span class="flex min-h-16 flex-col items-center justify-center rounded-lg border border-slate-200 px-1 text-center text-[10px] text-slate-500 transition peer-checked:border-maroon-700 peer-checked:bg-maroon-700 peer-checked:text-white"><b class="text-base">${score}</b>${esc(description)}</span></label>`; }).join("")}</div></fieldset>`;
 }
 
-export async function mount(container, { session }) {
+export async function mount(container, { session, params = new URLSearchParams() }) {
   const header = container.querySelector("#training-tab-header");
   const body = container.querySelector("#training-content");
   const tabs = [{ id: "my", label: "Pelatihan Saya" }];
@@ -189,6 +189,9 @@ export async function mount(container, { session }) {
     { id: "execution", label: "Pelaksanaan" }, { id: "report", label: "Laporan" }
   );
   let active = tabs[0].id;
+  const requestedTab = typeof params?.get === "function" ? params.get("tab") : "";
+  if (requestedTab && tabs.some(tab => tab.id === requestedTab)) active = requestedTab;
+  const requestedSurvey = typeof params?.get === "function" ? params.get("survey") : "";
 
   async function load() {
     header.innerHTML = tabs.map(t => `<button data-tab="${t.id}" class="px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap ${active === t.id ? "bg-maroon-700 text-white shadow" : "bg-white border border-slate-200 text-slate-600"}">${t.label}</button>`).join("");
@@ -199,6 +202,8 @@ export async function mount(container, { session }) {
       const data = await allData(session);
       const renderers = { dashboard: renderDashboard, survey: renderSurvey, analysis: renderAnalysis, planning: renderPlanning, execution: renderExecution, report: renderReport, my: renderMy };
       await renderers[active](body, session, data, load);
+      const requestedAssignment = requestedSurvey ? (data.assignments || []).find(item => item.id === requestedSurvey) : null;
+      if (active === "my" && requestedAssignment && requestedAssignment.status !== "SUBMITTED") surveyResponseModal(requestedAssignment, session, load, data);
     } catch (error) {
       console.error("training", error);
       body.innerHTML = `<div class="rounded-xl bg-red-50 p-4 text-sm text-red-700">Gagal memuat modul Pelatihan: ${esc(error.message)}</div>`;
@@ -515,6 +520,7 @@ async function renderReport(wrap, session, data, reload) {
   const metrics=trainingMetrics(data),byBranch=aggregateNeeds(data.needs,"cabang"),byDivision=aggregateNeeds(data.needs,"divisi"),totalBudget=data.plans.reduce((s,p)=>s+Number(p.actual_cost||p.budget_estimate||p.estimasi_biaya||0),0),passed=data.progress.filter(p=>p.posttest_score>=Number(data.plans.find(x=>x.id===p.plan_id)?.passing_grade||70)).length;
   wrap.innerHTML=`<div class="flex justify-between items-center"><div><h2 class="text-lg font-bold text-slate-800">Laporan Manajemen</h2><p class="text-xs text-slate-400">Ringkasan efektivitas, kebutuhan organisasi, dan investasi pelatihan.</p></div><button id="export-report" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">Export CSV</button></div><div class="grid grid-cols-2 lg:grid-cols-4 gap-4">${statCard("Response rate",`${metrics.responseRate}%`)}${statCard("Program selesai",`${metrics.completedPlans}/${metrics.plans}`)}${statCard("Lulus post-test",passed)}${statCard("Total investasi",money(totalBudget))}</div><div class="grid lg:grid-cols-2 gap-5">${reportTable("Prioritas per cabang",byBranch)}${reportTable("Prioritas per divisi",byDivision)}</div><section class="bg-white rounded-2xl border p-5"><h3 class="font-bold">Evaluasi dampak 30–60 hari</h3><p class="mt-1 text-xs text-slate-400">Atasan mencatat perubahan perilaku dan hasil kerja setelah pelatihan.</p><div class="mt-4 space-y-2">${data.progress.map(p=>`<div class="rounded-xl border p-3 flex justify-between items-center gap-3"><div class="text-xs"><b>${esc(p.nama)}</b> · ${esc(data.plans.find(x=>x.id===p.plan_id)?.title||p.plan_id)}<br><span class="text-slate-400">Perilaku: ${esc(p.behavior_score||"-")}/5 · ${esc(p.behavior_note||"Belum dinilai")}</span></div>${isManagement(session)?`<button data-followup="${p.id}" class="rounded border px-3 py-2 text-xs">Nilai dampak</button>`:""}</div>`).join("")||empty("Belum ada peserta yang dievaluasi.")}</div></section>`;
   wrap.querySelector("#export-report").onclick=()=>exportReport(data);
+  const analysisSection = document.createElement("section"); analysisSection.innerHTML = renderTrainingNeedsAnalysis(data, session); wrap.appendChild(analysisSection);
   wrap.querySelectorAll("[data-followup]").forEach(btn=>btn.onclick=()=>followupModal(data.progress.find(p=>p.id===btn.dataset.followup),session,reload));
 }
 
@@ -524,6 +530,134 @@ function followupModal(progress, session, reload) {
   openModal({title:`Evaluasi Dampak: ${esc(progress.nama)}`,bodyHtml:`<div id="followup" class="space-y-4">${field("Perubahan perilaku (1–5)","b-score","number",`min='1' max='5' value='${progress.behavior_score||3}'`)}<label class="text-xs font-semibold">Bukti perubahan / hasil kerja<textarea id="b-note" rows="4" class="mt-1 w-full rounded-lg border px-3 py-2">${esc(progress.behavior_note||"")}</textarea></label></div>`,footerHtml:`<button id="save-followup" class="rounded bg-maroon-700 px-4 py-2 text-sm text-white">Simpan</button>`,onMount:modal=>modal.querySelector("#save-followup").onclick=async()=>{const root=modal.querySelector("#followup");await fsUpdate(C.progress,progress.id,{behavior_score:Number(val(root,"#b-score")),behavior_note:val(root,"#b-note"),behavior_reviewed_by:session.nama,behavior_reviewed_at:new Date().toISOString()});await audit(session,"BEHAVIOR_REVIEW","progress",progress.id);closeModal();toast("Evaluasi dampak tersimpan.","success");reload();}});
 }
 
+function trainingNeedStatement(need) {
+  const gap = competencyGap(Number(need.expected_level), Number(need.current_level));
+  const urgency = Number(need.urgency || 0);
+  const impact = Number(need.business_impact || 3);
+  const parts = [];
+  if (gap >= 2) parts.push(`gap level ${gap} menunjukkan selisih kemampuan cukup besar`);
+  if (urgency >= 4) parts.push(`urgensi tinggi (${urgency}/5) dari pekerjaan nyata`);
+  if (impact >= 4) parts.push(`dampak bisnis tinggi (${impact}/5)`);
+  if (need.reason) parts.push(`alasan karyawan: ${escapeHtml(need.reason)}`);
+  return parts.join("; ") || "berdasarkan skor survei mandiri yang belum optimal";
+}
+
+function topNeeds(needs = [], limit = 3) {
+  return needs
+    .slice()
+    .sort((a, b) => needPriorityScore(b) - needPriorityScore(a))
+    .slice(0, limit);
+}
+
+function groupedTopNeeds(needs = [], dimension = "cabang") {
+  const groups = new Map();
+  needs.forEach(need => {
+    const key = String(need[dimension] || "Belum ditentukan").trim() || "Belum ditentukan";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(need);
+  });
+  return [...groups.entries()].sort((a, b) => {
+    const pa = aggregateNeeds(b[1], "competency_name")[0]?.averagePriority || 0;
+    const pb = aggregateNeeds(a[1], "competency_name")[0]?.averagePriority || 0;
+    return pa - pb;
+  }).map(([key, items]) => {
+    const ranking = aggregateNeeds(items, "competency_name");
+    return { key, items, count: items.length, top: ranking[0] || null, ranking, averageGap: ranking.length ? ranking.reduce((s, x) => s + x.averageGap, 0) / ranking.length : 0 };
+  });
+}
+
+function renderTrainingNeedsAnalysis(data = {}, session = {}) {
+  const needs = data.needs || [];
+  if (!needs.length) return `<section class="mt-6 rounded-2xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">Belum ada respons survei TNA untuk dianalisis.</section>`;
+
+  const overall = aggregateNeeds(needs, "competency_name");
+  const topOverall = overall[0];
+  const byBranch = groupedTopNeeds(needs, "cabang");
+  const byDivision = groupedTopNeeds(needs, "divisi");
+  const byPerson = [...new Map(needs.map(need => { const key = need.nik || need.nama; if (!key) return [need.id, [need]]; return [key, (Array.from(this || []).length ? this : [])]; }).entries())].length ? needs : [];
+  const personMap = new Map();
+  needs.forEach(need => {
+    const key = String(need.nik || need.nama || need.id || "").trim();
+    if (!personMap.has(key)) personMap.set(key, { nama: need.nama, nik: need.nik, cabang: need.cabang, divisi: need.divisi, needs: [] });
+    personMap.get(key).needs.push(need);
+  });
+  const people = [...personMap.values()].sort((a, b) => (aggregateNeeds(b.needs, "competency_name")[0]?.averagePriority || 0) - (aggregateNeeds(a.needs, "competency_name")[0]?.averagePriority || 0));
+
+  const sectionTitle = heading => `<h2 class="text-lg font-bold text-slate-800 mb-2">${escapeHtml(heading)}</h2><p class="text-xs text-slate-400 mb-4">Analisis berdasarkan respons survei mandiri karyawan. Prioritas digunakan untuk memilih modul training paling mendesak per individu, divisi, cabang, dan seluruh CV Andela Jaya.</p>`;
+
+  return `
+    <section class="mt-6 bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-6">
+      ${sectionTitle("Analisis Kebutuhan Training Berbasis Survey")}
+      <div class="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+        <b>Keputusan organisasi:</b> prioritas tertinggi adalah
+        <b>${escapeHtml(topOverall?.key || "tidak tersedia")}</b> dengan rata-rata gap
+        <b>${Number(topOverall?.averageGap || 0).toFixed(1)}</b> dan skor prioritas
+        <b>${Number(topOverall?.averagePriority || 0).toFixed(1)}</b>.
+        Kompetensi ini harus dipertimbangkan sebagai program pertama, dilanjutkan dengan kebutuhan berikutnya yang memiliki gap dan kesenjangan urgens paling tinggi.
+      </div>
+      <div>
+        <h3 class="font-bold text-slate-800">Per Cabang</h3>
+        <div class="overflow-x-auto mt-3">
+          <table class="min-w-full text-xs border border-slate-100">
+            <thead class="bg-slate-50 text-slate-500"><tr><th class="px-4 py-3 text-left">Cabang</th><th class="px-4 py-3 text-left">Responden</th><th class="px-4 py-3 text-left">Kebutuhan Utama</th><th class="px-4 py-3 text-left">Gap</th><th class="px-4 py-3 text-left">Penjelasan</th></tr></thead>
+            <tbody>
+              ${byBranch.map(scope => {
+                const need = scope.top?.key ? scope.items.find(item => item.competency_name === scope.top.key) : null;
+                return `<tr class="border-t border-slate-100">
+                  <td class="px-4 py-3 font-semibold">${escapeHtml(scope.key)}</td>
+                  <td class="px-4 py-3">${scope.count}</td>
+                  <td class="px-4 py-3"><b>${escapeHtml(scope.top?.key || "-")}</b></td>
+                  <td class="px-4 py-3">${Number(scope.top?.averageGap || 0).toFixed(1)}</td>
+                  <td class="px-4 py-3">Dibutuhkan ${scope.top?.key || "kompetensi tertentu"} karena ${trainingNeedStatement(need || { expected_level: scope.top?.averageGap, current_level: 0, business_impact: need?.business_impact || 3, urgency: need?.urgency || 3, reason: need?.reason })}.</td>
+                </tr>`;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h3 class="font-bold text-slate-800">Per Divisi</h3>
+        <div class="overflow-x-auto mt-3">
+          <table class="min-w-full text-xs border border-slate-100">
+            <thead class="bg-slate-50 text-slate-500"><tr><th class="px-4 py-3 text-left">Divisi</th><th class="px-4 py-3 text-left">Responden</th><th class="px-4 py-3 text-left">Kebutuhan Utama</th><th class="px-4 py-3 text-left">Gap</th><th class="px-4 py-3 text-left">Penjelasan</th></tr></thead>
+            <tbody>
+              ${byDivision.map(scope => {
+                const need = scope.top?.key ? scope.items.find(item => item.competency_name === scope.top.key) : null;
+                return `<tr class="border-t border-slate-100">
+                  <td class="px-4 py-3 font-semibold">${escapeHtml(scope.key)}</td>
+                  <td class="px-4 py-3">${scope.count}</td>
+                  <td class="px-4 py-3"><b>${escapeHtml(scope.top?.key || "-")}</b></td>
+                  <td class="px-4 py-3">${Number(scope.top?.averageGap || 0).toFixed(1)}</td>
+                  <td class="px-4 py-3">${escapeHtml(scope.key)} paling membutuhkan ${scope.top?.key || "pengembangan"}, dengan gap ${Number(scope.top?.averageGap || 0).toFixed(1)} dan ${scope.count} jawaban yang mendukung analisis.</td>
+                </tr>`;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h3 class="font-bold text-slate-800">Per Individu</h3>
+        <div class="grid lg:grid-cols-2 gap-3 mt-3">
+          ${people.map(person => {
+            const ranking = aggregateNeeds(person.needs, "competency_name");
+            const top = ranking[0];
+            return `<article class="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <div class="flex justify-between gap-3"><div><b>${escapeHtml(person.nama || "-")}</b><br><span class="text-[11px] text-slate-400">${escapeHtml(person.nik || "-")} · ${escapeHtml(person.cabang || "-")} / ${escapeHtml(person.divisi || "-")}</span></div><b class="text-xs">${escapeHtml(priorityLabel(needPriorityScore(top)))}</b></div>
+              <ul class="mt-3 space-y-2 text-xs text-slate-600">
+                ${topNeeds(person.needs).map(need => `<li><b>${escapeHtml(need.competency_name)}</b>: level ${need.current_level} → ${need.expected_level}, gap ${competencyGap(need.expected_level, need.current_level)}, urgensi ${need.urgency || 0}/5, dampak ${need.business_impact || 0}/5.<br><span class="text-slate-400">${escape(need.reason)}</span></li>`).join("") || "<li>Belum ada kebutuhan yang tercatat.</li>"}
+              </ul>
+              <p class="mt-3 text-[11px] text-slate-500">Kesimpulan: ${top ? `${escapeHtml(person.nama)} sebaiknya diprioritaskan untuk pelatihan ${escapeHtml(top.key)} karena ${trainingNeedStatement(top)}; skor prioritas ${needPriorityScore(top)}.` : "Belum cukup data."}</p>
+            </article>`;
+          }).join("")}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function escape(value) {
+  return escapeHtml(value ?? "");
+}
 function exportReport(data) {
   const rows=[["Jenis","Unit/Program","Jumlah","Gap Rata-rata","Biaya","Status"],...aggregateNeeds(data.needs,"cabang").map(r=>["Cabang",r.key,r.count,r.averageGap.toFixed(1),"",""]),...aggregateNeeds(data.needs,"divisi").map(r=>["Divisi",r.key,r.count,r.averageGap.toFixed(1),"",""]),...data.plans.map(p=>["Program",p.title||p.judul,planParticipants(p).length,"",p.actual_cost||p.budget_estimate||p.estimasi_biaya||0,p.status])];
   const csv=rows.map(row=>row.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\n"),blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`laporan-training-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href);

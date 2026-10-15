@@ -413,27 +413,32 @@ function showDetail(row, session) {
 
 function actionModal(row, action, session, container, tab) {
  const isApprove = action === "APPROVE";
+ const role = (session.role || "").toUpperCase();
+ const canRecommendBudget = isApprove && (role === "FINANCE" || role === "ACCOUNTING" || role === "SUPERADMIN");
+ const budgetField = canRecommendBudget ? `<label class="block mt-3 text-sm text-slate-600">Rekomendasi budget Finance (Rp)<input id="action-budget-rec" type="number" min="0" step="1" placeholder="Nominal setuju" class="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none transition"></label>` : "";
  openModal({
  title: isApprove ? "Setujui Pengajuan" : "Tolak Pengajuan",
  bodyHtml: `
  <p class="text-sm text-slate-600 mb-3">Anda akan <b>${isApprove ? "menyetujui" : "menolak"}</b> pengajuan <b>${escapeHtml(row.nama_form)}</b> dari <b>${escapeHtml(row.nama_pemohon)}</b>.</p>
- <textarea id="action-note" rows="3" placeholder="Catatan (opsional)" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none transition"></textarea>`,
+ <textarea id="action-note" rows="3" placeholder="Catatan (opsional)" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 outline-none transition"></textarea>
+ ${budgetField}`,
  footerHtml: `
  <button id="action-cancel" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
  <button id="action-confirm" class="px-4 py-2 rounded-lg text-sm font-medium text-white ${isApprove ? "bg-maroon-700 hover:bg-maroon-800" : "bg-red-700 hover:bg-red-800"} transition">${isApprove ? "Ya, Setujui" : "Ya, Tolak"}</button>`,
  onMount: (m) => {
- m.querySelector("#action-cancel").onclick = closeModal;
- m.querySelector("#action-confirm").onclick = async () => {
- const note = m.querySelector("#action-note").value.trim() || "ok";
- await processAction(row, action, note, session);
- closeModal();
- renderList(container, session, tab);
- };
+   m.querySelector("#action-cancel").onclick = closeModal;
+   m.querySelector("#action-confirm").onclick = async () => {
+     const note = m.querySelector("#action-note").value.trim() || "ok";
+     const budget = canRecommendBudget ? Number(m.querySelector("#action-budget-rec")?.value || "") : NaN;
+     await processAction(row, action, note, session, Number.isFinite(budget) ? budget : null);
+     closeModal();
+     renderList(container, session, tab);
+   };
  }
  });
 }
 
-async function processAction(row, action, note, session) {
+async function processAction(row, action, note, session, recommendedBudget = null) {
  const idx = currentStepIndex(row);
  const steps = [...(row.approval_steps || [])];
  steps[idx] = action;
@@ -449,13 +454,23 @@ async function processAction(row, action, note, session) {
  
  const catatan = [...(row.catatan_penolakan || []), `[${session.nama} - ${action}]: ${note}`];
 
+ const recommendedBudgetValue = Number.isFinite(recommendedBudget)
+ ? recommendedBudget
+ : Number.isFinite(Number(recommendedBudget))
+ ? Number(recommendedBudget)
+ : null;
+ if (Number.isFinite(recommendedBudgetValue)) {
+   catatan.push(`[REKOMENDASI FINANCE]: Rp ${recommendedBudgetValue.toLocaleString("id-ID")}`);
+ }
+
  // Jika pengajuan ini butuh Laporan Pertanggungjawaban (LPJ) dan baru saja mencapai
  // status APPROVED FINAL, hitung batas waktu pengumpulan LPJ-nya sekarang.
  const updatePayload = {
    approval_steps: steps,
    status_final: statusFinal,
    catatan_penolakan: catatan,
-   notification_status: "MENUNGGU_PENGIRIMAN_MANUAL"
+   notification_status: "MENUNGGU_PENGIRIMAN_MANUAL",
+   recommended_budget: Number.isFinite(recommendedBudgetValue) ? recommendedBudgetValue : null
  };
  if (statusFinal === "APPROVED FINAL" && row.requires_lpj && row.lpj_status === "BELUM" && !row.lpj_due_date) {
  const due = new Date();
