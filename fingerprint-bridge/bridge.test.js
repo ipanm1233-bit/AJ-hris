@@ -25,17 +25,24 @@ test('accepts node-zklib response wrappers and common aliases', () => {
 test('normalizes Solution X150 users for automatic employee mapping', () => {
   const wrapped = { data: [{ uid: 7, userId: '81', name: 'Budi Santoso' }] };
   assert.deepEqual(userRows(wrapped), wrapped.data);
+  // "Emp No." = nomor operator (userId), bukan nomor internal alat (uid), agar
+  // sama dengan yang tampil di software mesin.
   assert.deepEqual(normalizeDeviceUser(wrapped.data[0]), {
     deviceUserId: '81',
-    empNo: '7',
+    empNo: '81',
     noId: '81',
+    deviceUid: '7',
     name: 'Budi Santoso'
   });
   assert.deepEqual(normalizeDeviceUser({ uid: 210, userId: 4, name: 'ANGGA' }), {
-    deviceUserId: '4', empNo: '210', noId: '4', name: 'ANGGA'
+    deviceUserId: '4', empNo: '4', noId: '4', deviceUid: '210', name: 'ANGGA'
   });
   assert.deepEqual(normalizeDeviceUser({ uid: 211, userId: 5 }), {
-    deviceUserId: '5', empNo: '211', noId: '5', name: ''
+    deviceUserId: '5', empNo: '5', noId: '5', deviceUid: '211', name: ''
+  });
+  // Tanpa nomor operator, nomor internal dipakai sebagai cadangan.
+  assert.deepEqual(normalizeDeviceUser({ uid: 30, name: 'SAPUTRA HIDAYAT' }), {
+    deviceUserId: '30', empNo: '30', noId: '', deviceUid: '30', name: 'SAPUTRA HIDAYAT'
   });
 });
 

@@ -859,6 +859,10 @@ module.exports = async function handler(req, res) {
         db.collection('data_absensi').where('tanggal', '==', date).get()
       ));
       const documentsByEmployeeDate = new Map();
+      // Baris sementara "BELUM DIPETAKAN" yang kini sudah cocok ke karyawan
+      // harus ikut dibersihkan, agar tabel tidak menampilkan dua baris untuk satu
+      // orang/tanggal (satu sementara + satu hasil mesin).
+      const pendingRefsByDeviceDate = new Map();
       dateSnapshots.forEach(snapshot => snapshot.docs.forEach(attendanceDoc => {
         const data = attendanceDoc.data() || {};
         const nikKey = String(data.nik || data.nik_karyawan || '').trim().toUpperCase();
@@ -867,6 +871,11 @@ module.exports = async function handler(req, res) {
         const key = `${nikKey}|${dateKey}`;
         if (!documentsByEmployeeDate.has(key)) documentsByEmployeeDate.set(key, []);
         documentsByEmployeeDate.get(key).push(attendanceDoc.ref);
+        const fingerId = String(data.fingerprint_user_id || '').trim().toUpperCase();
+        if (!fingerId || !isProvisionalFingerprintNik(nikKey)) return;
+        const fingerKey = `${fingerId}|${dateKey}`;
+        if (!pendingRefsByDeviceDate.has(fingerKey)) pendingRefsByDeviceDate.set(fingerKey, []);
+        pendingRefsByDeviceDate.get(fingerKey).push(attendanceDoc.ref);
       }));
       const batch = db.batch();
 
@@ -907,6 +916,14 @@ module.exports = async function handler(req, res) {
           disinkron_pada: admin.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
         if (!isPending && legacyRef.path !== ref.path) batch.delete(legacyRef);
+        if (!isPending) {
+          const fingerKey = `${String(g.deviceUserId).trim().toUpperCase()}|${g.tanggal}`;
+          (pendingRefsByDeviceDate.get(fingerKey) || []).forEach(candidate => {
+            if (candidate.path === ref.path || candidate.path === legacyRef.path) return;
+            batch.delete(candidate);
+            duplicatesRemoved += 1;
+          });
+        }
 
         // Fingerprint asli menjadi sumber utama. Hapus baris impor lama atau
         // ID acak lain untuk karyawan dan tanggal yang sama agar tabel tidak

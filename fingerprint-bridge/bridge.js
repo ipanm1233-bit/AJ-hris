@@ -56,12 +56,16 @@ function userRows(result) {
 }
 
 function normalizeDeviceUser(user) {
-  const empNo = String(user?.uid ?? user?.userSn ?? '').trim();
+  // Nomor internal alat (uid) BUKAN yang tampil sebagai "Emp No." di software
+  // mesin. Software menampilkan nomor yang diisi operator (userId/PIN). Karena
+  // itu Emp No. disamakan dengan userId agar kolom di HRIS sama dengan mesin.
+  const deviceUid = String(user?.uid ?? user?.userSn ?? '').trim();
   const noId = String(user?.userId ?? user?.deviceUserId ?? user?.pin ?? '').trim();
+  const empNo = noId || deviceUid;
   const deviceUserId = noId || empNo;
   const name = String(user?.name ?? user?.username ?? user?.userName ?? '').trim();
   if (!deviceUserId) return null;
-  return { deviceUserId, empNo, noId, name };
+  return { deviceUserId, empNo, noId, deviceUid, name };
 }
 
 function normalizeDeviceLog(log) {
