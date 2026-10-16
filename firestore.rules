@@ -388,7 +388,8 @@ service cloud.firestore {
       allow write: if isHrd() || role() in ['GM', 'MANAGER'];
     }
     match /pelamar_ats/{id} {
-      allow create: if request.auth == null
+      allow create: if isHrd() || role() in ['GM', 'MANAGER'] || (
+        request.auth == null
         && request.resource.data.keys().hasAll(['nama', 'email'])
         && request.resource.data.nama is string && request.resource.data.email is string
         && request.resource.data.nama.size() > 1 && request.resource.data.nama.size() <= 150
@@ -396,7 +397,8 @@ service cloud.firestore {
         && request.resource.data.get('resume_text', '') is string
         && request.resource.data.get('resume_text', '').size() <= 200000
         && request.resource.data.get('catatan', '') is string
-        && request.resource.data.get('catatan', '').size() <= 5000;
+        && request.resource.data.get('catatan', '').size() <= 5000
+      );
       allow read, update, delete: if isHrd() || role() in ['GM', 'MANAGER'];
     }
     match /ats_interviews/{id} { allow read, write: if isHrd() || role() in ['GM', 'MANAGER']; }
