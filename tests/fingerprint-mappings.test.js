@@ -12,7 +12,10 @@ test('HR mapping is branch, machine account, name, and effective-date specific',
   const scan = { branch: 'CIREBON', empNo: '80', noId: '211', fingerName: 'PHILIP TAMZIR', date: '2026-09-24' };
   assert.equal(mappingForScan([saved], scan), saved);
   assert.equal(mappingForScan([saved], { ...scan, branch: 'MALANG' }), null);
+  // No. ID berbeda wajib TIDAK cocok, walau Emp No. sama: dua kolom itu ruang
+  // penomoran berbeda, dan melonggarkannya membuat scan lintas karyawan tercampur.
   assert.equal(mappingForScan([saved], { ...scan, noId: '28' }), null);
+  assert.equal(mappingForScan([saved], { ...scan, empNo: '211' }), null);
   assert.equal(mappingForScan([saved], { ...scan, fingerName: 'IRINE' }), null);
   assert.equal(mappingForScan([saved], { ...scan, date: '2026-09-23' }), null);
   assert.equal(mappingForScan([saved, { ...saved, id: 'second' }], scan), null);
