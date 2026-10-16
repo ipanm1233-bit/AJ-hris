@@ -99,12 +99,14 @@ service cloud.firestore {
     match /data_absensi/{id} {
       allow read: if signedIn() && (isManagement() || owns(resource.data) ||
         (hasScopedAttendanceAction('absensi.data.view_all') && sameBranch(resource.data)));
-      allow create: if isHrd() || (hasScopedAttendanceAction('absensi.data.edit')
+      // Koreksi absensi: HRD, ATAU pemegang izin absensi.data.edit (override),
+      // ATAU Branch Manager yang hanya mengoreksi data cabangnya sendiri.
+      allow create: if isHrd() || ((hasScopedAttendanceAction('absensi.data.edit') || role() == 'BRANCH MANAGER')
         && sameBranch(request.resource.data)
         && id.matches('ABS-MANUAL-.*')
         && request.resource.data.keys().hasOnly(['nik', 'nama', 'tanggal', 'cabang', 'divisi', 'jabatan', 'sumber', 'scan_masuk', 'scan_keluar'])
         && request.resource.data.get('sumber', '') == 'KOREKSI PIC');
-      allow update: if isHrd() || (hasScopedAttendanceAction('absensi.data.edit')
+      allow update: if isHrd() || ((hasScopedAttendanceAction('absensi.data.edit') || role() == 'BRANCH MANAGER')
         && sameBranch(resource.data) && sameBranch(request.resource.data)
         && onlyChanges(['scan_masuk', 'scan_keluar']));
       allow delete: if isHrd();
@@ -385,10 +387,11 @@ service cloud.firestore {
 
     match /data_rekrutmen/{id} {
       allow read: if isHrd() || isManagement() || resource.data.get('status', '') in ['Open', 'OPEN', 'AKTIF', 'Aktif', 'Dibuka', 'DIBUKA'];
-      allow write: if isHrd() || role() in ['GM', 'MANAGER'];
+      // GM = lihat saja (tidak menulis). Manager & Branch Manager boleh mengelola ATS.
+      allow write: if isHrd() || role() in ['MANAGER', 'BRANCH MANAGER'];
     }
     match /pelamar_ats/{id} {
-      allow create: if isHrd() || role() in ['GM', 'MANAGER'] || (
+      allow create: if isHrd() || role() in ['MANAGER', 'BRANCH MANAGER'] || (
         request.auth == null
         && request.resource.data.keys().hasAll(['nama', 'email'])
         && request.resource.data.nama is string && request.resource.data.email is string
@@ -399,11 +402,19 @@ service cloud.firestore {
         && request.resource.data.get('catatan', '') is string
         && request.resource.data.get('catatan', '').size() <= 5000
       );
-      allow read, update, delete: if isHrd() || role() in ['GM', 'MANAGER'];
+      allow read: if isHrd() || role() in ['GM', 'DIREKTUR', 'MANAGER', 'BRANCH MANAGER'];
+      // GM hanya membaca data pelamar; ubah/hapus dibatasi HRD/Manager/BM.
+      allow update, delete: if isHrd() || role() in ['MANAGER', 'BRANCH MANAGER'];
     }
-    match /ats_interviews/{id} { allow read, write: if isHrd() || role() in ['GM', 'MANAGER']; }
+    match /ats_interviews/{id} {
+      // GM tetap diizinkan di sini (penilaian interview), tidak untuk data ATS lain.
+      allow read, write: if isHrd() || role() in ['GM', 'MANAGER', 'BRANCH MANAGER'];
+    }
     match /ats_rules/{id} { allow read, write: if isHrd(); }
-    match /ats_status_history/{id} { allow read, write: if isHrd() || role() in ['GM', 'MANAGER']; }
+    match /ats_status_history/{id} {
+      allow read: if isHrd() || role() in ['GM', 'DIREKTUR', 'MANAGER', 'BRANCH MANAGER'];
+      allow write: if isHrd() || role() in ['MANAGER', 'BRANCH MANAGER'];
+    }
 
     match /audit_logs/{id} { allow read, write: if false; }
     match /cron_locks/{id} { allow read, write: if false; }
