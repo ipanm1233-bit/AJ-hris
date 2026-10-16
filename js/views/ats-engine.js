@@ -363,7 +363,7 @@ export async function extractTextFromPdfFile(file) {
   for (let i = 1; i <= maxPages; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
-    const pageText = content.items.map(item => item.str).join(" ");
+    const pageText = content.items.map(item => item.str + (item.hasEOL ? "\n" : " ")).join("");
     fullText += pageText + "\n";
   }
 
@@ -382,7 +382,7 @@ export async function extractTextFromDocxFile(file) {
     // Cari tag XML teks Word <w:t>...</w:t>
     const matches = binaryString.match(/<w:t[^>]*>([^<]+)<\/w:t>/g);
     if (matches && matches.length > 0) {
-      return matches.map(m => m.replace(/<[^>]+>/g, '')).join(' ');
+      return matches.map(m => m.replace(/<[^>]+>/g, '')).join('\n');
     }
 
     // Fallback: hapus karakter non-printable
@@ -454,16 +454,16 @@ export function extractBasicInfo(rawText, filename = "") {
   if (/\bsim\s*b2\b|\bsim\s*b\s*2\b|\bsim\s*b\s*ii\b/i.test(rawText)) simFound.push("SIM B2");
 
   // 6. Pendidikan
-  let pendidikan = "SMA";
+  let pendidikan = "Tidak Terdeteksi";
   let jurusan = "";
   let institusi = "";
-  
-  if (/\b(?:s2|magister|master)\b/i.test(rawText)) pendidikan = "S2";
-  else if (/\b(?:s1|sarjana|strata\s*1|bachelor)\b/i.test(rawText)) pendidikan = "S1";
-  else if (/\b(?:d4|diploma\s*4)\b/i.test(rawText)) pendidikan = "D4";
-  else if (/\b(?:d3|diploma\s*3|ahli\s*madya)\b/i.test(rawText)) pendidikan = "D3";
-  else if (/\b(?:smk|kejuruan|stm|smea)\b/i.test(rawText)) pendidikan = "SMK";
-  else if (/\b(?:sma|smu|slta)\b/i.test(rawText)) pendidikan = "SMA";
+  const compactEduText = rawText.toLowerCase().replace(/[\s\-./_]+/g, "");
+  if (/(?:s2(?![0-9])|strata2(?![0-9])|strataii|magister|master)/i.test(compactEduText)) pendidikan = "S2";
+  else if (/(?:s1(?![0-9])|strata1(?![0-9])|stratai(?!i)|sarjana|bachelor|undergraduate)/i.test(compactEduText)) pendidikan = "S1";
+  else if (/(?:d4(?![0-9])|diploma4(?![0-9]))/i.test(compactEduText)) pendidikan = "D4";
+  else if (/(?:d3(?![0-9])|diploma3(?![0-9])|ahlimumadya|ahlimadya)/i.test(compactEduText)) pendidikan = "D3";
+  else if (/(?:smk|stm|smea|kejuruan)/i.test(compactEduText)) pendidikan = "SMK";
+  else if (/(?:sma|smu|slta)/i.test(compactEduText)) pendidikan = "SMA";
 
   // Jurusan umum
   const majorPatterns = [
@@ -532,17 +532,16 @@ export function calculateExperience(rawText) {
 
   // Keyword penanda riwayat pendidikan (TIDAK BOLEH DIHITUNG SEBAGAI KERJA)
   const isEduSnippet = (text) => {
-    const t = text.toLowerCase();
+    const compact = text.toLowerCase().replace(/[\s\-./_]+/g, "");
     const eduKeywords = [
-      "universitas", "univ.", " univ ", "institut", "politeknik", "stie", "stmik", "akpol", "akmil",
-      "sekolah tinggi", "sekolah menengah", "sekolah dasar", "sma ", "smk ", "smp ", "sd ", "smu ",
-      "slta", "sltp", "madrasah", "aliyah", "tsanawiyah", "pesantren", "college", "university",
-      "high school", "vocational", "sarjana", "diploma", "magister", "doktor", "bachelor", "master",
-      "jurusan", "program studi", "prodi", "fakultas", "mahasiswa", "mahasiswi", "siswa", "siswi",
-      "alumni", "ipk", "gpa", "skripsi", "tesis", "tugas akhir", "cumlaude", "pendidikan formal",
-      "pendidikan terakhir", "riwayat pendidikan", "latar belakang pendidikan", "education", "academic background"
+      "universitas", "univ", "institut", "politeknik", "stie", "stmik", "akpol", "akmil",
+      "sekolah", "sma", "smk", "smp", "slta", "sltp", "madrasah", "aliyah", "tsanawiyah",
+      "pesantren", "college", "university", "highschool", "vocational", "sarjana", "diploma",
+      "magister", "doktor", "bachelor", "master", "strata", "jurusan", "programstudi", "prodi",
+      "fakultas", "mahasiswa", "mahasiswi", "siswa", "siswi", "alumni", "ipk", "gpa", "skripsi",
+      "tesis", "tugasakhir", "cumlaude", "pendidikan", "education", "academicbackground"
     ];
-    return eduKeywords.some(k => t.includes(k));
+    return eduKeywords.some(k => compact.includes(k));
   };
 
   // Keyword penanda pekerjaan nyata
@@ -865,7 +864,7 @@ export function evaluateCandidateATS(candidate, vacancy = {}, customSynonyms = {
         if (candLevel >= targetLevel) {
           criterionScore = 100;
           evidence = `Pendidikan "${candEdu}" memenuhi syarat minimal "${minEdu}"`;
-          evidenceMatches.push(` Pendidikan: ${candEdu} (Min. ${minEdu})`);
+          evidenceMatches.push(`✓ Pendidikan: ${candEdu} (Min. ${minEdu})`);
         } else {
           criterionScore = Math.max(20, Math.round((candLevel / targetLevel) * 70));
           gap = `Pendidikan "${candEdu}" berada di bawah syarat minimal "${minEdu}"`;
@@ -881,7 +880,7 @@ export function evaluateCandidateATS(candidate, vacancy = {}, customSynonyms = {
         if (minExp === 0 || candExp >= minExp) {
           criterionScore = 100;
           evidence = `Pengalaman kerja total ${candExp} tahun (Target: ≥ ${minExp} tahun)`;
-          evidenceMatches.push(` Pengalaman Kerja: ${candExp} Tahun (Target: ≥ ${minExp} thn)`);
+          evidenceMatches.push(`✓ Pengalaman Kerja: ${candExp} Tahun (Target: ≥ ${minExp} thn)`);
         } else if (candExp > 0) {
           criterionScore = Math.round((candExp / minExp) * 80);
           gap = `Pengalaman ${candExp} tahun kurang dari target ${minExp} tahun`;
@@ -906,7 +905,7 @@ export function evaluateCandidateATS(candidate, vacancy = {}, customSynonyms = {
         if (hasSim) {
           criterionScore = 100;
           evidence = `Memiliki ${candSims.join(", ") || "SIM yang dipersyaratkan"}`;
-          evidenceMatches.push(` Surat Izin Mengemudi: ${candSims.join(", ") || "Terpenuhi"}`);
+          evidenceMatches.push(`✓ Surat Izin Mengemudi: ${candSims.join(", ") || "Terpenuhi"}`);
         } else {
           criterionScore = 0;
           gap = `Persyaratan ${requiredSim.join(", ")} tidak ditemukan dalam CV`;
@@ -924,7 +923,7 @@ export function evaluateCandidateATS(candidate, vacancy = {}, customSynonyms = {
         if (isLocMatch) {
           criterionScore = 100;
           evidence = `Domisili / Lokasi sesuai penempatan: ${candidate.domisili || targetLocation}`;
-          evidenceMatches.push(` Domisili / Penempatan: ${candidate.domisili || targetLocation}`);
+          evidenceMatches.push(`✓ Domisili / Penempatan: ${candidate.domisili || targetLocation}`);
         } else if (candidate.domisili && candidate.domisili !== "Tidak Tercantum") {
           criterionScore = 50; // Domisili lain tapi tercantum
           gap = `Domisili (${candidate.domisili}) berbeda dengan target cabang (${targetLocation})`;
@@ -948,7 +947,7 @@ export function evaluateCandidateATS(candidate, vacancy = {}, customSynonyms = {
 
         if (matched.length > 0) {
           evidence = `Ditemukan skill: ${matched.map(m => m.keyword).join(", ")}`;
-          evidenceMatches.push(` Skill Relevan: ${matched.map(m => m.keyword).join(", ")}`);
+          evidenceMatches.push(`✓ Skill Relevan: ${matched.map(m => m.keyword).join(", ")}`);
         }
         if (missing.length > 0) {
           gap = `Skill tidak ditemukan: ${missing.join(", ")}`;
@@ -963,7 +962,7 @@ export function evaluateCandidateATS(candidate, vacancy = {}, customSynonyms = {
         if (matched.length > 0) {
           criterionScore = 100;
           evidence = `Menguasai software perkantoran & spreadsheet`;
-          evidenceMatches.push(` Software & Tool: ${matched.map(m => m.keyword).join(", ")}`);
+          evidenceMatches.push(`✓ Software & Tool: ${matched.map(m => m.keyword).join(", ")}`);
         } else {
           criterionScore = 20;
           gap = `Penguasaan Microsoft Excel / Software tidak tertulis spesifik`;
@@ -978,7 +977,7 @@ export function evaluateCandidateATS(candidate, vacancy = {}, customSynonyms = {
         if (matched.length > 0) {
           criterionScore = 100;
           evidence = `Memiliki latar belakang industri relevan (${matched.map(m => m.keyword).join(", ")})`;
-          evidenceMatches.push(` Industri Relevan: ${matched.map(m => m.keyword).join(", ")}`);
+          evidenceMatches.push(`✓ Industri Relevan: ${matched.map(m => m.keyword).join(", ")}`);
         } else {
           criterionScore = 40;
           gap = `Belum memiliki catatan di industri sejenis (${targetIndustry.slice(0, 2).join(", ")})`;
@@ -1020,13 +1019,13 @@ export function evaluateCandidateATS(candidate, vacancy = {}, customSynonyms = {
 
     if (exclusionResult.action === "auto_reject") {
       mandatoryPassed = false;
-      potentialGaps.unshift(` DISKUALIFIKASI ATURAN INDUSTRI: Terdeteksi kata kunci terlarang [${matchedStr}] untuk posisi ${exclusionResult.affected_position}`);
+      potentialGaps.unshift(`⚠️ DISKUALIFIKASI ATURAN INDUSTRI: Terdeteksi kata kunci terlarang [${matchedStr}] untuk posisi ${exclusionResult.affected_position}`);
     } else if (exclusionResult.action === "penalty_flag") {
       const penalty = exclusionResult.penalty_points || 25;
       finalScore = Math.max(0, finalScore - penalty);
-      potentialGaps.unshift(` PENALTI EKSKLUSI INDUSTRI (-${penalty}%): Terindikasi alumni distributor cat/kompetitor [${matchedStr}]`);
+      potentialGaps.unshift(`⚠️ PENALTI EKSKLUSI INDUSTRI (-${penalty}%): Terindikasi alumni distributor cat/kompetitor [${matchedStr}]`);
     } else {
-      potentialGaps.unshift(` PERINGATAN REVIEW HRD: Terdeteksi latar belakang industri [${matchedStr}]`);
+      potentialGaps.unshift(`⚠️ PERINGATAN REVIEW HRD: Terdeteksi latar belakang industri [${matchedStr}]`);
     }
   }
 
