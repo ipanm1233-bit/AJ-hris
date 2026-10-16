@@ -7,7 +7,7 @@ const { handleIzinAccess } = require('../lib/izin-access.js');
 const { handleTrainingAccess } = require('../lib/training-access.js');
 const { handleNotificationAccess } = require('../lib/notification-access.js');
 const { handleSalesTrackingAccess } = require('../lib/sales-tracking-access.js');
-const { supabaseEnabled } = require('../lib/supabase.js');
+const { supabaseEnabled, supabaseConfigured } = require('../lib/supabase.js');
 const { listAttendance, upsertAttendance, deleteAttendance } = require('../lib/attendance-supabase.js');
 const { listFingerprintMappings, mappingForScan } = require('../lib/fingerprint-mappings.js');
 
@@ -570,6 +570,10 @@ module.exports = async function handler(req, res) {
     let manualMappings = [];
     if (supabaseEnabled()) {
       identityHistoryRows = await listAttendance({ branch, limit: 5000 });
+    }
+    // Pemetaan finger disimpan di Supabase dan tetap dihormati walau penyimpanan
+    // absensi masih di Firestore selama masa migrasi.
+    if (supabaseConfigured()) {
       try {
         manualMappings = await listFingerprintMappings(branch);
       } catch (error) {
@@ -693,6 +697,14 @@ module.exports = async function handler(req, res) {
           nik_karyawan: mapping.nik, nama_karyawan: mapping.nama_karyawan,
           finger_name: mapping.finger_name, cabang: branch };
       }
+      // Utamakan NAMA FINGER karena HRD menyeragamkan nama pada mesin dengan
+      // master karyawan, sementara Emp No./No. ID bisa berbeda antar kolom.
+      // Aman karena pencocokan nama hanya diterima bila UNIK di cabang ini;
+      // bila ada nama kembar sistem TIDAK menebak dan lanjut ke pencocokan ID.
+      if (machineName) {
+        const byMachineName = resolveEmployeeByMachineName(machineName);
+        if (byMachineName) return byMachineName;
+      }
       if (conflictingFingerIds.has(exactKey)) return confirmedFingerprintOwnerForDay({
         rows: identityHistoryRows, employees, id: exactKey, noId, machineName,
         date, branch
@@ -741,7 +753,11 @@ module.exports = async function handler(req, res) {
       const chunkItems = chunk.map(group => {
         const matchedEmployee = resolveEmployee(group.deviceUserId, group.tanggal);
         const machineUser = deviceUserMetadataMap.get(String(group.deviceUserId).trim().toUpperCase()) || null;
-        const employee = matchedEmployee || (useSupabaseAttendance ? {
+        // Scan yang identitasnya belum ketemu JUSTRU tidak boleh dibuang: tanpa
+        // ini, "tidak ada baris" muncul padahal mesin mencatat scan. Baik jalur
+        // Supabase maupun Firestore kini menyimpannya sebagai baris sementara
+        // "BELUM DIPETAKAN" agar HRD dapat merekonsiliasi.
+        const employee = matchedEmployee || {
           _docId: `PENDING-${group.deviceUserId}`,
           _fingerprintPending: true,
           nik_karyawan: provisionalFingerprintNik(branch, group.deviceUserId),
@@ -750,7 +766,7 @@ module.exports = async function handler(req, res) {
           cabang: branch,
           divisi: '',
           jabatan: ''
-        } : null);
+        };
         const nik = String(employee?.nik_karyawan || employee?.nik || group.deviceUserId).trim();
         const safeNik = nik.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);
         const ref = db.collection('data_absensi').doc(`ABS-FP-${safeNik}-${group.tanggal}`);
@@ -854,8 +870,9 @@ module.exports = async function handler(req, res) {
       }));
       const batch = db.batch();
 
-      // Scan dengan identitas tidak cocok tidak ditulis maupun dihapus otomatis;
-      // catat sebagai unmatched agar HRD bisa memperbaiki pendaftaran pada mesin.
+      // Scan dengan identitas belum ketemu tetap ditulis sebagai baris sementara
+      // "BELUM DIPETAKAN" (bukan dibuang) agar tidak ada scan mesin yang hilang.
+      // Baris sementara boleh dilebur saat HRD memetakan identitasnya.
 
       resolvedChunk.forEach((item, index) => {
         const { group: g, employee, machineUser, nik, ref, legacyRef } = item;
@@ -863,6 +880,7 @@ module.exports = async function handler(req, res) {
         const oldData = existing.exists ? existing.data() : {};
         const schedule = resolveWorkSchedule(employee, scheduleRows, g.tanggal);
         const attendance = computeAttendance(g.events, oldData, minWorkGapMinutes, schedule);
+        const isPending = Boolean(employee?._fingerprintPending);
 
         batch.set(ref, {
           nik,
@@ -870,21 +888,25 @@ module.exports = async function handler(req, res) {
           fingerprint_emp_no: machineUser?.empNo || g.deviceUserId,
           fingerprint_no_id: machineUser?.noId || g.deviceUserId,
           fingerprint_name: machineUser?.name || employee?.finger_name || '',
-          auto_assign: true,
-          nama: employee?.nama_karyawan || employee?.nama || oldData.nama || `ID Finger ${g.deviceUserId} (belum dipetakan)`,
+          auto_assign: !isPending,
+          nama: isPending
+            ? `${employee.nama_karyawan} (BELUM DIPETAKAN)`
+            : (employee?.nama_karyawan || employee?.nama || oldData.nama || `ID Finger ${g.deviceUserId}`),
           tanggal: g.tanggal,
           scan_masuk: attendance.scan_masuk,
           scan_keluar: attendance.scan_keluar,
-          perlu_koreksi: attendance.needs_review,
-          alasan_koreksi: attendance.review_reason,
-          klasifikasi_scan: attendance.classification,
+          perlu_koreksi: isPending || attendance.needs_review,
+          alasan_koreksi: isPending
+            ? 'Identitas finger belum dipetakan ke master karyawan. Scan tetap disimpan dan wajib direkonsiliasi HRD.'
+            : attendance.review_reason,
+          klasifikasi_scan: isPending ? 'IDENTITY_PENDING' : attendance.classification,
           cabang: employee.cabang || branch,
           divisi: employee?.divisi || employee?.departemen || oldData.divisi || '',
           jabatan: employee?.jabatan || employee?.posisi || oldData.jabatan || '',
           sumber: "FINGERPRINT",
           disinkron_pada: admin.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
-        if (legacyRef.path !== ref.path) batch.delete(legacyRef);
+        if (!isPending && legacyRef.path !== ref.path) batch.delete(legacyRef);
 
         // Fingerprint asli menjadi sumber utama. Hapus baris impor lama atau
         // ID acak lain untuk karyawan dan tanggal yang sama agar tabel tidak
