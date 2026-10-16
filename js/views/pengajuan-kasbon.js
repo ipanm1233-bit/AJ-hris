@@ -2,7 +2,7 @@ import { db, COL, doc, getDoc, setDoc, query, collection, where, getDocs, delete
 import { fsGetAll, openModal, closeModal, toast, fmtDateShort, fmtRupiah, escapeHtml, genId, notifyUser, getTargetsForRole, confirmDialog, downloadHtmlAsPdf } from "../utils.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 import { badge } from "../components.js";
-import { hasSubMenuAccess } from "../auth.js";
+import { hasSubMenuAccess, getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 import { isoDocHeaderTable } from "../branding.js";
 
 const DEFAULT_KASBON_CATEGORIES = [
@@ -57,6 +57,13 @@ export async function mount(container, { session }) {
  const roleIsHrd = ["HRD", "SUPERADMIN", "FINANCE", "MANAGER", "SPV", "DIREKTUR", "BRANCH MANAGER"].includes((session.role || "").toUpperCase());
  const isHrd = roleIsHrd || await hasSubMenuAccess("pengajuan-kasbon", "pengaturan_kategori", session);
 
+ // GM (tanpa override) hanya boleh melihat & export/print + setujui/tolak → sembunyikan aksi tulis
+ const authSession = session || getSession();
+ const gmViewOnly = String(authSession?.role || "").toUpperCase() === "GM" && !(await canEditModuleData(authSession));
+
+ // Batas cabang: Branch Manager hanya melihat data cabangnya sendiri
+ const branchScope = resolveBranchScope(authSession);
+
  const btnSettings = container.querySelector("#btn-kasbon-settings");
  const btnOpen = container.querySelector("#btn-open-kasbon-modal");
  const tblBody = container.querySelector("#tbl-my-kasbon");
@@ -70,9 +77,10 @@ export async function mount(container, { session }) {
  const tableSubtitle = container.querySelector("#kasbon-table-subtitle");
 
  if (isHrd) {
-  if (btnSettings) btnSettings.classList.remove("hidden");
+  if (btnSettings && !gmViewOnly) btnSettings.classList.remove("hidden");
   if (hrdTabBar) hrdTabBar.classList.remove("hidden");
  }
+ if (gmViewOnly && btnOpen) btnOpen.classList.add("hidden");
 
  let categories = DEFAULT_KASBON_CATEGORIES;
  let allKasbonRecords = [];
@@ -169,6 +177,11 @@ export async function mount(container, { session }) {
 
  function applyFilterAndRender() {
   let list = [...allKasbonRecords];
+
+  // Batas cabang: Branch Manager hanya melihat kasbon cabangnya sendiri (termasuk tab "all")
+  if (branchScope) {
+   list = list.filter(r => branchMatches(branchScope, r.cabang, r.cabang_karyawan));
+  }
 
   if (activeTab === "my") {
    list = list.filter(r => (r.pemohon || r.nama_pemohon || "").toLowerCase() === (session.nama || "").toLowerCase());
@@ -326,20 +339,20 @@ export async function mount(container, { session }) {
         Tolak Kasbon
       </button>` : ''}
 
-      ${stLunas !== "LUNAS" ? `
+      ${stLunas === "LUNAS" ? `
+      <span class="px-3 py-1.5 bg-blue-100 text-blue-900 font-bold rounded-xl text-xs"><i class='fa-solid fa-check' aria-hidden='true'></i> Status Lunas</span>` : (!gmViewOnly ? `
       <button id="btn-hrd-lunas" class="px-3.5 py-2 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl text-xs transition shadow-xs">
        $ Tandai Sudah Lunas
-      </button>` : `
-      <span class="px-3 py-1.5 bg-blue-100 text-blue-900 font-bold rounded-xl text-xs"><i class='fa-solid fa-check' aria-hidden='true'></i> Status Lunas</span>`}
+      </button>` : '')}
 
       <button id="btn-hrd-print-pdf" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs transition shadow-xs flex items-center gap-1.5">
        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
        <span>Cetak PDF Form ISO</span>
       </button>
 
-      <button id="btn-hrd-delete" class="px-3.5 py-2 bg-slate-200 hover:bg-rose-100 text-slate-700 hover:text-rose-700 font-bold rounded-xl text-xs transition">
+      ${!gmViewOnly ? `<button id="btn-hrd-delete" class="px-3.5 py-2 bg-slate-200 hover:bg-rose-100 text-slate-700 hover:text-rose-700 font-bold rounded-xl text-xs transition">
        Hapus
-      </button>
+      </button>` : ''}
      </div>
     </div>` : `
     <div class="flex justify-end pt-2">
@@ -697,8 +710,8 @@ export async function mount(container, { session }) {
   });
  }
 
- if (btnOpen) btnOpen.onclick = openFormKasbonModal;
- if (btnSettings) btnSettings.onclick = openCategoryManagerModal;
+ if (btnOpen && !gmViewOnly) btnOpen.onclick = openFormKasbonModal;
+ if (btnSettings && !gmViewOnly) btnSettings.onclick = openCategoryManagerModal;
 
  await loadData();
  return { unmount() {} };

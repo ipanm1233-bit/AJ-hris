@@ -1,6 +1,7 @@
 import { COL, db, updateDoc, doc } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsUpdate, toast, genId, fmtRupiah, fmtDateShort, smartParseDate, sendEmailNotif, buildStandardEmailHtml, openModal, closeModal } from "../utils.js";
 import { renderCrudModule, icon } from "../components.js";
+import { getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 import { isoDocHeaderTable } from "../branding.js";
 
 // Fungsi pelindung teks bawaan (Bulletproof)
@@ -416,6 +417,12 @@ async function printOnboardingDocPdf(data) {
 }
 
 export async function mount(container) {
+ // GM (tanpa override) hanya boleh melihat & cetak PDF → sembunyikan formulir tulis
+ const authSession = getSession();
+ const gmViewOnly = String(authSession?.role || "").toUpperCase() === "GM" && !(await canEditModuleData(authSession));
+ // Branch Manager hanya melihat data cabangnya sendiri; role pusat bebas (branchScope = "")
+ const branchScope = resolveBranchScope(authSession);
+
  const panel = container.querySelector("#sk-panel") || container;
  panel.innerHTML = `
  <div class="max-w-6xl mx-auto space-y-6 pb-10">
@@ -518,7 +525,9 @@ export async function mount(container) {
  } catch (err) {
  console.error("Gagal memuat MASTER_KARYAWAN di Siklus Karyawan:", err);
  }
- const activeKaryawan = allKaryawan.filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF");
+ const activeKaryawan = allKaryawan
+ .filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF")
+ .filter(k => branchMatches(branchScope, k.cabang));
  activeKaryawan.sort((a,b) => (a.nama_karyawan||"").localeCompare(b.nama_karyawan||""));
  
  const selectNama = container.querySelector("#siklus-nama");
@@ -1723,6 +1732,7 @@ if (btnKalkulasi) {
  canCreate: false, 
  canEdit: false,
  searchFields: ["nama_karyawan", "jenis_siklus", "keterangan"],
+ filterFn: (row) => branchMatches(branchScope, row.cabang, row.detail_onboarding?.cabang),
  orderByField: "tanggal_proses",
  printLabel: "Cetak Dokumen (PDF)",
  printFn: (row) => {
@@ -1795,6 +1805,23 @@ if (btnKalkulasi) {
  }
  });
  });
+
+ // GM view-only: sembunyikan tab + panel formulir tulis, alihkan ke tab Riwayat
+ if (gmViewOnly) {
+ const inputTabBtn = container.querySelector('.sk-tab[data-stab="input"]');
+ const riwayatTabBtn = container.querySelector('.sk-tab[data-stab="riwayat"]');
+ if (inputTabBtn) inputTabBtn.classList.add("hidden");
+ if (panelInput) panelInput.classList.add("hidden");
+ if (panelRiwayat) panelRiwayat.classList.remove("hidden");
+ if (riwayatTabBtn) {
+ riwayatTabBtn.classList.add("border-maroon-700", "text-maroon-700");
+ riwayatTabBtn.classList.remove("border-transparent", "text-slate-500");
+ }
+ if (!loaded.riwayat) {
+ loaded.riwayat = true;
+ await loadRiwayat();
+ }
+ }
 
  return { unmount() {} };
 }

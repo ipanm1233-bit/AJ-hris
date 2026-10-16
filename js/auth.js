@@ -146,6 +146,16 @@ export const MENU_CONFIG = [
 
 const MANAJEMEN_ROLES = ["SPV", "HRD", "GM", "FINANCE", "MANAGER", "BRANCH MANAGER"];
 
+/**
+ * Menu yang TIDAK ditampilkan untuk role GM secara default.
+ * GM boleh melihat seluruh data operasional (view-only + export), tetapi menu
+ * pengaturan sistem (pengaturan/hak akses, konfigurasi, form builder, data
+ * master) hanya dikelola HRD/SUPERADMIN. HRD tetap dapat memberi akses khusus
+ * per-personil melalui Pengaturan > Hak Akses (koleksi `user_permissions`),
+ * karena override per-user selalu diprioritaskan di atas aturan default ini.
+ */
+export const GM_HIDDEN_MENU_IDS = ["pengaturan", "konfigurasi", "form-builder", "manajemen-data"];
+
 /* ---------------------------------------------------------------------
  * SESSION HELPERS
  * ------------------------------------------------------------------- */
@@ -719,6 +729,48 @@ export const FULL_ACCESS_ROLES = ["HRD", "SUPERADMIN", "DIREKTUR"];
  */
 export const ATASAN_VIEW_ROLES = ["MANAGER", "SPV", "KOORDINATOR"];
 
+/* ---------------------------------------------------------------------
+ * BRANCH SCOPE — pembatasan data berdasarkan cabang karyawan
+ * ------------------------------------------------------------------- */
+/**
+ * Role pusat yang melihat SELURUH cabang (tidak dibatasi cabangnya).
+ * Role di luar daftar ini yang berjabatan Branch Manager/Kepala Cabang
+ * hanya boleh melihat & mengelola data karyawan cabangnya sendiri.
+ */
+export const CENTRAL_BRANCH_ROLES = ["HRD", "SUPERADMIN", "DIREKTUR", "GM", "FINANCE"];
+
+/** Apakah user adalah Branch Manager / Kepala Cabang (berdasar role atau jabatan/posisi). */
+export function isBranchManager(session) {
+ if (!session) return false;
+ const role = String(session.role || "").toUpperCase();
+ const posisi = String(session.posisi || session.jabatan || "").toUpperCase();
+ if (["BRANCH MANAGER", "KEPALA CABANG", "KACAB"].includes(role)) return true;
+ return /BRANCH MANAGER|KEPALA CABANG|KACAB/.test(posisi);
+}
+
+/**
+ * Tentukan cabang yang menjadi lingkup data user.
+ * @returns {string} nama cabang (mis. "MALANG"), atau "" bila TIDAK dibatasi
+ * (role pusat, atau user tanpa cabang).
+ */
+export function resolveBranchScope(session) {
+ if (!session) return "";
+ const role = String(session.role || "").toUpperCase();
+ if (CENTRAL_BRANCH_ROLES.includes(role)) return "";
+ const branch = String(session.cabang || "").trim();
+ if (!branch || branch === "-") return "";
+ // Hanya Branch Manager / Kepala Cabang yang dibatasi ke cabangnya sendiri.
+ if (isBranchManager(session)) return branch;
+ return "";
+}
+
+/** Cocokkan sebuah cabang terhadap scope. scope kosong = semua cabang cocok. */
+export function branchMatches(scopeBranch, ...values) {
+ const target = String(scopeBranch || "").trim().toUpperCase();
+ if (!target) return true;
+ return values.some(v => String(v || "").trim().toUpperCase() === target);
+}
+
 /** Ambil daftar nama karyawan yang menjadi bawahan langsung dari `namaAtasan` */
 export async function getBawahanNames(namaAtasan) {
  try {
@@ -750,10 +802,11 @@ export async function computeVisibleMenus(session) {
   return list;
  }
 
- // GM: akses semua menu, tetapi hanya sebagai penglihat (view-only).
-  if (role === "GM") {
-    return MENU_CONFIG.slice();
-  }
+ // GM: akses semua menu operasional, tetapi hanya sebagai penglihat
+ // (view-only) + boleh export. Menu pengaturan/admin disembunyikan.
+ if (role === "GM") {
+   return MENU_CONFIG.filter(m => !GM_HIDDEN_MENU_IDS.includes(m.id));
+ }
 
   const isAtasanRole = await isAtasan(session.nama);
  const isManagementOrHrd = ["HRD", "SUPERADMIN", "DIREKTUR", "MANAGER", "SPV", "KOORDINATOR", "GM", "FINANCE", "GA", "BRANCH MANAGER"].includes(role) || isAtasanRole;
@@ -966,7 +1019,10 @@ export function canDeleteModuleData(session) {
 
 export async function canAccessRoute(routeId, session) {
  const role = (session?.role || "").toUpperCase();
- if (role === "GM") return true;
+ // Role GM tidak lagi otomatis lolos ke semua route. Akses ditentukan oleh
+ // daftar menu yang terlihat (lihat computeVisibleMenus), sehingga menu
+ // pengaturan/admin yang disembunyikan untuk GM juga ikut terkunci.
+ void role;
  let targetId = routeId;
  if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(targetId)) {
  targetId = "pemanggilan";
@@ -2077,7 +2133,39 @@ ROLE_PERMISSIONS_PRESETS.BO = ROLE_PERMISSIONS_PRESETS.BACK_OFFICE;
 ROLE_PERMISSIONS_PRESETS.GUDANG = ROLE_PERMISSIONS_PRESETS.WAREHOUSE;
 ROLE_PERMISSIONS_PRESETS.MANAGER = ROLE_PERMISSIONS_PRESETS.SPV;
 ROLE_PERMISSIONS_PRESETS.KOORDINATOR = ROLE_PERMISSIONS_PRESETS.SPV;
-ROLE_PERMISSIONS_PRESETS["BRANCH MANAGER"] = ROLE_PERMISSIONS_PRESETS.GM;
+// BRANCH MANAGER: boleh MELIHAT & MENGELOLA data operasional, tetapi HANYA
+// untuk cabangnya sendiri (pembatasan cabang dilakukan di tiap modul lewat
+// resolveBranchScope/branchMatches). Menu & aksi pengaturan tingkat pusat
+// (Hak Akses, Konfigurasi, Form Builder, Data Master, users/kanal/email, dsb)
+// TIDAK diberikan. Preset ini terpisah dari GM agar perubahan tidak ikut
+// memengaruhi DIREKTUR (yang tetap memakai preset GM).
+ROLE_PERMISSIONS_PRESETS["BRANCH MANAGER"] = [
+ "dashboard.view", "dashboard.sensitive_widgets.view", "dashboard.kpi.submit",
+ "pengajuan.view", "pengajuan.create", "riwayat.view", "riwayat.print", "riwayat.lpj.submit",
+ "approval.pending.view", "approval.pending.edit", "approval.pending.approve", "approval.pending.reject", "approval.pending.print", "approval.history.view",
+ "broadcast.view", "broadcast.create", "broadcast.publish",
+ "absensi.dashboard.view", "absensi.data.view_all", "absensi.data.edit", "absensi.proses_tarif.export", "absensi.fingerprint.sync",
+ "pengajuan_cuti.create", "pengajuan_cuti.print", "cuti.view_all", "cuti.create", "cuti.print", "cuti.export",
+ "izin.create", "izin.print", "izin.lihat_semua.view", "izin.lihat_semua.approve", "izin.lihat_semua.reject",
+ "kalender_hr.view", "siklus_karyawan.input.create", "siklus_karyawan.input.print", "siklus_karyawan.riwayat.view",
+ "rekrutmen.dashboard.view", "rekrutmen.lowongan.view", "rekrutmen.lowongan.create", "rekrutmen.lowongan.edit", "rekrutmen.kandidat.view", "rekrutmen.kandidat.create", "rekrutmen.kandidat.edit", "rekrutmen.pipeline.view", "rekrutmen.pipeline.move", "rekrutmen.interview.score", "rekrutmen.interview.invite", "rekrutmen.analytics.view", "rekrutmen.analytics.export",
+ "penilaian_kontrak.hasil_saya.view", "penilaian_kontrak.kontrak_saya.view", "penilaian_kontrak.kontrak.view_all", "penilaian_kontrak.distribusi_kpi360.create", "penilaian_kontrak.daily.manage", "penilaian_kontrak.daily.export",
+ "performance_review.my.view", "performance_review.semua_review.view", "performance_review.semua_review.create", "performance_review.semua_review.publish",
+ "training.my.submit", "training.my.participate", "training.analysis.view", "training.analysis.validate", "training.planning.create", "training.execution.followup", "training.report.view", "training.report.export",
+ "konseling.dashboard.view", "konseling.case_management.create", "konseling.case_management.edit", "konseling.action_plan.manage", "konseling.follow_up.manage", "konseling.reports.export",
+ "pemanggilan.sp.view", "pemanggilan.sp.create", "pemanggilan.sp.edit", "pemanggilan.panggil.view", "pemanggilan.panggil.create", "pemanggilan.panggil.edit",
+ "dokumen.signed.view", "dokumen.signed.print", "dokumen.drafts.create", "dokumen.drafts.edit", "dokumen.drafts.print",
+ "reimbursement.my.create", "reimbursement.my.view", "reimbursement.daftar_semua.view", "reimbursement.daftar_semua.approve", "reimbursement.daftar_semua.reject",
+ "kasbon.my.create", "kasbon.my.print", "kasbon.all.view", "kasbon.all.approve", "kasbon.all.reject",
+ "klaim_bensin.form.create", "klaim_bensin.form.print", "klaim_bensin.admin_cabang.view", "klaim_bensin.admin_cabang.approve", "klaim_bensin.admin_cabang.reject", "klaim_bensin.admin_cabang.print",
+ "lembur.dashboard.view", "lembur.perintah.create", "lembur.usulan_saya.create", "lembur.persetujuan_saya.approve", "lembur.persetujuan_saya.reject", "lembur.realisasi.verify", "lembur.rekap_jam.view", "lembur.rekap_jam.export", "lembur.laporan.view", "lembur.laporan.export",
+ "uang_makan.create", "uang_makan.edit", "uang_makan.view_all", "uang_makan.export",
+ "inventory.barang.view", "inventory.ambil.assign", "inventory.ambil.return", "inventory.ambil.print", "inventory.restock.export",
+ "kendaraan.bbm.manage", "kendaraan.cards.export",
+ "sales_order.view", "sales_order.create", "sales_outlet.lihat_semua.view", "sales_item.view", "sales_task.create", "sales_task.edit", "sales_task.complete", "sales_track.view", "sales_track.export",
+ "profile.view", "profile.edit", "profile.documents.view", "profile.sign_document",
+ "absensi_saya.view"
+];
 ROLE_PERMISSIONS_PRESETS.DIREKTUR = ROLE_PERMISSIONS_PRESETS.GM;
 
 /**

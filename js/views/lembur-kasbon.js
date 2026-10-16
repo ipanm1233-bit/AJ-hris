@@ -14,7 +14,7 @@ import {
   escapeHtml, confirmDialog, openModal, closeModal, downloadXlsx
 } from "../utils.js";
 import { badge, icon, avatar } from "../components.js";
-import { getSession, hasSubMenuAccess } from "../auth.js";
+import { getSession, hasSubMenuAccess, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 import { listAttendance } from "../attendance-api.mjs";
 import {
   DAY_TYPES, DEFAULT_OVERTIME_CONFIG, calculateDurationMinutes, fmtMinutesToDisplay,
@@ -32,6 +32,12 @@ export async function mount(container, context = {}) {
   const userNik = String(session?.nik || "").trim();
   const userNama = String(session?.nama || session?.username || "Pengguna").trim();
   const userDivisi = String(session?.divisi || session?.departemen || "Umum").trim();
+
+  // Batas cabang: Branch Manager hanya melihat/mengelola lembur cabangnya sendiri
+  const branchScope = resolveBranchScope(session);
+
+  // GM view-only: boleh lihat & ekspor, tetapi tidak boleh membuat/mengubah/memproses data.
+  const gmViewOnly = String(session?.role || "").toUpperCase() === "GM" && !(await canEditModuleData(session));
 
   // Role permissions
   const isSuper = ["SUPERADMIN", "DIRECTOR", "OWNER"].includes(userRole);
@@ -99,17 +105,19 @@ export async function mount(container, context = {}) {
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
-        ${isSupervisor ? `
+        ${isSupervisor && !gmViewOnly ? `
         <button id="btn-create-sppkl" class="px-4 py-2.5 bg-maroon-700 hover:bg-maroon-800 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-2">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
           <span>Buat Perintah Lembur</span>
         </button>
         ` : ""}
         
+        ${!gmViewOnly ? `
         <button id="btn-submit-proposal" class="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-2">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
           <span>Ajukan Usulan Lembur</span>
         </button>
+        ` : ""}
 
         <button id="btn-refresh-data" title="Segarkan Data" class="p-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl transition">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
@@ -317,7 +325,7 @@ export async function mount(container, context = {}) {
           <h2 class="text-lg font-bold text-slate-800">Manajemen Perintah Lembur (SPPKL)</h2>
           <p class="text-xs text-slate-500">Penerbitan surat perintah kerja lembur terpusat (Individu / Kelompok) dengan verifikasi digital</p>
         </div>
-        ${isSupervisor ? `
+        ${isSupervisor && !gmViewOnly ? `
         <button id="btn-add-sppkl-inner" class="px-4 py-2.5 bg-maroon-700 hover:bg-maroon-800 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
           <span>+ Buat Perintah Lembur Baru</span>
@@ -337,6 +345,7 @@ export async function mount(container, context = {}) {
     bindOrderActionButtons(wrapper);
 
     wrapper.querySelector("#btn-add-sppkl-inner")?.addEventListener("click", () => {
+      if (gmViewOnly) return;
       openCreateSppklModal({}, { allKaryawan, allOrders, currentConfig, userNama, userNik }, loadAllData);
     });
   }
@@ -354,10 +363,12 @@ export async function mount(container, context = {}) {
           <h2 class="text-lg font-bold text-slate-800">Usulan Kerja Lembur Karyawan</h2>
           <p class="text-xs text-slate-500">Penyampaian usulan lembur mandiri. Usulan karyawan belum merupakan perintah lembur sebelum disahkan atasan.</p>
         </div>
+        ${!gmViewOnly ? `
         <button id="btn-add-proposal-inner" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
           <span>Ajukan Usulan Lembur</span>
         </button>
+        ` : ""}
       </div>
 
       <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
@@ -390,7 +401,7 @@ export async function mount(container, context = {}) {
               </td>
               <td class="p-3.5 text-center space-x-1 whitespace-nowrap">
                 ${isSupervisor && (p.status === "USULAN_DIAJUKAN" || p.status === "PENDING") ? `
-                <button data-approve-proposal="${p.id}" class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] transition">Jadikan SPPKL</button>
+                ${!gmViewOnly ? `<button data-approve-proposal="${p.id}" class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] transition">Jadikan SPPKL</button>` : ""}
                 <button data-reject-proposal="${p.id}" class="px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg font-bold text-[11px] transition">Tolak</button>
                 ` : `
                 <span class="text-slate-400 text-[11px] italic">Tersimpan</span>
@@ -416,6 +427,7 @@ export async function mount(container, context = {}) {
 
     wrapper.querySelectorAll("[data-approve-proposal]").forEach(btn => {
       btn.onclick = () => {
+        if (gmViewOnly) return toast("Mode lihat saja — role Anda tidak diizinkan menerbitkan SPPKL.", "warning");
         const prop = allProposals.find(x => x.id === btn.dataset.approveProposal);
         if (prop) {
           openCreateSppklModal({
@@ -696,7 +708,9 @@ export async function mount(container, context = {}) {
                   </div>
                 </td>
                 <td class="p-3 text-center space-x-1 whitespace-nowrap">
+                  ${gmViewOnly ? `<span class="text-slate-300">—</span>` : `
                   <button data-verify-realisasi="${o.id}" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-bold text-[11px] transition">Input & Verifikasi</button>
+                  `}
                 </td>
               </tr>
               `;
@@ -1034,9 +1048,13 @@ export async function mount(container, context = {}) {
         </div>
 
         <div class="pt-4 border-t border-slate-200 flex justify-end">
+          ${gmViewOnly ? `
+          <p class="text-[11px] text-slate-500 italic">Mode lihat saja — hanya HRD/Admin yang dapat mengubah parameter kebijakan lembur.</p>
+          ` : `
           <button id="btn-save-settings" class="px-5 py-2.5 bg-maroon-700 hover:bg-maroon-800 text-white font-bold rounded-xl text-xs shadow-xs transition">
             Simpan Pengaturan
           </button>
+          `}
         </div>
       </div>
     </div>
@@ -1117,6 +1135,9 @@ export async function mount(container, context = {}) {
 
   function filterOrders(list = []) {
     return list.filter(o => {
+      // Batas cabang: Branch Manager hanya melihat perintah lembur cabangnya sendiri
+      if (branchScope && !branchMatches(branchScope, o.cabang)) return false;
+
       const oDate = o.tanggal || o.overtime_date || "";
       if (activeFilterMonth && !oDate.startsWith(activeFilterMonth)) return false;
 
@@ -1181,7 +1202,7 @@ export async function mount(container, context = {}) {
               <button data-pdf-order="${o.id}" class="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition" title="Cetak SPPKL PDF">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
               </button>
-              <button data-detail-order="${o.id}" class="px-2 py-1 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-bold text-[11px] transition">Verifikasi</button>
+              ${gmViewOnly ? "" : `<button data-detail-order="${o.id}" class="px-2 py-1 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-bold text-[11px] transition">Verifikasi</button>`}
             </td>
           </tr>
           `;
@@ -1284,6 +1305,7 @@ export async function mount(container, context = {}) {
   });
 
   container.querySelector("#btn-create-sppkl")?.addEventListener("click", () => {
+    if (gmViewOnly) return;
     openCreateSppklModal({}, { allKaryawan, allOrders, currentConfig, userNama, userNik }, loadAllData);
   });
 

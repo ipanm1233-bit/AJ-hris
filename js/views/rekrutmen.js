@@ -22,6 +22,7 @@ import {
 } from "./ats-engine.js";
 import { openCandidateDetailModal, openCvViewerModal, openInterviewScorecardModal, openCreateVacancyWizardModal, openPublicIntakeModal, loadRecruitmentMasterData } from "./ats-ui-components.js";
 import { renderAtsAnalyticsHtml } from "./ats-analytics.js";
+import { canEditModuleData, hasPermission, resolveBranchScope, branchMatches } from "../auth.js";
 
 const KANBAN_STAGES = [
   { id: "Applied", label: "Pelamar Baru (Applied)", badgeColor: "bg-slate-100 text-slate-700" },
@@ -57,6 +58,51 @@ export async function mount(container, { params, session }) {
   let customSynonyms = {};
   let unsubscribeCands = null;
   let unsubscribeVacancies = null;
+
+  // RBAC ATS: GM (dan role tanpa hak edit) hanya boleh MELIHAT data rekrutmen.
+  // Penilaian interview tetap diizinkan bila HRD menganugerahkan
+  // permission `rekrutmen.interview.score` (lihat preset role GM).
+  const canWriteAts = await canEditModuleData(session);
+  const canScoreInterview = await hasPermission("rekrutmen.interview.score", session);
+  // Branch Manager hanya melihat lowongan & kandidat cabangnya sendiri; role pusat bebas (branchScope = "")
+  const branchScope = resolveBranchScope(session);
+
+  // Kontrol yang mengubah data ATS — disembunyikan & diblokir untuk read-only.
+  const ATS_MUTATION_SELECTORS = [
+    "#ats-btn-new-vacancy", "#ats-btn-new-candidate", "#ats-btn-public-portal",
+    "#btn-add-vac-tab", "#btn-save-batch-all",
+    ".btn-vac-publish", ".btn-vac-unpublish", ".btn-vac-edit", ".btn-vac-delete",
+    ".btn-delete-cand-row",
+    "#btn-add-syn-keyword", "#btn-reset-synonyms",
+    ".btn-edit-kw", ".btn-del-kw", ".btn-del-syn-pill", ".btn-add-syn-pill",
+    ".btn-del-rule",
+    "#btn-goto-interview-templates",
+    "#btn-add-new-rule", "#btn-reset-rules", "#btn-save-rules",
+    "#btn-add-excl-pos", "#btn-add-excl-kw", "#btn-reset-excl", "#btn-save-excl",
+    "#btn-add-new-tpl", "#btn-add-aspect-item", "#btn-reset-tpl", "#btn-delete-current-tpl", "#btn-save-tpl"
+  ];
+
+  function applyAtsReadOnlyGating() {
+    if (canWriteAts) return;
+    const roots = [container, container.querySelector("#ats-tab-content")].filter(Boolean);
+    roots.forEach(root => {
+      ATS_MUTATION_SELECTORS.forEach(sel => {
+        root.querySelectorAll(sel).forEach(el => el.classList.add("hidden"));
+      });
+      root.querySelectorAll("[data-kandidat-id][draggable]").forEach(card => card.setAttribute("draggable", "false"));
+    });
+  }
+
+  if (!canWriteAts) {
+    container.addEventListener("click", (event) => {
+      const blocked = event.target.closest?.(ATS_MUTATION_SELECTORS.join(","));
+      if (blocked) {
+        event.preventDefault();
+        event.stopPropagation();
+        toast("Mode lihat saja — role Anda tidak diizinkan mengubah data rekrutmen.", "warning");
+      }
+    }, true);
+  }
 
   // Render tab container layout
   const tabContentEl = container.querySelector("#ats-tab-content") || container;
@@ -105,6 +151,22 @@ export async function mount(container, { params, session }) {
         allVacancies.push(defaultVac);
       }
 
+      // Branch scope: batasi lowongan & kandidat ke cabang Branch Manager.
+      // Kandidat di-resolve cabangnya dari domisili, atau dari lowongan yang dilamar.
+      if (branchScope) {
+        const vacById = new Map();
+        const vacByPosisi = new Map();
+        allVacancies.forEach(v => {
+          if (v.id) vacById.set(v.id, v);
+          if (v.posisi) vacByPosisi.set(v.posisi, v);
+        });
+        allVacancies = allVacancies.filter(v => branchMatches(branchScope, v.cabang, v.penempatan));
+        allCandidates = allCandidates.filter(c => {
+          const v = vacById.get(c.lowongan_id) || vacByPosisi.get(c.posisi_dilamar);
+          return branchMatches(branchScope, c.domisili, v?.cabang, v?.penempatan);
+        });
+      }
+
       // Re-evaluasi kandidat dengan aturan & sinonim terbaru
       reEvaluateAllCandidates();
 
@@ -148,7 +210,7 @@ export async function mount(container, { params, session }) {
 
   // Bind Top Action Buttons
   const btnNewVac = container.querySelector("#ats-btn-new-vacancy");
-  if (btnNewVac) {
+  if (btnNewVac && canWriteAts) {
     btnNewVac.onclick = () => {
       openCreateVacancyWizardModal({
         masterData,
@@ -164,7 +226,7 @@ export async function mount(container, { params, session }) {
   }
 
   const btnNewCand = container.querySelector("#ats-btn-new-candidate");
-  if (btnNewCand) {
+  if (btnNewCand && canWriteAts) {
     btnNewCand.onclick = () => {
       openPublicIntakeModal(allVacancies, {
         masterData,
@@ -180,7 +242,7 @@ export async function mount(container, { params, session }) {
   }
 
   const btnPublicPortal = container.querySelector("#ats-btn-public-portal");
-  if (btnPublicPortal) {
+  if (btnPublicPortal && canWriteAts) {
     btnPublicPortal.onclick = () => {
       const publicUrl = `${window.location.origin}${window.location.pathname}#karir`;
       const modalContent = `
@@ -299,6 +361,8 @@ export async function mount(container, { params, session }) {
         renderDashboard(target);
         break;
     }
+
+    applyAtsReadOnlyGating();
   }
 
   /* 1. DASHBOARD VIEW */

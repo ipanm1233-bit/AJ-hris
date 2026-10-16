@@ -1,7 +1,7 @@
 import { auth, db, COL, collection, query, where, getDocs, getDoc, setDoc, doc, limit, writeBatch, serverTimestamp } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, confirmDialog, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, buildStandardEmailHtml, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan, downloadXlsx, ensureXlsxLoaded, formatPhoneNumberForWa, openWhatsAppMessage, getEmployeePhoneByName, buildKpiTaskWaMessage, printDokumenPenilaianFisik, downloadDokumenPenilaianFisikPdf } from "../utils.js";
 import { renderCrudModule, badge, emptyState, skeletonRows, avatar, icon, openPenilaianFormFromNotif } from "../components.js";
-import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames, hasPermission, canEditModuleData } from "../auth.js";
+import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames, hasPermission, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 import { aggregateKpiByPeriod, DEFAULT_KPI_GRADE_RULES, evaluateKpiGrade, getLatestKpiSummary, validateGradeRulesMap, assessKpiDecisionReadiness } from "../kpi-scoring.mjs";
@@ -378,6 +378,9 @@ export function openGradeRulesModal(session, rulesMap, onSaveCallback) {
 
 export async function mount(container, { session, params }) {
  const role = (session.role || "").toUpperCase();
+ // Branch scope: hanya Branch Manager / Kepala Cabang yang dibatasi ke cabangnya.
+ // Role pusat (HRD/SUPERADMIN/GM/DIREKTUR/FINANCE) mengembalikan "" (tanpa batas).
+ const branchScope = resolveBranchScope(session);
  const isFullAccess = FULL_ACCESS_ROLES.includes(role);
  const isAtasanView = !isFullAccess && ATASAN_VIEW_ROLES.includes(role);
  const isHrdOrAdmin = ["HRD", "SUPERADMIN", "DIREKTUR", "GM"].includes(role);
@@ -816,6 +819,12 @@ export async function mount(container, { session, params }) {
  const cname = String(c.nama_karyawan || "").toLowerCase().trim();
  return (myName && cname === myName);
  });
+ }
+
+ // Branch Manager hanya melihat karyawan/kontrak dari cabangnya sendiri.
+ if (branchScope) {
+ allKaryawan = allKaryawan.filter(k => branchMatches(branchScope, k.cabang));
+ allKontrak = allKontrak.filter(k => branchMatches(branchScope, k.cabang));
  }
 
  function renderCardView() {
@@ -4148,6 +4157,12 @@ export async function mount(container, { session, params }) {
       allKontrak = allKontrak.filter(k => bset.has(k.nama_karyawan));
     }
 
+    // Branch Manager hanya melihat karyawan/kontrak dari cabangnya sendiri.
+    if (branchScope) {
+      allKaryawan = allKaryawan.filter(k => branchMatches(branchScope, k.cabang));
+      allKontrak = allKontrak.filter(k => branchMatches(branchScope, k.cabang));
+    }
+
     const activeEmp = allKaryawan.filter(e => (e.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF");
     const evalMap = {};
     allEvaluasi.forEach(ev => {
@@ -5532,6 +5547,12 @@ export async function mount(container, { session, params }) {
       allKontrak = allKontrak.filter(k => bset.has(k.nama_karyawan));
     }
 
+    // Branch Manager hanya melihat karyawan/kontrak dari cabangnya sendiri.
+    if (branchScope) {
+      allKaryawan = allKaryawan.filter(k => branchMatches(branchScope, k.cabang));
+      allKontrak = allKontrak.filter(k => branchMatches(branchScope, k.cabang));
+    }
+
     const activeEmp = allKaryawan.filter(e => (e.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF");
     const evalMap = {};
     allEvaluasi.forEach(ev => {
@@ -5712,6 +5733,19 @@ export async function mount(container, { session, params }) {
       );
     }
 
+    // Branch Manager hanya melihat karyawan dari cabangnya sendiri.
+    if (branchScope) {
+      visibleEmployees = visibleEmployees.filter(e => branchMatches(branchScope, e.cabang));
+    }
+    // Set nama karyawan yang terlihat (dipakai untuk menyaring log & target yang
+    // tidak selalu menyimpan field cabang langsung).
+    const branchNameSet = branchScope
+      ? new Set(visibleEmployees.map(e => String(e.nama_karyawan || "").trim().toLowerCase()))
+      : null;
+    const rowInBranch = rec => !branchScope ||
+      branchMatches(branchScope, rec.cabang) ||
+      (branchNameSet && branchNameSet.has(String(rec.nama_karyawan || "").trim().toLowerCase()));
+
     const currentYearMonth = new Date().toISOString().slice(0, 7);
     let activeDailySubtab = "harian"; // "harian" | "target" | "rekap"
     let filterMonth = currentYearMonth;
@@ -5814,6 +5848,11 @@ export async function mount(container, { session, params }) {
         }
         return true;
       });
+
+      // Branch Manager hanya melihat log penilaian dari cabangnya sendiri.
+      if (branchScope) {
+        filteredLogs = filteredLogs.filter(l => rowInBranch(l));
+      }
 
       // Filter by Month
       if (filterMonth) {
@@ -6138,6 +6177,11 @@ export async function mount(container, { session, params }) {
         return true;
       });
 
+      // Branch Manager hanya melihat target bulanan dari cabangnya sendiri.
+      if (branchScope) {
+        filteredTargets = filteredTargets.filter(t => rowInBranch(t));
+      }
+
       if (filterMonth) {
         filteredTargets = filteredTargets.filter(t => (t.periode || "").startsWith(filterMonth));
       }
@@ -6400,8 +6444,8 @@ export async function mount(container, { session, params }) {
     // -------------------------------------------------------------
     function renderSubtabRekap(targetEl) {
       const selectedMonth = filterMonth || currentYearMonth;
-      const monthLogs = allLogs.filter(l => (l.tanggal || "").startsWith(selectedMonth));
-      const monthTargets = allTargets.filter(t => (t.periode || "").startsWith(selectedMonth));
+      const monthLogs = allLogs.filter(l => (l.tanggal || "").startsWith(selectedMonth) && rowInBranch(l));
+      const monthTargets = allTargets.filter(t => (t.periode || "").startsWith(selectedMonth) && rowInBranch(t));
 
       // Group logs by employee
       const employeeMap = {};

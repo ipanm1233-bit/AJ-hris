@@ -1,6 +1,7 @@
 import { db, collection, getDocs, addDoc } from "../firebase-config.js";
 import { openModal, closeModal, toast, genId, escapeHtml, downloadHtmlAsPdf } from "../utils.js";
 import { emptyState, skeletonRows } from "../components.js";
+import { getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 
 const COL_ORDERS = "sales_orders";
 const COL_OUTLETS = "sales_outlets";
@@ -17,6 +18,12 @@ export async function mount(container, { session }) {
  const emptyStateContainer = container.querySelector("#order-empty-state");
  const searchInput = container.querySelector("#search-order");
  const btnAddOrder = container.querySelector("#btn-add-order");
+
+ // GM (tanpa override) hanya boleh melihat & export → sembunyikan tombol buat order
+ const authSession = session || getSession();
+ const gmViewOnly = String(authSession?.role || "").toUpperCase() === "GM" && !(await canEditModuleData(authSession));
+ // Branch Manager hanya melihat order dari outlet di wilayah cabangnya.
+ const branchScope = resolveBranchScope(authSession);
 
  // Stats Elements
  const statsValue = container.querySelector("#stats-order-value");
@@ -42,6 +49,14 @@ export async function mount(container, { session }) {
  // 2. Load Orders
  const orderSnap = await getDocs(collection(db, COL_ORDERS));
  ordersList = orderSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+ // Branch Manager: saring order dengan mencocokkan outlet_id ke wilayah outlet.
+ if (branchScope) {
+ ordersList = ordersList.filter(o => {
+ const outlet = outletsList.find(x => x.id === o.outlet_id);
+ return branchMatches(branchScope, outlet?.wilayah);
+ });
+ }
 
  calculateStats();
  renderList();
@@ -225,7 +240,9 @@ export async function mount(container, { session }) {
  toast("Unduhan selesai!", "success");
  }
 
- btnAddOrder.onclick = () => {
+ if (gmViewOnly && btnAddOrder) btnAddOrder.classList.add("hidden");
+
+ if (!gmViewOnly) btnAddOrder.onclick = () => {
  if (outletsList.length === 0 || itemsList.length === 0) {
  toast("Pastikan Master Outlet & Master Item sudah memiliki data sebelum membuat order!", "warning");
  return;

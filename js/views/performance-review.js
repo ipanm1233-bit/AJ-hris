@@ -2,7 +2,7 @@ import { db, COL, collection, query, where, getDocs, orderBy, limit, addDoc } fr
 import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, fmtDateShort, escapeHtml, genId } from "../utils.js";
 import { avatar, badge, icon, emptyState } from "../components.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
-import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
+import { hasSubMenuAccess, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 
 export async function mount(container, { session }) {
  const roleIsHrd = session.role === "HRD" || session.role === "SUPERADMIN" || session.role === "DIREKTUR" || session.role === "MANAGER" || session.role === "ATASAN";
@@ -324,8 +324,26 @@ async function renderMyReviews(wrap, session) {
  * ------------------------------------------------------------------- */
 async function renderAllReviews(wrap, session) {
   const canEdit = await canEditModuleData(session);
-  const allReviews = await fsGetAll(COL.PERFORMANCE_REVIEW);
- const employees = await fsGetAll(COL.MASTER_KARYAWAN);
+  // Branch Manager hanya melihat review kinerja karyawan cabangnya sendiri.
+  const branchScope = resolveBranchScope(session);
+  const allReviewsRaw = await fsGetAll(COL.PERFORMANCE_REVIEW);
+  const allEmployees = await fsGetAll(COL.MASTER_KARYAWAN);
+  // Baris review tidak punya kolom cabang → resolve via MASTER_KARYAWAN (nik/nama).
+  const empBranchByNik = new Map();
+  const empBranchByName = new Map();
+  allEmployees.forEach(e => {
+    const nik = String(e.nik_karyawan || e.nik || "").trim().toUpperCase();
+    const nm = String(e.nama_karyawan || e.nama || "").trim().toUpperCase();
+    if (nik) empBranchByNik.set(nik, e.cabang);
+    if (nm) empBranchByName.set(nm, e.cabang);
+  });
+  const allReviews = branchScope
+    ? allReviewsRaw.filter(r => branchMatches(branchScope,
+        empBranchByNik.get(String(r.nik || "").trim().toUpperCase()),
+        empBranchByName.get(String(r.nama_karyawan || "").trim().toUpperCase())))
+    : allReviewsRaw;
+  // Dropdown pembuatan review juga dibatasi ke karyawan cabang tersebut.
+  const employees = branchScope ? allEmployees.filter(e => branchMatches(branchScope, e.cabang)) : allEmployees;
 
  wrap.innerHTML = `
  <!-- MAIN REVIEW TABLE -->

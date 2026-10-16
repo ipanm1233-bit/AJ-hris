@@ -1,6 +1,7 @@
 import { db, collection, getDocs, addDoc } from "../firebase-config.js";
 import { openModal, closeModal, toast, escapeHtml } from "../utils.js";
 import { emptyState, skeletonRows } from "../components.js";
+import { getSession, canEditModuleData } from "../auth.js";
 
 const COLLECTION_NAME = "sales_items";
 
@@ -22,6 +23,11 @@ export async function mount(container, { session }) {
  const searchInput = container.querySelector("#search-item");
  const categoryFilter = container.querySelector("#filter-category");
  const btnAddItem = container.querySelector("#btn-add-item");
+
+ // GM (tanpa override) hanya boleh melihat & export → sembunyikan tombol tambah item
+ const authSession = session || getSession();
+ const gmViewOnly = String(authSession?.role || "").toUpperCase() === "GM" && !(await canEditModuleData(authSession));
+ if (gmViewOnly && btnAddItem) btnAddItem.classList.add("hidden");
 
  let itemList = [];
 
@@ -148,7 +154,7 @@ export async function mount(container, { session }) {
  });
  }
 
- btnAddItem.onclick = () => {
+ if (!gmViewOnly) btnAddItem.onclick = () => {
  openModal({
  title: "Tambah Item Baru",
  size: "md",

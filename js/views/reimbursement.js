@@ -6,7 +6,7 @@ import {
 } from "../utils.js";
 import { icon, emptyState, badge, avatar } from "../components.js";
 import { uploadFileToDrive } from "../gas-integration.js";
-import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
+import { hasSubMenuAccess, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 
 // Default seed categories if master_reimbursement_type is empty
 const DEFAULT_TYPES = [
@@ -57,13 +57,15 @@ const DEFAULT_TYPES = [
 ];
 
 export async function mount(container, { session }) {
-  const roleIsManagement = ["HRD", "SUPERADMIN", "FINANCE", "MANAGER", "SPV", "GM", "DIREKTUR"].includes((session.role || "").toUpperCase());
+  const roleIsManagement = ["HRD", "SUPERADMIN", "FINANCE", "MANAGER", "SPV", "GM", "DIREKTUR", "BRANCH MANAGER"].includes((session.role || "").toUpperCase());
   // "isManagement" sekarang final ditentukan oleh hak akses sub-menu HRD
   // (Pengaturan > Akses Menu), bukan cuma role statis -- HRD bisa override
   // per-user lewat sub-menu "Daftar Pengajuan (Semua Karyawan)".
   const isManagement = roleIsManagement && await hasSubMenuAccess("reimbursement", "daftar_semua", session);
   const canManageSettings = roleIsManagement && await hasSubMenuAccess("reimbursement", "pengaturan_jenis", session);
   const canEdit = await canEditModuleData(session);
+  // Batas cabang: Branch Manager hanya melihat klaim cabangnya sendiri
+  const branchScope = resolveBranchScope(session);
 
   // Initialize view tabs
   const tabPengajuan = container.querySelector("#rmb-tab-pengajuan");
@@ -188,7 +190,11 @@ export async function mount(container, { session }) {
     let paidNominal = 0, paidCount = 0;
 
     // Filter by user role if normal staff
-    const userClaims = isManagement ? claims : claims.filter(c => c.nama_karyawan === session.nama || c.nik === session.nik);
+    let userClaims = isManagement ? claims : claims.filter(c => c.nama_karyawan === session.nama || c.nik === session.nik);
+    // Batas cabang: Branch Manager hanya melihat klaim cabangnya sendiri + klaim miliknya
+    if (branchScope) {
+      userClaims = userClaims.filter(c => branchMatches(branchScope, c.cabang, c.cabang_karyawan) || c.nama_karyawan === session.nama || c.nik === session.nik);
+    }
 
     userClaims.forEach(c => {
       const tgl = (c.tanggal_pengeluaran || c.created_at || "").slice(0, 7);
@@ -295,6 +301,10 @@ export async function mount(container, { session }) {
     const filterCabang = container.querySelector("#rmb-filter-cabang")?.value || "ALL";
 
     let filtered = isManagement ? [...claims] : claims.filter(c => c.nama_karyawan === session.nama || c.nik === session.nik);
+    // Batas cabang: Branch Manager hanya melihat klaim cabangnya sendiri + klaim miliknya
+    if (branchScope) {
+      filtered = filtered.filter(c => branchMatches(branchScope, c.cabang, c.cabang_karyawan) || c.nama_karyawan === session.nama || c.nik === session.nik);
+    }
 
     if (filterStatus !== "ALL") {
       filtered = filtered.filter(c => c.status === filterStatus);

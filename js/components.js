@@ -8,7 +8,7 @@ import {
  fsGetAll, fsAdd, fsUpdate, fsDelete, deleteBroadcastMemoAndNotifs, openModal, closeModal, confirmDialog,
  toast, fmtDateShort, fmtRupiah, toNumber, genId, escapeHtml, localDateStr
 } from "./utils.js";
-import { getSession, canDeleteModuleData } from "./auth.js";
+import { getSession, canDeleteModuleData, canEditModuleData } from "./auth.js";
 import { authFetch } from "./api-client.js";
 import { DEFAULT_KPI_GRADE_RULES, evaluateKpiGrade } from "./kpi-scoring.mjs";
 
@@ -178,9 +178,15 @@ export async function renderCrudModule(container, cfg) {
  } = cfg;
 
  const fieldsList = Array.isArray(formFields) ? formFields : [];
- const canCreate = cfg.canCreate !== undefined ? Boolean(cfg.canCreate) : fieldsList.length > 0;
- const canEdit = cfg.canEdit !== undefined ? Boolean(cfg.canEdit) : fieldsList.length > 0;
- const userCanDelete = cfg.canDelete !== false && canDeleteModuleData(getSession());
+ const _crudSession = getSession();
+ // GM bersifat view-only (penglihat) di seluruh modul CRUD generik ini:
+ // tombol Tambah/Edit/Hapus disembunyikan. HRD tetap dapat memberi akses
+ // edit khusus per-personil lewat Pengaturan > Hak Akses (user_permissions),
+ // karena override tersebut dihormati oleh canEditModuleData().
+ const _crudGmViewOnly = String(_crudSession?.role || "").toUpperCase() === "GM" && !(await canEditModuleData(_crudSession));
+ const canCreate = _crudGmViewOnly ? false : (cfg.canCreate !== undefined ? Boolean(cfg.canCreate) : fieldsList.length > 0);
+ const canEdit = _crudGmViewOnly ? false : (cfg.canEdit !== undefined ? Boolean(cfg.canEdit) : fieldsList.length > 0);
+ const userCanDelete = cfg.canDelete !== false && !_crudGmViewOnly && canDeleteModuleData(_crudSession);
 
  container.innerHTML = `
  <div class="flex flex-col gap-4">

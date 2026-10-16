@@ -1,6 +1,7 @@
 import { db, COL, collection, query, where, getDocs, doc, getDoc, setDoc, updateDoc } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsUpdate, fsDelete, genId, openModal, closeModal, toast, fmtDate, fmtDateShort, escapeHtml, notifyUser } from "../utils.js";
 import { badge, emptyState } from "../components.js";
+import { getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 import { letterheadHtml, COMPANY_NAME, COMPANY_ADDRESS_LINE1 } from "../branding.js";
 
 // Default clause templates
@@ -127,8 +128,44 @@ const DEFAULT_CLAUSES = {
  ]
 };
 
-export async function mount(container, { session }) {
+export async function mount(container, { session } = {}) {
+ session = session || getSession();
+ const gmViewOnly = String(session?.role || "").toUpperCase() === "GM" && !(await canEditModuleData(session));
  const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
+ // Branch Manager hanya melihat dokumen karyawan cabangnya sendiri; role pusat bebas (branchScope = "")
+ const branchScope = resolveBranchScope(session);
+
+ // Resolusi cabang dokumen: kolom cabang dokumen sendiri, atau via MASTER_KARYAWAN (nik/nama target)
+ let _empBranchMaps = null;
+ async function getEmpBranchMaps() {
+ if (_empBranchMaps) return _empBranchMaps;
+ const list = await fsGetAll(COL.MASTER_KARYAWAN).catch(() => []);
+ const byNik = new Map();
+ const byName = new Map();
+ list.forEach(e => {
+ const nik = String(e.nik_karyawan || e.nik || "").trim().toUpperCase();
+ const nm = String(e.nama_karyawan || e.nama || "").trim().toUpperCase();
+ if (nik) byNik.set(nik, e.cabang);
+ if (nm) byName.set(nm, e.cabang);
+ });
+ _empBranchMaps = { byNik, byName };
+ return _empBranchMaps;
+ }
+ async function docMatchesBranch(d) {
+ if (!branchScope) return true;
+ const { byNik, byName } = await getEmpBranchMaps();
+ const dd = d.draftData || {};
+ const nik = String(d.nik_karyawan || d.nik_penerima || dd.nik_karyawan || "").trim().toUpperCase();
+ const nm = String(d.nama_karyawan || d.nama_penerima || dd.nama_karyawan || "").trim().toUpperCase();
+ return branchMatches(branchScope, d.cabang, dd.cabang, byNik.get(nik), byName.get(nm));
+ }
+
+ // GM view-only: seluruh aksi buat/edit/hapus/konfigurasi disembunyikan.
+ // Daftar draft, dokumen TTD, pratinjau/cetak PDF, dan export tetap tersedia.
+ if (gmViewOnly) {
+  ["#btn-gdoc-templates", "#btn-create-doc-draft", "#btn-add-master-template", "#btn-add-custom-placeholder"]
+   .forEach(sel => container.querySelector(sel)?.classList.add("hidden"));
+ }
 
  let allDrafts = [];
  let currentFilter = "ALL";
@@ -177,6 +214,10 @@ export async function mount(container, { session }) {
  try {
  allDrafts = await fsGetAll("drafts_dokumen").catch(() => []);
  allDrafts.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+ if (branchScope) {
+ const checks = await Promise.all(allDrafts.map(d => docMatchesBranch(d)));
+ allDrafts = allDrafts.filter((_, i) => checks[i]);
+ }
  renderList();
  loaded.drafts = true;
  } catch (e) {
@@ -236,6 +277,7 @@ export async function mount(container, { session }) {
  <button data-action="preview" data-id="${d.id}" class="px-3 py-1.5 bg-white border border-slate-200 hover:border-maroon-300 text-slate-700 hover:text-maroon-700 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-sm">
  Lihat & Cetak PDF
  </button>
+ ${gmViewOnly ? "" : `
  <button data-action="edit" data-id="${d.id}" class="px-3 py-1.5 bg-white border border-slate-200 hover:border-blue-300 text-slate-700 hover:text-blue-700 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-sm">
  Edit Klausul
  </button>
@@ -245,6 +287,7 @@ export async function mount(container, { session }) {
  <button data-action="delete" data-id="${d.id}" class="p-1.5 text-rose-500 hover:bg-rose-50 rounded-xl transition" title="Hapus Draft">
  Hapus
  </button>
+ `}
  </div>
  </div>`;
  }).join("");
@@ -282,7 +325,7 @@ export async function mount(container, { session }) {
  const signDocsList = await fsGetAll(COL.SIGN_DOCUMENTS).catch(() => []);
  const draftDocsList = await fsGetAll("drafts_dokumen").catch(() => []);
 
- const merged = signDocsList.map(sd => {
+ let merged = signDocsList.map(sd => {
  const matchingDraft = draftDocsList.find(d => d.id === sd.id);
  return {
  ...sd,
@@ -291,6 +334,11 @@ export async function mount(container, { session }) {
  });
 
  merged.sort((a, b) => new Date(b.tanggal_ttd || b.tanggal_buat || 0) - new Date(a.tanggal_ttd || a.tanggal_buat || 0));
+
+ if (branchScope) {
+ const checks = await Promise.all(merged.map(d => docMatchesBranch(d)));
+ merged = merged.filter((_, i) => checks[i]);
+ }
 
  const searchInputSigned = container.querySelector("#signed-doc-search");
  
@@ -396,7 +444,7 @@ export async function mount(container, { session }) {
  const customTemplates = await fsGetAll("custom_doc_templates").catch(() => []);
 
  const btnAddTpl = container.querySelector("#btn-add-master-template");
- if (btnAddTpl) {
+ if (btnAddTpl && !gmViewOnly) {
  btnAddTpl.onclick = () => openMasterTemplateEditorModal(null, loadMasterTemplatesTab);
  }
 
@@ -406,9 +454,11 @@ export async function mount(container, { session }) {
  <p class="text-2xl font-bold text-slate-300"></p>
  <p class="text-xs font-bold text-slate-600 mt-2">Belum ada Master Template Kustom HRD</p>
  <p class="text-[11px] text-slate-400 mt-1 max-w-md mx-auto">Klik "Buat Master Template Kustom Baru" untuk menyimpan template surat kustom perusahaan (Paklaring, Surat Mutasi, NDA, Rekomendasi, dll) dengan struktur klausul & placeholder lengkap.</p>
+ ${gmViewOnly ? "" : `
  <button id="btn-empty-add-tpl" class="mt-4 px-4 py-2 bg-maroon-700 text-white rounded-xl text-xs font-bold shadow hover:bg-maroon-800 transition">
  Buat Master Template Pertama
  </button>
+ `}
  </div>`;
  const btnEmpty = wrap.querySelector("#btn-empty-add-tpl");
  if (btnEmpty) btnEmpty.onclick = () => openMasterTemplateEditorModal(null, loadMasterTemplatesTab);
@@ -429,6 +479,9 @@ export async function mount(container, { session }) {
  </div>
 
  <div class="flex items-center justify-between border-t border-slate-200/80 pt-3 mt-1">
+ ${gmViewOnly ? `
+ <span class="px-3 py-1.5 bg-slate-100 text-slate-500 rounded-xl text-[11px] font-bold">Mode lihat saja</span>
+ ` : `
  <button data-use-template="${t.id}" class="px-3 py-1.5 bg-maroon-700 hover:bg-maroon-800 text-white rounded-xl text-xs font-bold shadow transition flex items-center gap-1">
  Gunakan & Buat Draft
  </button>
@@ -436,6 +489,7 @@ export async function mount(container, { session }) {
  <button data-edit-template="${t.id}" class="p-1.5 text-slate-600 hover:bg-slate-200 rounded-lg text-xs" title="Edit Template">Edit</button>
  <button data-del-template="${t.id}" class="p-1.5 text-rose-500 hover:bg-rose-100 rounded-lg text-xs" title="Hapus Template">Hapus Hapus</button>
  </div>
+ `}
  </div>
  </div>
  `).join("")}
@@ -526,7 +580,7 @@ export async function mount(container, { session }) {
  <p class="text-xs font-bold text-slate-800 mt-1.5">${escapeHtml(p.label)}</p>
  <p class="text-[10px] text-slate-400 mt-0.5">${escapeHtml(p.desc || "-")}</p>
  </div>
- ${!p.is_system ? `
+ ${!p.is_system && !gmViewOnly ? `
  <button data-del-ph="${p.key}" class="p-1 text-rose-500 hover:bg-rose-100 rounded-lg text-xs" title="Hapus Placeholder">Hapus</button>
  ` : ''}
  </div>
@@ -550,7 +604,7 @@ export async function mount(container, { session }) {
  renderPlaceholdersUI();
 
  const btnAddPh = container.querySelector("#btn-add-custom-placeholder");
- if (btnAddPh) {
+ if (btnAddPh && !gmViewOnly) {
  btnAddPh.onclick = () => {
  openModal({
  title: "Tambah Placeholder Kustom Baru",
@@ -640,13 +694,13 @@ export async function mount(container, { session }) {
  }
 
  // Button create draft
- container.querySelector("#btn-create-doc-draft").onclick = () => {
+ if (!gmViewOnly) container.querySelector("#btn-create-doc-draft").onclick = () => {
  openDocEditorModal(null, session, loadData);
  };
 
  // Button Google Doc Templates & Placeholders
  const btnGDoc = container.querySelector("#btn-gdoc-templates");
- if (btnGDoc) {
+ if (btnGDoc && !gmViewOnly) {
  btnGDoc.onclick = () => {
  openGDocTemplateModal(session);
  };

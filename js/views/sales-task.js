@@ -1,6 +1,7 @@
 import { db, collection, getDocs, addDoc, doc, updateDoc } from "../firebase-config.js";
 import { openModal, closeModal, toast, genId, escapeHtml, fmtDateShort } from "../utils.js";
 import { emptyState } from "../components.js";
+import { getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 
 const COL_TASKS = "sales_tasks";
 const COL_OUTLETS = "sales_outlets";
@@ -18,6 +19,13 @@ export async function mount(container, { session }) {
  const countCompleted = container.querySelector("#count-completed");
  const btnAddTask = container.querySelector("#btn-add-task");
 
+ // GM (tanpa override) hanya boleh melihat & export → sembunyikan aksi tulis
+ const authSession = session || getSession();
+ const gmViewOnly = String(authSession?.role || "").toUpperCase() === "GM" && !(await canEditModuleData(authSession));
+ if (gmViewOnly && btnAddTask) btnAddTask.classList.add("hidden");
+ // Branch Manager hanya melihat kunjungan dari outlet di wilayah cabangnya.
+ const branchScope = resolveBranchScope(authSession);
+
  let tasksList = [];
  let outletsList = [];
 
@@ -33,6 +41,14 @@ export async function mount(container, { session }) {
  // 2. Load Tasks
  const taskSnap = await getDocs(collection(db, COL_TASKS));
  tasksList = taskSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+ // Branch Manager: saring kunjungan dengan mencocokkan outlet_id ke wilayah outlet.
+ if (branchScope) {
+ tasksList = tasksList.filter(t => {
+ const outlet = outletsList.find(x => x.id === t.outlet_id);
+ return branchMatches(branchScope, outlet?.wilayah);
+ });
+ }
 
  renderLists();
  } catch (e) {
@@ -73,6 +89,7 @@ export async function mount(container, { session }) {
  `).join("");
 
  listPending.querySelectorAll(".btn-complete-task").forEach(btn => {
+ if (gmViewOnly) { btn.classList.add("hidden"); return; }
  btn.onclick = () => {
  const task = tasksList.find(x => x.id === btn.dataset.id);
  if (task) openCompleteTaskModal(task);
@@ -165,7 +182,7 @@ export async function mount(container, { session }) {
  });
  }
 
- btnAddTask.onclick = () => {
+ if (!gmViewOnly) btnAddTask.onclick = () => {
  if (outletsList.length === 0) {
  toast("Master Outlet kosong! Daftarkan outlet terlebih dahulu.", "warning");
  return;

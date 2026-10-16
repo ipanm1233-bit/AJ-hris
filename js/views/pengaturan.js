@@ -433,7 +433,7 @@ async function setupRbacMenuTab(container, users, allUsers = [], allKaryawan = [
      <div class="p-3.5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 border-b border-slate-50">
       ${module.actions.map(act => `
        <label class="rbac-action-item flex items-start gap-2 p-2 rounded-xl border border-slate-100 hover:bg-slate-50/80 cursor-pointer transition text-xs">
-        <input type="checkbox" data-parent-menu="${module.id}" data-action="${act.key}" class="rbac-action-cb rounded border-slate-300 text-maroon-600 focus:ring-maroon-400 mt-0.5 w-3.5 h-3.5">
+        <input type="checkbox" data-parent-menu="${module.id}" data-action="${act.key}" data-action-type="${act.type}"${act.dangerous ? ' data-dangerous="1"' : ''} class="rbac-action-cb rounded border-slate-300 text-maroon-600 focus:ring-maroon-400 mt-0.5 w-3.5 h-3.5">
         <div class="flex-1 leading-tight">
          <div class="text-slate-700 font-medium">${escapeHtml(act.label)}</div>
          <div class="flex items-center gap-1 mt-1">
@@ -461,7 +461,7 @@ async function setupRbacMenuTab(container, users, allUsers = [], allKaryawan = [
          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 pt-1 pl-5">
           ${sm.actions.map(act => `
            <label class="rbac-action-item flex items-start gap-2 p-1.5 rounded-lg border border-slate-100 hover:bg-slate-50 cursor-pointer transition text-xs">
-            <input type="checkbox" data-parent-menu="${module.id}" data-parent-sub="${sm.id}" data-action="${act.key}" class="rbac-action-cb rounded border-slate-300 text-maroon-600 focus:ring-maroon-400 mt-0.5 w-3.5 h-3.5">
+            <input type="checkbox" data-parent-menu="${module.id}" data-parent-sub="${sm.id}" data-action="${act.key}" data-action-type="${act.type}"${act.dangerous ? ' data-dangerous="1"' : ''} class="rbac-action-cb rounded border-slate-300 text-maroon-600 focus:ring-maroon-400 mt-0.5 w-3.5 h-3.5">
             <div class="flex-1 leading-tight">
              <div class="text-slate-700 font-medium">${escapeHtml(act.label)}</div>
              <div class="flex items-center gap-1 mt-1">
@@ -592,7 +592,7 @@ async function setupRbacMenuTab(container, users, allUsers = [], allKaryawan = [
    cb.checked = allowedActions.includes(cb.dataset.action) || isSuperadmin;
   });
 
-  if (readonlyToggle) readonlyToggle.checked = ov?.read_only === true;
+  if (readonlyToggle) readonlyToggle.checked = ov ? ov.read_only === true : (userObj?.role || "").toUpperCase() === "GM";
   updateSummary();
  }
 
@@ -628,6 +628,18 @@ async function setupRbacMenuTab(container, users, allUsers = [], allKaryawan = [
   });
  }
 
+ // Tindakan yang bersifat mengubah/menghapus data (edit, hapus, konfigurasi,
+ // publikasi, impor, dsb). Tindakan ini TIDAK ikut tercentang otomatis saat
+ // HRD hanya menyalakan sebuah modul/submenu -- harus dipilih secara eksplisit
+ // agar tidak terjadi pemberian akses berlebih (mis. hanya ingin "lihat semua"
+ // tetapi koreksi & hapus ikut aktif).
+ function isDestructiveActionCb(cb) {
+  if (!cb) return false;
+  if (cb.dataset.dangerous === "1") return true;
+  const type = (cb.dataset.actionType || "").toLowerCase();
+  return ["edit", "delete", "configure", "manage", "publish", "import", "upload", "sync", "annual_reset", "bulk_execute"].includes(type);
+ }
+
  // Interaction: Parent Menu toggle checks/unchecks its actions
  catalogContainer.addEventListener("change", (e) => {
   const target = e.target;
@@ -635,6 +647,7 @@ async function setupRbacMenuTab(container, users, allUsers = [], allKaryawan = [
    const moduleId = target.dataset.menu;
    const isChecked = target.checked;
    catalogContainer.querySelectorAll(`[data-parent-menu="${moduleId}"]`).forEach(cb => {
+    if (isChecked && isDestructiveActionCb(cb)) return;
     cb.checked = isChecked;
    });
    catalogContainer.querySelectorAll(`[data-submenu-parent="${moduleId}"]`).forEach(cb => {
@@ -662,11 +675,26 @@ async function setupRbacMenuTab(container, users, allUsers = [], allKaryawan = [
     if (menuCb) menuCb.checked = true;
    }
    catalogContainer.querySelectorAll(`[data-parent-menu="${parentModule}"][data-parent-sub="${subId}"]`).forEach(cb => {
+    if (isChecked && isDestructiveActionCb(cb)) return;
     cb.checked = isChecked;
    });
   }
   updateSummary();
  });
+
+ // Mode "Hanya Lihat (Read-only)": saat diaktifkan, seluruh aksi yang
+ // mengubah/menghapus data otomatis dicabut agar tidak ada akses berlebih.
+ if (readonlyToggle) {
+  readonlyToggle.addEventListener("change", () => {
+   if (!readonlyToggle.checked) return;
+   let cleared = 0;
+   catalogContainer.querySelectorAll("[data-action]").forEach(cb => {
+    if (isDestructiveActionCb(cb) && cb.checked) { cb.checked = false; cleared++; }
+   });
+   updateSummary();
+   if (cleared) toast(`${cleared} akses koreksi/hapus/konfigurasi otomatis dinonaktifkan (Mode Hanya Lihat).`, "info");
+  });
+ }
 
  // Toggle all actions in module
  catalogContainer.addEventListener("click", (e) => {
@@ -799,7 +827,7 @@ async function setupRbacMenuTab(container, users, allUsers = [], allKaryawan = [
   const userKey = select.value;
   const userObj = users.find(u => (u.username || u.id) === userKey || u.id === userKey || u.username === userKey);
   const checkedMenus = Array.from(catalogContainer.querySelectorAll("[data-menu]:checked")).map(cb => cb.dataset.menu);
-  const checkedActions = Array.from(catalogContainer.querySelectorAll("[data-action]:checked")).map(cb => cb.dataset.action);
+  let checkedActions = Array.from(catalogContainer.querySelectorAll("[data-action]:checked")).map(cb => cb.dataset.action);
 
   const allowedSubmenus = {};
   catalogContainer.querySelectorAll("[data-submenu]:checked").forEach(cb => {
@@ -816,6 +844,13 @@ async function setupRbacMenuTab(container, users, allUsers = [], allKaryawan = [
   });
 
   const readOnly = readonlyToggle?.checked === true;
+
+  // Jika mode "Hanya Lihat (Read-only)" aktif, jangan pernah simpan akses
+  // tindakan yang mengubah/menghapus data, walau checkbox-nya tercentang.
+  if (readOnly) {
+   const destructiveKeys = new Set(Array.from(catalogContainer.querySelectorAll("[data-action]")).filter(isDestructiveActionCb).map(cb => cb.dataset.action));
+   checkedActions = checkedActions.filter(key => !destructiveKeys.has(key));
+  }
 
   try {
    const keysToSave = new Set(keysFor(userKey, userObj));

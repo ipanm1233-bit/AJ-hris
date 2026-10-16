@@ -4,6 +4,7 @@ import {
   escapeHtml, genId, confirmDialog, toNumber, downloadXlsx, formatUangJalanEkspedisiRows
 } from "../utils.js";
 import { icon, emptyState, openExportPicker } from "../components.js";
+import { getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 
 const MONTH_NAMES = [
   "Januari", "Februari", "Maret", "April", "Mei", "Juni",
@@ -11,6 +12,9 @@ const MONTH_NAMES = [
 ];
 
 export async function mount(container) {
+  const session = getSession();
+  const gmViewOnly = String(session?.role || "").toUpperCase() === "GM" && !(await canEditModuleData(session));
+
   const [karyawan, kendaraan, settingsSnap] = await Promise.all([
     fsGetAll(COL.MASTER_KARYAWAN),
     fsGetAll(COL.MASTER_KENDARAAN),
@@ -27,6 +31,28 @@ export async function mount(container) {
   const tarif = (settingsSnap.exists() ? settingsSnap.data().tarif : {}) || {};
   const rateDriver = toNumber(tarif.um_driver) || 0;
   const rateHelper = toNumber(tarif.um_helper) || 0;
+
+  // Branch scope: Branch Manager hanya melihat trip yang driver/helper-nya
+  // berasal dari cabangnya. Baris UANG_MAKAN_EXPEDISI tidak menyimpan cabang,
+  // jadi cabang diresolusi lewat nama driver/helper ke MASTER_KARYAWAN.
+  const branchScope = resolveBranchScope(session);
+  const empBranchByName = new Map();
+  karyawan.forEach(k => {
+    const key = String(k.nama_karyawan || "").trim().toLowerCase();
+    if (key && !empBranchByName.has(key)) empBranchByName.set(key, k.cabang);
+  });
+  const rowMatchesBranch = r => {
+    if (!branchScope) return true;
+    const d = String(r.driver || "").trim().toLowerCase();
+    const h = String(r.helper || "").trim().toLowerCase();
+    const dResolved = Boolean(d) && empBranchByName.has(d);
+    const hResolved = Boolean(h) && empBranchByName.has(h);
+    // Nama tidak dapat diresolusi ke master karyawan → cabang tidak dapat
+    // ditentukan, baris tetap dipertahankan agar data tidak hilang.
+    if (!dResolved && !hResolved) return true;
+    return (dResolved && branchMatches(branchScope, empBranchByName.get(d))) ||
+           (hResolved && branchMatches(branchScope, empBranchByName.get(h)));
+  };
 
   let allRows = [];
   let filteredRows = [];
@@ -59,7 +85,7 @@ export async function mount(container) {
     </div>
 
     <!-- Form Input Trip Pengiriman -->
-    <div class="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-6">
+    <div id="um-form-card" class="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-6 ${gmViewOnly ? "hidden" : ""}">
       <h3 id="um-form-title" class="font-bold text-slate-800 text-base mb-4 flex items-center gap-2">
         ${icon("doc-plus","w-5 h-5 text-maroon-700")} Form Input Trip Pengiriman
       </h3>
@@ -537,6 +563,9 @@ export async function mount(container) {
         }
       }
 
+      // 5. Filter Cabang (Branch Manager)
+      if (!rowMatchesBranch(r)) return false;
+
       return true;
     });
 
@@ -622,8 +651,10 @@ export async function mount(container) {
           ${fmtRupiah(r.uang_makan)}
         </td>
         <td class="px-4 py-3 text-right whitespace-nowrap">
+          ${gmViewOnly ? `<span class="text-slate-300">—</span>` : `
           <button data-edit="${r.id}" class="text-slate-400 hover:text-maroon-700 p-1.5 rounded-lg hover:bg-maroon-50 transition cursor-pointer" title="Edit Trip">${icon("edit","w-4 h-4")}</button>
           <button data-del="${r.id}" class="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition cursor-pointer" title="Hapus Trip">${icon("trash","w-4 h-4")}</button>
+          `}
         </td>
       </tr>`;
     }).join("");
@@ -671,7 +702,7 @@ export async function mount(container) {
     toast("Filter periode berhasil direset ke bulan ini", "info");
   });
 
-  form.addEventListener("submit", async (e) => {
+  if (!gmViewOnly) form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const jmlToko = form.jml_toko.value === "" ? null : toNumber(form.jml_toko.value);
     const realisasi = form.realisasi_toko.value === "" ? null : toNumber(form.realisasi_toko.value);

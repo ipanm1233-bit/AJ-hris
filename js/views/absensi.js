@@ -81,9 +81,14 @@ export async function mount(container, { session, params } = {}) {
  // HRD bisa memberi/mencabut akses ini per-karyawan secara individual.
  const isHrdOrAdmin = roleIsHrdOrAdmin || await hasSubMenuAccess("absensi", "proses_tarif", session);
  const canViewAll = roleIsHrdOrAdmin || await hasPermission("absensi.data.view_all", session);
- const canCorrectBranch = !roleIsHrdOrAdmin && await hasPermission("absensi.data.edit", session);
- const canEdit = roleIsHrdOrAdmin ? await canEditModuleData(session) : canCorrectBranch;
- const scopedBranch = !roleIsHrdOrAdmin && canViewAll ? String(session?.cabang || "").trim() : "";
+ // Otorisasi koreksi & hapus data absensi mengikuti HAK AKSES per-user
+ // (allowed_actions) yang diatur HRD di Pengaturan > Hak Akses, bukan lagi
+ // otomatis terbuka hanya karena role HRD/Admin.
+ const canCorrectAbsen = await hasPermission("absensi.data.edit", session);
+ const canDeleteAbsen = await hasPermission("absensi.data.delete", session);
+ const canEdit = canCorrectAbsen || canDeleteAbsen;
+ const isGlobalAbsensiViewer = roleIsHrdOrAdmin || userRole === "GM";
+ const scopedBranch = !isGlobalAbsensiViewer && canViewAll ? String(session?.cabang || "").trim() : "";
  const isPicBranch = Boolean(scopedBranch);
 
  const btnImport = container.querySelector("#btn-import-absen");
@@ -591,7 +596,7 @@ export async function mount(container, { session, params } = {}) {
   }
   if (btnBulkDelete) {
    const deletableCount = selectedDeletableAttendanceRows(listAbsensiGlobal, selectedAttendanceKeys).length;
-   btnBulkDelete.classList.toggle("hidden", !roleIsHrdOrAdmin);
+   btnBulkDelete.classList.toggle("hidden", !canDeleteAbsen);
    btnBulkDelete.disabled = deletableCount === 0;
    btnBulkDelete.textContent = deletableCount ? `Hapus ${deletableCount} Baris` : "Hapus Baris Terpilih";
   }
@@ -662,7 +667,7 @@ export async function mount(container, { session, params } = {}) {
  if (!canViewDashboard && dashboardSection) dashboardSection.style.display = "none";
  if (btnImport) btnImport.style.display = "none";
  if (btnExport) btnExport.style.display = "none";
- if (btnExportRawAbsen && !isPicBranch) btnExportRawAbsen.style.display = "none";
+ if (btnExportRawAbsen && !isPicBranch && userRole !== "GM") btnExportRawAbsen.style.display = "none";
  if (btnSyncFingerprint) btnSyncFingerprint.style.display = "none";
  if (btnConfigFingerprint) btnConfigFingerprint.style.display = "none";
  if (btnPullArchive) btnPullArchive.style.display = "none";
@@ -678,9 +683,9 @@ export async function mount(container, { session, params } = {}) {
  if (tabHeaderContainer && !canViewDashboard) tabHeaderContainer.style.display = "none";
 
  const pageH1 = container.querySelector("h1");
- if (pageH1) pageH1.textContent = isPicBranch ? `Data Absensi Cabang ${scopedBranch}` : "Data Absensi Saya";
+ if (pageH1) pageH1.textContent = isPicBranch ? `Data Absensi Cabang ${scopedBranch}` : (userRole === "GM" ? "Data Absensi Seluruh Karyawan" : "Data Absensi Saya");
  const pageP = container.querySelector("p");
- if (pageP) pageP.textContent = isPicBranch ? `Data kehadiran ${scopedBranch} yang diizinkan HRD.` : "Daftar riwayat kehadiran sidik jari Anda pada 2 bulan berjalan.";
+ if (pageP) pageP.textContent = isPicBranch ? `Data kehadiran ${scopedBranch} yang diizinkan HRD.` : (userRole === "GM" ? "Mode lihat saja (read-only) — menampilkan kehadiran seluruh karyawan." : "Daftar riwayat kehadiran sidik jari Anda pada 2 bulan berjalan.");
 
  if (filterStart) filterStart.value = twoMonthsStart;
  if (filterEnd) filterEnd.value = twoMonthsEnd;
@@ -758,7 +763,7 @@ export async function mount(container, { session, params } = {}) {
   return;
  }
  rawTbody.innerHTML = `<tr><td colspan="18" class="p-4">${skeletonRows(4)}</td></tr>`;
- if (canViewAll && !roleIsHrdOrAdmin && !scopedBranch) {
+ if (canViewAll && !roleIsHrdOrAdmin && userRole !== "GM" && !scopedBranch) {
   rawTbody.innerHTML = `<tr><td colspan="18" class="p-4 text-amber-800">Cabang akun belum terdaftar. Hubungi HRD agar akses PIC absensi dapat dibatasi ke cabang yang tepat.</td></tr>`;
   return;
  }
@@ -1021,8 +1026,8 @@ export async function mount(container, { session, params } = {}) {
  <td class="px-4 py-3 text-right">
  ${canEdit && (roleIsHrdOrAdmin || isPicBranch) ? `
  ${roleIsHrdOrAdmin && String(r.nik || '').toUpperCase().startsWith('FINGER-') && !r._archive_source ? `<button data-map-id="${escapeHtml(r.id)}" class="text-indigo-700 font-semibold hover:underline mr-3">Petakan</button>` : ''}
- <button data-edit-id="${r.id}" class="text-maroon-700 font-medium hover:underline mr-3">Koreksi</button>
- ${roleIsHrdOrAdmin && !r.is_status_only ? `<button data-del-id="${r.id}" class="text-red-500 hover:underline">Hapus</button>` : ''}
+ ${canCorrectAbsen ? `<button data-edit-id="${r.id}" class="text-maroon-700 font-medium hover:underline mr-3">Koreksi</button>` : ''}
+ ${canDeleteAbsen && !r.is_status_only ? `<button data-del-id="${r.id}" class="text-red-500 hover:underline">Hapus</button>` : ''}
  ` : `<span class="text-slate-300">-</span>`}
  </td>
  </tr>
@@ -1253,6 +1258,7 @@ export async function mount(container, { session, params } = {}) {
  }
 
  function openBulkEditAbsensiModal() {
+ if (!canCorrectAbsen) return toast("Akses ditolak: Anda tidak memiliki izin koreksi data absensi.", "warning");
  const selectedRows = listAbsensiGlobal.filter(row => selectedAttendanceKeys.has(attendanceRowKey(row)));
  if (!selectedRows.length) return toast("Pilih minimal satu baris absensi.", "warning");
  if (selectedRows.length > 400) return toast("Maksimal 400 baris dalam satu kali koreksi.", "warning");
@@ -1326,7 +1332,7 @@ export async function mount(container, { session, params } = {}) {
  }
 
  function openBulkDeleteAbsensiModal() {
- if (!roleIsHrdOrAdmin) return toast("Hanya HRD/Admin yang dapat menghapus data absensi.", "warning");
+ if (!canDeleteAbsen) return toast("Akses ditolak: Anda tidak memiliki izin menghapus data absensi.", "warning");
  const selectedRows = listAbsensiGlobal.filter(row => selectedAttendanceKeys.has(attendanceRowKey(row)));
  const deletableRows = selectedDeletableAttendanceRows(listAbsensiGlobal, selectedAttendanceKeys);
  const skippedCount = selectedRows.length - deletableRows.length;
@@ -1370,6 +1376,7 @@ export async function mount(container, { session, params } = {}) {
  }
 
  function openEditAbsenModal(item) {
+ if (item && !canCorrectAbsen) return toast("Akses ditolak: Anda tidak memiliki izin koreksi data absensi.", "warning");
  if(!item) return;
  openModal({
  title: `Koreksi Absen — ${item.nama}`,

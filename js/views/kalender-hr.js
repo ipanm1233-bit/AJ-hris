@@ -1,8 +1,11 @@
 import { COL } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsDelete, openModal, closeModal, toast, escapeHtml, sendEmailNotif, buildStandardEmailHtml, genId, localDateStr } from "../utils.js";
 import { emptyState } from "../components.js";
+import { getSession, canEditModuleData } from "../auth.js";
 
-export async function mount(container, { session }) {
+export async function mount(container, { session } = {}) {
+ const currentSession = session || getSession();
+ const gmViewOnly = String(currentSession?.role || "").toUpperCase() === "GM" && !(await canEditModuleData(currentSession));
  let currentDate = new Date();
  
  let cutiData = [];
@@ -17,7 +20,7 @@ export async function mount(container, { session }) {
  <h1 class="text-2xl font-bold text-slate-800">Kalender Pintar HR</h1>
  <p class="text-sm text-slate-500 mt-1">Pantau Cuti, Ulang Tahun, Anniversary, Kontrak Habis & Agenda dalam satu tampilan.</p>
  </div>
- <button id="btn-tambah-agenda" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition shadow-sm flex items-center gap-2">
+ <button id="btn-tambah-agenda" class="${gmViewOnly ? 'hidden ' : ''}bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition shadow-sm flex items-center gap-2">
  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
  Tambah Agenda Internal
  </button>
@@ -214,7 +217,7 @@ export async function mount(container, { session }) {
  if (listAgenda.length) {
  bodyHtml += `<div class="mb-5"><h3 class="text-xs font-bold text-emerald-800 uppercase tracking-wide mb-2 flex items-center gap-1">Agenda Internal / To-Do List</h3><div class="bg-emerald-50 rounded-lg p-3 border border-emerald-100 space-y-2">`;
  listAgenda.forEach(a => {
- bodyHtml += `<div class="flex justify-between items-start"><p class="text-sm font-medium text-emerald-900">${escapeHtml(a.judul)}</p><button data-del-agenda="${a.id}" class="text-xs text-red-500 hover:underline">Hapus</button></div><p class="text-xs text-emerald-700">${escapeHtml(a.keterangan || "-")}</p>`;
+ bodyHtml += `<div class="flex justify-between items-start"><p class="text-sm font-medium text-emerald-900">${escapeHtml(a.judul)}</p>${gmViewOnly ? "" : `<button data-del-agenda="${a.id}" class="text-xs text-red-500 hover:underline">Hapus</button>`}</div><p class="text-xs text-emerald-700">${escapeHtml(a.keterangan || "-")}</p>`;
  });
  bodyHtml += `</div></div>`;
  }
@@ -338,6 +341,7 @@ export async function mount(container, { session }) {
  // MODAL TAMBAH AGENDA MANUAL
  // ==========================================
  container.querySelector("#btn-tambah-agenda").onclick = () => {
+ if (gmViewOnly) return;
  openModal({
  title: "Tambah Agenda HR / To-Do List",
  bodyHtml: `

@@ -6,7 +6,7 @@ import {
 } from "../utils.js";
 import { COL } from "../firebase-config.js";
 import { isoDocHeaderTable, COMPANY_NAME, logoImgTag } from "../branding.js";
-import { getSession } from "../auth.js";
+import { getSession, canEditModuleData } from "../auth.js";
 import { authFetch } from "../api-client.js";
 import { callGasArchiveWebApp } from "../gas-integration.js";
 import { applyDailyRouteOverride, buildDailyRouteReconciliation } from "../sales-route.mjs";
@@ -34,6 +34,13 @@ export async function mount(container, { session } = {}) {
   );
   const isStandardKaryawan = !isSuperOrHrd && !isSpvOrKoordinatorSales;
 
+  // GM (tanpa override) bersifat view-only: hanya melihat, export/print, tanpa aksi tulis.
+  // visitWriteBlocked menutup semua kontrol tulis (untuk karyawan standar maupun GM);
+  // canDeleteVisits membatasi aksi hapus (termasuk GM view-only).
+  const gmViewOnly = userRole === "GM" && !(await canEditModuleData(activeSession));
+  const visitWriteBlocked = isStandardKaryawan || gmViewOnly;
+  const canDeleteVisits = isSuperOrHrd && !gmViewOnly;
+
   const btnSync = container.querySelector("#btn-sync-kanal");
   const btnExport = container.querySelector("#btn-export-sales-visits");
   const btnExportPdf = container.querySelector("#btn-export-sales-pdf");
@@ -59,6 +66,15 @@ export async function mount(container, { session } = {}) {
   } else if (isSpvOrKoordinatorSales) {
     if (btnImport) btnImport.classList.add("hidden");
     if (btnPurgeDummy) btnPurgeDummy.classList.add("hidden");
+    if (archivePanel) archivePanel.classList.add("hidden");
+  }
+
+  // GM view-only: sembunyikan seluruh kontrol tulis/import/sinkronisasi/konfigurasi
+  if (gmViewOnly) {
+    if (btnImport) btnImport.classList.add("hidden");
+    if (btnPurgeDummy) btnPurgeDummy.classList.add("hidden");
+    if (btnConfigDeparture) btnConfigDeparture.classList.add("hidden");
+    if (btnSync) btnSync.classList.add("hidden");
     if (archivePanel) archivePanel.classList.add("hidden");
   }
 
@@ -231,7 +247,7 @@ export async function mount(container, { session } = {}) {
   }
 
   async function saveDailyRoutePoint(salesNik, salesNama, tanggal, isStart, rawGps) {
-    if (isStandardKaryawan) return false;
+    if (visitWriteBlocked) return false;
     const coords = parseGpsCoordinates(String(rawGps || "").trim());
     if (!salesNik || !tanggal || !coords) {
       toast("Format GPS tidak valid. Gunakan Latitude, Longitude.", "error");
@@ -269,7 +285,7 @@ export async function mount(container, { session } = {}) {
 
   // Helper: Save/Update Custom Daily GPS Distance (e.g. from Google Maps route discrepancy)
   async function saveCustomDailyGpsKm(salesNik, salesNama, tanggal, customKmInput, calculatedKm = 0) {
-    if (isStandardKaryawan) {
+    if (visitWriteBlocked) {
       toast("Akses terbatas: Karyawan hanya memiliki akses melihat data rute.", "warning");
       return false;
     }
@@ -337,7 +353,7 @@ export async function mount(container, { session } = {}) {
 
   // Helper: Save/Update Sales Odometer log to Firestore
   async function saveOdometerLog(salesNik, salesNama, tanggal, kmAwalInput, kmAkhirInput, jarakGps) {
-    if (isStandardKaryawan) {
+    if (visitWriteBlocked) {
       toast("Akses terbatas: Karyawan hanya memiliki akses melihat data rute.", "warning");
       return false;
     }
@@ -596,7 +612,7 @@ export async function mount(container, { session } = {}) {
               item.koordinat_gps = matchOutlet.koordinat_gps;
               item.lat = matchParsed.lat;
               item.lng = matchParsed.lng;
-              if (!isStandardKaryawan && item.id) gpsCorrections.push({ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng });
+              if (!visitWriteBlocked && item.id) gpsCorrections.push({ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng });
               continue;
             }
           }
@@ -608,14 +624,14 @@ export async function mount(container, { session } = {}) {
             const mp = parseGpsCoordinates(matchOutlet.koordinat_gps);
             item.lat = mp?.lat;
             item.lng = mp?.lng;
-            if (!isStandardKaryawan && item.id) gpsCorrections.push({ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng });
+            if (!visitWriteBlocked && item.id) gpsCorrections.push({ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng });
           } else {
             const queryAddr = [item.alamat_toko, item.toko_outlet].filter(Boolean).join(", ");
             const geoRes = await geocodeAddressSmart(queryAddr || "Klampok Wanasari Brebes Tegal", i);
             item.koordinat_gps = `${geoRes.lat}, ${geoRes.lng}`;
             item.lat = geoRes.lat;
             item.lng = geoRes.lng;
-            if (!isStandardKaryawan && item.id) gpsCorrections.push({ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng });
+            if (!visitWriteBlocked && item.id) gpsCorrections.push({ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng });
           }
         }
       }
@@ -1221,7 +1237,7 @@ export async function mount(container, { session } = {}) {
               <svg class="w-3 h-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
               <span>Maps</span>
             </a>
-            ${isSuperOrHrd ? `
+            ${canDeleteVisits ? `
             <button class="btn-feed-delete-visit px-2.5 py-1 bg-rose-50 text-rose-700 font-bold text-[10px] rounded-lg border border-rose-200 hover:bg-rose-100 transition inline-flex items-center gap-1 cursor-pointer" data-visitid="${escapeHtml(visitId)}" data-storename="${escapeHtml(tokoName)}">
               <svg class="w-3 h-3 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
               <span>Hapus</span>
@@ -1236,7 +1252,7 @@ export async function mount(container, { session } = {}) {
             <svg class="w-3 h-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
             <span>Koordinat GPS:</span>
           </span>
-          ${!isStandardKaryawan ? `
+          ${!visitWriteBlocked ? `
           <input type="text" 
             class="input-feed-inline-gps px-2.5 py-1 text-[11px] font-mono border border-slate-300 rounded-lg w-44 bg-white focus:border-maroon-600 focus:ring-1 focus:ring-maroon-600 outline-none text-slate-800"
             value="${escapeHtml(gpsPos)}"
@@ -1256,12 +1272,12 @@ export async function mount(container, { session } = {}) {
 
         <div class="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-slate-200/60 text-[10px] text-slate-500 flex-wrap">
           <div class="flex items-center gap-2 flex-wrap">
-            <label class="inline-flex items-center gap-1.5 ${isStandardKaryawan ? 'cursor-default' : 'cursor-pointer'} select-none px-2.5 py-1 rounded-lg border transition shadow-2xs ${isEc ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-slate-100 border-slate-200 text-slate-600'}" title="${isStandardKaryawan ? (isEc ? 'Status: Effective Call (Order Toko)' : 'Status: Visit Biasa') : 'Centang jika kunjungan ini menghasilkan Order (Effective Call)'}">
+            <label class="inline-flex items-center gap-1.5 ${visitWriteBlocked ? 'cursor-default' : 'cursor-pointer'} select-none px-2.5 py-1 rounded-lg border transition shadow-2xs ${isEc ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-slate-100 border-slate-200 text-slate-600'}" title="${visitWriteBlocked ? (isEc ? 'Status: Effective Call (Order Toko)' : 'Status: Visit Biasa') : 'Centang jika kunjungan ini menghasilkan Order (Effective Call)'}">
               <input type="checkbox"
-                     class="chk-feed-effective-call accent-emerald-600 rounded ${isStandardKaryawan ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'} w-3.5 h-3.5"
+                     class="chk-feed-effective-call accent-emerald-600 rounded ${visitWriteBlocked ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'} w-3.5 h-3.5"
                      data-visitid="${escapeHtml(visitId)}"
                      data-storename="${escapeHtml(tokoName)}"
-                     ${isStandardKaryawan ? "disabled" : ""}
+                     ${visitWriteBlocked ? "disabled" : ""}
                      ${isEc ? "checked" : ""} />
               <span class="text-[10px] font-extrabold">${isEc ? "<i class='fa-solid fa-check' aria-hidden='true'></i> Effective Call (Order Toko)" : "<i class='fa-solid fa-circle' aria-hidden='true'></i> Visit Toko (Tanpa Order)"}</span>
             </label>
@@ -1567,7 +1583,7 @@ export async function mount(container, { session } = {}) {
 
   // HRD Direct Edit GPS Coordinates for Check-in Record (No popup dialog)
   async function saveVisitGpsDirectly(visitId, storeName, rawGpsInput) {
-    if (isStandardKaryawan) {
+    if (visitWriteBlocked) {
       toast("Akses terbatas: Karyawan hanya memiliki akses melihat data rute.", "warning");
       return false;
     }
@@ -1669,7 +1685,7 @@ export async function mount(container, { session } = {}) {
 
   // HRD Delete Check-in Record (for duplicate/invalid entries)
   async function deleteVisitDirectly(visitId, storeName) {
-    if (!isSuperOrHrd) {
+    if (!canDeleteVisits) {
       toast("Akses terbatas: Hanya Superadmin dan HRD yang memiliki wewenang untuk menghapus data kunjungan.", "warning");
       return false;
     }
@@ -1705,7 +1721,7 @@ export async function mount(container, { session } = {}) {
 
   // HRD Toggle Effective Call (Order Toko) Status
   async function toggleVisitEffectiveCallDirectly(visitId, storeName, isChecked) {
-    if (isStandardKaryawan) {
+    if (visitWriteBlocked) {
       toast("Akses terbatas: Karyawan hanya memiliki akses melihat data rute.", "warning");
       return false;
     }
@@ -1806,7 +1822,7 @@ export async function mount(container, { session } = {}) {
 
     // Single visit deletion without closing modal
     async function deleteSingleVisitInModal(visitId, storeName) {
-      if (!isSuperOrHrd) {
+      if (!canDeleteVisits) {
         toast("Akses terbatas: Hanya Superadmin dan HRD yang memiliki wewenang untuk menghapus data kunjungan.", "warning");
         return;
       }
@@ -1841,7 +1857,7 @@ export async function mount(container, { session } = {}) {
 
     // Batch visits deletion without closing modal
     async function deleteBatchVisitsInModal(idsToDelete = []) {
-      if (!isSuperOrHrd) {
+      if (!canDeleteVisits) {
         toast("Akses terbatas: Hanya Superadmin dan HRD yang memiliki wewenang untuk menghapus data kunjungan.", "warning");
         return;
       }
@@ -1932,7 +1948,7 @@ export async function mount(container, { session } = {}) {
 
         const startRowHtml = `
         <tr class="bg-indigo-50/60 border-b border-indigo-100/80 text-xs font-bold">
-          ${isSuperOrHrd ? `<td class="p-2.5 text-center text-slate-300"></td>` : ''}
+          ${canDeleteVisits ? `<td class="p-2.5 text-center text-slate-300"></td>` : ''}
           <td class="p-2.5 text-center">
             <span class="px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-extrabold">START / AWAL</span>
           </td>
@@ -1943,7 +1959,7 @@ export async function mount(container, { session } = {}) {
           <td class="p-2.5 text-slate-600">
             <div class="flex items-center gap-1.5">
               <span class="text-[10px] text-slate-500 font-bold">GPS:</span>
-              ${!isStandardKaryawan ? `
+              ${!visitWriteBlocked ? `
               <input type="text" 
                 class="input-daily-start-gps px-2 py-0.5 text-[10px] font-mono border border-indigo-200 rounded w-36 bg-white focus:border-indigo-600 outline-none text-slate-800"
                 value="${escapeHtml(dailyMetrics.startPoint.gps)}"
@@ -1975,7 +1991,7 @@ export async function mount(container, { session } = {}) {
 
           return `
           <tr class="hover:bg-slate-50 border-b border-slate-100 text-xs ${isLegSelected ? 'bg-rose-50/50' : ''}">
-            ${isSuperOrHrd ? `
+            ${canDeleteVisits ? `
               <td class="p-2.5 text-center">
                 ${leg.visitId ? `
                   <input type="checkbox"
@@ -2011,12 +2027,12 @@ export async function mount(container, { session } = {}) {
                   </div>
                   <div class="text-[10px] text-slate-500 font-normal truncate max-w-[220px]">${escapeHtml(leg.toAddress)}</div>
                   ${leg.visitId ? `
-                    <label class="inline-flex items-center gap-1.5 ${isStandardKaryawan ? 'cursor-default' : 'cursor-pointer'} mt-1 px-2 py-0.5 rounded border transition select-none ${isLegEc ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-slate-100 border-slate-200 text-slate-600'}" title="${isStandardKaryawan ? (isLegEc ? 'Status: Effective Call (Order)' : 'Status: Tanpa Order') : 'Tandai HRD: Kunjungan ini menghasilkan Order (Effective Call)'}">
+                    <label class="inline-flex items-center gap-1.5 ${visitWriteBlocked ? 'cursor-default' : 'cursor-pointer'} mt-1 px-2 py-0.5 rounded border transition select-none ${isLegEc ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-slate-100 border-slate-200 text-slate-600'}" title="${visitWriteBlocked ? (isLegEc ? 'Status: Effective Call (Order)' : 'Status: Tanpa Order') : 'Tandai HRD: Kunjungan ini menghasilkan Order (Effective Call)'}">
                       <input type="checkbox"
-                             class="chk-modal-effective-call accent-emerald-600 rounded ${isStandardKaryawan ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'} w-3.5 h-3.5"
+                             class="chk-modal-effective-call accent-emerald-600 rounded ${visitWriteBlocked ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'} w-3.5 h-3.5"
                              data-visitid="${escapeHtml(leg.visitId)}"
                              data-toname="${escapeHtml(leg.toName)}"
-                             ${isStandardKaryawan ? "disabled" : ""}
+                             ${visitWriteBlocked ? "disabled" : ""}
                              ${isLegEc ? "checked" : ""} />
                       <span class="text-[9.5px] font-extrabold">${isLegEc ? '<i class="fa-solid fa-check" aria-hidden="true"></i> Effective Call (Order)' : '<i class="fa-solid fa-circle" aria-hidden="true"></i> Tanpa Order'}</span>
                     </label>
@@ -2025,7 +2041,7 @@ export async function mount(container, { session } = {}) {
               </div>
             </td>
             <td class="p-2.5 text-slate-600">
-              ${leg.visitId && !isStandardKaryawan ? `
+              ${leg.visitId && !visitWriteBlocked ? `
                 <div class="flex items-center gap-1.5">
                   <span class="text-[10px] text-slate-400 font-mono">GPS:</span>
                   <input type="text" 
@@ -2051,7 +2067,7 @@ export async function mount(container, { session } = {}) {
                 <a href="${mapsUrl}" target="_blank" class="px-2 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-[10px] rounded border border-blue-200 transition inline-flex items-center gap-0.5">
                   Map
                 </a>
-                ${leg.visitId && isSuperOrHrd ? `
+                ${leg.visitId && canDeleteVisits ? `
                   <button class="btn-modal-delete-visit px-2 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold text-[10px] rounded border border-rose-200 transition cursor-pointer inline-flex items-center gap-0.5"
                     data-visitid="${escapeHtml(leg.visitId)}"
                     data-toname="${escapeHtml(leg.toName)}"
@@ -2067,7 +2083,7 @@ export async function mount(container, { session } = {}) {
 
         const endRowHtml = `
         <tr class="bg-slate-100/80 border-b border-slate-200 text-xs font-bold">
-          ${isSuperOrHrd ? `<td class="p-2.5 text-center text-slate-300"></td>` : ''}
+          ${canDeleteVisits ? `<td class="p-2.5 text-center text-slate-300"></td>` : ''}
           <td class="p-2.5 text-center">
             <span class="px-2 py-0.5 bg-slate-800 text-white rounded text-[10px] font-extrabold">FINISH / AKHIR</span>
           </td>
@@ -2078,7 +2094,7 @@ export async function mount(container, { session } = {}) {
           <td class="p-2.5 text-slate-600">
             <div class="flex items-center gap-1.5">
               <span class="text-[10px] text-slate-500 font-bold">GPS:</span>
-              ${!isStandardKaryawan ? `
+              ${!visitWriteBlocked ? `
               <input type="text" 
                 class="input-daily-end-gps px-2 py-0.5 text-[10px] font-mono border border-slate-300 rounded w-36 bg-white focus:border-indigo-600 outline-none text-slate-800"
                 value="${escapeHtml(dailyMetrics.endPoint.gps)}"
@@ -2112,7 +2128,7 @@ export async function mount(container, { session } = {}) {
               <span class="px-3 py-1 bg-amber-500 text-slate-950 text-xs font-black rounded-lg">Tanggal: ${escapeHtml(tgl)}</span>
               <span class="text-xs text-indigo-200 font-bold bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700">${dailyVisits.length} Outlet Visit</span>
               <span class="text-xs text-slate-300 hidden sm:inline">${escapeHtml(dailyMetrics.startPoint.nama)} <i class='fa-solid fa-arrow-right' aria-hidden='true'></i> ${escapeHtml(dailyMetrics.endPoint.nama)}</span>
-              ${isSuperOrHrd && dailySelectedIds.length > 0 ? `
+              ${canDeleteVisits && dailySelectedIds.length > 0 ? `
                 <button type="button" class="btn-delete-date-selected px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold rounded-lg shadow-sm transition flex items-center gap-1 cursor-pointer" data-date="${tgl}">
                   <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                   <span>Hapus ${dailySelectedIds.length} Terpilih di Tgl Ini</span>
@@ -2135,7 +2151,7 @@ export async function mount(container, { session } = {}) {
                   </div>
                 </div>
 
-                ${!isStandardKaryawan ? `
+                ${!visitWriteBlocked ? `
                 <!-- Inline Edit GPS Controls -->
                 <div class="flex items-center gap-1 pl-2 border-l border-slate-700">
                   <div class="view-gps-controls flex items-center gap-1" data-date="${tgl}">
@@ -2208,12 +2224,12 @@ export async function mount(container, { session } = {}) {
               <div class="grid grid-cols-2 md:grid-cols-3 xl:flex xl:flex-wrap items-end gap-3 text-xs">
                 <div class="flex flex-col gap-1 bg-white px-3 py-2 border border-slate-200 rounded-lg">
                   <span class="text-[10px] font-bold text-slate-500">KM Awal:</span>
-                  <input type="number" data-date="${tgl}" class="input-daily-km-awal w-20 px-1.5 py-0.5 bg-slate-50 border border-slate-300 rounded font-mono text-slate-900 font-bold text-xs outline-none focus:border-indigo-600 ${isStandardKaryawan ? 'cursor-not-allowed bg-slate-100' : ''}" value="${initAwal}" placeholder="0" ${isStandardKaryawan ? 'disabled readonly' : ''} />
+                  <input type="number" data-date="${tgl}" class="input-daily-km-awal w-20 px-1.5 py-0.5 bg-slate-50 border border-slate-300 rounded font-mono text-slate-900 font-bold text-xs outline-none focus:border-indigo-600 ${visitWriteBlocked ? 'cursor-not-allowed bg-slate-100' : ''}" value="${initAwal}" placeholder="0" ${visitWriteBlocked ? 'disabled readonly' : ''} />
                 </div>
 
                 <div class="flex flex-col gap-1 bg-white px-3 py-2 border border-slate-200 rounded-lg">
                   <span class="text-[10px] font-bold text-slate-500">KM Akhir:</span>
-                  <input type="number" data-date="${tgl}" class="input-daily-km-akhir w-20 px-1.5 py-0.5 bg-slate-50 border border-slate-300 rounded font-mono text-slate-900 font-bold text-xs outline-none focus:border-indigo-600 ${isStandardKaryawan ? 'cursor-not-allowed bg-slate-100' : ''}" value="${initAkhir}" placeholder="0" ${isStandardKaryawan ? 'disabled readonly' : ''} />
+                  <input type="number" data-date="${tgl}" class="input-daily-km-akhir w-20 px-1.5 py-0.5 bg-slate-50 border border-slate-300 rounded font-mono text-slate-900 font-bold text-xs outline-none focus:border-indigo-600 ${visitWriteBlocked ? 'cursor-not-allowed bg-slate-100' : ''}" value="${initAkhir}" placeholder="0" ${visitWriteBlocked ? 'disabled readonly' : ''} />
                 </div>
 
                 <div class="flex flex-col gap-1 bg-white px-3 py-2 border border-slate-200 rounded-lg">
@@ -2226,7 +2242,7 @@ export async function mount(container, { session } = {}) {
                   <span data-date="${tgl}" class="disp-daily-selisih-km font-black ${initSelisih >= 0 ? 'text-emerald-600' : 'text-rose-600'} font-mono text-xs">${initSelisih > 0 ? '+' : ''}${initSelisih.toFixed(1)} KM</span>
                 </div>
 
-                ${!isStandardKaryawan ? `
+                ${!visitWriteBlocked ? `
                 <button data-date="${tgl}" data-gpskm="${effectiveGpsKm}" class="btn-save-daily-odometer px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition text-xs shadow-2xs cursor-pointer">
                   Simpan Odometer
                 </button>
@@ -2245,7 +2261,7 @@ export async function mount(container, { session } = {}) {
               <table class="w-full text-left border-collapse">
                 <thead>
                   <tr class="bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
-                    ${isSuperOrHrd ? `
+                    ${canDeleteVisits ? `
                       <th class="p-2.5 text-center w-10">
                         <input type="checkbox" class="chk-select-all-date rounded border-slate-300 text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer" data-date="${tgl}" title="Pilih Semua Kunjungan Tanggal ${tgl}" ${allDateLegsSelected ? 'checked' : ''} />
                       </th>
@@ -2275,7 +2291,7 @@ export async function mount(container, { session } = {}) {
             <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
               <span>Detail Rute, Odometer & Kunjungan Sales</span>
             </h3>
-            <p class="text-xs text-slate-500">${isStandardKaryawan ? 'Rekapan rute harian, riwayat kunjungan outlet, & jarak tempuh sales.' : 'Monitoring rute harian, verifikasi jarak tempuh, edit GPS, & hapus data kunjungan ganda.'}</p>
+            <p class="text-xs text-slate-500">${visitWriteBlocked ? 'Rekapan rute harian, riwayat kunjungan outlet, & jarak tempuh sales.' : 'Monitoring rute harian, verifikasi jarak tempuh, edit GPS, & hapus data kunjungan ganda.'}</p>
           </div>
           <button id="modal-close-route" class="text-slate-400 hover:text-slate-600 text-xl font-bold cursor-pointer px-2 py-0.5 rounded-lg hover:bg-slate-100 transition"><i class='fa-solid fa-xmark' aria-hidden='true'></i></button>
         </div>
@@ -2301,7 +2317,7 @@ export async function mount(container, { session } = {}) {
           </div>
         </div>
 
-        ${isSuperOrHrd ? `
+        ${canDeleteVisits ? `
         <!-- BATCH DELETION ACTION BAR -->
         <div id="batch-action-bar-container">
           ${selectedVisitIds.size > 0 ? `
@@ -2331,7 +2347,7 @@ export async function mount(container, { session } = {}) {
         </div>
         ` : ''}
 
-        ${!isStandardKaryawan ? `
+        ${!visitWriteBlocked ? `
         <!-- BASE DEPARTURE CONFIGURATION -->
         <div class="p-4 bg-slate-100 border border-slate-200 rounded-xl text-xs space-y-3">
           <h4 class="font-bold text-slate-800">Titik Acuan Sales</h4>
@@ -3748,7 +3764,7 @@ export async function mount(container, { session } = {}) {
   }
 
   // Bind Import Excel
-  if (btnImport && fileImportInput) {
+  if (!gmViewOnly && btnImport && fileImportInput) {
     btnImport.onclick = () => fileImportInput.click();
 
     fileImportInput.onchange = async (evt) => {
@@ -3962,7 +3978,7 @@ export async function mount(container, { session } = {}) {
     };
   }
 
-  if (btnConfigDeparture) {
+  if (btnConfigDeparture && !gmViewOnly) {
     btnConfigDeparture.onclick = () => openDepartureConfigModal();
   }
 
@@ -3983,7 +3999,7 @@ export async function mount(container, { session } = {}) {
     };
   }
 
-  if (btnPurgeDummy) {
+  if (btnPurgeDummy && !gmViewOnly) {
     btnPurgeDummy.onclick = async () => {
       const ok = await confirmDialog("Hapus seluruh data kunjungan dummy / contoh dan hanya menyisakan data kunjungan hasil import Excel?", { title: "Konfirmasi Hapus Kunjungan Dummy" });
       if (!ok) return;
@@ -3998,7 +4014,7 @@ export async function mount(container, { session } = {}) {
     };
   }
 
-  if (btnArchiveKanal) {
+  if (btnArchiveKanal && !gmViewOnly) {
     btnArchiveKanal.onclick = async () => {
       const rows = kanalOldRecords();
       if (!rows.length) return toast("Tidak ada data check-in Kanal >7 hari untuk diarsipkan.", "warning");
@@ -4027,7 +4043,7 @@ export async function mount(container, { session } = {}) {
     };
   }
 
-  if (btnPullKanalArchive) {
+  if (btnPullKanalArchive && !gmViewOnly) {
     btnPullKanalArchive.onclick = async () => {
       const start = archiveStart?.value || "";
       const end = archiveEnd?.value || "";
@@ -4053,7 +4069,7 @@ export async function mount(container, { session } = {}) {
     };
   }
 
-  btnSync.onclick = async () => {
+  if (!gmViewOnly) btnSync.onclick = async () => {
     btnSync.disabled = true;
     btnSync.innerHTML = `
       <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

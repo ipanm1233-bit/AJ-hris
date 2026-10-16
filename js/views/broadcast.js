@@ -4,6 +4,7 @@ import { fsGetAll, fsAdd, fsUpdate, deleteBroadcastMemoAndNotifs, openModal, clo
 import { uploadFileToDrive } from "../gas-integration.js";
 import { authFetch } from "../api-client.js";
 import { avatar, badge, emptyState, skeletonRows } from "../components.js";
+import { canEditModuleData } from "../auth.js";
 
 // Batas mentah 3 MB menjaga payload base64 tetap di bawah batas request
 // serverless. File yang lebih besar tetap dikirim sebagai tautan Drive.
@@ -161,6 +162,9 @@ async function compressBroadcastImage(file) {
 export async function mount(container, { session }) {
  const listEl = container.querySelector("#bc-list");
  listEl.innerHTML = skeletonRows(3);
+ // GM (dan role lain tanpa hak edit) hanya membaca memo — tidak boleh
+ // membuat/menghapus publikasi.
+ const canManage = await canEditModuleData(session);
  const karyawan = await fsGetAll(COL.MASTER_KARYAWAN);
  const users = await fsGetAll(COL.USERS);
 
@@ -203,7 +207,7 @@ export async function mount(container, { session }) {
  <div class="flex items-center gap-2 flex-wrap"><p class="font-semibold text-slate-800">${escapeHtml(r.judul)}</p>${badge(r.jenis_publikasi === "INFORMASI" ? (r.kategori_informasi || "Informasi") : "Memo", r.jenis_publikasi === "INFORMASI" ? "blue" : "maroon")}</div>
  <div class="flex items-center gap-2">
  <span class="text-xs text-slate-400">${fmtDateTime(r.tanggal)}</span>
- ${isHrd || (r.dibuat_oleh && r.dibuat_oleh.toLowerCase() === String(session?.nama || "").toLowerCase()) ? `
+ ${canManage && (isHrd || (r.dibuat_oleh && r.dibuat_oleh.toLowerCase() === String(session?.nama || "").toLowerCase())) ? `
  <button class="btn-delete-bc text-xs font-bold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 transition flex items-center gap-1 shrink-0" data-bc-id="${escapeHtml(r.id)}" data-bc-title="${escapeHtml(r.judul)}">
  <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
  Hapus Memo
@@ -242,7 +246,14 @@ export async function mount(container, { session }) {
  }
  
  await load();
- container.querySelector("#bc-new").addEventListener("click", () => openComposeModal(container, session, karyawan, users, load));
+ const btnNew = container.querySelector("#bc-new");
+ if (btnNew) {
+  if (!canManage) {
+   btnNew.classList.add("hidden");
+  } else {
+   btnNew.addEventListener("click", () => openComposeModal(container, session, karyawan, users, load));
+  }
+ }
  return { unmount() {} };
 }
 

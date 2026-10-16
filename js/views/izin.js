@@ -3,7 +3,7 @@ import { fsGetAll, fsDelete, genId, openModal, closeModal, toast, fmtDate, fmtDa
 import { emptyState, skeletonRows } from "../components.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 import { isoDocHeaderTable, letterheadHtml, COMPANY_NAME, logoImgTag, LOGO_DATA_URI } from "../branding.js";
-import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
+import { hasSubMenuAccess, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 import { authFetch } from "../api-client.js";
 
 export const JENIS_IZIN_MAP = {
@@ -35,6 +35,8 @@ export async function mount(container, { session }) {
  // sekarang bisa memberi akses ini ke karyawan lain lewat Akses Menu.
  const isHrdOrAdmin = roleIsHrdOrAdmin || await hasSubMenuAccess("izin", "lihat_semua", session);
  const canEdit = await canEditModuleData(session);
+ // Batas cabang: Branch Manager hanya melihat data cabangnya sendiri
+ const branchScope = resolveBranchScope(session);
 
  let allIzinRecords = [];
  let filterJenis = "ALL";
@@ -69,6 +71,11 @@ export async function mount(container, { session }) {
  const isAtasanTarget = atasanNameLower === myNameLower;
  return isMine || isAtasanTarget;
  });
+ }
+
+ // Batas cabang: Branch Manager hanya melihat pengajuan izin cabangnya sendiri
+ if (branchScope) {
+ allIzinRecords = allIzinRecords.filter(r => branchMatches(branchScope, r.cabang, r.unit_kerja, r.cabang_karyawan));
  }
 
  updateMetrics();
@@ -208,6 +215,11 @@ export async function mount(container, { session }) {
  try {
  allEmployees = await fsGetAll(COL.MASTER_KARYAWAN);
  } catch(e) {}
+
+ // Batas cabang: Branch Manager hanya boleh memilih pemohon dari cabangnya sendiri
+ if (branchScope) {
+ allEmployees = allEmployees.filter(k => branchMatches(branchScope, k.cabang, k.unit_kerja, k.cabang_karyawan));
+ }
 
  const myNik = session.nik || "";
  let myKaryawan = allEmployees.find(k => String(k.nik || k.nik_karyawan) === String(myNik)) || null;

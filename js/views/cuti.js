@@ -67,7 +67,7 @@ export async function mount(container, { session }) {
  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
  <div>
  <h1 class="text-2xl font-bold text-slate-800">Manajemen Cuti</h1>
- <p class="text-sm text-slate-500 mt-1">${canManage ? "Kelola jatah cuti, input izin manual, cetak form fisik, ekspor data Excel, serta kalkulasi reset & import." : isBranchScopedPic ? `Mode PIC Cabang ${escapeHtml(leaveBranchScope)} — hanya menampilkan karyawan cabang ini.` : "Mode lihat saja — hanya menampilkan data dalam lingkup akun Anda."}</p>
+ <p class="text-sm text-slate-500 mt-1">${canManage ? "Kelola jatah cuti, input izin manual, cetak form fisik, ekspor data Excel, serta kalkulasi reset & import." : isBranchScopedPic ? `Mode PIC Cabang ${escapeHtml(leaveBranchScope)} — hanya menampilkan karyawan cabang ini.` : canViewAll ? "Mode lihat saja (read-only) — menampilkan seluruh data cuti karyawan." : "Mode lihat saja — hanya menampilkan data dalam lingkup akun Anda."}</p>
  </div>
  <div class="flex flex-wrap items-center gap-2">
  ${canManage ? `
@@ -429,13 +429,15 @@ export async function mount(container, { session }) {
       }
     }
     allKaryawan = Array.from(uniqueMap.values());
+ // canViewAll (mis. GM) harus melihat SELURUH karyawan, bukan hanya dirinya sendiri.
+ const canSeeAllEmployees = isFullAccess || canViewAll;
  if (isBranchScopedPic) {
   allKaryawan = filterEmployeesForLeaveBranch(allKaryawan, leaveBranchScope);
  } else if (isAtasanView) {
   const bset = new Set(bawahanNames || []);
   if (session?.nama) bset.add(session.nama);
  allKaryawan = allKaryawan.filter(k => bset.has(k.nama_karyawan));
- } else if (!isFullAccess) {
+ } else if (!canSeeAllEmployees) {
   const sessionNik = String(session?.nik || '').trim().toUpperCase();
   const sessionName = String(session?.nama || '').trim().toUpperCase();
   allKaryawan = allKaryawan.filter(k =>
@@ -447,7 +449,7 @@ export async function mount(container, { session }) {
 
  allCuti = isBranchScopedPic
   ? filterLeaveRowsForBranch(snapC, allKaryawan, leaveBranchScope)
-  : isFullAccess ? snapC : filterLeaveRowsForEmployees(snapC, allKaryawan);
+  : canSeeAllEmployees ? snapC : filterLeaveRowsForEmployees(snapC, allKaryawan);
  
  if (snapCfg.exists() && snapCfg.data().types) {
  leaveConfig = withMandatoryLeaveTypes(snapCfg.data().types);

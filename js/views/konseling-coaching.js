@@ -7,7 +7,7 @@ import {
   downloadXlsx
 } from "../utils.js";
 import { isoDocHeaderTable } from "../branding.js";
-import { getSession } from "../auth.js";
+import { getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 import { COMPANY_POLICY, POLICY_ARTICLES, POLICY_BASIS, POLICY_DECISIONS, assessPolicyDecision } from "../hr-case-policy.mjs";
 import {
   CASE_CATEGORIES, CASE_SOURCES, ROOT_CAUSES, ACTION_TAKENS, CASE_STATUSES, PRIORITIES,
@@ -23,6 +23,7 @@ export { CASE_CATEGORIES, CASE_SOURCES, ROOT_CAUSES, ACTION_TAKENS, CASE_STATUSE
 // Module State
 let activeTab = "dashboard";
 let currentSession = null;
+let gmViewOnly = false;
 let allCases = [];
 let allEmployees = [];
 let allActionPlans = [];
@@ -34,6 +35,7 @@ let auditLogs = [];
 // =========================================================================
 export async function mount(container, { params, session }) {
   currentSession = session || getSession();
+  gmViewOnly = String(currentSession?.role || "").toUpperCase() === "GM" && !(await canEditModuleData(currentSession));
   caseSearchKeyword = String(params?.get("nik") || params?.get("nama") || "").trim();
   
   if (params && params.get("tab")) {
@@ -50,7 +52,7 @@ export async function mount(container, { params, session }) {
   await reloadAllData(container);
 
   // Deep link support (e.g. from attendance or KPI)
-  if (params && params.get("action") === "new_case") {
+  if (params && params.get("action") === "new_case" && !gmViewOnly) {
     const prefill = {
       nik: params.get("nik") || "",
       case_type: params.get("case_type") || "Pembinaan Disiplin",
@@ -73,7 +75,12 @@ export async function mount(container, { params, session }) {
 function initNavigation(container) {
   const topNewBtn = container.querySelector("#kc-btn-new-case");
   if (topNewBtn) {
-    topNewBtn.onclick = () => showCaseFormModal(null);
+    if (gmViewOnly) {
+      topNewBtn.classList.add("hidden");
+      topNewBtn.onclick = null;
+    } else {
+      topNewBtn.onclick = () => showCaseFormModal(null);
+    }
   }
 
   const topExportBtn = container.querySelector("#kc-btn-export-excel");
@@ -149,6 +156,9 @@ async function reloadAllData(container) {
 }
 
 function filterCasesByRole(cases) {
+  // Branch Manager hanya melihat kasus cabangnya sendiri; role pusat bebas (branchScope = "").
+  const branchScope = resolveBranchScope(currentSession);
+  if (branchScope) cases = cases.filter(c => branchMatches(branchScope, c.cabang));
   const role = (currentSession?.role || "").toUpperCase();
   const uname = (currentSession?.username || "").toUpperCase();
   const userNik = String(currentSession?.nik || "");
@@ -565,10 +575,12 @@ function renderCaseManagement(container) {
           <input type="checkbox" id="kc-check-recurring" ${caseOnlyRecurring ? 'checked' : ''} class="rounded text-maroon-700 focus:ring-maroon-700">
           <span>Hanya Kasus Berulang</span>
         </label>
+        ${gmViewOnly ? "" : `
         <button type="button" id="kc-btn-table-new" class="px-3.5 py-2 bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold rounded-xl transition inline-flex items-center gap-1.5 shadow-xs cursor-pointer">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
           <span>Buat Case</span>
         </button>
+        `}
       </div>
     </div>
 
@@ -625,9 +637,11 @@ function renderCaseManagement(container) {
                       <button type="button" onclick="window.kcShowCaseDetail('${c.id}')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition cursor-pointer">
                         Detail
                       </button>
+                      ${gmViewOnly ? "" : `
                       <button type="button" onclick="window.kcEditCase('${c.id}')" class="px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-lg text-xs font-bold transition cursor-pointer">
                         Edit
                       </button>
+                      `}
                       <button type="button" onclick="window.kcPrintCaseDossier('${c.id}')" class="p-1 text-slate-400 hover:text-slate-700 transition" title="Cetak Dossier PDF">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
                       </button>
@@ -786,7 +800,7 @@ function renderActionPlanTab(container) {
                     }">${escapeHtml(a.status || "Belum Dimulai")}</span>
                   </td>
                   <td class="py-3 px-4 text-right">
-                    <button type="button" onclick="window.kcUpdateApStatus('${a.id}')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition">Update</button>
+                    ${gmViewOnly ? `<span class="text-slate-300">—</span>` : `<button type="button" onclick="window.kcUpdateApStatus('${a.id}')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition">Update</button>`}
                   </td>
                 </tr>
               `;
@@ -878,7 +892,7 @@ function renderFollowupTab(container) {
               ${f.next_followup_date ? `
                 <div class="pt-1 text-[11px] text-slate-500 flex items-center justify-between border-t border-slate-200/40">
                   <span>Jadwal Tindak Lanjut Berikutnya: <b class="text-maroon-700">${fmtDateShort(f.next_followup_date)}</b></span>
-                  <button type="button" onclick="window.kcAddFollowup('${f.case_id}')" class="text-maroon-700 font-bold hover:underline">Catat Sesi Lanjutan &rarr;</button>
+                  ${gmViewOnly ? "" : `<button type="button" onclick="window.kcAddFollowup('${f.case_id}')" class="text-maroon-700 font-bold hover:underline">Catat Sesi Lanjutan &rarr;</button>`}
                 </div>
               ` : ""}
             </div>
@@ -1402,11 +1416,13 @@ export function showCaseDetail(caseId) {
           <div class="text-xs text-slate-500 mt-1">Dibuat tgl <b>${fmtDateShort(c.created_at || c.report_date)}</b> oleh <b>${escapeHtml(c.hr_officer || c.created_by || "HR")}</b></div>
         </div>
         <div class="flex items-center gap-2">
+          ${gmViewOnly ? "" : `
           <button type="button" onclick="window.kcAddActionPlan('${c.id}')" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shadow-2xs transition">+ Rencana Perbaikan</button>
           <button type="button" onclick="window.kcAddFollowup('${c.id}')" class="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold shadow-2xs transition">+ Pemantauan</button>
           ${c.status !== "Selesai" ? `
             <button type="button" onclick="window.kcCloseCase('${c.id}')" class="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-2xs transition">Tutup Kasus</button>
           ` : ""}
+          `}
           <button type="button" onclick="window.kcPrintCaseDossier('${c.id}')" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-xs font-bold shadow-2xs transition">Print PDF</button>
         </div>
       </div>
@@ -2262,14 +2278,14 @@ export function exportCasesToExcel() {
 // GLOBAL WINDOW BINDINGS FOR TEMPLATE CALLS
 // =========================================================================
 window.kcShowCaseDetail = showCaseDetail;
-window.kcEditCase = (caseId) => showCaseFormModal(caseId);
-window.kcAddActionPlan = showAddActionPlanModal;
-window.kcAddFollowup = showAddFollowupModal;
-window.kcCloseCase = showCloseCaseModal;
+window.kcEditCase = (caseId) => { if (gmViewOnly) return; showCaseFormModal(caseId); };
+window.kcAddActionPlan = (caseId) => { if (gmViewOnly) return; showAddActionPlanModal(caseId); };
+window.kcAddFollowup = (caseId) => { if (gmViewOnly) return; showAddFollowupModal(caseId); };
+window.kcCloseCase = (caseId) => { if (gmViewOnly) return; showCloseCaseModal(caseId); };
 window.kcPrintCaseDossier = printCaseDossier;
 window.kcExportAllExcel = exportCasesToExcel;
 window.kcExportManagementPdf = exportManagementPdf;
-window.kcUpdateApStatus = showUpdateApStatusModal;
+window.kcUpdateApStatus = (actionPlanId) => { if (gmViewOnly) return; showUpdateApStatusModal(actionPlanId); };
 window.kcCloseModal = () => closeModal();
 window.kcSwitchToTab = (tabName) => {
   const container = document.getElementById("view-container");

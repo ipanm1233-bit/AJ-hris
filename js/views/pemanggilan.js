@@ -1,12 +1,28 @@
 import { COL } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fmtDateShort, escapeHtml, notifyUser, sendEmailNotif, buildStandardEmailHtml, getTargetsForRole } from "../utils.js";
 import { renderCrudModule } from "../components.js";
+import { getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 import { isoDocHeaderTable } from "../branding.js";
 
 export async function mount(container, { params } = {}) {
+ // GM (tanpa override) hanya boleh melihat/export/print → matikan aksi tulis di modul CRUD
+ const authSession = getSession();
+ const gmViewOnly = String(authSession?.role || "").toUpperCase() === "GM" && !(await canEditModuleData(authSession));
+ // Branch Manager hanya melihat data cabangnya sendiri; role pusat bebas (branchScope = "")
+ const branchScope = resolveBranchScope(authSession);
+
  // Ambil Dropdown Karyawan Aktif
  const karyawan = await fsGetAll(COL.MASTER_KARYAWAN);
- const activeEmpNames = karyawan.filter(k => (k.aktif_tdk_aktif||"AKTIF").toUpperCase() === "AKTIF").map(k => k.nama_karyawan).sort();
+ // Peta nama karyawan -> cabang untuk me-resolve baris yang tidak punya kolom cabang langsung
+ const empBranchMap = {};
+ karyawan.forEach(k => {
+ const nm = String(k.nama_karyawan || "").trim().toUpperCase();
+ if (nm && k.cabang) empBranchMap[nm] = k.cabang;
+ });
+ const activeEmpNames = karyawan
+ .filter(k => (k.aktif_tdk_aktif||"AKTIF").toUpperCase() === "AKTIF")
+ .filter(k => branchMatches(branchScope, k.cabang))
+ .map(k => k.nama_karyawan).sort();
 
  const panels = {
  sp: container.querySelector("#pm-panel-sp"),
@@ -72,7 +88,9 @@ export async function mount(container, { params } = {}) {
  title: "Log SP & Konseling",
  collectionName: COL.LOG_SP_KONSELING,
  idPrefix: "SP", printFn: printSuratPeringatan, printLabel: "Cetak Surat SP (PDF)",
+ canCreate: !gmViewOnly, canEdit: !gmViewOnly,
  searchFields: ["nama_karyawan", "pelanggaran"],
+ filterFn: (row) => branchMatches(branchScope, empBranchMap[String(row.nama_karyawan || "").trim().toUpperCase()]),
  columns: [
  { key: "tanggal", label: "Tanggal", type: "date" },
  { key: "nama_karyawan", label: "Nama Karyawan" },
@@ -136,7 +154,9 @@ export async function mount(container, { params } = {}) {
  title: "Data Pemanggilan Karyawan",
  collectionName: COL.DATA_PEMANGGILAN,
  idPrefix: "PGL", printFn: printSuratPanggilan, printLabel: "Cetak Surat Panggilan (PDF)",
+ canCreate: !gmViewOnly, canEdit: !gmViewOnly,
  searchFields: ["nama_karyawan", "perihal"],
+ filterFn: (row) => branchMatches(branchScope, empBranchMap[String(row.nama_karyawan || "").trim().toUpperCase()]),
  columns: [
  { key: "tanggal_panggilan", label: "Tgl Panggilan", type: "date" },
  { key: "nama_karyawan", label: "Nama Karyawan" },

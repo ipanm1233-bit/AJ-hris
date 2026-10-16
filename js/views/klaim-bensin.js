@@ -1,7 +1,7 @@
 import { COL } from "../firebase-config.js";
 import { fsAdd, fsGetAll, fsUpdate, genId, toast, sendEmailNotif, buildStandardEmailHtml, buildPengajuanEmailDetailHtml, getTargetsForRole, createLoginToken, escapeHtml, openModal, closeModal, printSalesKlaimForm } from "../utils.js";
 import { letterheadHtml } from "../branding.js";
-import { hasSubMenuAccess, canEditModuleData } from "../auth.js";
+import { hasSubMenuAccess, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 
 export async function mount(container, { session }) {
  const tbody = container.querySelector("#kb-tbody");
@@ -18,6 +18,8 @@ export async function mount(container, { session }) {
  // Pengaturan > Akses Menu > Klaim Bensin Operasional > Manajemen Admin Cabang.
  const canAccessAdminCabang = await hasSubMenuAccess("klaim-bensin", "admin_cabang", session);
  const canEdit = await canEditModuleData(session);
+ // Batas cabang: Branch Manager hanya melihat klaim cabangnya sendiri
+ const branchScope = resolveBranchScope(session);
  if (!canAccessAdminCabang && tabAdminBtn) {
  tabAdminBtn.classList.add("hidden");
  }
@@ -31,7 +33,7 @@ export async function mount(container, { session }) {
  const adminTbody = container.querySelector("#admin-kb-tbody");
  const totalApprovedNominalEl = container.querySelector("#admin-total-approved-nominal");
 
- let currentBranch = "Cirebon";
+ let currentBranch = branchScope || "Cirebon";
  let allKlaimData = [];
 
  // Konfigurasi Harga Bensin & Rasio KM (Dapat disesuaikan)
@@ -88,6 +90,14 @@ export async function mount(container, { session }) {
  branchTitle.textContent = "Rekap Klaim Bensin — Cabang Malang";
  renderAdminKlaimTable();
  };
+ }
+
+ // Branch Manager: kunci tampilan ke cabangnya sendiri & sembunyikan toggle cabang lain
+ if (branchScope) {
+ branchTitle.textContent = `Rekap Klaim Bensin — Cabang ${branchScope}`;
+ const b = branchScope.toLowerCase();
+ if (btnAdminCirebon && b !== "cirebon") btnAdminCirebon.style.display = "none";
+ if (btnAdminMalang && b !== "malang") btnAdminMalang.style.display = "none";
  }
 
  if (adminSearch) {
@@ -362,6 +372,8 @@ export async function mount(container, { session }) {
 
  const filteredByBranch = allKlaimData.filter(x => {
  const c = (x.cabang || x.detail?.cabang || "Cirebon").toLowerCase();
+ // Branch Manager hanya boleh melihat data cabangnya sendiri
+ if (branchScope && !branchMatches(branchScope, c)) return false;
  if (c !== currentBranch.toLowerCase()) return false;
  if (statusVal !== "ALL" && (x.status_final || "MENUNGGU") !== statusVal) return false;
  return true;
