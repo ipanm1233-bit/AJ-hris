@@ -2823,7 +2823,7 @@ export async function mount(container, { session }) {
           if (uCabang !== empCabang.toLowerCase()) return;
 
           const isSameDivisi = empDivisi && (uDivisi === empDivisi.toLowerCase() || uDivisi.includes(empDivisi.toLowerCase()) || empDivisi.toLowerCase().includes(uDivisi));
-          const isLeaderRole = ["SPV", "SUPERVISOR", "MANAGER", "KOORDINATOR", "KEPALA_CABANG", "KACAB"].includes(uRole);
+          const isLeaderRole = ["SPV", "SUPERVISOR", "MANAGER", "KOORDINATOR", "KEPALA_CABANG", "KACAB", "BRANCH MANAGER", "BRANCH_MANAGER"].includes(uRole);
 
           if (isSameDivisi && isLeaderRole) {
             const info = resolveEmailAndUser(u, uNama);
@@ -3048,16 +3048,31 @@ export async function mount(container, { session }) {
         throw err;
       }
       toast("Memproses versi cadangan: " + err.message, "warning");
-      printCutiPdfFallback(k, pdfData, sisa);
+      await printCutiPdfFallback(k, pdfData);
     }
   }
 
-  async function printCutiPdfFallback(k, data, sisa) {
+  async function printCutiPdfFallback(k, data) {
     toast("Sedang memproses PDF cadangan...", "info");
 
-    const kontakStr = data.kontak && data.kontak !== "-" 
-      ? data.kontak 
+    const kontakStr = data.kontak && data.kontak !== "-"
+      ? data.kontak
       : (k.alamat && k.no_hp ? `${k.alamat}/${k.no_hp}` : (k.alamat || k.no_hp || "-"));
+
+    // PENTING: saldo pada PDF cadangan WAJIB dihitung ulang via
+    // calculateLeaveHistoryBalances (sumber yang sama dengan sistem), BUKAN
+    // memakai snapshot getSisa(k) dari pemanggil — snapshot itu sudah mencakup
+    // cuti yang sedang diterbitkan dokumennya, sehingga "Sisa Hak" dan
+    // "Total Sisa" pada form cetak berkurang ganda (tidak sesuai sistem).
+    const balances = await calculateLeaveHistoryBalances(k, {
+      ...data,
+      nama_karyawan: k.nama_karyawan,
+      nik: k.nik || k.nik_karyawan || "-",
+      tanggal_mulai: data.tanggal,
+      tanggal_selesai: data.tgl_akhir || data.tanggal,
+      jumlah_hari: data.count || (data.isHalfDay ? 0.5 : 1),
+      jenis_cuti: data.type_cuti
+    });
 
     const html = generateStandardFormCutiHtml({
       namaKaryawan: k.nama_karyawan,
@@ -3073,11 +3088,19 @@ export async function mount(container, { session }) {
       jamKembali: data.jam_kembali || "-",
       kontak: kontakStr,
       alasan: data.keterangan_cuti || "-",
-      sisaTahunan: sisa ? (sisa.Tahunan ?? 0) : 0,
-      sisaKhusus: sisa ? (sisa.Khusus ?? 0) : 0,
-      sisaAkumulasi: sisa ? (sisa.Akumulasi ?? 0) : 0,
-      sisaBesar: k.sisa_cuti_besar ?? k.jatah_cuti_besar ?? 0,
-      jumlahHari: data.count || (data.isHalfDay ? 0.5 : 1),
+      sisaTahunan: balances.sisaHakTahunan,
+      sisaKhusus: balances.sisaHakKhusus,
+      sisaAkumulasi: balances.sisaHakAkumulasi,
+      sisaBesar: balances.sisaHakBesar,
+      dipakaiTahunan: balances.dipakaiTahunan,
+      dipakaiKhusus: balances.dipakaiKhusus,
+      dipakaiAkumulasi: balances.dipakaiAkumulasi,
+      dipakaiBesar: balances.dipakaiBesar,
+      totalSisaTahunan: balances.totalSisaTahunan,
+      totalSisaKhusus: balances.totalSisaKhusus,
+      totalSisaAkumulasi: balances.totalSisaAkumulasi,
+      totalSisaBesar: balances.totalSisaBesar,
+      jumlahHari: balances.usedCount,
       tglPengajuan: new Date().toISOString(),
       forPdf: true
     });

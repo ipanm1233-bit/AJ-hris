@@ -815,8 +815,8 @@ export async function openNotificationCenter(session) {
  return myRole === "SPV" || myRole === "SUPERVISOR" || myPosisi.includes("SPV") || myPosisi.includes("SUPERVISOR") || myRole === "SUPERADMIN";
  }
 
- if (stepUpper === "MANAGER" || stepUpper === "MANAJER") {
- return myRole === "MANAGER" || myRole === "MANAJER" || myPosisi.includes("MANAGER") || myPosisi.includes("MANAJER") || myRole === "SUPERADMIN";
+ if (stepUpper === "MANAGER" || stepUpper === "MANAJER" || stepUpper === "BRANCH MANAGER" || stepUpper === "BRANCH_MANAGER" || stepUpper === "KEPALA_CABANG" || stepUpper === "KACAB") {
+ return myRole === "MANAGER" || myRole === "MANAJER" || myRole === "BRANCH MANAGER" || myRole === "BRANCH_MANAGER" || myRole === "KEPALA_CABANG" || myRole === "KACAB" || myPosisi.includes("MANAGER") || myPosisi.includes("MANAJER") || myPosisi.includes("KEPALA CABANG") || myRole === "SUPERADMIN";
  }
 
  return stepUpper === myRole || myRole === "SUPERADMIN" || myPosisi.includes(stepUpper) || myNameLower === stepLabel.toLowerCase();

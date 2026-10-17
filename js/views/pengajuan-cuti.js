@@ -1,6 +1,7 @@
 import { db, COL, doc, getDoc, setDoc, query, collection, where, getDocs } from "../firebase-config.js";
 import { fsGetAll, openModal, closeModal, toast, fmtDateShort, escapeHtml, genId, toNumber, getCalculatedJatahCuti, confirmDialog, getEmployeeTenureInfo, countLeaveWorkingDays, getLeaveWorkingDaysDetail, isIndonesianNationalHoliday } from "../utils.js";
 import { uploadFileToDrive } from "../gas-integration.js";
+import { monthsSinceJoin } from "../leave-entitlement.mjs";
 import { badge } from "../components.js";
 
 const DEFAULT_LEAVE_TYPES = [
@@ -590,6 +591,27 @@ export async function mount(container, { session }) {
         val.includes("Surat Dokter") || val.startsWith("S -") || val.includes("Dinas") || val.startsWith("D -") || val.includes("Cuti Besar") || val.startsWith("C-BESAR") ? "Tidak Dipotong" : "Tahunan"
       );
 
+      // GATE MASA KERJA (Aturan Andela): Cuti Tahunan hanya boleh diambil
+      // mulai bulan kerja ke-4. Bulan ke-1 s/d ke-3 (probation / kontrak
+      // pertama 3 bulan) belum berhak. Sakit tetap bisa dicatat (mengalir
+      // ke jalur verifikasi HRD/potong gaji yang sudah ada).
+      if (catPotong === "Tahunan" && !/sakit/i.test(val)) {
+        const joinMonths = monthsSinceJoin(currentEmpData || {});
+        if (joinMonths !== null && joinMonths < 4) {
+          warnWrap.classList.remove("hidden");
+          warnWrap.innerHTML = `
+            <div class="p-3.5 bg-amber-50 border-2 border-amber-400 rounded-xl text-left">
+              <p class="text-xs font-black text-amber-950 uppercase">Belum Berhak Cuti Tahunan (Masa Kerja Bulan ke-${joinMonths + 1} dari 12)</p>
+              <p class="mt-1 text-[11.5px] leading-relaxed text-amber-900">
+                Aturan Masa Kerja Andela: bulan ke-1 s/d ke-3 (probation / kontrak pertama 3 bulan) <b>belum berhak</b> mengambil cuti tahunan.
+                Hak cuti tahunan membuka pada <b>bulan kerja ke-4</b> dengan jatah langsung <b>3 hari</b>, lalu bertambah
+                <b>+1 hari setiap bulan</b> hingga mencapai <b>12 hari penuh</b> setelah masa kerja 1 tahun.
+              </p>
+            </div>`;
+          return;
+        }
+      }
+
       if (isAlphaCategory) {
         warnWrap.classList.remove("hidden");
         warnWrap.innerHTML = `
@@ -814,6 +836,19 @@ export async function mount(container, { session }) {
         catVal.includes("Potong Gaji") || catVal.startsWith("C- -") ? "Potong Gaji" :
         catVal.includes("Surat Dokter") || catVal.startsWith("S -") || catVal.includes("Dinas") || catVal.startsWith("D -") || catVal.includes("Cuti Besar") || catVal.startsWith("C-BESAR") ? "Tidak Dipotong" : "Tahunan"
       );
+
+      // GATE MASA KERJA (Aturan Andela): blokir keras pengajuan Cuti Tahunan
+      // pada bulan kerja ke-1 s/d ke-3. Sakit tetap bisa dicatat (jalur HRD).
+      if (catPotong === "Tahunan" && !/sakit/i.test(catVal)) {
+        const joinMonths = monthsSinceJoin(currentEmpData || {});
+        if (joinMonths !== null && joinMonths < 4) {
+          toast(
+            `Pengajuan diblokir Aturan Masa Kerja: bulan kerja ke-1 s/d ke-3 (probation/kontrak pertama) belum berhak cuti tahunan. Hak cuti terbuka di bulan kerja ke-4 (jatah 3 hari), bertambah +1/bulan hingga 12 hari setelah 1 tahun.`,
+            "warning"
+          );
+          return;
+        }
+      }
 
       let availableQuota = 0;
       if (catPotong === "Khusus") availableQuota = userBalances.sisaKhusus || 0;

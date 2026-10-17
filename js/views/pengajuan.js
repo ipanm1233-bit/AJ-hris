@@ -145,6 +145,7 @@ async function openFormModal(formCfg, session) {
  </div>
  </div>
  <p class="text-[11px] text-blue-600 mt-2">*Jatah akan otomatis terpotong ketika pengajuan disetujui sepenuhnya (Approved Final).</p>
+ ${jatah?.tahunan === 0 ? `<p class="text-[11px] mt-1 font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">Aturan Masa Kerja: bulan ke-1 s/d ke-3 (probation / kontrak pertama 3 bulan) belum berhak cuti tahunan. Hak cuti tahunan terbuka pada bulan kerja ke-4 dengan jatah langsung 3 hari.</p>` : (jatah?.tahunan > 0 && jatah?.tahunan < 12 ? `<p class="text-[11px] mt-1 font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">Aturan Masa Kerja: jatah cuti tahunan bertambah +1 hari setiap bulan seiring masa kerja (bulan ke-4 = 3 hari) hingga mencapai 12 hari penuh setelah 1 tahun bekerja.</p>` : "")}
  </div>
  `;
 
@@ -366,6 +367,54 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
             secondaryNote: "Anda menerima email ini sebagai personil penerima notifikasi khusus."
           });
           sendEmailNotif(targetObj.email, `[Info Pengajuan] ${payload.nama_form} - ${payload.nama_pemohon}`, htmlInfo).catch(e => console.warn(e));
+        }
+      }
+
+      alreadyNotifiedSet.add(targetNameUpper);
+    }
+  }
+
+  // Personil dengan kolom "Approval" pada Form Builder: dinotifikasi bahwa pengajuan menunggu approval
+  const approvalNotifyNames = [];
+  if (Array.isArray(userRules) && userRules.length > 0) {
+    for (const r of userRules) {
+      if (r && r.nama && r.approval !== false) approvalNotifyNames.push(r.nama);
+    }
+  }
+
+  if (approvalNotifyNames.length > 0) {
+    for (const targetName of approvalNotifyNames) {
+      if (!targetName || !targetName.trim()) continue;
+      const targetNameUpper = targetName.trim().toUpperCase();
+      if (targetNameUpper === (session.nama || "").toUpperCase()) continue;
+      if (alreadyNotifiedSet.has(targetNameUpper)) continue;
+
+      // 1. In-App & HP Push
+      await notifyUser(
+        targetName,
+        `Approval Dibutuhkan: ${payload.nama_form}`,
+        `Pengajuan ${payload.nama_form} dari ${payload.nama_pemohon} sedang menunggu persetujuan.`,
+        `/#approval?id=${payload.id}`
+      ).catch(e => console.warn("Notif approval target khusus gagal:", e));
+
+      // 2. Email Notifikasi Kolom Approval
+      if (typeof sendEmailNotif === 'function') {
+        const tList = await getTargetsForRole("PEMOHON", targetName);
+        const targetObj = tList[0];
+        if (targetObj && targetObj.email) {
+          const token = await createLoginToken(targetObj.username || targetName);
+          const htmlApr = buildStandardEmailHtml({
+            badgeText: "Approval Dibutuhkan",
+            badgeVariant: "maroon",
+            title: `[Approval] ${payload.nama_form}`,
+            recipientName: targetObj.nama || targetName,
+            introText: `Anda terdaftar sebagai personil persetujuan/tembusan untuk formulir <strong>${escapeHtml(payload.nama_form)}</strong> yang diajukan oleh <strong>${escapeHtml(payload.nama_pemohon)}</strong>. Berikut rincian pengajuan:`,
+            bodyHtml: detailEmailHtml,
+            actionUrl: `${window.location.origin}/#approval?id=${payload.id}&token=${token}`,
+            actionText: "Tinjau Pengajuan di Menu Approval →",
+            secondaryNote: "Anda menerima email ini sesuai pengaturan target form di Form Builder."
+          });
+          sendEmailNotif(targetObj.email, `[Approval] ${payload.nama_form} - ${payload.nama_pemohon}`, htmlApr).catch(e => console.warn(e));
         }
       }
 

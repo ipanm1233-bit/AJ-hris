@@ -6,6 +6,7 @@ firebase-service-account*.json
 *.pem
 *.key
 node_modules/
+jalan/
 .firebase/
 firebase-debug.log
 firestore-debug.log

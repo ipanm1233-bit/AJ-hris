@@ -2,7 +2,7 @@ import { COL } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsUpdate, fsDelete, toSnakeCase, toast, confirmDialog, escapeHtml, genId } from "../utils.js";
 import { icon, emptyState } from "../components.js";
 
-const ROLE_OPTIONS = ["HRD", "GM", "FINANCE", "SPV", "ATASAN", "SALES", "MANAGER"];
+const ROLE_OPTIONS = ["HRD", "GM", "FINANCE", "SPV", "ATASAN", "SALES", "MANAGER", "BRANCH MANAGER"];
 let allForms = [];
 let allEmployees = [];
 let editingId = null;

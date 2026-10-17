@@ -727,7 +727,7 @@ export const FULL_ACCESS_ROLES = ["HRD", "SUPERADMIN", "DIREKTUR"];
  * karyawan yang menjadi bawahan langsung mereka (field `atasan` di
  * master_karyawan harus sama dengan nama atasan yang login).
  */
-export const ATASAN_VIEW_ROLES = ["MANAGER", "SPV", "KOORDINATOR"];
+export const ATASAN_VIEW_ROLES = ["MANAGER", "SPV", "KOORDINATOR", "BRANCH MANAGER", "BRANCH_MANAGER", "KEPALA_CABANG", "KACAB"];
 
 /* ---------------------------------------------------------------------
  * BRANCH SCOPE — pembatasan data berdasarkan cabang karyawan
@@ -744,8 +744,8 @@ export function isBranchManager(session) {
  if (!session) return false;
  const role = String(session.role || "").toUpperCase();
  const posisi = String(session.posisi || session.jabatan || "").toUpperCase();
- if (["BRANCH MANAGER", "KEPALA CABANG", "KACAB"].includes(role)) return true;
- return /BRANCH MANAGER|KEPALA CABANG|KACAB/.test(posisi);
+ if (["BRANCH MANAGER", "BRANCH_MANAGER", "KEPALA CABANG", "KEPALA_CABANG", "KACAB"].includes(role)) return true;
+ return /\b(BRANCH[ _]MANAGER|KEPALA[ _]CABANG|KACAB)\b/.test(posisi);
 }
 
 /**
@@ -802,11 +802,10 @@ export async function computeVisibleMenus(session) {
   return list;
  }
 
- // GM: akses semua menu operasional, tetapi hanya sebagai penglihat
- // (view-only) + boleh export. Menu pengaturan/admin disembunyikan.
- if (role === "GM") {
-   return MENU_CONFIG.filter(m => !GM_HIDDEN_MENU_IDS.includes(m.id));
- }
+ // GM: akses semua menu, tetapi hanya sebagai penglihat (view-only).
+  if (role === "GM") {
+    return MENU_CONFIG.slice();
+  }
 
   const isAtasanRole = await isAtasan(session.nama);
  const isManagementOrHrd = ["HRD", "SUPERADMIN", "DIREKTUR", "MANAGER", "SPV", "KOORDINATOR", "GM", "FINANCE", "GA", "BRANCH MANAGER"].includes(role) || isAtasanRole;
@@ -1019,10 +1018,7 @@ export function canDeleteModuleData(session) {
 
 export async function canAccessRoute(routeId, session) {
  const role = (session?.role || "").toUpperCase();
- // Role GM tidak lagi otomatis lolos ke semua route. Akses ditentukan oleh
- // daftar menu yang terlihat (lihat computeVisibleMenus), sehingga menu
- // pengaturan/admin yang disembunyikan untuk GM juga ikut terkunci.
- void role;
+ if (role === "GM") return true;
  let targetId = routeId;
  if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(targetId)) {
  targetId = "pemanggilan";
@@ -2166,6 +2162,11 @@ ROLE_PERMISSIONS_PRESETS["BRANCH MANAGER"] = [
  "profile.view", "profile.edit", "profile.documents.view", "profile.sign_document",
  "absensi_saya.view"
 ];
+ROLE_PERMISSIONS_PRESETS["BRANCH_MANAGER"] = ROLE_PERMISSIONS_PRESETS["BRANCH MANAGER"];
+ROLE_PERMISSIONS_PRESETS.BRANCHMANAGER = ROLE_PERMISSIONS_PRESETS["BRANCH MANAGER"];
+ROLE_PERMISSIONS_PRESETS["KEPALA CABANG"] = ROLE_PERMISSIONS_PRESETS["BRANCH MANAGER"];
+ROLE_PERMISSIONS_PRESETS.KEPALA_CABANG = ROLE_PERMISSIONS_PRESETS["BRANCH MANAGER"];
+ROLE_PERMISSIONS_PRESETS.KACAB = ROLE_PERMISSIONS_PRESETS["BRANCH MANAGER"];
 ROLE_PERMISSIONS_PRESETS.DIREKTUR = ROLE_PERMISSIONS_PRESETS.GM;
 
 /**

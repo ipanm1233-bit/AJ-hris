@@ -18,45 +18,6 @@ import { attendanceSelectionKey as attendanceRowKey, selectedDeletableAttendance
 let recentAttendanceRead = null;
 const ATTENDANCE_READ_TTL_MS = 30_000;
 
-function normalizeFingerName(value) {
-  return String(value || "").toUpperCase().replace(/[^A-Z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
-}
-
-// Meniru pencocokan nama sisi penarikan (sync-absen): nama mesin dianggap cocok
-// bila sama persis dengan salah satu alias nama karyawan, atau bila salah satu
-// nama merupakan awalan nama lainnya (mis. "BUDI" vs "BUDI SANTOSO"). Cocok
-// hanya diterima bila menunjuk TEPAT SATU karyawan di cabang; nama kembar
-// sengaja dikembalikan ambigu agar HRD memberi pembeda.
-function fingerprintNameDiagnostic(machineName, employees) {
-  const name = normalizeFingerName(machineName);
-  if (!name) return { status: "no-name" };
-  const aliasesOf = employee => [employee.finger_name, employee.fingerprint_name, employee.nama_karyawan, employee.nama]
-    .map(normalizeFingerName).filter(Boolean);
-  const uniqueByNik = list => {
-    const byNik = new Map();
-    list.forEach(employee => {
-      const nik = String(employee.nik || employee.nik_karyawan || "").trim();
-      if (nik) byNik.set(nik, employee);
-    });
-    return byNik;
-  };
-  const exact = uniqueByNik(employees.filter(employee => aliasesOf(employee).includes(name)));
-  if (exact.size === 1) return { status: "match", employee: [...exact.values()][0] };
-  if (exact.size > 1) return { status: "ambiguous", count: exact.size };
-  const prefix = uniqueByNik(employees.filter(employee => aliasesOf(employee).some(alias => alias.length >= 3 &&
-    (name.startsWith(`${alias} `) || alias.startsWith(`${name} `)))));
-  if (prefix.size === 1) return { status: "match", employee: [...prefix.values()][0] };
-  if (prefix.size > 1) return { status: "ambiguous", count: prefix.size };
-  return { status: "missing" };
-}
-
-function fingerprintNameDiagnosticLabel(diagnostic) {
-  if (!diagnostic || diagnostic.status === "match") return "";
-  if (diagnostic.status === "ambiguous") return `Belum dipetakan · nama kembar (${diagnostic.count} karyawan)`;
-  if (diagnostic.status === "no-name") return "Belum dipetakan · nama di mesin kosong";
-  return "Belum dipetakan · nama tidak ada di master";
-}
-
 function normalizeToken(value) {
  return String(value || "").trim().toUpperCase();
 }
@@ -275,25 +236,13 @@ export async function mount(container, { session, params } = {}) {
       (item.nik || item.nik_karyawan) && (item.nama_karyawan || item.nama))
       .sort((a, b) => String(a.nama_karyawan || a.nama).localeCompare(String(b.nama_karyawan || b.nama), 'id'));
      const employeeOptions = employees.map(item => `<option value="${escapeHtml(item.nik || item.nik_karyawan)}">${escapeHtml(item.nama_karyawan || item.nama)} · ${escapeHtml(item.nik || item.nik_karyawan)}</option>`).join('');
-     const rosterInfo = users.map(user => {
+     const rows = users.map((user, index) => {
       const matching = activeMappings.filter(item => item.emp_no === (user.empNo || user.deviceUserId) &&
        item.no_id === (user.noId || user.deviceUserId));
-      return { user, matching, mapped: matching.length === 1 ? matching[0] : null,
-       diagnostic: fingerprintNameDiagnostic(user.name, employees) };
-     });
-     const unmatchable = rosterInfo.filter(info => !info.mapped && info.diagnostic.status !== 'match');
-     const ambiguousCount = unmatchable.filter(info => info.diagnostic.status === 'ambiguous').length;
-     const namelessCount = unmatchable.filter(info => info.diagnostic.status === 'no-name').length;
-     const rows = rosterInfo.map((info, index) => {
-      const { user, matching, mapped, diagnostic } = info;
-      const humanLabel = mapped
-       ? `${escapeHtml(mapped.nama_karyawan)}${normalizeToken(mapped.finger_name) !== normalizeToken(user.name) ? ' · Nama finger berubah' : ''}`
-       : matching.length ? 'Konflik pemetaan'
-       : diagnostic.status === 'match' ? `Otomatis via nama: ${escapeHtml(diagnostic.employee.nama_karyawan || diagnostic.employee.nama)}`
-       : fingerprintNameDiagnosticLabel(diagnostic);
-      return `<tr class="border-t border-slate-100" data-user-index="${index}" data-mapping-id="${escapeHtml(mapped?.id || '')}" data-diagnostic="${diagnostic.status}"><td class="p-2">${escapeHtml(user.name || '(Tanpa nama)')}</td>
+      const mapped = matching.length === 1 ? matching[0] : null;
+      return `<tr class="border-t border-slate-100" data-user-index="${index}" data-mapping-id="${escapeHtml(mapped?.id || '')}"><td class="p-2">${escapeHtml(user.name || '(Tanpa nama)')}</td>
        <td class="p-2">${escapeHtml(user.empNo || '-')}</td><td class="p-2">${escapeHtml(user.noId || '-')}</td>
-       <td class="p-2">${escapeHtml(user.deviceUserId)}</td><td class="p-2" data-mapped-name>${humanLabel}</td>
+       <td class="p-2">${escapeHtml(user.deviceUserId)}</td><td class="p-2" data-mapped-name>${mapped ? `${escapeHtml(mapped.nama_karyawan)}${normalizeToken(mapped.finger_name) !== normalizeToken(user.name) ? ' · Nama finger berubah' : ''}` : matching.length ? 'Konflik pemetaan' : 'Belum dipetakan'}</td>
        <td class="p-2">${user.name ? `<button type="button" data-edit-user="${index}" class="font-semibold text-indigo-700 hover:underline">${mapped ? 'Ubah' : 'Petakan'}</button>` : 'Lengkapi nama di mesin'}</td></tr>
        <tr data-edit-row="${index}" class="hidden bg-indigo-50 border-t border-indigo-100"><td colspan="6" class="p-3"><form data-map-form="${index}" class="grid gap-2 md:grid-cols-2 text-xs">
         <label>Karyawan HRIS<select name="nik" required class="mt-1 w-full border rounded-lg px-2 py-2"><option value="">Pilih karyawan</option>${employeeOptions}</select></label>
@@ -311,23 +260,11 @@ export async function mount(container, { session, params } = {}) {
         <button id="fp-roster-pull" type="button" class="bg-indigo-700 text-white rounded-lg px-3 py-2 font-semibold">Tarik daftar dari mesin</button>
         <button id="fp-roster-refresh" type="button" class="border border-slate-300 rounded-lg px-3 py-2">Muat ulang</button></div>
        <p class="text-xs text-slate-600">${device.rosterPending ? 'Permintaan sedang menunggu connector berjalan. ' : ''}${device.rosterUpdatedAt ? `Terakhir ditarik ${escapeHtml(new Date(device.rosterUpdatedAt).toLocaleString('id-ID'))} · ${users.length} akun.` : 'Belum ada daftar tersimpan untuk mesin ini.'} Akun dengan kecocokan jelas pada master dipetakan otomatis. Pilih Petakan atau Ubah pada baris lain; popup ini tetap terbuka saat menyimpan.</p>
-       ${unmatchable.length ? `<div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-        <strong>${unmatchable.length} akun belum cocok ke karyawan mana pun.</strong>${ambiguousCount ? ` ${ambiguousCount} karena nama kembar.` : ''}${namelessCount ? ` ${namelessCount} tanpa nama di mesin.` : ''}
-        Samakan nama pada mesin dengan master karyawan (nama harus unik per cabang), lalu pilih Muat ulang.
-        <button id="fp-roster-copy" type="button" class="ml-2 font-semibold text-amber-800 underline">Salin daftar</button>
-       </div>` : `<div class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">Semua akun mesin sudah cocok dengan nama karyawan.</div>`}
        <input id="fp-roster-search" type="search" placeholder="Cari nama, Emp No., atau No. ID" class="w-full border border-slate-300 rounded-lg px-3 py-2">
        <div class="max-h-96 overflow-auto"><table class="w-full text-left text-xs"><thead><tr><th class="p-2">Nama finger</th><th class="p-2">Emp No.</th><th class="p-2">No. ID</th><th class="p-2">ID log</th><th class="p-2">Karyawan HRIS</th><th class="p-2">Aksi</th></tr></thead><tbody>${rows.join('') || '<tr><td colspan="6" class="p-4 text-center">Daftar masih kosong.</td></tr>'}</tbody></table></div>
       </div>`, onMount: modal => {
        modal.querySelector('#fp-roster-device').onchange = event => { selectedId = event.target.value; showRoster().catch(error => toast(error.message, 'error')); };
        modal.querySelector('#fp-roster-refresh').onclick = () => showRoster().catch(error => toast(error.message, 'error'));
-       const copyButton = modal.querySelector('#fp-roster-copy');
-       if (copyButton) copyButton.onclick = async () => {
-        const lines = unmatchable.map(info => `${info.user.name || '(tanpa nama)'} | Emp No. ${info.user.empNo || '-'} | No. ID ${info.user.noId || '-'} | ${fingerprintNameDiagnosticLabel(info.diagnostic).replace('Belum dipetakan · ', '')}`);
-        const text = lines.join('\n');
-        try { await navigator.clipboard.writeText(text); toast(`${lines.length} akun mesin disalin. Tempel di catatan untuk menyamakan nama.`, 'success'); }
-        catch (_) { toast('Tidak bisa menyalin otomatis; daftar dicetak ke konsol.', 'warning'); console.log(text); }
-       };
        modal.querySelector('#fp-roster-pull').onclick = async event => {
         event.target.disabled = true;
         try { await fingerprintApi('admin_request_users', { deviceId: selectedId });

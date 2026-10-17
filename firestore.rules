@@ -10,6 +10,9 @@ service cloud.firestore {
     function isHrd() { return role() in ['HRD', 'SUPERADMIN']; }
     function isManagement() { return role() in ['HRD', 'SUPERADMIN', 'GM', 'DIREKTUR', 'MANAGER', 'BRANCH MANAGER', 'SPV', 'ATASAN']; }
     function isFinance() { return role() in ['HRD', 'SUPERADMIN', 'GM', 'FINANCE']; }
+    // Role pusat yang boleh MELIHAT lintas cabang. Dipakai untuk memberi akses
+    // baca ke GM/DIREKTUR (read-only) pada data yang pengelolaannya di HRD.
+    function isCentralManagement() { return role() in ['HRD', 'SUPERADMIN', 'GM', 'DIREKTUR']; }
     function username() { return signedIn() ? request.auth.token.get('username', '') : ''; }
     function nik() { return signedIn() ? request.auth.token.get('nik', '') : ''; }
     function branch() { return signedIn() ? request.auth.token.get('branch', '') : ''; }
@@ -149,16 +152,25 @@ service cloud.firestore {
     }
 
     match /log_sp_konseling/{id} {
-      allow read: if isHrd() || (isManagement() && sameBranch(resource.data));
+      allow read: if isCentralManagement() || (isManagement() && sameBranch(resource.data));
       allow write: if isHrd() || (isManagement() && sameBranch(request.resource.data));
     }
-    match /data_pemanggilan/{id} { allow read, write: if isHrd(); }
-    match /siklus_karyawan/{id} { allow read, write: if isHrd(); }
+    match /data_pemanggilan/{id} {
+      allow read: if isCentralManagement();
+      allow write: if isHrd();
+    }
+    match /siklus_karyawan/{id} {
+      allow read: if isCentralManagement();
+      allow write: if isHrd();
+    }
     match /evaluasi_kontrak/{id} {
       allow read: if isManagement();
       allow write: if role() in ['HRD', 'SUPERADMIN', 'DIREKTUR'];
     }
-    match /log_offboarding/{id} { allow read, write: if isHrd(); }
+    match /log_offboarding/{id} {
+      allow read: if isCentralManagement();
+      allow write: if isHrd();
+    }
     match /sign_documents/{id} {
       allow read: if signedIn() && (isHrd() || owns(resource.data));
       allow write: if isHrd();
@@ -257,7 +269,7 @@ service cloud.firestore {
 
     match /{collectionName}/{id} {
       allow read: if collectionName in ['hr_cases', 'hr_case_action_plans', 'hr_case_followups']
-        && (isHrd() || (isManagement() && sameBranch(resource.data)));
+        && (isCentralManagement() || (isManagement() && sameBranch(resource.data)));
       allow create: if collectionName in ['hr_cases', 'hr_case_action_plans', 'hr_case_followups']
         && (isHrd() || (isManagement() && sameBranch(request.resource.data)
           && (collectionName != 'hr_cases' || hrCaseReviewAllowed(true))));
@@ -267,7 +279,7 @@ service cloud.firestore {
       allow delete: if collectionName in ['hr_cases', 'hr_case_action_plans', 'hr_case_followups'] && isHrd();
     }
     match /hr_case_audit_logs/{id} {
-      allow read: if isHrd();
+      allow read: if isCentralManagement();
       allow create: if isManagement();
       allow update, delete: if false;
     }

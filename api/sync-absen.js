@@ -570,10 +570,6 @@ module.exports = async function handler(req, res) {
     let manualMappings = [];
     if (supabaseEnabled()) {
       identityHistoryRows = await listAttendance({ branch, limit: 5000 });
-    }
-    // Pemetaan finger disimpan di Supabase dan tetap dihormati walau penyimpanan
-    // absensi masih di Firestore selama masa migrasi.
-    if (supabaseConfigured()) {
       try {
         manualMappings = await listFingerprintMappings(branch);
       } catch (error) {
@@ -697,14 +693,6 @@ module.exports = async function handler(req, res) {
           nik_karyawan: mapping.nik, nama_karyawan: mapping.nama_karyawan,
           finger_name: mapping.finger_name, cabang: branch };
       }
-      // Utamakan NAMA FINGER karena HRD menyeragamkan nama pada mesin dengan
-      // master karyawan, sementara Emp No./No. ID bisa berbeda antar kolom.
-      // Aman karena pencocokan nama hanya diterima bila UNIK di cabang ini;
-      // bila ada nama kembar sistem TIDAK menebak dan lanjut ke pencocokan ID.
-      if (machineName) {
-        const byMachineName = resolveEmployeeByMachineName(machineName);
-        if (byMachineName) return byMachineName;
-      }
       if (conflictingFingerIds.has(exactKey)) return confirmedFingerprintOwnerForDay({
         rows: identityHistoryRows, employees, id: exactKey, noId, machineName,
         date, branch
@@ -753,11 +741,7 @@ module.exports = async function handler(req, res) {
       const chunkItems = chunk.map(group => {
         const matchedEmployee = resolveEmployee(group.deviceUserId, group.tanggal);
         const machineUser = deviceUserMetadataMap.get(String(group.deviceUserId).trim().toUpperCase()) || null;
-        // Scan yang identitasnya belum ketemu JUSTRU tidak boleh dibuang: tanpa
-        // ini, "tidak ada baris" muncul padahal mesin mencatat scan. Baik jalur
-        // Supabase maupun Firestore kini menyimpannya sebagai baris sementara
-        // "BELUM DIPETAKAN" agar HRD dapat merekonsiliasi.
-        const employee = matchedEmployee || {
+        const employee = matchedEmployee || (useSupabaseAttendance ? {
           _docId: `PENDING-${group.deviceUserId}`,
           _fingerprintPending: true,
           nik_karyawan: provisionalFingerprintNik(branch, group.deviceUserId),
@@ -766,7 +750,7 @@ module.exports = async function handler(req, res) {
           cabang: branch,
           divisi: '',
           jabatan: ''
-        };
+        } : null);
         const nik = String(employee?.nik_karyawan || employee?.nik || group.deviceUserId).trim();
         const safeNik = nik.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);
         const ref = db.collection('data_absensi').doc(`ABS-FP-${safeNik}-${group.tanggal}`);

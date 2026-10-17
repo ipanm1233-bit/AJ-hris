@@ -761,7 +761,7 @@ async function loadContractExpiry(container, session) {
  if (!wrapOuter) return;
 
  const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
- const isAtasanRole = ["SPV", "MANAGER", "GM", "ATASAN", "MANAJEMEN"].includes((session.role || "").toUpperCase());
+ const isAtasanRole = ["SPV", "MANAGER", "GM", "ATASAN", "MANAJEMEN", "BRANCH MANAGER", "BRANCH_MANAGER", "KEPALA_CABANG", "KACAB"].includes((session.role || "").toUpperCase());
 
  try {
  const snap = await getDocs(collection(db, COL.MASTER_KARYAWAN));

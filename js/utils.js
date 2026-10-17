@@ -14,6 +14,7 @@ import {
 import { uploadFileToDrive } from "./gas-integration.js";
 import { letterheadHtml, isoDocHeaderTable, COMPANY_NAME, logoImgTag } from "./branding.js";
 import { authFetch } from "./api-client.js";
+import { getAutoJatahTahunan } from "./leave-entitlement.mjs";
 
 // =========================================================================
 // PLUS CODE (Open Location Code) DECODER -- diambil & diadaptasi dari
@@ -1920,6 +1921,7 @@ export async function calculateLeaveHistoryBalances(empIdent, currentLeave = {})
 	// 3. Gabungkan dan saring seluruh riwayat cuti karyawan
 	const empLeaves = [];
 	const seenKeys = new Set();
+	const seenRefs = new Set();
 
 	// Tambahkan dari MASTER_CUTI
 	for (const r of allMasterCuti) {
@@ -1937,11 +1939,15 @@ export async function calculateLeaveHistoryBalances(empIdent, currentLeave = {})
 		const key = `${r.id || r.no_referensi || ''}_${r.tanggal || r.tanggal_mulai || ''}_${r.type_cuti || ''}`;
 		if (!seenKeys.has(key)) {
 			seenKeys.add(key);
+			// Rekam referensi dokumen (no_referensi / id) agar twin pengajuan di
+			// DATA_PENGAJUAN tidak dihitung dua kali pada form cetak.
+			const refStr = String(r.no_referensi || r.id || "").trim();
+			if (refStr) seenRefs.add(refStr);
 			empLeaves.push(r);
 		}
 	}
 
-	// Tambahkan dari DATA_PENGAJUAN (yang disetujui / aktif dan belum ada di MASTER_CUTI)
+	// Tambahkan dari DATA_PENGAJUAN (yang sudah disetujui dan belum ada di MASTER_CUTI)
 	for (const p of allPengajuan) {
 		const pName = (p.nama_pemohon || p.nama_karyawan || p.nama || "").trim().toLowerCase();
 		const pNik = String(p.nik || p.nik_pemohon || "-");
@@ -1950,16 +1956,24 @@ export async function calculateLeaveHistoryBalances(empIdent, currentLeave = {})
 
 		const st = (p.status_final || p.status || p.status_spv || p.status_hrd || "").toUpperCase();
 		if (st.includes("REJECT") || st.includes("TOLAK") || st.includes("BATAL") || st.includes("CANCEL")) continue;
+		// Hanya pengajuan yang SUDAH disetujui yang memotong jatah (selaras dengan
+		// aturan "jatah terpotong ketika Approved Final"). Pengajuan yang masih
+		// PENDING/draft/menunggu TIDAK dihitung — sama seperti tampilan sistem.
+		if (!/APPROVED|APPROVE|DISETUJUI/.test(st)) continue;
 
 		const pYear = parseInt(p.tahun) || (p.tanggal_mulai ? new Date(p.tanggal_mulai).getFullYear() : (p.tgl ? new Date(p.tgl).getFullYear() : targetYear));
 		if (pYear !== targetYear) continue;
 
-		const keyRef = p.no_referensi || p.id;
-		if (keyRef && seenKeys.has(keyRef)) continue;
+		const keyRef = String(p.no_referensi || p.id || "").trim();
+		// Cegah penghitungan ganda: cuti yang sama yang sudah punya twin di
+		// MASTER_CUTI (no_referensi master = id pengajuan) tidak boleh dihitung
+		// lagi — tanpa ini, "Sisa Hak" pada form cetak terpotong dua kali.
+		if (keyRef && (seenKeys.has(keyRef) || seenRefs.has(keyRef))) continue;
 
 		const key = `${p.id || ''}_${p.tanggal_mulai || p.tgl || ''}_${p.kategori_cuti || p.jenis_cuti || ''}`;
 		if (!seenKeys.has(key)) {
 			seenKeys.add(key);
+			if (keyRef) seenRefs.add(keyRef);
 			empLeaves.push(p);
 		}
 	}
@@ -2006,20 +2020,18 @@ export async function calculateLeaveHistoryBalances(empIdent, currentLeave = {})
 	// 5. Hitung saldo resmi berdasarkan riwayat sebelum cuti ini
 	const historyCalc = getCalculatedJatahCuti(kData, priorLeaves, targetYear);
 
-	// 6. Cek apakah ada saldo eksplisit tersimpan di dokumen pengajuan ini pada database
-	const cDetail = currentLeave.detail || {};
-	const checkVal = (v) => (v !== undefined && v !== null && v !== "" && !isNaN(Number(v))) ? Number(v) : null;
-
-	const docSisaTahunan = checkVal(currentLeave.sisa_tahunan) ?? checkVal(cDetail.sisa_tahunan);
-	const docSisaKhusus = checkVal(currentLeave.sisa_khusus) ?? checkVal(cDetail.sisa_khusus);
-	const docSisaAkumulasi = checkVal(currentLeave.sisa_akumulasi) ?? checkVal(cDetail.sisa_akumulasi);
-	const docSisaBesar = checkVal(currentLeave.sisa_besar) ?? checkVal(cDetail.sisa_besar);
-
+	// 6. Sisa hak cuti SELALU dihitung ulang dari sumber resmi (getCalculatedJatahCuti)
+	//    agar angka pada dokumen cetak identik dengan sisa yang ditampilkan sistem.
+	//    Nilai snapshot yang pernah tersimpan di dokumen pengajuan (sisa_tahunan,
+	//    total_sisa_tahunan, dsb.) sengaja TIDAK dipakai lagi — nilainya sering basi
+	//    (diambil saat pengajuan dibuat, bukan saat mencetak) dan bisa berisi input
+	//    manual yang meleset. Itulah penyebab umum "sisa cuti di form cetak tidak
+	//    sesuai dengan perhitungan sistem".
 	// Baris 1: Sisa Hak Cuti (sebelum cuti ini diambil)
-	let sisaHakTahunan = docSisaTahunan !== null ? docSisaTahunan : historyCalc.sisaTahunan;
-	let sisaHakKhusus = docSisaKhusus !== null ? docSisaKhusus : historyCalc.sisaKhusus;
-	let sisaHakAkumulasi = docSisaAkumulasi !== null ? docSisaAkumulasi : historyCalc.sisaAkumulasi;
-	let sisaHakBesar = docSisaBesar !== null ? docSisaBesar : historyCalc.sisaBesar;
+	let sisaHakTahunan = historyCalc.sisaTahunan;
+	let sisaHakKhusus = historyCalc.sisaKhusus;
+	let sisaHakAkumulasi = historyCalc.sisaAkumulasi;
+	let sisaHakBesar = historyCalc.sisaBesar;
 
 	// Baris 2: Cuti yang akan dipakai
 	let dipakaiTahunan = 0;
@@ -2037,22 +2049,13 @@ export async function calculateLeaveHistoryBalances(empIdent, currentLeave = {})
 		dipakaiBesar = usedCount;
 	}
 
-	// Baris 3: Total Sisa Cuti (Sisa Hak Cuti - Cuti yang akan dipakai)
+	// Baris 3: Total Sisa Cuti (Sisa Hak Cuti - Cuti yang akan dipakai).
+	// Sengaja TIDAK ada override dari field total_sisa_* pada dokumen database —
+	// total dihitung live agar selalu identik dengan perhitungan sistem.
 	let totalSisaTahunan = Math.max(0, sisaHakTahunan - dipakaiTahunan);
 	let totalSisaKhusus = Math.max(0, sisaHakKhusus - dipakaiKhusus);
 	let totalSisaAkumulasi = Math.max(0, sisaHakAkumulasi - dipakaiAkumulasi);
 	let totalSisaBesar = Math.max(0, sisaHakBesar - dipakaiBesar);
-
-	// Jika dokumen database memiliki field total sisa spesifik, hormati nilainya
-	const docTotalTahunan = checkVal(currentLeave.total_sisa_tahunan) ?? checkVal(cDetail.total_sisa_tahunan);
-	const docTotalKhusus = checkVal(currentLeave.total_sisa_khusus) ?? checkVal(cDetail.total_sisa_khusus);
-	const docTotalAkumulasi = checkVal(currentLeave.total_sisa_akumulasi) ?? checkVal(cDetail.total_sisa_akumulasi);
-	const docTotalBesar = checkVal(currentLeave.total_sisa_besar) ?? checkVal(cDetail.total_sisa_besar);
-
-	if (docTotalTahunan !== null) totalSisaTahunan = docTotalTahunan;
-	if (docTotalKhusus !== null) totalSisaKhusus = docTotalKhusus;
-	if (docTotalAkumulasi !== null) totalSisaAkumulasi = docTotalAkumulasi;
-	if (docTotalBesar !== null) totalSisaBesar = docTotalBesar;
 
 	return {
 		kData,
@@ -5790,18 +5793,44 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
           });
         }
       });
-    } else if (roleUpper === "MANAGER" || roleUpper === "MANAJER") {
+    } else if (roleUpper === "MANAGER" || roleUpper === "MANAJER" || roleUpper === "BRANCH MANAGER" || roleUpper === "BRANCH_MANAGER" || roleUpper === "KEPALA_CABANG" || roleUpper === "KEPALA CABANG" || roleUpper === "KACAB") {
       const mgrRegex = /\b(manager|manajer|branch manager|kepala cabang|kepala bagian)\b/i;
-      const mgrUsers = allUsers.filter(u => {
-        const r = (u.role || "").toUpperCase().trim();
-        return r === "MANAGER" || r === "MANAJER";
+      const mgrRoleMatch = (r) => r === "MANAGER" || r === "MANAJER" || r === "BRANCH MANAGER" || r === "BRANCH_MANAGER" || r === "KEPALA_CABANG" || r === "KEPALA CABANG" || r === "KACAB";
+      const pemohonEmp = cleanNama ? allEmployees.find(k => (k.nama_karyawan || k.nama || "").trim().toLowerCase() === cleanNama) : null;
+      const pemCabang = String(pemohonEmp?.cabang || "").trim().toLowerCase();
+
+      let mgrUsers = allUsers.filter(u => mgrRoleMatch((u.role || "").toUpperCase().trim()));
+      let mgrEmps = allEmployees.filter(k => {
+        if (!mgrRegex.test((k.jabatan || k.posisi || "").toLowerCase())) return false;
+        const kNama = (k.nama_karyawan || k.nama || "").trim();
+        if (!kNama) return false;
+        if (cleanNama && kNama.toLowerCase() === cleanNama) return false; // hindari email self-approval
+        return true;
       });
+
+      // Pembatasan cabang: penerima email tahap MANAGER/BRANCH MANAGER dibatasi pada cabang pemohon
+      if (pemCabang) {
+        const uScoped = mgrUsers.filter(u => !String(u.cabang || "").trim() || String(u.cabang || "").trim().toLowerCase() === pemCabang);
+        const eScoped = mgrEmps.filter(k => String(k.cabang || "").trim().toLowerCase() === pemCabang);
+        if (uScoped.length || eScoped.length) { mgrUsers = uScoped; mgrEmps = eScoped; }
+      }
+
+      // Atasan eksplisit pemohon yang sesuai tahap ini didahulukan sebagai penerima email
+      const atasanNama = (pemohonEmp ? (pemohonEmp.atasan || pemohonEmp.atasan_langsung || pemohonEmp.nama_atasan || "") : "").trim();
+      if (cleanNama && atasanNama) {
+        const atasanEmp = mgrEmps.find(k => (k.nama_karyawan || k.nama || "").trim().toLowerCase() === atasanNama.toLowerCase());
+        if (atasanEmp) {
+          const kNamaA = (atasanEmp.nama_karyawan || atasanEmp.nama || "").trim();
+          const u = allUsers.find(user => (user.nama || "").trim().toLowerCase() === kNamaA.toLowerCase());
+          const t = enrichTarget(u ? { ...u, email: u.email || atasanEmp.email || "" } : { username: atasanEmp.username || atasanEmp.id || atasanEmp.nik_karyawan || atasanEmp.nik, nama: kNamaA, email: atasanEmp.email || "", nik: atasanEmp.nik_karyawan || atasanEmp.nik });
+          if (t) targets.push(t);
+        }
+      }
+
       mgrUsers.forEach(u => {
         const t = enrichTarget(u);
         if (t) targets.push(t);
       });
-
-      const mgrEmps = allEmployees.filter(k => mgrRegex.test((k.jabatan || k.posisi || "").toLowerCase()));
       mgrEmps.forEach(k => {
         const kNama = (k.nama_karyawan || k.nama || "").trim();
         if (!kNama) return;
@@ -5818,16 +5847,45 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
       });
     } else if (roleUpper === "SPV" || roleUpper === "SUPERVISOR") {
       const spvRegex = /\b(spv|supervisor|koordinator|kepala regu|mandor)\b/i;
-      const spvUsers = allUsers.filter(u => {
+      const pemohonEmpSpv = cleanNama ? allEmployees.find(k => (k.nama_karyawan || k.nama || "").trim().toLowerCase() === cleanNama) : null;
+      const pemCabangSpv = String(pemohonEmpSpv?.cabang || "").trim().toLowerCase();
+
+      let spvUsers = allUsers.filter(u => {
         const r = (u.role || "").toUpperCase().trim();
         return r === "SPV" || r === "SUPERVISOR" || r === "KOORDINATOR";
       });
+      let spvEmps = allEmployees.filter(k => {
+        if (!spvRegex.test((k.jabatan || k.posisi || "").toLowerCase())) return false;
+        const kNama = (k.nama_karyawan || k.nama || "").trim();
+        if (!kNama) return false;
+        if (cleanNama && kNama.toLowerCase() === cleanNama) return false;
+        return true;
+      });
+
+      // Pembatasan cabang: penerima email tahap SPV dibatasi pada cabang pemohon
+      if (pemCabangSpv) {
+        const uScoped = spvUsers.filter(u => !String(u.cabang || "").trim() || String(u.cabang || "").trim().toLowerCase() === pemCabangSpv);
+        const eScoped = spvEmps.filter(k => String(k.cabang || "").trim().toLowerCase() === pemCabangSpv);
+        if (uScoped.length || eScoped.length) { spvUsers = uScoped; spvEmps = eScoped; }
+      }
+
+      // Atasan eksplisit pemohon yang cocok tahap SPV didahulukan sebagai penerima email
+      const atasanNamaSpv = (pemohonEmpSpv ? (pemohonEmpSpv.atasan || pemohonEmpSpv.atasan_langsung || pemohonEmpSpv.nama_atasan || "") : "").trim();
+      if (cleanNama && atasanNamaSpv) {
+        const atasanEmpSpv = spvEmps.find(k => (k.nama_karyawan || k.nama || "").trim().toLowerCase() === atasanNamaSpv.toLowerCase());
+        if (atasanEmpSpv) {
+          const kNamaS = (atasanEmpSpv.nama_karyawan || atasanEmpSpv.nama || "").trim();
+          const u = allUsers.find(user => (user.nama || "").trim().toLowerCase() === kNamaS.toLowerCase());
+          const t = enrichTarget(u ? { ...u, email: u.email || atasanEmpSpv.email || "" } : { username: atasanEmpSpv.username || atasanEmpSpv.id || atasanEmpSpv.nik_karyawan || atasanEmpSpv.nik, nama: kNamaS, email: atasanEmpSpv.email || "", nik: atasanEmpSpv.nik_karyawan || atasanEmpSpv.nik });
+          if (t) targets.push(t);
+        }
+      }
+
       spvUsers.forEach(u => {
         const t = enrichTarget(u);
         if (t) targets.push(t);
       });
 
-      const spvEmps = allEmployees.filter(k => spvRegex.test((k.jabatan || k.posisi || "").toLowerCase()));
       spvEmps.forEach(k => {
         const kNama = (k.nama_karyawan || k.nama || "").trim();
         if (!kNama) return;
@@ -6041,27 +6099,14 @@ export function getCalculatedJatahCuti(emp, cutiRecords = null, targetYear = nul
       diffMonths = (now.getFullYear() - join.getFullYear()) * 12 + (now.getMonth() - join.getMonth());
       tenureYears = diffMonths / 12;
 
-      // Hanya gunakan kalkulasi otomatis masa kerja jika jatah tahunan TIDAK diatur secara eksplisit oleh HRD
+      // Hanya gunakan kalkulasi otomatis masa kerja jika jatah tahunan TIDAK diatur secara eksplisit oleh HRD.
+      // Tabel masa kerja Aturan Andela ada di js/leave-entitlement.mjs:
+      // - bulan 1-3 (probation/kontrak pertama): belum berhak (0),
+      // - bulan 4: langsung 3 hari, lalu +1/bulan hingga bulan 11 (10 hari),
+      // - >= 1 tahun atau karyawan tetap (PKWTT/KARTAP): 12 hari,
+      // - cuti penghargaan: 6 tahun 13, 8 tahun 14, 10 tahun 15, 11 tahun 16.
       if (!hasExplicitTahunan) {
-        if (diffMonths >= 12) {
-          // Tabel Tambahan Cuti Penghargaan Masa Kerja:
-          // - Ambang 11 tahun (>= 11 tahun): +4 hari (total 16)
-          // - Ambang 10 tahun (10 s/d < 11 tahun): +3 hari (total 15)
-          // - Ambang 8 tahun (8 s/d < 10 tahun): +2 hari (total 14)
-          // - Ambang 6 tahun (6 s/d < 8 tahun): +1 hari (total 13)
-          // - Ambang 0 tahun (< 6 tahun): +0 hari (total 12)
-          if (tenureYears >= 11 || diffMonths >= 132) jatahTahunan = 16;
-          else if (tenureYears >= 10 || diffMonths >= 120) jatahTahunan = 15;
-          else if (tenureYears >= 8 || diffMonths >= 96) jatahTahunan = 14;
-          else if (tenureYears >= 6 || diffMonths >= 72) jatahTahunan = 13;
-          else jatahTahunan = 12;
-        } else if (diffMonths >= 3) {
-          // Masa kerja < 1 tahun (3-11 bulan): Cuti tahunan proporsional (1 hari/bulan)
-          jatahTahunan = diffMonths;
-        } else {
-          // Masa kerja < 3 bulan: belum berhak cuti tahunan
-          jatahTahunan = 0;
-        }
+        jatahTahunan = getAutoJatahTahunan(emp, now);
       }
     }
   }

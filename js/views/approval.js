@@ -87,6 +87,15 @@ function isEligible(row, session) {
  return isGm || myRole === "SUPERADMIN";
  }
 
+ // Role Kepala Cabang (BRANCH MANAGER) hanya boleh memproses pengajuan dari cabangnya sendiri
+ const isBranchScopedApprover = myRole === "BRANCH MANAGER" || myRole === "BRANCH_MANAGER" || myRole === "KEPALA_CABANG" || myRole === "KACAB";
+ if (isBranchScopedApprover) {
+ const myCabang = (session.cabang || "").trim().toLowerCase();
+ const pemohonData = karyawanByNama[row.nama_pemohon] || {};
+ const rowCabang = String(row.cabang || pemohonData.cabang || "").trim().toLowerCase();
+ if (myCabang && rowCabang && rowCabang !== myCabang) return false;
+ }
+
  if (stepUpper === "HRD" || stepUpper === "HR") {
  const isHrd = myRole === "HRD" || myRole === "ADMIN" || myRole === "ADMINISTRATOR" || myRole === "SUPERADMIN";
  return isHrd;
@@ -102,8 +111,8 @@ function isEligible(row, session) {
  return isSpv || myRole === "SUPERADMIN";
  }
 
- if (stepUpper === "MANAGER" || stepUpper === "MANAJER") {
- const isMgr = myRole === "MANAGER" || myRole === "MANAJER" || myPosisi.includes("MANAGER") || myPosisi.includes("MANAJER");
+ if (stepUpper === "MANAGER" || stepUpper === "MANAJER" || stepUpper === "BRANCH MANAGER" || stepUpper === "BRANCH_MANAGER" || stepUpper === "KEPALA_CABANG" || stepUpper === "KACAB") {
+ const isMgr = myRole === "MANAGER" || myRole === "MANAJER" || myRole === "BRANCH MANAGER" || myRole === "BRANCH_MANAGER" || myRole === "KEPALA_CABANG" || myRole === "KACAB" || myPosisi.includes("MANAGER") || myPosisi.includes("MANAJER") || myPosisi.includes("KEPALA CABANG");
  return isMgr || myRole === "SUPERADMIN";
  }
 
@@ -691,6 +700,17 @@ async function processAction(row, action, note, session, recommendedBudget = nul
   else {
     const nextRole = row.approval_flow[idx + 1];
     const nextTargets = await getTargetsForRole(nextRole, row.nama_pemohon);
+    // Personil dengan kolom "Approval" pada Form Builder ikut dinotifikasi setiap tahap persetujuan
+    const stageRules = Array.isArray(row.notify_user_rules) ? row.notify_user_rules : [];
+    const stageSeen = new Set(nextTargets.map(t => String(t.nama || "").trim().toUpperCase()));
+    for (const r of stageRules) {
+      const nm = String(r?.nama || "").trim();
+      if (!nm || r.approval === false || stageSeen.has(nm.toUpperCase())) continue;
+      stageSeen.add(nm.toUpperCase());
+      const tList = await getTargetsForRole("PEMOHON", nm);
+      const tObj = tList[0];
+      if (tObj && tObj.email) nextTargets.push(tObj);
+    }
     const detailEmailHtml = buildPengajuanEmailDetailHtml(row);
     
     for (const target of nextTargets) {

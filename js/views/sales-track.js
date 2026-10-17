@@ -612,7 +612,7 @@ export async function mount(container, { session } = {}) {
               item.koordinat_gps = matchOutlet.koordinat_gps;
               item.lat = matchParsed.lat;
               item.lng = matchParsed.lng;
-              if (!visitWriteBlocked && item.id) gpsCorrections.push({ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng });
+              if (!isStandardKaryawan && item.id) gpsCorrections.push({ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng });
               continue;
             }
           }
@@ -624,14 +624,14 @@ export async function mount(container, { session } = {}) {
             const mp = parseGpsCoordinates(matchOutlet.koordinat_gps);
             item.lat = mp?.lat;
             item.lng = mp?.lng;
-            if (!visitWriteBlocked && item.id) gpsCorrections.push({ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng });
+            if (!isStandardKaryawan && item.id) gpsCorrections.push({ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng });
           } else {
             const queryAddr = [item.alamat_toko, item.toko_outlet].filter(Boolean).join(", ");
             const geoRes = await geocodeAddressSmart(queryAddr || "Klampok Wanasari Brebes Tegal", i);
             item.koordinat_gps = `${geoRes.lat}, ${geoRes.lng}`;
             item.lat = geoRes.lat;
             item.lng = geoRes.lng;
-            if (!visitWriteBlocked && item.id) gpsCorrections.push({ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng });
+            if (!isStandardKaryawan && item.id) gpsCorrections.push({ id: item.id, tanggal: item.tanggal, koordinat_gps: item.koordinat_gps, lat: item.lat, lng: item.lng });
           }
         }
       }
@@ -2128,7 +2128,7 @@ export async function mount(container, { session } = {}) {
               <span class="px-3 py-1 bg-amber-500 text-slate-950 text-xs font-black rounded-lg">Tanggal: ${escapeHtml(tgl)}</span>
               <span class="text-xs text-indigo-200 font-bold bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700">${dailyVisits.length} Outlet Visit</span>
               <span class="text-xs text-slate-300 hidden sm:inline">${escapeHtml(dailyMetrics.startPoint.nama)} <i class='fa-solid fa-arrow-right' aria-hidden='true'></i> ${escapeHtml(dailyMetrics.endPoint.nama)}</span>
-              ${canDeleteVisits && dailySelectedIds.length > 0 ? `
+              ${isSuperOrHrd && dailySelectedIds.length > 0 && !gmViewOnly ? `
                 <button type="button" class="btn-delete-date-selected px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold rounded-lg shadow-sm transition flex items-center gap-1 cursor-pointer" data-date="${tgl}">
                   <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                   <span>Hapus ${dailySelectedIds.length} Terpilih di Tgl Ini</span>
@@ -2347,7 +2347,7 @@ export async function mount(container, { session } = {}) {
         </div>
         ` : ''}
 
-        ${!visitWriteBlocked ? `
+        ${!isStandardKaryawan ? `
         <!-- BASE DEPARTURE CONFIGURATION -->
         <div class="p-4 bg-slate-100 border border-slate-200 rounded-xl text-xs space-y-3">
           <h4 class="font-bold text-slate-800">Titik Acuan Sales</h4>
