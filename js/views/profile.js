@@ -445,12 +445,17 @@ async function loadUploadedDocuments(container, session) {
  docListEl.querySelectorAll("[data-doc-del]").forEach(btn => {
  btn.onclick = async () => {
  if (confirm("Apakah Anda yakin ingin menghapus dokumen arsip ini?")) {
- const docId = btn.getAttribute("data-doc-del");
- // deleteDoc from firebase
- const { deleteDoc, doc } = await import("../firebase-config.js");
- await deleteDoc(doc(db, "user_documents", docId));
- toast("Dokumen berhasil dihapus", "success");
- loadUploadedDocuments(container, session);
+  const docId = btn.getAttribute("data-doc-del");
+  try {
+   // deleteDoc from firebase
+   const { deleteDoc, doc } = await import("../firebase-config.js");
+   await deleteDoc(doc(db, "user_documents", docId));
+   toast("Dokumen berhasil dihapus", "success");
+  } catch (errDel) {
+   console.error("Gagal menghapus dokumen arsip:", errDel);
+   toast("Gagal menghapus dokumen: " + (errDel.message || errDel), "error");
+  }
+  loadUploadedDocuments(container, session);
  }
  };
  });

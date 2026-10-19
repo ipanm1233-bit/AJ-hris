@@ -1,4 +1,4 @@
-import { COL } from "../firebase-config.js";
+import { COL, db, doc, getDoc } from "../firebase-config.js";
 import { fsGetAll, exportToCsv, toast, formatUangJalanEkspedisiRows, calculateAge, calculateTenure } from "../utils.js";
 import { icon, openExportPicker } from "../components.js";
 
@@ -89,13 +89,31 @@ export async function mount(container) {
  let currentRows = await updateCount();
  select.addEventListener("change", async () => { currentRows = await updateCount(); });
 
+ // Kolom tambahan (HRD) untuk Master Karyawan: skema dari app_settings,
+ // nilai dibaca dari map custom_fields tiap karyawan lewat getter virtual.
+ let customFieldExtras = [];
+ try {
+  const snapDef = await getDoc(doc(db, COL.APP_SETTINGS, "karyawan_custom_fields"));
+  const defs = snapDef.exists() && Array.isArray(snapDef.data().fields) ? snapDef.data().fields : [];
+  customFieldExtras = defs.map(f => ({
+   key: `custom_fields.${f.id}`,
+   label: `Kolom HRD: ${f.label || f.id}`,
+   getValue: (row) => {
+    const v = row?.custom_fields?.[f.id];
+    return (v === null || v === undefined) ? "" : v;
+   }
+  }));
+ } catch (e) {
+  console.warn("Gagal memuat skema kolom tambahan untuk export:", e);
+ }
+
  container.querySelector("#export-btn")?.addEventListener("click", () => {
  if (!currentRows.length) { toast("Tidak ada data pada koleksi ini", "warning"); return; }
  let rowsToExport = currentRows;
  if (select.value === COL.UANG_MAKAN_EXPEDISI) {
  rowsToExport = formatUangJalanEkspedisiRows(currentRows);
  }
- const cols = select.value === COL.MASTER_KARYAWAN ? MASTER_KARYAWAN_COLUMNS : [];
+ const cols = select.value === COL.MASTER_KARYAWAN ? [...MASTER_KARYAWAN_COLUMNS, ...customFieldExtras] : [];
  openExportPicker(LABELS[select.value] || select.value, cols, rowsToExport);
  });
 

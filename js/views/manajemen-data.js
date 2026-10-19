@@ -1,5 +1,5 @@
-import { db, COL, collection, getDocs, doc, updateDoc, addDoc, setDoc, deleteDoc, query, where, limit } from "../firebase-config.js";
-import { fsGetAll, fsUpdate, fsDelete, escapeHtml, toast, genId, notifyUser, openModal, closeModal, confirmDialog, promptDialog, calculateAge, calculateTenure, cascadeEmployeeChanges, syncAllEmployeesAcrossCollections, fmtDateShort, localDateStr, toNumber, getCalculatedJatahCuti, calculateCarryoverJatah } from "../utils.js";
+import { db, COL, collection, getDoc, getDocs, doc, updateDoc, addDoc, setDoc, deleteDoc, query, where, limit } from "../firebase-config.js";
+import { fsGetAll, fsUpdate, fsDelete, escapeHtml, toast, genId, notifyUser, openModal, closeModal, confirmDialog, promptDialog, calculateAge, calculateTenure, cascadeEmployeeChanges, syncAllEmployeesAcrossCollections, fmtDateShort, localDateStr, toNumber, getCalculatedJatahCuti, calculateCarryoverJatah, downloadHtmlAsPdf } from "../utils.js";
 import { renderCrudModule, badge, emptyState, icon, skeletonRows } from "../components.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 
@@ -160,6 +160,65 @@ export async function mount(container) {
       currentEmp = { ...freshEmp, ...currentEmp };
     }
 
+    // ==== KOLOM TAMBAHAN (CUSTOM FIELDS) ====
+    // Skema (daftar kolom) disimpan terpusat di doc app_settings/karyawan_custom_fields,
+    // sedangkan nilai per-karyawan disimpan di map `custom_fields` pada dokumen master_karyawan.
+    const CF_DEF_DOC_ID = "karyawan_custom_fields";
+    const CF_INPUT_TYPE = {
+      "Teks Singkat": "text",
+      "Teks Panjang": "textarea",
+      "Angka": "number",
+      "Tanggal": "date",
+      "Pilihan": "select"
+    };
+    let customFieldDefs = [];
+    try {
+      const snapDef = await getDoc(doc(db, COL.APP_SETTINGS, CF_DEF_DOC_ID));
+      if (snapDef.exists()) customFieldDefs = Array.isArray(snapDef.data().fields) ? snapDef.data().fields : [];
+    } catch (e) {
+      console.warn("Gagal memuat skema kolom tambahan karyawan:", e);
+    }
+    customFieldDefs.sort((a, b) =>
+      (toNumber(a.order ?? 0) - toNumber(b.order ?? 0)) ||
+      String(a.label || "").localeCompare(String(b.label || ""), "id")
+    );
+
+    function getCfValue(empData, def) {
+      const v = empData?.custom_fields?.[def.id];
+      return (v === null || v === undefined) ? "" : String(v);
+    }
+
+    function renderCustomFieldsDetailCard(empData) {
+      if (!customFieldDefs.length) return "";
+      const rows = customFieldDefs.map(f => {
+        const raw = getCfValue(empData, f);
+        let display = raw;
+        if (raw !== "") {
+          if (f.type === "Tanggal") display = fmtDateShort(raw) || raw;
+        } else {
+          display = "-";
+        }
+        return `
+          <div>
+            <dt class="text-[10.5px] text-slate-400">${escapeHtml(f.label || f.id)}</dt>
+            <dd class="text-slate-800 font-medium mt-0.5">${escapeHtml(display)}</dd>
+          </div>`;
+      }).join("");
+      return `
+        <!-- 5. KOLUM TAMBAHAN (DIKELOLA HRD) -->
+        <div class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs">
+          <div class="flex items-center justify-between pb-2.5 mb-3 border-b border-slate-100">
+            <div class="flex items-center gap-2 text-maroon-800 font-bold text-xs uppercase tracking-wider">
+              ${icon("database", "w-4 h-4 text-maroon-700")}
+              Informasi Tambahan (Kolom HRD)
+            </div>
+            <span class="text-[10px] font-semibold text-slate-500 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full">${customFieldDefs.length} kolom</span>
+          </div>
+          <dl class="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-3">${rows}</dl>
+        </div>
+      `;
+    }
+
     function getEmployeeLeaveBalance(empData) {
       const empCuti = allCutiRecords.filter(c => 
         (empData.nama_karyawan && c.nama_karyawan === empData.nama_karyawan) || 
@@ -179,6 +238,162 @@ export async function mount(container) {
         sisaAkumulasi: calc.sisaAkumulasi,
         sisaLalu: parseFloat(empData.sisa_cuti_tahun_lalu) || 0
       };
+    }
+
+    // ==== CETAK & PDF DETAIL KARYAWAN ====
+    function buildEmployeePrintHtml() {
+      const emp = currentEmp;
+      const bal = getEmployeeLeaveBalance(emp);
+      const nama = emp.nama_karyawan || "-";
+      const fileSafeName = `Detail_Karyawan_${String(emp.nama_karyawan || "Karyawan").replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`;
+      const usiaTampil = emp.tanggal_lahir ? (calculateAge(emp.tanggal_lahir) ?? emp.usia ?? "-") : (emp.usia ?? "-");
+      const masaKerjaTampil = emp.tanggal_join ? calculateTenure(emp.tanggal_join) : (emp.masa_kerja || "-");
+      const fd = (d) => d ? (fmtDateShort(d) || String(d)) : "-";
+      const prow = (label, val) => `<tr><td class="lb">${escapeHtml(label)}</td><td class="sp">:</td><td class="vl">${escapeHtml(((val ?? "") + "").trim() === "" ? "-" : String(val))}</td></tr>`;
+      const idRows = [
+        prow("Nama Lengkap", nama),
+        prow("NIK Karyawan", emp.nik_karyawan || emp.nik),
+        prow("Jenis Kelamin", emp.jenis_kelamin),
+        prow("Tanggal Lahir", `${fd(emp.tanggal_lahir)}${usiaTampil !== "-" ? ` (Usia ${usiaTampil} thn)` : ""}`),
+        prow("Agama", emp.agama),
+        prow("Pendidikan Terakhir", emp.pendidikan),
+        prow("Golongan Darah", emp.golongan_darah),
+        prow("Status Pajak / PTKP", emp.status_pajak),
+        prow("Anak / Tanggungan", (emp.tanggungan ?? emp.anak) !== undefined ? `${emp.tanggungan ?? emp.anak} Orang` : "")
+      ].join("");
+      const pegRows = [
+        prow("Jabatan", emp.jabatan),
+        prow("Divisi / Unit", emp.divisi),
+        prow("Cabang", emp.cabang),
+        prow("Status Karyawan", emp.status_karyawan),
+        prow("Tanggal Join", fd(emp.tanggal_join)),
+        prow("Masa Kerja", masaKerjaTampil),
+        prow("Kontrak Habis", fd(emp.kontrak_habis)),
+        prow("Jam Kerja", emp.jam_kerja),
+        prow("Nama Atasan Langsung", emp.atasan),
+        prow("Finger Name", emp.finger_name),
+        prow("Status Keaktifan", emp.aktif_tdk_aktif || emp["aktif/tidak_aktif"])
+      ].join("");
+      const kontakRows = [
+        prow("No. HP Aktif", emp.no_hp_aktif),
+        prow("Email Aktif", emp.email),
+        prow("Nama Kontak Darurat", emp.kontak_darurat_nama || emp.nama_kontak_darurat),
+        prow("No. HP Kontak Darurat", emp.kontak_darurat_hp || emp.kontak_darurat),
+        prow("Alamat Lengkap", String(emp.alamat || "").replace(/\n/g, " — "))
+      ].join("");
+      const dokRows = [
+        prow("NIK KTP", emp.nik_ktp || emp.no_ktp),
+        prow("No. Kartu Keluarga", emp.no_kk || emp.no_kartu_keluarga),
+        prow("NPWP", emp.npwp),
+        prow("No. BPJS Ketenagakerjaan", emp.bpjs_tk || emp.no_bpjs_tk),
+        prow("No. BPJS Kesehatan", emp.bpjs_kes || emp.no_bpjs_kes)
+      ].join("");
+      const cutiRows = [
+        prow("Cuti Tahunan — Jatah", `${bal.jatahTahunan} hari (Terpakai: ${bal.usedTahunan} — Sisa: ${bal.sisaTahunan})`),
+        prow("Cuti Khusus — Jatah", `${bal.jatahKhusus} hari (Terpakai: ${bal.usedKhusus} — Sisa: ${bal.sisaKhusus})`),
+        prow("Cuti Akumulasi — Jatah", `${bal.jatahAkumulasi} hari (Terpakai: ${bal.usedAkumulasi} — Sisa: ${bal.sisaAkumulasi})`),
+        prow("Sisa Cuti Tahun Lalu (Basis)", `${bal.sisaLalu} hari`)
+      ].join("");
+      const cfRows = customFieldDefs.length
+        ? customFieldDefs.map(f => {
+            const raw = getCfValue(emp, f);
+            return prow(f.label || f.id, f.type === "Tanggal" ? fd(raw) : raw);
+          }).join("")
+        : `<tr><td colspan="3" class="cf-none">Belum ada kolom tambahan.</td></tr>`;
+      const todayStr = fmtDateShort(new Date().toISOString().substring(0, 10));
+
+      return `<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Detail Karyawan — ${escapeHtml(nama)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; margin: 0; background: #eef1f5; color: #1e293b; }
+  .page { max-width: 800px; margin: 16px auto; background: #fff; padding: 28px 34px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+  .doc-head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #6b1125; padding-bottom: 12px; }
+  .company { font-size: 20px; font-weight: 800; color: #6b1125; letter-spacing: .5px; }
+  .company-sub { font-size: 10.5px; color: #64748b; }
+  .doc-title { text-align: right; font-weight: 800; font-size: 14px; letter-spacing: 1px; color: #1e293b; }
+  .doc-meta { text-align: right; font-size: 10px; color: #64748b; margin-top: 2px; }
+  .sec-head { background: #6b1125; color: #fff; font-size: 10.5px; font-weight: 700; letter-spacing: 1px; padding: 5px 10px; margin: 18px 0 0 0; border-radius: 3px; }
+  .grid { width: 100%; border-collapse: collapse; }
+  .grid td { padding: 4.5px 6px; font-size: 11.5px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+  .grid td.lb { width: 200px; color: #475569; }
+  .grid td.sp { width: 10px; }
+  .grid td.vl { font-weight: 600; }
+  .grid td.cf-none { color: #94a3b8; font-style: italic; }
+  .footnote { margin-top: 26px; padding-top: 10px; border-top: 1px dashed #cbd5e1; font-size: 9.5px; color: #94a3b8; display: flex; justify-content: space-between; }
+  .toolbar { max-width: 800px; margin: 10px auto 30px; display: flex; gap: 10px; }
+  .toolbar button { border: 0; border-radius: 8px; padding: 10px 18px; font-weight: 700; font-size: 12.5px; cursor: pointer; }
+  .btn-print { background: #6b1125; color: #fff; }
+  .btn-pdf { background: #334155; color: #fff; }
+  .toolbar button:hover { opacity: .9; }
+  @media print {
+    .noprint { display: none !important; }
+    body { background: #fff; }
+    .page { box-shadow: none; margin: 0; max-width: none; border-radius: 0; padding: 10px 0; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="doc-head">
+    <div>
+      <div class="company">CV ANDELA JAYA</div>
+      <div class="company-sub">Detail Profil Karyawan — Sumber Data: Database Induk Karyawan (HRIS)</div>
+    </div>
+    <div>
+      <div class="doc-title">DETAIL PROFIL KARYAWAN</div>
+      <div class="doc-meta">Nama: ${escapeHtml(String(nama).toUpperCase())} &middot; NIK: ${escapeHtml(emp.nik_karyawan || emp.nik || "-")}<br>Dicetak: ${escapeHtml(todayStr)}</div>
+    </div>
+  </div>
+
+  <div class="sec-head">I. IDENTITAS &amp; DATA POKOK</div>
+  <table class="grid">${idRows}</table>
+
+  <div class="sec-head">II. KEPEGAWAIAN &amp; PENEMPATAN</div>
+  <table class="grid">${pegRows}</table>
+
+  <div class="sec-head">III. KONTAK PRIBADI, KELUARGA &amp; ALAMAT</div>
+  <table class="grid">${kontakRows}</table>
+
+  <div class="sec-head">IV. DOKUMEN &amp; PERPAJAKAN</div>
+  <table class="grid">${dokRows}</table>
+
+  <div class="sec-head">V. HAK &amp; KUOTA CUTI</div>
+  <table class="grid">${cutiRows}</table>
+
+  <div class="sec-head">VI. KOLUM TAMBAHAN (HRD)</div>
+  <table class="grid">${cfRows}</table>
+
+  <div class="footnote">
+    <span>*Dokumen ini dicetak otomatis dari sistem HRIS CV Andela Jaya.</span>
+    <span>Dokumen Internal — HRIS Andela</span>
+  </div>
+</div>
+
+<div class="toolbar noprint">
+  <button class="btn-print" onclick="window.print()">&#128424; Cetak Detail</button>
+  <button class="btn-pdf" onclick="downloadThisPdf()">&#11015; Unduh PDF</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script>
+<script>
+function downloadThisPdf() {
+  var el = document.querySelector('.page');
+  if (!el || typeof html2pdf === 'undefined') { window.print(); return; }
+  html2pdf().set({
+    margin: [8, 10, 8, 10],
+    filename: ${JSON.stringify(fileSafeName)},
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  }).from(el).save();
+}
+<\/script>
+</body>
+</html>`;
     }
 
     const empNames = [...new Set(allEmps.map(e => e.nama_karyawan).filter(Boolean))].sort();
@@ -413,6 +628,9 @@ export async function mount(container) {
             </div>
           </div>
 
+          <!-- 5. KOLUM TAMBAHAN (DIKELOLA HRD) -->
+          ${renderCustomFieldsDetailCard(empData)}
+
           <!-- FOOTER ACTION INSIDE DETAIL -->
           <div class="pt-2 flex items-center justify-between border-t border-slate-100">
             <span class="text-xs text-slate-400">Data ini tersinkronisasi otomatis ke seluruh modul HRD & Operasional.</span>
@@ -556,6 +774,31 @@ export async function mount(container) {
             </div>
           </div>
 
+          <!-- GROUP 5: KOLUM TAMBAHAN (DIKELOLA HRD) -->
+          <div class="bg-slate-50/70 rounded-2xl border border-slate-200/80 p-4">
+            <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200/60">
+              <h4 class="text-xs font-bold uppercase tracking-wider text-maroon-800 flex items-center gap-1.5">
+                ${icon("database", "w-4 h-4 text-maroon-700")}
+                5. Kolom Tambahan (Dikelola HRD)
+              </h4>
+              <button type="button" id="btn-manage-cf" class="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-lg bg-slate-700 hover:bg-slate-800 text-white transition cursor-pointer">
+                ${icon("user-plus", "w-3.5 h-3.5")}
+                Tambah / Kelola Kolom
+              </button>
+            </div>
+            ${customFieldDefs.length ? `
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              ${customFieldDefs.map(f => renderInput(
+                `cf_${f.id}`,
+                f.label || f.id,
+                CF_INPUT_TYPE[f.type] || "text",
+                getCfValue(empData, f),
+                f.type === "Pilihan" ? { options: f.options || [] } : {}
+              )).join("")}
+            </div>` : `
+            <p class="text-[11px] text-slate-500 italic">Belum ada kolom tambahan. Klik "Tambah / Kelola Kolom" untuk membuat kolom baru (mis. No. SIM, No. Rekening, Ukuran Seragam, dsb.) yang akan tersimpan di data karyawan ini dan tampil di tab Detail &amp; halaman cetak.</p>`}
+          </div>
+
           <!-- FORM ACTIONS -->
           <div class="pt-3 flex items-center justify-between border-t border-slate-200">
             <button type="button" id="btn-cancel-edit-form" class="px-4 py-2.5 text-xs font-semibold rounded-xl text-slate-600 hover:bg-slate-100 transition cursor-pointer">
@@ -598,10 +841,22 @@ export async function mount(container) {
 
     const modalFooterHtml = `
       <div class="flex items-center justify-between w-full">
-        <span class="text-xs text-slate-400">ID Dokumen: <span class="font-mono">${escapeHtml(currentEmp.id || currentEmp.nik_karyawan || "-")}</span></span>
-        <button id="btn-close-emp-modal" type="button" class="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer">
-          Tutup
-        </button>
+        <div class="flex items-center gap-2">
+          <button id="btn-print-emp" type="button" title="Cetak detail karyawan (formulir A4)" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl bg-slate-600 hover:bg-slate-700 text-white transition cursor-pointer">
+            ${icon("printer", "w-4 h-4")}
+            Cetak Detail
+          </button>
+          <button id="btn-pdf-emp" type="button" title="Unduh detail karyawan sebagai PDF" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition cursor-pointer">
+            ${icon("download", "w-4 h-4")}
+            Unduh PDF
+          </button>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-slate-400">ID Dokumen: <span class="font-mono">${escapeHtml(currentEmp.id || currentEmp.nik_karyawan || "-")}</span></span>
+          <button id="btn-close-emp-modal" type="button" class="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer">
+            Tutup
+          </button>
+        </div>
       </div>
     `;
 
@@ -641,6 +896,195 @@ export async function mount(container) {
         tabBtnDetail.onclick = () => setTab("detail");
         tabBtnEdit.onclick = () => setTab("edit");
 
+        function refreshPanes() {
+          paneDetail.innerHTML = renderDetailContent(currentEmp);
+          paneEdit.innerHTML = renderEditFormContent(currentEmp);
+          attachDetailEvents();
+          attachEditEvents();
+        }
+
+        async function saveCfDefs(okMsg) {
+          await setDoc(doc(db, COL.APP_SETTINGS, CF_DEF_DOC_ID), {
+            fields: customFieldDefs,
+            updated_at: new Date().toISOString()
+          }, { merge: true });
+          if (okMsg) toast(okMsg, "success");
+        }
+
+        // Modal bertumpuk (kecil) — openModal() generik hanya mendukung 1 modal aktif,
+        // jadi manajer kolom memakai backdrop sendiri agar modal karyawan tetap terbuka.
+        function openStackedModal({ title, bodyHtml, footerHtml = "", onMount = null }) {
+          const backdrop = document.createElement("div");
+          backdrop.id = "app-modal-stacked-backdrop";
+          backdrop.className = "fixed inset-0 z-[110] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4";
+          backdrop.innerHTML = `
+            <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl max-h-[90vh] flex flex-col" id="app-modal-stacked-panel">
+              <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                <h3 class="text-base font-semibold text-slate-800">${escapeHtml(title)}</h3>
+                <button id="stacked-modal-close" class="text-slate-400 hover:text-maroon-700 hover:bg-slate-100 rounded-lg w-8 h-8 flex items-center justify-center transition cursor-pointer">${icon("x", "w-5 h-5")}</button>
+              </div>
+              <div class="px-6 py-4 overflow-y-auto">${bodyHtml}</div>
+              ${footerHtml ? `<div class="px-6 py-3 border-t border-slate-100 flex items-center justify-end gap-2">${footerHtml}</div>` : ""}
+            </div>`;
+          document.body.appendChild(backdrop);
+          const close = () => backdrop.remove();
+          const mEl = backdrop.querySelector("#app-modal-stacked-panel");
+          mEl.querySelector("#stacked-modal-close").onclick = close;
+          if (onMount) onMount(mEl, close);
+          return close;
+        }
+
+        // ==== MANAJER KOLOM TAMBAHAN (HRD) ====
+        function openCustomFieldManager() {
+          const listHtml = () => customFieldDefs.length ? customFieldDefs.map(f => `
+            <div class="flex items-center justify-between gap-2 p-2.5 bg-white border border-slate-200 rounded-xl">
+              <div class="min-w-0">
+                <div class="text-xs font-bold text-slate-800 truncate">${escapeHtml(f.label || f.id)}</div>
+                <div class="text-[10px] text-slate-400">${escapeHtml(f.type)}${f.type === "Pilihan" && (f.options || []).length ? " &bull; " + escapeHtml(f.options.join(", ")) : ""}</div>
+              </div>
+              <button type="button" data-cf-del="${escapeHtml(f.id)}" title="Hapus kolom ini dari skema" class="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 transition cursor-pointer">
+                ${icon("trash", "w-3 h-3")} Hapus
+              </button>
+            </div>`).join("") : `<p class="text-[11px] text-slate-500 italic">Belum ada kolom tambahan.</p>`;
+
+          openStackedModal({
+            title: "Kelola Kolom Tambahan Karyawan",
+            size: "sm",
+            bodyHtml: `
+              <form id="cf-form" class="space-y-3">
+                <div class="p-2.5 bg-blue-50/60 border border-blue-100 rounded-xl text-[11px] text-blue-900">
+                  Kolom baru berlaku untuk <b>semua karyawan</b> dan isinya per orang diisi pada Form Edit Data Karyawan. Nilai yang sudah terisi tidak hilang walau kolom dihapus (hanya tidak tampil lagi).
+                </div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-700 mb-1">Nama Kolom Baru <span class="text-red-500">*</span></label>
+                  <input id="cf-label" type="text" placeholder="Contoh: No. SIM Gada Pratama" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:border-maroon-600 focus:ring-2 focus:ring-maroon-100 outline-none transition" required>
+                </div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-700 mb-1">Tipe Pengisian</label>
+                  <select id="cf-type" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:border-maroon-600 outline-none transition">
+                    <option value="Teks Singkat">Teks Singkat (input 1 baris)</option>
+                    <option value="Teks Panjang">Teks Panjang (paragraf)</option>
+                    <option value="Angka">Angka (number)</option>
+                    <option value="Tanggal">Tanggal (date picker)</option>
+                    <option value="Pilihan">Pilihan (dropdown)</option>
+                  </select>
+                </div>
+                <div id="cf-options-wrap" class="hidden">
+                  <label class="block text-[11px] font-bold text-slate-700 mb-1">Opsi Pilihan <span class="text-slate-400 font-normal">(pisahkan dengan koma)</span></label>
+                  <input id="cf-options" type="text" placeholder="Contoh: SIKP A, SIUP AKP, BELUM PUNYA" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:border-maroon-600 outline-none transition">
+                </div>
+                <button type="submit" id="cf-add" class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-bold rounded-xl bg-maroon-700 hover:bg-maroon-800 text-white transition cursor-pointer">
+                  ${icon("user-plus", "w-4 h-4")} Tambah Kolom
+                </button>
+              </form>
+              <div class="mt-4 pt-3 border-t border-slate-200">
+                <div class="text-[11px] font-bold uppercase text-slate-500 mb-2">Daftar Kolom Aktif</div>
+                <div id="cf-list" class="space-y-2">${listHtml()}</div>
+              </div>
+            `,
+            footerHtml: `
+              <button id="cf-done" type="button" class="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer">Selesai</button>
+            `,
+            onMount: (mEl, closeMgr) => {
+              mEl.querySelector("#cf-done").onclick = () => closeMgr();
+              const typeSel = mEl.querySelector("#cf-type");
+              const optWrap = mEl.querySelector("#cf-options-wrap");
+              const optionsInput = mEl.querySelector("#cf-options");
+              const syncOpts = () => optWrap.classList.toggle("hidden", typeSel.value !== "Pilihan");
+              typeSel.onchange = syncOpts;
+              syncOpts();
+
+              const refreshList = () => {
+                mEl.querySelector("#cf-list").innerHTML = listHtml();
+                mEl.querySelectorAll("[data-cf-del]").forEach(btn => {
+                  btn.onclick = async () => {
+                    if (!confirm("Hapus kolom ini dari skema? Nilai lama pada karyawan tidak dihapus, hanya berhenti ditampilkan.")) return;
+                    const delId = btn.getAttribute("data-cf-del");
+                    try {
+                      customFieldDefs = customFieldDefs.filter(x => x.id !== delId);
+                      await saveCfDefs("Kolom tambahan berhasil dihapus.");
+                      refreshList();
+                      refreshPanes();
+                    } catch (e) {
+                      console.error("Gagal menghapus kolom tambahan:", e);
+                      toast("Gagal menghapus kolom tambahan: " + (e.message || e), "error");
+                    }
+                  };
+                });
+              };
+              refreshList();
+
+              mEl.querySelector("#cf-form").onsubmit = async (evt) => {
+                evt.preventDefault();
+                const label = mEl.querySelector("#cf-label").value.trim();
+                const type = typeSel.value;
+                const options = optionsInput.value.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+                if (!label) { toast("Nama kolom wajib diisi.", "warning"); return; }
+                if (type === "Pilihan" && !options.length) { toast("Isi minimal satu opsi untuk tipe Pilihan.", "warning"); return; }
+                if (customFieldDefs.some(f => String(f.label || "").trim().toLowerCase() === label.toLowerCase())) {
+                  toast("Kolom dengan nama tersebut sudah ada.", "warning");
+                  return;
+                }
+                const btnAdd = mEl.querySelector("#cf-add");
+                try {
+                  btnAdd.disabled = true;
+                  btnAdd.innerHTML = "Menyimpan...";
+                  customFieldDefs = [...customFieldDefs, { id: genId("cf"), label, type, options, order: customFieldDefs.length }];
+                  await saveCfDefs(`Kolom "${label}" berhasil ditambahkan.`);
+                  mEl.querySelector("#cf-label").value = "";
+                  optionsInput.value = "";
+                  refreshList();
+                  refreshPanes();
+                } catch (e) {
+                  console.error("Gagal menambah kolom tambahan:", e);
+                  toast("Gagal menambah kolom: " + (e.message || e), "error");
+                } finally {
+                  btnAdd.disabled = false;
+                  btnAdd.innerHTML = `${icon("user-plus", "w-4 h-4")} Tambah Kolom`;
+                }
+              };
+            }
+          });
+        }
+
+        // ==== CETAK & PDF DETAIL KARYAWAN ====
+        const btnPrintEmp = modalEl.querySelector("#btn-print-emp");
+        if (btnPrintEmp) btnPrintEmp.onclick = () => {
+          try {
+            const w = window.open("", "_blank", "width=980,height=1150");
+            if (!w) {
+              toast("Popup diblokir oleh browser. Izinkan popup untuk situs ini agar bisa mencetak.", "warning");
+              return;
+            }
+            w.document.open();
+            w.document.write(buildEmployeePrintHtml());
+            w.document.close();
+            w.focus();
+          } catch (e) {
+            console.error("Gagal membuka halaman cetak:", e);
+            toast("Gagal membuka halaman cetak: " + (e.message || e), "error");
+          }
+        };
+
+        const btnPdfEmp = modalEl.querySelector("#btn-pdf-emp");
+        if (btnPdfEmp) btnPdfEmp.onclick = async () => {
+          const btn = btnPdfEmp;
+          const btnHtml = btn.innerHTML;
+          try {
+            btn.disabled = true;
+            btn.innerHTML = `${icon("refresh", "w-4 h-4 animate-spin")} Menyiapkan PDF...`;
+            const fileSafe = String(currentEmp.nama_karyawan || "Karyawan").replace(/[^a-zA-Z0-9_-]/g, "_");
+            await downloadHtmlAsPdf(buildEmployeePrintHtml(), `Detail_${fileSafe}.pdf`, "portrait");
+            toast("PDF detail karyawan berhasil diunduh.", "success");
+          } catch (e) {
+            console.error("Gagal mengunduh PDF detail karyawan:", e);
+            toast("Gagal mengunduh PDF: " + (e.message || e), "error");
+          } finally {
+            btn.disabled = false;
+            btn.innerHTML = btnHtml;
+          }
+        };
+
         function attachDetailEvents() {
           const btnHeroEdit = modalEl.querySelector("#btn-hero-switch-edit");
           const btnBottomEdit = modalEl.querySelector("#btn-bottom-switch-edit");
@@ -654,6 +1098,9 @@ export async function mount(container) {
           if (btnCancel) btnCancel.onclick = () => setTab("detail");
 
           if (!form) return;
+
+          const btnManageCf = form.querySelector("#btn-manage-cf");
+          if (btnManageCf) btnManageCf.onclick = () => openCustomFieldManager();
 
           const inputBirth = form.querySelector('input[name="tanggal_lahir"]');
           const inputUsia = form.querySelector('input[name="usia"]');
@@ -707,6 +1154,17 @@ export async function mount(container) {
             if (fd.has("sisa_cuti_tahun_lalu")) updatedData.sisa_cuti_tahun_lalu = toNumber(fd.get("sisa_cuti_tahun_lalu"));
 
             updatedData = beforeSaveEmp(updatedData);
+
+            // Kolom tambahan (HRD) → nilai dikumpulkan ke map custom_fields
+            if (customFieldDefs.length) {
+              const cfMap = {};
+              for (const f of customFieldDefs) {
+                let v = fd.get(`cf_${f.id}`);
+                if (v !== null && CF_INPUT_TYPE[f.type] === "number") v = toNumber(v);
+                cfMap[f.id] = (v === null ? "" : v);
+              }
+              updatedData.custom_fields = { ...(currentEmp.custom_fields || {}), ...cfMap };
+            }
 
             // Calculate fresh leave balances to keep all modules perfectly in sync
             const freshEmpForCalc = { ...currentEmp, ...updatedData };
@@ -807,6 +1265,25 @@ export async function mount(container) {
     searchFields: ["nama_karyawan", "nik_karyawan", "jabatan", "cabang", "divisi", "status_karyawan", "finger_name", "nik_ktp", "no_kk", "bpjs_tk", "bpjs_kes", "npwp"],
     onRowClick: (emp, helpers) => openEmployeeDetailAndEditModal(emp, helpers?.reload, "detail"),
     onEditClick: (emp, helpers) => openEmployeeDetailAndEditModal(emp, helpers?.reload, "edit"),
+    // Kolom tambahan (HRD) ikut di-export: diambil dari skema app_settings,
+    // valuenya dibaca dari map custom_fields per baris melalui getter virtual.
+    getExportExtras: async () => {
+      let defs = [];
+      try {
+        const snapDef = await getDoc(doc(db, COL.APP_SETTINGS, "karyawan_custom_fields"));
+        if (snapDef.exists()) defs = Array.isArray(snapDef.data().fields) ? snapDef.data().fields : [];
+      } catch (e) {
+        console.warn("Gagal memuat skema kolom tambahan untuk export:", e);
+      }
+      return defs.map(f => ({
+        key: `custom_fields.${f.id}`,
+        label: `Kolom HRD: ${f.label || f.id}`,
+        getValue: (row) => {
+          const v = row?.custom_fields?.[f.id];
+          return (v === null || v === undefined) ? "" : v;
+        }
+      }));
+    },
     extraToolbarHtml: `
       <button id="btn-sync-all-karyawan" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg border border-maroon-300 text-maroon-700 bg-maroon-50 hover:bg-maroon-100 transition shadow-2xs cursor-pointer" title="Sinkronkan nama seluruh karyawan ke semua modul HRD & Operasional">
         ${icon("refresh", "w-4 h-4 text-maroon-600")}
