@@ -7,7 +7,8 @@
  * aplikasi utama agar skema data 100% konsisten.
  * =====================================================================
  */
-import { db, COL, collection, doc, getDocs, writeBatch, query, limit, setDoc } from "./firebase-config.js";
+import { db, auth, COL, collection, doc, getDocs, writeBatch, query, limit, setDoc, signInWithCustomToken, firebaseSignOut, setPersistence, browserSessionPersistence } from "./firebase-config.js";
+import { publicSecurityHeaders } from "./api-client.js";
 import { toSnakeCase, smartParseDate, genId, localDateStr, calculateAge, calculateTenure } from "./utils.js";
 
 /* ---------------------------------------------------------------------
@@ -151,23 +152,123 @@ function unlockStep(n) {
 }
 
 /* ---------------------------------------------------------------------
- * STEP 1 — CEK KONEKSI FIREBASE
+ * STEP 1 — CEK KONEKSI FIREBASE + LOGIN AKUN HRD/SUPERADMIN
+ * -------------------------------------------------------------------
+ * Rules produksi (`firestore.rules`) menolak semua tulis dari pengguna
+ * anonim, dan menulis koleksi master hanya boleh oleh role HRD/SUPERADMIN
+ * (lihat fungsi signedIn() & isHrd()). Migrasi engine jadi membutuhkan
+ * sesi login HRD sebelum langkah unggah & migrasi dibuka.
  * ------------------------------------------------------------------- */
-async function checkFirebaseConnection() {
+const MIGRATION_ALLOWED_ROLES = ["HRD", "SUPERADMIN"];
+
+function setFirebaseStatus(html, tone = "ok") {
   const statusEl = document.getElementById("firebase-status");
+  const dots = { ok: "text-emerald-600", warn: "text-amber-600", error: "text-red-600", idle: "text-slate-400" };
+  statusEl.innerHTML = `<span class="${dots[tone] || dots.idle}">●</span> <span>${html}</span>`;
+}
+
+function showLoginBox(show) {
+  document.getElementById("login-box").classList.toggle("hidden", !show);
+  document.getElementById("btn-logout-migration").classList.toggle("hidden", show);
+}
+
+async function verifyMigrationAccess() {
+  // Read "cheap" yang hanya boleh jika signedIn() && isHrd() pada rules produksi.
+  await getDocs(query(collection(db, COL.APP_SETTINGS), limit(1)));
+}
+
+async function checkFirebaseConnection() {
   try {
-    await getDocs(query(collection(db, "app_settings"), limit(1)));
-    statusEl.innerHTML = `<span class="text-emerald-600">●</span> Terhubung ke Firestore dengan baik. Silakan lanjut ke langkah berikutnya.`;
+    await verifyMigrationAccess();
+    setFirebaseStatus(`Terhubung ke Firestore dengan sesi yang memadai. Silakan lanjut ke langkah berikutnya.`);
+    showLoginBox(false);
     unlockStep(2);
   } catch (e) {
-    console.error(e);
-    if (String(e.code).includes("permission-denied")) {
-      statusEl.innerHTML = `<span class="text-amber-600">●</span> Terhubung ke Firestore, namun Security Rules menolak akses. Pastikan Rules mengizinkan tulis untuk proses migrasi.`;
-      unlockStep(2);
+    if (String(e.code).includes("permission-denied") || String(e.message || "").toLowerCase().includes("permission")) {
+      setFirebaseStatus(`Terhubung ke Firestore, namun akses tulis ditolak Security Rules. Silakan login dengan akun <strong>HRD/SUPERADMIN</strong> terlebih dahulu di bawah ini.`, "warn");
+      showLoginBox(true);
     } else {
-      statusEl.innerHTML = `<span class="text-red-600">●</span> Gagal terhubung ke Firebase. Periksa kembali kredensial pada <code class="bg-slate-100 px-1 rounded">js/firebase-config.js</code>. Detail: ${e.message}`;
+      console.error(e);
+      setFirebaseStatus(`Gagal terhubung ke Firebase. Periksa kembali kredensial pada <code class="bg-slate-100 px-1 rounded">js/firebase-config.js</code>. Detail: ${e.message}`, "error");
     }
   }
+}
+
+async function loginForMigration(identifier, password) {
+  if (!identifier || !password) throw new Error("Username/NIK dan kata sandi wajib diisi.");
+
+  await setPersistence(auth, browserSessionPersistence);
+  const response = await fetch("/api/auth-login", {
+    method: "POST",
+    headers: await publicSecurityHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ identifier: String(identifier).trim(), password })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.success || !payload.customToken) {
+    throw new Error(payload.error || "Username/NIK atau kata sandi salah.");
+  }
+
+  await signInWithCustomToken(auth, payload.customToken);
+
+  const role = String((payload.profile || {}).role || "").toUpperCase();
+  if (!MIGRATION_ALLOWED_ROLES.includes(role)) {
+    await signOutMigration();
+    throw new Error(`Akun Anda memiliki role "${role}". Alat migrasi hanya boleh dijalankan oleh akun dengan role HRD atau SUPERADMIN.`);
+  }
+
+  // Pastikan claims (active, role) memang diakui oleh Security Rules.
+  try {
+    await verifyMigrationAccess();
+  } catch (e) {
+    await signOutMigration();
+    throw new Error(`Login berhasil, namun Security Rules masih menolak akses. Kemungkinan claims akun belum diperbarui (${e.message || e.code || e}).`);
+  }
+}
+
+async function signOutMigration() {
+  try { await firebaseSignOut(auth); } catch (e) { console.warn("Firebase logout:", e.message); }
+}
+
+function setupMigrationAuthUI() {
+  const btnLogin = document.getElementById("btn-login");
+  const btnLogout = document.getElementById("btn-logout-migration");
+  const errEl = document.getElementById("login-error");
+  const inId = document.getElementById("login-identifier");
+  const inPwd = document.getElementById("login-password");
+
+  const doLogin = async () => {
+    errEl.classList.add("hidden");
+    btnLogin.disabled = true;
+    inId.disabled = true;
+    inPwd.disabled = true;
+    btnLogin.innerHTML = `<span class="spinner"></span> Memverifikasi...`;
+    try {
+      await loginForMigration(inId.value, inPwd.value);
+      setFirebaseStatus(`Login berhasil — sesi HRD aktif. Akses tulis Firestore terverifikasi, silakan lanjut ke langkah berikutnya.`);
+      showLoginBox(false);
+      unlockStep(2);
+      inPwd.value = "";
+    } catch (e) {
+      console.error(e);
+      errEl.textContent = e.message || String(e);
+      errEl.classList.remove("hidden");
+      setFirebaseStatus(`Terhubung ke Firestore, namun akses tulis ditolak Security Rules. Silakan login dengan akun <strong>HRD/SUPERADMIN</strong> terlebih dahulu di bawah ini.`, "warn");
+    } finally {
+      btnLogin.disabled = false;
+      inId.disabled = false;
+      inPwd.disabled = false;
+      btnLogin.textContent = "Login & Verifikasi Akses";
+    }
+  };
+
+  btnLogin.addEventListener("click", doLogin);
+  inPwd.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); doLogin(); } });
+  btnLogout.addEventListener("click", async () => {
+    await signOutMigration();
+    setFirebaseStatus(`Sesi berakhir. Terhubung ke Firestore, silakan login dengan akun <strong>HRD/SUPERADMIN</strong> di bawah ini.`, "warn");
+    showLoginBox(true);
+    errEl.classList.add("hidden");
+  });
 }
 
 /* ---------------------------------------------------------------------
@@ -536,8 +637,30 @@ function sheetRowsToObjects(sheetName) {
 /* ---------------------------------------------------------------------
  * STEP 3 — TULIS KE FIRESTORE (BATCH, MAX 450/BATCH)
  * ------------------------------------------------------------------- */
+async function commitBatch(batch, sheetName, collectionName) {
+  try {
+    await batch.commit();
+  } catch (e) {
+    const isDenied = String(e.code || e).includes("permission-denied");
+    const hint = isDenied
+      ? "Akses tulis ditolak Security Rules — pastikan sesi login HRD/SUPERADMIN masih aktif (muat ulang halaman & login ulang bila perlu)."
+      : "Periksa koneksi / payload dokumen, lalu jalankan ulang (tulis memakai mode merge sehingga data yang sudah tersimpan aman).";
+    console.error(`Commit batch gagal (sheet="${sheetName}", koleksi="${collectionName}"):`, e);
+    throw new Error(`Commit batch ke "${collectionName}" (sheet "${sheetName}") gagal: ${e.message || e.code || e}. ${hint}`);
+  }
+}
+
 async function runMigration() {
   const btn = document.getElementById("btn-migrate");
+
+  // Migrasi menulis ke Firestore, jadi wajib ada sesi login HRD/SUPERADMIN.
+  if (!auth.currentUser) {
+    showLoginBox(true);
+    setFirebaseStatus(`Proses migrasi membutuhkan sesi login akun <strong>HRD/SUPERADMIN</strong>. Silakan login pada Langkah 1 di atas terlebih dahulu.`, "warn");
+    logTo("migrate-log", "Migrasi dibatalkan: belum ada sesi login. Silakan login dengan akun HRD/SUPERADMIN pada Langkah 1 terlebih dahulu.", "red");
+    return;
+  }
+
   btn.disabled = true;
   btn.innerHTML = `<span class="spinner"></span> Memigrasikan...`;
   document.getElementById("migrate-progress-wrap").classList.remove("hidden");
@@ -546,93 +669,110 @@ async function runMigration() {
 
   const sheetsToRun = Array.from(selectedSheets);
   let done = 0;
+  let failedSheets = 0;
 
   for (const sheetName of sheetsToRun) {
-    const mapCfg = getMapConfigForSheet(sheetName);
-    if (!mapCfg || mapCfg.skip) { done++; continue; }
+    try {
+      const mapCfg = getMapConfigForSheet(sheetName);
+      if (!mapCfg || mapCfg.skip) { done++; continue; }
 
-    label.textContent = `Memproses sheet "${sheetName}"...`;
-    logTo("migrate-log", `Mulai memproses sheet "${sheetName}" → koleksi "${mapCfg.collection}"`);
+      label.textContent = `Memproses sheet "${sheetName}"...`;
+      logTo("migrate-log", `Mulai memproses sheet "${sheetName}" → koleksi "${mapCfg.collection}"`);
 
-    let objects = sheetRowsToObjects(sheetName);
-    if (mapCfg.transform) {
-      objects = await Promise.all(objects.map(o => mapCfg.transform(o)));
-    }
-
-    if (!objects.length) {
-      logTo("migrate-log", `Sheet "${sheetName}" tidak memiliki baris data, dilewati.`, "amber");
-      done++; bar.style.width = `${Math.round((done / sheetsToRun.length) * 100)}%`;
-      continue;
-    }
-
-    let batch = writeBatch(db);
-    let opCount = 0;
-    let written = 0;
-
-    for (const obj of objects) {
-      let docId;
-
-      // Smart ID Selection berdasarkan tipe koleksi
-      if (mapCfg.collection === COL.MASTER_KARYAWAN) {
-        docId = sanitizeDocId(String(obj.nik_karyawan || obj.nik || obj.no_nik || obj.id_karyawan || obj.nama_karyawan || genId("EMP")));
-      } else if (mapCfg.collection === COL.USERS) {
-        docId = sanitizeDocId(String(obj.username || obj.user || obj.nik || obj.nik_karyawan || genId("USR")).toUpperCase());
-      } else if (mapCfg.collection === COL.MASTER_CABANG) {
-        docId = sanitizeDocId(String(obj.id_cabang || obj.id_outlet || obj.kode_cabang || obj.kode || obj.id || genId("CAB")));
-      } else if (mapCfg.collection === COL.MASTER_INVENTORY) {
-        docId = sanitizeDocId(String(obj.id_item || obj.id_barang || obj.kode_item || obj.kode || obj.id || genId("INV")));
-      } else if (mapCfg.collection === COL.MASTER_KENDARAAN) {
-        docId = sanitizeDocId(String(obj.no_polisi || obj.nopol || obj.plat_nomor || obj.id_kendaraan || genId("VHC")));
-      } else if (mapCfg.idField && obj[mapCfg.idField]) {
-        docId = sanitizeDocId(String(obj[mapCfg.idField]));
-      } else {
-        docId = sanitizeDocId(String(obj.id || obj.kode || obj.nik || obj.username || genId(sheetName.replace(/\s+/g, "").slice(0, 6).toUpperCase())));
+      let objects = sheetRowsToObjects(sheetName);
+      if (mapCfg.transform) {
+        objects = await Promise.all(objects.map(o => mapCfg.transform(o)));
       }
 
-      const ref = doc(db, mapCfg.collection, docId);
-      batch.set(ref, { ...obj, _migrated_at: new Date().toISOString(), _source_sheet: sheetName }, { merge: true });
-      opCount++; written++;
-
-      // Otomatis buatkan akun pengguna USERS jika migrasi Master Karyawan agar langsung bisa login
-      if (mapCfg.collection === COL.MASTER_KARYAWAN && (obj.nik_karyawan || obj.nik)) {
-        const userUname = String(obj.nik_karyawan || obj.nik).toUpperCase();
-        const userRef = doc(db, COL.USERS, userUname);
-        
-        let userRole = "STAFF";
-        const jabUpper = String(obj.jabatan || obj.posisi || "").toUpperCase();
-        if (jabUpper.includes("MANAGER")) userRole = "MANAGER";
-        else if (jabUpper.includes("SUPERVISOR") || jabUpper.includes("SPV")) userRole = "SPV";
-        else if (jabUpper.includes("DRIVER")) userRole = "DRIVER";
-        else if (jabUpper.includes("SALES")) userRole = "SALES";
-        else if (jabUpper.includes("WAREHOUSE") || jabUpper.includes("GUDANG")) userRole = "WAREHOUSE";
-        else if (jabUpper.includes("FINANCE")) userRole = "FINANCE";
-        else if (jabUpper.includes("HRD")) userRole = "HRD";
-
-        batch.set(userRef, {
-          username: userUname,
-          nama: obj.nama_karyawan || obj.nama || "Karyawan",
-          nik: obj.nik_karyawan || obj.nik,
-          role: userRole,
-          posisi: obj.jabatan || obj.posisi || "Staf",
-          email: obj.email || "",
-          no_hp: obj.no_hp_aktif || obj.no_hp || "",
-          requires_auth_provisioning: true,
-          updated_at: new Date().toISOString()
-        }, { merge: true });
-        opCount++;
+      if (!objects.length) {
+        logTo("migrate-log", `Sheet "${sheetName}" tidak memiliki baris data, dilewati.`, "amber");
+        done++; bar.style.width = `${Math.round((done / sheetsToRun.length) * 100)}%`;
+        continue;
       }
 
-      if (opCount >= 400) {
-        await batch.commit();
-        batch = writeBatch(db);
-        opCount = 0;
+      let batch = writeBatch(db);
+      let opCount = 0;
+      let written = 0;
+
+      for (const obj of objects) {
+        let docId;
+
+        // Smart ID Selection berdasarkan tipe koleksi
+        if (mapCfg.collection === COL.MASTER_KARYAWAN) {
+          docId = sanitizeDocId(String(obj.nik_karyawan || obj.nik || obj.no_nik || obj.id_karyawan || obj.nama_karyawan || genId("EMP")));
+        } else if (mapCfg.collection === COL.USERS) {
+          docId = sanitizeDocId(String(obj.username || obj.user || obj.nik || obj.nik_karyawan || genId("USR")).toUpperCase());
+        } else if (mapCfg.collection === COL.MASTER_CABANG) {
+          docId = sanitizeDocId(String(obj.id_cabang || obj.id_outlet || obj.kode_cabang || obj.kode || obj.id || genId("CAB")));
+        } else if (mapCfg.collection === COL.MASTER_INVENTORY) {
+          docId = sanitizeDocId(String(obj.id_item || obj.id_barang || obj.kode_item || obj.kode || obj.id || genId("INV")));
+        } else if (mapCfg.collection === COL.MASTER_KENDARAAN) {
+          docId = sanitizeDocId(String(obj.no_polisi || obj.nopol || obj.plat_nomor || obj.id_kendaraan || genId("VHC")));
+        } else if (mapCfg.idField && obj[mapCfg.idField]) {
+          docId = sanitizeDocId(String(obj[mapCfg.idField]));
+        } else {
+          docId = sanitizeDocId(String(obj.id || obj.kode || obj.nik || obj.username || genId(sheetName.replace(/\s+/g, "").slice(0, 6).toUpperCase())));
+        }
+
+        const ref = doc(db, mapCfg.collection, docId);
+        batch.set(ref, { ...obj, _migrated_at: new Date().toISOString(), _source_sheet: sheetName }, { merge: true });
+        opCount++; written++;
+
+        // Otomatis buatkan akun pengguna USERS jika migrasi Master Karyawan agar langsung bisa login
+        if (mapCfg.collection === COL.MASTER_KARYAWAN && (obj.nik_karyawan || obj.nik)) {
+          const userUname = String(obj.nik_karyawan || obj.nik).toUpperCase();
+          const userRef = doc(db, COL.USERS, userUname);
+
+          let userRole = "STAFF";
+          const jabUpper = String(obj.jabatan || obj.posisi || "").toUpperCase();
+          if (jabUpper.includes("MANAGER")) userRole = "MANAGER";
+          else if (jabUpper.includes("SUPERVISOR") || jabUpper.includes("SPV")) userRole = "SPV";
+          else if (jabUpper.includes("DRIVER")) userRole = "DRIVER";
+          else if (jabUpper.includes("SALES")) userRole = "SALES";
+          else if (jabUpper.includes("WAREHOUSE") || jabUpper.includes("GUDANG")) userRole = "WAREHOUSE";
+          else if (jabUpper.includes("FINANCE")) userRole = "FINANCE";
+          else if (jabUpper.includes("HRD")) userRole = "HRD";
+
+          batch.set(userRef, {
+            username: userUname,
+            nama: obj.nama_karyawan || obj.nama || "Karyawan",
+            nik: obj.nik_karyawan || obj.nik,
+            role: userRole,
+            posisi: obj.jabatan || obj.posisi || "Staf",
+            email: obj.email || "",
+            no_hp: obj.no_hp_aktif || obj.no_hp || "",
+            requires_auth_provisioning: true,
+            updated_at: new Date().toISOString()
+          }, { merge: true });
+          opCount++;
+        }
+
+        if (opCount >= 400) {
+          await commitBatch(batch, sheetName, mapCfg.collection);
+          batch = writeBatch(db);
+          opCount = 0;
+        }
       }
+      if (opCount > 0) await commitBatch(batch, sheetName, mapCfg.collection);
+
+      logTo("migrate-log", ` Sheet "${sheetName}" selesai — ${written} dokumen ditulis ke "${mapCfg.collection}".`, "green");
+      done++;
+      bar.style.width = `${Math.round((done / sheetsToRun.length) * 100)}%`;
+    } catch (sheetErr) {
+      failedSheets++;
+      console.error(`Migrasi gagal pada sheet "${sheetName}":`, sheetErr);
+      logTo("migrate-log", ` ✗ Sheet "${sheetName}" GAGAL — ${sheetErr.message || sheetErr.code || sheetErr}. Sheet ini dilewati; batch yang sudah ter-commit sebelumnya aman (tulis memakai merge).`, "red");
+      done++;
+      bar.style.width = `${Math.round((done / sheetsToRun.length) * 100)}%`;
     }
-    if (opCount > 0) await batch.commit();
+  }
 
-    logTo("migrate-log", ` Sheet "${sheetName}" selesai — ${written} dokumen ditulis ke "${mapCfg.collection}".`, "green");
-    done++;
-    bar.style.width = `${Math.round((done / sheetsToRun.length) * 100)}%`;
+  if (failedSheets > 0) {
+    label.textContent = `Migrasi berakhir dengan ${failedSheets} dari ${sheetsToRun.length} sheet gagal. Periksa log di bawah, lalu jalankan ulang (aman, memakai merge).`;
+    logTo("migrate-log", `Migrasi SEBAGIAN: ${failedSheets} sheet gagal. Bila error permission-denied, silakan login ulang sebagai HRD/SUPERADMIN lalu jalankan migrasi lagi.`, "red");
+    btn.textContent = "Jalankan Ulang Migrasi (Sebagian Gagal)";
+    btn.disabled = false;
+    return;
   }
 
   label.textContent = `Migrasi selesai! ${sheetsToRun.length} sheet telah diproses.`;
@@ -725,6 +865,7 @@ async function seedCollection(colName, sampleRows, idPrefix, customIdField = nul
  * INIT
  * ------------------------------------------------------------------- */
 checkFirebaseConnection();
+setupMigrationAuthUI();
 document.getElementById("file-input")?.addEventListener("change", (e) => {
   if (e.target.files[0]) handleFile(e.target.files[0]);
 });

@@ -68,10 +68,19 @@
   <!-- STEP 1: FIREBASE CONFIG CHECK -->
   <section id="step-1" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 mb-6">
     <h2 class="font-semibold text-slate-800 mb-1">1. Status Koneksi Firebase</h2>
-    <p class="text-sm text-slate-500 mb-4">Konfigurasi dibaca otomatis dari <code class="bg-slate-100 px-1.5 py-0.5 rounded">js/firebase-config.js</code>. Pastikan Anda sudah mengisi kredensial proyek Firebase pada file tersebut sebelum melanjutkan.</p>
+    <p class="text-sm text-slate-500 mb-4">Konfigurasi dibaca otomatis dari <code class="bg-slate-100 px-1.5 py-0.5 rounded">js/firebase-config.js</code>. Karena proses migrasi menulis data langsung ke Firestore yang dilindungi Security Rules, Anda wajib login terlebih dahulu menggunakan akun <strong class="text-maroon-700">HRD / SUPERADMIN</strong> (akun portal yang sama).</p>
     <div id="firebase-status" class="flex items-center gap-2 text-sm">
       <span class="spinner border-maroon-700"></span> Memeriksa koneksi ke Firestore...
     </div>
+    <div id="login-box" class="mt-4 hidden">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <input id="login-identifier" autocomplete="username" placeholder="Username / NIK HRD" class="border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-maroon-500 focus:border-maroon-500 outline-none">
+        <input id="login-password" autocomplete="current-password" type="password" placeholder="Kata sandi" class="border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-maroon-500 focus:border-maroon-500 outline-none">
+        <button id="btn-login" class="flex items-center justify-center gap-2 bg-maroon-700 hover:bg-maroon-800 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition disabled:opacity-50">Login &amp; Verifikasi Akses</button>
+      </div>
+      <p id="login-error" class="text-xs text-red-600 mt-2 hidden"></p>
+    </div>
+    <button id="btn-logout-migration" class="hidden mt-3 text-xs text-slate-500 hover:text-maroon-700 hover:underline">Keluar / Ganti akun</button>
   </section>
 
   <!-- STEP 2: UPLOAD & PREVIEW -->
