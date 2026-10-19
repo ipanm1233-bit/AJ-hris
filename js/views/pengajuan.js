@@ -248,6 +248,7 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
  approval_steps: approvalSteps,
  status_final: approvalFlow.length ? "MENUNGGU" : "APPROVED FINAL",
  catatan_penolakan: [],
+  notification_status: approvalFlow.length ? "TERKIRIM_OTOMATIS" : null,
  requires_lpj: requiresLpj,
  lpj_deadline_days: requiresLpj ? (parseInt(formCfg.lpj_deadline_days) || 7) : null,
  lpj_fields_json: requiresLpj ? (formCfg.lpj_fields_json || []) : [],
@@ -281,6 +282,7 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
     const nextRole = approvalFlow[0];
     let targets = await getTargetsForRole(nextRole, payload.nama_pemohon);
     if (!targets || targets.length === 0) {
+      console.warn(`[pengajuan] Tidak ada penerima untuk role ${nextRole}; beralih ke HRD.`);
       targets = await getTargetsForRole("HRD", payload.nama_pemohon);
     }
     
@@ -292,7 +294,7 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
           `Persetujuan Dibutuhkan: ${payload.nama_form}`, 
           `Ada pengajuan ${payload.nama_form} baru dari ${payload.nama_pemohon}. Membutuhkan verifikasi Anda.`,
           `/#approval?id=${payload.id}`
-        ).catch(e => console.warn("Push gagal:", e));
+        , { manual: true }).catch(e => console.warn("Push gagal:", e));
 
         const uname = (typeof target === "object" ? (target.username || target.nama) : target);
         if (uname) alreadyNotifiedSet.add(String(uname).trim().toUpperCase());
@@ -314,7 +316,7 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
           actionText: "Tinjau & Otorisasi Pengajuan →",
           secondaryNote: "Akses langsung melalui portal HRIS CV Andela Jaya."
         });
-        sendEmailNotif(target.email, `[Persetujuan Baru] ${payload.nama_form} - ${payload.nama_pemohon}`, htmlFirst).catch(e => console.warn(e));
+        sendEmailNotif(target.email, `[Persetujuan Baru] ${payload.nama_form} - ${payload.nama_pemohon}`, htmlFirst, null, null, { manual: true }).catch(e => console.warn(e));
       }
     }
   }
@@ -347,7 +349,7 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
         `Info Pengajuan Baru: ${payload.nama_form}`,
         `Formulir ${payload.nama_form} baru telah diajukan oleh ${payload.nama_pemohon} (${session.jabatan || 'Pemohon'}).`,
         `/#riwayat?id=${payload.id}`
-      ).catch(e => console.warn("Notif target khusus pengajuan gagal:", e));
+      , { manual: true }).catch(e => console.warn("Notif target khusus pengajuan gagal:", e));
 
       // 2. Email Notifikasi Tembusan Pengajuan Baru
       if (typeof sendEmailNotif === 'function') {
@@ -366,7 +368,7 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
             actionText: "Buka Dokumen di HRIS →",
             secondaryNote: "Anda menerima email ini sebagai personil penerima notifikasi khusus."
           });
-          sendEmailNotif(targetObj.email, `[Info Pengajuan] ${payload.nama_form} - ${payload.nama_pemohon}`, htmlInfo).catch(e => console.warn(e));
+          sendEmailNotif(targetObj.email, `[Info Pengajuan] ${payload.nama_form} - ${payload.nama_pemohon}`, htmlInfo, null, null, { manual: true }).catch(e => console.warn(e));
         }
       }
 
@@ -395,7 +397,7 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
         `Approval Dibutuhkan: ${payload.nama_form}`,
         `Pengajuan ${payload.nama_form} dari ${payload.nama_pemohon} sedang menunggu persetujuan.`,
         `/#approval?id=${payload.id}`
-      ).catch(e => console.warn("Notif approval target khusus gagal:", e));
+      , { manual: true }).catch(e => console.warn("Notif approval target khusus gagal:", e));
 
       // 2. Email Notifikasi Kolom Approval
       if (typeof sendEmailNotif === 'function') {
@@ -414,7 +416,7 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
             actionText: "Tinjau Pengajuan di Menu Approval →",
             secondaryNote: "Anda menerima email ini sesuai pengaturan target form di Form Builder."
           });
-          sendEmailNotif(targetObj.email, `[Approval] ${payload.nama_form} - ${payload.nama_pemohon}`, htmlApr).catch(e => console.warn(e));
+          sendEmailNotif(targetObj.email, `[Approval] ${payload.nama_form} - ${payload.nama_pemohon}`, htmlApr, null, null, { manual: true }).catch(e => console.warn(e));
         }
       }
 

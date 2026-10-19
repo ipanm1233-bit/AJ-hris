@@ -21,7 +21,12 @@ const CUTI_RULES = {
 const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
 
 let allPengajuan = [], karyawanByNama = {};
-const AUTO_OPERATIONAL_DELIVERY = false;
+// Pengiriman otomatis rantai email/notifikasi pengajuan. Aksi Approve/Tolak
+// adalah tindakan eksplisit oleh approver, jadi tiap panggilan di rantai ini
+// memakai opts `{ manual: true }` yang dipersyaratkan sendEmailNotif & notifyUser.
+// Tombol "Kirim Email & Notifikasi" tetap dipertahankan sebagai fallback manual
+// bila pengiriman otomatis gagal (mis. SMTP error).
+const AUTO_OPERATIONAL_DELIVERY = true;
 
 export async function mount(container, { session }) {
  const listEl = container.querySelector("#approval-list");
@@ -478,7 +483,7 @@ async function processAction(row, action, note, session, recommendedBudget = nul
    approval_steps: steps,
    status_final: statusFinal,
    catatan_penolakan: catatan,
-   notification_status: "MENUNGGU_PENGIRIMAN_MANUAL",
+   notification_status: AUTO_OPERATIONAL_DELIVERY ? "TERKIRIM_OTOMATIS" : "MENUNGGU_PENGIRIMAN_MANUAL",
    recommended_budget: Number.isFinite(recommendedBudgetValue) ? recommendedBudgetValue : null
  };
  if (statusFinal === "APPROVED FINAL" && row.requires_lpj && row.lpj_status === "BELUM" && !row.lpj_due_date) {
@@ -586,14 +591,14 @@ async function processAction(row, action, note, session, recommendedBudget = nul
   
   // JIKA INI ADALAH APPROVAL TERAKHIR (APPROVED FINAL)
   if (idx === steps.length - 1) {
-    let rolesToNotify = ["PEMOHON"];
-    if (row.form_id === "F-KLAIM-BENSIN" || (row.nama_form||"").toLowerCase().includes("klaim")) { 
-      rolesToNotify.push("FINANCE", "ACCOUNTING", "HRD"); 
-    } else if (isCuti) { 
-      rolesToNotify.push("HRD", "ATASAN"); 
-    } else { 
-      rolesToNotify.push("HRD", "ATASAN"); 
-    }
+    // Penerima informasi final: pemohon, HRD, dan seluruh role yang tercantum
+  // di alur approval (mis. alur Support Toko: FINANCE & ATASAN) agar semua
+  // pihak yang memproses tahu bahwa pengajuan sudah siap dieksekusi.
+  const flowRolesUpper = (row.approval_flow || []).map(r => String(r).toUpperCase());
+  let rolesToNotify = ["PEMOHON", "HRD", ...flowRolesUpper];
+  if (row.form_id === "F-KLAIM-BENSIN" || (row.nama_form||"").toLowerCase().includes("klaim")) {
+    rolesToNotify.push("ACCOUNTING");
+  }
     
     let finalTargets = [];
     for (const role of rolesToNotify) {
@@ -620,7 +625,7 @@ async function processAction(row, action, note, session, recommendedBudget = nul
         secondaryNote: "Dokumen ini telah tercatat secara sah dan resmi di sistem HRIS & Operasional CV Andela Jaya."
       });
       
-      sendEmailNotif(target.email, `[APPROVED FINAL] ${row.nama_form} - ${row.nama_pemohon}`, htmlFinal).catch(e => console.warn(e));
+      sendEmailNotif(target.email, `[APPROVED FINAL] ${row.nama_form} - ${row.nama_pemohon}`, htmlFinal, null, null, { manual: true }).catch(e => console.warn(e));
     }
 
     // Kirim Email Hasil Status & Detail Form Lengkap ke Target Personil Khusus (Konfigurasi Form Builder / Tembusan Divisi Lain)
@@ -658,7 +663,7 @@ async function processAction(row, action, note, session, recommendedBudget = nul
             actionText: "Buka Dokumen Pengajuan di HRIS →",
             secondaryNote: "Email tembusan otomatis dikirimkan ke divisi terkait untuk keperluan koordinasi operasional."
           });
-          sendEmailNotif(customTargetObj.email, `[INFO TEMBUSAN FINAL] ${row.nama_form} - ${row.nama_pemohon}`, customEmailHtml).catch(e => console.warn(e));
+          sendEmailNotif(customTargetObj.email, `[INFO TEMBUSAN FINAL] ${row.nama_form} - ${row.nama_pemohon}`, customEmailHtml, null, null, { manual: true }).catch(e => console.warn(e));
           notifiedUsernames.add(customName.toUpperCase());
         }
       }
@@ -692,7 +697,7 @@ async function processAction(row, action, note, session, recommendedBudget = nul
           actionText: "Isi & Unggah Bukti LPJ Sekarang →",
           secondaryNote: "Buka menu Riwayat Pengajuan di HRIS untuk mengunggah bukti realisasi."
         });
-        sendEmailNotif(target.email, `[Wajib LPJ] ${row.nama_form} — batas ${dueStr}`, htmlLpj).catch(e => console.warn(e));
+        sendEmailNotif(target.email, `[Wajib LPJ] ${row.nama_form} — batas ${dueStr}`, htmlLpj, null, null, { manual: true }).catch(e => console.warn(e));
       }
     }
   } 
@@ -727,7 +732,7 @@ async function processAction(row, action, note, session, recommendedBudget = nul
         actionText: "Akses Langsung & Otorisasi Pengajuan →",
         secondaryNote: "Tautan ini aman dan memungkinkan Anda menyetujui langsung tanpa mengetik ulang kata sandi."
       });
-      sendEmailNotif(target.email, `Menunggu Persetujuan Anda: ${row.nama_form} - ${row.nama_pemohon}`, htmlNext).catch(e => console.warn(e));
+      sendEmailNotif(target.email, `Menunggu Persetujuan Anda: ${row.nama_form} - ${row.nama_pemohon}`, htmlNext, null, null, { manual: true }).catch(e => console.warn(e));
     }
   }
 } else if (action === "REJECT") {
@@ -750,7 +755,7 @@ async function processAction(row, action, note, session, recommendedBudget = nul
    actionText: "Lihat Detail di Riwayat Pengajuan →",
    secondaryNote: "Silakan periksa catatan revisi di atas sebelum mengajukan kembali jika diperlukan."
  });
- sendEmailNotif(target.email, `[REJECTED] ${row.nama_form}`, htmlReject);
+ sendEmailNotif(target.email, `[REJECTED] ${row.nama_form}`, htmlReject, null, null, { manual: true });
  }
  }
  } catch (errEmail) {
@@ -771,7 +776,7 @@ async function processAction(row, action, note, session, recommendedBudget = nul
  `[DITOLAK] ${row.nama_form}`,
  `Pengajuan ${row.nama_form} (${row.id}) Anda ditolak oleh ${session.nama}. Catatan: ${note || "Tidak ada catatan."}`,
  `#riwayat?id=${row.id}`
- );
+ , { manual: true });
  } else if (action === "APPROVE") {
  if (statusFinal === "APPROVED FINAL") {
  // 1. Notifikasi Full Approved ke Pemohon
@@ -780,7 +785,7 @@ async function processAction(row, action, note, session, recommendedBudget = nul
  `[FULL APPROVED] ${row.nama_form}`,
  `Selamat! Pengajuan ${row.nama_form} (${row.id}) Anda telah disetujui penuh oleh ${session.nama}. Klik untuk membuka formulir.`,
  `#riwayat?id=${row.id}`
- );
+ , { manual: true });
 
  // 2. Notifikasi ke Atasan, Bawahan, dan Rekan Kerja terkait jika Cuti/Izin
  if (isCuti) {
@@ -799,7 +804,7 @@ async function processAction(row, action, note, session, recommendedBudget = nul
  `[Info Cuti Bawahan] ${row.nama_pemohon}`,
  `Bawahan Anda (${row.nama_pemohon}) telah disetujui Cuti/Izin (${tglRange}).`,
  `#dashboard`
- );
+ , { manual: true });
  }
 
  // Bawahan Pemohon
@@ -812,7 +817,7 @@ async function processAction(row, action, note, session, recommendedBudget = nul
  `[Info Cuti Atasan] ${row.nama_pemohon}`,
  `Atasan Anda (${row.nama_pemohon}) akan Cuti/Izin (${tglRange}).`,
  `#dashboard`
- );
+ , { manual: true });
  }
  }
 
@@ -836,7 +841,7 @@ async function processAction(row, action, note, session, recommendedBudget = nul
  `[Info Cuti Rekan Kerja] ${row.nama_pemohon}`,
  `Rekan se-divisi (${row.nama_pemohon}) di cabang ${pemohonData.cabang || '-'} disetujui Cuti/Izin (${tglRange}).`,
  `#dashboard`
- );
+ , { manual: true });
  }
  }
  }
@@ -856,7 +861,7 @@ async function processAction(row, action, note, session, recommendedBudget = nul
  `[${isDinas ? 'Dinas Disetujui' : 'Klaim Disetujui'}] ${row.nama_pemohon}`,
  `Pengajuan ${row.nama_form} oleh ${row.nama_pemohon} (${karyawanByNama[row.nama_pemohon]?.jabatan || 'Sales/SPV'}) telah disetujui final. Rincian uang jalan/klaim siap diproses.`,
  `#riwayat?id=${row.id}`
- );
+ , { manual: true });
  }
  }
  } else {
@@ -867,7 +872,7 @@ async function processAction(row, action, note, session, recommendedBudget = nul
  `[Update Progress] ${row.nama_form}`,
  `Pengajuan ${row.nama_form} Anda disetujui oleh ${session.nama} (${row.approval_flow[idx] || "Approver"}). Progress: Step ${idx+1}/${row.approval_flow.length}. Menunggu: ${nextRole || 'Approver Selanjutnya'}.`,
  `#riwayat?id=${row.id}`
- );
+ , { manual: true });
 
  if (nextRole) {
  const nextTargets = await getTargetsForRole(nextRole, row.nama_pemohon);
@@ -877,7 +882,7 @@ async function processAction(row, action, note, session, recommendedBudget = nul
  `Menunggu Persetujuan Anda: ${row.nama_form}`,
  `Pengajuan dari ${row.nama_pemohon} membutuhkan persetujuan Anda sebagai ${nextRole}.`,
  `#approval?id=${row.id}`
- );
+ , { manual: true });
  }
  }
  }
@@ -891,9 +896,9 @@ async function processAction(row, action, note, session, recommendedBudget = nul
  await notifyUser(
  targetName,
  `[Update Pengajuan] ${row.nama_form}`,
- `Pengajuan ${row.nama_form} dari ${row.nama_pemohon} telah diperbarui status persetujuannya: ${isFinalApproved ? 'APPROVED FINAL' : 'Persetujuan Tahap ' + (idx + 1)}.`,
+ `Pengajuan ${row.nama_form} dari ${row.nama_pemohon} telah diperbarui status persetujuannya: ${statusFinal === 'APPROVED FINAL' ? 'APPROVED FINAL' : 'Persetujuan Tahap ' + (idx + 1)}.`,
  `#riwayat?id=${row.id}`
- ).catch(e => console.warn("Notif target khusus approval gagal:", e));
+ , { manual: true }).catch(e => console.warn("Notif target khusus approval gagal:", e));
  }
  }
  }

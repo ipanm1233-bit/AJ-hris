@@ -3825,7 +3825,11 @@ export function buildPengajuanEmailDetailHtml(row) {
     const notes = row.catatan_penolakan || [];
     
     const flowItems = row.approval_flow.map((role, idx) => {
-      const st = steps[idx] || "PENDING";
+      const stRaw = String(steps[idx] || "PENDING").toUpperCase();
+      const st = (stRaw === "APPROVE" || stRaw === "APPROVED") ? "APPROVED"
+        : (stRaw === "REJECT" || stRaw === "REJECTED") ? "REJECTED"
+        : (stRaw === "PENDING" || stRaw === "MENUJU" || stRaw === "MENUNGGU") ? "PENDING" : stRaw;
+      const stLabel = st === "APPROVED" ? "Disetujui" : st === "REJECTED" ? "Ditolak" : "Menunggu";
       let badgeColor = "#64748b";
       let badgeBg = "#f1f5f9";
       let badgeBorder = "#cbd5e1";
@@ -3841,7 +3845,7 @@ export function buildPengajuanEmailDetailHtml(row) {
 
       return `
         <div style="display: inline-block; margin: 4px 6px 4px 0; background-color: ${badgeBg}; border: 1px solid ${badgeBorder}; color: ${badgeColor}; font-size: 11px; font-weight: bold; padding: 4px 10px; border-radius: 6px;">
-          Tahap ${idx + 1}: ${escapeHtml(role)} → <strong>${escapeHtml(st)}</strong>
+          Tahap ${idx + 1}: ${escapeHtml(role)} → <strong>${escapeHtml(stLabel)}</strong>
         </div>
       `;
     }).join("");
@@ -3870,8 +3874,20 @@ export function buildPengajuanEmailDetailHtml(row) {
       </div>
     `;
   }
-
-  return headerSection + contentHtml;
+  // 3b. REKOMENDASI BUDGET FINANCE — tampilkan hasil pengurangan/penyesuaian
+  // budget oleh Finance agar approver berikutnya (mis. ATASAN) mengenal nominal
+  // yang benar saat memproses.
+  let budgetHtml = "";
+  const recBudget = Number(row.recommended_budget);
+  if (Number.isFinite(recBudget) && recBudget > 0) {
+    budgetHtml = `
+      <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #f59e0b; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; font-size: 12.5px;">
+        <div style="color: #92400e; font-weight: 700; font-size: 13px;">Rekomendasi Budget Finance: Rp ${recBudget.toLocaleString("id-ID")}</div>
+        <div style="color: #a16207; margin-top: 4px;">Nominal hasil peninjauan Finance. Untuk pengajuan ber-budget, mohon gunakan nominal ini bila berbeda dari nilai yang diajukan pemohon.</div>
+      </div>
+    `;
+  }
+  return headerSection + budgetHtml + contentHtml;
 }
 
 // Standarisasi Template Email HTML untuk Seluruh Notifikasi & Pengingat HRIS CV Andela Jaya
@@ -5729,7 +5745,11 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
         }
       });
     } else if (roleUpper === "FINANCE" || roleUpper === "ACCOUNTING" || roleUpper === "KEUANGAN") {
-      const finRegex = /\b(finance|accounting|keuangan|kasir|akuntansi|pajak|tax)\b/i;
+      // PENGIRIMAN EMAIL FINANCE HANYA KE user dengan ROLE FINANCE
+      // (users.role = FINANCE/ACCOUNTING/KEUANGAN). Sengaja TIDAK memakai
+      // fallback divisi/jabatan dari master_karyawan — karyawan yang hanya
+      // "tergolong divisi Finance" atau bernama jabatan Finance tetapi
+      // bukan pemegang role Finance tidak boleh menerima email persetujuan.
       const finUsers = allUsers.filter(u => {
         const r = (u.role || "").toUpperCase().trim();
         return r === "FINANCE" || r === "ACCOUNTING" || r === "KEUANGAN";
@@ -5737,32 +5757,6 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
       finUsers.forEach(u => {
         const t = enrichTarget(u);
         if (t) targets.push(t);
-      });
-
-      const finEmps = allEmployees.filter(k => {
-        const div = (k.divisi || k.departemen || "").toUpperCase().trim();
-        const jab = (k.jabatan || k.posisi || "").toLowerCase();
-        return div === "FINANCE" || div === "ACCOUNTING" || div === "KEUANGAN" || finRegex.test(jab);
-      });
-      finEmps.forEach(k => {
-        const kNama = (k.nama_karyawan || k.nama || "").trim();
-        if (!kNama) return;
-        const exists = targets.some(t => 
-          (t.nama && t.nama.toLowerCase() === kNama.toLowerCase()) || 
-          (k.email && t.email && t.email.toLowerCase() === k.email.toLowerCase())
-        );
-        if (!exists) {
-          const u = allUsers.find(user => 
-            (user.nama || "").trim().toLowerCase() === kNama.toLowerCase() || 
-            (user.username || "").toLowerCase() === (k.username || k.id || "").toLowerCase()
-          );
-          targets.push({
-            username: u?.username || k.username || k.id || k.nik_karyawan || k.nik,
-            email: u?.email || k.email || "",
-            nama: k.nama_karyawan || k.nama,
-            nik: k.nik_karyawan || k.nik
-          });
-        }
       });
     } else if (roleUpper === "GM" || roleUpper === "GENERAL MANAGER" || roleUpper === "DIREKTUR") {
       const gmRegex = /\b(gm|general manager|direktur|director|pimpinan)\b/i;
