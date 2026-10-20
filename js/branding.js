@@ -18,7 +18,9 @@ export const LOGO_DATA_URI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAScA
  * @param {number} sizePx ukuran lebar/tinggi logo dalam px (default 56)
  */
 export function logoImgTag(sizePx = 56) {
- return `<img src="${LOGO_DATA_URI}" alt="Logo ${COMPANY_NAME}" width="${sizePx}" height="${sizePx}" style="display:block;object-fit:contain;" />`;
+ // display:block + margin auto memastikan logo selalu berada tepat di tengah
+ // kotak header, termasuk di dalam <td> yang memakai text-align:center.
+ return `<img src="${LOGO_DATA_URI}" alt="Logo ${COMPANY_NAME}" width="${sizePx}" height="${sizePx}" style="display:block;margin:0 auto;object-fit:contain;max-width:100%;" />`;
 }
 
 /**
@@ -29,7 +31,7 @@ export function letterheadHtml() {
  return `
  <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">
  <tr>
- <td style="width:70px;vertical-align:middle;padding:0 12px 0 0;">${logoImgTag(56)}</td>
+ <td style="width:70px;vertical-align:middle;text-align:center;padding:0 12px 0 0;">${logoImgTag(56)}</td>
  <td style="vertical-align:middle;">
  <div style="font-size:20px;font-weight:bold;font-family:Georgia,'Times New Roman',serif;">${COMPANY_NAME}</div>
  </td>
@@ -73,7 +75,7 @@ export function isoDocHeaderTable(opts = {}) {
  <col style="width:20%;" />
  </colgroup>
  <tr>
- <td rowspan="3" style="border:1px solid #000;text-align:center;padding:3px;vertical-align:middle;">${logoImgTag(52)}</td>
+ <td rowspan="3" style="border:1px solid #000;text-align:center;padding:3px;vertical-align:middle;"><div style="display:flex;align-items:center;justify-content:center;width:100%;min-height:52px;">${logoImgTag(52)}</div></td>
  <td colspan="4" style="border:1px solid #000;font-size:12px;font-weight:bold;text-transform:uppercase;text-align:center;padding:5px 4px;vertical-align:middle;line-height:1.2;">${judul}</td>
  </tr>
  <tr>

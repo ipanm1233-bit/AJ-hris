@@ -3207,23 +3207,99 @@ function normalizeDisiplin(value) {
   return { tingkat: tingkat || "Perlu verifikasi", jenis: jenis.length ? jenis : ["Pelanggaran"], catatan };
 }
 
-function babMetaFor(nomor) {
-  return PP_BABS.find(b => Number(b.nomor) === Number(nomor))
-    || PP_BABS[0]
+function normalizeBabNumber(value) {
+  if (value && typeof value === "object") {
+    return Number(value.nomor || value.bab || 0);
+  }
+  return Number(value || 0);
+}
+
+function babMetaFor(nomor, babs = PP_BABS) {
+  const list = Array.isArray(babs) && babs.length ? babs : PP_BABS;
+  return list.find(b => Number(b.nomor) === Number(nomor))
+    || list[0]
     || { nomor: 1, judul: "Ketentuan Umum", kategori: "Ketentuan Umum" };
+}
+
+/**
+ * Dokumen bab disimpan di koleksi yang sama dengan pasal, tetapi memakai
+ * penanda `type: "bab"` dan id `pp-bab-<nomor>` agar tidak dianggap pasal.
+ */
+export function isPpBabRow(row) {
+  return !!row && (row.type === "bab" || row.kind === "bab" || row.doc_type === "bab");
+}
+
+/** Normalisasi satu baris bab (bawaan atau tambahan) dari Firestore. */
+export function normalizePpBab(row = {}, base = null) {
+  const nomor = normalizeBabNumber(row) || normalizeBabNumber(base);
+  if (!Number.isInteger(nomor) || nomor < 1) return null;
+  const judul = asText(row.judul || row.title || base?.judul);
+  if (!judul) return null;
+  return {
+    nomor,
+    judul,
+    kategori: asText(row.kategori || base?.kategori) || "Ketentuan Lain",
+    jumlah_pasal: Number(base?.jumlah_pasal || 0),
+    is_custom: !base
+  };
+}
+
+/**
+ * Gabungkan 15 bab bawaan dengan bab baru/edit dari Firestore.
+ * `articles` opsional dipakai untuk menghitung jumlah pasal per bab.
+ */
+export function mergePpBabs(overrides = [], baseBabs = PP_BABS, articles = null) {
+  const rows = Array.isArray(overrides) ? overrides : [];
+  const bases = Array.isArray(baseBabs) ? baseBabs : PP_BABS;
+  const byNomor = new Map(bases.map(bab => [
+    Number(bab.nomor),
+    { ...bab, nomor: Number(bab.nomor), is_custom: false }
+  ]));
+  const builtInNumbers = new Set(bases.map(bab => Number(bab.nomor)));
+
+  rows.filter(isPpBabRow).forEach(row => {
+    const nomor = normalizeBabNumber(row);
+    if (!nomor) return;
+    if (row.deleted) {
+      // Bab bawaan tidak boleh dihapus dari katalog; hanya bab tambahan.
+      if (!builtInNumbers.has(nomor)) byNomor.delete(nomor);
+      return;
+    }
+    const base = bases.find(bab => Number(bab.nomor) === nomor) || null;
+    const normalized = normalizePpBab(row, base);
+    if (normalized) byNomor.set(nomor, normalized);
+  });
+
+  const list = [...byNomor.values()].sort((a, b) => a.nomor - b.nomor);
+  if (!Array.isArray(articles)) return list;
+
+  const counts = new Map();
+  articles.forEach(article => {
+    const nomor = Number(article?.bab || 0);
+    if (nomor) counts.set(nomor, (counts.get(nomor) || 0) + 1);
+  });
+  return list.map(bab => ({
+    ...bab,
+    jumlah_pasal: counts.get(Number(bab.nomor)) || 0
+  }));
 }
 
 /**
  * Normalisasi satu dokumen override/kustom dari Firestore menjadi bentuk pasal
  * yang sama dengan katalog bawaan. Mengembalikan null bila data inti tidak lengkap.
  */
-export function normalizePpArticle(row = {}, base = null) {
+export function normalizePpArticle(row = {}, base = null, babs = PP_BABS) {
   const pasal = normalizePasal(row.pasal || base?.pasal);
   if (!pasal) return null;
   const judul = asText(row.judul || base?.judul);
   if (!judul) return null;
   const bab = Number(row.bab || base?.bab || 1);
-  const babMeta = babMetaFor(bab);
+  const knownBab = (Array.isArray(babs) ? babs : PP_BABS).find(item => Number(item.nomor) === bab);
+  const babMeta = knownBab || {
+    nomor: bab,
+    judul: asText(row.bab_judul || base?.bab_judul) || babMetaFor(bab, babs).judul,
+    kategori: asText(row.kategori || base?.kategori) || "Ketentuan Lain"
+  };
   const ayat = asTextArray(row.ayat).length ? asTextArray(row.ayat) : (base?.ayat || []);
   if (!ayat.length) return null;
   const kategori = asText(row.kategori || base?.kategori) || "Ketentuan Lain";
@@ -3259,18 +3335,18 @@ export function normalizePpArticle(row = {}, base = null) {
  * - Dokumen `{ pasal, deleted: true }` menyembunyikan pasal bawaan.
  * - Dokumen lain menimpa (edit) pasal bawaan atau menambah pasal baru.
  */
-export function mergePpCatalog(overrides = [], baseArticles = PP_ARTICLES) {
+export function mergePpCatalog(overrides = [], baseArticles = PP_ARTICLES, baseBabs = PP_BABS) {
   const byPasal = new Map(baseArticles.map(article => [article.pasal, article]));
-  const rows = Array.isArray(overrides) ? overrides : [];
-  rows.filter(row => row && row.deleted).forEach(row => {
+  const rows = (Array.isArray(overrides) ? overrides : []).filter(row => row && !isPpBabRow(row));
+  rows.filter(row => row.deleted).forEach(row => {
     const pasal = normalizePasal(row);
     if (pasal) byPasal.delete(pasal);
   });
-  rows.filter(row => row && !row.deleted).forEach(row => {
+  rows.filter(row => !row.deleted).forEach(row => {
     const pasal = normalizePasal(row);
     if (!pasal) return;
     const base = baseArticles.find(article => article.pasal === pasal) || null;
-    const normalized = normalizePpArticle({ ...row, pasal }, base);
+    const normalized = normalizePpArticle({ ...row, pasal }, base, baseBabs);
     if (normalized) byPasal.set(pasal, normalized);
   });
   return [...byPasal.values()].sort((a, b) => a.pasal - b.pasal);

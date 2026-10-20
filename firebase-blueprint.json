@@ -343,7 +343,7 @@
     },
     "/peraturan_perusahaan/{articleId}": {
       "schema": "object",
-      "description": "Overrides, hidden built-in articles, and custom articles for the Company Regulations catalog"
+      "description": "Overrides, hidden built-in articles, custom articles, and custom/overridden chapters for the Company Regulations catalog"
     },
     "/master_gimmick/{itemId}": {
       "schema": "object",

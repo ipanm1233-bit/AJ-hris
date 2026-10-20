@@ -5,7 +5,8 @@ import {
   PP_COMPLIANCE_SUMMARY, PP_COMPLIANCE_MATRIX, PP_MANAGEMENT_DECISIONS,
   PP_COMPARISONS, PP_LEGAL_BASIS, PP_KEY_FINDINGS,
   getPpArticle, ppArticleLabel, disciplinePpArticles, searchPpArticles, ppStats,
-  ppArticleReferences, mergePpCatalog, normalizePpArticle, ppCategories
+  ppArticleReferences, mergePpCatalog, normalizePpArticle, ppCategories,
+  mergePpBabs, normalizePpBab, isPpBabRow
 } from "../js/peraturan-perusahaan.mjs";
 import { PP_2026_POLICY_ARTICLES, ALL_POLICY_ARTICLES, policyPeriodForArticle, findPolicyArticle, buildPp2026PolicyArticles } from "../js/hr-case-policy.mjs";
 
@@ -119,6 +120,40 @@ test("pasal bawaan dapat disembunyikan dan pasal baru dapat ditambahkan", () => 
   assert.ok(policyOptions.some(option => option.id === "pp-76"));
 });
 
+test("Superadmin dapat menambah bab baru dan pasal mengikuti bab tersebut", () => {
+  const rows = [
+    { type: "bab", nomor: 16, judul: "Perlindungan Data", kategori: "Perlindungan & Kepatuhan" },
+    { type: "bab", nomor: 15, judul: "Penutup (Revisi)", kategori: "Penutup" },
+    {
+      pasal: 76,
+      bab: 16,
+      judul: "Kerahasiaan Data",
+      kategori: "Perlindungan & Kepatuhan",
+      ayat: ["(1) Data pekerja wajib dilindungi."],
+      disiplin: { tingkat: "Teguran", jenis: ["Pelanggaran kerahasiaan"] }
+    }
+  ];
+
+  assert.equal(isPpBabRow(rows[0]), true);
+  assert.equal(isPpBabRow(rows[2]), false);
+  assert.equal(normalizePpBab({ nomor: 16, judul: "Uji" }).is_custom, true);
+
+  const babs = mergePpBabs(rows, PP_BABS);
+  assert.equal(babs.length, 16);
+  assert.equal(babs.find(bab => bab.nomor === 15).judul, "Penutup (Revisi)");
+  assert.equal(babs.find(bab => bab.nomor === 15).is_custom, false);
+  assert.equal(babs.find(bab => bab.nomor === 16).judul, "Perlindungan Data");
+  assert.equal(babs.find(bab => bab.nomor === 16).is_custom, true);
+
+  const catalog = mergePpCatalog(rows, PP_ARTICLES, babs);
+  const article = getPpArticle(76, catalog);
+  assert.equal(article.bab, 16);
+  assert.equal(article.bab_judul, "Perlindungan Data");
+  assert.equal(article.is_custom, true);
+  assert.equal(mergePpBabs(rows, PP_BABS, catalog).find(bab => bab.nomor === 16).jumlah_pasal, 1);
+  assert.equal(ppStats(catalog, babs).bab, 16);
+});
+
 test("normalisasi menolak pasal tanpa nomor, judul, atau ayat", () => {
   assert.equal(normalizePpArticle({ judul: "Tanpa nomor", ayat: ["(1) Uji"] }), null);
   assert.equal(normalizePpArticle({ pasal: 76, ayat: ["(1) Uji"] }), null);
@@ -138,6 +173,10 @@ test("UI menyediakan pengelolaan katalog dan aturan Firestore untuk Superadmin",
 
   assert.match(html, /data-pptab="kelola"/);
   assert.match(view, /peraturan_perusahaan\.edit/);
+  assert.match(view, /Tambah Bab/);
+  assert.match(view, /pp-manage-add-bab/);
+  assert.match(view, /pp-bab-/);
+  assert.match(view, /mergePpBabs/);
   assert.match(view, /fsUpdate\(COL\.PERATURAN_PERUSAHAAN/);
   assert.match(view, /fsDelete\(COL\.PERATURAN_PERUSAHAAN/);
   assert.match(auth, /peraturan_perusahaan\.edit/);

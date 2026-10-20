@@ -6,7 +6,16 @@
  * dipakai ulang oleh view `sop.js` maupun proses cetak dokumen.
  */
 
-export const SOP_STEP_CATEGORIES = Object.freeze(["START", "PROCESS", "DECISION", "DOKUMEN", "END"]);
+export const SOP_STEP_CATEGORIES = Object.freeze(["START", "PROCESS", "DECISION", "DOKUMEN", "END", "LAINNYA"]);
+
+export const SOP_STEP_CATEGORY_LABELS = Object.freeze({
+  START: "START - Mulai",
+  PROCESS: "PROCESS - Proses",
+  DECISION: "DECISION - Keputusan",
+  DOKUMEN: "DOKUMEN - Dokumen",
+  END: "END - Selesai",
+  LAINNYA: "LAINNYA - Kategori lain"
+});
 
 export const SOP_STATUSES = Object.freeze(["Draft", "Review", "Revisi", "Aktif", "Obsolete"]);
 
@@ -52,6 +61,7 @@ export function normalizeCategory(value) {
   if (cat === "KEPUTUSAN" || cat === "DECISION") return "DECISION";
   if (cat === "MULAI" || cat === "START") return "START";
   if (cat === "SELESAI" || cat === "END") return "END";
+  if (cat === "LAINNYA" || cat === "OTHER" || cat === "LAIN LAIN") return "LAINNYA";
   return SOP_STEP_CATEGORIES.includes(cat) ? cat : "PROCESS";
 }
 
@@ -163,6 +173,7 @@ export function buildMermaidCode(sopOrTitle, steps = []) {
       "  classDef processStyle fill:#1e293b,stroke:#475569,color:#f8fafc;",
       "  classDef decisionStyle fill:#78350f,stroke:#d97706,color:#fef3c7;",
       "  classDef docStyle fill:#083344,stroke:#06b6d4,color:#e0f2fe;",
+      "  classDef otherStyle fill:#334155,stroke:#94a3b8,color:#f8fafc,stroke-dasharray:5 3;",
       "  classDef endStyle fill:#991b1b,stroke:#dc2626,color:#ffffff,font-weight:bold;"
     ].join("\n");
   }
@@ -173,6 +184,7 @@ export function buildMermaidCode(sopOrTitle, steps = []) {
     "  classDef processStyle fill:#1e293b,stroke:#475569,color:#f8fafc;",
     "  classDef decisionStyle fill:#78350f,stroke:#d97706,color:#fef3c7;",
     "  classDef docStyle fill:#083344,stroke:#06b6d4,color:#e0f2fe;",
+    "  classDef otherStyle fill:#334155,stroke:#94a3b8,color:#f8fafc,stroke-dasharray:5 3;",
     "  classDef endStyle fill:#991b1b,stroke:#dc2626,color:#ffffff,font-weight:bold;",
     ""
   );
@@ -202,6 +214,9 @@ export function buildMermaidCode(sopOrTitle, steps = []) {
       case "END":
         lines.push(`  ${nodeId}(["END: ${name}"]):::endStyle`);
         break;
+      case "LAINNYA":
+        lines.push(`  ${nodeId}[/"${label}"/]:::otherStyle`);
+        break;
       default:
         lines.push(`  ${nodeId}["${label}"]:::processStyle`);
         break;
@@ -230,6 +245,147 @@ export function buildMermaidCode(sopOrTitle, steps = []) {
   });
 
   return lines.join("\n");
+}
+
+/* ---------------------------------------------------------------------
+ * FALLBACK SVG LOKAL
+ * Diagram Mermaid di atas tetap menjadi sumber utama. Fungsi di bawah ini
+ * menggambar flowchart SVG murni tanpa layanan eksternal (tanpa Kroki/CDN)
+ * sehingga dokumen SOP tetap punya diagram saat Mermaid gagal dimuat.
+ * ------------------------------------------------------------------- */
+
+function escapeSvgText(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function wrapSvgText(value, maxChars = 44) {
+  const words = sanitizeMermaidLabel(value, 280).split(/\s+/).filter(Boolean);
+  if (!words.length) return [""];
+  const lines = [];
+  let current = "";
+  for (const word of words) {
+    if (!current) {
+      current = word;
+      continue;
+    }
+    if (`${current} ${word}`.length <= maxChars) {
+      current += ` ${word}`;
+    } else {
+      lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.slice(0, 5);
+}
+
+/**
+ * Bangun SVG flowchart sederhana dari langkah SOP. Dipakai sebagai fallback
+ * terakhir saat Mermaid (CDN) tidak tersedia, mis. saat offline atau CDN
+ * diblokir. Tidak melakukan request jaringan apa pun.
+ */
+export function buildFlowchartSvg(sopOrTitle, steps = []) {
+  const sop = typeof sopOrTitle === "string" ? { judul: sopOrTitle } : (sopOrTitle || {});
+  const judul = sanitizeMermaidLabel(sop.judul || "Prosedur SOP", 100);
+  let normalized = normalizeSteps(steps);
+  if (!normalized.length) {
+    normalized = normalizeSteps([
+      { category: "START", nama_aktivitas: "Mulai Prosedur" },
+      { category: "PROCESS", nama_aktivitas: "Proses Standar" },
+      { category: "END", nama_aktivitas: "Selesai Prosedur" }
+    ]);
+  }
+
+  const width = 760;
+  const nodeWidth = 500;
+  const centerX = width / 2;
+  const nodeX = centerX - nodeWidth / 2;
+  const gap = 46;
+  const titleHeight = 34;
+  const nodes = [];
+  let cursorY = titleHeight + 14;
+
+  normalized.forEach((step, index) => {
+    const nameLines = wrapSvgText(step.nama_aktivitas || `Langkah ${index + 1}`, 48);
+    const detailLines = step.detail_proses
+      ? wrapSvgText(step.detail_proses, 62).slice(0, 2)
+      : [];
+    const allLines = [...nameLines, ...detailLines];
+    let height = Math.max(70, 28 + allLines.length * 15);
+    if (step.category === "DECISION") height = Math.max(112, height + 24);
+    nodes.push({ step, index, y: cursorY, height, nameLines, detailLines });
+    cursorY += height + gap;
+  });
+
+  const totalHeight = Math.max(180, cursorY - gap + 18);
+  const defs = `
+    <defs>
+      <marker id="sop-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L0,6 L9,3 z" fill="#64748b"></path>
+      </marker>
+    </defs>`;
+
+  const parts = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${totalHeight}" viewBox="0 0 ${width} ${totalHeight}" role="img" aria-label="Flowchart ${escapeSvgText(judul)}" style="max-width:100%;height:auto;background:#ffffff;font-family:Arial,Helvetica,sans-serif;">`,
+    defs,
+    `<text x="${centerX}" y="21" text-anchor="middle" font-size="13" font-weight="bold" fill="#334155">${escapeSvgText(judul)}</text>`
+  ];
+
+  nodes.forEach(({ step, index, y, height, nameLines, detailLines }) => {
+    const category = normalizeCategory(step.category);
+    const categoryLabel = SOP_STEP_CATEGORY_LABELS[category] || category;
+    const next = nodes[index + 1];
+    const centerY = y + height / 2;
+    const textStartY = category === "DECISION"
+      ? centerY - ((nameLines.length + detailLines.length) * 15) / 2 + 9
+      : y + 24;
+
+    if (next) {
+      const lineY = y + height;
+      parts.push(`<line x1="${centerX}" y1="${lineY}" x2="${centerX}" y2="${next.y - 3}" stroke="#64748b" stroke-width="1.5" marker-end="url(#sop-arrow)"></line>`);
+      if (category === "DECISION") {
+        parts.push(`<text x="${centerX + 12}" y="${lineY + 22}" font-size="10" font-weight="bold" fill="#047857">YA</text>`);
+      }
+    }
+
+    if (category === "DECISION") {
+      const points = `${centerX},${y} ${nodeX + nodeWidth},${centerY} ${centerX},${y + height} ${nodeX},${centerY}`;
+      parts.push(`<polygon points="${points}" fill="#78350f" stroke="#d97706" stroke-width="1.5"></polygon>`);
+    } else if (category === "DOKUMEN") {
+      parts.push(`<rect x="${nodeX}" y="${y}" width="${nodeWidth}" height="${height}" rx="10" fill="#083344" stroke="#06b6d4" stroke-width="1.5"></rect>`);
+      parts.push(`<path d="M${nodeX + 16},${y + 10} v${height - 20}" stroke="#22d3ee" stroke-width="2" stroke-dasharray="4 3"></path>`);
+    } else if (category === "LAINNYA") {
+      parts.push(`<rect x="${nodeX}" y="${y}" width="${nodeWidth}" height="${height}" rx="14" fill="#334155" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="6 4"></rect>`);
+    } else if (category === "START" || category === "END") {
+      parts.push(`<rect x="${nodeX}" y="${y}" width="${nodeWidth}" height="${height}" rx="${height / 2}" fill="${category === "START" ? "#047857" : "#b91c1c"}" stroke="${category === "START" ? "#10b981" : "#ef4444"}" stroke-width="1.5"></rect>`);
+    } else {
+      parts.push(`<rect x="${nodeX}" y="${y}" width="${nodeWidth}" height="${height}" rx="8" fill="#1e293b" stroke="#475569" stroke-width="1.5"></rect>`);
+    }
+
+    parts.push(`<text x="${nodeX + 12}" y="${y + 14}" font-size="8.5" font-weight="bold" fill="#e2e8f0" opacity="0.72">${escapeSvgText(categoryLabel)}</text>`);
+
+    const nameAnchor = category === "DECISION" ? "middle" : "start";
+    const nameX = category === "DECISION" ? centerX : nodeX + 24;
+    parts.push(`<text x="${nameX}" y="${textStartY}" text-anchor="${nameAnchor}" font-size="12.5" font-weight="bold" fill="#f8fafc">${escapeSvgText(nameLines[0] || "-")}</text>`);
+    nameLines.slice(1).forEach((line, lineIndex) => {
+      parts.push(`<text x="${nameX}" y="${textStartY + (lineIndex + 1) * 15}" text-anchor="${nameAnchor}" font-size="12.5" font-weight="bold" fill="#f8fafc">${escapeSvgText(line)}</text>`);
+    });
+    const detailStart = textStartY + nameLines.length * 15;
+    detailLines.forEach((line, lineIndex) => {
+      parts.push(`<text x="${nameX}" y="${detailStart + lineIndex * 14}" text-anchor="${nameAnchor}" font-size="10.5" fill="#e2e8f0" opacity="0.85">${escapeSvgText(line)}</text>`);
+    });
+    if (step.actor) {
+      parts.push(`<text x="${nameX}" y="${y + height - 10}" text-anchor="${nameAnchor}" font-size="10" font-style="italic" fill="#cbd5e1">${escapeSvgText(step.actor)}</text>`);
+    }
+  });
+
+  parts.push("</svg>");
+  return parts.join("\n");
 }
 
 /** Tahun aman dari sebuah tanggal (string/Date) dengan fallback hari ini. */

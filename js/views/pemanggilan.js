@@ -3,7 +3,7 @@ import { fsGetAll, fsAdd, fmtDateShort, escapeHtml, notifyUser, sendEmailNotif, 
 import { renderCrudModule, icon } from "../components.js";
 import { getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 import { isoDocHeaderTable } from "../branding.js";
-import { disciplinePpArticles, getPpArticle, ppArticleLabel, PP_META, mergePpCatalog } from "../peraturan-perusahaan.mjs";
+import { disciplinePpArticles, getPpArticle, ppArticleLabel, PP_META, mergePpCatalog, mergePpBabs } from "../peraturan-perusahaan.mjs";
 
 export async function mount(container, { params } = {}) {
  // GM (tanpa override) hanya boleh melihat/export/print → matikan aksi tulis di modul CRUD
@@ -31,7 +31,8 @@ export async function mount(container, { params } = {}) {
  // tambahan yang terkait disiplin langsung tersedia di formulir SP.
  let ppCatalog = null;
  try {
-   ppCatalog = mergePpCatalog(await fsGetAll(COL.PERATURAN_PERUSAHAAN));
+   const ppRows = await fsGetAll(COL.PERATURAN_PERUSAHAAN);
+   ppCatalog = mergePpCatalog(ppRows, undefined, mergePpBabs(ppRows));
  } catch (error) {
    console.warn("Katalog PP memakai data bawaan (override tidak dapat dimuat):", error);
  }

@@ -3,7 +3,8 @@ import {
   PP_COMPLIANCE_SUMMARY, PP_KEY_FINDINGS, PP_COMPARISONS,
   PP_MANAGEMENT_DECISIONS, PP_LEGAL_BASIS, PP_COMPLIANCE_MATRIX,
   disciplinePpArticles, getPpArticle, ppArticleLabel, ppArticleReferences,
-  searchPpArticles, ppStats, ppCategories, mergePpCatalog
+  searchPpArticles, ppStats, ppCategories, mergePpCatalog,
+  mergePpBabs, isPpBabRow
 } from "../peraturan-perusahaan.mjs";
 import { icon, badge, emptyState } from "../components.js";
 import { hasPermission, canAccessRoute } from "../auth.js";
@@ -106,8 +107,9 @@ export async function mount(container, { session, params } = {}) {
 
   let catalog = PP_ARTICLES;
   let overrides = [];
+  let babs = mergePpBabs([], PP_BABS, PP_ARTICLES);
   let categories = ppCategories(PP_ARTICLES);
-  let stats = ppStats(PP_ARTICLES);
+  let stats = ppStats(PP_ARTICLES, babs);
   let overrideLoadError = false;
 
   const canView = await hasPermission("peraturan_perusahaan.view", session);
@@ -118,9 +120,11 @@ export async function mount(container, { session, params } = {}) {
 
   function applyOverrides(rows) {
     overrides = Array.isArray(rows) ? rows : [];
-    catalog = mergePpCatalog(overrides);
+    babs = mergePpBabs(overrides, PP_BABS);
+    catalog = mergePpCatalog(overrides, PP_ARTICLES, babs);
+    babs = mergePpBabs(overrides, PP_BABS, catalog);
     categories = ppCategories(catalog);
-    stats = ppStats(catalog);
+    stats = ppStats(catalog, babs);
   }
 
   async function loadOverrides() {
@@ -140,6 +144,7 @@ export async function mount(container, { session, params } = {}) {
   function overrideMap() {
     const map = new Map();
     overrides.forEach(row => {
+      if (isPpBabRow(row)) return;
       const pasal = Number(row?.pasal || 0);
       if (pasal) map.set(pasal, row);
     });
@@ -161,6 +166,15 @@ export async function mount(container, { session, params } = {}) {
       ...catalog.map(article => article.pasal)
     );
     return highest + 1;
+  }
+
+  function nextBabNumber() {
+    const highest = Math.max(0, ...babs.map(bab => Number(bab.nomor) || 0), PP_BABS.length);
+    return highest + 1;
+  }
+
+  function babFor(nomor) {
+    return babs.find(bab => Number(bab.nomor) === Number(nomor)) || null;
   }
 
   function goToDiscipline(pasal) {
@@ -263,7 +277,7 @@ export async function mount(container, { session, params } = {}) {
               <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Bab</label>
               <select id="pp-bab" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 outline-none">
                 <option value="">Semua bab</option>
-                ${PP_BABS.map(b => `<option value="${b.nomor}" ${String(state.bab) === String(b.nomor) ? "selected" : ""}>BAB ${b.nomor} — ${escapeHtml(b.judul)}</option>`).join("")}
+                ${babs.map(b => `<option value="${b.nomor}" ${String(state.bab) === String(b.nomor) ? "selected" : ""}>BAB ${b.nomor} — ${escapeHtml(b.judul)}</option>`).join("")}
               </select>
             </div>
             <div class="md:col-span-3">
@@ -305,7 +319,19 @@ export async function mount(container, { session, params } = {}) {
         target.innerHTML = emptyState("Tidak ada pasal yang cocok", "Ubah kata kunci atau reset filter.");
         return;
       }
-      const groups = PP_BABS
+      const groupBabs = [...babs];
+      catalog.forEach(article => {
+        if (!groupBabs.some(bab => Number(bab.nomor) === Number(article.bab))) {
+          groupBabs.push({
+            nomor: Number(article.bab),
+            judul: article.bab_judul || `Bab ${article.bab}`,
+            kategori: article.kategori || "",
+            is_custom: true
+          });
+        }
+      });
+      const groups = groupBabs
+        .sort((a, b) => Number(a.nomor) - Number(b.nomor))
         .map(b => ({ ...b, items: list.filter(a => a.bab === b.nomor) }))
         .filter(g => g.items.length);
       target.innerHTML = groups.map(group => `
@@ -679,7 +705,7 @@ export async function mount(container, { session, params } = {}) {
       return !!(row && row.deleted);
     });
     const customCount = catalog.filter(article => article.is_custom).length;
-    const editedCount = overrides.filter(row => row && !row.deleted && isBuiltin(Number(row.pasal))).length;
+    const editedCount = overrides.filter(row => row && !isPpBabRow(row) && !row.deleted && isBuiltin(Number(row.pasal))).length;
     const term = state.manageQuery.trim().toLowerCase();
     const list = catalog.filter(article => {
       if (!term) return true;
@@ -699,9 +725,10 @@ export async function mount(container, { session, params } = {}) {
           <div>
             <p class="text-[10px] font-black uppercase tracking-widest text-white/50">Khusus Superadmin</p>
             <h2 class="text-lg font-bold mt-1">Kelola Katalog Peraturan Perusahaan</h2>
-            <p class="text-xs text-white/60 mt-1">Tambah pasal baru, edit pasal bawaan, atau sembunyikan pasal. Perubahan disimpan di Firestore dan langsung dipakai katalog, Disiplin & SP, serta cetak.</p>
+            <p class="text-xs text-white/60 mt-1">Tambah bab dan pasal baru, edit pasal bawaan, atau sembunyikan pasal. Perubahan disimpan di Firestore dan langsung dipakai katalog, Disiplin & SP, serta cetak.</p>
           </div>
-          <div class="flex items-center gap-2 shrink-0">
+          <div class="flex flex-wrap items-center gap-2 shrink-0">
+            <button id="pp-manage-add-bab" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition">${icon("plus", "w-4 h-4")} Tambah Bab</button>
             <button id="pp-manage-add" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-white text-slate-900 hover:bg-slate-100 transition">${icon("plus", "w-4 h-4")} Tambah Pasal</button>
             <button id="pp-manage-refresh" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-white/10 text-white hover:bg-white/20 transition">${icon("refresh", "w-4 h-4")} Muat Ulang</button>
           </div>
@@ -714,6 +741,34 @@ export async function mount(container, { session, params } = {}) {
           <div class="bg-white border border-slate-200 rounded-2xl p-4"><p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Pasal Tambahan</p><p class="text-2xl font-black text-blue-700 mt-1">${customCount}</p></div>
           <div class="bg-white border border-slate-200 rounded-2xl p-4"><p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Pasal Diedit</p><p class="text-2xl font-black text-emerald-700 mt-1">${editedCount}</p></div>
           <div class="bg-white border border-slate-200 rounded-2xl p-4"><p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Disembunyikan</p><p class="text-2xl font-black text-amber-700 mt-1">${hidden.length}</p></div>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-2xl p-4">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+            <div>
+              <h3 class="text-sm font-bold text-slate-800">Struktur Bab</h3>
+              <p class="text-xs text-slate-500 mt-0.5">${babs.length} bab aktif. Bab tambahan dapat dipakai saat menambah atau mengedit pasal.</p>
+            </div>
+            <button id="pp-manage-add-bab-inline" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition">${icon("plus", "w-3.5 h-3.5")} Tambah Bab</button>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+            ${babs.map(bab => `
+              <div class="flex items-center justify-between gap-2 border border-slate-100 rounded-xl p-2.5">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="text-[10px] font-black uppercase tracking-wider text-slate-400">BAB ${bab.nomor}</span>
+                    <p class="text-xs font-semibold text-slate-700 truncate">${escapeHtml(bab.judul)}</p>
+                    ${bab.is_custom ? badge("Bab Tambahan", "blue") : ""}
+                  </div>
+                  <p class="text-[11px] text-slate-400">${escapeHtml(bab.kategori || "Tanpa kategori")} &middot; ${Number(bab.jumlah_pasal || 0)} pasal</p>
+                </div>
+                <div class="flex items-center gap-1 shrink-0">
+                  <button data-pp-manage-bab-edit="${bab.nomor}" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">Edit</button>
+                  ${bab.is_custom ? `<button data-pp-manage-bab-delete="${bab.nomor}" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-700 hover:bg-red-100 transition">Hapus</button>` : ""}
+                </div>
+              </div>`).join("")}
+          </div>
+          <p class="text-[11px] text-slate-400 mt-2">Bab tambahan hanya bisa dihapus setelah tidak memiliki pasal. Bab bawaan dapat diganti judul/kategorinya, tetapi tidak dihapus.</p>
         </div>
 
         <div class="bg-white border border-slate-200 rounded-2xl p-4">
@@ -781,6 +836,8 @@ export async function mount(container, { session, params } = {}) {
       </div>`;
 
     panels.kelola.querySelector("#pp-manage-add")?.addEventListener("click", () => openEditor());
+    panels.kelola.querySelector("#pp-manage-add-bab")?.addEventListener("click", () => openBabEditor());
+    panels.kelola.querySelector("#pp-manage-add-bab-inline")?.addEventListener("click", () => openBabEditor());
     panels.kelola.querySelector("#pp-manage-refresh")?.addEventListener("click", async () => {
       await refreshCatalog();
       toast("Katalog dimuat ulang", "success");
@@ -808,6 +865,12 @@ export async function mount(container, { session, params } = {}) {
     });
     panels.kelola.querySelectorAll("[data-pp-manage-restore]").forEach(btn => {
       btn.addEventListener("click", () => restoreArticle(Number(btn.dataset.ppManageRestore)));
+    });
+    panels.kelola.querySelectorAll("[data-pp-manage-bab-edit]").forEach(btn => {
+      btn.addEventListener("click", () => openBabEditor(Number(btn.dataset.ppManageBabEdit)));
+    });
+    panels.kelola.querySelectorAll("[data-pp-manage-bab-delete]").forEach(btn => {
+      btn.addEventListener("click", () => deleteCustomBab(Number(btn.dataset.ppManageBabDelete)));
     });
   }
 
@@ -871,6 +934,112 @@ export async function mount(container, { session, params } = {}) {
     }
   }
 
+  async function deleteCustomBab(nomor) {
+    if (!canManage) return;
+    const bab = babFor(nomor);
+    if (!bab || !bab.is_custom) return;
+    const used = catalog.some(article => Number(article.bab) === Number(nomor))
+      || overrides.some(row => row && !isPpBabRow(row) && Number(row.bab) === Number(nomor));
+    if (used) {
+      toast(`BAB ${nomor} masih memiliki pasal. Pindahkan atau hapus pasalnya terlebih dahulu.`, "warning");
+      return;
+    }
+    const ok = await confirmDialog(`Hapus BAB ${nomor} - ${bab.judul}?`, { title: "Hapus Bab", danger: true });
+    if (!ok) return;
+    try {
+      await fsDelete(COL.PERATURAN_PERUSAHAAN, `pp-bab-${nomor}`);
+      await refreshCatalog();
+      toast(`BAB ${nomor} dihapus`, "success");
+    } catch (error) {
+      console.error(error);
+      toast("Gagal menghapus bab. Periksa izin Firestore Anda.", "error");
+    }
+  }
+
+  function openBabEditor(nomor = null) {
+    if (!canManage) {
+      toast("Hanya Superadmin yang dapat mengubah struktur bab.", "warning");
+      return;
+    }
+    const existing = nomor ? babFor(nomor) : null;
+    const isExisting = !!existing;
+    const values = existing || {
+      nomor: nextBabNumber(),
+      judul: "",
+      kategori: ""
+    };
+
+    const body = `
+      <div class="space-y-4 text-sm">
+        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-900">
+          Bab baru dapat langsung dipilih saat menambah atau mengedit pasal. Nomor bab harus unik dan lebih besar dari 0.
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <label class="block">
+            <span class="block text-xs font-semibold text-slate-600 mb-1">Nomor Bab <span class="text-red-500">*</span></span>
+            <input id="ppb-nomor" type="number" min="1" max="999" value="${escapeHtml(values.nomor)}" ${isExisting ? "readonly" : ""} class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 ${isExisting ? "bg-slate-100 text-slate-500" : "bg-white"} outline-none">
+          </label>
+          <label class="block md:col-span-2">
+            <span class="block text-xs font-semibold text-slate-600 mb-1">Judul Bab <span class="text-red-500">*</span></span>
+            <input id="ppb-judul" value="${escapeHtml(values.judul || "")}" placeholder="Contoh: Perlindungan Data Pekerja" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 outline-none">
+          </label>
+        </div>
+        <label class="block">
+          <span class="block text-xs font-semibold text-slate-600 mb-1">Kategori Bab</span>
+          <input id="ppb-kategori" list="ppb-kategori-list" value="${escapeHtml(values.kategori || "")}" placeholder="Contoh: Perlindungan & Kepatuhan" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 outline-none">
+          <datalist id="ppb-kategori-list">${categories.map(k => `<option value="${escapeHtml(k)}"></option>`).join("")}</datalist>
+        </label>
+        <p class="text-[11px] text-slate-400">${isExisting ? "Nomor bab tidak dapat diubah agar pasal yang sudah ada tetap terhubung." : "Nomor bab otomatis memakai urutan berikutnya, tetapi dapat disesuaikan."}</p>
+      </div>`;
+
+    openModal({
+      title: isExisting ? `Edit BAB ${values.nomor}` : "Tambah Bab Baru",
+      size: "lg",
+      bodyHtml: body,
+      footerHtml: `
+        <button id="ppb-cancel" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
+        <button id="ppb-save" class="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-700 text-white hover:bg-emerald-800 transition">Simpan Bab</button>`,
+      onMount: (modal) => {
+        modal.querySelector("#ppb-cancel")?.addEventListener("click", closeModal);
+        modal.querySelector("#ppb-save")?.addEventListener("click", async () => {
+          const nomorBab = Number(modal.querySelector("#ppb-nomor")?.value || 0);
+          const judul = String(modal.querySelector("#ppb-judul")?.value || "").trim();
+          const kategori = String(modal.querySelector("#ppb-kategori")?.value || "").trim() || "Ketentuan Lain";
+          if (!Number.isInteger(nomorBab) || nomorBab < 1) {
+            toast("Nomor bab wajib berupa angka positif.", "warning");
+            return;
+          }
+          if (!judul) {
+            toast("Judul bab wajib diisi.", "warning");
+            return;
+          }
+          if (!isExisting && babFor(nomorBab)) {
+            toast(`BAB ${nomorBab} sudah ada. Gunakan tombol Edit pada bab tersebut.`, "warning");
+            return;
+          }
+          const saveBtn = modal.querySelector("#ppb-save");
+          if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "Menyimpan..."; }
+          try {
+            await fsUpdate(COL.PERATURAN_PERUSAHAAN, `pp-bab-${nomorBab}`, {
+              type: "bab",
+              nomor: nomorBab,
+              judul,
+              kategori,
+              deleted: false
+            });
+            closeModal();
+            await refreshCatalog();
+            toast(`BAB ${nomorBab} berhasil disimpan`, "success");
+          } catch (error) {
+            console.error(error);
+            toast("Gagal menyimpan bab. Periksa izin Firestore Anda.", "error");
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "Simpan Bab"; }
+          }
+        });
+      }
+    });
+  }
+
   function openEditor(pasal = null) {
     if (!canManage) {
       toast("Hanya Superadmin yang dapat mengubah katalog.", "warning");
@@ -879,10 +1048,11 @@ export async function mount(container, { session, params } = {}) {
     const existing = pasal ? articleFor(pasal) : null;
     const isExisting = !!existing;
     const builtin = existing ? isBuiltin(existing.pasal) : false;
+    const defaultBab = babs[babs.length - 1];
     const values = existing || {
       pasal: nextPasalNumber(),
-      bab: PP_BABS[PP_BABS.length - 1]?.nomor || 1,
-      kategori: "",
+      bab: defaultBab?.nomor || 1,
+      kategori: defaultBab?.kategori || "",
       judul: "",
       ayat: [],
       ringkasan: "",
@@ -895,6 +1065,15 @@ export async function mount(container, { session, params } = {}) {
     };
     const disiplin = values.disiplin || {};
     const hasOverride = isExisting && !!overrideMap().get(values.pasal);
+    const editorBabs = [...babs];
+    if (existing && !editorBabs.some(bab => Number(bab.nomor) === Number(existing.bab))) {
+      editorBabs.push({
+        nomor: Number(existing.bab),
+        judul: existing.bab_judul || `Bab ${existing.bab}`,
+        kategori: existing.kategori || "",
+        is_custom: true
+      });
+    }
 
     const body = `
       <div class="space-y-4 text-sm">
@@ -905,8 +1084,9 @@ export async function mount(container, { session, params } = {}) {
           <label class="block">
             <span class="block text-xs font-semibold text-slate-600 mb-1">Bab</span>
             <select id="ppf-bab" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white outline-none">
-              ${PP_BABS.map(b => `<option value="${b.nomor}" ${Number(values.bab) === Number(b.nomor) ? "selected" : ""}>BAB ${b.nomor} — ${escapeHtml(b.judul)}</option>`).join("")}
+              ${editorBabs.map(b => `<option value="${b.nomor}" ${Number(values.bab) === Number(b.nomor) ? "selected" : ""}>BAB ${b.nomor} — ${escapeHtml(b.judul)}</option>`).join("")}
             </select>
+            <span class="block text-[10px] text-slate-400 mt-1">Butuh bab baru? Tutup formulir ini lalu klik <b>Tambah Bab</b> di tab Kelola.</span>
           </label>
           <label class="block">
             <span class="block text-xs font-semibold text-slate-600 mb-1">Nomor Pasal</span>

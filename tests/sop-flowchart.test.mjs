@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   sanitizeMermaidLabel, normalizeCategory, normalizeSteps, stepsFromText,
-  resolveSteps, buildMermaidCode, buildSopNumber, formatSopNumber,
-  isSopReviewDue, summarizeSops
+  resolveSteps, buildMermaidCode, buildFlowchartSvg, buildSopNumber, formatSopNumber,
+  isSopReviewDue, summarizeSops, SOP_STEP_CATEGORIES, SOP_STEP_CATEGORY_LABELS
 } from "../js/sop-flowchart.mjs";
 
 test("sanitizeMermaidLabel membersihkan karakter sintaks Mermaid", () => {
@@ -21,6 +21,19 @@ test("normalizeCategory menerima alias kategori", () => {
   assert.equal(normalizeCategory("mulai"), "START");
   assert.equal(normalizeCategory("selesai"), "END");
   assert.equal(normalizeCategory("apa saja"), "PROCESS");
+});
+
+test("kategori langkah menyediakan START, PROSES, DECISION, DOKUMEN, END, dan LAINNYA", () => {
+  for (const category of ["START", "PROCESS", "DECISION", "DOKUMEN", "END", "LAINNYA"]) {
+    assert.ok(SOP_STEP_CATEGORIES.includes(category), `${category} harus tersedia`);
+    assert.ok(SOP_STEP_CATEGORY_LABELS[category], `${category} harus punya label`);
+  }
+  assert.equal(normalizeCategory("lainnya"), "LAINNYA");
+  assert.equal(normalizeCategory("other"), "LAINNYA");
+  const code = buildMermaidCode("SOP Lainnya", normalizeSteps([
+    { category: "LAINNYA", nama_aktivitas: "Langkah kategori lain" }
+  ]));
+  assert.match(code, /otherStyle/);
 });
 
 test("normalizeSteps mengisi nilai default dan mempertahankan urutan", () => {
@@ -85,6 +98,26 @@ test("buildMermaidCode tetap menghasilkan diagram saat langkah kosong", () => {
   const code = buildMermaidCode("SOP Kosong", []);
   assert.match(code, /N1\(\["START: Mulai Prosedur"\]\)/);
   assert.match(code, /N1 --> N2 --> N3/);
+});
+
+test("buildFlowchartSvg menghasilkan diagram SVG lokal tanpa layanan eksternal", () => {
+  const svg = buildFlowchartSvg({ judul: "SOP & Uji" }, normalizeSteps([
+    { category: "START", nama_aktivitas: "Mulai", actor: "Staf HRD" },
+    { category: "DECISION", nama_aktivitas: "Apakah lengkap?", decision_yes: "Ya", decision_no: "Tidak" },
+    { category: "DOKUMEN", nama_aktivitas: "Cetak formulir" },
+    { category: "LAINNYA", nama_aktivitas: "Langkah khusus" },
+    { category: "END", nama_aktivitas: "Selesai" }
+  ]));
+
+  assert.match(svg, /<svg[\s>]/);
+  assert.match(svg, /SOP &amp; Uji/);
+  assert.match(svg, /START - Mulai/);
+  assert.match(svg, /DECISION - Keputusan/);
+  assert.match(svg, /DOKUMEN - Dokumen/);
+  assert.match(svg, /LAINNYA - Kategori lain/);
+  assert.match(svg, /marker-end="url\(#sop-arrow\)"/);
+  assert.doesNotMatch(svg, /<script/i);
+  assert.doesNotMatch(svg, /kroki/i);
 });
 
 test("nomor SOP mengikuti format SOP/DIVISI/TAHUN/URUT", () => {

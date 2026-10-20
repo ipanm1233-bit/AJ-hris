@@ -9,7 +9,7 @@ import {
 import { isoDocHeaderTable } from "../branding.js";
 import { getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 import { COMPANY_POLICY, POLICY_ARTICLES, PP_2026_POLICY, PP_2026_POLICY_ARTICLES, POLICY_BASIS, POLICY_DECISIONS, assessPolicyDecision, findPolicyArticle, policyPeriodForArticle, buildPp2026PolicyArticles } from "../hr-case-policy.mjs";
-import { mergePpCatalog, disciplinePpArticles } from "../peraturan-perusahaan.mjs";
+import { mergePpCatalog, mergePpBabs, disciplinePpArticles } from "../peraturan-perusahaan.mjs";
 import {
   CASE_CATEGORIES, CASE_SOURCES, ROOT_CAUSES, ACTION_TAKENS, CASE_STATUSES, PRIORITIES,
   ACTION_PLAN_STATUSES, IMPROVEMENT_STATUSES,
@@ -45,7 +45,8 @@ export async function mount(container, { params, session }) {
   gmViewOnly = String(currentSession?.role || "").toUpperCase() === "GM" && !(await canEditModuleData(currentSession));
   caseSearchKeyword = String(params?.get("nik") || params?.get("nama") || "").trim();
   try {
-    const ppCatalog = mergePpCatalog(await fsGetAll(COL.PERATURAN_PERUSAHAAN));
+    const ppRows = await fsGetAll(COL.PERATURAN_PERUSAHAAN);
+    const ppCatalog = mergePpCatalog(ppRows, undefined, mergePpBabs(ppRows));
     ppPolicyArticleOptions = buildPp2026PolicyArticles(disciplinePpArticles(ppCatalog));
   } catch (error) {
     console.warn("Pilihan pasal PP memakai katalog bawaan (override tidak dapat dimuat):", error);

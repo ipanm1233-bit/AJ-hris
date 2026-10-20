@@ -95,12 +95,16 @@ Field "Lampiran URL" (harus copy-paste link manual) diganti jadi `<input type="f
 - Menu baru **Peraturan Perusahaan** (`#peraturan-perusahaan`, alias `#pp`) berisi katalog **75 pasal / 15 bab** Draf Revisi 2026 dari `Analisa_PP_Andela_Jaya_2026`.
 - Baseline data statis di `js/peraturan-perusahaan.mjs`; override Superadmin disimpan di koleksi Firestore `peraturan_perusahaan`. Tidak ada integrasi Supabase, pembayaran, atau perubahan tier layanan.
 - Empat tab: **Katalog Pasal** (cari/filter, detail ayat, cetak), **Sanksi & Disiplin** (tangga sanksi dan pasal rujukan SP), **Kepatuhan PP** (76 butir matriks, temuan, keputusan manajemen, perbandingan klausul, dasar hukum), serta **Kelola Katalog** khusus Superadmin/pemegang izin `peraturan_perusahaan.edit`.
-- Superadmin dapat menambah pasal, mengedit pasal bawaan, menyembunyikan/menghapus pasal, mereset ke naskah bawaan, dan memulihkan pasal. Override langsung dipakai katalog, cetak, dan formulir SP. Rules Firestore membatasi operasi tulis ke Superadmin/pemegang izin; perbaikan rules ini juga mengembalikan akses baca/tulis `sop_dokumen`, `sop_audit`, dan koleksi Gimmick.
+- Superadmin dapat menambah **bab baru**, mengubah judul/kategori bab, menambah pasal (termasuk memilih bab tambahan), mengedit pasal bawaan, menyembunyikan/menghapus pasal, mereset ke naskah bawaan, dan memulihkan pasal. Override langsung dipakai katalog, cetak, dan formulir SP. Rules Firestore membatasi operasi tulis ke Superadmin/pemegang izin; perbaikan rules ini juga mengembalikan akses baca/tulis `sop_dokumen`, `sop_audit`, dan koleksi Gimmick.
 - Tombol **Buat SP** mengarah ke `#pemanggilan?pp=<pasal>`; formulir SP terbuka otomatis dengan `pasal_pp`, kategori pelanggaran, dan tanggal terisi. Surat Peringatan mencetak pasal, dasar hukum, dan status draf.
 - Modul **Konseling & Coaching** memakai katalog 2026 sebagai pilihan pasal, dengan optgroup arsip 2024–2026.
 - Semua tampilan dan dokumen menegaskan bahwa Draf 2026 **belum berkekuatan hukum** sampai disahkan; rujukan pasal tidak menentukan sanksi otomatis.
 
 ---
+
+- **Diagram SOP:** setiap langkah dapat dipilih kategorinya (START, PROCESS, DECISION, DOKUMEN, END, LAINNYA). Render memakai mermaid.js lokal dengan cadangan flowchart SVG murni, sehingga tidak lagi bergantung pada layanan Kroki.io yang sering error 500.
+- **Logo dokumen:** `logoImgTag()` kini memakai `margin:0 auto` + wrapper flex pada kop ISO agar logo selalu tepat di tengah kotak, termasuk pada Tanda Terima Gimmick.
+- **Penyimpanan audit SOP:** validasi header dilakukan sebelum tombol dinonaktifkan dan kegagalan memuat ulang daftar dipisahkan dari keberhasilan penyimpanan, sehingga tidak lagi menampilkan "gagal menyimpan" padahal data sudah tersimpan.
 
 ## File-file Kunci yang Diubah/Ditambahkan
 

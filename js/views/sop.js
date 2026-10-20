@@ -7,8 +7,8 @@ import { renderCrudModule, icon, badge, emptyState } from "../components.js";
 import { hasPermission, canDeleteModuleData } from "../auth.js";
 import { isoDocHeaderTable, COMPANY_NAME, COMPANY_ADDRESS_LINE1 } from "../branding.js";
 import {
-  buildMermaidCode, resolveSteps, normalizeSteps, formatSopNumber,
-  isSopReviewDue, SOP_STEP_CATEGORIES, SOP_STATUSES,
+  buildMermaidCode, buildFlowchartSvg, resolveSteps, normalizeSteps, formatSopNumber,
+  isSopReviewDue, SOP_STEP_CATEGORIES, SOP_STEP_CATEGORY_LABELS, SOP_STATUSES,
   SOP_DIVISIONS, SOP_CATEGORIES, DEFAULT_DECISION_YES, DEFAULT_DECISION_NO
 } from "../sop-flowchart.mjs";
 import {
@@ -130,21 +130,9 @@ function writePrintWindow(win, html) {
 }
 
 /* ---------------------------------------------------------------------
- * MERMAID RENDER — Kroki.io -> mermaid.js CDN -> fallback HTML
+ * MERMAID RENDER - mermaid.js CDN/lokal -> fallback SVG murni
  * ------------------------------------------------------------------- */
 let mermaidModulePromise = null;
-
-async function renderMermaidWithKroki(code) {
-  const res = await fetch("https://kroki.io/mermaid/svg", {
-    method: "POST",
-    headers: { "Content-Type": "text/plain" },
-    body: code
-  });
-  if (!res.ok) throw new Error(`Kroki menolak diagram (${res.status})`);
-  const svg = await res.text();
-  if (!/<svg[\s>]/i.test(svg)) throw new Error("Kroki tidak mengembalikan SVG");
-  return svg;
-}
 
 async function renderMermaidLocally(code) {
   if (!mermaidModulePromise) {
@@ -163,10 +151,17 @@ async function renderMermaidLocally(code) {
   return svg;
 }
 
-async function ensureDiagramSvg(code) {
-  try { return await renderMermaidWithKroki(code); } catch (e) { /* lanjut fallback */ }
-  try { return await renderMermaidLocally(code); } catch (e) { /* lanjut fallback */ }
-  return "";
+async function ensureDiagramSvg(code, sop = {}, steps = []) {
+  try {
+    const svg = await Promise.race([
+      renderMermaidLocally(code),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Mermaid timeout")), 6000))
+    ]);
+    if (/<svg[\s>]/i.test(String(svg || ""))) return svg;
+  } catch (error) {
+    console.warn("Mermaid tidak tersedia, memakai flowchart SVG lokal:", error?.message || error);
+  }
+  return buildFlowchartSvg(sop, steps);
 }
 
 /* ---------------------------------------------------------------------
@@ -651,24 +646,24 @@ export async function mount(container, { session } = {}) {
 
         m.querySelector("#btn-aud-cancel").onclick = closeModal;
         m.querySelector("#btn-aud-save").onclick = async () => {
+          const header = {
+            nomor_audit: m.querySelector("#aud-nomor").value.trim(),
+            divisi: m.querySelector("#aud-divisi").value,
+            periode: m.querySelector("#aud-periode").value.trim(),
+            tanggal: m.querySelector("#aud-tanggal").value,
+            auditor: m.querySelector("#aud-auditor").value.trim(),
+            status: m.querySelector("#aud-status").value,
+            ruang_lingkup: m.querySelector("#aud-lingkup").value.trim(),
+            catatan: m.querySelector("#aud-catatan").value.trim()
+          };
+          if (!header.divisi) {
+            toast("Divisi audit wajib dipilih.", "warning");
+            return;
+          }
           const btn = m.querySelector("#btn-aud-save");
           btn.disabled = true;
           btn.textContent = "Menyimpan...";
           try {
-            const header = {
-              nomor_audit: m.querySelector("#aud-nomor").value.trim(),
-              divisi: m.querySelector("#aud-divisi").value,
-              periode: m.querySelector("#aud-periode").value.trim(),
-              tanggal: m.querySelector("#aud-tanggal").value,
-              auditor: m.querySelector("#aud-auditor").value.trim(),
-              status: m.querySelector("#aud-status").value,
-              ruang_lingkup: m.querySelector("#aud-lingkup").value.trim(),
-              catatan: m.querySelector("#aud-catatan").value.trim()
-            };
-            if (!header.divisi) {
-              toast("Divisi audit wajib dipilih.", "warning");
-              return;
-            }
             const checklist = normalizeChecklist(items);
             const score = computeAuditScore(checklist);
             const grade = gradeAudit(score);
@@ -691,7 +686,14 @@ export async function mount(container, { session } = {}) {
             }
             toast("Audit SOP berhasil disimpan.", "success");
             closeModal();
-            if (typeof reload === "function") await reload();
+            if (typeof reload === "function") {
+              try {
+                await reload();
+              } catch (reloadError) {
+                console.warn("Audit tersimpan, tetapi daftar gagal dimuat ulang:", reloadError);
+                toast("Audit tersimpan, tetapi daftar gagal dimuat ulang. Muat ulang halaman bila perlu.", "warning");
+              }
+            }
           } catch (e) {
             console.error(e);
             toast("Gagal menyimpan audit: " + (e.message || e), "error");
@@ -924,7 +926,7 @@ export async function mount(container, { session } = {}) {
       if (!generatorState.current) return;
       try {
         if (!generatorState.svg) {
-          generatorState.svg = safeSvg(await ensureDiagramSvg(generatorState.code));
+          generatorState.svg = safeSvg(await ensureDiagramSvg(generatorState.code, generatorState.current, generatorState.steps));
         }
         if (!generatorState.svg) throw new Error("Diagram belum tersedia");
         const png = await svgToPngBlob(generatorState.svg);
@@ -1017,8 +1019,8 @@ export async function mount(container, { session } = {}) {
 
   async function renderVisualMode(box) {
     const token = ++generatorState.requestToken;
-    box.innerHTML = loadingBlock("Merender diagram Mermaid...", "Mencoba Kroki.io, lalu mermaid.js lokal.");
-    const svg = await ensureDiagramSvg(generatorState.code);
+    box.innerHTML = loadingBlock("Merender diagram Mermaid...", "Menggunakan mermaid.js lokal dengan cadangan flowchart SVG bawaan.");
+    const svg = await ensureDiagramSvg(generatorState.code, generatorState.current, generatorState.steps);
     if (token !== generatorState.requestToken) return;
 
     generatorState.svg = safeSvg(svg);
@@ -1079,7 +1081,7 @@ export async function mount(container, { session } = {}) {
     box.innerHTML = `
       <div class="space-y-3">
         <div class="flex items-center justify-between pb-2 border-b border-slate-800">
-          <span class="text-xs font-bold text-emerald-400">Kode Bahasa Mermaid (bisa ditempel ke Kroki / Draw.io)</span>
+          <span class="text-xs font-bold text-emerald-400">Kode Mermaid (bisa disalin ke alat diagram Mermaid)</span>
           <button id="btn-sop-copy-inner" class="px-3 py-1 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg font-bold text-xs">Salin Kode</button>
         </div>
         <textarea readonly class="w-full h-[430px] p-4 bg-slate-900 text-emerald-300 rounded-xl font-mono text-[11px] border border-slate-800 outline-none leading-relaxed resize-none">${escapeHtml(generatorState.code)}</textarea>
@@ -1098,7 +1100,7 @@ export async function mount(container, { session } = {}) {
     const token = ++generatorState.requestToken;
     box.innerHTML = loadingBlock("Menyiapkan dokumen SOP...", "Menyusun kop, metadata, alur proses, dan flowchart.");
     if (!generatorState.svg) {
-      generatorState.svg = safeSvg(await ensureDiagramSvg(generatorState.code));
+      generatorState.svg = safeSvg(await ensureDiagramSvg(generatorState.code, generatorState.current, generatorState.steps));
     }
     if (token !== generatorState.requestToken) return;
     const body = buildSopDocumentBody(generatorState.current, generatorState.steps, generatorState.svg);
@@ -1118,7 +1120,7 @@ export async function mount(container, { session } = {}) {
     const win = openPrintPlaceholder();
     if (!win) return;
     let svg = generatorState.svg;
-    if (!svg) svg = safeSvg(await ensureDiagramSvg(generatorState.code));
+    if (!svg) svg = safeSvg(await ensureDiagramSvg(generatorState.code, generatorState.current, generatorState.steps));
     writePrintWindow(win, wrapPrintDocument(`Dokumen SOP - ${sopLabel(sop)}`, buildSopDocumentBody(sop, generatorState.steps, svg)));
   }
 
@@ -1127,7 +1129,7 @@ export async function mount(container, { session } = {}) {
     if (!win) return;
     const steps = resolveSteps(sop);
     const code = buildMermaidCode(sop, steps);
-    const svg = safeSvg(await ensureDiagramSvg(code));
+    const svg = safeSvg(await ensureDiagramSvg(code, sop, steps));
     writePrintWindow(win, wrapPrintDocument(`Dokumen SOP - ${sopLabel(sop)}`, buildSopDocumentBody(sop, steps, svg)));
   }
 
@@ -1135,7 +1137,7 @@ export async function mount(container, { session } = {}) {
     const stepRows = steps.map((step, index) => `
       <tr>
         <td class="center">${index + 1}</td>
-        <td class="center"><b>${escapeHtml(step.category || "PROCESS")}</b></td>
+        <td class="center"><b>${escapeHtml(SOP_STEP_CATEGORY_LABELS[step.category] || step.category || "PROCESS")}</b></td>
         <td>${escapeHtml(step.actor || "-")}</td>
         <td><b>${escapeHtml(step.nama_aktivitas || "")}</b>${step.detail_proses ? `<br/><span class="small">${escapeHtml(step.detail_proses)}</span>` : ""}</td>
       </tr>`).join("");
@@ -1314,7 +1316,7 @@ export async function mount(container, { session } = {}) {
         <div class="space-y-4 text-left text-xs">
           <div class="bg-slate-100 p-3 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-2">
             <p class="text-slate-600 font-medium">
-              Pilih kategori tiap langkah: <b>START, PROCESS, DECISION, DOKUMEN, END</b>. Diagram Mermaid dibuat otomatis dari urutan ini.
+              Pilih kategori tiap langkah: <b>START (mulai), PROCESS (proses), DECISION (keputusan), DOKUMEN, END (selesai), atau LAINNYA</b>. Diagram Mermaid dan flowchart cetak dibuat otomatis dari pilihan ini.
             </p>
             <button id="btn-step-add" class="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl shadow transition shrink-0">+ Tambah Langkah</button>
           </div>
@@ -1351,7 +1353,7 @@ export async function mount(container, { session } = {}) {
                   <div class="md:col-span-3">
                     <label class="block font-bold text-slate-700 mb-1">Kategori <span class="text-rose-500">*</span></label>
                     <select data-step-cat="${index}" class="w-full p-2 rounded-xl border border-slate-300 outline-none focus:border-emerald-500 font-bold bg-white">
-                      ${SOP_STEP_CATEGORIES.map(cat => `<option value="${cat}" ${category === cat ? "selected" : ""}>${cat}</option>`).join("")}
+                      ${SOP_STEP_CATEGORIES.map(cat => `<option value="${cat}" ${category === cat ? "selected" : ""}>${SOP_STEP_CATEGORY_LABELS[cat] || cat}</option>`).join("")}
                     </select>
                   </div>
                   <div class="md:col-span-6">
