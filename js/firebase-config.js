@@ -150,6 +150,7 @@ export const COL = {
  GIMMICK_SOP: "gimmick_sop",
  SOP_DOKUMEN: "sop_dokumen",
  SOP_AUDIT: "sop_audit",
+ PERATURAN_PERUSAHAAN: "peraturan_perusahaan",
  GIMMICK_MASTER: "master_gimmick",
  GIMMICK_STOK: "gimmick_stok",
  GIMMICK_DISTRIBUSI: "gimmick_distribusi",

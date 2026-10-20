@@ -34,13 +34,15 @@ export const PP_2026_POLICY = Object.freeze({
   status: PP_META.status
 });
 
-export const PP_2026_POLICY_ARTICLES = Object.freeze(
-  disciplinePpArticles().map(article => ({
+export function buildPp2026PolicyArticles(articles = disciplinePpArticles()) {
+  return articles.map(article => ({
     id: article.id,
     label: `${article.label} (Draf 2026)`,
     page: null
-  }))
-);
+  }));
+}
+
+export const PP_2026_POLICY_ARTICLES = Object.freeze(buildPp2026PolicyArticles());
 
 export const ALL_POLICY_ARTICLES = Object.freeze([
   ...PP_2026_POLICY_ARTICLES,
@@ -59,11 +61,11 @@ export function policyPeriodForArticle(id) {
 export const POLICY_BASIS = Object.freeze(["Tidak terkait pelanggaran", "Peraturan Perusahaan", "SOP", "Peraturan Perusahaan dan SOP"]);
 export const POLICY_DECISIONS = Object.freeze(["Belum ditentukan", "Coaching / konseling", "Tinjau untuk SP"]);
 
-export function assessPolicyDecision({ basis, articleId, sopReference, evidence, employeeStatement, decision, rationale, currentRuleConfirmed }) {
+export function assessPolicyDecision({ basis, articleId, sopReference, evidence, employeeStatement, decision, rationale, currentRuleConfirmed, policyArticles = ALL_POLICY_ARTICLES }) {
   if (decision !== "Tinjau untuk SP") return [];
   const missing = [];
   if (basis === "Tidak terkait pelanggaran" || !POLICY_BASIS.includes(basis)) missing.push("pilih dasar pelanggaran PP atau SOP");
-  if (basis?.includes("Peraturan Perusahaan") && !ALL_POLICY_ARTICLES.some(a => a.id === articleId)) missing.push("pilih pasal PP");
+  if (basis?.includes("Peraturan Perusahaan") && !policyArticles.some(a => a.id === articleId)) missing.push("pilih pasal PP");
   if (basis?.includes("SOP") && !String(sopReference || "").trim()) missing.push("isi identitas dan butir SOP");
   if (!String(evidence || "").trim()) missing.push("catat bukti yang dapat diperiksa");
   if (!String(employeeStatement || "").trim()) missing.push("catat klarifikasi karyawan");

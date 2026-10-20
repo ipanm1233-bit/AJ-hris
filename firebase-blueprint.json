@@ -341,6 +341,10 @@
       "schema": "object",
       "description": "SOP compliance audit sessions and findings"
     },
+    "/peraturan_perusahaan/{articleId}": {
+      "schema": "object",
+      "description": "Overrides, hidden built-in articles, and custom articles for the Company Regulations catalog"
+    },
     "/master_gimmick/{itemId}": {
       "schema": "object",
       "description": "Gimmick item master data"

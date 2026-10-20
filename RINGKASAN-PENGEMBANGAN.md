@@ -93,8 +93,9 @@ Field "Lampiran URL" (harus copy-paste link manual) diganti jadi `<input type="f
 ## 12. Peraturan Perusahaan per Pasal & Integrasi Disiplin
 
 - Menu baru **Peraturan Perusahaan** (`#peraturan-perusahaan`, alias `#pp`) berisi katalog **75 pasal / 15 bab** Draf Revisi 2026 dari `Analisa_PP_Andela_Jaya_2026`.
-- Data statis di `js/peraturan-perusahaan.mjs` — tidak menambah koleksi Firestore/Supabase, tidak memicu pembayaran, dan tidak mengubah tier layanan apa pun.
-- Tiga tab: **Katalog Pasal** (cari/filter, detail ayat, cetak), **Sanksi & Disiplin** (tangga sanksi dan pasal rujukan SP), serta **Kepatuhan PP** (76 butir matriks, temuan, keputusan manajemen, perbandingan klausul, dasar hukum).
+- Baseline data statis di `js/peraturan-perusahaan.mjs`; override Superadmin disimpan di koleksi Firestore `peraturan_perusahaan`. Tidak ada integrasi Supabase, pembayaran, atau perubahan tier layanan.
+- Empat tab: **Katalog Pasal** (cari/filter, detail ayat, cetak), **Sanksi & Disiplin** (tangga sanksi dan pasal rujukan SP), **Kepatuhan PP** (76 butir matriks, temuan, keputusan manajemen, perbandingan klausul, dasar hukum), serta **Kelola Katalog** khusus Superadmin/pemegang izin `peraturan_perusahaan.edit`.
+- Superadmin dapat menambah pasal, mengedit pasal bawaan, menyembunyikan/menghapus pasal, mereset ke naskah bawaan, dan memulihkan pasal. Override langsung dipakai katalog, cetak, dan formulir SP. Rules Firestore membatasi operasi tulis ke Superadmin/pemegang izin; perbaikan rules ini juga mengembalikan akses baca/tulis `sop_dokumen`, `sop_audit`, dan koleksi Gimmick.
 - Tombol **Buat SP** mengarah ke `#pemanggilan?pp=<pasal>`; formulir SP terbuka otomatis dengan `pasal_pp`, kategori pelanggaran, dan tanggal terisi. Surat Peringatan mencetak pasal, dasar hukum, dan status draf.
 - Modul **Konseling & Coaching** memakai katalog 2026 sebagai pilihan pasal, dengan optgroup arsip 2024–2026.
 - Semua tampilan dan dokumen menegaskan bahwa Draf 2026 **belum berkekuatan hukum** sampai disahkan; rujukan pasal tidak menentukan sanksi otomatis.
@@ -110,10 +111,14 @@ Field "Lampiran URL" (harus copy-paste link manual) diganti jadi `<input type="f
 | `js/ai-config.js` | **Baru** — konfigurasi Gemini terpusat |
 | `js/utils.js` | Helper field dinamis (`dynFieldWrapperHtml`, `wireDynFormLogic`, `collectDynFormDetail`), export CSV kolom-terpilih |
 | `js/components.js` | Notifikasi global, tombol print generik (`printFn`), modal pemilih kolom export, dukungan prefill form CRUD |
-| `js/peraturan-perusahaan.mjs` | **Baru** — katalog 75 pasal PP Draf 2026, matriks kepatuhan, helper pencarian & relasi disiplin |
-| `js/views/peraturan-perusahaan.js` | **Baru** — tiga tab katalog/sanksi/kepatuhan, cetak pasal, tautan ke Disiplin & SP |
-| `js/hr-case-policy.mjs` | Katalog pasal 2026 + arsip 2024–2026, validasi pasal gabungan |
-| `js/views/pemanggilan.js` | Field pasal PP, kategori pelanggaran, prefill dari `?pp=`, cetak dasar hukum |
+| `js/peraturan-perusahaan.mjs` | **Baru** — katalog 75 pasal PP Draf 2026, matriks kepatuhan, helper pencarian, merge override, relasi disiplin |
+| `js/views/peraturan-perusahaan.js` | **Baru** - empat tab katalog/sanksi/kepatuhan/kelola, cetak pasal, editor Superadmin, tautan ke Disiplin & SP |
+| `views/peraturan-perusahaan.html` | Shell tab katalog/disiplin/kepatuhan/kelola |
+| `js/firebase-config.js` | Nama koleksi `peraturan_perusahaan` untuk override katalog |
+| `firestore.rules` | Baca katalog untuk pengguna aktif; tulis hanya Superadmin/pemegang izin edit; deploy ulang mengembalikan akses koleksi SOP & Gimmick |
+| `js/hr-case-policy.mjs` | Katalog pasal 2026 + arsip 2024–2026, builder opsi dinamis, validasi pasal gabungan |
+| `js/views/pemanggilan.js` | Field pasal PP, kategori pelanggaran, prefill dari `?pp=`, cetak dasar hukum, katalog override |
+| `js/views/konseling-coaching.js` | Pilihan pasal PP mengikuti override katalog dan validasi SP dinamis |
 | `js/views/cuti.js` | Hak akses bertingkat, form cetak sesuai template asli |
 | `js/views/manajemen-cuti.js` | Rumus jatah cuti sesuai SK |
 | `js/views/form-builder.js` | Field kondisional, tipe file, konfigurasi LPJ |

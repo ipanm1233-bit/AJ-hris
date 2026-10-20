@@ -8,7 +8,8 @@ import {
 } from "../utils.js";
 import { isoDocHeaderTable } from "../branding.js";
 import { getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
-import { COMPANY_POLICY, POLICY_ARTICLES, PP_2026_POLICY, PP_2026_POLICY_ARTICLES, POLICY_BASIS, POLICY_DECISIONS, assessPolicyDecision, findPolicyArticle, policyPeriodForArticle } from "../hr-case-policy.mjs";
+import { COMPANY_POLICY, POLICY_ARTICLES, PP_2026_POLICY, PP_2026_POLICY_ARTICLES, POLICY_BASIS, POLICY_DECISIONS, assessPolicyDecision, findPolicyArticle, policyPeriodForArticle, buildPp2026PolicyArticles } from "../hr-case-policy.mjs";
+import { mergePpCatalog, disciplinePpArticles } from "../peraturan-perusahaan.mjs";
 import {
   CASE_CATEGORIES, CASE_SOURCES, ROOT_CAUSES, ACTION_TAKENS, CASE_STATUSES, PRIORITIES,
   ACTION_PLAN_STATUSES, IMPROVEMENT_STATUSES,
@@ -23,8 +24,14 @@ export { CASE_CATEGORIES, CASE_SOURCES, ROOT_CAUSES, ACTION_TAKENS, CASE_STATUSE
 // Module State
 let activeTab = "dashboard";
 let currentSession = null;
+let ppPolicyArticleOptions = PP_2026_POLICY_ARTICLES;
 let gmViewOnly = false;
 let allCases = [];
+
+function findCurrentPolicyArticle(id) {
+  return ppPolicyArticleOptions.find(article => article.id === String(id || "")) || findPolicyArticle(id);
+}
+
 let allEmployees = [];
 let allActionPlans = [];
 let allFollowups = [];
@@ -37,6 +44,13 @@ export async function mount(container, { params, session }) {
   currentSession = session || getSession();
   gmViewOnly = String(currentSession?.role || "").toUpperCase() === "GM" && !(await canEditModuleData(currentSession));
   caseSearchKeyword = String(params?.get("nik") || params?.get("nama") || "").trim();
+  try {
+    const ppCatalog = mergePpCatalog(await fsGetAll(COL.PERATURAN_PERUSAHAAN));
+    ppPolicyArticleOptions = buildPp2026PolicyArticles(disciplinePpArticles(ppCatalog));
+  } catch (error) {
+    console.warn("Pilihan pasal PP memakai katalog bawaan (override tidak dapat dimuat):", error);
+    ppPolicyArticleOptions = PP_2026_POLICY_ARTICLES;
+  }
   
   if (params && params.get("tab")) {
     const t = params.get("tab");
@@ -1193,7 +1207,7 @@ function showCaseFormModal(caseId = null, prefill = {}) {
             <select id="kc-policy-article" class="w-full mt-1 border border-slate-200 rounded-lg p-2 bg-white">
               <option value="">Pilih jika terkait PP</option>
               <optgroup label="Draf Revisi 2026 (belum disahkan)">
-                ${PP_2026_POLICY_ARTICLES.map(a => `<option value="${a.id}" ${a.id === existing?.policy_review?.article_id ? 'selected' : ''}>${escapeHtml(a.label)}</option>`).join('')}
+                ${ppPolicyArticleOptions.map(a => `<option value="${a.id}" ${a.id === existing?.policy_review?.article_id ? 'selected' : ''}>${escapeHtml(a.label)}</option>`).join('')}
               </optgroup>
               <optgroup label="Arsip 2024–2026">
                 ${POLICY_ARTICLES.map(a => `<option value="${a.id}" ${a.id === existing?.policy_review?.article_id ? 'selected' : ''}>${escapeHtml(a.label)} (PDF hlm. ${a.page})</option>`).join('')}
@@ -1320,7 +1334,14 @@ function showCaseFormModal(caseId = null, prefill = {}) {
         toast("Hanya HRD yang dapat mengusulkan peninjauan SP.", "warning");
         return;
       }
-      const missing = assessPolicyDecision({ ...policyReview, articleId: policyReview.article_id, sopReference: policyReview.sop_reference, employeeStatement: empExpl, currentRuleConfirmed: policyReview.current_rule_confirmed });
+      const missing = assessPolicyDecision({
+        ...policyReview,
+        articleId: policyReview.article_id,
+        sopReference: policyReview.sop_reference,
+        employeeStatement: empExpl,
+        currentRuleConfirmed: policyReview.current_rule_confirmed,
+        policyArticles: [...ppPolicyArticleOptions, ...POLICY_ARTICLES]
+      });
       if (missing.length) {
         toast("Lengkapi asesmen SP: " + missing.join(", "), "warning");
         return;
@@ -1485,7 +1506,7 @@ export function showCaseDetail(caseId) {
       <div class="bg-amber-50 p-4 rounded-xl border border-amber-200 space-y-2 text-xs">
         <h4 class="font-black text-slate-800 uppercase">Dasar aturan & rekomendasi HR</h4>
         <p>Dasar: <b>${escapeHtml(c.policy_review?.basis || "Belum dinilai")}</b></p>
-        ${c.policy_review?.article_id ? `<p>PP: <b>${escapeHtml(findPolicyArticle(c.policy_review.article_id)?.label || c.policy_review.article_id)}</b> (${escapeHtml(c.policy_review.document_period || COMPANY_POLICY.period)})</p>` : ''}
+        ${c.policy_review?.article_id ? `<p>PP: <b>${escapeHtml(findCurrentPolicyArticle(c.policy_review.article_id)?.label || c.policy_review.article_id)}</b> (${escapeHtml(c.policy_review.document_period || COMPANY_POLICY.period)})</p>` : ''}
         ${c.policy_review?.sop_reference ? `<p>SOP: <b>${escapeHtml(c.policy_review.sop_reference)}</b></p>` : ''}
         <p>Bukti: ${escapeHtml(c.policy_review?.evidence || "Belum dicatat")}</p>
         <p>Pertimbangan: ${escapeHtml(c.policy_review?.rationale || "Belum dicatat")}</p>
@@ -1935,7 +1956,7 @@ export async function printCaseDossier(caseId) {
   <div class="section-title">Dasar Aturan & Rekomendasi HR</div>
   <table class="grid-table">
     <tr><td width="25%"><b>Hubungan pelanggaran</b></td><td>: ${escapeHtml(c.policy_review?.basis || "Belum dinilai")}</td></tr>
-    <tr><td><b>Pasal PP</b></td><td>: ${escapeHtml(findPolicyArticle(c.policy_review?.article_id)?.label || "-")} ${c.policy_review?.article_id ? `(${escapeHtml(c.policy_review.document_period || COMPANY_POLICY.period)})` : ''}</td></tr>
+    <tr><td><b>Pasal PP</b></td><td>: ${escapeHtml(findCurrentPolicyArticle(c.policy_review?.article_id)?.label || "-")} ${c.policy_review?.article_id ? `(${escapeHtml(c.policy_review.document_period || COMPANY_POLICY.period)})` : ''}</td></tr>
     <tr><td><b>SOP terkait</b></td><td>: ${escapeHtml(c.policy_review?.sop_reference || "-")}</td></tr>
     <tr><td><b>Bukti</b></td><td>: ${escapeHtml(c.policy_review?.evidence || "-")}</td></tr>
     <tr><td><b>Pertimbangan</b></td><td>: ${escapeHtml(c.policy_review?.rationale || "-")}</td></tr>

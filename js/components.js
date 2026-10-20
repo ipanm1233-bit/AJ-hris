@@ -228,7 +228,23 @@ export async function renderCrudModule(container, cfg) {
  tbody.innerHTML = `<tr><td colspan="${columns.length + 1}" class="p-4"><div class="space-y-2">${skeletonRows(3)}</div></td></tr>`;
 
  async function load() {
+ try {
  rows = await fsGetAll(collectionName, orderByField ? { orderByField } : {});
+ } catch (error) {
+  console.error(`Gagal memuat ${collectionName}:`, error);
+  rows = [];
+  const denied = String(error?.code || "").includes("permission-denied")
+   || String(error?.message || "").includes("Missing or insufficient permissions");
+  if (tbody) tbody.innerHTML = "";
+  const emptyEl = container.querySelector("#crud-empty");
+  if (emptyEl) emptyEl.innerHTML = emptyState(
+   denied ? "Akses database ditolak" : "Data gagal dimuat",
+   denied
+    ? "Firestore menolak permintaan baca. Pastikan rules Firestore sudah dideploy dan akun Anda aktif. Hubungi Superadmin bila akses menu sudah diberikan tetapi tetap ditolak."
+    : "Periksa koneksi internet lalu muat ulang halaman."
+  );
+  return;
+ }
  if (filterFn) rows = rows.filter(filterFn);
  renderRows(rows);
  }

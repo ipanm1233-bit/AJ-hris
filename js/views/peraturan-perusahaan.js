@@ -1,14 +1,15 @@
 import {
-  PP_META, PP_BABS, PP_CATEGORIES,
+  PP_META, PP_BABS, PP_ARTICLES,
   PP_COMPLIANCE_SUMMARY, PP_KEY_FINDINGS, PP_COMPARISONS,
   PP_MANAGEMENT_DECISIONS, PP_LEGAL_BASIS, PP_COMPLIANCE_MATRIX,
   disciplinePpArticles, getPpArticle, ppArticleLabel, ppArticleReferences,
-  searchPpArticles, ppStats
+  searchPpArticles, ppStats, ppCategories, mergePpCatalog
 } from "../peraturan-perusahaan.mjs";
 import { icon, badge, emptyState } from "../components.js";
 import { hasPermission, canAccessRoute } from "../auth.js";
-import { escapeHtml, navigate, toast, openModal, closeModal } from "../utils.js";
+import { escapeHtml, navigate, toast, openModal, closeModal, confirmDialog, fsGetAll, fsUpdate, fsDelete } from "../utils.js";
 import { isoDocHeaderTable } from "../branding.js";
+import { COL } from "../firebase-config.js";
 
 const STATUS_TONE = {
   "TIDAK SESUAI": "red",
@@ -31,6 +32,10 @@ function ringkas(text, max = 210) {
 function articleAyat(article) {
   if (!article?.ayat?.length) return "<p class=\"text-sm text-slate-500\">Teks ayat belum tersedia.</p>";
   return article.ayat.map(p => `<p class="text-sm text-slate-700 leading-relaxed">${escapeHtml(p)}</p>`).join("");
+}
+
+function splitList(value, separator = /[,;\n]/) {
+  return String(value || "").split(separator).map(item => item.trim()).filter(Boolean);
 }
 
 function printShell(title, bodyHtml) {
@@ -85,7 +90,8 @@ export async function mount(container, { session, params } = {}) {
   const panels = {
     katalog: container.querySelector("#pp-panel-katalog"),
     disiplin: container.querySelector("#pp-panel-disiplin"),
-    kepatuhan: container.querySelector("#pp-panel-kepatuhan")
+    kepatuhan: container.querySelector("#pp-panel-kepatuhan"),
+    kelola: container.querySelector("#pp-panel-kelola")
   };
   const state = {
     tab: "katalog",
@@ -94,13 +100,68 @@ export async function mount(container, { session, params } = {}) {
     kategori: "",
     disciplineOnly: false,
     matrixQuery: "",
-    matrixStatus: ""
+    matrixStatus: "",
+    manageQuery: ""
   };
-  const stats = ppStats();
+
+  let catalog = PP_ARTICLES;
+  let overrides = [];
+  let categories = ppCategories(PP_ARTICLES);
+  let stats = ppStats(PP_ARTICLES);
+  let overrideLoadError = false;
+
   const canView = await hasPermission("peraturan_perusahaan.view", session);
   const canPrint = await hasPermission("peraturan_perusahaan.print", session);
+  const canManage = await hasPermission("peraturan_perusahaan.edit", session);
   const canLinkDiscipline = await hasPermission("peraturan_perusahaan.disiplin", session)
     && await canAccessRoute("pemanggilan", session);
+
+  function applyOverrides(rows) {
+    overrides = Array.isArray(rows) ? rows : [];
+    catalog = mergePpCatalog(overrides);
+    categories = ppCategories(catalog);
+    stats = ppStats(catalog);
+  }
+
+  async function loadOverrides() {
+    try {
+      const rows = await fsGetAll(COL.PERATURAN_PERUSAHAAN);
+      overrideLoadError = false;
+      return rows;
+    } catch (error) {
+      overrideLoadError = true;
+      console.warn("Gagal memuat perubahan katalog Peraturan Perusahaan:", error);
+      return [];
+    }
+  }
+
+  applyOverrides(await loadOverrides());
+
+  function overrideMap() {
+    const map = new Map();
+    overrides.forEach(row => {
+      const pasal = Number(row?.pasal || 0);
+      if (pasal) map.set(pasal, row);
+    });
+    return map;
+  }
+
+  function isBuiltin(pasal) {
+    return PP_ARTICLES.some(article => article.pasal === Number(pasal));
+  }
+
+  function articleFor(pasal) {
+    return getPpArticle(pasal, catalog);
+  }
+
+  function nextPasalNumber() {
+    const highest = Math.max(
+      0,
+      ...PP_ARTICLES.map(article => article.pasal),
+      ...catalog.map(article => article.pasal)
+    );
+    return highest + 1;
+  }
 
   function goToDiscipline(pasal) {
     if (!canLinkDiscipline) {
@@ -115,14 +176,27 @@ export async function mount(container, { session, params } = {}) {
       query: state.query,
       kategori: state.kategori,
       bab: state.bab,
-      disciplineOnly: state.disciplineOnly
+      disciplineOnly: state.disciplineOnly,
+      articles: catalog
     });
+  }
+
+  async function refreshCatalog({ rerenderKatalog = true } = {}) {
+    applyOverrides(await loadOverrides());
+    delete panels.disiplin.dataset.rendered;
+    delete panels.kepatuhan.dataset.rendered;
+    delete panels.kelola.dataset.rendered;
+    if (rerenderKatalog) renderKatalog();
+    if (state.tab === "disiplin") renderDisiplin();
+    if (state.tab === "kepatuhan") renderKepatuhan();
+    if (state.tab === "kelola") renderKelola();
   }
 
   function articleCard(article) {
     const disiplinBadge = article.disiplin ? badge("Terkait Disiplin", "red") : "";
     const catatanBadge = article.catatan ? badge("Catatan", "amber") : "";
     const perubahanBadge = article.perubahan ? badge("Diperbarui", "green") : "";
+    const customBadge = article.is_custom ? badge("Pasal Tambahan", "blue") : "";
     return `
       <article class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md hover:border-maroon-200 transition flex flex-col">
         <div class="flex items-start justify-between gap-2 mb-2">
@@ -131,7 +205,7 @@ export async function mount(container, { session, params } = {}) {
         </div>
         <h3 class="font-bold text-slate-800 text-sm leading-snug">${escapeHtml(article.judul)}</h3>
         <p class="text-xs text-slate-500 mt-2 leading-relaxed flex-1">${escapeHtml(ringkas(article.ringkasan))}</p>
-        <div class="flex flex-wrap gap-1.5 mt-3">${disiplinBadge}${perubahanBadge}${catatanBadge}</div>
+        <div class="flex flex-wrap gap-1.5 mt-3">${customBadge}${disiplinBadge}${perubahanBadge}${catatanBadge}</div>
         <div class="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100">
           <button data-pp-open="${article.pasal}" class="flex-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition">Lihat Detail</button>
           ${article.disiplin ? `<button data-pp-sp="${article.pasal}" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-maroon-700 text-white hover:bg-maroon-800 transition">Buat SP</button>` : ""}
@@ -196,7 +270,7 @@ export async function mount(container, { session, params } = {}) {
               <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Kategori</label>
               <select id="pp-kategori" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 outline-none">
                 <option value="">Semua kategori</option>
-                ${PP_CATEGORIES.map(k => `<option value="${escapeHtml(k)}" ${state.kategori === k ? "selected" : ""}>${escapeHtml(k)}</option>`).join("")}
+                ${categories.map(k => `<option value="${escapeHtml(k)}" ${state.kategori === k ? "selected" : ""}>${escapeHtml(k)}</option>`).join("")}
               </select>
             </div>
             <div class="md:col-span-1 flex items-end">
@@ -274,9 +348,9 @@ export async function mount(container, { session, params } = {}) {
   }
 
   function openArticle(pasal) {
-    const article = getPpArticle(pasal);
+    const article = articleFor(pasal);
     if (!article) return;
-    const refs = ppArticleReferences(article);
+    const refs = ppArticleReferences(article, catalog);
     const disiplin = article.disiplin;
     const body = `
       <div class="space-y-4 text-sm">
@@ -284,6 +358,7 @@ export async function mount(container, { session, params } = {}) {
           <span class="text-xs font-black uppercase tracking-wider text-maroon-700 bg-maroon-50 px-2.5 py-1 rounded-lg">Pasal ${article.pasal}</span>
           ${badge(`BAB ${article.bab} — ${article.bab_judul}`, "slate")}
           ${badge(article.kategori, "blue")}
+          ${article.is_custom ? badge("Pasal Tambahan", "blue") : ""}
           ${disiplin ? badge("Terkait Disiplin", "red") : ""}
         </div>
         <div>
@@ -312,11 +387,13 @@ export async function mount(container, { session, params } = {}) {
       bodyHtml: body,
       footerHtml: `
         <button id="pp-detail-close" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Tutup</button>
+        ${canManage ? `<button id="pp-detail-edit" class="px-4 py-2 rounded-lg text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 transition">Edit Pasal</button>` : ""}
         ${canPrint ? `<button id="pp-detail-print" class="px-4 py-2 rounded-lg text-sm font-medium bg-slate-900 text-white hover:bg-slate-800 transition">Cetak Pasal</button>` : ""}
         ${disiplin && canLinkDiscipline ? `<button id="pp-detail-sp" class="px-4 py-2 rounded-lg text-sm font-semibold bg-maroon-700 text-white hover:bg-maroon-800 transition">Buat SP / Tindak Lanjut</button>` : ""}`,
       onMount: (modal) => {
         modal.querySelector("#pp-detail-close")?.addEventListener("click", closeModal);
         modal.querySelector("#pp-detail-print")?.addEventListener("click", () => printArticle(article));
+        modal.querySelector("#pp-detail-edit")?.addEventListener("click", () => { closeModal(); openEditor(article.pasal); });
         modal.querySelector("#pp-detail-sp")?.addEventListener("click", () => { closeModal(); goToDiscipline(article.pasal); });
         modal.querySelectorAll("[data-pp-ref]").forEach(btn => {
           btn.addEventListener("click", () => { closeModal(); openArticle(Number(btn.dataset.ppRef)); });
@@ -362,8 +439,8 @@ export async function mount(container, { session, params } = {}) {
       panels.disiplin.innerHTML = emptyState("Akses belum diberikan", "Hubungi HRD atau Superadmin.");
       return;
     }
-    const items = disciplinePpArticles();
-    const ladder = [43, 44, 49, 53, 54].map(getPpArticle).filter(Boolean);
+    const items = disciplinePpArticles(catalog);
+    const ladder = [43, 44, 49, 53, 54, 70].map(pasal => getPpArticle(pasal, catalog)).filter(Boolean);
     panels.disiplin.innerHTML = `
       <div class="space-y-5">
         <div class="bg-red-50 border border-red-200 rounded-2xl p-4">
@@ -376,7 +453,7 @@ export async function mount(container, { session, params } = {}) {
           </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-5 gap-2.5">
+        <div class="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-2.5">
           ${ladder.map((a, i) => `
             <button data-pp-open="${a.pasal}" class="text-left bg-white border border-slate-200 rounded-2xl p-3.5 hover:border-red-300 hover:shadow-md transition">
               <span class="w-7 h-7 rounded-full bg-red-50 text-red-700 text-xs font-black flex items-center justify-center mb-2">${i + 1}</span>
@@ -588,7 +665,399 @@ export async function mount(container, { session, params } = {}) {
     renderMatrix();
   }
 
+  /* -------------------------------------------------------------------
+   * KELOLA KATALOG (SUPERADMIN / PEMEGANG IZIN MANAGE)
+   * ----------------------------------------------------------------- */
+  function renderKelola() {
+    if (!canManage) {
+      panels.kelola.innerHTML = emptyState("Akses kelola katalog belum diberikan", "Hanya Superadmin atau pengguna dengan izin peraturan_perusahaan.edit yang dapat mengubah pasal.");
+      return;
+    }
+    const map = overrideMap();
+    const hidden = PP_ARTICLES.filter(article => {
+      const row = map.get(article.pasal);
+      return !!(row && row.deleted);
+    });
+    const customCount = catalog.filter(article => article.is_custom).length;
+    const editedCount = overrides.filter(row => row && !row.deleted && isBuiltin(Number(row.pasal))).length;
+    const term = state.manageQuery.trim().toLowerCase();
+    const list = catalog.filter(article => {
+      if (!term) return true;
+      return [article.pasal, article.judul, article.kategori, article.bab_judul, article.ayat.join(" ")]
+        .join(" ").toLowerCase().includes(term);
+    });
+
+    const sourceBadge = (article) => {
+      if (article.is_custom) return badge("Pasal Tambahan", "blue");
+      if (map.get(article.pasal) && !map.get(article.pasal).deleted) return badge("Diedit", "green");
+      return badge("Bawaan", "slate");
+    };
+
+    panels.kelola.innerHTML = `
+      <div class="space-y-5">
+        <div class="bg-slate-900 text-white rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div>
+            <p class="text-[10px] font-black uppercase tracking-widest text-white/50">Khusus Superadmin</p>
+            <h2 class="text-lg font-bold mt-1">Kelola Katalog Peraturan Perusahaan</h2>
+            <p class="text-xs text-white/60 mt-1">Tambah pasal baru, edit pasal bawaan, atau sembunyikan pasal. Perubahan disimpan di Firestore dan langsung dipakai katalog, Disiplin & SP, serta cetak.</p>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button id="pp-manage-add" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-white text-slate-900 hover:bg-slate-100 transition">${icon("plus", "w-4 h-4")} Tambah Pasal</button>
+            <button id="pp-manage-refresh" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-white/10 text-white hover:bg-white/20 transition">${icon("refresh", "w-4 h-4")} Muat Ulang</button>
+          </div>
+        </div>
+
+        ${overrideLoadError ? `<div class="bg-red-50 border border-red-200 rounded-2xl p-3 text-xs text-red-800">Perubahan katalog gagal dimuat dari Firestore. Periksa koneksi, status akun, dan rules koleksi <b>peraturan_perusahaan</b>. Katalog bawaan tetap dapat dibaca.</div>` : ""}
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div class="bg-white border border-slate-200 rounded-2xl p-4"><p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Pasal Aktif</p><p class="text-2xl font-black text-slate-800 mt-1">${catalog.length}</p></div>
+          <div class="bg-white border border-slate-200 rounded-2xl p-4"><p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Pasal Tambahan</p><p class="text-2xl font-black text-blue-700 mt-1">${customCount}</p></div>
+          <div class="bg-white border border-slate-200 rounded-2xl p-4"><p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Pasal Diedit</p><p class="text-2xl font-black text-emerald-700 mt-1">${editedCount}</p></div>
+          <div class="bg-white border border-slate-200 rounded-2xl p-4"><p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Disembunyikan</p><p class="text-2xl font-black text-amber-700 mt-1">${hidden.length}</p></div>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-2xl p-4">
+          <div class="flex flex-col md:flex-row md:items-end gap-2.5">
+            <div class="flex-1">
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Cari pasal</label>
+              <input id="pp-manage-search" value="${escapeHtml(state.manageQuery)}" placeholder="Cari nomor, judul, atau isi ayat..." class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 outline-none">
+            </div>
+            <p class="text-xs text-slate-500">${list.length} pasal ditampilkan</p>
+          </div>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th class="text-left px-4 py-2.5 font-bold">Pasal</th>
+                  <th class="text-left px-4 py-2.5 font-bold">Judul</th>
+                  <th class="text-left px-4 py-2.5 font-bold">Bab</th>
+                  <th class="text-left px-4 py-2.5 font-bold">Sumber</th>
+                  <th class="text-right px-4 py-2.5 font-bold">Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${list.length ? list.map(article => `
+                  <tr class="border-t border-slate-100 align-top">
+                    <td class="px-4 py-3 font-bold text-maroon-700 whitespace-nowrap">Pasal ${article.pasal}</td>
+                    <td class="px-4 py-3">
+                      <p class="font-semibold text-slate-800">${escapeHtml(article.judul)}</p>
+                      <p class="text-[11px] text-slate-400">${escapeHtml(article.kategori)} · ${article.ayat.length} ayat</p>
+                    </td>
+                    <td class="px-4 py-3 text-xs text-slate-600">BAB ${article.bab}<br><span class="text-[11px] text-slate-400">${escapeHtml(article.bab_judul)}</span></td>
+                    <td class="px-4 py-3">${sourceBadge(article)}</td>
+                    <td class="px-4 py-3 text-right whitespace-nowrap">
+                      <button data-pp-manage-edit="${article.pasal}" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">Edit</button>
+                      ${article.is_custom
+                        ? `<button data-pp-manage-delete="${article.pasal}" class="ml-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-700 hover:bg-red-100 transition">Hapus</button>`
+                        : (map.get(article.pasal) && !map.get(article.pasal).deleted
+                          ? `<button data-pp-manage-reset="${article.pasal}" class="ml-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 hover:bg-amber-100 transition">Reset</button>
+                             <button data-pp-manage-hide="${article.pasal}" class="ml-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-700 hover:bg-red-100 transition">Sembunyikan</button>`
+                          : `<button data-pp-manage-hide="${article.pasal}" class="ml-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-700 hover:bg-red-100 transition">Sembunyikan</button>`)}
+                    </td>
+                  </tr>`).join("") : `<tr><td colspan="5" class="p-4">${emptyState("Tidak ada pasal yang cocok", "Ubah kata kunci pencarian.")}</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        ${hidden.length ? `
+        <div class="bg-white border border-amber-200 rounded-2xl p-4">
+          <h3 class="text-sm font-bold text-slate-800">Pasal bawaan yang disembunyikan</h3>
+          <p class="text-xs text-slate-500 mt-0.5">Klik Pulihkan untuk mengembalikan pasal asli dari katalog bawaan.</p>
+          <div class="mt-3 space-y-2">
+            ${hidden.map(article => `
+              <div class="flex items-center justify-between gap-2 border border-slate-100 rounded-xl p-2.5">
+                <div>
+                  <p class="text-xs font-semibold text-slate-700">Pasal ${article.pasal} — ${escapeHtml(article.judul)}</p>
+                  <p class="text-[11px] text-slate-400">BAB ${article.bab} — ${escapeHtml(article.bab_judul)}</p>
+                </div>
+                <button data-pp-manage-restore="${article.pasal}" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition">Pulihkan</button>
+              </div>`).join("")}
+          </div>
+        </div>` : ""}
+      </div>`;
+
+    panels.kelola.querySelector("#pp-manage-add")?.addEventListener("click", () => openEditor());
+    panels.kelola.querySelector("#pp-manage-refresh")?.addEventListener("click", async () => {
+      await refreshCatalog();
+      toast("Katalog dimuat ulang", "success");
+    });
+    panels.kelola.querySelector("#pp-manage-search")?.addEventListener("input", (event) => {
+      state.manageQuery = event.target.value;
+      renderKelola();
+      const nextSearch = panels.kelola.querySelector("#pp-manage-search");
+      if (nextSearch) {
+        nextSearch.focus();
+        nextSearch.setSelectionRange(nextSearch.value.length, nextSearch.value.length);
+      }
+    });
+    panels.kelola.querySelectorAll("[data-pp-manage-edit]").forEach(btn => {
+      btn.addEventListener("click", () => openEditor(Number(btn.dataset.ppManageEdit)));
+    });
+    panels.kelola.querySelectorAll("[data-pp-manage-hide]").forEach(btn => {
+      btn.addEventListener("click", () => hideArticle(Number(btn.dataset.ppManageHide)));
+    });
+    panels.kelola.querySelectorAll("[data-pp-manage-delete]").forEach(btn => {
+      btn.addEventListener("click", () => deleteCustomArticle(Number(btn.dataset.ppManageDelete)));
+    });
+    panels.kelola.querySelectorAll("[data-pp-manage-reset]").forEach(btn => {
+      btn.addEventListener("click", () => resetOverride(Number(btn.dataset.ppManageReset)));
+    });
+    panels.kelola.querySelectorAll("[data-pp-manage-restore]").forEach(btn => {
+      btn.addEventListener("click", () => restoreArticle(Number(btn.dataset.ppManageRestore)));
+    });
+  }
+
+  async function hideArticle(pasal) {
+    if (!canManage) return;
+    const article = articleFor(pasal);
+    if (!article) return;
+    const ok = await confirmDialog(`Sembunyikan Pasal ${pasal} — ${article.judul} dari katalog? Pasal dapat dipulihkan kembali.`, { title: "Sembunyikan Pasal", danger: true });
+    if (!ok) return;
+    try {
+      await fsUpdate(COL.PERATURAN_PERUSAHAAN, `pp-${pasal}`, { pasal, deleted: true });
+      await refreshCatalog();
+      toast(`Pasal ${pasal} disembunyikan`, "success");
+    } catch (error) {
+      console.error(error);
+      toast("Gagal menyembunyikan pasal. Periksa izin Firestore Anda.", "error");
+    }
+  }
+
+  async function deleteCustomArticle(pasal) {
+    if (!canManage) return;
+    const article = articleFor(pasal);
+    if (!article) return;
+    const ok = await confirmDialog(`Hapus permanen pasal tambahan ${pasal} — ${article.judul}?`, { title: "Hapus Pasal", danger: true });
+    if (!ok) return;
+    try {
+      await fsDelete(COL.PERATURAN_PERUSAHAAN, `pp-${pasal}`);
+      await refreshCatalog();
+      toast(`Pasal ${pasal} dihapus`, "success");
+    } catch (error) {
+      console.error(error);
+      toast("Gagal menghapus pasal. Periksa izin Firestore Anda.", "error");
+    }
+  }
+
+  async function resetOverride(pasal) {
+    if (!canManage) return;
+    const article = articleFor(pasal);
+    if (!article) return;
+    const ok = await confirmDialog(`Kembalikan Pasal ${pasal} — ${article.judul} ke naskah bawaan? Perubahan manual akan dihapus.`, { title: "Reset ke Bawaan", danger: true });
+    if (!ok) return;
+    try {
+      await fsDelete(COL.PERATURAN_PERUSAHAAN, `pp-${pasal}`);
+      await refreshCatalog();
+      toast(`Pasal ${pasal} dikembalikan ke bawaan`, "success");
+    } catch (error) {
+      console.error(error);
+      toast("Gagal mereset pasal. Periksa izin Firestore Anda.", "error");
+    }
+  }
+
+  async function restoreArticle(pasal) {
+    if (!canManage) return;
+    try {
+      await fsDelete(COL.PERATURAN_PERUSAHAAN, `pp-${pasal}`);
+      await refreshCatalog();
+      toast(`Pasal ${pasal} dipulihkan`, "success");
+    } catch (error) {
+      console.error(error);
+      toast("Gagal memulihkan pasal. Periksa izin Firestore Anda.", "error");
+    }
+  }
+
+  function openEditor(pasal = null) {
+    if (!canManage) {
+      toast("Hanya Superadmin yang dapat mengubah katalog.", "warning");
+      return;
+    }
+    const existing = pasal ? articleFor(pasal) : null;
+    const isExisting = !!existing;
+    const builtin = existing ? isBuiltin(existing.pasal) : false;
+    const values = existing || {
+      pasal: nextPasalNumber(),
+      bab: PP_BABS[PP_BABS.length - 1]?.nomor || 1,
+      kategori: "",
+      judul: "",
+      ayat: [],
+      ringkasan: "",
+      dasar_hukum: [],
+      referensi: [],
+      tags: [],
+      perubahan: "",
+      catatan: "",
+      disiplin: null
+    };
+    const disiplin = values.disiplin || {};
+    const hasOverride = isExisting && !!overrideMap().get(values.pasal);
+
+    const body = `
+      <div class="space-y-4 text-sm">
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900">
+          Perubahan ini tersimpan di Firestore. Naskah 2026 tetap berstatus draf sampai disahkan; jangan menghapus peringatan status pada dokumen.
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <label class="block">
+            <span class="block text-xs font-semibold text-slate-600 mb-1">Bab</span>
+            <select id="ppf-bab" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white outline-none">
+              ${PP_BABS.map(b => `<option value="${b.nomor}" ${Number(values.bab) === Number(b.nomor) ? "selected" : ""}>BAB ${b.nomor} — ${escapeHtml(b.judul)}</option>`).join("")}
+            </select>
+          </label>
+          <label class="block">
+            <span class="block text-xs font-semibold text-slate-600 mb-1">Nomor Pasal</span>
+            <input id="ppf-pasal" type="number" min="1" max="999" value="${escapeHtml(values.pasal)}" ${isExisting ? "readonly" : ""} class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 ${isExisting ? "bg-slate-100 text-slate-500" : "bg-white"} outline-none">
+          </label>
+          <label class="block">
+            <span class="block text-xs font-semibold text-slate-600 mb-1">Kategori</span>
+            <input id="ppf-kategori" list="ppf-kategori-list" value="${escapeHtml(values.kategori)}" placeholder="Contoh: Cuti & Izin" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 outline-none">
+            <datalist id="ppf-kategori-list">${categories.map(k => `<option value="${escapeHtml(k)}"></option>`).join("")}</datalist>
+          </label>
+        </div>
+        <label class="block">
+          <span class="block text-xs font-semibold text-slate-600 mb-1">Judul Pasal <span class="text-red-500">*</span></span>
+          <input id="ppf-judul" value="${escapeHtml(values.judul)}" placeholder="Contoh: Cuti Tahunan" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 outline-none">
+        </label>
+        <label class="block">
+          <span class="block text-xs font-semibold text-slate-600 mb-1">Ayat / Isi Pasal <span class="text-red-500">*</span> <span class="text-[10px] font-normal text-slate-400">(satu ayat per baris)</span></span>
+          <textarea id="ppf-ayat" rows="6" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 outline-none font-mono leading-relaxed">${escapeHtml((values.ayat || []).join("\n"))}</textarea>
+        </label>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <label class="block">
+            <span class="block text-xs font-semibold text-slate-600 mb-1">Ringkasan</span>
+            <textarea id="ppf-ringkasan" rows="3" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 outline-none">${escapeHtml(values.ringkasan || "")}</textarea>
+          </label>
+          <label class="block">
+            <span class="block text-xs font-semibold text-slate-600 mb-1">Catatan / Butir Keputusan</span>
+            <textarea id="ppf-catatan" rows="3" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 outline-none">${escapeHtml(values.catatan || "")}</textarea>
+          </label>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <label class="block">
+            <span class="block text-xs font-semibold text-slate-600 mb-1">Dasar Hukum <span class="text-[10px] font-normal text-slate-400">(pisahkan dengan ;)</span></span>
+            <input id="ppf-dasar" value="${escapeHtml((values.dasar_hukum || []).join("; "))}" placeholder="UU 13/2003; PP 35/2021" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 outline-none">
+          </label>
+          <label class="block">
+            <span class="block text-xs font-semibold text-slate-600 mb-1">Pasal Terkait <span class="text-[10px] font-normal text-slate-400">(nomor, pisahkan koma)</span></span>
+            <input id="ppf-referensi" value="${escapeHtml((values.referensi || []).join(", "))}" placeholder="9, 10, 43" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 outline-none">
+          </label>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <label class="block">
+            <span class="block text-xs font-semibold text-slate-600 mb-1">Perubahan Kunci</span>
+            <input id="ppf-perubahan" value="${escapeHtml(values.perubahan || "")}" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 outline-none">
+          </label>
+          <label class="block">
+            <span class="block text-xs font-semibold text-slate-600 mb-1">Tag <span class="text-[10px] font-normal text-slate-400">(pisahkan koma)</span></span>
+            <input id="ppf-tags" value="${escapeHtml((values.tags || []).join(", "))}" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 outline-none">
+          </label>
+        </div>
+
+        <div class="bg-red-50 border border-red-200 rounded-xl p-3 space-y-3">
+          <label class="flex items-center gap-2 text-xs font-bold text-red-900">
+            <input id="ppf-disiplin" type="checkbox" ${values.disiplin ? "checked" : ""} class="rounded border-red-300 text-red-700">
+            Pasal ini terkait Disiplin &amp; SP
+          </label>
+          <div id="ppf-disiplin-fields" class="${values.disiplin ? "" : "hidden"} grid grid-cols-1 md:grid-cols-3 gap-3">
+            <label class="block">
+              <span class="block text-[11px] font-semibold text-red-900 mb-1">Tingkat</span>
+              <input id="ppf-disiplin-tingkat" value="${escapeHtml(disiplin.tingkat || "")}" placeholder="Teguran / SP / PHK" class="w-full px-3 py-2 text-sm rounded-lg border border-red-200 outline-none">
+            </label>
+            <label class="block">
+              <span class="block text-[11px] font-semibold text-red-900 mb-1">Jenis Pelanggaran</span>
+              <input id="ppf-disiplin-jenis" value="${escapeHtml((disiplin.jenis || []).join(", "))}" placeholder="Pelanggaran ringan, berat" class="w-full px-3 py-2 text-sm rounded-lg border border-red-200 outline-none">
+            </label>
+            <label class="block">
+              <span class="block text-[11px] font-semibold text-red-900 mb-1">Catatan</span>
+              <input id="ppf-disiplin-catatan" value="${escapeHtml(disiplin.catatan || "")}" class="w-full px-3 py-2 text-sm rounded-lg border border-red-200 outline-none">
+            </label>
+          </div>
+        </div>
+      </div>`;
+
+    openModal({
+      title: isExisting ? `Edit Pasal ${values.pasal}` : "Tambah Pasal Baru",
+      size: "xl",
+      bodyHtml: body,
+      footerHtml: `
+        <button id="ppf-cancel" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">Batal</button>
+        ${isExisting && builtin && hasOverride ? `<button id="ppf-reset" class="px-4 py-2 rounded-lg text-sm font-medium bg-amber-50 text-amber-700 hover:bg-amber-100 transition">Reset ke Bawaan</button>` : ""}
+        <button id="ppf-save" class="px-4 py-2 rounded-lg text-sm font-semibold bg-maroon-700 text-white hover:bg-maroon-800 transition">Simpan Pasal</button>`,
+      onMount: (modal) => {
+        modal.querySelector("#ppf-cancel")?.addEventListener("click", closeModal);
+        modal.querySelector("#ppf-reset")?.addEventListener("click", async () => { closeModal(); await resetOverride(values.pasal); });
+        modal.querySelector("#ppf-disiplin")?.addEventListener("change", (event) => {
+          modal.querySelector("#ppf-disiplin-fields")?.classList.toggle("hidden", !event.target.checked);
+        });
+        modal.querySelector("#ppf-save")?.addEventListener("click", async () => {
+          const pasalNumber = Number(modal.querySelector("#ppf-pasal")?.value || 0);
+          const judul = String(modal.querySelector("#ppf-judul")?.value || "").trim();
+          const ayat = splitList(modal.querySelector("#ppf-ayat")?.value || "", /\r?\n/);
+          if (!pasalNumber || pasalNumber < 1) {
+            toast("Nomor pasal wajib diisi dengan angka positif.", "warning");
+            return;
+          }
+          if (!judul) {
+            toast("Judul pasal wajib diisi.", "warning");
+            return;
+          }
+          if (!ayat.length) {
+            toast("Isi pasal minimal satu ayat.", "warning");
+            return;
+          }
+          if (isExisting && pasalNumber !== Number(values.pasal)) {
+            toast("Nomor pasal tidak boleh diubah saat mengedit. Buat pasal baru bila perlu.", "warning");
+            return;
+          }
+          if (!isExisting && articleFor(pasalNumber)) {
+            toast(`Pasal ${pasalNumber} sudah ada. Gunakan tombol Edit pada pasal tersebut.`, "warning");
+            return;
+          }
+          const disiplinOn = !!modal.querySelector("#ppf-disiplin")?.checked;
+          const payload = {
+            pasal: pasalNumber,
+            deleted: false,
+            bab: Number(modal.querySelector("#ppf-bab")?.value || 1),
+            judul,
+            kategori: String(modal.querySelector("#ppf-kategori")?.value || "").trim(),
+            ayat,
+            ringkasan: String(modal.querySelector("#ppf-ringkasan")?.value || "").trim(),
+            dasar_hukum: splitList(modal.querySelector("#ppf-dasar")?.value || "", /[;\n]/),
+            referensi: splitList(modal.querySelector("#ppf-referensi")?.value || "", /[,;\n]/)
+              .map(item => Number(item))
+              .filter(number => Number.isInteger(number) && number > 0),
+            tags: splitList(modal.querySelector("#ppf-tags")?.value || "", /[,;\n]/),
+            perubahan: String(modal.querySelector("#ppf-perubahan")?.value || "").trim(),
+            catatan: String(modal.querySelector("#ppf-catatan")?.value || "").trim(),
+            disiplin: disiplinOn ? {
+              tingkat: String(modal.querySelector("#ppf-disiplin-tingkat")?.value || "").trim(),
+              jenis: splitList(modal.querySelector("#ppf-disiplin-jenis")?.value || "", /[,;\n]/),
+              catatan: String(modal.querySelector("#ppf-disiplin-catatan")?.value || "").trim()
+            } : null
+          };
+          const saveBtn = modal.querySelector("#ppf-save");
+          if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "Menyimpan..."; }
+          try {
+            await fsUpdate(COL.PERATURAN_PERUSAHAAN, `pp-${pasalNumber}`, payload);
+            closeModal();
+            await refreshCatalog();
+            toast(`Pasal ${pasalNumber} berhasil disimpan`, "success");
+          } catch (error) {
+            console.error(error);
+            toast("Gagal menyimpan pasal. Periksa izin Firestore Anda.", "error");
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "Simpan Pasal"; }
+          }
+        });
+      }
+    });
+  }
+
   function switchTab(tab) {
+    if (tab === "kelola" && !canManage) return;
     state.tab = tab;
     Object.entries(panels).forEach(([key, panel]) => panel?.classList.toggle("hidden", key !== tab));
     container.querySelectorAll(".pp-tab").forEach(btn => {
@@ -606,7 +1075,14 @@ export async function mount(container, { session, params } = {}) {
       renderKepatuhan();
       panels.kepatuhan.dataset.rendered = "1";
     }
+    if (tab === "kelola" && !panels.kelola.dataset.rendered) {
+      renderKelola();
+      panels.kelola.dataset.rendered = "1";
+    }
   }
+
+  const manageTabBtn = container.querySelector('[data-pptab="kelola"]');
+  if (manageTabBtn) manageTabBtn.classList.toggle("hidden", !canManage);
 
   renderKatalog();
   container.querySelectorAll(".pp-tab").forEach(btn => {
@@ -615,7 +1091,7 @@ export async function mount(container, { session, params } = {}) {
 
   const initialPasal = params?.get?.("pasal");
   if (initialPasal) {
-    const article = getPpArticle(initialPasal);
+    const article = articleFor(initialPasal);
     if (article) setTimeout(() => openArticle(article.pasal), 60);
   }
 

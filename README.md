@@ -107,6 +107,7 @@ Fungsi ini dipakai konsisten di seluruh aplikasi (`super-migrasi.html` maupun ta
 | `rekrutmen_pelamar` | *(skema baru)* | auto | Pipeline ATS |
 | `sop_dokumen` | *(skema baru)* | auto | Dokumen SOP, langkah proses, jadwal review |
 | `sop_audit` | *(skema baru)* | auto | Sesi audit kepatuhan SOP per divisi + temuan |
+| `peraturan_perusahaan` | *(skema baru)* | auto | Override, pasal tambahan, dan penanda sembunyi untuk katalog PP |
 | `master_gimmick` | *(skema baru)* | auto | Master barang gimmick marketing |
 | `gimmick_stok` | *(skema baru)* | auto | Alokasi stok per Sales / SPV / Principle / area |
 | `gimmick_distribusi` | *(skema baru)* | auto | Distribusi ke toko/customer + tanda terima 2 ply |
@@ -163,12 +164,13 @@ Modul-modul manajemen sederhana (Inventory, Kendaraan, SOP, Gimmick, Uang Makan,
 
 ## 8A. Peraturan Perusahaan (PP) per Pasal & Integrasi Disiplin
 
-Menu **Peraturan Perusahaan** (`#peraturan-perusahaan`, alias `#pp`) menampilkan katalog **75 pasal / 15 bab** Draf Revisi 2026 CV Andela Jaya, lengkap dengan ayat, kategori, dasar hukum, referensi pasal, perubahan kunci, dan catatan butir keputusan. Sumber data statis ada di `js/peraturan-perusahaan.mjs`; tidak ada koleksi Firestore baru dan tidak ada proses pembayaran/upgrade layanan.
+Menu **Peraturan Perusahaan** (`#peraturan-perusahaan`, alias `#pp`) menampilkan katalog **75 pasal / 15 bab** Draf Revisi 2026 CV Andela Jaya, lengkap dengan ayat, kategori, dasar hukum, referensi pasal, perubahan kunci, dan catatan butir keputusan. Baseline katalog tetap statis di `js/peraturan-perusahaan.mjs`. Perubahan Superadmin disimpan sebagai override di koleksi Firestore `peraturan_perusahaan`; tidak ada proses pembayaran/upgrade layanan.
 
-Tiga tab tersedia:
+Empat tab tersedia:
 1. **Katalog Pasal** — pencarian kata kunci, filter bab/kategori, dan filter pasal terkait disiplin. Detail pasal dapat dicetak atau ditindaklanjuti ke menu Disiplin & SP.
 2. **Sanksi & Disiplin** — ringkasan tangga sanksi (Pasal 43, 44, 49, 53, 54, 70) serta tabel pasal yang dapat dijadikan rujukan SP.
 3. **Kepatuhan PP** — rekap matriks kepatuhan PP 2024–2026 (76 butir), temuan utama, butir keputusan manajemen, perbandingan klausul kunci, dan daftar dasar hukum.
+4. **Kelola Katalog** — hanya tampil untuk **Superadmin** atau pemegang izin `peraturan_perusahaan.edit`. Superadmin dapat menambah pasal, mengedit pasal bawaan, menyembunyikan pasal, mereset ke naskah bawaan, dan memulihkan pasal yang disembunyikan. Override digabungkan dengan katalog saat halaman dimuat, sehingga perubahan langsung tampil di katalog, cetak, serta pilihan pasal Disiplin & SP. Rules Firestore membatasi tulis ke Superadmin/pemegang izin tersebut; baca katalog tetap tersedia bagi pengguna aktif.
 
 **Integrasi Disiplin & SP:** tombol “Buat SP” membawa nomor pasal ke `#pemanggilan?pp=44`. Formulir SP otomatis terbuka dengan pasal, kategori pelanggaran, dan tanggal terisi. Saat disimpan, sistem menyimpan `pasal_pp`, `pasal_pp_id`, `dasar_hukum`, `pp_periode`, dan `pp_status`, lalu mencetaknya pada Surat Peringatan. Modul Konseling & Coaching juga memakai katalog 2026 sebagai pilihan pasal (selain arsip 2024–2026).
 

@@ -5,9 +5,9 @@ import {
   PP_COMPLIANCE_SUMMARY, PP_COMPLIANCE_MATRIX, PP_MANAGEMENT_DECISIONS,
   PP_COMPARISONS, PP_LEGAL_BASIS, PP_KEY_FINDINGS,
   getPpArticle, ppArticleLabel, disciplinePpArticles, searchPpArticles, ppStats,
-  ppArticleReferences
+  ppArticleReferences, mergePpCatalog, normalizePpArticle, ppCategories
 } from "../js/peraturan-perusahaan.mjs";
-import { PP_2026_POLICY_ARTICLES, ALL_POLICY_ARTICLES, policyPeriodForArticle, findPolicyArticle } from "../js/hr-case-policy.mjs";
+import { PP_2026_POLICY_ARTICLES, ALL_POLICY_ARTICLES, policyPeriodForArticle, findPolicyArticle, buildPp2026PolicyArticles } from "../js/hr-case-policy.mjs";
 
 test("katalog Peraturan Perusahaan memuat 75 pasal dalam 15 bab", () => {
   assert.equal(PP_ARTICLES.length, 75);
@@ -73,6 +73,79 @@ test("statistik katalog konsisten", () => {
   assert.equal(stats.disiplin, disciplinePpArticles().length);
   assert.ok(PP_CATEGORIES.length >= 10);
   assert.ok(PP_DISCIPLINE_CATEGORIES.length >= 5);
+});
+
+test("override Firestore dapat mengedit pasal bawaan tanpa mengubah katalog dasar", () => {
+  const merged = mergePpCatalog([{
+    pasal: 44,
+    bab: 13,
+    judul: "Judul Hasil Edit",
+    kategori: "Disiplin",
+    ayat: ["(1) Isi pasal hasil edit."],
+    ringkasan: "Ringkasan hasil edit.",
+    dasar_hukum: ["UU 13/2003"],
+    disiplin: { tingkat: "SP 2", jenis: ["Pelanggaran berat"], catatan: "Uji" }
+  }]);
+  assert.equal(merged.length, PP_ARTICLES.length);
+  const article = getPpArticle(44, merged);
+  assert.equal(article.judul, "Judul Hasil Edit");
+  assert.equal(article.ayat[0], "(1) Isi pasal hasil edit.");
+  assert.equal(article.disiplin.tingkat, "SP 2");
+  assert.notEqual(getPpArticle(44).judul, "Judul Hasil Edit");
+});
+
+test("pasal bawaan dapat disembunyikan dan pasal baru dapat ditambahkan", () => {
+  const hidden = mergePpCatalog([{ pasal: 43, deleted: true }]);
+  assert.equal(hidden.length, PP_ARTICLES.length - 1);
+  assert.equal(getPpArticle(43, hidden), null);
+
+  const custom = mergePpCatalog([{
+    pasal: 76,
+    bab: 15,
+    judul: "Pasal Tambahan",
+    kategori: "Ketentuan Lain",
+    ayat: ["(1) Pasal tambahan untuk pengujian."],
+    tags: ["uji"],
+    disiplin: { tingkat: "Teguran", jenis: ["Pelanggaran uji"] }
+  }]);
+  assert.equal(custom.length, PP_ARTICLES.length + 1);
+  const article = getPpArticle(76, custom);
+  assert.equal(article.is_custom, true);
+  assert.equal(article.label, "Pasal 76 — Pasal Tambahan");
+  assert.equal(ppStats(custom).total, PP_ARTICLES.length + 1);
+  assert.ok(ppCategories(custom).includes("Ketentuan Lain"));
+  assert.ok(searchPpArticles({ query: "pengujian", articles: custom }).some(a => a.pasal === 76));
+  const policyOptions = buildPp2026PolicyArticles(disciplinePpArticles(custom));
+  assert.ok(policyOptions.some(option => option.id === "pp-76"));
+});
+
+test("normalisasi menolak pasal tanpa nomor, judul, atau ayat", () => {
+  assert.equal(normalizePpArticle({ judul: "Tanpa nomor", ayat: ["(1) Uji"] }), null);
+  assert.equal(normalizePpArticle({ pasal: 76, ayat: ["(1) Uji"] }), null);
+  assert.equal(normalizePpArticle({ pasal: 76, judul: "Tanpa ayat" }), null);
+  assert.ok(normalizePpArticle({ pasal: 76, judul: "Valid", ayat: ["(1) Uji"] }));
+});
+
+test("UI menyediakan pengelolaan katalog dan aturan Firestore untuk Superadmin", async () => {
+  const fs = await import("node:fs");
+  const read = file => fs.readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+  const view = read("js/views/peraturan-perusahaan.js");
+  const html = read("views/peraturan-perusahaan.html");
+  const auth = read("js/auth.js");
+  const rules = read("firestore.rules");
+  const pemanggilan = read("js/views/pemanggilan.js");
+  const konseling = read("js/views/konseling-coaching.js");
+
+  assert.match(html, /data-pptab="kelola"/);
+  assert.match(view, /peraturan_perusahaan\.edit/);
+  assert.match(view, /fsUpdate\(COL\.PERATURAN_PERUSAHAAN/);
+  assert.match(view, /fsDelete\(COL\.PERATURAN_PERUSAHAAN/);
+  assert.match(auth, /peraturan_perusahaan\.edit/);
+  assert.match(rules, /match \/peraturan_perusahaan\/\{id\}/);
+  assert.match(rules, /hasScopedAction\('peraturan_perusahaan\.edit'\)/);
+  assert.match(pemanggilan, /mergePpCatalog/);
+  assert.match(konseling, /ppPolicyArticleOptions/);
+  assert.match(konseling, /buildPp2026PolicyArticles/);
 });
 
 test("matriks kepatuhan memuat 76 butir dan rekap status", () => {

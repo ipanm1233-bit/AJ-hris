@@ -3180,28 +3180,129 @@ function normalizePasal(value) {
   return match ? Number(match[1]) : 0;
 }
 
-export function getPpArticle(value) {
+function asText(value) {
+  return String(value === null || value === undefined ? "" : value).trim();
+}
+
+function asTextArray(value) {
+  if (Array.isArray(value)) return value.map(asText).filter(Boolean);
+  if (typeof value === "string") return value.split(/\r?\n/).map(asText).filter(Boolean);
+  return [];
+}
+
+function asList(value) {
+  if (Array.isArray(value)) return value.map(asText).filter(Boolean);
+  if (typeof value === "string") return value.split(/[,;\n]/).map(asText).filter(Boolean);
+  return [];
+}
+
+function normalizeDisiplin(value) {
+  if (!value) return null;
+  if (value === true) return { tingkat: "Perlu verifikasi", jenis: ["Pelanggaran"], catatan: "" };
+  if (typeof value !== "object") return null;
+  const tingkat = asText(value.tingkat || value.level);
+  const jenis = asList(value.jenis || value.jenis_pelanggaran);
+  const catatan = asText(value.catatan || value.note);
+  if (!tingkat && !jenis.length && !catatan) return null;
+  return { tingkat: tingkat || "Perlu verifikasi", jenis: jenis.length ? jenis : ["Pelanggaran"], catatan };
+}
+
+function babMetaFor(nomor) {
+  return PP_BABS.find(b => Number(b.nomor) === Number(nomor))
+    || PP_BABS[0]
+    || { nomor: 1, judul: "Ketentuan Umum", kategori: "Ketentuan Umum" };
+}
+
+/**
+ * Normalisasi satu dokumen override/kustom dari Firestore menjadi bentuk pasal
+ * yang sama dengan katalog bawaan. Mengembalikan null bila data inti tidak lengkap.
+ */
+export function normalizePpArticle(row = {}, base = null) {
+  const pasal = normalizePasal(row.pasal || base?.pasal);
+  if (!pasal) return null;
+  const judul = asText(row.judul || base?.judul);
+  if (!judul) return null;
+  const bab = Number(row.bab || base?.bab || 1);
+  const babMeta = babMetaFor(bab);
+  const ayat = asTextArray(row.ayat).length ? asTextArray(row.ayat) : (base?.ayat || []);
+  if (!ayat.length) return null;
+  const kategori = asText(row.kategori || base?.kategori) || "Ketentuan Lain";
+  const disiplin = Object.prototype.hasOwnProperty.call(row, "disiplin")
+    ? normalizeDisiplin(row.disiplin)
+    : (base?.disiplin || null);
+  const referensi = asList(row.referensi !== undefined ? row.referensi : base?.referensi)
+    .map(normalizePasal)
+    .filter(Boolean);
+  return {
+    id: `pp-${pasal}`,
+    bab: Number(babMeta.nomor),
+    bab_judul: babMeta.judul,
+    kategori,
+    pasal,
+    judul,
+    label: `Pasal ${pasal} — ${judul}`,
+    ayat,
+    ringkasan: asText(row.ringkasan || base?.ringkasan) || ayat[0],
+    dasar_hukum: asList(row.dasar_hukum !== undefined ? row.dasar_hukum : base?.dasar_hukum),
+    referensi,
+    perubahan: asText(row.perubahan !== undefined ? row.perubahan : base?.perubahan),
+    catatan: asText(row.catatan !== undefined ? row.catatan : base?.catatan),
+    tags: asList(row.tags !== undefined ? row.tags : base?.tags),
+    disiplin,
+    sumber: base ? "bawaan" : "manual",
+    is_custom: !base
+  };
+}
+
+/**
+ * Gabungkan katalog bawaan dengan override dari Firestore.
+ * - Dokumen `{ pasal, deleted: true }` menyembunyikan pasal bawaan.
+ * - Dokumen lain menimpa (edit) pasal bawaan atau menambah pasal baru.
+ */
+export function mergePpCatalog(overrides = [], baseArticles = PP_ARTICLES) {
+  const byPasal = new Map(baseArticles.map(article => [article.pasal, article]));
+  const rows = Array.isArray(overrides) ? overrides : [];
+  rows.filter(row => row && row.deleted).forEach(row => {
+    const pasal = normalizePasal(row);
+    if (pasal) byPasal.delete(pasal);
+  });
+  rows.filter(row => row && !row.deleted).forEach(row => {
+    const pasal = normalizePasal(row);
+    if (!pasal) return;
+    const base = baseArticles.find(article => article.pasal === pasal) || null;
+    const normalized = normalizePpArticle({ ...row, pasal }, base);
+    if (normalized) byPasal.set(pasal, normalized);
+  });
+  return [...byPasal.values()].sort((a, b) => a.pasal - b.pasal);
+}
+
+export function ppCategories(articles = PP_ARTICLES) {
+  return [...new Set(articles.map(article => article.kategori).filter(Boolean))]
+    .sort((a, b) => String(a).localeCompare(String(b), "id"));
+}
+
+export function getPpArticle(value, articles = PP_ARTICLES) {
   const pasal = normalizePasal(value);
-  return PP_ARTICLES.find(a => a.pasal === pasal) || null;
+  return articles.find(article => article.pasal === pasal) || null;
 }
 
-export function ppArticleLabel(article) {
+export function ppArticleLabel(article, articles = PP_ARTICLES) {
   if (!article) return "";
-  return typeof article === "string" ? (getPpArticle(article)?.label || article) : article.label;
+  return typeof article === "string" ? (getPpArticle(article, articles)?.label || article) : article.label;
 }
 
-export function disciplinePpArticles() {
-  return PP_ARTICLES.filter(a => a.disiplin);
+export function disciplinePpArticles(articles = PP_ARTICLES) {
+  return articles.filter(article => article.disiplin);
 }
 
-export function ppArticleReferences(article) {
+export function ppArticleReferences(article, articles = PP_ARTICLES) {
   if (!article) return [];
-  return (article.referensi || []).map(getPpArticle).filter(Boolean);
+  return (article.referensi || []).map(ref => getPpArticle(ref, articles)).filter(Boolean);
 }
 
-export function searchPpArticles({ query = "", kategori = "", bab = "", disciplineOnly = false } = {}) {
+export function searchPpArticles({ query = "", kategori = "", bab = "", disciplineOnly = false, articles = PP_ARTICLES } = {}) {
   const term = String(query || "").trim().toLowerCase();
-  return PP_ARTICLES.filter(article => {
+  return articles.filter(article => {
     if (kategori && article.kategori !== kategori) return false;
     if (bab && Number(article.bab) !== Number(bab)) return false;
     if (disciplineOnly && !article.disiplin) return false;
@@ -3214,19 +3315,19 @@ export function searchPpArticles({ query = "", kategori = "", bab = "", discipli
       article.ringkasan,
       article.ayat.join(" "),
       article.dasar_hukum.join(" "),
-      article.tags.join(" ")
+      (article.tags || []).join(" ")
     ].join(" ").toLowerCase();
     return haystack.includes(term);
   });
 }
 
-export function ppStats() {
+export function ppStats(articles = PP_ARTICLES, babs = PP_BABS) {
   return {
-    total: PP_ARTICLES.length,
-    bab: PP_BABS.length,
-    disiplin: disciplinePpArticles().length,
-    denganCatatan: PP_ARTICLES.filter(a => a.catatan).length,
-    totalPerubahan: PP_ARTICLES.filter(a => a.perubahan).length
+    total: articles.length,
+    bab: babs.length,
+    disiplin: disciplinePpArticles(articles).length,
+    denganCatatan: articles.filter(article => article.catatan).length,
+    totalPerubahan: articles.filter(article => article.perubahan).length
   };
 }
 
@@ -3235,10 +3336,10 @@ export function ppComplianceCount(status) {
   return row ? row.jumlah : 0;
 }
 
-export function findPolicyArticleById(id) {
+export function findPolicyArticleById(id, articles = PP_ARTICLES) {
   const key = String(id || "");
   if (!key) return null;
-  return PP_ARTICLES.find(a => a.id === key || String(a.pasal) === key) || null;
+  return articles.find(article => article.id === key || String(article.pasal) === key) || null;
 }
 
 export function policyPeriodForArticle(id) {

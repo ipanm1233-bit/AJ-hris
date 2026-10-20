@@ -52,6 +52,17 @@ service cloud.firestore {
         && permission.get('allowed_menus', []).hasAny(['absensi'])
         && permission.get('allowed_actions', []).hasAny([action]);
     }
+    // Izin tulis untuk modul yang tidak terikat absensi (mis. katalog PP).
+    // Superadmin selalu lolos lewat role(); pengguna lain harus punya override
+    // allowed_actions yang memuat izin terkait.
+    function hasScopedAction(action) {
+      let permission = get(attendancePermissionDoc()).data;
+      return signedIn() && username() != ''
+        && permission.get('username', '') == username()
+        && permission.get('allowed_menus_set', false) == true
+        && permission.get('read_only', false) == false
+        && permission.get('allowed_actions', []).hasAny([action]);
+    }
 
     match /auth_profiles/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isHrd());
@@ -62,6 +73,14 @@ service cloud.firestore {
       allow get: if signedIn() && (isHrd() || id == request.auth.uid || id == username() || (nik() != '' && id == nik()));
       allow list: if isHrd();
       allow write: if isHrd();
+    }
+
+    // Katalog Peraturan Perusahaan: semua pengguna aktif boleh membaca katalog,
+    // tetapi hanya Superadmin (atau pemegang izin edit) yang boleh mengubah.
+    match /peraturan_perusahaan/{id} {
+      allow read: if signedIn();
+      allow create, update: if role() == 'SUPERADMIN' || hasScopedAction('peraturan_perusahaan.edit');
+      allow delete: if role() == 'SUPERADMIN' || hasScopedAction('peraturan_perusahaan.edit');
     }
 
     match /master_karyawan/{id} {

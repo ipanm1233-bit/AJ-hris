@@ -3,7 +3,7 @@ import { fsGetAll, fsAdd, fmtDateShort, escapeHtml, notifyUser, sendEmailNotif, 
 import { renderCrudModule, icon } from "../components.js";
 import { getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 import { isoDocHeaderTable } from "../branding.js";
-import { disciplinePpArticles, getPpArticle, ppArticleLabel, PP_META } from "../peraturan-perusahaan.mjs";
+import { disciplinePpArticles, getPpArticle, ppArticleLabel, PP_META, mergePpCatalog } from "../peraturan-perusahaan.mjs";
 
 export async function mount(container, { params } = {}) {
  // GM (tanpa override) hanya boleh melihat/export/print → matikan aksi tulis di modul CRUD
@@ -27,7 +27,15 @@ export async function mount(container, { params } = {}) {
 
  // Pilihan pasal PP 2026 yang relevan untuk SP. Label lengkap disimpan agar
  // surat tetap dapat dibaca walau katalog berubah; ID pasal disimpan terpisah.
- const ppDisciplineArticles = disciplinePpArticles();
+ // Override/kustom pasal dari menu Peraturan Perusahaan ikut dimuat agar pasal
+ // tambahan yang terkait disiplin langsung tersedia di formulir SP.
+ let ppCatalog = null;
+ try {
+   ppCatalog = mergePpCatalog(await fsGetAll(COL.PERATURAN_PERUSAHAAN));
+ } catch (error) {
+   console.warn("Katalog PP memakai data bawaan (override tidak dapat dimuat):", error);
+ }
+ const ppDisciplineArticles = disciplinePpArticles(ppCatalog || undefined);
  const ppArticleOptions = ppDisciplineArticles.map(a => ppArticleLabel(a));
  const ppCategoryOptions = [...new Set(ppDisciplineArticles.flatMap(a => a.disiplin?.jenis || []))].sort();
 
@@ -124,7 +132,7 @@ export async function mount(container, { params } = {}) {
  { name: "masa_berlaku", label: "Masa Berlaku Sanksi Hingga", type: "date" },
  ],
  beforeSave: (data) => {
-  const article = getPpArticle(data.pasal_pp);
+  const article = getPpArticle(data.pasal_pp, ppCatalog || undefined);
   const next = { ...data };
   if (article) {
     next.pasal_pp = ppArticleLabel(article);
@@ -191,7 +199,7 @@ export async function mount(container, { params } = {}) {
  panels.sp.querySelector("#sp-open-pp")?.addEventListener("click", () => navigate("peraturan-perusahaan"));
  const ppParam = params?.get?.("pp");
  if (ppParam) {
-   const article = getPpArticle(ppParam);
+   const article = getPpArticle(ppParam, ppCatalog || undefined);
    if (article) {
      const label = ppArticleLabel(article);
      spCrud?.openForm?.(null, {

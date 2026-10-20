@@ -1541,7 +1541,8 @@ export const PERMISSION_CATALOG = [
   actions: [
    { key: "peraturan_perusahaan.view", label: "Lihat Katalog Peraturan Perusahaan per Pasal", type: "view" },
    { key: "peraturan_perusahaan.print", label: "Cetak Pasal / Katalog Peraturan Perusahaan", type: "print" },
-   { key: "peraturan_perusahaan.disiplin", label: "Tindak Lanjut ke Disiplin & SP dari Pasal PP", type: "create" }
+   { key: "peraturan_perusahaan.disiplin", label: "Tindak Lanjut ke Disiplin & SP dari Pasal PP", type: "create" },
+   { key: "peraturan_perusahaan.edit", label: "Tambah / Edit / Sembunyikan Pasal PP (Superadmin)", type: "edit", dangerous: true }
   ]
  },
  {
