@@ -83,6 +83,8 @@ export async function mount(container, { session }) {
   "uang-makan": "UANG MAKAN",
   "inventory": "ASET GA",
   "kendaraan": "KENDARAAN",
+  "sop": "SOP",
+  "gimmick": "GIMMICK",
   "gimmick-sop": "SOP & GIMMICK",
   "training": "PELATIHAN",
   "performance-review": "REVIEW KPI",

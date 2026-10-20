@@ -799,10 +799,60 @@ async function runSeeder() {
       { nama: "Budi Santoso", posisi_dilamar: "Sales Executive", sumber: "Job Portal", status: "Applied", tanggal_lamar: new Date().toISOString(), catatan: "Kandidat contoh (dummy seed)." },
       { nama: "Siti Rahayu", posisi_dilamar: "Staff Admin", sumber: "Referral", status: "Interview", tanggal_lamar: new Date().toISOString(), catatan: "Kandidat contoh (dummy seed)." },
     ], "ATS"),
-    seedCollection(COL.GIMMICK_SOP, [
-      { judul: "SOP Pengajuan Cuti Karyawan", kategori: "SOP", versi: "1.0", status: "Aktif", tanggal_terbit: new Date().toISOString(), deskripsi: "Prosedur standar pengajuan cuti seluruh karyawan." },
-      { judul: "Gimmick Ulang Tahun Karyawan", kategori: "Gimmick", versi: "1.0", status: "Aktif", tanggal_terbit: new Date().toISOString(), deskripsi: "Panduan pemberian gimmick ulang tahun karyawan." },
-    ], "DOC"),
+    seedCollection(COL.SOP_DOKUMEN, [
+      {
+        nomor_dokumen: "SOP/HRD/2026/001",
+        judul: "SOP Pengajuan Cuti Karyawan",
+        divisi: "HRD",
+        kategori: "Prosedur SDM",
+        versi: "1.0",
+        status: "Aktif",
+        tanggal_terbit: new Date().toISOString(),
+        tanggal_review: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString(),
+        pembuat: "HRD",
+        penyetuju: "Direktur Operasional",
+        tujuan: "Menjadi acuan standar pengajuan dan persetujuan cuti karyawan.",
+        ruang_lingkup: "Seluruh karyawan tetap dan kontrak.",
+        alur_proses: [
+          "Karyawan mengisi formulir pengajuan cuti",
+          "Atasan memeriksa sisa cuti dan kebutuhan operasional",
+          "Apakah pengajuan disetujui atasan?",
+          "HRD mencatat cuti pada kartu cuti karyawan",
+          "Dokumen cuti diarsipkan dan proses selesai"
+        ].join("\n"),
+        referensi: "Peraturan Perusahaan dan kebijakan cuti HRD."
+      }
+    ], "SOP"),
+    seedCollection(COL.SOP_AUDIT, [
+      {
+        nomor_audit: "AUD-SOP/2026/001",
+        divisi: "SALES",
+        periode: "Q4 2026",
+        tanggal: new Date().toISOString(),
+        auditor: "HRD & Internal Audit",
+        status: "Selesai",
+        ruang_lingkup: "Kepatuhan administrasi kunjungan dan distribusi gimmick.",
+        checklist: [
+          { klausul: "Dokumentasi", standar: "SOP terdokumentasi dan versi terbaru tersedia", bobot: 2, skor: 4, temuan: "", severity: "Observasi", tindak_lanjut: "", status_tindak_lanjut: "Selesai" },
+          { klausul: "Kepatuhan", standar: "Pelaksanaan kerja sesuai langkah SOP", bobot: 3, skor: 3, temuan: "Sebagian laporan kunjungan terlambat", severity: "Minor", tindak_lanjut: "Percepat input laporan harian", pic: "SPV Sales", deadline: new Date().toISOString(), status_tindak_lanjut: "Progres" }
+        ],
+        catatan: "Contoh sesi audit (dummy seed)."
+      }
+    ], "AUD"),
+    seedCollection(COL.GIMMICK_MASTER, [
+      { kode: "GMK-001", nama_item: "Kalender Meja 2027", principle: "ICI", kategori: "Merchandise", satuan: "Pcs", stok_awal: 100, min_stok: 20, harga_satuan: 15000, status: "Aktif", keterangan: "Contoh master gimmick (dummy seed)." },
+      { kode: "GMK-002", nama_item: "Sample Produk DCOTA", principle: "DCOTA", kategori: "Sample Produk", satuan: "Box", stok_awal: 40, min_stok: 10, harga_satuan: 25000, status: "Aktif", keterangan: "Contoh master gimmick (dummy seed)." }
+    ], "GMK"),
+    seedCollection(COL.GIMMICK_STOK, [
+      { item_nama: "Kalender Meja 2027", alokasi_tipe: "SALES", alokasi_nama: "Sales Contoh", area: "Cirebon", qty_alokasi: 40, tanggal: new Date().toISOString(), catatan: "Contoh alokasi (dummy seed)." },
+      { item_nama: "Sample Produk DCOTA", alokasi_tipe: "SPV SALES", alokasi_nama: "SPV Contoh", area: "Cirebon", qty_alokasi: 20, tanggal: new Date().toISOString(), catatan: "Contoh alokasi (dummy seed)." }
+    ], "GSTK"),
+    seedCollection(COL.GIMMICK_DISTRIBUSI, [
+      { nomor_tt: "TT-GMK/20261020/001", tanggal: new Date().toISOString(), item_nama: "Kalender Meja 2027", qty: 10, satuan: "Pcs", pemberi_tipe: "SALES", pemberi_nama: "Sales Contoh", penerima_tipe: "TOKO / CUSTOMER", penerima_nama: "Toko Contoh", toko_nama: "Toko Contoh", area: "Cirebon", status: "Diterima", keterangan: "Contoh distribusi (dummy seed)." }
+    ], "GDST"),
+    seedCollection(COL.GIMMICK_EFEKTIVITAS, [
+      { item_nama: "Kalender Meja 2027", periode: "Okt 2026", toko_nama: "Toko Contoh", area: "Cirebon", order_sebelum: 10, order_sesudah: 15, value_sebelum: 5000000, value_sesudah: 7500000, engagement: "Tinggi", skor: 100, status_efektivitas: "Efektif", catatan: "Contoh evaluasi (dummy seed)." }
+    ], "GEFK"),
     seedCollection(COL.KALENDER_HR, [
       { judul: "Rapat Koordinasi Bulanan HRD", tanggal_mulai: new Date().toISOString(), jenis: "Agenda", keterangan: "Contoh agenda (dummy seed)." },
     ], "EVT"),

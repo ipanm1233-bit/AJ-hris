@@ -331,7 +331,31 @@
     },
     "/gimmick_sop/{sopId}": {
       "schema": "object",
-      "description": "SOPs"
+      "description": "Legacy combined SOP & gimmick records (read-only)"
+    },
+    "/sop_dokumen/{sopId}": {
+      "schema": "object",
+      "description": "SOP documents, steps, and review schedule"
+    },
+    "/sop_audit/{auditId}": {
+      "schema": "object",
+      "description": "SOP compliance audit sessions and findings"
+    },
+    "/master_gimmick/{itemId}": {
+      "schema": "object",
+      "description": "Gimmick item master data"
+    },
+    "/gimmick_stok/{allocationId}": {
+      "schema": "object",
+      "description": "Gimmick stock allocation per person, area, or warehouse"
+    },
+    "/gimmick_distribusi/{distributionId}": {
+      "schema": "object",
+      "description": "Gimmick distribution to stores and 2-ply receipt data"
+    },
+    "/gimmick_efektivitas/{evaluationId}": {
+      "schema": "object",
+      "description": "Gimmick effectiveness evaluations per store and period"
     },
     "/login_tokens/{tokenId}": {
       "schema": "object",

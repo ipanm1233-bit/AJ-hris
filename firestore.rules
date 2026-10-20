@@ -290,21 +290,27 @@ service cloud.firestore {
         'log_inventory_pengambilan', 'stock_opname', 'gimmick_sop', 'kalender_hr_events',
         'uang_makan_expedisi', 'master_reimbursement_type',
         'sales_orders', 'sales_outlets', 'sales_items', 'sales_tasks', 'sales_tracking',
-        'kanal_data', 'kanal_checkins', 'sales_odometer'
+        'kanal_data', 'kanal_checkins', 'sales_odometer',
+        'sop_dokumen', 'sop_audit', 'master_gimmick', 'gimmick_stok',
+        'gimmick_distribusi', 'gimmick_efektivitas'
       ] && signedIn();
       allow create, update: if collectionName in [
         'log_kendaraan_fuel', 'log_kendaraan_service', 'log_kendaraan_compliance',
         'log_inventory_pengambilan', 'stock_opname', 'gimmick_sop', 'kalender_hr_events',
         'uang_makan_expedisi', 'master_reimbursement_type',
         'sales_orders', 'sales_outlets', 'sales_items', 'sales_tasks', 'sales_tracking',
-        'kanal_data', 'kanal_checkins', 'sales_odometer'
+        'kanal_data', 'kanal_checkins', 'sales_odometer',
+        'sop_dokumen', 'sop_audit', 'master_gimmick', 'gimmick_stok',
+        'gimmick_distribusi', 'gimmick_efektivitas'
       ] && signedIn();
       allow delete: if collectionName in [
         'log_kendaraan_fuel', 'log_kendaraan_service', 'log_kendaraan_compliance',
         'log_inventory_pengambilan', 'stock_opname', 'gimmick_sop', 'kalender_hr_events',
         'uang_makan_expedisi', 'master_reimbursement_type',
         'sales_orders', 'sales_outlets', 'sales_items', 'sales_tasks', 'sales_tracking',
-        'kanal_data', 'kanal_checkins', 'sales_odometer'
+        'kanal_data', 'kanal_checkins', 'sales_odometer',
+        'sop_dokumen', 'sop_audit', 'master_gimmick', 'gimmick_stok',
+        'gimmick_distribusi', 'gimmick_efektivitas'
       ] && isHrd();
     }
 

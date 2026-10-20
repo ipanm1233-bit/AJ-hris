@@ -18,7 +18,7 @@ andela-hris/
 │  ├─ utils.js                ← Smart Date Parser, formatter, toast, modal, CRUD wrapper, field dinamis & upload
 │  ├─ auth.js                  ← Login, sesi, mesin RBAC (menu & form)
 │  ├─ branding.js              ← Logo perusahaan & kop dokumen ber-standar ISO (satu sumber untuk semua dokumen cetak)
-│  ├─ ai-config.js             ← Konfigurasi terpusat AI Gemini (Rekrutmen & Gimmick/SOP)
+│  ├─ ai-config.js             ← Konfigurasi terpusat AI Gemini (Rekrutmen)
 │  ├─ components.js            ← Komponen UI reusable (ikon, tabel CRUD generik, notifikasi, export kolom-terpilih)
 │  ├─ app.js                    ← Router utama (hash-based)
 │  ├─ migrasi-engine.js         ← Logika di balik super-migrasi.html
@@ -55,7 +55,7 @@ andela-hris/
 3. Pastikan status koneksi Firestore hijau (langkah 1 otomatis berjalan).
 4. Unggah file Excel sumber Anda (mis. `Data_Pengajuan.xlsx`) pada langkah 2 — sistem otomatis memetakan tiap sheet ke koleksi Firestore yang sesuai.
 5. Klik **Mulai Migrasi Data** (langkah 3).
-6. Klik **Buat Data Dummy Sekarang** (langkah 4) untuk mengisi modul-modul baru yang belum ada datanya di Excel (Rekrutmen, Gimmick & SOP, Kalender HR, dsb) agar sistem tidak kosong.
+6. Klik **Buat Data Dummy Sekarang** (langkah 4) untuk mengisi modul-modul baru yang belum ada datanya di Excel (Rekrutmen, SOP, Gimmick, Kalender HR, dsb) agar sistem tidak kosong.
 
 ### C. Menjalankan Aplikasi Utama
 Buka `http://localhost:8080/index.html`. Login tetap memakai NIK/username. Akun lama dimigrasikan satu kali di server ke Firebase Authentication; password/hash lama kemudian dihapus dari Firestore.
@@ -105,7 +105,13 @@ Fungsi ini dipakai konsisten di seluruh aplikasi (`super-migrasi.html` maupun ta
 | `evaluasi_kontrak` | Evaluasi_Kontrak | auto | Rekomendasi lanjut/putus kontrak |
 | `log_offboarding` | Log_Offboarding | auto | Proses keluar karyawan |
 | `rekrutmen_pelamar` | *(skema baru)* | auto | Pipeline ATS |
-| `gimmick_sop` | *(skema baru)* | auto | Dokumen SOP/Gimmick |
+| `sop_dokumen` | *(skema baru)* | auto | Dokumen SOP, langkah proses, jadwal review |
+| `sop_audit` | *(skema baru)* | auto | Sesi audit kepatuhan SOP per divisi + temuan |
+| `master_gimmick` | *(skema baru)* | auto | Master barang gimmick marketing |
+| `gimmick_stok` | *(skema baru)* | auto | Alokasi stok per Sales / SPV / Principle / area |
+| `gimmick_distribusi` | *(skema baru)* | auto | Distribusi ke toko/customer + tanda terima 2 ply |
+| `gimmick_efektivitas` | *(skema baru)* | auto | Evaluasi dampak gimmick terhadap order toko |
+| `gimmick_sop` | *(lama)* | auto | Arsip gabungan SOP/Gimmick (tidak dipakai view baru) |
 | `kalender_hr_events` | *(skema baru)* | auto | Agenda manual (ulang tahun/anniversary dihitung otomatis dari `master_karyawan`) |
 | `siklus_karyawan` | *(skema baru)* | auto | Mutasi/promosi/demosi/on-off boarding |
 | `uang_makan_expedisi` | *(skema baru)* | auto | Kalkulasi uang makan tim lapangan |
@@ -151,7 +157,7 @@ Mesin evaluasi ada di `evalFormula()` (`js/utils.js`) — hanya mengizinkan kara
 
 ## 8. Ekstensi / Pengembangan Lanjutan
 
-Modul-modul manajemen sederhana (Inventory, Kendaraan, Gimmick & SOP, Uang Makan, dst) dibangun di atas satu factory generik `renderCrudModule()` (`js/components.js`) — untuk menambah modul CRUD baru, cukup panggil factory ini dengan konfigurasi kolom & form baru, tanpa menulis ulang boilerplate tabel/modal/pencarian/export CSV. Tombol Export otomatis membuka pemilih kolom (centang + seret urutan) yang mengikuti persis kolom yang dikonfigurasi, bukan dump mentah field database.
+Modul-modul manajemen sederhana (Inventory, Kendaraan, SOP, Gimmick, Uang Makan, dst) dibangun di atas satu factory generik `renderCrudModule()` (`js/components.js`) — untuk menambah modul CRUD baru, cukup panggil factory ini dengan konfigurasi kolom & form baru, tanpa menulis ulang boilerplate tabel/modal/pencarian/export CSV. Tombol Export otomatis membuka pemilih kolom (centang + seret urutan) yang mengikuti persis kolom yang dikonfigurasi, bukan dump mentah field database.
 
 ---
 

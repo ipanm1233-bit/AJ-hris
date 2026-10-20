@@ -125,7 +125,8 @@ export const MENU_CONFIG = [
  // KATEGORI: OPERASIONAL
  { id: "inventory", label: "Inventaris", icon: "box", kategori: "Operasional", roles: ["HRD", "GA", "SUPERADMIN"] },
  { id: "kendaraan", label: "Kendaraan", icon: "truck", kategori: "Operasional", roles: ["HRD", "GA", "SUPERADMIN"] },
- { id: "gimmick-sop", label: "SOP & Gimmick", icon: "book", kategori: "Operasional", roles: ["HRD", "SUPERADMIN"] },
+ { id: "sop", label: "SOP", icon: "book", kategori: "Operasional", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"] },
+ { id: "gimmick", label: "Gimmick", icon: "gift", kategori: "Operasional", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"] },
 
  // KATEGORI: SALES
  { id: "sales-order", label: "Sales Order", icon: "wallet", kategori: "Sales", roles: ["ALL"] },
@@ -780,6 +781,22 @@ export async function getBawahanNames(namaAtasan) {
  } catch { return []; }
 }
 
+/**
+ * Kompatibilitas mundur: sebelum menu dipecah, SOP & Gimmick berada dalam
+ * satu menu `gimmick-sop`. Override user lama yang masih menyimpan id itu
+ * otomatis diperluas ke kedua menu baru agar akses tidak hilang.
+ */
+const LEGACY_MENU_ALIASES = Object.freeze({ "gimmick-sop": ["sop", "gimmick"] });
+
+export function expandLegacyMenuIds(ids = []) {
+  const result = new Set(Array.isArray(ids) ? ids : []);
+  Array.from(result).forEach(id => {
+    const aliases = LEGACY_MENU_ALIASES[id];
+    if (aliases) aliases.forEach(alias => result.add(alias));
+  });
+  return Array.from(result);
+}
+
 export async function computeVisibleMenus(session) {
  if (!session) return [];
  const role = (session.role || "").toUpperCase();
@@ -789,7 +806,7 @@ export async function computeVisibleMenus(session) {
 
  // Jika HRD/Super Admin sudah menetapkan daftar menu spesifik untuk user ini -> pakai itu (whitelist absolut)
  if (userOverride && (userOverride.allowed_menus_set || (Array.isArray(userOverride.allowed_menus) && userOverride.allowed_menus.length > 0))) {
-  const allowed = userOverride.allowed_menus || [];
+  const allowed = expandLegacyMenuIds(userOverride.allowed_menus || []);
   let list = MENU_CONFIG.filter(m => allowed.includes(m.id));
   // Sales tidak dapat menu lembur kecuali secara eksplisit ada di allowed_menus custom
   if (isSales && !allowed.includes("lembur-kasbon")) {
@@ -1028,6 +1045,11 @@ export async function canAccessRoute(routeId, session) {
  }
  if (["sppkl", "spl", "lembur", "overtime", "perintah-lembur"].includes(targetId)) {
  targetId = "lembur-kasbon";
+ }
+ // Alias rute lama: #gimmick-sop kini diarahkan ke menu SOP/Gimmick terpisah.
+ if (targetId === "gimmick-sop") {
+  const legacyMenus = await computeVisibleMenus(session);
+  return legacyMenus.some(m => ["sop", "gimmick"].includes(m.id));
  }
 
  // Cek aturan khusus Lembur: Divisi Sales tidak memiliki hak lembur, Karyawan Non-Sales diizinkan akses SPPKL mereka
@@ -1737,15 +1759,39 @@ export const PERMISSION_CATALOG = [
   ]
  },
  {
-  id: "gimmick-sop",
-  label: "SOP & Gimmick",
+  id: "sop",
+  label: "SOP",
   category: "Operasional",
   icon: "book",
   actions: [
-   { key: "gimmick_sop.gimmick.manage", label: "Lihat / Tambah / Edit / Hapus Distribusi Gimmick", type: "edit" },
-   { key: "gimmick_sop.sop.manage", label: "Lihat / Tambah / Edit / Hapus SOP Operasional", type: "edit" },
-   { key: "gimmick_sop.sop.generate_flowchart", label: "Generate Diagram Flowchart SOP", type: "sync" },
-   { key: "gimmick_sop.sop.export", label: "Cetak / Unduh Flowchart & Dokumen SOP", type: "export" }
+   { key: "sop.view", label: "Lihat Database SOP Perusahaan", type: "view" },
+   { key: "sop.create", label: "Buat SOP Baru", type: "create" },
+   { key: "sop.edit", label: "Edit / Revisi SOP", type: "edit" },
+   { key: "sop.delete", label: "Hapus / Arsipkan SOP", type: "delete", dangerous: true },
+   { key: "sop.flowchart.generate", label: "Generate & Atur Diagram Flowchart SOP", type: "sync" },
+   { key: "sop.document.export", label: "Cetak / Unduh Dokumen SOP", type: "export" },
+   { key: "sop.audit.view", label: "Lihat Audit SOP Per Divisi", type: "view" },
+   { key: "sop.audit.create", label: "Jadwalkan Audit SOP", type: "create" },
+   { key: "sop.audit.edit", label: "Input Checklist, Temuan & Tindak Lanjut Audit", type: "edit" },
+   { key: "sop.audit.delete", label: "Hapus Sesi Audit SOP", type: "delete", dangerous: true },
+   { key: "sop.audit.export", label: "Cetak Laporan Audit SOP", type: "export" }
+  ]
+ },
+ {
+  id: "gimmick",
+  label: "Gimmick",
+  category: "Operasional",
+  icon: "gift",
+  actions: [
+   { key: "gimmick.view", label: "Lihat Data Gimmick", type: "view" },
+   { key: "gimmick.master.manage", label: "Kelola Master Barang Gimmick", type: "edit" },
+   { key: "gimmick.stok.manage", label: "Kelola Alokasi Stok per Orang / Area", type: "edit" },
+   { key: "gimmick.distribusi.create", label: "Catat Distribusi Gimmick ke Sales / Toko", type: "create" },
+   { key: "gimmick.distribusi.edit", label: "Edit Data Distribusi Gimmick", type: "edit" },
+   { key: "gimmick.distribusi.delete", label: "Hapus Data Distribusi Gimmick", type: "delete", dangerous: true },
+   { key: "gimmick.receipt.print", label: "Cetak Tanda Terima Gimmick 2 Ply", type: "print" },
+   { key: "gimmick.efektivitas.manage", label: "Input & Analisa Efektivitas Gimmick", type: "edit" },
+   { key: "gimmick.export", label: "Export Data & Laporan Gimmick", type: "export" }
   ]
  },
 
@@ -1956,7 +2002,8 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "uang_makan.create", "uang_makan.edit", "uang_makan.view_all", "uang_makan.export",
   "inventory.barang.view", "inventory.barang.create", "inventory.barang.edit", "inventory.barang.delete", "inventory.barang.scan", "inventory.barang.print_qr", "inventory.restock.edit", "inventory.restock.export", "inventory.ambil.assign", "inventory.ambil.return", "inventory.ambil.print", "inventory.opname.edit", "inventory.opname.print",
   "kendaraan.cards.create", "kendaraan.cards.edit", "kendaraan.cards.delete", "kendaraan.cards.export", "kendaraan.cards.generate_document", "kendaraan.bbm.manage", "kendaraan.service.manage", "kendaraan.pajak.manage",
-  "gimmick_sop.gimmick.manage", "gimmick_sop.sop.manage", "gimmick_sop.sop.generate_flowchart", "gimmick_sop.sop.export",
+  "sop.view", "sop.create", "sop.edit", "sop.delete", "sop.flowchart.generate", "sop.document.export", "sop.audit.view", "sop.audit.create", "sop.audit.edit", "sop.audit.delete", "sop.audit.export",
+  "gimmick.view", "gimmick.master.manage", "gimmick.stok.manage", "gimmick.distribusi.create", "gimmick.distribusi.edit", "gimmick.distribusi.delete", "gimmick.receipt.print", "gimmick.efektivitas.manage", "gimmick.export",
   "manajemen_data.karyawan.manage", "manajemen_data.karyawan.sync_all", "manajemen_data.rekap.view", "manajemen_data.rekap.export", "manajemen_data.dokumen.manage", "manajemen_data.signdoc.manage",
   "pengaturan.users.manage", "pengaturan.users.invite", "pengaturan.rbac.manage", "pengaturan.forms.manage", "pengaturan.kanal.view", "pengaturan.kanal.configure", "pengaturan.kanal.test", "pengaturan.kanal.sync",
   "konfigurasi.general.configure", "konfigurasi.widget_access.configure", "konfigurasi.cuti.bulk_execute", "konfigurasi.email.configure", "konfigurasi.email.send_test", "konfigurasi.email.run_now", "konfigurasi.branch.configure",
@@ -1987,7 +2034,8 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "uang_makan.view_all", "uang_makan.export",
   "inventory.barang.view", "inventory.restock.export", "inventory.opname.print",
   "kendaraan.cards.export", "kendaraan.bbm.manage",
-  "gimmick_sop.sop.manage", "gimmick_sop.sop.export",
+  "sop.view", "sop.document.export", "sop.audit.view", "sop.audit.export",
+  "gimmick.view", "gimmick.receipt.print", "gimmick.export",
   "sales_order.view", "sales_outlet.lihat_semua.view", "sales_item.view", "sales_track.view", "sales_track.export",
   "manajemen_data.rekap.view", "manajemen_data.rekap.export",
   "profile.view", "profile.edit", "profile.documents.view", "profile.sign_document",
@@ -2034,6 +2082,8 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "uang_makan.create",
   "inventory.barang.view", "inventory.ambil.assign", "inventory.ambil.return", "inventory.ambil.print",
   "kendaraan.bbm.manage",
+  "sop.view", "sop.document.export", "sop.audit.view",
+  "gimmick.view", "gimmick.stok.manage", "gimmick.distribusi.create", "gimmick.distribusi.edit", "gimmick.receipt.print", "gimmick.efektivitas.manage", "gimmick.export",
   "sales_order.view", "sales_order.create", "sales_outlet.lihat_semua.view", "sales_item.view", "sales_task.create", "sales_task.edit", "sales_task.complete", "sales_track.view",
   "profile.view", "profile.edit", "profile.documents.view", "profile.sign_document",
   "absensi_saya.view"

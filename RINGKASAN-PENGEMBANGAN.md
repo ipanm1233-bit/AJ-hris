@@ -14,7 +14,7 @@ Dokumen ini merangkum seluruh pembahasan dan perbaikan yang telah dilakukan pada
 
 **Rombak struktur menu (permintaan lanjutan):** Menu dipetakan ulang jadi 3 kelompok sesuai urutan yang diminta:
 - **Menu Utama** — Home & Dashboard, Buat Pengajuan, Klaim Bensin, Riwayat Pengajuan
-- **Modul HRD** — Kalender HR, Penilaian & Kontrak, Rekrutmen (ATS), Siklus Karyawan, Jatah Cuti Karyawan, Uang Makan Expedisi, Lembur & Kasbon, Kedisiplinan & SP, Manajemen Inventory & ATK, Manajemen Gimmick & SOP, Manajemen Kendaraan, Manajemen Data, Akses & Pengguna, Konfigurasi Sistem
+- **Modul HRD** — Kalender HR, Penilaian & Kontrak, Rekrutmen (ATS), Siklus Karyawan, Jatah Cuti Karyawan, Uang Makan Expedisi, Lembur & Kasbon, Kedisiplinan & SP, Manajemen Inventory & ATK, Manajemen SOP, Manajemen Gimmick, Manajemen Kendaraan, Manajemen Data, Akses & Pengguna, Konfigurasi Sistem
 - **Modul Manajemen** — Antrean Persetujuan, Broadcast Memo, Manajemen Absensi, Manajemen Cuti
 
 **Bug tersembunyi yang ikut ditemukan & diperbaiki:** Sistem lama mengecek akses lewat kategori kasar (`role === "HRD"` persis), sehingga **SUPERADMIN dan DIREKTUR sebenarnya terblokir dari hampir semua menu HRD** meskipun namanya ada di daftar `roles` masing-masing menu. Diperbaiki agar setiap menu dicek langsung dari `roles`-nya sendiri. Efek samping: fitur "atur menu per-user" di halaman Akses & Pengguna (yang checkbox-nya tidak tersambung ke apa pun / selalu `undefined`) ikut jadi berfungsi karena ditambahkan field `id` yang stabil ke tiap menu.
