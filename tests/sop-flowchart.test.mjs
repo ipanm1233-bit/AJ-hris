@@ -4,8 +4,11 @@ import { readFileSync } from "node:fs";
 import {
   sanitizeMermaidLabel, sanitizeMermaidId, normalizeCategory, normalizeSteps, stepsFromText,
   resolveSteps, buildMermaidCode, buildFlowchartSvg, buildSopNumber, formatSopNumber,
-  isSopReviewDue, summarizeSops, SOP_STEP_CATEGORIES, SOP_STEP_CATEGORY_LABELS
+  isSopReviewDue, summarizeSops, SOP_STEP_CATEGORIES, SOP_STEP_CATEGORY_LABELS, SOP_DIVISIONS
 } from "../js/sop-flowchart.mjs";
+import {
+  ANDELA_JAYA_DIVISIONS, DIVISION_ALL, divisionOptionsFromSources, withCurrentDivision
+} from "../js/division-options.mjs";
 
 test("sanitizeMermaidLabel membersihkan karakter sintaks Mermaid", () => {
   assert.equal(
@@ -215,6 +218,39 @@ test("isSopReviewDue mendeteksi review dalam 30 hari", () => {
   assert.equal(isSopReviewDue({ tanggal_review: "2025-12-20" }, now), true);
   assert.equal(isSopReviewDue({ tanggal_review: "2026-06-01" }, now), false);
   assert.equal(isSopReviewDue({}, now), false);
+});
+
+test("pilihan divisi memakai master karyawan dan fallback Andela Jaya", () => {
+  assert.deepEqual(
+    divisionOptionsFromSources({ employees: [{ divisi: "GUDANG" }, { departemen: "HRD & GA" }, { divisi: "gudang" }] }),
+    ["GUDANG", "HRD & GA"]
+  );
+  const fallback = divisionOptionsFromSources({ employees: [] });
+  assert.equal(fallback.length, ANDELA_JAYA_DIVISIONS.length);
+  assert.ok(ANDELA_JAYA_DIVISIONS.every(division => fallback.includes(division)));
+  assert.deepEqual(
+    divisionOptionsFromSources({ masterDivisions: [{ nama_divisi: "PRODUKSI" }], employees: [{ divisi: "HRD" }] }),
+    ["PRODUKSI"]
+  );
+  const withAll = divisionOptionsFromSources({ employees: [{ divisi: "GUDANG" }], includeAll: true });
+  assert.equal(withAll[0], DIVISION_ALL);
+  assert.ok(withAll.includes("GUDANG"));
+});
+
+test("pilihan divisi SOP memakai daftar Andela Jaya, bukan singkatan lama", () => {
+  assert.ok(SOP_DIVISIONS.includes(DIVISION_ALL));
+  assert.ok(SOP_DIVISIONS.includes("HRD & GA"));
+  assert.ok(SOP_DIVISIONS.includes("FINANCE & ACCOUNTING"));
+  assert.ok(SOP_DIVISIONS.includes("MARKETING & SALES"));
+  assert.ok(SOP_DIVISIONS.includes("LOGISTIK & GUDANG"));
+  assert.equal(SOP_DIVISIONS.includes("WAREHOUSE"), false);
+  assert.equal(SOP_DIVISIONS.includes("LOGISTIC"), false);
+});
+
+test("withCurrentDivision mempertahankan nilai lama saat edit", () => {
+  assert.deepEqual(withCurrentDivision(["HRD & GA"], "HRD"), ["HRD & GA", "HRD"]);
+  assert.deepEqual(withCurrentDivision(["HRD & GA"], "hrd & ga"), ["HRD & GA"]);
+  assert.deepEqual(withCurrentDivision(["HRD & GA"], ""), ["HRD & GA"]);
 });
 
 test("summarizeSops menghitung status dan review", () => {

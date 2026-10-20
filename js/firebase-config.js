@@ -119,6 +119,7 @@ export const COL = {
  USERS: "users",
  USER_PERMISSIONS: "user_permissions",
  MASTER_KARYAWAN: "master_karyawan",
+ MASTER_DIVISI: "master_divisi",
  MASTER_CUTI: "master_cuti",
  MASTER_KENDARAAN: "master_kendaraan",
  MASTER_INVENTORY: "master_inventory",

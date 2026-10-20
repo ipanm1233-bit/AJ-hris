@@ -21,6 +21,7 @@ import {
   resetAtsMasterConfig
 } from "./ats-engine.js";
 import { openCandidateDetailModal, openCvViewerModal, openInterviewScorecardModal, openCreateVacancyWizardModal, openPublicIntakeModal, loadRecruitmentMasterData } from "./ats-ui-components.js";
+import { ANDELA_JAYA_DIVISIONS } from "../division-options.mjs";
 import { renderAtsAnalyticsHtml } from "./ats-analytics.js";
 import { canEditModuleData, hasPermission, resolveBranchScope, branchMatches } from "../auth.js";
 
@@ -510,7 +511,7 @@ export async function mount(container, { params, session }) {
   /* 2. LOWONGAN TAB */
   function renderLowonganTab(el) {
     const cbList = masterData?.cabangList || ["HEAD OFFICE", "CABANG BANDUNG", "CABANG SURABAYA", "CABANG SEMARANG", "CABANG BALI", "WORKSHOP", "CIREBON", "KUNINGAN", "MAJALENGKA", "INDRAMAYU", "TEGAL / BREBES"];
-    const dvList = masterData?.divisiList || ["HRD & GA", "FINANCE & ACCOUNTING", "OPERASIONAL", "MARKETING & SALES", "IT & DIGITAL", "LOGISTIK & GUDANG", "PRODUKSI", "SALES & DISTRIBUTION"];
+    const dvList = masterData?.divisiList || [...ANDELA_JAYA_DIVISIONS];
 
     el.innerHTML = `
     <div class="space-y-4">

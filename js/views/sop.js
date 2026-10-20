@@ -1,15 +1,16 @@
 import { COL } from "../firebase-config.js";
 import {
   fsGetAll, fsAdd, fsUpdate, toast, openModal, closeModal,
-  escapeHtml, fmtDateShort, genId, localDateStr
+  escapeHtml, fmtDateShort, genId, localDateStr, loadDivisionOptions
 } from "../utils.js";
+import { withCurrentDivision } from "../division-options.mjs";
 import { renderCrudModule, icon, badge, emptyState } from "../components.js";
 import { hasPermission, canDeleteModuleData } from "../auth.js";
 import { isoDocHeaderTable, COMPANY_NAME, COMPANY_ADDRESS_LINE1 } from "../branding.js";
 import {
   buildMermaidCode, buildFlowchartSvg, resolveSteps, normalizeSteps, normalizeCategory, formatSopNumber,
   isSopReviewDue, SOP_STEP_CATEGORIES, SOP_STEP_CATEGORY_LABELS, SOP_STATUSES,
-  SOP_DIVISIONS, SOP_CATEGORIES, DEFAULT_DECISION_YES, DEFAULT_DECISION_NO
+  SOP_CATEGORIES, DEFAULT_DECISION_YES, DEFAULT_DECISION_NO
 } from "../sop-flowchart.mjs";
 import {
   summarizeAudits, normalizeChecklist, computeAuditScore, gradeAudit,
@@ -201,6 +202,11 @@ export async function mount(container, { session } = {}) {
     return sop?.judul || sop?.nomor_dokumen || sop?.id || "SOP";
   }
 
+  async function getSopDivisionOptions({ includeAll = false, current = "" } = {}) {
+    const options = await loadDivisionOptions({ includeAll });
+    return withCurrentDivision(options, current);
+  }
+
   /* -------------------------------------------------------------------
    * TAB 1 — DATABASE SOP
    * ----------------------------------------------------------------- */
@@ -253,7 +259,16 @@ export async function mount(container, { session } = {}) {
       formFields: [
         { name: "nomor_dokumen", label: "Nomor Dokumen (otomatis bila kosong)", type: "text" },
         { name: "judul", label: "Judul Prosedur (SOP)", type: "text", required: true, full: true },
-        { name: "divisi", label: "Divisi Terkait", type: "select", options: [...SOP_DIVISIONS], required: true },
+        {
+          name: "divisi",
+          label: "Divisi Terkait",
+          type: "select",
+          getOptions: ({ existing } = {}) => getSopDivisionOptions({
+            includeAll: true,
+            current: existing?.divisi
+          }),
+          required: true
+        },
         { name: "kategori", label: "Kategori SOP", type: "select", options: [...SOP_CATEGORIES] },
         { name: "versi", label: "Versi / Revisi", type: "text", default: "1.0" },
         { name: "status", label: "Status Dokumen", type: "select", options: [...SOP_STATUSES], default: "Draft" },
@@ -424,7 +439,13 @@ export async function mount(container, { session } = {}) {
       ],
       formFields: [
         { name: "nomor_audit", label: "Nomor Audit", type: "text" },
-        { name: "divisi", label: "Divisi Diaudit", type: "select", options: [...SOP_DIVISIONS], required: true },
+        {
+          name: "divisi",
+          label: "Divisi Diaudit",
+          type: "select",
+          getOptions: ({ existing } = {}) => getSopDivisionOptions({ current: existing?.divisi }),
+          required: true
+        },
         { name: "periode", label: "Periode Audit", type: "text" },
         { name: "tanggal", label: "Tanggal Audit", type: "date", required: true },
         { name: "auditor", label: "Auditor / Tim Audit", type: "text" },
@@ -463,9 +484,10 @@ export async function mount(container, { session } = {}) {
   /* -------------------------------------------------------------------
    * EDITOR AUDIT (HEADER + CHECKLIST + TEMUAN)
    * ----------------------------------------------------------------- */
-  function openAuditEditor(audit, reload) {
+  async function openAuditEditor(audit, reload) {
     let items = normalizeChecklist(audit?.checklist || []);
     let model = { ...(audit || {}) };
+    const divisionOptions = await getSopDivisionOptions({ current: model.divisi });
 
     openModal({
       title: audit ? `Audit SOP — ${audit.divisi || ""} ${audit.periode || ""}` : "Buat Sesi Audit SOP Baru",
@@ -482,7 +504,8 @@ export async function mount(container, { session } = {}) {
               <div>
                 <label class="block font-bold text-slate-600 mb-1">Divisi <span class="text-rose-500">*</span></label>
                 <select id="aud-divisi" class="w-full p-2 rounded-lg border border-slate-300 outline-none bg-white font-bold">
-                  ${SOP_DIVISIONS.map(d => `<option value="${d}" ${String(model.divisi || "").toUpperCase() === d ? "selected" : ""}>${d}</option>`).join("")}
+                  <option value="">Pilih divisi...</option>
+                  ${divisionOptions.map(d => `<option value="${escapeHtml(d)}" ${String(model.divisi || "").toUpperCase() === String(d).toUpperCase() ? "selected" : ""}>${escapeHtml(d)}</option>`).join("")}
                 </select>
               </div>
               <div>

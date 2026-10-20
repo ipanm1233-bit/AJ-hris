@@ -2,6 +2,7 @@ import { db, COL, collection, getDoc, getDocs, doc, updateDoc, addDoc, setDoc, d
 import { fsGetAll, fsUpdate, fsDelete, escapeHtml, toast, genId, notifyUser, openModal, closeModal, confirmDialog, promptDialog, calculateAge, calculateTenure, cascadeEmployeeChanges, syncAllEmployeesAcrossCollections, fmtDateShort, localDateStr, toNumber, getCalculatedJatahCuti, calculateCarryoverJatah, downloadHtmlAsPdf } from "../utils.js";
 import { renderCrudModule, badge, emptyState, icon, skeletonRows } from "../components.js";
 import { uploadFileToDrive } from "../gas-integration.js";
+import { divisionOptionsFromSources } from "../division-options.mjs";
 
 export async function mount(container) {
  const panels = {
@@ -46,9 +47,7 @@ export async function mount(container) {
  name: "divisi", label: "Divisi", type: "datalist",
  getOptions: async () => {
  const emps = await fsGetAll(COL.MASTER_KARYAWAN);
- const defaults = ["HRD & GA", "FINANCE & ACCOUNTING", "OPERASIONAL", "MARKETING & SALES", "IT & DIGITAL", "LOGISTIK", "PRODUKSI"];
- const existing = emps.map(e => e.divisi).filter(Boolean);
- return [...new Set([...defaults, ...existing])].sort();
+ return divisionOptionsFromSources({ employees: emps });
  }
  },
  { name: "jenis_kelamin", label: "Jenis Kelamin", type: "select", options: ["LAKI-LAKI", "PEREMPUAN"] },
@@ -400,7 +399,7 @@ function downloadThisPdf() {
     const atasanOpts = empNames;
     const cabangOpts = [...new Set(["HEAD OFFICE", "CABANG BANDUNG", "CABANG SURABAYA", "CABANG SEMARANG", "CABANG BALI", "WORKSHOP", ...allEmps.map(e => e.cabang).filter(Boolean)])].sort();
     const jabatanOpts = [...new Set(["DIREKTUR", "MANAGER HRD", "SUPERVISOR", "STAFF HRD", "STAFF FINANCE", "STAFF OPERASIONAL", "DRIVER", "SECURITY", "HEAD STORE", "STORE ASSOCIATE", ...allEmps.map(e => e.jabatan).filter(Boolean)])].sort();
-    const divisiOpts = [...new Set(["HRD & GA", "FINANCE & ACCOUNTING", "OPERASIONAL", "MARKETING & SALES", "IT & DIGITAL", "LOGISTIK", "PRODUKSI", ...allEmps.map(e => e.divisi).filter(Boolean)])].sort();
+    const divisiOpts = divisionOptionsFromSources({ employees: allEmps });
 
     function getInitials(name) {
       if (!name) return "K";

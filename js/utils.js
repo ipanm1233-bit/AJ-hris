@@ -15,6 +15,7 @@ import { uploadFileToDrive } from "./gas-integration.js";
 import { letterheadHtml, isoDocHeaderTable, COMPANY_NAME, logoImgTag } from "./branding.js";
 import { authFetch } from "./api-client.js";
 import { getAutoJatahTahunan } from "./leave-entitlement.mjs";
+import { DIVISION_ALL, divisionOptionsFromSources, divisionsFromMasterRecords } from "./division-options.mjs";
 
 // =========================================================================
 // PLUS CODE (Open Location Code) DECODER -- diambil & diadaptasi dari
@@ -1014,6 +1015,83 @@ export async function fsGetAll(colName, { orderByField = null, direction = "asc"
  const q = orderByField ? query(ref, orderBy(orderByField, direction)) : ref;
  const snap = await getDocs(q);
  return snap.docs.map(d => ({ ...d.data(), id: d.id, _docId: d.id }));
+}
+
+/* ---------------------------------------------------------------------
+ * PILIHAN DIVISI TERPUSAT
+ * Semua menu memakai daftar divisi yang sama. Sumber utama adalah data
+ * master karyawan (kolom divisi/departemen), lalu fallback divisi Andela
+ * Jaya. Cache singkat mencegah pembacaan master berulang saat membuka form.
+ * ------------------------------------------------------------------- */
+const DIVISION_OPTIONS_TTL_MS = 5 * 60 * 1000;
+let _divisionOptionsCache = { at: 0, base: null, pending: null };
+
+export function clearDivisionOptionsCache() {
+  _divisionOptionsCache = { at: 0, base: null, pending: null };
+}
+
+export async function loadDivisionOptions({
+  includeAll = false,
+  force = false,
+  employees = null,
+  masterDivisions = null
+} = {}) {
+  const withAll = (base) => (includeAll ? [DIVISION_ALL, ...base] : [...base]);
+
+  // Caller sudah punya data master: susun langsung tanpa pembacaan ulang.
+  if (Array.isArray(employees) || Array.isArray(masterDivisions)) {
+    return withAll(divisionOptionsFromSources({
+      employees: employees || [],
+      masterDivisions: masterDivisions || [],
+      includeAll: false
+    }));
+  }
+
+  const now = Date.now();
+  if (!force && _divisionOptionsCache.base && now - _divisionOptionsCache.at < DIVISION_OPTIONS_TTL_MS) {
+    return withAll(_divisionOptionsCache.base);
+  }
+  if (!force && _divisionOptionsCache.pending) {
+    return withAll(await _divisionOptionsCache.pending);
+  }
+
+  const pending = (async () => {
+    // Sumber utama: koleksi master_divisi (ringan dan memang data master).
+    // Bila belum tersedia/kosong, pakai divisi unik dari master karyawan.
+    let masterRecords = [];
+    try {
+      masterRecords = await fsGetAll(COL.MASTER_DIVISI || "master_divisi");
+    } catch {
+      // Koleksi/rule master_divisi belum tersedia: lanjut ke master karyawan.
+    }
+
+    let employeeRecords = [];
+    if (!divisionsFromMasterRecords(masterRecords).length) {
+      try {
+        employeeRecords = await fsGetAll(COL.MASTER_KARYAWAN || "master_karyawan");
+      } catch (error) {
+        console.warn("Gagal memuat divisi dari master karyawan:", error);
+      }
+    }
+
+    const base = divisionOptionsFromSources({
+      masterDivisions: masterRecords,
+      employees: employeeRecords,
+      includeAll: false
+    });
+    _divisionOptionsCache = { at: Date.now(), base, pending: null };
+    return base;
+  })();
+
+  _divisionOptionsCache.pending = pending;
+  try {
+    return withAll(await pending);
+  } catch (error) {
+    console.warn("Gagal menyusun pilihan divisi:", error);
+    const base = divisionOptionsFromSources({ includeAll: false });
+    _divisionOptionsCache = { at: Date.now(), base, pending: null };
+    return withAll(base);
+  }
 }
 export function fsListen(colName, callback, { orderByField = null, direction = "asc" } = {}) {
  const ref = collection(db, colName);

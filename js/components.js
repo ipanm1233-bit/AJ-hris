@@ -356,7 +356,7 @@ export async function renderCrudModule(container, cfg) {
 		for (const f of fieldsList) {
 			if (typeof f.getOptions === "function") {
 				try {
-					f.options = await f.getOptions();
+					f.options = await f.getOptions({ existing, prefill, session: getSession() });
 				} catch (e) {
 					console.warn("Gagal memuat opsi untuk field", f.name, e);
 				}

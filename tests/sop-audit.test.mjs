@@ -116,3 +116,11 @@ test("standardChecklistFor menambahkan item sesuai divisi", () => {
   assert.equal(standardChecklistFor("IT").length, 5);
   assert.ok(standardChecklistFor("IT").every(row => row.status_tindak_lanjut === "Open"));
 });
+
+test("standardChecklistFor mengenali nama divisi master Andela Jaya", () => {
+  assert.ok(standardChecklistFor("HRD & GA").some(row => row.klausul === "Data Karyawan"));
+  assert.ok(standardChecklistFor("FINANCE & ACCOUNTING").some(row => row.klausul === "Rekonsiliasi"));
+  assert.ok(standardChecklistFor("MARKETING & SALES").some(row => row.klausul === "Gimmick"));
+  assert.ok(standardChecklistFor("SALES & DISTRIBUTION").some(row => row.klausul === "Gimmick"));
+  assert.ok(standardChecklistFor("LOGISTIK & GUDANG").some(row => row.klausul === "FIFO/FEFO"));
+});

@@ -6,6 +6,8 @@
  * dipakai ulang oleh view `sop.js` maupun proses cetak dokumen.
  */
 
+import { ANDELA_JAYA_DIVISIONS, DIVISION_ALL } from "./division-options.mjs";
+
 export const SOP_STEP_CATEGORIES = Object.freeze(["START", "PROCESS", "DECISION", "DOKUMEN", "END", "LAINNYA"]);
 
 export const SOP_STEP_CATEGORY_LABELS = Object.freeze({
@@ -20,7 +22,8 @@ export const SOP_STEP_CATEGORY_LABELS = Object.freeze({
 export const SOP_STATUSES = Object.freeze(["Draft", "Review", "Revisi", "Aktif", "Obsolete"]);
 
 export const SOP_DIVISIONS = Object.freeze([
-  "HRD", "FINANCE", "SALES", "MARKETING", "WAREHOUSE", "LOGISTIC", "GA", "IT", "ALL"
+  DIVISION_ALL,
+  ...ANDELA_JAYA_DIVISIONS
 ]);
 
 export const SOP_CATEGORIES = Object.freeze([

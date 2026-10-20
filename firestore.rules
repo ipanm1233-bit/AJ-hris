@@ -88,6 +88,10 @@ service cloud.firestore {
       allow create, delete: if isHrd();
       allow update: if isHrd() || (role() == 'DIREKTUR' && onlyChanges(['updated_at', 'kontrak_ke', 'tgl_mulai_kontrak', 'tgl_akhir_kontrak', 'status_karyawan', 'aktif_tdk_aktif']));
     }
+    match /master_divisi/{id} {
+      allow read: if signedIn();
+      allow write: if isHrd();
+    }
     match /master_cabang/{id} {
       allow read: if signedIn();
       allow write: if isHrd();

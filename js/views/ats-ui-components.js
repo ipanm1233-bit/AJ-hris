@@ -6,6 +6,7 @@
  */
 import { COL } from "../firebase-config.js";
 import { openModal, closeModal, toast, escapeHtml, genId, fmtDateShort, fsGetAll } from "../utils.js";
+import { ANDELA_JAYA_DIVISIONS, divisionOptionsFromSources } from "../division-options.mjs";
 import { evaluateCandidateATS, extractBasicInfo, extractTextFromPdfFile, extractTextFromDocxFile, DEFAULT_SYNONYMS, DEFAULT_ATS_RULES, DEFAULT_INTERVIEW_TEMPLATES, DEFAULT_INDUSTRY_EXCLUSIONS } from "./ats-engine.js";
 
 /**
@@ -13,7 +14,7 @@ import { evaluateCandidateATS, extractBasicInfo, extractTextFromPdfFile, extract
  */
 export async function loadRecruitmentMasterData() {
   const defaultCabang = ["HEAD OFFICE", "CABANG BANDUNG", "CABANG SURABAYA", "CABANG SEMARANG", "CABANG BALI", "WORKSHOP", "CIREBON", "KUNINGAN", "MAJALENGKA", "INDRAMAYU", "TEGAL / BREBES"];
-  const defaultDivisi = ["HRD & GA", "FINANCE & ACCOUNTING", "OPERASIONAL", "MARKETING & SALES", "IT & DIGITAL", "LOGISTIK & GUDANG", "PRODUKSI", "SALES & DISTRIBUTION"];
+  const defaultDivisi = [...ANDELA_JAYA_DIVISIONS];
   const defaultJabatan = ["DIREKTUR", "GENERAL MANAGER", "MANAGER HRD", "SUPERVISOR", "STAFF HRD", "STAFF FINANCE", "STAFF OPERASIONAL", "SALES EXECUTIVE LAPANGAN", "SALES REPRESENTATIVE", "ADMIN GUDANG", "DRIVER / EXPEDISI", "SECURITY", "HEAD STORE", "STORE ASSOCIATE", "DIGITAL MARKETING SPECIALIST"];
   const defaultManagers = ["DIREKTUR", "GENERAL MANAGER", "MANAGER HRD", "SUPERVISOR OPERASIONAL", "KABAG SALES", "HEAD STORE", "KEPALA GUDANG"];
   const tipePekerjaanList = ["PKWT (Karyawan Kontrak)", "PKWTT (Karyawan Tetap)", "Probation (Masa Percobaan)", "Magang / Internship", "Buruh Harian / Harian Lepas", "Outsourcing", "Lainnya"];
@@ -22,7 +23,6 @@ export async function loadRecruitmentMasterData() {
   try {
     const emps = await fsGetAll(COL.MASTER_KARYAWAN || "master_karyawan").catch(() => []);
     const existingCabang = emps.map(e => (e.cabang || e.cabang_area || e.penempatan || "").trim()).filter(Boolean);
-    const existingDivisi = emps.map(e => (e.divisi || e.departemen || "").trim()).filter(Boolean);
     const existingJabatan = emps.map(e => (e.jabatan || "").trim()).filter(Boolean);
     const existingManagers = emps
       .filter(e => e.nama_karyawan || e.nama)
@@ -36,7 +36,7 @@ export async function loadRecruitmentMasterData() {
 
     return {
       cabangList: normalizeList([...defaultCabang, ...existingCabang]),
-      divisiList: normalizeList([...defaultDivisi, ...existingDivisi]),
+      divisiList: divisionOptionsFromSources({ employees: emps, fallback: defaultDivisi }),
       jabatanList: normalizeList([...defaultJabatan, ...existingJabatan]),
       managerList: normalizeList([...defaultManagers, ...existingManagers]),
       tipePekerjaanList,
@@ -655,7 +655,7 @@ export function openCreateVacancyWizardModal({ onSaveVacancy, initialData = null
   // Standar fallback jika masterData belum dimuat
   const md = masterData || {
     cabangList: ["HEAD OFFICE", "CABANG BANDUNG", "CABANG SURABAYA", "CABANG SEMARANG", "CABANG BALI", "WORKSHOP", "CIREBON", "KUNINGAN", "MAJALENGKA", "INDRAMAYU", "TEGAL / BREBES"],
-    divisiList: ["HRD & GA", "FINANCE & ACCOUNTING", "OPERASIONAL", "MARKETING & SALES", "IT & DIGITAL", "LOGISTIK & GUDANG", "PRODUKSI", "SALES & DISTRIBUTION"],
+    divisiList: [...ANDELA_JAYA_DIVISIONS],
     jabatanList: ["DIREKTUR", "GENERAL MANAGER", "MANAGER HRD", "SUPERVISOR", "STAFF HRD", "STAFF FINANCE", "STAFF OPERASIONAL", "SALES EXECUTIVE LAPANGAN", "SALES REPRESENTATIVE", "ADMIN GUDANG", "DRIVER / EXPEDISI", "SECURITY", "HEAD STORE", "STORE ASSOCIATE", "DIGITAL MARKETING SPECIALIST"],
     managerList: ["DIREKTUR", "GENERAL MANAGER", "MANAGER HRD", "SUPERVISOR OPERASIONAL", "KABAG SALES", "HEAD STORE", "KEPALA GUDANG"],
     tipePekerjaanList: ["PKWT (Karyawan Kontrak)", "PKWTT (Karyawan Tetap)", "Probation (Masa Percobaan)", "Magang / Internship", "Buruh Harian / Harian Lepas", "Outsourcing", "Lainnya"],

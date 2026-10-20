@@ -192,6 +192,16 @@ export function summarizeAudits(list = [], now = new Date()) {
 }
 
 /** Checklist standar per divisi — dipakai tombol "Muat Checklist Standar". */
+function resolveChecklistDivision(value) {
+  const text = String(value || "").toUpperCase();
+  if (text.includes("HRD") || text.includes("PERSONALIA") || /\bGA\b/.test(text)) return "HRD";
+  if (text.includes("FINANCE") || text.includes("KEUANGAN") || text.includes("ACCOUNT")) return "FINANCE";
+  if (text.includes("SALES") || text.includes("MARKETING") || text.includes("PENJUALAN")) return "SALES";
+  if (text.includes("GUDANG") || text.includes("WAREHOUSE")) return "WAREHOUSE";
+  if (text.includes("LOGISTIK") || text.includes("LOGISTIC") || text.includes("EKSPEDISI")) return "LOGISTIC";
+  return text;
+}
+
 export function standardChecklistFor(divisi = "HRD") {
   const base = [
     { klausul: "Dokumentasi", standar: "SOP terdokumentasi, bernomor, dan versi terbaru tersedia di tempat kerja", bobot: 2 },
@@ -224,7 +234,7 @@ export function standardChecklistFor(divisi = "HRD") {
     ]
   };
 
-  const div = String(divisi || "HRD").toUpperCase();
+  const div = resolveChecklistDivision(divisi || "HRD");
   return [...base, ...(extra[div] || [])].map((item, index) => normalizeFinding({
     ...item,
     id: `chk_std_${index + 1}`,
