@@ -8,7 +8,7 @@ import {
 } from "../utils.js";
 import { isoDocHeaderTable } from "../branding.js";
 import { getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
-import { COMPANY_POLICY, POLICY_ARTICLES, POLICY_BASIS, POLICY_DECISIONS, assessPolicyDecision } from "../hr-case-policy.mjs";
+import { COMPANY_POLICY, POLICY_ARTICLES, PP_2026_POLICY, PP_2026_POLICY_ARTICLES, POLICY_BASIS, POLICY_DECISIONS, assessPolicyDecision, findPolicyArticle, policyPeriodForArticle } from "../hr-case-policy.mjs";
 import {
   CASE_CATEGORIES, CASE_SOURCES, ROOT_CAUSES, ACTION_TAKENS, CASE_STATUSES, PRIORITIES,
   ACTION_PLAN_STATUSES, IMPROVEMENT_STATUSES,
@@ -1182,17 +1182,22 @@ function showCaseFormModal(caseId = null, prefill = {}) {
       <!-- Rujukan kebijakan dan keputusan HR -->
       <div class="bg-amber-50 p-4 rounded-xl border border-amber-200 space-y-3 text-xs">
         <h3 class="font-black text-slate-800 uppercase tracking-wider">5. Dasar aturan & pertimbangan tindak lanjut</h3>
-        <p class="text-amber-900">Rujukan PP: ${escapeHtml(COMPANY_POLICY.title)} (${escapeHtml(COMPANY_POLICY.period)}). Dokumen arsip; verifikasi PP/SOP yang berlaku sebelum mengusulkan SP. Rujukan pasal tidak menentukan sanksi secara otomatis.</p>
+        <p class="text-amber-900">Rujukan PP: ${escapeHtml(PP_2026_POLICY.title)} — ${escapeHtml(PP_2026_POLICY.period)} (${escapeHtml(PP_2026_POLICY.status)}) dan arsip ${escapeHtml(COMPANY_POLICY.period)}. Verifikasi PP/SOP yang berlaku sebelum mengusulkan SP. Rujukan pasal tidak menentukan sanksi secara otomatis.</p>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <label class="font-semibold text-slate-700">Hubungan dengan pelanggaran
             <select id="kc-policy-basis" class="w-full mt-1 border border-slate-200 rounded-lg p-2 bg-white">
               ${POLICY_BASIS.map(v => `<option value="${v}" ${v === (existing?.policy_review?.basis || POLICY_BASIS[0]) ? 'selected' : ''}>${v}</option>`).join('')}
             </select>
           </label>
-          <label class="font-semibold text-slate-700">Pasal PP terkait (dokumen arsip)
+          <label class="font-semibold text-slate-700">Pasal PP terkait
             <select id="kc-policy-article" class="w-full mt-1 border border-slate-200 rounded-lg p-2 bg-white">
               <option value="">Pilih jika terkait PP</option>
-              ${POLICY_ARTICLES.map(a => `<option value="${a.id}" ${a.id === existing?.policy_review?.article_id ? 'selected' : ''}>${escapeHtml(a.label)} (PDF hlm. ${a.page})</option>`).join('')}
+              <optgroup label="Draf Revisi 2026 (belum disahkan)">
+                ${PP_2026_POLICY_ARTICLES.map(a => `<option value="${a.id}" ${a.id === existing?.policy_review?.article_id ? 'selected' : ''}>${escapeHtml(a.label)}</option>`).join('')}
+              </optgroup>
+              <optgroup label="Arsip 2024–2026">
+                ${POLICY_ARTICLES.map(a => `<option value="${a.id}" ${a.id === existing?.policy_review?.article_id ? 'selected' : ''}>${escapeHtml(a.label)} (PDF hlm. ${a.page})</option>`).join('')}
+              </optgroup>
             </select>
           </label>
           <label class="font-semibold text-slate-700">Nomor, versi, dan butir SOP
@@ -1211,7 +1216,7 @@ function showCaseFormModal(caseId = null, prefill = {}) {
               ${POLICY_DECISIONS.map(v => `<option value="${v}" ${v === (existing?.policy_review?.decision || POLICY_DECISIONS[0]) ? 'selected' : ''}>${v}</option>`).join('')}
             </select>
           </label>
-          <label class="flex items-start gap-2 font-semibold text-amber-900"><input id="kc-policy-confirmed" type="checkbox" class="mt-0.5" ${existing?.policy_review?.current_rule_confirmed ? 'checked' : ''}>Saya telah memverifikasi PP/SOP yang berlaku untuk kejadian ini; referensi 2024–2025 hanya arsip.</label>
+          <label class="flex items-start gap-2 font-semibold text-amber-900"><input id="kc-policy-confirmed" type="checkbox" class="mt-0.5" ${existing?.policy_review?.current_rule_confirmed ? 'checked' : ''}>Saya telah memverifikasi PP/SOP yang berlaku untuk kejadian ini; Draf 2026 belum berkekuatan hukum sampai disahkan dan referensi lama hanya arsip.</label>
         ` : `<p class="text-slate-600">Keputusan untuk meninjau SP dicatat oleh HRD.</p>`}
         <p class="text-slate-600">“Tinjau untuk SP” hanya usulan asesmen; penerbitan surat dilakukan terpisah setelah peninjauan HR.</p>
       </div>
@@ -1304,7 +1309,7 @@ function showCaseFormModal(caseId = null, prefill = {}) {
         rationale: document.getElementById("kc-policy-rationale")?.value.trim() || "",
         decision: policyDecision,
         current_rule_confirmed: document.getElementById("kc-policy-confirmed")?.checked ?? existing?.policy_review?.current_rule_confirmed ?? false,
-        document_period: policyBasis.includes("Peraturan Perusahaan") ? COMPANY_POLICY.period : ""
+        document_period: policyBasis.includes("Peraturan Perusahaan") ? policyPeriodForArticle(document.getElementById("kc-policy-article")?.value || "") : ""
       };
 
       if (!nama || !desc) {
@@ -1480,13 +1485,13 @@ export function showCaseDetail(caseId) {
       <div class="bg-amber-50 p-4 rounded-xl border border-amber-200 space-y-2 text-xs">
         <h4 class="font-black text-slate-800 uppercase">Dasar aturan & rekomendasi HR</h4>
         <p>Dasar: <b>${escapeHtml(c.policy_review?.basis || "Belum dinilai")}</b></p>
-        ${c.policy_review?.article_id ? `<p>PP: <b>${escapeHtml(POLICY_ARTICLES.find(a => a.id === c.policy_review.article_id)?.label || c.policy_review.article_id)}</b> (${escapeHtml(c.policy_review.document_period || COMPANY_POLICY.period)}, arsip)</p>` : ''}
+        ${c.policy_review?.article_id ? `<p>PP: <b>${escapeHtml(findPolicyArticle(c.policy_review.article_id)?.label || c.policy_review.article_id)}</b> (${escapeHtml(c.policy_review.document_period || COMPANY_POLICY.period)})</p>` : ''}
         ${c.policy_review?.sop_reference ? `<p>SOP: <b>${escapeHtml(c.policy_review.sop_reference)}</b></p>` : ''}
         <p>Bukti: ${escapeHtml(c.policy_review?.evidence || "Belum dicatat")}</p>
         <p>Pertimbangan: ${escapeHtml(c.policy_review?.rationale || "Belum dicatat")}</p>
         <p>Rekomendasi: <b>${escapeHtml(c.policy_review?.decision || "Belum ditentukan")}</b></p>
         ${c.policy_review?.decision === "Tinjau untuk SP" ? `<p class="font-semibold text-amber-900">Usulan untuk ditinjau HR, belum merupakan penerbitan SP. Verifikasi aturan berlaku: ${c.policy_review?.current_rule_confirmed ? 'dicatat oleh HR' : 'belum dicatat'}.</p>` : ''}
-        <p class="text-amber-900">${escapeHtml(COMPANY_POLICY.title)} ${escapeHtml(COMPANY_POLICY.period)} adalah arsip; periksa versi yang berlaku sebelum keputusan.</p>
+        <p class="text-amber-900">${escapeHtml(COMPANY_POLICY.title)} ${escapeHtml(COMPANY_POLICY.period)} adalah arsip; ${escapeHtml(PP_2026_POLICY.period)} berstatus ${escapeHtml(PP_2026_POLICY.status)}. Periksa versi yang berlaku sebelum keputusan.</p>
       </div>
 
       <!-- Action Plans Section -->
@@ -1930,13 +1935,13 @@ export async function printCaseDossier(caseId) {
   <div class="section-title">Dasar Aturan & Rekomendasi HR</div>
   <table class="grid-table">
     <tr><td width="25%"><b>Hubungan pelanggaran</b></td><td>: ${escapeHtml(c.policy_review?.basis || "Belum dinilai")}</td></tr>
-    <tr><td><b>Pasal PP (arsip)</b></td><td>: ${escapeHtml(POLICY_ARTICLES.find(a => a.id === c.policy_review?.article_id)?.label || "-")} ${c.policy_review?.article_id ? `(${escapeHtml(COMPANY_POLICY.period)})` : ''}</td></tr>
+    <tr><td><b>Pasal PP</b></td><td>: ${escapeHtml(findPolicyArticle(c.policy_review?.article_id)?.label || "-")} ${c.policy_review?.article_id ? `(${escapeHtml(c.policy_review.document_period || COMPANY_POLICY.period)})` : ''}</td></tr>
     <tr><td><b>SOP terkait</b></td><td>: ${escapeHtml(c.policy_review?.sop_reference || "-")}</td></tr>
     <tr><td><b>Bukti</b></td><td>: ${escapeHtml(c.policy_review?.evidence || "-")}</td></tr>
     <tr><td><b>Pertimbangan</b></td><td>: ${escapeHtml(c.policy_review?.rationale || "-")}</td></tr>
     <tr><td><b>Rekomendasi</b></td><td>: ${escapeHtml(c.policy_review?.decision || "Belum ditentukan")}; verifikasi aturan berlaku: ${c.policy_review?.current_rule_confirmed ? 'dicatat HR' : 'belum dicatat'}</td></tr>
   </table>
-  <p style="font-size: 9px; color: #92400e;">${escapeHtml(COMPANY_POLICY.title)} ${escapeHtml(COMPANY_POLICY.period)} merupakan arsip. Usulan peninjauan SP bukan surat peringatan; HR harus memeriksa aturan yang berlaku sebelum keputusan.</p>
+  <p style="font-size: 9px; color: #92400e;">${escapeHtml(COMPANY_POLICY.title)} ${escapeHtml(COMPANY_POLICY.period)} merupakan arsip; ${escapeHtml(PP_2026_POLICY.period)} berstatus ${escapeHtml(PP_2026_POLICY.status)}. Usulan peninjauan SP bukan surat peringatan; HR harus memeriksa aturan yang berlaku sebelum keputusan.</p>
 
   <div class="section-title">4. Asesmen HR & Tindakan yang Diambil</div>
   <table class="grid-table">

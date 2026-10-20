@@ -161,6 +161,21 @@ Modul-modul manajemen sederhana (Inventory, Kendaraan, SOP, Gimmick, Uang Makan,
 
 ---
 
+## 8A. Peraturan Perusahaan (PP) per Pasal & Integrasi Disiplin
+
+Menu **Peraturan Perusahaan** (`#peraturan-perusahaan`, alias `#pp`) menampilkan katalog **75 pasal / 15 bab** Draf Revisi 2026 CV Andela Jaya, lengkap dengan ayat, kategori, dasar hukum, referensi pasal, perubahan kunci, dan catatan butir keputusan. Sumber data statis ada di `js/peraturan-perusahaan.mjs`; tidak ada koleksi Firestore baru dan tidak ada proses pembayaran/upgrade layanan.
+
+Tiga tab tersedia:
+1. **Katalog Pasal** — pencarian kata kunci, filter bab/kategori, dan filter pasal terkait disiplin. Detail pasal dapat dicetak atau ditindaklanjuti ke menu Disiplin & SP.
+2. **Sanksi & Disiplin** — ringkasan tangga sanksi (Pasal 43, 44, 49, 53, 54, 70) serta tabel pasal yang dapat dijadikan rujukan SP.
+3. **Kepatuhan PP** — rekap matriks kepatuhan PP 2024–2026 (76 butir), temuan utama, butir keputusan manajemen, perbandingan klausul kunci, dan daftar dasar hukum.
+
+**Integrasi Disiplin & SP:** tombol “Buat SP” membawa nomor pasal ke `#pemanggilan?pp=44`. Formulir SP otomatis terbuka dengan pasal, kategori pelanggaran, dan tanggal terisi. Saat disimpan, sistem menyimpan `pasal_pp`, `pasal_pp_id`, `dasar_hukum`, `pp_periode`, dan `pp_status`, lalu mencetaknya pada Surat Peringatan. Modul Konseling & Coaching juga memakai katalog 2026 sebagai pilihan pasal (selain arsip 2024–2026).
+
+**Penting:** naskah 2026 adalah **draf**. Menu dan surat selalu menampilkan peringatan bahwa PP baru berlaku setelah dibahas dengan wakil pekerja, ditandatangani pengurus, dan disahkan pejabat ketenagakerjaan. Rujukan pasal tidak menentukan sanksi secara otomatis.
+
+---
+
 ## 9. Form Builder — Mesin Alur Kerja (Workflow Engine)
 
 Sejak Form Builder ditingkatkan, formulir yang dibuat lewat menu **Form Builder** bisa punya dua kemampuan tambahan di luar CRUD dasar:

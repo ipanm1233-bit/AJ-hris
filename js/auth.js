@@ -97,6 +97,7 @@ export const MENU_CONFIG = [
     { id: "reports", label: "Laporan & Rekap" }
   ] },
   { id: "pemanggilan", label: "Disiplin & SP", icon: "alert", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN"] },
+  { id: "peraturan-perusahaan", label: "Peraturan Perusahaan", icon: "scale", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN", "GM", "DIREKTUR", "DIRECTOR", "MANAGER", "SPV", "BRANCH MANAGER", "BRANCH_MANAGER", "BRANCHMANAGER", "KEPALA CABANG", "KEPALA_CABANG", "KACAB"] },
  { id: "dokumen", label: "Dokumen", icon: "doc-plus", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN"] },
 
  // KATEGORI: KEUANGAN
@@ -1040,6 +1041,9 @@ export async function canAccessRoute(routeId, session) {
  if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(targetId)) {
  targetId = "pemanggilan";
  }
+ if (["pp", "peraturan", "peraturan-perusahaan", "company-policy", "policy"].includes(targetId)) {
+ targetId = "peraturan-perusahaan";
+ }
  if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi"].includes(targetId)) {
  targetId = "penilaian-kontrak";
  }
@@ -1530,6 +1534,17 @@ export const PERMISSION_CATALOG = [
   ]
  },
  {
+  id: "peraturan-perusahaan",
+  label: "Peraturan Perusahaan",
+  category: "Karyawan & Kinerja",
+  icon: "scale",
+  actions: [
+   { key: "peraturan_perusahaan.view", label: "Lihat Katalog Peraturan Perusahaan per Pasal", type: "view" },
+   { key: "peraturan_perusahaan.print", label: "Cetak Pasal / Katalog Peraturan Perusahaan", type: "print" },
+   { key: "peraturan_perusahaan.disiplin", label: "Tindak Lanjut ke Disiplin & SP dari Pasal PP", type: "create" }
+  ]
+ },
+ {
   id: "pemanggilan",
   label: "Disiplin & SP",
   category: "Karyawan & Kinerja",
@@ -1994,6 +2009,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "training.my.submit", "training.my.participate", "training.survey.manage", "training.analysis.view", "training.analysis.validate", "training.planning.create", "training.planning.approve_gm", "training.planning.approve_finance", "training.execution.manage", "training.execution.followup", "training.report.view", "training.report.export",
   "konseling.dashboard.view", "konseling.case_management.create", "konseling.case_management.edit", "konseling.case_management.close", "konseling.action_plan.manage", "konseling.follow_up.manage", "konseling.reports.export",
   "pemanggilan.sp.view", "pemanggilan.sp.create", "pemanggilan.sp.edit", "pemanggilan.sp.delete", "pemanggilan.panggil.view", "pemanggilan.panggil.create", "pemanggilan.panggil.edit", "pemanggilan.panggil.delete",
+  "peraturan_perusahaan.view", "peraturan_perusahaan.print", "peraturan_perusahaan.disiplin",
   "dokumen.drafts.create", "dokumen.drafts.edit", "dokumen.drafts.delete", "dokumen.drafts.publish", "dokumen.drafts.print", "dokumen.signed.view", "dokumen.signed.print", "dokumen.templates.configure", "dokumen.placeholders.configure",
   "reimbursement.my.create", "reimbursement.my.view", "reimbursement.daftar_semua.view", "reimbursement.daftar_semua.approve", "reimbursement.daftar_semua.reject", "reimbursement.pengaturan_jenis.configure",
   "kasbon.my.create", "kasbon.my.print", "kasbon.all.view", "kasbon.all.approve", "kasbon.all.reject", "kasbon.pengaturan_kategori.configure",
@@ -2026,6 +2042,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "training.my.submit", "training.my.participate", "training.analysis.view", "training.planning.approve_gm", "training.execution.followup", "training.report.view", "training.report.export",
   "konseling.dashboard.view", "konseling.reports.export",
   "pemanggilan.sp.view", "pemanggilan.panggil.view",
+  "peraturan_perusahaan.view", "peraturan_perusahaan.print",
   "dokumen.signed.view", "dokumen.signed.print",
   "reimbursement.my.create", "reimbursement.my.view", "reimbursement.daftar_semua.view", "reimbursement.daftar_semua.approve", "reimbursement.daftar_semua.reject",
   "kasbon.my.create", "kasbon.my.print", "kasbon.all.view", "kasbon.all.approve", "kasbon.all.reject",
@@ -2084,6 +2101,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "kendaraan.bbm.manage",
   "sop.view", "sop.document.export", "sop.audit.view",
   "gimmick.view", "gimmick.stok.manage", "gimmick.distribusi.create", "gimmick.distribusi.edit", "gimmick.receipt.print", "gimmick.efektivitas.manage", "gimmick.export",
+  "peraturan_perusahaan.view", "peraturan_perusahaan.print",
   "sales_order.view", "sales_order.create", "sales_outlet.lihat_semua.view", "sales_item.view", "sales_task.create", "sales_task.edit", "sales_task.complete", "sales_track.view",
   "profile.view", "profile.edit", "profile.documents.view", "profile.sign_document",
   "absensi_saya.view"
@@ -2200,6 +2218,7 @@ ROLE_PERMISSIONS_PRESETS["BRANCH MANAGER"] = [
  "training.my.submit", "training.my.participate", "training.analysis.view", "training.analysis.validate", "training.planning.create", "training.execution.followup", "training.report.view", "training.report.export",
  "konseling.dashboard.view", "konseling.case_management.create", "konseling.case_management.edit", "konseling.action_plan.manage", "konseling.follow_up.manage", "konseling.reports.export",
  "pemanggilan.sp.view", "pemanggilan.sp.create", "pemanggilan.sp.edit", "pemanggilan.panggil.view", "pemanggilan.panggil.create", "pemanggilan.panggil.edit",
+ "peraturan_perusahaan.view", "peraturan_perusahaan.print",
  "dokumen.signed.view", "dokumen.signed.print", "dokumen.drafts.create", "dokumen.drafts.edit", "dokumen.drafts.print",
  "reimbursement.my.create", "reimbursement.my.view", "reimbursement.daftar_semua.view", "reimbursement.daftar_semua.approve", "reimbursement.daftar_semua.reject",
  "kasbon.my.create", "kasbon.my.print", "kasbon.all.view", "kasbon.all.approve", "kasbon.all.reject",

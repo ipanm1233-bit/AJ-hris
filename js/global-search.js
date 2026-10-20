@@ -295,6 +295,17 @@ export function initGlobalSearch(session) {
       keywords: ["sp", "surat peringatan", "sp1", "sp2", "sp3", "teguran", "disiplin", "sanksi", "pemanggilan", "pelanggaran"]
     },
     {
+      id: "feat-peraturan-perusahaan",
+      title: "Peraturan Perusahaan per Pasal & Dasar Disiplin",
+      category: "Karyawan & Kinerja",
+      type: "Fitur / Layanan",
+      icon: "scale",
+      route: "peraturan-perusahaan",
+      roles: ["HRD", "SUPERADMIN", "GM", "DIREKTUR", "DIRECTOR", "MANAGER", "SPV", "BRANCH MANAGER", "BRANCH_MANAGER", "BRANCHMANAGER", "KEPALA CABANG", "KEPALA_CABANG", "KACAB"],
+      description: "Katalog 75 pasal Draf PP 2026, dasar hukum, matriks kepatuhan, dan tautan langsung ke Surat Peringatan.",
+      keywords: ["peraturan perusahaan", "pp", "pasal", "ayat", "tata tertib", "sanksi", "sp", "disiplin", "kepatuhan", "draf 2026"]
+    },
+    {
       id: "feat-konseling-coaching",
       title: "Konseling & Coaching Karyawan",
       category: "Karyawan & Kinerja",
@@ -687,6 +698,15 @@ export function initGlobalSearch(session) {
         badgeColor: "bg-red-50 text-red-700 border-red-200",
         icon: "alert",
         desc: "Catatan berita acara pemanggilan, histori pelanggaran tata tertib, dan surat peringatan (SP)."
+      },
+      {
+        id: "menu-peraturan-perusahaan",
+        title: "Peraturan Perusahaan per Pasal",
+        route: "peraturan-perusahaan",
+        badge: "Peraturan Perusahaan",
+        badgeColor: "bg-amber-50 text-amber-800 border-amber-200",
+        icon: "scale",
+        desc: "Katalog pasal dan ayat Draf PP 2026, dasar hukum, sanksi/disiplin, serta matriks kepatuhan."
       },
       {
         id: "menu-dokumen",

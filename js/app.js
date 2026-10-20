@@ -15,7 +15,7 @@ import { auth } from "./firebase-config.js";
 
 // Ubah versi ini setiap ada perubahan struktur view agar browser tidak
 // mencampur HTML terbaru dengan modul JavaScript lama dari cache.
-const APP_ASSET_VERSION = "20261020-sop-gimmick-split-v1";
+const APP_ASSET_VERSION = "20261020-peraturan-perusahaan-v1";
 const viewContainer = document.getElementById("view-container");
 let currentUnmount = null;
 let currentRoute = null;
@@ -416,6 +416,7 @@ function routeViewName(route) {
  if (["lembur", "sppkl", "spl", "overtime", "perintah-lembur"].includes(value)) return "lembur-kasbon";
  if (["konseling", "coaching", "counseling", "case-management", "hr-case", "hr-cases"].includes(value)) return "konseling-coaching";
  if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(value)) return "pemanggilan";
+ if (["pp", "peraturan", "peraturan-perusahaan", "company-policy", "policy"].includes(value)) return "peraturan-perusahaan";
  if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi"].includes(value)) return "penilaian-kontrak";
  // Alias menu lama: #gimmick-sop dipecah menjadi SOP dan Gimmick.
  if (value === "gimmick-sop") return "sop";
@@ -648,6 +649,9 @@ async function router(session) {
   	}
   	if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(cleanPath)) {
 		mappedPath = "pemanggilan";
+	}
+	if (["pp", "peraturan", "peraturan-perusahaan", "company-policy", "policy"].includes(cleanPath)) {
+		mappedPath = "peraturan-perusahaan";
 	}
 	if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi", "penilaian-kontrak"].includes(cleanPath)) {
 		if (["kontrak", "master-kontrak", "kontrak-karyawan"].includes(cleanPath)) {

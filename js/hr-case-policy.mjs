@@ -1,9 +1,12 @@
-// Rujukan dari (FINAL) PERATURAN PERUSAHAAN CV ANDELA JAYA, periode 2024–2025.
-// Katalog ini membantu pencatatan fakta; bukan aturan sanksi otomatis atau bukti
-// bahwa dokumen tersebut masih berlaku. HR harus memeriksa versi yang berlaku.
+// Rujukan dari (FINAL) PERATURAN PERUSAHAAN CV ANDELA JAYA, periode 2024–2026,
+// dan Draf Revisi 2026. Katalog ini membantu pencatatan fakta; bukan aturan
+// sanksi otomatis atau bukti bahwa dokumen tersebut masih berlaku. HR harus
+// memeriksa versi yang berlaku, dan Draf 2026 belum sah sebelum disahkan.
+import { PP_META, disciplinePpArticles } from "./peraturan-perusahaan.mjs";
+
 export const COMPANY_POLICY = Object.freeze({
   title: "Peraturan Perusahaan CV Andela Jaya",
-  period: "2024–2025",
+  period: "2024–2026",
   status: "Arsip; masa berlaku perlu diverifikasi HR"
 });
 
@@ -23,6 +26,36 @@ export const POLICY_ARTICLES = Object.freeze([
   { id: "43", label: "Pasal 43 — Surat peringatan", page: 18 }
 ]);
 
+// Katalog pasal dari Draf Revisi 2026 yang relevan untuk tindak lanjut disiplin.
+// ID diberi awalan "pp-" agar tidak bertabrakan dengan ID arsip 2024–2026.
+export const PP_2026_POLICY = Object.freeze({
+  title: PP_META.title,
+  period: PP_META.period_label,
+  status: PP_META.status
+});
+
+export const PP_2026_POLICY_ARTICLES = Object.freeze(
+  disciplinePpArticles().map(article => ({
+    id: article.id,
+    label: `${article.label} (Draf 2026)`,
+    page: null
+  }))
+);
+
+export const ALL_POLICY_ARTICLES = Object.freeze([
+  ...PP_2026_POLICY_ARTICLES,
+  ...POLICY_ARTICLES
+]);
+
+export function findPolicyArticle(id) {
+  return ALL_POLICY_ARTICLES.find(article => article.id === String(id || "")) || null;
+}
+
+export function policyPeriodForArticle(id) {
+  if (String(id || "").startsWith("pp-")) return PP_2026_POLICY.period;
+  return COMPANY_POLICY.period;
+}
+
 export const POLICY_BASIS = Object.freeze(["Tidak terkait pelanggaran", "Peraturan Perusahaan", "SOP", "Peraturan Perusahaan dan SOP"]);
 export const POLICY_DECISIONS = Object.freeze(["Belum ditentukan", "Coaching / konseling", "Tinjau untuk SP"]);
 
@@ -30,7 +63,7 @@ export function assessPolicyDecision({ basis, articleId, sopReference, evidence,
   if (decision !== "Tinjau untuk SP") return [];
   const missing = [];
   if (basis === "Tidak terkait pelanggaran" || !POLICY_BASIS.includes(basis)) missing.push("pilih dasar pelanggaran PP atau SOP");
-  if (basis?.includes("Peraturan Perusahaan") && !POLICY_ARTICLES.some(a => a.id === articleId)) missing.push("pilih pasal PP");
+  if (basis?.includes("Peraturan Perusahaan") && !ALL_POLICY_ARTICLES.some(a => a.id === articleId)) missing.push("pilih pasal PP");
   if (basis?.includes("SOP") && !String(sopReference || "").trim()) missing.push("isi identitas dan butir SOP");
   if (!String(evidence || "").trim()) missing.push("catat bukti yang dapat diperiksa");
   if (!String(employeeStatement || "").trim()) missing.push("catat klarifikasi karyawan");

@@ -1,0 +1,26 @@
+<div class="space-y-6">
+  <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-2 border-b border-slate-200/80">
+    <div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <h1 class="text-2xl font-bold text-slate-800 tracking-tight">Peraturan Perusahaan</h1>
+        <span class="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold uppercase tracking-wide">Draf Revisi 2026</span>
+      </div>
+      <p class="text-sm text-slate-500 mt-0.5">Katalog pasal dan ayat Peraturan Perusahaan CV Andela Jaya, terhubung ke menu Disiplin &amp; SP.</p>
+    </div>
+    <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-xl shrink-0 overflow-x-auto">
+      <button data-pptab="katalog" class="pp-tab px-3.5 py-1.5 text-xs font-bold rounded-lg transition bg-white text-maroon-700 shadow-sm whitespace-nowrap">
+        Katalog Pasal
+      </button>
+      <button data-pptab="disiplin" class="pp-tab px-3.5 py-1.5 text-xs font-semibold rounded-lg transition text-slate-600 hover:text-slate-900 whitespace-nowrap">
+        Sanksi &amp; Disiplin
+      </button>
+      <button data-pptab="kepatuhan" class="pp-tab px-3.5 py-1.5 text-xs font-semibold rounded-lg transition text-slate-600 hover:text-slate-900 whitespace-nowrap">
+        Kepatuhan PP
+      </button>
+    </div>
+  </div>
+
+  <div id="pp-panel-katalog"></div>
+  <div id="pp-panel-disiplin" class="hidden"></div>
+  <div id="pp-panel-kepatuhan" class="hidden"></div>
+</div>

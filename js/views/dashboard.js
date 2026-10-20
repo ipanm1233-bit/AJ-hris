@@ -90,6 +90,7 @@ export async function mount(container, { session }) {
   "performance-review": "REVIEW KPI",
   "penilaian-kontrak": "SPK & KPI",
   "pemanggilan": "SP DISIPLIN",
+  "peraturan-perusahaan": "PERATURAN PERUSAHAAN",
   "dokumen": "DRAFT DOC",
   "sales-order": "ORDER SALES",
   "sales-outlet": "OUTLET",
