@@ -102,7 +102,8 @@ Field "Lampiran URL" (harus copy-paste link manual) diganti jadi `<input type="f
 
 ---
 
-- **Diagram SOP:** setiap langkah dapat dipilih kategorinya (START, PROCESS, DECISION, DOKUMEN, END, LAINNYA). Render memakai mermaid.js lokal dengan cadangan flowchart SVG murni, sehingga tidak lagi bergantung pada layanan Kroki.io yang sering error 500.
+- **Builder langkah SOP:** setiap baris memiliki ID langkah (S01, S02, ...), kategori (START, PROCESS, DECISION, DOKUMEN, END, LAINNYA), nama aktivitas, tombol **Detail** untuk PIC, SLA, dokumen output, dan instruksi kerja, serta percabangan YA/TIDAK dengan tujuan langkah eksplisit. Builder terbuka otomatis setelah SOP baru disimpan (bila pengguna punya izin flowchart); ID dan tujuan ini dipakai langsung oleh Mermaid, SVG cadangan, pratinjau dokumen, dan tabel cetak.
+- **Diagram SOP:** setiap langkah dapat dipilih kategorinya. Render memakai mermaid.js lokal dengan cadangan flowchart SVG murni, sehingga tidak lagi bergantung pada layanan Kroki.io yang sering error 500.
 - **Logo dokumen:** `logoImgTag()` kini memakai `margin:0 auto` + wrapper flex pada kop ISO agar logo selalu tepat di tengah kotak, termasuk pada Tanda Terima Gimmick.
 - **Penyimpanan audit SOP:** validasi header dilakukan sebelum tombol dinonaktifkan dan kegagalan memuat ulang daftar dipisahkan dari keberhasilan penyimpanan, sehingga tidak lagi menampilkan "gagal menyimpan" padahal data sudah tersimpan.
 

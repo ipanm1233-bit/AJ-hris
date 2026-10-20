@@ -48,7 +48,7 @@ export function sanitizeMermaidLabel(value, maxLength = MAX_LABEL_LENGTH) {
   return String(value ?? "")
     .replace(/<br\s*\/?>/gi, " ")
     .replace(/["'`]/g, " ")
-    .replace(/[{}()\[\]\\]/g, " ")
+    .replace(/[{}()\[\]\\<>|]/g, " ")
     .replace(/\r?\n+/g, " ")
     .replace(/\s+/g, " ")
     .trim()
@@ -65,18 +65,77 @@ export function normalizeCategory(value) {
   return SOP_STEP_CATEGORIES.includes(cat) ? cat : "PROCESS";
 }
 
+/**
+ * Bersihkan ID langkah agar valid sebagai ID node Mermaid.
+ * Contoh: "S 01" -> "S_01", "01" -> "S_01".
+ */
+export function sanitizeMermaidId(value, fallback = "STEP") {
+  let safe = String(value ?? "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  if (!safe) safe = fallback;
+  if (/^[0-9]/.test(safe)) safe = `S_${safe}`;
+  return safe || "STEP";
+}
+
+function defaultStepId(index) {
+  return `S${String(index + 1).padStart(2, "0")}`;
+}
+
+function firstText(...values) {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+  return "";
+}
+
 /** Normalisasi satu langkah SOP tanpa mengubah objek asli. */
 export function normalizeStep(step = {}, index = 0) {
-  const category = normalizeCategory(step.category || step.shape);
+  const category = normalizeCategory(
+    step.category || step.shape || step.shape_type || step.Shape_Type
+  );
+  const rawStepId = firstText(step.step_id, step.stepId, step.Step_ID);
+  const legacyId = step.id && !/^step_\d+$/i.test(String(step.id))
+    ? String(step.id)
+    : "";
+  const stepId = rawStepId || legacyId || defaultStepId(index);
+
   return {
     ...step,
     id: step.id || `step_${index + 1}`,
+    step_id: stepId,
     category,
-    nama_aktivitas: String(step.nama_aktivitas || step.title || `Langkah ${index + 1}`).trim(),
-    actor: String(step.actor || step.pelaksana || "").trim(),
-    detail_proses: String(step.detail_proses || step.description || "").trim(),
-    decision_yes: String(step.decision_yes || DEFAULT_DECISION_YES).trim(),
-    decision_no: String(step.decision_no || DEFAULT_DECISION_NO).trim()
+    shape: category,
+    nama_aktivitas: firstText(
+      step.nama_aktivitas,
+      step.title,
+      step.process_name,
+      step.Process_Name
+    ) || `Langkah ${index + 1}`,
+    actor: firstText(step.actor, step.pelaksana, step.pic, step.PIC),
+    detail_proses: firstText(
+      step.detail_proses,
+      step.description,
+      step.activity_detail,
+      step.Activity_Detail
+    ),
+    sla: firstText(step.sla, step.SLA),
+    output_document: firstText(step.output_document, step.Output_Document),
+    next_step_yes: firstText(step.next_step_yes, step.Next_Step_Yes),
+    next_step_no: firstText(step.next_step_no, step.Next_Step_No),
+    decision_yes: firstText(
+      step.decision_yes,
+      step.label_yes,
+      step.Label_Yes
+    ) || DEFAULT_DECISION_YES,
+    decision_no: firstText(
+      step.decision_no,
+      step.label_no,
+      step.Label_No
+    ) || DEFAULT_DECISION_NO
   };
 }
 
@@ -189,17 +248,54 @@ export function buildMermaidCode(sopOrTitle, steps = []) {
     ""
   );
 
-  const nodeIds = normalized.map((_, index) => `N${index + 1}`);
+  const usedNodeIds = new Set();
+  const targetLookup = new Map();
+  const nodeIds = normalized.map((step, index) => {
+    const base = sanitizeMermaidId(step.step_id, defaultStepId(index));
+    let nodeId = base;
+    let suffix = 2;
+    while (usedNodeIds.has(nodeId)) {
+      nodeId = `${base}_${suffix}`;
+      suffix += 1;
+    }
+    usedNodeIds.add(nodeId);
+
+    const aliases = [
+      step.step_id,
+      step.id,
+      `S${String(index + 1).padStart(2, "0")}`,
+      String(index + 1),
+      nodeId
+    ];
+    aliases.forEach(alias => {
+      const key = String(alias || "").trim().toLowerCase();
+      if (key && !targetLookup.has(key)) targetLookup.set(key, nodeId);
+    });
+    return nodeId;
+  });
+
+  const resolveTarget = (rawTarget, fallbackIndex) => {
+    const key = String(rawTarget || "").trim().toLowerCase();
+    if (key && targetLookup.has(key)) return targetLookup.get(key);
+    if (Number.isInteger(fallbackIndex) && fallbackIndex >= 0 && fallbackIndex < nodeIds.length) {
+      return nodeIds[fallbackIndex];
+    }
+    return null;
+  };
 
   normalized.forEach((step, index) => {
     const nodeId = nodeIds[index];
     const name = sanitizeMermaidLabel(step.nama_aktivitas || `Langkah ${index + 1}`);
     const actor = sanitizeMermaidLabel(step.actor, 60);
     const detail = sanitizeMermaidLabel(step.detail_proses, 90);
+    const output = sanitizeMermaidLabel(step.output_document, 70);
+    const sla = sanitizeMermaidLabel(step.sla, 40);
 
     let label = `<b>${name}</b>`;
     if (actor) label += `<br/><i>${actor}</i>`;
     if (detail && detail.toLowerCase() !== name.toLowerCase()) label += `<br/>${detail}`;
+    if (output) label += `<br/>Doc: ${output}`;
+    if (sla) label += `<br/>SLA: ${sla}`;
 
     switch (step.category) {
       case "START":
@@ -227,20 +323,19 @@ export function buildMermaidCode(sopOrTitle, steps = []) {
 
   normalized.forEach((step, index) => {
     const current = nodeIds[index];
-    const next = nodeIds[index + 1] || null;
+    const nextIndex = index + 1 < nodeIds.length ? index + 1 : null;
+    if (step.category === "END") return;
 
     if (step.category === "DECISION") {
       const yesLabel = sanitizeMermaidLabel(step.decision_yes || DEFAULT_DECISION_YES, 40);
       const noLabel = sanitizeMermaidLabel(step.decision_no || DEFAULT_DECISION_NO, 40);
-      const noTarget = index > 0 ? nodeIds[index - 1] : current;
-      if (next) {
-        lines.push(`  ${current} -->|"${yesLabel}"| ${next}`);
-      } else {
-        lines.push(`  ${current} -->|"${yesLabel}"| ${current}`);
-      }
-      lines.push(`  ${current} -.->|"${noLabel}"| ${noTarget}`);
-    } else if (next) {
-      lines.push(`  ${current} --> ${next}`);
+      const yesTarget = resolveTarget(step.next_step_yes, nextIndex);
+      const noTarget = resolveTarget(step.next_step_no, index > 0 ? index - 1 : null);
+      if (yesTarget) lines.push(`  ${current} -->|"${yesLabel}"| ${yesTarget}`);
+      if (noTarget) lines.push(`  ${current} -.->|"${noLabel}"| ${noTarget}`);
+    } else {
+      const nextTarget = resolveTarget(step.next_step_yes, nextIndex);
+      if (nextTarget) lines.push(`  ${current} --> ${nextTarget}`);
     }
   });
 
@@ -312,9 +407,10 @@ export function buildFlowchartSvg(sopOrTitle, steps = []) {
 
   normalized.forEach((step, index) => {
     const nameLines = wrapSvgText(step.nama_aktivitas || `Langkah ${index + 1}`, 48);
-    const detailLines = step.detail_proses
-      ? wrapSvgText(step.detail_proses, 62).slice(0, 2)
-      : [];
+    const detailLines = [];
+    if (step.detail_proses) detailLines.push(...wrapSvgText(step.detail_proses, 62).slice(0, 2));
+    if (step.output_document) detailLines.push(`Dokumen: ${wrapSvgText(step.output_document, 54)[0]}`);
+    if (step.sla) detailLines.push(`SLA: ${wrapSvgText(step.sla, 54)[0]}`);
     const allLines = [...nameLines, ...detailLines];
     let height = Math.max(70, 28 + allLines.length * 15);
     if (step.category === "DECISION") height = Math.max(112, height + 24);
@@ -367,7 +463,8 @@ export function buildFlowchartSvg(sopOrTitle, steps = []) {
       parts.push(`<rect x="${nodeX}" y="${y}" width="${nodeWidth}" height="${height}" rx="8" fill="#1e293b" stroke="#475569" stroke-width="1.5"></rect>`);
     }
 
-    parts.push(`<text x="${nodeX + 12}" y="${y + 14}" font-size="8.5" font-weight="bold" fill="#e2e8f0" opacity="0.72">${escapeSvgText(categoryLabel)}</text>`);
+    const stepBadge = step.step_id ? `${step.step_id} · ` : "";
+    parts.push(`<text x="${nodeX + 12}" y="${y + 14}" font-size="8.5" font-weight="bold" fill="#e2e8f0" opacity="0.72">${escapeSvgText(stepBadge + categoryLabel)}</text>`);
 
     const nameAnchor = category === "DECISION" ? "middle" : "start";
     const nameX = category === "DECISION" ? centerX : nodeX + 24;

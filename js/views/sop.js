@@ -7,7 +7,7 @@ import { renderCrudModule, icon, badge, emptyState } from "../components.js";
 import { hasPermission, canDeleteModuleData } from "../auth.js";
 import { isoDocHeaderTable, COMPANY_NAME, COMPANY_ADDRESS_LINE1 } from "../branding.js";
 import {
-  buildMermaidCode, buildFlowchartSvg, resolveSteps, normalizeSteps, formatSopNumber,
+  buildMermaidCode, buildFlowchartSvg, resolveSteps, normalizeSteps, normalizeCategory, formatSopNumber,
   isSopReviewDue, SOP_STEP_CATEGORIES, SOP_STEP_CATEGORY_LABELS, SOP_STATUSES,
   SOP_DIVISIONS, SOP_CATEGORIES, DEFAULT_DECISION_YES, DEFAULT_DECISION_NO
 } from "../sop-flowchart.mjs";
@@ -265,7 +265,7 @@ export async function mount(container, { session } = {}) {
         { name: "ruang_lingkup", label: "Ruang Lingkup", type: "textarea", full: true },
         { name: "dasar_hukum", label: "Dasar Hukum / Kebijakan", type: "textarea", full: true },
         { name: "definisi", label: "Definisi / Istilah", type: "textarea", full: true },
-        { name: "alur_proses", label: "Alur Proses (satu langkah per baris)", type: "textarea", full: true },
+        { name: "alur_proses", label: "Alur Proses Awal (opsional, satu langkah per baris - builder langkah terbuka setelah simpan)", type: "textarea", full: true },
         { name: "referensi", label: "Referensi & Dokumen Terkait", type: "textarea", full: true },
         { name: "file_url", label: "Link Lampiran Lengkap (opsional)", type: "text", full: true }
       ],
@@ -277,9 +277,31 @@ export async function mount(container, { session } = {}) {
         if (!existing) payload.created_at = payload.updated_at;
         return payload;
       },
-      afterSave: async () => {
+      afterSave: async (data, isNew, savedId) => {
         await loadSopCache();
         loaded.generator = false;
+
+        // Setelah SOP baru dibuat, langsung buka builder langkah agar alur
+        // dapat disusun seperti form SOP Generator (S01, Detail, percabangan).
+        if (isNew && savedId && await hasPermission("sop.flowchart.generate", session)) {
+          const created = { ...data, id: savedId };
+          setTimeout(() => {
+            if (!document.body.contains(container)) return;
+            openStepEditor(created, resolveSteps(created), async (updatedSteps) => {
+              try {
+                await fsUpdate(COL.SOP_DOKUMEN, savedId, {
+                  flowchart_steps: updatedSteps,
+                  updated_at: new Date().toISOString()
+                });
+                toast("Langkah SOP berhasil disimpan dan flowchart dibuat.", "success");
+                await loadSopCache();
+                loaded.generator = false;
+              } catch (e) {
+                toast("Gagal menyimpan langkah SOP: " + (e.message || e), "error");
+              }
+            });
+          }, 80);
+        }
       },
       onRowClick: (row) => openGenerator(row.id),
       printFn: (row) => {
@@ -833,6 +855,7 @@ export async function mount(container, { session } = {}) {
                 <span class="px-2 py-0.5 rounded bg-slate-800 border border-slate-600 text-slate-200 font-bold">PROCESS</span>
                 <span class="px-2 py-0.5 rounded bg-amber-950/80 border border-amber-500/50 text-amber-300 font-bold">DECISION</span>
                 <span class="px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-500/50 text-cyan-300 font-bold">DOKUMEN</span>
+                <span class="px-2 py-0.5 rounded bg-slate-800 border border-slate-500 text-slate-300 font-bold">LAINNYA</span>
                 <span class="px-2 py-0.5 rounded bg-rose-950/80 border border-rose-500/50 text-rose-300 font-bold">END</span>
               </div>
             </div>
@@ -1063,11 +1086,14 @@ export async function mount(container, { session } = {}) {
         <div class="flex flex-col items-center">
           <div class="w-full border ${tone} rounded-xl p-3">
             <div class="flex items-center justify-between gap-2 mb-1">
-              <span class="text-[10px] font-extrabold uppercase tracking-wide">${escapeHtml(cat)} - Langkah ${index + 1}</span>
+              <span class="text-[10px] font-extrabold uppercase tracking-wide">${escapeHtml(step.step_id || `S${String(index + 1).padStart(2, "0")}`)} · ${escapeHtml(cat)} - Langkah ${index + 1}</span>
               <span class="text-[10px] font-semibold opacity-80">${escapeHtml(step.actor || "")}</span>
             </div>
             <p class="text-xs font-bold">${escapeHtml(step.nama_aktivitas || "")}</p>
             ${step.detail_proses ? `<p class="text-[11px] opacity-80 mt-0.5">${escapeHtml(step.detail_proses)}</p>` : ""}
+            ${step.output_document ? `<p class="text-[10px] opacity-75 mt-0.5">Dokumen: ${escapeHtml(step.output_document)}</p>` : ""}
+            ${step.sla ? `<p class="text-[10px] opacity-75">SLA: ${escapeHtml(step.sla)}</p>` : ""}
+            ${cat === "DECISION" ? `<p class="text-[10px] font-semibold mt-1">Ya: ${escapeHtml(step.decision_yes || DEFAULT_DECISION_YES)}${step.next_step_yes ? ` &rarr; ${escapeHtml(step.next_step_yes)}` : ""} · Tidak: ${escapeHtml(step.decision_no || DEFAULT_DECISION_NO)}${step.next_step_no ? ` &rarr; ${escapeHtml(step.next_step_no)}` : ""}</p>` : ""}
           </div>
           ${index < steps.length - 1 ? `<div class="text-slate-500 text-xs font-bold my-0.5">v</div>` : ""}
         </div>`;
@@ -1137,14 +1163,22 @@ export async function mount(container, { session } = {}) {
     const stepRows = steps.map((step, index) => `
       <tr>
         <td class="center">${index + 1}</td>
-        <td class="center"><b>${escapeHtml(SOP_STEP_CATEGORY_LABELS[step.category] || step.category || "PROCESS")}</b></td>
+        <td class="center"><b>${escapeHtml(step.step_id || `S${String(index + 1).padStart(2, "0")}`)}</b><br/><span class="small">${escapeHtml(step.category || "PROCESS")}</span></td>
+        <td><b>${escapeHtml(step.nama_aktivitas || "")}</b></td>
+        <td>${escapeHtml(step.output_document || "-")}</td>
         <td>${escapeHtml(step.actor || "-")}</td>
-        <td><b>${escapeHtml(step.nama_aktivitas || "")}</b>${step.detail_proses ? `<br/><span class="small">${escapeHtml(step.detail_proses)}</span>` : ""}</td>
+        <td>${escapeHtml(step.sla || "-")}</td>
+        <td>${escapeHtml(step.detail_proses || "-")}</td>
       </tr>`).join("");
+
+    function targetNote(target) {
+      const value = String(target || "").trim();
+      return value ? ` &rarr; ${escapeHtml(value)}` : " (otomatis)";
+    }
 
     const decisionNotes = steps
       .filter(step => step.category === "DECISION")
-      .map((step, index) => `<li><b>${escapeHtml(step.nama_aktivitas)}</b> - Ya: ${escapeHtml(step.decision_yes || DEFAULT_DECISION_YES)}; Tidak: ${escapeHtml(step.decision_no || DEFAULT_DECISION_NO)}</li>`)
+      .map(step => `<li><b>${escapeHtml(step.step_id || "")} ${escapeHtml(step.nama_aktivitas)}</b> - Ya: ${escapeHtml(step.decision_yes || DEFAULT_DECISION_YES)}${targetNote(step.next_step_yes)}; Tidak: ${escapeHtml(step.decision_no || DEFAULT_DECISION_NO)}${targetNote(step.next_step_no)}</li>`)
       .join("");
 
     return `
@@ -1194,13 +1228,16 @@ export async function mount(container, { session } = {}) {
       <table class="grid">
         <thead>
           <tr>
-            <th class="center" style="width:30px;">No</th>
-            <th class="center" style="width:72px;">Kategori</th>
-            <th style="width:120px;">Pelaksana</th>
-            <th>Nama Aktivitas & Detail Prosedur</th>
+            <th class="center" style="width:28px;">No</th>
+            <th class="center" style="width:56px;">ID</th>
+            <th style="width:145px;">Aktivitas</th>
+            <th style="width:92px;">Dokumen</th>
+            <th style="width:82px;">PIC</th>
+            <th style="width:62px;">SLA</th>
+            <th>Keterangan / Instruksi</th>
           </tr>
         </thead>
-        <tbody>${stepRows || `<tr><td colspan="4" class="center muted">Belum ada langkah prosedur.</td></tr>`}</tbody>
+        <tbody>${stepRows || `<tr><td colspan="7" class="center muted">Belum ada langkah prosedur.</td></tr>`}</tbody>
       </table>
       ${decisionNotes ? `<div class="small" style="margin-top:5px;">Percabangan keputusan:<ul style="margin:3px 0 0 16px;padding:0;">${decisionNotes}</ul></div>` : ""}
 
@@ -1304,10 +1341,41 @@ export async function mount(container, { session } = {}) {
   }
 
   /* -------------------------------------------------------------------
-   * STEP EDITOR (START / PROCESS / DECISION / DOKUMEN / END)
+   * STEP EDITOR (START / PROCESS / DECISION / DOKUMEN / END / LAINNYA)
    * ----------------------------------------------------------------- */
   function openStepEditor(sop, existingSteps, onSave) {
     let steps = normalizeSteps(JSON.parse(JSON.stringify(existingSteps || [])));
+    let expandedIndex = steps.length ? 0 : -1;
+    let editorSeq = 0;
+
+    // Pastikan ID langkah unik saat editor dibuka. ID lama yang belum punya
+    // step_id akan otomatis menjadi S01, S02, dst.
+    const usedEditorIds = new Set();
+    steps.forEach((step, index) => {
+      let base = String(step.step_id || `S${String(index + 1).padStart(2, "0")}`).trim()
+        || `S${String(index + 1).padStart(2, "0")}`;
+      let candidate = base;
+      let suffix = 2;
+      while (usedEditorIds.has(candidate.toLowerCase())) {
+        candidate = `${base}_${suffix}`;
+        suffix += 1;
+      }
+      step.step_id = candidate;
+      usedEditorIds.add(candidate.toLowerCase());
+    });
+
+    function editorNextStepId() {
+      let max = 0;
+      steps.forEach(step => {
+        const match = String(step.step_id || "").match(/^S\s*(\d+)$/i);
+        if (match) max = Math.max(max, Number(match[1]));
+      });
+      return `S${String(max + 1).padStart(2, "0")}`;
+    }
+
+    function editorStepKey(value) {
+      return String(value || "").trim().toLowerCase();
+    }
 
     openModal({
       title: `Atur Langkah SOP & Kategori — ${sopLabel(sop)}`,
@@ -1315,12 +1383,20 @@ export async function mount(container, { session } = {}) {
       bodyHtml: `
         <div class="space-y-4 text-left text-xs">
           <div class="bg-slate-100 p-3 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-2">
-            <p class="text-slate-600 font-medium">
-              Pilih kategori tiap langkah: <b>START (mulai), PROCESS (proses), DECISION (keputusan), DOKUMEN, END (selesai), atau LAINNYA</b>. Diagram Mermaid dan flowchart cetak dibuat otomatis dari pilihan ini.
-            </p>
+            <div>
+              <p class="text-slate-600 font-medium">
+                Susun alur seperti SOP Generator: <b>ID langkah, kategori, nama proses, lalu Detail</b> untuk PIC, SLA, dokumen output, dan percabangan keputusan.
+              </p>
+              <p class="text-[11px] text-slate-500 mt-1">
+                ID otomatis S01, S02, ... dan dapat diubah. Bila tujuan berikutnya dikosongkan, sistem memakai langkah berikutnya secara otomatis.
+              </p>
+            </div>
             <button id="btn-step-add" class="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl shadow transition shrink-0">+ Tambah Langkah</button>
           </div>
-          <div id="step-editor-list" class="space-y-3 max-h-[62vh] overflow-y-auto pr-1"></div>
+          <div id="step-editor-list" class="space-y-2.5 max-h-[62vh] overflow-y-auto pr-1"></div>
+          <div class="flex justify-center pt-1">
+            <button id="btn-step-add-bottom" class="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl shadow transition">+ Tambah Langkah</button>
+          </div>
         </div>
       `,
       footerHtml: `
@@ -1332,59 +1408,121 @@ export async function mount(container, { session } = {}) {
       onMount: (m) => {
         const list = m.querySelector("#step-editor-list");
 
+        function targetOptions(currentIndex, selected) {
+          const selectedKey = editorStepKey(selected);
+          return steps
+            .map((step, index) => ({ step, index }))
+            .filter(item => item.index !== currentIndex)
+            .map(item => {
+              const value = String(item.step.step_id || "");
+              return `<option value="${escapeHtml(value)}" ${editorStepKey(value) === selectedKey ? "selected" : ""}>${escapeHtml(value)} - ${escapeHtml(item.step.nama_aktivitas || "Tanpa nama")}</option>`;
+            })
+            .join("");
+        }
+
         function renderList() {
+          if (!steps.length) {
+            list.innerHTML = `
+              <div class="p-6 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                Belum ada langkah. Klik <b>+ Tambah Langkah</b> untuk mulai menyusun alur SOP.
+              </div>`;
+            return;
+          }
+
           list.innerHTML = steps.map((step, index) => {
-            const category = step.category || "PROCESS";
+            const category = normalizeCategory(step.category || "PROCESS");
+            const isOpen = expandedIndex === index;
             return `
-              <div class="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                <div class="flex items-center justify-between gap-2 border-b border-slate-200 pb-2">
-                  <div class="flex items-center gap-2">
-                    <span class="w-6 h-6 rounded-full bg-slate-900 text-emerald-400 font-extrabold text-xs flex items-center justify-center">${index + 1}</span>
-                    <span class="font-extrabold text-slate-800 text-xs">Langkah ${index + 1}</span>
-                  </div>
-                  <div class="flex items-center gap-1">
-                    ${index > 0 ? `<button type="button" data-step-up="${index}" class="px-2 py-1 rounded text-slate-500 hover:bg-slate-200 font-bold text-[11px]">Naik</button>` : ""}
-                    ${index < steps.length - 1 ? `<button type="button" data-step-down="${index}" class="px-2 py-1 rounded text-slate-500 hover:bg-slate-200 font-bold text-[11px]">Turun</button>` : ""}
-                    <button type="button" data-step-del="${index}" class="px-2 py-1 rounded text-rose-600 hover:bg-rose-100 font-bold text-[11px]">Hapus</button>
-                  </div>
-                </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
-                  <div class="md:col-span-3">
-                    <label class="block font-bold text-slate-700 mb-1">Kategori <span class="text-rose-500">*</span></label>
-                    <select data-step-cat="${index}" class="w-full p-2 rounded-xl border border-slate-300 outline-none focus:border-emerald-500 font-bold bg-white">
-                      ${SOP_STEP_CATEGORIES.map(cat => `<option value="${cat}" ${category === cat ? "selected" : ""}>${SOP_STEP_CATEGORY_LABELS[cat] || cat}</option>`).join("")}
-                    </select>
-                  </div>
-                  <div class="md:col-span-6">
-                    <label class="block font-bold text-slate-700 mb-1">Nama Aktivitas / Proses <span class="text-rose-500">*</span></label>
-                    <input data-step-name="${index}" type="text" value="${escapeHtml(step.nama_aktivitas || "")}" placeholder="Contoh: Verifikasi berkas karyawan" class="w-full p-2 rounded-xl border border-slate-300 outline-none focus:border-emerald-500 font-bold bg-white">
-                  </div>
-                  <div class="md:col-span-3">
-                    <label class="block font-bold text-slate-700 mb-1">Pelaksana / PIC</label>
-                    <input data-step-actor="${index}" type="text" value="${escapeHtml(step.actor || "")}" placeholder="Contoh: Staf HRD" class="w-full p-2 rounded-xl border border-slate-300 outline-none focus:border-emerald-500 bg-white">
+              <div class="bg-white border ${isOpen ? "border-emerald-300 shadow-sm" : "border-slate-200"} rounded-2xl overflow-hidden">
+                <div class="flex flex-wrap items-center gap-2 p-2.5">
+                  <span class="w-7 h-7 rounded-full bg-slate-900 text-emerald-400 font-extrabold text-[11px] flex items-center justify-center shrink-0">${index + 1}</span>
+                  <input data-step-id="${index}" type="text" value="${escapeHtml(step.step_id || "")}" maxlength="12" title="ID langkah, contoh S01" class="w-20 px-2 py-1.5 rounded-lg border border-slate-300 outline-none focus:border-emerald-500 font-mono font-bold text-center uppercase bg-white">
+                  <select data-step-cat="${index}" class="w-44 px-2 py-1.5 rounded-lg border border-slate-300 outline-none focus:border-emerald-500 font-bold bg-white">
+                    ${SOP_STEP_CATEGORIES.map(cat => `<option value="${cat}" ${category === cat ? "selected" : ""}>${SOP_STEP_CATEGORY_LABELS[cat] || cat}</option>`).join("")}
+                  </select>
+                  <input data-step-name="${index}" type="text" value="${escapeHtml(step.nama_aktivitas || "")}" placeholder="Nama aktivitas / proses..." class="flex-1 min-w-[210px] px-3 py-1.5 rounded-lg border border-slate-300 outline-none focus:border-emerald-500 font-bold bg-white">
+                  <button type="button" data-step-toggle="${index}" aria-expanded="${isOpen}" class="px-3 py-1.5 rounded-lg text-[11px] font-bold ${isOpen ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200" : "bg-slate-100 text-slate-600 hover:bg-slate-200"} transition">${isOpen ? "Tutup" : "Detail"}</button>
+                  <div class="flex items-center gap-0.5 shrink-0">
+                    ${index > 0 ? `<button type="button" data-step-up="${index}" title="Naik" class="w-7 h-7 rounded-lg text-slate-500 hover:bg-slate-200 font-bold">↑</button>` : ""}
+                    ${index < steps.length - 1 ? `<button type="button" data-step-down="${index}" title="Turun" class="w-7 h-7 rounded-lg text-slate-500 hover:bg-slate-200 font-bold">↓</button>` : ""}
+                    <button type="button" data-step-del="${index}" title="Hapus langkah" class="w-7 h-7 rounded-lg text-rose-600 hover:bg-rose-100 font-bold text-lg leading-none">&times;</button>
                   </div>
                 </div>
 
-                <div>
-                  <label class="block font-bold text-slate-700 mb-1">Detail Proses (Instruksi Kerja)</label>
-                  <textarea data-step-detail="${index}" rows="2" class="w-full p-2 rounded-xl border border-slate-300 outline-none focus:border-emerald-500 bg-white">${escapeHtml(step.detail_proses || "")}</textarea>
-                </div>
-
-                ${category === "DECISION" ? `
-                  <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl grid grid-cols-1 md:grid-cols-2 gap-3">
+                ${isOpen ? `
+                  <div class="border-t border-slate-200 bg-slate-50 p-3 space-y-3">
                     <div>
-                      <label class="block font-bold text-emerald-800 mb-1">Cabang YA / DISETUJUI</label>
-                      <input data-step-yes="${index}" type="text" value="${escapeHtml(step.decision_yes || DEFAULT_DECISION_YES)}" class="w-full p-2 rounded-lg border border-slate-300 outline-none bg-white">
+                      <label class="block font-bold text-slate-700 mb-1">Deskripsi Keterangan / Instruksi Kerja</label>
+                      <textarea data-step-detail="${index}" rows="2" placeholder="Deskripsikan kegiatan, standar, atau hasil yang diharapkan..." class="w-full p-2 rounded-lg border border-slate-300 outline-none focus:border-emerald-500 bg-white">${escapeHtml(step.detail_proses || "")}</textarea>
                     </div>
-                    <div>
-                      <label class="block font-bold text-rose-800 mb-1">Cabang TIDAK / REVISI</label>
-                      <input data-step-no="${index}" type="text" value="${escapeHtml(step.decision_no || DEFAULT_DECISION_NO)}" class="w-full p-2 rounded-lg border border-slate-300 outline-none bg-white">
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <label class="block font-bold text-slate-700 mb-1">PIC (Penanggung Jawab)</label>
+                        <input data-step-actor="${index}" type="text" value="${escapeHtml(step.actor || "")}" placeholder="Nama / jabatan" class="w-full p-2 rounded-lg border border-slate-300 outline-none focus:border-emerald-500 bg-white">
+                      </div>
+                      <div>
+                        <label class="block font-bold text-slate-700 mb-1">SLA / Target Waktu</label>
+                        <input data-step-sla="${index}" type="text" value="${escapeHtml(step.sla || "")}" placeholder="Contoh: 1 hari kerja" class="w-full p-2 rounded-lg border border-slate-300 outline-none focus:border-emerald-500 bg-white">
+                      </div>
+                      <div>
+                        <label class="block font-bold text-slate-700 mb-1">Dokumen Pendukung / Output</label>
+                        <input data-step-output="${index}" type="text" value="${escapeHtml(step.output_document || "")}" placeholder="Contoh: Form permohonan" class="w-full p-2 rounded-lg border border-slate-300 outline-none focus:border-emerald-500 bg-white">
+                      </div>
                     </div>
+
+                    ${category === "DECISION" ? `
+                      <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-3">
+                        <p class="font-black text-amber-900">Percabangan Keputusan</p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <label class="block font-bold text-emerald-800 mb-1">Label YA / DISETUJUI</label>
+                            <input data-step-yes-label="${index}" type="text" value="${escapeHtml(step.decision_yes || DEFAULT_DECISION_YES)}" class="w-full p-2 rounded-lg border border-slate-300 outline-none bg-white">
+                          </div>
+                          <div>
+                            <label class="block font-bold text-rose-800 mb-1">Label TIDAK / REVISI</label>
+                            <input data-step-no-label="${index}" type="text" value="${escapeHtml(step.decision_no || DEFAULT_DECISION_NO)}" class="w-full p-2 rounded-lg border border-slate-300 outline-none bg-white">
+                          </div>
+                          <div>
+                            <label class="block font-bold text-slate-700 mb-1">Langkah Tujuan YA</label>
+                            <select data-step-next-yes="${index}" class="w-full p-2 rounded-lg border border-slate-300 outline-none bg-white">
+                              <option value="">Otomatis (langkah berikutnya)</option>
+                              ${targetOptions(index, step.next_step_yes)}
+                            </select>
+                          </div>
+                          <div>
+                            <label class="block font-bold text-slate-700 mb-1">Langkah Tujuan TIDAK</label>
+                            <select data-step-next-no="${index}" class="w-full p-2 rounded-lg border border-slate-300 outline-none bg-white">
+                              <option value="">Otomatis (langkah sebelumnya)</option>
+                              ${targetOptions(index, step.next_step_no)}
+                            </select>
+                          </div>
+                        </div>
+                      </div>` : category === "END" ? `
+                      <div class="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 font-medium">
+                        Langkah END adalah akhir alur dan tidak memiliki langkah tujuan berikutnya.
+                      </div>` : `
+                      <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                        <label class="block font-bold text-emerald-900 mb-1">Langkah Berikutnya</label>
+                        <select data-step-next-yes="${index}" class="w-full p-2 rounded-lg border border-slate-300 outline-none bg-white">
+                          <option value="">Otomatis (langkah berikutnya)</option>
+                          ${targetOptions(index, step.next_step_yes)}
+                        </select>
+                      </div>`}
                   </div>` : ""}
               </div>`;
           }).join("");
 
+          list.querySelectorAll("[data-step-id]").forEach(el => {
+            el.oninput = () => {
+              steps[Number(el.dataset.stepId)].step_id = el.value;
+            };
+            el.onchange = () => {
+              const index = Number(el.dataset.stepId);
+              steps[index].step_id = el.value.trim() || `S${String(index + 1).padStart(2, "0")}`;
+              renderList();
+            };
+          });
           list.querySelectorAll("[data-step-cat]").forEach(el => {
             el.onchange = () => {
               const index = Number(el.dataset.stepCat);
@@ -1402,43 +1540,93 @@ export async function mount(container, { session } = {}) {
           list.querySelectorAll("[data-step-detail]").forEach(el => {
             el.oninput = () => { steps[Number(el.dataset.stepDetail)].detail_proses = el.value; };
           });
-          list.querySelectorAll("[data-step-yes]").forEach(el => {
-            el.oninput = () => { steps[Number(el.dataset.stepYes)].decision_yes = el.value; };
+          list.querySelectorAll("[data-step-sla]").forEach(el => {
+            el.oninput = () => { steps[Number(el.dataset.stepSla)].sla = el.value; };
           });
-          list.querySelectorAll("[data-step-no]").forEach(el => {
-            el.oninput = () => { steps[Number(el.dataset.stepNo)].decision_no = el.value; };
+          list.querySelectorAll("[data-step-output]").forEach(el => {
+            el.oninput = () => { steps[Number(el.dataset.stepOutput)].output_document = el.value; };
+          });
+          list.querySelectorAll("[data-step-yes-label]").forEach(el => {
+            el.oninput = () => { steps[Number(el.dataset.stepYesLabel)].decision_yes = el.value; };
+          });
+          list.querySelectorAll("[data-step-no-label]").forEach(el => {
+            el.oninput = () => { steps[Number(el.dataset.stepNoLabel)].decision_no = el.value; };
+          });
+          list.querySelectorAll("[data-step-next-yes]").forEach(el => {
+            el.onchange = () => { steps[Number(el.dataset.stepNextYes)].next_step_yes = el.value; };
+          });
+          list.querySelectorAll("[data-step-next-no]").forEach(el => {
+            el.onchange = () => { steps[Number(el.dataset.stepNextNo)].next_step_no = el.value; };
+          });
+          list.querySelectorAll("[data-step-toggle]").forEach(btn => {
+            btn.onclick = () => {
+              const index = Number(btn.dataset.stepToggle);
+              expandedIndex = expandedIndex === index ? -1 : index;
+              renderList();
+            };
           });
           list.querySelectorAll("[data-step-del]").forEach(btn => {
-            btn.onclick = () => { steps.splice(Number(btn.dataset.stepDel), 1); renderList(); };
+            btn.onclick = () => {
+              const index = Number(btn.dataset.stepDel);
+              const removedId = editorStepKey(steps[index]?.step_id);
+              steps.splice(index, 1);
+              steps.forEach(step => {
+                if (editorStepKey(step.next_step_yes) === removedId) step.next_step_yes = "";
+                if (editorStepKey(step.next_step_no) === removedId) step.next_step_no = "";
+              });
+              if (expandedIndex === index) expandedIndex = -1;
+              else if (expandedIndex > index) expandedIndex -= 1;
+              renderList();
+            };
           });
           list.querySelectorAll("[data-step-up]").forEach(btn => {
             btn.onclick = () => {
               const index = Number(btn.dataset.stepUp);
-              [steps[index - 1], steps[index]] = [steps[index], steps[index - 1]];
+              const target = index - 1;
+              [steps[target], steps[index]] = [steps[index], steps[target]];
+              if (expandedIndex === index) expandedIndex = target;
+              else if (expandedIndex === target) expandedIndex = index;
               renderList();
             };
           });
           list.querySelectorAll("[data-step-down]").forEach(btn => {
             btn.onclick = () => {
               const index = Number(btn.dataset.stepDown);
-              [steps[index + 1], steps[index]] = [steps[index], steps[index + 1]];
+              const target = index + 1;
+              [steps[target], steps[index]] = [steps[index], steps[target]];
+              if (expandedIndex === index) expandedIndex = target;
+              else if (expandedIndex === target) expandedIndex = index;
               renderList();
             };
           });
         }
 
-        m.querySelector("#btn-step-add").onclick = () => {
-          steps.push({
-            id: `step_${steps.length + 1}`,
-            category: "PROCESS",
-            nama_aktivitas: "Aktivitas prosedur baru",
-            actor: `Tim ${sop.divisi || "HRD"}`,
+        function addStep() {
+          const insertAt = steps.length && steps[steps.length - 1].category === "END"
+            ? steps.length - 1
+            : steps.length;
+          const newStep = {
+            id: `step_new_${Date.now()}_${++editorSeq}`,
+            step_id: editorNextStepId(),
+            category: insertAt === 0 ? "START" : "PROCESS",
+            shape: insertAt === 0 ? "START" : "PROCESS",
+            nama_aktivitas: "",
+            actor: insertAt === 0 ? "" : `Tim ${sop.divisi || "HRD"}`,
             detail_proses: "",
+            sla: "",
+            output_document: "",
+            next_step_yes: "",
+            next_step_no: "",
             decision_yes: DEFAULT_DECISION_YES,
             decision_no: DEFAULT_DECISION_NO
-          });
+          };
+          steps.splice(insertAt, 0, newStep);
+          expandedIndex = insertAt;
           renderList();
-        };
+        }
+
+        m.querySelector("#btn-step-add").onclick = addStep;
+        m.querySelector("#btn-step-add-bottom").onclick = addStep;
 
         m.querySelector("#btn-step-cancel").onclick = closeModal;
         m.querySelector("#btn-step-save").onclick = () => {
@@ -1446,7 +1634,46 @@ export async function mount(container, { session } = {}) {
             toast("Minimal satu langkah SOP diperlukan.", "warning");
             return;
           }
-          const cleaned = normalizeSteps(steps).map((step, index) => ({ ...step, id: `step_${index + 1}` }));
+
+          const blankIndex = steps.findIndex(step => !String(step.nama_aktivitas || "").trim());
+          if (blankIndex >= 0) {
+            expandedIndex = blankIndex;
+            renderList();
+            toast(`Nama aktivitas langkah ${blankIndex + 1} wajib diisi.`, "warning");
+            return;
+          }
+
+          const idOwners = new Map();
+          for (let index = 0; index < steps.length; index += 1) {
+            const rawId = String(steps[index].step_id || "").trim();
+            const key = editorStepKey(rawId);
+            if (!key) {
+              expandedIndex = index;
+              renderList();
+              toast(`ID langkah ${index + 1} wajib diisi.`, "warning");
+              return;
+            }
+            if (idOwners.has(key)) {
+              expandedIndex = index;
+              renderList();
+              toast(`ID langkah "${rawId}" dipakai lebih dari satu. Gunakan ID yang unik.`, "warning");
+              return;
+            }
+            idOwners.set(key, index);
+          }
+
+          const cleaned = normalizeSteps(steps);
+          const validIds = new Set(cleaned.map(step => editorStepKey(step.step_id)));
+          cleaned.forEach(step => {
+            const ownId = editorStepKey(step.step_id);
+            if (step.next_step_yes && (editorStepKey(step.next_step_yes) === ownId || !validIds.has(editorStepKey(step.next_step_yes)))) {
+              step.next_step_yes = "";
+            }
+            if (step.next_step_no && (editorStepKey(step.next_step_no) === ownId || !validIds.has(editorStepKey(step.next_step_no)))) {
+              step.next_step_no = "";
+            }
+          });
+
           closeModal();
           if (typeof onSave === "function") onSave(cleaned);
         };
