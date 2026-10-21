@@ -1589,7 +1589,7 @@ function downloadHrdDocumentWord(docData, contentHtml) {
  <style>
  @page Section1 { size: 595.3pt 841.9pt; margin: 18mm 20mm 18mm 20mm; mso-header-margin: 12mm; mso-footer-margin: 12mm; mso-paper-source: 0; }
  div.Section1 { page: Section1; }
- body { margin: 0; font-family: 'Times New Roman', Times, serif; font-size: 11pt; color: #000000; }
+ body { margin: 0; font-family: Arial, Helvetica, sans-serif; font-size: 11pt; color: #000000; }
  ${officialDocStyles({ forWord: true })}
  </style>
  </head>

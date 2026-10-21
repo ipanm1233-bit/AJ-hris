@@ -45,7 +45,7 @@ function printShell(title, bodyHtml) {
 <style>
   @page { size: A4; margin: 14mm 13mm; }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: "Times New Roman", Times, serif; font-size: 10.5pt; color: #111; line-height: 1.45; }
+  body { margin: 0; font-family: Arial, Helvetica, sans-serif; font-size: 10.5pt; color: #111; line-height: 1.45; }
   .doc { max-width: 100%; }
   h1 { font-size: 15pt; text-align: center; margin: 0 0 2mm; letter-spacing: .3px; }
   h2 { font-size: 11.5pt; margin: 5mm 0 2mm; border-bottom: 1px solid #999; padding-bottom: 1mm; }

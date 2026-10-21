@@ -73,7 +73,7 @@ export function officialDocStyles({ forWord = false } = {}) {
     padding: 0;
     background: #ffffff;
     color: #000000;
-    font-family: 'Times New Roman', Times, serif;
+    font-family: Arial, Helvetica, sans-serif;
     font-size: 11pt;
     line-height: 1.45;
     -webkit-print-color-adjust: exact !important;
@@ -96,7 +96,7 @@ export function officialDocStyles({ forWord = false } = {}) {
   .aj-doc .aj-title .aj-number { margin-top: 4px; font-size: 10.5pt; line-height: 1.3; }
   .aj-doc .aj-identity { width: auto; margin: 4px 0 12px 16px; border-collapse: collapse; font-size: 10.5pt; }
   .aj-doc .aj-identity td { padding: 2px 0; vertical-align: top; }
-  .aj-doc .aj-identity .aj-label { width: 132px; }
+  .aj-doc .aj-identity .aj-label { width: 150px; white-space: nowrap; }
   .aj-doc .aj-identity .aj-sep { width: 14px; }
   .aj-doc .aj-identity .aj-value { font-weight: 600; }
   .aj-doc .aj-clause { margin: 0 0 10px 0; page-break-inside: avoid; }

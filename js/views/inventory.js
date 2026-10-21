@@ -1678,7 +1678,7 @@ async function printBlankoOpname() {
    thead { display: table-header-group !important; }
    tr { page-break-inside: avoid !important; break-inside: avoid !important; }
   </style>
-  <div style="width:100%; max-width:100%; margin:0; padding:0; font-family:'Times New Roman', Times, serif; font-size:10.5px; line-height:1.35; color:#000; background:#ffffff; box-sizing:border-box;">
+  <div style="width:100%; max-width:100%; margin:0; padding:0; font-family:Arial, Helvetica, sans-serif; font-size:10.5px; line-height:1.35; color:#000; background:#ffffff; box-sizing:border-box;">
    <div style="page-break-inside:avoid; margin-bottom:12px;">
     ${isoDocHeaderTable({ judul: "BLANKO PEMERIKSAAN FISIK ASET & INVENTARIS (STOCK OPNAME)", noDok: "GA-OPNAME", terbitRevisi: "1/1", tglTerbit: "1 September 2025", hal: "1 dari 1" })}
    </div>
@@ -1780,7 +1780,7 @@ async function printTandaTerimaBarang(row) {
    </tr>`).join("");
 
   const html = `
-  <div style="width:100%; max-width:100%; margin:0; padding:0; font-family:'Times New Roman', Times, serif; font-size:10.5px; line-height:1.35; color:#000; background:#ffffff; box-sizing:border-box;">
+  <div style="width:100%; max-width:100%; margin:0; padding:0; font-family:Arial, Helvetica, sans-serif; font-size:10.5px; line-height:1.35; color:#000; background:#ffffff; box-sizing:border-box;">
    <div style="page-break-inside:avoid; margin-bottom:12px;">
     ${isoDocHeaderTable({ judul: "BERITA ACARA PENYERAHAN / PEMINJAMAN ASET PERUSAHAAN", noDok: "GA-BA-AST-01", terbitRevisi: "1/1", tglTerbit: "1 September 2025", hal: "1 dari 1" })}
    </div>

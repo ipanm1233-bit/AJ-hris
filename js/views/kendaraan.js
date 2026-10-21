@@ -4,6 +4,22 @@ import { renderCrudModule, badge, emptyState, icon } from "../components.js";
 import { canEditModuleData } from "../auth.js";
 import { COMPANY_NAME, COMPANY_ADDRESS_LINE1, letterheadHtml, officialDocStyles, officialPrintHtml } from "../branding.js";
 
+function normalizePersonName(value) {
+  return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+// NIK KTP di Master Karyawan disimpan pada field nik_ktp (fallback no_ktp/ktp).
+// Jangan memakai field `nik` karena itu NIK Karyawan/internal, bukan NIK KTP.
+function getEmployeeKtp(emp) {
+  if (!emp) return "";
+  const candidates = [emp.nik_ktp, emp.no_ktp, emp.ktp, emp.nik_e_ktp, emp.no_e_ktp];
+  const found = candidates.find(v => v !== null && v !== undefined && String(v).trim() !== "" && String(v).trim() !== "-");
+  if (found) return String(found).trim();
+  // Data lama kadang menyimpan NIK KTP 16 digit pada field `nik`.
+  const legacy = String(emp.nik || "").replace(/\s+/g, "");
+  return /^\d{16}$/.test(legacy) ? legacy : "";
+}
+
 export async function mount(container, { session }) {
  const isHrd = ["HRD", "SUPERADMIN", "GA"].includes((session.role || "").toUpperCase());
  const canEdit = await canEditModuleData(session);
@@ -358,7 +374,7 @@ export async function mount(container, { session }) {
   mso-paper-source: 0;
 }
 div.Section1 { page: Section1; }
-body { margin: 0; font-family: 'Times New Roman', Times, serif; font-size: 11pt; color: #000000; line-height: 1.45; }
+body { margin: 0; font-family: Arial, Helvetica, sans-serif; font-size: 11pt; color: #000000; line-height: 1.45; }
 table { border-collapse: collapse; width: 100%; }
 p { margin: 0 0 8pt 0; }
 ${officialDocStyles({ forWord: true })}
@@ -415,7 +431,7 @@ ${htmlContent}
     const kotaSurat = String(`${kendaraan.cabang || ""} ${kendaraan.alamat || ""} ${pemberiAlamat || ""}`).toLowerCase().includes("malang") ? "Malang" : "Cirebon";
 
     return `
-    <div class="aj-doc surat-kuasa-a4" style="font-family:'Times New Roman', Times, serif; font-size:11pt; line-height:1.45; color:#000; background:#fff; width:100%;">
+    <div class="aj-doc surat-kuasa-a4" style="font-family:Arial, Helvetica, sans-serif; font-size:11pt; line-height:1.45; color:#000; background:#fff; width:100%;">
       <!-- KOP SURAT RESMI -->
       ${letterheadHtml()}
 
@@ -465,7 +481,7 @@ ${htmlContent}
         <tr>
           <td style="padding:2.5px 0; vertical-align:top;">NIK / No. KTP</td>
           <td style="padding:2.5px 0; vertical-align:top;">:</td>
-          <td style="padding:2.5px 0; font-family:monospace; vertical-align:top;">${escapeHtml(penerimaNik)}</td>
+          <td style="padding:2.5px 0; vertical-align:top;">${escapeHtml(penerimaNik)}</td>
         </tr>
         <tr>
           <td style="padding:2.5px 0; vertical-align:top;">Jabatan / Tugas</td>
@@ -492,7 +508,7 @@ ${htmlContent}
       <table style="width:100%; border-collapse:collapse; margin:8px 0 14px 0; font-size:10pt; border:1px solid #000; page-break-inside:avoid; -webkit-print-color-adjust:exact; print-color-adjust:exact;">
         <tr style="background:#f2f2f2;">
           <td style="width:36%; border:1px solid #000; padding:5px 8px; font-weight:bold;">Nomor Polisi / Nomor Plat</td>
-          <td style="border:1px solid #000; padding:5px 8px; font-weight:bold; font-family:monospace; font-size:11pt;">${plate}</td>
+          <td style="border:1px solid #000; padding:5px 8px; font-weight:bold; font-size:11pt;">${plate}</td>
         </tr>
         <tr>
           <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Merk &amp; Tipe Kendaraan</td>
@@ -504,15 +520,15 @@ ${htmlContent}
         </tr>
         <tr>
           <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Nomor Rangka (VIN)</td>
-          <td style="border:1px solid #000; padding:4px 8px; font-family:monospace;">${noRangka}</td>
+          <td style="border:1px solid #000; padding:4px 8px;">${noRangka}</td>
         </tr>
         <tr>
           <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Nomor Mesin</td>
-          <td style="border:1px solid #000; padding:4px 8px; font-family:monospace;">${noMesin}</td>
+          <td style="border:1px solid #000; padding:4px 8px;">${noMesin}</td>
         </tr>
         <tr>
           <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Nomor Dokumen BPKB</td>
-          <td style="border:1px solid #000; padding:4px 8px; font-family:monospace; font-weight:bold;">${noBpkb}</td>
+          <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">${noBpkb}</td>
         </tr>
         <tr>
           <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Atas Nama Kendaraan (STNK/BPKB)</td>
@@ -590,7 +606,7 @@ ${htmlContent}
     const kotaSurat = String(alamatPerusahaan || "").toLowerCase().includes("malang") ? "Malang" : "Cirebon";
 
     return `
-    <div class="aj-doc surat-ket-aset-a4" style="font-family:'Times New Roman', Times, serif; font-size:11pt; line-height:1.45; color:#000; background:#fff; width:100%;">
+    <div class="aj-doc surat-ket-aset-a4" style="font-family:Arial, Helvetica, sans-serif; font-size:11pt; line-height:1.45; color:#000; background:#fff; width:100%;">
       <!-- KOP SURAT RESMI -->
       ${letterheadHtml()}
 
@@ -605,7 +621,7 @@ ${htmlContent}
       <!-- PIHAK PENERANG -->
       <table style="width:100%; border-collapse:collapse; margin-left:15px; margin-bottom:12px; font-size:10.5pt;">
         <tr>
-          <td style="width:170px; padding:2.5px 0; vertical-align:top;">Nama Lengkap</td>
+          <td style="width:200px; padding:2.5px 0; vertical-align:top; white-space:nowrap;">Nama Lengkap</td>
           <td style="width:15px; padding:2.5px 0; vertical-align:top;">:</td>
           <td style="padding:2.5px 0; font-weight:bold; vertical-align:top;">${escapeHtml(pejabatNama)}</td>
         </tr>
@@ -634,7 +650,7 @@ ${htmlContent}
       <table style="width:100%; border-collapse:collapse; margin:8px 0 14px 0; font-size:10pt; border:1px solid #000; page-break-inside:avoid; -webkit-print-color-adjust:exact; print-color-adjust:exact;">
         <tr style="background:#f2f2f2;">
           <td style="width:36%; border:1px solid #000; padding:5px 8px; font-weight:bold;">Nomor Polisi / No. Plat</td>
-          <td style="border:1px solid #000; padding:5px 8px; font-weight:bold; font-family:monospace; font-size:11pt;">${plate}</td>
+          <td style="border:1px solid #000; padding:5px 8px; font-weight:bold; font-size:11pt;">${plate}</td>
         </tr>
         <tr>
           <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Merk &amp; Tipe Kendaraan</td>
@@ -654,15 +670,15 @@ ${htmlContent}
         </tr>
         <tr>
           <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Nomor Rangka (VIN)</td>
-          <td style="border:1px solid #000; padding:4px 8px; font-family:monospace;">${noRangka}</td>
+          <td style="border:1px solid #000; padding:4px 8px;">${noRangka}</td>
         </tr>
         <tr>
           <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Nomor Mesin</td>
-          <td style="border:1px solid #000; padding:4px 8px; font-family:monospace;">${noMesin}</td>
+          <td style="border:1px solid #000; padding:4px 8px;">${noMesin}</td>
         </tr>
         <tr>
           <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Nomor Dokumen BPKB</td>
-          <td style="border:1px solid #000; padding:4px 8px; font-family:monospace; font-weight:bold;">${noBpkb}</td>
+          <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">${noBpkb}</td>
         </tr>
         <tr>
           <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Atas Nama di STNK &amp; BPKB</td>
@@ -737,7 +753,14 @@ ${htmlContent}
 
     function getDriverEmp(vDoc) {
       if (!vDoc || !vDoc.driver_pj) return null;
-      return activeEmployees.find(e => e.nama_karyawan && e.nama_karyawan.toLowerCase().includes(vDoc.driver_pj.toLowerCase())) || null;
+      const target = normalizePersonName(vDoc.driver_pj);
+      if (!target) return null;
+      const exact = activeEmployees.find(e => normalizePersonName(e.nama_karyawan) === target);
+      if (exact) return exact;
+      return activeEmployees.find(e => {
+        const name = normalizePersonName(e.nama_karyawan);
+        return name && (name.includes(target) || target.includes(name));
+      }) || null;
     }
 
     // Cari pimpinan / pemberi kuasa dari database karyawan (utamakan Ika Novista / Manager / Pimpinan / Direktur / Kepala)
@@ -855,7 +878,7 @@ ${htmlContent}
               </div>
               <div>
                 <label class="block text-[11px] font-semibold text-slate-600 mb-1">NIK / No. KTP</label>
-                <input type="text" id="cfg-penerima-nik" class="w-full px-3 py-1.5 text-xs font-mono border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-white" value="${currentDriverEmp?.nik || currentDriverEmp?.no_ktp || '-'}">
+                <input type="text" id="cfg-penerima-nik" class="w-full px-3 py-1.5 text-xs font-mono border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-white" value="${escapeHtml(getEmployeeKtp(currentDriverEmp) || '-')}">
               </div>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1003,12 +1026,15 @@ ${htmlContent}
           if (currentDriverEmp) {
             if (inputPenerimaSelect) inputPenerimaSelect.value = currentDriverEmp.id;
             if (inputPenerimaNama) inputPenerimaNama.value = currentDriverEmp.nama_karyawan || '';
-            if (inputPenerimaNik) inputPenerimaNik.value = currentDriverEmp.nik || currentDriverEmp.no_ktp || '-';
+            if (inputPenerimaNik) inputPenerimaNik.value = getEmployeeKtp(currentDriverEmp) || '-';
             if (inputPenerimaJabatan) inputPenerimaJabatan.value = currentDriverEmp.jabatan || 'Driver / PJ Operasional';
             if (inputPenerimaAlamat) inputPenerimaAlamat.value = currentDriverEmp.alamat || currentDriverEmp.domisili || 'Cirebon';
           } else {
             if (inputPenerimaSelect) inputPenerimaSelect.value = "";
             if (inputPenerimaNama) inputPenerimaNama.value = v.driver_pj || '';
+            if (inputPenerimaNik) inputPenerimaNik.value = '-';
+            if (inputPenerimaJabatan) inputPenerimaJabatan.value = 'Driver / PJ Operasional';
+            if (inputPenerimaAlamat) inputPenerimaAlamat.value = 'Cirebon';
           }
           renderCurrentPreview();
         }
@@ -1058,12 +1084,28 @@ ${htmlContent}
         const emp = activeEmployees.find(e => e.id === empId);
         if (emp) {
           inputPenerimaNama.value = emp.nama_karyawan || "";
-          inputPenerimaNik.value = emp.nik || emp.no_ktp || "-";
+          inputPenerimaNik.value = getEmployeeKtp(emp) || "-";
           inputPenerimaJabatan.value = emp.jabatan || emp.divisi || "Driver / Staff Operasional";
           inputPenerimaAlamat.value = emp.alamat || emp.domisili || "Cirebon";
         }
         renderCurrentPreview();
       };
+    }
+
+    // Jika nama penerima kuasa diketik manual tetapi persis sama dengan master,
+    // lengkapi NIK KTP otomatis tanpa menimpa NIK yang sudah diisi pengguna.
+    if (inputPenerimaNama && inputPenerimaNik) {
+      inputPenerimaNama.addEventListener("change", () => {
+        const typed = normalizePersonName(inputPenerimaNama.value);
+        if (!typed) return;
+        const emp = activeEmployees.find(e => normalizePersonName(e.nama_karyawan) === typed);
+        if (!emp) return;
+        if (inputPenerimaSelect) inputPenerimaSelect.value = emp.id || "";
+        const currentNik = String(inputPenerimaNik.value || "").trim();
+        if (!currentNik || currentNik === "-") {
+          inputPenerimaNik.value = getEmployeeKtp(emp) || "-";
+        }
+      });
     }
 
     // Auto-update instansi dan keperluan saat tujuan pengurusan berubah

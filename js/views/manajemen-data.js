@@ -308,7 +308,7 @@ export async function mount(container) {
 <title>Detail Karyawan — ${escapeHtml(nama)}</title>
 <style>
   * { box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; margin: 0; background: #eef1f5; color: #1e293b; }
+  body { font-family: Arial, Helvetica, sans-serif; margin: 0; background: #eef1f5; color: #1e293b; }
   .page { max-width: 800px; margin: 16px auto; background: #fff; padding: 28px 34px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
   .doc-head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #6b1125; padding-bottom: 12px; }
   .company { font-size: 20px; font-weight: 800; color: #6b1125; letter-spacing: .5px; }

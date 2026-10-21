@@ -55,10 +55,10 @@ async function printExitClearancePdf(data) {
  `).join("") : "";
 
  const docHtml = `
- <div style="width:100%; max-width:760px; margin:0 auto; padding:15px; font-family:'Times New Roman', Times, serif; font-size:10px; line-height:1.3; color:#000; background:#ffffff; box-sizing:border-box;">
+ <div style="width:100%; max-width:760px; margin:0 auto; padding:15px; font-family:Arial, Helvetica, sans-serif; font-size:10px; line-height:1.3; color:#000; background:#ffffff; box-sizing:border-box;">
  <style>
  * { box-sizing: border-box !important; }
- body, div, p, span, table, tr, th, td { font-family: 'Times New Roman', Times, serif; }
+ body, div, p, span, table, tr, th, td { font-family: Arial, Helvetica, sans-serif; }
  table.clearance-tbl {
  width: 100% !important;
  border-collapse: collapse !important;
@@ -208,7 +208,7 @@ async function printExitClearancePdf(data) {
  <head>
  <title>${filename}</title>
  <style>
- body { margin: 0; padding: 20px; font-family: 'Times New Roman', serif; }
+ body { margin: 0; padding: 20px; font-family: Arial, Helvetica, sans-serif; }
  @media print { @page { size: A4 portrait; margin: 10mm; } }
  </style>
  </head>
@@ -262,10 +262,10 @@ async function printOnboardingDocPdf(data) {
  </tr>`;
 
  const docHtml = `
- <div style="width:100%; max-width:760px; margin:0 auto; padding:15px; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff; box-sizing:border-box;">
+ <div style="width:100%; max-width:760px; margin:0 auto; padding:15px; font-family:Arial, Helvetica, sans-serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff; box-sizing:border-box;">
  <style>
  * { box-sizing: border-box !important; }
- body, div, p, span, table, tr, th, td { font-family: 'Times New Roman', Times, serif; }
+ body, div, p, span, table, tr, th, td { font-family: Arial, Helvetica, sans-serif; }
  table.onb-tbl {
  width: 100% !important;
  border-collapse: collapse !important;
@@ -392,7 +392,7 @@ async function printOnboardingDocPdf(data) {
  <head>
  <title>${filename}</title>
  <style>
- body { margin: 0; padding: 20px; font-family: 'Times New Roman', serif; }
+ body { margin: 0; padding: 20px; font-family: Arial, Helvetica, sans-serif; }
  @media print { @page { size: A4 portrait; margin: 10mm; } }
  </style>
  </head>

@@ -50,7 +50,7 @@ export async function mount(container, { params } = {}) {
  const { downloadHtmlAsPdf, toast } = await import("../utils.js");
  toast("Sedang memproses PDF...", "info");
  let html = `
- <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff;">
+ <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:Arial, Helvetica, sans-serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff;">
  <div style="page-break-inside:avoid; margin-bottom:15px;">
  ${isoDocHeaderTable({ judul: "SURAT PANGGILAN KARYAWAN", noDok: "HR-PGL", terbitRevisi: "1/1", hal: "1 dari 1" })}
  </div>
@@ -76,7 +76,7 @@ export async function mount(container, { params } = {}) {
  const { downloadHtmlAsPdf, toast } = await import("../utils.js");
  toast("Sedang memproses PDF...", "info");
  let html = `
- <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:'Times New Roman', Times, serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff;">
+ <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:Arial, Helvetica, sans-serif; font-size:11px; line-height:1.35; color:#000; background:#ffffff;">
  <div style="page-break-inside:avoid; margin-bottom:15px;">
  ${isoDocHeaderTable({ judul: `SURAT PERINGATAN (SP ${data.tingkat_sp.replace(/[^0-9]/g, '') || "1"})`, noDok: "HR-SP", terbitRevisi: "1/1", hal: "1 dari 1" })}
  </div>

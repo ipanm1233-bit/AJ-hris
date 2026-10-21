@@ -1493,8 +1493,8 @@ export function downloadWordDoc({
  mso-paper-source: 0;
  }
  div.Section1 { page: Section1; }
- body { font-family: 'Calibri', 'Segoe UI', 'Arial', sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.4; }
- h1, h2, h3, h4 { font-family: 'Calibri', 'Arial', sans-serif; }
+ body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.4; }
+ h1, h2, h3, h4 { font-family: Arial, Helvetica, sans-serif; }
  </style>
  </head>
  <body>
@@ -1739,7 +1739,7 @@ export function printSalesKlaimForm(item) {
  <title>Form Klaim Bensin Sales — ${escapeHtml(item.nama_pemohon)}</title>
  <style>
  @page { size: A4 landscape; margin: 12mm; }
- body { font-family: 'Segoe UI', Arial, sans-serif; padding: 20px; color: #0f172a; background: #fff; line-height: 1.4; }
+ body { font-family: Arial, Helvetica, sans-serif; padding: 20px; color: #0f172a; background: #fff; line-height: 1.4; }
  .header { border-bottom: 3px double #7a1f2b; padding-bottom: 12px; margin-bottom: 16px; text-align: center; }
  .header h2 { margin: 0; font-size: 20px; text-transform: uppercase; font-weight: 800; color: #7a1f2b; letter-spacing: 1px; }
  .header h3 { margin: 4px 0 0; font-size: 13px; color: #334155; font-weight: 700; text-transform: uppercase; }
@@ -4753,7 +4753,7 @@ export async function downloadHtmlAsPdf(htmlContent, filename = "document.pdf", 
  element.style.margin = "0px";
  element.style.background = "#ffffff";
  element.style.color = "#000000";
- element.style.fontFamily = "'Times New Roman', Times, serif";
+ element.style.fontFamily = "Arial, Helvetica, sans-serif";
  element.style.boxSizing = "border-box";
  element.innerHTML = htmlContent;
 	element.querySelectorAll(".no-print-bar, .no-print, button.btn-cetak, [data-no-print]").forEach(el => el.remove());
@@ -4899,7 +4899,7 @@ export async function generateHtmlAsPdfBase64(htmlContent, orientation = "portra
   element.style.margin = "0px";
   element.style.background = "#ffffff";
   element.style.color = "#000000";
-  element.style.fontFamily = "'Times New Roman', Times, serif";
+  element.style.fontFamily = "Arial, Helvetica, sans-serif";
   element.style.boxSizing = "border-box";
   element.innerHTML = htmlContent;
   element.querySelectorAll(".no-print-bar, .no-print, button.btn-cetak, [data-no-print]").forEach(el => el.remove());

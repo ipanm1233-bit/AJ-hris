@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { logoImgTag, isoDocHeaderTable, letterheadHtml } from "../js/branding.js";
+import { logoImgTag, isoDocHeaderTable, letterheadHtml, officialDocStyles } from "../js/branding.js";
 
 test("logo dokumen tetap rapi di dalam kotak header ISO", () => {
   const tag = logoImgTag(52);
@@ -35,4 +35,10 @@ test("ukuran logo mengikuti parameter dan tidak memakai URL eksternal", () => {
   assert.match(tag, /height="64"/);
   assert.match(tag, /src="data:image\/png;base64,/);
   assert.doesNotMatch(tag, /https?:\/\//);
+});
+
+test("seluruh dokumen resmi memakai Arial yang seragam", () => {
+  const styles = officialDocStyles();
+  assert.match(styles, /\.aj-doc\s*\{[^}]*font-family: Arial, Helvetica, sans-serif/);
+  assert.doesNotMatch(styles, /Times New Roman/i);
 });
