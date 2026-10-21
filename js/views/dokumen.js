@@ -2,7 +2,7 @@ import { db, COL, collection, query, where, getDocs, doc, getDoc, setDoc, update
 import { fsGetAll, fsAdd, fsUpdate, fsDelete, genId, openModal, closeModal, toast, fmtDate, fmtDateShort, escapeHtml, notifyUser } from "../utils.js";
 import { badge, emptyState } from "../components.js";
 import { getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
-import { letterheadHtml, COMPANY_NAME, COMPANY_ADDRESS_LINE1 } from "../branding.js";
+import { letterheadHtml, officialDocStyles, officialPrintHtml, COMPANY_NAME, COMPANY_ADDRESS_LINE1 } from "../branding.js";
 
 // Default clause templates
 const DEFAULT_CLAUSES = {
@@ -1052,7 +1052,14 @@ async function openDocEditorModal(existingData, session, onDone) {
  clauses = JSON.parse(JSON.stringify(DEFAULT_CLAUSES[val]));
  if (val === "KONTRAK_PKWT") titleInput.value = "PERJANJIAN KERJA WAKTU TERTENTU (PKWT)";
  else if (val === "KONTRAK_PKWTT") titleInput.value = "PERJANJIAN KERJA WAKTU TIDAK TERTENTU (PKWTT)";
- else if (val.startsWith("SP")) titleInput.value = `SURAT PERINGATAN ${val.replace('_', ' ')}`;
+ else if (val.startsWith("SP")) {
+ const spTitleMap = {
+ SP_1: "SURAT PERINGATAN PERTAMA (SP-1)",
+ SP_2: "SURAT PERINGATAN KEDUA (SP-2)",
+ SP_3: "SURAT PERINGATAN KETIGA (SP-3)"
+ };
+ titleInput.value = spTitleMap[val] || `SURAT PERINGATAN ${val.replace('_', ' ')}`;
+ }
  else if (val === "PEMANGGILAN") titleInput.value = "SURAT PEMANGGILAN KONSILING KEDISIPLINAN";
  else if (val === "KETERANGAN_KERJA") titleInput.value = "SURAT KETERANGAN KERJA (PAKLARING)";
  else if (val === "SURAT_TUGAS") titleInput.value = "SURAT PENUGASAN DINAS RESMI";
@@ -1111,11 +1118,25 @@ async function openDocEditorModal(existingData, session, onDone) {
 
  let tipeKat = "KONTRAK";
  if (templateType.startsWith("SP")) tipeKat = "SP";
- if (templateType === "PEMANGGILAN") tipeKat = "PEMANGGILAN";
- if (templateType === "KETERANGAN_KERJA") tipeKat = "KETERANGAN_KERJA";
- if (templateType === "SURAT_TUGAS") tipeKat = "SURAT_TUGAS";
+ else if (templateType === "PEMANGGILAN") tipeKat = "PEMANGGILAN";
+ else if (templateType === "KETERANGAN_KERJA") tipeKat = "KETERANGAN";
+ else if (templateType === "SURAT_TUGAS") tipeKat = "PENUGASAN";
+ else if (templateType === "NEW_CUSTOM") tipeKat = "KUSTOM";
+ else if (templateType.startsWith("CUST_")) {
+ const customId = templateType.replace("CUST_", "");
+ const foundCustom = customTemplatesList.find(x => x.id === customId);
+ tipeKat = normalizeDocCategory(foundCustom?.tipe_kategori);
+ } else if (templateType.startsWith("GDOC_")) {
+ const gdocId = templateType.replace("GDOC_", "");
+ const foundGdoc = gdocTemplatesList.find(x => x.id === gdocId);
+ tipeKat = normalizeDocCategory(foundGdoc?.kategori);
+ }
 
  const docId = existingData?.id || genId("DOCDRAFT");
+
+ const isContractDoc = templateType.startsWith("KONTRAK");
+ const isDisciplineDoc = templateType.startsWith("SP") || ["PEMANGGILAN", "SURAT_TUGAS"].includes(templateType);
+ const isCustomDoc = templateType === "NEW_CUSTOM" || templateType.startsWith("CUST_") || templateType.startsWith("GDOC_");
 
  const payload = {
  id: docId,
@@ -1126,8 +1147,9 @@ async function openDocEditorModal(existingData, session, onDone) {
  tanggal_surat: tglSurat,
  tanggal_mulai: tglMulai,
  tanggal_selesai: tglSelesai,
- alasan_sp: extraNote,
- gaji_pokok: extraNote,
+ alasan_sp: (isDisciplineDoc || isCustomDoc || !isContractDoc) ? extraNote : (existingData?.alasan_sp || ""),
+ gaji_pokok: (isContractDoc || isCustomDoc) ? extraNote : (existingData?.gaji_pokok || ""),
+ catatan_tambahan: extraNote,
  nik_karyawan: targetNik,
  nama_karyawan: targetKaryawanData.nama_karyawan || targetKaryawanData.nama,
  jabatan: targetKaryawanData.jabatan || "-",
@@ -1314,108 +1336,293 @@ function openMasterTemplateEditorModal(existingTemplate, onSaveDone) {
 }
 
 // ----------------------------------------------------------------------
-// PREVIEW & PRINT PDF MODAL
+// SHARED BUILDER DOKUMEN RESMI HRD
+// Semua jenis dokumen (Kontrak, SP, Pemanggilan, Keterangan, Penugasan,
+// template kustom, dan Google Doc) memakai kop, tipografi, serta blok TTD
+// yang sama supaya hasil cetak/PDF konsisten.
 // ----------------------------------------------------------------------
-function previewDocumentModal(docData) {
- if (!docData) return;
+function docText(value, fallback = "-") {
+ const text = value === null || value === undefined ? "" : String(value).trim();
+ return text || fallback;
+}
 
- const replaceVars = (str) => {
- if (!str) return "";
- let res = str;
+function normalizeDocCategory(value) {
+ const normalized = String(value || "").toUpperCase();
+ if (normalized.includes("SP") || normalized.includes("PERINGATAN")) return "SP";
+ if (normalized.includes("KETERANGAN") || normalized.includes("PAKLARING")) return "KETERANGAN";
+ if (normalized.includes("TUGAS") || normalized.includes("PENUGASAN")) return "PENUGASAN";
+ if (normalized.includes("KONTRAK")) return "KONTRAK";
+ if (normalized.includes("PEMANGGILAN")) return "PEMANGGILAN";
+ return "KUSTOM";
+}
+
+function docCity(docData) {
+ const haystack = `${docData?.cabang || ""} ${docData?.alamat || ""} ${docData?.lokasi_penugasan || ""}`.toLowerCase();
+ return haystack.includes("malang") ? "Malang" : "Cirebon";
+}
+
+function buildDocVarReplacer(docData) {
+ return (raw) => {
+ if (!raw) return "";
+ let res = String(raw);
+ const replaceToken = (token, value) => {
+ res = res.split(token).join(value === null || value === undefined || value === "" ? "-" : String(value));
+ };
 
  if (docData.custom_fields && typeof docData.custom_fields === "object") {
- for (const [k, v] of Object.entries(docData.custom_fields)) {
- res = res.replaceAll(`{${k}}`, v || "-");
- }
+ Object.entries(docData.custom_fields).forEach(([key, value]) => replaceToken(`{${key}}`, value));
  }
 
- res = res
- .replaceAll("{NAMA_KARYAWAN}", docData.nama_karyawan || "-")
- .replaceAll("{NIK}", docData.nik_karyawan || "-")
- .replaceAll("{JABATAN}", docData.jabatan || "-")
- .replaceAll("{DIVISI}", docData.divisi || "-")
- .replaceAll("{CABANG}", docData.cabang || "-")
- .replaceAll("{ALAMAT}", docData.alamat || docData.custom_fields?.ALAMAT || "-")
- .replaceAll("{NO_KTP}", docData.no_ktp || docData.custom_fields?.NO_KTP || "-")
- .replaceAll("{NO_REKENING}", docData.no_rekening || docData.custom_fields?.NO_REKENING || "-")
- .replaceAll("{TANGGAL_SURAT}", fmtDate(docData.tanggal_surat))
- .replaceAll("{TANGGAL_MULAI}", fmtDate(docData.tanggal_mulai))
- .replaceAll("{TANGGAL_SELESAI}", docData.tanggal_selesai ? fmtDate(docData.tanggal_selesai) : "-")
- .replaceAll("{ALASAN_SP}", docData.alasan_sp || "-")
- .replaceAll("{GAJI_POKOK}", docData.gaji_pokok || "Sesuai Standar UMR/Perusahaan")
- .replaceAll("{NOMOR_SURAT}", docData.nomor_surat || "-");
+ replaceToken("{NAMA_KARYAWAN}", docData.nama_karyawan);
+ replaceToken("{NIK}", docData.nik_karyawan);
+ replaceToken("{JABATAN}", docData.jabatan);
+ replaceToken("{DIVISI}", docData.divisi);
+ replaceToken("{CABANG}", docData.cabang);
+ replaceToken("{ALAMAT}", docData.alamat || docData.custom_fields?.ALAMAT);
+ replaceToken("{NO_KTP}", docData.no_ktp || docData.custom_fields?.NO_KTP);
+ replaceToken("{NO_REKENING}", docData.no_rekening || docData.custom_fields?.NO_REKENING);
+ replaceToken("{TANGGAL_SURAT}", fmtDate(docData.tanggal_surat));
+ replaceToken("{TANGGAL_MULAI}", fmtDate(docData.tanggal_mulai));
+ replaceToken("{TANGGAL_SELESAI}", docData.tanggal_selesai ? fmtDate(docData.tanggal_selesai) : "-");
+ replaceToken("{ALASAN_SP}", docData.alasan_sp);
+ replaceToken("{GAJI_POKOK}", docData.gaji_pokok || "Sesuai Standar UMR/Perusahaan");
+ replaceToken("{NOMOR_SURAT}", docData.nomor_surat);
 
- res = res.replace(/\{([A-Z0-9_]+)\}/g, (match, p1) => {
- if (docData[p1.toLowerCase()] !== undefined) return docData[p1.toLowerCase()];
+ res = res.replace(/\{([A-Z0-9_]+)\}/g, (match, key) => {
+ const lowerKey = key.toLowerCase();
+ if (docData[lowerKey] !== undefined && docData[lowerKey] !== null && docData[lowerKey] !== "") {
+ return String(docData[lowerKey]);
+ }
  return match;
  });
 
  return res;
  };
+}
+
+function buildIdentityTable(rows) {
+ const body = rows
+ .filter(row => Array.isArray(row) && row.length >= 2)
+ .map(([label, value]) => `
+ <tr>
+ <td class="aj-label">${escapeHtml(label)}</td>
+ <td class="aj-sep">:</td>
+ <td class="aj-value">${escapeHtml(docText(value))}</td>
+ </tr>`)
+ .join("");
+
+ return `<table class="aj-identity">${body}</table>`;
+}
+
+function buildPartyTable(docData) {
+ return `
+ <table class="aj-party">
+ <tr>
+ <td>
+ <div class="aj-party-head">Pihak Pertama (Perusahaan)</div>
+ <p><b>Nama:</b> ${escapeHtml(COMPANY_NAME)}</p>
+ <p><b>Diwakili Oleh:</b> ${escapeHtml(docText(docData.created_by, "Tim HRD"))}</p>
+ <p><b>Jabatan:</b> Human Resource Department</p>
+ <p><b>Alamat:</b> ${escapeHtml(COMPANY_ADDRESS_LINE1)}</p>
+ </td>
+ <td>
+ <div class="aj-party-head">Pihak Kedua (Karyawan)</div>
+ <p><b>Nama Lengkap:</b> ${escapeHtml(docText(docData.nama_karyawan))}</p>
+ <p><b>NIK Karyawan:</b> ${escapeHtml(docText(docData.nik_karyawan))}</p>
+ <p><b>Jabatan:</b> ${escapeHtml(docText(docData.jabatan))}${docData.divisi && docData.divisi !== "-" ? ` (${escapeHtml(docData.divisi)})` : ""}</p>
+ <p><b>Cabang / Unit:</b> ${escapeHtml(docText(docData.cabang))}</p>
+ </td>
+ </tr>
+ </table>`;
+}
+
+function buildSignatureTable(docData, isKontrak) {
+ const signer = docText(docData.created_by, "Human Resource Department");
+ const employeeName = docText(docData.nama_karyawan);
+ const employeeNik = docText(docData.nik_karyawan);
+ const signDate = fmtDate(docData.tanggal_surat);
+ const place = docCity(docData);
+ const signatureUrl = docData.tanda_tangan_url ? String(docData.tanda_tangan_url) : "";
+
+ const signatureVisual = signatureUrl
+ ? `<img src="${escapeHtml(signatureUrl)}" alt="Tanda tangan ${escapeHtml(employeeName)}" style="display:inline-block;max-height:56px;max-width:190px;object-fit:contain;" />`
+ : "";
+
+ return `
+ <table class="aj-signature">
+ <tr>
+ <td>
+ <div style="height:20px;"></div>
+ <div class="aj-sign-role">${isKontrak ? "PIHAK KEDUA (KARYAWAN)" : "DITERIMA OLEH,"}</div>
+ <div style="height:16px;"></div>
+ <div class="aj-sign-space">${signatureVisual}</div>
+ <div class="aj-sign-name">${escapeHtml(employeeName)}</div>
+ <div class="aj-sign-sub">NIK: ${escapeHtml(employeeNik)}</div>
+ ${signatureUrl ? `<div class="aj-sign-verified">Tanda tangan digital terverifikasi</div>` : ""}
+ </td>
+ <td>
+ <div class="aj-sign-place">${escapeHtml(place)}, ${escapeHtml(signDate)}</div>
+ <div class="aj-sign-role">${isKontrak ? "PIHAK PERTAMA (PERUSAHAAN)" : "HORMAT KAMI,"}</div>
+ <div style="font-weight:700;">${escapeHtml(COMPANY_NAME)}</div>
+ <div class="aj-sign-space"></div>
+ <div class="aj-sign-name">${escapeHtml(signer)}</div>
+ <div class="aj-sign-sub">Human Resource Department</div>
+ </td>
+ </tr>
+ </table>`;
+}
+
+function buildDocumentClauses(docData, replaceVars) {
+ const clauses = Array.isArray(docData.klausul) ? docData.klausul : [];
+ if (!clauses.length) {
+ return `<p>Dokumen ini diterbitkan oleh Human Resource Department ${escapeHtml(COMPANY_NAME)} untuk dipergunakan sebagaimana mestinya.</p>`;
+ }
+
+ return clauses.map((clause, index) => {
+ const title = replaceVars(clause?.judul || `Pasal ${index + 1}`);
+ const body = replaceVars(clause?.isi || "");
+ return `
+ <div class="aj-clause">
+ <div class="aj-clause-title">${escapeHtml(title)}</div>
+ <p class="aj-clause-body">${escapeHtml(body).replace(/\n/g, "<br>")}</p>
+ </div>`;
+ }).join("");
+}
+
+function buildHrdDocumentContent(docData) {
+ const replaceVars = buildDocVarReplacer(docData);
+ const type = String(docData.template_type || "").toUpperCase();
+ const category = String(docData.tipe_kategori || "").toUpperCase();
+
+ const isKontrak = type.startsWith("KONTRAK") || category === "KONTRAK";
+ const isSP = type.startsWith("SP_") || category === "SP";
+ const isPemanggilan = type === "PEMANGGILAN" || category === "PEMANGGILAN";
+ const isKeterangan = type === "KETERANGAN_KERJA" || category.includes("KETERANGAN");
+ const isTugas = type === "SURAT_TUGAS" || category.includes("TUGAS") || category === "PENUGASAN";
+
+ const identity = buildIdentityTable([
+ ["Nama Lengkap", docData.nama_karyawan],
+ ["NIK Karyawan", docData.nik_karyawan],
+ ["Jabatan", docData.jabatan],
+ ["Divisi / Unit", docData.divisi],
+ ["Cabang / Penempatan", docData.cabang]
+ ]);
+
+ let opening = "";
+ if (isKontrak) {
+ opening = `
+ <p>Pada hari ini, <b>${escapeHtml(fmtDate(docData.tanggal_surat))}</b>, bertempat di kantor ${escapeHtml(COMPANY_NAME)} cabang <b>${escapeHtml(docText(docData.cabang, "Pusat"))}</b>, disepakati oleh dan antara para pihak:</p>
+ ${buildPartyTable(docData)}`;
+ } else if (isSP) {
+ opening = `
+ <p>Berdasarkan hasil evaluasi pelaksanaan tugas, kedisiplinan, dan kepatuhan terhadap Peraturan Perusahaan, dengan ini disampaikan surat peringatan kepada:</p>
+ ${identity}`;
+ } else if (isPemanggilan) {
+ opening = `
+ <p>Dengan hormat, sehubungan dengan proses pembinaan, klarifikasi, dan konseling kedisiplinan, kami memanggil Saudara/i untuk hadir sesuai ketentuan yang tercantum dalam surat ini. Identitas yang bersangkutan adalah sebagai berikut:</p>
+ ${identity}`;
+ } else if (isKeterangan) {
+ opening = `
+ <p>Yang bertanda tangan di bawah ini, bertindak untuk dan atas nama <b>${escapeHtml(COMPANY_NAME)}</b>, dengan ini menerangkan dengan sebenarnya bahwa:</p>
+ ${identity}`;
+ } else if (isTugas) {
+ opening = `
+ <p>Yang bertanda tangan di bawah ini, bertindak untuk dan atas nama <b>${escapeHtml(COMPANY_NAME)}</b>, dengan ini menugaskan kepada:</p>
+ ${identity}`;
+ } else {
+ opening = `
+ <p>Dengan hormat, berikut disampaikan dokumen resmi perusahaan untuk dan atas nama:</p>
+ ${identity}`;
+ }
+
+ let closing = "";
+ if (isSP) {
+ closing = `<p style="margin-top:14px;">Demikian Surat Peringatan ini disampaikan untuk menjadi perhatian dan dilaksanakan sebagaimana mestinya.</p>`;
+ } else if (isPemanggilan) {
+ closing = `<p style="margin-top:14px;">Demikian surat pemanggilan ini disampaikan. Kehadiran Saudara/i tepat pada waktunya sangat kami harapkan.</p>`;
+ } else if (isTugas) {
+ closing = `<p style="margin-top:14px;">Demikian surat penugasan ini dibuat dengan sebenarnya untuk dilaksanakan dengan penuh tanggung jawab.</p>`;
+ } else if (isKontrak) {
+ closing = `<p style="margin-top:14px;">Demikian perjanjian ini dibuat dengan sebenarnya dan disepakati oleh para pihak untuk dipergunakan sebagaimana mestinya.</p>`;
+ }
+
+ const title = replaceVars(docData.judul || "DOKUMEN RESMI HRD");
+ const number = docText(docData.nomor_surat);
+ const footerDate = fmtDate(new Date());
+ const footer = `
+ <div class="aj-footer">
+ Dokumen resmi ${escapeHtml(COMPANY_NAME)} &bull; Nomor: ${escapeHtml(number)} &bull; Diterbitkan melalui Sistem HRIS &bull; Dicetak: ${escapeHtml(footerDate)}
+ </div>`;
+
+ return `
+ <div class="aj-doc">
+ ${letterheadHtml()}
+
+ <div class="aj-title">
+ <h1>${escapeHtml(title)}</h1>
+ <div class="aj-number">Nomor: ${escapeHtml(number)}</div>
+ </div>
+
+ ${opening}
+
+ ${buildDocumentClauses(docData, replaceVars)}
+
+ ${closing}
+
+ ${buildSignatureTable(docData, isKontrak)}
+
+ ${footer}
+ </div>`;
+}
+
+function downloadHrdDocumentWord(docData, contentHtml) {
+ const title = docText(docData.judul, "Dokumen Resmi");
+ const safeTitle = escapeHtml(title);
+ const wordHtml = `
+ <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+ <head>
+ <meta charset="utf-8">
+ <title>${safeTitle}</title>
+ <!--[if gte mso 9]>
+ <xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom><w:DoNotOptimizeForBrowser/></w:WordDocument></xml>
+ <![endif]-->
+ <style>
+ @page Section1 { size: 595.3pt 841.9pt; margin: 18mm 20mm 18mm 20mm; mso-header-margin: 12mm; mso-footer-margin: 12mm; mso-paper-source: 0; }
+ div.Section1 { page: Section1; }
+ body { margin: 0; font-family: 'Times New Roman', Times, serif; font-size: 11pt; color: #000000; }
+ ${officialDocStyles({ forWord: true })}
+ </style>
+ </head>
+ <body>
+ <div class="Section1">${contentHtml}</div>
+ </body>
+ </html>`;
+
+ const blob = new Blob(["\uFEFF" + wordHtml], { type: "application/msword;charset=utf-8" });
+ const url = URL.createObjectURL(blob);
+ const a = document.createElement("a");
+ const cleanName = title.replace(/[\\/:*?"<>|]+/g, "_").replace(/\s+/g, "_").slice(0, 90);
+ a.href = url;
+ a.download = `${cleanName || "Dokumen_Resmi"}.doc`;
+ document.body.appendChild(a);
+ a.click();
+ a.remove();
+ URL.revokeObjectURL(url);
+}
+
+function previewDocumentModal(docData) {
+ if (!docData) return;
+
+ const contentHtml = buildHrdDocumentContent(docData);
+ const documentTitle = docText(docData.judul, "Dokumen Resmi");
 
  openModal({
  title: "Preview & Cetak Dokumen Resmi",
  size: "lg",
  bodyHtml: `
- <div id="print-doc-area" class="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm text-slate-900 font-serif leading-relaxed text-sm space-y-6 max-h-[70vh] overflow-y-auto">
- <!-- KOP SURAT ANDELA JAYA -->
- ${letterheadHtml()}
-
- <!-- TITLE & NUMBER -->
- <div class="text-center space-y-1 font-sans">
- <h3 class="text-base font-extrabold text-slate-900 uppercase underline tracking-wide">${escapeHtml(docData.judul)}</h3>
- <p class="text-xs text-slate-600 font-bold font-mono">Nomor: ${escapeHtml(docData.nomor_surat)}</p>
- </div>
-
- <!-- IDENTITAS PARA PIHAK -->
- <div class="space-y-3 font-sans text-xs">
- <p>Pada hari ini, <b>${fmtDate(docData.tanggal_surat)}</b>, bertempat di kantor CV Andela Jaya cabang <b>${escapeHtml(docData.cabang || "Pusat")}</b>, disepakati oleh dan antara para pihak:</p>
- 
- <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
- <div>
- <p class="font-bold text-slate-800 uppercase border-b border-slate-200 pb-1 mb-2">Pihak Pertama (Perusahaan):</p>
- <p><b>Nama:</b> CV. ANDELA JAYA</p>
- <p><b>Diwakili Oleh:</b> ${escapeHtml(docData.created_by || "Tim HRD")}</p>
- <p><b>Jabatan:</b> Human Resource Department</p>
- </div>
- <div>
- <p class="font-bold text-slate-800 uppercase border-b border-slate-200 pb-1 mb-2">Pihak Kedua (Karyawan):</p>
- <p><b>Nama Lengkap:</b> ${escapeHtml(docData.nama_karyawan)}</p>
- <p><b>NIK Karyawan:</b> ${escapeHtml(docData.nik_karyawan)}</p>
- <p><b>Jabatan:</b> ${escapeHtml(docData.jabatan)} (${escapeHtml(docData.divisi)})</p>
- </div>
- </div>
- </div>
-
- <!-- KLAUSUL PASAL-PASAL -->
- <div class="space-y-4 font-sans text-xs pt-2">
- ${(docData.klausul || []).map(c => `
- <div class="space-y-1">
- <h4 class="font-bold text-slate-900 uppercase">${escapeHtml(c.judul)}</h4>
- <p class="text-slate-700 leading-relaxed text-justify pl-3 border-l-2 border-slate-300">${escapeHtml(replaceVars(c.isi))}</p>
- </div>
- `).join("")}
- </div>
-
- <!-- TANDA TANGAN SECTION -->
- <div class="grid grid-cols-2 gap-8 text-center font-sans text-xs pt-8 border-t border-slate-200">
- <div>
- <p class="text-slate-500 font-bold uppercase mb-16">Pihak Pertama (HRD),</p>
- <p class="font-bold text-slate-900 underline">${escapeHtml(docData.created_by || "HRD Manager")}</p>
- <p class="text-[10px] text-slate-500">CV. ANDELA JAYA</p>
- </div>
- <div>
- <p class="text-slate-500 font-bold uppercase mb-16">Pihak Kedua (Karyawan),</p>
- ${docData.tanda_tangan_url ? `
- <div class="my-2">
- <img src="${docData.tanda_tangan_url}" class="h-12 w-auto mx-auto border border-slate-200 p-0.5 rounded">
- <p class="text-[9px] text-emerald-600 font-bold">[v] TTD DIGITAL SAH (${fmtDateShort(docData.tanggal_ttd)})</p>
- </div>
- ` : ''}
- <p class="font-bold text-slate-900 underline">${escapeHtml(docData.nama_karyawan)}</p>
- <p class="text-[10px] text-slate-500">NIK: ${escapeHtml(docData.nik_karyawan)}</p>
- </div>
- </div>
+ <style>${officialDocStyles()}</style>
+ <div id="print-doc-area" style="background:#ffffff;padding:24px;border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 1px 2px rgba(15,23,42,.04);max-height:70vh;overflow-y:auto;">
+ ${contentHtml}
  </div>`,
  footerHtml: `
  <div class="flex items-center justify-between w-full flex-wrap gap-2">
@@ -1423,6 +1630,9 @@ function previewDocumentModal(docData) {
  <div class="flex items-center gap-2 flex-wrap">
  <button id="btn-copy-gdoc-text" class="px-3.5 py-2 text-xs font-bold text-blue-800 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-xl transition flex items-center gap-1.5 shadow-sm">
  Salin Teks Dokumen
+ </button>
+ <button id="btn-preview-word" class="px-3.5 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl transition flex items-center gap-1.5 shadow-sm">
+ Unduh Word (.doc)
  </button>
  <button id="btn-preview-print" class="px-4 py-2 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-xl transition shadow flex items-center gap-1.5">
  Cetak / Simpan PDF
@@ -1440,54 +1650,51 @@ function previewDocumentModal(docData) {
  toast("Teks dokumen resmi dengan placeholder terisi berhasil disalin!", "success");
  };
 
+ m.querySelector("#btn-preview-word").onclick = () => {
+ try {
+ downloadHrdDocumentWord(docData, contentHtml);
+ toast("Dokumen Word berhasil diunduh!", "success");
+ } catch (e) {
+ toast("Gagal mengunduh dokumen Word: " + e.message, "error");
+ }
+ };
+
  m.querySelector("#btn-preview-print").onclick = () => {
- const printContent = m.querySelector("#print-doc-area").innerHTML;
- const win = window.open('', '_blank');
+ const printHtml = officialPrintHtml({
+ title: `${documentTitle} - ${docText(docData.nama_karyawan, "")}`,
+ contentHtml
+ });
+ const win = window.open("", "_blank");
  // PENTING: jika popup diblokir browser, window.open() mengembalikan
- // null. Sebelumnya kode langsung memanggil win.document.write() tanpa
- // cek ini, yang menyebabkan error diam-diam (dan HRD melihat dokumen
- // gagal tergenerate / tab kosong) tanpa pesan yang jelas.
+ // null. Beri pesan yang jelas agar HRD tidak mengira dokumen gagal dibuat.
  if (!win) {
  toast("Izin popup diblokir browser. Izinkan popup untuk mencetak/mengunduh dokumen ini.", "error");
  return;
  }
- win.document.write(`
- <html>
- <head>
- <title>${docData.judul} - ${docData.nama_karyawan}</title>
- <script src="https://cdn.tailwindcss.com"></script>
- <style>
- body { padding: 20px; font-family: serif; }
- @media print { body { padding: 0; } }
- </style>
- </head>
- <body>
- ${printContent}
- <script>
- var _sudahCetak = false;
- function _cetakSekali() {
- if (_sudahCetak) return;
- _sudahCetak = true;
- window.print();
- window.close();
- }
- window.onload = function () { setTimeout(_cetakSekali, 300); };
- // Jaring pengaman: kalau event 'load' tidak pernah terpicu (mis. CDN
- // Tailwind lambat/gagal dimuat), tetap cetak setelah 1.5 detik supaya
- // dokumen tidak nyangkut sebagai halaman kosong selamanya.
- setTimeout(_cetakSekali, 1500);
- </script>
- </body>
- </html>
- `);
- // PENTING: document.write() HARUS ditutup dengan document.close(),
- // atau dokumen dianggap browser masih "loading" -- inilah penyebab
- // utama dokumen dari modul ini kadang tercetak sebagai halaman blank
- // (skrip/print sempat jalan sebelum konten benar-benar selesai
- // di-parse & di-render). Semua fungsi cetak sejenis lain di file
- // lain (siklus-karyawan.js, klaim-bensin.js, dll) sudah menutup
- // dokumennya; fungsi ini sebelumnya terlewat.
+ win.document.open();
+ win.document.write(printHtml);
  win.document.close();
+ win.focus();
+
+ let hasPrinted = false;
+ const cetak = () => {
+ if (hasPrinted || win.closed) return;
+ hasPrinted = true;
+ try {
+ win.focus();
+ win.print();
+ } finally {
+ setTimeout(() => { try { win.close(); } catch (_) { } }, 600);
+ }
+ };
+
+ if (win.document.readyState === "complete") {
+ setTimeout(cetak, 350);
+ } else {
+ win.onload = () => setTimeout(cetak, 350);
+ }
+ // Jaring pengaman jika event load tidak terpicu (mis. renderer lambat).
+ setTimeout(cetak, 1500);
  };
  }
  });

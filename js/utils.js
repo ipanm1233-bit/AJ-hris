@@ -1499,20 +1499,10 @@ export function downloadWordDoc({
  </head>
  <body>
  <div class="Section1">
- <div style="border-bottom: 2.5px solid #7f1d1d; padding-bottom: 8px; margin-bottom: 14px;">
- <table style="width:100%; border:none; margin:0;">
- <tr>
- <td style="border:none; vertical-align:middle;">
- <div style="font-size:15pt; font-weight:bold; color:#7f1d1d; letter-spacing:0.5px;">${escapeHtml(title)}</div>
- <div style="font-size:9.5pt; font-weight:bold; color:#334155; margin-top:2px;">${escapeHtml(subtitle)}</div>
- </td>
- <td style="border:none; text-align:right; vertical-align:middle;">
- <div style="display:inline-block; border:1px solid #7f1d1d; padding:3px 7px; font-weight:bold; font-size:8pt; color:#7f1d1d; border-radius:4px;">
- DOKUMEN RESMI INTERNAL
- </div>
- </td>
- </tr>
- </table>
+ ${letterheadHtml()}
+ <div style="margin: 0 0 14px 0; padding-top: 2px;">
+ <div style="font-size:14pt; font-weight:bold; color:#000000; text-transform:uppercase; letter-spacing:0.2px;">${escapeHtml(title)}</div>
+ <div style="font-size:9.5pt; font-weight:bold; color:#334155; margin-top:3px;">${escapeHtml(subtitle)}</div>
  </div>
  ${metaHtml}
  ${customHtmlBefore || ''}

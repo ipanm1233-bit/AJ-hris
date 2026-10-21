@@ -2,7 +2,7 @@ import { db, COL, doc, deleteDoc, setDoc } from "../firebase-config.js";
 import { fsGetAll, smartParseDate, escapeHtml, fmtDateShort, fmtRupiah, fmtDateIndoLong, openModal, closeModal, toast, confirmDialog, genId, downloadWordDoc, ensureXlsxLoaded, downloadHtmlAsPdf } from "../utils.js";
 import { renderCrudModule, badge, emptyState, icon } from "../components.js";
 import { canEditModuleData } from "../auth.js";
-import { COMPANY_NAME, COMPANY_ADDRESS_LINE1, logoImgTag } from "../branding.js";
+import { COMPANY_NAME, COMPANY_ADDRESS_LINE1, letterheadHtml, officialDocStyles, officialPrintHtml } from "../branding.js";
 
 export async function mount(container, { session }) {
  const isHrd = ["HRD", "SUPERADMIN", "GA"].includes((session.role || "").toUpperCase());
@@ -352,15 +352,16 @@ export async function mount(container, { session }) {
 <style>
 @page Section1 {
   size: 595.3pt 841.9pt;
-  margin: 0.9in 0.9in 0.9in 0.9in;
-  mso-header-margin: 0.5in;
-  mso-footer-margin: 0.5in;
+  margin: 18mm 20mm 18mm 20mm;
+  mso-header-margin: 12mm;
+  mso-footer-margin: 12mm;
   mso-paper-source: 0;
 }
 div.Section1 { page: Section1; }
-body { font-family: 'Times New Roman', Times, serif; font-size: 11pt; color: #000000; line-height: 1.4; }
+body { margin: 0; font-family: 'Times New Roman', Times, serif; font-size: 11pt; color: #000000; line-height: 1.45; }
 table { border-collapse: collapse; width: 100%; }
 p { margin: 0 0 8pt 0; }
+${officialDocStyles({ forWord: true })}
 </style>
 </head>
 <body>
@@ -390,7 +391,7 @@ ${htmlContent}
       pemberiNama = "Ika Novista",
       pemberiJabatan = "Manager Operasional & GA",
       pemberiPerusahaan = COMPANY_NAME || "CV ANDELA JAYA",
-      pemberiAlamat = COMPANY_ADDRESS_LINE1 || "Jln. Jendral Sudirman No 58, Penggung, Kota Cirebon",
+      pemberiAlamat = COMPANY_ADDRESS_LINE1 || "Jl. Jend. Sudirman No. 58, Cirebon",
       penerimaNama = "-",
       penerimaNik = "-",
       penerimaJabatan = "Driver / Staff Operasional",
@@ -411,26 +412,17 @@ ${htmlContent}
     const atasNama = escapeHtml(kendaraan.atas_nama_kendaraan || kendaraan.nama_pemilik || pemberiPerusahaan);
     const driverPj = escapeHtml(kendaraan.driver_pj || "-");
     const tglIndoFormatted = fmtDateIndoLong(tglSurat) || fmtDateShort(tglSurat);
+    const kotaSurat = String(`${kendaraan.cabang || ""} ${kendaraan.alamat || ""} ${pemberiAlamat || ""}`).toLowerCase().includes("malang") ? "Malang" : "Cirebon";
 
     return `
-    <div class="surat-kuasa-a4" style="font-family:'Times New Roman', Times, serif; font-size:11pt; line-height:1.4; color:#000; background:#fff; width:100%; max-width:760px; margin:0 auto; padding:10px 15px;">
-      <!-- KOP SURAT -->
-      <table style="width:100%; border-collapse:collapse; margin-bottom:6px; border-bottom:3px double #000; padding-bottom:8px;">
-        <tr>
-          <td style="width:75px; vertical-align:middle; text-align:center; padding-right:12px;">
-            ${logoImgTag(60)}
-          </td>
-          <td style="vertical-align:middle; text-align:center;">
-            <div style="font-size:16pt; font-weight:bold; letter-spacing:1px; font-family:'Times New Roman', serif;">${COMPANY_NAME}</div>
-            <div style="font-size:9.5pt; margin-top:3px; color:#222;">${COMPANY_ADDRESS_LINE1}</div>
-          </td>
-        </tr>
-      </table>
+    <div class="aj-doc surat-kuasa-a4" style="font-family:'Times New Roman', Times, serif; font-size:11pt; line-height:1.45; color:#000; background:#fff; width:100%;">
+      <!-- KOP SURAT RESMI -->
+      ${letterheadHtml()}
 
       <!-- JUDUL SURAT -->
-      <div style="text-align:center; margin-top:14px; margin-bottom:16px;">
-        <div style="font-size:13pt; font-weight:bold; text-decoration:underline; letter-spacing:0.5px;">SURAT KUASA KHUSUS</div>
-        <div style="font-size:10.5pt; font-weight:normal; margin-top:2px;">Nomor: ${escapeHtml(noSurat)}</div>
+      <div style="text-align:center; margin-top:18px; margin-bottom:18px;">
+        <div style="font-size:14pt; font-weight:bold; text-decoration:underline; letter-spacing:0.4px;">SURAT KUASA KHUSUS</div>
+        <div style="font-size:10.5pt; font-weight:normal; margin-top:3px;">Nomor: ${escapeHtml(noSurat)}</div>
       </div>
 
       <p style="margin-bottom:8px; text-align:justify;">Yang bertanda tangan di bawah ini:</p>
@@ -490,45 +482,45 @@ ${htmlContent}
       <p style="margin-bottom:8px; text-align:justify;">Yang selanjutnya disebut sebagai <strong>PENERIMA KUASA</strong>.</p>
 
       <!-- KLAUSUL KHUSUS -->
-      <div style="text-align:center; font-weight:bold; font-size:11pt; margin:10px 0 6px 0; letter-spacing:1px;">------------------------ K H U S U S ------------------------</div>
+      <div style="text-align:center; font-weight:bold; font-size:11pt; margin:14px 0 8px 0; letter-spacing:3px;">K H U S U S</div>
 
       <p style="margin-bottom:8px; text-align:justify;">
         Untuk dan atas nama Pemberi Kuasa mewakili <strong>${escapeHtml(pemberiPerusahaan)}</strong> guna melakukan pengurusan <strong>${escapeHtml(tujuanPengurusan)}</strong> pada instansi <strong>${escapeHtml(instansiTujuan)}</strong> terhadap unit kendaraan bermotor operasional dengan spesifikasi sebagai berikut:
       </p>
 
       <!-- TABEL SPESIFIKASI KENDARAAN -->
-      <table style="width:100%; border-collapse:collapse; margin:8px 0 12px 0; font-size:10pt; border:1px solid #333;">
-        <tr style="background:#f1f5f9;">
-          <td style="width:36%; border:1px solid #333; padding:5px 8px; font-weight:bold;">Nomor Polisi / Nomor Plat</td>
-          <td style="border:1px solid #333; padding:5px 8px; font-weight:bold; font-family:monospace; font-size:11pt;">${plate}</td>
+      <table style="width:100%; border-collapse:collapse; margin:8px 0 14px 0; font-size:10pt; border:1px solid #000; page-break-inside:avoid; -webkit-print-color-adjust:exact; print-color-adjust:exact;">
+        <tr style="background:#f2f2f2;">
+          <td style="width:36%; border:1px solid #000; padding:5px 8px; font-weight:bold;">Nomor Polisi / Nomor Plat</td>
+          <td style="border:1px solid #000; padding:5px 8px; font-weight:bold; font-family:monospace; font-size:11pt;">${plate}</td>
         </tr>
         <tr>
-          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Merk & Tipe Kendaraan</td>
-          <td style="border:1px solid #333; padding:4px 8px;">${merkTipe}</td>
-        </tr>
-        <tr style="background:#fafafa;">
-          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Jenis / Model / Warna</td>
-          <td style="border:1px solid #333; padding:4px 8px;">${model} / ${warna} (Tahun: ${tahun})</td>
+          <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Merk &amp; Tipe Kendaraan</td>
+          <td style="border:1px solid #000; padding:4px 8px;">${merkTipe}</td>
         </tr>
         <tr>
-          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Nomor Rangka (VIN)</td>
-          <td style="border:1px solid #333; padding:4px 8px; font-family:monospace;">${noRangka}</td>
-        </tr>
-        <tr style="background:#fafafa;">
-          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Nomor Mesin</td>
-          <td style="border:1px solid #333; padding:4px 8px; font-family:monospace;">${noMesin}</td>
+          <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Jenis / Model / Warna</td>
+          <td style="border:1px solid #000; padding:4px 8px;">${model} / ${warna} (Tahun: ${tahun})</td>
         </tr>
         <tr>
-          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold; color:#0f172a; background:#e0f2fe;">Nomor Dokumen BPKB</td>
-          <td style="border:1px solid #333; padding:4px 8px; font-family:monospace; font-weight:bold; background:#f0f9ff;">${noBpkb}</td>
-        </tr>
-        <tr style="background:#fafafa;">
-          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Atas Nama Kendaraan (STNK/BPKB)</td>
-          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">${atasNama}</td>
+          <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Nomor Rangka (VIN)</td>
+          <td style="border:1px solid #000; padding:4px 8px; font-family:monospace;">${noRangka}</td>
         </tr>
         <tr>
-          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Driver / Penanggung Jawab Armada</td>
-          <td style="border:1px solid #333; padding:4px 8px;">${driverPj}</td>
+          <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Nomor Mesin</td>
+          <td style="border:1px solid #000; padding:4px 8px; font-family:monospace;">${noMesin}</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Nomor Dokumen BPKB</td>
+          <td style="border:1px solid #000; padding:4px 8px; font-family:monospace; font-weight:bold;">${noBpkb}</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Atas Nama Kendaraan (STNK/BPKB)</td>
+          <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">${atasNama}</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Driver / Penanggung Jawab Armada</td>
+          <td style="border:1px solid #000; padding:4px 8px;">${driverPj}</td>
         </tr>
       </table>
 
@@ -541,20 +533,21 @@ ${htmlContent}
       </p>
 
       <!-- TANDA TANGAN -->
-      <table style="width:100%; border-collapse:collapse; margin-top:20px; text-align:center; font-size:10.5pt; page-break-inside:avoid;">
+      <table style="width:100%; border-collapse:collapse; margin-top:28px; text-align:center; font-size:10.5pt; page-break-inside:avoid;">
         <tr>
-          <td style="width:50%; vertical-align:top;">
-            <div>Cirebon, ${tglIndoFormatted}</div>
-            <div style="font-weight:bold; margin-top:2px;">Penerima Kuasa,</div>
-            <div style="height:65px;"></div>
+          <td style="width:50%; vertical-align:top; padding:0 8px;">
+            <div style="height:20px;"></div>
+            <div style="font-weight:bold;">Penerima Kuasa,</div>
+            <div style="height:62px;"></div>
             <div style="font-weight:bold; text-decoration:underline;">( ${escapeHtml(penerimaNama)} )</div>
             <div style="font-size:9pt; color:#444; margin-top:2px;">NIK: ${escapeHtml(penerimaNik)}</div>
           </td>
-          <td style="width:50%; vertical-align:top;">
-            <div>${escapeHtml(pemberiPerusahaan)}</div>
-            <div style="font-weight:bold; margin-top:2px;">Pemberi Kuasa,</div>
-            <div style="height:15px;"></div>
-            <div style="border:1px dashed #666; width:95px; height:45px; margin:0 auto 5px auto; font-size:7.5pt; line-height:45px; color:#555; text-align:center;">
+          <td style="width:50%; vertical-align:top; padding:0 8px;">
+            <div>${kotaSurat}, ${tglIndoFormatted}</div>
+            <div style="font-weight:bold; margin-top:2px;">${escapeHtml(pemberiPerusahaan)}</div>
+            <div style="font-weight:bold;">Pemberi Kuasa,</div>
+            <div style="height:8px;"></div>
+            <div style="border:1px dashed #666; width:95px; height:42px; margin:0 auto 4px auto; font-size:7.5pt; line-height:42px; color:#555; text-align:center;">
               METERAI 10.000
             </div>
             <div style="font-weight:bold; text-decoration:underline;">( ${escapeHtml(pemberiNama)} )</div>
@@ -562,6 +555,10 @@ ${htmlContent}
           </td>
         </tr>
       </table>
+
+      <div class="aj-footer" style="margin-top:24px; padding-top:5px; border-top:1px solid #000; font-family:Arial,Helvetica,sans-serif; font-size:7.5pt; color:#333; text-align:center;">
+        Dokumen resmi ${escapeHtml(COMPANY_NAME)} &bull; Nomor: ${escapeHtml(noSurat)} &bull; Diterbitkan melalui Sistem HRIS
+      </div>
     </div>
     `;
   }
@@ -573,7 +570,7 @@ ${htmlContent}
       pejabatNama = "Ika Novista",
       pejabatJabatan = "Manager Operasional & GA",
       namaPerusahaan = COMPANY_NAME || "CV ANDELA JAYA",
-      alamatPerusahaan = COMPANY_ADDRESS_LINE1 || "Jln. Jendral Sudirman No 58, Penggung, Kota Cirebon",
+      alamatPerusahaan = COMPANY_ADDRESS_LINE1 || "Jl. Jend. Sudirman No. 58, Cirebon",
       keperluan = "Kelengkapan berkas administrasi pengurusan Pajak Kendaraan Bermotor (STNK Tahunan / 5 Tahunan) dan/atau Uji Kelayakan Kendaraan Bermotor (Uji KIR)",
       kendaraan = {}
     } = cfg;
@@ -590,26 +587,17 @@ ${htmlContent}
     const atasNama = escapeHtml(kendaraan.atas_nama_kendaraan || kendaraan.nama_pemilik || namaPerusahaan);
     const driverPj = escapeHtml(kendaraan.driver_pj || "-");
     const tglIndoFormatted = fmtDateIndoLong(tglSurat) || fmtDateShort(tglSurat);
+    const kotaSurat = String(alamatPerusahaan || "").toLowerCase().includes("malang") ? "Malang" : "Cirebon";
 
     return `
-    <div class="surat-ket-aset-a4" style="font-family:'Times New Roman', Times, serif; font-size:11pt; line-height:1.45; color:#000; background:#fff; width:100%; max-width:760px; margin:0 auto; padding:10px 15px;">
-      <!-- KOP SURAT -->
-      <table style="width:100%; border-collapse:collapse; margin-bottom:6px; border-bottom:3px double #000; padding-bottom:8px;">
-        <tr>
-          <td style="width:75px; vertical-align:middle; text-align:center; padding-right:12px;">
-            ${logoImgTag(60)}
-          </td>
-          <td style="vertical-align:middle; text-align:center;">
-            <div style="font-size:16pt; font-weight:bold; letter-spacing:1px; font-family:'Times New Roman', serif;">${COMPANY_NAME}</div>
-            <div style="font-size:9.5pt; margin-top:3px; color:#222;">${COMPANY_ADDRESS_LINE1}</div>
-          </td>
-        </tr>
-      </table>
+    <div class="aj-doc surat-ket-aset-a4" style="font-family:'Times New Roman', Times, serif; font-size:11pt; line-height:1.45; color:#000; background:#fff; width:100%;">
+      <!-- KOP SURAT RESMI -->
+      ${letterheadHtml()}
 
       <!-- JUDUL SURAT -->
-      <div style="text-align:center; margin-top:16px; margin-bottom:18px;">
-        <div style="font-size:13pt; font-weight:bold; text-decoration:underline; letter-spacing:0.5px;">SURAT KETERANGAN KEPEMILIKAN ASET</div>
-        <div style="font-size:10.5pt; font-weight:normal; margin-top:2px;">Nomor: ${escapeHtml(noSurat)}</div>
+      <div style="text-align:center; margin-top:18px; margin-bottom:18px;">
+        <div style="font-size:14pt; font-weight:bold; text-decoration:underline; letter-spacing:0.4px;">SURAT KETERANGAN KEPEMILIKAN ASET</div>
+        <div style="font-size:10.5pt; font-weight:normal; margin-top:3px;">Nomor: ${escapeHtml(noSurat)}</div>
       </div>
 
       <p style="margin-bottom:8px; text-align:justify;">Yang bertanda tangan di bawah ini:</p>
@@ -643,46 +631,46 @@ ${htmlContent}
       </p>
 
       <!-- TABEL SPESIFIKASI KENDARAAN -->
-      <table style="width:100%; border-collapse:collapse; margin:8px 0 14px 0; font-size:10pt; border:1px solid #333;">
-        <tr style="background:#f1f5f9;">
-          <td style="width:36%; border:1px solid #333; padding:5px 8px; font-weight:bold;">Nomor Polisi / No. Plat</td>
-          <td style="border:1px solid #333; padding:5px 8px; font-weight:bold; font-family:monospace; font-size:11pt;">${plate}</td>
+      <table style="width:100%; border-collapse:collapse; margin:8px 0 14px 0; font-size:10pt; border:1px solid #000; page-break-inside:avoid; -webkit-print-color-adjust:exact; print-color-adjust:exact;">
+        <tr style="background:#f2f2f2;">
+          <td style="width:36%; border:1px solid #000; padding:5px 8px; font-weight:bold;">Nomor Polisi / No. Plat</td>
+          <td style="border:1px solid #000; padding:5px 8px; font-weight:bold; font-family:monospace; font-size:11pt;">${plate}</td>
         </tr>
         <tr>
-          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Merk & Tipe Kendaraan</td>
-          <td style="border:1px solid #333; padding:4px 8px;">${merkTipe}</td>
-        </tr>
-        <tr style="background:#fafafa;">
-          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Jenis / Model Kendaraan</td>
-          <td style="border:1px solid #333; padding:4px 8px;">${model}</td>
+          <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Merk &amp; Tipe Kendaraan</td>
+          <td style="border:1px solid #000; padding:4px 8px;">${merkTipe}</td>
         </tr>
         <tr>
-          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Tahun Pembuatan / Warna</td>
-          <td style="border:1px solid #333; padding:4px 8px;">Tahun ${tahun} / Warna ${warna}</td>
-        </tr>
-        <tr style="background:#fafafa;">
-          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Bahan Bakar</td>
-          <td style="border:1px solid #333; padding:4px 8px;">${bahanBakar}</td>
+          <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Jenis / Model Kendaraan</td>
+          <td style="border:1px solid #000; padding:4px 8px;">${model}</td>
         </tr>
         <tr>
-          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Nomor Rangka (VIN)</td>
-          <td style="border:1px solid #333; padding:4px 8px; font-family:monospace;">${noRangka}</td>
-        </tr>
-        <tr style="background:#fafafa;">
-          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Nomor Mesin</td>
-          <td style="border:1px solid #333; padding:4px 8px; font-family:monospace;">${noMesin}</td>
+          <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Tahun Pembuatan / Warna</td>
+          <td style="border:1px solid #000; padding:4px 8px;">Tahun ${tahun} / Warna ${warna}</td>
         </tr>
         <tr>
-          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold; color:#0f172a; background:#e0f2fe;">Nomor Dokumen BPKB</td>
-          <td style="border:1px solid #333; padding:4px 8px; font-family:monospace; font-weight:bold; background:#f0f9ff;">${noBpkb}</td>
-        </tr>
-        <tr style="background:#fafafa;">
-          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Atas Nama di STNK & BPKB</td>
-          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">${atasNama}</td>
+          <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Bahan Bakar</td>
+          <td style="border:1px solid #000; padding:4px 8px;">${bahanBakar}</td>
         </tr>
         <tr>
-          <td style="border:1px solid #333; padding:4px 8px; font-weight:bold;">Driver / Penanggung Jawab Armada</td>
-          <td style="border:1px solid #333; padding:4px 8px;">${driverPj}</td>
+          <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Nomor Rangka (VIN)</td>
+          <td style="border:1px solid #000; padding:4px 8px; font-family:monospace;">${noRangka}</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Nomor Mesin</td>
+          <td style="border:1px solid #000; padding:4px 8px; font-family:monospace;">${noMesin}</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Nomor Dokumen BPKB</td>
+          <td style="border:1px solid #000; padding:4px 8px; font-family:monospace; font-weight:bold;">${noBpkb}</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Atas Nama di STNK &amp; BPKB</td>
+          <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">${atasNama}</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #000; padding:4px 8px; font-weight:bold;">Driver / Penanggung Jawab Armada</td>
+          <td style="border:1px solid #000; padding:4px 8px;">${driverPj}</td>
         </tr>
       </table>
 
@@ -699,18 +687,23 @@ ${htmlContent}
       </p>
 
       <!-- TANDA TANGAN -->
-      <table style="width:100%; border-collapse:collapse; margin-top:24px; text-align:center; font-size:10.5pt; page-break-inside:avoid;">
+      <table style="width:100%; border-collapse:collapse; margin-top:28px; text-align:center; font-size:10.5pt; page-break-inside:avoid;">
         <tr>
           <td style="width:50%;"></td>
-          <td style="width:50%; vertical-align:top;">
-            <div>Cirebon, ${tglIndoFormatted}</div>
+          <td style="width:50%; vertical-align:top; padding:0 8px;">
+            <div>${kotaSurat}, ${tglIndoFormatted}</div>
             <div style="font-weight:bold; margin-top:2px;">${escapeHtml(namaPerusahaan)}</div>
-            <div style="height:65px;"></div>
+            <div style="font-weight:bold;">Hormat kami,</div>
+            <div style="height:62px;"></div>
             <div style="font-weight:bold; text-decoration:underline;">( ${escapeHtml(pejabatNama)} )</div>
             <div style="font-size:9pt; color:#444; margin-top:2px;">${escapeHtml(pejabatJabatan)}</div>
           </td>
         </tr>
       </table>
+
+      <div class="aj-footer" style="margin-top:24px; padding-top:5px; border-top:1px solid #000; font-family:Arial,Helvetica,sans-serif; font-size:7.5pt; color:#333; text-align:center;">
+        Dokumen resmi ${escapeHtml(COMPANY_NAME)} &bull; Nomor: ${escapeHtml(noSurat)} &bull; Diterbitkan melalui Sistem HRIS
+      </div>
     </div>
     `;
   }
@@ -771,6 +764,7 @@ ${htmlContent}
       </div>`,
       size: "2xl",
       bodyHtml: `
+      <style>${officialDocStyles()}</style>
       <div class="space-y-4 text-left">
         <!-- VEHICLE SELECTOR BANNER -->
         <div class="bg-gradient-to-r from-slate-900 to-maroon-950 p-3.5 rounded-2xl text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm border border-slate-800">
@@ -973,7 +967,7 @@ ${htmlContent}
           pemberiNama: pNama,
           pemberiJabatan: pJabatan,
           pemberiPerusahaan: COMPANY_NAME || "CV ANDELA JAYA",
-          pemberiAlamat: COMPANY_ADDRESS_LINE1 || "Jln. Jendral Sudirman No 58, Penggung, Kota Cirebon",
+          pemberiAlamat: COMPANY_ADDRESS_LINE1 || "Jl. Jend. Sudirman No. 58, Cirebon",
           penerimaNama: inputPenerimaNama ? inputPenerimaNama.value.trim() : "-",
           penerimaNik: inputPenerimaNik ? inputPenerimaNik.value.trim() : "-",
           penerimaJabatan: inputPenerimaJabatan ? inputPenerimaJabatan.value.trim() : "Driver / Staff Operasional",
@@ -990,7 +984,7 @@ ${htmlContent}
           pejabatNama: pNama,
           pejabatJabatan: pJabatan,
           namaPerusahaan: COMPANY_NAME || "CV ANDELA JAYA",
-          alamatPerusahaan: COMPANY_ADDRESS_LINE1 || "Jln. Jendral Sudirman No 58, Penggung, Kota Cirebon",
+          alamatPerusahaan: COMPANY_ADDRESS_LINE1 || "Jl. Jend. Sudirman No. 58, Cirebon",
           keperluan: inputKeperluanAset ? inputKeperluanAset.value.trim() : "Kelengkapan berkas administrasi pengurusan Pajak Kendaraan Bermotor (STNK Tahunan / 5 Tahunan) dan/atau Uji Kelayakan Kendaraan Bermotor (Uji KIR)",
           kendaraan: currentVehicle
         });
@@ -1127,7 +1121,7 @@ ${htmlContent}
             pemberiNama: pNama,
             pemberiJabatan: pJabatan,
             pemberiPerusahaan: COMPANY_NAME || "CV ANDELA JAYA",
-            pemberiAlamat: COMPANY_ADDRESS_LINE1 || "Jln. Jendral Sudirman No 58, Penggung, Kota Cirebon",
+            pemberiAlamat: COMPANY_ADDRESS_LINE1 || "Jl. Jend. Sudirman No. 58, Cirebon",
             penerimaNama: inputPenerimaNama.value.trim(),
             penerimaNik: inputPenerimaNik.value.trim(),
             penerimaJabatan: inputPenerimaJabatan.value.trim(),
@@ -1149,7 +1143,7 @@ ${htmlContent}
             pejabatNama: pNama,
             pejabatJabatan: pJabatan,
             namaPerusahaan: COMPANY_NAME || "CV ANDELA JAYA",
-            alamatPerusahaan: COMPANY_ADDRESS_LINE1 || "Jln. Jendral Sudirman No 58, Penggung, Kota Cirebon",
+            alamatPerusahaan: COMPANY_ADDRESS_LINE1 || "Jl. Jend. Sudirman No. 58, Cirebon",
             keperluan: inputKeperluanAset.value.trim(),
             kendaraan: currentVehicle
           });
@@ -1178,7 +1172,7 @@ ${htmlContent}
             pemberiNama: pNama,
             pemberiJabatan: pJabatan,
             pemberiPerusahaan: COMPANY_NAME || "CV ANDELA JAYA",
-            pemberiAlamat: COMPANY_ADDRESS_LINE1 || "Jln. Jendral Sudirman No 58, Penggung, Kota Cirebon",
+            pemberiAlamat: COMPANY_ADDRESS_LINE1 || "Jl. Jend. Sudirman No. 58, Cirebon",
             penerimaNama: inputPenerimaNama.value.trim(),
             penerimaNik: inputPenerimaNik.value.trim(),
             penerimaJabatan: inputPenerimaJabatan.value.trim(),
@@ -1194,7 +1188,7 @@ ${htmlContent}
             pejabatNama: pNama,
             pejabatJabatan: pJabatan,
             namaPerusahaan: COMPANY_NAME || "CV ANDELA JAYA",
-            alamatPerusahaan: COMPANY_ADDRESS_LINE1 || "Jln. Jendral Sudirman No 58, Penggung, Kota Cirebon",
+            alamatPerusahaan: COMPANY_ADDRESS_LINE1 || "Jl. Jend. Sudirman No. 58, Cirebon",
             keperluan: inputKeperluanAset.value.trim(),
             kendaraan: currentVehicle
           });
@@ -1210,44 +1204,25 @@ ${htmlContent}
         document.body.appendChild(printIframe);
 
         const doc = printIframe.contentWindow.document;
+        const printHtml = officialPrintHtml({
+          title: `${currentDocType === 'KUASA' ? 'Surat_Kuasa_' : 'Surat_Ket_Aset_'}${(currentVehicle.no_polisi || '').replace(/\s+/g, '_')}`,
+          contentHtml: html
+        });
         doc.open();
-        doc.write(`
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>${currentDocType === 'KUASA' ? 'Surat_Kuasa_' : 'Surat_Ket_Aset_'}${(currentVehicle.no_polisi || '').replace(/\s+/g, '_')}</title>
-            <style>
-              @page {
-                size: A4 portrait;
-                margin: 20mm 15mm 20mm 15mm;
-              }
-              body {
-                font-family: 'Times New Roman', Times, serif;
-                font-size: 11pt;
-                line-height: 1.4;
-                color: #000;
-                margin: 0;
-                padding: 0;
-              }
-              table { border-collapse: collapse; width: 100%; }
-              p { margin: 0 0 8pt 0; }
-            </style>
-          </head>
-          <body>
-            ${html}
-            <script>
-              window.onload = function() {
-                window.focus();
-                window.print();
-                setTimeout(() => {
-                  window.parent.document.body.removeChild(window.frameElement);
-                }, 1000);
-              };
-            </script>
-          </body>
-          </html>
-        `);
+        doc.write(printHtml);
         doc.close();
+
+        const frameWindow = printIframe.contentWindow;
+        setTimeout(() => {
+          try {
+            frameWindow.focus();
+            frameWindow.print();
+          } finally {
+            setTimeout(() => {
+              try { printIframe.remove(); } catch (_) { }
+            }, 1200);
+          }
+        }, 400);
         toast("Membuka dialog cetak PDF...", "info");
       };
     }

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { logoImgTag, isoDocHeaderTable, letterheadHtml } from "../js/branding.js";
 
-test("logo dokumen selalu berada di tengah kotak header", () => {
+test("logo dokumen tetap rapi di dalam kotak header ISO", () => {
   const tag = logoImgTag(52);
   assert.match(tag, /<img /);
   assert.match(tag, /display:block/);
@@ -17,10 +17,16 @@ test("logo dokumen selalu berada di tengah kotak header", () => {
   assert.match(header, /align-items:center/);
   assert.match(header, /justify-content:center/);
   assert.match(header, /logo/i);
+});
 
+test("kop surat memakai identitas Andela Jaya dan dua alamat resmi", () => {
   const letterhead = letterheadHtml();
-  assert.match(letterhead, /margin:0 auto/);
-  assert.match(letterhead, /text-align:center/);
+  assert.match(letterhead, /ANDELA JAYA/);
+  assert.match(letterhead, /Jl\. Jend\. Sudirman No\. 58, Cirebon/);
+  assert.match(letterhead, /Jl\. Tenaga Baru I No\. 3, Blimbing, Kota Malang/);
+  assert.match(letterhead, /0231 - 489345 \/ 489346/);
+  assert.match(letterhead, /0341 - 400139/);
+  assert.match(letterhead, /border-top:4px solid #000000/);
 });
 
 test("ukuran logo mengikuti parameter dan tidak memakai URL eksternal", () => {
