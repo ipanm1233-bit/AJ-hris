@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const roots = ['api', 'lib'];
+const roots = ['api', 'handlers', 'lib'];
 const files = roots.flatMap(root => fs.readdirSync(path.join(process.cwd(), root))
   .filter(file => file.endsWith('.js'))
   .map(file => path.join(root, file)));

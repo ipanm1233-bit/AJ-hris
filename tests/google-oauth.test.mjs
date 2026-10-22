@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import {
   formatCoordinates,
@@ -20,8 +20,9 @@ const {
   profileFromEmployee,
   safeDocId
 } = require("../lib/employee-profile.js");
-const { _test: authGoogleTest } = require("../api/auth-google.js");
-const { _test: authSessionTest } = require("../api/auth-session.js");
+const { _test: authGoogleTest } = require("../handlers/auth-google.js");
+const { _test: authSessionTest } = require("../handlers/auth-session.js");
+const { _test: accountTest } = require("../api/account.js");
 
 function source(relativePath) {
   return readFileSync(new URL(relativePath, import.meta.url), "utf8");
@@ -29,14 +30,14 @@ function source(relativePath) {
 
 test("Google login routes and client integration stay wired", () => {
   const server = source("../server.js");
-  assert.match(server, /require\('\.\/api\/auth-google\.js'\)/);
-  assert.match(server, /require\('\.\/api\/profile-verify\.js'\)/);
-  assert.match(server, /require\('\.\/api\/profile-update\.js'\)/);
-  assert.match(server, /require\('\.\/api\/profile-location\.js'\)/);
+  assert.match(server, /require\('\.\/api\/account\.js'\)/);
+  assert.match(server, /app\.all\('\/api\/account'/);
   assert.match(server, /app\.all\('\/api\/auth-google'/);
+  assert.match(server, /app\.all\('\/api\/auth-session'/);
   assert.match(server, /app\.all\('\/api\/profile-verify'/);
   assert.match(server, /app\.all\('\/api\/profile-update'/);
   assert.match(server, /app\.all\('\/api\/profile-location'/);
+  assert.match(server, /app\.all\('\/api\/change-password'/);
 
   const loginView = source("../js/views/login.js");
   assert.match(loginView, /accounts\.google\.com\/gsi\/client/);
@@ -70,8 +71,29 @@ test("Google login routes and client integration stay wired", () => {
   assert.match(envExample, /GOOGLE_OAUTH_CLIENT_ID/);
 });
 
+test("account endpoints are bundled to stay within the Vercel Hobby function limit", () => {
+  const apiFunctions = readdirSync(new URL("../api", import.meta.url))
+    .filter(file => file.endsWith(".js"));
+  assert.ok(apiFunctions.length <= 12, `Vercel Hobby hanya mendukung 12 functions, ditemukan ${apiFunctions.length}`);
+
+  assert.equal(accountTest.resolveAction({ url: "/api/auth-google" }), "auth-google");
+  assert.equal(accountTest.resolveAction({ url: "/api/auth-session" }), "auth-session");
+  assert.equal(accountTest.resolveAction({ url: "/api/account?action=profile-verify" }), "profile-verify");
+  assert.equal(accountTest.resolveAction({ url: "/api/account?action=profile-update" }), "profile-update");
+  assert.equal(accountTest.resolveAction({ url: "/api/account?action=profile-location" }), "profile-location");
+  assert.equal(accountTest.resolveAction({ url: "/api/account?action=change-password" }), "change-password");
+  assert.equal(accountTest.resolveAction({ url: "/api/account?action=unknown" }), "");
+
+  const vercel = JSON.parse(source("../vercel.json"));
+  const rewrites = new Map(vercel.rewrites.map(rule => [rule.source, rule.destination]));
+  assert.equal(rewrites.get("/api/auth-google"), "/api/account?action=auth-google");
+  assert.equal(rewrites.get("/api/profile-verify"), "/api/account?action=profile-verify");
+  assert.equal(rewrites.get("/api/profile-update"), "/api/account?action=profile-update");
+  assert.equal(rewrites.get("/api/profile-location"), "/api/account?action=profile-location");
+});
+
 test("employee self-service profile update uses the validated server endpoint", () => {
-  const endpoint = source("../api/profile-update.js");
+  const endpoint = source("../handlers/profile-update.js");
   assert.match(endpoint, /buildProfileUpdate/);
   assert.match(endpoint, /EMPLOYEE_PROFILE_UPDATED/);
   assert.match(endpoint, /requireFirebaseAuth/);
@@ -87,7 +109,7 @@ test("security blocks unlinked Google accounts and unfinished verification", () 
 });
 
 test("Google auth verifies the ID token server-side before issuing a custom token", () => {
-  const authGoogle = source("../api/auth-google.js");
+  const authGoogle = source("../handlers/auth-google.js");
   assert.match(authGoogle, /auth-google-config/);
   assert.match(authGoogle, /oauth2\.googleapis\.com\/tokeninfo/);
   assert.match(authGoogle, /payload\.aud/);

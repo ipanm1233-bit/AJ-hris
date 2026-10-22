@@ -10,6 +10,10 @@ Single Page Application (SPA) modular berbasis **HTML5 + Tailwind CSS + Firebase
 andela-hris/
 ├─ index.html                ← Shell utama SPA (header, sidebar, mount point)
 ├─ super-migrasi.html        ← Alat migrasi data Excel → Firestore
+├─ server.js                 ← Express server lokal (API + static)
+├─ api/                      ← Vercel Functions (maks. 12 file di Hobby)
+├─ handlers/                 ← Handler akun/profil yang dipanggil api/account.js
+├─ lib/                      ← Helper server (Firebase Admin, keamanan, profil)
 ├─ firestore.rules           ← Security Rules berbasis Firebase Auth dan custom claims
 ├─ css/
 │  └─ style.css              ← Pelengkap Tailwind: animasi, state sidebar, dsb
@@ -58,7 +62,15 @@ andela-hris/
 6. Klik **Buat Data Dummy Sekarang** (langkah 4) untuk mengisi modul-modul baru yang belum ada datanya di Excel (Rekrutmen, SOP, Gimmick, Kalender HR, dsb) agar sistem tidak kosong.
 
 ### C. Menjalankan Aplikasi Utama
-Buka `http://localhost:8080/index.html`. Login dapat memakai NIK/username + password atau email Google yang sudah terdaftar di HRD. Akun lama dimigrasikan satu kali di server ke Firebase Authentication; password/hash lama kemudian dihapus dari Firestore.
+Jalankan server Node, bukan hanya static file server, karena login Google dan endpoint `/api/*` membutuhkan backend:
+```bash
+npm install
+copy .env.example .env   # Windows; isi variabelnya
+node --env-file=.env server.js
+```
+Buka `http://localhost:3000`. Jika variabel lingkungan sudah diinject oleh hosting, cukup `npm start`. Login dapat memakai NIK/username + password atau email Google yang sudah terdaftar di HRD. Akun lama dimigrasikan satu kali di server ke Firebase Authentication; password/hash lama kemudian dihapus dari Firestore.
+
+Untuk produksi, gunakan HTTPS. Browser hanya mengizinkan pembacaan lokasi (geolocation) pada HTTPS atau `localhost`.
 
 ### D. Login Google (Gratis, Tanpa Billing)
 
@@ -68,19 +80,18 @@ Login Google memakai **Google Identity Services + verifikasi ID token di server*
 2. Pastikan ada **OAuth 2.0 Client ID** tipe **Web application**.
 3. Tambahkan **Authorized JavaScript origins** untuk domain produksi dan pengembangan, misalnya:
    `https://domain-anda.com`, `http://localhost:3000`, `http://localhost:8080`.
-4. Isi `GOOGLE_OAUTH_CLIENT_ID` di `.env` (opsional; jika kosong, dipakai `oAuthClientId` dari `firebase-applet-config.json`).
-5. Daftarkan email Google karyawan pada `master_karyawan.email` (atau `users.email`/`email_google`) sebelum login pertama.
+4. Set `GOOGLE_OAUTH_CLIENT_ID` di environment server/hosting (opsional; jika kosong, dipakai `oAuthClientId` dari `firebase-applet-config.json`). Nilai ini harus sama dengan OAuth 2.0 Client ID tipe **Web application** pada langkah 2.
+5. Daftarkan email Google karyawan pada `master_karyawan.email` (atau `users.email`/`email_google`) sebelum login pertama. Jika OAuth consent screen masih berstatus **Testing**, tambahkan akun Google karyawan sebagai **Test users**, atau publikasikan aplikasinya.
 6. Saat login Google pertama, karyawan wajib memverifikasi data diri dan mengizinkan pembacaan titik lokasi perangkat. Data tersimpan di `master_karyawan`, `users`, dan `auth_profiles`.
 
 Jika muncul pesan `origin_mismatch`, tambahkan origin yang sedang dipakai ke langkah 3.
 
 ### E. Deploy ke Hosting
-Karena ini murni file statis (HTML/CSS/JS), bisa langsung di-deploy ke **Firebase Hosting**, Netlify, Vercel static, GitHub Pages, dsb. Contoh Firebase Hosting:
-```bash
-npm install -g firebase-tools
-firebase init hosting   # pilih folder ini sebagai public dir
-firebase deploy
-```
+Aplikasi ini membutuhkan **Node.js server** untuk `/api/*`, login Google, verifikasi profil, dan penyimpanan lokasi. Deploy `node server.js` (Node 22+) atau gunakan Vercel dengan fungsi di folder `api/`; jangan deploy sebagai static-only hosting.
+
+Jika memakai Vercel Hobby, batasnya adalah **12 Vercel Functions per deployment**. Endpoint akun/profil (`auth-google`, `auth-session`, `profile-verify`, `profile-update`, `profile-location`, `change-password`) sengaja digabung ke satu fungsi `api/account.js` dan diarahkan lewat rewrite di `vercel.json`, sehingga jumlah fungsi tetap 11.
+
+Set environment variables di dashboard hosting (lihat `.env.example`), lalu deploy ulang. Frontend dan API harus satu origin agar pemanggilan `/api/*` bekerja.
 
 ---
 

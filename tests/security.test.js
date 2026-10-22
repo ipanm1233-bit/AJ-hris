@@ -12,7 +12,7 @@ const {
   authProfileFromClaims
 } = require('../lib/security.js');
 const { _test: authLoginTest } = require('../api/auth-login.js');
-const { _test: authSessionTest } = require('../api/auth-session.js');
+const { _test: authSessionTest } = require('../handlers/auth-session.js');
 const { _test: izinAccessTest } = require('../lib/izin-access.js');
 
 function responseMock() {
