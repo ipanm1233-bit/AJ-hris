@@ -2,6 +2,8 @@ import { db, COL, collection, query, where, getDocs, doc, getDoc, updateDoc } fr
 import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toast, fsUpdate, fsAdd, fsGetAll, genId, localDateStr, notifyUser, getTargetsForRole, calculateAge, calculateTenure } from "../utils.js";
 import { avatar, badge, icon, emptyState } from "../components.js";
 import { setSession, syncSessionWithDb, getUserPermissionSummary, hasPermission } from "../auth.js";
+import { authFetch } from "../api-client.js";
+import { formatAccuracy, formatCoordinates, formatLocationTime, getCurrentLocation, locationMapUrl } from "../geolocation.mjs";
 
 export async function mount(container, { session, params }) {
 	// Sync session data with Firestore database & RBAC permissions cache
@@ -209,6 +211,9 @@ export async function mount(container, { session, params }) {
  // Load Uploaded Documents List
  await loadUploadedDocuments(container, activeSession);
 
+ // Lokasi perangkat terakhir (capture on demand, tanpa layanan geocoding berbayar)
+ initLocationCard(container, activeSession);
+
  // Set up Tabs switching logic
  const tabButtons = container.querySelectorAll(".profile-tab-btn");
  tabButtons.forEach(btn => {
@@ -325,6 +330,58 @@ export async function mount(container, { session, params }) {
  setupDragAndDrop(container, session);
 
  return { unmount() {} };
+}
+
+function renderProfileLocation(container, location) {
+ const display = container.querySelector("#profile-location-display");
+ if (!display) return;
+ const coordinates = formatCoordinates(location);
+ if (!coordinates || coordinates === "-") {
+  display.className = "rounded-2xl border border-slate-100 bg-slate-50 p-3.5 text-xs text-slate-500";
+  display.textContent = "Belum ada titik lokasi perangkat yang tercatat.";
+  return;
+ }
+ const mapUrl = locationMapUrl(location);
+ display.className = "rounded-2xl border border-emerald-100 bg-emerald-50 p-3.5 text-xs text-emerald-800 space-y-1.5";
+ display.innerHTML = `
+  <p class="font-extrabold">${escapeHtml(coordinates)}</p>
+  <p class="text-[11px]">Akurasi ${escapeHtml(formatAccuracy(location))} · ${escapeHtml(formatLocationTime(location.captured_at))}</p>
+  ${mapUrl ? `<a href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-[10px] font-bold text-maroon-700 hover:underline">Buka di Google Maps</a>` : ""}
+ `;
+}
+
+function initLocationCard(container, session) {
+ const button = container.querySelector("#btn-refresh-location");
+ renderProfileLocation(container, session.last_location);
+ if (!button) return;
+
+ button.onclick = async () => {
+  const original = button.innerHTML;
+  button.disabled = true;
+  button.innerHTML = `<span class="spinner"></span> Membaca...`;
+  try {
+   const location = await getCurrentLocation({ timeout: 20_000 });
+   const response = await authFetch("/api/profile-location", {
+    method: "POST",
+    body: JSON.stringify({ location })
+   });
+   const payload = await response.json().catch(() => ({}));
+   if (!response.ok || !payload.success || !payload.location) {
+    throw new Error(payload.error || "Gagal menyimpan titik lokasi.");
+   }
+   const updated = await syncSessionWithDb(session, true);
+   const nextSession = updated || { ...session, last_location: payload.location };
+   if (!nextSession.last_location) nextSession.last_location = payload.location;
+   setSession(nextSession);
+   renderProfileLocation(container, nextSession.last_location);
+   toast("Titik lokasi perangkat berhasil diperbarui.", "success");
+  } catch (error) {
+   toast(error.message || "Gagal membaca titik lokasi perangkat.", "error");
+  } finally {
+   button.disabled = false;
+   button.innerHTML = original;
+  }
+ };
 }
 
 // Setup Drag and Drop upload
@@ -556,8 +613,9 @@ function openEditProfileModal(session, k, container) {
 
  <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
  <div>
- <label class="block text-xs font-bold text-slate-600 mb-1">Email Aktif</label>
- <input type="email" id="edit-p-email" value="${escapeHtml(k?.email || session.email || '')}" required class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400">
+ <label class="block text-xs font-bold text-slate-600 mb-1">Email Google Aktif</label>
+ <input type="email" id="edit-p-email" value="${escapeHtml(k?.email || session.email || '')}" readonly class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 text-slate-500 outline-none cursor-not-allowed">
+ <p class="text-[10px] text-slate-400 mt-1">Email login dikelola otomatis dari akun Google dan data HRD.</p>
  </div>
  <div>
  <label class="block text-xs font-bold text-slate-600 mb-1">Nomor HP / WA Aktif</label>
@@ -568,7 +626,7 @@ function openEditProfileModal(session, k, container) {
  <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
  <div>
  <label class="block text-xs font-medium text-slate-500 mb-1">No. KTP / NIK KTP</label>
- <input type="text" id="edit-p-ktp" value="${escapeHtml(k?.nik_ktp || k?.no_ktp || k?.nik || '')}" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400 font-mono">
+ <input type="text" id="edit-p-ktp" value="${escapeHtml(k?.nik_ktp || k?.no_ktp || '')}" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400 font-mono">
  </div>
  <div>
  <label class="block text-xs font-medium text-slate-500 mb-1">No. Kartu Keluarga (KK)</label>
@@ -692,7 +750,6 @@ function openEditProfileModal(session, k, container) {
  const form = m.querySelector("#form-edit-profil-mobile");
  if (!form.reportValidity()) return;
 
- const emailVal = m.querySelector("#edit-p-email").value.trim();
  const hpVal = m.querySelector("#edit-p-hp").value.trim();
  const ktpVal = m.querySelector("#edit-p-ktp").value.trim();
  const kkVal = m.querySelector("#edit-p-kk") ? m.querySelector("#edit-p-kk").value.trim() : "";
@@ -720,12 +777,7 @@ function openEditProfileModal(session, k, container) {
  btn.disabled = true; btn.textContent = "Menyimpan...";
 
  try {
- // Update USERS
- await fsUpdate(COL.USERS, session.username, { email: emailVal });
- session.email = emailVal;
-
- const updatePayload = {
- email: emailVal,
+ const profilePayload = {
  no_hp_aktif: hpVal,
  nik_ktp: ktpVal,
  no_ktp: ktpVal,
@@ -753,26 +805,23 @@ function openEditProfileModal(session, k, container) {
  alamat_ktp: alamatKtpVal
  };
 
- if (tglLahirVal) {
- const age = calculateAge(tglLahirVal);
- if (age !== null) updatePayload.usia = age;
- }
- if (k?.tanggal_join) {
- const tenure = calculateTenure(k.tanggal_join);
- if (tenure) updatePayload.masa_kerja = tenure;
- }
-
- // Update MASTER_KARYAWAN
- if (session.nik) {
- await updateDoc(doc(db, COL.MASTER_KARYAWAN, String(session.nik)), updatePayload);
+ // Simpan lewat server karena Firestore rules hanya mengizinkan HRD
+ // menulis langsung ke master_karyawan/users.
+ const response = await authFetch("/api/profile-update", {
+ method: "POST",
+ body: JSON.stringify({ profile: profilePayload })
+ });
+ const payload = await response.json().catch(() => ({}));
+ if (!response.ok || !payload.success) {
+ throw new Error(payload.error || "Gagal memperbarui profil.");
  }
 
- // Persist the updated session in sessionStorage/localStorage
+ session.email = payload.profile?.email || session.email;
  setSession(session);
 
  toast("Data profil Anda berhasil diperbarui!", "success");
  closeModal();
- 
+
  // Re-mount view to see changes
  await mount(container, { session });
  } catch (e) {

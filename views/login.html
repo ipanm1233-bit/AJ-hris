@@ -39,7 +39,7 @@
     <div class="bg-white rounded-[2rem] shadow-xl border border-slate-100 p-6 sm:p-8 space-y-5">
       <div class="border-b border-slate-100 pb-3 text-left">
         <h2 class="text-base font-extrabold text-slate-800 tracking-tight">Masuk ke Akun Anda</h2>
-        <p class="text-xs text-slate-400 mt-0.5">Gunakan NIK / Username & password internal karyawan.</p>
+        <p class="text-xs text-slate-400 mt-0.5">Gunakan NIK/username & password, atau email Google yang terdaftar di HRD.</p>
       </div>
 
       <form id="login-form" class="space-y-4">
@@ -87,6 +87,18 @@
 
         <p id="login-error" class="hidden text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl p-3 font-semibold text-center"></p>
       </form>
+
+      <div class="relative py-0.5">
+        <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-100"></div></div>
+        <div class="relative flex justify-center"><span class="bg-white px-2 text-[9px] font-extrabold uppercase tracking-widest text-slate-400">atau</span></div>
+      </div>
+
+      <div class="space-y-2">
+        <div id="google-signin-button" class="flex justify-center min-h-[44px]"></div>
+        <p class="text-[10px] text-slate-400 text-center leading-relaxed">Masuk dengan email Google yang sudah didaftarkan HRD. Saat pertama masuk, Anda akan diminta memverifikasi data diri.</p>
+        <p id="google-login-status" class="hidden text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-semibold text-center"></p>
+        <p id="google-login-error" class="hidden text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-xl p-2.5 font-semibold text-center"></p>
+      </div>
     </div>
 
     <!-- PORTAL KARIR BANNER FOR PUBLIC APPLICANTS -->

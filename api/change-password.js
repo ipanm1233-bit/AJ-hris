@@ -11,7 +11,10 @@ function getApiKey() {
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Metode tidak diizinkan.' });
-  const context = await requireFirebaseAuth(req, res, { allowPasswordChangeRequired: true });
+  const context = await requireFirebaseAuth(req, res, {
+    allowPasswordChangeRequired: true,
+    allowProfileVerificationRequired: true
+  });
   if (!context) return;
   if (!enforceRateLimit(req, res, { namespace: 'change-password', key: context.user.uid, limit: 5, windowMs: 15 * 60_000 })) return;
   try {

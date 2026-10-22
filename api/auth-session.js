@@ -14,14 +14,21 @@ function sessionProfile(user = {}) {
     divisi: user.division || '-',
     foto_url: user.photo_url || null,
     active: user.active !== false,
-    must_change_password: user.must_change_password === true
+    must_change_password: user.must_change_password === true,
+    auth_provider: user.auth_provider || '',
+    profile_verification_required: user.profile_verification_required === true,
+    profile_verified_at: user.profile_verified_at || null,
+    last_location: user.last_location || null
   };
 }
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Metode tidak diizinkan.' });
   if (!enforceRateLimit(req, res, { namespace: 'auth-session', limit: 60, windowMs: 60_000 })) return;
-  const context = await requireFirebaseAuth(req, res, { allowPasswordChangeRequired: true });
+  const context = await requireFirebaseAuth(req, res, {
+    allowPasswordChangeRequired: true,
+    allowProfileVerificationRequired: true
+  });
   if (!context) return;
 
   // requireFirebaseAuth already resolves the Firestore profile and safely

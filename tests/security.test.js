@@ -42,11 +42,18 @@ test('recognizes Firestore quota exhaustion and preserves verified Firebase clai
 test('Firebase-only login profile does not expose the internal authentication email', () => {
   const profile = authLoginTest.profileFromFirebaseUser({
     uid: 'UID-1', email: 'user_hash@auth.andelajaya.internal', displayName: 'Ipan', disabled: false,
-    customClaims: { username: 'IPAN', nik: '001', role: 'HRD', branch: 'Cirebon', division: 'HR', active: true }
+    customClaims: {
+      username: 'IPAN', nik: '001', role: 'HRD', branch: 'Cirebon', division: 'HR',
+      active: true, auth_provider: 'google', profile_verification_required: true,
+      profile_verified_at: '2026-10-22T10:00:00.000Z'
+    }
   });
   assert.equal(profile.email, '');
   assert.equal(profile.auth_email, 'user_hash@auth.andelajaya.internal');
   assert.equal(profile.role, 'HRD');
+  assert.equal(profile.auth_provider, 'google');
+  assert.equal(profile.profile_verification_required, true);
+  assert.equal(profile.profile_verified_at, '2026-10-22T10:00:00.000Z');
 });
 
 test('session profile can be built entirely from verified Firebase claims', () => {

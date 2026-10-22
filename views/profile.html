@@ -147,6 +147,23 @@
           <!-- populated dynamically by JS -->
         </div>
       </div>
+
+      <div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm">
+        <div class="flex items-center justify-between gap-3 mb-3">
+          <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+            <span class="w-1.5 h-4 bg-maroon-700 rounded-full"></span>
+            Lokasi Perangkat Terakhir
+          </h3>
+          <button id="btn-refresh-location" type="button" class="shrink-0 text-xs font-bold text-maroon-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-xl transition flex items-center gap-1">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            Perbarui Lokasi
+          </button>
+        </div>
+        <div id="profile-location-display" class="rounded-2xl border border-slate-100 bg-slate-50 p-3.5 text-xs text-slate-500">
+          Belum ada titik lokasi perangkat yang tercatat.
+        </div>
+        <p class="text-[10px] text-slate-400 mt-2 leading-relaxed">Titik lokasi dibaca langsung dari GPS/Wi-Fi perangkat dan hanya digunakan untuk kebutuhan operasional HRD.</p>
+      </div>
     </div>
 
     <!-- 3. EMPLOYMENT & FINANCIAL TAB -->

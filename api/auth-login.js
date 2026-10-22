@@ -112,7 +112,10 @@ function buildProfile(uid, documentId, user, employee, authEmail) {
     cabang: employee.cabang || user.cabang || '-',
     divisi: employee.divisi || user.divisi || '-',
     foto_url: employee.foto_url || user.foto_url || null,
-    active: user.active !== false && user.status_akun !== 'NONAKTIF'
+    active: user.active !== false && user.status_akun !== 'NONAKTIF',
+    auth_provider: 'password',
+    profile_verification_required: false,
+    profile_verified_at: null
   };
 }
 
@@ -151,7 +154,10 @@ function profileFromFirebaseUser(authUser) {
     divisi: String(claims.division || '').trim(),
     foto_url: authUser.photoURL || null,
     active: authUser.disabled !== true && claims.active !== false,
-    must_change_password: claims.password_change_required === true
+    must_change_password: claims.password_change_required === true,
+    auth_provider: claims.auth_provider || 'password',
+    profile_verification_required: claims.profile_verification_required === true,
+    profile_verified_at: claims.profile_verified_at || null
   };
 }
 
@@ -188,13 +194,17 @@ async function migrateOrVerifyUser(admin, db, legacy, identifier, password) {
   let authEmail = user.auth_email || '';
   let authUser = null;
   let migratedNow = false;
+  let authProfileData = {};
 
   if (uid) {
     authUser = await admin.auth().getUser(uid);
     authEmail = authUser.email || authEmail;
     await verifyFirebasePassword(authEmail, password);
     const existingProfile = await db.collection('auth_profiles').doc(uid).get();
-    if (existingProfile.exists) user.must_change_password = existingProfile.data().must_change_password === true;
+    if (existingProfile.exists) {
+      authProfileData = existingProfile.data() || {};
+      user.must_change_password = authProfileData.must_change_password === true;
+    }
   } else {
     const storedHash = String(user.password_hash || '');
     const storedPlain = String(user.password || '');
@@ -219,8 +229,17 @@ async function migrateOrVerifyUser(admin, db, legacy, identifier, password) {
     migratedNow = true;
   }
 
+  if (!Object.keys(authProfileData).length && uid) {
+    const existingProfile = await db.collection('auth_profiles').doc(uid).get();
+    if (existingProfile.exists) authProfileData = existingProfile.data() || {};
+  }
+
   const profile = buildProfile(uid, legacy.id, user, employee, authEmail);
   profile.must_change_password = migratedNow ? !strongPassword(password) : user.must_change_password === true;
+  if (authProfileData.email) profile.email = authProfileData.email;
+  profile.auth_provider = authProfileData.auth_provider || 'password';
+  profile.profile_verification_required = authProfileData.profile_verification_required === true;
+  profile.profile_verified_at = authProfileData.profile_verified_at || null;
   if (!profile.active) throw new Error('Akun sudah dinonaktifkan.');
 
   const claims = {
@@ -230,8 +249,11 @@ async function migrateOrVerifyUser(admin, db, legacy, identifier, password) {
     username: String(profile.username || '').slice(0, 80),
     nik: String(profile.nik || '').slice(0, 80),
     password_change_required: profile.must_change_password === true,
-    active: true
+    active: true,
+    auth_provider: profile.auth_provider,
+    profile_verification_required: profile.profile_verification_required === true
   };
+  if (profile.profile_verified_at) claims.profile_verified_at = String(profile.profile_verified_at).slice(0, 40);
   await admin.auth().setCustomUserClaims(uid, claims);
   await db.collection('auth_profiles').doc(uid).set({ ...profile, updated_at: new Date().toISOString() }, { merge: true });
 

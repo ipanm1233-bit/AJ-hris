@@ -15,7 +15,7 @@ import { auth } from "./firebase-config.js";
 
 // Ubah versi ini setiap ada perubahan struktur view agar browser tidak
 // mencampur HTML terbaru dengan modul JavaScript lama dari cache.
-const APP_ASSET_VERSION = "20261020-divisi-master-v5";
+const APP_ASSET_VERSION = "20261022-google-oauth-v1";
 const viewContainer = document.getElementById("view-container");
 let currentUnmount = null;
 let currentRoute = null;
@@ -85,6 +85,8 @@ async function handleGlobalHashChange() {
  document.getElementById("app-shell")?.classList.remove("hidden");
 
  await renderShellForUser(session);
+ session = await enforceProfileVerification(session);
+ if (!session) return;
  await router(session);
 }
 
@@ -142,6 +144,9 @@ async function boot() {
  document.getElementById("app-shell")?.classList.remove("hidden");
 
  await renderShellForUser(session);
+ if (bootLoader) bootLoader.classList.add("hidden");
+ session = await enforceProfileVerification(session);
+ if (!session) return;
  bindShellEvents(session);
  startClock();
  aktifkanNotifikasiHP(session);
@@ -462,6 +467,19 @@ async function showLogin() {
  }
  } catch (e) {
  console.error("Gagal memuat modul login.js:", e);
+ }
+}
+
+async function enforceProfileVerification(session) {
+ if (!session?.profile_verification_required) return session;
+ try {
+  const mod = await import(`./profile-verification.js?v=${APP_ASSET_VERSION}`);
+  if (!mod || typeof mod.requireProfileVerification !== "function") return session;
+  return await mod.requireProfileVerification(session);
+ } catch (error) {
+  console.error("Gagal membuka verifikasi data diri:", error);
+  toast("Verifikasi data diri tidak dapat dimuat. Muat ulang halaman.", "error");
+  return session;
  }
 }
 

@@ -580,6 +580,30 @@ if (typeof window !== "undefined") {
   window.resetEditAuthGrace = resetEditAuthGrace;
 }
 
+function buildSessionFromProfile(user = {}, fallback = {}) {
+ const username = user.username || fallback.username || "";
+ const displayName = user.nama || username || fallback.nama || "Karyawan";
+ return {
+  uid: user.uid || auth.currentUser?.uid,
+  id: user.id || fallback.id || user.uid,
+  username,
+  role: String(user.role || "STAFF").toUpperCase(),
+  nama: displayName,
+  email: user.email || "",
+  posisi: user.posisi || "-",
+  nik: user.nik || null,
+  cabang: user.cabang || "-",
+  divisi: user.divisi || "-",
+  must_change_password: user.must_change_password === true,
+  foto_url: user.foto_url || null,
+  auth_provider: user.auth_provider || fallback.auth_provider || "",
+  profile_verification_required: user.profile_verification_required === true,
+  profile_verified_at: user.profile_verified_at || null,
+  last_location: user.last_location || null,
+  loginAt: Date.now()
+ };
+}
+
 export async function login(username, password, remember = false) {
  if (!username || !password) throw new Error("Username/NIK dan password wajib diisi.");
  await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
@@ -593,22 +617,39 @@ export async function login(username, password, remember = false) {
   throw new Error(payload.error || "Username/NIK atau password salah.");
  }
  await signInWithCustomToken(auth, payload.customToken);
- const user = payload.profile || {};
- const session = {
-  uid: user.uid,
-  id: user.id || user.uid,
-  username: user.username || String(username).trim().toUpperCase(),
-  role: (user.role || "STAFF").toUpperCase(),
-  nama: user.nama || user.username || String(username).trim(),
-  email: user.email || "",
-  posisi: user.posisi || "-",
-  nik: user.nik || null,
-  cabang: user.cabang || "-",
-  divisi: user.divisi || "-",
-  must_change_password: user.must_change_password === true,
-  foto_url: user.foto_url || null,
-  loginAt: Date.now()
- };
+ const session = buildSessionFromProfile(payload.profile || {}, {
+  username: String(username).trim().toUpperCase(),
+  nama: String(username).trim(),
+  auth_provider: "password"
+ });
+ setSession(session, remember);
+ return session;
+}
+
+/**
+ * Login Google memakai Google Identity Services. Server memverifikasi ID token
+ * Google, mencocokkan email dengan master karyawan, lalu menerbitkan custom
+ * token Firebase. Dengan cara ini akun lama berbasis password/custom-token
+ * tidak bentrok dengan email Google yang sama.
+ */
+export async function loginWithGoogleCredential(credential, remember = false) {
+ const idToken = String(credential || "").trim();
+ if (!idToken) throw new Error("Kredensial Google tidak ditemukan. Silakan ulangi login.");
+ await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
+ const response = await fetch('/api/auth-google', {
+  method: 'POST',
+  headers: await publicSecurityHeaders({ 'Content-Type': 'application/json' }),
+  body: JSON.stringify({ credential: idToken })
+ });
+ const payload = await response.json().catch(() => ({}));
+ if (!response.ok || !payload.success || !payload.customToken) {
+  throw new Error(payload.error || "Login Google gagal. Silakan coba lagi.");
+ }
+ await signInWithCustomToken(auth, payload.customToken);
+ const session = buildSessionFromProfile(payload.profile || {}, { auth_provider: "google" });
+ if (payload.profile?.profile_verification_required === true || payload.needs_profile_verification === true) {
+  session.profile_verification_required = true;
+ }
  setSession(session, remember);
  return session;
 }
@@ -921,7 +962,11 @@ export async function syncSessionWithDb(session, force = false) {
    cabang: p.cabang || '-',
    divisi: p.divisi || '-',
    must_change_password: p.must_change_password === true,
-   foto_url: p.foto_url || null
+   foto_url: p.foto_url || null,
+   auth_provider: p.auth_provider || session.auth_provider || "",
+   profile_verification_required: p.profile_verification_required === true,
+   profile_verified_at: p.profile_verified_at || null,
+   last_location: p.last_location || null
   };
   setSession(current);
   _sessionSyncCache = current;

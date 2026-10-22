@@ -58,9 +58,23 @@ andela-hris/
 6. Klik **Buat Data Dummy Sekarang** (langkah 4) untuk mengisi modul-modul baru yang belum ada datanya di Excel (Rekrutmen, SOP, Gimmick, Kalender HR, dsb) agar sistem tidak kosong.
 
 ### C. Menjalankan Aplikasi Utama
-Buka `http://localhost:8080/index.html`. Login tetap memakai NIK/username. Akun lama dimigrasikan satu kali di server ke Firebase Authentication; password/hash lama kemudian dihapus dari Firestore.
+Buka `http://localhost:8080/index.html`. Login dapat memakai NIK/username + password atau email Google yang sudah terdaftar di HRD. Akun lama dimigrasikan satu kali di server ke Firebase Authentication; password/hash lama kemudian dihapus dari Firestore.
 
-### D. Deploy ke Hosting
+### D. Login Google (Gratis, Tanpa Billing)
+
+Login Google memakai **Google Identity Services + verifikasi ID token di server**, bukan Firebase Google Provider. Server mencocokkan email Google dengan `master_karyawan`/`users`, menyinkronkan email, lalu menerbitkan custom token Firebase. Alur ini tidak memerlukan layanan berbayar dan tidak bentrok dengan akun password/custom-token lama.
+
+1. Buka **Google Cloud Console → APIs & Services → Credentials** pada project Firebase yang sama.
+2. Pastikan ada **OAuth 2.0 Client ID** tipe **Web application**.
+3. Tambahkan **Authorized JavaScript origins** untuk domain produksi dan pengembangan, misalnya:
+   `https://domain-anda.com`, `http://localhost:3000`, `http://localhost:8080`.
+4. Isi `GOOGLE_OAUTH_CLIENT_ID` di `.env` (opsional; jika kosong, dipakai `oAuthClientId` dari `firebase-applet-config.json`).
+5. Daftarkan email Google karyawan pada `master_karyawan.email` (atau `users.email`/`email_google`) sebelum login pertama.
+6. Saat login Google pertama, karyawan wajib memverifikasi data diri dan mengizinkan pembacaan titik lokasi perangkat. Data tersimpan di `master_karyawan`, `users`, dan `auth_profiles`.
+
+Jika muncul pesan `origin_mismatch`, tambahkan origin yang sedang dipakai ke langkah 3.
+
+### E. Deploy ke Hosting
 Karena ini murni file statis (HTML/CSS/JS), bisa langsung di-deploy ke **Firebase Hosting**, Netlify, Vercel static, GitHub Pages, dsb. Contoh Firebase Hosting:
 ```bash
 npm install -g firebase-tools

@@ -24,7 +24,11 @@ const sendEmail = require('./api/send-email.js');
 const proxyImage = require('./api/proxy-image.js');
 const geminiProxy = require('./api/gemini.js');
 const authLogin = require('./api/auth-login.js');
+const authGoogle = require('./api/auth-google.js');
 const authSession = require('./api/auth-session.js');
+const profileVerify = require('./api/profile-verify.js');
+const profileUpdate = require('./api/profile-update.js');
+const profileLocation = require('./api/profile-location.js');
 const adminUser = require('./api/admin-user.js');
 const changePassword = require('./api/change-password.js');
 const registerDevice = require('./api/register-device.js');
@@ -33,8 +37,24 @@ app.all('/api/auth-login', async (req, res, next) => {
   try { await authLogin(req, res); } catch (error) { next(error); }
 });
 
+app.all('/api/auth-google', async (req, res, next) => {
+  try { await authGoogle(req, res); } catch (error) { next(error); }
+});
+
 app.all('/api/auth-session', async (req, res, next) => {
   try { await authSession(req, res); } catch (error) { next(error); }
+});
+
+app.all('/api/profile-verify', async (req, res, next) => {
+  try { await profileVerify(req, res); } catch (error) { next(error); }
+});
+
+app.all('/api/profile-update', async (req, res, next) => {
+  try { await profileUpdate(req, res); } catch (error) { next(error); }
+});
+
+app.all('/api/profile-location', async (req, res, next) => {
+  try { await profileLocation(req, res); } catch (error) { next(error); }
 });
 
 app.all('/api/admin-user', async (req, res, next) => {
