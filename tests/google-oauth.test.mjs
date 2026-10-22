@@ -150,10 +150,15 @@ test("profile normalization maps legacy fields into the verification form", () =
     no_kartu_keluarga: "3273123456789999",
     no_bpjs_tk: "1234567890",
     no_hp: "0812-3456-7890",
-    email_perusahaan: "BUDI@ANDELA.CO.ID"
+    email_perusahaan: "BUDI@ANDELA.CO.ID",
+    alamat: "Jl. Domisili No. 1",
+    alamat_ktp: "Jl. Sesuai KTP No. 2"
   });
   assert.equal(profile.nik_karyawan, "001");
   assert.equal(profile.nama_karyawan, "Budi Santoso");
+  assert.equal(profile.alamat, "Jl. Domisili No. 1");
+  assert.equal(profile.alamat_domisili, "Jl. Domisili No. 1");
+  assert.equal(profile.alamat_ktp, "Jl. Sesuai KTP No. 2");
   assert.equal(profile.nik_ktp, "3273123456789012");
   assert.equal(profile.no_kk, "3273123456789999");
   assert.equal(profile.bpjs_tk, "1234567890");
@@ -185,11 +190,38 @@ test("profile update validates NIK, phone, address, and writes alias fields", ()
   assert.equal(update.bpjs_ketenagakerjaan, "1234567890");
   assert.ok(Number.isInteger(update.usia));
 
+  const domisiliAlias = buildProfileUpdate({ no_hp_aktif: "081234567890", alamat_domisili: "Jl. Domisili Baru" });
+  assert.equal(domisiliAlias.alamat, "Jl. Domisili Baru");
+  assert.equal(domisiliAlias.alamat_domisili, "Jl. Domisili Baru");
+  assert.equal(
+    profileFromEmployee({ alamat: "Jl. Domisili", alamat_ktp: "" }).alamat_ktp,
+    "",
+    "Alamat KTP tidak boleh otomatis disamakan dengan alamat domisili"
+  );
+
   assert.throws(() => buildProfileUpdate({ nik_ktp: "123" }), /16 digit/);
   assert.throws(() => buildProfileUpdate({ no_hp_aktif: "", alamat: "Jl. A" }), /HP aktif wajib/);
   assert.throws(() => buildProfileUpdate({ no_hp_aktif: "081234567890", alamat: "" }), /Alamat domisili wajib/);
   assert.throws(() => buildProfileUpdate({ email: "budi@gmail.com" }), /tidak diizinkan/);
   assert.equal(calculateAge("2000-01-01") > 20, true);
+});
+
+test("Form Cuti hanya memakai alamat domisili, bukan alamat KTP", () => {
+  const utils = source("../js/utils.js");
+  const cuti = source("../js/views/cuti.js");
+
+  const formStart = utils.indexOf("export async function downloadFormCutiPdf");
+  const formEnd = utils.indexOf("export async function generateAndSaveCutiDocument");
+  assert.ok(formStart > -1 && formEnd > formStart, "Fungsi Form Cuti harus tersedia di utils.js");
+  assert.doesNotMatch(utils.slice(formStart, formEnd), /alamat_ktp/);
+  assert.match(utils.slice(formStart, formEnd), /alamat_domisili/);
+
+  assert.match(cuti, /function leaveFormContact\(employee, data = \{\}, fallback = "-"\)/);
+  assert.match(cuti, /const address = clean\(employee\?\.alamat\) \|\| clean\(employee\?\.alamat_domisili\)/);
+  assert.match(cuti, /kontak: leaveFormContact\(k, row\)/);
+  assert.match(cuti, /const kontakStr = leaveFormContact\(k, pdfData\)/);
+  assert.match(cuti, /const kontakStr = leaveFormContact\(k, data\)/);
+  assert.doesNotMatch(cuti, /alamat_ktp/);
 });
 
 test("location normalization rounds coordinates and rejects invalid points", () => {

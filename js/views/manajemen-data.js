@@ -1,9 +1,74 @@
-import { db, COL, collection, getDoc, getDocs, doc, updateDoc, addDoc, setDoc, deleteDoc, query, where, limit } from "../firebase-config.js";
-import { fsGetAll, fsUpdate, fsDelete, escapeHtml, toast, genId, notifyUser, openModal, closeModal, confirmDialog, promptDialog, calculateAge, calculateTenure, cascadeEmployeeChanges, syncAllEmployeesAcrossCollections, fmtDateShort, localDateStr, toNumber, getCalculatedJatahCuti, calculateCarryoverJatah, downloadHtmlAsPdf } from "../utils.js";
+import { db, COL, collection, getDoc, getDocs, doc, updateDoc, addDoc, setDoc, deleteDoc, query, where, limit, writeBatch } from "../firebase-config.js";
+import { fsGetAll, fsUpdate, fsDelete, escapeHtml, toast, genId, notifyUser, openModal, closeModal, confirmDialog, promptDialog, calculateAge, calculateTenure, cascadeEmployeeChanges, syncAllEmployeesAcrossCollections, fmtDateShort, localDateStr, toNumber, getCalculatedJatahCuti, calculateCarryoverJatah, downloadHtmlAsPdf, ensureXlsxLoaded } from "../utils.js";
 import { renderCrudModule, badge, emptyState, icon, skeletonRows } from "../components.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 import { divisionOptionsFromSources } from "../division-options.mjs";
 import { normalizeEmail, isValidEmail } from "../employee-email.mjs";
+import { getSession, canEditModuleData } from "../auth.js";
+
+const normalizeImportHeader = (value) => String(value ?? "")
+  .toUpperCase()
+  .replace(/[^A-Z0-9]+/g, " ")
+  .trim();
+
+const employeeTemplateDate = (value) => {
+  if (value === null || value === undefined || value === "") return "";
+  const normalized = localDateStr(value);
+  if (normalized) return normalized;
+  const text = String(value).trim();
+  return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : text;
+};
+
+const employeeTemplateNumber = (value, fallback = "") => {
+  if (value === null || value === undefined || value === "") return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : String(value);
+};
+
+const EMPLOYEE_IMPORT_COLUMNS = [
+  { key: "nik_karyawan", label: "NIK Karyawan", required: true, aliases: ["NIK KARYAWAN", "NIK", "ID KARYAWAN"], getValue: (r) => String(r.nik_karyawan || r.nik || "").trim() },
+  { key: "nama_karyawan", label: "Nama Karyawan", required: true, aliases: ["NAMA KARYAWAN", "NAMA LENGKAP KARYAWAN", "NAMA LENGKAP", "NAMA"], getValue: (r) => String(r.nama_karyawan || r.nama || "").trim() },
+  { key: "cabang", label: "Cabang", required: true, aliases: ["CABANG", "CABANG PENEMPATAN"], getValue: (r) => String(r.cabang || "").trim() },
+  { key: "divisi", label: "Divisi / Unit", required: true, aliases: ["DIVISI", "DIVISI UNIT", "DIVISI UNIT KERJA", "UNIT KERJA"], getValue: (r) => String(r.divisi || "").trim() },
+  { key: "jabatan", label: "Jabatan", required: true, aliases: ["JABATAN", "POSISI", "POSITION"], getValue: (r) => String(r.jabatan || "").trim() },
+  { key: "status_karyawan", label: "Status Karyawan", required: true, aliases: ["STATUS KARYAWAN", "STATUS HUBUNGAN KERJA", "STATUS KERJA"], getValue: (r) => String(r.status_karyawan || "").trim() },
+  { key: "tanggal_join", label: "Tanggal Join", type: "date", required: true, aliases: ["TANGGAL JOIN", "TANGGAL BERGABUNG", "TANGGAL MASUK", "JOIN DATE"], getValue: (r) => employeeTemplateDate(r.tanggal_join) },
+  { key: "kontrak_habis", label: "Kontrak Berakhir", type: "date", aliases: ["KONTRAK BERAKHIR", "TANGGAL KONTRAK BERAKHIR", "KONTRAK HABIS", "TANGGAL KONTRAK HABIS"], getValue: (r) => employeeTemplateDate(r.kontrak_habis) },
+  { key: "tanggal_lahir", label: "Tanggal Lahir", type: "date", required: true, aliases: ["TANGGAL LAHIR", "TGL LAHIR"], getValue: (r) => employeeTemplateDate(r.tanggal_lahir) },
+  { key: "jenis_kelamin", label: "Jenis Kelamin", required: true, aliases: ["JENIS KELAMIN", "GENDER"], getValue: (r) => String(r.jenis_kelamin || "").trim().toUpperCase() },
+  { key: "email", label: "Email Aktif", required: true, aliases: ["EMAIL AKTIF", "EMAIL", "EMAIL PERUSAHAAN", "EMAIL KARYAWAN"], getValue: (r) => String(r.email || r.email_perusahaan || "").trim().toLowerCase() },
+  { key: "no_hp_aktif", label: "No. HP Aktif", aliases: ["NO HP AKTIF", "NO HP", "NOMOR HP", "HP", "TELEPON"], getValue: (r) => String(r.no_hp_aktif || r.no_hp || "").trim() },
+  { key: "nik_ktp", label: "NIK KTP", type: "digits", aliases: ["NIK KTP", "NO KTP", "NOMOR KTP"], getValue: (r) => String(r.nik_ktp || r.no_ktp || "").replace(/\D/g, "") },
+  { key: "no_kk", label: "No. Kartu Keluarga", type: "digits", aliases: ["NO KARTU KELUARGA", "NO KK", "NOMOR KK", "KARTU KELUARGA"], getValue: (r) => String(r.no_kk || r.no_kartu_keluarga || "").replace(/\D/g, "") },
+  { key: "npwp", label: "NPWP", aliases: ["NPWP", "NO NPWP"], getValue: (r) => String(r.npwp || r.no_npwp || "").trim() },
+  { key: "bpjs_tk", label: "No. BPJS Ketenagakerjaan", aliases: ["NO BPJS KETENAGAKERJAAN", "BPJS KETENAGAKERJAAN", "BPJS TK", "NO BPJS TK"], getValue: (r) => String(r.bpjs_tk || r.no_bpjs_tk || r.bpjs_ketenagakerjaan || "").trim() },
+  { key: "bpjs_kes", label: "No. BPJS Kesehatan", aliases: ["NO BPJS KESEHATAN", "BPJS KESEHATAN", "BPJS KES", "NO BPJS KES"], getValue: (r) => String(r.bpjs_kes || r.no_bpjs_kes || r.bpjs_kesehatan || "").trim() },
+  { key: "pendidikan", label: "Pendidikan Terakhir", aliases: ["PENDIDIKAN", "PENDIDIKAN TERAKHIR"], getValue: (r) => String(r.pendidikan || "").trim() },
+  { key: "agama", label: "Agama", aliases: ["AGAMA"], getValue: (r) => String(r.agama || "").trim() },
+  { key: "golongan_darah", label: "Golongan Darah", aliases: ["GOLONGAN DARAH", "GOL DARAH"], getValue: (r) => String(r.golongan_darah || "").trim() },
+  { key: "status_pajak", label: "Status Pajak / PTKP", aliases: ["STATUS PAJAK", "PTKP", "STATUS PTKP"], getValue: (r) => String(r.status_pajak || "").trim() },
+  { key: "tanggungan", label: "Anak / Tanggungan", type: "number", aliases: ["TANGGUNGAN", "ANAK TANGGUNGAN", "JUMLAH TANGGUNGAN", "ANAK"], getValue: (r) => employeeTemplateNumber(r.tanggungan ?? r.anak, 0) },
+  { key: "jam_kerja", label: "Jam Kerja", aliases: ["JAM KERJA", "SHIFT"], getValue: (r) => String(r.jam_kerja || "").trim() },
+  { key: "aktif_tdk_aktif", label: "Status Keaktifan", aliases: ["STATUS KEAKTIFAN", "AKTIF TIDAK AKTIF", "STATUS AKTIF"], getValue: (r) => String(r.aktif_tdk_aktif || r["aktif/tidak_aktif"] || "AKTIF").trim().toUpperCase() },
+  { key: "finger_name", label: "Finger Name", aliases: ["FINGER NAME", "NAMA FINGERPRINT", "ID FINGERPRINT"], getValue: (r) => String(r.finger_name || "").trim() },
+  { key: "atasan", label: "Atasan Langsung", aliases: ["ATASAN", "ATASAN LANGSUNG", "NAMA ATASAN LANGSUNG"], getValue: (r) => String(r.atasan || "").trim() },
+  { key: "kontak_darurat_nama", label: "Nama Kontak Darurat", aliases: ["NAMA KONTAK DARURAT", "KONTAK DARURAT NAMA"], getValue: (r) => String(r.kontak_darurat_nama || r.nama_kontak_darurat || "").trim() },
+  { key: "kontak_darurat_hp", label: "No. HP Kontak Darurat", aliases: ["NO HP KONTAK DARURAT", "KONTAK DARURAT HP", "NO KONTAK DARURAT", "KONTAK DARURAT"], getValue: (r) => String(r.kontak_darurat_hp || r.kontak_darurat || "").trim() },
+  { key: "alamat", label: "Alamat Domisili", aliases: ["ALAMAT DOMISILI", "ALAMAT TINGGAL", "ALAMAT LENGKAP", "ALAMAT"], getValue: (r) => String(r.alamat || r.alamat_domisili || "").trim() },
+  { key: "alamat_ktp", label: "Alamat Sesuai KTP", aliases: ["ALAMAT SESUAI KTP", "ALAMAT KTP", "ALAMAT PADA KTP"], getValue: (r) => String(r.alamat_ktp || "").trim() },
+  { key: "jatah_tahunan", label: "Jatah Cuti Tahunan", type: "number", aliases: ["JATAH CUTI TAHUNAN", "JATAH TAHUNAN"], getValue: (r) => employeeTemplateNumber(r.jatah_tahunan ?? r.jatah_cuti_tahunan, 0) },
+  { key: "jatah_khusus", label: "Jatah Cuti Khusus", type: "number", aliases: ["JATAH CUTI KHUSUS", "JATAH KHUSUS"], getValue: (r) => employeeTemplateNumber(r.jatah_khusus ?? r.jatah_cuti_khusus, 0) },
+  { key: "jatah_akumulasi", label: "Jatah Cuti Akumulasi", type: "number", aliases: ["JATAH CUTI AKUMULASI", "JATAH AKUMULASI"], getValue: (r) => employeeTemplateNumber(r.jatah_akumulasi ?? r.jatah_cuti_akumulasi, 0) },
+  { key: "sisa_cuti_tahun_lalu", label: "Sisa Cuti Tahun Lalu", type: "number", aliases: ["SISA CUTI TAHUN LALU", "SISA CUTI THN LALU", "SISA CUTI LALU"], getValue: (r) => employeeTemplateNumber(r.sisa_cuti_tahun_lalu, 0) }
+];
+
+const EMPLOYEE_IMPORT_REQUIRED_KEYS = EMPLOYEE_IMPORT_COLUMNS.filter((c) => c.required).map((c) => c.key);
+const EMPLOYEE_IMPORT_FIELD_BY_HEADER = new Map();
+for (const col of EMPLOYEE_IMPORT_COLUMNS) {
+  for (const alias of [col.label, ...(col.aliases || [])]) {
+    EMPLOYEE_IMPORT_FIELD_BY_HEADER.set(normalizeImportHeader(alias), col);
+  }
+}
 
 export async function mount(container) {
  const panels = {
@@ -21,6 +86,13 @@ export async function mount(container) {
  const emps = await fsGetAll(COL.MASTER_KARYAWAN);
  return [...new Set(emps.map(e => e.nama_karyawan).filter(Boolean))].sort();
  } catch (e) { return []; }
+ };
+
+ const formatAddressCell = (value) => {
+   const text = String(value ?? "").trim();
+   if (!text) return '<span class="text-slate-400">-</span>';
+   const short = text.length > 42 ? `${text.slice(0, 42)}…` : text;
+   return `<span title="${escapeHtml(text)}">${escapeHtml(short)}</span>`;
  };
 
  const fields = [
@@ -71,6 +143,8 @@ export async function mount(container) {
  { name: "atasan", label: "Nama Atasan Langsung", type: "datalist", getOptions: getEmpList },
  { name: "kontak_darurat_nama", label: "Nama Kontak Darurat", type: "text" },
  { name: "kontak_darurat_hp", label: "Kontak Darurat (No HP)", type: "text" },
+ { name: "alamat", label: "Alamat Domisili", type: "textarea", full: true, placeholder: "Alamat tempat tinggal saat ini" },
+ { name: "alamat_ktp", label: "Alamat Sesuai KTP", type: "textarea", full: true, placeholder: "Alamat lengkap sesuai KTP" },
  { name: "status_pajak", label: "Status Pajak", type: "select", options: ["TK/0", "TK/1", "TK/2", "TK/3", "K/0", "K/1", "K/2", "K/3", "K/I/0", "K/I/1", "K/I/2", "K/I/3"] },
  { name: "tanggungan", label: "Anak / Tanggungan", type: "number", default: 0 },
  { name: "jam_kerja", label: "Jam Kerja", type: "text", default: "08:00 - 17:00" },
@@ -80,13 +154,13 @@ export async function mount(container) {
  { name: "jatah_khusus", label: "Jatah Cuti Khusus", type: "number", default: 4 },
  { name: "jatah_akumulasi", label: "Jatah Cuti Akumulasi", type: "number", default: 0 },
  { name: "sisa_cuti_tahun_lalu", label: "Sisa Cuti Tahun Lalu", type: "number", default: 0 },
- { name: "alamat", label: "Alamat Lengkap", type: "textarea", full: true },
  ];
  fields.idFromField = "nik_karyawan";
 
-  const beforeSaveEmp = async (data, existing = null) => {
+  const beforeSaveEmp = async (data, existing = null, options = {}) => {
     const trimText = (value) => String(value ?? "").trim();
     const normalizeNik = (value) => trimText(value).replace(/\s+/g, "");
+    const hasOwn = (key) => Object.prototype.hasOwnProperty.call(data, key);
 
     data.nik_karyawan = normalizeNik(data.nik_karyawan || data.nik);
     data.nama_karyawan = trimText(data.nama_karyawan);
@@ -94,23 +168,41 @@ export async function mount(container) {
     data.jabatan = trimText(data.jabatan);
     data.divisi = trimText(data.divisi);
     data.status_karyawan = trimText(data.status_karyawan);
+    data.jenis_kelamin = trimText(data.jenis_kelamin).toUpperCase();
     data.aktif_tdk_aktif = trimText(data.aktif_tdk_aktif || data["aktif/tidak_aktif"] || "AKTIF").toUpperCase();
     data.email = normalizeEmail(data.email);
+    if (data.email) data.email_perusahaan = data.email;
     data.no_hp_aktif = trimText(data.no_hp_aktif).replace(/\s+/g, "");
-    data.nik_ktp = trimText(data.nik_ktp || data.no_ktp).replace(/\D/g, "");
-    data.no_kk = trimText(data.no_kk || data.no_kartu_keluarga).replace(/\D/g, "");
+    if (data.no_hp_aktif) data.no_hp = data.no_hp_aktif;
+    data.nik_ktp = trimText(hasOwn("nik_ktp") ? data.nik_ktp : data.no_ktp).replace(/\D/g, "");
+    data.no_kk = trimText(hasOwn("no_kk") ? data.no_kk : data.no_kartu_keluarga).replace(/\D/g, "");
+    const domisiliValue = hasOwn("alamat")
+      ? data.alamat
+      : (data.alamat_domisili ?? data.alamat_tinggal);
+    data.alamat = trimText(domisiliValue);
+    data.alamat_domisili = data.alamat;
+    data.alamat_ktp = trimText(data.alamat_ktp);
+    data.bpjs_tk = trimText(hasOwn("bpjs_tk") ? data.bpjs_tk : data.no_bpjs_tk);
+    data.bpjs_kes = trimText(hasOwn("bpjs_kes") ? data.bpjs_kes : data.no_bpjs_kes);
+    data.kontak_darurat_hp = trimText(hasOwn("kontak_darurat_hp") ? data.kontak_darurat_hp : data.kontak_darurat);
+    data.kontak_darurat_nama = trimText(hasOwn("kontak_darurat_nama") ? data.kontak_darurat_nama : data.nama_kontak_darurat);
 
-    if (!data.nik_karyawan) throw new Error("NIK Karyawan wajib diisi.");
-    if (!data.nama_karyawan) throw new Error("Nama lengkap karyawan wajib diisi.");
-    if (!data.cabang) throw new Error("Cabang penempatan wajib diisi.");
-    if (!data.jabatan) throw new Error("Jabatan wajib diisi.");
-    if (!data.divisi) throw new Error("Divisi / unit kerja wajib diisi.");
-    if (!data.status_karyawan) throw new Error("Status hubungan kerja wajib diisi.");
-    if (!data.tanggal_join) throw new Error("Tanggal bergabung (join) wajib diisi.");
-    if (!data.tanggal_lahir) throw new Error("Tanggal lahir wajib diisi.");
-    if (data.aktif_tdk_aktif === "AKTIF" && !data.email) {
-      throw new Error("Email aktif wajib diisi untuk karyawan aktif agar notifikasi HRIS dapat dikirim.");
+    if (options.skipRequiredChecks !== true) {
+      if (!data.nik_karyawan) throw new Error("NIK Karyawan wajib diisi.");
+      if (!data.nama_karyawan) throw new Error("Nama lengkap karyawan wajib diisi.");
+      if (!data.cabang) throw new Error("Cabang penempatan wajib diisi.");
+      if (!data.jabatan) throw new Error("Jabatan wajib diisi.");
+      if (!data.divisi) throw new Error("Divisi / unit kerja wajib diisi.");
+      if (!data.status_karyawan) throw new Error("Status hubungan kerja wajib diisi.");
+      if (!data.jenis_kelamin) throw new Error("Jenis kelamin wajib diisi.");
+      if (!data.tanggal_join) throw new Error("Tanggal bergabung (join) wajib diisi.");
+      if (!data.tanggal_lahir) throw new Error("Tanggal lahir wajib diisi.");
+      if (data.aktif_tdk_aktif === "AKTIF" && !data.email) {
+        throw new Error("Email aktif wajib diisi untuk karyawan aktif agar notifikasi HRIS dapat dikirim.");
+      }
     }
+    if (data.nik_karyawan.length > 30) throw new Error("NIK Karyawan maksimal 30 karakter.");
+    if (data.nama_karyawan.length > 120) throw new Error("Nama lengkap karyawan maksimal 120 karakter.");
     if (data.email && !isValidEmail(data.email)) {
       throw new Error("Format email aktif tidak valid. Contoh: nama@perusahaan.com");
     }
@@ -127,19 +219,21 @@ export async function mount(container) {
       throw new Error("Tanggal kontrak berakhir tidak boleh lebih awal dari tanggal bergabung.");
     }
 
-    const existingId = String(existing?.id || "").trim();
-    const existingNik = String(existing?.nik_karyawan || existing?.nik || "").trim();
-    const duplicate = (await fsGetAll(COL.MASTER_KARYAWAN).catch(() => [])).find((employee) => {
-      const employeeId = String(employee.id || "").trim();
-      const employeeNik = String(employee.nik_karyawan || employee.nik || "").trim();
-      if (existingId && employeeId === existingId) return false;
-      if (existingNik && employeeNik === existingNik) return false;
-      const sameNik = data.nik_karyawan && employeeNik === data.nik_karyawan;
-      const sameKtp = data.nik_ktp && String(employee.nik_ktp || employee.no_ktp || "").replace(/\D/g, "") === data.nik_ktp;
-      return sameNik || sameKtp;
-    });
-    if (duplicate) {
-      throw new Error(`Data karyawan duplikat: NIK/NIK KTP sudah dipakai oleh ${duplicate.nama_karyawan || duplicate.nama || duplicate.id}.`);
+    if (options.skipDuplicateCheck !== true) {
+      const existingId = String(existing?.id || "").trim();
+      const existingNik = String(existing?.nik_karyawan || existing?.nik || "").trim();
+      const duplicate = (await fsGetAll(COL.MASTER_KARYAWAN).catch(() => [])).find((employee) => {
+        const employeeId = String(employee.id || "").trim();
+        const employeeNik = String(employee.nik_karyawan || employee.nik || "").trim();
+        if (existingId && employeeId === existingId) return false;
+        if (existingNik && employeeNik === existingNik) return false;
+        const sameNik = data.nik_karyawan && employeeNik === data.nik_karyawan;
+        const sameKtp = data.nik_ktp && String(employee.nik_ktp || employee.no_ktp || "").replace(/\D/g, "") === data.nik_ktp;
+        return sameNik || sameKtp;
+      });
+      if (duplicate) {
+        throw new Error(`Data karyawan duplikat: NIK/NIK KTP sudah dipakai oleh ${duplicate.nama_karyawan || duplicate.nama || duplicate.id}.`);
+      }
     }
 
     data.nik = data.nik_karyawan;
@@ -169,18 +263,17 @@ export async function mount(container) {
       const tenure = calculateTenure(data.tanggal_join);
       if (tenure) data.masa_kerja = tenure;
     }
-    if (data.nik_ktp) data.no_ktp = data.nik_ktp;
-    if (data.no_kk) data.no_kartu_keluarga = data.no_kk;
-    if (data.bpjs_tk) data.no_bpjs_tk = data.bpjs_tk;
-    if (data.no_bpjs_tk) data.bpjs_tk = data.no_bpjs_tk;
-    if (data.bpjs_kes) data.no_bpjs_kes = data.bpjs_kes;
-    if (data.no_bpjs_kes) data.bpjs_kes = data.no_bpjs_kes;
-    if (data.kontak_darurat_hp) data.kontak_darurat = data.kontak_darurat_hp;
-    if (data.kontak_darurat) data.kontak_darurat_hp = data.kontak_darurat;
-    if (data.kontak_darurat_nama) data.nama_kontak_darurat = data.kontak_darurat_nama;
-    if (data.nama_kontak_darurat) data.kontak_darurat_nama = data.nama_kontak_darurat;
+    data.no_ktp = data.nik_ktp;
+    data.no_kartu_keluarga = data.no_kk;
+    data.no_bpjs_tk = data.bpjs_tk;
+    if (hasOwn("bpjs_tk")) data.bpjs_ketenagakerjaan = data.bpjs_tk;
+    data.no_bpjs_kes = data.bpjs_kes;
+    data.kontak_darurat = data.kontak_darurat_hp;
+    data.nama_kontak_darurat = data.kontak_darurat_nama;
+    if (data.tanggungan !== undefined) data.tanggungan = toNumber(data.tanggungan);
+    if (data.anak !== undefined) data.anak = toNumber(data.anak);
     if (data.tanggungan !== undefined) data.anak = data.tanggungan;
-    if (data.anak !== undefined) data.tanggungan = data.anak;
+    else if (data.anak !== undefined) data.tanggungan = data.anak;
     if (data["aktif/tidak_aktif"] && !data.aktif_tdk_aktif) {
       data.aktif_tdk_aktif = data["aktif/tidak_aktif"];
     }
@@ -337,7 +430,8 @@ export async function mount(container) {
         prow("Email Aktif", emp.email),
         prow("Nama Kontak Darurat", emp.kontak_darurat_nama || emp.nama_kontak_darurat),
         prow("No. HP Kontak Darurat", emp.kontak_darurat_hp || emp.kontak_darurat),
-        prow("Alamat Lengkap", String(emp.alamat || "").replace(/\n/g, " — "))
+        prow("Alamat Domisili", String(emp.alamat || emp.alamat_domisili || "").replace(/\n/g, " — ")),
+        prow("Alamat Sesuai KTP", String(emp.alamat_ktp || "").replace(/\n/g, " — "))
       ].join("");
       const dokRows = [
         prow("NIK KTP", emp.nik_ktp || emp.no_ktp),
@@ -562,8 +656,12 @@ function downloadThisPdf() {
                   <dd class="text-slate-800 font-medium mt-0.5">${escapeHtml(empData.pendidikan || "-")}</dd>
                 </div>
                 <div class="col-span-2 pt-1 border-t border-slate-50">
-                  <dt class="text-[10.5px] text-slate-400">Alamat Tinggal / Domisili</dt>
-                  <dd class="text-slate-700 text-xs mt-0.5 leading-relaxed">${escapeHtml(empData.alamat || "-")}</dd>
+                  <dt class="text-[10.5px] text-slate-400">Alamat Domisili</dt>
+                  <dd class="text-slate-700 text-xs mt-0.5 leading-relaxed whitespace-pre-line">${escapeHtml(empData.alamat || empData.alamat_domisili || "-")}</dd>
+                </div>
+                <div class="col-span-2 pt-1 border-t border-slate-50">
+                  <dt class="text-[10.5px] text-slate-400">Alamat Sesuai KTP</dt>
+                  <dd class="text-slate-700 text-xs mt-0.5 leading-relaxed whitespace-pre-line">${escapeHtml(empData.alamat_ktp || "-")}</dd>
                 </div>
               </dl>
             </div>
@@ -804,11 +902,11 @@ function downloadThisPdf() {
             </div>
           </div>
 
-          <!-- GROUP 3: KONTAK, KELUARGA & PAJAK -->
+          <!-- GROUP 3: KONTAK, KELUARGA, PAJAK & ALAMAT -->
           <div class="bg-slate-50/70 rounded-2xl border border-slate-200/80 p-4">
             <h4 class="text-xs font-bold uppercase tracking-wider text-maroon-800 pb-2 mb-3 border-b border-slate-200/60 flex items-center gap-1.5">
               ${icon("phone", "w-4 h-4 text-maroon-700")}
-              3. Kontak Pribadi, Keluarga & Pajak
+              3. Kontak Pribadi, Keluarga, Pajak & Alamat
             </h4>
             <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               ${renderInput("no_hp_aktif", "No. HP Aktif", "tel", empData.no_hp_aktif, {}, { inputMode: "tel", maxLength: 25, placeholder: "08xxxxxxxxxx" })}
@@ -818,9 +916,13 @@ function downloadThisPdf() {
               ${renderInput("kontak_darurat_nama", "Nama Kontak Darurat", "text", empData.kontak_darurat_nama || empData.nama_kontak_darurat)}
               ${renderInput("kontak_darurat_hp", "No. HP Kontak Darurat", "text", empData.kontak_darurat_hp || empData.kontak_darurat)}
             </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3 pt-3 border-t border-slate-200/60">
+              ${renderInput("alamat", "Alamat Domisili", "textarea", empData.alamat || empData.alamat_domisili, {}, { placeholder: "Alamat tempat tinggal saat ini" })}
+              ${renderInput("alamat_ktp", "Alamat Sesuai KTP", "textarea", empData.alamat_ktp, {}, { placeholder: "Alamat lengkap sesuai KTP" })}
+            </div>
           </div>
 
-          <!-- GROUP 4: JATAH CUTI & ALAMAT -->
+          <!-- GROUP 4: JATAH CUTI -->
           <div class="bg-slate-50/70 rounded-2xl border border-slate-200/80 p-4">
             <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200/60">
               <h4 class="text-xs font-bold uppercase tracking-wider text-maroon-800 flex items-center gap-1.5">
@@ -846,9 +948,6 @@ function downloadThisPdf() {
                 <span>•</span>
                 <span>Akumulasi: <b class="text-amber-700 font-mono">${bal.usedAkumulasi} hari</b> (Sisa: <b class="text-amber-700 font-mono">${bal.sisaAkumulasi}</b>)</span>
               </div>
-            </div>
-            <div>
-              ${renderInput("alamat", "Alamat Lengkap Karyawan", "textarea", empData.alamat, {}, { full: true })}
             </div>
           </div>
 
@@ -1339,13 +1438,536 @@ function downloadThisPdf() {
     });
   }
 
+  function normalizeEmployeeImportDate(value) {
+    if (value instanceof Date) return employeeTemplateDate(value);
+    if (typeof value === "number") {
+      if (!Number.isFinite(value) || value <= 0) return "";
+      const XLSX = window.XLSX;
+      if (XLSX?.SSF?.parse_date_code) {
+        const parsed = XLSX.SSF.parse_date_code(value);
+        if (parsed && parsed.y) {
+          return `${parsed.y}-${String(parsed.m).padStart(2, "0")}-${String(parsed.d).padStart(2, "0")}`;
+        }
+      }
+      return "";
+    }
+    const text = String(value ?? "").trim();
+    if (!text) return "";
+    const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (iso) return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
+    const dmy = text.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/);
+    if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
+    const parsed = new Date(text);
+    return Number.isNaN(parsed.getTime()) ? text : (employeeTemplateDate(parsed) || text);
+  }
+
+  function parseEmployeeImportCell(col, raw) {
+    const text = raw === null || raw === undefined ? "" : String(raw).trim();
+    if (col.type === "date") return normalizeEmployeeImportDate(raw);
+    if (col.type === "number") {
+      if (!text) return "";
+      const n = Number(text.replace(/,/g, "."));
+      if (!Number.isFinite(n)) throw new Error(`${col.label} harus berupa angka.`);
+      return n;
+    }
+    if (col.type === "digits") {
+      if (typeof raw === "number" && Number.isFinite(raw)) return String(Math.trunc(raw)).replace(/\D/g, "");
+      return text.replace(/\D/g, "");
+    }
+    if (col.key === "email") return normalizeEmail(text);
+    if (col.key === "nik_karyawan") return text.replace(/\s+/g, "");
+    if (col.key === "jenis_kelamin") {
+      const gender = text.toUpperCase().replace(/\s+/g, " ");
+      if (["L", "LAKI LAKI", "LAKI-LAKI", "PRIA", "M"].includes(gender)) return "LAKI-LAKI";
+      if (["P", "PEREMPUAN", "WANITA", "F"].includes(gender)) return "PEREMPUAN";
+      return gender;
+    }
+    if (col.key === "status_karyawan") {
+      const status = text.toUpperCase().replace(/\s+/g, " ");
+      const statusMap = {
+        "PKWT": "PKWT (Karyawan Kontrak)",
+        "PKWTT": "PKWTT (Karyawan Tetap)",
+        "PROBATION": "Probation (Masa Percobaan)",
+        "MASA PERCOBAAN": "Probation (Masa Percobaan)",
+        "MAGANG": "Magang",
+        "BURUH HARIAN": "Buruh Harian",
+        "OUTSOURCING": "Outsourcing",
+        "LAINNYA": "Lainnya"
+      };
+      return statusMap[status] || text;
+    }
+    if (col.key === "agama") {
+      const religion = text.toUpperCase();
+      return religion === "KATOLIK" ? "KATHOLIK" : religion;
+    }
+    if (col.key === "pendidikan") {
+      const education = text.toUpperCase();
+      if (["SMA", "SMK", "SMA/SMK", "SLTA"].includes(education)) return "SMA/SMK";
+      return text;
+    }
+    if (col.key === "golongan_darah") {
+      const blood = text.toUpperCase();
+      return blood === "0" ? "O" : blood;
+    }
+    if (col.key === "status_pajak") return text.toUpperCase();
+    if (col.key === "aktif_tdk_aktif") {
+      const status = text.toUpperCase().replace(/\s+/g, " ");
+      if (["TIDAK AKTIF", "NON AKTIF", "NONAKTIF", "INACTIVE", "TIDAK", "0"].includes(status)) return "TIDAK AKTIF";
+      if (["AKTIF", "ACTIVE", "YA", "1"].includes(status)) return "AKTIF";
+      return status;
+    }
+    return text;
+  }
+
+  function findEmployeeImportHeader(matrix) {
+    const maxRows = Math.min(matrix.length, 20);
+    let best = null;
+    for (let i = 0; i < maxRows; i++) {
+      const row = matrix[i] || [];
+      const mapping = new Map();
+      const ignored = [];
+      row.forEach((cell, index) => {
+        const normalized = normalizeImportHeader(cell);
+        if (!normalized) return;
+        const col = EMPLOYEE_IMPORT_FIELD_BY_HEADER.get(normalized);
+        if (col) {
+          if (!mapping.has(col.key)) mapping.set(col.key, index);
+        } else {
+          ignored.push(String(cell).trim());
+        }
+      });
+      if (mapping.has("nik_karyawan") && mapping.has("nama_karyawan")) {
+        const candidate = { headerIndex: i, mapping, ignored, score: mapping.size };
+        if (!best || candidate.score > best.score) best = candidate;
+      }
+    }
+    return best;
+  }
+
+  function employeeImportDocId(nik) {
+    const value = String(nik || "").trim().replace(/[\/\\#?[\]]/g, "_");
+    if (!value || value === "." || value === ".." || /^__.*__$/.test(value)) return genId("EMP");
+    return value;
+  }
+
+  async function downloadEmployeeImportTemplate() {
+    try {
+      await ensureXlsxLoaded();
+      const XLSX = window.XLSX;
+      if (!XLSX) throw new Error("Library Excel belum tersedia. Muat ulang halaman lalu coba lagi.");
+
+      const employees = await fsGetAll(COL.MASTER_KARYAWAN);
+      const headers = EMPLOYEE_IMPORT_COLUMNS.map((col) => col.label);
+      const rows = (employees || [])
+        .filter((emp) => emp && (emp.nama_karyawan || emp.nik_karyawan || emp.nik))
+        .sort((a, b) => String(a.nama_karyawan || "").localeCompare(String(b.nama_karyawan || ""), "id"))
+        .map((emp) => EMPLOYEE_IMPORT_COLUMNS.map((col) => col.getValue(emp)));
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      ws["!cols"] = headers.map((header, index) => {
+        const sampleWidths = rows.slice(0, 30).map((row) => String(row[index] ?? "").length + 2);
+        return { wch: Math.max(14, Math.min(45, Math.max(header.length + 2, ...sampleWidths))) };
+      });
+      XLSX.utils.book_append_sheet(wb, ws, "Database Karyawan");
+
+      const guideRows = [
+        ["PETUNJUK IMPORT DATABASE KARYAWAN"],
+        [""],
+        ["1. Sheet \"Database Karyawan\" sudah berisi data karyawan saat ini."],
+        ["2. Edit sel yang perlu diubah. Jangan mengubah nama kolom atau memfilter baris."],
+        ["3. Baris dengan NIK Karyawan yang sudah ada akan DIPERBARUI."],
+        ["4. Baris dengan NIK Karyawan baru akan DITAMBAHKAN sebagai karyawan baru."],
+        ["5. NIK Karyawan dan Nama Karyawan wajib diisi pada setiap baris."],
+        ["6. Untuk karyawan baru, kolom wajib: Cabang, Divisi, Jabatan, Status Karyawan, Tanggal Join, Tanggal Lahir, Jenis Kelamin, dan Email Aktif."],
+        ["7. Format tanggal: YYYY-MM-DD (contoh: 2024-12-31)."],
+        ["8. Jangan mengubah format kolom NIK menjadi angka agar angka 0 di depan tidak hilang."],
+        ["9. Alamat Domisili dan Alamat Sesuai KTP diisi terpisah. Jika sama, isi ulang alamat yang sama pada kedua kolom."],
+        ["10. Perubahan nama, NIK, atau email dapat disinkronkan otomatis setelah import. Opsi ini aktif secara default pada pratinjau."],
+        [""],
+        ["File ini hanya untuk import Database Induk Karyawan. Jangan mengubah sheet Petunjuk."]
+      ];
+      const wsGuide = XLSX.utils.aoa_to_sheet(guideRows);
+      wsGuide["!cols"] = [{ wch: 118 }];
+      XLSX.utils.book_append_sheet(wb, wsGuide, "Petunjuk");
+
+      const today = localDateStr(new Date()) || "terbaru";
+      XLSX.writeFile(wb, `Template_Import_Database_Karyawan_${today}.xlsx`);
+      toast(`Template berisi ${rows.length} data karyawan berhasil diunduh.`, "success");
+    } catch (err) {
+      console.error("Gagal mengunduh template import karyawan:", err);
+      toast("Gagal mengunduh template: " + (err.message || err), "error");
+    }
+  }
+
+  async function buildEmployeeImportPreview(file) {
+    await ensureXlsxLoaded();
+    const XLSX = window.XLSX;
+    if (!XLSX) throw new Error("Library Excel belum tersedia. Muat ulang halaman lalu coba lagi.");
+
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array", cellDates: true, raw: true });
+    let selected = null;
+
+    for (const sheetName of workbook.SheetNames) {
+      const worksheet = workbook.Sheets[sheetName];
+      if (!worksheet) continue;
+      const matrix = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "", raw: true, blankrows: true });
+      const header = findEmployeeImportHeader(matrix);
+      if (header && (!selected || header.score > selected.score)) {
+        selected = { ...header, matrix, sheetName };
+      }
+    }
+
+    if (!selected) {
+      throw new Error("Header kolom NIK Karyawan dan Nama Karyawan tidak ditemukan. Gunakan template yang disediakan.");
+    }
+
+    const [employeesResult, cutiResult] = await Promise.allSettled([
+      fsGetAll(COL.MASTER_KARYAWAN),
+      fsGetAll(COL.MASTER_CUTI)
+    ]);
+    if (employeesResult.status === "rejected") {
+      throw new Error("Gagal memuat data karyawan saat ini. Periksa koneksi lalu coba lagi.");
+    }
+    const employees = employeesResult.value || [];
+    const cutiRecords = cutiResult.status === "fulfilled" ? (cutiResult.value || []) : [];
+    const cutiFetchOk = cutiResult.status === "fulfilled";
+    if (cutiResult.status === "rejected") {
+      console.warn("Gagal memuat data cuti saat preview import:", cutiResult.reason);
+    }
+    const nikKey = (value) => String(value ?? "").trim().replace(/\s+/g, "").toUpperCase();
+    const ktpKey = (value) => String(value ?? "").replace(/\D/g, "");
+    const byNik = new Map();
+    const byKtp = new Map();
+    for (const employee of employees || []) {
+      const nikValues = [employee.nik_karyawan, employee.nik, employee.id].map(nikKey).filter(Boolean);
+      for (const key of nikValues) if (!byNik.has(key)) byNik.set(key, employee);
+      const ktp = ktpKey(employee.nik_ktp || employee.no_ktp);
+      if (ktp && !byKtp.has(ktp)) byKtp.set(ktp, employee);
+    }
+
+    const colByKey = new Map(EMPLOYEE_IMPORT_COLUMNS.map((col) => [col.key, col]));
+    const dateColumns = EMPLOYEE_IMPORT_COLUMNS.filter((col) => col.type === "date");
+    const prepared = [];
+    const errors = [];
+    const seenNik = new Set();
+    const seenKtp = new Set();
+
+    for (let i = selected.headerIndex + 1; i < selected.matrix.length; i++) {
+      const row = selected.matrix[i] || [];
+      const hasAnyValue = [...selected.mapping.values()].some((index) => String(row[index] ?? "").trim() !== "");
+      if (!hasAnyValue) continue;
+
+      const rowNumber = i + 1;
+      let rowData;
+      try {
+        rowData = {};
+        for (const [key, index] of selected.mapping) {
+          const col = colByKey.get(key);
+          if (col) rowData[key] = parseEmployeeImportCell(col, row[index]);
+        }
+        for (const col of dateColumns) {
+          const value = rowData[col.key];
+          if (value && !/^\d{4}-\d{2}-\d{2}$/.test(String(value))) {
+            throw new Error(`${col.label} tidak valid. Gunakan format YYYY-MM-DD.`);
+          }
+          if (value) {
+            const parsed = new Date(`${value}T00:00:00Z`);
+            if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+              throw new Error(`${col.label} tidak valid: ${value}.`);
+            }
+          }
+        }
+      } catch (err) {
+        errors.push({ row: rowNumber, message: err.message || String(err) });
+        continue;
+      }
+
+      const nik = String(rowData.nik_karyawan || "").trim();
+      if (!nik) {
+        errors.push({ row: rowNumber, message: "NIK Karyawan wajib diisi." });
+        continue;
+      }
+      const normalizedNik = nikKey(nik);
+      if (seenNik.has(normalizedNik)) {
+        errors.push({ row: rowNumber, message: `NIK Karyawan ${nik} duplikat di dalam file.` });
+        continue;
+      }
+      seenNik.add(normalizedNik);
+
+      const ktp = ktpKey(rowData.nik_ktp);
+      if (ktp && seenKtp.has(ktp)) {
+        errors.push({ row: rowNumber, message: `NIK KTP ${ktp} duplikat di dalam file.` });
+        continue;
+      }
+      if (ktp) seenKtp.add(ktp);
+
+      const existingByNik = byNik.get(normalizedNik) || null;
+      const existingByKtp = ktp ? (byKtp.get(ktp) || null) : null;
+      if (existingByNik && existingByKtp && String(existingByNik.id) !== String(existingByKtp.id)) {
+        errors.push({ row: rowNumber, message: "NIK Karyawan dan NIK KTP menunjuk ke dua karyawan yang berbeda." });
+        continue;
+      }
+      const existing = existingByNik || existingByKtp || null;
+
+      if (existing) {
+        for (const key of EMPLOYEE_IMPORT_REQUIRED_KEYS) {
+          if (rowData[key] === undefined || rowData[key] === null || String(rowData[key]).trim() === "") {
+            delete rowData[key];
+          }
+        }
+        // Blank status keaktifan means "keep existing", not "force AKTIF".
+        if (!String(rowData.aktif_tdk_aktif || "").trim()) delete rowData.aktif_tdk_aktif;
+      }
+
+      const merged = existing ? { ...existing, ...rowData } : { ...rowData };
+      delete merged.id;
+      delete merged._docId;
+      if (!String(merged.nama_karyawan || "").trim()) {
+        errors.push({ row: rowNumber, message: "Nama Karyawan wajib diisi." });
+        continue;
+      }
+      let data;
+      try {
+        data = await beforeSaveEmp(merged, existing, {
+          skipRequiredChecks: Boolean(existing),
+          skipDuplicateCheck: true
+        });
+      } catch (err) {
+        errors.push({ row: rowNumber, message: err.message || String(err) });
+        continue;
+      }
+
+      if (cutiFetchOk || !existing) {
+        try {
+          const leaveSource = { ...existing, ...data };
+          const leaveRows = (cutiRecords || []).filter((cuti) =>
+            (leaveSource.nama_karyawan && cuti.nama_karyawan === leaveSource.nama_karyawan) ||
+            (leaveSource.nik_karyawan && (cuti.nik_karyawan === leaveSource.nik_karyawan || cuti.nik === leaveSource.nik_karyawan)) ||
+            (leaveSource.nik && (cuti.nik === leaveSource.nik || cuti.nik_karyawan === leaveSource.nik))
+          );
+          const calc = getCalculatedJatahCuti(leaveSource, leaveRows);
+          data.terpakai_tahunan = calc.usedTahunan;
+          data.terpakai_khusus = calc.usedKhusus;
+          data.terpakai_akumulasi = calc.usedAkumulasi;
+          data.cuti_terpakai_tahunan = calc.usedTahunan;
+          data.cuti_terpakai_khusus = calc.usedKhusus;
+          data.cuti_terpakai_akumulasi = calc.usedAkumulasi;
+          data.sisa_cuti_tahunan = calc.sisaTahunan;
+          data.sisa_cuti_khusus = calc.sisaKhusus;
+          data.sisa_cuti_akumulasi = calc.sisaAkumulasi;
+        } catch (leaveErr) {
+          console.warn(`Hitung saldo cuti baris ${rowNumber} dilewati:`, leaveErr);
+        }
+      }
+
+      prepared.push({
+        row: rowNumber,
+        mode: existing ? "update" : "create",
+        docId: String(existing?.id || employeeImportDocId(data.nik_karyawan || nik)),
+        nik: data.nik_karyawan || nik,
+        nama: data.nama_karyawan || "",
+        data,
+        existing
+      });
+    }
+
+    return {
+      prepared,
+      errors,
+      ignoredHeaders: selected.ignored || [],
+      sheetName: selected.sheetName,
+      leaveWarning: !cutiFetchOk
+    };
+  }
+
+  function showEmployeeImportPreview(result) {
+    const { prepared, errors, ignoredHeaders, sheetName, leaveWarning } = result;
+    const creates = prepared.filter((item) => item.mode === "create").length;
+    const updates = prepared.length - creates;
+    const previewRows = prepared.slice(0, 8).map((item) => `
+      <tr class="border-b border-slate-100">
+        <td class="py-1.5 pr-2 text-slate-400">${item.row}</td>
+        <td class="py-1.5 pr-2 font-mono text-slate-700">${escapeHtml(item.nik)}</td>
+        <td class="py-1.5 pr-2 text-slate-700">${escapeHtml(item.nama || "-")}</td>
+        <td class="py-1.5 text-right">
+          <span class="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold ${item.mode === "create" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-blue-50 text-blue-700 border border-blue-200"}">
+            ${item.mode === "create" ? "Baru" : "Update"}
+          </span>
+        </td>
+      </tr>`).join("");
+    const errorRows = errors.slice(0, 12).map((err) => `
+      <li class="py-1 border-b border-rose-100 last:border-0">
+        <span class="font-mono font-bold text-rose-700">Baris ${err.row}:</span>
+        <span class="text-rose-700">${escapeHtml(err.message)}</span>
+      </li>`).join("");
+    const ignoredText = (ignoredHeaders || []).length
+      ? `<p class="text-[11px] text-slate-500 mt-2">Kolom yang tidak dikenali dan diabaikan: <b>${escapeHtml(ignoredHeaders.join(", "))}</b></p>`
+      : "";
+
+    openModal({
+      title: "Preview Import Database Karyawan",
+      size: "lg",
+      bodyHtml: `
+        <div class="space-y-4">
+          <div class="grid grid-cols-3 gap-2">
+            <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+              <div class="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Karyawan Baru</div>
+              <div class="text-2xl font-black text-emerald-800 mt-1">${creates}</div>
+            </div>
+            <div class="rounded-xl border border-blue-200 bg-blue-50 p-3">
+              <div class="text-[10px] font-bold uppercase tracking-wide text-blue-700">Data Diperbarui</div>
+              <div class="text-2xl font-black text-blue-800 mt-1">${updates}</div>
+            </div>
+            <div class="rounded-xl border border-rose-200 bg-rose-50 p-3">
+              <div class="text-[10px] font-bold uppercase tracking-wide text-rose-700">Baris Dilewati</div>
+              <div class="text-2xl font-black text-rose-800 mt-1">${errors.length}</div>
+            </div>
+          </div>
+
+          <div class="text-xs text-slate-600 leading-relaxed">
+            Sheet terbaca: <b>${escapeHtml(sheetName)}</b>. Data dengan NIK yang sudah ada akan diperbarui, NIK baru akan ditambahkan.
+            ${ignoredText}
+          </div>
+
+          ${prepared.length ? `
+          <div>
+            <div class="text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">Contoh Baris yang Akan Diproses</div>
+            <table class="w-full text-[11px]">
+              <thead><tr class="border-b border-slate-200 text-left text-slate-400">
+                <th class="py-1 pr-2">Baris</th><th class="py-1 pr-2">NIK</th><th class="py-1 pr-2">Nama</th><th class="py-1 text-right">Aksi</th>
+              </tr></thead>
+              <tbody>${previewRows}</tbody>
+            </table>
+            ${prepared.length > 8 ? `<p class="text-[11px] text-slate-400 mt-1">... dan ${prepared.length - 8} baris lainnya.</p>` : ""}
+          </div>` : ""}
+
+          ${errors.length ? `
+          <div class="rounded-xl border border-rose-200 bg-rose-50/60 p-3">
+            <div class="text-[11px] font-bold uppercase tracking-wide text-rose-700 mb-1">Baris yang Dilewati (${errors.length})</div>
+            <ul class="text-[11px] max-h-44 overflow-y-auto">${errorRows}</ul>
+            ${errors.length > 12 ? `<p class="text-[10px] text-rose-500 mt-1">... dan ${errors.length - 12} error lainnya.</p>` : ""}
+          </div>` : ""}
+
+          ${leaveWarning ? `
+          <div class="rounded-xl border border-orange-200 bg-orange-50 p-3 text-[11px] text-orange-800 leading-relaxed">
+            Data cuti gagal dimuat. Saldo sisa cuti karyawan lama tidak dihitung ulang pada import ini; nilai sisa cuti yang sudah ada akan dipertahankan.
+          </div>` : ""}
+
+          <div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-800 leading-relaxed space-y-2">
+            <p>Perubahan <b>nama, NIK, atau email</b> sebaiknya disinkronkan ke modul lain agar referensi lama ikut diperbarui.</p>
+            <label class="flex items-start gap-2 cursor-pointer">
+              <input id="emp-import-sync-identity" type="checkbox" checked class="mt-0.5 accent-amber-700">
+              <span>Sinkronkan perubahan nama/NIK/email setelah import. Proses ini bisa memakan waktu jika banyak data berubah.</span>
+            </label>
+          </div>
+        </div>
+      `,
+      footerHtml: `
+        <button id="btn-emp-import-cancel" class="px-4 py-2 text-xs font-semibold rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition cursor-pointer">Batal</button>
+        <button id="btn-emp-import-confirm" class="px-4 py-2 text-xs font-bold rounded-lg bg-maroon-700 text-white hover:bg-maroon-800 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" ${prepared.length ? "" : "disabled"}>
+          Import ${prepared.length} Baris
+        </button>
+      `,
+      onMount: (modalEl) => {
+        modalEl.querySelector("#btn-emp-import-cancel")?.addEventListener("click", closeModal);
+        const confirmBtn = modalEl.querySelector("#btn-emp-import-confirm");
+        if (!confirmBtn) return;
+        confirmBtn.addEventListener("click", async () => {
+          if (!prepared.length) return;
+          confirmBtn.disabled = true;
+          confirmBtn.textContent = "Mengimpor...";
+          let committed = 0;
+          try {
+            for (let offset = 0; offset < prepared.length; offset += 400) {
+              const chunk = prepared.slice(offset, offset + 400);
+              const batch = writeBatch(db);
+              for (const item of chunk) {
+                batch.set(doc(db, COL.MASTER_KARYAWAN, item.docId), item.data, { merge: true });
+              }
+              await batch.commit();
+              committed += chunk.length;
+            }
+
+            // Sinkronkan hanya baris yang mengubah identitas (nama/NIK/email).
+            // Ini penting agar referensi lama di modul lain ikut diperbarui.
+            const identityChanges = prepared.filter((item) => {
+              if (!item.existing) return false;
+              const oldName = String(item.existing.nama_karyawan || item.existing.nama || "").trim().toLowerCase();
+              const newName = String(item.data.nama_karyawan || item.data.nama || "").trim().toLowerCase();
+              const oldNik = String(item.existing.nik_karyawan || item.existing.nik || "").trim().toUpperCase();
+              const newNik = String(item.data.nik_karyawan || item.data.nik || "").trim().toUpperCase();
+              const oldEmail = String(item.existing.email || "").trim().toLowerCase();
+              const newEmail = String(item.data.email || "").trim().toLowerCase();
+              return oldName !== newName || oldNik !== newNik || oldEmail !== newEmail;
+            });
+            const shouldSyncIdentity = modalEl.querySelector("#emp-import-sync-identity")?.checked !== false;
+            let syncFailed = 0;
+            if (shouldSyncIdentity) {
+              for (let index = 0; index < identityChanges.length; index++) {
+                const item = identityChanges[index];
+                confirmBtn.textContent = `Sinkronkan ${index + 1}/${identityChanges.length}...`;
+                try {
+                  await cascadeEmployeeChanges(item.existing, item.data);
+                } catch (syncErr) {
+                  syncFailed++;
+                  console.warn(`Sinkronisasi identitas baris ${item.row} gagal:`, syncErr);
+                }
+              }
+            }
+
+            closeModal();
+            toast(`Import selesai: ${creates} data baru, ${updates} data diperbarui${errors.length ? `, ${errors.length} baris dilewati` : ""}.`, "success");
+            if (identityChanges.length && shouldSyncIdentity) {
+              toast(`Sinkronisasi nama/NIK/email selesai untuk ${identityChanges.length - syncFailed} dari ${identityChanges.length} karyawan.`, syncFailed ? "warning" : "success");
+            }
+            if (identityChanges.length && !shouldSyncIdentity) {
+              toast(`Ada ${identityChanges.length} perubahan nama/NIK/email yang belum disinkronkan. Edit manual atau import ulang dengan opsi sinkronisasi.`, "warning");
+            }
+            if (syncFailed) toast("Sebagian sinkronisasi gagal. Periksa console atau lakukan perbaikan manual.", "warning");
+            if (errors.length) toast("Baris yang dilewati tidak diimport. Periksa kembali file Anda.", "warning");
+            try { await crudRes.reload(); } catch (reloadErr) { console.warn("Reload setelah import gagal:", reloadErr); }
+          } catch (err) {
+            console.error("Gagal import karyawan:", err);
+            toast(`Import terhenti setelah ${committed} baris: ${err.message || err}`, "error");
+            try { await crudRes.reload(); } catch (reloadErr) { console.warn("Reload setelah import gagal:", reloadErr); }
+          }
+        });
+      }
+    });
+  }
+
+  async function handleEmployeeImportFile(file) {
+    if (!file) return;
+    if (!/\.(xlsx|xls)$/i.test(file.name || "")) {
+      toast("Format file harus Excel (.xlsx atau .xls).", "warning");
+      return;
+    }
+    try {
+      const result = await buildEmployeeImportPreview(file);
+      if (!result.prepared.length && !result.errors.length) {
+        toast("Tidak ada baris data karyawan yang bisa diimport.", "warning");
+        return;
+      }
+      showEmployeeImportPreview(result);
+    } catch (err) {
+      console.error("Gagal membaca file import karyawan:", err);
+      toast("Gagal membaca file import: " + (err.message || err), "error");
+    }
+  }
+
+  const importSession = getSession();
+  const canImportEmployees = ["HRD", "SUPERADMIN"].includes(String(importSession?.role || "").toUpperCase())
+    && await canEditModuleData(importSession).catch(() => false);
+
   const crudRes = await renderCrudModule(panels.karyawan, {
     title: "Database Induk Karyawan",
     subtitle: "Sumber data utama seluruh karyawan CV Andela Jaya. Klik baris data karyawan untuk melihat popup detail profil & mengedit data.",
     collectionName: COL.MASTER_KARYAWAN,
     orderByField: "nama_karyawan",
     size: "2xl",
-    searchFields: ["nama_karyawan", "nik_karyawan", "jabatan", "cabang", "divisi", "status_karyawan", "finger_name", "nik_ktp", "no_kk", "bpjs_tk", "bpjs_kes", "npwp", "email", "no_hp_aktif", "atasan"],
+    searchFields: ["nama_karyawan", "nik_karyawan", "jabatan", "cabang", "divisi", "status_karyawan", "finger_name", "nik_ktp", "no_kk", "bpjs_tk", "bpjs_kes", "npwp", "email", "no_hp_aktif", "atasan", "alamat", "alamat_domisili", "alamat_ktp"],
     onRowClick: (emp, helpers) => openEmployeeDetailAndEditModal(emp, helpers?.reload, "detail"),
     onEditClick: (emp, helpers) => openEmployeeDetailAndEditModal(emp, helpers?.reload, "edit"),
     // Kolom tambahan (HRD) ikut di-export: diambil dari skema app_settings,
@@ -1370,7 +1992,8 @@ function downloadThisPdf() {
         { key: "pendidikan", label: "Pendidikan Terakhir" },
         { key: "agama", label: "Agama" },
         { key: "golongan_darah", label: "Golongan Darah" },
-        { key: "alamat", label: "Alamat Lengkap" },
+        { key: "alamat", label: "Alamat Domisili", getValue: (row) => row.alamat || row.alamat_domisili || "" },
+        { key: "alamat_ktp", label: "Alamat Sesuai KTP", getValue: (row) => row.alamat_ktp || "" },
         { key: "kontak_darurat", label: "No. HP Kontak Darurat", getValue: (row) => row.kontak_darurat || row.kontak_darurat_hp || "" },
         { key: "nama_kontak_darurat", label: "Nama Kontak Darurat", getValue: (row) => row.nama_kontak_darurat || row.kontak_darurat_nama || "" },
         { key: "npwp", label: "NPWP" },
@@ -1398,6 +2021,17 @@ function downloadThisPdf() {
       ];
     },
     extraToolbarHtml: `
+      <button id="btn-download-emp-template" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg border border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition shadow-2xs cursor-pointer" title="Unduh template Excel berisi data karyawan saat ini">
+        ${icon("download", "w-4 h-4 text-emerald-600")}
+        Download Template Excel
+      </button>
+      ${canImportEmployees ? `
+      <button id="btn-import-emp" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg border border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100 transition shadow-2xs cursor-pointer" title="Upload file Excel untuk import perubahan data karyawan">
+        ${icon("download", "w-4 h-4 text-blue-600 rotate-180")}
+        Import Excel
+      </button>
+      <input id="emp-import-file" type="file" accept=".xlsx,.xls" class="hidden">
+      ` : ""}
       <button id="btn-sync-all-karyawan" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg border border-maroon-300 text-maroon-700 bg-maroon-50 hover:bg-maroon-100 transition shadow-2xs cursor-pointer" title="Sinkronkan nama seluruh karyawan ke semua modul HRD & Operasional">
         ${icon("refresh", "w-4 h-4 text-maroon-600")}
         Sinkronkan Seluruh Modul
@@ -1422,10 +2056,26 @@ function downloadThisPdf() {
  { key: "kontrak_habis", label: "Kontrak Berakhir", type: "date" },
  { key: "email", label: "Email Aktif", format: (v) => v ? escapeHtml(String(v)) : '<span class="text-rose-600 font-semibold text-[11px]">Belum diisi</span>' },
  { key: "no_hp_aktif", label: "No. HP" },
+ { key: "alamat", label: "Alamat Domisili", format: (v, r) => formatAddressCell(r.alamat || r.alamat_domisili) },
+ { key: "alamat_ktp", label: "Alamat Sesuai KTP", format: (v) => formatAddressCell(v) },
  { key: "aktif_tdk_aktif", label: "Status Keaktifan", format: (v, r) => r.aktif_tdk_aktif || r["aktif/tidak_aktif"] || v || "AKTIF", type: "badge", badgeTone: (v) => (v === "AKTIF" || v === "Active") ? "green" : "red" }
  ],
  formFields: fields
  });
+
+  panels.karyawan.querySelector("#btn-download-emp-template")?.addEventListener("click", () => {
+    void downloadEmployeeImportTemplate();
+  });
+
+  const employeeImportFileInput = panels.karyawan.querySelector("#emp-import-file");
+  panels.karyawan.querySelector("#btn-import-emp")?.addEventListener("click", () => {
+    employeeImportFileInput?.click();
+  });
+  employeeImportFileInput?.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) await handleEmployeeImportFile(file);
+  });
 
   panels.karyawan.querySelector("#btn-sync-all-karyawan")?.addEventListener("click", async () => {
     const ok = await confirmDialog("Sinkronkan seluruh nama & data karyawan dari Master Database ke seluruh modul (Absensi, Pengajuan, Tracking Sales, KPI, dsb)?", { title: "Sinkronisasi Master Karyawan Global" });

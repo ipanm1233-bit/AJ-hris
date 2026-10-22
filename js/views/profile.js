@@ -116,8 +116,8 @@ export async function mount(container, { session, params }) {
  ${detailRow("Email Aktif", k?.email || session.email || "-")}
  ${detailRow("No. HP / Whatsapp", k?.no_hp_aktif || "-")}
  ${detailRow("Kontak Darurat", k?.kontak_darurat_nama ? `${k.kontak_darurat_nama} (${k.kontak_darurat_hubungan || 'Keluarga'}) - ${k.kontak_darurat_hp || '-'}` : "-")}
- ${detailRow("Alamat Domisili", k?.alamat || "-", true)}
- ${detailRow("Alamat Sesuai KTP", k?.alamat_ktp || k?.alamat || "-", true)}
+ ${detailRow("Alamat Domisili", k?.alamat || k?.alamat_domisili || "-", true)}
+ ${detailRow("Alamat Sesuai KTP", k?.alamat_ktp || "-", true)}
  `;
  }
 
@@ -733,12 +733,12 @@ function openEditProfileModal(session, k, container) {
 
  <div>
  <label class="block text-xs font-medium text-slate-500 mb-1">Alamat Domisili Sekarang</label>
- <textarea id="edit-p-alamat" rows="2" required class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400">${escapeHtml(k?.alamat || '')}</textarea>
+ <textarea id="edit-p-alamat" rows="2" required class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400">${escapeHtml(k?.alamat || k?.alamat_domisili || '')}</textarea>
  </div>
 
  <div>
  <label class="block text-xs font-medium text-slate-500 mb-1">Alamat Sesuai KTP</label>
- <textarea id="edit-p-alamat-ktp" rows="2" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400">${escapeHtml(k?.alamat_ktp || k?.alamat || '')}</textarea>
+ <textarea id="edit-p-alamat-ktp" rows="2" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-400">${escapeHtml(k?.alamat_ktp || '')}</textarea>
  </div>
  </form>`,
  footerHtml: `

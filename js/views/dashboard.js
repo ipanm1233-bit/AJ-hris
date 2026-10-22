@@ -212,7 +212,7 @@ function openProfileModal(session, k) {
  ${profileRow("Jenis Kelamin", k.jenis_kelamin)} ${profileRow("Tanggal Lahir", fmtDate(k.tanggal_lahir))} ${profileRow("Usia", k.tanggal_lahir ? `${calculateAge(k.tanggal_lahir)} Tahun` : (k.usia ? `${k.usia} Tahun` : "-"))}
  ${profileRow("Tanggal Join", fmtDate(k.tanggal_join))} ${profileRow("Masa Kerja", k.tanggal_join ? calculateTenure(k.tanggal_join) : (k.masa_kerja || "-"))} ${profileRow("Atasan", k.atasan)}
  ${profileRow("Pendidikan", k.pendidikan)} ${profileRow("Agama", k.agama)} ${profileRow("Email", k.email)}
- <div class="col-span-2 sm:col-span-3">${profileRow("Alamat", k.alamat)}</div>
+ <div class="col-span-2 sm:col-span-3">${profileRow("Alamat Domisili", k.alamat || k.alamat_domisili)}</div>
  </div>
  <div class="mt-6 flex justify-end"><button id="btn-tutup-profil" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition">Tutup Profil</button></div>
  `;

@@ -33,6 +33,28 @@ function withMandatoryLeaveTypes(configured = []) {
  return merged;
 }
 
+/**
+ * Kontak pada Form Cuti selalu memakai alamat domisili karyawan.
+ * Alamat KTP tidak boleh dipakai sebagai fallback.
+ */
+function leaveFormContact(employee, data = {}, fallback = "-") {
+  const clean = (value) => {
+    const text = String(value ?? "").trim();
+    return text && text !== "-" ? text : "";
+  };
+  const existing = (clean(data.alamat_dan_hp) || clean(data.kontak))
+    .replace(/^\s*\/\s*/, "")
+    .replace(/\s*\/\s*$/, "")
+    .trim();
+  if (existing && /[A-Za-z]/.test(existing)) return existing;
+  const address = clean(employee?.alamat) || clean(employee?.alamat_domisili);
+  const phone = clean(data.no_telepon) || clean(data.no_hp)
+    || clean(employee?.no_hp_aktif) || clean(employee?.no_hp)
+    || (!/[A-Za-z]/.test(existing) ? existing : "");
+  if (address && phone) return `${address} / ${phone}`;
+  return address || phone || fallback;
+}
+
 export function checkIsHalfDay(cfgOrNameOrId) {
   if (!cfgOrNameOrId) return false;
   if (typeof cfgOrNameOrId === "object") {
@@ -1423,7 +1445,7 @@ export async function mount(container, { session }) {
             jam_keluar: row.jam_keluar || row.jam_mulai || "-",
             jam_kembali: row.jam_kembali || row.jam_selesai || "-",
             alasan: row.keterangan_cuti || row.alasan || "-",
-            kontak: row.kontak || row.no_telepon || "-"
+            kontak: leaveFormContact(k, row)
           }, getSisa(k), {
             recordSubmission: false,
             publishDocument: false,
@@ -1868,7 +1890,7 @@ export async function mount(container, { session }) {
               </div>
               <div class="col-span-2 sm:col-span-1">
                 <label class="block text-xs font-bold text-slate-600 mb-1">Alamat / No HP Saat Cuti</label>
-                <input type="text" id="inp-kontak" value="${escapeHtml(k.alamat || '')} / ${escapeHtml(k.no_hp_aktif || '')}" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
+                <input type="text" id="inp-kontak" value="${escapeHtml(leaveFormContact(k, {}, ''))}" class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400">
               </div>
             </div>
 
@@ -2620,9 +2642,7 @@ export async function mount(container, { session }) {
       }
 
       // 2. Generate Formulir Cuti Resmi ISO HR-FORM-CUTI
-      const kontakStr = pdfData.kontak && pdfData.kontak !== "-" 
-        ? pdfData.kontak 
-        : (k.alamat && k.no_hp ? `${k.alamat}/${k.no_hp}` : (k.alamat || k.no_hp || "-"));
+      const kontakStr = leaveFormContact(k, pdfData);
 
       const balances = needsFormPdf ? await calculateLeaveHistoryBalances(k, {
         ...pdfData,
@@ -3055,9 +3075,7 @@ export async function mount(container, { session }) {
   async function printCutiPdfFallback(k, data) {
     toast("Sedang memproses PDF cadangan...", "info");
 
-    const kontakStr = data.kontak && data.kontak !== "-"
-      ? data.kontak
-      : (k.alamat && k.no_hp ? `${k.alamat}/${k.no_hp}` : (k.alamat || k.no_hp || "-"));
+    const kontakStr = leaveFormContact(k, data);
 
     // PENTING: saldo pada PDF cadangan WAJIB dihitung ulang via
     // calculateLeaveHistoryBalances (sumber yang sama dengan sistem), BUKAN

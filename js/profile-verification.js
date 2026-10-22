@@ -123,7 +123,7 @@ function formHtml(profile) {
         </div>
         <div class="grid grid-cols-1 gap-3">
           ${textareaField({ key: "alamat", label: "Alamat Domisili", required: true, rows: 3, maxLength: 500, placeholder: "Alamat tempat tinggal saat ini" }, profile.alamat)}
-          ${textareaField({ key: "alamat_ktp", label: "Alamat Sesuai KTP", rows: 3, maxLength: 500, placeholder: "Kosongkan jika sama dengan alamat domisili" }, profile.alamat_ktp)}
+          ${textareaField({ key: "alamat_ktp", label: "Alamat Sesuai KTP", rows: 3, maxLength: 500, placeholder: "Alamat lengkap sesuai KTP" }, profile.alamat_ktp)}
         </div>
       </section>
 

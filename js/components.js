@@ -197,7 +197,7 @@ export async function renderCrudModule(container, cfg) {
  <h2 class="text-xl font-semibold text-slate-800">${title}</h2>
  ${subtitle ? `<p class="text-sm text-slate-500 mt-0.5">${subtitle}</p>` : ""}
  </div>
- <div class="flex items-center gap-2">
+ <div class="flex flex-wrap items-center justify-end gap-2">
  ${extraToolbarHtml}
  <div class="relative">
  <input id="crud-search" type="text" placeholder="Cari..." class="pl-9 pr-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100 outline-none transition w-48">

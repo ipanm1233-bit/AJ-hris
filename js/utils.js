@@ -3072,10 +3072,19 @@ export async function downloadFormCutiPdf(item) {
 
 		let finalKontak = cleanVal(item.alamat_dan_hp) || cleanVal(detail.alamat_dan_hp) || "";
 		if (!finalKontak) {
-			const addr = cleanVal(item.alamat) || cleanVal(detail.alamat) || cleanVal(item.alamat_cuti) || cleanVal(detail.alamat_cuti) || cleanVal(kData?.alamat) || cleanVal(kData?.alamat_domisili) || cleanVal(kData?.alamat_ktp) || "";
-			const phone = cleanVal(item.no_telepon) || cleanVal(detail.no_telepon) || cleanVal(item.no_hp) || cleanVal(detail.no_hp) || cleanVal(item.telepon) || cleanVal(detail.telepon) || cleanVal(detail.kontak) || cleanVal(item.kontak) || cleanVal(kData?.no_hp) || cleanVal(kData?.telepon) || cleanVal(kData?.no_telepon) || "";
-			if (addr && phone) finalKontak = `${addr} / ${phone}`;
-			else finalKontak = addr || phone || cleanVal(detail.kontak) || cleanVal(item.kontak) || "-";
+			const rawKontak = (cleanVal(detail.kontak) || cleanVal(item.kontak) || "")
+				.replace(/^\s*\/\s*/, "")
+				.replace(/\s*\/\s*$/, "")
+				.trim();
+			if (/[A-Za-z]/.test(rawKontak)) {
+				// Field lama kadang sudah berisi "alamat / no HP" dalam satu string.
+				finalKontak = rawKontak;
+			} else {
+				const addr = cleanVal(kData?.alamat) || cleanVal(kData?.alamat_domisili) || cleanVal(item.alamat) || cleanVal(detail.alamat) || cleanVal(item.alamat_cuti) || cleanVal(detail.alamat_cuti) || "";
+				const phone = cleanVal(item.no_telepon) || cleanVal(detail.no_telepon) || cleanVal(item.no_hp) || cleanVal(detail.no_hp) || cleanVal(item.no_hp_aktif) || cleanVal(detail.no_hp_aktif) || cleanVal(item.telepon) || cleanVal(detail.telepon) || rawKontak || cleanVal(kData?.no_hp_aktif) || cleanVal(kData?.no_hp) || cleanVal(kData?.telepon) || cleanVal(kData?.no_telepon) || "";
+				if (addr && phone) finalKontak = `${addr} / ${phone}`;
+				else finalKontak = addr || phone || "-";
+			}
 		}
 
 		const signaturePemohon = item.tanda_tangan || detail.tanda_tangan || item.signature || detail.signature || kData?.tanda_tangan || kData?.signature || "";
@@ -3200,10 +3209,19 @@ export async function printFormCutiFisik(item) {
 
 		let finalKontak = cleanVal(item.alamat_dan_hp) || cleanVal(detail.alamat_dan_hp) || "";
 		if (!finalKontak) {
-			const addr = cleanVal(item.alamat) || cleanVal(detail.alamat) || cleanVal(item.alamat_cuti) || cleanVal(detail.alamat_cuti) || cleanVal(kData?.alamat) || cleanVal(kData?.alamat_domisili) || cleanVal(kData?.alamat_ktp) || "";
-			const phone = cleanVal(item.no_telepon) || cleanVal(detail.no_telepon) || cleanVal(item.no_hp) || cleanVal(detail.no_hp) || cleanVal(item.telepon) || cleanVal(detail.telepon) || cleanVal(detail.kontak) || cleanVal(item.kontak) || cleanVal(kData?.no_hp) || cleanVal(kData?.telepon) || cleanVal(kData?.no_telepon) || "";
-			if (addr && phone) finalKontak = `${addr} / ${phone}`;
-			else finalKontak = addr || phone || cleanVal(detail.kontak) || cleanVal(item.kontak) || "-";
+			const rawKontak = (cleanVal(detail.kontak) || cleanVal(item.kontak) || "")
+				.replace(/^\s*\/\s*/, "")
+				.replace(/\s*\/\s*$/, "")
+				.trim();
+			if (/[A-Za-z]/.test(rawKontak)) {
+				// Field lama kadang sudah berisi "alamat / no HP" dalam satu string.
+				finalKontak = rawKontak;
+			} else {
+				const addr = cleanVal(kData?.alamat) || cleanVal(kData?.alamat_domisili) || cleanVal(item.alamat) || cleanVal(detail.alamat) || cleanVal(item.alamat_cuti) || cleanVal(detail.alamat_cuti) || "";
+				const phone = cleanVal(item.no_telepon) || cleanVal(detail.no_telepon) || cleanVal(item.no_hp) || cleanVal(detail.no_hp) || cleanVal(item.no_hp_aktif) || cleanVal(detail.no_hp_aktif) || cleanVal(item.telepon) || cleanVal(detail.telepon) || rawKontak || cleanVal(kData?.no_hp_aktif) || cleanVal(kData?.no_hp) || cleanVal(kData?.telepon) || cleanVal(kData?.no_telepon) || "";
+				if (addr && phone) finalKontak = `${addr} / ${phone}`;
+				else finalKontak = addr || phone || "-";
+			}
 		}
 
 		const signaturePemohon = item.tanda_tangan || detail.tanda_tangan || item.signature || detail.signature || kData?.tanda_tangan || kData?.signature || "";
@@ -3304,7 +3322,6 @@ export async function generateAndSaveCutiDocument(row) {
  const tglSelesai = isHalfDay ? tglMulai : (row.tanggal_selesai || detail.tanggal_akhir || detail.tanggal_selesai || tglMulai);
  const jumlahHari = isHalfDay ? 0.5 : parseFloat(row.jumlah_hari || detail.jumlah_hari || row.count || 1);
  const alasan = row.alasan || detail.alasan || detail.keterangan || row.keterangan_cuti || "Pengajuan Cuti Disetujui";
- const kontak = row.no_telepon || detail.no_telepon || detail.kontak || "-";
  const jamKeluar = detail.jam_keluar || row.jam_keluar || detail.jam_mulai || row.jam_mulai || detail.jam_keluar_kantor || row.jam_keluar_kantor || "-";
  const jamKembali = detail.jam_kembali || row.jam_kembali || detail.jam_selesai || row.jam_selesai || detail.jam_masuk || row.jam_masuk || "-";
 
@@ -3322,6 +3339,28 @@ export async function generateAndSaveCutiDocument(row) {
   });
  } catch (e) {
   console.warn("Could not calculate leave history balances in generateAndSaveCutiDocument:", e);
+ }
+
+ // Form cuti selalu memakai alamat domisili. Jangan fallback ke alamat KTP.
+ const cleanContactValue = (value) => {
+  const text = String(value ?? "").trim();
+  return text && text !== "-" ? text : "";
+ };
+ let kontak = cleanContactValue(row.alamat_dan_hp) || cleanContactValue(detail.alamat_dan_hp);
+ if (!kontak) {
+  const rawKontak = (cleanContactValue(detail.kontak) || cleanContactValue(row.kontak))
+   .replace(/^\s*\/\s*/, "")
+   .replace(/\s*\/\s*$/, "")
+   .trim();
+  if (/[A-Za-z]/.test(rawKontak)) {
+   // Field lama kadang sudah berisi "alamat / no HP" dalam satu string.
+   kontak = rawKontak;
+  } else {
+   const kData = calculatedBalances?.kData || {};
+   const addr = cleanContactValue(kData.alamat) || cleanContactValue(kData.alamat_domisili) || cleanContactValue(row.alamat) || cleanContactValue(detail.alamat) || cleanContactValue(detail.alamat_cuti);
+   const phone = cleanContactValue(row.no_telepon) || cleanContactValue(detail.no_telepon) || cleanContactValue(row.no_hp) || cleanContactValue(detail.no_hp) || rawKontak || cleanContactValue(kData.no_hp_aktif) || cleanContactValue(kData.no_hp);
+   kontak = addr && phone ? `${addr} / ${phone}` : (addr || phone || "-");
+  }
  }
 
  try {
