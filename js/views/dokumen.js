@@ -3,6 +3,22 @@ import { fsGetAll, fsAdd, fsUpdate, fsDelete, genId, openModal, closeModal, toas
 import { badge, emptyState } from "../components.js";
 import { getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 import { letterheadHtml, officialDocStyles, officialPrintHtml, COMPANY_NAME, COMPANY_ADDRESS_LINE1 } from "../branding.js";
+import {
+  isOfficialDocType,
+  officialDocTitle,
+  officialDocCategory,
+  officialFieldSchema,
+  officialFieldDefaults,
+  buildOfficialDocument
+} from "./dokumen-official.js";
+
+function ktpValue(emp) {
+ const candidates = [emp?.nik_ktp, emp?.no_ktp, emp?.ktp, emp?.nik_e_ktp, emp?.no_e_ktp];
+ const found = candidates.find(value => value !== null && value !== undefined && String(value).trim() !== "" && String(value).trim() !== "-");
+ if (found) return String(found).trim();
+ const nik = String(emp?.nik || "").trim();
+ return /^\d{16}$/.test(nik) ? nik : "";
+}
 
 // Default clause templates
 const DEFAULT_CLAUSES = {
@@ -734,12 +750,18 @@ async function openDocEditorModal(existingData, session, onDone) {
  <div>
  <label class="block text-xs font-bold text-slate-600 mb-1">Jenis / Template Dokumen</label>
  <select id="doc-type-select" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-white font-semibold">
- <optgroup label="Template Bawaan Sistem">
- <option value="KONTRAK_PKWT" ${existingData?.template_type === 'KONTRAK_PKWT' ? 'selected' : ''}>Kontrak Kerja PKWT (Waktu Tertentu)</option>
- <option value="KONTRAK_PKWTT" ${existingData?.template_type === 'KONTRAK_PKWTT' ? 'selected' : ''}>Kontrak Kerja PKWTT (Tetap / Permanen)</option>
+ <optgroup label="Template Resmi HRD (Format Baku)">
+ <option value="KONTRAK_PKWT" ${existingData?.template_type === 'KONTRAK_PKWT' ? 'selected' : ''}>Perjanjian Kerja Karyawan (PKWT / Probation)</option>
+ <option value="ADENDUM_PKWT_SALES" ${existingData?.template_type === 'ADENDUM_PKWT_SALES' ? 'selected' : ''}>Adendum / Perpanjangan Kontrak Sales (PKWT)</option>
+ <option value="PERPANJANGAN_PKWTT" ${existingData?.template_type === 'PERPANJANGAN_PKWTT' ? 'selected' : ''}>Perpanjangan Perjanjian Kerja PKWTT</option>
+ <option value="SK_PENGANGKATAN" ${existingData?.template_type === 'SK_PENGANGKATAN' ? 'selected' : ''}>SK Pengangkatan Karyawan Tetap</option>
+ <option value="KOMITMEN_KERJA" ${existingData?.template_type === 'KOMITMEN_KERJA' ? 'selected' : ''}>Surat Komitmen Kerja (Probation)</option>
  <option value="SP_1" ${existingData?.template_type === 'SP_1' ? 'selected' : ''}>Surat Peringatan 1 (SP-1)</option>
  <option value="SP_2" ${existingData?.template_type === 'SP_2' ? 'selected' : ''}>Surat Peringatan 2 (SP-2)</option>
  <option value="SP_3" ${existingData?.template_type === 'SP_3' ? 'selected' : ''}>Surat Peringatan 3 (SP-3)</option>
+ </optgroup>
+ <optgroup label="Template Bawaan Lainnya">
+ <option value="KONTRAK_PKWTT" ${existingData?.template_type === 'KONTRAK_PKWTT' ? 'selected' : ''}>Kontrak Kerja PKWTT (format ringkas)</option>
  <option value="PEMANGGILAN" ${existingData?.template_type === 'PEMANGGILAN' ? 'selected' : ''}>Surat Pemanggilan & Konseling</option>
  <option value="KETERANGAN_KERJA" ${existingData?.template_type === 'KETERANGAN_KERJA' ? 'selected' : ''}>Surat Keterangan Kerja (Paklaring)</option>
  <option value="SURAT_TUGAS" ${existingData?.template_type === 'SURAT_TUGAS' ? 'selected' : ''}>Surat Penugasan / Dinas Resmi</option>
@@ -804,9 +826,26 @@ async function openDocEditorModal(existingData, session, onDone) {
  </div>
  </div>
 
+ <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
  <div>
- <label class="block text-xs font-medium text-slate-500 mb-1">Catatan / Alasan / Gaji Tambahan ({ALASAN_SP} atau {GAJI_POKOK})</label>
- <input type="text" id="doc-extra-note" value="${escapeHtml(existingData?.alasan_sp || existingData?.gaji_pokok || '')}" placeholder="Contoh: Terlambat berturut-turut 5x ATAU Rp 4.500.000,-" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500">
+ <label class="block text-xs font-medium text-slate-500 mb-1">Gaji Pokok / Upah Bruto</label>
+ <input type="text" id="doc-gaji-pokok" value="${escapeHtml(existingData?.gaji_pokok || existingData?.custom_fields?.GAJI_POKOK || '')}" placeholder="Contoh: Rp 4.500.000" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500">
+ </div>
+ <div>
+ <label class="block text-xs font-medium text-slate-500 mb-1">Catatan / Alasan SP</label>
+ <input type="text" id="doc-extra-note" value="${escapeHtml(existingData?.alasan_sp || '')}" placeholder="Contoh: Terlambat berturut-turut 5x" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500">
+ </div>
+ </div>
+
+ <!-- DETAIL TEMPLATE RESMI (OTOMATIS DARI MASTER KARYAWAN) -->
+ <div id="official-doc-fields-box" class="hidden p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-2">
+ <p class="text-xs font-bold text-emerald-900 flex items-center justify-between gap-2">
+ <span>Detail Data Template Resmi</span>
+ <span class="text-[10px] text-emerald-700 font-normal">Terisi otomatis dari Master Karyawan & dapat disesuaikan</span>
+ </p>
+ <div id="official-doc-fields-inputs" class="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-xs">
+ <!-- populated dynamically -->
+ </div>
  </div>
 
  <!-- DYNAMIC CUSTOM PLACEHOLDERS INPUT AREA -->
@@ -821,7 +860,7 @@ async function openDocEditorModal(existingData, session, onDone) {
  </div>
 
  <!-- 3. KLAUSUL EDITOR INTERAKTIF -->
- <div class="border-t border-slate-100 pt-4 space-y-3">
+ <div id="clause-editor-section" class="border-t border-slate-100 pt-4 space-y-3">
  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
  <div>
  <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
@@ -873,11 +912,123 @@ async function openDocEditorModal(existingData, session, onDone) {
  const clausesContainer = m.querySelector("#clauses-container");
  const customFieldsBox = m.querySelector("#dynamic-custom-fields-box");
  const customFieldsInputs = m.querySelector("#dynamic-custom-fields-inputs");
+ const officialBox = m.querySelector("#official-doc-fields-box");
+ const officialInputs = m.querySelector("#official-doc-fields-inputs");
+ const clauseEditor = m.querySelector("#clause-editor-section");
+ const gajiInput = m.querySelector("#doc-gaji-pokok");
  let activeTextArea = null;
+
+ function selectedEmployee() {
+ const nik = m.querySelector("#doc-target-karyawan")?.value || "";
+ return masterKaryawan.find(k => (k.nik_karyawan || k.nik) === nik) || null;
+ }
+
+ function addMonthsIso(value, months) {
+ const d = new Date(String(value || "") + "T00:00:00");
+ if (isNaN(d.getTime())) return "";
+ const day = d.getDate();
+ d.setMonth(d.getMonth() + months);
+ if (d.getDate() < day) d.setDate(0);
+ return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+ }
+
+ function ensureOfficialDates(type) {
+ if (!["KONTRAK_PKWT", "ADENDUM_PKWT_SALES"].includes(type)) return;
+ const start = m.querySelector("#doc-date-start");
+ const end = m.querySelector("#doc-date-end");
+ if (start?.value && end && !end.value) end.value = addMonthsIso(start.value, 3);
+ }
+
+ function renderOfficialFields() {
+ const type = typeSelect.value;
+ const official = isOfficialDocType(type);
+ if (officialBox) officialBox.classList.toggle("hidden", !official);
+ if (clauseEditor) clauseEditor.classList.toggle("hidden", official);
+ if (!official) {
+ customFieldsBox?.classList.remove("hidden");
+ return;
+ }
+ customFieldsBox?.classList.add("hidden");
+
+ const schema = officialFieldSchema(type);
+ const defaults = officialFieldDefaults(type, selectedEmployee(), session);
+
+ if (!officialInputs) return;
+ officialInputs.innerHTML = schema.map(field => {
+ const raw = customFieldsValues[field.key];
+ const value = (raw !== undefined && raw !== null && String(raw).trim() !== "")
+ ? String(raw)
+ : String(defaults[field.key] || "");
+ const full = field.full ? " md:col-span-2" : "";
+ let control = "";
+ if (field.type === "textarea") {
+ control = `<textarea data-official-key="${escapeHtml(field.key)}" rows="3" placeholder="${escapeHtml(field.placeholder || "")}" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-emerald-200 outline-none focus:border-emerald-500 bg-white">${escapeHtml(value)}</textarea>`;
+ } else if (field.type === "select") {
+ control = `<select data-official-key="${escapeHtml(field.key)}" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-emerald-200 outline-none focus:border-emerald-500 bg-white font-semibold">
+ <option value="">-- Pilih --</option>
+ ${(field.options || []).map(opt => `<option value="${escapeHtml(opt)}" ${String(value).toUpperCase() === String(opt).toUpperCase() ? "selected" : ""}>${escapeHtml(opt)}</option>`).join("")}
+ </select>`;
+ } else {
+ control = `<input type="${field.type === "date" ? "date" : "text"}" data-official-key="${escapeHtml(field.key)}" value="${escapeHtml(value)}" placeholder="${escapeHtml(field.placeholder || "")}" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-emerald-200 outline-none focus:border-emerald-500 bg-white">`;
+ }
+ return `<div class="${full.trim()}">
+ <label class="block text-[10px] font-bold text-emerald-900 mb-0.5">${escapeHtml(field.label)}</label>
+ ${control}
+ </div>`;
+ }).join("");
+
+ officialInputs.querySelectorAll("[data-official-key]").forEach(el => {
+ const key = el.dataset.officialKey;
+ const sync = () => {
+ customFieldsValues[key] = el.value;
+ if (key === "GAJI_POKOK" && gajiInput) gajiInput.value = el.value;
+ };
+ el.oninput = sync;
+ el.onchange = sync;
+ });
+ }
+
+ function applyEmployeeDefaults(emp) {
+ if (!emp) return;
+ customFieldsValues["NAMA_KARYAWAN"] = emp.nama_karyawan || emp.nama || "";
+ customFieldsValues["NIK"] = emp.nik_karyawan || emp.nik || "";
+ customFieldsValues["JABATAN"] = emp.jabatan || "";
+ customFieldsValues["DIVISI"] = emp.divisi || "";
+ customFieldsValues["CABANG"] = emp.cabang_penempatan || emp.cabang || "";
+ customFieldsValues["ALAMAT"] = emp.alamat || emp.alamat_domisili || "";
+ customFieldsValues["NO_KTP"] = ktpValue(emp);
+ customFieldsValues["NO_REKENING"] = emp.no_rekening || emp.rekening || "";
+
+ if (isOfficialDocType(typeSelect.value)) {
+ const defaults = officialFieldDefaults(typeSelect.value, emp, session);
+ Object.entries(defaults).forEach(([key, value]) => {
+ if (key === "GAJI_POKOK") return;
+ customFieldsValues[key] = value;
+ });
+ if (typeSelect.value.startsWith("SP_")) {
+ customFieldsValues["PELANGGARAN"] = "";
+ customFieldsValues["DAMPAK"] = "";
+ }
+ }
+
+ const gajiVal = emp.gaji_pokok
+ ? "Rp " + (Number(String(emp.gaji_pokok).replace(/[^\d]/g, "")) || 0).toLocaleString("id-ID")
+ : (customFieldsValues["GAJI_POKOK"] || "");
+ if (gajiInput) gajiInput.value = gajiVal;
+ if (gajiVal) customFieldsValues["GAJI_POKOK"] = gajiVal;
+ renderOfficialFields();
+ }
 
  function detectCustomPlaceholdersInClauses() {
  let allKeys = [];
  const currentType = typeSelect.value;
+
+ // Template resmi memakai panel detail sendiri (bukan placeholder klausul).
+ if (isOfficialDocType(currentType)) {
+ customFieldsBox?.classList.add("hidden");
+ renderOfficialFields();
+ return;
+ }
 
  // If GDoc template selected, include its registered placeholders
  if (currentType.startsWith("GDOC_")) {
@@ -912,6 +1063,7 @@ async function openDocEditorModal(existingData, session, onDone) {
  customFieldsInputs.querySelectorAll("[data-custom-key]").forEach(input => {
  input.oninput = () => {
  customFieldsValues[input.dataset.customKey] = input.value;
+ if (input.dataset.customKey === "GAJI_POKOK" && gajiInput) gajiInput.value = input.value;
  };
  });
  }
@@ -999,19 +1151,7 @@ async function openDocEditorModal(existingData, session, onDone) {
  const nikVal = targetSelect.value;
  const targetKaryawan = activeKaryawan.find(k => (k.nik_karyawan || k.nik) === nikVal);
  if (targetKaryawan) {
- customFieldsValues["NAMA_KARYAWAN"] = targetKaryawan.nama_karyawan || targetKaryawan.nama || "";
- customFieldsValues["NIK"] = targetKaryawan.nik_karyawan || targetKaryawan.nik || "";
- customFieldsValues["JABATAN"] = targetKaryawan.jabatan || "";
- customFieldsValues["DIVISI"] = targetKaryawan.divisi || "";
- customFieldsValues["CABANG"] = targetKaryawan.cabang_penempatan || targetKaryawan.cabang || "";
- customFieldsValues["ALAMAT"] = targetKaryawan.alamat || targetKaryawan.alamat_domisili || "";
- customFieldsValues["NO_KTP"] = targetKaryawan.no_ktp || targetKaryawan.nik_ktp || "";
- customFieldsValues["NO_REKENING"] = targetKaryawan.no_rekening || targetKaryawan.rekening || "";
- if (targetKaryawan.gaji_pokok) {
- customFieldsValues["GAJI_POKOK"] = "Rp " + (Number(targetKaryawan.gaji_pokok) || 0).toLocaleString("id-ID");
- const extraNote = m.querySelector("#doc-extra-note");
- if (extraNote && !extraNote.value) extraNote.value = customFieldsValues["GAJI_POKOK"];
- }
+ applyEmployeeDefaults(targetKaryawan);
  detectCustomPlaceholdersInClauses();
  toast(`Data karyawan ${targetKaryawan.nama_karyawan || targetKaryawan.nama} otomatis diisikan ke kolom placeholder!`, "info");
  }
@@ -1019,6 +1159,18 @@ async function openDocEditorModal(existingData, session, onDone) {
 
  typeSelect.onchange = () => {
  const val = typeSelect.value;
+
+ if (isOfficialDocType(val)) {
+ titleInput.value = officialDocTitle(val);
+ ensureOfficialDates(val);
+ const emp = selectedEmployee();
+ if (emp) applyEmployeeDefaults(emp);
+ renderClausesUI();
+ detectCustomPlaceholdersInClauses();
+ renderOfficialFields();
+ return;
+ }
+
  if (val.startsWith("GDOC_")) {
  const gdocId = val.replace("GDOC_", "");
  const foundGDoc = gdocTemplatesList.find(x => x.id === gdocId);
@@ -1065,6 +1217,7 @@ async function openDocEditorModal(existingData, session, onDone) {
  else if (val === "SURAT_TUGAS") titleInput.value = "SURAT PENUGASAN DINAS RESMI";
  renderClausesUI();
  }
+ renderOfficialFields();
  };
 
  m.querySelector("#btn-reset-clauses").onclick = () => {
@@ -1096,7 +1249,13 @@ async function openDocEditorModal(existingData, session, onDone) {
  });
  };
 
+ if (gajiInput) {
+ gajiInput.oninput = () => { customFieldsValues["GAJI_POKOK"] = gajiInput.value; };
+ }
+
+ ensureOfficialDates(typeSelect.value);
  renderClausesUI();
+ renderOfficialFields();
 
  m.querySelector("#btn-doc-cancel").onclick = closeModal;
 
@@ -1115,9 +1274,12 @@ async function openDocEditorModal(existingData, session, onDone) {
  const tglMulai = m.querySelector("#doc-date-start").value;
  const tglSelesai = m.querySelector("#doc-date-end").value;
  const extraNote = m.querySelector("#doc-extra-note").value.trim();
+ const gajiPokok = m.querySelector("#doc-gaji-pokok").value.trim();
+ const finalGaji = gajiPokok || customFieldsValues["GAJI_POKOK"] || existingData?.gaji_pokok || "";
 
  let tipeKat = "KONTRAK";
- if (templateType.startsWith("SP")) tipeKat = "SP";
+ if (isOfficialDocType(templateType)) tipeKat = officialDocCategory(templateType);
+ else if (templateType.startsWith("SP")) tipeKat = "SP";
  else if (templateType === "PEMANGGILAN") tipeKat = "PEMANGGILAN";
  else if (templateType === "KETERANGAN_KERJA") tipeKat = "KETERANGAN";
  else if (templateType === "SURAT_TUGAS") tipeKat = "PENUGASAN";
@@ -1134,9 +1296,17 @@ async function openDocEditorModal(existingData, session, onDone) {
 
  const docId = existingData?.id || genId("DOCDRAFT");
 
- const isContractDoc = templateType.startsWith("KONTRAK");
+ const isContractDoc = templateType.startsWith("KONTRAK") || tipeKat === "KONTRAK";
  const isDisciplineDoc = templateType.startsWith("SP") || ["PEMANGGILAN", "SURAT_TUGAS"].includes(templateType);
  const isCustomDoc = templateType === "NEW_CUSTOM" || templateType.startsWith("CUST_") || templateType.startsWith("GDOC_");
+ const officialDefaults = isOfficialDocType(templateType)
+ ? officialFieldDefaults(templateType, targetKaryawanData, session)
+ : {};
+ const savedCustomFields = {
+ ...officialDefaults,
+ ...customFieldsValues,
+ GAJI_POKOK: finalGaji
+ };
 
  const payload = {
  id: docId,
@@ -1147,18 +1317,18 @@ async function openDocEditorModal(existingData, session, onDone) {
  tanggal_surat: tglSurat,
  tanggal_mulai: tglMulai,
  tanggal_selesai: tglSelesai,
- alasan_sp: (isDisciplineDoc || isCustomDoc || !isContractDoc) ? extraNote : (existingData?.alasan_sp || ""),
- gaji_pokok: (isContractDoc || isCustomDoc) ? extraNote : (existingData?.gaji_pokok || ""),
+ alasan_sp: (isDisciplineDoc || isCustomDoc || !isContractDoc) ? extraNote : (extraNote || existingData?.alasan_sp || ""),
+ gaji_pokok: finalGaji,
  catatan_tambahan: extraNote,
  nik_karyawan: targetNik,
  nama_karyawan: targetKaryawanData.nama_karyawan || targetKaryawanData.nama,
  jabatan: targetKaryawanData.jabatan || "-",
  divisi: targetKaryawanData.divisi || "-",
- cabang: targetKaryawanData.cabang || "-",
+ cabang: targetKaryawanData.cabang_penempatan || targetKaryawanData.cabang || "-",
  alamat: targetKaryawanData.alamat || targetKaryawanData.alamat_domisili || "-",
- no_ktp: targetKaryawanData.no_ktp || targetKaryawanData.nik || "-",
+ no_ktp: ktpValue(targetKaryawanData) || "-",
  no_rekening: targetKaryawanData.no_rekening || "-",
- custom_fields: customFieldsValues,
+ custom_fields: savedCustomFields,
  klausul: clauses,
  status: isPublish ? "PUBLISHED" : (existingData?.status || "DRAFT"),
  updated_at: new Date().toISOString(),
@@ -1493,6 +1663,13 @@ function buildHrdDocumentContent(docData) {
  const replaceVars = buildDocVarReplacer(docData);
  const type = String(docData.template_type || "").toUpperCase();
  const category = String(docData.tipe_kategori || "").toUpperCase();
+
+ // Template resmi HRD memakai builder khusus agar format baku (PKWT, SK,
+ // adendum, komitmen, PKWTT, dan SP) tetap konsisten di preview/cetak/Word.
+ if (isOfficialDocType(type)) {
+ const officialHtml = buildOfficialDocument(docData);
+ if (officialHtml) return officialHtml;
+ }
 
  const isKontrak = type.startsWith("KONTRAK") || category === "KONTRAK";
  const isSP = type.startsWith("SP_") || category === "SP";

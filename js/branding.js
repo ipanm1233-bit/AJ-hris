@@ -114,6 +114,49 @@ export function officialDocStyles({ forWord = false } = {}) {
   .aj-doc .aj-sign-name { display: inline-block; min-width: 170px; font-weight: 700; text-decoration: underline; }
   .aj-doc .aj-sign-sub { margin-top: 2px; font-size: 9pt; color: #222222; }
   .aj-doc .aj-sign-verified { margin-top: 2px; font-family: Arial, Helvetica, sans-serif; font-size: 7.5pt; color: #166534; }
+  .aj-doc .doc-title-official { margin-bottom: 14px; }
+  .aj-doc .doc-title-official h1 { text-decoration: underline; }
+  .aj-doc .doc-company-line { margin-top: 6px; font-size: 12pt; font-weight: 700; letter-spacing: 0.3px; }
+  .aj-doc .doc-paragraph { margin: 0 0 7pt 0; }
+  .aj-doc .doc-closing { margin-top: 12px; }
+  .aj-doc .doc-list { margin: 0 0 8pt 20px; padding: 0; }
+  .aj-doc .doc-list li { margin: 0 0 3px 0; text-align: justify; }
+  .aj-doc .doc-list-party > li { margin-bottom: 6px; }
+  .aj-doc .doc-identity-block,
+  .aj-doc .doc-meta { width: auto; margin: 2px 0 10px 14px; border-collapse: collapse; font-size: 10.5pt; page-break-inside: avoid; }
+  .aj-doc .doc-identity-block td,
+  .aj-doc .doc-meta td { padding: 1.5px 0; vertical-align: top; }
+  .aj-doc .doc-identity-block .lbl,
+  .aj-doc .doc-meta .lbl { width: 150px; }
+  .aj-doc .doc-identity-block .sep,
+  .aj-doc .doc-meta .sep { width: 14px; }
+  .aj-doc .doc-identity-block .val { font-weight: 600; }
+  .aj-doc .doc-pasal { margin: 0 0 9px 0; }
+  .aj-doc .doc-pasal-title { margin: 12px 0 1px 0; text-align: center; font-size: 11pt; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase; page-break-after: avoid; }
+  .aj-doc .doc-pasal-sub { margin: 0 0 4px 0; text-align: center; font-size: 11pt; font-weight: 700; text-decoration: underline; text-transform: uppercase; page-break-after: avoid; }
+  .aj-doc .doc-section { margin: 0 0 9px 0; page-break-inside: avoid; }
+  .aj-doc .doc-section h2 { margin: 10px 0 3px 0; font-size: 11pt; font-weight: 700; text-transform: uppercase; page-break-after: avoid; }
+  .aj-doc .doc-consideration { width: 100%; margin: 8px 0 10px 0; border-collapse: collapse; font-size: 10.5pt; page-break-inside: avoid; }
+  .aj-doc .doc-consideration td { padding: 1.5px 0; vertical-align: top; }
+  .aj-doc .doc-consideration .label { width: 118px; }
+  .aj-doc .doc-consideration .sep { width: 14px; }
+  .aj-doc .doc-consideration div { margin-bottom: 2px; text-align: justify; }
+  .aj-doc .doc-memutuskan { margin: 16px 0 10px 0; text-align: center; font-size: 12pt; font-weight: 700; letter-spacing: 1px; text-decoration: underline; }
+  .aj-doc .doc-sign-role { font-weight: 700; }
+  .aj-doc .doc-sign-space { height: 62px; }
+  .aj-doc .doc-sign-name { font-weight: 700; text-decoration: underline; }
+  .aj-doc .doc-sign-sub { margin-top: 2px; font-size: 9pt; }
+  .aj-doc .doc-signature-2 { width: 100%; margin-top: 20px; border-collapse: collapse; font-size: 10.5pt; page-break-inside: avoid; }
+  .aj-doc .doc-signature-2 td { width: 50%; padding: 0 8px; vertical-align: top; text-align: center; }
+  .aj-doc .doc-signature-3 { width: 100%; margin-top: 8px; border-collapse: collapse; font-size: 10pt; page-break-inside: avoid; }
+  .aj-doc .doc-signature-3 td { width: 33.33%; padding: 0 6px; vertical-align: top; text-align: center; }
+  .aj-doc .doc-signature-one { width: 46%; margin: 18px 0 0 auto; text-align: center; page-break-inside: avoid; }
+  .aj-doc .doc-signature-left { margin-left: 0; margin-right: auto; }
+  .aj-doc .doc-sign-place { margin-bottom: 4px; }
+  .aj-doc .doc-sp-date { margin-top: 16px; text-align: right; }
+  .aj-doc .doc-sk-place { margin-top: 16px; margin-left: 58%; line-height: 1.5; }
+  .aj-doc.doc-official .aj-footer { display: none; }
+  .aj-doc .doc-paragraph, .aj-doc .doc-list li { orphans: 2; widows: 2; }
   .aj-doc .aj-footer {
     margin-top: 24px;
     padding-top: 5px;
