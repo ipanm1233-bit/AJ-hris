@@ -1011,7 +1011,8 @@ function openSignaturePadModal(docId, docJudul, session, onSignedDone) {
  hrd.username,
  `Dokumen Disahkan: ${session.nama}`,
  `Karyawan ${session.nama} (${session.nik || '-'}) telah menandatangani dokumen secara digital. Silakan cek repositori dokumen HRD.`,
- "#dokumen"
+ "#dokumen",
+ { manual: true }
  );
  }
  }

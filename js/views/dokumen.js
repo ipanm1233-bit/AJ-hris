@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, doc, getDoc, setDoc, updateDoc } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, genId, openModal, closeModal, toast, fmtDate, fmtDateShort, escapeHtml, notifyUser } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, genId, openModal, closeModal, toast, fmtDate, fmtDateShort, escapeHtml, notifyUser, sendEmailNotif, buildStandardEmailHtml, resolveEmployeeEmail } from "../utils.js";
 import { badge, emptyState } from "../components.js";
 import { getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 import { letterheadHtml, officialDocStyles, officialPrintHtml, COMPANY_NAME, COMPANY_ADDRESS_LINE1 } from "../branding.js";
@@ -1354,19 +1354,26 @@ async function openDocEditorModal(existingData, session, onDone) {
  file_url: "#"
  }, docId);
 
- const userList = await fsGetAll(COL.USERS).catch(() => []);
- const targetUser = userList.find(u => u.nik === targetNik || u.nama === (targetKaryawanData.nama_karyawan || targetKaryawanData.nama));
- if (targetUser) {
- await notifyUser(
- targetUser.username,
- ` [Dokumen HRD Baru] ${judul}`,
- `HRD telah menerbitkan ${judul} (${nomorSurat}) untuk Anda. Buka profil Anda untuk membaca & menandatangani secara digital.`,
- `#profile?tab=documents&doc_id=${docId}`
- );
- }
- }
+ const delivery = await deliverDocumentRelease({
+  docId,
+  judul,
+  nomorSurat,
+  nik: targetNik,
+  nama: targetKaryawanData.nama_karyawan || targetKaryawanData.nama,
+  tanggal: tglSurat,
+  session
+ });
 
- toast(`Draft dokumen berhasil ${isPublish ? 'dirilis ke karyawan' : 'disimpan'}!`, "success");
+ if (delivery.emailSent) {
+  toast("Dokumen berhasil dirilis & email notifikasi terkirim ke karyawan!", "success");
+ } else if (!delivery.targetEmail) {
+  toast("Dokumen berhasil dirilis, tetapi email karyawan belum diisi. Notifikasi in-app tetap dikirim.", "warning");
+ } else {
+  toast("Dokumen berhasil dirilis, tetapi email gagal dikirim. Periksa konfigurasi email server.", "warning");
+ }
+ } else {
+ toast("Draft dokumen berhasil disimpan!", "success");
+ }
  closeModal();
  if (onDone) onDone();
  } catch (e) {
@@ -2218,6 +2225,71 @@ async function openGDocTemplateModal(session) {
  });
 }
 
+/**
+ * Kirim notifikasi rilis dokumen ke karyawan melalui lonceng in-app/push
+ * dan email. Alamat email dicari dari data dokumen lalu fallback ke
+ * Master Karyawan/Users agar dokumen lama yang belum menyimpan email tetap
+ * dapat dikirim.
+ */
+async function deliverDocumentRelease({ docId, judul, nomorSurat, nik, nama, tanggal, session }) {
+ const safeDocId = String(docId || "").trim();
+ const safeJudul = String(judul || "Dokumen HRD").trim();
+ const safeNomor = String(nomorSurat || "-").trim();
+ const safeNama = String(nama || "Karyawan").trim();
+ const actionUrl = `${window.location.origin}/#profile?tab=documents&doc_id=${encodeURIComponent(safeDocId)}`;
+ const targetEmail = await resolveEmployeeEmail(
+  { nik_karyawan: nik, nama_karyawan: safeNama },
+  { nik, nama: safeNama }
+ );
+
+ let inAppSent = false;
+ try {
+  inAppSent = await notifyUser(
+   nik || safeNama,
+   `[Dokumen HRD Baru] ${safeJudul}`,
+   `HRD telah menerbitkan ${safeJudul} (${safeNomor}) untuk Anda. Buka profil Anda untuk membaca & menandatangani secara digital.`,
+   `#profile?tab=documents&doc_id=${encodeURIComponent(safeDocId)}`,
+   { manual: true, sendEmail: false }
+  );
+ } catch (error) {
+  console.warn("Notifikasi in-app rilis dokumen gagal:", error);
+ }
+
+ let emailSent = false;
+ if (targetEmail) {
+  const emailBody = buildStandardEmailHtml({
+   badgeText: "Dokumen Resmi HRD",
+   badgeVariant: "maroon",
+   title: `Dokumen HRD: ${safeJudul}`,
+   recipientName: safeNama,
+   introText: `HRD <strong>CV Andela Jaya</strong> telah menerbitkan dokumen resmi untuk Anda${session?.nama ? ` melalui <strong>${escapeHtml(session.nama)}</strong>` : ""}. Mohon buka portal HRIS untuk membaca dan menandatangani dokumen secara digital.`,
+   infoList: [
+    { label: "Jenis Dokumen", value: safeJudul },
+    { label: "Nomor Dokumen", value: safeNomor },
+    { label: "Tanggal Dokumen", value: fmtDateShort(tanggal) || "-" },
+    { label: "Nama Karyawan", value: safeNama }
+   ],
+   actionUrl,
+   actionText: "Buka & Tandatangani Dokumen →",
+   secondaryNote: "Dokumen ini memerlukan konfirmasi dan tanda tangan digital Anda melalui aplikasi HRIS."
+  });
+  try {
+   emailSent = await sendEmailNotif(
+    targetEmail,
+    `[Dokumen HRD] ${safeJudul} (${safeNomor})`.slice(0, 180),
+    emailBody,
+    "",
+    null,
+    { manual: true }
+   );
+  } catch (error) {
+   console.warn("Email rilis dokumen gagal:", error);
+  }
+ }
+
+ return { targetEmail, inAppSent, emailSent };
+}
+
 async function publishAndSendToEmployee(docData, session, onDone) {
  if (!confirm(`Apakah Anda yakin ingin merilis dokumen "${docData.judul}" dan mengirimkannya ke karyawan ${docData.nama_karyawan}?`)) return;
 
@@ -2237,18 +2309,23 @@ async function publishAndSendToEmployee(docData, session, onDone) {
  file_url: "#"
  }, docData.id);
 
- const userList = await fsGetAll(COL.USERS).catch(() => []);
- const targetUser = userList.find(u => u.nik === docData.nik_karyawan || u.nama === docData.nama_karyawan);
- if (targetUser) {
- await notifyUser(
- targetUser.username,
- ` [Dokumen HRD Baru] ${docData.judul}`,
- `HRD telah menerbitkan ${docData.judul} (${docData.nomor_surat}) untuk Anda. Buka profil Anda untuk membaca & menandatangani secara digital.`,
- `#profile?tab=documents&doc_id=${docData.id}`
- );
- }
+ const delivery = await deliverDocumentRelease({
+  docId: docData.id,
+  judul: docData.judul,
+  nomorSurat: docData.nomor_surat,
+  nik: docData.nik_karyawan,
+  nama: docData.nama_karyawan,
+  tanggal: docData.tanggal_surat,
+  session
+ });
 
- toast("Dokumen berhasil dirilis & notifikasi terkirim ke karyawan!", "success");
+ if (delivery.emailSent) {
+  toast("Dokumen berhasil dirilis & email notifikasi terkirim ke karyawan!", "success");
+ } else if (!delivery.targetEmail) {
+  toast("Dokumen berhasil dirilis, tetapi email karyawan belum diisi. Notifikasi in-app tetap dikirim.", "warning");
+ } else {
+  toast("Dokumen berhasil dirilis, tetapi email gagal dikirim. Periksa konfigurasi email server.", "warning");
+ }
  if (onDone) onDone();
  } catch (e) {
  toast("Gagal merilis dokumen: " + e.message, "error");

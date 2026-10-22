@@ -1,5 +1,5 @@
 import { COL, db, updateDoc, doc } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, toast, genId, fmtRupiah, fmtDateShort, smartParseDate, sendEmailNotif, buildStandardEmailHtml, openModal, closeModal } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, toast, genId, fmtRupiah, fmtDateShort, smartParseDate, sendEmailNotif, buildStandardEmailHtml, openModal, closeModal, resolveEmployeeEmail } from "../utils.js";
 import { renderCrudModule, icon } from "../components.js";
 import { getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 import { isoDocHeaderTable } from "../branding.js";
@@ -1565,20 +1565,21 @@ if (btnKalkulasi) {
  btnSimpan.textContent = "Menyimpan ke Database...";
 
  try {
- let targetEmail = null;
+ let targetEmail = "";
 
  if (payloadLog.new_employee_data) {
  const newId = genId("KRY");
  await fsAdd(COL.MASTER_KARYAWAN, payloadLog.new_employee_data, newId);
  payloadLog.id_karyawan = newId;
- targetEmail = payloadLog.new_employee_data.email;
  } else if (payloadLog.update_master) {
  await updateDoc(doc(db, COL.MASTER_KARYAWAN, payloadLog.id_karyawan), payloadLog.update_master);
  if (currentSelectedKaryawan) Object.assign(currentSelectedKaryawan, payloadLog.update_master);
- targetEmail = currentSelectedKaryawan ? currentSelectedKaryawan.email : null;
- } else if (currentSelectedKaryawan) {
- targetEmail = currentSelectedKaryawan.email;
  }
+
+ targetEmail = await resolveEmployeeEmail(
+  payloadLog.new_employee_data || currentSelectedKaryawan || {},
+  { nik_karyawan: payloadLog.id_karyawan, nama_karyawan: payloadLog.nama_karyawan }
+ );
 
     if (jenis === "Offboarding" && payloadLog.detail_offboarding?.assigned_assets?.length) {
       const newOwner = payloadLog.detail_offboarding.karyawan_pengganti || "Unassigned";
@@ -1615,6 +1616,7 @@ if (btnKalkulasi) {
 
  await fsAdd(COL.SIKLUS_KARYAWAN, payloadLog, genId("SKL"));
 
+ let emailSent = false;
  if (targetEmail) {
  btnSimpan.textContent = "Mengirim Email Notifikasi...";
 
@@ -1680,13 +1682,20 @@ if (btnKalkulasi) {
  }
 
  if (emailSubject) {
- sendEmailNotif(targetEmail, emailSubject, emailBody).catch(e => console.warn("Gagal kirim email siklus karyawan:", e));
+ emailSent = await sendEmailNotif(targetEmail, emailSubject, emailBody, "", null, { manual: true });
+ if (!emailSent) console.warn("Email siklus karyawan gagal dikirim ke:", targetEmail);
  }
  } else {
  console.warn("Email siklus karyawan tidak terkirim: karyawan tidak memiliki alamat email.");
  }
 
- toast(`Siklus ${jenis} berhasil direkam${targetEmail ? " & email notifikasi terkirim" : ""}!`, "success");
+ if (emailSent) {
+ toast(`Siklus ${jenis} berhasil direkam & email notifikasi terkirim!`, "success");
+ } else if (targetEmail) {
+ toast(`Siklus ${jenis} berhasil direkam, tetapi email gagal dikirim. Periksa konfigurasi email server.`, "warning");
+ } else {
+ toast(`Siklus ${jenis} berhasil direkam. Email belum dikirim karena alamat email karyawan belum diisi.`, "warning");
+ }
 
  if (payloadLog.new_employee_data) {
  const added = { id: payloadLog.id_karyawan, ...payloadLog.new_employee_data };

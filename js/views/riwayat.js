@@ -183,7 +183,7 @@ function openLpjModal(row, session, onDone) {
    actionText: "Buka Menu Approval / Riwayat →",
    secondaryNote: "Silakan periksa lampiran bukti pengeluaran fisik dan laporan terkait di sistem HRIS."
  });
- sendEmailNotif(target.email, `[LPJ Masuk] ${row.nama_form} — ${session.nama}`, lpjEmailBody).catch(e => console.warn(e));
+ sendEmailNotif(target.email, `[LPJ Masuk] ${row.nama_form} — ${session.nama}`, lpjEmailBody, "", null, { manual: true }).catch(e => console.warn(e));
  }
  } catch (e) {
  toast(e.message || "Gagal mengirim LPJ", "error");

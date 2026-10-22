@@ -21,8 +21,10 @@ function getTransporter() {
 
 async function isKnownRecipient(db, email) {
   const collectionsAndFields = [
-    ['auth_profiles', 'email'], ['users', 'email'],
-    ['master_karyawan', 'email'], ['master_karyawan', 'email_perusahaan']
+    ['auth_profiles', 'email'], ['users', 'email'], ['users', 'email_karyawan'], ['users', 'email_perusahaan'],
+    ['master_karyawan', 'email'], ['master_karyawan', 'email_karyawan'],
+    ['master_karyawan', 'email_perusahaan'], ['master_karyawan', 'email_pribadi'],
+    ['master_karyawan', 'email_personal'], ['master_karyawan', 'email_aktif']
   ];
   for (const [collectionName, field] of collectionsAndFields) {
     const snap = await db.collection(collectionName).where(field, '==', email).limit(1).get();

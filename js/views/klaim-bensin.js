@@ -614,7 +614,7 @@ export async function mount(container, { session }) {
    secondaryNote: "Tautan ini aman dan memungkinkan Anda menyetujui langsung tanpa mengetik ulang kata sandi."
  });
  
- sendEmailNotif(target.email, `Persetujuan Dibutuhkan: ${payload.nama_form}`, htmlEmail).catch(e => console.warn("Email warning:", e));
+ sendEmailNotif(target.email, `Persetujuan Dibutuhkan: ${payload.nama_form}`, htmlEmail, "", null, { manual: true }).catch(e => console.warn("Email warning:", e));
  }
  } catch (emailErr) {
  console.warn("Gagal mengirim/meresolve email atasan:", emailErr);

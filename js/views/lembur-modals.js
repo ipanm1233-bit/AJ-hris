@@ -74,6 +74,7 @@ export async function sendSppklAssignmentNotifications(orderPayload, allKaryawan
       const pesanNotif = `Anda ditugaskan lembur pada ${tglStr} (${jamMulai} - ${jamSelesai}) oleh ${userNama}. Klik untuk konfirmasi persetujuan.`;
       
       await notifyUser(targetUsername || empNik || empNama, judulNotif, pesanNotif, `#${routeHash}`, {
+        manual: true,
         sendEmail: false
       });
 
@@ -103,7 +104,7 @@ export async function sendSppklAssignmentNotifications(orderPayload, allKaryawan
           secondaryNote: "Tombol di atas dilengkapi token login aman sekali pakai (berlaku 24 jam). Anda akan langsung masuk ke sistem secara otomatis tanpa perlu mengetikkan password."
         });
 
-        await sendEmailNotif(targetEmail, `[SPPKL] Penugasan Lembur: ${sppklNum} - ${tglStr} (${empNama})`, emailHtml);
+        await sendEmailNotif(targetEmail, `[SPPKL] Penugasan Lembur: ${sppklNum} - ${tglStr} (${empNama})`, emailHtml, "", null, { manual: true });
       }
     } catch (err) {
       console.warn(`Gagal mengirim email lembur ke ${emp.nama}:`, err);

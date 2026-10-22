@@ -326,15 +326,26 @@ export async function renderCrudModule(container, cfg) {
  function fieldInput(f, value = "") {
  const val = value === undefined || value === null ? "" : value;
  const base = "w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-maroon-400 focus:ring-2 focus:ring-maroon-100 outline-none transition";
- if (f.type === "textarea") return `<textarea name="${f.name}" rows="3" class="${base}" ${f.required ? "required" : ""}>${escapeHtml(val)}</textarea>`;
- if (f.type === "select") return `<select name="${f.name}" class="${base}" ${f.required ? "required" : ""}>
+ const attrs = [
+  f.required ? "required" : "",
+  f.placeholder ? `placeholder="${escapeHtml(f.placeholder)}"` : "",
+  f.pattern ? `pattern="${escapeHtml(f.pattern)}"` : "",
+  f.title ? `title="${escapeHtml(f.title)}"` : "",
+  f.minLength ? `minlength="${Number(f.minLength)}"` : "",
+  f.maxLength ? `maxlength="${Number(f.maxLength)}"` : "",
+  f.inputMode ? `inputmode="${escapeHtml(f.inputMode)}"` : "",
+  f.autocomplete ? `autocomplete="${escapeHtml(f.autocomplete)}"` : ""
+ ].filter(Boolean).join(" ");
+ if (f.type === "textarea") return `<textarea name="${f.name}" rows="3" class="${base}" ${attrs}>${escapeHtml(val)}</textarea>`;
+ if (f.type === "select") return `<select name="${f.name}" class="${base}" ${attrs}>
  <option value="">Pilih ${f.label}</option>
  ${(f.options || []).map(o => `<option value="${escapeHtml(o)}" ${String(o).trim() === String(val).trim() ? "selected" : ""}>${escapeHtml(o)}</option>`).join("")}
  </select>`;
  if (f.type === "datalist" || f.type === "combobox") {
  const listId = `dl-${f.name}-${Math.random().toString(36).substring(2, 7)}`;
+ const datalistAttrs = f.placeholder ? attrs : `${attrs} placeholder="Pilih / ketik ${escapeHtml(f.label)}"`;
  return `
- <input type="text" name="${f.name}" list="${listId}" value="${escapeHtml(val)}" placeholder="Pilih / ketik ${f.label}" class="${base}" ${f.required ? "required" : ""}>
+ <input type="text" name="${f.name}" list="${listId}" value="${escapeHtml(val)}" class="${base}" ${datalistAttrs}>
  <datalist id="${listId}">
  ${(f.options || []).map(o => `<option value="${escapeHtml(o)}"></option>`).join("")}
  </datalist>`;
@@ -342,9 +353,10 @@ export async function renderCrudModule(container, cfg) {
  if (f.type === "date") {
  let dv = "";
  if (val) { const dv2 = localDateStr(val); if (dv2) dv = dv2; }
- return `<input type="date" name="${f.name}" value="${dv}" class="${base}" ${f.required ? "required" : ""}>`;
+ return `<input type="date" name="${f.name}" value="${dv}" class="${base}" ${attrs}>`;
  }
- return `<input type="${f.type === "number" ? "number" : "text"}" name="${f.name}" value="${escapeHtml(val)}" class="${base}" ${f.required ? "required" : ""}>`;
+ const inputType = ["email", "tel", "url"].includes(f.type) ? f.type : (f.type === "number" ? "number" : "text");
+ return `<input type="${inputType}" name="${f.name}" value="${escapeHtml(val)}" class="${base}" ${attrs}>`;
  }
 
 	async function openForm(existing = null, prefill = null) {

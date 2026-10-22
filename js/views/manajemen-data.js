@@ -3,6 +3,7 @@ import { fsGetAll, fsUpdate, fsDelete, escapeHtml, toast, genId, notifyUser, ope
 import { renderCrudModule, badge, emptyState, icon, skeletonRows } from "../components.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 import { divisionOptionsFromSources } from "../division-options.mjs";
+import { normalizeEmail, isValidEmail } from "../employee-email.mjs";
 
 export async function mount(container) {
  const panels = {
@@ -23,10 +24,10 @@ export async function mount(container) {
  };
 
  const fields = [
- { name: "nik_karyawan", label: "NIK Karyawan", type: "text", required: true },
- { name: "nama_karyawan", label: "Nama Karyawan", type: "text", required: true },
+ { name: "nik_karyawan", label: "NIK Karyawan", type: "text", required: true, maxLength: 30, placeholder: "ID internal karyawan" },
+ { name: "nama_karyawan", label: "Nama Lengkap Karyawan", type: "text", required: true, maxLength: 120, placeholder: "Sesuai dokumen identitas" },
  { 
- name: "cabang", label: "Cabang", type: "datalist",
+ name: "cabang", label: "Cabang Penempatan", type: "datalist", required: true,
  getOptions: async () => {
  const emps = await fsGetAll(COL.MASTER_KARYAWAN);
  const defaults = ["HEAD OFFICE", "CABANG BANDUNG", "CABANG SURABAYA", "CABANG SEMARANG", "CABANG BALI", "WORKSHOP"];
@@ -44,29 +45,29 @@ export async function mount(container) {
  }
  },
  { 
- name: "divisi", label: "Divisi", type: "datalist",
+ name: "divisi", label: "Divisi / Unit Kerja", type: "datalist", required: true,
  getOptions: async () => {
  const emps = await fsGetAll(COL.MASTER_KARYAWAN);
  return divisionOptionsFromSources({ employees: emps });
  }
  },
- { name: "jenis_kelamin", label: "Jenis Kelamin", type: "select", options: ["LAKI-LAKI", "PEREMPUAN"] },
- { name: "nik_ktp", label: "NIK KTP", type: "text" },
- { name: "no_kk", label: "No Kartu Keluarga", type: "text" },
- { name: "npwp", label: "NPWP", type: "text" },
- { name: "bpjs_tk", label: "No BPJS TK", type: "text" },
- { name: "bpjs_kes", label: "No BPJS KES", type: "text" },
- { name: "status_karyawan", label: "Status Karyawan", type: "select", options: ["PKWTT (Karyawan Tetap)", "PKWT (Karyawan Kontrak)", "Probation (Masa Percobaan)", "Magang", "Buruh Harian", "Outsourcing", "Lainnya"] },
- { name: "tanggal_lahir", label: "Tanggal Lahir", type: "date" },
+ { name: "jenis_kelamin", label: "Jenis Kelamin", type: "select", options: ["LAKI-LAKI", "PEREMPUAN"], required: true },
+ { name: "nik_ktp", label: "NIK KTP (16 digit)", type: "text", pattern: "[0-9]{16}", maxLength: 16, inputMode: "numeric", placeholder: "16 digit sesuai e-KTP", title: "NIK KTP harus terdiri dari 16 digit angka." },
+ { name: "no_kk", label: "No. Kartu Keluarga (16 digit)", type: "text", pattern: "[0-9]{16}", maxLength: 16, inputMode: "numeric", placeholder: "16 digit nomor KK", title: "Nomor KK harus terdiri dari 16 digit angka." },
+ { name: "npwp", label: "NPWP", type: "text", inputMode: "numeric" },
+ { name: "bpjs_tk", label: "No. BPJS Ketenagakerjaan", type: "text", inputMode: "numeric" },
+ { name: "bpjs_kes", label: "No. BPJS Kesehatan", type: "text", inputMode: "numeric" },
+ { name: "status_karyawan", label: "Status Hubungan Kerja", type: "select", options: ["PKWTT (Karyawan Tetap)", "PKWT (Karyawan Kontrak)", "Probation (Masa Percobaan)", "Magang", "Buruh Harian", "Outsourcing", "Lainnya"], required: true },
+ { name: "tanggal_lahir", label: "Tanggal Lahir", type: "date", required: true },
  { name: "usia", label: "Usia (Tahun)", type: "number" },
- { name: "tanggal_join", label: "Tanggal Join", type: "date" },
- { name: "kontrak_habis", label: "Kontrak Habis", type: "date" },
+ { name: "tanggal_join", label: "Tanggal Bergabung (Join)", type: "date", required: true },
+ { name: "kontrak_habis", label: "Tanggal Kontrak Berakhir", type: "date" },
  { name: "masa_kerja", label: "Masa Kerja", type: "text" },
- { name: "pendidikan", label: "Pendidikan", type: "select", options: ["SMA/SMK", "D1", "D2", "D3", "S1", "S2", "S3", "SMP", "SD", "Lainnya"] },
+ { name: "pendidikan", label: "Pendidikan Terakhir", type: "select", options: ["SMA/SMK", "D1", "D2", "D3", "S1", "S2", "S3", "SMP", "SD", "Lainnya"] },
  { name: "agama", label: "Agama", type: "select", options: ["ISLAM", "KRISTEN", "KATHOLIK", "HINDU", "BUDDHA", "KHONGHUCU", "LAINNYA"] },
  { name: "golongan_darah", label: "Golongan Darah", type: "select", options: ["A", "B", "AB", "O", "-"] },
- { name: "no_hp_aktif", label: "No HP Aktif", type: "text" },
- { name: "email", label: "Email Aktif", type: "text" },
+ { name: "no_hp_aktif", label: "No. HP Aktif", type: "tel", inputMode: "tel", maxLength: 25, placeholder: "08xxxxxxxxxx" },
+ { name: "email", label: "Email Aktif (untuk notifikasi)", type: "email", required: true, maxLength: 120, autocomplete: "email", placeholder: "nama@perusahaan.com", title: "Alamat email aktif wajib diisi agar notifikasi HRIS dapat diterima." },
  { name: "atasan", label: "Nama Atasan Langsung", type: "datalist", getOptions: getEmpList },
  { name: "kontak_darurat_nama", label: "Nama Kontak Darurat", type: "text" },
  { name: "kontak_darurat_hp", label: "Kontak Darurat (No HP)", type: "text" },
@@ -83,9 +84,65 @@ export async function mount(container) {
  ];
  fields.idFromField = "nik_karyawan";
 
-  const beforeSaveEmp = (data) => {
-    if (data.nik_karyawan) data.nik = data.nik_karyawan;
-    if (data.nik && !data.nik_karyawan) data.nik_karyawan = data.nik;
+  const beforeSaveEmp = async (data, existing = null) => {
+    const trimText = (value) => String(value ?? "").trim();
+    const normalizeNik = (value) => trimText(value).replace(/\s+/g, "");
+
+    data.nik_karyawan = normalizeNik(data.nik_karyawan || data.nik);
+    data.nama_karyawan = trimText(data.nama_karyawan);
+    data.cabang = trimText(data.cabang);
+    data.jabatan = trimText(data.jabatan);
+    data.divisi = trimText(data.divisi);
+    data.status_karyawan = trimText(data.status_karyawan);
+    data.aktif_tdk_aktif = trimText(data.aktif_tdk_aktif || data["aktif/tidak_aktif"] || "AKTIF").toUpperCase();
+    data.email = normalizeEmail(data.email);
+    data.no_hp_aktif = trimText(data.no_hp_aktif).replace(/\s+/g, "");
+    data.nik_ktp = trimText(data.nik_ktp || data.no_ktp).replace(/\D/g, "");
+    data.no_kk = trimText(data.no_kk || data.no_kartu_keluarga).replace(/\D/g, "");
+
+    if (!data.nik_karyawan) throw new Error("NIK Karyawan wajib diisi.");
+    if (!data.nama_karyawan) throw new Error("Nama lengkap karyawan wajib diisi.");
+    if (!data.cabang) throw new Error("Cabang penempatan wajib diisi.");
+    if (!data.jabatan) throw new Error("Jabatan wajib diisi.");
+    if (!data.divisi) throw new Error("Divisi / unit kerja wajib diisi.");
+    if (!data.status_karyawan) throw new Error("Status hubungan kerja wajib diisi.");
+    if (!data.tanggal_join) throw new Error("Tanggal bergabung (join) wajib diisi.");
+    if (!data.tanggal_lahir) throw new Error("Tanggal lahir wajib diisi.");
+    if (data.aktif_tdk_aktif === "AKTIF" && !data.email) {
+      throw new Error("Email aktif wajib diisi untuk karyawan aktif agar notifikasi HRIS dapat dikirim.");
+    }
+    if (data.email && !isValidEmail(data.email)) {
+      throw new Error("Format email aktif tidak valid. Contoh: nama@perusahaan.com");
+    }
+    if (data.nik_ktp && !/^\d{16}$/.test(data.nik_ktp)) {
+      throw new Error("NIK KTP harus terdiri dari 16 digit angka.");
+    }
+    if (data.no_kk && !/^\d{16}$/.test(data.no_kk)) {
+      throw new Error("Nomor Kartu Keluarga harus terdiri dari 16 digit angka.");
+    }
+
+    const joinDate = data.tanggal_join ? new Date(data.tanggal_join) : null;
+    const contractEnd = data.kontrak_habis ? new Date(data.kontrak_habis) : null;
+    if (joinDate && !Number.isNaN(joinDate.getTime()) && contractEnd && !Number.isNaN(contractEnd.getTime()) && contractEnd < joinDate) {
+      throw new Error("Tanggal kontrak berakhir tidak boleh lebih awal dari tanggal bergabung.");
+    }
+
+    const existingId = String(existing?.id || "").trim();
+    const existingNik = String(existing?.nik_karyawan || existing?.nik || "").trim();
+    const duplicate = (await fsGetAll(COL.MASTER_KARYAWAN).catch(() => [])).find((employee) => {
+      const employeeId = String(employee.id || "").trim();
+      const employeeNik = String(employee.nik_karyawan || employee.nik || "").trim();
+      if (existingId && employeeId === existingId) return false;
+      if (existingNik && employeeNik === existingNik) return false;
+      const sameNik = data.nik_karyawan && employeeNik === data.nik_karyawan;
+      const sameKtp = data.nik_ktp && String(employee.nik_ktp || employee.no_ktp || "").replace(/\D/g, "") === data.nik_ktp;
+      return sameNik || sameKtp;
+    });
+    if (duplicate) {
+      throw new Error(`Data karyawan duplikat: NIK/NIK KTP sudah dipakai oleh ${duplicate.nama_karyawan || duplicate.nama || duplicate.id}.`);
+    }
+
+    data.nik = data.nik_karyawan;
     if (data.jatah_tahunan !== undefined) {
       data.jatah_tahunan = toNumber(data.jatah_tahunan);
       data.jatah_cuti_tahunan = data.jatah_tahunan;
@@ -112,8 +169,8 @@ export async function mount(container) {
       const tenure = calculateTenure(data.tanggal_join);
       if (tenure) data.masa_kerja = tenure;
     }
+    if (data.nik_ktp) data.no_ktp = data.nik_ktp;
     if (data.no_kk) data.no_kartu_keluarga = data.no_kk;
-    if (data.no_kartu_keluarga) data.no_kk = data.no_kartu_keluarga;
     if (data.bpjs_tk) data.no_bpjs_tk = data.bpjs_tk;
     if (data.no_bpjs_tk) data.bpjs_tk = data.no_bpjs_tk;
     if (data.bpjs_kes) data.no_bpjs_kes = data.bpjs_kes;
@@ -128,6 +185,8 @@ export async function mount(container) {
       data.aktif_tdk_aktif = data["aktif/tidak_aktif"];
     }
     delete data["aktif/tidak_aktif"];
+    data.updated_at = new Date().toISOString();
+    if (!existing) data.created_at = data.updated_at;
     return data;
   };
 
@@ -431,6 +490,10 @@ function downloadThisPdf() {
                   <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-amber-400/20 text-amber-200 border border-amber-400/30">
                     ${escapeHtml(empData.status_karyawan || "Karyawan")}
                   </span>
+                  ${empData.email ? "" : `
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-rose-500/20 text-rose-200 border border-rose-400/40">
+                    Email belum diisi
+                  </span>`}
                 </div>
                 <div class="flex items-center gap-3 text-xs text-slate-300 mt-1 flex-wrap">
                   <span>NIK: <b class="font-mono text-white">${escapeHtml(empData.nik_karyawan || empData.nik || "-")}</b></span>
@@ -567,8 +630,10 @@ function downloadThisPdf() {
                   <dd class="font-mono font-semibold text-slate-800 mt-0.5">${escapeHtml(empData.no_hp_aktif || "-")}</dd>
                 </div>
                 <div>
-                  <dt class="text-[10.5px] text-slate-400">Email Perusahaan / Aktif</dt>
-                  <dd class="text-slate-800 break-all mt-0.5">${escapeHtml(empData.email || "-")}</dd>
+                  <dt class="text-[10.5px] text-slate-400">Email Aktif (notifikasi HRIS)</dt>
+                  <dd class="text-slate-800 break-all mt-0.5">${empData.email
+                    ? `${escapeHtml(empData.email)} <span class="inline-flex ml-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Terhubung</span>`
+                    : `<span class="text-rose-600 font-semibold">Belum diisi — email tidak akan terkirim</span>`}</dd>
                 </div>
                 <div>
                   <dt class="text-[10.5px] text-slate-400">Status Pajak / PTKP</dt>
@@ -646,35 +711,49 @@ function downloadThisPdf() {
       const bal = getEmployeeLeaveBalance(empData);
       function renderInput(name, label, type, val, opts = {}, extra = {}) {
         const baseClass = "w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-800 focus:border-maroon-600 focus:ring-2 focus:ring-maroon-100 outline-none transition";
+        const attrs = [
+          extra.required ? "required" : "",
+          extra.readonly ? "readonly" : "",
+          extra.pattern ? `pattern="${escapeHtml(extra.pattern)}"` : "",
+          extra.title ? `title="${escapeHtml(extra.title)}"` : "",
+          extra.maxLength ? `maxlength="${Number(extra.maxLength)}"` : "",
+          extra.inputMode ? `inputmode="${escapeHtml(extra.inputMode)}"` : "",
+          extra.autocomplete ? `autocomplete="${escapeHtml(extra.autocomplete)}"` : "",
+          extra.step ? `step="${extra.step}"` : "",
+          extra.min ? `min="${extra.min}"` : "",
+          extra.max ? `max="${extra.max}"` : ""
+        ].filter(Boolean).join(" ");
         let inputHtml = "";
         if (type === "textarea") {
-          inputHtml = `<textarea name="${name}" rows="2" class="${baseClass}" placeholder="Ketik ${label}...">${escapeHtml(val ?? "")}</textarea>`;
+          inputHtml = `<textarea name="${name}" rows="2" class="${baseClass}" placeholder="${escapeHtml(extra.placeholder || `Ketik ${label}...`)}" ${attrs}>${escapeHtml(val ?? "")}</textarea>`;
         } else if (type === "select") {
           inputHtml = `
-            <select name="${name}" class="${baseClass}">
+            <select name="${name}" class="${baseClass}" ${attrs}>
               <option value="">-- Pilih ${label} --</option>
               ${(opts.options || []).map(o => `<option value="${escapeHtml(o)}" ${String(o).trim() === String(val ?? "").trim() ? "selected" : ""}>${escapeHtml(o)}</option>`).join("")}
             </select>`;
         } else if (type === "datalist") {
           const dlId = `dl-${name}-${Math.random().toString(36).substring(2, 6)}`;
           inputHtml = `
-            <input type="text" name="${name}" list="${dlId}" value="${escapeHtml(val ?? "")}" placeholder="Ketik / pilih ${label}" class="${baseClass}" ${extra.required ? "required" : ""}>
+            <input type="text" name="${name}" list="${dlId}" value="${escapeHtml(val ?? "")}" placeholder="${escapeHtml(extra.placeholder || `Ketik / pilih ${label}`)}" class="${baseClass}" ${attrs}>
             <datalist id="${dlId}">
               ${(opts.options || []).map(o => `<option value="${escapeHtml(o)}"></option>`).join("")}
             </datalist>`;
         } else if (type === "date") {
           const dv = val ? localDateStr(val) : "";
-          inputHtml = `<input type="date" name="${name}" value="${dv}" class="${baseClass}">`;
+          inputHtml = `<input type="date" name="${name}" value="${dv}" class="${baseClass}" ${attrs}>`;
         } else if (type === "number") {
-          inputHtml = `<input type="number" name="${name}" value="${val !== undefined && val !== null ? val : (extra.default ?? 0)}" class="${baseClass}" ${extra.readonly ? "readonly" : ""} ${extra.step ? `step="${extra.step}"` : ""} ${extra.min ? `min="${extra.min}"` : ""}>`;
+          inputHtml = `<input type="number" name="${name}" value="${val !== undefined && val !== null ? val : (extra.default ?? 0)}" class="${baseClass}" ${attrs}>`;
         } else {
-          inputHtml = `<input type="text" name="${name}" value="${escapeHtml(val ?? "")}" placeholder="Ketik ${label}" class="${baseClass}" ${extra.required ? "required" : ""}>`;
+          const inputType = ["email", "tel", "url"].includes(type) ? type : "text";
+          inputHtml = `<input type="${inputType}" name="${name}" value="${escapeHtml(val ?? "")}" placeholder="${escapeHtml(extra.placeholder || `Ketik ${label}`)}" class="${baseClass}" ${attrs}>`;
         }
 
         return `
           <div class="${extra.full ? "col-span-full" : ""}">
             <label class="block text-[11px] font-bold text-slate-700 mb-1">${label} ${extra.required ? '<span class="text-red-500">*</span>' : ""}</label>
             ${inputHtml}
+            ${extra.hint ? `<p class="text-[10px] text-slate-400 mt-1">${escapeHtml(extra.hint)}</p>` : ""}
           </div>
         `;
       }
@@ -688,15 +767,15 @@ function downloadThisPdf() {
               1. Identitas & Data Pokok Karyawan
             </h4>
             <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-              ${renderInput("nik_karyawan", "NIK Karyawan", "text", empData.nik_karyawan || empData.nik, {}, { required: true })}
-              ${renderInput("nama_karyawan", "Nama Karyawan", "text", empData.nama_karyawan, {}, { required: true })}
-              ${renderInput("jenis_kelamin", "Jenis Kelamin", "select", empData.jenis_kelamin, { options: ["LAKI-LAKI", "PEREMPUAN"] })}
-              ${renderInput("nik_ktp", "NIK KTP", "text", empData.nik_ktp || empData.no_ktp)}
-              ${renderInput("no_kk", "No. Kartu Keluarga", "text", empData.no_kk || empData.no_kartu_keluarga)}
-              ${renderInput("npwp", "NPWP", "text", empData.npwp)}
-              ${renderInput("bpjs_tk", "No. BPJS TK", "text", empData.bpjs_tk || empData.no_bpjs_tk)}
-              ${renderInput("bpjs_kes", "No. BPJS KES", "text", empData.bpjs_kes || empData.no_bpjs_kes)}
-              ${renderInput("tanggal_lahir", "Tanggal Lahir", "date", empData.tanggal_lahir)}
+              ${renderInput("nik_karyawan", "NIK Karyawan", "text", empData.nik_karyawan || empData.nik, {}, { required: true, maxLength: 30, placeholder: "ID internal karyawan" })}
+              ${renderInput("nama_karyawan", "Nama Lengkap Karyawan", "text", empData.nama_karyawan, {}, { required: true, maxLength: 120, placeholder: "Sesuai dokumen identitas" })}
+              ${renderInput("jenis_kelamin", "Jenis Kelamin", "select", empData.jenis_kelamin, { options: ["LAKI-LAKI", "PEREMPUAN"] }, { required: true })}
+              ${renderInput("nik_ktp", "NIK KTP (16 digit)", "text", empData.nik_ktp || empData.no_ktp, {}, { pattern: "[0-9]{16}", maxLength: 16, inputMode: "numeric", placeholder: "16 digit sesuai e-KTP", title: "NIK KTP harus terdiri dari 16 digit angka." })}
+              ${renderInput("no_kk", "No. Kartu Keluarga (16 digit)", "text", empData.no_kk || empData.no_kartu_keluarga, {}, { pattern: "[0-9]{16}", maxLength: 16, inputMode: "numeric", placeholder: "16 digit nomor KK", title: "Nomor KK harus terdiri dari 16 digit angka." })}
+              ${renderInput("npwp", "NPWP", "text", empData.npwp, {}, { inputMode: "numeric" })}
+              ${renderInput("bpjs_tk", "No. BPJS Ketenagakerjaan", "text", empData.bpjs_tk || empData.no_bpjs_tk, {}, { inputMode: "numeric" })}
+              ${renderInput("bpjs_kes", "No. BPJS Kesehatan", "text", empData.bpjs_kes || empData.no_bpjs_kes, {}, { inputMode: "numeric" })}
+              ${renderInput("tanggal_lahir", "Tanggal Lahir", "date", empData.tanggal_lahir, {}, { required: true })}
               ${renderInput("usia", "Usia (Tahun)", "number", empData.tanggal_lahir ? (calculateAge(empData.tanggal_lahir) ?? empData.usia ?? 0) : (empData.usia ?? 0))}
               ${renderInput("agama", "Agama", "select", empData.agama, { options: ["ISLAM", "KRISTEN", "KATHOLIK", "HINDU", "BUDDHA", "KHONGHUCU", "LAINNYA"] })}
               ${renderInput("golongan_darah", "Golongan Darah", "select", empData.golongan_darah, { options: ["A", "B", "AB", "O", "-"] })}
@@ -711,17 +790,17 @@ function downloadThisPdf() {
               2. Kepegawaian & Penempatan Kerja
             </h4>
             <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-              ${renderInput("cabang", "Cabang Penempatan", "datalist", empData.cabang, { options: cabangOpts })}
+              ${renderInput("cabang", "Cabang Penempatan", "datalist", empData.cabang, { options: cabangOpts }, { required: true })}
               ${renderInput("jabatan", "Jabatan", "datalist", empData.jabatan, { options: jabatanOpts }, { required: true })}
-              ${renderInput("divisi", "Divisi / Unit", "datalist", empData.divisi, { options: divisiOpts })}
-              ${renderInput("status_karyawan", "Status Karyawan", "select", empData.status_karyawan, { options: ["PKWTT (Karyawan Tetap)", "PKWT (Karyawan Kontrak)", "Probation (Masa Percobaan)", "Magang", "Buruh Harian", "Outsourcing", "Lainnya"] })}
-              ${renderInput("tanggal_join", "Tanggal Join", "date", empData.tanggal_join)}
-              ${renderInput("masa_kerja", "Masa Kerja", "text", empData.tanggal_join ? calculateTenure(empData.tanggal_join) : (empData.masa_kerja || ""))}
-              ${renderInput("kontrak_habis", "Kontrak Habis", "date", empData.kontrak_habis)}
+              ${renderInput("divisi", "Divisi / Unit Kerja", "datalist", empData.divisi, { options: divisiOpts }, { required: true })}
+              ${renderInput("status_karyawan", "Status Hubungan Kerja", "select", empData.status_karyawan, { options: ["PKWTT (Karyawan Tetap)", "PKWT (Karyawan Kontrak)", "Probation (Masa Percobaan)", "Magang", "Buruh Harian", "Outsourcing", "Lainnya"] }, { required: true })}
+              ${renderInput("tanggal_join", "Tanggal Bergabung (Join)", "date", empData.tanggal_join, {}, { required: true })}
+              ${renderInput("masa_kerja", "Masa Kerja", "text", empData.tanggal_join ? calculateTenure(empData.tanggal_join) : (empData.masa_kerja || ""), {}, { readonly: true })}
+              ${renderInput("kontrak_habis", "Tanggal Kontrak Berakhir", "date", empData.kontrak_habis)}
               ${renderInput("jam_kerja", "Jam Kerja", "text", empData.jam_kerja || "08:00 - 17:00")}
               ${renderInput("atasan", "Nama Atasan Langsung", "datalist", empData.atasan, { options: atasanOpts })}
               ${renderInput("finger_name", "Finger Name", "text", empData.finger_name)}
-              ${renderInput("aktif_tdk_aktif", "Status Keaktifan", "select", empData.aktif_tdk_aktif || empData["aktif/tidak_aktif"] || "AKTIF", { options: ["AKTIF", "TIDAK AKTIF"] })}
+              ${renderInput("aktif_tdk_aktif", "Status Keaktifan", "select", empData.aktif_tdk_aktif || empData["aktif/tidak_aktif"] || "AKTIF", { options: ["AKTIF", "TIDAK AKTIF"] }, { required: true })}
             </div>
           </div>
 
@@ -732,8 +811,8 @@ function downloadThisPdf() {
               3. Kontak Pribadi, Keluarga & Pajak
             </h4>
             <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-              ${renderInput("no_hp_aktif", "No. HP Aktif", "text", empData.no_hp_aktif)}
-              ${renderInput("email", "Email Aktif", "text", empData.email)}
+              ${renderInput("no_hp_aktif", "No. HP Aktif", "tel", empData.no_hp_aktif, {}, { inputMode: "tel", maxLength: 25, placeholder: "08xxxxxxxxxx" })}
+              ${renderInput("email", "Email Aktif (untuk notifikasi)", "email", empData.email, {}, { required: true, maxLength: 120, autocomplete: "email", placeholder: "nama@perusahaan.com", hint: "Email ini dipakai untuk notifikasi dokumen, cuti, dan siklus karyawan." })}
               ${renderInput("status_pajak", "Status Pajak / PTKP", "select", empData.status_pajak || "TK/0", { options: ["TK/0", "TK/1", "TK/2", "TK/3", "K/0", "K/1", "K/2", "K/3", "K/I/0", "K/I/1", "K/I/2", "K/I/3"] })}
               ${renderInput("tanggungan", "Anak / Tanggungan", "number", empData.tanggungan ?? empData.anak ?? 0)}
               ${renderInput("kontak_darurat_nama", "Nama Kontak Darurat", "text", empData.kontak_darurat_nama || empData.nama_kontak_darurat)}
@@ -1152,7 +1231,12 @@ function downloadThisPdf() {
             if (fd.has("jatah_akumulasi")) updatedData.jatah_akumulasi = toNumber(fd.get("jatah_akumulasi"));
             if (fd.has("sisa_cuti_tahun_lalu")) updatedData.sisa_cuti_tahun_lalu = toNumber(fd.get("sisa_cuti_tahun_lalu"));
 
-            updatedData = beforeSaveEmp(updatedData);
+            try {
+              updatedData = await beforeSaveEmp(updatedData, currentEmp);
+            } catch (validationError) {
+              toast(validationError.message || "Data karyawan belum valid.", "error");
+              return;
+            }
 
             // Kolom tambahan (HRD) → nilai dikumpulkan ke map custom_fields
             if (customFieldDefs.length) {
@@ -1261,7 +1345,7 @@ function downloadThisPdf() {
     collectionName: COL.MASTER_KARYAWAN,
     orderByField: "nama_karyawan",
     size: "2xl",
-    searchFields: ["nama_karyawan", "nik_karyawan", "jabatan", "cabang", "divisi", "status_karyawan", "finger_name", "nik_ktp", "no_kk", "bpjs_tk", "bpjs_kes", "npwp"],
+    searchFields: ["nama_karyawan", "nik_karyawan", "jabatan", "cabang", "divisi", "status_karyawan", "finger_name", "nik_ktp", "no_kk", "bpjs_tk", "bpjs_kes", "npwp", "email", "no_hp_aktif", "atasan"],
     onRowClick: (emp, helpers) => openEmployeeDetailAndEditModal(emp, helpers?.reload, "detail"),
     onEditClick: (emp, helpers) => openEmployeeDetailAndEditModal(emp, helpers?.reload, "edit"),
     // Kolom tambahan (HRD) ikut di-export: diambil dari skema app_settings,
@@ -1274,14 +1358,44 @@ function downloadThisPdf() {
       } catch (e) {
         console.warn("Gagal memuat skema kolom tambahan untuk export:", e);
       }
-      return defs.map(f => ({
-        key: `custom_fields.${f.id}`,
-        label: `Kolom HRD: ${f.label || f.id}`,
-        getValue: (row) => {
-          const v = row?.custom_fields?.[f.id];
-          return (v === null || v === undefined) ? "" : v;
-        }
-      }));
+      const detailExports = [
+        { key: "jenis_kelamin", label: "Jenis Kelamin" },
+        { key: "nik_ktp", label: "NIK KTP", getValue: (row) => row.nik_ktp || row.no_ktp || "" },
+        { key: "no_kartu_keluarga", label: "No. Kartu Keluarga", getValue: (row) => row.no_kartu_keluarga || row.no_kk || "" },
+        { key: "no_bpjs_tk", label: "No. BPJS Ketenagakerjaan", getValue: (row) => row.no_bpjs_tk || row.bpjs_tk || row.bpjs_ketenagakerjaan || "" },
+        { key: "no_bpjs_kes", label: "No. BPJS Kesehatan", getValue: (row) => row.no_bpjs_kes || row.bpjs_kes || row.bpjs_kesehatan || "" },
+        { key: "tanggal_lahir", label: "Tanggal Lahir" },
+        { key: "usia", label: "Usia", getValue: (row) => row.tanggal_lahir ? (calculateAge(row.tanggal_lahir) ?? row.usia ?? "") : (row.usia ?? "") },
+        { key: "masa_kerja", label: "Masa Kerja", getValue: (row) => row.tanggal_join ? calculateTenure(row.tanggal_join) : (row.masa_kerja || "") },
+        { key: "pendidikan", label: "Pendidikan Terakhir" },
+        { key: "agama", label: "Agama" },
+        { key: "golongan_darah", label: "Golongan Darah" },
+        { key: "alamat", label: "Alamat Lengkap" },
+        { key: "kontak_darurat", label: "No. HP Kontak Darurat", getValue: (row) => row.kontak_darurat || row.kontak_darurat_hp || "" },
+        { key: "nama_kontak_darurat", label: "Nama Kontak Darurat", getValue: (row) => row.nama_kontak_darurat || row.kontak_darurat_nama || "" },
+        { key: "npwp", label: "NPWP" },
+        { key: "status_pajak", label: "Status Pajak / PTKP" },
+        { key: "anak", label: "Anak / Tanggungan", getValue: (row) => row.anak ?? row.tanggungan ?? 0 },
+        { key: "jam_kerja", label: "Jam Kerja" },
+        { key: "finger_name", label: "Finger Name" },
+        { key: "jatah_tahunan", label: "Jatah Cuti Tahunan" },
+        { key: "jatah_khusus", label: "Jatah Cuti Khusus" },
+        { key: "jatah_akumulasi", label: "Jatah Cuti Akumulasi" },
+        { key: "atasan", label: "Atasan Langsung" },
+        { key: "template_kpi", label: "Template KPI" },
+        { key: "akses_menu", label: "Akses Menu" }
+      ];
+      return [
+        ...detailExports,
+        ...defs.map(f => ({
+          key: `custom_fields.${f.id}`,
+          label: `Kolom HRD: ${f.label || f.id}`,
+          getValue: (row) => {
+            const v = row?.custom_fields?.[f.id];
+            return (v === null || v === undefined) ? "" : v;
+          }
+        }))
+      ];
     },
     extraToolbarHtml: `
       <button id="btn-sync-all-karyawan" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg border border-maroon-300 text-maroon-700 bg-maroon-50 hover:bg-maroon-100 transition shadow-2xs cursor-pointer" title="Sinkronkan nama seluruh karyawan ke semua modul HRD & Operasional">
@@ -1298,49 +1412,17 @@ function downloadThisPdf() {
     },
     beforeSave: beforeSaveEmp,
  columns: [
- { key: "nik_karyawan", label: "nik_karyawan" },
- { key: "nama_karyawan", label: "nama_karyawan" },
- { key: "cabang", label: "cabang" },
- { key: "jabatan", label: "jabatan" },
- { key: "divisi", label: "divisi" },
- { key: "jenis_kelamin", label: "jenis_kelamin" },
- { key: "nik_ktp", label: "nik_ktp", format: (v, r) => r.nik_ktp || r.no_ktp || v || "-" },
- { key: "no_kartu_keluarga", label: "no_kartu_keluarga", format: (v, r) => r.no_kartu_keluarga || r.no_kk || v || "-" },
- { key: "no_bpjs_tk", label: "no_bpjs_tk", format: (v, r) => r.no_bpjs_tk || r.bpjs_tk || r.bpjs_ketenagakerjaan || v || "-" },
- { key: "no_bpjs_kes", label: "no_bpjs_kes", format: (v, r) => r.no_bpjs_kes || r.bpjs_kes || r.bpjs_kesehatan || v || "-" },
- { key: "status_karyawan", label: "status_karyawan", type: "badge" },
- { key: "tanggal_lahir", label: "tanggal_lahir" },
- { key: "usia", label: "usia", format: (v, r) => (r.tanggal_lahir ? (calculateAge(r.tanggal_lahir) ?? v ?? "-") : (v ?? "-")) },
- { key: "tanggal_join", label: "tanggal_join" },
- { key: "kontrak_habis", label: "kontrak_habis", format: (v, r) => r.kontrak_habis || "-" },
- { key: "masa_kerja", label: "masa_kerja", format: (v, r) => (r.tanggal_join ? calculateTenure(r.tanggal_join) : (v || "-")) },
- { key: "pendidikan", label: "pendidikan" },
- { key: "alamat", label: "alamat" },
- { key: "agama", label: "agama" },
- { key: "golongan_darah", label: "golongan_darah" },
- { key: "no_hp_aktif", label: "no_hp_aktif" },
- { key: "email", label: "email" },
- { key: "kontak_darurat", label: "kontak_darurat", format: (v, r) => r.kontak_darurat || r.kontak_darurat_hp || v || "-" },
- { key: "nama_kontak_darurat", label: "nama_kontak_darurat", format: (v, r) => r.nama_kontak_darurat || r.kontak_darurat_nama || v || "-" },
- { key: "npwp", label: "npwp", format: (v, r) => r.npwp || v || "-" },
- { key: "status_pajak", label: "status_pajak" },
- { key: "anak", label: "anak", format: (v, r) => r.anak ?? r.tanggungan ?? v ?? 0 },
- { key: "jam_kerja", label: "jam_kerja" },
- { key: "aktif_tdk_aktif", label: "aktif/tidak_aktif", format: (v, r) => r.aktif_tdk_aktif || r["aktif/tidak_aktif"] || v || "AKTIF", type: "badge", badgeTone: (v) => (v === "AKTIF" || v === "Active") ? "green" : "red" },
- { key: "finger_name", label: "finger_name" },
- { key: "jatah_tahunan", label: "jatah_tahunan", format: (v, r) => r.jatah_tahunan ?? 12 },
- { key: "jatah_khusus", label: "jatah_khusus", format: (v, r) => r.jatah_khusus ?? 4 },
- { key: "jatah_akumulasi", label: "jatah_akumulasi", format: (v, r) => r.jatah_akumulasi ?? 0 },
- { key: "terpakai_tahunan", label: "terpakai_tahunan", format: (v, r) => r.terpakai_tahunan ?? r.cuti_terpakai_tahunan ?? 0 },
- { key: "terpakai_khusus", label: "terpakai_khusus", format: (v, r) => r.terpakai_khusus ?? r.cuti_terpakai_khusus ?? 0 },
- { key: "terpakai_akumulasi", label: "terpakai_akumulasi", format: (v, r) => r.terpakai_akumulasi ?? r.cuti_terpakai_akumulasi ?? 0 },
- { key: "dokumen_ktp", label: "dokumen_ktp", format: (v, r) => r.dokumen_ktp ? "Ada" : "-" },
- { key: "dokumen_kk", label: "dokumen_kk", format: (v, r) => r.dokumen_kk ? "Ada" : "-" },
- { key: "dokumen_bpjs", label: "dokumen_bpjs", format: (v, r) => r.dokumen_bpjs ? "Ada" : "-" },
- { key: "dokumen_npwp", label: "dokumen_npwp", format: (v, r) => r.dokumen_npwp ? "Ada" : "-" },
- { key: "atasan", label: "atasan" },
- { key: "template_kpi", label: "template_kpi", format: (v, r) => r.template_kpi || "-" },
- { key: "akses_menu", label: "akses_menu", format: (v, r) => r.akses_menu || "-" }
+ { key: "nik_karyawan", label: "NIK Karyawan" },
+ { key: "nama_karyawan", label: "Nama Karyawan" },
+ { key: "cabang", label: "Cabang" },
+ { key: "divisi", label: "Divisi / Unit" },
+ { key: "jabatan", label: "Jabatan" },
+ { key: "status_karyawan", label: "Status Kerja", type: "badge" },
+ { key: "tanggal_join", label: "Tanggal Join", type: "date" },
+ { key: "kontrak_habis", label: "Kontrak Berakhir", type: "date" },
+ { key: "email", label: "Email Aktif", format: (v) => v ? escapeHtml(String(v)) : '<span class="text-rose-600 font-semibold text-[11px]">Belum diisi</span>' },
+ { key: "no_hp_aktif", label: "No. HP" },
+ { key: "aktif_tdk_aktif", label: "Status Keaktifan", format: (v, r) => r.aktif_tdk_aktif || r["aktif/tidak_aktif"] || v || "AKTIF", type: "badge", badgeTone: (v) => (v === "AKTIF" || v === "Active") ? "green" : "red" }
  ],
  formFields: fields
  });
@@ -1713,7 +1795,7 @@ function downloadThisPdf() {
  const userSnap = await getDocs(userQ);
  if (!userSnap.empty) {
  const targetUser = userSnap.docs[0].id;
- await notifyUser(targetUser, "Tanda Tangani Dokumen", `Admin mengunggah dokumen baru "${judul}" untuk Anda tanda tangani.`, "/#riwayat");
+ await notifyUser(targetUser, "Tanda Tangani Dokumen", `Admin mengunggah dokumen baru "${judul}" untuk Anda tanda tangani.`, "/#riwayat", { manual: true });
  }
  } catch (err) {
  toast("Gagal membuat pengajuan: " + err.message, "error");

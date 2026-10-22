@@ -16,6 +16,7 @@ import { letterheadHtml, isoDocHeaderTable, COMPANY_NAME, logoImgTag } from "./b
 import { authFetch } from "./api-client.js";
 import { getAutoJatahTahunan } from "./leave-entitlement.mjs";
 import { DIVISION_ALL, divisionOptionsFromSources, divisionsFromMasterRecords } from "./division-options.mjs";
+import { pickEmployeeEmail, normalizeEmail, isValidEmail } from "./employee-email.mjs";
 
 // =========================================================================
 // PLUS CODE (Open Location Code) DECODER -- diambil & diadaptasi dari
@@ -4139,6 +4140,58 @@ export function buildStandardEmailHtml(opts = {}) {
   `;
 }
 
+/**
+ * Resolusi email karyawan dari data yang sudah ada di layar, lalu fallback
+ * ke koleksi Master Karyawan / Users. Dipakai oleh modul yang hanya memiliki
+ * NIK/nama (mis. rilis dokumen atau siklus karyawan) agar email tidak gagal
+ * hanya karena field `email` tidak ikut tersimpan di record transaksi.
+ */
+export async function resolveEmployeeEmail(...sources) {
+ const direct = pickEmployeeEmail(...sources);
+ if (direct) return direct;
+
+ const records = sources.filter(source => source && typeof source === "object" && !Array.isArray(source));
+ const identity = records.map(record => ({
+  nik: String(record.nik_karyawan || record.nik || record.nik_employee || "").trim().toLowerCase(),
+  nama: String(record.nama_karyawan || record.nama || record.nama_lengkap || "").trim().toLowerCase(),
+  username: String(record.username || "").trim().toLowerCase(),
+  id: String(record.id || "").trim().toLowerCase()
+ })).find(item => item.nik || item.nama || item.username || item.id);
+
+ if (!identity) return "";
+
+ try {
+  const [employees, users] = await Promise.all([
+   fsGetAll(COL.MASTER_KARYAWAN).catch(() => []),
+   fsGetAll(COL.USERS).catch(() => [])
+  ]);
+
+  const matchesIdentity = (record) => {
+   const nik = String(record.nik_karyawan || record.nik || "").trim().toLowerCase();
+   const nama = String(record.nama_karyawan || record.nama || record.nama_lengkap || "").trim().toLowerCase();
+   const username = String(record.username || "").trim().toLowerCase();
+   const id = String(record.id || "").trim().toLowerCase();
+   return Boolean(
+    (identity.nik && nik === identity.nik) ||
+    (identity.nama && nama === identity.nama) ||
+    (identity.username && (username === identity.username || id === identity.username)) ||
+    (identity.id && (id === identity.id || username === identity.id)) ||
+    (identity.nama && username === identity.nama)
+   );
+  };
+
+  const employee = employees.find(matchesIdentity);
+  const emailFromEmployee = pickEmployeeEmail(employee);
+  if (emailFromEmployee) return emailFromEmployee;
+
+  const user = users.find(matchesIdentity);
+  return pickEmployeeEmail(user, employee);
+ } catch (error) {
+  console.warn("resolveEmployeeEmail: gagal mencari email karyawan.", error?.message || error);
+  return "";
+ }
+}
+
 export async function sendEmailNotif(to, subject, htmlBody, cc = "", attachments = null, options = {}) {
 	if (options?.manual !== true) {
 		console.info("[manual-delivery] Email operasional ditahan; gunakan tombol kirim manual.", subject);
@@ -4150,6 +4203,12 @@ export async function sendEmailNotif(to, subject, htmlBody, cc = "", attachments
  }
  const targetTo = Array.isArray(to) ? to.join(",") : String(to);
  if (!targetTo.trim()) return false;
+
+ const invalidRecipients = targetTo.split(/[;,]/).map(normalizeEmail).filter(Boolean).filter(email => !isValidEmail(email));
+ if (invalidRecipients.length) {
+  console.warn("sendEmailNotif: Alamat email tidak valid:", invalidRecipients.join(", "));
+  return false;
+ }
 
  // Pastikan email body seragam dengan standard template Andela Jaya jika belum dibungkus
  let formattedHtml = htmlBody;
@@ -4199,7 +4258,7 @@ export async function sendEmailNotif(to, subject, htmlBody, cc = "", attachments
  return false;
  }
 
- console.log("Email berhasil dikirim via Resend. ID:", json.id);
+ console.log("Email berhasil dikirim via server email HRIS. ID:", json.id);
  return true;
 
  } catch (error) {
@@ -4520,7 +4579,7 @@ export async function sendBranchInstantAlert({ type, record, session = null }) {
   });
 
   const subject = `[ALERT CABANG ${cab.toUpperCase()}] ${subjectPrefix} - ${nama} (${nik})`;
-  return await sendEmailNotif(emailTo, subject, htmlBody, cc);
+  return await sendEmailNotif(emailTo, subject, htmlBody, cc, null, { manual: true });
 }
 
 /**
@@ -5477,7 +5536,7 @@ export async function notifyUser(username, judul, pesan, link = "", opts = {}) {
  // notifikasi in-app (lonceng) & push HP yang tetap perlu tampil.
  const sendEmail = opts.sendEmail !== false;
  if (!username) return false;
- let targetEmail = (typeof username === "object" && username.email) ? username.email : null;
+ let targetEmail = pickEmployeeEmail(typeof username === "object" ? username : null) || null;
  let targetName = (typeof username === "object" && username.nama) ? username.nama : null;
  let targetNik = (typeof username === "object" && username.nik) ? username.nik : null;
  const rawTarget = typeof username === "object" ? (username.username || username.nama || username.id) : username;
@@ -5510,7 +5569,7 @@ export async function notifyUser(username, judul, pesan, link = "", opts = {}) {
  resolvedNik = uData.nik || resolvedNik;
  if (Array.isArray(uData.fcm_tokens)) uData.fcm_tokens.forEach(t => t && tokens.add(t));
  if (uData.fcm_token) tokens.add(uData.fcm_token); // kompatibilitas data lama
- if (uData.email && !targetEmail) targetEmail = uData.email;
+ if (!targetEmail) targetEmail = pickEmployeeEmail(uData) || null;
  }
 
  // Query USERS by username, nama, or nik
@@ -5534,7 +5593,7 @@ export async function notifyUser(username, judul, pesan, link = "", opts = {}) {
  if (uNik) resolvedNik = uNik;
  if (Array.isArray(uData.fcm_tokens)) uData.fcm_tokens.forEach(t => t && tokens.add(t));
  if (uData.fcm_token) tokens.add(uData.fcm_token); // kompatibilitas data lama
- if (uData.email && !targetEmail) targetEmail = uData.email;
+ if (!targetEmail) targetEmail = pickEmployeeEmail(uData) || null;
  }
  });
  } catch (e) {}
@@ -5557,7 +5616,7 @@ export async function notifyUser(username, judul, pesan, link = "", opts = {}) {
  if (kNik) resolvedNik = kNik;
  if (Array.isArray(kData.fcm_tokens)) kData.fcm_tokens.forEach(t => t && tokens.add(t));
  if (kData.fcm_token) tokens.add(kData.fcm_token); // kompatibilitas data lama
- if (kData.email && !targetEmail) targetEmail = kData.email;
+ if (!targetEmail) targetEmail = pickEmployeeEmail(kData) || null;
  }
  });
  } catch (e) {}
@@ -5646,7 +5705,7 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
       if (!u) return null;
       const uId = u.username || u.id || u.nik;
       const uNama = u.nama || u.nama_karyawan || u.username || uId;
-      let email = (u.email || "").trim();
+      let email = pickEmployeeEmail(u);
       let nik = u.nik || u.nik_karyawan || "";
 
       // Cari data karyawan pendukung untuk melengkapi email & NIK jika belum ada
@@ -5660,7 +5719,7 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
       );
 
       if (empMatch) {
-        if (!email && empMatch.email) email = empMatch.email.trim();
+        if (!email) email = pickEmployeeEmail(empMatch);
         if (!nik && (empMatch.nik_karyawan || empMatch.nik)) nik = empMatch.nik_karyawan || empMatch.nik;
       }
 
@@ -5686,7 +5745,7 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
       if (kMatch) {
         return [{
           username: kMatch.username || kMatch.id || kMatch.nik,
-          email: kMatch.email || "",
+          email: pickEmployeeEmail(kMatch),
           nama: kMatch.nama_karyawan || kMatch.nama,
           nik: kMatch.nik_karyawan || kMatch.nik
         }];
@@ -5715,7 +5774,7 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
           );
           return [{
             username: matchedUser?.username || kAtasan.username || kAtasan.id || kAtasan.nik,
-            email: matchedUser?.email || kAtasan.email || "",
+            email: pickEmployeeEmail(matchedUser, kAtasan),
             nama: kAtasan.nama_karyawan || kAtasan.nama,
             nik: kAtasan.nik_karyawan || kAtasan.nik
           }];
@@ -5760,7 +5819,7 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
         );
         return {
           username: u?.username || k.username || k.id || k.nik_karyawan || k.nik,
-          email: u?.email || k.email || "",
+          email: pickEmployeeEmail(u, k),
           nama: k.nama_karyawan || k.nama,
           nik: k.nik_karyawan || k.nik
         };
@@ -5806,7 +5865,7 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
           );
           targets.push({
             username: u?.username || k.username || k.id || k.nik_karyawan || k.nik,
-            email: u?.email || k.email || "",
+            email: pickEmployeeEmail(u, k),
             nama: k.nama_karyawan || k.nama,
             nik: k.nik_karyawan || k.nik
           });
@@ -5849,7 +5908,7 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
           const u = allUsers.find(user => (user.nama || "").trim().toLowerCase() === kNama.toLowerCase());
           targets.push({
             username: u?.username || k.username || k.id || k.nik_karyawan || k.nik,
-            email: u?.email || k.email || "",
+            email: pickEmployeeEmail(u, k),
             nama: k.nama_karyawan || k.nama,
             nik: k.nik_karyawan || k.nik
           });
@@ -5884,7 +5943,7 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
         if (atasanEmp) {
           const kNamaA = (atasanEmp.nama_karyawan || atasanEmp.nama || "").trim();
           const u = allUsers.find(user => (user.nama || "").trim().toLowerCase() === kNamaA.toLowerCase());
-          const t = enrichTarget(u ? { ...u, email: u.email || atasanEmp.email || "" } : { username: atasanEmp.username || atasanEmp.id || atasanEmp.nik_karyawan || atasanEmp.nik, nama: kNamaA, email: atasanEmp.email || "", nik: atasanEmp.nik_karyawan || atasanEmp.nik });
+          const t = enrichTarget(u ? { ...u, email: pickEmployeeEmail(u, atasanEmp) } : { username: atasanEmp.username || atasanEmp.id || atasanEmp.nik_karyawan || atasanEmp.nik, nama: kNamaA, email: pickEmployeeEmail(atasanEmp), nik: atasanEmp.nik_karyawan || atasanEmp.nik });
           if (t) targets.push(t);
         }
       }
@@ -5901,7 +5960,7 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
           const u = allUsers.find(user => (user.nama || "").trim().toLowerCase() === kNama.toLowerCase());
           targets.push({
             username: u?.username || k.username || k.id || k.nik_karyawan || k.nik,
-            email: u?.email || k.email || "",
+            email: pickEmployeeEmail(u, k),
             nama: k.nama_karyawan || k.nama,
             nik: k.nik_karyawan || k.nik
           });
@@ -5938,7 +5997,7 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
         if (atasanEmpSpv) {
           const kNamaS = (atasanEmpSpv.nama_karyawan || atasanEmpSpv.nama || "").trim();
           const u = allUsers.find(user => (user.nama || "").trim().toLowerCase() === kNamaS.toLowerCase());
-          const t = enrichTarget(u ? { ...u, email: u.email || atasanEmpSpv.email || "" } : { username: atasanEmpSpv.username || atasanEmpSpv.id || atasanEmpSpv.nik_karyawan || atasanEmpSpv.nik, nama: kNamaS, email: atasanEmpSpv.email || "", nik: atasanEmpSpv.nik_karyawan || atasanEmpSpv.nik });
+          const t = enrichTarget(u ? { ...u, email: pickEmployeeEmail(u, atasanEmpSpv) } : { username: atasanEmpSpv.username || atasanEmpSpv.id || atasanEmpSpv.nik_karyawan || atasanEmpSpv.nik, nama: kNamaS, email: pickEmployeeEmail(atasanEmpSpv), nik: atasanEmpSpv.nik_karyawan || atasanEmpSpv.nik });
           if (t) targets.push(t);
         }
       }
@@ -5956,7 +6015,7 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
           const u = allUsers.find(user => (user.nama || "").trim().toLowerCase() === kNama.toLowerCase());
           targets.push({
             username: u?.username || k.username || k.id || k.nik_karyawan || k.nik,
-            email: u?.email || k.email || "",
+            email: pickEmployeeEmail(u, k),
             nama: k.nama_karyawan || k.nama,
             nik: k.nik_karyawan || k.nik
           });

@@ -681,7 +681,7 @@ async function openQuickAssignModal(container, activeEmpNames) {
  "Penyerahan Aset Tanggung Jawab",
  `Anda telah diserahkan aset/inventaris: ${targetAsset.nama_barang} (${targetAsset.id_item || ''}). Buka dashboard untuk melihat detailnya.`,
  "#inventory",
- { sendEmail: !isAtkAsset }
+ { manual: true, sendEmail: !isAtkAsset }
  );
 
  toast(`Berhasil menyerahkan aset ${targetAsset.nama_barang} kepada ${empName}! Terbit Berita Acara Penyerahan.`, "success");
@@ -1620,7 +1620,7 @@ async function openMultiAssignModal(container, activeEmpNames) {
               "Penyerahan / Pengambilan ATK",
               `Anda tercatat menerima/mengambil ${qtyVal} unit ${item ? item.nama_barang : 'ATK'} pada tanggal ${fmtDateShort(dateVal)}.`,
               "#inventory",
-              { sendEmail: !isATK }
+              { manual: true, sendEmail: !isATK }
             );
           }
 
@@ -2738,7 +2738,7 @@ export async function mount(container, options = {}) {
  "Pengembalian Aset Berhasil",
  `Pengembalian aset ${row.nama_barang} tanggal ${fmtDateShort(retDate)} telah diverifikasi dan dicatat oleh HRD/GA.`,
  "#inventory",
- { sendEmail: !isAtkReturn }
+ { manual: true, sendEmail: !isAtkReturn }
  );
 
  toast(`Status aset ${row.nama_barang} berhasil diubah menjadi DIKEMBALIKAN!`, "success");

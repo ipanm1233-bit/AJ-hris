@@ -174,7 +174,8 @@ export async function mount(container, { params } = {}) {
  t.username,
  `Surat Peringatan (${data.tingkat_sp || 'SP'}) Diterbitkan`,
  `Anda menerima ${data.tingkat_sp || 'Surat Peringatan'}: ${data.pelanggaran || '-'}. Klik untuk membaca & TTD digital.`,
- `#profile?tab=documents&doc_id=${docId}`
+ `#profile?tab=documents&doc_id=${docId}`,
+ { manual: true }
  );
  if (t.email) {
    const emailBody = buildStandardEmailHtml({
@@ -192,7 +193,7 @@ export async function mount(container, { params } = {}) {
      actionText: "Buka Dokumen & Tanda Tangan Digital →",
      secondaryNote: "Dokumen ini memerlukan konfirmasi dan tanda tangan digital Anda melalui aplikasi HRIS."
    });
-   await sendEmailNotif(t.email, `[Dokumen HRD] ${docJudul}`, emailBody);
+   await sendEmailNotif(t.email, `[Dokumen HRD] ${docJudul}`, emailBody, "", null, { manual: true });
  }
  }
  }
@@ -254,7 +255,8 @@ export async function mount(container, { params } = {}) {
  t.username,
  " Surat Pemanggilan Karyawan Diterbitkan",
  `Anda menerima Surat Pemanggilan perihal: ${data.perihal || '-'}. Klik untuk membaca & TTD digital.`,
- `#profile?tab=documents&doc_id=${docId}`
+ `#profile?tab=documents&doc_id=${docId}`,
+ { manual: true }
  );
  if (t.email) {
    const emailBody = buildStandardEmailHtml({
@@ -273,7 +275,7 @@ export async function mount(container, { params } = {}) {
      actionText: "Buka Dokumen & Konfirmasi Kehadiran →",
      secondaryNote: "Harap hadir tepat waktu sesuai dengan jadwal yang telah ditentukan."
    });
-   await sendEmailNotif(t.email, `[Panggilan HRD] ${docJudul}`, emailBody);
+   await sendEmailNotif(t.email, `[Panggilan HRD] ${docJudul}`, emailBody, "", null, { manual: true });
  }
  }
  }
