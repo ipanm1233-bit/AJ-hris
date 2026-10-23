@@ -5,6 +5,11 @@ export const TRAINING_STATUS = Object.freeze({
   REJECTED_GM: 'REJECTED_GM', REJECTED_FINANCE: 'REJECTED_FINANCE', CANCELLED: 'CANCELLED'
 });
 
+export const TNA_RESPONSE_STANDARD = Object.freeze({
+  minResponseRate: 60,
+  minRespondents: 3
+});
+
 export const TNA_COMPETENCY_TEMPLATES = Object.freeze({
   lengkap: {
     label: 'Paket Lengkap Pengembangan Karyawan',
@@ -40,9 +45,97 @@ export const TNA_COMPETENCY_TEMPLATES = Object.freeze({
   }
 });
 
+/**
+ * Matriks awal kompetensi per kelompok jabatan. Template ini menjadi acuan
+ * level harapan minimum; HRD tetap dapat menyesuaikan daftar di survey.
+ * Urutan penting: jabatan leadership diprioritaskan sebelum fungsi teknis.
+ */
+export const TNA_ROLE_COMPETENCY_MATRIX = Object.freeze({
+  leadership: {
+    label: 'Leadership & Supervisory',
+    template: 'leadership',
+    keywords: ['manager', 'manajer', 'supervisor', 'spv', 'kepala', 'head', 'gm', 'direktur', 'leader']
+  },
+  sales: {
+    label: 'Sales & Customer Management',
+    template: 'sales',
+    keywords: ['sales', 'penjualan', 'marketing', 'pemasaran', 'account executive', 'canvasser']
+  },
+  warehouse: {
+    label: 'Operasional, Warehouse & K3',
+    template: 'operasional',
+    keywords: ['warehouse', 'gudang', 'logistik', 'inventory', 'persediaan', 'produksi', 'operator', 'teknik', 'driver', 'supir']
+  },
+  customer: {
+    label: 'Komunikasi & Pelayanan',
+    template: 'komunikasi',
+    keywords: ['customer', 'service', 'pelayanan', 'front office', 'cs', 'kasir']
+  },
+  admin: {
+    label: 'Digital & Administrasi',
+    template: 'digital',
+    keywords: ['admin', 'administrasi', 'keuangan', 'finance', 'accounting', 'hrd', 'personalia', 'sekretaris']
+  },
+  default: {
+    label: 'Pengembangan Umum',
+    template: 'lengkap',
+    keywords: []
+  }
+});
+
+export function roleCompetencyKey(employee = {}) {
+  const text = [employee.jabatan, employee.posisi, employee.divisi, employee.departemen].filter(Boolean).join(' ').toLowerCase();
+  if (!text) return 'default';
+  for (const [key, group] of Object.entries(TNA_ROLE_COMPETENCY_MATRIX)) {
+    if (key === 'default') continue;
+    if (group.keywords.some(keyword => text.includes(keyword))) return key;
+  }
+  return 'default';
+}
+
+export function competenciesForEmployee(employee = {}, fallbackCompetencies = []) {
+  const group = TNA_ROLE_COMPETENCY_MATRIX[roleCompetencyKey(employee)] || TNA_ROLE_COMPETENCY_MATRIX.default;
+  const template = TNA_COMPETENCY_TEMPLATES[group.template];
+  const source = template?.competencies?.length
+    ? template.competencies
+    : (Array.isArray(fallbackCompetencies) ? fallbackCompetencies : []);
+  return source
+    .map(row => {
+      if (Array.isArray(row)) return { name: row[0], expected_level: Number(row[1] || 3), business_impact: Number(row[2] || 3) };
+      return { name: row?.name, expected_level: Number(row?.expected_level || 3), business_impact: Number(row?.business_impact || 3) };
+    })
+    .filter(item => String(item.name || '').trim())
+    .map(item => ({ ...item, name: String(item.name).trim(), expected_level: Math.min(5, Math.max(1, item.expected_level)), business_impact: Math.min(5, Math.max(1, item.business_impact)) }));
+}
+
 export function templateCompetencyText(templateKey) {
   const template = TNA_COMPETENCY_TEMPLATES[templateKey];
   return template ? template.competencies.map(row => row.join(' | ')).join('\n') : '';
+}
+
+export function respondentKey(row = {}) {
+  return String(row.nik || row.username || row.email || row.nama || row.id || '').trim().toLowerCase();
+}
+
+export function uniqueRespondentCount(rows = []) {
+  return new Set(rows.map(respondentKey).filter(Boolean)).size;
+}
+
+export function responseStandardMet({ assignments = [], needs = [] } = {}) {
+  const total = Array.isArray(assignments) ? assignments.length : 0;
+  const submitted = total ? assignments.filter(item => item.status === 'SUBMITTED').length : 0;
+  const rate = total ? Math.round(submitted / total * 100) : 0;
+  const respondents = uniqueRespondentCount(needs);
+  return {
+    total,
+    submitted,
+    rate,
+    respondents,
+    minResponseRate: TNA_RESPONSE_STANDARD.minResponseRate,
+    minRespondents: TNA_RESPONSE_STANDARD.minRespondents,
+    hasAssignments: total > 0,
+    ok: total > 0 && rate >= TNA_RESPONSE_STANDARD.minResponseRate && respondents >= TNA_RESPONSE_STANDARD.minRespondents
+  };
 }
 
 export function surveyReportRows(campaign = {}, assignments = []) {
@@ -144,14 +237,17 @@ export function aggregateNeeds(rows = [], dimension = 'competency_name') {
   const groups = new Map();
   rows.forEach(row => {
     const key = String(row[dimension] || 'Belum ditentukan').trim() || 'Belum ditentukan';
-    const current = groups.get(key) || { key, count: 0, gapTotal: 0, priorityTotal: 0 };
+    const current = groups.get(key) || { key, count: 0, gapTotal: 0, priorityTotal: 0, respondentKeys: new Set() };
     current.count += 1;
+    const respondent = respondentKey(row);
+    if (respondent) current.respondentKeys.add(respondent);
     current.gapTotal += competencyGap(row.expected_level, row.current_level);
     current.priorityTotal += needPriorityScore(row);
     groups.set(key, current);
   });
-  return [...groups.values()].map(item => ({
+  return [...groups.values()].map(({ respondentKeys, ...item }) => ({
     ...item,
+    respondents: respondentKeys.size,
     averageGap: item.count ? item.gapTotal / item.count : 0,
     averagePriority: item.count ? item.priorityTotal / item.count : 0
   })).sort((a, b) => b.averagePriority - a.averagePriority || b.count - a.count);
@@ -166,6 +262,7 @@ export function trainingMetrics({ assignments = [], needs = [], plans = [], prog
     submitted,
     responseRate: assignments.length ? Math.round(submitted / assignments.length * 100) : 0,
     needs: needs.length,
+    uniqueRespondents: uniqueRespondentCount(needs),
     plans: plans.length,
     completedPlans,
     averageLearningGain: gains.length ? gains.reduce((sum, value) => sum + value, 0) / gains.length : 0

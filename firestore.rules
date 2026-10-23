@@ -376,12 +376,17 @@ service cloud.firestore {
         ]);
       allow update: if isHrd() || (isManagement() && sameBranch(resource.data)
         && sameBranch(request.resource.data)
-        && onlyChanges(['current_level', 'urgency', 'manager_note', 'validation_status', 'validated_by_nik', 'validated_at', 'updated_at']));
+        && onlyChanges(['current_level', 'urgency', 'manager_note', 'validation_status', 'validated_by_nik', 'validated_at', 'plan_id', 'planned_at', 'updated_at']));
       allow delete: if isHrd();
     }
     match /training_tna_plans/{id} {
-      allow read: if signedIn();
-      allow create: if isHrd();
+      allow read: if signedIn() && (
+        isHrd() || role() in ['GM', 'DIREKTUR', 'FINANCE'] ||
+        (isManagement() && (sameBranch(resource.data) ||
+          (branch() != '' && resource.data.get('participant_branches', []).hasAny([branch()])))) ||
+        (nik() != '' && resource.data.get('participant_niks', []).hasAny([nik()]))
+      );
+      allow create: if isHrd() || (role() == 'BRANCH MANAGER' && sameBranch(request.resource.data));
       allow update: if isHrd()
         || (role() in ['GM', 'DIREKTUR'] && onlyChanges(['status', 'gm_status', 'gm_by', 'gm_at', 'updated_at']))
         || (role() == 'FINANCE' && onlyChanges(['status', 'finance_status', 'finance_by', 'finance_at', 'updated_at']));

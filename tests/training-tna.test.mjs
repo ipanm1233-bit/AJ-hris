@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  TNA_COMPETENCY_TEMPLATES, aggregateNeeds, campaignTargetsEmployee, competencyGap, learningGain,
-  needPriorityScore, participantMatchesSession, priorityLabel, safeParticipantSnapshot, surveyReportRows,
-  templateCompetencyText, trainingMetrics
+  TNA_COMPETENCY_TEMPLATES, aggregateNeeds, campaignTargetsEmployee, competenciesForEmployee, competencyGap,
+  learningGain, needPriorityScore, participantMatchesSession, priorityLabel, responseStandardMet,
+  roleCompetencyKey, safeParticipantSnapshot, surveyReportRows, templateCompetencyText, trainingMetrics,
+  uniqueRespondentCount
 } from '../js/training-tna.mjs';
 
 test('campaign targets employees by branch and division', () => {
@@ -87,4 +88,40 @@ test('survey report rows include submitted answers and pending recipients', () =
   assert.equal(rows[0].priority_score, 30);
   assert.equal(rows[1].status, 'PENDING');
   assert.equal(rows[1].competency, '');
+});
+
+test('respondent counts are per person, not per competency row', () => {
+  const rows = [
+    { nik: '01', nama: 'Ani', competency_name: 'Excel', expected_level: 4, current_level: 2, urgency: 4, business_impact: 5 },
+    { nik: '01', nama: 'Ani', competency_name: 'Excel', expected_level: 5, current_level: 3, urgency: 3, business_impact: 5 },
+    { nik: '02', nama: 'Budi', competency_name: 'Excel', expected_level: 4, current_level: 2, urgency: 4, business_impact: 5 }
+  ];
+  assert.equal(uniqueRespondentCount(rows), 2);
+  const aggregated = aggregateNeeds(rows, 'competency_name');
+  assert.equal(aggregated.find(item => item.key === 'Excel').count, 3);
+  assert.equal(aggregated.find(item => item.key === 'Excel').respondents, 2);
+});
+
+test('role competency matrix selects templates by jabatan/divisi', () => {
+  assert.equal(roleCompetencyKey({ jabatan: 'Salesman', divisi: 'Sales' }), 'sales');
+  assert.equal(roleCompetencyKey({ jabatan: 'SPV warehouse', divisi: 'Logistik' }), 'leadership');
+  assert.equal(roleCompetencyKey({ nik: '01', nama_karyawan: 'Ani', cabang: 'Malang', divisi: 'Warehouse', jabatan: 'Admin Gudang' }), 'warehouse');
+  assert.equal(roleCompetencyKey({ divisi: 'HRD', jabatan: 'Staff Keuangan' }), 'admin');
+  assert.equal(roleCompetencyKey({ divisi: 'Ekspansi', jabatan: 'Karyawan Umum' }), 'default');
+  const competencies = competenciesForEmployee({ jabatan: 'Salesman' });
+  assert.ok(competencies.some(item => item.name === 'Product Knowledge'));
+  assert.ok(competencies.every(item => item.expected_level >= 1 && item.expected_level <= 5));
+});
+
+test('response standard requires rate and a minimum number of unique respondents', () => {
+  const assignments = Array.from({ length: 10 }, (_, index) => ({ status: index < 7 ? 'SUBMITTED' : 'PENDING' }));
+  const needs = Array.from({ length: 3 }, (_, index) => ({ nik: String(index) }));
+  assert.equal(responseStandardMet({ assignments, needs }).ok, true);
+  const failed = responseStandardMet({ assignments, needs: needs.slice(1) });
+  assert.equal(failed.ok, false);
+  assert.equal(failed.respondents, 2);
+  assert.equal(failed.minRespondents, 3);
+  const empty = responseStandardMet({});
+  assert.equal(empty.hasAssignments, false);
+  assert.equal(empty.ok, false);
 });

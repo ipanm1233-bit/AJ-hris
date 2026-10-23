@@ -3,9 +3,9 @@ import { fsGetAll as firebaseGetAll, openModal, closeModal, confirmDialog, toast
 import { authFetch } from "../api-client.js";
 import { hasPermission, resolveBranchScope, branchMatches } from "../auth.js";
 import {
-  TRAINING_STATUS, TNA_COMPETENCY_TEMPLATES, aggregateNeeds, campaignTargetsEmployee, competencyGap,
-  needPriorityScore, participantMatchesSession, priorityLabel, safeParticipantSnapshot, surveyReportRows,
-  templateCompetencyText, trainingMetrics
+  TRAINING_STATUS, TNA_COMPETENCY_TEMPLATES, aggregateNeeds, campaignTargetsEmployee, competenciesForEmployee,
+  competencyGap, needPriorityScore, participantMatchesSession, priorityLabel, responseStandardMet,
+  safeParticipantSnapshot, surveyReportRows, templateCompetencyText, trainingMetrics, uniqueRespondentCount
 } from "../training-tna.mjs";
 
 const C = {
@@ -47,9 +47,10 @@ async function fsUpdate(collectionName, id, data) {
 }
 
 async function allData(session) {
+  const canPickParticipants = isHrd(session) || await hasPermission("training.planning.create", session);
   const [workflow, employees] = await Promise.all([
     trainingApi({ action: "list" }),
-    isHrd(session) ? firebaseGetAll(COL.MASTER_KARYAWAN) : Promise.resolve([])
+    canPickParticipants ? firebaseGetAll(COL.MASTER_KARYAWAN) : Promise.resolve([])
   ]);
   return { ...workflow.data, employees };
 }
@@ -195,6 +196,7 @@ export async function mount(container, { session, params = new URLSearchParams()
     { id: "analysis", label: "Analisis" }, { id: "planning", label: "Planning" },
     { id: "execution", label: "Pelaksanaan" }, { id: "report", label: "Laporan" }
   );
+  else if (roleIn(session, ["FINANCE"])) tabs.unshift({ id: "planning", label: "Approval Anggaran" });
   let active = tabs[0].id;
   const requestedTab = typeof params?.get === "function" ? params.get("tab") : "";
   if (requestedTab && tabs.some(tab => tab.id === requestedTab)) active = requestedTab;
@@ -221,22 +223,27 @@ export async function mount(container, { session, params = new URLSearchParams()
 
 async function renderDashboard(wrap, session, data, reload) {
   const metrics = trainingMetrics(data);
+  const response = responseStandardMet(data);
   const urgent = data.needs.filter(n => needPriorityScore(n) >= 20).length;
+  const responseNote = response.hasAssignments
+    ? `${metrics.submitted}/${metrics.assigned} selesai${response.ok ? "" : ` · di bawah ambang ${response.minResponseRate}%`}`
+    : "Belum ada penugasan survey";
   wrap.innerHTML = `
     <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
-      ${statCard("Respon survey", `${metrics.responseRate}%`, `${metrics.submitted}/${metrics.assigned} selesai`)}
-      ${statCard("Kebutuhan", metrics.needs, `${urgent} prioritas tinggi/kritis`)}
+      ${statCard("Respon survey", `${metrics.responseRate}%`, responseNote)}
+      ${statCard("Data kebutuhan", metrics.needs, `${urgent} prioritas tinggi/kritis · ${metrics.uniqueRespondents} responden unik`)}
       ${statCard("Program", metrics.plans, `${metrics.completedPlans} selesai`)}
       ${statCard("Learning gain", `${metrics.averageLearningGain.toFixed(1)} poin`, "Rata-rata post-test − pre-test")}
       ${statCard("Kampanye aktif", data.campaigns.filter(c => c.status === "PUBLISHED").length, "Survey sedang berjalan")}
     </div>
+    ${response.ok ? "" : `<div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900"><b>Catatan validitas:</b> ${response.hasAssignments ? `response rate ${response.rate}% dan ${response.respondents} responden unik.` : "Data penugasan survey tidak tersedia."} Ambang minimal ${response.minResponseRate}% dan ${response.minRespondents} responden. Hasil analisis diperlakukan sebagai indikasi awal sampai ambang terpenuhi.</div>`}
     <div class="grid lg:grid-cols-2 gap-5">
       <section class="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm"><h3 class="font-bold text-slate-800">Alur Training Need Analysis</h3><div class="mt-4 space-y-3 text-sm">${[
         ["1", "Survey kebutuhan", "HRD distribusikan kompetensi sasaran"], ["2", "Validasi & analitik", "Atasan mengonfirmasi gap dan urgensi"],
         ["3", "Planning & approval", "Program disusun, GM dan Finance menyetujui"], ["4", "Pelaksanaan", "Absensi, bukti, biaya aktual, pre/post-test"],
-        ["5", "Evaluasi", "Feedback dan perubahan perilaku 30–60 hari"], ["6", "Laporan", "Efektivitas, biaya, cabang, divisi untuk manajemen"]
+        ["5", "Evaluasi", "Feedback, perilaku 30–60 hari, dan hasil kerja"], ["6", "Laporan", "Efektivitas, biaya, cabang, divisi untuk manajemen"]
       ].map(([n,t,d]) => `<div class="flex gap-3"><span class="w-7 h-7 rounded-full bg-maroon-50 text-maroon-700 grid place-items-center font-bold">${n}</span><div><b>${t}</b><p class="text-xs text-slate-400">${d}</p></div></div>`).join("")}</div></section>
-      <section class="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm"><h3 class="font-bold text-slate-800">Prioritas Kompetensi</h3><div class="mt-4 space-y-3">${aggregateNeeds(data.needs).slice(0, 7).map(row => `<div><div class="flex justify-between text-xs"><b>${esc(row.key)}</b><span>${row.count} karyawan · gap ${row.averageGap.toFixed(1)}</span></div><div class="mt-1 h-2 rounded bg-slate-100"><div class="h-2 rounded bg-maroon-600" style="width:${Math.min(100, row.averagePriority / 36 * 100)}%"></div></div></div>`).join("") || empty("Belum ada data kebutuhan.")}</div></section>
+      <section class="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm"><h3 class="font-bold text-slate-800">Prioritas Kompetensi</h3><div class="mt-4 space-y-3">${aggregateNeeds(data.needs).slice(0, 7).map(row => `<div><div class="flex justify-between text-xs"><b>${esc(row.key)}</b><span>${row.respondents} karyawan · ${row.count} penilaian · gap ${row.averageGap.toFixed(1)}</span></div><div class="mt-1 h-2 rounded bg-slate-100"><div class="h-2 rounded bg-maroon-600" style="width:${Math.min(100, row.averagePriority / 36 * 100)}%"></div></div></div>`).join("") || empty("Belum ada data kebutuhan.")}</div></section>
     </div>`;
 }
 
@@ -256,7 +263,10 @@ async function renderSurvey(wrap, session, data, reload) {
     try {
       const rows = targets.map(employee => {
         const person = safeParticipantSnapshot(employee);
-        return { id: `${campaign.id}_${person.nik}`, data: { campaign_id: campaign.id, ...person, username: employee.username || "", status: "PENDING", competencies: campaign.competencies || [], cabang: person.cabang, divisi: person.divisi } };
+        const competencies = campaign.use_role_matrix === true
+          ? competenciesForEmployee(employee, campaign.competencies || [])
+          : (campaign.competencies || []);
+        return { id: `${campaign.id}_${person.nik}`, data: { campaign_id: campaign.id, ...person, username: employee.username || "", status: "PENDING", competencies, matrix_key: campaign.use_role_matrix === true ? "ROLE" : "CAMPAIGN", cabang: person.cabang, divisi: person.divisi } };
       });
       await trainingApi({ action: "bulk_assignments", campaignId: campaign.id, rows });
       await fsUpdate(C.campaigns, campaign.id, { status: "PUBLISHED", published_at: new Date().toISOString(), assigned_count: targets.length });
@@ -313,7 +323,7 @@ function campaignModal(session, employees, reload) {
   const positions = uniqueValues(candidates.map(person => person.jabatan));
   const employeeItems = candidates.map((person, index) => `<label data-employee-row data-employee-index="${index}" class="flex items-start gap-2 rounded-lg border border-slate-100 px-3 py-2 text-xs hover:bg-slate-50"><input type="checkbox" data-target-group="employees" value="${esc(person.nik)}" class="mt-0.5 rounded border-slate-300"><span><b>${esc(person.nama)}</b> · ${esc(person.nik)}<br><span class="text-slate-400">${esc(person.cabang || "-")} · ${esc(person.divisi || "-")} · ${esc(person.jabatan || "-")}</span></span></label>`).join("");
   const templateOptions = Object.entries(TNA_COMPETENCY_TEMPLATES).map(([key, template]) => `<option value="${esc(key)}">${esc(template.label)}</option>`).join("");
-  openModal({ title: "Buat Survey Training Need Analysis", size: "xl", bodyHtml: `<div id="campaign-form" class="space-y-5"><div class="grid md:grid-cols-3 gap-4">${field("Judul survey", "c-title", "text", "placeholder='TNA Semester I 2027'")}${field("Periode", "c-period", "text", "placeholder='Semester I 2027'")}${field("Batas pengisian", "c-deadline", "date")}</div><div><p class="text-sm font-bold text-slate-800">Sasaran survey</p><p class="mt-1 text-xs text-slate-400">Kosongkan kelompok untuk mencakup semua. Pilihan karyawan akan mempersempit hasil filter organisasi.</p><div class="mt-3 grid md:grid-cols-3 gap-3">${targetPicker("branches", "Cabang", branches)}${targetPicker("divisions", "Divisi", divisions)}${targetPicker("positions", "Jabatan", positions)}</div><section class="mt-3 rounded-xl border border-slate-200 p-3"><div class="flex flex-wrap items-center justify-between gap-2"><div><p class="text-xs font-bold text-slate-700">Karyawan</p><p id="c-target-count" class="text-[11px] text-slate-400"></p></div><div class="flex gap-3"><button type="button" data-clear-group="employees" class="text-[10px] font-semibold text-maroon-700">Kosongkan</button><button type="button" data-check-visible="employees" class="text-[10px] font-semibold text-slate-600">Pilih semua yang tampil</button></div></div><input id="c-employee-search" type="search" placeholder="Cari nama, NIK, cabang, divisi, atau jabatan…" class="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"><div id="c-employee-list" class="mt-2 grid max-h-64 gap-2 overflow-y-auto md:grid-cols-2">${employeeItems || `<p class="text-xs text-slate-400">Data karyawan aktif belum tersedia.</p>`}</div></section></div><div class="rounded-xl border border-blue-100 bg-blue-50 p-3"><p class="text-xs font-bold text-blue-900">Template kebutuhan pengembangan</p><div class="mt-2 flex flex-col gap-2 sm:flex-row"><select id="c-template" class="min-w-0 flex-1 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm"><option value="">Pilih template kompetensi…</option>${templateOptions}</select><button type="button" id="apply-competency-template" class="rounded-lg bg-blue-700 px-4 py-2 text-xs font-semibold text-white">Gunakan Template</button></div><p class="mt-2 text-[11px] text-blue-700">Template dapat disesuaikan kembali sebelum survey disimpan.</p></div><label class="block text-xs font-semibold text-slate-600">Kompetensi yang dinilai<textarea id="c-competencies" rows="7" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Advanced Excel | 4 | 5&#10;Keselamatan Kerja | 5 | 5"></textarea><span class="font-normal text-slate-400">Satu baris: kompetensi | level harapan (1–5) | dampak bisnis (1–5)</span></label><label class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><input id="c-email-on-publish" type="checkbox" class="mt-0.5 rounded border-amber-300"><span><b>Kirim email segera saat survey dipublikasikan</b><br>Opsional dan tidak dicentang secara default. Jika tidak dipilih, email dapat dikirim satu per satu setelah publikasi.</span></label></div>`, footerHtml: `<button id="save-campaign" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">Simpan Draft</button>`, onMount: modal => {
+  openModal({ title: "Buat Survey Training Need Analysis", size: "xl", bodyHtml: `<div id="campaign-form" class="space-y-5"><div class="grid md:grid-cols-3 gap-4">${field("Judul survey", "c-title", "text", "placeholder='TNA Semester I 2027'")}${field("Periode", "c-period", "text", "placeholder='Semester I 2027'")}${field("Batas pengisian", "c-deadline", "date")}</div><div><p class="text-sm font-bold text-slate-800">Sasaran survey</p><p class="mt-1 text-xs text-slate-400">Kosongkan kelompok untuk mencakup semua. Pilihan karyawan akan mempersempit hasil filter organisasi.</p><div class="mt-3 grid md:grid-cols-3 gap-3">${targetPicker("branches", "Cabang", branches)}${targetPicker("divisions", "Divisi", divisions)}${targetPicker("positions", "Jabatan", positions)}</div><section class="mt-3 rounded-xl border border-slate-200 p-3"><div class="flex flex-wrap items-center justify-between gap-2"><div><p class="text-xs font-bold text-slate-700">Karyawan</p><p id="c-target-count" class="text-[11px] text-slate-400"></p></div><div class="flex gap-3"><button type="button" data-clear-group="employees" class="text-[10px] font-semibold text-maroon-700">Kosongkan</button><button type="button" data-check-visible="employees" class="text-[10px] font-semibold text-slate-600">Pilih semua yang tampil</button></div></div><input id="c-employee-search" type="search" placeholder="Cari nama, NIK, cabang, divisi, atau jabatan…" class="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"><div id="c-employee-list" class="mt-2 grid max-h-64 gap-2 overflow-y-auto md:grid-cols-2">${employeeItems || `<p class="text-xs text-slate-400">Data karyawan aktif belum tersedia.</p>`}</div></section></div><div class="rounded-xl border border-blue-100 bg-blue-50 p-3"><p class="text-xs font-bold text-blue-900">Template kebutuhan pengembangan</p><div class="mt-2 flex flex-col gap-2 sm:flex-row"><select id="c-template" class="min-w-0 flex-1 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm"><option value="">Pilih template kompetensi…</option>${templateOptions}</select><button type="button" id="apply-competency-template" class="rounded-lg bg-blue-700 px-4 py-2 text-xs font-semibold text-white">Gunakan Template</button></div><p class="mt-2 text-[11px] text-blue-700">Template dapat disesuaikan kembali sebelum survey disimpan.</p></div><label class="block text-xs font-semibold text-slate-600">Kompetensi yang dinilai<textarea id="c-competencies" rows="7" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Advanced Excel | 4 | 5&#10;Keselamatan Kerja | 5 | 5"></textarea><span class="font-normal text-slate-400">Satu baris: kompetensi | level harapan (1–5) | dampak bisnis (1–5)</span></label><label class="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900"><input id="c-use-role-matrix" type="checkbox" class="mt-0.5 rounded border-emerald-300" checked><span><b>Sesuaikan level harapan per jabatan</b><br>Gunakan competency matrix per posisi/jabatan. Daftar kompetensi di atas menjadi fallback untuk jabatan yang belum dipetakan.</span></label><label class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><input id="c-email-on-publish" type="checkbox" class="mt-0.5 rounded border-amber-300"><span><b>Kirim email segera saat survey dipublikasikan</b><br>Opsional dan tidak dicentang secara default. Jika tidak dipilih, email dapat dikirim satu per satu setelah publikasi.</span></label></div>`, footerHtml: `<button id="save-campaign" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">Simpan Draft</button>`, onMount: modal => {
     const root = modal.querySelector("#campaign-form");
     const selectedSet = group => new Set(checkedValues(root, group));
     const matchesOrg = person => {
@@ -361,7 +371,7 @@ function campaignModal(session, employees, reload) {
       const competencies = val(root, "#c-competencies").split("\n").map(line => { const [name, expected, impact] = line.split("|").map(x => x.trim()); return { name, expected_level: Math.min(5, Math.max(1, Number(expected || 3))), business_impact: Math.min(5, Math.max(1, Number(impact || 3))) }; }).filter(x => x.name);
       if (!val(root, "#c-title") || !val(root, "#c-deadline") || !competencies.length) return toast("Judul, batas pengisian, dan kompetensi wajib diisi.", "warning");
       const id = genId("TNA");
-      await fsAdd(C.campaigns, { title: val(root,"#c-title"), period: val(root,"#c-period"), deadline: val(root,"#c-deadline"), target_branches: checkedValues(root,"branches"), target_divisions: checkedValues(root,"divisions"), target_positions: checkedValues(root,"positions"), target_niks: checkedValues(root,"employees"), email_on_publish: root.querySelector("#c-email-on-publish").checked, competencies, status: "DRAFT", created_by_nik: myNik(session) }, id);
+      await fsAdd(C.campaigns, { title: val(root,"#c-title"), period: val(root,"#c-period"), deadline: val(root,"#c-deadline"), target_branches: checkedValues(root,"branches"), target_divisions: checkedValues(root,"divisions"), target_positions: checkedValues(root,"positions"), target_niks: checkedValues(root,"employees"), email_on_publish: root.querySelector("#c-email-on-publish").checked, use_role_matrix: root.querySelector("#c-use-role-matrix").checked, competencies, status: "DRAFT", created_by_nik: myNik(session) }, id);
       await audit(session, "CREATE_CAMPAIGN", "campaign", id); closeModal(); toast("Draft survey disimpan.", "success"); reload();
     };
   }});
@@ -426,7 +436,7 @@ async function renderPlanning(wrap, session, data, reload) {
   // Branch Manager hanya melihat program pelatihan yang menyentuh cabangnya.
   const branchScope = resolveBranchScope(session);
   const plans = branchScope ? data.plans.filter(p => planInBranch(p, branchScope)) : data.plans;
-  wrap.innerHTML = `<div class="flex justify-between items-center"><div><h2 class="text-lg font-bold text-slate-800">Planning & Persetujuan</h2><p class="text-xs text-slate-400">Rencana berbasis kebutuhan tervalidasi dengan peserta ber-NIK.</p></div>${canCreate ? `<button id="new-plan" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">+ Buat Program</button>` : ""}</div><div class="grid lg:grid-cols-2 gap-4">${plans.map(p => `<article class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm"><div class="flex justify-between gap-3"><div><span class="text-[10px] font-bold text-maroon-700">${esc(p.competency_name || p.kategori || "PROGRAM")}</span><h3 class="font-bold text-slate-800">${esc(p.title || p.judul)}</h3></div><b class="text-xs text-slate-500">${esc(p.status)}</b></div><p class="mt-2 text-xs text-slate-500">${dateText(p.start_date || p.tanggal)} · ${esc(p.trainer)} · ${planParticipants(p).length} peserta</p><p class="mt-1 text-xs">Estimasi ${money(p.budget_estimate || p.estimasi_biaya)}</p><div class="mt-4 flex flex-wrap gap-2">${approvalButtons(p,session)}</div></article>`).join("") || empty("Belum ada rencana program.")}</div>`;
+  wrap.innerHTML = `<div class="flex justify-between items-center"><div><h2 class="text-lg font-bold text-slate-800">Planning & Persetujuan</h2><p class="text-xs text-slate-400">Rencana berbasis kebutuhan tervalidasi dengan peserta ber-NIK.</p></div>${canCreate ? `<button id="new-plan" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">+ Buat Program</button>` : ""}</div><div class="grid lg:grid-cols-2 gap-4">${plans.map(p => `<article class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm"><div class="flex justify-between gap-3"><div><span class="text-[10px] font-bold text-maroon-700">${esc(p.competency_name || p.kategori || "PROGRAM")}</span><h3 class="font-bold text-slate-800">${esc(p.title || p.judul)}</h3></div><b class="text-xs text-slate-500">${esc(p.status)}</b></div><p class="mt-2 text-xs text-slate-500">${dateText(p.start_date || p.tanggal)} · ${esc(p.trainer)} · ${planParticipants(p).length} peserta</p><p class="mt-1 text-xs">Estimasi ${money(p.budget_estimate || p.estimasi_biaya)}${p.result_metric ? ` · Hasil: ${esc(p.result_metric)}` : ""}</p><p class="mt-1 text-[11px] ${p.plan_origin === "MANDATORY" ? "text-blue-600" : p.need_ids?.length ? "text-emerald-600" : "text-amber-600"}">${p.plan_origin === "MANDATORY" ? "Program mandatory / regulasi" : p.need_ids?.length ? `${p.need_ids.length} kebutuhan TNA tertaut` : "Belum tertaut ke kebutuhan TNA"}</p><div class="mt-4 flex flex-wrap gap-2">${approvalButtons(p,session)}</div></article>`).join("") || empty("Belum ada rencana program.")}</div>`;
   if (wrap.querySelector("#new-plan")) wrap.querySelector("#new-plan").onclick = () => planModal(session,data,reload);
   wrap.querySelectorAll("[data-decision]").forEach(btn => btn.onclick = async () => {
     const [decision, planId] = btn.dataset.decision.split(":"); const plan = data.plans.find(p=>p.id===planId);
@@ -448,15 +458,110 @@ function approvalButtons(plan, session) {
 
 function planModal(session, data, reload) {
   const branchScope = resolveBranchScope(session);
-  let candidates = data.employees.map(safeParticipantSnapshot).filter(p=>p.nik && p.nama);
+  let candidates = data.employees.map(safeParticipantSnapshot).filter(p => p.nik && p.nama);
   // Branch Manager hanya dapat memilih peserta dari cabangnya sendiri.
   if (branchScope) candidates = candidates.filter(p => branchMatches(branchScope, p.cabang));
-  openModal({ title:"Buat Rencana Program Pelatihan", size:"xl", bodyHtml:`<div id="plan-form" class="space-y-4"><div class="grid md:grid-cols-2 gap-4">${field("Nama program","p-title")}${field("Kompetensi utama","p-competency")}${field("Trainer / vendor","p-trainer")}${field("Tanggal mulai","p-date","date")}${field("Metode","p-method","text","placeholder='Kelas / OJT / Coaching'")}${field("Estimasi biaya","p-budget","number","min='0'")}${field("Nilai kelulusan","p-pass","number","min='0' max='100' value='70'")}</div><label class="block text-xs font-semibold text-slate-600">Tujuan terukur<textarea id="p-objective" class="mt-1 w-full rounded-lg border px-3 py-2" rows="3"></textarea></label><label class="block text-xs font-semibold text-slate-600">Pertanyaan asesmen<textarea id="p-questions" class="mt-1 w-full rounded-lg border px-3 py-2" rows="4" placeholder="Pertanyaan | Benar"></textarea></label><div><p class="text-xs font-semibold text-slate-600 mb-2">Peserta</p><div class="max-h-56 overflow-y-auto grid md:grid-cols-2 gap-2 border rounded-xl p-3">${candidates.map((p,i)=>`<label class="flex items-center gap-2 text-xs"><input type="checkbox" data-person="${i}"><span><b>${esc(p.nama)}</b> · ${esc(p.nik)} · ${esc(p.cabang)}</span></label>`).join("")}</div></div></div>`, footerHtml:`<button id="save-plan" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">Kirim ke GM</button>`, onMount: modal => modal.querySelector("#save-plan").onclick = async () => {
-    const root = modal.querySelector("#plan-form"); const participants = [...root.querySelectorAll("[data-person]:checked")].map(x=>candidates[Number(x.dataset.person)]);
-    const questions = val(root,"#p-questions").split("\n").map(line=>{const [question,answer]=line.split("|").map(x=>x.trim()); return {question,answer:answer||"Benar"};}).filter(q=>q.question);
-    if (!val(root,"#p-title") || !val(root,"#p-date") || !participants.length) return toast("Nama, tanggal, dan peserta wajib dipilih.","warning");
-    const id=genId("PLAN"); await fsAdd(C.plans,{ title:val(root,"#p-title"), competency_name:val(root,"#p-competency"), trainer:val(root,"#p-trainer"), start_date:val(root,"#p-date"), method:val(root,"#p-method"), budget_estimate:Number(val(root,"#p-budget")||0), passing_grade:Number(val(root,"#p-pass")||70), objective:val(root,"#p-objective"), assessment_questions:questions, participants, participant_niks:participants.map(p=>p.nik), status:TRAINING_STATUS.PENDING_GM, gm_status:"PENDING", finance_status:"PENDING", created_by_nik:myNik(session)},id); await audit(session,"CREATE_PLAN","plan",id,{participants:participants.length}); closeModal(); toast("Rencana dikirim ke GM.","success"); reload();
-  }});
+  const validatedNeeds = (data.needs || [])
+    .filter(n => n.validation_status === "VALIDATED" && (!branchScope || branchMatches(branchScope, n.cabang)))
+    .sort((a, b) => needPriorityScore(b) - needPriorityScore(a));
+  const needItems = validatedNeeds.slice(0, 80).map(n => `<label class="flex items-start gap-2 rounded-lg border border-emerald-100 bg-white px-3 py-2 text-xs"><input type="checkbox" data-need="${esc(n.id)}" data-need-nik="${esc(n.nik)}" data-need-competency="${esc(n.competency_name)}" class="mt-0.5 rounded border-emerald-300"><span><b>${esc(n.nama || "-")}</b> · ${esc(n.nik || "-")}<br><span class="text-slate-500">${esc(n.competency_name || "-")} · gap ${competencyGap(n.expected_level, n.current_level)} · ${priorityLabel(needPriorityScore(n))}</span></span></label>`).join("");
+  const candidateItems = candidates.map((p, i) => `<label class="flex items-center gap-2 text-xs"><input type="checkbox" data-person="${i}"><span><b>${esc(p.nama)}</b> · ${esc(p.nik)} · ${esc(p.cabang)}</span></label>`).join("");
+  openModal({
+    title: "Buat Rencana Program Pelatihan",
+    size: "xl",
+    bodyHtml: `<div id="plan-form" class="space-y-4">
+      <div class="grid md:grid-cols-2 gap-4">
+        ${field("Nama program", "p-title")}
+        ${select("Jenis program", "p-origin", [["TNA", "Berbasis TNA / kebutuhan tervalidasi"], ["MANDATORY", "Mandatory / regulasi"], ["OTHER", "Lainnya"]])}
+        ${field("Kompetensi utama", "p-competency")}
+        ${field("Trainer / vendor", "p-trainer")}
+        ${field("Tanggal mulai", "p-date", "date")}
+        ${field("Metode", "p-method", "text", "placeholder='Kelas / OJT / Coaching'")}
+        ${field("Estimasi biaya", "p-budget", "number", "min='0'")}
+        ${field("Nilai kelulusan", "p-pass", "number", "min='0' max='100' value='70'")}
+      </div>
+      <label class="block text-xs font-semibold text-slate-600">Tujuan terukur<textarea id="p-objective" class="mt-1 w-full rounded-lg border px-3 py-2" rows="3"></textarea></label>
+      <section class="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+        <p class="text-xs font-bold text-emerald-900">Kebutuhan tervalidasi yang menjadi dasar program</p>
+        <p class="mt-1 text-[11px] text-emerald-800">Pilih minimal satu kebutuhan untuk program berbasis TNA. Peserta dengan NIK yang sama akan ditandai otomatis dan tetap dapat disesuaikan.</p>
+        <div class="mt-2 max-h-48 overflow-y-auto grid md:grid-cols-2 gap-2">${needItems || `<p class="text-xs text-emerald-800">Belum ada kebutuhan tervalidasi. Pilih jenis program Mandatory/Lainnya bila tidak berbasis TNA.</p>`}</div>
+      </section>
+      <div class="grid md:grid-cols-2 gap-4">
+        ${field("Metrik hasil level 4", "p-metric", "text", "placeholder='Contoh: nilai audit, penjualan, error rate'")}
+        ${field("Satuan metrik", "p-unit", "text", "placeholder='%, Rp, unit'")}
+        ${field("Baseline", "p-baseline", "number")}
+        ${field("Target", "p-target", "number")}
+      </div>
+      <label class="block text-xs font-semibold text-slate-600">Pertanyaan asesmen<textarea id="p-questions" class="mt-1 w-full rounded-lg border px-3 py-2" rows="4" placeholder="Pertanyaan | Benar"></textarea></label>
+      <div><p class="text-xs font-semibold text-slate-600 mb-2">Peserta</p><div class="max-h-56 overflow-y-auto grid md:grid-cols-2 gap-2 border rounded-xl p-3">${candidateItems}</div></div>
+    </div>`,
+    footerHtml: `<button id="save-plan" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">Kirim ke GM</button>`,
+    onMount: modal => {
+      const root = modal.querySelector("#plan-form");
+      const needInputs = [...root.querySelectorAll("[data-need]")];
+      const syncNeedSelection = () => {
+        const selected = needInputs.filter(input => input.checked);
+        const niks = new Set(selected.map(input => input.dataset.needNik).filter(Boolean));
+        root.querySelectorAll("[data-person]").forEach(input => {
+          const person = candidates[Number(input.dataset.person)];
+          if (person && niks.has(person.nik)) input.checked = true;
+        });
+        const competencyNames = uniqueValues(selected.map(input => input.dataset.needCompetency));
+        if (competencyNames.length === 1) root.querySelector("#p-competency").value = competencyNames[0];
+      };
+      needInputs.forEach(input => input.onchange = syncNeedSelection);
+      modal.querySelector("#save-plan").onclick = async () => {
+        const participants = [...root.querySelectorAll("[data-person]:checked")].map(x => candidates[Number(x.dataset.person)]);
+        const selectedNeeds = needInputs
+          .filter(input => input.checked)
+          .map(input => validatedNeeds.find(need => need.id === input.dataset.need))
+          .filter(Boolean);
+        const origin = val(root, "#p-origin") || "TNA";
+        const questions = val(root, "#p-questions").split("\n").map(line => {
+          const [question, answer] = line.split("|").map(x => x.trim());
+          return { question, answer: answer || "Benar" };
+        }).filter(q => q.question);
+        if (!val(root, "#p-title") || !val(root, "#p-date") || !participants.length) return toast("Nama, tanggal, dan peserta wajib dipilih.", "warning");
+        if (origin === "TNA" && !selectedNeeds.length) return toast("Pilih minimal satu kebutuhan tervalidasi untuk program berbasis TNA.", "warning");
+        const id = genId("PLAN");
+        const participantNiks = participants.map(p => p.nik);
+        const planData = {
+          title: val(root, "#p-title"),
+          plan_origin: origin,
+          competency_name: val(root, "#p-competency") || uniqueValues(selectedNeeds.map(n => n.competency_name))[0] || "",
+          trainer: val(root, "#p-trainer"),
+          start_date: val(root, "#p-date"),
+          method: val(root, "#p-method"),
+          budget_estimate: Number(val(root, "#p-budget") || 0),
+          passing_grade: Number(val(root, "#p-pass") || 70),
+          objective: val(root, "#p-objective"),
+          result_metric: val(root, "#p-metric"),
+          result_unit: val(root, "#p-unit"),
+          baseline_value: val(root, "#p-baseline") === "" ? null : Number(val(root, "#p-baseline")),
+          target_value: val(root, "#p-target") === "" ? null : Number(val(root, "#p-target")),
+          assessment_questions: questions,
+          participants,
+          participant_niks: participantNiks,
+          participant_branches: uniqueValues(participants.map(p => p.cabang)),
+          need_ids: selectedNeeds.map(n => n.id),
+          campaign_ids: uniqueValues(selectedNeeds.map(n => n.campaign_id)),
+          cabang: branchScope || session.cabang || "",
+          status: TRAINING_STATUS.PENDING_GM,
+          gm_status: "PENDING",
+          finance_status: "PENDING",
+          created_by_nik: myNik(session)
+        };
+        await fsAdd(C.plans, planData, id);
+        if (selectedNeeds.length) {
+          await Promise.all(selectedNeeds.map(need => fsUpdate(C.needs, need.id, { plan_id: id, planned_at: new Date().toISOString() })));
+        }
+        await audit(session, "CREATE_PLAN", "plan", id, { participants: participants.length, needs: selectedNeeds.length, origin });
+        closeModal();
+        toast("Rencana dikirim ke GM.", "success");
+        reload();
+      };
+    }
+  });
 }
 
 async function renderExecution(wrap, session, data, reload) {
@@ -466,8 +571,64 @@ async function renderExecution(wrap, session, data, reload) {
 }
 
 function executionModal(plan, session, reload) {
-  const people=planParticipants(plan), present=new Set(plan.attendance_niks||[]);
-  openModal({title:`Pelaksanaan: ${esc(plan.title||plan.judul)}`,size:"lg",bodyHtml:`<div id="exec" class="space-y-4">${select("Status","e-status",[["SCHEDULED","Terjadwal"],["ONGOING","Berjalan"],["COMPLETED","Selesai"],["CANCELLED","Dibatalkan"]])}${field("Biaya aktual","e-cost","number",`min='0' value='${Number(plan.actual_cost||0)}'`)}${field("Tautan bukti / dokumentasi","e-evidence","url",`value='${esc(plan.evidence_url||"")}'`)}<label class="block text-xs font-semibold text-slate-600">Catatan<textarea id="e-notes" rows="3" class="mt-1 w-full rounded-lg border px-3 py-2">${esc(plan.execution_notes||"")}</textarea></label><div><p class="text-xs font-semibold mb-2">Kehadiran peserta</p>${people.map((p,i)=>`<label class="flex gap-2 py-1 text-xs"><input type="checkbox" data-attendee="${i}" ${present.has(p.nik)?"checked":""}>${esc(p.nama)} · ${esc(p.nik)}</label>`).join("")}</div></div>`,footerHtml:`<button id="save-exec" class="rounded bg-maroon-700 px-4 py-2 text-sm text-white">Simpan</button>`,onMount:modal=>{modal.querySelector("#e-status").value=plan.status;modal.querySelector("#save-exec").onclick=async()=>{const root=modal.querySelector("#exec"),attendance=[...root.querySelectorAll("[data-attendee]:checked")].map(x=>people[Number(x.dataset.attendee)].nik).filter(Boolean);await fsUpdate(C.plans,plan.id,{status:val(root,"#e-status"),actual_cost:Number(val(root,"#e-cost")||0),evidence_url:val(root,"#e-evidence"),execution_notes:val(root,"#e-notes"),attendance_niks:attendance});await audit(session,"UPDATE_EXECUTION","plan",plan.id,{status:val(root,"#e-status"),attendance:attendance.length});closeModal();toast("Pelaksanaan diperbarui.","success");reload();};}});
+  const people = planParticipants(plan), present = new Set(plan.attendance_niks || []);
+  const numberValue = value => value === null || value === undefined || value === "" ? "" : Number(value);
+  openModal({
+    title: `Pelaksanaan: ${esc(plan.title || plan.judul)}`,
+    size: "lg",
+    bodyHtml: `<div id="exec" class="space-y-4">
+      ${select("Status", "e-status", [["SCHEDULED", "Terjadwal"], ["ONGOING", "Berjalan"], ["COMPLETED", "Selesai"], ["CANCELLED", "Dibatalkan"]])}
+      <div class="grid sm:grid-cols-2 gap-3">
+        ${field("Biaya aktual", "e-cost", "number", `min='0' value='${numberValue(plan.actual_cost) || 0}'`)}
+        ${field("Tautan bukti / dokumentasi", "e-evidence", "url", `value='${esc(plan.evidence_url || "")}'`)}
+      </div>
+      <section class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <p class="text-xs font-bold text-slate-700">Hasil dampak (level 4)</p>
+        <p class="mt-1 text-[11px] text-slate-500">Tetapkan metrik yang dipengaruhi pelatihan. Isi hasil aktual setelah periode evaluasi.</p>
+        <div class="mt-3 grid sm:grid-cols-2 gap-3">
+          ${field("Metrik hasil", "e-metric", "text", `value='${esc(plan.result_metric || "")}'`)}
+          ${field("Satuan metrik", "e-unit", "text", `value='${esc(plan.result_unit || "")}'`)}
+          ${field("Baseline", "e-baseline", "number", `value='${numberValue(plan.baseline_value)}'`)}
+          ${field("Target", "e-target", "number", `value='${numberValue(plan.target_value)}'`)}
+          ${field("Hasil aktual", "e-actual", "number", `value='${numberValue(plan.actual_value)}'`)}
+        </div>
+        <label class="mt-3 block text-xs font-semibold text-slate-600">Catatan hasil<textarea id="e-result-note" rows="2" class="mt-1 w-full rounded-lg border px-3 py-2">${esc(plan.result_note || "")}</textarea></label>
+      </section>
+      <label class="block text-xs font-semibold text-slate-600">Catatan<textarea id="e-notes" rows="3" class="mt-1 w-full rounded-lg border px-3 py-2">${esc(plan.execution_notes || "")}</textarea></label>
+      <div><p class="text-xs font-semibold mb-2">Kehadiran peserta</p>${people.map((p, i) => `<label class="flex gap-2 py-1 text-xs"><input type="checkbox" data-attendee="${i}" ${present.has(p.nik) ? "checked" : ""}>${esc(p.nama)} · ${esc(p.nik)}</label>`).join("")}</div>
+    </div>`,
+    footerHtml: `<button id="save-exec" class="rounded bg-maroon-700 px-4 py-2 text-sm text-white">Simpan</button>`,
+    onMount: modal => {
+      modal.querySelector("#e-status").value = plan.status;
+      modal.querySelector("#save-exec").onclick = async () => {
+        const root = modal.querySelector("#exec");
+        const status = val(root, "#e-status");
+        const attendance = [...root.querySelectorAll("[data-attendee]:checked")].map(x => people[Number(x.dataset.attendee)].nik).filter(Boolean);
+        if (status === "COMPLETED" && !attendance.length && !val(root, "#e-evidence")) return toast("Pelatihan selesai memerlukan kehadiran atau tautan bukti pelaksanaan.", "warning");
+        const nullableNumber = selector => {
+          const raw = val(root, selector);
+          return raw === "" ? null : Number(raw);
+        };
+        await fsUpdate(C.plans, plan.id, {
+          status,
+          actual_cost: Number(val(root, "#e-cost") || 0),
+          evidence_url: val(root, "#e-evidence"),
+          execution_notes: val(root, "#e-notes"),
+          result_metric: val(root, "#e-metric"),
+          result_unit: val(root, "#e-unit"),
+          baseline_value: nullableNumber("#e-baseline"),
+          target_value: nullableNumber("#e-target"),
+          actual_value: nullableNumber("#e-actual"),
+          result_note: val(root, "#e-result-note"),
+          attendance_niks: attendance
+        });
+        await audit(session, "UPDATE_EXECUTION", "plan", plan.id, { status, attendance: attendance.length, has_result: Boolean(val(root, "#e-metric")) });
+        closeModal();
+        toast("Pelaksanaan diperbarui.", "success");
+        reload();
+      };
+    }
+  });
 }
 
 async function renderMy(wrap, session, data, reload) {
@@ -541,13 +702,22 @@ async function renderReport(wrap, session, data, reload) {
     progress: data.progress.filter(p => branchMatches(branchScope, p.cabang) || planInBranch(data.plans.find(x => x.id === p.plan_id) || {}, branchScope))
   } : data;
   const metrics=trainingMetrics(scoped),byBranch=aggregateNeeds(scoped.needs,"cabang"),byDivision=aggregateNeeds(scoped.needs,"divisi"),totalBudget=scoped.plans.reduce((s,p)=>s+Number(p.actual_cost||p.budget_estimate||p.estimasi_biaya||0),0),passed=scoped.progress.filter(p=>p.posttest_score>=Number(scoped.plans.find(x=>x.id===p.plan_id)?.passing_grade||70)).length;
-  wrap.innerHTML=`<div class="flex justify-between items-center"><div><h2 class="text-lg font-bold text-slate-800">Laporan Manajemen</h2><p class="text-xs text-slate-400">Ringkasan efektivitas, kebutuhan organisasi, dan investasi pelatihan.</p></div><button id="export-report" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">Export CSV</button></div><div class="grid grid-cols-2 lg:grid-cols-4 gap-4">${statCard("Response rate",`${metrics.responseRate}%`)}${statCard("Program selesai",`${metrics.completedPlans}/${metrics.plans}`)}${statCard("Lulus post-test",passed)}${statCard("Total investasi",money(totalBudget))}</div><div class="grid lg:grid-cols-2 gap-5">${reportTable("Prioritas per cabang",byBranch)}${reportTable("Prioritas per divisi",byDivision)}</div><section class="bg-white rounded-2xl border p-5"><h3 class="font-bold">Evaluasi dampak 30–60 hari</h3><p class="mt-1 text-xs text-slate-400">Atasan mencatat perubahan perilaku dan hasil kerja setelah pelatihan.</p><div class="mt-4 space-y-2">${scoped.progress.map(p=>`<div class="rounded-xl border p-3 flex justify-between items-center gap-3"><div class="text-xs"><b>${esc(p.nama)}</b> · ${esc(scoped.plans.find(x=>x.id===p.plan_id)?.title||p.plan_id)}<br><span class="text-slate-400">Perilaku: ${esc(p.behavior_score||"-")}/5 · ${esc(p.behavior_note||"Belum dinilai")}</span></div>${isManagement(session)?`<button data-followup="${p.id}" class="rounded border px-3 py-2 text-xs">Nilai dampak</button>`:""}</div>`).join("")||empty("Belum ada peserta yang dievaluasi.")}</div></section>`;
+  const toNumber = value => value === null || value === undefined || value === "" ? NaN : Number(value);
+  const impactPlans = scoped.plans.filter(p => p.result_metric).map(plan => {
+    const baseline = toNumber(plan.baseline_value), target = toNumber(plan.target_value), actual = toNumber(plan.actual_value);
+    const hasNumbers = Number.isFinite(baseline) && Number.isFinite(target) && Number.isFinite(actual);
+    const achievement = hasNumbers && target !== baseline ? Math.round((actual - baseline) / (target - baseline) * 1000) / 10 : null;
+    const achieved = hasNumbers ? (target >= baseline ? actual >= target : actual <= target) : null;
+    return { ...plan, baseline, target, actual, achievement, achieved, hasNumbers };
+  });
+  const impactSection = `<section class="bg-white rounded-2xl border p-5"><h3 class="font-bold">Hasil dampak level 4</h3><p class="mt-1 text-xs text-slate-400">Metrik hasil kerja yang ditetapkan saat perencanaan dan diukur setelah pelatihan.</p><div class="mt-3 overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-slate-400"><th class="py-2 text-left">Program</th><th class="text-left">Metrik</th><th>Baseline</th><th>Target</th><th>Aktual</th><th>Capaian</th><th>Status</th></tr></thead><tbody>${impactPlans.map(plan => `<tr class="border-t"><td class="py-2 font-semibold">${esc(plan.title || plan.judul)}</td><td>${esc(plan.result_metric)}${plan.result_unit ? ` (${esc(plan.result_unit)})` : ""}</td><td class="text-center">${plan.hasNumbers ? plan.baseline : "-"}</td><td class="text-center">${plan.hasNumbers ? plan.target : "-"}</td><td class="text-center">${plan.hasNumbers ? plan.actual : "-"}</td><td class="text-center">${plan.achievement === null ? "-" : `${plan.achievement}%`}</td><td class="text-center font-semibold ${plan.achieved === null ? "text-slate-400" : plan.achieved ? "text-emerald-600" : "text-amber-600"}">${plan.achieved === null ? "Belum ada hasil" : plan.achieved ? "Tercapai" : "Belum tercapai"}</td></tr>`).join("") || `<tr><td colspan="7" class="p-6 text-center text-slate-400">Belum ada program dengan metrik hasil level 4.</td></tr>`}</tbody></table></div></section>`;
+  wrap.innerHTML=`<div class="flex justify-between items-center"><div><h2 class="text-lg font-bold text-slate-800">Laporan Manajemen</h2><p class="text-xs text-slate-400">Ringkasan efektivitas, kebutuhan organisasi, dan investasi pelatihan.</p></div><button id="export-report" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">Export CSV</button></div><div class="grid grid-cols-2 lg:grid-cols-4 gap-4">${statCard("Response rate",`${metrics.responseRate}%`)}${statCard("Program selesai",`${metrics.completedPlans}/${metrics.plans}`)}${statCard("Lulus post-test",passed)}${statCard("Total investasi",money(totalBudget))}</div><div class="grid lg:grid-cols-2 gap-5">${reportTable("Prioritas per cabang",byBranch)}${reportTable("Prioritas per divisi",byDivision)}</div>${impactSection}<section class="bg-white rounded-2xl border p-5"><h3 class="font-bold">Evaluasi dampak 30–60 hari</h3><p class="mt-1 text-xs text-slate-400">Atasan mencatat perubahan perilaku dan hasil kerja setelah pelatihan.</p><div class="mt-4 space-y-2">${scoped.progress.map(p=>`<div class="rounded-xl border p-3 flex justify-between items-center gap-3"><div class="text-xs"><b>${esc(p.nama)}</b> · ${esc(scoped.plans.find(x=>x.id===p.plan_id)?.title||p.plan_id)}<br><span class="text-slate-400">Perilaku: ${esc(p.behavior_score||"-")}/5 · ${esc(p.behavior_note||"Belum dinilai")}</span></div>${isManagement(session)?`<button data-followup="${p.id}" class="rounded border px-3 py-2 text-xs">Nilai dampak</button>`:""}</div>`).join("")||empty("Belum ada peserta yang dievaluasi.")}</div></section>`;
   wrap.querySelector("#export-report").onclick=()=>exportReport(scoped);
   const analysisSection = document.createElement("section"); analysisSection.innerHTML = renderTrainingNeedsAnalysis(scoped, session); wrap.appendChild(analysisSection);
   wrap.querySelectorAll("[data-followup]").forEach(btn=>btn.onclick=()=>followupModal(data.progress.find(p=>p.id===btn.dataset.followup),session,reload));
 }
 
-function reportTable(title, rows) { return `<section class="bg-white rounded-2xl border p-5"><h3 class="font-bold">${title}</h3><table class="mt-3 w-full text-xs"><thead><tr class="text-slate-400"><th class="py-2 text-left">Unit</th><th>Orang</th><th>Gap</th><th>Prioritas</th></tr></thead><tbody>${rows.map(r=>`<tr class="border-t"><td class="py-2 font-semibold">${esc(r.key)}</td><td class="text-center">${r.count}</td><td class="text-center">${r.averageGap.toFixed(1)}</td><td class="text-center">${r.averagePriority.toFixed(1)}</td></tr>`).join("")}</tbody></table></section>`; }
+function reportTable(title, rows) { return `<section class="bg-white rounded-2xl border p-5"><h3 class="font-bold">${title}</h3><table class="mt-3 w-full text-xs"><thead><tr class="text-slate-400"><th class="py-2 text-left">Unit</th><th>Orang</th><th>Penilaian</th><th>Gap</th><th>Prioritas</th></tr></thead><tbody>${rows.map(r=>`<tr class="border-t"><td class="py-2 font-semibold">${esc(r.key)}</td><td class="text-center">${r.respondents ?? r.count}</td><td class="text-center">${r.count}</td><td class="text-center">${r.averageGap.toFixed(1)}</td><td class="text-center">${r.averagePriority.toFixed(1)}</td></tr>`).join("")}</tbody></table></section>`; }
 
 function followupModal(progress, session, reload) {
   openModal({title:`Evaluasi Dampak: ${esc(progress.nama)}`,bodyHtml:`<div id="followup" class="space-y-4">${field("Perubahan perilaku (1–5)","b-score","number",`min='1' max='5' value='${progress.behavior_score||3}'`)}<label class="text-xs font-semibold">Bukti perubahan / hasil kerja<textarea id="b-note" rows="4" class="mt-1 w-full rounded-lg border px-3 py-2">${esc(progress.behavior_note||"")}</textarea></label></div>`,footerHtml:`<button id="save-followup" class="rounded bg-maroon-700 px-4 py-2 text-sm text-white">Simpan</button>`,onMount:modal=>modal.querySelector("#save-followup").onclick=async()=>{const root=modal.querySelector("#followup");await fsUpdate(C.progress,progress.id,{behavior_score:Number(val(root,"#b-score")),behavior_note:val(root,"#b-note"),behavior_reviewed_by:session.nama,behavior_reviewed_at:new Date().toISOString()});await audit(session,"BEHAVIOR_REVIEW","progress",progress.id);closeModal();toast("Evaluasi dampak tersimpan.","success");reload();}});
@@ -585,7 +755,7 @@ function groupedTopNeeds(needs = [], dimension = "cabang") {
     return pa - pb;
   }).map(([key, items]) => {
     const ranking = aggregateNeeds(items, "competency_name");
-    return { key, items, count: items.length, top: ranking[0] || null, ranking, averageGap: ranking.length ? ranking.reduce((s, x) => s + x.averageGap, 0) / ranking.length : 0 };
+    return { key, items, count: items.length, respondents: uniqueRespondentCount(items), top: ranking[0] || null, ranking, averageGap: ranking.length ? ranking.reduce((s, x) => s + x.averageGap, 0) / ranking.length : 0 };
   });
 }
 
@@ -596,9 +766,10 @@ function renderTrainingNeedsAnalysis(data = {}, session = {}) {
 
   const overall = aggregateNeeds(needs, "competency_name");
   const topOverall = overall[0];
+  const response = responseStandardMet(data);
+  const respondentCount = uniqueRespondentCount(needs);
   const byBranch = groupedTopNeeds(needs, "cabang");
   const byDivision = groupedTopNeeds(needs, "divisi");
-  const byPerson = [...new Map(needs.map(need => { const key = need.nik || need.nama; if (!key) return [need.id, [need]]; return [key, (Array.from(this || []).length ? this : [])]; }).entries())].length ? needs : [];
   const personMap = new Map();
   needs.forEach(need => {
     const key = String(need.nik || need.nama || need.id || "").trim();
@@ -607,17 +778,26 @@ function renderTrainingNeedsAnalysis(data = {}, session = {}) {
   });
   const people = [...personMap.values()].sort((a, b) => (aggregateNeeds(b.needs, "competency_name")[0]?.averagePriority || 0) - (aggregateNeeds(a.needs, "competency_name")[0]?.averagePriority || 0));
 
-  const sectionTitle = heading => `<h2 class="text-lg font-bold text-slate-800 mb-2">${escapeHtml(heading)}</h2><p class="text-xs text-slate-400 mb-4">Analisis berdasarkan respons survei mandiri karyawan. Prioritas digunakan untuk memilih modul training paling mendesak per individu, divisi, cabang, dan seluruh CV Andela Jaya.</p>`;
+  const sectionTitle = heading => `<h2 class="text-lg font-bold text-slate-800 mb-2">${escapeHtml(heading)}</h2><p class="text-xs text-slate-400 mb-4">Analisis berdasarkan respons survei mandiri karyawan. Prioritas digunakan untuk memilih modul training paling mendesak per individu, divisi, cabang, dan seluruh CV Andela Jaya. Status keputusan mengikuti ambang response rate dan jumlah responden unik.</p>`;
+  const responseNote = response.hasAssignments
+    ? `Response rate ${response.rate}% (${response.submitted}/${response.total} penerima) dan ${respondentCount} responden unik.`
+    : `Data penugasan survey tidak tersedia; ${respondentCount} responden unik tercatat dari data kebutuhan.`;
 
   return `
     <section class="mt-6 bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-6">
       ${sectionTitle("Analisis Kebutuhan Training Berbasis Survey")}
-      <div class="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
-        <b>Keputusan organisasi:</b> prioritas tertinggi adalah
+      <div class="rounded-xl border ${response.ok ? "border-emerald-100 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"} p-4 text-sm">
+        <b>${response.ok ? "Keputusan organisasi" : "Indikasi awal"}:</b> prioritas tertinggi adalah
         <b>${escapeHtml(topOverall?.key || "tidak tersedia")}</b> dengan rata-rata gap
         <b>${Number(topOverall?.averageGap || 0).toFixed(1)}</b> dan skor prioritas
         <b>${Number(topOverall?.averagePriority || 0).toFixed(1)}</b>.
-        Kompetensi ini harus dipertimbangkan sebagai program pertama, dilanjutkan dengan kebutuhan berikutnya yang memiliki gap dan kesenjangan urgens paling tinggi.
+        ${response.ok
+          ? "Data memenuhi ambang minimal sehingga dapat dijadikan dasar keputusan program."
+          : `Hasil belum memenuhi ambang minimal ${response.minResponseRate}% dan ${response.minRespondents} responden unik, sehingga diperlakukan sebagai indikasi awal dan perlu konfirmasi atasan.`}
+        <p class="mt-2 text-xs opacity-80">${responseNote}</p>
+      </div>
+      <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600">
+        Ambang validasi: minimal <b>${response.minResponseRate}%</b> response rate dan <b>${response.minRespondents}</b> responden unik. Angka responden pada tabel dihitung per orang, bukan jumlah baris kompetensi.
       </div>
       <div>
         <h3 class="font-bold text-slate-800">Per Cabang</h3>
@@ -629,7 +809,7 @@ function renderTrainingNeedsAnalysis(data = {}, session = {}) {
                 const need = scope.top?.key ? scope.items.find(item => item.competency_name === scope.top.key) : null;
                 return `<tr class="border-t border-slate-100">
                   <td class="px-4 py-3 font-semibold">${escapeHtml(scope.key)}</td>
-                  <td class="px-4 py-3">${scope.count}</td>
+                  <td class="px-4 py-3">${scope.respondents} orang<br><span class="text-[10px] text-slate-400">${scope.count} penilaian</span></td>
                   <td class="px-4 py-3"><b>${escapeHtml(scope.top?.key || "-")}</b></td>
                   <td class="px-4 py-3">${Number(scope.top?.averageGap || 0).toFixed(1)}</td>
                   <td class="px-4 py-3">Dibutuhkan ${scope.top?.key || "kompetensi tertentu"} karena ${trainingNeedStatement(need || { expected_level: scope.top?.averageGap, current_level: 0, business_impact: need?.business_impact || 3, urgency: need?.urgency || 3, reason: need?.reason })}.</td>
@@ -649,10 +829,10 @@ function renderTrainingNeedsAnalysis(data = {}, session = {}) {
                 const need = scope.top?.key ? scope.items.find(item => item.competency_name === scope.top.key) : null;
                 return `<tr class="border-t border-slate-100">
                   <td class="px-4 py-3 font-semibold">${escapeHtml(scope.key)}</td>
-                  <td class="px-4 py-3">${scope.count}</td>
+                  <td class="px-4 py-3">${scope.respondents} orang<br><span class="text-[10px] text-slate-400">${scope.count} penilaian</span></td>
                   <td class="px-4 py-3"><b>${escapeHtml(scope.top?.key || "-")}</b></td>
                   <td class="px-4 py-3">${Number(scope.top?.averageGap || 0).toFixed(1)}</td>
-                  <td class="px-4 py-3">${escapeHtml(scope.key)} paling membutuhkan ${scope.top?.key || "pengembangan"}, dengan gap ${Number(scope.top?.averageGap || 0).toFixed(1)} dan ${scope.count} jawaban yang mendukung analisis.</td>
+                  <td class="px-4 py-3">${escapeHtml(scope.key)} paling membutuhkan ${scope.top?.key || "pengembangan"}, dengan gap ${Number(scope.top?.averageGap || 0).toFixed(1)} dan ${scope.count} penilaian dari ${scope.respondents} responden.</td>
                 </tr>`;
               }).join("")}
             </tbody>
@@ -683,6 +863,17 @@ function escape(value) {
   return escapeHtml(value ?? "");
 }
 function exportReport(data) {
-  const rows=[["Jenis","Unit/Program","Jumlah","Gap Rata-rata","Biaya","Status"],...aggregateNeeds(data.needs,"cabang").map(r=>["Cabang",r.key,r.count,r.averageGap.toFixed(1),"",""]),...aggregateNeeds(data.needs,"divisi").map(r=>["Divisi",r.key,r.count,r.averageGap.toFixed(1),"",""]),...data.plans.map(p=>["Program",p.title||p.judul,planParticipants(p).length,"",p.actual_cost||p.budget_estimate||p.estimasi_biaya||0,p.status])];
+  const toNumber = value => value === null || value === undefined || value === "" ? NaN : Number(value);
+  const achievement = plan => {
+    const baseline = toNumber(plan.baseline_value), target = toNumber(plan.target_value), actual = toNumber(plan.actual_value);
+    if (![baseline, target, actual].every(Number.isFinite) || target === baseline) return "";
+    return `${Math.round((actual - baseline) / (target - baseline) * 1000) / 10}%`;
+  };
+  const rows=[
+    ["Jenis","Unit/Program","Jumlah/Orang","Penilaian","Gap Rata-rata","Biaya","Status","Metrik Hasil","Baseline","Target","Aktual","Capaian %"],
+    ...aggregateNeeds(data.needs,"cabang").map(r=>["Cabang",r.key,r.respondents ?? r.count,r.count,r.averageGap.toFixed(1),"","","","","","",""]),
+    ...aggregateNeeds(data.needs,"divisi").map(r=>["Divisi",r.key,r.respondents ?? r.count,r.count,r.averageGap.toFixed(1),"","","","","","",""]),
+    ...data.plans.map(p=>["Program",p.title||p.judul,planParticipants(p).length,"","",p.actual_cost||p.budget_estimate||p.estimasi_biaya||0,p.status,p.result_metric||"",p.baseline_value??"",p.target_value??"",p.actual_value??"",achievement(p)])
+  ];
   const csv=rows.map(row=>row.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\n"),blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`laporan-training-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href);
 }
