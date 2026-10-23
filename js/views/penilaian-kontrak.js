@@ -17,6 +17,15 @@ import { employeeHistoryRows } from "../employee-history.mjs";
 
 const confirmThen = (message, action) => runConfirmedAction(confirmDialog, message, action);
 
+function isPermanentContract(contract) {
+ if (!contract) return false;
+ const type = String(contract.status_kompail || contract.status_kompilasi || contract.jenis_kontrak || "").toUpperCase();
+ if (type.includes("PKWTT")) return true;
+ // Data lama kadang hanya menyimpan status "PKWTT" di kolom status kontrak.
+ const status = String(contract.status_kolom_kontrak || "").toUpperCase();
+ return status === "PKWTT";
+}
+
 // =====================================================================
 // MASTER INDIKATOR PENILAIAN HARIAN & TARGET BULANAN
 // =====================================================================
@@ -844,11 +853,14 @@ export async function mount(container, { session, params }) {
  const empList = allKaryawan.map(k => {
  const contracts = kontrakMap[k.nama_karyawan] || [];
  const latestContract = contracts[0] || null;
+ const isPermanent = isPermanentContract(latestContract);
  
  let contractStatus = "TANPA KONTRAK";
  let daysLeft = null;
 
- if (latestContract && latestContract.tanggal_akhir) {
+ if (latestContract && isPermanent) {
+ contractStatus = "AKTIF";
+ } else if (latestContract && latestContract.tanggal_akhir) {
  const today = new Date().toISOString().split("T")[0];
  daysLeft = daysBetween(today, latestContract.tanggal_akhir);
  if (daysLeft !== null && !isNaN(daysLeft)) {
@@ -866,6 +878,7 @@ export async function mount(container, { session, params }) {
  ...k,
  contracts,
  latestContract,
+ isPermanent,
  contractStatus,
  daysLeft
  };
@@ -877,9 +890,12 @@ export async function mount(container, { session, params }) {
  if (!existingNames.has(nama)) {
  const contracts = kontrakMap[nama];
  const latestContract = contracts[0] || null;
+ const isPermanent = isPermanentContract(latestContract);
  let contractStatus = "TANPA KONTRAK";
  let daysLeft = null;
- if (latestContract && latestContract.tanggal_akhir) {
+ if (latestContract && isPermanent) {
+ contractStatus = "AKTIF";
+ } else if (latestContract && latestContract.tanggal_akhir) {
  const today = new Date().toISOString().split("T")[0];
  daysLeft = daysBetween(today, latestContract.tanggal_akhir);
  if (daysLeft !== null && !isNaN(daysLeft)) {
@@ -894,10 +910,11 @@ export async function mount(container, { session, params }) {
  jabatan: latestContract?.jabatan || "-",
  cabang: latestContract?.cabang || "-",
  divisi: latestContract?.divisi || "-",
- status_karyawan: "KONTRAK",
+ status_karyawan: isPermanent ? "PKWTT" : "KONTRAK",
  aktif_tdk_aktif: "AKTIF",
  contracts,
  latestContract,
+ isPermanent,
  contractStatus,
  daysLeft
  });
@@ -986,7 +1003,10 @@ export async function mount(container, { session, params }) {
  let badgeContractColor = "slate";
  let daysLabel = "Tanpa ikatan kontrak aktif";
 
- if (item.contractStatus === "AKTIF") {
+ if (item.isPermanent) {
+ badgeContractColor = "emerald";
+ daysLabel = "Karyawan Tetap (PKWTT)";
+ } else if (item.contractStatus === "AKTIF") {
  badgeContractColor = "emerald";
  daysLabel = `Sisa ${item.daysLeft} Hari`;
  } else if (item.contractStatus === "SEGERA HABIS") {
@@ -1028,7 +1048,7 @@ export async function mount(container, { session, params }) {
  ${lc ? `
  <div class="flex items-center justify-between text-xs">
  <span class="text-slate-400 font-medium">Periode:</span>
- <span class="font-medium text-slate-700">${fmtDateShort(lc.tanggal_mulai)} - ${fmtDateShort(lc.tanggal_akhir)}</span>
+ <span class="font-medium text-slate-700">${fmtDateShort(lc.tanggal_mulai)} - ${lc.tanggal_akhir ? fmtDateShort(lc.tanggal_akhir) : (item.isPermanent ? "tanpa batas" : "-")}</span>
  </div>
  <div class="mt-2 flex items-center justify-between">
  ${badge(item.contractStatus, badgeContractColor)}
@@ -1308,7 +1328,7 @@ export async function mount(container, { session, params }) {
  ${badge(c.status_kolom_kontrak || "AKTIF", c.status_kolom_kontrak === "AKTIF" ? "emerald" : "amber")}
  </div>
  <p class="text-xs text-slate-600 font-medium">
- Periode: <strong>${fmtDateShort(c.tanggal_mulai)}</strong> s/d <strong>${fmtDateShort(c.tanggal_akhir)}</strong>
+ Periode: <strong>${fmtDateShort(c.tanggal_mulai)}</strong> s/d <strong>${c.tanggal_akhir ? fmtDateShort(c.tanggal_akhir) : (isPermanentContract(c) ? "tanpa batas (PKWTT)" : "-")}</strong>
  </p>
  <p class="text-[11px] text-slate-400">
  Jabatan: ${escapeHtml(c.jabatan || "-")} ${c.cabang ? `• Cabang: ${escapeHtml(c.cabang)}` : ''}
