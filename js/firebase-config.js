@@ -182,6 +182,7 @@ export const COL = {
  PERFORMANCE_REVIEW: "performance_review",
  SIGN_DOCUMENTS: "sign_documents",
  TARGET_BULANAN_KPI: "target_bulanan_kpi",
+ SALES_KINERJA_BULANAN: "sales_kinerja_bulanan",
  LOG_PENILAIAN_HARIAN: "log_penilaian_harian",
  MASTER_REIMBURSEMENT_TYPE: "master_reimbursement_type",
  DATA_REIMBURSEMENT: "data_reimbursement",

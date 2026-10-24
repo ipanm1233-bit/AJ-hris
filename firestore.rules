@@ -250,6 +250,12 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if isManagement();
     }
+    // Kinerja bulanan sales (hasil import Scheme Incentive): dipakai sebagai
+    // bukti penilaian perpanjangan kontrak sales di modul Penilaian Kontrak.
+    match /sales_kinerja_bulanan/{id} {
+      allow read: if signedIn();
+      allow write: if isManagement();
+    }
     match /log_penilaian_harian/{id} {
       allow read: if signedIn() && (isManagement() || owns(resource.data));
       allow create: if signedIn();

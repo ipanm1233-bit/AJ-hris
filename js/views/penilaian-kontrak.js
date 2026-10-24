@@ -1171,6 +1171,23 @@ export async function mount(container, { session, params }) {
    if (!monthTarget) evidenceGaps.push("Target bulanan belum ditetapkan.");
    else if (!achievementRows.length) evidenceGaps.push("Realisasi akhir bulan belum dicatat.");
    if (!attendanceAvailable) evidenceGaps.push("Absensi dari Supabase perlu diverifikasi.");
+   const isSalesEmployee = /SALES|ASR|SPV SALES|KOORDINATOR SALES|SUPERVISOR SALES|DULUX CONSULTANT/.test(
+    `${employee.divisi || ""} ${employee.jabatan || ""}`.toUpperCase()
+   );
+   let salesKinerjaHtml = "";
+   let salesKinerjaTersedia = false;
+   if (isSalesEmployee) {
+    try {
+     const salesRows = nik
+      ? (isHrdOrAdmin ? await fsGetAll(COL.SALES_KINERJA_BULANAN).catch(() => []) : await queryRows(COL.SALES_KINERJA_BULANAN, "nik_karyawan", nik).catch(() => []))
+      : [];
+     salesKinerjaTersedia = salesRows.length > 0;
+     salesKinerjaHtml = buildSalesKinerjaSection(salesRows.filter(samePerson));
+     if (!salesKinerjaTersedia) evidenceGaps.push("Kinerja insentif sales belum diimpor.");
+    } catch (error) {
+     console.warn("sales-kinerja", error);
+    }
+   }
    const grade = summary && readiness.ready ? evaluateGradeRule("KONTRAK", summary.score, currentGradeRulesMap) : null;
    target.innerHTML = `<div class="space-y-3">
     <div><h4 class="font-bold text-slate-800">Ringkasan untuk keputusan perpanjangan</h4><p class="text-xs text-slate-500">Periode ${escapeHtml(period)} · Keputusan akhir melalui Alur Koordinasi oleh HRD dan pemberi persetujuan.</p></div>
@@ -1186,6 +1203,7 @@ export async function mount(container, { session, params }) {
     ${achievementRows.length ? `<div class="rounded-xl bg-white p-3 text-xs"><strong>Realisasi target ${escapeHtml(period)}</strong><div class="mt-2 space-y-1">${achievementRows.map(row => `<div class="flex justify-between gap-2"><span>${escapeHtml(row.label)}</span><span>${row.actual === null ? "Belum diisi" : `${row.actual.toLocaleString("id-ID")} / ${row.target === null ? "-" : row.target.toLocaleString("id-ID")} ${escapeHtml(row.unit)}${row.attainment === null ? "" : ` · ${row.attainment}%`}`}</span></div>`).join("")}</div>${monthTarget.capaian_bulanan.catatan ? `<p class="mt-2 text-slate-600">${escapeHtml(monthTarget.capaian_bulanan.catatan)}</p>` : ''}</div>` : ''}
     ${monthDaily.some(row => Number(row.potongan_kpi || 0) > 0) ? `<div class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs"><strong>Pengurangan KPI bulan ini:</strong> ${monthDaily.filter(row => Number(row.potongan_kpi || 0) > 0).map(row => `${escapeHtml(row.tanggal || "-")}: −${Number(row.potongan_kpi)} (${escapeHtml(row.alasan_potongan || "Alasan belum dicatat")})`).join(" · ")}</div>` : ''}
     ${!isRegularEmployee ? `<div class="rounded-xl border border-blue-200 bg-white p-3 text-xs"><strong>Rekomendasi berdasarkan grade KPI:</strong> ${grade ? escapeHtml(grade.rekomendasi || grade.predikat || "Perlu review HRD") : "Perlu review HRD setelah bukti penilaian dilengkapi"}. <span class="text-slate-500">Periksa juga catatan disiplin dan masa kontrak sebelum membuat keputusan.</span></div>` : ''}
+    ${salesKinerjaHtml}
     ${summary?.latestLog ? `<div class="rounded-xl bg-white p-3 text-xs"><strong>Catatan penilai:</strong> ${escapeHtml(summary.latestLog.catatan_penilai || summary.latestLog.catatan_perbaikan || summary.latestLog.catatan_baik || "Tidak ada catatan")}</div>` : ''}
     ${!attendanceAvailable ? '<p class="text-xs text-amber-800">Data absensi Supabase belum dapat dimuat; verifikasi di menu Absensi sebelum mengambil keputusan.</p>' : ''}
    </div>`;
@@ -1193,6 +1211,111 @@ export async function mount(container, { session, params }) {
    console.error("contract-evidence", error);
    if (target.isConnected) target.innerHTML = `<p class="text-rose-700">Ringkasan belum dapat dimuat: ${escapeHtml(error.message)}</p>`;
   }
+ }
+
+ // Indikator kinerja sales hasil import Scheme Incentive (koleksi
+ // sales_kinerja_bulanan) sebagai bukti penilaian perpanjangan kontrak.
+ const SALES_KINERJA_METRICS = [
+  { key: "dulux_liter", label: "Dulux", unit: "lt" },
+  { key: "catylac_liter", label: "Catylac", unit: "lt" },
+  { key: "maxilite_liter", label: "Maxilite", unit: "lt" },
+  { key: "aqs_liter", label: "Aquashield", unit: "lt" },
+  { key: "prima_rp", label: "PRIMA", unit: "Rp" },
+  { key: "dcota_rp", label: "DCOTA", unit: "Rp" },
+  { key: "value_ici_rp", label: "Value ICI", unit: "Rp" },
+  { key: "ao_ici", label: "AO ICI", unit: "" },
+  { key: "ao_prima", label: "AO PRIMA", unit: "" },
+  { key: "ao_dcota", label: "AO DCOTA", unit: "" },
+  { key: "od_rp", label: "Overdue (maks.)", unit: "Rp" },
+ ];
+
+ const salesKinerjaNum = (v) => {
+   const n = Number(v);
+   return Number.isFinite(n) ? n : null;
+ };
+ const salesKinerjaPct = (v) => {
+   const n = salesKinerjaNum(v);
+   return n === null ? "-" : `${(n * 100).toFixed(0)}%`;
+ };
+ const salesKinerjaRp = (n) =>
+   n === null ? "-" : n.toLocaleString("id-ID", { maximumFractionDigits: 0 });
+ const salesKinerjaVal = (row, metric) => {
+   const n = salesKinerjaNum(row?.[metric.key]);
+   if (n === null) return "-";
+   return metric.unit === "Rp" ? salesKinerjaRp(n) : `${n.toLocaleString("id-ID", { maximumFractionDigits: 2 })}${metric.unit ? ` ${metric.unit}` : ""}`;
+ };
+
+ function buildSalesKinerjaSection(rows) {
+   if (!rows.length) return "";
+   const sorted = rows
+     .slice()
+     .sort((a, b) => String(b.periode || "").localeCompare(String(a.periode || "")));
+   const latest = sorted.find(row => row.status_data !== "TARGET_SAJA") || sorted[0];
+   const statusLabel = {
+     FINAL: "Final (insentif cair)",
+     ACHIEVEMENT_PARSIAL: "Parsial (belum closing)",
+     TARGET_SAJA: "Target saja",
+   };
+   const eff = latest.effective_call || {};
+   const absensi = latest.absensi || {};
+   const ringkas = latest.ringkasan_insentif || {};
+   const gradeBadge = (grade) => {
+     const g = String(grade || "-").toUpperCase();
+     const colorMap = { A: "bg-emerald-100 text-emerald-800 border-emerald-200", B: "bg-blue-100 text-blue-800 border-blue-200", C: "bg-amber-100 text-amber-800 border-amber-200", D: "bg-rose-100 text-rose-800 border-rose-200" };
+     return `<span class="inline-block rounded-full border px-2 py-[1px] text-[10px] font-bold ${colorMap[g] || "bg-slate-100 text-slate-600 border-slate-200"}">${escapeHtml(g)}</span>`;
+   };
+   const metricsHtml = SALES_KINERJA_METRICS.map(metric => {
+     const target = salesKinerjaVal(latest.target, metric);
+     const capaian = salesKinerjaVal(latest.capaian, metric);
+     const persen = salesKinerjaNum((latest.capaian_persen || {})[metric.key]);
+     return `<tr class="border-t border-slate-100">
+       <td class="py-1 pr-2 text-slate-600">${escapeHtml(metric.label)}</td>
+       <td class="py-1 pr-2 text-right font-mono">${target}</td>
+       <td class="py-1 pr-2 text-right font-mono">${capaian}</td>
+       <td class="py-1 text-right font-semibold ${persen === null ? "text-slate-400" : persen >= 100 ? "text-emerald-700" : persen >= 70 ? "text-blue-700" : "text-amber-700"}">${persen === null ? "-" : `${persen.toFixed(0)}%`}</td>
+     </tr>`;
+   }).join("");
+   const riwayatHtml = sorted.slice(0, 4).map(row => {
+     const abs = row.absensi || {};
+     const ins = row.ringkasan_insentif || {};
+     const ec = row.effective_call || {};
+     const insLabel = ins.total_insentif == null ? "-" : Number(ins.total_insentif).toLocaleString("id-ID");
+     const rataCapaian = (() => {
+       const list = Object.values(row.capaian_persen || {}).map(Number).filter(Number.isFinite);
+       return list.length ? `${(list.reduce((s, v) => s + v, 0) / list.length).toFixed(0)}%` : "-";
+     })();
+     return `<tr class="border-t border-slate-100 text-slate-700">
+       <td class="py-1 pr-2 font-semibold">${escapeHtml(row.periode || "-")}</td>
+       <td class="py-1 pr-2"><strong>${rataCapaian}</strong></td>
+       <td class="py-1 pr-2">${gradeBadge(ec.grade)} ${salesKinerjaPct(ec.persen)}</td>
+       <td class="py-1 pr-2">${gradeBadge(absensi.grade)} ${salesKinerjaPct(abs.persen_hadir)}</td>
+       <td class="py-1 pr-2">${gradeBadge((row.penjualan_baru || {}).grade)}</td>
+       <td class="py-1 pr-2 text-right font-semibold">${escapeHtml(insLabel)}</td>
+       <td class="py-1 text-xs text-slate-500">${escapeHtml(statusLabel[row.status_data] || row.status_data || "-")}</td>
+     </tr>`;
+   }).join("");
+   return `<div class="space-y-2 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-3">
+     <div class="flex flex-wrap items-center justify-between gap-2">
+       <div><h4 class="font-bold text-slate-800">Kinerja Sales — Insentif ${escapeHtml(latest.area || "-")}</h4>
+       <p class="text-xs text-slate-500">Sumber: Scheme Incentive dibahasikan admin/finance · periode ${escapeHtml(latest.periode || "-")} · peran ${escapeHtml(latest.role || "-")}</p></div>
+       <div class="flex flex-wrap gap-2 text-[11px] font-semibold">
+         <span class="rounded-full bg-white border border-slate-200 px-2 py-1">EC ${gradeBadge(eff.grade)} ${salesKinerjaPct(eff.persen)}</span>
+         <span class="rounded-full bg-white border border-slate-200 px-2 py-1">Hadir ${salesKinerjaPct(absensi.persen_hadir)} · Alpa ${escapeHtml(String(salesKinerjaNum(absensi.alpa) ?? 0))}</span>
+         <span class="rounded-full bg-white border border-slate-200 px-2 py-1">Poin ${escapeHtml(String(ringkas.poin ?? "-"))}</span>
+         <span class="rounded-full bg-white border border-slate-200 px-2 py-1">Insentif ${ringkas.total_insentif == null ? "-" : salesKinerjaRp(Number(ringkas.total_insentif))}</span>
+       </div>
+     </div>
+     <div class="overflow-x-auto rounded-xl bg-white p-2">
+       <table class="min-w-full text-xs"><thead>
+         <tr class="text-left text-slate-500"><th class="py-1 pr-2 font-medium">Indikator</th><th class="py-1 pr-2 text-right font-medium">Target</th><th class="py-1 pr-2 text-right font-medium">Capaian</th><th class="py-1 text-right font-medium">%</th></tr>
+       </thead><tbody>${metricsHtml}</tbody></table>
+     </div>
+     <div class="overflow-x-auto rounded-xl bg-white p-2">
+       <table class="min-w-full text-xs"><thead>
+         <tr class="text-left text-slate-500"><th class="py-1 pr-2 font-medium">Periode</th><th class="py-1 pr-2 font-medium">Rata-rata capaian</th><th class="py-1 pr-2 font-medium">EC grade</th><th class="py-1 pr-2 font-medium">Kehadiran</th><th class="py-1 pr-2 font-medium">NOO</th><th class="py-1 pr-2 text-right font-medium">Insentif</th><th class="py-1 font-medium">Status</th></tr>
+       </thead><tbody>${riwayatHtml}</tbody></table>
+     </div>
+   </div>`;
  }
 
  function openEmployeeContractModal(empData, reloadData) {
