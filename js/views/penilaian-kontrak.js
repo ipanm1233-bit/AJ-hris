@@ -8135,6 +8135,65 @@ export async function mount(container, { session, params }) {
     return SIKLUS_STATUS_LABEL[status] || status || "-";
   }
 
+  // ---------------------------------------------------------------------
+  // Diagnosa kegagalan muat siklus evaluasi.
+  // Firestore membalas kode "permission-denied" ketika aturan keamanan proyek
+  // (firestore.rules) menolak pembacaan koleksi — umumnya karena aturan versi
+  // terbaru belum ter-deploy ke database Firestore yang dipakai aplikasi.
+  // Pesan SDK berbahasa Inggris dan tidak menyebut langkah perbaikan, jadi
+  // panel ini menerjemahkannya dan menyediakan tombol coba lagi.
+  // ---------------------------------------------------------------------
+  const SIKLUS_PERMISSION_CODES = ["permission-denied", "unauthenticated"];
+
+  function siklusIsPermissionError(err) {
+   const code = String((err && (err.code || err.name)) || "").toLowerCase();
+   const msg = String((err && err.message) || "").toLowerCase();
+   return SIKLUS_PERMISSION_CODES.some(c => code.includes(c))
+    || msg.includes("missing or insufficient permissions")
+    || msg.includes("permission denied");
+  }
+
+  function renderSiklusError(wrap, err) {
+   const denied = siklusIsPermissionError(err);
+   console.error("[penilaian-kontrak] gagal memuat siklus evaluasi", {
+    kode: (err && err.code) || null,
+    pesan: (err && err.message) || String(err),
+    koleksi: COL.EVALUATION_CYCLES,
+    role,
+    username: (session && session.username) || null
+   });
+
+   if (!denied) {
+    wrap.innerHTML = `
+     <div class="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+      <p class="text-sm font-bold text-rose-700">Gagal memuat siklus evaluasi</p>
+      <p class="mt-1 text-xs text-rose-700/90">${escapeHtml((err && err.message) || "Terjadi kesalahan tak terduga.")}</p>
+      <button id="btn-siklus-retry" class="mt-3 rounded-lg bg-maroon-700 hover:bg-maroon-800 text-white px-3 py-1.5 text-[11px] font-bold">Coba lagi</button>
+     </div>`;
+   } else {
+    wrap.innerHTML = `
+     <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+      <p class="text-sm font-bold text-amber-800">Akses siklus evaluasi belum diizinkan server</p>
+      <p class="mt-1 text-xs text-amber-800/90">Akun Anda sudah login, tetapi aturan keamanan Firestore menolak pembacaan koleksi
+       <span class="font-mono">${escapeHtml(COL.EVALUATION_CYCLES)}</span>.
+       Biasanya ini berarti <span class="font-semibold">firestore.rules versi terbaru belum ter-deploy</span> ke database Firestore yang dipakai aplikasi.</p>
+      <ul class="mt-2 list-disc space-y-0.5 pl-4 text-[11px] text-amber-800/80">
+       <li>Admin HRIS: deploy ulang aturan (<span class="font-mono">firebase deploy --only firestore</span>), lalu minta pengguna menekan Coba lagi.</li>
+       <li>Bila baru login ulang: tutup tab HRIS lain, muat ulang halaman, lalu coba lagi.</li>
+      </ul>
+      <div class="mt-3 flex flex-wrap items-center gap-2">
+       <button id="btn-siklus-retry" class="rounded-lg bg-maroon-700 hover:bg-maroon-800 text-white px-3 py-1.5 text-[11px] font-bold">Coba lagi</button>
+       <span class="font-mono text-[10px] text-amber-700/70">${escapeHtml(String((err && err.code) || "permission-denied"))} · ${escapeHtml(COL.EVALUATION_CYCLES)}</span>
+      </div>
+     </div>`;
+   }
+
+   wrap.querySelector("#btn-siklus-retry")?.addEventListener("click", () => {
+    toast("Mencoba memuat ulang siklus evaluasi…", "info");
+    loadSiklusPanel();
+   });
+  }
+
   async function loadSiklusPanel() {
    const wrap = panels.siklus;
    if (!wrap) return;
@@ -8143,7 +8202,7 @@ export async function mount(container, { session, params }) {
    try {
     cycles = await fsGetAll(COL.EVALUATION_CYCLES);
    } catch (err) {
-    wrap.innerHTML = `<div class="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">Gagal memuat siklus evaluasi: ${escapeHtml(err.message)}</div>`;
+    renderSiklusError(wrap, err);
     return;
    }
    const isWide = SIKLUS_WIDE_ROLES.includes(role);

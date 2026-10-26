@@ -180,3 +180,14 @@ test('KPI subject can read own result and audit records are immutable', async ()
   await assertSucceeds(setDoc(audit, { actor_nik: '001', action: 'SUBMIT_EVALUATION' }));
   await assertFails(updateDoc(audit, { action: 'FORGED' }));
 });
+
+test('signed-in HRD can list evaluation cycles while anonymous and staff writes are denied', async () => {
+  await seed('evaluation_cycles', 'cycle-1', { nama_karyawan: 'Budi', status: 'PENDING', reviewer_nik: '001' });
+  await seed('evaluation_cycles', 'cycle-2', { nama_karyawan: 'Sari', status: 'COMPLETED', reviewer_nik: '002' });
+  const hrd = env.authenticatedContext('hrd', claims({ role: 'HRD' })).firestore();
+  const snapshot = await assertSucceeds(getDocs(collection(hrd, 'evaluation_cycles')));
+  if (snapshot.size !== 2) throw new Error(`Expected 2 evaluation cycles, got ${snapshot.size}`);
+  await assertFails(getDocs(collection(env.unauthenticatedContext().firestore(), 'evaluation_cycles')));
+  const employee = env.authenticatedContext('employee', claims()).firestore();
+  await assertFails(setDoc(doc(employee, 'evaluation_cycles', 'cycle-3'), { status: 'PENDING' }));
+});
