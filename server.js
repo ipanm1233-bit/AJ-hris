@@ -16,6 +16,7 @@ app.use((req, res, next) => {
 
 // Import API Handlers
 const cronCheckKontrak = require('./api/cron-check-kontrak.js');
+const evaluationCycle = require('./api/evaluation-cycle.js');
 const cronRekapCuti = require('./api/cron-rekap-cuti.js');
 const sendPush = require('./api/send-push.js');
 const syncAbsen = require('./api/sync-absen.js');
@@ -92,6 +93,15 @@ app.all('/api/cron-check-kontrak', async (req, res, next) => {
     await cronCheckKontrak(req, res);
   } catch (error) {
     console.error("Error in cron-check-kontrak:", error);
+    next(error);
+  }
+});
+
+app.all('/api/evaluation-cycle', async (req, res, next) => {
+  try {
+    await evaluationCycle(req, res);
+  } catch (error) {
+    console.error("Error in evaluation-cycle:", error);
     next(error);
   }
 });

@@ -5499,6 +5499,165 @@ if (typeof window !== "undefined") {
   window.downloadDokumenPenilaianFisikPdf = downloadDokumenPenilaianFisikPdf;
 }
 
+/**
+ * =====================================================================
+ * LAPORAN EVALUASI KONTRAK & PROBATION (dari siklus evaluation_cycles)
+ * Blueprint "Sistem Evaluasi Kontrak & Probation": dokumen yang
+ * merangkum nilai (skala 1-4 tertimbang), komentar reviewer, rekomendasi
+ * atasan, dan keputusan akhir HR — dipakai untuk 1-on-1 feedback session
+ * atau lampiran Surat Keputusan (SK) karyawan.
+ * =====================================================================
+ */
+export function generateLaporanEvaluasiKontrakHtml(cycle = {}) {
+  const bobot = cycle.bobot_kategori || {};
+  const skor = cycle.skor_kategori || {};
+  const status = String(cycle.status || "").toUpperCase();
+  const isHasil = ["SUBMITTED_TO_HR", "COMPLETED"].includes(status);
+  const rekLabel = (v) => ({
+    PERMANEN: "Angkat Menjadi Karyawan Tetap",
+    PERPANJANG: "Perpanjang Kontrak",
+    BERHENTI: "Tidak Dilanjutkan (Terminate)"
+  }[v] || v || "-");
+  const statusLabel = (v) => ({
+    PENDING: "Menunggu Penilaian",
+    IN_PROGRESS: "Sedang Diisi Reviewer",
+    SUBMITTED_TO_HR: "Menunggu Validasi HR",
+    COMPLETED: "Selesai",
+    BATAL: "Dibatalkan"
+  }[v] || v || "-");
+  const tglCetak = new Intl.DateTimeFormat("id-ID", { dateStyle: "long" }).format(new Date());
+
+  const ident = [
+    ["Nama Karyawan", cycle.nama_karyawan],
+    ["NIK", cycle.nik_karyawan],
+    ["Jabatan", cycle.jabatan],
+    ["Divisi / Cabang", `${cycle.divisi || "-"} / ${cycle.cabang || "-"}`],
+    ["Kontrak Ke-", cycle.kontrak_ke],
+    ["Periode Kontrak", cycle.tanggal_mulai ? `${fmtDateShort(cycle.tanggal_mulai)} s/d ${fmtDateShort(cycle.tanggal_akhir)}` : fmtDateShort(cycle.tanggal_akhir)],
+    ["Reviewer / Atasan", cycle.reviewer_nama],
+    ["Status Siklus", statusLabel(cycle.status)]
+  ].map(([label, value]) => `
+    <tr>
+      <td style="width:34%; padding:4px 8px; border:1px solid #cbd5e1; background:#f8fafc; font-size:9pt;">${escapeHtml(label)}</td>
+      <td style="padding:4px 8px; border:1px solid #cbd5e1; font-size:9pt; font-weight:bold;">${escapeHtml(String(value ?? "-"))}</td>
+    </tr>`).join("");
+
+  const skorRows = Object.keys(bobot).length || Object.keys(skor).length
+    ? Object.entries(Object.keys(bobot).length ? bobot : skor).map(([nama, b]) => {
+        const sk = isHasil ? skor[nama] : null;
+        return `
+      <tr>
+        <td style="border:1px solid #94a3b8; padding:4px 8px; font-size:9pt;">${escapeHtml(nama)}</td>
+        <td style="border:1px solid #94a3b8; padding:4px 8px; text-align:center; font-size:9pt;">${escapeHtml(String(Number(b) || 0))}%</td>
+        <td style="border:1px solid #94a3b8; padding:4px 8px; text-align:center; font-size:9pt; font-weight:${isHasil ? "bold" : "normal"}; color:${isHasil ? "#0f172a" : "#94a3b8"};">${sk == null ? (isHasil ? "-" : "(belum diisi)") : escapeHtml(String(sk))}</td>
+      </tr>`;
+      }).join("") +
+      `<tr style="background:#f8fafc; font-weight:bold;">
+        <td style="border:1px solid #94a3b8; padding:4px 8px; font-size:9pt;">Skor Akhir Tertimbang (skala 1–4)</td>
+        <td style="border:1px solid #94a3b8; padding:4px 8px;"></td>
+        <td style="border:1px solid #94a3b8; padding:4px 8px; text-align:center; font-size:9pt;">${isHasil ? escapeHtml(String(cycle.nilai_akhir ?? "-")) : "-"}</td>
+      </tr>`
+    : "";
+
+  const predikat = isHasil ? (cycle.predikat || "-") : "—";
+  const keputusanBlock = status === "COMPLETED" ? `
+    <div style="margin-top:10px; border:1px solid #94a3b8; border-radius:4px; padding:8px 10px;">
+      <div style="font-size:9pt;"><b>Keputusan Akhir HR:</b> <span style="background:#7a1f2b; color:#fff; padding:2px 10px; border-radius:10px; font-weight:bold;">${escapeHtml(rekLabel(cycle.hr_keputusan)).toUpperCase()}</span></div>
+      ${cycle.hr_catatan ? `<p style="margin:6px 0 0; font-size:8.5pt;">Catatan HR: ${escapeHtml(cycle.hr_catatan)}</p>` : ""}
+      <p style="margin:6px 0 0; font-size:8pt; color:#64748b;">Dieksekusi oleh ${escapeHtml(cycle.hr_by || "-")} pada ${escapeHtml(fmtDateShort(cycle.completed_at))}</p>
+    </div>` : "";
+
+  const rekBlock = isHasil ? `
+    <div style="margin-top:10px;">
+      <table style="width:100%; border-collapse:collapse;">
+        <tr>
+          <td style="padding:6px 8px; border:1px solid #94a3b8; width:38%; font-size:9pt;"><b>Rekomendasi Atasan:</b></td>
+          <td style="padding:6px 8px; border:1px solid #94a3b8; font-size:9pt; font-weight:bold;">${escapeHtml(rekLabel(cycle.rekomendasi_manajer))}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 8px; border:1px solid #94a3b8; font-size:9pt;"><b>Predikat Akhir:</b></td>
+          <td style="padding:6px 8px; border:1px solid #94a3b8; font-size:9pt;">${escapeHtml(predikat)}</td>
+        </tr>
+      </table>
+      ${keputusanBlock}
+    </div>` : `<p style="margin-top:8px; font-size:9pt; color:#64748b; font-style:italic;">Hasil penilaian belum tersedia — laporan berikut mencakup data & keputusan yang telah melewati tahap submit reviewer.</p>`;
+
+  return `
+  <!DOCTYPE html>
+  <html>
+  <head><meta charset="utf-8"><title>Laporan Evaluasi Kontrak — ${escapeHtml(cycle.nama_karyawan || "")}</title></head>
+  <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif; color:#1e293b; margin:24px;">
+    <div style="text-align:center; border-bottom:3px double #7a1f2b; padding-bottom:10px; margin-bottom:14px;">
+      <div style="font-size:13pt; font-weight:900; color:#7a1f2b; letter-spacing:1px;">CV ANDELA JAYA CIREBON</div>
+      <div style="font-size:10pt; color:#475569;">Sistem Portal HRIS &amp; Operasional</div>
+      <div style="font-size:12pt; font-weight:bold; margin-top:10px; text-transform:uppercase;">Laporan Evaluasi Kontrak &amp; Probation</div>
+      <div style="font-size:8.5pt; color:#64748b; margin-top:2px;">Dokumen ini digunakan sebagai bahan 1-on-1 feedback session dan/atau lampiran Surat Keputusan (SK)</div>
+    </div>
+
+    <table style="width:100%; border-collapse:collapse; margin-bottom:12px;">${ident}</table>
+
+    <div style="font-size:10pt; font-weight:bold; color:#7a1f2b; margin:12px 0 6px;">I. Hasil Penilaian (Skala 1–4, Tertimbang)</div>
+    <table style="width:100%; border-collapse:collapse;">${skorRows || '<tr><td style="font-size:9pt; color:#94a3b8;">Kategori & bobot penilaian dicantumkan setelah siklus dibuat.</td></tr>'}</table>
+
+    ${isHasil ? `
+    <div style="font-size:10pt; font-weight:bold; color:#7a1f2b; margin:12px 0 6px;">II. Rekomendasi &amp; Keputusan</div>
+    ${rekBlock}` : ""}
+
+    <div style="font-size:10pt; font-weight:bold; color:#7a1f2b; margin:12px 0 6px;">III. Catatan / Feedback Reviewer</div>
+    <div style="border:1px solid #94a3b8; border-radius:4px; padding:8px 10px; min-height:60px; font-size:9pt;">${escapeHtml(cycle.komentar || (isHasil ? "-" : "Belum ada catatan. Catatan wajib diisi oleh reviewer saat submit evaluasi."))}</div>
+
+    <div style="font-size:10pt; font-weight:bold; color:#7a1f2b; margin:14px 0 6px;">IV. Persetujuan Dokumen</div>
+    <table style="width:100%; border-collapse:collapse; margin-top:10px;">
+      <tr>
+        <td style="width:33%; text-align:center; vertical-align:top; padding-top:6px;">
+          <div>Reviewer / Atasan Langsung</div>
+          <div style="height:56px;"></div>
+          <div style="border-top:1px solid #000; margin:0 18px; padding-top:3px; font-size:8.5pt;">${escapeHtml(cycle.reviewer_nama || "…………………")}</div>
+        </td>
+        <td style="width:33%; text-align:center; vertical-align:top; padding-top:6px;">
+          <div>Karyawan Bersangkutan</div>
+          <div style="height:56px;"></div>
+          <div style="border-top:1px solid #000; margin:0 18px; padding-top:3px; font-size:8.5pt;">${escapeHtml(cycle.nama_karyawan || "…………………")}</div>
+        </td>
+        <td style="width:33%; text-align:center; vertical-align:top; padding-top:6px;">
+          <div>HRD</div>
+          <div style="height:56px;"></div>
+          <div style="border-top:1px solid #000; margin:0 18px; padding-top:3px; font-size:8.5pt;">…………………</div>
+        </td>
+      </tr>
+    </table>
+
+    <div style="margin-top:16px; border-top:1px solid #cbd5e1; padding-top:6px; font-size:7.5pt; color:#64748b; display:flex; justify-content:space-between;">
+      <span>Cetak pada ${escapeHtml(tglCetak)} &bull; ID Siklus: ${escapeHtml(cycle.idDummy || "-")}</span>
+      <span>Submit: ${escapeHtml(fmtDateShort(cycle.submitted_at))} &bull; Keputusan: ${cycle.completed_at ? escapeHtml(fmtDateShort(cycle.completed_at)) : "—"} (audit trail tersimpan dalam sistem)</span>
+    </div>
+  </body>
+  </html>`;
+}
+
+export async function downloadLaporanEvaluasiKontrakPdf(cycle) {
+  if (!cycle || !cycle.nama_karyawan) {
+    toast("Data siklus evaluasi tidak valid", "error");
+    return;
+  }
+  try {
+    toast("Menyiapkan laporan evaluasi kontrak PDF...", "info");
+    const html = generateLaporanEvaluasiKontrakHtml({ ...cycle, idDummy: cycle.id || "" });
+    const safeNama = String(cycle.nama_karyawan).replace(/[^a-zA-Z0-9_-]/g, "_");
+    const safeAkhir = String(cycle.tanggal_akhir || cycle.id || "").replace(/[^a-zA-Z0-9_-]/g, "_");
+    await downloadHtmlAsPdf(html, `Laporan_Evaluasi_Kontrak_${safeNama}_${safeAkhir}.pdf`, "portrait");
+    toast("Laporan evaluasi kontrak berhasil diunduh!", "success");
+  } catch (err) {
+    console.error("Gagal download laporan evaluasi kontrak:", err);
+    toast("Gagal mengunduh laporan PDF: " + err.message, "error");
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.generateLaporanEvaluasiKontrakHtml = generateLaporanEvaluasiKontrakHtml;
+  window.downloadLaporanEvaluasiKontrakPdf = downloadLaporanEvaluasiKontrakPdf;
+}
+
 export async function sendFCMNotif(tokens, title, body, link = "") {
  const list = (Array.isArray(tokens) ? tokens : [tokens]).filter(Boolean);
  if (!list.length) return false;

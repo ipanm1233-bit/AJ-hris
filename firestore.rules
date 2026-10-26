@@ -256,6 +256,23 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if isManagement();
     }
+    // Rekap bulanan DSR ASR (call & EC harian dari file CLAIM BENSIN).
+    match /sales_dsr_bulanan/{id} {
+      allow read: if signedIn();
+      allow write: if isManagement();
+    }
+    // Pemetaan alias nama sales -> NIK (override manual pemetaan default).
+    match /sales_alias_map/{id} {
+      allow read: if signedIn();
+      allow write: if isManagement();
+    }
+    // Siklus evaluasi kontrak/probation (draft otomatis cron H-30).
+    // Penulisan utama lewat endpoint /api/evaluation-cycle (Admin SDK);
+    // aturan ini menjaga baca oleh user login & tulis darurat oleh manajemen.
+    match /evaluation_cycles/{id} {
+      allow read: if signedIn();
+      allow write: if isManagement();
+    }
     match /log_penilaian_harian/{id} {
       allow read: if signedIn() && (isManagement() || owns(resource.data));
       allow create: if signedIn();

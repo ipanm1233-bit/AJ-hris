@@ -1,5 +1,5 @@
 import { auth, db, COL, collection, query, where, getDocs, getDoc, setDoc, doc, limit, writeBatch, serverTimestamp } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, confirmDialog, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, buildStandardEmailHtml, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan, downloadXlsx, ensureXlsxLoaded, formatPhoneNumberForWa, openWhatsAppMessage, getEmployeePhoneByName, buildKpiTaskWaMessage, printDokumenPenilaianFisik, downloadDokumenPenilaianFisikPdf } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, confirmDialog, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, buildStandardEmailHtml, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan, downloadXlsx, ensureXlsxLoaded, formatPhoneNumberForWa, openWhatsAppMessage, getEmployeePhoneByName, buildKpiTaskWaMessage, printDokumenPenilaianFisik, downloadDokumenPenilaianFisikPdf, generateLaporanEvaluasiKontrakHtml, downloadLaporanEvaluasiKontrakPdf } from "../utils.js";
 import { renderCrudModule, badge, emptyState, skeletonRows, avatar, icon, openPenilaianFormFromNotif } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames, hasPermission, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
@@ -14,6 +14,7 @@ import { calculateAttendancePenalty } from "../attendance-penalty.mjs";
 import { MONTHLY_METRICS, monthlyMetricRows, validateMonthlyAchievement } from "../monthly-achievement.mjs";
 import { summarizeReviewTasks, resolveCoordinationStage } from "../contract-coordination.mjs";
 import { employeeHistoryRows } from "../employee-history.mjs";
+import { parseSchemeIncentiveWorkbook, parseDsrWorkbook, buildSalesKinerjaDocs, buildDsrDocs } from "../sales-kinerja-import.mjs";
 
 const confirmThen = (message, action) => runConfirmedAction(confirmDialog, message, action);
 
@@ -446,6 +447,7 @@ export async function mount(container, { session, params }) {
  daily: container.querySelector("#pk-panel-daily"),
  template: container.querySelector("#pk-panel-template"),
  grafik: container.querySelector("#pk-panel-employee-grafik"),
+ siklus: container.querySelector("#pk-panel-siklus"),
  };
  const loaded = {};
 
@@ -797,6 +799,7 @@ export async function mount(container, { session, params }) {
  if (titleEl) titleEl.textContent = "Penilaian & Kontrak Saya";
  if (subtitleEl) subtitleEl.textContent = "Grafik pencapaian penilaian KPI dan rincian dokumen ikatan dinas / kontrak kerja Anda.";
  if (tabHeader) tabHeader.querySelector('[data-ntab="daily"]')?.classList.add("hidden");
+ if (tabHeader) tabHeader.querySelector('[data-ntab="siklus"]')?.classList.add("hidden");
  }
 
  async function loadKontrak() {
@@ -929,7 +932,11 @@ export async function mount(container, { session, params }) {
  <h2 class="text-xl font-bold text-slate-800">Kartu Kontrak Karyawan</h2>
  <p class="text-xs text-slate-500 mt-1">Ringkasan KPI dan masa kontrak; buka kartu untuk melihat bukti penilaian dan catatan kedisiplinan.</p>
  </div>
- ${["HRD", "SUPERADMIN"].includes(role) ? '<button id="btn-manage-kpi-logs" class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700">Kelola Log Penilaian</button>' : ''}
+ ${["HRD", "SUPERADMIN"].includes(role) ? `
+ <div class="flex items-center gap-2">
+  <button id="btn-manage-kpi-logs" class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700">Kelola Log Penilaian</button>
+  <button id="btn-import-sales-kinerja" class="rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 text-xs font-bold transition shadow-sm">Impor Kinerja Sales</button>
+ </div>` : ''}
  ${canManageKontrak ? `
  <button id="btn-add-global-kontrak" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2.5 rounded-xl text-xs font-semibold transition shadow-sm flex items-center gap-2 self-start md:self-auto">
  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
@@ -1090,6 +1097,8 @@ export async function mount(container, { session, params }) {
    resultPanel.scrollIntoView({ behavior: "smooth", block: "start" });
   }
  });
+
+ wrap.querySelector("#btn-import-sales-kinerja")?.addEventListener("click", openImportSalesKinerjaModal);
 
  if (canManageKontrak && wrap.querySelector("#btn-add-global-kontrak")) {
  wrap.querySelector("#btn-add-global-kontrak").onclick = () => {
@@ -1317,6 +1326,188 @@ export async function mount(container, { session, params }) {
      </div>
    </div>`;
  }
+
+  // --------------------------------------------------------------------
+  // MODAL IMPOR KINERJA SALES (Scheme Incentive + DSR ASR) oleh HRD
+  // --------------------------------------------------------------------
+  function normAliasKey(value) {
+    return String(value || "").toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").trim();
+  }
+
+  function openImportSalesKinerjaModal() {
+   if (typeof window.XLSX === "undefined") {
+    toast("Pustaka XLSX belum siap di sistem, harap segarkan halaman.", "error");
+    return;
+   }
+   const wrap = openModal({
+    title: "Impor Kinerja Sales",
+    size: "lg",
+    bodyHtml: `
+    <div class="space-y-4 text-sm">
+     <div class="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 text-xs text-indigo-900">
+      <strong>Catatan:</strong> data menimpa dokumen periode yang sama (aman diulang bila angka direvisi finance).
+      Panel kinerja sales di kartu kontrak otomatis memakai data terbaru setelah disimpan.
+     </div>
+     <div>
+      <label class="block text-xs font-bold text-slate-700 mb-1">1. Scheme Incentive (xlsx — sheet 'Data' + 01..08)</label>
+      <input type="file" id="impx-scheme" accept=".xlsx,.xls" class="block w-full text-xs border border-slate-200 rounded-xl p-2 bg-slate-50">
+     </div>
+     <div>
+      <label class="block text-xs font-bold text-slate-700 mb-1">2. DSR ASR / Claim Bensin (xlsx — Call &amp; EC harian)</label>
+      <input type="file" id="impx-dsr" accept=".xlsx,.xls" class="block w-full text-xs border border-slate-200 rounded-xl p-2 bg-slate-50">
+     </div>
+     <div id="impx-preview" class="space-y-2"></div>
+     <div id="impx-error" class="hidden rounded-xl border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700"></div>
+     <div class="flex items-center justify-end gap-2">
+      <button id="impx-cancel" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600">Batal</button>
+      <button id="impx-save" class="px-4 py-2 rounded-xl bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold" disabled>Simpan ke Firestore</button>
+     </div>
+    </div>`,
+   });
+
+   (async () => {
+    const [masters, aliasOverrideDocs] = await Promise.all([
+     fsGetAll(COL.MASTER_KARYAWAN),
+     fsGetAll(COL.SALES_ALIAS_MAP).catch(() => []),
+    ]);
+    const overrideMap = new Map(aliasOverrideDocs.map(d => [normAliasKey(d._id), d]));
+    const state = { scheme: null, dsr: null, schemeFile: "", dsrFile: "" };
+
+    const box = wrap.querySelector("#impx-preview");
+    const errorBox = wrap.querySelector("#impx-error");
+    const saveBtn = wrap.querySelector("#impx-save");
+    const fmtJumlah = n => Number(n || 0).toLocaleString("id-ID", { maximumFractionDigits: 0 });
+
+    const showImportError = (msg) => {
+     errorBox.textContent = msg || "";
+     errorBox.classList.toggle("hidden", !msg);
+    };
+
+    const renderPreview = () => {
+     const parts = [];
+     if (state.scheme) {
+      const fields = state.scheme.docs.map(d => d.fields);
+      const perPeriode = new Map();
+      fields.forEach(f => {
+       const e = perPeriode.get(f.periode) || { total: 0, FINAL: 0, ACHIEVEMENT_PARSIAL: 0, TARGET_SAJA: 0 };
+       e.total += 1; e[f.status_data] = (e[f.status_data] || 0) + 1;
+       perPeriode.set(f.periode, e);
+      });
+      parts.push(`<div class="rounded-xl border border-slate-200 bg-white p-3">
+       <p class="text-xs font-bold text-slate-800">Scheme Incentive — ${escapeHtml(state.schemeFile)}</p>
+       <p class="text-xs text-slate-500 mt-1">${fields.length} dokumen · tahun ${escapeHtml(String(state.scheme.tahun || ""))}</p>
+       <div class="mt-1 flex flex-wrap gap-1">${[...perPeriode.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([p, v]) =>
+        `<span class="text-[10px] font-semibold text-slate-600 rounded-full bg-slate-100 px-2 py-[1px]">${escapeHtml(p)}</span>
+         <span class="text-[10px] text-slate-500 mr-1">Final ${v.FINAL || 0} / Parsial ${v.ACHIEVEMENT_PARSIAL || 0} / Target ${v.TARGET_SAJA || 0}</span>`).join("")}</div>
+       ${state.scheme.unmapped.length ? `<p class="mt-1 text-[11px] text-amber-700">Alias belum terpetakan (NIK kosong): ${escapeHtml(state.scheme.unmapped.join(", "))}</p>` : ""}
+      </div>`);
+     }
+     if (state.dsr) {
+      const fields = state.dsr.docs.map(d => d.fields);
+      const totals = fields.reduce((w, f) => ({ c: w.c + (Number(f.total_call) || 0), e: w.e + (Number(f.total_ec) || 0) }), { c: 0, e: 0 });
+      parts.push(`<div class="rounded-xl border border-slate-200 bg-white p-3">
+       <p class="text-xs font-bold text-slate-800">DSR ASR — ${escapeHtml(state.dsrFile)}</p>
+       <p class="text-xs text-slate-500 mt-1">${state.dsr.sheets.length} sheet terbaca · ${fields.length} orang · Call ${fmtJumlah(totals.c)} · EC ${fmtJumlah(totals.e)}</p>
+       <div class="mt-1 flex flex-wrap gap-1">${[...new Set(fields.map(f => f.periode))].sort().map(p =>
+        `<span class="text-[10px] font-semibold text-slate-600 rounded-full bg-slate-100 px-2 py-[1px]">${escapeHtml(p)}</span>`).join("")}</div>
+       ${state.dsr.unmapped.length ? `<p class="mt-1 text-[11px] text-amber-700">Nama belum terpetakan: ${escapeHtml(state.dsr.unmapped.slice(0, 12).join(", "))}${state.dsr.unmapped.length > 12 ? " …" : ""}</p>` : ""}
+      </div>`);
+     }
+     if (!parts.length) parts.push('<p class="text-xs text-slate-400 italic">Belum ada file dipilih. Kedua file boleh diunggah bertahap.</p>');
+     box.innerHTML = parts.join("");
+     saveBtn.disabled = !((state.scheme?.docs?.length) || (state.dsr?.docs?.length));
+    };
+
+    const readWorkbook = async (file) => {
+     const buffer = await file.arrayBuffer();
+     return window.XLSX.read(buffer, { type: "array" });
+    };
+
+    wrap.querySelector("#impx-scheme").addEventListener("change", async (e) => {
+     const file = e.target.files && e.target.files[0];
+     if (!file) return;
+     showImportError("");
+     try {
+      const wb = await readWorkbook(file);
+      const parsed = parseSchemeIncentiveWorkbook(wb);
+      if (!parsed.dataBlocks.length) {
+       state.scheme = null;
+       showImportError("Sheet 'Data' Scheme Incentive tidak dikenali. Pastikan memakai format file scheme 2026 (blok per bulan, header 'AREA').");
+      } else {
+       const hasil = buildSalesKinerjaDocs(parsed, masters, overrideMap, { sourceFile: file.name });
+       state.scheme = { ...hasil, tahun: parsed.tahun };
+       state.schemeFile = file.name;
+      }
+     } catch (err) {
+      state.scheme = null;
+      showImportError(`Gagal membaca Scheme Incentive: ${err.message}`);
+     }
+     renderPreview();
+     e.target.value = "";
+    });
+
+    wrap.querySelector("#impx-dsr").addEventListener("change", async (e) => {
+     const file = e.target.files && e.target.files[0];
+     if (!file) return;
+     showImportError("");
+     try {
+      const wb = await readWorkbook(file);
+      const tahunMatch = file.name.match(/(20\d{2})/);
+      const tahunHint = tahunMatch ? Number(tahunMatch[1]) : new Date().getFullYear();
+      const parsed = parseDsrWorkbook(wb, tahunHint);
+      if (!parsed.sheets.length) {
+       state.dsr = null;
+       showImportError("Tidak ada baris 'Call' ditemukan di file DSR. Pastikan memakai format DSR ASR (kolom Call | EC per orang).");
+      } else {
+       state.dsr = buildDsrDocs(parsed, masters, overrideMap, { sourceFile: file.name });
+       state.dsrFile = file.name;
+      }
+     } catch (err) {
+      state.dsr = null;
+      showImportError(`Gagal membaca DSR: ${err.message}`);
+     }
+     renderPreview();
+     e.target.value = "";
+    });
+
+    wrap.querySelector("#impx-cancel").addEventListener("click", closeModal);
+    saveBtn.addEventListener("click", async () => {
+     const schemeDocs = state.scheme?.docs || [];
+     const dsrDocs = state.dsr?.docs || [];
+     if (!schemeDocs.length && !dsrDocs.length) return;
+     const jalankan = await confirmDialog({
+      title: "Simpan Kinerja Sales?",
+      message: `${schemeDocs.length} dokumen scheme insentif dan ${dsrDocs.length} dokumen DSR akan ditulis ke Firestore. Dokumen periode yang sama akan diperbarui.`,
+      confirmLabel: "Simpan",
+     });
+     if (!jalankan) return;
+     const original = saveBtn.innerHTML;
+     saveBtn.disabled = true;
+     saveBtn.innerHTML = "Menyimpan…";
+     try {
+      const BATCH = 400;
+      const semua = [
+       ...schemeDocs.map(d => ({ koleksi: COL.SALES_KINERJA_BULANAN, ...d })),
+       ...dsrDocs.map(d => ({ koleksi: COL.SALES_DSR_BULANAN, ...d })),
+      ];
+      for (let i = 0; i < semua.length; i += BATCH) {
+       const batch = writeBatch(db);
+       for (const item of semua.slice(i, i + BATCH)) {
+        batch.set(doc(db, item.koleksi, item.id), item.fields);
+       }
+       await batch.commit();
+      }
+      toast(`Berhasil menyimpan ${semua.length} dokumen kinerja sales. Panel kontrak sales terupdate otomatis.`, "success");
+      closeModal();
+     } catch (err) {
+      console.error("import-sales-kinerja", err);
+      toast(`Gagal menyimpan: ${err.message}`, "error");
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = original;
+     }
+    });
+   })();
+  }
 
  function openEmployeeContractModal(empData, reloadData) {
  const isAktif = (empData.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF";
@@ -7880,10 +8071,370 @@ export async function mount(container, { session, params }) {
     renderDailyView();
   }
 
+  // =====================================================================
+  // SIKLUS EVALUASI KONTRAK & PROBATION (skema Mekari)
+  // Draft dibuat otomatis cron H-30 → koleksi evaluation_cycles; atasan
+  // mengisi skala 1–4 berbobot + komentar + rekomendasi; HR validasi dan
+  // mengeksekusi keputusan. Semua aksi lewat /api/evaluation-cycle.
+  // =====================================================================
+  const SIKLUS_STATUS_LABEL = {
+    PENDING: "Menunggu Penilaian",
+    IN_PROGRESS: "Sedang Diisi",
+    SUBMITTED_TO_HR: "Menunggu Validasi HR",
+    COMPLETED: "Selesai",
+    BATAL: "Dibatalkan"
+  };
+  const SIKLUS_STATUS_COLOR = {
+    PENDING: "bg-amber-100 text-amber-800 border-amber-200",
+    IN_PROGRESS: "bg-blue-100 text-blue-800 border-blue-200",
+    SUBMITTED_TO_HR: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    COMPLETED: "bg-slate-200 text-slate-700 border-slate-300",
+    BATAL: "bg-slate-100 text-slate-500 border-slate-200"
+  };
+  const SIKLUS_WIDE_ROLES = ["HRD", "SUPERADMIN", "GM", "DIREKTUR"];
+  const siklusToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const siklusSisaHari = (cycle) => {
+    const due = String(cycle.tanggal_akhir || cycle.due_date || "").slice(0, 10);
+    return due ? daysBetween(siklusToday(), due) : null;
+  };
+  const siklusRekLabel = (v) => ({
+    PERMANEN: "Angkat Karyawan Tetap",
+    PERPANJANG: "Perpanjang Kontrak",
+    BERHENTI: "Tidak Dilanjutkan"
+  }[v] || v || "-");
+
+  const siklusIsViewer = (cycle) => {
+    if (SIKLUS_WIDE_ROLES.includes(role)) return true;
+    const namaSaya = String(session.nama || "").trim().toUpperCase();
+    return Boolean(
+      (session.username && String(cycle.reviewer_username || "") === String(session.username)) ||
+      (session.nik && String(cycle.reviewer_nik || "") === String(session.nik)) ||
+      (namaSaya && String(cycle.reviewer_nama || "").trim().toUpperCase() === namaSaya)
+    );
+  };
+
+  async function siklusPostApi(body) {
+    const res = await authFetch("/api/evaluation-cycle", {
+      method: "POST",
+      body: JSON.stringify(body)
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.success === false) {
+      throw new Error(json.error || `HTTP ${res.status}`);
+    }
+    return json;
+  }
+
+  function siklusStatusBadge(status, sisa = null) {
+    const st = statusLabelSiklus(status);
+    const overdue = sisa !== null && sisa < 0 && !["COMPLETED", "BATAL"].includes(status);
+    return `<span class="inline-flex items-center rounded-full border px-2 py-[2px] text-[10px] font-bold ${overdue ? "bg-rose-100 text-rose-700 border-rose-200" : (SIKLUS_STATUS_COLOR[status] || "bg-slate-100 text-slate-600 border-slate-200")}">${escapeHtml(st)}</span>`;
+  }
+
+   function statusLabelSiklus(status) {
+    return SIKLUS_STATUS_LABEL[status] || status || "-";
+  }
+
+  async function loadSiklusPanel() {
+   const wrap = panels.siklus;
+   if (!wrap) return;
+   wrap.innerHTML = `<div class="p-8">${skeletonRows(5)}</div>`;
+   let cycles;
+   try {
+    cycles = await fsGetAll(COL.EVALUATION_CYCLES);
+   } catch (err) {
+    wrap.innerHTML = `<div class="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">Gagal memuat siklus evaluasi: ${escapeHtml(err.message)}</div>`;
+    return;
+   }
+   const isWide = SIKLUS_WIDE_ROLES.includes(role);
+   if (!isWide) cycles = cycles.filter(c => {
+    return (session.username && String(c.reviewer_username || "") === String(session.username)) ||
+     (session.nik && String(c.reviewer_nik || "") === String(session.nik)) ||
+     (String(session.nama || "").trim().toUpperCase() && String(c.reviewer_nama || "").trim().toUpperCase() === String(session.nama || "").trim().toUpperCase());
+   });
+
+   cycles.forEach(c => { c._sisa = siklusSisaHari(c); });
+   cycles.sort((a, b) => {
+    const overdueA = a._sisa < 0 ? -2 : a._sisa === null ? 9 : a._sisa;
+    const overdueB = b._sisa < 0 ? -2 : b._sisa === null ? 9 : b._sisa;
+    if (overdueA !== overdueB) return overdueA - overdueB;
+    return String(a.tanggal_akhir || "").localeCompare(String(b.tanggal_akhir || ""));
+   });
+
+   const hitung = (st) => cycles.filter(c => c.status === st).length;
+   const overdueCount = cycles.filter(c => c._sisa !== null && c._sisa < 0 && !["COMPLETED", "BATAL"].includes(c.status)).length;
+
+   const rowsHtml = cycles.map(cycle => {
+    const dapatIsi = ["PENDING", "IN_PROGRESS"].includes(cycle.status) && siklusIsViewer(cycle);
+    const sisaTxt = cycle._sisa === null ? "-" : cycle._sisa < 0
+     ? `<span class="text-rose-600 font-bold">Lewat ${Math.abs(cycle._sisa)} hari</span>`
+     : `<span class="${cycle._sisa <= 7 ? "text-amber-600 font-bold" : "text-slate-600"}">H-${cycle._sisa}</span>`;
+    const btnIsi = dapatIsi ? `<button data-act="isi" data-id="${escapeHtml(cycle.id)}" class="rounded-lg bg-maroon-700 hover:bg-maroon-800 text-white px-2.5 py-1.5 text-[11px] font-bold">Isi Evaluasi</button>` : "";
+    const btnDelegasi = isWide && !["COMPLETED", "BATAL"].includes(cycle.status) ? `<button data-act="delegasi" data-id="${escapeHtml(cycle.id)}" class="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">Delegasi</button>` : "";
+    const btnKeputusan = isWide && cycle.status === "SUBMITTED_TO_HR" ? `<button data-act="keputusan" data-id="${escapeHtml(cycle.id)}" class="rounded-lg bg-slate-800 hover:bg-slate-900 text-white px-2 py-1.5 text-[11px] font-bold">Eksekusi Keputusan</button>` : "";
+    const btnBatal = isWide && !["COMPLETED", "BATAL"].includes(cycle.status) ? `<button data-act="batal" data-id="${escapeHtml(cycle.id)}" class="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-[11px] font-semibold text-rose-600 hover:bg-rose-100">Batal</button>` : "";
+    const btnPdf = ["SUBMITTED_TO_HR", "COMPLETED"].includes(cycle.status) ? `<button data-act="pdf" data-id="${escapeHtml(cycle.id)}" class="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">PDF</button>` : "";
+    const hasilRingkas = cycle.nilai_akhir != null
+     ? `<div class="text-[11px]"><span class="font-bold text-slate-700">${Number(cycle.nilai_akhir).toFixed(2)}/4</span> · ${escapeHtml(siklusRekLabel(cycle.rekomendasi_manajer))}</div>`
+     : `<div class="text-[11px] text-slate-400">-</div>`;
+
+    return `<tr class="border-t border-slate-100 hover:bg-slate-50/60">
+     <td class="py-2.5 px-3">
+      <div class="text-xs font-bold text-slate-800">${escapeHtml(cycle.nama_karyawan || "-")}</div>
+      <div class="text-[10px] text-slate-500">${escapeHtml(cycle.nik_karyawan || "-")} · ${escapeHtml(cycle.jabatan || "-")}</div>
+     </td>
+     <td class="py-2.5 px-3 text-[11px] text-slate-600">Ke-${escapeHtml(String(cycle.kontrak_ke ?? "-"))}<br>${fmtDateShort(cycle.tanggal_akhir)}</td>
+     <td class="py-2.5 px-3 text-[11px] font-semibold">${sisaTxt}</td>
+     <td class="py-2.5 px-3 text-[11px] text-slate-600">${escapeHtml(cycle.reviewer_nama || "HRD")}</td>
+     <td class="py-2.5 px-3">${siklusStatusBadge(cycle.status, cycle._sisa)}</td>
+     <td class="py-2.5 px-3">${hasilRingkas}</td>
+     <td class="py-2.5 px-3"><div class="flex flex-wrap gap-1 justify-end">${btnIsi}${btnKeputusan}${btnDelegasi}${btnPdf}${btnBatal}</div></td>
+    </tr>`;
+   }).join("");
+
+   wrap.innerHTML = `
+    <div class="space-y-4">
+     <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+      <div>
+       <h2 class="text-lg font-black text-slate-800">Siklus Evaluasi Kontrak &amp; Probation</h2>
+       <p class="mt-1 text-xs text-slate-500">Draft evaluasi dibuat otomatis H-30 sebelum kontrak berakhir dan dikirim ke atasan langsung (email, notifikasi in-app, dan push). Pengingat harian mulai H-15 hingga evaluasi diisi.</p>
+      </div>
+      <div class="flex items-center gap-2">
+       <button id="btn-siklus-refresh" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">Segarkan</button>
+      </div>
+     </div>
+     <div class="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-5">
+      ${[["Menunggu", hitung("PENDING"), "text-amber-600"], ["Diisi", hitung("IN_PROGRESS"), "text-blue-600"], ["Tunggu Validasi HR", hitung("SUBMITTED_TO_HR"), "text-emerald-600"], ["Selesai", hitung("COMPLETED"), "text-slate-600"], ["Lewat Kontrak", overdueCount, "text-rose-600"]].map(([label, n, warna]) => `
+       <div class="text-center"><div class="text-2xl font-black ${warna}">${n}</div><div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">${label}</div></div>`).join("")}
+     </div>
+     ${cycles.length ? `
+     <div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+      <table class="min-w-full text-left"><thead>
+       <tr class="text-[10px] uppercase tracking-wide text-slate-500 border-b border-slate-200">
+        <th class="py-2.5 px-3 font-bold">Karyawan</th><th class="py-2.5 px-3 font-bold">Kontrak</th><th class="py-2.5 px-3 font-bold">Sisa</th><th class="py-2.5 px-3 font-bold">Reviewer</th><th class="py-2.5 px-3 font-bold">Status</th><th class="py-2.5 px-3 font-bold">Skor / Rekomendasi</th><th class="py-2.5 px-3 text-right font-bold">Aksi</th>
+       </tr>
+      </thead><tbody>${rowsHtml}</tbody></table>
+     </div>` : `
+     <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+      <p class="text-sm font-semibold text-slate-600">Belum ada siklus evaluasi.</p>
+      <p class="mt-1 text-xs text-slate-500">Draft akan muncul otomatis H-30 sebelum akhir kontrak karyawan PKWT/Probation, atau dapat langsung dibuat bila kontrak terdata memakai status kolom "Segera Habis".</p>
+     </div>`}
+    </div>`;
+
+   wrap.querySelector("#btn-siklus-refresh")?.addEventListener("click", () => { toast("Segarkan rekap siklus evaluasi…", "info"); loadSiklusPanel(); });
+   const byId = (id) => cycles.find(c => c.id === id);
+   wrap.querySelectorAll("[data-act]").forEach(btn => {
+    btn.addEventListener("click", () => {
+     const cycle = byId(btn.dataset.id);
+     if (!cycle) { toast("Data siklus tidak ditemukan, segarkan halaman.", "error"); return; }
+     switch (btn.dataset.act) {
+      case "isi": openIsiEvaluasiModal(cycle); break;
+      case "keputusan": openKeputusanSiklusModal(cycle); break;
+      case "delegasi": openDelegasiSiklusModal(cycle); break;
+      case "batal": siklusBatalkan(cycle); break;
+      case "pdf": downloadLaporanEvaluasiKontrakPdf(cycle); break;
+     }
+    });
+   });
+  }
+
+  function openIsiEvaluasiModal(cycle) {
+   const kategori = Object.entries(cycle.bobot_kategori || {}).length
+    ? Object.entries(cycle.bobot_kategori)
+    : [["Kinerja & Pencapaian Target", 25], ["Disiplin & Kehadiran", 25], ["Kualitas Kerja & Kompetensi", 25], ["Kerja Sama & Perilaku", 25]];
+   const SKALA = ["", "1 — Needs Improvement (di bawah ekspektasi)", "2 — Development Needed (perlu pengembangan)", "3 — Meet Expectation (memenuhi ekspektasi)", "4 — Exceeds Expectation (melebihi ekspektasi)"];
+   openModal({
+    title: `Isi Evaluasi Kontrak: ${escapeHtml(cycle.nama_karyawan)}`,
+    size: "lg",
+    bodyHtml: `
+     <div class="space-y-4 text-sm">
+      <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+       Kontrak Ke-${escapeHtml(String(cycle.kontrak_ke ?? "-"))} · berakhir <b>${fmtDateShort(cycle.tanggal_akhir)}</b> · ${escapeHtml(cycle.jabatan || "-")} · ${escapeHtml(cycle.cabang || "-")}
+      </div>
+      <div>
+       <p class="mb-2 text-xs font-bold text-slate-700">Skala penilaian (skor 1–4, berbobot):</p>
+       <div class="space-y-2" id="impl-eval-box">
+        ${kategori.map(([k, w]) => `
+         <label class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-slate-200 p-2">
+          <span class="text-xs font-semibold text-slate-700">${escapeHtml(k)} <span class="text-slate-400">(${Number(w)}%)</span></span>
+          <select data-kat="${escapeHtml(k)}" class="rounded-lg border border-slate-200 px-2 py-1.5 text-xs bg-white">
+           ${SKALA.map((opt, i) => i === 0 ? `<option value="">Pilih skor…</option>` : `<option value="${i}">${opt}</option>`).join("")}
+          </select>
+         </label>`).join("")}
+       </div>
+       <div class="mt-2 rounded-xl bg-indigo-50 border border-indigo-100 px-3 py-2 text-xs text-indigo-900">Skor tertimbang (real-time): <b id="impx-eval-nilai">—</b></div>
+      </div>
+      <div>
+       <label class="block text-xs font-bold text-slate-700 mb-1">Rekomendasi Status Akhir (wajib)</label>
+       <select id="eval-rekomendasi" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-white">
+        <option value="">Pilih rekomendasi…</option>
+        <option value="PERMANEN">A · Angkat Menjadi Karyawan Tetap (Permanent)</option>
+        <option value="PERPANJANG">B · Perpanjang Kontrak (Extend Contract)</option>
+        <option value="BERHENTI">C · Tidak Dilanjutkan (Terminate)</option>
+       </select>
+      </div>
+      <div>
+       <label class="block text-xs font-bold text-slate-700 mb-1">Komentar / Feedback (wajib)</label>
+       <textarea id="eval-komentar" rows="3" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs" placeholder="Catatan kekuatan, area pengembangan, dan alasan rekomendasi…"></textarea>
+      </div>
+      <div id="eval-error" class="hidden rounded-xl border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700"></div>
+      <div class="flex items-center justify-end gap-2">
+       <button id="eval-cancel" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600">Batal</button>
+       <button id="eval-submit" class="px-4 py-2 rounded-xl bg-maroon-700 hover:bg-maroon-800 text-white text-xs font-bold">Submit Evaluasi</button>
+      </div>
+     </div>`,
+   });
+
+   const modalWrap = document.getElementById("app-modal-backdrop");
+   modalWrap.querySelectorAll("#impl-eval-box select").forEach(sel => sel.addEventListener("change", () => {
+    const rows = [...modalWrap.querySelectorAll("#impl-eval-box select")];
+    const totalBobot = kategori.reduce((s, [, w]) => s + Number(w), 0) || kategori.length;
+    const nil = rows.reduce((acc, sel) => acc + (Number(sel.value) || 0) * ((kategori.find(([k]) => k === sel.dataset.kat)?.[1] || 0) / totalBobot), 0);
+    const el = modalWrap.querySelector("#impx-eval-nilai");
+    if (el) el.textContent = nil ? `${nil.toFixed(2)} / 4` : "—";
+   }));
+   modalWrap.querySelector("#eval-cancel").addEventListener("click", closeModal);
+   modalWrap.querySelector("#eval-submit").addEventListener("click", async () => {
+    const skor = {};
+    let kurang = [];
+    modalWrap.querySelectorAll("#impl-eval-box select").forEach(sel => {
+     if (sel.value) skor[sel.dataset.kat] = Number(sel.value); else kurang.push(sel.dataset.kat);
+    });
+    const komentar = modalWrap.querySelector("#eval-komentar").value.trim();
+    const rekomendasi = modalWrap.querySelector("#eval-rekomendasi").value;
+    const errBox = modalWrap.querySelector("#eval-error");
+    const errs = [];
+    if (kurang.length) errs.push(`Skor belum diisi untuk: ${kurang.join(", ")}`);
+    if (komentar.length < 3) errs.push("Kolom komentar/feedback wajib diisi.");
+    if (!rekomendasi) errs.push("Rekomendasi status akhir wajib dipilih.");
+    errBox.textContent = errs.join(" ");
+    errBox.classList.toggle("hidden", !errs.length);
+    if (errs.length) return;
+    const btn = modalWrap.querySelector("#eval-submit");
+    btn.disabled = true; btn.textContent = "Mengirim…";
+    try {
+     await siklusPostApi({ action: "submit", id: cycle.id, skor, komentar, rekomendasi });
+     toast("Evaluasi berhasil disubmit. HRD telah dinotifikasi untuk validasi.", "success");
+     closeModal();
+     loadSiklusPanel();
+    } catch (err) {
+     errBox.textContent = err.message;
+     errBox.classList.remove("hidden");
+     btn.disabled = false; btn.textContent = "Submit Evaluasi";
+    }
+   });
+  }
+
+  async function openDelegasiSiklusModal(cycle) {
+   let karyawan = [];
+   try { karyawan = await fsGetAll(COL.MASTER_KARYAWAN); } catch (e) {}
+   const kandidat = karyawan
+    .filter(k => String(k.aktif_tdk_aktif || "AKTIF").toUpperCase() !== "TIDAK AKTIF")
+    .map(k => String(k.nama_karyawan || "").trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "id"));
+   openModal({
+    title: `Delegasi Reviewer Evaluasi: ${escapeHtml(cycle.nama_karyawan)}`,
+    size: "md",
+    bodyHtml: `
+     <div class="space-y-3 text-sm">
+      <div class="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">Reviewer saat ini: <b>${escapeHtml(cycle.reviewer_nama || "HRD")}</b>. Delegasi dipakai bila atasan langsung resign, cuti panjang, atau tidak mampu menilai.</div>
+      <div>
+       <label class="block text-xs font-bold text-slate-700 mb-1">Reviewer Baru (atasan/manajer lain)</label>
+       <input id="del-nama" list="del-list" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs" placeholder="Nama karyawan…" autocomplete="off">
+       <datalist id="del-list">${kandidat.map(n => `<option value="${escapeHtml(n)}"></option>`).join("")}</datalist>
+      </div>
+      <div>
+       <label class="block text-xs font-bold text-slate-700 mb-1">Alasan Delegasi</label>
+       <input id="del-alasan" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs" placeholder="mis. Reviewer lama cuti panjang">
+      </div>
+      <div id="delegasi-error" class="hidden rounded-xl border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700"></div>
+      <div class="flex justify-end gap-2"><button id="del-cancel" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600">Batal</button><button id="del-save" class="px-4 py-2 rounded-xl bg-slate-800 text-white text-xs font-bold">Simpan Delegasi</button></div>
+     </div>`,
+   });
+   const modalWrap = document.getElementById("app-modal-backdrop");
+   modalWrap.querySelector("#del-cancel").addEventListener("click", closeModal);
+   modalWrap.querySelector("#del-save").addEventListener("click", async () => {
+    const nama = modalWrap.querySelector("#del-nama").value.trim();
+    const errBox = modalWrap.querySelector("#delegasi-error");
+    if (!nama) { errBox.textContent = "Nama reviewer baru wajib diisi."; errBox.classList.remove("hidden"); return; }
+    const btn = modalWrap.querySelector("#del-save");
+    btn.disabled = true; btn.textContent = "Menyimpan…";
+    try {
+     await siklusPostApi({ action: "assign", id: cycle.id, reviewer_nama: nama, alasan: modalWrap.querySelector("#del-alasan").value.trim() });
+     toast(`Reviewer delegasi disimpan: ${nama}.`, "success");
+     closeModal();
+     loadSiklusPanel();
+    } catch (err) {
+     errBox.textContent = err.message; errBox.classList.remove("hidden");
+     btn.disabled = false; btn.textContent = "Simpan Delegasi";
+    }
+   });
+  }
+
+  function openKeputusanSiklusModal(cycle) {
+   openModal({
+    title: `Eksekusi Keputusan: ${escapeHtml(cycle.nama_karyawan)}`,
+    size: "md",
+    bodyHtml: `
+     <div class="space-y-3 text-sm">
+      <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+       Skor akhir <b>${cycle.nilai_akhir != null ? Number(cycle.nilai_akhir).toFixed(2) : "-"}/4</b> · Rekomendasi atasan: <b>${escapeHtml(siklusRekLabel(cycle.rekomendasi_manajer))}</b>
+       ${cycle.komentar ? `<p class="mt-1 text-slate-500">“${escapeHtml(cycle.komentar)}”</p>` : ""}
+      </div>
+      <div>
+       <label class="block text-xs font-bold text-slate-700 mb-1">Keputusan HR (final)</label>
+       <select id="eks-keputusan" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-white">
+        <option value="">Pilih keputusan…</option>
+        <option value="PERMANEN">Angkat Menjadi Karyawan Tetap</option>
+        <option value="PERPANJANG">Perpanjang Kontrak</option>
+        <option value="BERHENTI">Tidak Dilanjutkan</option>
+       </select>
+      </div>
+      <div><label class="block text-xs font-bold text-slate-700 mb-1">Catatan HR (opsional)</label><input id="eks-catatan" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs" placeholder="mis. Disetujui sesuai hasil evaluasi"></div>
+      <div class="rounded-xl bg-blue-50 border border-blue-100 p-3 text-[11px] text-blue-900">Setelah keputusan dieksekusi, lanjutkan di kartu karyawan: <b>Tetap</b> → ubah status ke PKWTT &amp; kosongkan tanggal akhir; <b>Perpanjang</b> → tambah kontrak baru; <b>Berhenti</b> → set status tidak aktif pada tanggal akhir kontrak.</div>
+      <div id="eks-error" class="hidden rounded-xl border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700"></div>
+      <div class="flex justify-end gap-2"><button id="eks-cancel" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600">Batal</button><button id="eks-save" class="px-4 py-2 rounded-xl bg-maroon-700 text-white text-xs font-bold">Eksekusi Keputusan</button></div>
+     </div>`,
+   });
+   const modalWrap = document.getElementById("app-modal-backdrop");
+   modalWrap.querySelector("#eks-cancel").addEventListener("click", closeModal);
+   modalWrap.querySelector("#eks-save").addEventListener("click", async () => {
+    const keputusan = modalWrap.querySelector("#eks-keputusan").value;
+    const errBox = modalWrap.querySelector("#eks-error");
+    if (!keputusan) { errBox.textContent = "Keputusan wajib dipilih."; errBox.classList.remove("hidden"); return; }
+    const btn = modalWrap.querySelector("#eks-save");
+    btn.disabled = true; btn.textContent = "Menyimpan…";
+    try {
+     await siklusPostApi({ action: "complete", id: cycle.id, keputusan, catatan: modalWrap.querySelector("#eks-catatan").value.trim() });
+     toast("Keputusan dieksekusi. Lanjutkan perubahan status karyawan di kartu Kontrak.", "success");
+     closeModal();
+     loadSiklusPanel();
+    } catch (err) {
+     errBox.textContent = err.message; errBox.classList.remove("hidden");
+     btn.disabled = false; btn.textContent = "Eksekusi Keputusan";
+    }
+   });
+  }
+
+  async function siklusBatalkan(cycle) {
+   const ok = await confirmDialog({
+    title: "Batalkan Siklus Evaluasi?",
+    message: `Siklus evaluasi ${cycle.nama_karyawan} akan dibatalkan (status BATAL). Konfirmasi ini tercatat di audit trail; draft kembali dibuat otomatis oleh cron bila kontrak masih aktif dan belum dievaluasi.`,
+    confirmLabel: "Batalkan Siklus"
+   });
+   if (!ok) return;
+   try {
+    await siklusPostApi({ action: "cancel", id: cycle.id, alasan: "Dibatalkan regulator HRD dari panel Siklus Evaluasi" });
+    toast("Siklus evaluasi dibatalkan.", "success");
+    loadSiklusPanel();
+   } catch (err) { toast(`Gagal membatalkan: ${err.message}`, "error"); }
+  }
+
   function switchTab(tabKey) {
   const aliases = { kpi360: "alur_perpanjangan", evaluasi: "alur_perpanjangan", hasil: "kontrak", monitoring: "kontrak", grafik: "kontrak" };
   tabKey = aliases[tabKey] || tabKey;
-  if (!panels[tabKey] || (tabKey === "template" && !canTemplateSoal) || (tabKey === "daily" && isRegularEmployee)) tabKey = "kontrak";
+  if (!panels[tabKey] || (tabKey === "template" && !canTemplateSoal) || (tabKey === "daily" && isRegularEmployee) || (tabKey === "siklus" && isRegularEmployee)) tabKey = "kontrak";
   Object.keys(panels).forEach(k => {
     if (k === "kpi360") return;
     if (panels[k]) {
@@ -7906,6 +8457,7 @@ export async function mount(container, { session, params }) {
   if (tabKey === "alur_perpanjangan" && !loaded.alur_perpanjangan) { loaded.alur_perpanjangan = true; loadAlurPerpanjangan(); }
   if (tabKey === "template" && !loaded.template) { loaded.template = true; loadTemplateKpi(); }
   if (tabKey === "daily" && !loaded.daily) { loaded.daily = true; loadDailyTarget(); }
+  if (tabKey === "siklus" && !loaded.siklus) { loaded.siklus = true; loadSiklusPanel(); }
   }
 
   container.querySelectorAll(".pk-tab").forEach(btn => {
