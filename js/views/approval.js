@@ -1,6 +1,7 @@
 import { db, COL, collection, query, where, getDocs } from "../firebase-config.js";
 import { fsGetAll, fsUpdate, fsAdd, genId, openModal, closeModal, toast, fmtDateTime, escapeHtml, sendEmailNotif, buildStandardEmailHtml, buildPengajuanEmailDetailHtml, getTargetsForRole, createLoginToken, notifyUser, renderPengajuanDetailHtml, printSalesKlaimForm, generateAndSaveCutiDocument, printFormCutiFisik, getCutiDeductionCategory, confirmDialog } from "../utils.js";
 import { badge, emptyState, skeletonRows } from "../components.js";
+import { filterApprovalTargets } from "../approval-recipients.mjs";
 
 const CUTI_RULES = {
   "C - Cuti Tahunan": { jenis: "Tahunan", count: 1 },
@@ -606,6 +607,8 @@ async function processAction(row, action, note, session, recommendedBudget = nul
       finalTargets.push(...t);
     }
     finalTargets = finalTargets.filter((v,i,a)=>a.findIndex(v2=>(v2.username===v.username))===i);
+    // Jangan pernah kirim detail final ke posisi pendukung (security/OB/GA).
+    finalTargets = filterApprovalTargets(finalTargets);
     
     const detailEmailHtml = buildPengajuanEmailDetailHtml(row);
 
@@ -704,7 +707,7 @@ async function processAction(row, action, note, session, recommendedBudget = nul
   // JIKA MASIH ADA APPROVER SELANJUTNYA
   else {
     const nextRole = row.approval_flow[idx + 1];
-    const nextTargets = await getTargetsForRole(nextRole, row.nama_pemohon);
+    const nextTargets = filterApprovalTargets(await getTargetsForRole(nextRole, row.nama_pemohon));
     // Personil dengan kolom "Approval" pada Form Builder ikut dinotifikasi setiap tahap persetujuan
     const stageRules = Array.isArray(row.notify_user_rules) ? row.notify_user_rules : [];
     const stageSeen = new Set(nextTargets.map(t => String(t.nama || "").trim().toUpperCase()));
@@ -875,7 +878,7 @@ async function processAction(row, action, note, session, recommendedBudget = nul
  , { manual: true });
 
  if (nextRole) {
- const nextTargets = await getTargetsForRole(nextRole, row.nama_pemohon);
+ const nextTargets = filterApprovalTargets(await getTargetsForRole(nextRole, row.nama_pemohon));
  for (const target of nextTargets) {
  await notifyUser(
  target.username,
