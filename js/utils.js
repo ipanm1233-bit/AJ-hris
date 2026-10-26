@@ -16,6 +16,7 @@ import { letterheadHtml, isoDocHeaderTable, COMPANY_NAME, logoImgTag } from "./b
 import { authFetch } from "./api-client.js";
 import { getAutoJatahTahunan } from "./leave-entitlement.mjs";
 import { DIVISION_ALL, divisionOptionsFromSources, divisionsFromMasterRecords } from "./division-options.mjs";
+import { resolveHrdRecipients } from "./approval-recipients.mjs";
 import { pickEmployeeEmail, normalizeEmail, isValidEmail } from "./employee-email.mjs";
 
 // =========================================================================
@@ -5925,7 +5926,10 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
         username: u.username || uId,
         email: email || "",
         nama: uNama,
-        nik: nik
+        nik: nik,
+        role: String(u.role || "").toUpperCase().trim(),
+        jabatan: String(u.jabatan || empMatch?.jabatan || "").trim(),
+        divisi: String(u.divisi || empMatch?.divisi || "").trim()
       };
     };
 
@@ -6028,47 +6032,14 @@ export async function getTargetsForRole(role, namaKaryawan = "") {
     const targets = [];
 
     if (roleUpper === "HRD" || roleUpper === "HR" || roleUpper === "HUMAN RESOURCE" || roleUpper === "SDM" || roleUpper === "HRGA") {
-      // a. User dengan role "HRD" atau "SUPERADMIN" di tabel USERS
-      const hrdUsers = allUsers.filter(u => {
-        const r = (u.role || "").toUpperCase().trim();
-        return r === "HRD" || r === "SUPERADMIN";
-      });
-      hrdUsers.forEach(u => {
-        const t = enrichTarget(u);
-        if (t) targets.push(t);
-      });
-
-      // b. Karyawan dengan divisi HRD/HRGA/SDM atau jabatan spesifik HR di MASTER_KARYAWAN
-      const hrdRegex = /\b(hrd|hr|hrga|sdm|human resource|personalia|recruitment|talent)\b/i;
-      const hrdEmps = allEmployees.filter(k => {
-        const div = (k.divisi || k.departemen || "").toUpperCase().trim();
-        const jab = (k.jabatan || k.posisi || "").toLowerCase();
-        const isHrdDiv = div === "HRD" || div === "HR" || div === "HRGA" || div === "SDM" || div === "HUMAN RESOURCE";
-        const isHrdJab = hrdRegex.test(jab);
-        // Pastikan bukan sekadar staf admin umum seperti Admin Gudang / Admin Sales
-        return isHrdDiv || isHrdJab;
-      });
-
-      hrdEmps.forEach(k => {
-        const kNama = (k.nama_karyawan || k.nama || "").trim();
-        if (!kNama) return;
-        const exists = targets.some(t => 
-          (t.nama && t.nama.toLowerCase() === kNama.toLowerCase()) || 
-          (k.email && t.email && t.email.toLowerCase() === k.email.toLowerCase())
-        );
-        if (!exists) {
-          const u = allUsers.find(user => 
-            (user.nama || "").trim().toLowerCase() === kNama.toLowerCase() || 
-            (user.username || "").toLowerCase() === (k.username || k.id || "").toLowerCase()
-          );
-          targets.push({
-            username: u?.username || k.username || k.id || k.nik_karyawan || k.nik,
-            email: pickEmployeeEmail(u, k),
-            nama: k.nama_karyawan || k.nama,
-            nik: k.nik_karyawan || k.nik
-          });
-        }
-      });
+      // PERBAIKAN (26 Okt 2026): sebelumnya SEMUA karyawan ber-divisi "HRGA"
+      // dianggap approver HRD. Divisi itu juga memuat Security, Office Boy,
+      // General Affair, dan Driver, sehingga mereka menerima email/notifikasi
+      // berisi data izin karyawan lain (kasus izin EVA).
+      // Sekarang: role HRD/SUPERADMIN diutamakan, fallback hanya untuk jabatan
+      // yang benar-benar HR, dan posisi pendukung operasional selalu dikecualikan.
+      resolveHrdRecipients({ users: allUsers, employees: allEmployees, emailFor: pickEmployeeEmail })
+        .forEach(target => targets.push(target));
     } else if (roleUpper === "FINANCE" || roleUpper === "ACCOUNTING" || roleUpper === "KEUANGAN") {
       // PENGIRIMAN EMAIL FINANCE HANYA KE user dengan ROLE FINANCE
       // (users.role = FINANCE/ACCOUNTING/KEUANGAN). Sengaja TIDAK memakai
