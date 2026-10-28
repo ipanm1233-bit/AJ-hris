@@ -85,13 +85,36 @@ function hitungSisaGaji({ outDate, gajiPokok, cutoffDay = 21, hariKerjaPerBulan 
  const pembagi = Number(hariKerjaPerBulan) > 0 ? Number(hariKerjaPerBulan) : 25;
  const cutoff = Math.min(Math.max(parseInt(cutoffDay, 10) || 21, 1), 31);
  if (!out) return { gajiPerHari: 0, sisaHariKerja: 0, sisaGaji: 0, mulai: "", cutoffDay: cutoff, hariKerjaPerBulan: pembagi };
- const start = parseLocalDate(startDate) || parseLocalDate(defaultSisaGajiStart(out, cutoff));
+
+ const batasBulan = new Date(out.getFullYear(), out.getMonth() + 1, 0).getDate();
+ const tglCutoff = new Date(out.getFullYear(), out.getMonth(), Math.min(cutoff, batasBulan));
+ const defaultStartIso = defaultSisaGajiStart(out, cutoff);
+ const manualStart = parseLocalDate(startDate);
+ const isManualStart = Boolean(manualStart) && toIsoDateLocal(manualStart) !== defaultStartIso;
+ const start = manualStart || parseLocalDate(defaultStartIso);
+
+ let sisaHariKerja = 0;
+ if (isManualStart) {
+ // HRD mengubah tanggal mulai secara manual: hitung hari kerja aktual.
+ sisaHariKerja = Math.min(countWorkingDaysInclusive(start, out), pembagi);
+ } else if (out > tglCutoff) {
+ // Periode payroll berikutnya (22 bulan berjalan s.d. 21 bulan berikutnya):
+ // hitung hari kerja aktual dari 22 bulan berjalan sampai tanggal keluar.
+ sisaHariKerja = Math.min(countWorkingDaysInclusive(new Date(out.getFullYear(), out.getMonth(), tglCutoff.getDate() + 1), out), pembagi);
+ } else {
+ // Periode payroll berjalan (22 bulan sebelumnya s.d. 21 bulan berjalan).
+ // Gaji penuh periode = hari kerja per bulan (25). Kurangkan hari kerja yang
+ // tidak dijalani setelah tanggal keluar sampai tanggal cut-off.
+ const hariTerlewat = countWorkingDaysInclusive(new Date(out.getFullYear(), out.getMonth(), out.getDate() + 1), tglCutoff);
+ sisaHariKerja = Math.max(0, pembagi - hariTerlewat);
+ }
+
  const gajiPerHari = Math.round(gaji / pembagi);
- const sisaHariKerja = Math.min(countWorkingDaysInclusive(start, out), pembagi);
+ const sisaGaji = sisaHariKerja >= pembagi ? gaji : gajiPerHari * sisaHariKerja;
  return {
  gajiPerHari,
  sisaHariKerja,
- sisaGaji: gajiPerHari * sisaHariKerja,
+ sisaGaji,
  mulai: start ? toIsoDateLocal(start) : "",
  cutoffDay: cutoff,
  hariKerjaPerBulan: pembagi
