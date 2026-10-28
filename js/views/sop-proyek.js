@@ -2,7 +2,7 @@ import { COL } from "../firebase-config.js";
 import {
   fsGetAll, fsAdd, fsUpdate, fsDelete, toast, openModal, closeModal, escapeHtml,
   genId, fmtDateShort, localDateStr, loadDivisionOptions, confirmDialog,
-  notifyUser, downloadHtmlAsPdf
+  notifyUser, downloadHtmlAsPdf, sendEmailNotif, buildStandardEmailHtml
 } from "../utils.js";
 import { getSession, hasPermission } from "../auth.js";
 import { icon } from "../components.js";
@@ -113,6 +113,174 @@ export async function mount(container) {
     ["DRAFT", "REVISION"].includes(String(item.status || "").toUpperCase())
   );
   const matchesBranch = value => !state.filterBranch || value === state.filterBranch || value === "SEMUA";
+
+  function picIdentityKey(item) {
+    return normalize(item.pic_nik)
+      || normalize(item.pic_username)
+      || normalize(item.pic_email)
+      || normalize(item.pic_nama)
+      || `${normalize(item.divisi)}|${normalize(item.jabatan)}`;
+  }
+
+  function resolvePicContact(item) {
+    const employee = state.employees.find(emp => {
+      const nik = normalize(emp.nik_karyawan || emp.nik);
+      const username = normalize(emp.username);
+      const email = normalize(emp.email);
+      const name = normalize(emp.nama_karyawan || emp.nama);
+      return Boolean(
+        (item.pic_nik && nik && nik === normalize(item.pic_nik)) ||
+        (item.pic_username && username && username === normalize(item.pic_username)) ||
+        (item.pic_email && email && email === normalize(item.pic_email)) ||
+        (item.pic_nama && name && name === normalize(item.pic_nama))
+      );
+    });
+    return {
+      key: picIdentityKey(item),
+      name: item.pic_nama || employee?.nama_karyawan || employee?.nama || item.pic_username || "PIC",
+      email: String(item.pic_email || employee?.email || "").trim(),
+      nik: item.pic_nik || employee?.nik_karyawan || employee?.nik || "",
+      username: item.pic_username || employee?.username || ""
+    };
+  }
+
+  function activeTasksForPic(item) {
+    const key = picIdentityKey(item);
+    return state.items.filter(other => String(other.status || "").toUpperCase() !== "ESTABLISHED" && picIdentityKey(other) === key);
+  }
+
+  function buildTaskEmailHtml(contact, tasks) {
+    const profileUrl = `${window.location.origin}/#profile${contact.nik ? `?nik=${encodeURIComponent(contact.nik)}` : ""}`;
+    const sopUrl = `${window.location.origin}/#sop-proyek`;
+    const taskRows = tasks.map((task, index) => {
+      const project = projectOf(task);
+      return `<tr>
+        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:12px;text-align:center;">${index + 1}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:12px;"><b>${esc(task.nama_proses || "-")}</b><br><span style="color:#64748b;font-size:11px;">${esc(task.divisi || "-")} · ${esc(task.cabang === "MALANG" ? "Malang" : task.cabang === "CIREBON" ? "Cirebon" : "Semua Cabang")}</span></td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:11px;">${esc(project?.nama_proyek || "-")}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:11px;">${esc(dateText(task.deadline))}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:11px;font-weight:bold;">${esc(statusMeta(task.status).label)}</td>
+      </tr>`;
+    }).join("");
+    const nearestDeadline = tasks.map(task => task.deadline).filter(Boolean).sort()[0] || "";
+
+    return buildStandardEmailHtml({
+      badgeText: "Audit SOP",
+      badgeVariant: "blue",
+      title: tasks.length > 1 ? `${tasks.length} Tugas Audit SOP untuk Anda` : "Tugas Audit SOP untuk Anda",
+      recipientName: contact.name,
+      introText: "Anda ditunjuk sebagai PIC / reviewer pada Proyek Audit SOP CV Andela Jaya. Berikut daftar tugas Audit SOP yang menjadi tanggung jawab Anda:",
+      bodyHtml: `
+        <div style="font-size:12px;color:#334155;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="background:#f1f5f9;text-align:left;">
+                <th style="padding:6px 8px;font-size:11px;">No</th>
+                <th style="padding:6px 8px;font-size:11px;">Proses Kerja / SOP</th>
+                <th style="padding:6px 8px;font-size:11px;">Proyek</th>
+                <th style="padding:6px 8px;font-size:11px;">Batas Waktu</th>
+                <th style="padding:6px 8px;font-size:11px;">Status</th>
+              </tr>
+            </thead>
+            <tbody>${taskRows}</tbody>
+          </table>
+        </div>
+        <p style="font-size:11px;color:#475569;margin-top:10px;">Silakan buka menu <b>Audit SOP</b> untuk mengisi langkah kerja, flow komunikasi, dan output proses.${nearestDeadline ? ` Batas waktu terdekat: <b>${esc(dateText(nearestDeadline))}</b>.` : ""}</p>
+        <p style="font-size:11px;margin-top:6px;">
+          <a href="${sopUrl}" style="color:#7a1f2b;font-weight:bold;">Buka menu Audit SOP</a>
+          &nbsp;|&nbsp;
+          <a href="${profileUrl}" style="color:#7a1f2b;font-weight:bold;">Buka Profil Karyawan</a>
+        </p>`,
+      infoList: [
+        { label: "Jumlah Tugas", value: `${tasks.length} tugas` },
+        { label: "PIC / Reviewer", value: contact.name },
+        { label: "Batas Waktu Terdekat", value: nearestDeadline ? fmtDateShort(nearestDeadline) : "-" }
+      ],
+      actionUrl: profileUrl,
+      actionText: "Buka Profil Karyawan →",
+      secondaryNote: `Tautan profil karyawan: ${profileUrl}`
+    });
+  }
+
+  async function sendTaskEmailsForItems(items) {
+    if (!canCreate) return toast("Anda tidak berwenang mengirim email tugas Audit SOP.", "warning");
+    const uniqueGroups = new Map();
+    (items || []).forEach(item => {
+      if (!item || String(item.status || "").toUpperCase() === "ESTABLISHED") return;
+      const contact = resolvePicContact(item);
+      if (!contact.key || uniqueGroups.has(contact.key)) return;
+      uniqueGroups.set(contact.key, { contact, tasks: activeTasksForPic(item) });
+    });
+    const groups = [...uniqueGroups.values()];
+    if (!groups.length) return toast("Tidak ada tugas dengan PIC yang valid untuk dikirim.", "warning");
+    const withEmail = groups.filter(group => group.contact.email);
+    if (!withEmail.length) return toast("PIC belum memiliki alamat email pada Master Karyawan.", "warning");
+
+    const confirmed = await confirmDialog(
+      `Kirim email tugas Audit SOP ke ${withEmail.length} PIC?\n\n${withEmail.map(group => `• ${group.contact.name} (${group.tasks.length} tugas)`).join("\n")}\n\nSetiap PIC menerima satu email berisi seluruh daftar tugasnya.`,
+      { title: "Kirim Email Tugas Audit SOP", danger: false }
+    );
+    if (!confirmed) return;
+
+    let sent = 0;
+    let failed = 0;
+    for (const group of withEmail) {
+      try {
+        const emailOk = await sendEmailNotif(
+          group.contact.email,
+          `[Audit SOP] ${group.tasks.length} tugas untuk ${group.contact.name}`,
+          buildTaskEmailHtml(group.contact, group.tasks),
+          "",
+          null,
+          { manual: true }
+        );
+        if (!emailOk) { failed += 1; continue; }
+        const now = new Date().toISOString();
+        for (const task of group.tasks) {
+          try {
+            await fsUpdate(COL.SOP_PROJECT_ITEMS, task.id, {
+              tugas_email_at: now,
+              tugas_email_to: group.contact.email,
+              tugas_email_by: session.nama || session.username || "HRD",
+              tugas_email_count: group.tasks.length
+            });
+          } catch (error) {
+            console.warn("Gagal menandai email tugas:", task.id, error);
+          }
+        }
+        try {
+          await notifyUser(
+            { username: group.contact.username || group.contact.email, nama: group.contact.name, email: group.contact.email, nik: group.contact.nik },
+            "Tugas Audit SOP",
+            `Anda memiliki ${group.tasks.length} tugas Audit SOP. Silakan buka menu Audit SOP atau profil Anda untuk melihat rinciannya.`,
+            "#sop-proyek",
+            { manual: true, sendEmail: false }
+          );
+        } catch (notifyError) {
+          console.warn("Notifikasi in-app tugas SOP gagal:", notifyError);
+        }
+        sent += 1;
+      } catch (error) {
+        console.error("Kirim email tugas SOP gagal:", group.contact.email, error);
+        failed += 1;
+      }
+    }
+
+    const skipped = groups.length - withEmail.length;
+    await refreshAll();
+    const parts = [`Email tugas terkirim ke ${sent} PIC`];
+    if (failed) parts.push(`${failed} gagal`);
+    if (skipped) parts.push(`${skipped} PIC tanpa email`);
+    toast(parts.join(", ") + ".", failed ? "warning" : "success");
+  }
+
+  function emailItemTasks(item) {
+    return sendTaskEmailsForItems(activeTasksForPic(item));
+  }
+
+  function emailProjectTasks(items) {
+    return sendTaskEmailsForItems(items);
+  }
 
   async function loadData() {
     const [projects, items, employees] = await Promise.all([
@@ -334,6 +502,7 @@ export async function mount(container) {
         <button type="button" id="skp-back-project" class="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">← Kembali ke daftar proyek</button>
         <div class="flex flex-wrap gap-2">
           <button type="button" id="skp-print-project" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600">Ringkasan Proyek</button>
+          ${canCreate ? `<button type="button" id="skp-email-project" class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100">Kirim Email Tugas PIC</button>` : ""}
           ${canCreate ? `<button type="button" id="skp-add-item" class="inline-flex items-center gap-1.5 rounded-lg bg-maroon-700 px-3 py-2 text-xs font-bold text-white">${icon("plus", "w-4 h-4")}Tugaskan Proses Kerja</button>` : ""}
         </div>
       </div>
@@ -369,7 +538,7 @@ export async function mount(container) {
                   ${statusPill(status)}
                 </div>
                 <p class="text-[11px] text-slate-500 mt-0.5">${esc(item.divisi || "-")}${item.jabatan ? " · " + esc(item.jabatan) : ""} · ${esc(picLabel(item))} · ${esc(item.cabang === "MALANG" ? "Malang" : item.cabang === "CIREBON" ? "Cirebon" : "Semua Cabang")}</p>
-                <p class="text-[11px] text-slate-400">${normalizeWorkSteps(item.langkah).length} langkah · ${normalizeCommunicationFlow(item.flow_komunikasi).length} flow komunikasi · ${normalizeOutputs(item.output).length} output · diperbarui ${esc(dateText(item.updated_at || item.created_at))}</p>
+                <p class="text-[11px] text-slate-400">${normalizeWorkSteps(item.langkah).length} langkah · ${normalizeCommunicationFlow(item.flow_komunikasi).length} flow komunikasi · ${normalizeOutputs(item.output).length} output · diperbarui ${esc(dateText(item.updated_at || item.created_at))}${item.tugas_email_at ? ` · email tugas terkirim ${esc(dateText(item.tugas_email_at))}` : " · email tugas belum dikirim"}</p>
               </div>
               <div class="flex flex-wrap gap-2 shrink-0">
                 <button type="button" data-skp-view-item="${esc(item.id)}" class="rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-600">Lihat</button>
@@ -377,6 +546,7 @@ export async function mount(container) {
                 ${canFill && ["DRAFT", "REVISION"].includes(status) ? `<button type="button" data-skp-submit-item="${esc(item.id)}" class="rounded-lg bg-amber-600 px-3 py-1.5 text-[11px] font-bold text-white">Ajukan Verifikasi</button>` : ""}
                 ${canVerify && status === "SUBMITTED" ? `<button type="button" data-skp-verify-item="${esc(item.id)}" class="rounded-lg bg-maroon-700 px-3 py-1.5 text-[11px] font-bold text-white">Verifikasi</button>` : ""}
                 ${canCreate ? `<button type="button" data-skp-assign-edit="${esc(item.id)}" class="rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-500">Penugasan</button>` : ""}
+                ${canCreate && status !== "ESTABLISHED" ? `<button type="button" data-skp-email-item="${esc(item.id)}" class="rounded-lg border border-blue-200 px-3 py-1.5 text-[11px] font-semibold text-blue-700">${item.tugas_email_at ? "Kirim Ulang Email" : "Kirim Email"}</button>` : ""}
                 ${canDeleteProject ? `<button type="button" data-skp-delete-item="${esc(item.id)}" class="rounded-lg border border-rose-200 px-3 py-1.5 text-[11px] font-semibold text-rose-700">Hapus</button>` : ""}
               </div>
             </div>`;
@@ -387,11 +557,13 @@ export async function mount(container) {
     panel.querySelector("#skp-back-project").onclick = async () => { state.projectId = ""; await renderPanel(); };
     panel.querySelector("#skp-add-item")?.addEventListener("click", () => assignmentModal(project));
     panel.querySelector("#skp-print-project")?.addEventListener("click", () => printProjectSummary(project, items));
+    panel.querySelector("#skp-email-project")?.addEventListener("click", () => emailProjectTasks(items));
     panel.querySelectorAll("[data-skp-view-item]").forEach(button => button.onclick = () => itemDetailModal(state.items.find(item => item.id === button.dataset.skpViewItem)));
     panel.querySelectorAll("[data-skp-fill-item]").forEach(button => button.onclick = () => itemForm(state.items.find(item => item.id === button.dataset.skpFillItem)));
     panel.querySelectorAll("[data-skp-submit-item]").forEach(button => button.onclick = () => submitItem(state.items.find(item => item.id === button.dataset.skpSubmitItem)));
     panel.querySelectorAll("[data-skp-verify-item]").forEach(button => button.onclick = () => verifyModal(state.items.find(item => item.id === button.dataset.skpVerifyItem)));
     panel.querySelectorAll("[data-skp-assign-edit]").forEach(button => button.onclick = () => assignmentModal(project, state.items.find(item => item.id === button.dataset.skpAssignEdit)));
+    panel.querySelectorAll("[data-skp-email-item]").forEach(button => button.onclick = () => emailItemTasks(state.items.find(item => item.id === button.dataset.skpEmailItem)));
     panel.querySelectorAll("[data-skp-delete-item]").forEach(button => button.onclick = async () => {
       const item = state.items.find(entry => entry.id === button.dataset.skpDeleteItem);
       const confirmed = await confirmDialog(`Hapus proses kerja "${item?.nama_proses || "-"}" dari proyek ini?`, { title: "Hapus Proses Kerja", danger: true });
@@ -827,7 +999,7 @@ export async function mount(container) {
             if (existing) await fsUpdate(COL.SOP_PROJECT_ITEMS, existing.id, payload);
             else await fsAdd(COL.SOP_PROJECT_ITEMS, { ...payload, created_at: payload.updated_at, created_by: payload.updated_by }, genId("SOPITM"));
             closeModal();
-            toast(existing ? "Penugasan diperbarui." : "Proses kerja berhasil ditugaskan ke PIC.", "success");
+            toast(existing ? "Penugasan diperbarui. Gunakan tombol Kirim Email untuk mengirim ulang ke PIC." : "Proses kerja berhasil ditugaskan. Klik tombol Kirim Email untuk mengirim tugas ke PIC.", "success");
             await refreshAll();
           } catch (error) {
             console.error("save sop assignment", error);
