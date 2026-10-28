@@ -126,9 +126,9 @@ export async function mount(container, context = {}) {
     </div>
 
     <!-- Navigation Submenu Tabs (Dinamis Sesuai Hak Akses RBAC) -->
-    <div class="flex items-center gap-1 overflow-x-auto border-b border-slate-200 pb-1 scrollbar-none text-xs font-bold">
+    <div class="ui-tabs text-xs">
       ${allowedTabs.map(tab => `
-        <button data-tab="${tab.id}" class="tab-btn px-4 py-2.5 rounded-xl transition whitespace-nowrap flex items-center gap-1.5 ${tab.id === currentTab ? 'bg-maroon-700 text-white font-bold shadow-xs' : 'text-slate-600 hover:bg-slate-100 font-medium'}">
+        <button data-tab="${tab.id}" class="ui-tab tab-btn ${tab.id === currentTab ? "active" : ""}">
           <span>${escapeHtml(tab.label)}</span>
         </button>
       `).join("")}
@@ -181,9 +181,7 @@ export async function mount(container, context = {}) {
     currentTab = tabKey;
     container.querySelectorAll(".tab-btn").forEach(b => {
       const isMatch = b.dataset.tab === tabKey;
-      b.className = isMatch
-        ? "tab-btn px-4 py-2.5 rounded-xl transition whitespace-nowrap flex items-center gap-1.5 bg-maroon-700 text-white font-bold shadow-xs"
-        : "tab-btn px-4 py-2.5 rounded-xl transition whitespace-nowrap flex items-center gap-1.5 text-slate-600 hover:bg-slate-100 font-medium";
+      b.className = `tab-btn ui-tab ${isMatch ? "active" : ""}`;
     });
     renderCurrentTab();
   }

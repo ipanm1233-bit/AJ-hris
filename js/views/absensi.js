@@ -737,10 +737,7 @@ export async function mount(container, { session, params } = {}) {
  panelData.classList.toggle("hidden", selectedTab !== "data");
 
  container.querySelectorAll(".absen-tab").forEach(b => {
- b.classList.toggle("border-maroon-700", b === btn);
- b.classList.toggle("text-maroon-700", b === btn);
- b.classList.toggle("border-transparent", b !== btn);
- b.classList.toggle("text-slate-500", b !== btn);
+ b.classList.toggle("active", b === btn);
  });
 
  if (!isProses) loadRawAbsensiTable();

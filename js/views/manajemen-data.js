@@ -2751,10 +2751,7 @@ function downloadThisPdf() {
  const tab = btn.dataset.mtab;
  Object.keys(panels).forEach(k => panels[k].classList.toggle("hidden", k !== tab));
  container.querySelectorAll(".md-tab").forEach(b => {
- b.classList.toggle("border-maroon-700", b === btn);
- b.classList.toggle("text-maroon-700", b === btn);
- b.classList.toggle("border-transparent", b !== btn);
- b.classList.toggle("text-slate-500", b !== btn);
+ b.classList.toggle("active", b === btn);
  });
  if (!loaded[tab]) {
  loaded[tab] = true;

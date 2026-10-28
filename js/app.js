@@ -15,7 +15,7 @@ import { auth } from "./firebase-config.js";
 
 // Ubah versi ini setiap ada perubahan struktur view agar browser tidak
 // mencampur HTML terbaru dengan modul JavaScript lama dari cache.
-const APP_ASSET_VERSION = "20261028-audit-sop-v2";
+const APP_ASSET_VERSION = "20261028-ui-perf-v4";
 const viewContainer = document.getElementById("view-container");
 let currentUnmount = null;
 let currentRoute = null;
@@ -560,8 +560,24 @@ async function renderShellForUser(session) {
     if (link && nav.contains(link)) prefetchRoute(link.dataset.route);
    };
    nav.addEventListener("pointerover", warmRoute, { passive: true });
+   nav.addEventListener("pointerdown", warmRoute, { passive: true });
+   nav.addEventListener("touchstart", warmRoute, { passive: true });
    nav.addEventListener("focusin", warmRoute);
    nav.dataset.prefetchBound = "true";
+  }
+  // Setelah shell tenang, hangatkan beberapa halaman yang paling mungkin dibuka.
+  if (nav.dataset.idlePrefetch !== "true") {
+   nav.dataset.idlePrefetch = "true";
+   const warmLikelyRoutes = () => {
+    nav.querySelectorAll("[data-route]").forEach((link, index) => {
+     if (index < 8) prefetchRoute(link.dataset.route);
+    });
+   };
+   if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(warmLikelyRoutes, { timeout: 2500 });
+   } else {
+    window.setTimeout(warmLikelyRoutes, 600);
+   }
   }
  }
 }
@@ -686,6 +702,14 @@ async function router(session) {
 		// re-render tetap diizinkan untuk pengajuan (deep link form)
 	}
 
+	// Tampilkan skeleton segera dan mulai unduh view+modul PARALEL dengan cek akses.
+	// Ini membuat perpindahan menu terasa instan tanpa menambah biaya layanan.
+	container.classList.remove("animate-fadein");
+	container.classList.add("animate-fadein");
+	container.innerHTML = skeletonShadowLayout(mappedPath);
+	const htmlPromise = loadViewHtml(mappedPath).catch(error => ({ __htmlError: error }));
+	const modulePromise = loadRouteModule(mappedPath).catch(error => ({ __loadError: error }));
+
 	const allowed = await canAccessRoute(cleanPath, activeSession);
 	if (requestId !== routeRequestId) return;
 	if (!allowed) {
@@ -694,18 +718,11 @@ async function router(session) {
 		return;
 	}
 
-	container.classList.remove("animate-fadein");
-	container.classList.add("animate-fadein");
-
-	// Render shadow layout instant agar transisi halaman smooth tanpa patah/kedip
-	container.innerHTML = skeletonShadowLayout(mappedPath);
-
 	try {
 		if (typeof currentUnmount === "function") { currentUnmount(); currentUnmount = null; }
-		
-		const htmlPromise = loadViewHtml(mappedPath);
-		const modulePromise = loadRouteModule(mappedPath).catch(error => ({ __loadError: error }));
+
 		const html = await htmlPromise;
+		if (html && html.__htmlError) throw html.__htmlError;
 		if (requestId !== routeRequestId) return;
 		container.innerHTML = html;
 		const mod = await modulePromise;

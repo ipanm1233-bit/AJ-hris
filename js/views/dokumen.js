@@ -206,7 +206,7 @@ export async function mount(container, { session } = {}) {
  const tab = btn.dataset.docTab;
  tabBtns.forEach(b => {
  const isTarget = b === btn;
- b.className = `doc-main-tab px-4 py-2.5 rounded-t-2xl text-xs font-bold border-b-2 transition flex items-center gap-2 ${isTarget ? 'border-maroon-700 text-maroon-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`;
+ b.className = `doc-main-tab ui-tab ${isTarget ? "active" : ""}`;
  });
  Object.keys(panels).forEach(k => {
  if (panels[k]) panels[k].classList.toggle("hidden", k !== tab);

@@ -17,13 +17,13 @@ export async function mount(container, { session }) {
  let tabsHtml = "";
  if (isHrd) {
  tabsHtml += `
- <button id="tab-all-reviews" class="px-4 py-2 text-sm font-semibold rounded-lg transition ${activeTab === 'all-reviews' ? 'bg-maroon-700 text-white shadow-md' : 'bg-white border border-slate-100 text-slate-600 hover:bg-slate-50'}">
+ <button id="tab-all-reviews" class="ui-tab ${activeTab === 'all-reviews' ? 'active' : ''}">
  Semua Review Kinerja
  </button>
  `;
  }
  tabsHtml += `
- <button id="tab-my-reviews" class="px-4 py-2 text-sm font-semibold rounded-lg transition ${activeTab === 'my-reviews' ? 'bg-maroon-700 text-white shadow-md' : 'bg-white border border-slate-100 text-slate-600 hover:bg-slate-50'}">
+ <button id="tab-my-reviews" class="ui-tab ${activeTab === 'my-reviews' ? 'active' : ''}">
  Review Kinerja Saya
  </button>
  `;

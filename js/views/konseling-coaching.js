@@ -117,11 +117,7 @@ function switchTab(container, tabName) {
   const tabBtns = container.querySelectorAll(".kc-tab-btn");
   tabBtns.forEach(b => {
     const isTarget = b.dataset.kctab === tabName;
-    b.className = `kc-tab-btn px-4 py-3 text-xs md:text-sm whitespace-nowrap transition flex items-center gap-2 ${
-      isTarget
-        ? "font-bold border-b-2 border-maroon-700 text-maroon-700"
-        : "font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700"
-    }`;
+    b.className = `kc-tab-btn ui-tab ${isTarget ? "active" : ""}`;
   });
 
   const panels = container.querySelectorAll(".kc-tab-content");

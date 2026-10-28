@@ -935,9 +935,9 @@ export async function mount(container) {
  <p class="text-sm text-slate-500 mt-1">Manajemen Onboarding, Mutasi, Promosi, Demosi, dan Kalkulator Offboarding.</p>
  </div>
  
- <div class="flex items-center gap-2 border-b border-slate-100 overflow-x-auto mb-4">
- <button data-stab="input" class="sk-tab px-4 py-2.5 text-sm font-medium border-b-2 border-maroon-700 text-maroon-700 whitespace-nowrap">Formulir Pergerakan</button>
- <button data-stab="riwayat" class="sk-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">Riwayat Siklus</button>
+ <div class="ui-tabs mb-4">
+ <button data-stab="input" class="sk-tab ui-tab active">Formulir Pergerakan</button>
+ <button data-stab="riwayat" class="sk-tab ui-tab">Riwayat Siklus</button>
  </div>
 
  <div id="sk-panel-input">
@@ -2748,10 +2748,7 @@ if (btnKalkulasi) {
  panelRiwayat.classList.toggle("hidden", tab !== "riwayat");
  
  container.querySelectorAll(".sk-tab").forEach(b => {
- b.classList.toggle("border-maroon-700", b === btn);
- b.classList.toggle("text-maroon-700", b === btn);
- b.classList.toggle("border-transparent", b !== btn);
- b.classList.toggle("text-slate-500", b !== btn);
+ b.classList.toggle("active", b === btn);
  });
  
  if (tab === "riwayat" && !loaded.riwayat) {
@@ -2769,8 +2766,8 @@ if (btnKalkulasi) {
  if (panelInput) panelInput.classList.add("hidden");
  if (panelRiwayat) panelRiwayat.classList.remove("hidden");
  if (riwayatTabBtn) {
- riwayatTabBtn.classList.add("border-maroon-700", "text-maroon-700");
- riwayatTabBtn.classList.remove("border-transparent", "text-slate-500");
+ riwayatTabBtn.classList.add("active");
+ inputTabBtn?.classList.remove("active");
  }
  if (!loaded.riwayat) {
  loaded.riwayat = true;

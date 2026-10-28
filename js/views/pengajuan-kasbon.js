@@ -95,12 +95,7 @@ export async function mount(container, { session }) {
     activeTab = btn.dataset.tab;
     tabs.forEach(b => {
      const isCurrent = b.dataset.tab === activeTab;
-     b.classList.toggle("border-maroon-700", isCurrent);
-     b.classList.toggle("text-maroon-700", isCurrent);
-     b.classList.toggle("font-bold", isCurrent);
-     b.classList.toggle("border-transparent", !isCurrent);
-     b.classList.toggle("text-slate-500", !isCurrent);
-     b.classList.toggle("font-semibold", !isCurrent);
+     b.classList.toggle("active", isCurrent);
     });
     applyFilterAndRender();
    };

@@ -228,9 +228,9 @@ export async function mount(container, { session, params }) {
 
  // Update button styles
  tabButtons.forEach(b => {
- b.className = "profile-tab-btn flex-1 py-3 px-3 text-xs sm:text-sm font-bold text-slate-500 hover:text-slate-700 rounded-xl transition shrink-0";
+ b.className = "ui-tab profile-tab-btn flex-1";
  });
- btn.className = "profile-tab-btn flex-1 py-3 px-3 text-xs sm:text-sm font-bold text-maroon-700 bg-red-50/50 rounded-xl transition shrink-0";
+ btn.className = "ui-tab profile-tab-btn flex-1 active";
  };
  });
 

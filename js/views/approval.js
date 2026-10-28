@@ -48,9 +48,7 @@ export async function mount(container, { session }) {
  btn.addEventListener("click", () => {
  activeTab = btn.dataset.tab;
  container.querySelectorAll(".approval-tab-btn").forEach(b => {
- b.classList.toggle("bg-maroon-700", b === btn);
- b.classList.toggle("text-white", b === btn);
- b.classList.toggle("text-slate-600", b !== btn);
+ b.classList.toggle("active", b === btn);
  });
  renderList(container, session, activeTab);
  });

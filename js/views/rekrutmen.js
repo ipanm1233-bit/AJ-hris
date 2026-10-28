@@ -195,11 +195,7 @@ export async function mount(container, { params, session }) {
     activeTab = tabId;
     container.querySelectorAll(".ats-tab-btn").forEach(btn => {
       const isTarget = btn.dataset.atstab === tabId;
-      btn.classList.toggle("border-maroon-700", isTarget);
-      btn.classList.toggle("text-maroon-700", isTarget);
-      btn.classList.toggle("font-bold", isTarget);
-      btn.classList.toggle("border-transparent", !isTarget);
-      btn.classList.toggle("text-slate-500", !isTarget);
+      btn.classList.toggle("active", isTarget);
     });
     renderActiveTab();
   }

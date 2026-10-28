@@ -1752,12 +1752,7 @@ export async function mount(container, { session } = {}) {
 
     container.querySelectorAll(".sop-tab").forEach(btn => {
       const active = btn.dataset.stab === tab;
-      btn.classList.toggle("bg-white", active);
-      btn.classList.toggle("text-maroon-700", active);
-      btn.classList.toggle("font-bold", active);
-      btn.classList.toggle("shadow-sm", active);
-      btn.classList.toggle("text-slate-600", !active);
-      btn.classList.toggle("font-semibold", !active);
+      btn.classList.toggle("active", active);
     });
 
     if (tab === "database" && !loaded.database) {

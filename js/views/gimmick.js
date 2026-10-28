@@ -1152,12 +1152,7 @@ export async function mount(container, { session } = {}) {
 
     container.querySelectorAll(".gimmick-tab").forEach(btn => {
       const active = btn.dataset.gtab === tab;
-      btn.classList.toggle("bg-white", active);
-      btn.classList.toggle("text-maroon-700", active);
-      btn.classList.toggle("font-bold", active);
-      btn.classList.toggle("shadow-sm", active);
-      btn.classList.toggle("text-slate-600", !active);
-      btn.classList.toggle("font-semibold", !active);
+      btn.classList.toggle("active", active);
     });
 
     await loadAll();

@@ -1296,17 +1296,17 @@ ${htmlContent}
  bodyHtml: `
  <div class="space-y-5 text-left">
  <!-- SUB TABS HEADER -->
- <div class="flex items-center gap-2 border-b border-slate-200 overflow-x-auto pb-1 text-xs">
- <button id="vtab-btn-identitas" class="vsub-tab px-4 py-2 font-bold border-b-2 border-maroon-700 text-maroon-700 whitespace-nowrap">
+ <div class="ui-tabs text-xs">
+ <button id="vtab-btn-identitas" class="ui-tab vsub-tab active">
  Identitas & Spesifikasi
  </button>
- <button id="vtab-btn-bbm" class="vsub-tab px-4 py-2 font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 whitespace-nowrap">
+ <button id="vtab-btn-bbm" class="ui-tab vsub-tab">
  Log BBM (${vehicleFuels.length})
  </button>
- <button id="vtab-btn-service" class="vsub-tab px-4 py-2 font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 whitespace-nowrap">
+ <button id="vtab-btn-service" class="ui-tab vsub-tab">
  Log Service & Perbaikan (${vehicleServices.length})
  </button>
- <button id="vtab-btn-pajak" class="vsub-tab px-4 py-2 font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 whitespace-nowrap">
+ <button id="vtab-btn-pajak" class="ui-tab vsub-tab">
  Pajak, STNK & KIR (${vehicleCompliance.length})
  </button>
  </div>
@@ -1504,11 +1504,7 @@ ${htmlContent}
  vtabBtns[k].onclick = () => {
  Object.keys(vtabs).forEach(tk => {
  vtabs[tk].classList.toggle("hidden", tk !== k);
- vtabBtns[tk].classList.toggle("border-maroon-700", tk === k);
- vtabBtns[tk].classList.toggle("text-maroon-700", tk === k);
- vtabBtns[tk].classList.toggle("font-bold", tk === k);
- vtabBtns[tk].classList.toggle("border-transparent", tk !== k);
- vtabBtns[tk].classList.toggle("text-slate-500", tk !== k);
+ vtabBtns[tk].classList.toggle("active", tk === k);
  });
  };
  }
@@ -2554,13 +2550,7 @@ ${htmlContent}
  });
 
  container.querySelectorAll(".kd-tab").forEach(b => {
- const isCurrent = b === btn;
- b.classList.toggle("bg-white", isCurrent);
- b.classList.toggle("text-maroon-700", isCurrent);
- b.classList.toggle("font-bold", isCurrent);
- b.classList.toggle("shadow-sm", isCurrent);
- b.classList.toggle("text-slate-600", !isCurrent);
- b.classList.toggle("font-semibold", !isCurrent);
+ b.classList.toggle("active", b === btn);
  });
 
  if (tab === "bbm" && !loadedTables.bbm) {

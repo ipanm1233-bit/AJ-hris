@@ -93,13 +93,13 @@ export async function mount(container, { session }) {
 
   function switchTab(target) {
     if (target === "pengaturan") {
-      tabPengajuan.className = "rmb-nav-tab px-4 py-3 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2 transition whitespace-nowrap";
-      tabPengaturan.className = "rmb-nav-tab px-4 py-3 text-sm font-bold border-b-2 border-maroon-700 text-maroon-800 flex items-center gap-2 transition whitespace-nowrap";
+      tabPengajuan.className = "ui-tab rmb-nav-tab";
+      tabPengaturan.className = "ui-tab rmb-nav-tab active";
       contentPengajuan.classList.add("hidden");
       contentPengaturan.classList.remove("hidden");
     } else {
-      tabPengajuan.className = "rmb-nav-tab px-4 py-3 text-sm font-bold border-b-2 border-maroon-700 text-maroon-800 flex items-center gap-2 transition whitespace-nowrap";
-      if (tabPengaturan) tabPengaturan.className = "rmb-nav-tab px-4 py-3 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2 transition whitespace-nowrap";
+      tabPengajuan.className = "ui-tab rmb-nav-tab active";
+      if (tabPengaturan) tabPengaturan.className = "ui-tab rmb-nav-tab";
       contentPengajuan.classList.remove("hidden");
       contentPengaturan.classList.add("hidden");
     }

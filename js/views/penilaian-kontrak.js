@@ -8505,11 +8505,7 @@ export async function mount(container, { session, params }) {
 
   container.querySelectorAll(".pk-tab").forEach(btn => {
     const ntab = btn.dataset.ntab;
-    if (ntab === tabKey) {
-      btn.className = "pk-tab px-4 py-2.5 text-sm font-medium border-b-2 border-maroon-700 text-maroon-700 whitespace-nowrap";
-    } else {
-      btn.className = "pk-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap";
-    }
+    btn.className = `ui-tab pk-tab ${ntab === tabKey ? "active" : ""}`;
   });
 
   if (tabKey === "kontrak" && !loaded.kontrak) { loaded.kontrak = true; loadKontrak(); }

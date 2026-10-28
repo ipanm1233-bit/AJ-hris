@@ -306,9 +306,9 @@ export async function mount(container) {
   function renderTabs() {
     if (!tabBar) return;
     tabBar.innerHTML = tabs.map(tab => `
-      <button type="button" data-skp-tab="${tab.id}" class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition whitespace-nowrap ${state.activeTab === tab.id ? "bg-white text-maroon-700 shadow-sm" : "text-slate-600 hover:text-slate-900"}">${esc(tab.label)}</button>
+      <button type="button" data-skp-tab="${tab.id}" class="ui-tab ${state.activeTab === tab.id ? "active" : ""}">${esc(tab.label)}</button>
     `).join("");
-    tabBar.className = "flex items-center gap-1 bg-slate-100 p-1 rounded-xl shrink-0 overflow-x-auto";
+    tabBar.className = "ui-tabs";
     tabBar.querySelectorAll("[data-skp-tab]").forEach(button => {
       button.onclick = async () => {
         state.activeTab = button.dataset.skpTab;

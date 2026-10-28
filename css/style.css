@@ -138,6 +138,53 @@ body {
   transform: translate3d(0, 0, 0);
 }
 
+/* =====================================================================
+   UNIFIED SUBMENU / TABS (dipakai lintas modul)
+   ===================================================================== */
+.ui-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: #f1f5f9;
+  border: 1px solid #eef2f7;
+  padding: 0.25rem;
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  max-width: 100%;
+  scrollbar-width: none;
+}
+.ui-tabs::-webkit-scrollbar { display: none; }
+.ui-tab {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.1;
+  padding: 0.5rem 0.85rem;
+  border-radius: 0.5rem;
+  white-space: nowrap;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  transition: background-color .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.ui-tab:hover { background: #e2e8f0; color: #0f172a; }
+.ui-tab.active {
+  background: #ffffff;
+  color: #7a1f2b;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+.ui-tab:disabled { opacity: .5; cursor: not-allowed; }
+.ui-tab.hidden, .ui-tabs.hidden { display: none !important; }
+@media (max-width: 640px) {
+  .ui-tabs { border-radius: .85rem; }
+  .ui-tab { min-height: 36px; padding: .45rem .7rem; }
+}
+
 /* --- Print-friendly (untuk slip/laporan) --- */
 @media print {
   #app-shell header, #sidebar, #toast-host, .no-print { display: none !important; }

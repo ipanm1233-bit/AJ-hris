@@ -75,10 +75,7 @@ export async function mount(container, { session }) {
 			const tab = btn.dataset.stab;
 			["users", "menu", "forms", "kanal"].forEach(t => container.querySelector(`#st-panel-${t}`)?.classList.toggle("hidden", t !== tab));
 			container.querySelectorAll(".st-tab").forEach(b => {
-				b.classList.toggle("border-maroon-700", b === btn);
-				b.classList.toggle("text-maroon-700", b === btn);
-				b.classList.toggle("border-transparent", b !== btn);
-				b.classList.toggle("text-slate-500", b !== btn);
+				b.classList.toggle("active", b === btn);
 			});
 		});
 	});

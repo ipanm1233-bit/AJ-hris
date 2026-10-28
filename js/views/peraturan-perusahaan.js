@@ -1242,10 +1242,7 @@ export async function mount(container, { session, params } = {}) {
     Object.entries(panels).forEach(([key, panel]) => panel?.classList.toggle("hidden", key !== tab));
     container.querySelectorAll(".pp-tab").forEach(btn => {
       const active = btn.dataset.pptab === tab;
-      btn.classList.toggle("bg-white", active);
-      btn.classList.toggle("text-maroon-700", active);
-      btn.classList.toggle("shadow-sm", active);
-      btn.classList.toggle("text-slate-600", !active);
+      btn.classList.toggle("active", active);
     });
     if (tab === "disiplin" && !panels.disiplin.dataset.rendered) {
       renderDisiplin();
