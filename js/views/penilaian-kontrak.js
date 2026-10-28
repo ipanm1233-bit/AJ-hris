@@ -833,6 +833,10 @@ export async function mount(container, { session, params }) {
  });
  }
 
+ // Kontrak hanya ditampilkan untuk karyawan yang masih terdaftar & AKTIF di Master Karyawan.
+ // Karyawan yang sudah tidak ada di master atau sudah diproses terminasi otomatis hilang dari daftar kartu.
+ allKaryawan = allKaryawan.filter(k => String(k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF");
+
  // Branch Manager hanya melihat karyawan/kontrak dari cabangnya sendiri.
  if (branchScope) {
  allKaryawan = allKaryawan.filter(k => branchMatches(branchScope, k.cabang));
@@ -841,20 +845,29 @@ export async function mount(container, { session, params }) {
 
  function renderCardView() {
  const kontrakMap = {};
+ const addContractKey = (key, contract) => {
+  const normalized = String(key || "").trim().toLowerCase();
+  if (!normalized) return;
+  if (!kontrakMap[normalized]) kontrakMap[normalized] = [];
+  if (!kontrakMap[normalized].some(existing => existing.id === contract.id)) kontrakMap[normalized].push(contract);
+ };
  allKontrak.forEach(c => {
- if (!c.nama_karyawan) return;
- if (!kontrakMap[c.nama_karyawan]) kontrakMap[c.nama_karyawan] = [];
- kontrakMap[c.nama_karyawan].push(c);
+  if (!c.nama_karyawan && !c.nik_karyawan && !c.nik) return;
+  addContractKey(c.nama_karyawan, c);
+  addContractKey(c.nik_karyawan, c);
+  addContractKey(c.nik, c);
  });
 
  // Sort contracts for each employee by tanggal_mulai / created_at descending
- Object.keys(kontrakMap).forEach(nama => {
- kontrakMap[nama].sort((a, b) => new Date(b.tanggal_mulai || b.created_at || 0) - new Date(a.tanggal_mulai || a.created_at || 0));
+ Object.keys(kontrakMap).forEach(key => {
+ kontrakMap[key].sort((a, b) => new Date(b.tanggal_mulai || b.created_at || 0) - new Date(a.tanggal_mulai || a.created_at || 0));
  });
 
  // Combine employees list with contract data
  const empList = allKaryawan.map(k => {
- const contracts = kontrakMap[k.nama_karyawan] || [];
+ const contracts = kontrakMap[String(k.nik_karyawan || k.nik || "").trim().toLowerCase()]
+  || kontrakMap[String(k.nama_karyawan || "").trim().toLowerCase()]
+  || [];
  const latestContract = contracts[0] || null;
  const isPermanent = isPermanentContract(latestContract);
  
@@ -887,50 +900,16 @@ export async function mount(container, { session, params }) {
  };
  });
 
- // Add employees from contracts that are not in master karyawan list
- const existingNames = new Set(allKaryawan.map(k => k.nama_karyawan));
- Object.keys(kontrakMap).forEach(nama => {
- if (!existingNames.has(nama)) {
- const contracts = kontrakMap[nama];
- const latestContract = contracts[0] || null;
- const isPermanent = isPermanentContract(latestContract);
- let contractStatus = "TANPA KONTRAK";
- let daysLeft = null;
- if (latestContract && isPermanent) {
- contractStatus = "AKTIF";
- } else if (latestContract && latestContract.tanggal_akhir) {
- const today = new Date().toISOString().split("T")[0];
- daysLeft = daysBetween(today, latestContract.tanggal_akhir);
- if (daysLeft !== null && !isNaN(daysLeft)) {
- if (daysLeft < 0) contractStatus = "HABIS";
- else if (daysLeft <= 30) contractStatus = "SEGERA HABIS";
- else contractStatus = "AKTIF";
- }
- }
- empList.push({
- id: null,
- nama_karyawan: nama,
- jabatan: latestContract?.jabatan || "-",
- cabang: latestContract?.cabang || "-",
- divisi: latestContract?.divisi || "-",
- status_karyawan: isPermanent ? "PKWTT" : "KONTRAK",
- aktif_tdk_aktif: "AKTIF",
- contracts,
- latestContract,
- isPermanent,
- contractStatus,
- daysLeft
- });
- }
- });
+  // Karyawan dari data kontrak yang tidak ada di Master Karyawan TIDAK ditampilkan.
+  // Dengan begitu daftar kartu kontrak selalu sinkron dengan master data aktif.
 
- wrap.innerHTML = `
+  wrap.innerHTML = `
  <div class="space-y-5">
  <!-- Toolbar & Header -->
  <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
  <div>
  <h2 class="text-xl font-bold text-slate-800">Kartu Kontrak Karyawan</h2>
- <p class="text-xs text-slate-500 mt-1">Ringkasan KPI dan masa kontrak; buka kartu untuk melihat bukti penilaian dan catatan kedisiplinan.</p>
+ <p class="text-xs text-slate-500 mt-1">Ringkasan KPI dan masa kontrak; buka kartu untuk melihat bukti penilaian dan catatan kedisiplinan. <span class="font-semibold text-slate-600">Hanya karyawan aktif di Master Karyawan yang ditampilkan.</span></p>
  </div>
  ${["HRD", "SUPERADMIN"].includes(role) ? `
  <div class="flex items-center gap-2">
@@ -950,14 +929,9 @@ export async function mount(container, { session, params }) {
  <input type="text" id="ktr-search-input" placeholder="Cari nama, jabatan, cabang..." class="w-full px-3 py-2 pl-9 text-xs rounded-xl border border-slate-200 outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition">
  </div>
  <div class="flex items-center gap-2 w-full sm:w-auto overflow-x-auto">
- <select id="ktr-filter-status-karyawan" class="px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white outline-none focus:border-maroon-500 font-medium">
- <option value="ALL">Semua Status Karyawan</option>
- <option value="AKTIF">Status: AKTIF</option>
- <option value="TIDAK AKTIF">Status: TIDAK AKTIF</option>
- </select>
  <select id="ktr-filter-status-kontrak" class="px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white outline-none focus:border-maroon-500 font-medium">
  <option value="ALL">Semua Masa Kontrak</option>
- <option value="AKTIF">Kontrak: AKTIF (>30 Hari)</option>
+ <option value="AKTIF">Kontrak: AKTIF (&gt;30 Hari)</option>
  <option value="SEGERA HABIS">Kontrak: SEGERA HABIS (≤30 Hari)</option>
  <option value="HABIS">Kontrak: HABIS</option>
  <option value="TANPA KONTRAK">Tanpa Kontrak</option>
@@ -974,12 +948,10 @@ export async function mount(container, { session, params }) {
  const cardsContainer = wrap.querySelector("#ktr-cards-container");
  const searchInput = wrap.querySelector("#ktr-search-input");
  if (params?.get("nama")) searchInput.value = params.get("nama");
- const filterStatusKaryawan = wrap.querySelector("#ktr-filter-status-karyawan");
  const filterStatusKontrak = wrap.querySelector("#ktr-filter-status-kontrak");
 
  function drawCards() {
  const q = (searchInput.value || "").toLowerCase().trim();
- const fStatKaryawan = filterStatusKaryawan.value;
  const fStatKontrak = filterStatusKontrak.value;
 
  const filtered = empList.filter(e => {
@@ -987,9 +959,6 @@ export async function mount(container, { session, params }) {
  (e.jabatan || "").toLowerCase().includes(q) ||
  (e.cabang || "").toLowerCase().includes(q);
  if (!nameMatch) return false;
-
- const isAktifStr = (e.aktif_tdk_aktif || "AKTIF").toUpperCase();
- if (fStatKaryawan !== "ALL" && isAktifStr !== fStatKaryawan) return false;
 
  if (fStatKontrak !== "ALL" && e.contractStatus !== fStatKontrak) return false;
 
@@ -1086,7 +1055,6 @@ export async function mount(container, { session, params }) {
  }
 
  searchInput.oninput = drawCards;
- filterStatusKaryawan.onchange = drawCards;
  filterStatusKontrak.onchange = drawCards;
  drawCards();
  wrap.querySelector("#btn-manage-kpi-logs")?.addEventListener("click", () => {
