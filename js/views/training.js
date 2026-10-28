@@ -655,6 +655,40 @@ const categoryLabel = value => MATERIAL_CATEGORIES.find(([key]) => key === value
 const materialTypeLabel = value => MATERIAL_TYPES.find(([key]) => key === value)?.[1] || value || "Lainnya";
 const materialOptions = (options, selected) => options.map(([value, label]) => `<option value="${esc(value)}" ${value === selected ? "selected" : ""}>${esc(label)}</option>`).join("");
 
+/* ============================================================
+ * KONEKSI GOOGLE DRIVE — file modul/deck TIDAK diunggah ke
+ * Firestore/Supabase. Aplikasi hanya menyimpan tautan Drive.
+ * ============================================================ */
+const DRIVE_HOSTS = ["drive.google.com", "docs.google.com"];
+const isGoogleDriveUrl = value => {
+  try {
+    const url = new URL(String(value || "").trim());
+    if (!["http:", "https:"].includes(url.protocol)) return false;
+    return DRIVE_HOSTS.some(host => url.hostname === host || url.hostname.endsWith(`.${host}`));
+  } catch {
+    return false;
+  }
+};
+/** Terima URL Drive utuh ATAU tempelan ID file mentah, lalu normalkan ke URL Drive. */
+const normalizeDriveUrl = raw => {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value)) return value;
+  if (/^(drive|docs)\.google\.com\//i.test(value)) return `https://${value}`;
+  if (/^[A-Za-z0-9_-]{20,}$/.test(value)) return `https://drive.google.com/file/d/${value}/view`;
+  return value;
+};
+const driveFileId = value => {
+  const text = String(value || "");
+  const patterns = [/\/file\/d\/([A-Za-z0-9_-]{10,})/, /[?&]id=([A-Za-z0-9_-]{10,})/, /\/d\/([A-Za-z0-9_-]{10,})/];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) return match[1];
+  }
+  return "";
+};
+const isDriveFolderUrl = value => /\/folders\//i.test(String(value || "")) || /\/drive\/u\/\d+\/folders\//i.test(String(value || ""));
+
 const STARTER_MATERIALS = [
   { title: "Training Onboarding Karyawan Baru", category: "Onboarding", file_type: "Deck", description: "Deck orientasi karyawan baru: profil perusahaan, budaya kerja, tata tertib, benefit, pengenalan tim, dan checklist hari pertama.", author: "HRD" },
   { title: "Modul Onboarding: Panduan 30 Hari Pertama", category: "Onboarding", file_type: "Modul", description: "Panduan modul onboarding 30 hari: orientasi, pendampingan atasan, target awal, dan evaluasi masa probation.", author: "HRD" },
@@ -674,7 +708,7 @@ async function seedStarterMaterials(session, reload) {
     for (const item of STARTER_MATERIALS) {
       await fsAdd(C.materials, { ...item, file_url: "", file_name: "", created_by: session?.nama || session?.username || "HRD" });
     }
-    toast("Materi basic berhasil ditambahkan. Lengkapi link file pada tiap materi.", "success");
+    toast("Materi basic berhasil ditambahkan. Tempel link Google Drive pada tiap materi.", "success");
     reload();
   } catch (error) {
     console.error("seed training materials", error);
@@ -700,9 +734,13 @@ async function materialModal(session, item, reload) {
             <select id="m-type" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm bg-white">${materialOptions(MATERIAL_TYPES, item?.file_type || "Modul")}</select>
           </label>
         </div>
-        <label class="block text-xs font-semibold text-slate-600">Link File (Google Drive / URL)
-          <input id="m-url" type="url" value="${esc(item?.file_url || "")}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" placeholder="https://drive.google.com/...">
-        </label>
+        <div class="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-2">
+          <label class="block text-xs font-semibold text-blue-800">Link Google Drive (Modul / Deck)
+            <input id="m-url" type="text" value="${esc(item?.file_url || "")}" class="mt-1 w-full rounded-lg border border-blue-200 bg-white px-3 py-2.5 text-sm" placeholder="https://drive.google.com/file/d/.../view atau tempel ID file">
+          </label>
+          <p class="text-[11px] text-blue-700 leading-relaxed">Tempel tautan <b>Google Drive</b> yang sudah di-share (minimal “Siapa saja yang memiliki link – Lihat”). File tetap tersimpan di Google Drive — <b>tidak diunggah</b> ke Firestore/Supabase. Anda juga dapat menempel ID file saja dan sistem menyusun tautannya otomatis.</p>
+          <a href="https://drive.google.com/drive/my-drive" target="_blank" rel="noopener noreferrer" class="inline-block text-[11px] font-semibold text-blue-700 underline">Buka Google Drive saya</a>
+        </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label class="block text-xs font-semibold text-slate-600">Nama File
             <input id="m-filename" value="${esc(item?.file_name || "")}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" placeholder="Cth: Deck_Product_Knowledge.pdf">
@@ -728,13 +766,14 @@ async function materialModal(session, item, reload) {
           title: val(form, "#m-title"),
           category: val(form, "#m-category"),
           file_type: val(form, "#m-type"),
-          file_url: val(form, "#m-url"),
+          file_url: normalizeDriveUrl(val(form, "#m-url")),
           file_name: val(form, "#m-filename"),
           author: val(form, "#m-author"),
-          description: val(form, "#m-desc")
+          description: val(form, "#m-desc"),
+          storage_provider: "Google Drive"
         };
         if (!payload.title) return toast("Judul modul wajib diisi.", "warning");
-        if (payload.file_url && !/^https?:\/\//i.test(payload.file_url)) return toast("Link materi harus diawali http:// atau https://", "warning");
+        if (payload.file_url && !isGoogleDriveUrl(payload.file_url)) return toast("Link materi harus berupa tautan Google Drive (drive.google.com atau docs.google.com).", "warning");
         const button = form.querySelector('button[type="submit"]');
         button.disabled = true; button.textContent = "Menyimpan…";
         try {
@@ -753,6 +792,30 @@ async function materialModal(session, item, reload) {
   });
 }
 
+function drivePreviewMaterial(item) {
+  const fileId = driveFileId(item.file_url);
+  if (!fileId || isDriveFolderUrl(item.file_url)) {
+    if (item.file_url) window.open(item.file_url, "_blank", "noopener,noreferrer");
+    return;
+  }
+  openModal({
+    title: `Pratinjau Google Drive - ${item.title || "Materi"}`,
+    size: "xl",
+    bodyHtml: `
+      <div class="space-y-3">
+        <div class="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">
+          Pratinjau langsung dari Google Drive. Jika file tidak tampil, pastikan sharing sudah <b>"Siapa saja yang memiliki link - Lihat"</b>, atau buka melalui tombol di bawah.
+        </div>
+        <div class="overflow-hidden rounded-xl border border-slate-200 bg-slate-100" style="height:70vh">
+          <iframe src="https://drive.google.com/file/d/${esc(fileId)}/preview" class="h-full w-full" allow="autoplay; fullscreen" allowfullscreen></iframe>
+        </div>
+        <div class="flex flex-wrap justify-end gap-2">
+          <a href="${esc(item.file_url)}" target="_blank" rel="noopener noreferrer" class="rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-white">Buka di Google Drive</a>
+        </div>
+      </div>`
+  });
+}
+
 async function renderLibrary(wrap, session, data, reload) {
   const materials = (data.materials || []).slice().sort((a, b) =>
     String(categoryLabel(a.category)).localeCompare(String(categoryLabel(b.category)), "id") ||
@@ -766,12 +829,15 @@ async function renderLibrary(wrap, session, data, reload) {
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
       <div>
         <h2 class="text-lg font-bold text-slate-800">Modul &amp; Deck Training</h2>
-        <p class="text-xs text-slate-400">Pustaka file modul, deck, dan video untuk training basic: onboarding, product knowledge, SOP, komunikasi, dan lainnya.</p>
+        <p class="text-xs text-slate-400">Pustaka file modul, deck, dan video untuk training basic: onboarding, product knowledge, SOP, komunikasi, dan lainnya. File terhubung langsung ke Google Drive.</p>
       </div>
       <div class="flex flex-wrap gap-2">
         ${canManage && materials.length === 0 ? `<button id="seed-materials" class="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700">Isi Materi Basic (Starter)</button>` : ""}
         ${canManage ? `<button id="add-material" class="rounded-lg bg-maroon-700 px-4 py-2 text-xs font-semibold text-white">+ Tambah Modul / Deck</button>` : ""}
       </div>
+    </div>
+    <div class="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">
+      <b>Terhubung Google Drive:</b> file modul &amp; deck tetap tersimpan di Google Drive HRD — aplikasi hanya menyimpan tautan, <b>tanpa upload</b> ke Firestore/Supabase. Pastikan setiap file dibagikan sebagai “Siapa saja yang memiliki link – Lihat”.
     </div>
     <div class="flex flex-col lg:flex-row lg:items-center gap-3">
       <input id="material-search" type="search" placeholder="Cari judul, kategori, atau penyusun…" class="w-full lg:w-80 rounded-lg border border-slate-200 px-3 py-2 text-sm">
@@ -799,20 +865,25 @@ async function renderLibrary(wrap, session, data, reload) {
         <div class="flex flex-wrap items-center gap-2">
           <span class="rounded-md bg-maroon-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-maroon-700">${esc(categoryLabel(item.category))}</span>
           <span class="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">${esc(item.file_type || "Modul")}</span>
+          ${item.file_url && isGoogleDriveUrl(item.file_url) ? `<span class="rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">Google Drive</span>` : ""}
         </div>
         <h3 class="mt-3 font-bold text-slate-800 leading-snug">${esc(item.title || "Tanpa Judul")}</h3>
         <p class="mt-1 text-xs text-slate-500">${esc(item.description || "Belum ada deskripsi materi.")}</p>
         <p class="mt-2 text-[10px] text-slate-400">${item.author ? `Penyusun: ${esc(item.author)} · ` : ""}Diperbarui ${dateText(item.updated_at || item.created_at)}${item.file_name ? ` · ${esc(item.file_name)}` : ""}</p>
         <div class="mt-auto pt-4 flex flex-wrap gap-2">
           ${item.file_url
-            ? `<a href="${esc(item.file_url)}" target="_blank" rel="noopener noreferrer" class="rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-white">Buka Materi</a>`
-            : `<span class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">Link belum diatur HRD</span>`}
+            ? (driveFileId(item.file_url) && !isDriveFolderUrl(item.file_url)
+              ? `<button type="button" data-preview-material="${esc(item.id)}" class="rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-white">Pratinjau</button>
+              <a href="${esc(item.file_url)}" target="_blank" rel="noopener noreferrer" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600">Google Drive</a>`
+              : `<a href="${esc(item.file_url)}" target="_blank" rel="noopener noreferrer" class="rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-white">${isDriveFolderUrl(item.file_url) ? "Buka Folder Drive" : "Buka Materi"}</a>`)
+            : `<span class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">Link Drive belum diatur HRD</span>`}
           ${canManage ? `<button type="button" data-edit-material="${esc(item.id)}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600">Edit</button>
           <button type="button" data-delete-material="${esc(item.id)}" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700">Hapus</button>` : ""}
         </div>
       </article>`).join("") || empty(materials.length ? "Tidak ada materi yang cocok dengan pencarian / filter." : "Belum ada modul atau deck training.");
 
     grid.querySelectorAll("[data-edit-material]").forEach(button => button.onclick = () => materialModal(session, materials.find(entry => entry.id === button.dataset.editMaterial), reload));
+    grid.querySelectorAll("[data-preview-material]").forEach(button => button.onclick = () => drivePreviewMaterial(materials.find(entry => entry.id === button.dataset.previewMaterial)));
     grid.querySelectorAll("[data-delete-material]").forEach(button => button.onclick = async () => {
       const target = materials.find(entry => entry.id === button.dataset.deleteMaterial);
       const confirmed = await confirmDialog(`Hapus materi "${target?.title || "-"}" dari pustaka training?`, { title: "Hapus Materi Training", danger: true });
