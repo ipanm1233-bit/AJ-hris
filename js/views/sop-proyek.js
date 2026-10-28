@@ -637,23 +637,68 @@ export async function mount(container) {
    * MODAL: PENUGASAN PROSES KERJA KE PIC
    * =============================================================== */
   function assignmentModal(project, existing = null) {
-    const employeeOptions = state.employees.slice().sort((a, b) =>
+    const sortedEmployees = state.employees.slice().sort((a, b) =>
       String(a.nama_karyawan || a.nama || "").localeCompare(String(b.nama_karyawan || b.nama || ""), "id")
-    ).map(employee => {
-      const nik = employee.nik_karyawan || employee.nik || "";
+    );
+    let existingMatched = false;
+    const optionRows = sortedEmployees.map(employee => {
+      const nik = employee.nik_karyawan || employee.nik || employee.username || "";
       const name = employee.nama_karyawan || employee.nama || employee.username || nik;
-      return `<option value="${esc(nik)}" data-name="${esc(name)}" data-username="${esc(employee.username || "")}" data-email="${esc(employee.email || "")}" data-position="${esc(employee.jabatan || employee.posisi || "")}" data-division="${esc(employee.divisi || "")}" data-branch="${esc(employee.cabang || "")}" ${existing?.pic_nik === nik ? "selected" : ""}>${esc(name)} - ${esc(employee.jabatan || employee.posisi || "-")} (${esc(employee.cabang || "-")})</option>`;
-    }).join("");
+      const username = employee.username || "";
+      const selected = Boolean(existing) && (
+        (existing.pic_nik && String(existing.pic_nik).trim().toLowerCase() === String(nik).trim().toLowerCase()) ||
+        (existing.pic_username && String(existing.pic_username).trim().toLowerCase() === String(username).trim().toLowerCase()) ||
+        (existing.pic_nama && String(existing.pic_nama).trim().toLowerCase() === String(name).trim().toLowerCase())
+      );
+      if (selected) existingMatched = true;
+      return `<option value="${esc(nik)}" ${selected ? "selected" : ""} data-name="${esc(name)}" data-username="${esc(username)}" data-email="${esc(employee.email || "")}" data-position="${esc(employee.jabatan || employee.posisi || "")}" data-division="${esc(employee.divisi || "")}" data-branch="${esc(employee.cabang || "")}">${esc(name)} - ${esc(employee.jabatan || employee.posisi || "-")} (${esc(employee.cabang || "-")})${employee.divisi ? ` · ${esc(employee.divisi)}` : ""}</option>`;
+    });
+    if (existing && !existingMatched && (existing.pic_nama || existing.pic_nik)) {
+      optionRows.unshift(`<option value="" disabled selected>PIC tersimpan (${esc(existing.pic_nama || existing.pic_nik)}) tidak ditemukan di master — silakan pilih ulang</option>`);
+    }
+    const employeeOptions = optionRows.join("");
+    const positionOptions = [...new Set(sortedEmployees
+      .map(employee => String(employee.jabatan || employee.posisi || "").trim())
+      .filter(Boolean))].sort((a, b) => a.localeCompare(b, "id"));
+    if (existing?.jabatan && !positionOptions.includes(existing.jabatan)) positionOptions.unshift(existing.jabatan);
+    if (!positionOptions.length) positionOptions.push("");
 
     openModal({
       title: existing ? "Edit Penugasan Proses Kerja" : "Tugaskan Proses Kerja ke PIC",
       size: "xl",
       bodyHtml: `
         <form id="skp-assign-form" class="space-y-3">
-          <div class="rounded-xl border border-blue-200 bg-blue-50 p-3 text-[11px] text-blue-800">PIC mengisi proses kerja yang berjalan saat ini. HRD dapat menunjuk <b>per divisi</b>, <b>per jabatan</b>, atau <b>karyawan tertentu</b>. Setelah diajukan, HRD memverifikasi efektivitas & efisiensinya.</div>
+          <div class="rounded-xl border border-blue-200 bg-blue-50 p-3 text-[11px] text-blue-800">PIC mengisi proses kerja yang berjalan saat ini. Pilih <b>PIC dari Master Karyawan</b>, lalu tentukan cakupan penugasan: <b>per divisi</b>, <b>per jabatan</b>, atau <b>karyawan tertentu</b>. Untuk tipe per divisi/jabatan, PIC terpilih menjadi penanggung jawab utama dan rekan satu divisi/jabatan tersebut juga dapat mengisi. Setelah diajukan, HRD memverifikasi efektivitas & efisiensinya.</div>
           <label class="block text-xs font-semibold text-slate-600">Nama Proses Kerja / SOP *
             <input id="skp-item-name" required value="${esc(existing?.nama_proses || "")}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" placeholder="Cth: Proses Penerimaan Barang dari Supplier">
           </label>
+
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+            <div class="flex flex-wrap items-center justify-between gap-1">
+              <p class="text-xs font-black uppercase tracking-wide text-slate-700">PIC (dari Master Karyawan) *</p>
+              <span class="text-[10px] text-slate-400">Ketik untuk mencari nama / NIK / jabatan / divisi</span>
+            </div>
+            <input id="skp-item-employee-search" type="search" placeholder="Cari di master karyawan…" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs">
+            <select id="skp-item-employee" required class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm">
+              <option value="">-- Pilih PIC dari master karyawan --</option>${employeeOptions}
+            </select>
+            <p class="text-[10px] text-slate-400">Data di bawah terisi otomatis dari master karyawan dan tidak dapat diubah manual.</p>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <label class="block text-[10px] font-semibold text-slate-500">Nama PIC
+                <input id="skp-item-pic-name" readonly class="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700">
+              </label>
+              <label class="block text-[10px] font-semibold text-slate-500">NIK PIC
+                <input id="skp-item-pic-nik" readonly class="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-mono text-slate-700">
+              </label>
+              <label class="block text-[10px] font-semibold text-slate-500">Username PIC
+                <input id="skp-item-pic-username" readonly class="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700">
+              </label>
+              <label class="block text-[10px] font-semibold text-slate-500">Email PIC
+                <input id="skp-item-pic-email" readonly class="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700">
+              </label>
+            </div>
+          </div>
+
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <label class="block text-xs font-semibold text-slate-600">Divisi
               <select id="skp-item-division" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm bg-white">
@@ -671,28 +716,11 @@ export async function mount(container) {
               </select>
             </label>
           </div>
-          <label class="block text-xs font-semibold text-slate-600" id="skp-item-position-wrap">Jabatan (untuk penugasan per jabatan)
-            <input id="skp-item-position" value="${esc(existing?.jabatan || "")}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" placeholder="Cth: Admin Gudang">
-          </label>
-          <label class="block text-xs font-semibold text-slate-600" id="skp-item-employee-wrap">PIC Karyawan (untuk penugasan karyawan tertentu)
-            <select id="skp-item-employee" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm bg-white">
-              <option value="">-- Pilih karyawan --</option>${employeeOptions}
+          <label class="block text-xs font-semibold text-slate-600" id="skp-item-position-wrap">Jabatan (dari Master Karyawan, untuk cakupan per jabatan)
+            <select id="skp-item-position" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm bg-white">
+              ${positionOptions.map(position => `<option value="${esc(position)}" ${existing?.jabatan === position ? "selected" : ""}>${esc(position || "-")}</option>`).join("")}
             </select>
           </label>
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <label class="block text-xs font-semibold text-slate-600">Nama PIC
-              <input id="skp-item-pic-name" value="${esc(existing?.pic_nama || "")}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm">
-            </label>
-            <label class="block text-xs font-semibold text-slate-600">NIK PIC
-              <input id="skp-item-pic-nik" value="${esc(existing?.pic_nik || "")}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm">
-            </label>
-            <label class="block text-xs font-semibold text-slate-600">Username PIC
-              <input id="skp-item-pic-username" value="${esc(existing?.pic_username || "")}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm">
-            </label>
-            <label class="block text-xs font-semibold text-slate-600">Email PIC
-              <input id="skp-item-pic-email" type="email" value="${esc(existing?.pic_email || "")}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm">
-            </label>
-          </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label class="block text-xs font-semibold text-slate-600">Batas Waktu Pengisian
               <input id="skp-item-deadline" type="date" value="${esc(existing?.deadline || "")}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm">
@@ -716,30 +744,59 @@ export async function mount(container) {
         const form = backdrop.querySelector("#skp-assign-form");
         const typeSelect = form.querySelector("#skp-item-assign-type");
         const positionWrap = form.querySelector("#skp-item-position-wrap");
-        const employeeWrap = form.querySelector("#skp-item-employee-wrap");
+        const masterSelect = form.querySelector("#skp-item-employee");
+        const searchInput = form.querySelector("#skp-item-employee-search");
         const syncType = () => {
-          const type = typeSelect.value;
-          positionWrap.classList.toggle("hidden", type !== "JABATAN");
-          employeeWrap.classList.toggle("hidden", type !== "KARYAWAN");
+          positionWrap.classList.toggle("hidden", typeSelect.value !== "JABATAN");
+        };
+        const fillFromMaster = () => {
+          const option = masterSelect.selectedOptions[0];
+          const setValue = (selector, value) => { form.querySelector(selector).value = value || ""; };
+          if (!option || !option.value) {
+            setValue("#skp-item-pic-name", "");
+            setValue("#skp-item-pic-nik", "");
+            setValue("#skp-item-pic-username", "");
+            setValue("#skp-item-pic-email", "");
+            return;
+          }
+          setValue("#skp-item-pic-name", option.dataset.name);
+          setValue("#skp-item-pic-nik", option.value);
+          setValue("#skp-item-pic-username", option.dataset.username);
+          setValue("#skp-item-pic-email", option.dataset.email);
+          const division = form.querySelector("#skp-item-division");
+          if (option.dataset.division && [...division.options].some(entry => entry.value === option.dataset.division)) {
+            division.value = option.dataset.division;
+          }
+          const branch = form.querySelector("#skp-item-branch");
+          if (["CIREBON", "MALANG"].includes(String(option.dataset.branch || "").toUpperCase())) {
+            branch.value = String(option.dataset.branch).toUpperCase();
+          }
+          const positionSelect = form.querySelector("#skp-item-position");
+          const positionValue = option.dataset.position || "";
+          if (positionValue && ![...positionSelect.options].some(entry => entry.value === positionValue)) {
+            positionSelect.add(new Option(positionValue, positionValue));
+          }
+          if (positionValue) positionSelect.value = positionValue;
         };
         syncType();
+        fillFromMaster();
         typeSelect.addEventListener("change", syncType);
-        form.querySelector("#skp-item-employee")?.addEventListener("change", event => {
-          const option = event.target.selectedOptions[0];
-          if (!option || !option.value) return;
-          form.querySelector("#skp-item-pic-name").value = option.dataset.name || "";
-          form.querySelector("#skp-item-pic-nik").value = option.value;
-          form.querySelector("#skp-item-pic-username").value = option.dataset.username || "";
-          form.querySelector("#skp-item-pic-email").value = option.dataset.email || "";
-          const division = form.querySelector("#skp-item-division");
-          if (option.dataset.division && [...division.options].some(entry => entry.value === option.dataset.division)) division.value = option.dataset.division;
-          form.querySelector("#skp-item-position").value = option.dataset.position || "";
+        masterSelect.addEventListener("change", fillFromMaster);
+        searchInput?.addEventListener("input", () => {
+          const keyword = searchInput.value.trim().toLowerCase();
+          [...masterSelect.options].forEach(option => {
+            if (!option.value) return;
+            option.hidden = Boolean(keyword)
+              && !option.textContent.toLowerCase().includes(keyword)
+              && option.value !== masterSelect.value;
+          });
         });
         backdrop.querySelector("#skp-assign-cancel")?.addEventListener("click", closeModal);
         form.onsubmit = async event => {
           event.preventDefault();
           const name = form.querySelector("#skp-item-name").value.trim();
           if (!name) return toast("Nama proses kerja wajib diisi.", "warning");
+          if (!masterSelect.value) return toast("Pilih PIC dari dropdown Master Karyawan.", "warning");
           const payload = {
             project_id: project.id,
             nama_proses: name,
