@@ -13,7 +13,11 @@ function escapeHtml(unsafe) {
 async function printExitClearancePdf(data) {
  const { downloadHtmlAsPdf, toast, openModal } = await import("../utils.js");
  
- const { karyawan, pengganti, assets, tglEfektif, alasan, masaKerja, catatanHandover, handoverTasks, checklistDoc } = data;
+ const { karyawan, pengganti, assets, tglEfektif, alasan, masaKerja, catatanHandover, handoverTasks, checklistDoc, penggantianMcu } = data;
+
+ const mcuRowHtml = (penggantianMcu && penggantianMcu.wajib) ? `
+ <tr><td>Kewajiban Penggantian Biaya MCU</td><td><strong style="color:#b91c1c;">Nominal ${fmtRupiah(penggantianMcu.biaya_mcu || 0)}</strong> &mdash; Status saat resign: ${escapeHtml(penggantianMcu.status_kontrak_saat_resign || "-")} ${penggantianMcu.referensi_invoice && penggantianMcu.referensi_invoice !== "-" ? `(Ref: ${escapeHtml(penggantianMcu.referensi_invoice)})` : ''} (Sesuai Surat Komitmen Kerja; wajib dibayar maks. 7 hari kerja setelah tanggal efektif resign)</td></tr>
+ ` : "";
 
  const taskRowsHtml = (handoverTasks && handoverTasks.length) ? handoverTasks.map((t, idx) => `
  <tr>
@@ -96,6 +100,7 @@ async function printExitClearancePdf(data) {
  <tr><td>Jabatan & Cabang</td><td>${escapeHtml(karyawan.jabatan || "-")} (${escapeHtml(karyawan.cabang || "-")})</td></tr>
  <tr><td>Masa Kerja & Tgl Efektif</td><td>${masaKerja} Tahun | Efektif: ${fmtDateShort(tglEfektif)}</td></tr>
  <tr><td>Alasan Resign / Terminasi</td><td>${escapeHtml(alasan)}</td></tr>
+ ${mcuRowHtml}
  </table>
 
  <table class="clearance-tbl">
@@ -229,6 +234,106 @@ async function printExitClearancePdf(data) {
  toast("Dokumen Clearance PDF berhasil diunduh!", "success");
  } catch (e) {
  console.warn("Gagal auto download PDF:", e);
+ }
+}
+
+// FUNGSI CETAK SURAT TAGIHAN PENGANTIAN BIAYA MCU (RESIGN PROBATION / 3 BULAN PERTAMA KONTRAK)
+async function printMcuBillingPdf(data) {
+ const { downloadHtmlAsPdf, openModal } = await import("../utils.js");
+
+ const { karyawan, tglJoin, tglEfektif, masaKerjaBulan, mcu } = data;
+
+ if (!mcu || !mcu.wajib) {
+ toast("Karyawan ini tidak terkena ketentuan penggantian biaya MCU.", "info");
+ return;
+ }
+
+ const biayaMcu = Number(mcu.biaya_mcu) || 0;
+ const refInvoice = (mcu.referensi_invoice && mcu.referensi_invoice !== "-") ? mcu.referensi_invoice : "-";
+ const statusResign = mcu.status_kontrak_saat_resign || "-";
+ const noSuratMcu = `HRD-MCU/${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
+ const hariIni = fmtDateShort(new Date());
+
+ const docHtmlMcu = `
+ <div style="width:100%; max-width:760px; margin:0 auto; padding:15px; font-family:Arial, Helvetica, sans-serif; font-size:10.5px; line-height:1.4; color:#000; background:#ffffff; box-sizing:border-box;">
+ <div style="page-break-inside:avoid; margin-bottom:6px;">
+ ${isoDocHeaderTable({ judul: "SURAT TAGIHAN PENGANTIAN BIAYA MEDICAL CHECK UP (MCU)", noDok: "HRD-MCU-01", terbitRevisi: "1/0", hal: "1 dari 1" })}
+ </div>
+
+ <div style="margin-top:8px; font-size:10.5px;">Nomor Surat: <strong>${escapeHtml(noSuratMcu)}</strong> | Tanggal: <strong>${escapeHtml(hariIni)}</strong></div>
+
+ <div style="margin-top:8px;">
+ <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:10.5px;">
+ <colgroup><col style="width:35%;" /><col style="width:65%;" /></colgroup>
+ <tr style="background:#f1f5f9;"><td colspan="2" style="border:1px solid #000; font-weight:bold; text-transform:uppercase;">A. DATA KARYAWAN</td></tr>
+ <tr><td style="border:1px solid #000; padding:3.5px 5px;">Nama Karyawan</td><td style="border:1px solid #000; padding:3.5px 5px; font-weight:bold;">${escapeHtml(karyawan.nama_karyawan)}</td></tr>
+ <tr><td style="border:1px solid #000; padding:3.5px 5px;">NIK / ID</td><td style="border:1px solid #000; padding:3.5px 5px;">${escapeHtml(karyawan.nik_karyawan || karyawan.id || "-")}</td></tr>
+ <tr><td style="border:1px solid #000; padding:3.5px 5px;">Jabatan / Cabang</td><td style="border:1px solid #000; padding:3.5px 5px;">${escapeHtml(karyawan.jabatan || "-")} (${escapeHtml(karyawan.cabang || "-")})</td></tr>
+ <tr><td style="border:1px solid #000; padding:3.5px 5px;">Tanggal Join</td><td style="border:1px solid #000; padding:3.5px 5px;">${escapeHtml(tglJoin ? fmtDateShort(tglJoin) : "-")}</td></tr>
+ <tr><td style="border:1px solid #000; padding:3.5px 5px;">Tanggal Efektif Resign</td><td style="border:1px solid #000; padding:3.5px 5px;">${escapeHtml(tglEfektif ? fmtDateShort(tglEfektif) : "-")}</td></tr>
+ <tr><td style="border:1px solid #000; padding:3.5px 5px;">Masa Kerja Saat Resign</td><td style="border:1px solid #000; padding:3.5px 5px;">${Number(masaKerjaBulan || mcu.masa_kerja_bulan || 0)} bulan (${escapeHtml(statusResign)})</td></tr>
+ <tr style="background:#f1f5f9;"><td colspan="2" style="border:1px solid #000; font-weight:bold; text-transform:uppercase;">B. RINCIAN TAGIHAN</td></tr>
+ <tr><td style="border:1px solid #000; padding:3.5px 5px;">Kewajiban Penggantian Biaya MCU</td><td style="border:1px solid #000; padding:3.5px 5px; font-weight:bold; font-size:12px; color:#b91c1c;">${fmtRupiah(biayaMcu)}</td></tr>
+ <tr><td style="border:1px solid #000; padding:3.5px 5px;">Referensi Invoice / Laboratorium</td><td style="border:1px solid #000; padding:3.5px 5px;">${escapeHtml(refInvoice)}</td></tr>
+ <tr><td style="border:1px solid #000; padding:3.5px 5px;">Batas Waktu Pembayaran</td><td style="border:1px solid #000; padding:3.5px 5px; font-weight:bold;">${escapeHtml(mcu.batas_pembayaran || "Maksimal 7 hari kerja setelah tanggal efektif resign")}</td></tr>
+ </table>
+ </div>
+
+ <div style="margin-top:8px; text-align:justify;">
+ <p style="margin:4px 0;">Sesuai <strong>Surat Komitmen Kerja</strong> yang ditandatangani karyawan pada awal masuk: apabila karyawan mengundurkan diri secara sepihak sebelum masa probation berakhir atau di dalam <strong>3 (tiga) bulan pertama kontrak pertama</strong>, maka karyawan bersedia mengganti biaya Medical Check Up (MCU) yang telah dibayar oleh perusahaan sesuai nominal invoice laboratorium, sebagai bentuk pertanggungjawaban pribadi terhadap biaya yang telah dikeluarkan perusahaan.</p>
+ <p style="margin:4px 0;">Mohon kewajiban penggantian biaya MCU ini dapat diselesaikan kepada HRD melalui transfer ke rekening resmi perusahaan dan menunjukkan bukti pembayaran kepada HRD.</p>
+ </div>
+
+ <table style="width:100%; border-collapse:collapse; table-layout:fixed; text-align:center; margin-top:18px; font-size:10px; page-break-inside:avoid;">
+ <tr>
+ <td style="width:50%; border:none; padding:2px;">Karyawan Yang Terkena Ketentuan,</td>
+ <td style="width:50%; border:none; padding:2px;">HRD &amp; Finance Manager,</td>
+ </tr>
+ <tr><td style="border:none; height:40px;"></td><td style="border:none;"></td></tr>
+ <tr>
+ <td style="border:none; padding:2px;">( <strong>${escapeHtml(karyawan.nama_karyawan)}</strong> )</td>
+ <td style="border:none; padding:2px;">( ................................... )</td>
+ </tr>
+ </table>
+ </div>`;
+
+ const filenameMcu = `Surat_Tagihan_MCU_${escapeHtml(karyawan.nama_karyawan).replace(/\s+/g, "_")}.pdf`;
+
+ openModal({
+ title: `Surat Tagihan Biaya MCU - ${escapeHtml(karyawan.nama_karyawan)}`,
+ bodyHtml: `
+ <div class="space-y-4">
+ <div class="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-xl flex-wrap gap-2">
+ <div class="text-xs">
+ <p class="font-bold text-red-800">Total Kewajiban Penggantian Biaya MCU</p>
+ <p class="font-black text-red-900 text-lg">${fmtRupiah(biayaMcu)}</p>
+ </div>
+ <button type="button" id="btn-modal-dl-mcu" class="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5">
+ ${icon('download', 'w-4 h-4')} Unduh PDF
+ </button>
+ </div>
+ <div class="border border-slate-300 rounded-xl p-4 bg-slate-100 overflow-y-auto max-h-[70vh]">
+ <div class="bg-white shadow-md p-6 rounded-lg mx-auto" style="max-width:794px;">
+ ${docHtmlMcu}
+ </div>
+ </div>
+ </div>
+ `,
+ size: "xl",
+ onMount: (backdrop) => {
+ backdrop.querySelector("#btn-modal-dl-mcu")?.addEventListener("click", async () => {
+ toast("Sedang mengunduh file PDF...", "info");
+ await downloadHtmlAsPdf(docHtmlMcu, filenameMcu);
+ toast("Surat Tagihan MCU PDF berhasil diunduh!", "success");
+ });
+ }
+ });
+
+ try {
+ await downloadHtmlAsPdf(docHtmlMcu, filenameMcu);
+ toast("Surat Tagihan MCU PDF berhasil diunduh!", "success");
+ } catch (e) {
+ console.warn("Gagal auto download Surat Tagihan MCU PDF:", e);
  }
 }
 
@@ -618,6 +723,22 @@ export async function mount(container) {
  <option value="Mangkir">Mangkir > 5 Hari Kerja - Pasal 52</option>
  <option value="Pelanggaran Berat">PHK - Pelanggaran Peraturan Berat - Pasal 53</option>
  <option value="Pensiun">Mencapai Usia Pensiun - Pasal 47</option>
+
+ <!-- KETENTUAN PENGGANTIAN BIAYA MCU: RESIGN DI MASA PROBATION / 3 BULAN PERTAMA KONTRAK PERTAMA -->
+ <div id="wrap-mcu" class="hidden border border-red-200 rounded-xl p-3 bg-red-50 space-y-2">
+ <p class="text-xs font-black text-red-800 uppercase tracking-wide">Wajib Ganti Biaya MCU - Surat Komitmen Kerja</p>
+ <p class="text-[11px] text-red-700 leading-relaxed">Karyawan yang <b>mengundurkan diri (resign)</b> selama masa <b>Probation</b> atau di dalam <b>3 bulan pertama kontrak pertama</b> wajib mengganti biaya Medical Check Up (MCU) yang telah dibayar oleh perusahaan saat awal masuk sesuai nominal invoice laboratorium. Penggantian wajib diselesaikan maksimal 7 hari kerja setelah tanggal efektif resign.</p>
+ <div class="grid grid-cols-2 gap-3">
+ <div>
+ <label class="block text-[11px] font-bold text-red-800 mb-1">Nominal Biaya MCU (Sesuai Invoice) (Rp) *</label>
+ <input type="number" id="off-mcu-biaya" min="0" step="1000" class="w-full px-3 py-2 text-sm border border-red-300 rounded-lg outline-none focus:border-red-500 bg-white font-bold" placeholder="Cth: 450000">
+ </div>
+ <div>
+ <label class="block text-[11px] font-bold text-red-800 mb-1">Referensi Invoice / Laboratorium</label>
+ <input type="text" id="off-mcu-referensi" class="w-full px-3 py-2 text-sm border border-red-300 rounded-lg outline-none focus:border-red-500 bg-white" placeholder="Cth: Invoice Prodia INV-2301 / Lab Klinik ABC">
+ </div>
+ </div>
+ </div>
  </select>
  </div>
  <div>
@@ -890,6 +1011,34 @@ export async function mount(container) {
 
   populateOffboardingAssets();
 
+ // ==== KETENTUAN PENGGANTIAN BIAYA MCU (PROBATION / 3 BULAN PERTAMA KONTRAK PERTAMA) ====
+ const wrapMcu = dynFields.querySelector("#wrap-mcu");
+ const inpMcuBiaya = dynFields.querySelector("#off-mcu-biaya");
+ const inpMcuRef = dynFields.querySelector("#off-mcu-referensi");
+ const inpOffJoin = dynFields.querySelector("#off-join");
+ const inpOffOut = dynFields.querySelector("#off-out");
+
+ function computeMcuLiability() {
+ const alasanNow = selAlasan ? selAlasan.value : "";
+ const joinStr = inpOffJoin ? inpOffJoin.value : "";
+ const outStr = inpOffOut ? inpOffOut.value : "";
+ const joinDate = joinStr ? new Date(joinStr) : null;
+ const outDate = outStr ? new Date(outStr) : new Date();
+ const hariKerja = (joinDate && outDate && !isNaN(joinDate) && !isNaN(outDate)) ? Math.max(0, Math.floor((outDate - joinDate) / 86400000)) : 0;
+ const blnKerja = Math.floor(hariKerja / 30.4375);
+ const statKaryawan = ((currentSelectedKaryawan && currentSelectedKaryawan.status_karyawan) || "").toUpperCase();
+ const isProbation = statKaryawan.includes("PROBATION") || statKaryawan.includes("PERCOBAAN");
+ const wajib = alasanNow === "Resign" && (isProbation || blnKerja < 3);
+ return { wajib, blnKerja, isProbation };
+ }
+
+ function refreshMcuBlock() {
+ if (!wrapMcu || !inpMcuBiaya) return;
+ const { wajib } = computeMcuLiability();
+ wrapMcu.classList.toggle("hidden", !wajib);
+ inpMcuBiaya.required = wajib;
+ }
+
  // Checklist items container and default loader
  const chkBox = dynFields.querySelector("#offboarding-checklist-container");
  const btnAddChk = dynFields.querySelector("#btn-add-checklist-row");
@@ -930,6 +1079,9 @@ export async function mount(container) {
  ];
  } else if (reason === "Resign" || reason === "Mangkir") {
  defaults = ["Surat Pengunduran Diri Resmi", "Form Exit Interview HRD", "Form Serah Terima Aset & Kerahasiaan", "Surat Keterangan Penonaktifan BPJS"];
+ if (reason === "Resign" && computeMcuLiability().wajib) {
+ defaults.push("Surat Pernyataan & SPK Penggantian Biaya MCU (Sesuai Surat Komitmen Kerja)");
+ }
  } else if (reason === "PHK Efisiensi") {
  defaults = ["Surat Pemberitahuan PHK", "Perjanjian Bersama (Bipartit)", "Form Pengembalian Aset Perusahaan", "Pencabutan Akses Sistem & Email", "Penerbitan Paklaring HRD"];
  } else if (reason === "Pelanggaran Berat") {
@@ -945,8 +1097,14 @@ export async function mount(container) {
  const selAlasan = dynFields.querySelector("#off-alasan");
  if (selAlasan) {
  populateDefaultChecklists(selAlasan.value);
- selAlasan.addEventListener("change", () => populateDefaultChecklists(selAlasan.value));
+ selAlasan.addEventListener("change", () => {
+ populateDefaultChecklists(selAlasan.value);
+ refreshMcuBlock();
+ });
  }
+ if (inpOffJoin) inpOffJoin.addEventListener("change", refreshMcuBlock);
+ if (inpOffOut) inpOffOut.addEventListener("change", refreshMcuBlock);
+ refreshMcuBlock();
 
  if (btnAddChk) {
  btnAddChk.onclick = () => addChecklistRow("");
@@ -1167,7 +1325,9 @@ if (btnKalkulasi) {
  let diffTime = out - join;
  if (diffTime < 0) diffTime = 0;
  const years = diffTime / (1000 * 3600 * 24 * 365.25);
- const mathYears = Math.floor(years); 
+ const mathYears = Math.floor(years);
+ const hariKerjaTotal = Math.max(0, Math.floor(diffTime / 86400000));
+ const masaKerjaBulan = Math.floor(hariKerjaTotal / 30.4375);
 
  const hitungUangPisah = (y, upah) => {
  if (y >= 9) return 4 * upah;
@@ -1229,9 +1389,28 @@ if (btnKalkulasi) {
  uangPisah = hitungUangPisah(mathYears, gaji);
  if (!checklist.length) checklist = ["BAP (Berita Acara Pemeriksaan)", "SK Pemutusan Hubungan Kerja (PHK)", "Bukti Kronologi Pelanggaran (Saksi)", "Tanda Terima Pengembalian Aset"];
  } else if (alasan === "Pensiun") {
- pesangon = hitungPesangon(mathYears, gaji) * 1.75; 
+ pesangon = hitungPesangon(mathYears, gaji) * 1.75;
  upmk = hitungUPMK(mathYears, gaji);
  if (!checklist.length) checklist = ["Surat Keputusan Pensiun Karyawan", "Formulir Pencairan BPJS JHT & JP", "Penyerahan Piagam Penghargaan / Tali Asih", "Serah Terima Pekerjaan kepada Tim"];
+ }
+
+ // ==== KETENTUAN PENGGANTIAN BIAYA MCU: RESIGN DI MASA PROBATION / 3 BULAN PERTAMA KONTRAK PERTAMA ====
+ const statKaryawanNow = ((currentSelectedKaryawan && currentSelectedKaryawan.status_karyawan) || "").toUpperCase();
+ const isProbationAtExit = statKaryawanNow.includes("PROBATION") || statKaryawanNow.includes("PERCOBAAN");
+ const mcuWajib = alasan === "Resign" && (isProbationAtExit || masaKerjaBulan < 3);
+ const mcuStatus = isProbationAtExit ? "Probation (Masa Percobaan)" : "Kontrak Pertama (3 Bulan Pertama)";
+ let biayaMcu = 0;
+ let refMcu = "";
+ if (mcuWajib) {
+ biayaMcu = parseFloat((dynFields.querySelector("#off-mcu-biaya")?.value || "0")) || 0;
+ refMcu = (dynFields.querySelector("#off-mcu-referensi")?.value || "").trim();
+ if (biayaMcu <= 0) {
+ toast("Nominal biaya MCU wajib diisi: karyawan resign di masa Probation / 3 bulan pertama kontrak pertama wajib mengganti biaya MCU yang telah dibayar perusahaan saat awal masuk.", "warning");
+ return;
+ }
+ if (!checklist.some(c => c.toUpperCase().includes("MCU"))) {
+ checklist.push("Surat Pernyataan & SPK Penggantian Biaya MCU (Sesuai Surat Komitmen Kerja)");
+ }
  }
 
  // Collect custom assets / uniforms / equipment rows from form inputs
@@ -1255,9 +1434,10 @@ if (btnKalkulasi) {
     }).filter(Boolean);
 
  payloadLog.tanggal_efektif = out.toISOString();
- payloadLog.keterangan = `Alasan: ${alasan}${penggantiVal ? ` | Pengganti: ${penggantiVal}` : ''}`;
+ payloadLog.keterangan = `Alasan: ${alasan}${penggantiVal ? ` | Pengganti: ${penggantiVal}` : ''}${mcuWajib ? ` | Wajib Ganti Biaya MCU: ${fmtRupiah(biayaMcu)} (${mcuStatus})` : ''}`;
  payloadLog.detail_offboarding = { 
  masa_kerja_tahun: mathYears, 
+ masa_kerja_bulan: masaKerjaBulan,
  pesangon, 
  upmk, 
  uang_pisah: uangPisah, 
@@ -1265,6 +1445,14 @@ if (btnKalkulasi) {
  catatan_handover: catatanHandoverVal,
  handover_tasks: handoverTasksList,
  checklist_doc: checklist,
+ penggantian_mcu: {
+ wajib: mcuWajib,
+ status_kontrak_saat_resign: mcuWajib ? mcuStatus : "-",
+ masa_kerja_bulan: masaKerjaBulan,
+ biaya_mcu: mcuWajib ? biayaMcu : 0,
+ referensi_invoice: refMcu || "-",
+ batas_pembayaran: "Maksimal 7 hari kerja setelah tanggal efektif resign"
+ },
  assigned_assets: assignedAssets 
  };
  payloadLog.update_master = { aktif_tdk_aktif: "TIDAK AKTIF" }; 
@@ -1272,8 +1460,15 @@ if (btnKalkulasi) {
  previewHtml = `
  <div class="mb-4">
  <p class="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Lama Masa Kerja</p>
- <p class="text-xl font-black text-slate-800">${mathYears} Tahun <span class="text-sm font-medium text-slate-500">(${(years).toFixed(1)} Thn riil)</span></p>
+ <p class="text-xl font-black text-slate-800">${mathYears} Tahun <span class="text-sm font-medium text-slate-500">(${(years).toFixed(1)} Thn riil • ${masaKerjaBulan} bulan)</span></p>
  </div>
+
+ ${mcuWajib ? `
+ <div class="p-3 bg-red-50 border border-red-200 rounded-xl mb-4 text-xs">
+ <p class="font-black text-red-800 uppercase mb-1">Wajib Mengganti Biaya MCU - ${escapeHtml(mcuStatus)}</p>
+ <p class="text-red-700 leading-relaxed">Karyawan mengundurkan diri selama masa ${escapeHtml(mcuStatus)} (masa kerja ${masaKerjaBulan} bulan). Sesuai <b>Surat Komitmen Kerja</b>, karyawan wajib mengganti biaya Medical Check Up (MCU) yang telah dibayar perusahaan saat awal masuk: <b class="text-red-900">${fmtRupiah(biayaMcu)}</b>${refMcu ? ` - Ref: ${escapeHtml(refMcu)}` : ""}. Pembayaran wajib diselesaikan maksimal 7 hari kerja setelah tanggal efektif resign.</p>
+ </div>
+ ` : ''}
 
  ${penggantiVal ? `
  <div class="p-3 bg-red-50 border border-red-200 rounded-xl mb-4 text-xs">
@@ -1301,6 +1496,7 @@ if (btnKalkulasi) {
  <div class="p-3 bg-white rounded-lg border border-slate-200 flex justify-between items-center"><span class="text-xs font-semibold text-slate-500">Uang Pesangon (Psl 58)</span><span class="font-bold text-maroon-700">${fmtRupiah(pesangon)}</span></div>
  <div class="p-3 bg-white rounded-lg border border-slate-200 flex justify-between items-center"><span class="text-xs font-semibold text-slate-500">Uang Penghargaan Masa Kerja</span><span class="font-bold text-maroon-700">${fmtRupiah(upmk)}</span></div>
  <div class="p-3 bg-white rounded-lg border border-slate-200 flex justify-between items-center"><span class="text-xs font-semibold text-slate-500">Uang Pisah (Psl 61/62)</span><span class="font-bold text-maroon-700">${fmtRupiah(uangPisah)}</span></div>
+ <div class="p-3 ${mcuWajib ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'} rounded-lg border flex justify-between items-center"><span class="text-xs font-semibold ${mcuWajib ? 'text-red-700' : 'text-slate-500'}">Penggantian Biaya MCU (Probation / Kontrak Pertama)</span><span class="font-bold ${mcuWajib ? 'text-red-700' : 'text-slate-400'}">${mcuWajib ? fmtRupiah(biayaMcu) : 'Tidak Wajib'}</span></div>
  <div class="p-3 bg-amber-50 rounded-lg border border-amber-200 flex justify-between items-center"><span class="text-xs font-bold text-amber-700">Sisa Cuti / Penggantian Hak</span><span class="font-bold text-amber-700 text-xs text-right">Dihitung manual<br/>oleh HR/Finance</span></div>
  </div>
 
@@ -1339,6 +1535,11 @@ if (btnKalkulasi) {
  <button type="button" id="btn-print-clearance-doc" class="w-full bg-maroon-700 hover:bg-maroon-800 text-white font-bold py-2.5 px-4 rounded-xl shadow transition flex items-center justify-center gap-2 text-xs mb-4">
  Cetak & Unduh Surat Exit Clearance (PDF)
  </button>
+ ${mcuWajib ? `
+ <button type="button" id="btn-print-mcu-doc" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 px-4 rounded-xl shadow transition flex items-center justify-center gap-2 text-xs mb-4">
+ Cetak & Unduh Surat Tagihan Penggantian Biaya MCU (PDF)
+ </button>
+ ` : ''}
  `;
  } 
  else if (["Mutasi", "Promosi", "Demosi"].includes(jenis)) {
@@ -1537,7 +1738,19 @@ if (btnKalkulasi) {
  masaKerja: payloadLog.detail_offboarding?.masa_kerja_tahun || 0,
  catatanHandover: payloadLog.detail_offboarding?.catatan_handover || "",
  handoverTasks: payloadLog.detail_offboarding?.handover_tasks || [],
- checklistDoc: ["Surat Pengunduran Diri / PHK", "Form Exit Interview", "Form Serah Terima Aset & Kerahasiaan", "BPJS & Paklaring"]
+ checklistDoc: ["Surat Pengunduran Diri / PHK", "Form Exit Interview", "Form Serah Terima Aset & Kerahasiaan", "BPJS & Paklaring"],
+ penggantianMcu: payloadLog.detail_offboarding?.penggantian_mcu || null
+ });
+ }
+
+ const btnPrintMcu = resBox.querySelector("#btn-print-mcu-doc");
+ if (btnPrintMcu && currentSelectedKaryawan) {
+ btnPrintMcu.onclick = () => printMcuBillingPdf({
+ karyawan: currentSelectedKaryawan,
+ tglJoin: container.querySelector("#off-join") ? container.querySelector("#off-join").value : "",
+ tglEfektif: payloadLog.tanggal_efektif,
+ masaKerjaBulan: payloadLog.detail_offboarding?.masa_kerja_bulan || 0,
+ mcu: payloadLog.detail_offboarding?.penggantian_mcu || null
  });
  }
 
@@ -1654,9 +1867,10 @@ if (btnKalkulasi) {
    infoList: [
      { label: "Karyawan", value: namaTarget },
      { label: "Tanggal Efektif", value: fmtDateShort(payloadLog.tanggal_efektif) },
-     { label: "Keterangan", value: payloadLog.keterangan || "-" }
+     { label: "Keterangan", value: payloadLog.keterangan || "-" },
+     ...(payloadLog.detail_offboarding?.penggantian_mcu?.wajib ? [{ label: "Wajib Ganti Biaya MCU", value: `${fmtRupiah(payloadLog.detail_offboarding.penggantian_mcu.biaya_mcu || 0)} (selesaikan maks. 7 hari kerja)` }] : [])
    ],
-   secondaryNote: "Harap segera mengoordinasikan serah terima aset perusahaan, berkas dokumen, dan penyelesaian administrasi dengan HRD."
+   secondaryNote: `Harap segera mengoordinasikan serah terima aset perusahaan, berkas dokumen, dan penyelesaian administrasi dengan HRD.${payloadLog.detail_offboarding?.penggantian_mcu?.wajib ? " <strong>Ketentuan Surat Komitmen Kerja: karena resign di masa Probation / 3 bulan pertama kontrak pertama, Anda wajib mengganti biaya Medical Check Up (MCU) yang telah dibayar perusahaan saat awal masuk, maksimal 7 hari kerja setelah tanggal efektif resign.</strong>" : ""}`
  });
  } else if (["Mutasi", "Promosi", "Demosi"].includes(jenis)) {
  const d = payloadLog.detail_mutasi || {};
@@ -1761,7 +1975,8 @@ if (btnKalkulasi) {
  masaKerja: row.detail_offboarding?.masa_kerja_tahun || 0,
  catatanHandover: row.detail_offboarding?.catatan_handover || "",
  handoverTasks: row.detail_offboarding?.handover_tasks || [],
- checklistDoc: row.detail_offboarding?.checklist_doc || []
+ checklistDoc: row.detail_offboarding?.checklist_doc || [],
+ penggantianMcu: row.detail_offboarding?.penggantian_mcu || null
  });
  } else if (row.jenis_siklus === "Onboarding") {
  printOnboardingDocPdf({
