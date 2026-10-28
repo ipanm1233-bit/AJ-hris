@@ -2,21 +2,131 @@ import { COL, db, updateDoc, doc, getDoc, setDoc } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsUpdate, toast, genId, fmtRupiah, fmtDateShort, smartParseDate, sendEmailNotif, buildStandardEmailHtml, openModal, closeModal, resolveEmployeeEmail } from "../utils.js";
 import { renderCrudModule, icon } from "../components.js";
 import { getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
-import { isoDocHeaderTable } from "../branding.js";
+import { isoDocHeaderTable, COMPANY_NAME, COMPANY_ADDRESS_LINE1 } from "../branding.js";
 
 // Fungsi pelindung teks bawaan (Bulletproof)
 function escapeHtml(unsafe) {
  return (unsafe || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
+// ============================================================
+// HELPER TANGGAL, TERBILANG & PERHITUNGAN SISA GAJI OFFBOARDING
+// ============================================================
+const NAMA_BULAN_ID = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+const NAMA_HARI_ID = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+
+function pad2(value) { return String(value).padStart(2, "0"); }
+
+function parseLocalDate(value) {
+ if (value instanceof Date) return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+ const text = String(value || "").slice(0, 10);
+ const parts = text.split("-").map(Number);
+ if (parts.length !== 3 || parts.some(part => !Number.isFinite(part) || part <= 0)) return null;
+ return new Date(parts[0], parts[1] - 1, parts[2]);
+}
+
+function toIsoDateLocal(date) {
+ if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+ return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+function angkaTerbilang(value) {
+ const n = Math.floor(Math.abs(Number(value) || 0));
+ const satuan = ["", "Satu", "Dua", "Tiga", "Empat", "Lima", "Enam", "Tujuh", "Delapan", "Sembilan", "Sepuluh", "Sebelas"];
+ if (n < 12) return satuan[n];
+ if (n < 20) return `${angkaTerbilang(n - 10)} Belas`;
+ if (n < 100) return `${angkaTerbilang(Math.floor(n / 10))} Puluh ${angkaTerbilang(n % 10)}`.trim();
+ if (n < 200) return `Seratus ${angkaTerbilang(n - 100)}`.trim();
+ if (n < 1000) return `${angkaTerbilang(Math.floor(n / 100))} Ratus ${angkaTerbilang(n % 100)}`.trim();
+ if (n < 2000) return `Seribu ${angkaTerbilang(n - 1000)}`.trim();
+ if (n < 1000000) return `${angkaTerbilang(Math.floor(n / 1000))} Ribu ${angkaTerbilang(n % 1000)}`.trim();
+ if (n < 1000000000) return `${angkaTerbilang(Math.floor(n / 1000000))} Juta ${angkaTerbilang(n % 1000000)}`.trim();
+ return String(n);
+}
+
+function formatTanggalIndo(value, { withDay = true } = {}) {
+ const date = parseLocalDate(value);
+ if (!date) return "-";
+ const text = `${date.getDate()} ${NAMA_BULAN_ID[date.getMonth()]} ${date.getFullYear()}`;
+ return withDay ? `${NAMA_HARI_ID[date.getDay()]}, ${text}` : text;
+}
+
+function formatTanggalTerbilang(value) {
+ const date = parseLocalDate(value);
+ if (!date) return "-";
+ const hari = NAMA_HARI_ID[date.getDay()];
+ const teks = `${pad2(date.getDate())}-${pad2(date.getMonth() + 1)}-${date.getFullYear()}`;
+ const huruf = `${angkaTerbilang(date.getDate())} ${NAMA_BULAN_ID[date.getMonth()]} ${angkaTerbilang(date.getFullYear())}`;
+ return `${hari}, ${teks} (${huruf})`;
+}
+
+/** Hitung hari kerja Senin-Sabtu (Minggu libur), inklusif start s.d. end. */
+function countWorkingDaysInclusive(startValue, endValue) {
+ const start = parseLocalDate(startValue);
+ const end = parseLocalDate(endValue);
+ if (!start || !end || end < start) return 0;
+ let total = 0;
+ const cursor = new Date(start);
+ while (cursor <= end) {
+ if (cursor.getDay() !== 0) total += 1;
+ cursor.setDate(cursor.getDate() + 1);
+ }
+ return total;
+}
+
+/**
+ * Hitung sisa gaji berjalan (belum dibayarkan) karyawan yang keluar.
+ * Gaji per hari = (gaji pokok + tunjangan tetap) / hari kerja per bulan.
+ * Hari kerja dihitung Senin-Sabtu dan belum memperhitungkan hari libur nasional.
+ */
+function hitungSisaGaji({ outDate, gajiPokok, cutoffDay = 21, hariKerjaPerBulan = 25, startDate = "" }) {
+ const out = parseLocalDate(outDate);
+ const gaji = Number(gajiPokok) || 0;
+ const pembagi = Number(hariKerjaPerBulan) > 0 ? Number(hariKerjaPerBulan) : 25;
+ const cutoff = Math.min(Math.max(parseInt(cutoffDay, 10) || 21, 1), 31);
+ if (!out) return { gajiPerHari: 0, sisaHariKerja: 0, sisaGaji: 0, mulai: "", cutoffDay: cutoff, hariKerjaPerBulan: pembagi };
+ const batasBulan = new Date(out.getFullYear(), out.getMonth() + 1, 0).getDate();
+ const tglCutoff = new Date(out.getFullYear(), out.getMonth(), Math.min(cutoff, batasBulan));
+ const start = parseLocalDate(startDate) || (out > tglCutoff
+ ? new Date(out.getFullYear(), out.getMonth(), tglCutoff.getDate() + 1)
+ : new Date(out.getFullYear(), out.getMonth(), 1));
+ const gajiPerHari = Math.round(gaji / pembagi);
+ const sisaHariKerja = countWorkingDaysInclusive(start, out);
+ return {
+ gajiPerHari,
+ sisaHariKerja,
+ sisaGaji: gajiPerHari * sisaHariKerja,
+ mulai: toIsoDateLocal(start),
+ cutoffDay: cutoff,
+ hariKerjaPerBulan: pembagi
+ };
+}
+
+/** Tanggal default mulai dihitungnya sisa gaji (cut-off + 1, atau awal bulan bila keluar sebelum cut-off). */
+function defaultSisaGajiStart(outDate, cutoffDay) {
+ const out = parseLocalDate(outDate);
+ if (!out) return "";
+ const cutoff = Math.min(Math.max(parseInt(cutoffDay, 10) || 21, 1), 31);
+ const batasBulan = new Date(out.getFullYear(), out.getMonth() + 1, 0).getDate();
+ const tglCutoff = new Date(out.getFullYear(), out.getMonth(), Math.min(cutoff, batasBulan));
+ const start = out > tglCutoff
+ ? new Date(out.getFullYear(), out.getMonth(), tglCutoff.getDate() + 1)
+ : new Date(out.getFullYear(), out.getMonth(), 1);
+ return toIsoDateLocal(start);
+}
+
 // FUNGSI CETAK SURAT EXIT CLEARANCE & HANDOVER PEKERJAAN (PDF & PREVIEW)
 async function printExitClearancePdf(data) {
  const { downloadHtmlAsPdf, toast, openModal } = await import("../utils.js");
  
- const { karyawan, pengganti, assets, tglEfektif, alasan, masaKerja, catatanHandover, handoverTasks, checklistDoc, penggantianMcu } = data;
+ const { karyawan, pengganti, assets, tglEfektif, alasan, masaKerja, catatanHandover, handoverTasks, checklistDoc, penggantianMcu, sisaGaji } = data;
+
+ const sisaGajiRow = (sisaGaji && Number(sisaGaji.sisa_gaji) > 0) ? `
+ <tr><td>Sisa Gaji Berjalan</td><td><strong>${fmtRupiah(sisaGaji.sisa_gaji)}</strong> (${sisaGaji.sisa_hari_kerja} hari kerja x ${fmtRupiah(sisaGaji.gaji_per_hari)}; cut-off tgl ${sisaGaji.cutoff_hari}, dibayar tgl ${sisaGaji.tanggal_bayar_gaji || 25})</td></tr>
+ ` : "";
 
  const mcuRowHtml = (penggantianMcu && penggantianMcu.wajib) ? `
- <tr><td>Kewajiban Penggantian Biaya MCU</td><td><strong style="color:#b91c1c;">Nominal ${fmtRupiah(penggantianMcu.biaya_mcu || 0)}</strong> &mdash; Status saat resign: ${escapeHtml(penggantianMcu.status_kontrak_saat_resign || "-")} ${penggantianMcu.referensi_invoice && penggantianMcu.referensi_invoice !== "-" ? `(Ref: ${escapeHtml(penggantianMcu.referensi_invoice)})` : ''} (Sesuai Surat Komitmen Kerja; wajib dibayar maks. 7 hari kerja setelah tanggal efektif resign)</td></tr>
+ <tr><td>Kewajiban Penggantian Biaya MCU</td><td><strong style="color:#b91c1c;">Nominal ${fmtRupiah(penggantianMcu.biaya_mcu || 0)}</strong> &mdash; Status saat resign: ${escapeHtml(penggantianMcu.status_kontrak_saat_resign || "-")} ${penggantianMcu.referensi_invoice && penggantianMcu.referensi_invoice !== "-" ? `(Ref: ${escapeHtml(penggantianMcu.referensi_invoice)})` : ''}${penggantianMcu.metode_pembayaran === "POTONG_SISA_GAJI" ? `; disepakati dipotong dari sisa gaji ${fmtRupiah(penggantianMcu.potongan_sisa_gaji || 0)}` : ""} (Sesuai Surat Komitmen Kerja; wajib dibayar maks. 7 hari kerja setelah tanggal efektif resign)</td></tr>
  ` : "";
 
  const taskRowsHtml = (handoverTasks && handoverTasks.length) ? handoverTasks.map((t, idx) => `
@@ -100,6 +210,7 @@ async function printExitClearancePdf(data) {
  <tr><td>Jabatan & Cabang</td><td>${escapeHtml(karyawan.jabatan || "-")} (${escapeHtml(karyawan.cabang || "-")})</td></tr>
  <tr><td>Masa Kerja & Tgl Efektif</td><td>${masaKerja} Tahun | Efektif: ${fmtDateShort(tglEfektif)}</td></tr>
  <tr><td>Alasan Resign / Terminasi</td><td>${escapeHtml(alasan)}</td></tr>
+ ${sisaGajiRow}
  ${mcuRowHtml}
  </table>
 
@@ -241,7 +352,7 @@ async function printExitClearancePdf(data) {
 async function printMcuBillingPdf(data) {
  const { downloadHtmlAsPdf, openModal } = await import("../utils.js");
 
- const { karyawan, tglJoin, tglEfektif, masaKerjaBulan, mcu } = data;
+ const { karyawan, tglJoin, tglEfektif, masaKerjaBulan, sisaGaji, mcu } = data;
 
  if (!mcu || !mcu.wajib) {
  toast("Karyawan ini tidak terkena ketentuan penggantian biaya MCU.", "info");
@@ -251,6 +362,10 @@ async function printMcuBillingPdf(data) {
  const biayaMcu = Number(mcu.biaya_mcu) || 0;
  const refInvoice = (mcu.referensi_invoice && mcu.referensi_invoice !== "-") ? mcu.referensi_invoice : "-";
  const statusResign = mcu.status_kontrak_saat_resign || "-";
+ const metodeMcu = mcu.metode_pembayaran === "POTONG_SISA_GAJI" ? "Potong dari Sisa Gaji (Payroll)" : "Transfer / Tunai oleh Karyawan";
+ const potonganSisaGaji = Number(mcu.potongan_sisa_gaji || 0);
+ const kekuranganMcu = Number(mcu.kekurangan_dibayar_karyawan || 0);
+ const sisaGajiNominal = Number(sisaGaji?.sisa_gaji || 0);
  const noSuratMcu = `HRD-MCU/${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
  const hariIni = fmtDateShort(new Date());
 
@@ -276,12 +391,18 @@ async function printMcuBillingPdf(data) {
  <tr><td style="border:1px solid #000; padding:3.5px 5px;">Kewajiban Penggantian Biaya MCU</td><td style="border:1px solid #000; padding:3.5px 5px; font-weight:bold; font-size:12px; color:#b91c1c;">${fmtRupiah(biayaMcu)}</td></tr>
  <tr><td style="border:1px solid #000; padding:3.5px 5px;">Referensi Invoice / Laboratorium</td><td style="border:1px solid #000; padding:3.5px 5px;">${escapeHtml(refInvoice)}</td></tr>
  <tr><td style="border:1px solid #000; padding:3.5px 5px;">Batas Waktu Pembayaran</td><td style="border:1px solid #000; padding:3.5px 5px; font-weight:bold;">${escapeHtml(mcu.batas_pembayaran || "Maksimal 7 hari kerja setelah tanggal efektif resign")}</td></tr>
+ <tr><td style="border:1px solid #000; padding:3.5px 5px;">Metode Penggantian</td><td style="border:1px solid #000; padding:3.5px 5px; font-weight:bold;">${escapeHtml(metodeMcu)}</td></tr>
+ ${mcu.metode_pembayaran === "POTONG_SISA_GAJI" ? `
+ <tr><td style="border:1px solid #000; padding:3.5px 5px;">Sisa Gaji Berjalan</td><td style="border:1px solid #000; padding:3.5px 5px;">${fmtRupiah(sisaGajiNominal)} (${Number(sisaGaji?.sisa_hari_kerja || 0)} hari kerja)</td></tr>
+ <tr><td style="border:1px solid #000; padding:3.5px 5px;">Potongan dari Sisa Gaji</td><td style="border:1px solid #000; padding:3.5px 5px; font-weight:bold;">${fmtRupiah(potonganSisaGaji)}</td></tr>
+ <tr><td style="border:1px solid #000; padding:3.5px 5px;">${kekuranganMcu > 0 ? "Kekurangan Wajib Dibayar Karyawan" : "Sisa Gaji Setelah Potongan"}</td><td style="border:1px solid #000; padding:3.5px 5px; font-weight:bold; color:#b91c1c;">${fmtRupiah(kekuranganMcu > 0 ? kekuranganMcu : Math.max(0, sisaGajiNominal - potonganSisaGaji))}</td></tr>
+ ` : ""}
  </table>
  </div>
 
  <div style="margin-top:8px; text-align:justify;">
  <p style="margin:4px 0;">Sesuai <strong>Surat Komitmen Kerja</strong> yang ditandatangani karyawan pada awal masuk: apabila karyawan mengundurkan diri secara sepihak sebelum masa probation berakhir atau di dalam <strong>3 (tiga) bulan pertama kontrak pertama</strong>, maka karyawan bersedia mengganti biaya Medical Check Up (MCU) yang telah dibayar oleh perusahaan sesuai nominal invoice laboratorium, sebagai bentuk pertanggungjawaban pribadi terhadap biaya yang telah dikeluarkan perusahaan.</p>
- <p style="margin:4px 0;">Mohon kewajiban penggantian biaya MCU ini dapat diselesaikan kepada HRD melalui transfer ke rekening resmi perusahaan dan menunjukkan bukti pembayaran kepada HRD.</p>
+ <p style="margin:4px 0;">${mcu.metode_pembayaran === "POTONG_SISA_GAJI" ? `Berdasarkan kesepakatan, biaya MCU sebesar <strong>${fmtRupiah(biayaMcu)}</strong> akan <strong>dipotong dari sisa gaji</strong> Pihak Kedua sebesar <strong>${fmtRupiah(potonganSisaGaji)}</strong>${kekuranganMcu > 0 ? `, dengan kekurangan sebesar <strong>${fmtRupiah(kekuranganMcu)}</strong> tetap wajib dibayar Pihak Kedua melalui transfer ke rekening resmi perusahaan` : ""}. Bukti potong/pembayaran akan diserahkan HRD kepada karyawan.` : `Mohon kewajiban penggantian biaya MCU ini dapat diselesaikan kepada HRD melalui transfer ke rekening resmi perusahaan dan menunjukkan bukti pembayaran kepada HRD.`}</p>
  </div>
 
  <table style="width:100%; border-collapse:collapse; table-layout:fixed; text-align:center; margin-top:18px; font-size:10px; page-break-inside:avoid;">
@@ -334,6 +455,224 @@ async function printMcuBillingPdf(data) {
  toast("Surat Tagihan MCU PDF berhasil diunduh!", "success");
  } catch (e) {
  console.warn("Gagal auto download Surat Tagihan MCU PDF:", e);
+ }
+}
+
+// FUNGSI CETAK SURAT PERJANJIAN BERSAMA (BERAKHIRNYA HUBUNGAN KERJA & PENGANTIAN BIAYA MCU)
+async function printPerjanjianBersamaPdf(data) {
+ const { downloadHtmlAsPdf, openModal } = await import("../utils.js");
+ const {
+ karyawan, alasan, tglEfektif, tglSurat, nomorSurat, masaKerjaTahun, masaKerjaBulan,
+ sisaGaji, mcu, assets, catatanTambahan
+ } = data;
+
+ const session = getSession() || {};
+ const pihakSatuNama = session.nama || session.nama_karyawan || session.username || "HRGA";
+ const pihakSatuJabatan = session.jabatan || "HRGA";
+ const alamatPerusahaan = COMPANY_ADDRESS_LINE1 || "Jl. Jend. Sudirman No. 58, Cirebon";
+
+ const suratIso = tglSurat || toIsoDateLocal(new Date());
+ const suratObj = parseLocalDate(suratIso) || new Date();
+ const romawi = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+ const nomor = (nomorSurat || "").trim() || `___/HRGA-AJ/${romawi[suratObj.getMonth()]}/${suratObj.getFullYear()}`;
+ const tanggalSuratTeks = formatTanggalTerbilang(suratIso);
+
+ const gaji = sisaGaji || {};
+ const gajiPokokTetap = Number(gaji.gaji_pokok_tetap || 0);
+ const hariKerjaBulan = Number(gaji.hari_kerja_per_bulan || 25);
+ const gajiPerHari = Number(gaji.gaji_per_hari || 0);
+ const sisaHariKerja = Number(gaji.sisa_hari_kerja || 0);
+ const sisaGajiNominal = Number(gaji.sisa_gaji || 0);
+ const biayaMcu = mcu && mcu.wajib ? Number(mcu.biaya_mcu || 0) : 0;
+ const potonganMcu = Number((mcu && mcu.potongan_sisa_gaji) || 0);
+ const kekuranganMcu = Number((mcu && mcu.kekurangan_dibayar_karyawan) || 0);
+ const metodeMcu = (mcu && mcu.metode_pembayaran) || "-";
+ const totalDiterima = Math.max(0, sisaGajiNominal - potonganMcu);
+
+ const exitDate = parseLocalDate(tglEfektif) || new Date();
+ const bulanGajiTeks = `${NAMA_BULAN_ID[exitDate.getMonth()].toUpperCase()} ${exitDate.getFullYear()}`;
+ const payDay = Number(gaji.tanggal_bayar_gaji || 25);
+ let payMonth = exitDate.getMonth();
+ let payYear = exitDate.getFullYear();
+ if (payDay <= exitDate.getDate()) {
+ payMonth += 1;
+ if (payMonth > 11) { payMonth = 0; payYear += 1; }
+ }
+ const tanggalBayarTeks = `${payDay} ${NAMA_BULAN_ID[payMonth]} ${payYear}`;
+
+ const alasanKalimat = ({
+ Resign: "Pihak Kedua mengundurkan diri atas kemauan sendiri dan Para Pihak sepakat mengakhiri hubungan kerja secara musyawarah",
+ "Habis Kontrak": "berakhirnya jangka waktu Perjanjian Kerja Waktu Tertentu (PKWT) Pihak Kedua",
+ "PHK Efisiensi": "Pihak Pertama melakukan pemutusan hubungan kerja karena efisiensi perusahaan",
+ Mangkir: "Pihak Kedua tidak hadir bekerja lebih dari 5 (lima) hari kerja tanpa keterangan",
+ "Pelanggaran Berat": "Pihak Kedua melakukan pelanggaran berat terhadap Peraturan Perusahaan",
+ Pensiun: "Pihak Kedua telah mencapai usia pensiun"
+ })[alasan] || "berakhirnya hubungan kerja Para Pihak";
+
+ const masaKerjaTeks = `${Number(masaKerjaTahun || 0)} tahun ${Number(masaKerjaBulan || 0)} bulan`;
+
+ const assetRows = (assets && assets.length) ? assets.map((asset, index) => `
+ <tr>
+ <td style="border:1px solid #000; padding:3px; text-align:center;">${index + 1}</td>
+ <td style="border:1px solid #000; padding:3px;">${escapeHtml(asset.nama_barang || "-")}</td>
+ <td style="border:1px solid #000; padding:3px;">${escapeHtml(asset.kategori || "-")}</td>
+ <td style="border:1px solid #000; padding:3px; text-align:center;">${escapeHtml(asset.status_pengembalian || "Diterima & Lengkap")}</td>
+ </tr>`).join("") : `
+ <tr><td colspan="4" style="border:1px solid #000; padding:4px; text-align:center; font-style:italic;">Tidak ada aset yang tercatat.</td></tr>`;
+
+ const docHtmlPb = `
+ <div style="width:100%; max-width:760px; margin:0 auto; padding:15px; font-family:Arial, Helvetica, sans-serif; font-size:10.5px; line-height:1.45; color:#000; background:#ffffff; box-sizing:border-box;">
+ <div style="page-break-inside:avoid; margin-bottom:4px;">
+ ${isoDocHeaderTable({ judul: "SURAT PERJANJIAN BERSAMA", noDok: "HRD-PB-01", terbitRevisi: "1/0", hal: "1 dari 1" })}
+ </div>
+
+ <div style="text-align:center; font-weight:bold; font-size:13px; letter-spacing:0.4px; margin:8px 0 1px;">SURAT PERJANJIAN BERSAMA</div>
+ <div style="text-align:center; font-size:10px; margin-bottom:8px;">Nomor: ${escapeHtml(nomor)}</div>
+
+ <p style="margin:0 0 6px; text-align:justify;">Pada hari ini, ${escapeHtml(tanggalSuratTeks)}, kami yang bertanda tangan di bawah ini:</p>
+
+ <table style="width:100%; border-collapse:collapse; font-size:10.5px; margin-bottom:4px;">
+ <tr><td style="width:18%; padding:1px 0; vertical-align:top;">Nama</td><td style="width:2%;">:</td><td><b>${escapeHtml(pihakSatuNama)}</b></td></tr>
+ <tr><td style="padding:1px 0; vertical-align:top;">Jabatan</td><td>:</td><td>${escapeHtml(pihakSatuJabatan)}</td></tr>
+ <tr><td style="padding:1px 0; vertical-align:top;">Alamat</td><td>:</td><td>${escapeHtml(alamatPerusahaan)}</td></tr>
+ <tr><td colspan="3" style="padding-top:3px; text-align:justify;">Dalam hal ini bertindak atas nama dan untuk kepentingan <b>${escapeHtml(COMPANY_NAME)}</b>, yang selanjutnya disebut sebagai <b>Pihak Pertama</b>.</td></tr>
+ </table>
+
+ <table style="width:100%; border-collapse:collapse; font-size:10.5px; margin-bottom:6px;">
+ <tr><td style="width:18%; padding:1px 0; vertical-align:top;">Nama</td><td style="width:2%;">:</td><td><b>${escapeHtml(karyawan.nama_karyawan || "-")}</b></td></tr>
+ <tr><td style="padding:1px 0; vertical-align:top;">Jabatan</td><td>:</td><td>${escapeHtml(karyawan.jabatan || "-")}</td></tr>
+ <tr><td style="padding:1px 0; vertical-align:top;">Alamat</td><td>:</td><td>${escapeHtml(karyawan.alamat || "-")}</td></tr>
+ <tr><td colspan="3" style="padding-top:3px; text-align:justify;">Dalam hal ini bertindak atas nama pribadi, yang selanjutnya disebut sebagai <b>Pihak Kedua</b>.</td></tr>
+ </table>
+
+ <p style="margin:6px 0; font-weight:bold;">Bersama-sama telah menyepakati hal-hal berikut:</p>
+ <ol style="margin:0; padding-left:16px; text-align:justify;">
+ <li style="margin-bottom:4px;">Bahwa ${escapeHtml(alasanKalimat)}, terhitung sejak tanggal <b>${escapeHtml(formatTanggalIndo(tglEfektif))}</b> (masa kerja ${escapeHtml(masaKerjaTeks)}).</li>
+ <li style="margin-bottom:4px;">Bahwa atas berakhirnya hubungan kerja tersebut, Pihak Pertama memberikan hak kepada Pihak Kedua sampai dengan tanggal tersebut berupa <b>Sisa Upah</b> dengan rincian sebagai berikut:</li>
+ </ol>
+
+ <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:9px; margin:4px 0 5px;">
+ <colgroup><col style="width:17%;" /><col style="width:19%;" /><col style="width:10%;" /><col style="width:19%;" /><col style="width:14%;" /><col style="width:21%;" /></colgroup>
+ <thead>
+ <tr style="background:#e2e8f0; text-align:center;">
+ <th style="border:1px solid #000; padding:3px;">TGL PEMBAYARAN</th>
+ <th style="border:1px solid #000; padding:3px;">DESKRIPSI</th>
+ <th style="border:1px solid #000; padding:3px;">TOTAL HARI KERJA</th>
+ <th style="border:1px solid #000; padding:3px;">GAJI POKOK + TUNJANGAN</th>
+ <th style="border:1px solid #000; padding:3px;">UPAH / HARI</th>
+ <th style="border:1px solid #000; padding:3px;">TOTAL UPAH</th>
+ </tr>
+ </thead>
+ <tbody>
+ <tr>
+ <td style="border:1px solid #000; padding:3px; text-align:center;">${escapeHtml(tanggalBayarTeks)}</td>
+ <td style="border:1px solid #000; padding:3px;">GAJI ${escapeHtml(bulanGajiTeks)}</td>
+ <td style="border:1px solid #000; padding:3px; text-align:center;">${sisaHariKerja}</td>
+ <td style="border:1px solid #000; padding:3px; text-align:right;">${fmtRupiah(gajiPokokTetap)}</td>
+ <td style="border:1px solid #000; padding:3px; text-align:right;">${fmtRupiah(gajiPerHari)}</td>
+ <td style="border:1px solid #000; padding:3px; text-align:right; font-weight:bold;">${fmtRupiah(sisaGajiNominal)}</td>
+ </tr>
+ </tbody>
+ </table>
+ <p style="margin:0 0 5px; font-size:9.5px; text-align:justify;">Perhitungan: ${fmtRupiah(gajiPokokTetap)} &divide; ${hariKerjaBulan} hari kerja = ${fmtRupiah(gajiPerHari)}/hari &times; ${sisaHariKerja} hari kerja (Senin&ndash;Sabtu) = <b>${fmtRupiah(sisaGajiNominal)}</b>. Cut-off penggajian tanggal ${Number(gaji.cutoff_hari || 21)} dan pembayaran gaji tanggal ${payDay} setiap bulan.</p>
+
+ ${mcu && mcu.wajib ? `
+ <div style="border:1px solid #b91c1c; background:#fef2f2; padding:6px; margin:5px 0; page-break-inside:avoid;">
+ <div style="font-weight:bold; text-transform:uppercase; color:#991b1b; font-size:9.5px;">Kewajiban Penggantian Biaya Medical Check Up (MCU)</div>
+ <p style="margin:3px 0 0; text-align:justify;">Sesuai Surat Komitmen Kerja, karena Pihak Kedua berhenti bekerja pada masa ${escapeHtml(mcu.status_kontrak_saat_resign || "-")}, Pihak Kedua wajib mengganti biaya MCU sebesar <b>${fmtRupiah(biayaMcu)}</b>${mcu.referensi_invoice && mcu.referensi_invoice !== "-" ? ` (Ref. invoice: ${escapeHtml(mcu.referensi_invoice)})` : ""}. ${metodeMcu === "POTONG_SISA_GAJI" ? `Para Pihak sepakat biaya tersebut <b>dipotong dari sisa upah</b> sebesar <b>${fmtRupiah(potonganMcu)}</b>${kekuranganMcu > 0 ? `, dengan kekurangan <b>${fmtRupiah(kekuranganMcu)}</b> wajib dibayar Pihak Kedua maksimal 7 (tujuh) hari kerja setelah tanggal efektif` : ", sehingga tidak ada kewajiban pembayaran tambahan"}.` : `Pihak Kedua wajib membayar biaya tersebut secara transfer/tunai maksimal 7 (tujuh) hari kerja setelah tanggal efektif.`}</p>
+ </div>
+ ` : ""}
+
+ <table style="width:100%; border-collapse:collapse; font-size:10px; margin:4px 0 8px;">
+ <tr><td style="padding:2px 0;">Total Sisa Upah</td><td style="text-align:right; font-weight:bold;">${fmtRupiah(sisaGajiNominal)}</td></tr>
+ ${mcu && mcu.wajib && metodeMcu === "POTONG_SISA_GAJI" ? `<tr><td style="padding:2px 0;">Potongan Penggantian Biaya MCU</td><td style="text-align:right; font-weight:bold; color:#b91c1c;">- ${fmtRupiah(potonganMcu)}</td></tr>` : ""}
+ <tr style="border-top:1px solid #000;"><td style="padding:3px 0; font-weight:bold;">Total Sisa Hak Diterima Pihak Kedua</td><td style="text-align:right; font-weight:bold;">${fmtRupiah(totalDiterima)}</td></tr>
+ ${mcu && mcu.wajib && kekuranganMcu > 0 ? `<tr><td style="padding:2px 0; color:#b91c1c;">Kekurangan biaya MCU yang wajib dibayar Pihak Kedua</td><td style="text-align:right; font-weight:bold; color:#b91c1c;">${fmtRupiah(kekuranganMcu)}</td></tr>` : ""}
+ </table>
+
+ <ol start="3" style="margin:0; padding-left:16px; text-align:justify;">
+ <li style="margin-bottom:4px;">Bahwa dengan ditandatangani serta dilaksanakannya Perjanjian Bersama ini, maka permasalahan hukum dan hubungan kerja di antara Para Pihak dinyatakan telah selesai, termasuk pengaduan Pihak Kedua kepada instansi-instansi terkait, dan masing-masing pihak tidak akan saling menuntut apa pun baik secara perdata maupun pidana.</li>
+ <li style="margin-bottom:4px;">Bahwa dengan ditandatanganinya Perjanjian Bersama ini Para Pihak telah melaksanakan hak dan kewajibannya dan tidak akan menuntut masalah ketenagakerjaan di kemudian hari.</li>
+ <li style="margin-bottom:4px;">Bahwa Perjanjian Bersama ini dibuat dengan keadaan sadar, sehat jasmani dan rohani serta tanpa adanya paksaan, tekanan, dan tipuan dari pihak mana pun.</li>
+ ${catatanTambahan ? `<li style="margin-bottom:4px;">${escapeHtml(catatanTambahan)}</li>` : ""}
+ </ol>
+
+ <p style="margin:6px 0 10px; text-align:justify;">Demikian Perjanjian Bersama ini dibuat dalam rangkap dua, masing-masing bermeterai cukup dan mempunyai kekuatan hukum yang sama. Perjanjian ini mulai berlaku sejak ditandatangani oleh kedua belah pihak.</p>
+
+ <div style="text-align:right; margin-bottom:2px;">Cirebon, ${escapeHtml(formatTanggalIndo(suratIso, { withDay: false }))}</div>
+ <table style="width:100%; border-collapse:collapse; table-layout:fixed; text-align:center; font-size:10px; page-break-inside:avoid;">
+ <tr>
+ <td style="width:50%; border:none; padding:2px;">Pihak Pertama,</td>
+ <td style="width:50%; border:none; padding:2px;">Pihak Kedua,</td>
+ </tr>
+ <tr><td style="border:none; height:46px;"></td><td style="border:none;"></td></tr>
+ <tr>
+ <td style="border:none; padding:2px;"><b><u>${escapeHtml(pihakSatuNama)}</u></b><br/>${escapeHtml(pihakSatuJabatan)}</td>
+ <td style="border:none; padding:2px;"><b><u>${escapeHtml(karyawan.nama_karyawan || "-")}</u></b><br/>${escapeHtml(karyawan.jabatan || "-")}</td>
+ </tr>
+ </table>
+
+ ${assets && assets.length ? `
+ <div style="margin-top:14px; page-break-inside:avoid;">
+ <div style="font-weight:bold; font-size:10.5px; text-transform:uppercase; border-top:1px solid #000; padding-top:8px;">Tanda Terima Penyerahan Asset</div>
+ <p style="margin:3px 0;">Pada tanggal ${escapeHtml(formatTanggalIndo(tglEfektif, { withDay: false }))}, telah diterima kembali asset ${escapeHtml(COMPANY_NAME)} dari Pihak Kedua dengan detail sebagai berikut:</p>
+ <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:9.5px;">
+ <colgroup><col style="width:6%;" /><col style="width:44%;" /><col style="width:25%;" /><col style="width:25%;" /></colgroup>
+ <thead>
+ <tr style="background:#e2e8f0; text-align:center;">
+ <th style="border:1px solid #000; padding:3px;">No</th>
+ <th style="border:1px solid #000; padding:3px;">Nama Barang / Aset / Seragam</th>
+ <th style="border:1px solid #000; padding:3px;">Kategori</th>
+ <th style="border:1px solid #000; padding:3px;">Status Pengembalian</th>
+ </tr>
+ </thead>
+ <tbody>${assetRows}</tbody>
+ </table>
+ <table style="width:100%; border-collapse:collapse; text-align:center; font-size:10px; margin-top:12px;">
+ <tr><td style="width:50%;">Yang Menyerahkan,</td><td style="width:50%;">Menerima,</td></tr>
+ <tr><td style="height:38px;"></td><td></td></tr>
+ <tr>
+ <td>( <b>${escapeHtml(karyawan.nama_karyawan || "-")}</b> )</td>
+ <td>( <b>${escapeHtml(pihakSatuNama)}</b> )</td>
+ </tr>
+ </table>
+ </div>` : ""}
+ </div>`;
+
+ const filenamePb = `Surat_Perjanjian_Bersama_${escapeHtml(karyawan.nama_karyawan || "Karyawan").replace(/\s+/g, "_")}.pdf`;
+
+ openModal({
+ title: `Surat Perjanjian Bersama - ${escapeHtml(karyawan.nama_karyawan || "-")}`,
+ bodyHtml: `
+ <div class="space-y-4">
+ <div class="flex items-center justify-between gap-2 flex-wrap p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+ <div class="text-xs">
+ <p class="font-bold text-indigo-800">Surat Perjanjian Bersama (Offboarding &amp; Ganti Rugi MCU)</p>
+ <p class="text-indigo-700">Nomor: ${escapeHtml(nomor)}</p>
+ </div>
+ <button type="button" id="btn-modal-dl-pb" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5">
+ ${icon('download', 'w-4 h-4')} Unduh PDF
+ </button>
+ </div>
+ <div class="border border-slate-300 rounded-xl p-4 bg-slate-100 overflow-y-auto max-h-[70vh]">
+ <div class="bg-white shadow-md p-6 rounded-lg mx-auto" style="max-width:794px;">${docHtmlPb}</div>
+ </div>
+ </div>`,
+ size: "xl",
+ onMount: (backdrop) => {
+ backdrop.querySelector("#btn-modal-dl-pb")?.addEventListener("click", async () => {
+ toast("Sedang mengunduh file PDF...", "info");
+ await downloadHtmlAsPdf(docHtmlPb, filenamePb);
+ toast("Surat Perjanjian Bersama PDF berhasil diunduh!", "success");
+ });
+ }
+ });
+
+ try {
+ await downloadHtmlAsPdf(docHtmlPb, filenamePb);
+ toast("Surat Perjanjian Bersama PDF berhasil diunduh!", "success");
+ } catch (error) {
+ console.warn("Gagal auto download Surat Perjanjian Bersama:", error);
  }
 }
 
@@ -759,6 +1098,55 @@ export async function mount(container) {
  </div>
  </div>
  </div>
+
+ <!-- SISA GAJI & PENGARAHAN PEMOTONGAN MCU -->
+ <div class="border border-emerald-200 rounded-xl p-3 bg-emerald-50 space-y-3">
+ <div class="flex items-center justify-between flex-wrap gap-2">
+ <p class="text-xs font-black text-emerald-800 uppercase tracking-wide">Sisa Gaji &amp; Pemotongan MCU</p>
+ <span class="text-[10px] font-bold text-emerald-700 bg-white border border-emerald-200 px-2 py-0.5 rounded-full">Hari kerja Senin - Sabtu</span>
+ </div>
+ <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+ <div>
+ <label class="block text-[10px] font-bold text-emerald-800 mb-1">Cut-off Gaji (tgl)</label>
+ <input type="number" id="off-cutoff" min="1" max="31" value="21" class="w-full px-2.5 py-1.5 text-xs border border-emerald-300 rounded-lg outline-none focus:border-emerald-500 bg-white font-bold">
+ </div>
+ <div>
+ <label class="block text-[10px] font-bold text-emerald-800 mb-1">Hari Kerja / Bulan</label>
+ <input type="number" id="off-harikerja" min="1" max="31" value="25" class="w-full px-2.5 py-1.5 text-xs border border-emerald-300 rounded-lg outline-none focus:border-emerald-500 bg-white font-bold">
+ </div>
+ <div>
+ <label class="block text-[10px] font-bold text-emerald-800 mb-1">Bayar Gaji (tgl)</label>
+ <input type="number" id="off-bayar" min="1" max="31" value="25" class="w-full px-2.5 py-1.5 text-xs border border-emerald-300 rounded-lg outline-none focus:border-emerald-500 bg-white font-bold">
+ </div>
+ <div>
+ <label class="block text-[10px] font-bold text-emerald-800 mb-1">Gaji Dihitung Mulai</label>
+ <input type="date" id="off-sisa-mulai" class="w-full px-2 py-1 text-xs border border-emerald-300 rounded-lg outline-none focus:border-emerald-500 bg-white font-semibold">
+ </div>
+ </div>
+ <div id="off-sisa-summary" class="rounded-lg bg-white border border-emerald-100 p-2.5 text-[11px] text-slate-600">Isi gaji pokok + tunjangan tetap serta tanggal efektif keluar untuk menghitung sisa gaji otomatis.</div>
+ <div id="wrap-mcu-metode" class="hidden rounded-lg bg-white border border-red-200 p-2.5 space-y-2">
+ <label class="block text-[11px] font-bold text-red-800 mb-1">Metode Penggantian Biaya MCU</label>
+ <select id="off-mcu-metode" class="w-full px-2.5 py-1.5 text-xs border border-red-300 rounded-lg outline-none bg-white font-bold text-slate-700">
+ <option value="POTONG_SISA_GAJI">Potong dari Sisa Gaji (Payroll) - disarankan</option>
+ <option value="TRANSFER">Bayar Sendiri oleh Karyawan (Transfer / Tunai)</option>
+ </select>
+ <p class="text-[10px] text-red-700">Bila biaya MCU melebihi sisa gaji, sistem mencatat kekurangan yang wajib dibayar karyawan.</p>
+ </div>
+ <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+ <div>
+ <label class="block text-[10px] font-bold text-emerald-800 mb-1">Nomor Surat Perjanjian Bersama (opsional)</label>
+ <input type="text" id="off-pb-nomor" class="w-full px-2.5 py-1.5 text-xs border border-emerald-300 rounded-lg outline-none focus:border-emerald-500 bg-white" placeholder="Cth: 009/HRGA-AJ/X/2026">
+ </div>
+ <div>
+ <label class="block text-[10px] font-bold text-emerald-800 mb-1">Tanggal Surat Perjanjian Bersama</label>
+ <input type="date" id="off-pb-tanggal" value="${new Date().toISOString().split("T")[0]}" class="w-full px-2 py-1 text-xs border border-emerald-300 rounded-lg outline-none focus:border-emerald-500 bg-white font-semibold">
+ </div>
+ </div>
+ <div>
+ <label class="block text-[10px] font-bold text-emerald-800 mb-1">Klausul / Catatan Tambahan Surat Perjanjian Bersama (opsional)</label>
+ <textarea id="off-pb-catatan" rows="2" class="w-full px-2.5 py-1.5 text-xs border border-emerald-300 rounded-lg outline-none focus:border-emerald-500 bg-white" placeholder="Cth: Kedua pihak sepakat menyelesaikan seluruh kewajiban secara kekeluargaan."></textarea>
+ </div>
+ </div>
  </select>
  </div>
  <div>
@@ -1057,6 +1445,59 @@ export async function mount(container) {
  const { wajib } = computeMcuLiability();
  wrapMcu.classList.toggle("hidden", !wajib);
  inpMcuBiaya.required = wajib;
+ if (wrapMcuMetode) wrapMcuMetode.classList.toggle("hidden", !wajib);
+ refreshSisaGajiSummary();
+ }
+
+ // ==== SISA GAJI BERJALAN & PENGARAHAN PEMOTONGAN MCU ====
+ const inpOffCutoff = dynFields.querySelector("#off-cutoff");
+ const inpOffHariKerja = dynFields.querySelector("#off-harikerja");
+ const inpOffBayar = dynFields.querySelector("#off-bayar");
+ const inpOffSisaMulai = dynFields.querySelector("#off-sisa-mulai");
+ const inpOffGaji = dynFields.querySelector("#off-gaji");
+ const selMetodeMcu = dynFields.querySelector("#off-mcu-metode");
+ const wrapMcuMetode = dynFields.querySelector("#wrap-mcu-metode");
+ const sisaGajiSummary = dynFields.querySelector("#off-sisa-summary");
+
+ function readSisaGajiForm() {
+ return hitungSisaGaji({
+ outDate: inpOffOut ? inpOffOut.value : "",
+ gajiPokok: parseFloat(inpOffGaji?.value || "0") || 0,
+ cutoffDay: parseInt(inpOffCutoff?.value || "21", 10) || 21,
+ hariKerjaPerBulan: parseInt(inpOffHariKerja?.value || "25", 10) || 25,
+ startDate: inpOffSisaMulai?.value || ""
+ });
+ }
+
+ function refreshSisaGajiSummary() {
+ if (!sisaGajiSummary) return;
+ if (!inpOffOut?.value || !(parseFloat(inpOffGaji?.value || "0") > 0)) {
+ sisaGajiSummary.innerHTML = `Isi <b>Gaji Pokok + Tunjangan Tetap</b> serta <b>Tanggal Efektif Keluar</b> untuk menghitung sisa gaji otomatis.`;
+ return;
+ }
+ const info = readSisaGajiForm();
+ const mcu = computeMcuLiability();
+ const biayaMcu = parseFloat(inpMcuBiaya?.value || "0") || 0;
+ const metode = selMetodeMcu?.value || "POTONG_SISA_GAJI";
+ const potongan = (mcu.wajib && metode === "POTONG_SISA_GAJI") ? Math.min(biayaMcu, info.sisaGaji) : 0;
+ const sisaSetelah = info.sisaGaji - potongan;
+ const kekurangan = mcu.wajib ? Math.max(0, biayaMcu - potongan) : 0;
+ sisaGajiSummary.innerHTML = `
+ <div class="space-y-1">
+ <div class="flex justify-between gap-2"><span>Gaji pokok + tunjangan tetap</span><b>${fmtRupiah(parseFloat(inpOffGaji?.value || "0") || 0)}</b></div>
+ <div class="flex justify-between gap-2"><span>Gaji per hari (dibagi ${info.hariKerjaPerBulan} hari kerja)</span><b>${fmtRupiah(info.gajiPerHari)}</b></div>
+ <div class="flex justify-between gap-2"><span>Sisa hari kerja (${formatTanggalIndo(info.mulai, { withDay: false })} s.d. ${formatTanggalIndo(inpOffOut.value, { withDay: false })}, Senin-Sabtu)</span><b>${info.sisaHariKerja} hari</b></div>
+ <div class="flex justify-between gap-2 border-t border-emerald-100 pt-1 mt-1 text-emerald-800"><span class="font-bold">Sisa gaji berjalan</span><b>${fmtRupiah(info.sisaGaji)}</b></div>
+ ${mcu.wajib ? `<div class="flex justify-between gap-2 text-red-700"><span>Potongan MCU (${metode === "POTONG_SISA_GAJI" ? "potong sisa gaji" : "bayar sendiri"})</span><b>- ${fmtRupiah(potongan)}</b></div>
+ <div class="flex justify-between gap-2 text-red-800"><span class="font-bold">${kekurangan > 0 ? "Kekurangan wajib dibayar karyawan" : "Sisa gaji setelah potongan MCU"}</span><b>${fmtRupiah(kekurangan > 0 ? kekurangan : sisaSetelah)}</b></div>` : ""}
+ <p class="text-[10px] text-slate-400 pt-1">Belum memperhitungkan hari libur nasional, BPJS, lembur, dan potongan lain.</p>
+ </div>`;
+ }
+
+ function syncSisaGajiStart() {
+ if (!inpOffSisaMulai) return;
+ inpOffSisaMulai.value = defaultSisaGajiStart(inpOffOut?.value || "", inpOffCutoff?.value || "21");
+ refreshSisaGajiSummary();
  }
 
  // Checklist items container and default loader
@@ -1124,7 +1565,15 @@ export async function mount(container) {
  }
  if (inpOffJoin) inpOffJoin.addEventListener("change", refreshMcuBlock);
  if (inpOffOut) inpOffOut.addEventListener("change", refreshMcuBlock);
+ if (inpOffOut) inpOffOut.addEventListener("change", syncSisaGajiStart);
+ if (inpOffCutoff) inpOffCutoff.addEventListener("change", syncSisaGajiStart);
+ if (inpOffSisaMulai) inpOffSisaMulai.addEventListener("change", refreshSisaGajiSummary);
+ if (inpOffGaji) inpOffGaji.addEventListener("input", refreshSisaGajiSummary);
+ if (inpOffHariKerja) inpOffHariKerja.addEventListener("change", refreshSisaGajiSummary);
+ if (inpMcuBiaya) inpMcuBiaya.addEventListener("input", refreshSisaGajiSummary);
+ if (selMetodeMcu) selMetodeMcu.addEventListener("change", refreshSisaGajiSummary);
  refreshMcuBlock();
+ syncSisaGajiStart();
 
  // Simpan link Google Form Exit Interview sebagai bawaan (dapat diganti kapan saja)
  const btnSaveExitForm = dynFields.querySelector("#btn-save-exit-form");
@@ -1452,6 +1901,29 @@ if (btnKalkulasi) {
  }
  }
 
+ // ==== SISA GAJI BERJALAN & PENGARAHAN PEMOTONGAN MCU ====
+ const cutoffHari = parseInt(container.querySelector("#off-cutoff")?.value || "21", 10) || 21;
+ const hariKerjaPerBulan = parseInt(container.querySelector("#off-harikerja")?.value || "25", 10) || 25;
+ const tanggalBayarGaji = parseInt(container.querySelector("#off-bayar")?.value || "25", 10) || 25;
+ const sisaMulaiVal = container.querySelector("#off-sisa-mulai")?.value || defaultSisaGajiStart(out, cutoffHari);
+ const sisaGajiInfo = hitungSisaGaji({ outDate: out, gajiPokok: gaji, cutoffDay: cutoffHari, hariKerjaPerBulan, startDate: sisaMulaiVal });
+ let metodeMcu = "TRANSFER";
+ let potonganSisaGaji = 0;
+ let sisaGajiSetelahPotong = sisaGajiInfo.sisaGaji;
+ let kekuranganMcu = 0;
+ if (mcuWajib) {
+ metodeMcu = container.querySelector("#off-mcu-metode")?.value || "POTONG_SISA_GAJI";
+ potonganSisaGaji = metodeMcu === "POTONG_SISA_GAJI" ? Math.min(biayaMcu, sisaGajiInfo.sisaGaji) : 0;
+ sisaGajiSetelahPotong = sisaGajiInfo.sisaGaji - potonganSisaGaji;
+ kekuranganMcu = Math.max(0, biayaMcu - potonganSisaGaji);
+ if (metodeMcu === "POTONG_SISA_GAJI" && kekuranganMcu > 0) {
+ toast(`Biaya MCU melebihi sisa gaji. Kekurangan ${fmtRupiah(kekuranganMcu)} tetap wajib dibayar karyawan.`, "warning");
+ }
+ }
+ const catatanPbVal = container.querySelector("#off-pb-catatan") ? container.querySelector("#off-pb-catatan").value.trim() : "";
+ const nomorPbVal = container.querySelector("#off-pb-nomor") ? container.querySelector("#off-pb-nomor").value.trim() : "";
+ const tanggalPbVal = container.querySelector("#off-pb-tanggal") ? container.querySelector("#off-pb-tanggal").value : "";
+
  // Collect custom assets / uniforms / equipment rows from form inputs
     const offAssetRows = Array.from(dynFields.querySelectorAll(".off-asset-item-row"));
     let assignedAssets = offAssetRows.map(row => {
@@ -1473,7 +1945,7 @@ if (btnKalkulasi) {
     }).filter(Boolean);
 
  payloadLog.tanggal_efektif = out.toISOString();
- payloadLog.keterangan = `Alasan: ${alasan}${penggantiVal ? ` | Pengganti: ${penggantiVal}` : ''}${mcuWajib ? ` | Wajib Ganti Biaya MCU: ${fmtRupiah(biayaMcu)} (${mcuStatus})` : ''}`;
+ payloadLog.keterangan = `Alasan: ${alasan}${penggantiVal ? ` | Pengganti: ${penggantiVal}` : ''}${mcuWajib ? ` | Wajib Ganti Biaya MCU: ${fmtRupiah(biayaMcu)} (${mcuStatus})` : ''}${sisaGajiInfo.sisaGaji > 0 ? ` | Sisa Gaji: ${fmtRupiah(sisaGajiInfo.sisaGaji)} (${sisaGajiInfo.sisaHariKerja} hari)` : ''}${mcuWajib && metodeMcu === "POTONG_SISA_GAJI" ? ` | MCU dipotong dari sisa gaji: ${fmtRupiah(potonganSisaGaji)}` : ''}`;
  payloadLog.detail_offboarding = { 
  masa_kerja_tahun: mathYears, 
  masa_kerja_bulan: masaKerjaBulan,
@@ -1488,12 +1960,29 @@ if (btnKalkulasi) {
  form_url: exitFormUrlVal,
  provider: "Google Form"
  },
+ sisa_gaji: {
+ gaji_pokok_tetap: gaji,
+ cutoff_hari: cutoffHari,
+ tanggal_bayar_gaji: tanggalBayarGaji,
+ hari_kerja_per_bulan: hariKerjaPerBulan,
+ mulai_hitung: sisaGajiInfo.mulai,
+ sisa_hari_kerja: sisaGajiInfo.sisaHariKerja,
+ gaji_per_hari: sisaGajiInfo.gajiPerHari,
+ sisa_gaji: sisaGajiInfo.sisaGaji
+ },
  penggantian_mcu: {
  wajib: mcuWajib,
  status_kontrak_saat_resign: mcuWajib ? mcuStatus : "-",
  masa_kerja_bulan: masaKerjaBulan,
  biaya_mcu: mcuWajib ? biayaMcu : 0,
  referensi_invoice: refMcu || "-",
+ metode_pembayaran: mcuWajib ? metodeMcu : "-",
+ potongan_sisa_gaji: potonganSisaGaji,
+ sisa_gaji_setelah_potongan: sisaGajiSetelahPotong,
+ kekurangan_dibayar_karyawan: kekuranganMcu,
+ nomor_surat_pb: nomorPbVal,
+ tanggal_surat_pb: tanggalPbVal || new Date().toISOString().split("T")[0],
+ catatan_pb: catatanPbVal,
  batas_pembayaran: "Maksimal 7 hari kerja setelah tanggal efektif resign"
  },
  assigned_assets: assignedAssets 
@@ -1509,9 +1998,20 @@ if (btnKalkulasi) {
  ${mcuWajib ? `
  <div class="p-3 bg-red-50 border border-red-200 rounded-xl mb-4 text-xs">
  <p class="font-black text-red-800 uppercase mb-1">Wajib Mengganti Biaya MCU - ${escapeHtml(mcuStatus)}</p>
- <p class="text-red-700 leading-relaxed">Karyawan mengundurkan diri selama masa ${escapeHtml(mcuStatus)} (masa kerja ${masaKerjaBulan} bulan). Sesuai <b>Surat Komitmen Kerja</b>, karyawan wajib mengganti biaya Medical Check Up (MCU) yang telah dibayar perusahaan saat awal masuk: <b class="text-red-900">${fmtRupiah(biayaMcu)}</b>${refMcu ? ` - Ref: ${escapeHtml(refMcu)}` : ""}. Pembayaran wajib diselesaikan maksimal 7 hari kerja setelah tanggal efektif resign.</p>
+ <p class="text-red-700 leading-relaxed">Karyawan mengundurkan diri selama masa ${escapeHtml(mcuStatus)} (masa kerja ${masaKerjaBulan} bulan). Sesuai <b>Surat Komitmen Kerja</b>, karyawan wajib mengganti biaya Medical Check Up (MCU) yang telah dibayar perusahaan saat awal masuk: <b class="text-red-900">${fmtRupiah(biayaMcu)}</b>${refMcu ? ` - Ref: ${escapeHtml(refMcu)}` : ""}. ${metodeMcu === "POTONG_SISA_GAJI" ? `Biaya ini akan <b>dipotong dari sisa gaji</b> sebesar <b>${fmtRupiah(potonganSisaGaji)}</b>${kekuranganMcu > 0 ? ` dan kekurangan <b>${fmtRupiah(kekuranganMcu)}</b> wajib dibayar karyawan` : ""}.` : "Biaya dibayar sendiri oleh karyawan (transfer / tunai)."} Penggantian wajib diselesaikan maksimal 7 hari kerja setelah tanggal efektif resign.</p>
  </div>
  ` : ''}
+
+ <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl mb-4 text-xs">
+ <p class="font-black text-emerald-800 uppercase mb-1">Sisa Gaji Berjalan</p>
+ <div class="space-y-1 text-emerald-900">
+ <div class="flex justify-between gap-2"><span>Gaji pokok + tunjangan tetap ÷ ${hariKerjaPerBulan} hari kerja</span><b>${fmtRupiah(sisaGajiInfo.gajiPerHari)} / hari</b></div>
+ <div class="flex justify-between gap-2"><span>Sisa ${sisaGajiInfo.sisaHariKerja} hari kerja (${formatTanggalIndo(sisaGajiInfo.mulai, { withDay: false })} s.d. ${formatTanggalIndo(out, { withDay: false })}, Senin-Sabtu)</span><b>${fmtRupiah(sisaGajiInfo.sisaGaji)}</b></div>
+ <div class="flex justify-between gap-2 text-[10px] text-emerald-700"><span>Cut-off gaji tanggal ${cutoffHari}, pembayaran gaji tanggal ${tanggalBayarGaji}</span><span>Belum termasuk libur nasional & potongan lain</span></div>
+ ${mcuWajib ? `<div class="flex justify-between gap-2 border-t border-emerald-200 pt-1 mt-1 text-red-700"><span>Potongan biaya MCU (${metodeMcu === "POTONG_SISA_GAJI" ? "potong sisa gaji" : "bayar sendiri"})</span><b>- ${fmtRupiah(potonganSisaGaji)}</b></div>
+ <div class="flex justify-between gap-2 text-red-800"><span class="font-bold">${kekuranganMcu > 0 ? "Kekurangan MCU wajib dibayar karyawan" : "Sisa gaji setelah potongan MCU"}</span><b>${fmtRupiah(kekuranganMcu > 0 ? kekuranganMcu : sisaGajiSetelahPotong)}</b></div>` : ""}
+ </div>
+ </div>
 
  ${penggantiVal ? `
  <div class="p-3 bg-red-50 border border-red-200 rounded-xl mb-4 text-xs">
@@ -1539,7 +2039,10 @@ if (btnKalkulasi) {
  <div class="p-3 bg-white rounded-lg border border-slate-200 flex justify-between items-center"><span class="text-xs font-semibold text-slate-500">Uang Pesangon (Psl 58)</span><span class="font-bold text-maroon-700">${fmtRupiah(pesangon)}</span></div>
  <div class="p-3 bg-white rounded-lg border border-slate-200 flex justify-between items-center"><span class="text-xs font-semibold text-slate-500">Uang Penghargaan Masa Kerja</span><span class="font-bold text-maroon-700">${fmtRupiah(upmk)}</span></div>
  <div class="p-3 bg-white rounded-lg border border-slate-200 flex justify-between items-center"><span class="text-xs font-semibold text-slate-500">Uang Pisah (Psl 61/62)</span><span class="font-bold text-maroon-700">${fmtRupiah(uangPisah)}</span></div>
+ <div class="p-3 bg-emerald-50 rounded-lg border border-emerald-200 flex justify-between items-center"><span class="text-xs font-semibold text-emerald-700">Sisa Gaji Berjalan (${sisaGajiInfo.sisaHariKerja} hari kerja)</span><span class="font-bold text-emerald-800">${fmtRupiah(sisaGajiInfo.sisaGaji)}</span></div>
  <div class="p-3 ${mcuWajib ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'} rounded-lg border flex justify-between items-center"><span class="text-xs font-semibold ${mcuWajib ? 'text-red-700' : 'text-slate-500'}">Penggantian Biaya MCU (Probation / Kontrak Pertama)</span><span class="font-bold ${mcuWajib ? 'text-red-700' : 'text-slate-400'}">${mcuWajib ? fmtRupiah(biayaMcu) : 'Tidak Wajib'}</span></div>
+ ${mcuWajib ? `<div class="p-3 bg-white rounded-lg border border-slate-200 flex justify-between items-center"><span class="text-xs font-semibold text-slate-500">${metodeMcu === "POTONG_SISA_GAJI" ? "Potongan MCU dari Sisa Gaji" : "MCU Dibayar Sendiri oleh Karyawan"}</span><span class="font-bold ${metodeMcu === "POTONG_SISA_GAJI" ? "text-red-700" : "text-slate-600"}">${metodeMcu === "POTONG_SISA_GAJI" ? fmtRupiah(potonganSisaGaji) : fmtRupiah(biayaMcu)}</span></div>
+ <div class="p-3 bg-white rounded-lg border border-slate-200 flex justify-between items-center"><span class="text-xs font-semibold text-slate-500">${kekuranganMcu > 0 ? "Kekurangan MCU Wajib Dibayar Karyawan" : "Sisa Gaji Setelah Potongan MCU"}</span><span class="font-bold text-slate-700">${fmtRupiah(kekuranganMcu > 0 ? kekuranganMcu : sisaGajiSetelahPotong)}</span></div>` : ""}
  <div class="p-3 bg-amber-50 rounded-lg border border-amber-200 flex justify-between items-center"><span class="text-xs font-bold text-amber-700">Sisa Cuti / Penggantian Hak</span><span class="font-bold text-amber-700 text-xs text-right">Dihitung manual<br/>oleh HR/Finance</span></div>
  </div>
 
@@ -1583,6 +2086,9 @@ if (btnKalkulasi) {
  Cetak & Unduh Surat Tagihan Penggantian Biaya MCU (PDF)
  </button>
  ` : ''}
+ <button type="button" id="btn-print-pb-doc" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-xl shadow transition flex items-center justify-center gap-2 text-xs mb-4">
+ Cetak & Unduh Surat Perjanjian Bersama (PDF)
+ </button>
  `;
  } 
  else if (["Mutasi", "Promosi", "Demosi"].includes(jenis)) {
@@ -1782,7 +2288,8 @@ if (btnKalkulasi) {
  catatanHandover: payloadLog.detail_offboarding?.catatan_handover || "",
  handoverTasks: payloadLog.detail_offboarding?.handover_tasks || [],
  checklistDoc: ["Surat Pengunduran Diri / PHK", "Form Exit Interview", "Form Serah Terima Aset & Kerahasiaan", "BPJS & Paklaring"],
- penggantianMcu: payloadLog.detail_offboarding?.penggantian_mcu || null
+ penggantianMcu: payloadLog.detail_offboarding?.penggantian_mcu || null,
+ sisaGaji: payloadLog.detail_offboarding?.sisa_gaji || null
  });
  }
 
@@ -1793,7 +2300,28 @@ if (btnKalkulasi) {
  tglJoin: container.querySelector("#off-join") ? container.querySelector("#off-join").value : "",
  tglEfektif: payloadLog.tanggal_efektif,
  masaKerjaBulan: payloadLog.detail_offboarding?.masa_kerja_bulan || 0,
+ sisaGaji: payloadLog.detail_offboarding?.sisa_gaji || null,
  mcu: payloadLog.detail_offboarding?.penggantian_mcu || null
+ });
+ }
+
+ const btnPrintPb = resBox.querySelector("#btn-print-pb-doc");
+ if (btnPrintPb && currentSelectedKaryawan) {
+ btnPrintPb.onclick = () => printPerjanjianBersamaPdf({
+ karyawan: currentSelectedKaryawan,
+ alasan: container.querySelector("#off-alasan") ? container.querySelector("#off-alasan").value : "Resign",
+ tglJoin: container.querySelector("#off-join") ? container.querySelector("#off-join").value : "",
+ tglEfektif: payloadLog.tanggal_efektif,
+ tglSurat: payloadLog.detail_offboarding?.penggantian_mcu?.tanggal_surat_pb || new Date().toISOString().split("T")[0],
+ nomorSurat: payloadLog.detail_offboarding?.penggantian_mcu?.nomor_surat_pb || "",
+ masaKerjaTahun: payloadLog.detail_offboarding?.masa_kerja_tahun || 0,
+ masaKerjaBulan: payloadLog.detail_offboarding?.masa_kerja_bulan || 0,
+ sisaGaji: payloadLog.detail_offboarding?.sisa_gaji || null,
+ mcu: payloadLog.detail_offboarding?.penggantian_mcu || null,
+ pengganti: payloadLog.detail_offboarding?.karyawan_pengganti || "",
+ assets: payloadLog.detail_offboarding?.assigned_assets || [],
+ handoverTasks: payloadLog.detail_offboarding?.handover_tasks || [],
+ catatanTambahan: payloadLog.detail_offboarding?.penggantian_mcu?.catatan_pb || ""
  });
  }
 
@@ -1901,6 +2429,8 @@ if (btnKalkulasi) {
  });
  } else if (jenis === "Offboarding") {
  emailSubject = "Pemberitahuan Proses Offboarding";
+ const mcuInfo = payloadLog.detail_offboarding?.penggantian_mcu || null;
+ const sisaInfo = payloadLog.detail_offboarding?.sisa_gaji || null;
  emailBody = buildStandardEmailHtml({
    badgeText: "Offboarding",
    badgeVariant: "amber",
@@ -1911,12 +2441,13 @@ if (btnKalkulasi) {
      { label: "Karyawan", value: namaTarget },
      { label: "Tanggal Efektif", value: fmtDateShort(payloadLog.tanggal_efektif) },
      { label: "Keterangan", value: payloadLog.keterangan || "-" },
-     ...(payloadLog.detail_offboarding?.penggantian_mcu?.wajib ? [{ label: "Wajib Ganti Biaya MCU", value: `${fmtRupiah(payloadLog.detail_offboarding.penggantian_mcu.biaya_mcu || 0)} (selesaikan maks. 7 hari kerja)` }] : []),
+     ...(sisaInfo && Number(sisaInfo.sisa_gaji) > 0 ? [{ label: "Sisa Gaji Berjalan", value: `${fmtRupiah(sisaInfo.sisa_gaji)} (${sisaInfo.sisa_hari_kerja} hari kerja)` }] : []),
+     ...(mcuInfo?.wajib ? [{ label: "Wajib Ganti Biaya MCU", value: `${fmtRupiah(mcuInfo.biaya_mcu || 0)}${mcuInfo.metode_pembayaran === "POTONG_SISA_GAJI" ? ` - dipotong dari sisa gaji (${fmtRupiah(mcuInfo.potongan_sisa_gaji || 0)})` : " (selesaikan maks. 7 hari kerja)"}` }] : []),
      ...(payloadLog.detail_offboarding?.exit_interview?.form_url ? [{ label: "Form Exit Interview", value: "Google Form - silakan isi melalui tombol pada email ini" }] : [])
    ],
    actionUrl: payloadLog.detail_offboarding?.exit_interview?.form_url || "",
    actionText: "Isi Form Exit Interview (Google Form) →",
-   secondaryNote: `Harap segera mengoordinasikan serah terima aset perusahaan, berkas dokumen, dan penyelesaian administrasi dengan HRD.${payloadLog.detail_offboarding?.exit_interview?.form_url ? " Mohon isi <strong>Form Exit Interview</strong> melalui tautan Google Form pada email ini sebagai bagian dari proses offboarding." : ""}${payloadLog.detail_offboarding?.penggantian_mcu?.wajib ? " <strong>Ketentuan Surat Komitmen Kerja: karena resign di masa Probation / 3 bulan pertama kontrak pertama, Anda wajib mengganti biaya Medical Check Up (MCU) yang telah dibayar perusahaan saat awal masuk, maksimal 7 hari kerja setelah tanggal efektif resign.</strong>" : ""}`
+   secondaryNote: `Harap segera mengoordinasikan serah terima aset perusahaan, berkas dokumen, dan penyelesaian administrasi dengan HRD.${payloadLog.detail_offboarding?.exit_interview?.form_url ? " Mohon isi <strong>Form Exit Interview</strong> melalui tautan Google Form pada email ini sebagai bagian dari proses offboarding." : ""}${mcuInfo?.wajib ? ` <strong>Ketentuan Surat Komitmen Kerja: karena resign di masa Probation / 3 bulan pertama kontrak pertama, Anda wajib mengganti biaya Medical Check Up (MCU) sebesar ${fmtRupiah(mcuInfo.biaya_mcu || 0)}.${mcuInfo.metode_pembayaran === "POTONG_SISA_GAJI" ? ` Biaya tersebut disepakati dipotong dari sisa gaji Anda sebesar ${fmtRupiah(mcuInfo.potongan_sisa_gaji || 0)}${Number(mcuInfo.kekurangan_dibayar_karyawan || 0) > 0 ? ` dan kekurangan ${fmtRupiah(mcuInfo.kekurangan_dibayar_karyawan)} wajib dibayar maksimal 7 hari kerja` : ""}.` : " Pembayaran wajib diselesaikan maksimal 7 hari kerja setelah tanggal efektif resign."}</strong>` : ""}`
  });
  } else if (["Mutasi", "Promosi", "Demosi"].includes(jenis)) {
  const d = payloadLog.detail_mutasi || {};
@@ -2022,7 +2553,8 @@ if (btnKalkulasi) {
  catatanHandover: row.detail_offboarding?.catatan_handover || "",
  handoverTasks: row.detail_offboarding?.handover_tasks || [],
  checklistDoc: row.detail_offboarding?.checklist_doc || [],
- penggantianMcu: row.detail_offboarding?.penggantian_mcu || null
+ penggantianMcu: row.detail_offboarding?.penggantian_mcu || null,
+ sisaGaji: row.detail_offboarding?.sisa_gaji || null
  });
  } else if (row.jenis_siklus === "Onboarding") {
  printOnboardingDocPdf({
