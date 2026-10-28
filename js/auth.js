@@ -852,6 +852,12 @@ export async function computeVisibleMenus(session) {
  if (userOverride && (userOverride.allowed_menus_set || (Array.isArray(userOverride.allowed_menus) && userOverride.allowed_menus.length > 0))) {
   const allowed = expandLegacyMenuIds(userOverride.allowed_menus || []);
   let list = MENU_CONFIG.filter(m => allowed.includes(m.id));
+  // Modul baru "Audit SOP" terbuka untuk seluruh karyawan. Pastikan admin
+  // (HRD/SUPERADMIN) selalu melihatnya walau punya whitelist menu lama.
+  if ((role === "HRD" || role === "SUPERADMIN") && !list.some(m => m.id === "sop-proyek")) {
+   const sopProjectMenu = MENU_CONFIG.find(m => m.id === "sop-proyek");
+   if (sopProjectMenu) list.push(sopProjectMenu);
+  }
   // Sales tidak dapat menu lembur kecuali secara eksplisit ada di allowed_menus custom
   if (isSales && !allowed.includes("lembur-kasbon")) {
    list = list.filter(m => m.id !== "lembur-kasbon");
@@ -1841,6 +1847,22 @@ export const PERMISSION_CATALOG = [
   ]
  },
  {
+  id: "sop-proyek",
+  label: "Audit SOP",
+  category: "Operasional",
+  icon: "book",
+  actions: [
+   { key: "sop.project.view", label: "Lihat Proyek Audit SOP & SOP Berlaku", type: "view" },
+   { key: "sop.project.create", label: "Buat Proyek & Tugaskan PIC", type: "create" },
+   { key: "sop.project.fill", label: "Isi / Revisi Proses Kerja (PIC)", type: "edit" },
+   { key: "sop.project.verify", label: "Verifikasi & Analisa Efektivitas / Efisiensi", type: "edit" },
+   { key: "sop.project.socialize", label: "Sosialisasi SOP ke Karyawan", type: "sync" },
+   { key: "sop.project.establish", label: "Tetapkan SOP sebagai Dasar Operasional", type: "edit" },
+   { key: "sop.project.delete", label: "Hapus Proyek / Proses Kerja Audit SOP", type: "delete", dangerous: true },
+   { key: "sop.project.export", label: "Cetak Dokumen SOP & Laporan Proyek", type: "export" }
+  ]
+ },
+ {
   id: "gimmick",
   label: "Gimmick",
   category: "Operasional",
@@ -2067,6 +2089,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "inventory.barang.view", "inventory.barang.create", "inventory.barang.edit", "inventory.barang.delete", "inventory.barang.scan", "inventory.barang.print_qr", "inventory.restock.edit", "inventory.restock.export", "inventory.ambil.assign", "inventory.ambil.return", "inventory.ambil.print", "inventory.opname.edit", "inventory.opname.print",
   "kendaraan.cards.create", "kendaraan.cards.edit", "kendaraan.cards.delete", "kendaraan.cards.export", "kendaraan.cards.generate_document", "kendaraan.bbm.manage", "kendaraan.service.manage", "kendaraan.pajak.manage",
   "sop.view", "sop.create", "sop.edit", "sop.delete", "sop.flowchart.generate", "sop.document.export", "sop.audit.view", "sop.audit.create", "sop.audit.edit", "sop.audit.delete", "sop.audit.export",
+  "sop.project.view", "sop.project.create", "sop.project.fill", "sop.project.verify", "sop.project.socialize", "sop.project.establish", "sop.project.delete", "sop.project.export",
   "gimmick.view", "gimmick.master.manage", "gimmick.stok.manage", "gimmick.distribusi.create", "gimmick.distribusi.edit", "gimmick.distribusi.delete", "gimmick.receipt.print", "gimmick.efektivitas.manage", "gimmick.export",
   "manajemen_data.karyawan.manage", "manajemen_data.karyawan.sync_all", "manajemen_data.rekap.view", "manajemen_data.rekap.export", "manajemen_data.dokumen.manage", "manajemen_data.signdoc.manage",
   "pengaturan.users.manage", "pengaturan.users.invite", "pengaturan.rbac.manage", "pengaturan.forms.manage", "pengaturan.kanal.view", "pengaturan.kanal.configure", "pengaturan.kanal.test", "pengaturan.kanal.sync",
@@ -2100,6 +2123,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "inventory.barang.view", "inventory.restock.export", "inventory.opname.print",
   "kendaraan.cards.export", "kendaraan.bbm.manage",
   "sop.view", "sop.document.export", "sop.audit.view", "sop.audit.export",
+  "sop.project.view", "sop.project.export",
   "gimmick.view", "gimmick.receipt.print", "gimmick.export",
   "sales_order.view", "sales_outlet.lihat_semua.view", "sales_item.view", "sales_track.view", "sales_track.export",
   "manajemen_data.rekap.view", "manajemen_data.rekap.export",
@@ -2148,6 +2172,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "inventory.barang.view", "inventory.ambil.assign", "inventory.ambil.return", "inventory.ambil.print",
   "kendaraan.bbm.manage",
   "sop.view", "sop.document.export", "sop.audit.view",
+  "sop.project.view", "sop.project.export",
   "gimmick.view", "gimmick.stok.manage", "gimmick.distribusi.create", "gimmick.distribusi.edit", "gimmick.receipt.print", "gimmick.efektivitas.manage", "gimmick.export",
   "peraturan_perusahaan.view", "peraturan_perusahaan.print",
   "sales_order.view", "sales_order.create", "sales_outlet.lihat_semua.view", "sales_item.view", "sales_task.create", "sales_task.edit", "sales_task.complete", "sales_track.view",
@@ -2171,6 +2196,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "sales_item.view",
   "sales_task.create", "sales_task.edit", "sales_task.complete",
   "sales_track.view",
+  "sop.project.view", "sop.project.fill",
   "profile.view", "profile.edit", "profile.documents.view", "profile.sign_document",
   "absensi_saya.view"
  ],
@@ -2187,6 +2213,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "kasbon.my.create", "kasbon.my.print",
   "klaim_bensin.form.create", "klaim_bensin.form.print",
   "lembur.usulan_saya.create",
+  "sop.project.view", "sop.project.fill",
   "profile.view", "profile.edit", "profile.documents.view", "profile.sign_document",
   "absensi_saya.view"
  ]
@@ -2201,9 +2228,11 @@ ROLE_PERMISSIONS_PRESETS.DEFAULT_KARYAWAN = [
  "izin.create", "izin.print",
  "performance_review.my.view",
  "training.my.submit", "training.my.participate",
+ "sop.project.view", "sop.project.fill",
  "profile.view", "profile.edit", "profile.documents.view", "profile.sign_document"
 ];
 ROLE_PERMISSIONS_PRESETS.BACK_OFFICE = [
+ "sop.project.view", "sop.project.fill",
  "dashboard.view",
  "pengajuan.view", "pengajuan.create", "riwayat.view", "riwayat.print", "riwayat.lpj.submit",
  "broadcast.view",
@@ -2220,6 +2249,7 @@ ROLE_PERMISSIONS_PRESETS.BACK_OFFICE = [
  "profile.view", "profile.edit", "profile.documents.view", "profile.sign_document"
 ];
 ROLE_PERMISSIONS_PRESETS.WAREHOUSE = [
+ "sop.project.view", "sop.project.fill",
  "dashboard.view",
  "pengajuan.view", "pengajuan.create", "riwayat.view", "riwayat.print",
  "broadcast.view",

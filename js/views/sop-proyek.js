@@ -4,7 +4,7 @@ import {
   genId, fmtDateShort, localDateStr, loadDivisionOptions, confirmDialog,
   notifyUser, downloadHtmlAsPdf
 } from "../utils.js";
-import { getSession } from "../auth.js";
+import { getSession, hasPermission } from "../auth.js";
 import { icon } from "../components.js";
 import { isoDocHeaderTable, COMPANY_NAME } from "../branding.js";
 import {
@@ -74,6 +74,14 @@ function employeeTarget(employee = {}) {
 export async function mount(container) {
   const session = getSession() || {};
   const hrd = isHrdSession(session);
+  const [canCreate, canVerify, canSocialize, canEstablish, canDeleteProject] = await Promise.all([
+    hrd || hasPermission("sop.project.create", session),
+    hrd || hasPermission("sop.project.verify", session),
+    hrd || hasPermission("sop.project.socialize", session),
+    hrd || hasPermission("sop.project.establish", session),
+    hrd || hasPermission("sop.project.delete", session)
+  ]);
+  const managerView = hrd || canCreate || canVerify || canSocialize || canEstablish;
 
   const tabBar = container.querySelector("#sop-proyek-tabbar");
   const summaryEl = container.querySelector("#sop-proyek-summary");
@@ -92,14 +100,12 @@ export async function mount(container) {
 
   const tabs = [
     { id: "proyek", label: "Proyek & Penugasan" },
-    ...(hrd ? [
-      { id: "verifikasi", label: "Verifikasi & Analisa" },
-      { id: "sosialisasi", label: "Sosialisasi & Penetapan" }
-    ] : []),
+    ...(canVerify ? [{ id: "verifikasi", label: "Verifikasi & Analisa" }] : []),
+    ...(canSocialize || canEstablish ? [{ id: "sosialisasi", label: "Sosialisasi & Penetapan" }] : []),
     { id: "berlaku", label: "SOP Berlaku" }
   ];
 
-  const visibleItems = () => state.items.filter(item => itemVisibleTo(session, item, { isHrd: hrd }));
+  const visibleItems = () => state.items.filter(item => itemVisibleTo(session, item, { isHrd: managerView }));
   const projectItems = projectId => state.items.filter(item => item.project_id === projectId);
   const projectOf = item => state.projects.find(project => project.id === item.project_id) || null;
   const myTasks = () => state.items.filter(item =>
@@ -147,7 +153,7 @@ export async function mount(container) {
 
   function renderSummary() {
     if (!summaryEl) return;
-    const scoped = hrd ? state.items : visibleItems();
+    const scoped = managerView ? state.items : visibleItems();
     const summary = summarizeItems(scoped);
     const tasks = myTasks().length;
     summaryEl.innerHTML = `
@@ -175,8 +181,8 @@ export async function mount(container) {
   async function renderPanel() {
     if (!panel) return;
     panel.innerHTML = `<div class="py-16 text-center text-sm text-slate-400">Memuat Proyek Audit SOP…</div>`;
-    if (state.activeTab === "verifikasi" && hrd) return renderVerifikasiTab();
-    if (state.activeTab === "sosialisasi" && hrd) return renderSosialisasiTab();
+    if (state.activeTab === "verifikasi" && canVerify) return renderVerifikasiTab();
+    if (state.activeTab === "sosialisasi" && (canSocialize || canEstablish)) return renderSosialisasiTab();
     if (state.activeTab === "berlaku") return renderBerlakuTab();
     return renderProyekTab();
   }
@@ -220,7 +226,7 @@ export async function mount(container) {
     const projects = state.projects.filter(project => {
       if (!matchesBranch(project.cabang)) return false;
       if (!state.search || `${project.nama_proyek} ${project.periode} ${project.koordinator}`.toLowerCase().includes(state.search.toLowerCase())) {
-        if (hrd) return true;
+        if (managerView) return true;
         return projectItems(project.id).some(item => itemVisibleTo(session, item, { isHrd: false }));
       }
       return false;
@@ -232,7 +238,7 @@ export async function mount(container) {
         <div class="flex flex-wrap items-center gap-2">${filterChips()}
           <input id="skp-search" type="search" value="${esc(state.search)}" placeholder="Cari proyek / periode / koordinator…" class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs w-64">
         </div>
-        ${hrd ? `<button id="skp-new-project" class="inline-flex items-center gap-1.5 rounded-lg bg-maroon-700 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-maroon-800">${icon("plus", "w-4 h-4")}Buat Proyek Audit</button>` : ""}
+        ${canCreate ? `<button id="skp-new-project" class="inline-flex items-center gap-1.5 rounded-lg bg-maroon-700 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-maroon-800">${icon("plus", "w-4 h-4")}Buat Proyek Audit</button>` : ""}
       </div>
 
       ${tasks.length ? `
@@ -262,7 +268,7 @@ export async function mount(container) {
 
       <div class="grid md:grid-cols-2 gap-4">
         ${projects.map(project => {
-          const items = projectItems(project.id).filter(item => hrd || itemVisibleTo(session, item, { isHrd: hrd }));
+          const items = projectItems(project.id).filter(item => managerView || itemVisibleTo(session, item, { isHrd: false }));
           const stats = summarizeItems(items);
           return `<article class="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs flex flex-col">
             <div class="flex items-start justify-between gap-2">
@@ -285,11 +291,11 @@ export async function mount(container) {
             <p class="mt-2 text-[11px] text-slate-400">Mulai ${esc(dateText(project.tanggal_mulai))} · Target ${esc(dateText(project.target_selesai))} · Status ${esc(project.status || "Berjalan")}</p>
             <div class="mt-auto pt-4 flex flex-wrap gap-2">
               <button type="button" data-skp-open-project="${esc(project.id)}" class="rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold text-white hover:bg-slate-900">Kelola / Lihat Proses</button>
-              ${hrd ? `<button type="button" data-skp-edit-project="${esc(project.id)}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600">Edit</button>
-              <button type="button" data-skp-delete-project="${esc(project.id)}" class="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700">Hapus</button>` : ""}
+              ${canCreate ? `<button type="button" data-skp-edit-project="${esc(project.id)}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600">Edit</button>` : ""}
+              ${canDeleteProject ? `<button type="button" data-skp-delete-project="${esc(project.id)}" class="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700">Hapus</button>` : ""}
             </div>
           </article>`;
-        }).join("") || emptyBox(hrd ? "Belum ada proyek audit SOP. Klik “Buat Proyek Audit” untuk memulai." : "Belum ada proyek audit SOP untuk Anda.")}
+        }).join("") || emptyBox(canCreate ? "Belum ada proyek audit SOP. Klik “Buat Proyek Audit” untuk memulai." : "Belum ada proyek audit SOP untuk Anda.")}
       </div>`;
 
     bindFilterControls(panel);
@@ -320,7 +326,7 @@ export async function mount(container) {
   async function renderProjectDetail() {
     const project = state.projects.find(entry => entry.id === state.projectId);
     if (!project) { state.projectId = ""; return renderProyekTab(); }
-    const items = projectItems(project.id).filter(item => hrd || itemVisibleTo(session, item, { isHrd: hrd }));
+    const items = projectItems(project.id).filter(item => managerView || itemVisibleTo(session, item, { isHrd: false }));
     const stats = summarizeItems(items);
 
     panel.innerHTML = `
@@ -328,7 +334,7 @@ export async function mount(container) {
         <button type="button" id="skp-back-project" class="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">← Kembali ke daftar proyek</button>
         <div class="flex flex-wrap gap-2">
           <button type="button" id="skp-print-project" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600">Ringkasan Proyek</button>
-          ${hrd ? `<button type="button" id="skp-add-item" class="inline-flex items-center gap-1.5 rounded-lg bg-maroon-700 px-3 py-2 text-xs font-bold text-white">${icon("plus", "w-4 h-4")}Tugaskan Proses Kerja</button>` : ""}
+          ${canCreate ? `<button type="button" id="skp-add-item" class="inline-flex items-center gap-1.5 rounded-lg bg-maroon-700 px-3 py-2 text-xs font-bold text-white">${icon("plus", "w-4 h-4")}Tugaskan Proses Kerja</button>` : ""}
         </div>
       </div>
       <div class="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs">
@@ -369,12 +375,12 @@ export async function mount(container) {
                 <button type="button" data-skp-view-item="${esc(item.id)}" class="rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-600">Lihat</button>
                 ${canFill && ["DRAFT", "REVISION"].includes(status) ? `<button type="button" data-skp-fill-item="${esc(item.id)}" class="rounded-lg bg-blue-600 px-3 py-1.5 text-[11px] font-bold text-white">${status === "REVISION" ? "Revisi" : "Isi"}</button>` : ""}
                 ${canFill && ["DRAFT", "REVISION"].includes(status) ? `<button type="button" data-skp-submit-item="${esc(item.id)}" class="rounded-lg bg-amber-600 px-3 py-1.5 text-[11px] font-bold text-white">Ajukan Verifikasi</button>` : ""}
-                ${hrd && status === "SUBMITTED" ? `<button type="button" data-skp-verify-item="${esc(item.id)}" class="rounded-lg bg-maroon-700 px-3 py-1.5 text-[11px] font-bold text-white">Verifikasi</button>` : ""}
-                ${hrd ? `<button type="button" data-skp-assign-edit="${esc(item.id)}" class="rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-500">Penugasan</button>` : ""}
-                ${hrd ? `<button type="button" data-skp-delete-item="${esc(item.id)}" class="rounded-lg border border-rose-200 px-3 py-1.5 text-[11px] font-semibold text-rose-700">Hapus</button>` : ""}
+                ${canVerify && status === "SUBMITTED" ? `<button type="button" data-skp-verify-item="${esc(item.id)}" class="rounded-lg bg-maroon-700 px-3 py-1.5 text-[11px] font-bold text-white">Verifikasi</button>` : ""}
+                ${canCreate ? `<button type="button" data-skp-assign-edit="${esc(item.id)}" class="rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-500">Penugasan</button>` : ""}
+                ${canDeleteProject ? `<button type="button" data-skp-delete-item="${esc(item.id)}" class="rounded-lg border border-rose-200 px-3 py-1.5 text-[11px] font-semibold text-rose-700">Hapus</button>` : ""}
               </div>
             </div>`;
-          }).join("") || `<div class="p-6">${emptyBox(hrd ? "Belum ada proses kerja. Klik “Tugaskan Proses Kerja”." : "Belum ada proses kerja yang terlihat untuk Anda.")}</div>`}
+          }).join("") || `<div class="p-6">${emptyBox(canCreate ? "Belum ada proses kerja. Klik “Tugaskan Proses Kerja”." : "Belum ada proses kerja yang terlihat untuk Anda.")}</div>`}
         </div>
       </div>`;
 
@@ -475,11 +481,11 @@ export async function mount(container) {
       </div>
       <div class="space-y-3">
         <h2 class="text-sm font-black uppercase tracking-wide text-slate-700">1. Siap Disosialisasi</h2>
-        ${verified.map(item => socializationCard(item, "socialize")).join("") || emptyBox("Belum ada SOP terverifikasi yang siap disosialisasikan.")}
+        ${verified.map(item => socializationCard(item, canSocialize ? "socialize" : "view")).join("") || emptyBox("Belum ada SOP terverifikasi yang siap disosialisasikan.")}
       </div>
       <div class="space-y-3">
         <h2 class="text-sm font-black uppercase tracking-wide text-slate-700">2. Sudah Disosialisasi - Menunggu Penetapan</h2>
-        ${socialized.map(item => socializationCard(item, "establish")).join("") || emptyBox("Belum ada SOP yang menunggu penetapan.")}
+        ${socialized.map(item => socializationCard(item, canEstablish ? "establish" : "view")).join("") || emptyBox("Belum ada SOP yang menunggu penetapan.")}
       </div>`;
     bindFilterControls(panel);
     panel.querySelectorAll("[data-skp-view-item]").forEach(button => button.onclick = () => itemDetailModal(state.items.find(item => item.id === button.dataset.skpViewItem)));
@@ -1004,7 +1010,7 @@ export async function mount(container) {
    * =============================================================== */
   function verifyModal(item) {
     if (!item) return;
-    if (!hrd) return toast("Hanya HRD yang dapat memverifikasi SOP.", "warning");
+    if (!canVerify) return toast("Hanya HRD / user dengan izin verifikasi yang dapat memverifikasi SOP.", "warning");
     const analysis = item.analisa_hrd || {};
     openModal({
       title: `Verifikasi & Analisa - ${item.nama_proses || "SOP"}`,
@@ -1131,7 +1137,7 @@ export async function mount(container) {
 
   function socializationModal(item) {
     if (!item) return;
-    if (!hrd) return toast("Hanya HRD yang dapat mensosialisasikan SOP.", "warning");
+    if (!canSocialize) return toast("Hanya HRD / user dengan izin sosialisasi yang dapat mensosialisasikan SOP.", "warning");
     openModal({
       title: `Sosialisasi SOP - ${item.nama_proses || "SOP"}`,
       size: "lg",
@@ -1222,7 +1228,7 @@ export async function mount(container) {
    * =============================================================== */
   function establishmentModal(item) {
     if (!item) return;
-    if (!hrd) return toast("Hanya HRD yang dapat menetapkan SOP.", "warning");
+    if (!canEstablish) return toast("Hanya HRD / user dengan izin penetapan yang dapat menetapkan SOP.", "warning");
     const year = new Date().getFullYear();
     const sequence = state.items.filter(entry => String(entry.status) === "ESTABLISHED" && entry.divisi === item.divisi).length + 1;
     const suggestedNumber = item.penetapan?.nomor_sop || autoSopNumber({ divisi: item.divisi, urut: sequence, tahun: year });
@@ -1385,9 +1391,9 @@ export async function mount(container) {
           ${Array.isArray(item.riwayat_revisi) && item.riwayat_revisi.length ? `<div class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-[11px] text-rose-800"><b>Riwayat Revisi:</b><ul class="list-disc pl-4 mt-1 space-y-0.5">${item.riwayat_revisi.map(revision => `<li>${esc(dateText(revision.tanggal))} - ${esc(revision.oleh || "-")}: ${esc(revision.catatan || "-")}</li>`).join("")}</ul></div>` : ""}
           <div class="flex flex-wrap justify-end gap-2 pt-1">
             ${canFillItem(session, item, { isHrd: hrd }) && ["DRAFT", "REVISION"].includes(String(item.status)) ? `<button type="button" id="skp-detail-fill" class="rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white">Isi / Revisi Proses Kerja</button>` : ""}
-            ${hrd && String(item.status) === "SUBMITTED" ? `<button type="button" id="skp-detail-verify" class="rounded-lg bg-maroon-700 px-4 py-2 text-xs font-bold text-white">Verifikasi & Analisa</button>` : ""}
-            ${hrd && String(item.status) === "VERIFIED" ? `<button type="button" id="skp-detail-socialize" class="rounded-lg bg-violet-600 px-4 py-2 text-xs font-bold text-white">Sosialisasikan</button>` : ""}
-            ${hrd && String(item.status) === "SOCIALIZED" ? `<button type="button" id="skp-detail-establish" class="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white">Tetapkan SOP</button>` : ""}
+            ${canVerify && String(item.status) === "SUBMITTED" ? `<button type="button" id="skp-detail-verify" class="rounded-lg bg-maroon-700 px-4 py-2 text-xs font-bold text-white">Verifikasi & Analisa</button>` : ""}
+            ${canSocialize && String(item.status) === "VERIFIED" ? `<button type="button" id="skp-detail-socialize" class="rounded-lg bg-violet-600 px-4 py-2 text-xs font-bold text-white">Sosialisasikan</button>` : ""}
+            ${canEstablish && String(item.status) === "SOCIALIZED" ? `<button type="button" id="skp-detail-establish" class="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white">Tetapkan SOP</button>` : ""}
             <button type="button" id="skp-detail-print" class="rounded-lg bg-slate-800 px-4 py-2 text-xs font-bold text-white">Cetak Dokumen SOP</button>
           </div>
         </div>`,
