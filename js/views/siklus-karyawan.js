@@ -1,4 +1,4 @@
-import { COL, db, updateDoc, doc } from "../firebase-config.js";
+import { COL, db, updateDoc, doc, getDoc, setDoc } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsUpdate, toast, genId, fmtRupiah, fmtDateShort, smartParseDate, sendEmailNotif, buildStandardEmailHtml, openModal, closeModal, resolveEmployeeEmail } from "../utils.js";
 import { renderCrudModule, icon } from "../components.js";
 import { getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
@@ -630,6 +630,15 @@ export async function mount(container) {
  } catch (err) {
  console.error("Gagal memuat MASTER_KARYAWAN di Siklus Karyawan:", err);
  }
+
+ // Link Google Form Exit Interview bawaan (dapat diedit & disimpan ulang oleh HRD)
+ let exitInterviewUrl = "";
+ try {
+ const exitSnap = await getDoc(doc(db, COL.APP_SETTINGS, "offboarding_exit_interview"));
+ if (exitSnap.exists()) exitInterviewUrl = String(exitSnap.data()?.url || "").trim();
+ } catch (errExit) {
+ console.warn("Gagal memuat link Google Form Exit Interview:", errExit);
+ }
  const activeKaryawan = allKaryawan
  .filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF")
  .filter(k => branchMatches(branchScope, k.cabang));
@@ -723,6 +732,17 @@ export async function mount(container) {
  <option value="Mangkir">Mangkir > 5 Hari Kerja - Pasal 52</option>
  <option value="Pelanggaran Berat">PHK - Pelanggaran Peraturan Berat - Pasal 53</option>
  <option value="Pensiun">Mencapai Usia Pensiun - Pasal 47</option>
+
+ <!-- FORM EXIT INTERVIEW (GOOGLE FORM) - DISEMATKAN PADA EMAIL OFFBOARDING -->
+ <div class="border border-blue-200 rounded-xl p-3 bg-blue-50 space-y-2">
+ <p class="text-xs font-black text-blue-800 uppercase tracking-wide">Form Exit Interview (Google Form)</p>
+ <p class="text-[11px] text-blue-700 leading-relaxed">Tautan di bawah otomatis disematkan sebagai tombol <b>Isi Form Exit Interview</b> pada email notifikasi offboarding karyawan. HRD dapat mengganti link kapan saja, lalu simpan sebagai link bawaan untuk proses offboarding berikutnya.</p>
+ <input type="url" id="off-exit-form" value="${escapeHtml(exitInterviewUrl)}" class="w-full px-3 py-2 text-sm border border-blue-300 rounded-lg outline-none focus:border-blue-500 bg-white" placeholder="https://docs.google.com/forms/d/e/.../viewform">
+ <div class="flex flex-wrap items-center justify-between gap-2">
+ <p class="text-[10px] text-blue-600">Kosongkan bila belum ada form exit interview.</p>
+ <button type="button" id="btn-save-exit-form" class="px-3 py-1.5 text-[11px] font-bold text-blue-700 bg-white border border-blue-300 rounded-lg hover:bg-blue-50 transition shadow-sm">Simpan sebagai Link Bawaan</button>
+ </div>
+ </div>
 
  <!-- KETENTUAN PENGGANTIAN BIAYA MCU: RESIGN DI MASA PROBATION / 3 BULAN PERTAMA KONTRAK PERTAMA -->
  <div id="wrap-mcu" class="hidden border border-red-200 rounded-xl p-3 bg-red-50 space-y-2">
@@ -1106,6 +1126,23 @@ export async function mount(container) {
  if (inpOffOut) inpOffOut.addEventListener("change", refreshMcuBlock);
  refreshMcuBlock();
 
+ // Simpan link Google Form Exit Interview sebagai bawaan (dapat diganti kapan saja)
+ const btnSaveExitForm = dynFields.querySelector("#btn-save-exit-form");
+ if (btnSaveExitForm) {
+ btnSaveExitForm.addEventListener("click", async () => {
+ const urlVal = (dynFields.querySelector("#off-exit-form")?.value || "").trim();
+ if (urlVal && !/^https?:\/\//i.test(urlVal)) return toast("Link Google Form Exit Interview harus diawali http:// atau https://", "warning");
+ try {
+ await setDoc(doc(db, COL.APP_SETTINGS, "offboarding_exit_interview"), { url: urlVal, updated_at: new Date().toISOString() }, { merge: true });
+ exitInterviewUrl = urlVal;
+ toast(urlVal ? "Link Google Form Exit Interview disimpan sebagai link bawaan." : "Link bawaan Exit Interview dikosongkan.", "success");
+ } catch (errSaveExit) {
+ console.error("Gagal menyimpan link exit interview:", errSaveExit);
+ toast("Gagal menyimpan link exit interview: " + errSaveExit.message, "error");
+ }
+ });
+ }
+
  if (btnAddChk) {
  btnAddChk.onclick = () => addChecklistRow("");
  }
@@ -1309,6 +1346,8 @@ if (btnKalkulasi) {
  const alasan = container.querySelector("#off-alasan").value;
  const penggantiVal = container.querySelector("#off-pengganti") ? container.querySelector("#off-pengganti").value.trim() : "";
  const catatanHandoverVal = container.querySelector("#off-catatan-handover") ? container.querySelector("#off-catatan-handover").value.trim() : "";
+ const exitFormUrlVal = container.querySelector("#off-exit-form") ? container.querySelector("#off-exit-form").value.trim() : "";
+ if (exitFormUrlVal && !/^https?:\/\//i.test(exitFormUrlVal)) return toast("Link Google Form Exit Interview harus diawali http:// atau https://", "warning");
 
  // Collect dynamic handover task rows
  const taskRows = Array.from(container.querySelectorAll(".handover-task-row"));
@@ -1445,6 +1484,10 @@ if (btnKalkulasi) {
  catatan_handover: catatanHandoverVal,
  handover_tasks: handoverTasksList,
  checklist_doc: checklist,
+ exit_interview: {
+ form_url: exitFormUrlVal,
+ provider: "Google Form"
+ },
  penggantian_mcu: {
  wajib: mcuWajib,
  status_kontrak_saat_resign: mcuWajib ? mcuStatus : "-",
@@ -1868,9 +1911,12 @@ if (btnKalkulasi) {
      { label: "Karyawan", value: namaTarget },
      { label: "Tanggal Efektif", value: fmtDateShort(payloadLog.tanggal_efektif) },
      { label: "Keterangan", value: payloadLog.keterangan || "-" },
-     ...(payloadLog.detail_offboarding?.penggantian_mcu?.wajib ? [{ label: "Wajib Ganti Biaya MCU", value: `${fmtRupiah(payloadLog.detail_offboarding.penggantian_mcu.biaya_mcu || 0)} (selesaikan maks. 7 hari kerja)` }] : [])
+     ...(payloadLog.detail_offboarding?.penggantian_mcu?.wajib ? [{ label: "Wajib Ganti Biaya MCU", value: `${fmtRupiah(payloadLog.detail_offboarding.penggantian_mcu.biaya_mcu || 0)} (selesaikan maks. 7 hari kerja)` }] : []),
+     ...(payloadLog.detail_offboarding?.exit_interview?.form_url ? [{ label: "Form Exit Interview", value: "Google Form - silakan isi melalui tombol pada email ini" }] : [])
    ],
-   secondaryNote: `Harap segera mengoordinasikan serah terima aset perusahaan, berkas dokumen, dan penyelesaian administrasi dengan HRD.${payloadLog.detail_offboarding?.penggantian_mcu?.wajib ? " <strong>Ketentuan Surat Komitmen Kerja: karena resign di masa Probation / 3 bulan pertama kontrak pertama, Anda wajib mengganti biaya Medical Check Up (MCU) yang telah dibayar perusahaan saat awal masuk, maksimal 7 hari kerja setelah tanggal efektif resign.</strong>" : ""}`
+   actionUrl: payloadLog.detail_offboarding?.exit_interview?.form_url || "",
+   actionText: "Isi Form Exit Interview (Google Form) →",
+   secondaryNote: `Harap segera mengoordinasikan serah terima aset perusahaan, berkas dokumen, dan penyelesaian administrasi dengan HRD.${payloadLog.detail_offboarding?.exit_interview?.form_url ? " Mohon isi <strong>Form Exit Interview</strong> melalui tautan Google Form pada email ini sebagai bagian dari proses offboarding." : ""}${payloadLog.detail_offboarding?.penggantian_mcu?.wajib ? " <strong>Ketentuan Surat Komitmen Kerja: karena resign di masa Probation / 3 bulan pertama kontrak pertama, Anda wajib mengganti biaya Medical Check Up (MCU) yang telah dibayar perusahaan saat awal masuk, maksimal 7 hari kerja setelah tanggal efektif resign.</strong>" : ""}`
  });
  } else if (["Mutasi", "Promosi", "Demosi"].includes(jenis)) {
  const d = payloadLog.detail_mutasi || {};

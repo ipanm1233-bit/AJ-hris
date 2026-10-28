@@ -373,6 +373,10 @@ service cloud.firestore {
       allow update: if isHrd() || (isManagement() && sameBranch(request.resource.data));
       allow delete: if isHrd();
     }
+    match /training_materials/{id} {
+      allow read: if signedIn();
+      allow write: if isHrd();
+    }
     match /training_tna_campaigns/{id} {
       allow read: if signedIn();
       allow write: if isHrd();

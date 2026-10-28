@@ -11,7 +11,7 @@ import {
 const C = {
   campaigns: "training_tna_campaigns", assignments: "training_tna_assignments",
   needs: "training_needs", plans: "training_tna_plans", progress: "training_tna_progress",
-  audit: "training_audit_logs"
+  materials: "training_materials", audit: "training_audit_logs"
 };
 
 const esc = value => escapeHtml(value ?? "");
@@ -197,6 +197,7 @@ export async function mount(container, { session, params = new URLSearchParams()
     { id: "execution", label: "Pelaksanaan" }, { id: "report", label: "Laporan" }
   );
   else if (roleIn(session, ["FINANCE"])) tabs.unshift({ id: "planning", label: "Approval Anggaran" });
+  tabs.push({ id: "library", label: "Modul & Deck Training" });
   let active = tabs[0].id;
   const requestedTab = typeof params?.get === "function" ? params.get("tab") : "";
   if (requestedTab && tabs.some(tab => tab.id === requestedTab)) active = requestedTab;
@@ -209,7 +210,7 @@ export async function mount(container, { session, params = new URLSearchParams()
     body.innerHTML = `<div class="py-20 text-center text-sm text-slate-400">Memuat data pelatihan…</div>`;
     try {
       const data = await allData(session);
-      const renderers = { dashboard: renderDashboard, survey: renderSurvey, analysis: renderAnalysis, planning: renderPlanning, execution: renderExecution, report: renderReport, my: renderMy };
+      const renderers = { dashboard: renderDashboard, survey: renderSurvey, analysis: renderAnalysis, planning: renderPlanning, execution: renderExecution, report: renderReport, my: renderMy, library: renderLibrary };
       await renderers[active](body, session, data, load);
       const requestedAssignment = requestedSurvey ? (data.assignments || []).find(item => item.id === requestedSurvey) : null;
       if (active === "my" && requestedAssignment && requestedAssignment.status !== "SUBMITTED") surveyResponseModal(requestedAssignment, session, load, data);
@@ -629,6 +630,213 @@ function executionModal(plan, session, reload) {
       };
     }
   });
+}
+
+/* ============================================================
+ * SUBMENU: MODUL & DECK TRAINING (PUSTAKA MATERI BASIC TRAINING)
+ * ============================================================ */
+const MATERIAL_CATEGORIES = [
+  ["Onboarding", "Onboarding Karyawan Baru"],
+  ["Product Knowledge", "Product Knowledge"],
+  ["SOP", "SOP & Kebijakan"],
+  ["Komunikasi", "Komunikasi & Service"],
+  ["Kepemimpinan", "Kepemimpinan & Manajerial"],
+  ["Teknis", "Teknis & Tools"],
+  ["Lainnya", "Lainnya"]
+];
+const MATERIAL_TYPES = [
+  ["Modul", "Modul / Materi Tulis"],
+  ["Deck", "Deck / Slide Presentasi"],
+  ["Video", "Video Training"],
+  ["Buku", "E-Book / Buku Panduan"],
+  ["Lainnya", "Lainnya"]
+];
+const categoryLabel = value => MATERIAL_CATEGORIES.find(([key]) => key === value)?.[1] || value || "Lainnya";
+const materialTypeLabel = value => MATERIAL_TYPES.find(([key]) => key === value)?.[1] || value || "Lainnya";
+const materialOptions = (options, selected) => options.map(([value, label]) => `<option value="${esc(value)}" ${value === selected ? "selected" : ""}>${esc(label)}</option>`).join("");
+
+const STARTER_MATERIALS = [
+  { title: "Training Onboarding Karyawan Baru", category: "Onboarding", file_type: "Deck", description: "Deck orientasi karyawan baru: profil perusahaan, budaya kerja, tata tertib, benefit, pengenalan tim, dan checklist hari pertama.", author: "HRD" },
+  { title: "Modul Onboarding: Panduan 30 Hari Pertama", category: "Onboarding", file_type: "Modul", description: "Panduan modul onboarding 30 hari: orientasi, pendampingan atasan, target awal, dan evaluasi masa probation.", author: "HRD" },
+  { title: "Training Product Knowledge (Produk & Layanan)", category: "Product Knowledge", file_type: "Deck", description: "Materi pengenalan produk/layanan, keunggulan, perbandingan kompetitor, dan skenario menjawab pertanyaan pelanggan.", author: "Sales & Marketing" },
+  { title: "Training SOP & Kebijakan Perusahaan", category: "SOP", file_type: "Modul", description: "Kumpulan SOP dasar: alur kerja, administrasi, keselamatan kerja, disiplin, dan Peraturan Perusahaan.", author: "HRD" },
+  { title: "Training Komunikasi Efektif & Service Excellence", category: "Komunikasi", file_type: "Deck", description: "Deck komunikasi efektif: etika komunikasi internal, pelanggan, penanganan komplain, dan standar pelayanan.", author: "HRD" },
+  { title: "Training Kepemimpinan Dasar untuk Supervisor", category: "Kepemimpinan", file_type: "Deck", description: "Materi dasar kepemimpinan: delegasi, coaching, umpan balik, dan pengelolaan tim.", author: "HRD" }
+];
+
+async function seedStarterMaterials(session, reload) {
+  const confirmed = await confirmDialog(
+    "Tambahkan 6 materi training basic (onboarding, product knowledge, SOP, komunikasi, kepemimpinan) sebagai kerangka awal?\n\nLink file dapat diisi/diedit HRD setelah materi dibuat.",
+    { title: "Isi Materi Training Basic", danger: false }
+  );
+  if (!confirmed) return;
+  try {
+    for (const item of STARTER_MATERIALS) {
+      await fsAdd(C.materials, { ...item, file_url: "", file_name: "", created_by: session?.nama || session?.username || "HRD" });
+    }
+    toast("Materi basic berhasil ditambahkan. Lengkapi link file pada tiap materi.", "success");
+    reload();
+  } catch (error) {
+    console.error("seed training materials", error);
+    toast(error.message || "Gagal mengisi materi training basic.", "error");
+  }
+}
+
+async function materialModal(session, item, reload) {
+  const editing = Boolean(item?.id);
+  openModal({
+    title: editing ? "Edit Modul / Deck Training" : "Tambah Modul / Deck Training",
+    size: "lg",
+    bodyHtml: `
+      <form id="material-form" class="space-y-4">
+        <label class="block text-xs font-semibold text-slate-600">Judul Modul / Deck *
+          <input id="m-title" required value="${esc(item?.title || "")}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" placeholder="Cth: Training Product Knowledge Batch 1">
+        </label>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label class="block text-xs font-semibold text-slate-600">Kategori Training
+            <select id="m-category" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm bg-white">${materialOptions(MATERIAL_CATEGORIES, item?.category || "Onboarding")}</select>
+          </label>
+          <label class="block text-xs font-semibold text-slate-600">Tipe File
+            <select id="m-type" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm bg-white">${materialOptions(MATERIAL_TYPES, item?.file_type || "Modul")}</select>
+          </label>
+        </div>
+        <label class="block text-xs font-semibold text-slate-600">Link File (Google Drive / URL)
+          <input id="m-url" type="url" value="${esc(item?.file_url || "")}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" placeholder="https://drive.google.com/...">
+        </label>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label class="block text-xs font-semibold text-slate-600">Nama File
+            <input id="m-filename" value="${esc(item?.file_name || "")}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" placeholder="Cth: Deck_Product_Knowledge.pdf">
+          </label>
+          <label class="block text-xs font-semibold text-slate-600">Penyusun / Divisi
+            <input id="m-author" value="${esc(item?.author || "")}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" placeholder="Cth: HRD / Sales & Marketing">
+          </label>
+        </div>
+        <label class="block text-xs font-semibold text-slate-600">Deskripsi Singkat
+          <textarea id="m-desc" rows="3" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" placeholder="Isi materi, sasaran peserta, dan catatan penggunaan…">${esc(item?.description || "")}</textarea>
+        </label>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" id="m-cancel" class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600">Batal</button>
+          <button type="submit" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">${editing ? "Simpan Perubahan" : "Tambah Materi"}</button>
+        </div>
+      </form>`,
+    onMount: backdrop => {
+      const form = backdrop.querySelector("#material-form");
+      backdrop.querySelector("#m-cancel")?.addEventListener("click", closeModal);
+      form.onsubmit = async event => {
+        event.preventDefault();
+        const payload = {
+          title: val(form, "#m-title"),
+          category: val(form, "#m-category"),
+          file_type: val(form, "#m-type"),
+          file_url: val(form, "#m-url"),
+          file_name: val(form, "#m-filename"),
+          author: val(form, "#m-author"),
+          description: val(form, "#m-desc")
+        };
+        if (!payload.title) return toast("Judul modul wajib diisi.", "warning");
+        if (payload.file_url && !/^https?:\/\//i.test(payload.file_url)) return toast("Link materi harus diawali http:// atau https://", "warning");
+        const button = form.querySelector('button[type="submit"]');
+        button.disabled = true; button.textContent = "Menyimpan…";
+        try {
+          if (editing) await fsUpdate(C.materials, item.id, payload);
+          else await fsAdd(C.materials, payload);
+          toast(editing ? "Modul / deck training diperbarui." : "Modul / deck training ditambahkan.", "success");
+          closeModal();
+          reload();
+        } catch (error) {
+          console.error("save training material", error);
+          toast(error.message || "Gagal menyimpan modul / deck training.", "error");
+          button.disabled = false; button.textContent = editing ? "Simpan Perubahan" : "Tambah Materi";
+        }
+      };
+    }
+  });
+}
+
+async function renderLibrary(wrap, session, data, reload) {
+  const materials = (data.materials || []).slice().sort((a, b) =>
+    String(categoryLabel(a.category)).localeCompare(String(categoryLabel(b.category)), "id") ||
+    String(a.title || "").localeCompare(String(b.title || ""), "id")
+  );
+  const canManage = isHrd(session);
+  const categories = [...new Set(materials.map(item => item.category || "Lainnya"))];
+  const chipActive = "rounded-full bg-maroon-700 px-3 py-1.5 text-[11px] font-semibold text-white";
+  const chipIdle = "rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600";
+  wrap.innerHTML = `
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div>
+        <h2 class="text-lg font-bold text-slate-800">Modul &amp; Deck Training</h2>
+        <p class="text-xs text-slate-400">Pustaka file modul, deck, dan video untuk training basic: onboarding, product knowledge, SOP, komunikasi, dan lainnya.</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        ${canManage && materials.length === 0 ? `<button id="seed-materials" class="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700">Isi Materi Basic (Starter)</button>` : ""}
+        ${canManage ? `<button id="add-material" class="rounded-lg bg-maroon-700 px-4 py-2 text-xs font-semibold text-white">+ Tambah Modul / Deck</button>` : ""}
+      </div>
+    </div>
+    <div class="flex flex-col lg:flex-row lg:items-center gap-3">
+      <input id="material-search" type="search" placeholder="Cari judul, kategori, atau penyusun…" class="w-full lg:w-80 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+      <div id="material-chips" class="flex flex-wrap gap-2">
+        <button type="button" data-chip="" class="${chipActive}">Semua (${materials.length})</button>
+        ${categories.map(category => `<button type="button" data-chip="${esc(category)}" class="${chipIdle}">${esc(categoryLabel(category))} (${materials.filter(item => (item.category || "Lainnya") === category).length})</button>`).join("")}
+      </div>
+    </div>
+    <div id="material-grid" class="grid md:grid-cols-2 xl:grid-cols-3 gap-4"></div>`;
+
+  const grid = wrap.querySelector("#material-grid");
+  const searchInput = wrap.querySelector("#material-search");
+  const chips = [...wrap.querySelectorAll("[data-chip]")];
+  let activeCategory = "";
+  let query = "";
+
+  function draw() {
+    const rows = materials.filter(item => {
+      const matchCategory = !activeCategory || (item.category || "Lainnya") === activeCategory;
+      const haystack = [item.title, item.category, item.file_type, item.author, item.description].join(" ").toLowerCase();
+      return matchCategory && (!query || haystack.includes(query));
+    });
+    grid.innerHTML = rows.map(item => `
+      <article class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm flex flex-col">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="rounded-md bg-maroon-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-maroon-700">${esc(categoryLabel(item.category))}</span>
+          <span class="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">${esc(item.file_type || "Modul")}</span>
+        </div>
+        <h3 class="mt-3 font-bold text-slate-800 leading-snug">${esc(item.title || "Tanpa Judul")}</h3>
+        <p class="mt-1 text-xs text-slate-500">${esc(item.description || "Belum ada deskripsi materi.")}</p>
+        <p class="mt-2 text-[10px] text-slate-400">${item.author ? `Penyusun: ${esc(item.author)} · ` : ""}Diperbarui ${dateText(item.updated_at || item.created_at)}${item.file_name ? ` · ${esc(item.file_name)}` : ""}</p>
+        <div class="mt-auto pt-4 flex flex-wrap gap-2">
+          ${item.file_url
+            ? `<a href="${esc(item.file_url)}" target="_blank" rel="noopener noreferrer" class="rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-white">Buka Materi</a>`
+            : `<span class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">Link belum diatur HRD</span>`}
+          ${canManage ? `<button type="button" data-edit-material="${esc(item.id)}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600">Edit</button>
+          <button type="button" data-delete-material="${esc(item.id)}" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700">Hapus</button>` : ""}
+        </div>
+      </article>`).join("") || empty(materials.length ? "Tidak ada materi yang cocok dengan pencarian / filter." : "Belum ada modul atau deck training.");
+
+    grid.querySelectorAll("[data-edit-material]").forEach(button => button.onclick = () => materialModal(session, materials.find(entry => entry.id === button.dataset.editMaterial), reload));
+    grid.querySelectorAll("[data-delete-material]").forEach(button => button.onclick = async () => {
+      const target = materials.find(entry => entry.id === button.dataset.deleteMaterial);
+      const confirmed = await confirmDialog(`Hapus materi "${target?.title || "-"}" dari pustaka training?`, { title: "Hapus Materi Training", danger: true });
+      if (!confirmed) return;
+      try {
+        await trainingApi({ action: "delete_material", id: button.dataset.deleteMaterial });
+        toast("Materi training dihapus.", "success");
+        reload();
+      } catch (error) {
+        console.error("delete training material", error);
+        toast(error.message || "Gagal menghapus materi training.", "error");
+      }
+    });
+  }
+
+  searchInput.oninput = () => { query = searchInput.value.trim().toLowerCase(); draw(); };
+  chips.forEach(chip => chip.onclick = () => {
+    activeCategory = chip.dataset.chip || "";
+    chips.forEach(other => other.className = other === chip ? chipActive : chipIdle);
+    draw();
+  });
+  wrap.querySelector("#add-material")?.addEventListener("click", () => materialModal(session, null, reload));
+  wrap.querySelector("#seed-materials")?.addEventListener("click", () => seedStarterMaterials(session, reload));
+  draw();
 }
 
 async function renderMy(wrap, session, data, reload) {
