@@ -115,6 +115,63 @@ function defaultSisaGajiStart(outDate, cutoffDay) {
  return toIsoDateLocal(start);
 }
 
+// ============================================================
+// KETENTUAN UANG PISAH (DAPAT DIUBAH LANGSUNG OLEH HRD)
+// Default: 3-<6 thn = 1x gaji; 6-<9 thn = 2x gaji; >=9 thn = 3x gaji
+// ============================================================
+const DEFAULT_UANG_PISAH_TIERS = Object.freeze([
+ { min_years: 3, max_years: 6, multiplier: 1 },
+ { min_years: 6, max_years: 9, multiplier: 2 },
+ { min_years: 9, max_years: null, multiplier: 3 }
+]);
+
+function normalizeUangPisahTiers(input) {
+ const fallback = DEFAULT_UANG_PISAH_TIERS.map(tier => ({ ...tier }));
+ if (!Array.isArray(input) || !input.length) return fallback;
+ const tiers = input.map(item => {
+ const minYears = Math.max(0, Number(item?.min_years) || 0);
+ const rawMax = item?.max_years;
+ const maxYears = (rawMax === null || rawMax === undefined || rawMax === "") ? null : Math.max(0, Number(rawMax));
+ return { min_years: minYears, max_years: maxYears, multiplier: Math.max(0, Number(item?.multiplier) || 0) };
+ }).filter(tier => tier.max_years === null || tier.max_years > tier.min_years)
+ .sort((a, b) => a.min_years - b.min_years);
+ return tiers.length ? tiers : fallback;
+}
+
+function uangPisahMultiplier(masaKerjaTahun, tiers) {
+ const years = Math.max(0, Number(masaKerjaTahun) || 0);
+ for (const tier of normalizeUangPisahTiers(tiers)) {
+ const maxYears = tier.max_years === null ? Infinity : tier.max_years;
+ if (years >= tier.min_years && years < maxYears) return tier.multiplier;
+ }
+ return 0;
+}
+
+function formatUangPisahTiers(tiers) {
+ return normalizeUangPisahTiers(tiers).map(tier => {
+ const batas = tier.max_years === null ? `>= ${tier.min_years} tahun` : `${tier.min_years} s.d. < ${tier.max_years} tahun`;
+ return `${batas}: ${tier.multiplier}x gaji`;
+ }).join(" | ");
+}
+
+/** Baca ketentuan uang pisah dari baris input HRD di form offboarding. */
+function readUangPisahTiersFromDom(root, fallback) {
+ if (!root) return normalizeUangPisahTiers(fallback);
+ const box = root.querySelector("#uang-pisah-tiers");
+ if (!box) return normalizeUangPisahTiers(fallback);
+ const rows = Array.from(box.querySelectorAll(".uang-pisah-tier-row"));
+ const tiers = rows.map(row => {
+ const maxRaw = row.querySelector(".tier-max")?.value || "";
+ return {
+ min_years: parseFloat(row.querySelector(".tier-min")?.value || "0") || 0,
+ max_years: maxRaw === "" ? null : (parseFloat(maxRaw) || null),
+ multiplier: parseFloat(row.querySelector(".tier-mult")?.value || "0") || 0
+ };
+ }).filter(tier => tier.max_years === null || tier.max_years > tier.min_years)
+ .sort((a, b) => a.min_years - b.min_years);
+ return tiers.length ? tiers : normalizeUangPisahTiers(DEFAULT_UANG_PISAH_TIERS);
+}
+
 // FUNGSI CETAK SURAT EXIT CLEARANCE & HANDOVER PEKERJAAN (PDF & PREVIEW)
 async function printExitClearancePdf(data) {
  const { downloadHtmlAsPdf, toast, openModal } = await import("../utils.js");
@@ -463,7 +520,7 @@ async function printPerjanjianBersamaPdf(data) {
  const { downloadHtmlAsPdf, openModal } = await import("../utils.js");
  const {
  karyawan, alasan, tglEfektif, tglSurat, nomorSurat, masaKerjaTahun, masaKerjaBulan,
- sisaGaji, mcu, assets, catatanTambahan
+ sisaGaji, uangPisah, mcu, assets, catatanTambahan
  } = data;
 
  const session = getSession() || {};
@@ -487,7 +544,9 @@ async function printPerjanjianBersamaPdf(data) {
  const potonganMcu = Number((mcu && mcu.potongan_sisa_gaji) || 0);
  const kekuranganMcu = Number((mcu && mcu.kekurangan_dibayar_karyawan) || 0);
  const metodeMcu = (mcu && mcu.metode_pembayaran) || "-";
- const totalDiterima = Math.max(0, sisaGajiNominal - potonganMcu);
+ const uangPisahNominal = Number((uangPisah && uangPisah.nominal) || 0);
+ const uangPisahMult = Number((uangPisah && uangPisah.multiplier) || 0);
+ const totalDiterima = Math.max(0, sisaGajiNominal + uangPisahNominal - potonganMcu);
 
  const exitDate = parseLocalDate(tglEfektif) || new Date();
  const bulanGajiTeks = `${NAMA_BULAN_ID[exitDate.getMonth()].toUpperCase()} ${exitDate.getFullYear()}`;
@@ -585,6 +644,7 @@ async function printPerjanjianBersamaPdf(data) {
 
  <table style="width:100%; border-collapse:collapse; font-size:10px; margin:4px 0 8px;">
  <tr><td style="padding:2px 0;">Total Sisa Upah</td><td style="text-align:right; font-weight:bold;">${fmtRupiah(sisaGajiNominal)}</td></tr>
+ ${uangPisahNominal > 0 ? `<tr><td style="padding:2px 0;">Uang Pisah (${uangPisahMult}x gaji &mdash; masa kerja ${Number(masaKerjaTahun || 0)} tahun)</td><td style="text-align:right; font-weight:bold;">${fmtRupiah(uangPisahNominal)}</td></tr>` : ""}
  ${mcu && mcu.wajib && metodeMcu === "POTONG_SISA_GAJI" ? `<tr><td style="padding:2px 0;">Potongan Penggantian Biaya MCU</td><td style="text-align:right; font-weight:bold; color:#b91c1c;">- ${fmtRupiah(potonganMcu)}</td></tr>` : ""}
  <tr style="border-top:1px solid #000;"><td style="padding:3px 0; font-weight:bold;">Total Sisa Hak Diterima Pihak Kedua</td><td style="text-align:right; font-weight:bold;">${fmtRupiah(totalDiterima)}</td></tr>
  ${mcu && mcu.wajib && kekuranganMcu > 0 ? `<tr><td style="padding:2px 0; color:#b91c1c;">Kekurangan biaya MCU yang wajib dibayar Pihak Kedua</td><td style="text-align:right; font-weight:bold; color:#b91c1c;">${fmtRupiah(kekuranganMcu)}</td></tr>` : ""}
@@ -978,6 +1038,16 @@ export async function mount(container) {
  } catch (errExit) {
  console.warn("Gagal memuat link Google Form Exit Interview:", errExit);
  }
+
+ // Ketentuan uang pisah (disimpan HRD, dapat diubah kapan saja)
+ let uangPisahTiers = DEFAULT_UANG_PISAH_TIERS.map(tier => ({ ...tier }));
+ try {
+ const rulesSnap = await getDoc(doc(db, COL.APP_SETTINGS, "offboarding_rules"));
+ const savedTiers = rulesSnap.exists() ? rulesSnap.data()?.uang_pisah_tiers : null;
+ if (Array.isArray(savedTiers) && savedTiers.length) uangPisahTiers = normalizeUangPisahTiers(savedTiers);
+ } catch (errRule) {
+ console.warn("Gagal memuat ketentuan uang pisah:", errRule);
+ }
  const activeKaryawan = allKaryawan
  .filter(k => (k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF")
  .filter(k => branchMatches(branchScope, k.cabang));
@@ -1071,6 +1141,8 @@ export async function mount(container) {
  <option value="Mangkir">Mangkir > 5 Hari Kerja - Pasal 52</option>
  <option value="Pelanggaran Berat">PHK - Pelanggaran Peraturan Berat - Pasal 53</option>
  <option value="Pensiun">Mencapai Usia Pensiun - Pasal 47</option>
+ </select>
+ </div>
 
  <!-- FORM EXIT INTERVIEW (GOOGLE FORM) - DISEMATKAN PADA EMAIL OFFBOARDING -->
  <div class="border border-blue-200 rounded-xl p-3 bg-blue-50 space-y-2">
@@ -1147,8 +1219,29 @@ export async function mount(container) {
  <textarea id="off-pb-catatan" rows="2" class="w-full px-2.5 py-1.5 text-xs border border-emerald-300 rounded-lg outline-none focus:border-emerald-500 bg-white" placeholder="Cth: Kedua pihak sepakat menyelesaikan seluruh kewajiban secara kekeluargaan."></textarea>
  </div>
  </div>
- </select>
+
+ <!-- KETENTUAN UANG PISAH - DAPAT DIUBAH LANGSUNG OLEH HRD -->
+ <details class="border border-amber-200 rounded-xl bg-amber-50 p-3">
+ <summary class="cursor-pointer text-xs font-black text-amber-800 uppercase tracking-wide">Ketentuan Uang Pisah (Resign) - dapat diubah HRD</summary>
+ <div class="mt-3 space-y-2">
+ <p class="text-[11px] text-amber-700 leading-relaxed">Berlaku untuk karyawan tetap yang mengundurkan diri. Uang pisah = <b>pengali &times; (gaji pokok + tunjangan tetap)</b>. Kosongkan kolom "s.d. &lt;" untuk tingkat tanpa batas atas. Perubahan di sini langsung dipakai pada perhitungan, tombol <b>Simpan Ketentuan</b> menjadikannya default untuk offboarding berikutnya.</p>
+ <div class="grid grid-cols-12 gap-2 text-[10px] font-bold text-amber-800 px-1">
+ <div class="col-span-4">Masa Kerja &ge; (tahun)</div>
+ <div class="col-span-4">s.d. &lt; (tahun)</div>
+ <div class="col-span-3">Pengali Gaji</div>
+ <div class="col-span-1 text-center">Aksi</div>
  </div>
+ <div id="uang-pisah-tiers" class="space-y-2"></div>
+ <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+ <button type="button" id="btn-add-pisah-tier" class="px-2.5 py-1 text-[11px] font-bold text-amber-800 bg-white border border-amber-300 rounded-lg hover:bg-amber-100 transition shadow-sm">+ Tambah Tingkat</button>
+ <div class="flex flex-wrap gap-2">
+ <button type="button" id="btn-reset-pisah-tier" class="px-2.5 py-1 text-[11px] font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition shadow-sm">Reset Default</button>
+ <button type="button" id="btn-save-pisah-tier" class="px-2.5 py-1 text-[11px] font-bold text-white bg-amber-600 border border-amber-600 rounded-lg hover:bg-amber-700 transition shadow-sm">Simpan Ketentuan</button>
+ </div>
+ </div>
+ </div>
+ </details>
+
  <div>
  <label class="block text-xs font-bold text-slate-600 mb-1">Karyawan Pengganti (Penerima Handover Pekerjaan)</label>
  <select id="off-pengganti" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-maroon-400 bg-white font-medium text-slate-700">
@@ -1500,6 +1593,58 @@ export async function mount(container) {
  refreshSisaGajiSummary();
  }
 
+ // ==== EDITOR KETENTUAN UANG PISAH (LANGSUNG OLEH HRD) ====
+ const tiersBox = dynFields.querySelector("#uang-pisah-tiers");
+
+ function addPisahTierRow(tier = {}) {
+ if (!tiersBox) return;
+ const row = document.createElement("div");
+ row.className = "uang-pisah-tier-row grid grid-cols-12 gap-2 items-center";
+ const maxVal = (tier.max_years === null || tier.max_years === undefined) ? "" : Number(tier.max_years);
+ row.innerHTML = `
+ <div class="col-span-4"><input type="number" min="0" step="0.5" class="tier-min w-full px-2 py-1 text-xs border border-amber-300 rounded-md outline-none focus:border-amber-500 bg-white" value="${Number(tier.min_years || 0)}"></div>
+ <div class="col-span-4"><input type="number" min="0" step="0.5" class="tier-max w-full px-2 py-1 text-xs border border-amber-300 rounded-md outline-none focus:border-amber-500 bg-white" placeholder="Tanpa batas" value="${maxVal}"></div>
+ <div class="col-span-3"><input type="number" min="0" step="0.5" class="tier-mult w-full px-2 py-1 text-xs border border-amber-300 rounded-md outline-none focus:border-amber-500 bg-white font-bold" value="${Number(tier.multiplier || 0)}"></div>
+ <div class="col-span-1 text-center"><button type="button" class="btn-del-tier text-[11px] font-bold text-rose-600 hover:bg-rose-50 rounded px-1 py-1" title="Hapus tingkat">Hapus</button></div>`;
+ row.querySelector(".btn-del-tier").onclick = () => {
+ if (tiersBox.children.length > 1) row.remove();
+ else toast("Minimal 1 tingkat uang pisah", "info");
+ };
+ tiersBox.appendChild(row);
+ }
+
+ function renderPisahTiers(tiers) {
+ if (!tiersBox) return;
+ tiersBox.innerHTML = "";
+ normalizeUangPisahTiers(tiers).forEach(tier => addPisahTierRow(tier));
+ }
+
+ function readPisahTiersFromForm() {
+ return readUangPisahTiersFromDom(dynFields, uangPisahTiers);
+ }
+
+ renderPisahTiers(uangPisahTiers);
+
+ dynFields.querySelector("#btn-add-pisah-tier")?.addEventListener("click", () => addPisahTierRow({ min_years: 0, max_years: null, multiplier: 0 }));
+ dynFields.querySelector("#btn-reset-pisah-tier")?.addEventListener("click", () => {
+ renderPisahTiers(DEFAULT_UANG_PISAH_TIERS);
+ toast("Form direset ke ketentuan default. Klik Simpan Ketentuan untuk menyimpannya.", "info");
+ });
+ dynFields.querySelector("#btn-save-pisah-tier")?.addEventListener("click", async () => {
+ const tiers = readPisahTiersFromForm();
+ try {
+ await setDoc(doc(db, COL.APP_SETTINGS, "offboarding_rules"), {
+ uang_pisah_tiers: tiers,
+ updated_at: new Date().toISOString()
+ }, { merge: true });
+ uangPisahTiers = tiers;
+ toast("Ketentuan uang pisah tersimpan dan langsung berlaku untuk offboarding berikutnya.", "success");
+ } catch (error) {
+ console.error("Gagal menyimpan ketentuan uang pisah:", error);
+ toast("Gagal menyimpan ketentuan uang pisah: " + error.message, "error");
+ }
+ });
+
  // Checklist items container and default loader
  const chkBox = dynFields.querySelector("#offboarding-checklist-container");
  const btnAddChk = dynFields.querySelector("#btn-add-checklist-row");
@@ -1817,12 +1962,11 @@ if (btnKalkulasi) {
  const hariKerjaTotal = Math.max(0, Math.floor(diffTime / 86400000));
  const masaKerjaBulan = Math.floor(hariKerjaTotal / 30.4375);
 
- const hitungUangPisah = (y, upah) => {
- if (y >= 9) return 4 * upah;
- if (y >= 6) return 3 * upah;
- if (y >= 3) return 2 * upah;
- return 0;
- };
+ const tiersUsed = readUangPisahTiersFromDom(dynFields, uangPisahTiers);
+ const uangPisahBerlaku = ["Resign", "Mangkir", "Pelanggaran Berat"].includes(alasan);
+ const uangPisahMult = uangPisahBerlaku ? uangPisahMultiplier(mathYears, tiersUsed) : 0;
+
+ const hitungUangPisah = (y, upah) => uangPisahBerlaku ? uangPisahMultiplier(y, tiersUsed) * upah : 0;
 
  const hitungPesangon = (y, upah) => {
  let bln = y + 1;
@@ -1945,6 +2089,7 @@ if (btnKalkulasi) {
     }).filter(Boolean);
 
  payloadLog.tanggal_efektif = out.toISOString();
+ const uangPisahLabel = alasan === "Habis Kontrak" ? "Uang Kompensasi PKWT (PP 35/2021)" : "Uang Pisah (Psl 61/62)";
  payloadLog.keterangan = `Alasan: ${alasan}${penggantiVal ? ` | Pengganti: ${penggantiVal}` : ''}${mcuWajib ? ` | Wajib Ganti Biaya MCU: ${fmtRupiah(biayaMcu)} (${mcuStatus})` : ''}${sisaGajiInfo.sisaGaji > 0 ? ` | Sisa Gaji: ${fmtRupiah(sisaGajiInfo.sisaGaji)} (${sisaGajiInfo.sisaHariKerja} hari)` : ''}${mcuWajib && metodeMcu === "POTONG_SISA_GAJI" ? ` | MCU dipotong dari sisa gaji: ${fmtRupiah(potonganSisaGaji)}` : ''}`;
  payloadLog.detail_offboarding = { 
  masa_kerja_tahun: mathYears, 
@@ -1969,6 +2114,12 @@ if (btnKalkulasi) {
  sisa_hari_kerja: sisaGajiInfo.sisaHariKerja,
  gaji_per_hari: sisaGajiInfo.gajiPerHari,
  sisa_gaji: sisaGajiInfo.sisaGaji
+ },
+ uang_pisah_rule: {
+ masa_kerja_tahun: mathYears,
+ multiplier: uangPisahMult,
+ nominal: uangPisah,
+ tiers: tiersUsed
  },
  penggantian_mcu: {
  wajib: mcuWajib,
@@ -2038,7 +2189,7 @@ if (btnKalkulasi) {
  <div class="space-y-2 mb-6">
  <div class="p-3 bg-white rounded-lg border border-slate-200 flex justify-between items-center"><span class="text-xs font-semibold text-slate-500">Uang Pesangon (Psl 58)</span><span class="font-bold text-maroon-700">${fmtRupiah(pesangon)}</span></div>
  <div class="p-3 bg-white rounded-lg border border-slate-200 flex justify-between items-center"><span class="text-xs font-semibold text-slate-500">Uang Penghargaan Masa Kerja</span><span class="font-bold text-maroon-700">${fmtRupiah(upmk)}</span></div>
- <div class="p-3 bg-white rounded-lg border border-slate-200 flex justify-between items-center"><span class="text-xs font-semibold text-slate-500">Uang Pisah (Psl 61/62)</span><span class="font-bold text-maroon-700">${fmtRupiah(uangPisah)}</span></div>
+ <div class="p-3 bg-white rounded-lg border border-slate-200 flex justify-between items-center"><span class="text-xs font-semibold text-slate-500">${escapeHtml(uangPisahLabel)}${uangPisahMult > 0 ? ` &mdash; ${uangPisahMult}x gaji` : ""}</span><span class="font-bold text-maroon-700">${fmtRupiah(uangPisah)}</span></div>
  <div class="p-3 bg-emerald-50 rounded-lg border border-emerald-200 flex justify-between items-center"><span class="text-xs font-semibold text-emerald-700">Sisa Gaji Berjalan (${sisaGajiInfo.sisaHariKerja} hari kerja)</span><span class="font-bold text-emerald-800">${fmtRupiah(sisaGajiInfo.sisaGaji)}</span></div>
  <div class="p-3 ${mcuWajib ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'} rounded-lg border flex justify-between items-center"><span class="text-xs font-semibold ${mcuWajib ? 'text-red-700' : 'text-slate-500'}">Penggantian Biaya MCU (Probation / Kontrak Pertama)</span><span class="font-bold ${mcuWajib ? 'text-red-700' : 'text-slate-400'}">${mcuWajib ? fmtRupiah(biayaMcu) : 'Tidak Wajib'}</span></div>
  ${mcuWajib ? `<div class="p-3 bg-white rounded-lg border border-slate-200 flex justify-between items-center"><span class="text-xs font-semibold text-slate-500">${metodeMcu === "POTONG_SISA_GAJI" ? "Potongan MCU dari Sisa Gaji" : "MCU Dibayar Sendiri oleh Karyawan"}</span><span class="font-bold ${metodeMcu === "POTONG_SISA_GAJI" ? "text-red-700" : "text-slate-600"}">${metodeMcu === "POTONG_SISA_GAJI" ? fmtRupiah(potonganSisaGaji) : fmtRupiah(biayaMcu)}</span></div>
@@ -2317,6 +2468,7 @@ if (btnKalkulasi) {
  masaKerjaTahun: payloadLog.detail_offboarding?.masa_kerja_tahun || 0,
  masaKerjaBulan: payloadLog.detail_offboarding?.masa_kerja_bulan || 0,
  sisaGaji: payloadLog.detail_offboarding?.sisa_gaji || null,
+ uangPisah: payloadLog.detail_offboarding?.uang_pisah_rule || null,
  mcu: payloadLog.detail_offboarding?.penggantian_mcu || null,
  pengganti: payloadLog.detail_offboarding?.karyawan_pengganti || "",
  assets: payloadLog.detail_offboarding?.assigned_assets || [],
@@ -2442,6 +2594,7 @@ if (btnKalkulasi) {
      { label: "Tanggal Efektif", value: fmtDateShort(payloadLog.tanggal_efektif) },
      { label: "Keterangan", value: payloadLog.keterangan || "-" },
      ...(sisaInfo && Number(sisaInfo.sisa_gaji) > 0 ? [{ label: "Sisa Gaji Berjalan", value: `${fmtRupiah(sisaInfo.sisa_gaji)} (${sisaInfo.sisa_hari_kerja} hari kerja)` }] : []),
+     ...(Number(payloadLog.detail_offboarding?.uang_pisah_rule?.nominal || 0) > 0 ? [{ label: "Uang Pisah", value: `${fmtRupiah(payloadLog.detail_offboarding.uang_pisah_rule.nominal)} (${payloadLog.detail_offboarding.uang_pisah_rule.multiplier}x gaji)` }] : []),
      ...(mcuInfo?.wajib ? [{ label: "Wajib Ganti Biaya MCU", value: `${fmtRupiah(mcuInfo.biaya_mcu || 0)}${mcuInfo.metode_pembayaran === "POTONG_SISA_GAJI" ? ` - dipotong dari sisa gaji (${fmtRupiah(mcuInfo.potongan_sisa_gaji || 0)})` : " (selesaikan maks. 7 hari kerja)"}` }] : []),
      ...(payloadLog.detail_offboarding?.exit_interview?.form_url ? [{ label: "Form Exit Interview", value: "Google Form - silakan isi melalui tombol pada email ini" }] : [])
    ],
