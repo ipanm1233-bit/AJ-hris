@@ -158,14 +158,18 @@ export async function mount(container, { session }) {
    </div>
  </div>
 
- ${canManage ? `
+ ${(canManage || canViewAll) ? `
  <!-- TAB NAVIGASI UTAMA -->
- <div class="flex items-center gap-2 border-b border-slate-200">
- <button id="tab-mode-cards" class="px-4 py-2.5 text-xs font-bold border-b-2 border-maroon-700 text-maroon-700 transition flex items-center gap-2">
+ <div class="ui-tabs">
+ <button id="tab-mode-cards" class="ui-tab active">
  <i class="fa-solid fa-address-card text-sm"></i> Daftar Card Karyawan
  </button>
- <button id="tab-mode-table" class="px-4 py-2.5 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition flex items-center gap-2">
- <i class="fa-solid fa-file-excel text-sm"></i> Atur Jatah & Import Excel (SK 018)
+ ${canManage ? `
+ <button id="tab-mode-table" class="ui-tab">
+ <i class="fa-solid fa-file-excel text-sm"></i> Atur Jatah &amp; Import Excel (SK 018)
+ </button>` : ""}
+ <button id="tab-mode-global" class="ui-tab">
+ <i class="fa-solid fa-table-list text-sm"></i> Daftar Semua Cuti
  </button>
  </div>` : ""}
 
@@ -228,29 +232,70 @@ export async function mount(container, { session }) {
  </div>
  </div>
  </div>` : ""}
+
+ <!-- PANEL 3: DAFTAR SEMUA CUTI -->
+ ${(canManage || canViewAll) ? `
+ <div id="panel-view-global" class="hidden space-y-4">
+ <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+ <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-3">
+ <div>
+ <h2 class="text-sm font-bold text-slate-800">Daftar Semua Cuti Karyawan</h2>
+ <p class="text-[11px] text-slate-400">Seluruh riwayat cuti sesuai cabang, divisi, periode, dan pencarian.</p>
+ </div>
+ <span id="global-cuti-count" class="text-[11px] font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">0 data</span>
+ </div>
+ <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+ <label class="text-xs font-semibold text-slate-600">Dari tanggal<input id="global-cuti-from" type="date" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"></label>
+ <label class="text-xs font-semibold text-slate-600">Sampai tanggal<input id="global-cuti-to" type="date" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"></label>
+ <label class="text-xs font-semibold text-slate-600">Cabang<select id="global-cuti-branch" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs bg-white"><option value="">Semua cabang</option></select></label>
+ <label class="text-xs font-semibold text-slate-600">Divisi<select id="global-cuti-division" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs bg-white"><option value="">Semua divisi</option></select></label>
+ <label class="text-xs font-semibold text-slate-600">Cari<input id="global-cuti-search" type="search" placeholder="Nama, NIK, jenis cuti..." class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"></label>
+ </div>
+ </div>
+ <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+ <div class="max-h-[65vh] overflow-auto">
+ <table class="w-full">
+ <thead class="bg-slate-50 text-slate-600 uppercase sticky top-0">
+ <tr>
+ <th class="px-3 py-2 text-left text-xs">Nama</th>
+ <th class="px-3 py-2 text-left text-xs">NIK</th>
+ <th class="px-3 py-2 text-left text-xs">Jenis Cuti</th>
+ <th class="px-3 py-2 text-left text-xs">Tanggal Mulai</th>
+ <th class="px-3 py-2 text-left text-xs">Cabang</th>
+ <th class="px-3 py-2 text-left text-xs">Divisi</th>
+ </tr>
+ </thead>
+ <tbody id="global-cuti-body"></tbody>
+ </table>
+ </div>
+ </div>
+ </div>` : ""}
  </div>
  `;
 
- // TABS SWITCHER (Cards vs Table)
+ // TABS SWITCHER (Cards vs Table vs Daftar Semua Cuti)
  const tabCards = container.querySelector("#tab-mode-cards");
  const tabTable = container.querySelector("#tab-mode-table");
+ const tabGlobal = container.querySelector("#tab-mode-global");
  const panelCards = container.querySelector("#panel-view-cards");
  const panelTable = container.querySelector("#panel-view-table");
+ const panelGlobal = container.querySelector("#panel-view-global");
 
- if (tabCards && tabTable && panelCards && panelTable) {
- tabCards.onclick = () => {
- tabCards.className = "px-4 py-2.5 text-xs font-bold border-b-2 border-maroon-700 text-maroon-700 transition flex items-center gap-2";
- tabTable.className = "px-4 py-2.5 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition flex items-center gap-2";
- panelCards.classList.remove("hidden");
- panelTable.classList.add("hidden");
+ const activateCutiTab = (tabKey) => {
+  const tabMap = { cards: tabCards, table: tabTable, global: tabGlobal };
+  const panelMap = { cards: panelCards, table: panelTable, global: panelGlobal };
+  Object.entries(tabMap).forEach(([key, button]) => {
+   if (button) button.classList.toggle("active", key === tabKey);
+  });
+  Object.entries(panelMap).forEach(([key, panel]) => {
+   if (panel) panel.classList.toggle("hidden", key !== tabKey);
+  });
+  if (tabKey === "global") renderGlobalCutiPanel();
  };
- tabTable.onclick = () => {
- tabTable.className = "px-4 py-2.5 text-xs font-bold border-b-2 border-maroon-700 text-maroon-700 transition flex items-center gap-2";
- tabCards.className = "px-4 py-2.5 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition flex items-center gap-2";
- panelTable.classList.remove("hidden");
- panelCards.classList.add("hidden");
- };
- }
+
+ tabCards?.addEventListener("click", () => activateCutiTab("cards"));
+ tabTable?.addEventListener("click", () => activateCutiTab("table"));
+ tabGlobal?.addEventListener("click", () => activateCutiTab("global"));
 
  const wrap = container.querySelector("#cuti-cards-wrap");
  const searchInput = container.querySelector("#cuti-search");
@@ -482,6 +527,7 @@ export async function mount(container, { session }) {
  populateCabangDropdown();
  calculateBalances();
  applyFilters();
+ if (panelGlobal && !panelGlobal.classList.contains("hidden")) renderGlobalCutiPanel();
  } catch(e) { 
  if (wrap) wrap.innerHTML = `<div class="col-span-full text-red-500">Error: ${e.message}</div>`; 
  }
@@ -3222,89 +3268,75 @@ export async function mount(container, { session }) {
  });
  });
 
- const openGlobalCutiModal = () => {
-   const leaveRows = Array.isArray(allCuti) ? allCuti : [];
-   const branches = [...new Set(leaveRows.map(r => String(r.cabang || r.branch || "TANPA CABANG").trim() || "TANPA CABANG"))].sort((a, b) => a.localeCompare(b, "id", { sensitivity: "base" }));
-   const divisions = [...new Set(leaveRows.map(r => String(r.divisi || r.division || r.divisa || "TANPA DIVISI").trim() || "TANPA DIVISI"))].sort((a, b) => a.localeCompare(b, "id", { sensitivity: "base" }));
-   const escape = value => escapeHtml(value ?? "-");
-   const rowDate = value => String(value || "").slice(0, 10);
-   const buildRows = modal => leaveRows.filter(row => {
-     const dateValue = rowDate(row.tanggal_mulai || row.tanggal_cuti || row.tgl_mulai || row.start_date || row.tanggal);
-     const from = modal.querySelector("#global-cuti-from")?.value || "";
-     const to = modal.querySelector("#global-cuti-to")?.value || "";
-     const branch = modal.querySelector("#global-cuti-branch")?.value || "";
-     const division = modal.querySelector("#global-cuti-division")?.value || "";
-     const queryText = String(modal.querySelector("#global-cuti-search")?.value || "").trim().toLowerCase();
-     if (from && dateValue < from) return false;
-     if (to && dateValue > to) return false;
-     const rowBranch = String(row.cabang || row.branch || "TANPA CABANG").trim() || "TANPA CABANG";
-     const rowDivision = String(row.divisi || row.division || row.divisa || "TANPA DIVISI").trim() || "TANPA DIVISI";
-     if (branch && rowBranch !== branch) return false;
-     if (division && rowDivision !== division) return false;
-     const haystack = [row.nama_karyawan, row.nama, row.nik_karyawan, row.jenis_cuti, row.type_cuti, rowBranch, rowDivision, dateValue].join(" ").toLowerCase();
-     if (queryText && !haystack.includes(queryText)) return false;
-     return true;
-   }).map(row => `
-     <tr class="border-b border-slate-100 text-xs hover:bg-slate-50">
-       <td class="px-3 py-2 font-semibold">${escape(row.nama_karyawan || row.nama || "-")}</td>
-       <td class="px-3 py-2">${escape(row.nik_karyawan || row.nik || "-")}</td>
-       <td class="px-3 py-2">${escape(row.jenis_cuti || row.type_cuti || "-")}</td>
-       <td class="px-3 py-2">${escape(rowDate(row.tanggal_mulai || row.tanggal_cuti || row.tgl_mulai || row.start_date || row.tanggal) || "-")}</td>
-       <td class="px-3 py-2">${escape(row.cabang || row.branch || "-")}</td>
-       <td class="px-3 py-2">${escape(row.divisi || row.division || row.divisa || "-")}</td>
-     </tr>
-   `).join("") || `<tr><td colspan="6" class="px-3 py-4 text-center text-xs text-slate-400">Tidak ada data cuti sesuai filter</td></tr>`;
+ const renderGlobalCutiPanel = () => {
+  const body = container.querySelector("#global-cuti-body");
+  if (!body) return;
+  const leaveRows = Array.isArray(allCuti) ? allCuti : [];
+  const fromInput = container.querySelector("#global-cuti-from");
+  const toInput = container.querySelector("#global-cuti-to");
+  const branchSelect = container.querySelector("#global-cuti-branch");
+  const divisionSelect = container.querySelector("#global-cuti-division");
+  const searchInput = container.querySelector("#global-cuti-search");
+  const countEl = container.querySelector("#global-cuti-count");
+  const escape = value => escapeHtml(value ?? "-");
+  const rowDate = value => String(value || "").slice(0, 10);
 
-   openModal({
-     title: "Daftar Semua Cuti Karyawan",
-     size: "xl",
-     bodyHtml: `
-       <div class="space-y-4">
-         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
-           <label class="text-xs font-semibold text-slate-600">Dari tanggal<input id="global-cuti-from" type="date" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"></label>
-           <label class="text-xs font-semibold text-slate-600">Sampai tanggal<input id="global-cuti-to" type="date" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"></label>
-           <label class="text-xs font-semibold text-slate-600">Cabang<select id="global-cuti-branch" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs bg-white"><option value="">Semua cabang</option>${branches.map(branch => `<option value="${escape(branch)}">${escape(branch)}</option>`).join("")}</select></label>
-           <label class="text-xs font-semibold text-slate-600">Divisi<select id="global-cuti-division" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs bg-white"><option value="">Semua divisi</option>${divisions.map(division => `<option value="${escape(division)}">${escape(division)}</option>`).join("")}</select></label>
-           <label class="text-xs font-semibold text-slate-600">Cari<input id="global-cuti-search" type="search" placeholder="Nama, NIK, jenis cuti..." class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"></label>
-         </div>
-         <div class="max-h-[60vh] overflow-auto rounded-xl border border-slate-200">
-           <table class="w-full">
-             <thead class="bg-slate-50 text-slate-600 uppercase">
-               <tr>
-                 <th class="px-3 py-2 text-left text-xs">Nama</th>
-                 <th class="px-3 py-2 text-left text-xs">NIK</th>
-                 <th class="px-3 py-2 text-left text-xs">Jenis Cuti</th>
-                 <th class="px-3 py-2 text-left text-xs">Tanggal Mulai</th>
-                 <th class="px-3 py-2 text-left text-xs">Cabang</th>
-                 <th class="px-3 py-2 text-left text-xs">Divisi</th>
-               </tr>
-             </thead>
-             <tbody id="global-cuti-body"></tbody>
-           </table>
-         </div>
-       </div>
-     `,
-     onMount: modal => {
-       const rerender = () => {
-         const body = modal.querySelector("#global-cuti-body");
-         if (body) body.innerHTML = buildRows(modal);
-       };
-       ["#global-cuti-from", "#global-cuti-to", "#global-cuti-branch", "#global-cuti-division", "#global-cuti-search"].forEach(selector => {
-         const element = modal.querySelector(selector);
-         element?.addEventListener("input", rerender);
-         element?.addEventListener("change", rerender);
-       });
-       rerender();
-     }
-   });
+  if (fromInput && !fromInput.value && filterStartDate?.value) fromInput.value = filterStartDate.value;
+  if (toInput && !toInput.value && filterEndDate?.value) toInput.value = filterEndDate.value;
+
+  const branches = [...new Set(leaveRows.map(row => String(row.cabang || row.branch || "TANPA CABANG").trim() || "TANPA CABANG"))].sort((a, b) => a.localeCompare(b, "id", { sensitivity: "base" }));
+  const divisions = [...new Set(leaveRows.map(row => String(row.divisi || row.division || row.divisa || "TANPA DIVISI").trim() || "TANPA DIVISI"))].sort((a, b) => a.localeCompare(b, "id", { sensitivity: "base" }));
+
+  if (branchSelect && branchSelect.dataset.signature !== branches.join("|")) {
+   const current = branchSelect.value;
+   branchSelect.innerHTML = `<option value="">Semua cabang</option>` + branches.map(branch => `<option value="${escape(branch)}">${escape(branch)}</option>`).join("");
+   branchSelect.value = current;
+   branchSelect.dataset.signature = branches.join("|");
+  }
+  if (divisionSelect && divisionSelect.dataset.signature !== divisions.join("|")) {
+   const current = divisionSelect.value;
+   divisionSelect.innerHTML = `<option value="">Semua divisi</option>` + divisions.map(division => `<option value="${escape(division)}">${escape(division)}</option>`).join("");
+   divisionSelect.value = current;
+   divisionSelect.dataset.signature = divisions.join("|");
+  }
+
+  const from = fromInput?.value || "";
+  const to = toInput?.value || "";
+  const branch = branchSelect?.value || "";
+  const division = divisionSelect?.value || "";
+  const queryText = String(searchInput?.value || "").trim().toLowerCase();
+
+  const filtered = leaveRows.filter(row => {
+   const dateValue = rowDate(row.tanggal_mulai || row.tanggal_cuti || row.tgl_mulai || row.start_date || row.tanggal);
+   const rowBranch = String(row.cabang || row.branch || "TANPA CABANG").trim() || "TANPA CABANG";
+   const rowDivision = String(row.divisi || row.division || row.divisa || "TANPA DIVISI").trim() || "TANPA DIVISI";
+   if (from && dateValue < from) return false;
+   if (to && dateValue > to) return false;
+   if (branch && rowBranch !== branch) return false;
+   if (division && rowDivision !== division) return false;
+   const haystack = [row.nama_karyawan, row.nama, row.nik_karyawan, row.nik, row.jenis_cuti, row.type_cuti, rowBranch, rowDivision, dateValue].join(" ").toLowerCase();
+   return !queryText || haystack.includes(queryText);
+  });
+
+  body.innerHTML = filtered.map(row => `
+   <tr class="border-b border-slate-100 text-xs hover:bg-slate-50">
+    <td class="px-3 py-2 font-semibold">${escape(row.nama_karyawan || row.nama || "-")}</td>
+    <td class="px-3 py-2">${escape(row.nik_karyawan || row.nik || "-")}</td>
+    <td class="px-3 py-2">${escape(row.jenis_cuti || row.type_cuti || "-")}</td>
+    <td class="px-3 py-2">${escape(rowDate(row.tanggal_mulai || row.tanggal_cuti || row.tgl_mulai || row.start_date || row.tanggal) || "-")}</td>
+    <td class="px-3 py-2">${escape(row.cabang || row.branch || "-")}</td>
+    <td class="px-3 py-2">${escape(row.divisi || row.division || row.divisa || "-")}</td>
+   </tr>`).join("") || `<tr><td colspan="6" class="px-3 py-8 text-center text-xs text-slate-400">Tidak ada data cuti sesuai filter</td></tr>`;
+
+  if (countEl) countEl.textContent = `${filtered.length} data`;
  };
- const globalCutiEntry = document.createElement("div");
- globalCutiEntry.className = "mt-4";
- globalCutiEntry.innerHTML = '<button id="btn-global-cuti" type="button" class="px-4 py-2 bg-slate-900 hover:bg-slate-950 text-white rounded-xl text-xs font-bold transition shadow-sm">Daftar Semua Cuti</button>';
- const globalCutiContainer = container.querySelector(".max-w-7xl");
- if (globalCutiContainer) globalCutiContainer.appendChild(globalCutiEntry);
- const globalCutiButton = globalCutiEntry.querySelector("#btn-global-cuti");
- if (globalCutiButton) globalCutiButton.onclick = () => openGlobalCutiModal();
+
+ ["#global-cuti-from", "#global-cuti-to", "#global-cuti-branch", "#global-cuti-division", "#global-cuti-search"].forEach(selector => {
+  const element = container.querySelector(selector);
+  element?.addEventListener("input", renderGlobalCutiPanel);
+  element?.addEventListener("change", renderGlobalCutiPanel);
+ });
+
  loadData();
  return { unmount() {} };
 }
