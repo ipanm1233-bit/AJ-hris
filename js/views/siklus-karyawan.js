@@ -85,34 +85,40 @@ function hitungSisaGaji({ outDate, gajiPokok, cutoffDay = 21, hariKerjaPerBulan 
  const pembagi = Number(hariKerjaPerBulan) > 0 ? Number(hariKerjaPerBulan) : 25;
  const cutoff = Math.min(Math.max(parseInt(cutoffDay, 10) || 21, 1), 31);
  if (!out) return { gajiPerHari: 0, sisaHariKerja: 0, sisaGaji: 0, mulai: "", cutoffDay: cutoff, hariKerjaPerBulan: pembagi };
- const batasBulan = new Date(out.getFullYear(), out.getMonth() + 1, 0).getDate();
- const tglCutoff = new Date(out.getFullYear(), out.getMonth(), Math.min(cutoff, batasBulan));
- const start = parseLocalDate(startDate) || (out > tglCutoff
- ? new Date(out.getFullYear(), out.getMonth(), tglCutoff.getDate() + 1)
- : new Date(out.getFullYear(), out.getMonth(), 1));
+ const start = parseLocalDate(startDate) || parseLocalDate(defaultSisaGajiStart(out, cutoff));
  const gajiPerHari = Math.round(gaji / pembagi);
- const sisaHariKerja = countWorkingDaysInclusive(start, out);
+ const sisaHariKerja = Math.min(countWorkingDaysInclusive(start, out), pembagi);
  return {
  gajiPerHari,
  sisaHariKerja,
  sisaGaji: gajiPerHari * sisaHariKerja,
- mulai: toIsoDateLocal(start),
+ mulai: start ? toIsoDateLocal(start) : "",
  cutoffDay: cutoff,
  hariKerjaPerBulan: pembagi
  };
 }
 
-/** Tanggal default mulai dihitungnya sisa gaji (cut-off + 1, atau awal bulan bila keluar sebelum cut-off). */
+/**
+ * Awal periode sisa gaji mengikuti cut-off penggajian:
+ * gaji dibayar tgl 25 menghitung absensi 22 bulan sebelumnya s.d. 21 bulan berjalan.
+ * - Keluar setelah tgl cut-off (22 s.d. akhir bulan): mulai tgl 22 bulan berjalan
+ *   (periode payroll berikutnya yang belum dibayarkan).
+ * - Keluar tgl cut-off atau sebelumnya: mulai tgl 22 bulan sebelumnya
+ *   (periode payroll berjalan yang belum dibayarkan).
+ */
 function defaultSisaGajiStart(outDate, cutoffDay) {
  const out = parseLocalDate(outDate);
  if (!out) return "";
  const cutoff = Math.min(Math.max(parseInt(cutoffDay, 10) || 21, 1), 31);
  const batasBulan = new Date(out.getFullYear(), out.getMonth() + 1, 0).getDate();
  const tglCutoff = new Date(out.getFullYear(), out.getMonth(), Math.min(cutoff, batasBulan));
- const start = out > tglCutoff
- ? new Date(out.getFullYear(), out.getMonth(), tglCutoff.getDate() + 1)
- : new Date(out.getFullYear(), out.getMonth(), 1);
- return toIsoDateLocal(start);
+ if (out > tglCutoff) {
+ return toIsoDateLocal(new Date(out.getFullYear(), out.getMonth(), tglCutoff.getDate() + 1));
+ }
+ const bulanSebelumnya = new Date(out.getFullYear(), out.getMonth() - 1, 1);
+ const batasBulanLalu = new Date(bulanSebelumnya.getFullYear(), bulanSebelumnya.getMonth() + 1, 0).getDate();
+ const tglCutoffLalu = new Date(bulanSebelumnya.getFullYear(), bulanSebelumnya.getMonth(), Math.min(cutoff, batasBulanLalu));
+ return toIsoDateLocal(new Date(tglCutoffLalu.getFullYear(), tglCutoffLalu.getMonth(), tglCutoffLalu.getDate() + 1));
 }
 
 // ============================================================
@@ -179,7 +185,7 @@ async function printExitClearancePdf(data) {
  const { karyawan, pengganti, assets, tglEfektif, alasan, masaKerja, catatanHandover, handoverTasks, checklistDoc, penggantianMcu, sisaGaji } = data;
 
  const sisaGajiRow = (sisaGaji && Number(sisaGaji.sisa_gaji) > 0) ? `
- <tr><td>Sisa Gaji Berjalan</td><td><strong>${fmtRupiah(sisaGaji.sisa_gaji)}</strong> (${sisaGaji.sisa_hari_kerja} hari kerja x ${fmtRupiah(sisaGaji.gaji_per_hari)}; cut-off tgl ${sisaGaji.cutoff_hari}, dibayar tgl ${sisaGaji.tanggal_bayar_gaji || 25})</td></tr>
+ <tr><td>Sisa Gaji Berjalan</td><td><strong>${fmtRupiah(sisaGaji.sisa_gaji)}</strong> (${sisaGaji.sisa_hari_kerja} hari kerja x ${fmtRupiah(sisaGaji.gaji_per_hari)}; periode cut-off 22 bulan sebelumnya s.d. 21 bulan berjalan, dibayar tgl ${sisaGaji.tanggal_bayar_gaji || 25})</td></tr>
  ` : "";
 
  const mcuRowHtml = (penggantianMcu && penggantianMcu.wajib) ? `
@@ -633,7 +639,7 @@ async function printPerjanjianBersamaPdf(data) {
  </tr>
  </tbody>
  </table>
- <p style="margin:0 0 5px; font-size:9.5px; text-align:justify;">Perhitungan: ${fmtRupiah(gajiPokokTetap)} &divide; ${hariKerjaBulan} hari kerja = ${fmtRupiah(gajiPerHari)}/hari &times; ${sisaHariKerja} hari kerja (Senin&ndash;Sabtu) = <b>${fmtRupiah(sisaGajiNominal)}</b>. Cut-off penggajian tanggal ${Number(gaji.cutoff_hari || 21)} dan pembayaran gaji tanggal ${payDay} setiap bulan.</p>
+ <p style="margin:0 0 5px; font-size:9.5px; text-align:justify;">Perhitungan: ${fmtRupiah(gajiPokokTetap)} &divide; ${hariKerjaBulan} hari kerja = ${fmtRupiah(gajiPerHari)}/hari &times; ${sisaHariKerja} hari kerja (Senin&ndash;Sabtu) = <b>${fmtRupiah(sisaGajiNominal)}</b>. Cut-off penggajian tanggal ${Number(gaji.cutoff_hari || 21)} (periode 22 bulan sebelumnya s.d. 21 bulan berjalan) dan pembayaran gaji tanggal ${payDay} setiap bulan.</p>
 
  ${mcu && mcu.wajib ? `
  <div style="border:1px solid #b91c1c; background:#fef2f2; padding:6px; margin:5px 0; page-break-inside:avoid;">
@@ -1181,8 +1187,7 @@ export async function mount(container) {
  <div>
  <label class="block text-[10px] font-bold text-emerald-800 mb-1">Cut-off Gaji (tgl)</label>
  <input type="number" id="off-cutoff" min="1" max="31" value="21" class="w-full px-2.5 py-1.5 text-xs border border-emerald-300 rounded-lg outline-none focus:border-emerald-500 bg-white font-bold">
- </div>
- <div>
+ </div> <div>
  <label class="block text-[10px] font-bold text-emerald-800 mb-1">Hari Kerja / Bulan</label>
  <input type="number" id="off-harikerja" min="1" max="31" value="25" class="w-full px-2.5 py-1.5 text-xs border border-emerald-300 rounded-lg outline-none focus:border-emerald-500 bg-white font-bold">
  </div>
@@ -1195,6 +1200,7 @@ export async function mount(container) {
  <input type="date" id="off-sisa-mulai" class="w-full px-2 py-1 text-xs border border-emerald-300 rounded-lg outline-none focus:border-emerald-500 bg-white font-semibold">
  </div>
  </div>
+ <p class="text-[10px] text-emerald-700 leading-relaxed">Periode cut-off penggajian: <b>tanggal 22 bulan sebelumnya s.d. tanggal 21 bulan berjalan</b>. Contoh: gaji dibayar 25 Oktober menghitung absensi 22 September s.d. 21 Oktober.</p>
  <div id="off-sisa-summary" class="rounded-lg bg-white border border-emerald-100 p-2.5 text-[11px] text-slate-600">Isi gaji pokok + tunjangan tetap serta tanggal efektif keluar untuk menghitung sisa gaji otomatis.</div>
  <div id="wrap-mcu-metode" class="hidden rounded-lg bg-white border border-red-200 p-2.5 space-y-2">
  <label class="block text-[11px] font-bold text-red-800 mb-1">Metode Penggantian Biaya MCU</label>
