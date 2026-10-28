@@ -1,6 +1,6 @@
 import { db, COL, collection, query, where, getDocs, doc, getDoc, setDoc, updateDoc } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsUpdate, fsDelete, genId, openModal, closeModal, toast, fmtDate, fmtDateShort, escapeHtml, notifyUser, sendEmailNotif, buildStandardEmailHtml, resolveEmployeeEmail } from "../utils.js";
-import { badge, emptyState } from "../components.js";
+import { badge, emptyState, icon } from "../components.js";
 import { getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 import { letterheadHtml, officialDocStyles, officialPrintHtml, COMPANY_NAME, COMPANY_ADDRESS_LINE1 } from "../branding.js";
 import {
@@ -1942,7 +1942,7 @@ async function openGDocTemplateModal(session) {
  <label class="block font-bold text-slate-700 mb-1">${escapeHtml(dk.title)}</label>
  <div class="flex items-center gap-1.5">
  <input type="url" id="gdoc-url-${dk.id}" value="${escapeHtml(currentUrl)}" placeholder="https://docs.google.com/document/d/..." class="w-full p-2 text-xs rounded-xl border border-slate-200 font-mono outline-none focus:border-maroon-500 bg-white">
- <a href="${escapeHtml(currentUrl)}" target="_blank" class="p-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold text-xs" title="Buka Link Google Doc"></a>
+ <a href="${escapeHtml(currentUrl)}" target="_blank" class="inline-flex items-center justify-center p-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold text-xs" title="Buka Link Google Doc" aria-label="Buka link Google Doc">${icon("link", "w-4 h-4")}</a>
  </div>
  </div>
  `;

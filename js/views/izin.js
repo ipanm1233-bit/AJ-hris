@@ -1,6 +1,6 @@
 import { db, COL, collection, query, getDocs } from "../firebase-config.js";
 import { fsGetAll, fsDelete, genId, openModal, closeModal, toast, fmtDate, fmtDateShort, escapeHtml, getTargetsForRole, notifyUser, sendBranchInstantAlert } from "../utils.js";
-import { emptyState, skeletonRows } from "../components.js";
+import { emptyState, skeletonRows, icon } from "../components.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 import { isoDocHeaderTable, letterheadHtml, COMPANY_NAME, logoImgTag, LOGO_DATA_URI } from "../branding.js";
 import { hasSubMenuAccess, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
@@ -179,9 +179,7 @@ export async function mount(container, { session }) {
  </a>
  ` : ''}
  ${(isMyRecord || (isHrdOrAdmin && canEdit)) ? `
- <button data-del-izin="${r.id}" class="px-2 py-1 bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 rounded-lg font-bold text-[11px] border border-slate-200 transition" title="Hapus">
- 
- </button>
+ <button data-del-izin="${r.id}" class="px-2 py-1 bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 rounded-lg font-bold text-[11px] border border-slate-200 transition" title="Hapus" aria-label="Hapus izin">${icon("trash", "w-3.5 h-3.5")}</button>
  ` : ''}
  </div>
  </td>

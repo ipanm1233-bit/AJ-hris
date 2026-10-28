@@ -1398,7 +1398,7 @@ export async function mount(container) {
  </select>
  </div>
  <div class="col-span-1 text-center">
- <button type="button" class="btn-del-off-asset text-xs text-rose-500 hover:bg-rose-50 p-1 rounded-md font-bold" title="Hapus Barang"></button>
+ <button type="button" class="btn-del-off-asset text-xs text-rose-500 hover:bg-rose-50 p-1 rounded-md font-bold" title="Hapus Barang" aria-label="Hapus barang">${icon("trash", "w-3.5 h-3.5")}</button>
  </div>
  `;
 
@@ -1656,7 +1656,7 @@ export async function mount(container) {
  row.innerHTML = `
  <span class="text-xs font-bold text-slate-400 font-mono">[v]</span>
  <input type="text" class="chk-item-text w-full px-2.5 py-1 text-xs border border-slate-200 rounded-md outline-none focus:border-maroon-400 text-slate-800 font-medium" placeholder="Cth: Surat Bebas Tunggakan / Form Exit Clearance" value="${escapeHtml(itemText)}">
- <button type="button" class="btn-del-chk text-xs text-rose-500 hover:bg-rose-50 p-1 rounded-md font-bold" title="Hapus Item"></button>
+ <button type="button" class="btn-del-chk text-xs text-rose-500 hover:bg-rose-50 p-1 rounded-md font-bold" title="Hapus Item" aria-label="Hapus item checklist">${icon("trash", "w-3.5 h-3.5")}</button>
  `;
  row.querySelector(".btn-del-chk").onclick = () => {
  if (chkBox.children.length > 1) {
@@ -1842,7 +1842,7 @@ export async function mount(container) {
  </select>
  </div>
  <div class="col-span-1 text-center">
- <button type="button" class="btn-del-orientasi text-xs text-rose-500 hover:bg-rose-50 p-1 rounded-md font-bold" title="Hapus Item"></button>
+ <button type="button" class="btn-del-orientasi text-xs text-rose-500 hover:bg-rose-50 p-1 rounded-md font-bold" title="Hapus Item" aria-label="Hapus item orientasi">${icon("trash", "w-3.5 h-3.5")}</button>
  </div>
  `;
  row.querySelector(".btn-del-orientasi").onclick = () => {
@@ -1888,7 +1888,7 @@ export async function mount(container) {
  </select>
  </div>
  <div class="col-span-1 text-center">
- <button type="button" class="btn-del-training text-xs text-rose-500 hover:bg-rose-50 p-1 rounded-md font-bold" title="Hapus Modul"></button>
+ <button type="button" class="btn-del-training text-xs text-rose-500 hover:bg-rose-50 p-1 rounded-md font-bold" title="Hapus Modul" aria-label="Hapus modul training">${icon("trash", "w-3.5 h-3.5")}</button>
  </div>
  `;
  row.querySelector(".btn-del-training").onclick = () => {
