@@ -35,7 +35,8 @@ export const DEFAULT_EMPLOYEE_MENU_IDS = [
  "pengajuan-cuti",
  "izin",
  "training",
- "performance-review"
+ "performance-review",
+ "sop-proyek"
 ];
 
 // Pengelompokan & Penyesuaian Icon Menu
@@ -127,6 +128,7 @@ export const MENU_CONFIG = [
  { id: "inventory", label: "Inventaris", icon: "box", kategori: "Operasional", roles: ["HRD", "GA", "SUPERADMIN"] },
  { id: "kendaraan", label: "Kendaraan", icon: "truck", kategori: "Operasional", roles: ["HRD", "GA", "SUPERADMIN"] },
  { id: "sop", label: "SOP", icon: "book", kategori: "Operasional", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"] },
+ { id: "sop-proyek", label: "Audit SOP", icon: "book", kategori: "Operasional", roles: ["ALL"] },
  { id: "gimmick", label: "Gimmick", icon: "gift", kategori: "Operasional", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"] },
 
  // KATEGORI: SALES

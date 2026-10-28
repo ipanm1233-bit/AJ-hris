@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 test("production schedules leave digests and daily scheduled information email delivery", () => {
   const config = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url), "utf8"));
   assert.deepEqual(config.crons, [
+    { path: "/api/cron-check-kontrak", schedule: "10 17 * * *" },
     { path: "/api/cron-rekap-cuti", schedule: "45 0 * * *" },
     { path: "/api/cron-rekap-cuti", schedule: "0 10 * * *" },
     { path: "/api/send-email", schedule: "15 0 * * *" }

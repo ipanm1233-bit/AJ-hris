@@ -1204,6 +1204,39 @@ export async function mount(container, { session } = {}) {
       .map(step => `<li><b>${escapeHtml(step.step_id || "")} ${escapeHtml(step.nama_aktivitas)}</b> - Ya: ${escapeHtml(step.decision_yes || DEFAULT_DECISION_YES)}${targetNote(step.next_step_yes)}; Tidak: ${escapeHtml(step.decision_no || DEFAULT_DECISION_NO)}${targetNote(step.next_step_no)}</li>`)
       .join("");
 
+    const flowRows = (Array.isArray(sop.flow_komunikasi) ? sop.flow_komunikasi : []).map(flow => `
+      <tr>
+        <td>${escapeHtml(flow.dari || "-")}</td>
+        <td>${escapeHtml(flow.ke || "-")}</td>
+        <td>${escapeHtml(flow.media || "-")}</td>
+        <td>${escapeHtml(flow.frekuensi || "-")}</td>
+        <td>${escapeHtml(flow.tujuan || "-")}</td>
+      </tr>`).join("");
+
+    const outputRows = (Array.isArray(sop.output_proses) ? sop.output_proses : []).map(output => `
+      <tr>
+        <td><b>${escapeHtml(output.nama || "-")}</b></td>
+        <td>${escapeHtml(output.bentuk || "-")}</td>
+        <td>${escapeHtml(output.penerima || "-")}</td>
+        <td>${escapeHtml(output.frekuensi || "-")}</td>
+      </tr>`).join("");
+
+    let sectionNumber = 6;
+    const flowSection = flowRows ? `
+      <h3>${sectionNumber++}. Flow Komunikasi</h3>
+      <table class="grid">
+        <thead><tr><th style="width:18%;">Dari</th><th style="width:18%;">Ke</th><th style="width:20%;">Media</th><th style="width:14%;">Frekuensi</th><th>Tujuan Komunikasi</th></tr></thead>
+        <tbody>${flowRows}</tbody>
+      </table>` : "";
+    const outputSection = outputRows ? `
+      <h3>${sectionNumber++}. Output yang Dihasilkan</h3>
+      <table class="grid">
+        <thead><tr><th style="width:30%;">Output</th><th style="width:25%;">Bentuk</th><th style="width:25%;">Penerima</th><th>Frekuensi</th></tr></thead>
+        <tbody>${outputRows}</tbody>
+      </table>` : "";
+    const referenceSectionNumber = sectionNumber++;
+    const approvalSectionNumber = sectionNumber;
+
     return `
       ${isoDocHeaderTable({
         judul: "PROSEDUR OPERASIONAL STANDAR (SOP)",
@@ -1269,12 +1302,15 @@ export async function mount(container, { session } = {}) {
         ? `<div class="diagram">${svg}</div>`
         : `<p class="muted">Diagram belum dapat dirender saat dokumen dibuat. Buka menu Dokumen &amp; Flowchart untuk mencetak ulang.</p>`}
 
-      <h3>6. Referensi & Dokumen Terkait</h3>
+      ${flowSection}
+      ${outputSection}
+
+      <h3>${referenceSectionNumber}. Referensi & Dokumen Terkait</h3>
       <p>${escapeHtml(sop.referensi || "-")}</p>
       ${sop.file_url ? `<p class="small">Lampiran: ${escapeHtml(sop.file_url)}</p>` : ""}
 
       <div class="pengesahan">
-        <h3 style="text-align:center;border-bottom:none;">7. Pengesahan</h3>
+        <h3 style="text-align:center;border-bottom:none;">${approvalSectionNumber}. Pengesahan</h3>
         <p class="small" style="text-align:right;margin-bottom:4px;">Cirebon, ${escapeHtml(formatTanggalIndo(sop.tanggal_terbit || new Date()))}</p>
         <table class="sign">
           <tr>
