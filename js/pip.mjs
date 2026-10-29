@@ -31,6 +31,83 @@ export const PIP_STATUS_LABELS = Object.freeze({
 export const PIP_DEFAULT_STANDARD = 70;
 export const PIP_ROUNDS = 3;
 
+/**
+ * Indikator penilaian PIP bawaan. HRD bisa mengubah/menambah/menghapus
+ * per program; bobot akan dinormalisasi otomatis ke total 100%.
+ */
+export const PIP_DEFAULT_INDICATORS = Object.freeze([
+  { nama: "Kinerja & Pencapaian Target", bobot: 30 },
+  { nama: "Kualitas Kerja", bobot: 20 },
+  { nama: "Kedisiplinan & Kehadiran", bobot: 20 },
+  { nama: "Kerjasama & Komunikasi", bobot: 15 },
+  { nama: "Inisiatif & Tanggung Jawab", bobot: 15 }
+]);
+
+/** Bersihkan & normalisasi bobot indikator agar totalnya 100%. */
+export function normalizePipIndicators(list = []) {
+  const source = Array.isArray(list) ? list : [];
+  const cleaned = source.map(item => {
+    const nama = String(item?.nama ?? item?.name ?? "").trim();
+    const bobot = Number(item?.bobot ?? item?.weight);
+    return { nama, bobot: Number.isFinite(bobot) && bobot > 0 ? bobot : 0 };
+  }).filter(item => item.nama);
+  if (!cleaned.length) return [];
+  const total = cleaned.reduce((sum, item) => sum + item.bobot, 0);
+  if (!total) {
+    const even = Math.round((100 / cleaned.length) * 100) / 100;
+    return cleaned.map((item, index) => ({
+      ...item,
+      bobot: index === cleaned.length - 1 ? Math.round((100 - even * (cleaned.length - 1)) * 100) / 100 : even
+    }));
+  }
+  const scaled = cleaned.map(item => ({ ...item, bobot: Math.round((item.bobot / total) * 10000) / 100 }));
+  const sum = scaled.reduce((acc, item) => acc + item.bobot, 0);
+  const diff = Math.round((100 - sum) * 100) / 100;
+  if (diff) scaled[scaled.length - 1].bobot = Math.round((scaled[scaled.length - 1].bobot + diff) * 100) / 100;
+  return scaled;
+}
+
+/** Nilai akhir terbobot dari rincian indikator (fallback ke nilai tunggal). */
+export function pipIndicatorScore(indikator = [], fallback = null) {
+  const list = Array.isArray(indikator) ? indikator : [];
+  if (!list.length) {
+    if (fallback === null || fallback === undefined || fallback === "") return null;
+    const value = Number(fallback);
+    return Number.isFinite(value) ? value : null;
+  }
+  const scored = list.filter(item => item && item.nilai !== null && item.nilai !== undefined && item.nilai !== "" && Number.isFinite(Number(item.nilai)));
+  if (!scored.length) return null;
+  const weightSum = scored.reduce((sum, item) => sum + (Number(item.bobot) || 0), 0);
+  const score = weightSum
+    ? scored.reduce((sum, item) => sum + (Number(item.nilai) || 0) * (Number(item.bobot) || 0), 0) / weightSum
+    : scored.reduce((sum, item) => sum + (Number(item.nilai) || 0), 0) / scored.length;
+  return Math.round(score * 100) / 100;
+}
+
+/** Rata-rata per indikator dari seluruh penilaian evaluator. */
+export function pipIndicatorSummary(assessments = []) {
+  const rows = Array.isArray(assessments) ? assessments : [];
+  const map = new Map();
+  rows.forEach(row => {
+    (Array.isArray(row?.indikator) ? row.indikator : []).forEach(item => {
+      const nama = String(item?.nama || "").trim();
+      if (!nama) return;
+      const key = nama.toLowerCase();
+      const current = map.get(key) || { nama, bobot: Number(item.bobot) || 0, count: 0, total: 0 };
+      const value = Number(item.nilai);
+      if (Number.isFinite(value)) {
+        current.count += 1;
+        current.total += value;
+      }
+      map.set(key, current);
+    });
+  });
+  return [...map.values()].map(item => ({
+    ...item,
+    average: item.count ? Math.round((item.total / item.count) * 100) / 100 : 0
+  }));
+}
+
 function parseIsoDate(value) {
   const text = String(value || "").slice(0, 10);
   const parts = text.split("-").map(Number);

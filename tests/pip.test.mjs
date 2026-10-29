@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import {
   buildPipRounds, pipRoundLengthDays, roundForDate, pipAverage, nextSpLevel,
   pipProgress, computePipOutcome, extendPipRounds, roundRecommendation, pipStatusLabel, addDays,
-  pipEvaluationPeriodKey, pipEvaluationPeriodLabel
+  pipEvaluationPeriodKey, pipEvaluationPeriodLabel,
+  PIP_DEFAULT_INDICATORS, normalizePipIndicators, pipIndicatorScore, pipIndicatorSummary
 } from "../js/pip.mjs";
 
 function programWith(roundStatuses, spCount, extra = {}) {
@@ -79,4 +80,38 @@ test("key periode evaluasi harian/mingguan/bulanan", () => {
   assert.equal(pipEvaluationPeriodKey("MINGGUAN", "2026-11-05"), "2026-11-02");
   assert.equal(pipEvaluationPeriodKey("BULANAN", "2026-11-05"), "2026-11");
   assert.match(pipEvaluationPeriodLabel("MINGGUAN", "2026-11-05"), /Mingguan/);
+});
+
+test("indikator PIP dinormalisasi ke total bobot 100%", () => {
+  const normalized = normalizePipIndicators([
+    { nama: "Kinerja", bobot: 2 },
+    { nama: "Disiplin", bobot: 1 },
+    { nama: "  ", bobot: 5 }
+  ]);
+  assert.equal(normalized.length, 2);
+  assert.equal(normalized[0].bobot, 66.67);
+  assert.equal(normalized[1].bobot, 33.33);
+  const even = normalizePipIndicators([{ nama: "A" }, { nama: "B" }, { nama: "C" }]);
+  assert.equal(even.reduce((sum, item) => sum + item.bobot, 0), 100);
+});
+
+test("nilai akhir dihitung terbobot dari indikator", () => {
+  assert.equal(PIP_DEFAULT_INDICATORS.reduce((sum, item) => sum + item.bobot, 0), 100);
+  const score = pipIndicatorScore([
+    { nama: "Kinerja", bobot: 60, nilai: 80 },
+    { nama: "Disiplin", bobot: 40, nilai: 60 }
+  ]);
+  assert.equal(score, 72);
+  assert.equal(pipIndicatorScore([], 66), 66);
+  assert.equal(pipIndicatorScore([{ nama: "Kinerja", bobot: 50, nilai: "" }], null), null);
+});
+
+test("rekap rata-rata per indikator dari para evaluator", () => {
+  const summary = pipIndicatorSummary([
+    { indikator: [{ nama: "Kinerja", bobot: 60, nilai: 80 }, { nama: "Disiplin", bobot: 40, nilai: 60 }] },
+    { indikator: [{ nama: "Kinerja", bobot: 60, nilai: 70 }, { nama: "Disiplin", bobot: 40, nilai: 90 }] }
+  ]);
+  const kinerja = summary.find(item => item.nama === "Kinerja");
+  assert.equal(kinerja.count, 2);
+  assert.equal(kinerja.average, 75);
 });

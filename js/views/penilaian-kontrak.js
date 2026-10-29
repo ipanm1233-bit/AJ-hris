@@ -17,7 +17,8 @@ import { employeeHistoryRows } from "../employee-history.mjs";
 import {
  PIP_DURATIONS, PIP_ASSESSMENT_PERIODS, PIP_STATUS_LABELS, PIP_DEFAULT_STANDARD,
  buildPipRounds, extendPipRounds, roundForDate, pipAverage, nextSpLevel, pipProgress,
- computePipOutcome, roundRecommendation, pipStatusLabel, pipEvaluationPeriodKey, pipEvaluationPeriodLabel
+ computePipOutcome, roundRecommendation, pipStatusLabel, pipEvaluationPeriodKey, pipEvaluationPeriodLabel,
+ PIP_DEFAULT_INDICATORS, normalizePipIndicators, pipIndicatorScore, pipIndicatorSummary
 } from "../pip.mjs";
 import { parseSchemeIncentiveWorkbook, parseDsrWorkbook, buildSalesKinerjaDocs, buildDsrDocs } from "../sales-kinerja-import.mjs";
 
@@ -8668,6 +8669,7 @@ export async function mount(container, { session, params }) {
                 <p><b class="text-slate-700">Durasi</b><br>${Number(program.durasi_bulan || 0)} bulan · ${escapeHtml(pipPeriodLabel(program.periode_penilaian))}</p>
                 <p><b class="text-slate-700">Standar Nilai</b><br>${Number(program.standar_nilai || PIP_DEFAULT_STANDARD)}</p>
                 <p><b class="text-slate-700">SP</b><br>${spCount} / 3</p>
+                <p><b class="text-slate-700">Indikator</b><br>${(program.indikators || []).length ? `${(program.indikators || []).length} aspek` : "Nilai tunggal"}</p>
               </div>
               <div class="mt-3">
                 <div class="flex justify-between text-[10px] text-slate-400 mb-1"><span>Progres babak ${pendingRound ? `(Babak ${pendingRound.index} berjalan)` : ""}</span><b>${progress}%</b></div>
@@ -8718,6 +8720,7 @@ export async function mount(container, { session, params }) {
         "Durasi (bulan)": Number(program.durasi_bulan || 0),
         "Periode Penilaian": pipPeriodLabel(program.periode_penilaian),
         "Standar Nilai": Number(program.standar_nilai || PIP_DEFAULT_STANDARD),
+        "Indikator": (program.indikators || []).map(item => `${item.nama} (${item.bobot}%)`).join("; "),
         "Evaluator": pipEvaluatorList(program).map(item => `${item.nama} (${item.peran})`).join(", "),
         "Status": pipStatusLabel(program.status),
         "Jumlah SP": (program.sp_records || []).length,
@@ -8734,6 +8737,7 @@ export async function mount(container, { session, params }) {
           "Evaluator": row.evaluator_nama || row.oleh || "-",
           "Peran Evaluator": row.evaluator_peran || "-",
           "Nilai": Number(row.nilai || 0),
+          "Rincian Indikator": (row.indikator || []).map(item => `${item.nama}: ${item.nilai}`).join("; "),
           "Catatan": row.catatan || ""
         }))
       );
@@ -8749,10 +8753,26 @@ export async function mount(container, { session, params }) {
         ...row,
         "Rata-rata": row["Jumlah Penilaian"] ? Math.round((row["Total Nilai"] / row["Jumlah Penilaian"]) * 100) / 100 : 0
       }));
+      const indicatorRows = pipProgramsCache.flatMap(program => {
+        const summary = pipIndicatorSummary(program.penilaian || []);
+        return (program.indikators || []).map(item => {
+          const row = summary.find(sum => sum.nama.toLowerCase() === String(item.nama).toLowerCase());
+          return {
+            "Nama Karyawan": program.nama_karyawan || "-",
+            "NIK": program.karyawan_nik || "-",
+            "Status": pipStatusLabel(program.status),
+            "Indikator": item.nama,
+            "Bobot (%)": Number(item.bobot || 0),
+            "Jumlah Penilaian": row?.count || 0,
+            "Rata-rata Nilai": row?.count ? row.average : "-"
+          };
+        });
+      });
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(programRows), "Program PIP");
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(assessmentRows), "Penilaian Evaluator");
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(evaluatorRows), "Rekap Evaluator");
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(indicatorRows), "Rekap Indikator");
       XLSX.writeFile(workbook, `Rekap_PIP_${pipToday()}.xlsx`);
       toast("Data PIP berhasil diexport.", "success");
     } catch (error) {
@@ -8824,6 +8844,19 @@ export async function mount(container, { session, params }) {
             <p id="pip-eval-empty" class="text-[11px] text-slate-400 italic">Belum ada evaluator dipilih.</p>
           </div>
 
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+            <div class="flex flex-wrap items-center justify-between gap-1">
+              <p class="text-xs font-black uppercase tracking-wide text-slate-700">Indikator Penilaian PIP *</p>
+              <span id="pip-ind-total" class="text-[10px] font-bold text-emerald-600">Total bobot: 100%</span>
+            </div>
+            <div id="pip-ind-list" class="space-y-1.5"></div>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" id="pip-ind-add" class="rounded-lg bg-slate-800 px-2.5 py-1.5 text-[11px] font-bold text-white">+ Tambah Indikator</button>
+              <button type="button" id="pip-ind-default" class="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-600">Pakai Default</button>
+              <span class="self-center text-[10px] text-slate-400">Bobot dinormalisasi otomatis ke 100%.</span>
+            </div>
+          </div>
+
           <label class="block text-xs font-semibold text-slate-600">Catatan / Fokus Perbaikan
             <textarea id="pip-note" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" placeholder="Contoh: target kedisiplinan, kualitas kerja, dan penyelesaian laporan harian."></textarea>
           </label>
@@ -8876,6 +8909,35 @@ export async function mount(container, { session, params }) {
           form.querySelector("#pip-eval-employee").value = "";
           renderEvaluators();
         });
+        const indicators = PIP_DEFAULT_INDICATORS.map(item => ({ ...item }));
+        const indList = form.querySelector("#pip-ind-list");
+        const indTotal = form.querySelector("#pip-ind-total");
+        const renderIndicatorTotal = () => {
+          const total = indicators.reduce((sum, item) => sum + (Number(item.bobot) || 0), 0);
+          const ok = Math.abs(total - 100) < 0.01;
+          indTotal.className = `text-[10px] font-bold ${ok ? "text-emerald-600" : "text-amber-600"}`;
+          indTotal.textContent = `Total bobot: ${Math.round(total * 100) / 100}%${ok ? "" : " (akan dinormalisasi)"}`;
+        };
+        const renderIndicators = () => {
+          indList.innerHTML = indicators.map((item, index) => `
+            <div class="grid grid-cols-1 sm:grid-cols-12 gap-2" data-ind-row="${index}">
+              <input data-ind-nama value="${escapeHtml(item.nama || "")}" placeholder="Nama indikator penilaian" class="sm:col-span-8 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs">
+              <input data-ind-bobot type="number" min="1" max="100" value="${Number(item.bobot) || ""}" placeholder="Bobot %" class="sm:col-span-3 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs">
+              <button type="button" data-ind-remove class="sm:col-span-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-2 text-[11px] font-bold text-rose-600">Hapus</button>
+            </div>`).join("");
+          indList.querySelectorAll("[data-ind-row]").forEach((row, index) => {
+            row.querySelector("[data-ind-nama]").addEventListener("input", event => { indicators[index].nama = event.target.value; });
+            row.querySelector("[data-ind-bobot]").addEventListener("input", event => { indicators[index].bobot = Number(event.target.value); renderIndicatorTotal(); });
+            row.querySelector("[data-ind-remove]").addEventListener("click", () => { indicators.splice(index, 1); renderIndicators(); });
+          });
+          renderIndicatorTotal();
+        };
+        renderIndicators();
+        form.querySelector("#pip-ind-add")?.addEventListener("click", () => { indicators.push({ nama: "", bobot: 10 }); renderIndicators(); });
+        form.querySelector("#pip-ind-default")?.addEventListener("click", () => {
+          indicators.splice(0, indicators.length, ...PIP_DEFAULT_INDICATORS.map(item => ({ ...item })));
+          renderIndicators();
+        });
         backdrop.querySelector("#pip-create-cancel")?.addEventListener("click", closeModal);
         form.onsubmit = async event => {
           event.preventDefault();
@@ -8887,6 +8949,8 @@ export async function mount(container, { session, params }) {
           if (targetNik && evaluators.some(item => item.nik === targetNik)) {
             return toast("Karyawan PIP tidak bisa menjadi evaluator dirinya sendiri.", "warning");
           }
+          const normalizedIndicators = normalizePipIndicators(indicators);
+          if (!normalizedIndicators.length) return toast("Tambahkan minimal 1 indikator penilaian PIP.", "warning");
           const duration = Number(form.querySelector("#pip-duration").value) || 3;
           const start = form.querySelector("#pip-start").value || pipToday();
           const rounds = buildPipRounds(start, duration, 3);
@@ -8902,6 +8966,7 @@ export async function mount(container, { session, params }) {
             durasi_bulan: duration,
             periode_penilaian: form.querySelector("#pip-assessment-period").value,
             standar_nilai: Number(form.querySelector("#pip-standard").value) || PIP_DEFAULT_STANDARD,
+            indikators: normalizedIndicators,
             evaluator: evaluators.map(item => item.nama).join(", "),
             evaluators,
             email_mode: form.querySelector("#pip-email-mode").value,
@@ -8937,6 +9002,8 @@ export async function mount(container, { session, params }) {
     const assessments = Array.isArray(program.penilaian) ? program.penilaian : [];
     const spRecords = Array.isArray(program.sp_records) ? program.sp_records : [];
     const evaluators = Array.isArray(program.evaluators) ? program.evaluators : [];
+    const indikators = Array.isArray(program.indikators) && program.indikators.length ? program.indikators : [];
+    const indicatorSummary = pipIndicatorSummary(assessments);
     const pendingRounds = rounds.filter(round => round.status === "PENDING");
     const canEvaluate = pendingRounds.length > 0 && program.status === "AKTIF";
     const canFinish = pendingRounds.length === 0 && program.status === "AKTIF";
@@ -8974,7 +9041,7 @@ export async function mount(container, { session, params }) {
             <section>
               <h3 class="mb-2 text-xs font-black uppercase tracking-wide text-slate-700">Riwayat Penilaian (${assessments.length})</h3>
               <div class="max-h-56 space-y-1.5 overflow-y-auto pr-1">
-                ${assessments.slice().sort((a, b) => String(b.tanggal || "").localeCompare(String(a.tanggal || ""))).map(row => `<div class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-[11px]"><b>${fmtDateShort(row.tanggal)}</b> · Babak ${row.babak} · Nilai <b>${Number(row.nilai || 0)}</b> · ${escapeHtml(row.evaluator_nama || row.oleh || "-")} <span class="text-slate-400">(${escapeHtml(row.evaluator_peran || "-")})</span>${row.catatan ? `<br><span class="text-slate-500">${escapeHtml(row.catatan)}</span>` : ""}</div>`).join("") || `<p class="text-xs text-slate-400">Belum ada penilaian.</p>`}
+                ${assessments.slice().sort((a, b) => String(b.tanggal || "").localeCompare(String(a.tanggal || ""))).map(row => `<div class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-[11px]"><b>${fmtDateShort(row.tanggal)}</b> · Babak ${row.babak} · Nilai <b>${Number(row.nilai || 0)}</b> · ${escapeHtml(row.evaluator_nama || row.oleh || "-")} <span class="text-slate-400">(${escapeHtml(row.evaluator_peran || "-")})</span>${Array.isArray(row.indikator) && row.indikator.length ? `<div class="mt-1 flex flex-wrap gap-1">${row.indikator.map(item => `<span class="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-500">${escapeHtml(item.nama)}: <b>${Number(item.nilai)}</b></span>`).join("")}</div>` : ""}${row.catatan ? `<br><span class="text-slate-500">${escapeHtml(row.catatan)}</span>` : ""}</div>`).join("") || `<p class="text-xs text-slate-400">Belum ada penilaian.</p>`}
               </div>
             </section>
             <section>
@@ -9008,6 +9075,25 @@ export async function mount(container, { session, params }) {
             </section>
           </div>
 
+          <section class="rounded-xl border border-slate-200 p-3">
+            <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h3 class="text-xs font-black uppercase tracking-wide text-slate-700">Indikator Penilaian (${indikators.length || "nilai tunggal"})</h3>
+              ${canManageKontrak ? `<button type="button" id="pip-edit-indicators" class="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-600">Ubah Indikator</button>` : ""}
+            </div>
+            ${indikators.length ? `
+            <div class="overflow-x-auto">
+              <table class="w-full text-[11px]">
+                <thead class="text-[10px] uppercase tracking-wide text-slate-400"><tr><th class="px-2 py-1.5 text-left">Indikator</th><th class="px-2 py-1.5 text-center">Bobot</th><th class="px-2 py-1.5 text-center">Rata-rata</th><th class="px-2 py-1.5 text-center">Penilaian</th></tr></thead>
+                <tbody>
+                  ${indikators.map(item => {
+                    const row = indicatorSummary.find(sum => sum.nama.toLowerCase() === String(item.nama).toLowerCase());
+                    return `<tr class="border-t border-slate-100"><td class="px-2 py-1.5 text-slate-700">${escapeHtml(item.nama)}</td><td class="px-2 py-1.5 text-center text-slate-500">${Number(item.bobot)}%</td><td class="px-2 py-1.5 text-center font-bold text-slate-800">${row?.count ? row.average : "-"}</td><td class="px-2 py-1.5 text-center text-slate-500">${row?.count || 0}</td></tr>`;
+                  }).join("")}
+                </tbody>
+              </table>
+            </div>` : `<p class="text-xs text-slate-400">Program ini belum punya indikator; penilaian memakai satu nilai 0-100. Klik Ubah Indikator untuk menambahkan.</p>`}
+          </section>
+
           <div class="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3">
             ${canManageKontrak ? `<label class="mr-auto text-[11px] font-semibold text-slate-600">Email pengingat:
               <select id="pip-email-mode-detail" class="ml-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px]">
@@ -9036,6 +9122,11 @@ export async function mount(container, { session, params }) {
           }
         });
         backdrop.querySelector("#pip-send-email")?.addEventListener("click", () => { closeModal(); sendPipPeriodEmail(program, { refresh: true }); });
+        backdrop.querySelector("#pip-edit-indicators")?.addEventListener("click", () => {
+          if (assessments.length) return toast("Indikator tidak dapat diubah karena sudah ada penilaian. Mulai program PIP baru untuk indikator yang berbeda.", "warning");
+          closeModal();
+          openPipIndicatorModal(program);
+        });
         backdrop.querySelector("#pip-finish")?.addEventListener("click", () => finishPipProgram(program));
         backdrop.querySelector("#pip-print-agreement")?.addEventListener("click", () => { closeModal(); printPipAgreement(program); });
         backdrop.querySelectorAll("[data-pip-print-sp]").forEach(button => button.onclick = () => {
@@ -9052,6 +9143,79 @@ export async function mount(container, { session, params }) {
     const fresh = rows.find(item => item.id === programId);
     closeModal();
     if (fresh) openPipDetail(fresh);
+  }
+
+  function openPipIndicatorModal(program) {
+    const initial = (Array.isArray(program.indikators) && program.indikators.length ? program.indikators : PIP_DEFAULT_INDICATORS)
+      .map(item => ({ nama: item.nama || "", bobot: Number(item.bobot) || 0 }));
+    openModal({
+      title: `Indikator Penilaian PIP - ${program.nama_karyawan || ""}`,
+      size: "md",
+      bodyHtml: `
+        <form id="pip-ind-form" class="space-y-3">
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+            <div class="flex flex-wrap items-center justify-between gap-1">
+              <p class="text-[11px] font-black uppercase tracking-wide text-slate-600">Daftar Indikator</p>
+              <span id="pip-ind-modal-total" class="text-[10px] font-bold text-emerald-600">Total bobot: 100%</span>
+            </div>
+            <div id="pip-ind-modal-list" class="space-y-1.5"></div>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" id="pip-ind-modal-add" class="rounded-lg bg-slate-800 px-2.5 py-1.5 text-[11px] font-bold text-white">+ Tambah</button>
+              <button type="button" id="pip-ind-modal-default" class="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-600">Pakai Default</button>
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-500">Indikator hanya bisa diubah sebelum ada penilaian. Bobot dinormalisasi otomatis ke total 100%.</p>
+          <div class="flex justify-end gap-2 pt-1">
+            <button type="button" id="pip-ind-cancel" class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600">Batal</button>
+            <button type="submit" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-bold text-white">Simpan Indikator</button>
+          </div>
+        </form>`,
+      onMount: backdrop => {
+        const form = backdrop.querySelector("#pip-ind-form");
+        const indicators = initial.map(item => ({ ...item }));
+        const list = form.querySelector("#pip-ind-modal-list");
+        const totalEl = form.querySelector("#pip-ind-modal-total");
+        const renderTotal = () => {
+          const total = indicators.reduce((sum, item) => sum + (Number(item.bobot) || 0), 0);
+          const ok = Math.abs(total - 100) < 0.01;
+          totalEl.className = `text-[10px] font-bold ${ok ? "text-emerald-600" : "text-amber-600"}`;
+          totalEl.textContent = `Total bobot: ${Math.round(total * 100) / 100}%${ok ? "" : " (akan dinormalisasi)"}`;
+        };
+        const render = () => {
+          list.innerHTML = indicators.map((item, index) => `
+            <div class="grid grid-cols-1 sm:grid-cols-12 gap-2" data-ind-modal-row="${index}">
+              <input data-ind-modal-nama value="${escapeHtml(item.nama || "")}" placeholder="Nama indikator penilaian" class="sm:col-span-8 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs">
+              <input data-ind-modal-bobot type="number" min="1" max="100" value="${Number(item.bobot) || ""}" placeholder="Bobot %" class="sm:col-span-3 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs">
+              <button type="button" data-ind-modal-remove class="sm:col-span-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-2 text-[11px] font-bold text-rose-600">Hapus</button>
+            </div>`).join("");
+          list.querySelectorAll("[data-ind-modal-row]").forEach((row, index) => {
+            row.querySelector("[data-ind-modal-nama]").addEventListener("input", event => { indicators[index].nama = event.target.value; });
+            row.querySelector("[data-ind-modal-bobot]").addEventListener("input", event => { indicators[index].bobot = Number(event.target.value); renderTotal(); });
+            row.querySelector("[data-ind-modal-remove]").addEventListener("click", () => { indicators.splice(index, 1); render(); });
+          });
+          renderTotal();
+        };
+        render();
+        form.querySelector("#pip-ind-modal-add")?.addEventListener("click", () => { indicators.push({ nama: "", bobot: 10 }); render(); });
+        form.querySelector("#pip-ind-modal-default")?.addEventListener("click", () => {
+          indicators.splice(0, indicators.length, ...PIP_DEFAULT_INDICATORS.map(item => ({ ...item })));
+          render();
+        });
+        backdrop.querySelector("#pip-ind-cancel")?.addEventListener("click", closeModal);
+        form.onsubmit = async event => {
+          event.preventDefault();
+          const normalized = normalizePipIndicators(indicators);
+          if (!normalized.length) return toast("Tambahkan minimal 1 indikator penilaian.", "warning");
+          try {
+            await fsUpdate(COL.PIP_PROGRAMS, program.id, { indikators: normalized, updated_at: new Date().toISOString() });
+            toast("Indikator penilaian PIP diperbarui.", "success");
+            await reopenPipDetail(program.id);
+          } catch (error) {
+            toast("Gagal menyimpan indikator: " + error.message, "error");
+          }
+        };
+      }
+    });
   }
 
   function openPipAssessmentModal(program) {
@@ -9071,9 +9235,21 @@ export async function mount(container, { session, params }) {
                 ${rounds.map(round => `<option value="${round.index}" ${round.index === defaultRound?.index ? "selected" : ""}>Babak ${round.index} (${fmtDateShort(round.start)} - ${fmtDateShort(round.end)})</option>`).join("")}
               </select>
             </label>
+            ${Array.isArray(program.indikators) && program.indikators.length ? `
+            <div class="sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+              <p class="text-[11px] font-black uppercase tracking-wide text-slate-600">Nilai per Indikator (0-100)</p>
+              <div class="space-y-1.5">
+                ${program.indikators.map((item, index) => `
+                <div class="grid grid-cols-12 items-center gap-2">
+                  <span class="col-span-8 text-[11px] text-slate-600">${escapeHtml(item.nama)} <b class="text-slate-400">(${Number(item.bobot)}%)</b></span>
+                  <input data-ind-score="${index}" type="number" min="0" max="100" required class="col-span-4 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-right" placeholder="0-100">
+                </div>`).join("")}
+              </div>
+              <p class="text-right text-[11px] text-slate-500">Nilai akhir terbobot: <b id="pip-assess-total" class="text-slate-800">-</b></p>
+            </div>` : `
             <label class="block text-xs font-semibold text-slate-600">Nilai (0-100)
               <input id="pip-assess-score" type="number" min="0" max="100" required class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" placeholder="Cth: 68">
-            </label>
+            </label>`}
             <label class="block text-xs font-semibold text-slate-600">Evaluator
               ${Array.isArray(program.evaluators) && program.evaluators.length ? `
               <select id="pip-assess-evaluator" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm bg-white">
@@ -9093,15 +9269,39 @@ export async function mount(container, { session, params }) {
       onMount: backdrop => {
         const form = backdrop.querySelector("#pip-assessment-form");
         backdrop.querySelector("#pip-assess-cancel")?.addEventListener("click", closeModal);
+        const indicatorInputs = [...backdrop.querySelectorAll("[data-ind-score]")];
+        const totalEl = backdrop.querySelector("#pip-assess-total");
+        const readIndicatorScores = () => (program.indikators || []).map((item, index) => {
+          const raw = backdrop.querySelector(`[data-ind-score="${index}"]`)?.value;
+          return { nama: item.nama, bobot: Number(item.bobot) || 0, nilai: raw === "" || raw === undefined ? null : Number(raw) };
+        });
+        const refreshTotal = () => {
+          if (!indicatorInputs.length || !totalEl) return;
+          const scores = readIndicatorScores();
+          const filled = scores.filter(item => item.nilai !== null && Number.isFinite(item.nilai));
+          totalEl.textContent = filled.length ? String(pipIndicatorScore(scores)) : "-";
+        };
+        indicatorInputs.forEach(input => input.addEventListener("input", refreshTotal));
         form.onsubmit = async event => {
           event.preventDefault();
-          const score = Number(form.querySelector("#pip-assess-score").value);
-          if (!Number.isFinite(score) || score < 0 || score > 100) return toast("Nilai harus 0-100.", "warning");
+          let score = null;
+          let indikator = [];
+          if (indicatorInputs.length) {
+            indikator = readIndicatorScores();
+            if (indikator.some(item => item.nilai === null || !Number.isFinite(item.nilai) || item.nilai < 0 || item.nilai > 100)) {
+              return toast("Semua indikator wajib diisi dengan nilai 0-100.", "warning");
+            }
+            score = pipIndicatorScore(indikator);
+          } else {
+            score = Number(form.querySelector("#pip-assess-score").value);
+            if (!Number.isFinite(score) || score < 0 || score > 100) return toast("Nilai harus 0-100.", "warning");
+          }
           const row = {
             id: genId("PIPAS"),
             tanggal: form.querySelector("#pip-assess-date").value || pipToday(),
             babak: Number(form.querySelector("#pip-assess-round").value),
             nilai: score,
+            indikator,
             catatan: form.querySelector("#pip-assess-note").value.trim(),
             evaluator_nik: form.querySelector("#pip-assess-evaluator")?.value || "",
             evaluator_nama: form.querySelector("#pip-assess-evaluator")?.selectedOptions?.[0]?.dataset.name || form.querySelector("#pip-assess-by")?.value || session.nama || "HRD",
@@ -9131,6 +9331,7 @@ export async function mount(container, { session, params }) {
     if (!pending.length) return toast("Semua babak sudah dievaluasi.", "info");
     const round = pending[0];
     const average = pipAverage(program.penilaian || [], round.index);
+    const roundIndicators = pipIndicatorSummary((program.penilaian || []).filter(row => Number(row.babak) === Number(round.index)));
     const recommendation = roundRecommendation(average, program.standar_nilai);
     const spLevel = nextSpLevel(program);
     openModal({
@@ -9142,6 +9343,7 @@ export async function mount(container, { session, params }) {
             Periode babak: <b>${fmtDateShort(round.start)} - ${fmtDateShort(round.end)}</b><br>
             Rata-rata nilai babak: <b>${average === null ? "belum ada penilaian" : average}</b> · Standar lulus: <b>${Number(program.standar_nilai || PIP_DEFAULT_STANDARD)}</b><br>
             Rekomendasi sistem: <b>${recommendation === "LOLOS" ? "LOLOS (ada perbaikan)" : "TERBITKAN SP (belum mencapai standar)"}</b>
+            ${roundIndicators.length ? `<div class="mt-2 space-y-0.5 border-t border-slate-200 pt-2">${roundIndicators.map(item => `<div class="flex justify-between gap-2 text-[11px]"><span>${escapeHtml(item.nama)} <span class="text-slate-400">(${Number(item.bobot)}%)</span></span><b>${item.average || "-"}</b></div>`).join("")}</div>` : ""}
           </div>
           <label class="block text-xs font-semibold text-slate-600">Keputusan Babak
             <select id="pip-round-decision" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm bg-white">
@@ -9328,6 +9530,7 @@ export async function mount(container, { session, params }) {
         <div style="font-size:12px;color:#334155;">
           <p style="margin:0 0 6px;"><b>Periode evaluasi:</b> ${escapeHtml(periodLabel)} · <b>Babak:</b> ${round.index} (${fmtDateShort(round.start)} - ${fmtDateShort(round.end)})</p>
           <p style="margin:0 0 6px;"><b>Standar nilai lulus:</b> ${Number(program.standar_nilai || PIP_DEFAULT_STANDARD)} · <b>Penilaian:</b> ${escapeHtml(pipPeriodLabel(program.periode_penilaian))}</p>
+          <p style="margin:0 0 6px;"><b>Indikator penilaian:</b> ${(program.indikators || []).map(item => `${escapeHtml(item.nama)} (${Number(item.bobot)}%)`).join(", ") || "Nilai tunggal 0-100"}</p>
           <p style="margin:0 0 6px;"><b>Evaluator:</b> ${evaluators.map(item => `${escapeHtml(item.nama)} (${escapeHtml(item.peran)})`).join(", ") || "-"}</p>
           <table style="width:100%;border-collapse:collapse;margin-top:8px;">
             <thead><tr style="background:#f1f5f9;text-align:left;"><th style="padding:5px 7px;font-size:11px;">Babak</th><th style="padding:5px 7px;font-size:11px;">Periode</th><th style="padding:5px 7px;font-size:11px;">Status</th></tr></thead>
@@ -9456,6 +9659,12 @@ export async function mount(container, { session, params }) {
         <p style="margin:0 0 4px;"><b>Periode PIP:</b> ${fmtDateShort(program.tanggal_mulai)} s.d. ${fmtDateShort(rounds.at(-1)?.end || program.tanggal_mulai)} (${Number(program.durasi_bulan || 0)} bulan, 3 babak awal).</p>
         <p style="margin:0 0 4px;"><b>Periode Penilaian:</b> ${escapeHtml(pipPeriodLabel(program.periode_penilaian))} · <b>Standar Nilai Lulus:</b> ${Number(program.standar_nilai || PIP_DEFAULT_STANDARD)}</p>
         <p style="margin:0 0 4px;"><b>Fokus Perbaikan:</b> ${escapeHtml(program.catatan || "Peningkatan kedisiplinan, kualitas, dan ketepatan penyelesaian pekerjaan.")}</p>
+        ${(program.indikators || []).length ? `
+        <div style="font-weight:bold;text-transform:uppercase;border-bottom:1px solid #000;padding-bottom:2px;margin:10px 0 4px;">Indikator Penilaian</div>
+        <table style="width:100%;border-collapse:collapse;font-size:10px;">
+          <thead><tr style="background:#eee;"><th style="border:1px solid #000;padding:3px;text-align:left;width:6%;">No</th><th style="border:1px solid #000;padding:3px;text-align:left;">Indikator</th><th style="border:1px solid #000;padding:3px;text-align:center;width:14%;">Bobot</th></tr></thead>
+          <tbody>${(program.indikators || []).map((item, index) => `<tr><td style="border:1px solid #000;padding:3px;">${index + 1}</td><td style="border:1px solid #000;padding:3px;">${escapeHtml(item.nama)}</td><td style="border:1px solid #000;padding:3px;text-align:center;">${Number(item.bobot)}%</td></tr>`).join("")}</tbody>
+        </table>` : ""}
         <div style="font-weight:bold;text-transform:uppercase;border-bottom:1px solid #000;padding-bottom:2px;margin:10px 0 4px;">Ketentuan PIP</div>
         <ol style="margin:0;padding-left:16px;text-align:justify;">
           <li>Karyawan mengikuti program pembinaan selama periode di atas dengan penilaian ${escapeHtml(pipPeriodLabel(program.periode_penilaian).toLowerCase())} oleh atasan/HRD.</li>

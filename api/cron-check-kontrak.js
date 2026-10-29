@@ -206,6 +206,7 @@ function buildPipEmailHtml({ program, round, periodLabel, recipientName, recipie
         <p style="margin:0 0 4px"><b>Babak:</b> ${escapeHtml(String(round?.index ?? "-"))} (${formatIndoDate(toDateOnly(round?.start))} - ${formatIndoDate(toDateOnly(round?.end))})</p>
         <p style="margin:0 0 4px"><b>Standar nilai lulus:</b> ${escapeHtml(String(Number(program.standar_nilai) || 75))}</p>
         <p style="margin:0"><b>Evaluator:</b> ${escapeHtml((program.evaluators || []).map(e => `${e.nama} (${e.peran})`).join(", ") || program.evaluator || "-")}</p>
+        <p style="margin:4px 0 0"><b>Indikator:</b> ${escapeHtml((program.indikators || []).map(e => `${e.nama} (${Number(e.bobot)}%)`).join(", ") || "Nilai tunggal 0-100")}</p>
       </div>
       <table style="width:100%;border-collapse:collapse;text-align:left;font-size:11.5px;color:#1e293b">
         <thead><tr style="background:#f1f5f9;color:#475569;font-size:11px;text-transform:uppercase"><th style="padding:6px 8px">Babak</th><th style="padding:6px 8px">Periode</th><th style="padding:6px 8px">Status</th></tr></thead>
