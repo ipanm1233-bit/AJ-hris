@@ -151,3 +151,37 @@ export function roundRecommendation(average, standard = PIP_DEFAULT_STANDARD) {
 export function pipStatusLabel(status) {
   return PIP_STATUS_LABELS[String(status || "").toUpperCase()] || status || "-";
 }
+
+function localDate(value) {
+  if (value instanceof Date) return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  const parsed = parseIsoDate(value);
+  return parsed || new Date();
+}
+
+/** Key unik periode evaluasi: harian (YYYY-MM-DD), mingguan (Senin), bulanan (YYYY-MM). */
+export function pipEvaluationPeriodKey(period, date = new Date()) {
+  const target = localDate(date);
+  const mode = String(period || "MINGGUAN").toUpperCase();
+  if (mode === "HARIAN") return toIsoDate(target);
+  if (mode === "BULANAN") return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}`;
+  const day = target.getDay();
+  const offset = day === 0 ? -6 : 1 - day;
+  target.setDate(target.getDate() + offset);
+  return toIsoDate(target);
+}
+
+export function pipEvaluationPeriodLabel(period, date = new Date()) {
+  const target = localDate(date);
+  const mode = String(period || "MINGGUAN").toUpperCase();
+  const fmt = value => value.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+  if (mode === "HARIAN") return `Harian ${fmt(target)}`;
+  if (mode === "BULANAN") {
+    return `Bulanan ${target.toLocaleDateString("id-ID", { month: "long", year: "numeric" })}`;
+  }
+  const start = new Date(target);
+  const day = start.getDay();
+  start.setDate(start.getDate() + (day === 0 ? -6 : 1 - day));
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  return `Mingguan ${fmt(start)} - ${fmt(end)}`;
+}

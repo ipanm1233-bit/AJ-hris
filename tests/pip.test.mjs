@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildPipRounds, pipRoundLengthDays, roundForDate, pipAverage, nextSpLevel,
-  pipProgress, computePipOutcome, extendPipRounds, roundRecommendation, pipStatusLabel, addDays
+  pipProgress, computePipOutcome, extendPipRounds, roundRecommendation, pipStatusLabel, addDays,
+  pipEvaluationPeriodKey, pipEvaluationPeriodLabel
 } from "../js/pip.mjs";
 
 function programWith(roundStatuses, spCount, extra = {}) {
@@ -71,4 +72,11 @@ test("babak belum selesai -> pending", () => {
 test("label status PIP", () => {
   assert.equal(pipStatusLabel("AKTIF"), "PIP Berjalan");
   assert.equal(pipStatusLabel("SELESAI_LULUS"), "Lulus PIP");
+});
+
+test("key periode evaluasi harian/mingguan/bulanan", () => {
+  assert.equal(pipEvaluationPeriodKey("HARIAN", "2026-11-05"), "2026-11-05");
+  assert.equal(pipEvaluationPeriodKey("MINGGUAN", "2026-11-05"), "2026-11-02");
+  assert.equal(pipEvaluationPeriodKey("BULANAN", "2026-11-05"), "2026-11");
+  assert.match(pipEvaluationPeriodLabel("MINGGUAN", "2026-11-05"), /Mingguan/);
 });

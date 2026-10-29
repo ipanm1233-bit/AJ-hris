@@ -17,7 +17,7 @@ import { employeeHistoryRows } from "../employee-history.mjs";
 import {
  PIP_DURATIONS, PIP_ASSESSMENT_PERIODS, PIP_STATUS_LABELS, PIP_DEFAULT_STANDARD,
  buildPipRounds, extendPipRounds, roundForDate, pipAverage, nextSpLevel, pipProgress,
- computePipOutcome, roundRecommendation, pipStatusLabel
+ computePipOutcome, roundRecommendation, pipStatusLabel, pipEvaluationPeriodKey, pipEvaluationPeriodLabel
 } from "../pip.mjs";
 import { parseSchemeIncentiveWorkbook, parseDsrWorkbook, buildSalesKinerjaDocs, buildDsrDocs } from "../sales-kinerja-import.mjs";
 
@@ -8489,7 +8489,11 @@ export async function mount(container, { session, params }) {
   }
 
   let pipProgramsCache = [];
-  const pipToday = () => new Date().toISOString().slice(0, 10);
+  let pipEmployeesCache = [];
+   const pipToday = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  };
   const pipEmployeeKey = employee => String(employee?.nik_karyawan || employee?.nik || employee?.username || employee?.nama_karyawan || employee?.nama || "").trim().toLowerCase();
   const pipProgramKey = program => String(program?.karyawan_nik || program?.nama_karyawan || "").trim().toLowerCase();
   const pipPeriodLabel = value => PIP_ASSESSMENT_PERIODS.find(item => item.value === value)?.label || value || "-";
@@ -8533,6 +8537,7 @@ export async function mount(container, { session, params }) {
       .filter(employee => String(employee.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF")
       .filter(employee => !branchScope || branchMatches(branchScope, employee.cabang))
       .sort((a, b) => String(a.nama_karyawan || "").localeCompare(String(b.nama_karyawan || ""), "id"));
+    pipEmployeesCache = activeEmployees;
 
     pipProgramsCache = (programs || [])
       .filter(program => !branchScope || branchMatches(branchScope, program.cabang))
@@ -8544,6 +8549,50 @@ export async function mount(container, { session, params }) {
     const pendingCount = pipProgramsCache.filter(program => (program.rounds || []).some(round => round.status === "PENDING")).length;
     const activeKeys = new Set(pipProgramsCache.filter(program => program.status === "AKTIF").map(pipProgramKey));
 
+    const allAssessments = pipProgramsCache.flatMap(program =>
+      (program.penilaian || []).map(row => ({ ...row, program_nama: program.nama_karyawan, program_id: program.id }))
+    );
+    const averageOverall = allAssessments.length
+      ? Math.round((allAssessments.reduce((sum, row) => sum + (Number(row.nilai) || 0), 0) / allAssessments.length) * 100) / 100
+      : 0;
+    const maxRound = Math.max(3, ...pipProgramsCache.map(program => (program.rounds || []).length || 0));
+    const roundAverages = Array.from({ length: maxRound }, (_, index) => {
+      const round = index + 1;
+      const rows = allAssessments.filter(row => Number(row.babak) === round);
+      return {
+        round,
+        count: rows.length,
+        average: rows.length ? Math.round((rows.reduce((sum, row) => sum + (Number(row.nilai) || 0), 0) / rows.length) * 100) / 100 : 0
+      };
+    });
+    const evaluatorMap = new Map();
+    pipProgramsCache.forEach(program => {
+      (pipEvaluatorList(program)).forEach(evaluator => {
+        const key = String(evaluator.nik || evaluator.nama || "").trim().toLowerCase();
+        if (!key) return;
+        const current = evaluatorMap.get(key) || { key, nama: evaluator.nama || "-", peran: evaluator.peran || "EVALUATOR", count: 0, total: 0 };
+        evaluatorMap.set(key, current);
+      });
+      (program.penilaian || []).forEach(row => {
+        const key = String(row.evaluator_nik || row.evaluator_nama || row.oleh || "").trim().toLowerCase();
+        if (!key) return;
+        const current = evaluatorMap.get(key) || { key, nama: row.evaluator_nama || row.oleh || "-", peran: row.evaluator_peran || "EVALUATOR", count: 0, total: 0 };
+        current.count += 1;
+        current.total += Number(row.nilai) || 0;
+        evaluatorMap.set(key, current);
+      });
+    });
+    const evaluatorStats = [...evaluatorMap.values()]
+      .map(item => ({ ...item, average: item.count ? Math.round((item.total / item.count) * 100) / 100 : 0 }))
+      .sort((a, b) => b.count - a.count);
+    const statusRows = [
+      { label: "Aktif", value: activeCount, tone: "bg-blue-500" },
+      { label: "Lulus", value: passedCount, tone: "bg-emerald-500" },
+      { label: "Gagal / PHK", value: phkCount, tone: "bg-rose-500" },
+      { label: "Menunggu Evaluasi", value: pendingCount, tone: "bg-amber-500" }
+    ];
+    const statusTotal = Math.max(1, statusRows.reduce((sum, row) => sum + row.value, 0));
+
     wrap.innerHTML = `
       <div class="space-y-5">
         <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -8551,18 +8600,23 @@ export async function mount(container, { session, params }) {
             <h2 class="text-xl font-bold text-slate-800">Performance Improvement Program (PIP)</h2>
             <p class="text-xs text-slate-500 mt-1">Program pembinaan kinerja 3 babak dengan penilaian berkala, SP berjenjang, dan perpanjangan otomatis.</p>
           </div>
-          ${canManageKontrak ? `<button id="btn-pip-new" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2.5 rounded-xl text-xs font-semibold transition shadow-sm self-start md:self-auto">+ Mulai Program PIP</button>` : ""}
+          <div class="flex flex-wrap gap-2 self-start md:self-auto">
+            <button id="btn-pip-export" class="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs font-bold text-emerald-700">Tarik Data PIP (Excel)</button>
+            ${canManageKontrak ? `<button id="btn-pip-new" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2.5 rounded-xl text-xs font-semibold transition shadow-sm">+ Mulai Program PIP</button>` : ""}
+          </div>
         </div>
 
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="grid grid-cols-2 lg:grid-cols-6 gap-3">
           ${[
             ["PIP Aktif", activeCount, "blue"],
             ["Menunggu Evaluasi", pendingCount, "amber"],
             ["Lulus PIP", passedCount, "emerald"],
-            ["Gagal / PHK", phkCount, "rose"]
+            ["Gagal / PHK", phkCount, "rose"],
+            ["Rata-rata Nilai", averageOverall || "-", "slate"],
+            ["Evaluator Terlibat", evaluatorStats.length, "violet"]
           ].map(([label, value, tone]) => {
-            const colors = { blue: "text-blue-700", amber: "text-amber-700", emerald: "text-emerald-700", rose: "text-rose-700" };
-            return `<div class="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs"><p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">${label}</p><p class="text-2xl font-black ${colors[tone]} mt-1">${value}</p></div>`;
+            const colors = { blue: "text-blue-700", amber: "text-amber-700", emerald: "text-emerald-700", rose: "text-rose-700", slate: "text-slate-800", violet: "text-violet-700" };
+            return `<div class="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-2xs"><p class="text-[10px] font-bold uppercase tracking-wide text-slate-400">${label}</p><p class="text-xl font-black ${colors[tone]} mt-1">${value}</p></div>`;
           }).join("")}
         </div>
 
@@ -8570,7 +8624,30 @@ export async function mount(container, { session, params }) {
           <b>Aturan PIP:</b> 3 babak awal (durasi 3/4/6 bulan, babak dibagi proporsional). Setiap babak tanpa perbaikan mendapat SP berjenjang.
           Jika selesai PIP: <b>0 SP = Lulus</b>, <b>1 SP = diperpanjang 2 babak</b>, <b>2 SP = diperpanjang 1 babak</b>, <b>3 SP = proses PHK</b>.
           Penilaian dapat dilakukan harian, mingguan, atau bulanan sesuai pengaturan program.
+          <br><b>Evaluator:</b> HR, Atasan, dan Rekan Kerja (bisa lebih dari 1). <b>Email pengingat</b> dikirim ke karyawan &amp; seluruh evaluator setiap periode evaluasi — otomatis oleh sistem atau manual lewat tombol kirim.
         </div>
+
+        <div class="grid lg:grid-cols-2 gap-4">
+          <section class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs">
+            <div class="flex items-center justify-between mb-3"><h3 class="text-sm font-bold text-slate-800">Distribusi Status PIP</h3><span class="text-[10px] text-slate-400">${pipProgramsCache.length} program</span></div>
+            <div class="space-y-2.5">
+              ${statusRows.map(row => `<div><div class="flex justify-between text-[11px] mb-1"><span class="text-slate-600">${row.label}</span><b class="text-slate-800">${row.value}</b></div><div class="h-2 rounded-full bg-slate-100 overflow-hidden"><div class="h-full rounded-full ${row.tone}" style="width:${Math.round((row.value / statusTotal) * 100)}%"></div></div></div>`).join("")}
+            </div>
+          </section>
+          <section class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs">
+            <div class="flex items-center justify-between mb-3"><h3 class="text-sm font-bold text-slate-800">Rata-rata Nilai per Babak</h3><span class="text-[10px] text-slate-400">${allAssessments.length} penilaian</span></div>
+            <div class="space-y-2.5">
+              ${roundAverages.map(row => `<div><div class="flex justify-between text-[11px] mb-1"><span class="text-slate-600">Babak ${row.round} <span class="text-slate-400">(${row.count} penilaian)</span></span><b class="text-slate-800">${row.average || "-"}</b></div><div class="h-2 rounded-full bg-slate-100 overflow-hidden"><div class="h-full rounded-full bg-maroon-600" style="width:${Math.min(100, Math.max(0, row.average))}%"></div></div></div>`).join("") || `<p class="text-xs text-slate-400">Belum ada penilaian.</p>`}
+            </div>
+          </section>
+        </div>
+
+        <section class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs">
+          <div class="flex items-center justify-between mb-3"><h3 class="text-sm font-bold text-slate-800">Progres & Partisipasi Evaluator</h3><span class="text-[10px] text-slate-400">HR · Atasan · Rekan Kerja</span></div>
+          <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-2">
+            ${evaluatorStats.map(item => `<div class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-[11px]"><div class="flex justify-between gap-2"><b class="text-slate-800">${escapeHtml(item.nama)}</b><span class="rounded-full bg-white border border-slate-200 px-2 py-0.5 text-[10px] text-slate-500">${escapeHtml(item.peran)}</span></div><p class="mt-1 text-slate-500">${item.count} penilaian · rata-rata <b class="text-slate-700">${item.average || "-"}</b></p></div>`).join("") || `<p class="text-xs text-slate-400">Belum ada evaluator.</p>`}
+          </div>
+        </section>
 
         <div class="grid md:grid-cols-2 gap-4">
           ${pipProgramsCache.map(program => {
@@ -8596,6 +8673,10 @@ export async function mount(container, { session, params }) {
                 <div class="flex justify-between text-[10px] text-slate-400 mb-1"><span>Progres babak ${pendingRound ? `(Babak ${pendingRound.index} berjalan)` : ""}</span><b>${progress}%</b></div>
                 <div class="h-2 rounded-full bg-slate-100 overflow-hidden"><div class="h-full rounded-full ${progress >= 100 ? "bg-emerald-500" : "bg-maroon-600"}" style="width:${progress}%"></div></div>
               </div>
+              <div class="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+                <p><b class="text-slate-700">Evaluator:</b> ${escapeHtml(pipEvaluatorList(program).map(item => `${item.nama} (${item.peran})`).join(", ") || "Belum diatur")}</p>
+                <p class="mt-0.5"><b class="text-slate-700">Email:</b> ${escapeHtml(program.email_mode === "OTOMATIS" ? "Otomatis per periode" : "Manual")} · ${program.email_last_at ? `terakhir ${fmtDateShort(program.email_last_at)}` : "belum pernah dikirim"}</p>
+              </div>
               <div class="mt-4 flex flex-wrap gap-2">
                 <button type="button" data-pip-detail="${escapeHtml(program.id)}" class="rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold text-white">Detail & Penilaian</button>
                 <button type="button" data-pip-agreement="${escapeHtml(program.id)}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600">Surat Perjanjian</button>
@@ -8606,6 +8687,12 @@ export async function mount(container, { session, params }) {
       </div>`;
 
     wrap.querySelector("#btn-pip-new")?.addEventListener("click", () => openPipCreateModal(activeEmployees, activeKeys));
+    wrap.querySelector("#btn-pip-export")?.addEventListener("click", () => exportPipData());
+
+    // Cron harian mengirim email otomatis; ini hanya jaring pengaman saat HRD membuka tab.
+    if (canManageKontrak) {
+      autoSendPipEmails(pipProgramsCache).catch(error => console.warn("Auto email PIP gagal:", error));
+    }
     wrap.querySelectorAll("[data-pip-detail]").forEach(button => button.onclick = () => {
       const program = pipProgramsCache.find(item => item.id === button.dataset.pipDetail);
       if (program) openPipDetail(program);
@@ -8614,6 +8701,64 @@ export async function mount(container, { session, params }) {
       const program = pipProgramsCache.find(item => item.id === button.dataset.pipAgreement);
       if (program) printPipAgreement(program);
     });
+  }
+
+  async function exportPipData() {
+    try {
+      await ensureXlsxLoaded();
+      if (!window.XLSX) return toast("Library Excel belum siap. Coba lagi.", "warning");
+      const programRows = pipProgramsCache.map(program => ({
+        "Nama Karyawan": program.nama_karyawan || "-",
+        "NIK": program.karyawan_nik || "-",
+        "Jabatan": program.jabatan || "-",
+        "Cabang": program.cabang || "-",
+        "Divisi": program.divisi || "-",
+        "Nomor Perjanjian": program.nomor_perjanjian || "-",
+        "Tanggal Mulai": program.tanggal_mulai || "-",
+        "Durasi (bulan)": Number(program.durasi_bulan || 0),
+        "Periode Penilaian": pipPeriodLabel(program.periode_penilaian),
+        "Standar Nilai": Number(program.standar_nilai || PIP_DEFAULT_STANDARD),
+        "Evaluator": pipEvaluatorList(program).map(item => `${item.nama} (${item.peran})`).join(", "),
+        "Status": pipStatusLabel(program.status),
+        "Jumlah SP": (program.sp_records || []).length,
+        "Rata-rata Nilai": pipAverage(program.penilaian || []) ?? "-",
+        "Email Mode": program.email_mode === "OTOMATIS" ? "Otomatis" : "Manual",
+        "Email Terakhir": program.email_last_at || "-"
+      }));
+      const assessmentRows = pipProgramsCache.flatMap(program =>
+        (program.penilaian || []).map(row => ({
+          "Nama Karyawan": program.nama_karyawan || "-",
+          "NIK": program.karyawan_nik || "-",
+          "Babak": row.babak,
+          "Tanggal": row.tanggal || "-",
+          "Evaluator": row.evaluator_nama || row.oleh || "-",
+          "Peran Evaluator": row.evaluator_peran || "-",
+          "Nilai": Number(row.nilai || 0),
+          "Catatan": row.catatan || ""
+        }))
+      );
+      const evaluatorMap = new Map();
+      assessmentRows.forEach(row => {
+        const key = `${row["Evaluator"]}|${row["Peran Evaluator"]}`;
+        const current = evaluatorMap.get(key) || { "Evaluator": row["Evaluator"], "Peran": row["Peran Evaluator"], "Jumlah Penilaian": 0, "Total Nilai": 0 };
+        current["Jumlah Penilaian"] += 1;
+        current["Total Nilai"] += row["Nilai"];
+        evaluatorMap.set(key, current);
+      });
+      const evaluatorRows = [...evaluatorMap.values()].map(row => ({
+        ...row,
+        "Rata-rata": row["Jumlah Penilaian"] ? Math.round((row["Total Nilai"] / row["Jumlah Penilaian"]) * 100) / 100 : 0
+      }));
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(programRows), "Program PIP");
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(assessmentRows), "Penilaian Evaluator");
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(evaluatorRows), "Rekap Evaluator");
+      XLSX.writeFile(workbook, `Rekap_PIP_${pipToday()}.xlsx`);
+      toast("Data PIP berhasil diexport.", "success");
+    } catch (error) {
+      console.error("export PIP", error);
+      toast("Gagal export data PIP: " + error.message, "error");
+    }
   }
 
   function openPipCreateModal(activeEmployees, activeKeys) {
@@ -8650,10 +8795,35 @@ export async function mount(container, { session, params }) {
             <label class="block text-xs font-semibold text-slate-600">Standar Nilai Lulus (0-100)
               <input id="pip-standard" type="number" min="0" max="100" value="${PIP_DEFAULT_STANDARD}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm">
             </label>
-            <label class="block text-xs font-semibold text-slate-600">Evaluator / Atasan
-              <input id="pip-evaluator" value="${escapeHtml(session.nama || "")}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm">
+            <label class="block text-xs font-semibold text-slate-600">Mode Pengingat Email
+              <select id="pip-email-mode" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm bg-white">
+                <option value="MANUAL">Manual - kirim lewat tombol</option>
+                <option value="OTOMATIS">Otomatis per periode evaluasi</option>
+              </select>
             </label>
           </div>
+
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+            <div class="flex flex-wrap items-center justify-between gap-1">
+              <p class="text-xs font-black uppercase tracking-wide text-slate-700">Evaluator PIP *</p>
+              <span class="text-[10px] text-slate-400">Bisa lebih dari 1: HR, Atasan, dan Rekan Kerja</span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-12 gap-2">
+              <select id="pip-eval-role" class="sm:col-span-3 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs">
+                <option value="HR">HR</option>
+                <option value="ATASAN">Atasan</option>
+                <option value="REKAN">Rekan Kerja</option>
+              </select>
+              <select id="pip-eval-employee" class="sm:col-span-7 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs">
+                <option value="">-- Pilih karyawan aktif --</option>
+                ${activeEmployees.map(employee => `<option value="${escapeHtml(pipEmployeeKey(employee))}">${escapeHtml(employee.nama_karyawan || employee.nama || "-")} - ${escapeHtml(employee.jabatan || "-")} (${escapeHtml(employee.cabang || "-")})</option>`).join("")}
+              </select>
+              <button type="button" id="pip-eval-add" class="sm:col-span-2 rounded-lg bg-slate-800 px-2.5 py-2 text-xs font-bold text-white">+ Tambah</button>
+            </div>
+            <div id="pip-eval-list" class="space-y-1.5"></div>
+            <p id="pip-eval-empty" class="text-[11px] text-slate-400 italic">Belum ada evaluator dipilih.</p>
+          </div>
+
           <label class="block text-xs font-semibold text-slate-600">Catatan / Fokus Perbaikan
             <textarea id="pip-note" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" placeholder="Contoh: target kedisiplinan, kualitas kerja, dan penyelesaian laporan harian."></textarea>
           </label>
@@ -8664,18 +8834,66 @@ export async function mount(container, { session, params }) {
         </form>`,
       onMount: backdrop => {
         const form = backdrop.querySelector("#pip-create-form");
+        const evaluators = [];
+        const evalList = form.querySelector("#pip-eval-list");
+        const evalEmpty = form.querySelector("#pip-eval-empty");
+        const roleLabels = { HR: "HR", ATASAN: "Atasan", REKAN: "Rekan Kerja" };
+        const renderEvaluators = () => {
+          evalList.innerHTML = evaluators.map(evaluator => `
+            <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px]">
+              <span><b>${escapeHtml(evaluator.nama)}</b> · ${escapeHtml(roleLabels[evaluator.peran] || evaluator.peran)} ${evaluator.email ? `· ${escapeHtml(evaluator.email)}` : ""}</span>
+              <button type="button" data-remove-eval="${escapeHtml(evaluator.nik || evaluator.nama)}" class="text-rose-600 font-bold">Hapus</button>
+            </div>`).join("");
+          if (evalEmpty) evalEmpty.classList.toggle("hidden", evaluators.length > 0);
+          evalList.querySelectorAll("[data-remove-eval]").forEach(button => button.onclick = () => {
+            const key = button.dataset.removeEval;
+            const index = evaluators.findIndex(item => (item.nik || item.nama) === key);
+            if (index >= 0) evaluators.splice(index, 1);
+            renderEvaluators();
+          });
+        };
+        form.querySelector("#pip-eval-add")?.addEventListener("click", () => {
+          const role = form.querySelector("#pip-eval-role").value;
+          const key = form.querySelector("#pip-eval-employee").value;
+          const employee = activeEmployees.find(item => pipEmployeeKey(item) === key);
+          if (!employee) return toast("Pilih karyawan evaluator terlebih dahulu.", "warning");
+          const nik = String(employee.nik_karyawan || employee.nik || "");
+          const nama = employee.nama_karyawan || employee.nama || "-";
+          const targetKey = form.querySelector("#pip-employee").value;
+          if (targetKey && pipEmployeeKey(employee) === targetKey) {
+            return toast("Karyawan PIP tidak bisa menjadi evaluator dirinya sendiri.", "warning");
+          }
+          if (evaluators.some(item => (item.nik && item.nik === nik) || (!item.nik && item.nama === nama))) {
+            return toast("Evaluator tersebut sudah dipilih.", "info");
+          }
+          evaluators.push({
+            nik,
+            nama,
+            email: String(employee.email || "").trim(),
+            jabatan: employee.jabatan || employee.posisi || "",
+            peran: role
+          });
+          form.querySelector("#pip-eval-employee").value = "";
+          renderEvaluators();
+        });
         backdrop.querySelector("#pip-create-cancel")?.addEventListener("click", closeModal);
         form.onsubmit = async event => {
           event.preventDefault();
           const employeeKey = form.querySelector("#pip-employee").value;
           const employee = available.find(item => pipEmployeeKey(item) === employeeKey);
           if (!employee) return toast("Pilih karyawan terlebih dahulu.", "warning");
+          if (!evaluators.length) return toast("Tambahkan minimal 1 evaluator PIP (HR/Atasan/Rekan Kerja).", "warning");
+          const targetNik = String(employee.nik_karyawan || employee.nik || "");
+          if (targetNik && evaluators.some(item => item.nik === targetNik)) {
+            return toast("Karyawan PIP tidak bisa menjadi evaluator dirinya sendiri.", "warning");
+          }
           const duration = Number(form.querySelector("#pip-duration").value) || 3;
           const start = form.querySelector("#pip-start").value || pipToday();
           const rounds = buildPipRounds(start, duration, 3);
           const payload = {
             karyawan_nik: String(employee.nik_karyawan || employee.nik || ""),
             nama_karyawan: employee.nama_karyawan || employee.nama || "",
+            email_karyawan: String(employee.email || "").trim(),
             jabatan: employee.jabatan || employee.posisi || "",
             cabang: employee.cabang || "",
             divisi: employee.divisi || "",
@@ -8684,7 +8902,12 @@ export async function mount(container, { session, params }) {
             durasi_bulan: duration,
             periode_penilaian: form.querySelector("#pip-assessment-period").value,
             standar_nilai: Number(form.querySelector("#pip-standard").value) || PIP_DEFAULT_STANDARD,
-            evaluator: form.querySelector("#pip-evaluator").value.trim(),
+            evaluator: evaluators.map(item => item.nama).join(", "),
+            evaluators,
+            email_mode: form.querySelector("#pip-email-mode").value,
+            email_sent_rounds: [],
+            email_sent_periods: [],
+            email_last_at: "",
             catatan: form.querySelector("#pip-note").value.trim(),
             rounds,
             penilaian: [],
@@ -8713,6 +8936,7 @@ export async function mount(container, { session, params }) {
     const rounds = Array.isArray(program.rounds) ? program.rounds : [];
     const assessments = Array.isArray(program.penilaian) ? program.penilaian : [];
     const spRecords = Array.isArray(program.sp_records) ? program.sp_records : [];
+    const evaluators = Array.isArray(program.evaluators) ? program.evaluators : [];
     const pendingRounds = rounds.filter(round => round.status === "PENDING");
     const canEvaluate = pendingRounds.length > 0 && program.status === "AKTIF";
     const canFinish = pendingRounds.length === 0 && program.status === "AKTIF";
@@ -8730,6 +8954,12 @@ export async function mount(container, { session, params }) {
             <div class="text-right">${badge(pipStatusLabel(program.status), pipStatusTone(program.status))}<p class="mt-1 text-[10px] text-slate-400">Progres ${pipProgress(program)}%</p></div>
           </div>
 
+          <div class="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 p-3 text-[11px] text-slate-600">
+            <b>Evaluator:</b>
+            ${evaluators.length ? evaluators.map(evaluator => `<span class="rounded-full border border-slate-200 bg-white px-2 py-1">${escapeHtml(evaluator.nama)} <span class="text-slate-400">(${escapeHtml(evaluator.peran)})</span></span>`).join("") : `<span class="text-slate-400">${escapeHtml(program.evaluator || "Belum diatur")}</span>`}
+            <span class="ml-auto rounded-full bg-slate-100 px-2 py-1 font-semibold">Email: ${escapeHtml(program.email_mode === "OTOMATIS" ? "Otomatis per periode" : "Manual")}</span>
+          </div>
+
           <div class="overflow-x-auto rounded-xl border border-slate-200">
             <table class="w-full text-xs">
               <thead class="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th class="px-3 py-2 text-left">Babak</th><th class="px-3 py-2 text-left">Periode</th><th class="px-3 py-2 text-center">Rata-rata</th><th class="px-3 py-2 text-center">Status</th><th class="px-3 py-2 text-center">SP</th></tr></thead>
@@ -8744,7 +8974,7 @@ export async function mount(container, { session, params }) {
             <section>
               <h3 class="mb-2 text-xs font-black uppercase tracking-wide text-slate-700">Riwayat Penilaian (${assessments.length})</h3>
               <div class="max-h-56 space-y-1.5 overflow-y-auto pr-1">
-                ${assessments.slice().sort((a, b) => String(b.tanggal || "").localeCompare(String(a.tanggal || ""))).map(row => `<div class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-[11px]"><b>${fmtDateShort(row.tanggal)}</b> · Babak ${row.babak} · Nilai <b>${Number(row.nilai || 0)}</b>${row.catatan ? `<br><span class="text-slate-500">${escapeHtml(row.catatan)}</span>` : ""}</div>`).join("") || `<p class="text-xs text-slate-400">Belum ada penilaian.</p>`}
+                ${assessments.slice().sort((a, b) => String(b.tanggal || "").localeCompare(String(a.tanggal || ""))).map(row => `<div class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-[11px]"><b>${fmtDateShort(row.tanggal)}</b> · Babak ${row.babak} · Nilai <b>${Number(row.nilai || 0)}</b> · ${escapeHtml(row.evaluator_nama || row.oleh || "-")} <span class="text-slate-400">(${escapeHtml(row.evaluator_peran || "-")})</span>${row.catatan ? `<br><span class="text-slate-500">${escapeHtml(row.catatan)}</span>` : ""}</div>`).join("") || `<p class="text-xs text-slate-400">Belum ada penilaian.</p>`}
               </div>
             </section>
             <section>
@@ -8755,7 +8985,37 @@ export async function mount(container, { session, params }) {
             </section>
           </div>
 
-          <div class="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-3">
+          <div class="grid md:grid-cols-2 gap-3">
+            <section class="rounded-xl border border-slate-200 p-3">
+              <h3 class="mb-2 text-xs font-black uppercase tracking-wide text-slate-700">Progres Evaluator</h3>
+              <div class="space-y-1.5">
+                ${(evaluators.length ? evaluators : [{ nama: program.evaluator || "-", peran: "EVALUATOR" }]).map(evaluator => {
+                  const key = String(evaluator.nik || evaluator.nama || "").trim().toLowerCase();
+                  const rows = assessments.filter(row => String(row.evaluator_nik || row.evaluator_nama || row.oleh || "").trim().toLowerCase() === key);
+                  const avg = rows.length ? Math.round((rows.reduce((sum, row) => sum + Number(row.nilai || 0), 0) / rows.length) * 100) / 100 : 0;
+                  return `<div class="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px]"><span><b>${escapeHtml(evaluator.nama)}</b> <span class="text-slate-400">(${escapeHtml(evaluator.peran || "-")})</span></span><span class="text-slate-500">${rows.length} penilaian · rata-rata <b class="text-slate-700">${rows.length ? avg : "-"}</b></span></div>`;
+                }).join("")}
+              </div>
+            </section>
+            <section class="rounded-xl border border-slate-200 p-3">
+              <div class="mb-2 flex items-center justify-between">
+                <h3 class="text-xs font-black uppercase tracking-wide text-slate-700">Riwayat Email Pengingat</h3>
+                <span class="text-[10px] text-slate-400">${program.email_last_at ? `Terakhir ${fmtDateShort(program.email_last_at)}` : "Belum pernah"}</span>
+              </div>
+              <div class="max-h-40 space-y-1.5 overflow-y-auto pr-1">
+                ${(program.email_log || []).slice(-8).reverse().map(log => `<div class="rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px]"><b>${escapeHtml(log.period_label || `Babak ${log.round}`)}</b> · ${fmtDateShort(log.at)}<br><span class="text-slate-500">${(log.recipients || []).length} penerima · oleh ${escapeHtml(log.by || "HRD")}</span></div>`).join("") || `<p class="text-xs text-slate-400">Belum ada email terkirim.</p>`}
+              </div>
+            </section>
+          </div>
+
+          <div class="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3">
+            ${canManageKontrak ? `<label class="mr-auto text-[11px] font-semibold text-slate-600">Email pengingat:
+              <select id="pip-email-mode-detail" class="ml-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px]">
+                <option value="MANUAL" ${program.email_mode !== "OTOMATIS" ? "selected" : ""}>Manual</option>
+                <option value="OTOMATIS" ${program.email_mode === "OTOMATIS" ? "selected" : ""}>Otomatis per periode</option>
+              </select>
+            </label>
+            <button type="button" id="pip-send-email" class="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white">Kirim Email Periode</button>` : ""}
             <button type="button" id="pip-print-agreement" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600">Cetak Surat Perjanjian PIP</button>
             ${canEvaluate ? `<button type="button" id="pip-add-assessment" class="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white">Tambah Penilaian</button>
             <button type="button" id="pip-eval-round" class="rounded-lg bg-maroon-700 px-3 py-2 text-xs font-bold text-white">Evaluasi Babak</button>` : ""}
@@ -8765,6 +9025,17 @@ export async function mount(container, { session, params }) {
       onMount: backdrop => {
         backdrop.querySelector("#pip-add-assessment")?.addEventListener("click", () => { closeModal(); openPipAssessmentModal(program); });
         backdrop.querySelector("#pip-eval-round")?.addEventListener("click", () => { closeModal(); openPipRoundModal(program); });
+        backdrop.querySelector("#pip-email-mode-detail")?.addEventListener("change", async event => {
+          const mode = event.target.value === "OTOMATIS" ? "OTOMATIS" : "MANUAL";
+          try {
+            await fsUpdate(COL.PIP_PROGRAMS, program.id, { email_mode: mode, updated_at: new Date().toISOString() });
+            program.email_mode = mode;
+            toast(mode === "OTOMATIS" ? "Email PIP akan dikirim otomatis per periode evaluasi." : "Email PIP dikirim manual lewat tombol.", "success");
+          } catch (error) {
+            toast("Gagal menyimpan pengaturan email: " + error.message, "error");
+          }
+        });
+        backdrop.querySelector("#pip-send-email")?.addEventListener("click", () => { closeModal(); sendPipPeriodEmail(program, { refresh: true }); });
         backdrop.querySelector("#pip-finish")?.addEventListener("click", () => finishPipProgram(program));
         backdrop.querySelector("#pip-print-agreement")?.addEventListener("click", () => { closeModal(); printPipAgreement(program); });
         backdrop.querySelectorAll("[data-pip-print-sp]").forEach(button => button.onclick = () => {
@@ -8804,7 +9075,11 @@ export async function mount(container, { session, params }) {
               <input id="pip-assess-score" type="number" min="0" max="100" required class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" placeholder="Cth: 68">
             </label>
             <label class="block text-xs font-semibold text-slate-600">Evaluator
-              <input id="pip-assess-by" value="${escapeHtml(program.evaluator || session.nama || "")}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm">
+              ${Array.isArray(program.evaluators) && program.evaluators.length ? `
+              <select id="pip-assess-evaluator" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm bg-white">
+                ${program.evaluators.map(evaluator => `<option value="${escapeHtml(evaluator.nik || evaluator.nama)}" data-name="${escapeHtml(evaluator.nama)}" data-role="${escapeHtml(evaluator.peran)}">${escapeHtml(evaluator.nama)} (${escapeHtml(evaluator.peran)})</option>`).join("")}
+              </select>` : `
+              <input id="pip-assess-by" value="${escapeHtml(program.evaluator || session.nama || "")}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm">`}
             </label>
           </div>
           <label class="block text-xs font-semibold text-slate-600">Catatan Perkembangan
@@ -8828,7 +9103,10 @@ export async function mount(container, { session, params }) {
             babak: Number(form.querySelector("#pip-assess-round").value),
             nilai: score,
             catatan: form.querySelector("#pip-assess-note").value.trim(),
-            oleh: form.querySelector("#pip-assess-by").value.trim() || session.nama || "HRD",
+            evaluator_nik: form.querySelector("#pip-assess-evaluator")?.value || "",
+            evaluator_nama: form.querySelector("#pip-assess-evaluator")?.selectedOptions?.[0]?.dataset.name || form.querySelector("#pip-assess-by")?.value || session.nama || "HRD",
+            evaluator_peran: form.querySelector("#pip-assess-evaluator")?.selectedOptions?.[0]?.dataset.role || "HR",
+            oleh: form.querySelector("#pip-assess-evaluator")?.selectedOptions?.[0]?.dataset.name || form.querySelector("#pip-assess-by")?.value || session.nama || "HRD",
             created_at: new Date().toISOString()
           };
           try {
@@ -8980,6 +9258,185 @@ export async function mount(container, { session, params }) {
     } catch (error) {
       toast("Gagal menyelesaikan PIP: " + error.message, "error");
     }
+  }
+
+  function pipEvaluatorList(program = {}) {
+    if (Array.isArray(program.evaluators) && program.evaluators.length) return program.evaluators;
+    if (program.evaluator) {
+      return String(program.evaluator).split(",").map(name => ({ nama: name.trim(), peran: "EVALUATOR", email: "" })).filter(item => item.nama);
+    }
+    return [];
+  }
+
+  function pipCurrentRound(program = {}) {
+    const rounds = Array.isArray(program.rounds) ? program.rounds : [];
+    return roundForDate(rounds, pipToday()) || rounds.find(round => round.status === "PENDING") || rounds[rounds.length - 1] || null;
+  }
+
+  function pipFindEmployeeEmail(nik, name) {
+    const employee = pipEmployeesCache.find(item =>
+      (nik && String(item.nik_karyawan || item.nik || "").trim() === String(nik).trim()) ||
+      (name && String(item.nama_karyawan || item.nama || "").trim().toLowerCase() === String(name).trim().toLowerCase())
+    );
+    return String(employee?.email || "").trim();
+  }
+
+  function pipEmailRecipients(program = {}) {
+    const recipients = [];
+    const push = (person) => {
+      const email = String(person?.email || "").trim();
+      if (!email || recipients.some(item => item.email.toLowerCase() === email.toLowerCase())) return;
+      recipients.push({ ...person, email });
+    };
+    const employeeEmail = String(program.email_karyawan || "").trim() || pipFindEmployeeEmail(program.karyawan_nik, program.nama_karyawan);
+    if (employeeEmail) {
+      push({ role: "KARYAWAN", roleLabel: "Karyawan PIP", nik: program.karyawan_nik || "", name: program.nama_karyawan || "", email: employeeEmail });
+    }
+    pipEvaluatorList(program).forEach(evaluator => {
+      push({
+        role: evaluator.peran || "EVALUATOR",
+        roleLabel: evaluator.peran === "HR" ? "HR" : evaluator.peran === "ATASAN" ? "Atasan" : evaluator.peran === "REKAN" ? "Rekan Kerja" : "Evaluator",
+        nik: evaluator.nik || "",
+        name: evaluator.nama || "",
+        email: evaluator.email || pipFindEmployeeEmail(evaluator.nik, evaluator.nama)
+      });
+    });
+    return recipients;
+  }
+
+  function buildPipEmailHtml(program, round, recipient) {
+    const evaluators = pipEvaluatorList(program);
+    const isEmployee = recipient.role === "KARYAWAN";
+    const periodLabel = pipEvaluationPeriodLabel(program.periode_penilaian, pipToday());
+    const pipUrl = `${window.location.origin}/#penilaian-kontrak?tab=pip`;
+    const profileUrl = `${window.location.origin}/#profile`;
+    const roundRows = (program.rounds || []).map(item => `
+      <tr>
+        <td style="padding:5px 7px;border-bottom:1px solid #e2e8f0;font-size:11px;">Babak ${item.index}</td>
+        <td style="padding:5px 7px;border-bottom:1px solid #e2e8f0;font-size:11px;">${fmtDateShort(item.start)} - ${fmtDateShort(item.end)}</td>
+        <td style="padding:5px 7px;border-bottom:1px solid #e2e8f0;font-size:11px;">${escapeHtml(item.status === "PENDING" ? "Berjalan / menunggu" : item.status)}</td>
+      </tr>`).join("");
+    return buildStandardEmailHtml({
+      badgeText: "PIP",
+      badgeVariant: isEmployee ? "blue" : "amber",
+      title: isEmployee ? `Jadwal Evaluasi PIP - Babak ${round.index}` : `Tugas Penilaian PIP - ${program.nama_karyawan || ""}`,
+      recipientName: recipient.name || "-",
+      introText: isEmployee
+        ? `Program Performance Improvement (PIP) Anda sedang berjalan. Berikut jadwal evaluasi dan evaluator yang akan menilai perkembangan kinerja Anda.`
+        : `Anda ditunjuk sebagai evaluator PIP untuk <b>${escapeHtml(program.nama_karyawan || "-")}</b>. Mohon lakukan penilaian sesuai periode yang berjalan.`,
+      bodyHtml: `
+        <div style="font-size:12px;color:#334155;">
+          <p style="margin:0 0 6px;"><b>Periode evaluasi:</b> ${escapeHtml(periodLabel)} · <b>Babak:</b> ${round.index} (${fmtDateShort(round.start)} - ${fmtDateShort(round.end)})</p>
+          <p style="margin:0 0 6px;"><b>Standar nilai lulus:</b> ${Number(program.standar_nilai || PIP_DEFAULT_STANDARD)} · <b>Penilaian:</b> ${escapeHtml(pipPeriodLabel(program.periode_penilaian))}</p>
+          <p style="margin:0 0 6px;"><b>Evaluator:</b> ${evaluators.map(item => `${escapeHtml(item.nama)} (${escapeHtml(item.peran)})`).join(", ") || "-"}</p>
+          <table style="width:100%;border-collapse:collapse;margin-top:8px;">
+            <thead><tr style="background:#f1f5f9;text-align:left;"><th style="padding:5px 7px;font-size:11px;">Babak</th><th style="padding:5px 7px;font-size:11px;">Periode</th><th style="padding:5px 7px;font-size:11px;">Status</th></tr></thead>
+            <tbody>${roundRows}</tbody>
+          </table>
+          <p style="font-size:11px;color:#475569;margin-top:10px;">${isEmployee ? "Silakan pantau perkembangan dan koordinasikan dengan evaluator Anda." : "Silakan buka menu Penilaian &amp; Kontrak → PIP untuk mengisi penilaian."}</p>
+          <p style="font-size:11px;margin-top:6px;"><a href="${pipUrl}" style="color:#7a1f2b;font-weight:bold;">Buka Program PIP</a> &nbsp;|&nbsp; <a href="${profileUrl}" style="color:#7a1f2b;font-weight:bold;">Buka Profil Karyawan</a></p>
+        </div>`,
+      infoList: [
+        { label: "Karyawan", value: program.nama_karyawan || "-" },
+        { label: "Periode Evaluasi", value: periodLabel },
+        { label: "Babak", value: `Babak ${round.index} (${fmtDateShort(round.start)} - ${fmtDateShort(round.end)})` },
+        { label: "Peran Anda", value: recipient.roleLabel || "Evaluator" },
+        { label: "Standar Nilai", value: String(Number(program.standar_nilai || PIP_DEFAULT_STANDARD)) }
+      ],
+      actionUrl: isEmployee ? profileUrl : pipUrl,
+      actionText: isEmployee ? "Buka Profil Karyawan →" : "Buka PIP & Isi Penilaian →",
+      secondaryNote: `Jadwal evaluasi PIP: ${fmtDateShort(round.start)} - ${fmtDateShort(round.end)}.`
+    });
+  }
+
+  async function sendPipPeriodEmail(program, options = {}) {
+    const round = options.round || pipCurrentRound(program);
+    if (!round) {
+      if (!options.auto) toast("Belum ada babak evaluasi yang bisa dikirimi email.", "warning");
+      return false;
+    }
+    const periodKey = pipEvaluationPeriodKey(program.periode_penilaian, options.date || pipToday());
+    const periodLabel = pipEvaluationPeriodLabel(program.periode_penilaian, options.date || pipToday());
+    if (options.auto && (program.email_sent_periods || []).includes(periodKey)) return false;
+    const recipients = pipEmailRecipients(program);
+    if (!recipients.length) {
+      if (!options.auto) toast("Email karyawan/evaluator belum diisi pada Master Karyawan.", "warning");
+      return false;
+    }
+    if (!options.auto) {
+      const ok = await confirmDialog(
+        `Kirim email periode evaluasi ${periodLabel} (Babak ${round.index}) ke karyawan dan ${recipients.length - 1} evaluator?\n\n${recipients.map(item => `• ${item.name} (${item.roleLabel})`).join("\n")}`,
+        { title: "Kirim Email PIP", danger: false }
+      );
+      if (!ok) return false;
+    }
+
+    let sent = 0;
+    for (const recipient of recipients) {
+      try {
+        const emailOk = await sendEmailNotif(
+          recipient.email,
+          `[PIP] ${program.nama_karyawan || "Karyawan"} - ${periodLabel}`,
+          buildPipEmailHtml(program, round, recipient),
+          "",
+          null,
+          { manual: true }
+        );
+        if (emailOk) sent += 1;
+      } catch (error) {
+        console.warn("Gagal kirim email PIP:", recipient.email, error);
+      }
+    }
+    if (!sent) {
+      if (!options.auto) toast("Email PIP gagal dikirim. Periksa konfigurasi email.", "error");
+      return false;
+    }
+
+    const now = new Date().toISOString();
+    const sentRounds = [...new Set([...(program.email_sent_rounds || []).map(Number), Number(round.index)])];
+    const sentPeriods = [...new Set([...(program.email_sent_periods || []), periodKey])];
+    const emailLog = [...(program.email_log || []), {
+      round: Number(round.index),
+      period_key: periodKey,
+      period_label: periodLabel,
+      at: now,
+      recipients: recipients.map(item => item.email),
+      by: session.nama || session.username || "HRD"
+    }];
+    try {
+      await fsUpdate(COL.PIP_PROGRAMS, program.id, {
+        email_sent_rounds: sentRounds,
+        email_sent_periods: sentPeriods,
+        email_last_at: now,
+        email_log: emailLog,
+        updated_at: now
+      });
+      program.email_sent_rounds = sentRounds;
+      program.email_sent_periods = sentPeriods;
+      program.email_last_at = now;
+      program.email_log = emailLog;
+    } catch (error) {
+      console.warn("Gagal menyimpan log email PIP:", error);
+    }
+    if (!options.auto) {
+      toast(`${sent} email PIP periode ${periodLabel} terkirim.`, "success");
+      if (options.refresh !== false) await reopenPipDetail(program.id);
+    }
+    return true;
+  }
+
+  async function autoSendPipEmails(programs = []) {
+    let sentPrograms = 0;
+    for (const program of programs) {
+      if (String(program.status || "").toUpperCase() !== "AKTIF" || program.email_mode !== "OTOMATIS") continue;
+      const round = pipCurrentRound(program);
+      if (!round) continue;
+      const periodKey = pipEvaluationPeriodKey(program.periode_penilaian, pipToday());
+      if ((program.email_sent_periods || []).includes(periodKey)) continue;
+      const ok = await sendPipPeriodEmail(program, { round, auto: true, refresh: false });
+      if (ok) sentPrograms += 1;
+    }
+    if (sentPrograms) toast(`Email PIP otomatis terkirim untuk ${sentPrograms} program.`, "success");
   }
 
   function printPipAgreement(program) {

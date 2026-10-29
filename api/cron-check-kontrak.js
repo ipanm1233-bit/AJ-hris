@@ -142,6 +142,185 @@ function buildRows(items) {
   </tr>`);
 }
 
+/* =====================================================================
+ * PIP — pengingat email otomatis per periode evaluasi
+ * Hanya program berstatus AKTIF dengan email_mode = OTOMATIS.
+ * Idempoten per program + periode (harian/mingguan/bulanan) via cron_locks.
+ * ===================================================================== */
+const PIP_MONTHS = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+function pipPeriodKey(period, dateStr) {
+  const mode = String(period || "MINGGUAN").toUpperCase();
+  const base = /^\d{4}-\d{2}-\d{2}$/.test(String(dateStr || "")) ? String(dateStr) : getWibDateStr();
+  if (mode === "HARIAN") return base;
+  if (mode === "BULANAN") return base.slice(0, 7);
+  const d = new Date(`${base}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return base;
+  const day = d.getUTCDay();
+  d.setUTCDate(d.getUTCDate() + (day === 0 ? -6 : 1 - day));
+  return d.toISOString().slice(0, 10);
+}
+
+function pipPeriodLabel(period, dateStr) {
+  const mode = String(period || "MINGGUAN").toUpperCase();
+  const base = /^\d{4}-\d{2}-\d{2}$/.test(String(dateStr || "")) ? String(dateStr) : getWibDateStr();
+  const [y, m] = base.split("-");
+  if (mode === "HARIAN") return `Harian ${formatIndoDate(base)}`;
+  if (mode === "BULANAN") return `Bulanan ${PIP_MONTHS[parseInt(m, 10) - 1] || m} ${y}`;
+  const start = pipPeriodKey("MINGGUAN", base);
+  const endDate = new Date(`${start}T00:00:00Z`);
+  endDate.setUTCDate(endDate.getUTCDate() + 6);
+  return `Mingguan ${formatIndoDate(start)} - ${formatIndoDate(endDate.toISOString().slice(0, 10))}`;
+}
+
+function pipRoundForDate(rounds, dateStr) {
+  const list = Array.isArray(rounds) ? rounds : [];
+  const match = list.find(r => {
+    const start = toDateOnly(r.start);
+    const end = toDateOnly(r.end);
+    return start && end && start <= dateStr && dateStr <= end;
+  });
+  return match || list.find(r => String(r.status || "").toUpperCase() === "PENDING") || list[list.length - 1] || null;
+}
+
+function buildPipEmailHtml({ program, round, periodLabel, recipientName, recipientRole, isEmployee, appUrl }) {
+  const roundRows = (program.rounds || []).map(item => `<tr>
+    <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:11.5px">Babak ${escapeHtml(item.index)}</td>
+    <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:11.5px">${formatIndoDate(toDateOnly(item.start))} - ${formatIndoDate(toDateOnly(item.end))}</td>
+    <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:11.5px">${escapeHtml(String(item.status || "").toUpperCase() === "PENDING" ? "Berjalan / menunggu" : item.status || "-")}</td>
+  </tr>`).join("");
+  return `
+  <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:720px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden">
+    <div style="background:linear-gradient(135deg,#7a1f2b 0%,#4a0e17 100%);padding:24px 28px;color:#fff">
+      <div style="display:inline-block;background:rgba(255,255,255,.2);padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px;margin-bottom:8px">PIP • PERFORMANCE IMPROVEMENT</div>
+      <h1 style="margin:0;font-size:20px;font-weight:800;line-height:1.3">${escapeHtml(isEmployee ? `Jadwal Evaluasi PIP - ${periodLabel}` : `Tugas Penilaian PIP - ${program.nama_karyawan || "-"}`)}</h1>
+    </div>
+    <div style="padding:24px 28px">
+      <p style="margin:0 0 14px;font-size:13.5px;color:#334155;line-height:1.6">
+        ${isEmployee
+          ? `Halo <b>${escapeHtml(recipientName || "-")}</b>, program Performance Improvement (PIP) Anda sedang berjalan. Berikut jadwal evaluasi periode <b>${escapeHtml(periodLabel)}</b> bersama evaluator yang ditunjuk.`
+          : `Halo <b>${escapeHtml(recipientName || "-")}</b>, Anda ditunjuk sebagai evaluator PIP (<b>${escapeHtml(recipientRole || "Evaluator")}</b>) untuk <b>${escapeHtml(program.nama_karyawan || "-")}</b>. Mohon lakukan penilaian pada periode <b>${escapeHtml(periodLabel)}</b>.`}
+      </p>
+      <div style="margin:16px 0;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;font-size:12px;color:#334155">
+        <p style="margin:0 0 4px"><b>Periode evaluasi:</b> ${escapeHtml(periodLabel)}</p>
+        <p style="margin:0 0 4px"><b>Babak:</b> ${escapeHtml(String(round?.index ?? "-"))} (${formatIndoDate(toDateOnly(round?.start))} - ${formatIndoDate(toDateOnly(round?.end))})</p>
+        <p style="margin:0 0 4px"><b>Standar nilai lulus:</b> ${escapeHtml(String(Number(program.standar_nilai) || 75))}</p>
+        <p style="margin:0"><b>Evaluator:</b> ${escapeHtml((program.evaluators || []).map(e => `${e.nama} (${e.peran})`).join(", ") || program.evaluator || "-")}</p>
+      </div>
+      <table style="width:100%;border-collapse:collapse;text-align:left;font-size:11.5px;color:#1e293b">
+        <thead><tr style="background:#f1f5f9;color:#475569;font-size:11px;text-transform:uppercase"><th style="padding:6px 8px">Babak</th><th style="padding:6px 8px">Periode</th><th style="padding:6px 8px">Status</th></tr></thead>
+        <tbody>${roundRows || `<tr><td colspan="3" style="padding:8px;font-size:11.5px;color:#64748b">Belum ada babak evaluasi.</td></tr>`}</tbody>
+      </table>
+      <p style="font-size:12px;color:#475569;margin:16px 0 0">${isEmployee ? "Silakan pantau perkembangan Anda dan koordinasikan dengan evaluator." : "Silakan buka menu Penilaian & Kontrak → PIP untuk mengisi penilaian."}</p>
+      <p style="margin:8px 0 0"><a href="${escapeHtml(appUrl)}/#/penilaian-kontrak?tab=pip" style="color:#7a1f2b;font-weight:700;font-size:12.5px">Buka Program PIP →</a></p>
+    </div>
+    <div style="padding:16px 28px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center">
+      <p style="margin:0;font-size:11px;color:#64748b">Sistem HRIS &amp; Operasional CV Andela Jaya • Performance Improvement Plan</p>
+      <p style="margin:4px 0 0;font-size:10.5px;color:#94a3b8">Email ini dikirim otomatis sesuai jadwal periode evaluasi PIP.</p>
+    </div>
+  </div>`;
+}
+
+async function processPipEmails(db, appUrl) {
+  const summary = { programs: 0, sent: 0, skipped: 0, failed: 0 };
+  const todayStr = getWibDateStr();
+  let programsSnap;
+  try {
+    programsSnap = await db.collection('pip_programs').where('status', '==', 'AKTIF').get();
+  } catch (error) {
+    programsSnap = await db.collection('pip_programs').get();
+  }
+  const targets = programsSnap.docs
+    .map(d => ({ id: d.id, data: d.data() }))
+    .filter(item => String(item.data.status || "").toUpperCase() === "AKTIF" && String(item.data.email_mode || "").toUpperCase() === "OTOMATIS");
+  if (!targets.length) return summary;
+
+  let karyawanSnap;
+  try { karyawanSnap = await db.collection('master_karyawan').get(); } catch (error) { karyawanSnap = { forEach() {} }; }
+  const byNik = new Map();
+  const byNama = new Map();
+  karyawanSnap.forEach(d => {
+    const data = d.data();
+    const nik = String(data.nik_karyawan || data.nik || d.id).trim();
+    const nama = String(data.nama_karyawan || data.nama || "").trim().toUpperCase();
+    if (nik) byNik.set(nik, data);
+    if (nama) byNama.set(nama, data);
+  });
+  const lookupEmail = (nik, nama) => pickEmail((nik && byNik.get(String(nik).trim())) || (nama && byNama.get(String(nama).trim().toUpperCase())) || {});
+
+  for (const item of targets) {
+    const program = item.data;
+    summary.programs += 1;
+    const round = pipRoundForDate(program.rounds, todayStr);
+    if (!round) { summary.skipped += 1; continue; }
+    const periodKey = pipPeriodKey(program.periode_penilaian, todayStr);
+    if ((program.email_sent_periods || []).map(String).includes(periodKey)) { summary.skipped += 1; continue; }
+    const periodLabel = pipPeriodLabel(program.periode_penilaian, todayStr);
+
+    const recipients = [];
+    const pushRecipient = (person) => {
+      const email = String(person.email || "").trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+      if (recipients.some(r => r.email.toLowerCase() === email.toLowerCase())) return;
+      recipients.push({ ...person, email });
+    };
+    pushRecipient({
+      role: "KARYAWAN", roleLabel: "Karyawan PIP",
+      nama: program.nama_karyawan || "-", nik: program.karyawan_nik || "",
+      email: String(program.email_karyawan || "").trim() || lookupEmail(program.karyawan_nik, program.nama_karyawan)
+    });
+    for (const evaluator of (program.evaluators || [])) {
+      pushRecipient({
+        role: evaluator.peran || "EVALUATOR",
+        roleLabel: evaluator.peran === "HR" ? "HR" : evaluator.peran === "ATASAN" ? "Atasan" : evaluator.peran === "REKAN" ? "Rekan Kerja" : "Evaluator",
+        nama: evaluator.nama || "-", nik: evaluator.nik || "",
+        email: String(evaluator.email || "").trim() || lookupEmail(evaluator.nik, evaluator.nama)
+      });
+    }
+    if (!recipients.length) { summary.skipped += 1; continue; }
+
+    let sent = 0;
+    let failed = false;
+    for (const recipient of recipients) {
+      const isEmployee = recipient.role === "KARYAWAN";
+      const delivery = await sendCronMailOnce(db, `pip_${item.id}_${periodKey}_${recipient.email}`, {
+        from: `"HRIS Andela Jaya" <${process.env.GMAIL_USER}>`,
+        to: recipient.email,
+        subject: `[PIP] ${program.nama_karyawan || "Karyawan"} - ${periodLabel}`,
+        html: buildPipEmailHtml({ program, round, periodLabel, recipientName: recipient.nama, recipientRole: recipient.roleLabel, isEmployee, appUrl })
+      });
+      if (delivery.error) failed = true;
+      if (!delivery.skipped && !delivery.error) sent += 1;
+    }
+    if (!sent && failed) { summary.failed += 1; continue; }
+    if (!sent) { summary.skipped += 1; continue; }
+
+    const now = new Date().toISOString();
+    const emailLog = [...(program.email_log || []), {
+      round: Number(round.index), period_key: periodKey, period_label: periodLabel,
+      at: now, recipients: recipients.map(r => r.email), by: "CRON"
+    }].slice(-50);
+    await db.collection('pip_programs').doc(item.id).set({
+      email_sent_periods: [...new Set([...(program.email_sent_periods || []).map(String), periodKey])],
+      email_sent_rounds: [...new Set([...(program.email_sent_rounds || []).map(Number), Number(round.index)])],
+      email_last_at: now,
+      email_log: emailLog,
+      updated_at: now
+    }, { merge: true });
+
+    for (const recipient of recipients) {
+      try {
+        await writeInAppNotif(db, { username: recipient.nama, nama: recipient.nama, nik: recipient.nik },
+          recipient.role === "KARYAWAN" ? `Jadwal Evaluasi PIP - ${periodLabel}` : `Tugas Penilaian PIP - ${program.nama_karyawan || "-"}`,
+          `Periode evaluasi ${periodLabel} (Babak ${round.index}) berjalan.`,
+          "/#/penilaian-kontrak?tab=pip");
+      } catch (error) { /* notifikasi in-app opsional */ }
+    }
+    summary.sent += sent;
+  }
+  return summary;
+}
+
 /* Kirim email sekali per lock (pola cron-rekap-cuti) */
 async function sendCronMailOnce(db, lockId, mailOptions) {
   const ref = db.collection('cron_locks').doc(lockId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 240));
@@ -218,6 +397,15 @@ module.exports = async function handler(req, res) {
     const appUrl = process.env.APP_URL || "https://hris.andelajaya.com";
     const routeLink = `${appUrl}/#/penilaian-kontrak?tab=siklus`;
 
+    /* PIP: email otomatis per periode evaluasi (independen dari siklus kontrak) */
+    let pipSummary = { programs: 0, sent: 0, skipped: 0, failed: 0 };
+    try {
+      pipSummary = await processPipEmails(db, appUrl);
+    } catch (ePip) {
+      console.warn("Email PIP otomatis gagal:", ePip?.message || ePip);
+      pipSummary = { error: String(ePip?.message || ePip).slice(0, 300) };
+    }
+
     /* 1. Konfigurasi */
     let cfg = { ...DEFAULT_CONFIG };
     try {
@@ -225,8 +413,8 @@ module.exports = async function handler(req, res) {
       if (cfgSnap.exists) cfg = { ...cfg, ...cfgSnap.data() };
     } catch (eCfg) { console.warn("Konfigurasi siklus gagal dibaca:", eCfg.message); }
     if (!cfg.enabled) {
-      await writeAuditLog(db, req, null, { action: 'CRON_EVAL_CYCLE', module: 'CONTRACT', metadata: { skipped: "config disabled" } });
-      return res.status(200).json({ success: true, message: "Siklus evaluasi kontrak dinonaktifkan via konfigurasi.", date: todayStr });
+      await writeAuditLog(db, req, null, { action: 'CRON_EVAL_CYCLE', module: 'CONTRACT', metadata: { skipped: "config disabled", pip: pipSummary } });
+      return res.status(200).json({ success: true, message: "Siklus evaluasi kontrak dinonaktifkan via konfigurasi.", date: todayStr, pip: pipSummary });
     }
     const triggerDays = Math.max(1, Number(cfg.trigger_days) || 30);
     const remindDays = Math.max(0, Number(cfg.remind_start_days) || 15);
@@ -490,7 +678,7 @@ module.exports = async function handler(req, res) {
 
     await writeAuditLog(db, req, null, {
       action: 'CRON_EVAL_CYCLE', module: 'CONTRACT',
-      metadata: { date: todayStr, candidates: finalCandidates.length, created: created.length, reminders: reminderSent.length, overdue: overdue.length, digest: digestStatus }
+      metadata: { date: todayStr, candidates: finalCandidates.length, created: created.length, reminders: reminderSent.length, overdue: overdue.length, digest: digestStatus, pip: pipSummary }
     });
 
     return res.status(200).json({
@@ -502,7 +690,8 @@ module.exports = async function handler(req, res) {
       created,
       reminders: reminderSent.length,
       overdue: overdue.length,
-      digest: digestStatus
+      digest: digestStatus,
+      pip: pipSummary
     });
   } catch (err) {
     console.error("Error in cron-check-kontrak:", err);
