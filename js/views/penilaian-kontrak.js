@@ -1,5 +1,5 @@
 import { auth, db, COL, collection, query, where, getDocs, getDoc, setDoc, doc, limit, writeBatch, serverTimestamp } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, confirmDialog, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, buildStandardEmailHtml, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan, downloadXlsx, ensureXlsxLoaded, formatPhoneNumberForWa, openWhatsAppMessage, getEmployeePhoneByName, buildKpiTaskWaMessage, printDokumenPenilaianFisik, downloadDokumenPenilaianFisikPdf, generateLaporanEvaluasiKontrakHtml, downloadLaporanEvaluasiKontrakPdf } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, confirmDialog, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, buildStandardEmailHtml, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan, downloadXlsx, ensureXlsxLoaded, formatPhoneNumberForWa, openWhatsAppMessage, getEmployeePhoneByName, buildKpiTaskWaMessage, printDokumenPenilaianFisik, downloadDokumenPenilaianFisikPdf, generateLaporanEvaluasiKontrakHtml, downloadLaporanEvaluasiKontrakPdf, downloadHtmlAsPdf } from "../utils.js";
 import { renderCrudModule, badge, emptyState, skeletonRows, avatar, icon, openPenilaianFormFromNotif } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames, hasPermission, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
@@ -14,6 +14,11 @@ import { calculateAttendancePenalty } from "../attendance-penalty.mjs";
 import { MONTHLY_METRICS, monthlyMetricRows, validateMonthlyAchievement } from "../monthly-achievement.mjs";
 import { summarizeReviewTasks, resolveCoordinationStage } from "../contract-coordination.mjs";
 import { employeeHistoryRows } from "../employee-history.mjs";
+import {
+ PIP_DURATIONS, PIP_ASSESSMENT_PERIODS, PIP_STATUS_LABELS, PIP_DEFAULT_STANDARD,
+ buildPipRounds, extendPipRounds, roundForDate, pipAverage, nextSpLevel, pipProgress,
+ computePipOutcome, roundRecommendation, pipStatusLabel
+} from "../pip.mjs";
 import { parseSchemeIncentiveWorkbook, parseDsrWorkbook, buildSalesKinerjaDocs, buildDsrDocs } from "../sales-kinerja-import.mjs";
 
 const confirmThen = (message, action) => runConfirmedAction(confirmDialog, message, action);
@@ -439,9 +444,15 @@ export async function mount(container, { session, params }) {
  if (tplTabBtn) tplTabBtn.classList.add("hidden");
  }
 
+ // PIP dikelola HRD/atasan; karyawan biasa tidak melihat tab ini.
+ if (isRegularEmployee) {
+  container.querySelector('[data-ntab="pip"]')?.classList.add("hidden");
+ }
+
  const panels = {
  kontrak: container.querySelector("#pk-panel-kontrak"),
  alur_perpanjangan: container.querySelector("#pk-panel-alur-perpanjangan"),
+ pip: container.querySelector("#pk-panel-pip"),
  kpi360: container.querySelector("#pk-panel-kpi360"),
  hasil: container.querySelector("#pk-panel-hasil"),
  daily: container.querySelector("#pk-panel-daily"),
@@ -993,6 +1004,8 @@ export async function mount(container, { session, params }) {
  daysLabel = `Sudah Kadaluarsa (${Math.abs(item.daysLeft)} Hari Lalu)`;
  }
 
+ const todayIso = new Date().toISOString().slice(0, 10);
+ const permanentEnd = item.tanggal_keluar || todayIso;
  return `
  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition p-5 flex flex-col justify-between group cursor-pointer card-emp-kontrak" data-emp-name="${escapeHtml(item.nama_karyawan)}">
  <div>
@@ -1024,7 +1037,7 @@ export async function mount(container, { session, params }) {
  ${lc ? `
  <div class="flex items-center justify-between text-xs">
  <span class="text-slate-400 font-medium">Periode:</span>
- <span class="font-medium text-slate-700">${fmtDateShort(lc.tanggal_mulai)} - ${lc.tanggal_akhir ? fmtDateShort(lc.tanggal_akhir) : (item.isPermanent ? "tanpa batas" : "-")}</span>
+ <span class="font-medium text-slate-700">${fmtDateShort(lc.tanggal_mulai)} - ${item.isPermanent ? `${fmtDateShort(permanentEnd)} (berjalan)` : (lc.tanggal_akhir ? fmtDateShort(lc.tanggal_akhir) : "-")}</span>
  </div>
  <div class="mt-2 flex items-center justify-between">
  ${badge(item.contractStatus, badgeContractColor)}
@@ -1610,7 +1623,7 @@ export async function mount(container, { session, params }) {
  ${badge(c.status_kolom_kontrak || "AKTIF", c.status_kolom_kontrak === "AKTIF" ? "emerald" : "amber")}
  </div>
  <p class="text-xs text-slate-600 font-medium">
- Periode: <strong>${fmtDateShort(c.tanggal_mulai)}</strong> s/d <strong>${c.tanggal_akhir ? fmtDateShort(c.tanggal_akhir) : (isPermanentContract(c) ? "tanpa batas (PKWTT)" : "-")}</strong>
+ Periode: <strong>${fmtDateShort(c.tanggal_mulai)}</strong> s/d <strong>${c.tanggal_akhir ? fmtDateShort(c.tanggal_akhir) : (isPermanentContract(c) ? `${fmtDateShort(empData?.tanggal_keluar || new Date().toISOString().slice(0,10))} (berjalan)` : "-")}</strong>
  </p>
  <p class="text-[11px] text-slate-400">
  Jabatan: ${escapeHtml(c.jabatan || "-")} ${c.cabang ? `• Cabang: ${escapeHtml(c.cabang)}` : ''}
@@ -4436,13 +4449,15 @@ export async function mount(container, { session, params }) {
     let allKontrak = [];
     let allEvaluasi = [];
     let allUsers = [];
+    let allPip = [];
 
     try {
-      [allKaryawan, allKontrak, allEvaluasi, allUsers] = await Promise.all([
+      [allKaryawan, allKontrak, allEvaluasi, allUsers, allPip] = await Promise.all([
         fsGetAll(COL.MASTER_KARYAWAN),
         fsGetAll(COL.MASTER_KONTRAK),
         fsGetAll(COL.EVALUASI_KONTRAK).catch(() => []),
-        fsGetAll(COL.USERS).catch(() => [])
+        fsGetAll(COL.USERS).catch(() => []),
+        fsGetAll(COL.PIP_PROGRAMS).catch(() => [])
       ]);
     } catch (e) {
       console.error("Gagal memuat data alur perpanjangan:", e);
@@ -4517,9 +4532,24 @@ export async function mount(container, { session, params }) {
       };
     });
 
-    // We filter for employees that are contract based or expiring or have active evaluation
+    // We filter for employees that are contract based or expiring or have active evaluation.
+    // Karyawan tetap (PKWTT) hanya muncul jika sedang mengikuti program PIP aktif.
+    const activePipKeys = new Set(
+      (allPip || [])
+        .filter(program => String(program.status || "").toUpperCase() === "AKTIF")
+        .flatMap(program => [
+          String(program.karyawan_nik || "").trim().toLowerCase(),
+          String(program.nama_karyawan || "").trim().toLowerCase()
+        ])
+        .filter(Boolean)
+    );
     let filteredList = pipelineData.filter(item => {
-      const isPkwt = !String(item.status_karyawan || "").toUpperCase().includes("PKWTT") && String(item.status_karyawan || "").toUpperCase() !== "TETAP";
+      const statusKaryawan = String(item.status_karyawan || "").toUpperCase();
+      const isPermanent = statusKaryawan.includes("PKWTT") || statusKaryawan.includes("TETAP") || statusKaryawan.includes("PERMANEN");
+      const inActivePip = activePipKeys.has(String(item.nik_karyawan || item.nik || "").trim().toLowerCase())
+        || activePipKeys.has(String(item.nama_karyawan || "").trim().toLowerCase());
+      if (isPermanent) return inActivePip;
+      const isPkwt = !isPermanent;
       const hasExpiringContract = item.daysLeft !== null && item.daysLeft <= 60;
       const hasOngoingEval = item.evalRecord && item.evalRecord.status_final !== "SELESAI";
       return isPkwt || hasExpiringContract || hasOngoingEval;
@@ -8458,10 +8488,599 @@ export async function mount(container, { session, params }) {
    } catch (err) { toast(`Gagal membatalkan: ${err.message}`, "error"); }
   }
 
+  let pipProgramsCache = [];
+  const pipToday = () => new Date().toISOString().slice(0, 10);
+  const pipEmployeeKey = employee => String(employee?.nik_karyawan || employee?.nik || employee?.username || employee?.nama_karyawan || employee?.nama || "").trim().toLowerCase();
+  const pipProgramKey = program => String(program?.karyawan_nik || program?.nama_karyawan || "").trim().toLowerCase();
+  const pipPeriodLabel = value => PIP_ASSESSMENT_PERIODS.find(item => item.value === value)?.label || value || "-";
+  function pipStatusTone(status) {
+    const key = String(status || "").toUpperCase();
+    if (key === "SELESAI_LULUS") return "emerald";
+    if (key === "SELESAI_PHK") return "rose";
+    if (key === "AKTIF") return "blue";
+    return "slate";
+  }
+  function pipRoundBadge(round) {
+    if (round.status === "LOLOS") return badge("Lolos", "emerald");
+    if (round.status === "SP") return badge(`SP-${round.sp_level || "-"}`, "rose");
+    return badge("Menunggu", "amber");
+  }
+  function pipAgreementNumber() {
+    const roman = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+    const date = new Date();
+    return `PIP/HRGA-AJ/${roman[date.getMonth()]}/${date.getFullYear()}/${String(pipProgramsCache.length + 1).padStart(3, "0")}`;
+  }
+
+  async function loadPipPanel() {
+    const wrap = panels.pip;
+    if (!wrap) return;
+    wrap.innerHTML = `<div class="p-6">${skeletonRows(5)}</div>`;
+
+    let employees = [];
+    let programs = [];
+    try {
+      [employees, programs] = await Promise.all([
+        fsGetAll(COL.MASTER_KARYAWAN),
+        fsGetAll(COL.PIP_PROGRAMS).catch(() => [])
+      ]);
+    } catch (error) {
+      console.error("Gagal memuat PIP:", error);
+      wrap.innerHTML = `<div class="p-6 text-center text-sm font-bold text-rose-600">Gagal memuat PIP: ${escapeHtml(error.message)}</div>`;
+      return;
+    }
+
+    const activeEmployees = employees
+      .filter(employee => String(employee.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF")
+      .filter(employee => !branchScope || branchMatches(branchScope, employee.cabang))
+      .sort((a, b) => String(a.nama_karyawan || "").localeCompare(String(b.nama_karyawan || ""), "id"));
+
+    pipProgramsCache = (programs || [])
+      .filter(program => !branchScope || branchMatches(branchScope, program.cabang))
+      .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")));
+
+    const activeCount = pipProgramsCache.filter(program => program.status === "AKTIF").length;
+    const passedCount = pipProgramsCache.filter(program => program.status === "SELESAI_LULUS").length;
+    const phkCount = pipProgramsCache.filter(program => program.status === "SELESAI_PHK").length;
+    const pendingCount = pipProgramsCache.filter(program => (program.rounds || []).some(round => round.status === "PENDING")).length;
+    const activeKeys = new Set(pipProgramsCache.filter(program => program.status === "AKTIF").map(pipProgramKey));
+
+    wrap.innerHTML = `
+      <div class="space-y-5">
+        <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-800">Performance Improvement Program (PIP)</h2>
+            <p class="text-xs text-slate-500 mt-1">Program pembinaan kinerja 3 babak dengan penilaian berkala, SP berjenjang, dan perpanjangan otomatis.</p>
+          </div>
+          ${canManageKontrak ? `<button id="btn-pip-new" class="bg-maroon-700 hover:bg-maroon-800 text-white px-4 py-2.5 rounded-xl text-xs font-semibold transition shadow-sm self-start md:self-auto">+ Mulai Program PIP</button>` : ""}
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          ${[
+            ["PIP Aktif", activeCount, "blue"],
+            ["Menunggu Evaluasi", pendingCount, "amber"],
+            ["Lulus PIP", passedCount, "emerald"],
+            ["Gagal / PHK", phkCount, "rose"]
+          ].map(([label, value, tone]) => {
+            const colors = { blue: "text-blue-700", amber: "text-amber-700", emerald: "text-emerald-700", rose: "text-rose-700" };
+            return `<div class="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs"><p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">${label}</p><p class="text-2xl font-black ${colors[tone]} mt-1">${value}</p></div>`;
+          }).join("")}
+        </div>
+
+        <div class="rounded-xl border border-blue-200 bg-blue-50 p-4 text-[11px] leading-relaxed text-blue-900">
+          <b>Aturan PIP:</b> 3 babak awal (durasi 3/4/6 bulan, babak dibagi proporsional). Setiap babak tanpa perbaikan mendapat SP berjenjang.
+          Jika selesai PIP: <b>0 SP = Lulus</b>, <b>1 SP = diperpanjang 2 babak</b>, <b>2 SP = diperpanjang 1 babak</b>, <b>3 SP = proses PHK</b>.
+          Penilaian dapat dilakukan harian, mingguan, atau bulanan sesuai pengaturan program.
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4">
+          ${pipProgramsCache.map(program => {
+            const spCount = Array.isArray(program.sp_records) ? program.sp_records.length : 0;
+            const progress = pipProgress(program);
+            const pendingRound = (program.rounds || []).find(round => round.status === "PENDING");
+            return `<article class="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs">
+              <div class="flex items-start justify-between gap-2">
+                <div>
+                  <p class="text-[10px] font-bold uppercase tracking-wide text-slate-400">${escapeHtml(program.cabang || "-")} · ${escapeHtml(program.divisi || "-")}</p>
+                  <h3 class="font-bold text-slate-800">${escapeHtml(program.nama_karyawan || "-")}</h3>
+                  <p class="text-[11px] text-slate-500">${escapeHtml(program.jabatan || "-")} · ${escapeHtml(program.nomor_perjanjian || "-")}</p>
+                </div>
+                ${badge(pipStatusLabel(program.status), pipStatusTone(program.status))}
+              </div>
+              <div class="mt-3 grid grid-cols-2 gap-2 text-[11px] text-slate-500">
+                <p><b class="text-slate-700">Periode</b><br>${fmtDateShort(program.tanggal_mulai)} s.d. ${fmtDateShort((program.rounds || []).at(-1)?.end || program.tanggal_mulai)}</p>
+                <p><b class="text-slate-700">Durasi</b><br>${Number(program.durasi_bulan || 0)} bulan · ${escapeHtml(pipPeriodLabel(program.periode_penilaian))}</p>
+                <p><b class="text-slate-700">Standar Nilai</b><br>${Number(program.standar_nilai || PIP_DEFAULT_STANDARD)}</p>
+                <p><b class="text-slate-700">SP</b><br>${spCount} / 3</p>
+              </div>
+              <div class="mt-3">
+                <div class="flex justify-between text-[10px] text-slate-400 mb-1"><span>Progres babak ${pendingRound ? `(Babak ${pendingRound.index} berjalan)` : ""}</span><b>${progress}%</b></div>
+                <div class="h-2 rounded-full bg-slate-100 overflow-hidden"><div class="h-full rounded-full ${progress >= 100 ? "bg-emerald-500" : "bg-maroon-600"}" style="width:${progress}%"></div></div>
+              </div>
+              <div class="mt-4 flex flex-wrap gap-2">
+                <button type="button" data-pip-detail="${escapeHtml(program.id)}" class="rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold text-white">Detail & Penilaian</button>
+                <button type="button" data-pip-agreement="${escapeHtml(program.id)}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600">Surat Perjanjian</button>
+              </div>
+            </article>`;
+          }).join("") || emptyState("Belum ada program PIP", "Karyawan tetap yang masuk program pembinaan akan tampil di sini.")}
+        </div>
+      </div>`;
+
+    wrap.querySelector("#btn-pip-new")?.addEventListener("click", () => openPipCreateModal(activeEmployees, activeKeys));
+    wrap.querySelectorAll("[data-pip-detail]").forEach(button => button.onclick = () => {
+      const program = pipProgramsCache.find(item => item.id === button.dataset.pipDetail);
+      if (program) openPipDetail(program);
+    });
+    wrap.querySelectorAll("[data-pip-agreement]").forEach(button => button.onclick = () => {
+      const program = pipProgramsCache.find(item => item.id === button.dataset.pipAgreement);
+      if (program) printPipAgreement(program);
+    });
+  }
+
+  function openPipCreateModal(activeEmployees, activeKeys) {
+    const available = activeEmployees.filter(employee => !activeKeys.has(pipEmployeeKey(employee)));
+    if (!available.length) return toast("Tidak ada karyawan aktif yang bisa dimasukkan ke PIP.", "warning");
+    openModal({
+      title: "Mulai Program PIP",
+      size: "lg",
+      bodyHtml: `
+        <form id="pip-create-form" class="space-y-3">
+          <label class="block text-xs font-semibold text-slate-600">Karyawan *
+            <select id="pip-employee" required class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm bg-white">
+              <option value="">-- Pilih karyawan aktif --</option>
+              ${available.map(employee => `<option value="${escapeHtml(pipEmployeeKey(employee))}">${escapeHtml(employee.nama_karyawan || employee.nama || "-")} - ${escapeHtml(employee.jabatan || "-")} (${escapeHtml(employee.cabang || "-")})</option>`).join("")}
+            </select>
+          </label>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="block text-xs font-semibold text-slate-600">Nomor Perjanjian PIP
+              <input id="pip-number" value="${escapeHtml(pipAgreementNumber())}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-mono">
+            </label>
+            <label class="block text-xs font-semibold text-slate-600">Tanggal Mulai
+              <input id="pip-start" type="date" value="${pipToday()}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm">
+            </label>
+            <label class="block text-xs font-semibold text-slate-600">Durasi PIP
+              <select id="pip-duration" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm bg-white">
+                ${PIP_DURATIONS.map(month => `<option value="${month}">${month} bulan (3 babak)</option>`).join("")}
+              </select>
+            </label>
+            <label class="block text-xs font-semibold text-slate-600">Periode Penilaian
+              <select id="pip-assessment-period" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm bg-white">
+                ${PIP_ASSESSMENT_PERIODS.map(period => `<option value="${period.value}" ${period.value === "MINGGUAN" ? "selected" : ""}>${period.label}</option>`).join("")}
+              </select>
+            </label>
+            <label class="block text-xs font-semibold text-slate-600">Standar Nilai Lulus (0-100)
+              <input id="pip-standard" type="number" min="0" max="100" value="${PIP_DEFAULT_STANDARD}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm">
+            </label>
+            <label class="block text-xs font-semibold text-slate-600">Evaluator / Atasan
+              <input id="pip-evaluator" value="${escapeHtml(session.nama || "")}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm">
+            </label>
+          </div>
+          <label class="block text-xs font-semibold text-slate-600">Catatan / Fokus Perbaikan
+            <textarea id="pip-note" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" placeholder="Contoh: target kedisiplinan, kualitas kerja, dan penyelesaian laporan harian."></textarea>
+          </label>
+          <div class="flex justify-end gap-2 pt-1">
+            <button type="button" id="pip-create-cancel" class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600">Batal</button>
+            <button type="submit" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-bold text-white">Mulai PIP</button>
+          </div>
+        </form>`,
+      onMount: backdrop => {
+        const form = backdrop.querySelector("#pip-create-form");
+        backdrop.querySelector("#pip-create-cancel")?.addEventListener("click", closeModal);
+        form.onsubmit = async event => {
+          event.preventDefault();
+          const employeeKey = form.querySelector("#pip-employee").value;
+          const employee = available.find(item => pipEmployeeKey(item) === employeeKey);
+          if (!employee) return toast("Pilih karyawan terlebih dahulu.", "warning");
+          const duration = Number(form.querySelector("#pip-duration").value) || 3;
+          const start = form.querySelector("#pip-start").value || pipToday();
+          const rounds = buildPipRounds(start, duration, 3);
+          const payload = {
+            karyawan_nik: String(employee.nik_karyawan || employee.nik || ""),
+            nama_karyawan: employee.nama_karyawan || employee.nama || "",
+            jabatan: employee.jabatan || employee.posisi || "",
+            cabang: employee.cabang || "",
+            divisi: employee.divisi || "",
+            nomor_perjanjian: form.querySelector("#pip-number").value.trim(),
+            tanggal_mulai: start,
+            durasi_bulan: duration,
+            periode_penilaian: form.querySelector("#pip-assessment-period").value,
+            standar_nilai: Number(form.querySelector("#pip-standard").value) || PIP_DEFAULT_STANDARD,
+            evaluator: form.querySelector("#pip-evaluator").value.trim(),
+            catatan: form.querySelector("#pip-note").value.trim(),
+            rounds,
+            penilaian: [],
+            sp_records: [],
+            extension_given: false,
+            status: "AKTIF",
+            created_at: new Date().toISOString(),
+            created_by: session.nama || session.username || "HRD",
+            updated_at: new Date().toISOString()
+          };
+          try {
+            await fsAdd(COL.PIP_PROGRAMS, payload, genId("PIP"));
+            closeModal();
+            toast("Program PIP berhasil dibuat.", "success");
+            await loadPipPanel();
+          } catch (error) {
+            console.error("create PIP", error);
+            toast("Gagal membuat PIP: " + error.message, "error");
+          }
+        };
+      }
+    });
+  }
+
+  function openPipDetail(program) {
+    const rounds = Array.isArray(program.rounds) ? program.rounds : [];
+    const assessments = Array.isArray(program.penilaian) ? program.penilaian : [];
+    const spRecords = Array.isArray(program.sp_records) ? program.sp_records : [];
+    const pendingRounds = rounds.filter(round => round.status === "PENDING");
+    const canEvaluate = pendingRounds.length > 0 && program.status === "AKTIF";
+    const canFinish = pendingRounds.length === 0 && program.status === "AKTIF";
+    openModal({
+      title: `PIP - ${program.nama_karyawan || "-"}`,
+      size: "xl",
+      bodyHtml: `
+        <div class="space-y-4">
+          <div class="flex flex-wrap items-start justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div>
+              <p class="text-[10px] font-bold uppercase tracking-wide text-slate-400">${escapeHtml(program.nomor_perjanjian || "-")} · ${escapeHtml(program.cabang || "-")} · ${escapeHtml(program.divisi || "-")}</p>
+              <h2 class="text-lg font-black text-slate-800">${escapeHtml(program.nama_karyawan || "-")}</h2>
+              <p class="text-xs text-slate-500">${escapeHtml(program.jabatan || "-")} · ${Number(program.durasi_bulan || 0)} bulan · penilaian ${escapeHtml(pipPeriodLabel(program.periode_penilaian))} · standar ${Number(program.standar_nilai || PIP_DEFAULT_STANDARD)}</p>
+            </div>
+            <div class="text-right">${badge(pipStatusLabel(program.status), pipStatusTone(program.status))}<p class="mt-1 text-[10px] text-slate-400">Progres ${pipProgress(program)}%</p></div>
+          </div>
+
+          <div class="overflow-x-auto rounded-xl border border-slate-200">
+            <table class="w-full text-xs">
+              <thead class="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th class="px-3 py-2 text-left">Babak</th><th class="px-3 py-2 text-left">Periode</th><th class="px-3 py-2 text-center">Rata-rata</th><th class="px-3 py-2 text-center">Status</th><th class="px-3 py-2 text-center">SP</th></tr></thead>
+              <tbody>${rounds.map(round => {
+                const average = pipAverage(assessments, round.index);
+                return `<tr class="border-t border-slate-100"><td class="px-3 py-2 font-bold">Babak ${round.index}</td><td class="px-3 py-2">${fmtDateShort(round.start)} - ${fmtDateShort(round.end)}</td><td class="px-3 py-2 text-center font-bold">${average === null ? "-" : average}</td><td class="px-3 py-2 text-center">${pipRoundBadge(round)}</td><td class="px-3 py-2 text-center">${round.sp_level ? `SP-${round.sp_level}` : "-"}</td></tr>`;
+              }).join("")}</tbody>
+            </table>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-3">
+            <section>
+              <h3 class="mb-2 text-xs font-black uppercase tracking-wide text-slate-700">Riwayat Penilaian (${assessments.length})</h3>
+              <div class="max-h-56 space-y-1.5 overflow-y-auto pr-1">
+                ${assessments.slice().sort((a, b) => String(b.tanggal || "").localeCompare(String(a.tanggal || ""))).map(row => `<div class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-[11px]"><b>${fmtDateShort(row.tanggal)}</b> · Babak ${row.babak} · Nilai <b>${Number(row.nilai || 0)}</b>${row.catatan ? `<br><span class="text-slate-500">${escapeHtml(row.catatan)}</span>` : ""}</div>`).join("") || `<p class="text-xs text-slate-400">Belum ada penilaian.</p>`}
+              </div>
+            </section>
+            <section>
+              <h3 class="mb-2 text-xs font-black uppercase tracking-wide text-slate-700">Surat Peringatan (${spRecords.length}/3)</h3>
+              <div class="space-y-1.5">
+                ${spRecords.map(sp => `<div class="flex items-center justify-between gap-2 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2 text-[11px] text-rose-800"><span><b>SP-${sp.level}</b> · ${fmtDateShort(sp.tanggal)} · Babak ${sp.babak}</span><button type="button" data-pip-print-sp="${escapeHtml(sp.id)}" class="rounded border border-rose-300 bg-white px-2 py-1 text-[10px] font-bold">Cetak</button></div>`).join("") || `<p class="text-xs text-slate-400">Belum ada SP.</p>`}
+              </div>
+            </section>
+          </div>
+
+          <div class="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-3">
+            <button type="button" id="pip-print-agreement" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600">Cetak Surat Perjanjian PIP</button>
+            ${canEvaluate ? `<button type="button" id="pip-add-assessment" class="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white">Tambah Penilaian</button>
+            <button type="button" id="pip-eval-round" class="rounded-lg bg-maroon-700 px-3 py-2 text-xs font-bold text-white">Evaluasi Babak</button>` : ""}
+            ${canFinish ? `<button type="button" id="pip-finish" class="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white">Selesaikan PIP</button>` : ""}
+          </div>
+        </div>`,
+      onMount: backdrop => {
+        backdrop.querySelector("#pip-add-assessment")?.addEventListener("click", () => { closeModal(); openPipAssessmentModal(program); });
+        backdrop.querySelector("#pip-eval-round")?.addEventListener("click", () => { closeModal(); openPipRoundModal(program); });
+        backdrop.querySelector("#pip-finish")?.addEventListener("click", () => finishPipProgram(program));
+        backdrop.querySelector("#pip-print-agreement")?.addEventListener("click", () => { closeModal(); printPipAgreement(program); });
+        backdrop.querySelectorAll("[data-pip-print-sp]").forEach(button => button.onclick = () => {
+          const record = spRecords.find(item => item.id === button.dataset.pipPrintSp);
+          if (record) { closeModal(); printPipSp(program, record); }
+        });
+      }
+    });
+  }
+
+  async function reopenPipDetail(programId) {
+    await loadPipPanel();
+    const rows = await fsGetAll(COL.PIP_PROGRAMS).catch(() => []);
+    const fresh = rows.find(item => item.id === programId);
+    closeModal();
+    if (fresh) openPipDetail(fresh);
+  }
+
+  function openPipAssessmentModal(program) {
+    const rounds = Array.isArray(program.rounds) ? program.rounds : [];
+    const defaultRound = roundForDate(rounds, pipToday()) || rounds.find(round => round.status === "PENDING") || rounds[0];
+    openModal({
+      title: `Tambah Penilaian PIP - ${program.nama_karyawan || ""}`,
+      size: "md",
+      bodyHtml: `
+        <form id="pip-assessment-form" class="space-y-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="block text-xs font-semibold text-slate-600">Tanggal Penilaian
+              <input id="pip-assess-date" type="date" value="${pipToday()}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm">
+            </label>
+            <label class="block text-xs font-semibold text-slate-600">Babak
+              <select id="pip-assess-round" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm bg-white">
+                ${rounds.map(round => `<option value="${round.index}" ${round.index === defaultRound?.index ? "selected" : ""}>Babak ${round.index} (${fmtDateShort(round.start)} - ${fmtDateShort(round.end)})</option>`).join("")}
+              </select>
+            </label>
+            <label class="block text-xs font-semibold text-slate-600">Nilai (0-100)
+              <input id="pip-assess-score" type="number" min="0" max="100" required class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" placeholder="Cth: 68">
+            </label>
+            <label class="block text-xs font-semibold text-slate-600">Evaluator
+              <input id="pip-assess-by" value="${escapeHtml(program.evaluator || session.nama || "")}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm">
+            </label>
+          </div>
+          <label class="block text-xs font-semibold text-slate-600">Catatan Perkembangan
+            <textarea id="pip-assess-note" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" placeholder="Contoh: kedisiplinan membaik, namun ketepatan laporan masih di bawah target."></textarea>
+          </label>
+          <div class="flex justify-end gap-2 pt-1">
+            <button type="button" id="pip-assess-cancel" class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600">Batal</button>
+            <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white">Simpan Penilaian</button>
+          </div>
+        </form>`,
+      onMount: backdrop => {
+        const form = backdrop.querySelector("#pip-assessment-form");
+        backdrop.querySelector("#pip-assess-cancel")?.addEventListener("click", closeModal);
+        form.onsubmit = async event => {
+          event.preventDefault();
+          const score = Number(form.querySelector("#pip-assess-score").value);
+          if (!Number.isFinite(score) || score < 0 || score > 100) return toast("Nilai harus 0-100.", "warning");
+          const row = {
+            id: genId("PIPAS"),
+            tanggal: form.querySelector("#pip-assess-date").value || pipToday(),
+            babak: Number(form.querySelector("#pip-assess-round").value),
+            nilai: score,
+            catatan: form.querySelector("#pip-assess-note").value.trim(),
+            oleh: form.querySelector("#pip-assess-by").value.trim() || session.nama || "HRD",
+            created_at: new Date().toISOString()
+          };
+          try {
+            await fsUpdate(COL.PIP_PROGRAMS, program.id, {
+              penilaian: [...(program.penilaian || []), row],
+              updated_at: new Date().toISOString()
+            });
+            toast("Penilaian PIP disimpan.", "success");
+            await reopenPipDetail(program.id);
+          } catch (error) {
+            console.error("save PIP assessment", error);
+            toast("Gagal menyimpan penilaian: " + error.message, "error");
+          }
+        };
+      }
+    });
+  }
+
+  function openPipRoundModal(program) {
+    const rounds = Array.isArray(program.rounds) ? program.rounds : [];
+    const pending = rounds.filter(round => round.status === "PENDING");
+    if (!pending.length) return toast("Semua babak sudah dievaluasi.", "info");
+    const round = pending[0];
+    const average = pipAverage(program.penilaian || [], round.index);
+    const recommendation = roundRecommendation(average, program.standar_nilai);
+    const spLevel = nextSpLevel(program);
+    openModal({
+      title: `Evaluasi Babak ${round.index} - ${program.nama_karyawan || ""}`,
+      size: "md",
+      bodyHtml: `
+        <form id="pip-round-form" class="space-y-3">
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+            Periode babak: <b>${fmtDateShort(round.start)} - ${fmtDateShort(round.end)}</b><br>
+            Rata-rata nilai babak: <b>${average === null ? "belum ada penilaian" : average}</b> · Standar lulus: <b>${Number(program.standar_nilai || PIP_DEFAULT_STANDARD)}</b><br>
+            Rekomendasi sistem: <b>${recommendation === "LOLOS" ? "LOLOS (ada perbaikan)" : "TERBITKAN SP (belum mencapai standar)"}</b>
+          </div>
+          <label class="block text-xs font-semibold text-slate-600">Keputusan Babak
+            <select id="pip-round-decision" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm bg-white">
+              <option value="LOLOS" ${recommendation === "LOLOS" ? "selected" : ""}>Lolos babak / ada perbaikan</option>
+              <option value="SP" ${recommendation === "SP" ? "selected" : ""}>Tidak ada perbaikan - terbitkan SP-${spLevel}</option>
+            </select>
+          </label>
+          <label class="block text-xs font-semibold text-slate-600" id="pip-sp-number-wrap">Nomor Surat Peringatan
+            <input id="pip-sp-number" value="SP-${spLevel}/PIP/${new Date().getFullYear()}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-mono">
+          </label>
+          <label class="block text-xs font-semibold text-slate-600">Catatan Evaluasi
+            <textarea id="pip-round-note" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm"></textarea>
+          </label>
+          <div class="flex justify-end gap-2 pt-1">
+            <button type="button" id="pip-round-cancel" class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600">Batal</button>
+            <button type="submit" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-bold text-white">Simpan Evaluasi</button>
+          </div>
+        </form>`,
+      onMount: backdrop => {
+        const form = backdrop.querySelector("#pip-round-form");
+        const decision = form.querySelector("#pip-round-decision");
+        const spWrap = form.querySelector("#pip-sp-number-wrap");
+        const syncSp = () => spWrap.classList.toggle("hidden", decision.value !== "SP");
+        syncSp();
+        decision.addEventListener("change", syncSp);
+        backdrop.querySelector("#pip-round-cancel")?.addEventListener("click", closeModal);
+        form.onsubmit = async event => {
+          event.preventDefault();
+          const selected = decision.value;
+          const now = new Date().toISOString();
+          const updatedRounds = rounds.map(item => item.index === round.index ? {
+            ...item,
+            status: selected,
+            sp_level: selected === "SP" ? spLevel : null,
+            evaluated_at: now
+          } : item);
+          const spRecords = [...(program.sp_records || [])];
+          if (selected === "SP") {
+            spRecords.push({
+              id: genId("PIPSP"),
+              level: spLevel,
+              babak: round.index,
+              nomor: form.querySelector("#pip-sp-number").value.trim() || `SP-${spLevel}/PIP/${new Date().getFullYear()}`,
+              tanggal: pipToday(),
+              catatan: form.querySelector("#pip-round-note").value.trim(),
+              dibuat_oleh: session.nama || "HRD",
+              created_at: now
+            });
+          }
+          const status = spRecords.length >= 3 ? "SELESAI_PHK" : "AKTIF";
+          try {
+            await fsUpdate(COL.PIP_PROGRAMS, program.id, {
+              rounds: updatedRounds,
+              sp_records: spRecords,
+              status,
+              updated_at: now
+            });
+            toast(selected === "SP" ? `SP-${spLevel} diterbitkan.` : "Babak dinyatakan lolos.", "success");
+            if (status === "SELESAI_PHK") toast("SP-3 tercapai. Proses PHK melalui menu Offboarding.", "warning");
+            await reopenPipDetail(program.id);
+          } catch (error) {
+            console.error("save PIP round", error);
+            toast("Gagal menyimpan evaluasi: " + error.message, "error");
+          }
+        };
+      }
+    });
+  }
+
+  async function finishPipProgram(program) {
+    const outcome = computePipOutcome(program);
+    if (outcome.action === "PENDING") return toast(outcome.reason || "Masih ada babak yang belum dievaluasi.", "warning");
+    if (outcome.action === "EXTEND") {
+      const extraRounds = extendPipRounds(program, outcome.extend);
+      const ok = await confirmDialog({
+        title: "Perpanjang Masa PIP",
+        message: `PIP akan diperpanjang ${outcome.extend} babak lagi karena baru ${outcome.spCount} SP. Lanjutkan?`,
+        confirmLabel: "Perpanjang PIP"
+      });
+      if (!ok) return;
+      try {
+        await fsUpdate(COL.PIP_PROGRAMS, program.id, {
+          rounds: [...(program.rounds || []), ...extraRounds],
+          extension_given: true,
+          status: "AKTIF",
+          updated_at: new Date().toISOString()
+        });
+        toast(`PIP diperpanjang ${outcome.extend} babak.`, "success");
+        await reopenPipDetail(program.id);
+      } catch (error) {
+        toast("Gagal memperpanjang PIP: " + error.message, "error");
+      }
+      return;
+    }
+    const isPhk = outcome.action === "PHK";
+    const ok = await confirmDialog({
+      title: isPhk ? "Selesaikan PIP - PHK" : "Selesaikan PIP - Lulus",
+      message: isPhk
+        ? `Karyawan mendapat ${outcome.spCount} SP. PIP dinyatakan gagal dan proses PHK dapat dilanjutkan melalui menu Offboarding.`
+        : "Karyawan dinyatakan lulus PIP. Status program akan ditutup.",
+      confirmLabel: isPhk ? "Tetapkan Gagal / PHK" : "Tetapkan Lulus",
+      danger: isPhk
+    });
+    if (!ok) return;
+    try {
+      await fsUpdate(COL.PIP_PROGRAMS, program.id, {
+        status: outcome.status,
+        hasil_akhir: outcome.action,
+        selesai_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+      toast(isPhk ? "PIP selesai: karyawan tidak lulus." : "Selamat, karyawan lulus PIP.", isPhk ? "warning" : "success");
+      await reopenPipDetail(program.id);
+    } catch (error) {
+      toast("Gagal menyelesaikan PIP: " + error.message, "error");
+    }
+  }
+
+  function printPipAgreement(program) {
+    const rounds = Array.isArray(program.rounds) ? program.rounds : [];
+    const docHtml = `
+      <div style="width:100%;max-width:760px;margin:0 auto;padding:15px;font-family:Arial,Helvetica,sans-serif;font-size:10.5px;line-height:1.45;color:#000;background:#fff;box-sizing:border-box;">
+        <div style="page-break-inside:avoid;margin-bottom:6px;">${isoDocHeaderTable({ judul: "SURAT PERJANJIAN PROGRAM PENINGKATAN KINERJA (PIP)", noDok: "HRD-PIP-01", terbitRevisi: "1/0", hal: "1 dari 1" })}</div>
+        <div style="text-align:center;font-weight:bold;font-size:13px;margin:8px 0 2px;">SURAT PERJANJIAN PROGRAM PENINGKATAN KINERJA</div>
+        <div style="text-align:center;font-size:10px;margin-bottom:10px;">Nomor: ${escapeHtml(program.nomor_perjanjian || "-")}</div>
+        <p style="margin:0 0 6px;text-align:justify;">Pada hari ini, Program Peningkatan Kinerja (Performance Improvement Program/PIP) disepakati oleh:</p>
+        <table style="width:100%;border-collapse:collapse;font-size:10.5px;margin-bottom:6px;">
+          <tr><td style="width:18%;padding:1px 0;vertical-align:top;">Nama Karyawan</td><td style="width:2%;">:</td><td><b>${escapeHtml(program.nama_karyawan || "-")}</b></td></tr>
+          <tr><td style="padding:1px 0;vertical-align:top;">NIK</td><td>:</td><td>${escapeHtml(program.karyawan_nik || "-")}</td></tr>
+          <tr><td style="padding:1px 0;vertical-align:top;">Jabatan / Divisi</td><td>:</td><td>${escapeHtml(program.jabatan || "-")} / ${escapeHtml(program.divisi || "-")}</td></tr>
+          <tr><td style="padding:1px 0;vertical-align:top;">Cabang</td><td>:</td><td>${escapeHtml(program.cabang || "-")}</td></tr>
+        </table>
+        <p style="margin:0 0 4px;"><b>Periode PIP:</b> ${fmtDateShort(program.tanggal_mulai)} s.d. ${fmtDateShort(rounds.at(-1)?.end || program.tanggal_mulai)} (${Number(program.durasi_bulan || 0)} bulan, 3 babak awal).</p>
+        <p style="margin:0 0 4px;"><b>Periode Penilaian:</b> ${escapeHtml(pipPeriodLabel(program.periode_penilaian))} · <b>Standar Nilai Lulus:</b> ${Number(program.standar_nilai || PIP_DEFAULT_STANDARD)}</p>
+        <p style="margin:0 0 4px;"><b>Fokus Perbaikan:</b> ${escapeHtml(program.catatan || "Peningkatan kedisiplinan, kualitas, dan ketepatan penyelesaian pekerjaan.")}</p>
+        <div style="font-weight:bold;text-transform:uppercase;border-bottom:1px solid #000;padding-bottom:2px;margin:10px 0 4px;">Ketentuan PIP</div>
+        <ol style="margin:0;padding-left:16px;text-align:justify;">
+          <li>Karyawan mengikuti program pembinaan selama periode di atas dengan penilaian ${escapeHtml(pipPeriodLabel(program.periode_penilaian).toLowerCase())} oleh atasan/HRD.</li>
+          <li>Setiap babak yang tidak menunjukkan perbaikan sesuai standar akan diberikan Surat Peringatan berjenjang (SP-1, SP-2, SP-3).</li>
+          <li>Bila seluruh babak awal selesai: 0 SP dinyatakan <b>LULUS PIP</b>; 1 SP diperpanjang <b>2 babak</b>; 2 SP diperpanjang <b>1 babak</b>; 3 SP diproses <b>PHK</b>.</li>
+          <li>Bila masa perpanjangan selesai tanpa tambahan SP, karyawan dinyatakan lulus PIP.</li>
+          <li>Keputusan akhir tetap memperhatikan Peraturan Perusahaan dan ketentuan ketenagakerjaan yang berlaku.</li>
+        </ol>
+        <p style="margin:8px 0 0;text-align:justify;">Demikian perjanjian ini dibuat dengan sadar dan tanpa paksaan untuk dilaksanakan oleh kedua pihak.</p>
+        <table style="width:100%;border-collapse:collapse;text-align:center;margin-top:16px;font-size:10px;page-break-inside:avoid;">
+          <tr><td style="width:33%;padding:2px;">Karyawan,</td><td style="width:33%;padding:2px;">Atasan / Evaluator,</td><td style="width:34%;padding:2px;">HRD,</td></tr>
+          <tr><td style="height:40px;"></td><td></td><td></td></tr>
+          <tr><td>( <b>${escapeHtml(program.nama_karyawan || "-")}</b> )</td><td>( <b>${escapeHtml(program.evaluator || "-")}</b> )</td><td>( <b>${escapeHtml(session.nama || "HRD")}</b> )</td></tr>
+        </table>
+      </div>`;
+    openModal({
+      title: `Surat Perjanjian PIP - ${program.nama_karyawan || ""}`,
+      size: "xl",
+      bodyHtml: `
+        <div class="space-y-3">
+          <div class="flex justify-end"><button type="button" id="pip-dl-agreement" class="rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold text-white">Unduh PDF</button></div>
+          <div class="rounded-xl border border-slate-300 bg-slate-100 p-4 overflow-y-auto max-h-[70vh]"><div class="mx-auto bg-white p-6 shadow-md" style="max-width:794px;">${docHtml}</div></div>
+        </div>`,
+      onMount: backdrop => {
+        backdrop.querySelector("#pip-dl-agreement")?.addEventListener("click", async () => {
+          try {
+            await downloadHtmlAsPdf(docHtml, `Surat_Perjanjian_PIP_${String(program.nama_karyawan || "Karyawan").replace(/[^A-Za-z0-9]+/g, "_")}.pdf`);
+            toast("Surat Perjanjian PIP diunduh.", "success");
+          } catch (error) {
+            toast("Gagal mengunduh: " + error.message, "error");
+          }
+        });
+      }
+    });
+  }
+
+  function printPipSp(program, sp) {
+    const docHtml = `
+      <div style="width:100%;max-width:760px;margin:0 auto;padding:15px;font-family:Arial,Helvetica,sans-serif;font-size:10.5px;line-height:1.45;color:#000;background:#fff;box-sizing:border-box;">
+        <div style="page-break-inside:avoid;margin-bottom:6px;">${isoDocHeaderTable({ judul: `SURAT PERINGATAN KERJA (SP-${sp.level})`, noDok: "HRD-SP-01", terbitRevisi: "1/0", hal: "1 dari 1" })}</div>
+        <div style="text-align:center;font-weight:bold;font-size:13px;margin:8px 0 2px;">SURAT PERINGATAN KERJA (SP-${sp.level})</div>
+        <div style="text-align:center;font-size:10px;margin-bottom:10px;">Nomor: ${escapeHtml(sp.nomor || "-")}</div>
+        <p style="margin:0 0 6px;text-align:justify;">Berdasarkan hasil evaluasi Program Peningkatan Kinerja (PIP) pada babak ${Number(sp.babak || 0)}, dengan ini disampaikan Surat Peringatan ${sp.level} kepada:</p>
+        <table style="width:100%;border-collapse:collapse;font-size:10.5px;margin-bottom:6px;">
+          <tr><td style="width:18%;padding:1px 0;">Nama</td><td style="width:2%;">:</td><td><b>${escapeHtml(program.nama_karyawan || "-")}</b></td></tr>
+          <tr><td style="padding:1px 0;">NIK</td><td>:</td><td>${escapeHtml(program.karyawan_nik || "-")}</td></tr>
+          <tr><td style="padding:1px 0;">Jabatan / Cabang</td><td>:</td><td>${escapeHtml(program.jabatan || "-")} / ${escapeHtml(program.cabang || "-")}</td></tr>
+        </table>
+        <p style="margin:0 0 4px;text-align:justify;"><b>Alasan:</b> Karyawan belum menunjukkan perbaikan kinerja sesuai standar PIP (${Number(program.standar_nilai || PIP_DEFAULT_STANDARD)}) pada babak ${Number(sp.babak || 0)}. ${escapeHtml(sp.catatan || "")}</p>
+        <p style="margin:0 0 4px;text-align:justify;">Surat peringatan ini berlaku sebagai peringatan berjenjang. Apabila tidak ada perbaikan, perusahaan dapat melanjutkan ke SP berikutnya hingga proses PHK sesuai Peraturan Perusahaan dan ketentuan yang berlaku.</p>
+        <p style="margin:0 0 4px;">Tanggal: ${fmtDateShort(sp.tanggal)}</p>
+        <table style="width:100%;border-collapse:collapse;text-align:center;margin-top:16px;font-size:10px;">
+          <tr><td style="width:50%;padding:2px;">Dibuat oleh HRD,</td><td style="width:50%;padding:2px;">Diterima oleh Karyawan,</td></tr>
+          <tr><td style="height:40px;"></td><td></td></tr>
+          <tr><td>( <b>${escapeHtml(sp.dibuat_oleh || session.nama || "HRD")}</b> )</td><td>( <b>${escapeHtml(program.nama_karyawan || "-")}</b> )</td></tr>
+        </table>
+      </div>`;
+    openModal({
+      title: `SP-${sp.level} - ${program.nama_karyawan || ""}`,
+      size: "xl",
+      bodyHtml: `
+        <div class="space-y-3">
+          <div class="flex justify-end"><button type="button" id="pip-dl-sp" class="rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold text-white">Unduh PDF</button></div>
+          <div class="rounded-xl border border-slate-300 bg-slate-100 p-4 overflow-y-auto max-h-[70vh]"><div class="mx-auto bg-white p-6 shadow-md" style="max-width:794px;">${docHtml}</div></div>
+        </div>`,
+      onMount: backdrop => {
+        backdrop.querySelector("#pip-dl-sp")?.addEventListener("click", async () => {
+          try {
+            await downloadHtmlAsPdf(docHtml, `SP-${sp.level}_${String(program.nama_karyawan || "Karyawan").replace(/[^A-Za-z0-9]+/g, "_")}.pdf`);
+            toast("Surat Peringatan diunduh.", "success");
+          } catch (error) {
+            toast("Gagal mengunduh: " + error.message, "error");
+          }
+        });
+      }
+    });
+  }
+
   function switchTab(tabKey) {
   const aliases = { kpi360: "alur_perpanjangan", evaluasi: "alur_perpanjangan", hasil: "kontrak", monitoring: "kontrak", grafik: "kontrak" };
   tabKey = aliases[tabKey] || tabKey;
-  if (!panels[tabKey] || (tabKey === "template" && !canTemplateSoal) || (tabKey === "daily" && isRegularEmployee) || (tabKey === "siklus" && isRegularEmployee)) tabKey = "kontrak";
+  if (!panels[tabKey] || (tabKey === "template" && !canTemplateSoal) || (tabKey === "daily" && isRegularEmployee) || (tabKey === "siklus" && isRegularEmployee) || (tabKey === "pip" && isRegularEmployee)) tabKey = "kontrak";
   Object.keys(panels).forEach(k => {
     if (k === "kpi360") return;
     if (panels[k]) {
@@ -8478,6 +9097,7 @@ export async function mount(container, { session, params }) {
 
   if (tabKey === "kontrak" && !loaded.kontrak) { loaded.kontrak = true; loadKontrak(); }
   if (tabKey === "alur_perpanjangan" && !loaded.alur_perpanjangan) { loaded.alur_perpanjangan = true; loadAlurPerpanjangan(); }
+  if (tabKey === "pip" && !loaded.pip) { loaded.pip = true; loadPipPanel(); }
   if (tabKey === "template" && !loaded.template) { loaded.template = true; loadTemplateKpi(); }
   if (tabKey === "daily" && !loaded.daily) { loaded.daily = true; loadDailyTarget(); }
   if (tabKey === "siklus" && !loaded.siklus) { loaded.siklus = true; loadSiklusPanel(); }

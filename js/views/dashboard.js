@@ -791,7 +791,15 @@ async function loadContractExpiry(container, session) {
  const countBadge = container.querySelector("#dash-contract-count-badge");
  const subtitleEl = container.querySelector("#dash-contract-subtitle");
 
- let expiringList = allKaryawan.filter(k => k.kontrak_habis).map(k => {
+ const isPermanentEmployee = employee => {
+  const status = String(employee.status_karyawan || employee.status || "").toUpperCase();
+  return status.includes("PKWTT") || status.includes("TETAP") || status.includes("PERMANEN");
+ };
+
+ let expiringList = allKaryawan.filter(k => {
+  const active = String(k.aktif_tdk_aktif || "AKTIF").toUpperCase() === "AKTIF";
+  return active && !isPermanentEmployee(k) && k.kontrak_habis;
+ }).map(k => {
  const t = k.kontrak_habis?.toDate ? k.kontrak_habis.toDate() : new Date(k.kontrak_habis);
  return { ...k, _expiry: t, _days: Math.round((t - now) / 86400000) };
  }).filter(k => !isNaN(k._expiry) && k._days >= 0 && k._days <= 60).sort((a, b) => a._days - b._days);

@@ -337,7 +337,7 @@ service cloud.firestore {
         'uang_makan_expedisi', 'master_reimbursement_type',
         'sales_orders', 'sales_outlets', 'sales_items', 'sales_tasks', 'sales_tracking',
         'kanal_data', 'kanal_checkins', 'sales_odometer',
-        'sop_dokumen', 'sop_audit', 'sop_projects', 'sop_project_items', 'master_gimmick', 'gimmick_stok',
+        'sop_dokumen', 'sop_audit', 'sop_projects', 'sop_project_items', 'pip_programs', 'master_gimmick', 'gimmick_stok',
         'gimmick_distribusi', 'gimmick_efektivitas'
       ] && signedIn();
       allow create, update: if collectionName in [
@@ -346,7 +346,7 @@ service cloud.firestore {
         'uang_makan_expedisi', 'master_reimbursement_type',
         'sales_orders', 'sales_outlets', 'sales_items', 'sales_tasks', 'sales_tracking',
         'kanal_data', 'kanal_checkins', 'sales_odometer',
-        'sop_dokumen', 'sop_audit', 'sop_projects', 'sop_project_items', 'master_gimmick', 'gimmick_stok',
+        'sop_dokumen', 'sop_audit', 'sop_projects', 'sop_project_items', 'pip_programs', 'master_gimmick', 'gimmick_stok',
         'gimmick_distribusi', 'gimmick_efektivitas'
       ] && signedIn();
       allow delete: if collectionName in [
@@ -355,7 +355,7 @@ service cloud.firestore {
         'uang_makan_expedisi', 'master_reimbursement_type',
         'sales_orders', 'sales_outlets', 'sales_items', 'sales_tasks', 'sales_tracking',
         'kanal_data', 'kanal_checkins', 'sales_odometer',
-        'sop_dokumen', 'sop_audit', 'sop_projects', 'sop_project_items', 'master_gimmick', 'gimmick_stok',
+        'sop_dokumen', 'sop_audit', 'sop_projects', 'sop_project_items', 'pip_programs', 'master_gimmick', 'gimmick_stok',
         'gimmick_distribusi', 'gimmick_efektivitas'
       ] && isHrd();
     }

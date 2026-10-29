@@ -2167,7 +2167,7 @@ if (btnKalkulasi) {
  },
  assigned_assets: assignedAssets 
  };
- payloadLog.update_master = { aktif_tdk_aktif: "TIDAK AKTIF" }; 
+ payloadLog.update_master = { aktif_tdk_aktif: "TIDAK AKTIF", tanggal_keluar: out.toISOString().slice(0, 10) }; 
 
  previewHtml = `
  <div class="mb-4">
