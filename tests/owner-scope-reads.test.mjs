@@ -45,3 +45,11 @@ test("pusat notifikasi dan badge lonceng memakai fallback dokumen milik sendiri"
   assert.match(components, /fsGetAll\(COL\.NOTIFICATIONS\)\.catch\(\(\) => fsGetOwnedRecords\(COL\.NOTIFICATIONS/);
   assert.match(components, /fsGetAll\(COL\.DATA_PENGAJUAN\)\.catch\(\(\) => fsGetOwnedRecords\(COL\.DATA_PENGAJUAN/);
 });
+
+test("riwayat cuti karyawan menggabungkan catatan master_cuti yang diinput HRD", () => {
+  const source = read("js/views/pengajuan-cuti.js");
+  assert.match(source, /fsGetAll\(COL\.MASTER_CUTI\)/);
+  assert.match(source, /recordedFromMaster/);
+  assert.match(source, /sumber: "MASTER_CUTI"/);
+  assert.match(source, /seenLeaveKeys/);
+});

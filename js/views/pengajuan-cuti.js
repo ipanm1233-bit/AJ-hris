@@ -128,6 +128,57 @@ export async function mount(container, { session }) {
         return isMe && isCuti;
       });
 
+      // 4b. Gabungkan catatan cuti resmi dari master_cuti (input HRD) agar
+      // riwayat karyawan tetap tampil walau cuti dicatat langsung oleh HRD
+      // dan tidak pernah dibuat lewat formulir data_pengajuan.
+      const myNik = String(currentEmpData?.nik || currentEmpData?.nik_karyawan || session.nik || "").trim();
+      const myName = String(currentEmpData?.nama_karyawan || session.nama || "").trim().toLowerCase();
+      const recordedFromMaster = allCutiRecords
+        .filter(c => (myNik && String(c.nik || "").trim() === myNik)
+          || (myName && String(c.nama_karyawan || "").trim().toLowerCase() === myName))
+        .map(c => ({
+          id: c.id || `MC-${String(c.nik || myNik || "NIK")}-${String(c.tanggal || c.tanggal_mulai || "").replace(/[^0-9]/g, "")}-${String(c.type_cuti || c.jenis_cuti || "CUTI").replace(/[^A-Za-z0-9]+/g, "-")}`,
+          no_referensi: c.no_referensi || c.id || "-",
+          sumber: "MASTER_CUTI",
+          nama_pemohon: c.nama_karyawan || session.nama,
+          nik_pemohon: c.nik || myNik,
+          kategori_cuti: c.kategori_cuti || c.jenis_cuti || c.type_cuti || "Cuti",
+          jenis_cuti: c.jenis_cuti || c.type_cuti || c.kategori_cuti || "Cuti",
+          tanggal_mulai: c.tanggal_mulai || c.tanggal,
+          tanggal_selesai: c.tanggal_selesai || c.tanggal,
+          jumlah_hari: c.jumlah_hari ?? c.count ?? 1,
+          count: c.count ?? c.jumlah_hari ?? 1,
+          isHalfDay: c.isHalfDay === true || c.is_half_day === true,
+          is_potong_gaji: c.is_potong_gaji === true,
+          potong_gaji_hari: c.potong_gaji_hari || 0,
+          alasan: c.keterangan_cuti || c.alasan || "-",
+          keterangan_cuti: c.keterangan_cuti || c.alasan || "-",
+          jam_keluar: c.jam_keluar || "-",
+          jam_kembali: c.jam_kembali || "-",
+          cabang: c.cabang || currentEmpData?.cabang || "-",
+          jabatan: c.jabatan || currentEmpData?.jabatan || "-",
+          status_final: "APPROVED",
+          status: "APPROVED",
+          tgl: c.tanggal || c.createdAt || "",
+          createdAt: c.createdAt || "",
+          diinput_oleh: c.diinput_oleh || "HRD"
+        }));
+      const seenLeaveKeys = new Set(myLeaveRecords.map(r => [
+        String(r.tanggal_mulai || r.tanggal || r.tgl || "").slice(0, 10),
+        String(r.kategori_cuti || r.jenis_cuti || "").toLowerCase(),
+        String(r.jumlah_hari ?? r.count ?? 1)
+      ].join("|")));
+      recordedFromMaster.forEach(row => {
+        const key = [
+          String(row.tanggal_mulai || row.tgl || "").slice(0, 10),
+          String(row.kategori_cuti || "").toLowerCase(),
+          String(row.jumlah_hari ?? row.count ?? 1)
+        ].join("|");
+        if (seenLeaveKeys.has(key)) return;
+        seenLeaveKeys.add(key);
+        myLeaveRecords.push(row);
+      });
+
       myLeaveRecords.sort((a, b) => new Date(b.tgl || b.createdAt || 0) - new Date(a.tgl || a.createdAt || 0));
 
       renderTable();
@@ -172,6 +223,7 @@ export async function mount(container, { session }) {
           <div class="flex items-center gap-1.5 flex-wrap">
             <span>${escapeHtml(r.kategori_cuti || r.jenis_cuti || dt.jenis_cuti || "Cuti")}</span>
             ${isPotongGaji ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">Potong Gaji (${potongGajiHari} Hari)</span>` : ''}
+            ${r.sumber === "MASTER_CUTI" ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">Catatan HRD</span>` : ''}
           </div>
           ${(r.sub_kategori || dt.sub_kategori) ? `<span class="block text-[11px] font-normal text-slate-500">${escapeHtml(r.sub_kategori || dt.sub_kategori)}</span>` : ''}
         </td>
