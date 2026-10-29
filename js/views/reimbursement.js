@@ -1,6 +1,6 @@
 import { db, COL, collection, getDocs, getDoc, doc, updateDoc, addDoc, query, where, orderBy } from "../firebase-config.js";
 import {
-  fsGetAll, fsAdd, fsUpdate, fsDelete, toast, fmtDateShort, fmtDate, fmtRupiah,
+  fsGetAll, fsGetOwnedRecords, fsAdd, fsUpdate, fsDelete, toast, fmtDateShort, fmtDate, fmtRupiah,
   escapeHtml, genId, confirmDialog, toNumber, sendEmailNotif, getTargetsForRole, fsGet,
   openModal, closeModal
 } from "../utils.js";
@@ -135,7 +135,10 @@ export async function mount(container, { session }) {
   }
 
   async function loadClaims() {
-    claims = await fsGetAll(COL.DATA_REIMBURSEMENT);
+    // Aturan Firestore hanya mengizinkan finance/manajemen atau pemilik.
+    claims = isManagement
+      ? await fsGetAll(COL.DATA_REIMBURSEMENT)
+      : await fsGetOwnedRecords(COL.DATA_REIMBURSEMENT, session, { fields: ["nik", "nik_karyawan"] });
     claims.sort((a, b) => new Date(b.created_at || b.tanggal_pengeluaran) - new Date(a.created_at || a.tanggal_pengeluaran));
     renderClaimsTable();
     updateStats();

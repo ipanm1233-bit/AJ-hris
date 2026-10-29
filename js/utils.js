@@ -1019,6 +1019,44 @@ export async function fsGetAll(colName, { orderByField = null, direction = "asc"
  return snap.docs.map(d => ({ ...d.data(), id: d.id, _docId: d.id }));
 }
 
+/**
+ * Ambil HANYA dokumen milik user yang sedang login.
+ *
+ * Firestore menolak query koleksi penuh untuk akun non-manajemen pada
+ * koleksi yang aturannya hanya mengizinkan pemilik (mis.
+ * "Missing or insufficient permissions."). Helper ini menjalankan query
+ * per field kepemilikan yang diakui rules (`owns()` di firestore.rules)
+ * lalu menggabungkan hasilnya tanpa duplikat.
+ */
+export async function fsGetOwnedRecords(colName, session = {}, options = {}) {
+ const nik = String(session?.nik || "").trim();
+ const username = String(session?.username || "").trim();
+ const uid = String(session?.uid || session?.user_uid || "").trim();
+ const fields = Array.isArray(options.fields) && options.fields.length
+  ? options.fields
+  : ["nik", "nik_pemohon", "nik_karyawan", "username", "username_pemohon", "uid", "user_uid", "pemohon_uid"];
+ const identityFor = (field) => {
+  if (/uid$/i.test(field) || /_uid$/i.test(field)) return uid;
+  if (/username/i.test(field)) return username;
+  return nik;
+ };
+ const merged = new Map();
+ await Promise.all(fields.map(async (field) => {
+  const value = identityFor(field);
+  if (!value) return;
+  try {
+   const snap = await getDocs(query(collection(db, colName), where(field, "==", value)));
+   snap.forEach(d => {
+    if (!merged.has(d.id)) merged.set(d.id, { ...d.data(), id: d.id, _docId: d.id });
+   });
+  } catch (error) {
+   // Field tidak dipakai di koleksi ini / kombinasi ditolak rules → lewati.
+   console.warn(`fsGetOwnedRecords: ${colName}.${field} dilewati:`, error?.code || error?.message || error);
+  }
+ }));
+ return [...merged.values()];
+}
+
 /* ---------------------------------------------------------------------
  * PILIHAN DIVISI TERPUSAT
  * Semua menu memakai daftar divisi yang sama. Sumber utama adalah data

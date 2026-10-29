@@ -1,5 +1,5 @@
 import { db, COL, doc, getDoc, setDoc, query, collection, where, getDocs, deleteDoc } from "../firebase-config.js";
-import { fsGetAll, openModal, closeModal, toast, fmtDateShort, fmtRupiah, escapeHtml, genId, notifyUser, getTargetsForRole, confirmDialog, downloadHtmlAsPdf } from "../utils.js";
+import { fsGetAll, fsGetOwnedRecords, openModal, closeModal, toast, fmtDateShort, fmtRupiah, escapeHtml, genId, notifyUser, getTargetsForRole, confirmDialog, downloadHtmlAsPdf } from "../utils.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 import { badge } from "../components.js";
 import { hasSubMenuAccess, getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
@@ -134,8 +134,10 @@ export async function mount(container, { session }) {
     elTenure.innerHTML = `<span class="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-lg text-xs font-bold">Lolos (Masa Kerja ${Math.floor(tenureMonths / 12)} Thn ${tenureMonths % 12} Bln)</span>`;
    }
 
-   // 3. Fetch Kasbon Records
-   allKasbonRecords = await fsGetAll(COL.LOG_KASBON).catch(() => []);
+   // 3. Fetch Kasbon Records (akun non-manajemen hanya dokumen miliknya)
+   allKasbonRecords = isHrd
+    ? await fsGetAll(COL.LOG_KASBON).catch(() => [])
+    : await fsGetOwnedRecords(COL.LOG_KASBON, session, { fields: ["nik", "nik_pemohon"] }).catch(() => []);
    
    // Sort by newest
    allKasbonRecords.sort((a, b) => new Date(b.createdAt || b.tanggal || 0) - new Date(a.createdAt || a.tanggal || 0));

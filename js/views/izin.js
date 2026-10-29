@@ -1,5 +1,5 @@
 import { db, COL, collection, query, getDocs } from "../firebase-config.js";
-import { fsGetAll, fsDelete, genId, openModal, closeModal, toast, fmtDate, fmtDateShort, escapeHtml, getTargetsForRole, notifyUser, sendBranchInstantAlert } from "../utils.js";
+import { fsGetAll, fsGetOwnedRecords, fsDelete, genId, openModal, closeModal, toast, fmtDate, fmtDateShort, escapeHtml, getTargetsForRole, notifyUser, sendBranchInstantAlert } from "../utils.js";
 import { emptyState, skeletonRows, icon } from "../components.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 import { isoDocHeaderTable, letterheadHtml, COMPANY_NAME, logoImgTag, LOGO_DATA_URI } from "../branding.js";
@@ -50,10 +50,10 @@ export async function mount(container, { session }) {
  async function loadData() {
  tbody.innerHTML = `<tr><td colspan="7" class="p-4">${skeletonRows(3)}</td></tr>`;
  try {
- const qI = query(collection(db, COL.DATA_PENGAJUAN));
- const snap = await getDocs(qI);
- 
- const rawLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+ const rawLogs = isHrdOrAdmin
+  ? (await getDocs(query(collection(db, COL.DATA_PENGAJUAN)))).docs.map(d => ({ id: d.id, ...d.data() }))
+  : await fsGetOwnedRecords(COL.DATA_PENGAJUAN, session, { fields: ["nik", "nik_pemohon"] });
+
  allIzinRecords = rawLogs.filter(r => 
  r.form_id === "F-ISO-IZIN" || 
  r.tipe_form === "FORM_IZIN" || 
@@ -67,7 +67,8 @@ export async function mount(container, { session }) {
  allIzinRecords = allIzinRecords.filter(r => {
  const pemohonNameLower = (r.nama_pemohon || r.pemohon || "").trim().toLowerCase();
  const atasanNameLower = (r.atasan_langsung || r.penanggung_jawab || "").trim().toLowerCase();
- const isMine = pemohonNameLower === myNameLower;
+ const isMine = pemohonNameLower === myNameLower
+  || (!!session.nik && String(r.nik || r.nik_pemohon || "") === String(session.nik));
  const isAtasanTarget = atasanNameLower === myNameLower;
  return isMine || isAtasanTarget;
  });
@@ -178,7 +179,7 @@ export async function mount(container, { session }) {
  Proses Approval
  </a>
  ` : ''}
- ${(isMyRecord || (isHrdOrAdmin && canEdit)) ? `
+ ${(isHrdOrAdmin && canEdit) ? `
  <button data-del-izin="${r.id}" class="px-2 py-1 bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 rounded-lg font-bold text-[11px] border border-slate-200 transition" title="Hapus" aria-label="Hapus izin">${icon("trash", "w-3.5 h-3.5")}</button>
  ` : ''}
  </div>

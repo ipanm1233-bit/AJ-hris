@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, orderBy, limit, addDoc } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, fmtDateShort, escapeHtml, genId } from "../utils.js";
+import { fsGetAll, fsGetOwnedRecords, fsAdd, fsUpdate, fsDelete, openModal, closeModal, toast, fmtDateShort, escapeHtml, genId } from "../utils.js";
 import { avatar, badge, icon, emptyState } from "../components.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
 import { hasSubMenuAccess, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
@@ -113,7 +113,9 @@ async function seedPerformanceReviewsIfEmpty() {
  * 2. STAFF VIEW: MY PERFORMANCE REVIEWS
  * ------------------------------------------------------------------- */
 async function renderMyReviews(wrap, session) {
- const allReviews = await fsGetAll(COL.PERFORMANCE_REVIEW);
+ // Koleksi performance_review hanya bisa dibaca manajemen atau pemilik.
+ // Query per NIK agar akun biasa tidak terkena "Missing or insufficient permissions".
+ const allReviews = await fsGetOwnedRecords(COL.PERFORMANCE_REVIEW, session, { fields: ["nik", "nik_karyawan"] });
  const myReviews = allReviews.filter(r => r.nik === session.nik || r.nama_karyawan === session.nama)
  .sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
 
@@ -326,7 +328,15 @@ async function renderAllReviews(wrap, session) {
   const canEdit = await canEditModuleData(session);
   // Branch Manager hanya melihat review kinerja karyawan cabangnya sendiri.
   const branchScope = resolveBranchScope(session);
-  const allReviewsRaw = await fsGetAll(COL.PERFORMANCE_REVIEW);
+  let allReviewsRaw;
+  try {
+    allReviewsRaw = await fsGetAll(COL.PERFORMANCE_REVIEW);
+  } catch (error) {
+    // Akun non-manajemen yang diberi akses submenu: rules hanya mengizinkan
+    // dokumen miliknya sendiri, jadi tampilkan data miliknya sebagai fallback.
+    console.warn("Semua review tidak dapat dibaca, memakai data milik akun:", error?.code || error?.message || error);
+    allReviewsRaw = await fsGetOwnedRecords(COL.PERFORMANCE_REVIEW, session, { fields: ["nik", "nik_karyawan"] });
+  }
   const allEmployees = await fsGetAll(COL.MASTER_KARYAWAN);
   // Baris review tidak punya kolom cabang → resolve via MASTER_KARYAWAN (nik/nama).
   const empBranchByNik = new Map();

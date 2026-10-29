@@ -1,5 +1,5 @@
 import { db, COL, collection, getDocs, getDocsFromCache, doc, getDoc, setDoc, deleteDoc } from "../firebase-config.js";
-import { toast, genId, fsGetAll, escapeHtml, openModal, closeModal, formatUangJalanEkspedisiRows } from "../utils.js";
+import { toast, genId, fsGetAll, fsGetOwnedRecords, escapeHtml, openModal, closeModal, formatUangJalanEkspedisiRows } from "../utils.js";
 import { skeletonRows, emptyState } from "../components.js";
 import { callGasArchiveWebApp } from "../gas-integration.js";
 import { hasSubMenuAccess, hasPermission, canEditModuleData } from "../auth.js";
@@ -777,7 +777,10 @@ export async function mount(container, { session, params } = {}) {
     fsGetAll(COL.MASTER_KARYAWAN).catch(error => { console.error("Master karyawan tidak dapat dimuat:", error); return null; }),
     getDoc(doc(db, COL.APP_SETTINGS, "main")).catch(error => { console.error("Jadwal absensi tidak dapat dimuat:", error); return null; }),
     fsGetAll(COL.MASTER_CUTI).catch(() => []),
-    fsGetAll(COL.DATA_PENGAJUAN).catch(() => [])
+    (canViewAll
+      ? fsGetAll(COL.DATA_PENGAJUAN)
+      : fsGetOwnedRecords(COL.DATA_PENGAJUAN, session, { fields: ["nik", "nik_pemohon"] })
+    ).catch(() => [])
    ]);
    recentAttendanceRead = { key: readKey, at: Date.now(), request };
   }

@@ -1,5 +1,5 @@
 import { db, COL, doc, getDoc, setDoc, query, collection, where, getDocs } from "../firebase-config.js";
-import { fsGetAll, openModal, closeModal, toast, fmtDateShort, escapeHtml, genId, toNumber, getCalculatedJatahCuti, confirmDialog, getEmployeeTenureInfo, countLeaveWorkingDays, getLeaveWorkingDaysDetail, isIndonesianNationalHoliday } from "../utils.js";
+import { fsGetAll, fsGetOwnedRecords, openModal, closeModal, toast, fmtDateShort, escapeHtml, genId, toNumber, getCalculatedJatahCuti, confirmDialog, getEmployeeTenureInfo, countLeaveWorkingDays, getLeaveWorkingDaysDetail, isIndonesianNationalHoliday } from "../utils.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 import { monthsSinceJoin } from "../leave-entitlement.mjs";
 import { badge } from "../components.js";
@@ -116,8 +116,9 @@ export async function mount(container, { session }) {
         elKhususSisa.className = `text-2xl font-black font-mono ${userBalances.sisaKhusus <= 0 ? 'text-rose-600' : 'text-purple-700'}`;
       }
 
-      // 4. Fetch My Leave Submissions
-      const allPengajuan = await fsGetAll(COL.DATA_PENGAJUAN);
+      // 4. Fetch My Leave Submissions (hanya dokumen milik akun ini agar
+      //    tidak melanggar Firestore rules untuk akun non-manajemen)
+      const allPengajuan = await fsGetOwnedRecords(COL.DATA_PENGAJUAN, session, { fields: ["nik", "nik_pemohon"] });
       myLeaveRecords = allPengajuan.filter(p => {
         const isMe = (p.nama_pemohon?.toLowerCase() === session.nama?.toLowerCase()) || 
                      (p.pemohon?.toLowerCase() === session.nama?.toLowerCase()) ||

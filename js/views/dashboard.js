@@ -1,5 +1,5 @@
 import { db, COL, collection, query, where, getDocs, orderBy, limit, getDoc, doc, updateDoc, messaging } from "../firebase-config.js";
-import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, getTargetsForRole, toast, fsUpdate, fsAdd, fsGetAll, fsDelete, deleteBroadcastMemoAndNotifs, genId, localDateStr, getCalculatedJatahCuti, calculateAge, calculateTenure, cleanSalesName, calculateSalesRouteMetrics, normalizeCheckinItem, getDirectImageUrl } from "../utils.js";
+import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sendEmailNotif, getTargetsForRole, toast, fsUpdate, fsAdd, fsGetAll, fsGetOwnedRecords, fsDelete, deleteBroadcastMemoAndNotifs, genId, localDateStr, getCalculatedJatahCuti, calculateAge, calculateTenure, cleanSalesName, calculateSalesRouteMetrics, normalizeCheckinItem, getDirectImageUrl } from "../utils.js";
 import { avatar, badge, icon, emptyState, skeletonRows, getDismissedAnnouncements, dismissAnnouncementForUser, openPenilaianFormFromNotif } from "../components.js";
 import { MANAJEMEN_ROLES, computeVisibleMenus, MENU_CONFIG } from "../auth.js";
 import { listAttendance } from "../attendance-api.mjs";
@@ -1486,7 +1486,9 @@ async function loadPerformanceWidget(container, session) {
  if (!bodyEl) return;
 
  try {
- const allReviews = await fsGetAll(COL.PERFORMANCE_REVIEW);
+ const allReviews = isHrd
+  ? await fsGetAll(COL.PERFORMANCE_REVIEW)
+  : await fsGetOwnedRecords(COL.PERFORMANCE_REVIEW, session, { fields: ["nik", "nik_karyawan"] });
 
  if (isHrd) {
  if (titleEl) titleEl.textContent = "Evaluasi Kinerja Karyawan Perusahaan";

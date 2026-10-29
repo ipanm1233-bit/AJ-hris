@@ -1,6 +1,6 @@
 import { db, COL } from "../firebase-config.js";
 import {
- fsGetAll, fsUpdate, fmtDateTime, escapeHtml, openModal, closeModal, toast,
+ fsGetAll, fsGetOwnedRecords, fsUpdate, fmtDateTime, escapeHtml, openModal, closeModal, toast,
  dynFieldWrapperHtml, wireDynFormLogic, collectDynFormDetail, sendEmailNotif, buildStandardEmailHtml, getTargetsForRole,
  renderPengajuanDetailHtml, printSalesKlaimForm, printFormCutiFisik, downloadFormCutiPdf
 } from "../utils.js";
@@ -13,9 +13,11 @@ export async function mount(container, { session }) {
  const isHrd = session.role === "HRD" || session.role === "SUPERADMIN";
 
  try {
- const allReq = await fsGetAll(COL.DATA_PENGAJUAN);
- // FILTER: Hanya tampilkan milik pemohon, KECUALI dia adalah HRD
- const myReq = allReq.filter(r => isHrd || r.nama_pemohon === session.nama).sort((a,b) => new Date(b.tgl) - new Date(a.tgl));
+ const allReq = isHrd
+  ? await fsGetAll(COL.DATA_PENGAJUAN)
+  : await fsGetOwnedRecords(COL.DATA_PENGAJUAN, session, { fields: ["nik", "nik_pemohon"] });
+ // FILTER: hanya tampilkan milik pemohon, KECUALI dia adalah HRD
+ const myReq = allReq.filter(r => isHrd || r.nama_pemohon === session.nama || String(r.nik || r.nik_pemohon || "") === String(session.nik || "")).sort((a,b) => new Date(b.tgl) - new Date(a.tgl));
 
  if (!myReq.length) {
  listEl.innerHTML = emptyState("Belum ada riwayat pengajuan", "Data kosong.");

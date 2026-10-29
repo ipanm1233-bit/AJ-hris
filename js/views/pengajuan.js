@@ -1,6 +1,6 @@
 import { db, COL, collection, query, where, getDocs, orderBy, limit, doc, getDoc } from "../firebase-config.js";
 import {
- fsGetAll, fsAdd, fsUpdate, openModal, closeModal, toast, genId, escapeHtml,
+ fsGetAll, fsAdd, fsGetOwnedRecords, fsUpdate, openModal, closeModal, toast, genId, escapeHtml,
  fmtDateShort, evalFormula, toNumber, sendEmailNotif, buildStandardEmailHtml, buildPengajuanEmailDetailHtml, getTargetsForRole, createLoginToken,
  dynFieldWrapperHtml, wireDynFormLogic, collectDynFormDetail, sendFCMNotif, notifyUser, getCalculatedJatahCuti
 } from "../utils.js";
@@ -438,16 +438,19 @@ async function loadRecent(container, session) {
  wrap.innerHTML = `<div class="p-4">${skeletonRows(3)}</div>`;
  
  try {
- const q = query(collection(db, COL.DATA_PENGAJUAN), where("nama_pemohon", "==", session.nama), orderBy("tgl", "desc"), limit(5));
- const snap = await getDocs(q);
+ // Query langsung per field kepemilikan agar lolos Firestore rules untuk
+ // akun non-manajemen (query by nama_pemohon ditolak rules).
+ const owned = await fsGetOwnedRecords(COL.DATA_PENGAJUAN, session, { fields: ["nik", "nik_pemohon"] });
+ const snapDocs = owned
+  .sort((a, b) => new Date(b.tgl || 0) - new Date(a.tgl || 0))
+  .slice(0, 5);
  
- if (snap.empty) { 
+ if (!snapDocs.length) { 
  wrap.innerHTML = emptyState("Belum ada pengajuan", "Riwayat pengajuan Anda akan tampil di sini."); 
  return; 
  }
  
- wrap.innerHTML = snap.docs.map(d => {
- const r = d.data();
+ wrap.innerHTML = snapDocs.map(r => {
  const tone = r.status_final?.includes("APPROVED") ? "green" : r.status_final?.includes("REJECT") ? "red" : "amber";
  return `
  <div class="flex items-center justify-between p-4 hover:bg-slate-50 transition">

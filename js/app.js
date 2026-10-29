@@ -5,7 +5,7 @@
  * =====================================================================
  */
 import { getSession, clearSession, logout, computeVisibleMenus, canAccessRoute, MENU_CONFIG, syncSessionWithDb } from "./auth.js";
-import { parseHash, toast, fmtDateTime, openModal, closeModal } from "./utils.js";
+import { parseHash, toast, fmtDateTime, openModal, closeModal, fsGetAll, fsGetOwnedRecords } from "./utils.js";
 import { icon, avatar, openNotificationCenter, showMemoDetailById, skeletonShadowLayout } from "./components.js";
 import { db, messaging, firebaseConfig, COL, collection, query, where, getDocs, doc, getDoc } from "./firebase-config.js";
 import { getToken } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js";
@@ -15,7 +15,7 @@ import { auth } from "./firebase-config.js";
 
 // Ubah versi ini setiap ada perubahan struktur view agar browser tidak
 // mencampur HTML terbaru dengan modul JavaScript lama dari cache.
-const APP_ASSET_VERSION = "20261029-pip-v11";
+const APP_ASSET_VERSION = "20261029-pip-v12";
 const viewContainer = document.getElementById("view-container");
 let currentUnmount = null;
 let currentRoute = null;
@@ -1003,7 +1003,8 @@ async function checkUnreadNotifications(session) {
  const uNama = (session.nama || "").toLowerCase().trim();
  const uNik = (session.nik || "").toLowerCase().trim();
 
- const allNotifs = await fsGetAll(COL.NOTIFICATIONS);
+ const allNotifs = await fsGetAll(COL.NOTIFICATIONS)
+  .catch(() => fsGetOwnedRecords(COL.NOTIFICATIONS, session, { fields: ["username_target", "nik_target"] }));
  const hasUnread = allNotifs.some(n => {
  if (n.dibaca) return false;
  const target = (n.username_target || "").toLowerCase().trim();

@@ -5,7 +5,7 @@
  */
 import { db, COL, collection, query, where, getDocs, doc, getDoc, writeBatch, serverTimestamp } from "./firebase-config.js";
 import {
- fsGetAll, fsAdd, fsUpdate, fsDelete, deleteBroadcastMemoAndNotifs, openModal, closeModal, confirmDialog,
+ fsGetAll, fsGetOwnedRecords, fsAdd, fsUpdate, fsDelete, deleteBroadcastMemoAndNotifs, openModal, closeModal, confirmDialog,
  toast, fmtDateShort, fmtRupiah, toNumber, genId, escapeHtml, localDateStr
 } from "./utils.js";
 import { getSession, canDeleteModuleData, canEditModuleData } from "./auth.js";
@@ -809,11 +809,11 @@ export async function openNotificationCenter(session) {
        .catch(() => [])
    : Promise.resolve([]);
  const [semuaPengajuan, tugasKpi, kontrak, broadcastRows, personalNotifs] = await Promise.all([
- fsGetAll(COL.DATA_PENGAJUAN),
+ fsGetAll(COL.DATA_PENGAJUAN).catch(() => fsGetOwnedRecords(COL.DATA_PENGAJUAN, session, { fields: ["nik", "nik_pemohon"] })),
  ownKpiPromise,
  isHrd ? fsGetAll(COL.MASTER_KONTRAK) : Promise.resolve([]),
  fsGetAll(COL.BROADCAST).catch(() => []),
- fsGetAll(COL.NOTIFICATIONS).then(rows => {
+ fsGetAll(COL.NOTIFICATIONS).catch(() => fsGetOwnedRecords(COL.NOTIFICATIONS, session, { fields: ["username_target", "nik_target"] })).then(rows => {
  const uName = (session.username || "").toLowerCase().trim();
  const uNama = (session.nama || "").toLowerCase().trim();
  const uNik = (session.nik || "").toLowerCase().trim();
