@@ -1346,11 +1346,39 @@ export async function mount(container, { session }) {
  };
  }
 
+  /**
+   * Cari konfigurasi jenis cuti dari sebuah baris/master cuti.
+   * Dipakai untuk membaca opsi `cetak_form` (apakah Form Cuti perlu dicetak).
+   */
+  function findLeaveTypeConfig(rowOrType) {
+    const text = String(
+      typeof rowOrType === "string"
+        ? rowOrType
+        : (rowOrType?.type_cuti || rowOrType?.jenis_cuti || rowOrType?.kategori_cuti || rowOrType?.id || "")
+    ).trim().toLowerCase();
+    if (!text) return null;
+    const search = (pool) => (pool || [])
+      .slice()
+      .sort((a, b) => String(b.id || "").length - String(a.id || "").length)
+      .find(cfg => {
+        const id = String(cfg.id || "").trim().toLowerCase();
+        const name = String(cfg.name || "").trim().toLowerCase();
+        return (id && (text === id || text.startsWith(`${id} -`))) || (name && (text === name || text.includes(name)));
+      }) || null;
+    return search(leaveConfig) || search(DEFAULT_LEAVE_TYPES);
+  }
+
+  function leaveTypeAllowsForm(rowOrType) {
+    const cfg = findLeaveTypeConfig(rowOrType);
+    return cfg ? cfg.cetak_form !== false : true;
+  }
+
   function renderRiwayatRows(myLeaves) {
     if (!myLeaves.length) return `<tr><td colspan="5" class="p-6 text-center text-slate-400">Belum ada riwayat cuti.</td></tr>`;
     return myLeaves.map(c => {
       const ded = getCutiDeductionCategory(c);
       const sickRecord = isDoctorCertifiedSickLeave({ type_cuti: c.type_cuti || c.jenis_cuti });
+      const allowForm = leaveTypeAllowsForm(c);
       let badgeClass = "bg-blue-50 text-blue-700 border-blue-200";
       let badgeLabel = `${c.count} Hari (Tahunan)`;
 
@@ -1376,13 +1404,13 @@ export async function mount(container, { session }) {
   <td class="p-3 text-center"><span class="inline-block border px-2.5 py-0.5 rounded-full text-[11px] font-bold ${badgeClass}">${badgeLabel}</span></td>
   <td class="p-3 text-right">
   <div class="flex flex-wrap items-center justify-start gap-2 max-w-[370px]">
-  ${sickRecord ? (c.dokumen_sakit_url ? `<a href="${escapeHtml(c.dokumen_sakit_url)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 font-bold transition"><i class="fa-solid fa-file-medical"></i> Surat Dokter</a>` : `<span class="text-[11px] text-slate-500 px-2.5">Catatan sakit • tanpa dokumen</span>`) : `
+  ${sickRecord ? (c.dokumen_sakit_url ? `<a href="${escapeHtml(c.dokumen_sakit_url)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 font-bold transition"><i class="fa-solid fa-file-medical"></i> Surat Dokter</a>` : `<span class="text-[11px] text-slate-500 px-2.5">Catatan sakit • tanpa dokumen</span>`) : allowForm ? `
   <button type="button" data-pdf-cuti="${c.id}" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold transition" title="Unduh Form Cuti PDF">
    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
    PDF
  </button>
  <button type="button" data-print-cuti="${c.id}" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 font-semibold transition"><i class="fa-solid fa-print"></i> Cetak</button>
-  `}
+  ` : `<span class="inline-flex items-center gap-1 px-1 text-[11px] text-slate-400" title="Jenis cuti ini disetel tanpa cetak form"><i class="fa-solid fa-ban"></i> Tanpa form cetak</span>`}
   ${canManage ? `
   <button type="button" data-notify-cuti="employee" data-cuti-notify-id="${c.id}" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 font-bold transition disabled:opacity-60 disabled:cursor-wait" title="Kirim email dan notifikasi ke karyawan"><i class="fa-solid fa-envelope"></i> Kirim ke Karyawan</button>
   <button type="button" data-notify-cuti="supervisor" data-cuti-notify-id="${c.id}" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold transition disabled:opacity-60 disabled:cursor-wait" title="Kirim email dan notifikasi ke atasan"><i class="fa-solid fa-user-tie"></i> Kirim ke Atasan</button>
@@ -1495,6 +1523,7 @@ export async function mount(container, { session }) {
           }, getSisa(k), {
             recordSubmission: false,
             publishDocument: false,
+            cetakForm: leaveTypeAllowsForm(row),
             audiences: [audience]
           });
           await fsUpdate(COL.MASTER_CUTI, row.id, {
@@ -1922,7 +1951,7 @@ export async function mount(container, { session }) {
               </div>
             </div>
 
-            <div class="bg-blue-50 p-3 rounded-lg border border-blue-100 mb-2">
+            <div id="info-cetak-form" class="bg-blue-50 p-3 rounded-lg border border-blue-100 mb-2">
               <p class="text-xs text-blue-800 font-medium">*Formulir pengajuan ini akan otomatis dicetak ke PDF untuk ditandatangani setelah disimpan.</p>
             </div>
             
@@ -2416,6 +2445,17 @@ export async function mount(container, { session }) {
               inHari.readOnly = false;
             }
             lblPotong.textContent = "Potong Jatah: " + curCfg.potong;
+            if (btnSimpan) btnSimpan.textContent = curCfg.cetak_form === false ? "Simpan Tanpa Cetak Form" : "Simpan & Cetak PDF";
+            const infoCetak = m.querySelector("#info-cetak-form");
+            if (infoCetak) {
+              const tanpaForm = curCfg.cetak_form === false;
+              infoCetak.className = tanpaForm
+                ? "bg-amber-50 p-3 rounded-lg border border-amber-100 mb-2"
+                : "bg-blue-50 p-3 rounded-lg border border-blue-100 mb-2";
+              infoCetak.innerHTML = tanpaForm
+                ? `<p class="text-xs text-amber-800 font-medium">*Jenis cuti ini disetel <b>tanpa cetak form</b>. Data cuti tetap disimpan tanpa menerbitkan Form Cuti PDF.</p>`
+                : `<p class="text-xs text-blue-800 font-medium">*Formulir pengajuan ini akan otomatis dicetak ke PDF untuk ditandatangani setelah disimpan.</p>`;
+            }
             updateCalculations();
           };
         }
@@ -2507,6 +2547,7 @@ export async function mount(container, { session }) {
             const sesiCutiVal = isHalf ? (selSesi?.value || "Cuti Pagi") : null;
 
             const sickRecord = isDoctorCertifiedSickLeave(curCfg);
+            const shouldPrintForm = curCfg.cetak_form !== false;
             const isAlphaRecord = curCfg.discipline_impact === true || curCfg.id === "A";
             const isSalaryDeduction = curCfg.potong === "Potong Gaji";
             if (isSalaryDeduction) {
@@ -2621,18 +2662,23 @@ export async function mount(container, { session }) {
 
               pdfData.id = newId;
               if (!sickRecord) {
-                await generatePdfAndNotify(k, pdfData, sisa, {
-                  recordSubmission: false,
-                  publishDocument: true,
-                  audiences: []
-                }).catch(err => toast("Cuti tersimpan, tetapi dokumen gagal diterbitkan: " + err.message, "warning"));
+                if (shouldPrintForm) {
+                  await generatePdfAndNotify(k, pdfData, sisa, {
+                    recordSubmission: false,
+                    publishDocument: true,
+                    cetakForm: true,
+                    audiences: []
+                  }).catch(err => toast("Cuti tersimpan, tetapi dokumen gagal diterbitkan: " + err.message, "warning"));
+                } else {
+                  toast("Cuti tersimpan tanpa cetak form sesuai pengaturan jenis cuti.", "success");
+                }
               }
             } catch (err) {
               console.error(err);
               toast("Gagal menyimpan cuti: " + err.message, "error");
             } finally {
               btnSimpan.disabled = false;
-              btnSimpan.textContent = "Simpan & Cetak PDF";
+              btnSimpan.textContent = curCfg && curCfg.cetak_form === false ? "Simpan Tanpa Cetak Form" : "Simpan & Cetak PDF";
             }
           };
         }
@@ -2643,12 +2689,14 @@ export async function mount(container, { session }) {
   async function generatePdfAndNotify(k, pdfData, sisa, options = {}) {
     const audiences = new Set(options.audiences || []);
     const recordSubmission = options.recordSubmission === true;
+    // Jenis cuti bisa disetel "tidak perlu cetak form" di Atur Jenis Cuti.
+    const cetakForm = options.cetakForm !== false;
     // Hanya S (sakit dengan surat dokter) menjadi catatan sakit bebas
     // potongan tanpa Form Cuti. S- tetap memotong cuti tahunan dan harus
     // mengikuti alur Form Cuti biasa.
     const sickRecord = isDoctorCertifiedSickLeave({ type_cuti: pdfData.type_cuti || pdfData.jenis_cuti });
-    const publishDocument = options.publishDocument === true && !sickRecord;
-    const needsFormPdf = !sickRecord && (publishDocument || audiences.has("supervisor"));
+    const publishDocument = options.publishDocument === true && !sickRecord && cetakForm;
+    const needsFormPdf = !sickRecord && cetakForm && (publishDocument || audiences.has("supervisor"));
     let manualDeliveryCount = 0;
     try {
       toast(audiences.size ? "Menyiapkan email & notifikasi..." : "Menerbitkan Dokumen Form Cuti...", "info");
@@ -2737,7 +2785,7 @@ export async function mount(container, { session }) {
       // 3. Buat attachment berkas PDF murni
       const cleanEmpName = (k.nama_karyawan || "Karyawan").replace(/[^a-zA-Z0-9_-]/g, "_");
       const attachments = [];
-      if (!sickRecord && audiences.has("supervisor")) try {
+      if (!sickRecord && cetakForm && audiences.has("supervisor")) try {
         const pdfBase64 = await generateHtmlAsPdfBase64(formHtml);
         if (!pdfBase64) throw new Error("Hasil konversi PDF kosong");
         attachments.push({
@@ -2998,7 +3046,11 @@ export async function mount(container, { session }) {
             badgeVariant: "maroon",
             title: "Pemberitahuan Cuti Anggota Tim / Bawahan",
             recipientName: "Bapak/Ibu Pimpinan & Atasan Terkait",
-            introText: sickRecord ? `Pemberitahuan ketidakhadiran karena sakit: anggota tim Anda di cabang ${escapeHtml(empCabang || '-')} telah dicatat HRD. Tidak ada Form Cuti yang diterbitkan.` : `Pemberitahuan resmi: Anggota tim Anda di divisi <strong>${empDivisi || '-'}</strong> Cabang <strong>${empCabang || '-'}</strong> telah diverifikasi dan dicatat pelaksanaan cutinya oleh Tim HRD. Dokumen Form Cuti resmi terlampir pada email ini untuk keperluan koordinasi operasional.`,
+            introText: sickRecord
+              ? `Pemberitahuan ketidakhadiran karena sakit: anggota tim Anda di cabang ${escapeHtml(empCabang || '-')} telah dicatat HRD. Tidak ada Form Cuti yang diterbitkan.`
+              : !cetakForm
+                ? `Pemberitahuan resmi: Anggota tim Anda di divisi <strong>${empDivisi || '-'}</strong> Cabang <strong>${empCabang || '-'}</strong> telah dicatat pelaksanaan cutinya oleh Tim HRD. Jenis cuti ini <strong>tidak memerlukan Form Cuti</strong> (tanpa cetak form).`
+                : `Pemberitahuan resmi: Anggota tim Anda di divisi <strong>${empDivisi || '-'}</strong> Cabang <strong>${empCabang || '-'}</strong> telah diverifikasi dan dicatat pelaksanaan cutinya oleh Tim HRD. Dokumen Form Cuti resmi terlampir pada email ini untuk keperluan koordinasi operasional.`,
             infoList: [
               { label: "Nama Karyawan", value: k.nama_karyawan },
               { label: "NIK", value: k.nik || k.nik_karyawan || "-" },
@@ -3009,7 +3061,7 @@ export async function mount(container, { session }) {
               { label: "Durasi Cuti", value: durasiStr },
               { label: "Keperluan", value: pdfData.alasan || pdfData.keterangan_cuti || "-" },
               { label: "Kontak Selama Cuti", value: kontakStr },
-              ...(sickRecord ? [] : [{ label: "Dokumen Terlampir", value: ` Form_Cuti_${cleanEmpName}.pdf` }])
+              ...(sickRecord || !cetakForm ? [] : [{ label: "Dokumen Terlampir", value: ` Form_Cuti_${cleanEmpName}.pdf` }])
             ],
             secondaryNote: `Mohon pimpinan cabang dan supervisor divisi ${empDivisi || ''} Cabang ${empCabang || ''} dapat menyesuaikan jadwal dan pembagian tugas operasional selama masa cuti karyawan.`
           });
@@ -3106,7 +3158,12 @@ export async function mount(container, { session }) {
       if (audiences.size && manualDeliveryCount === 0) {
         throw new Error("Penerima tidak ditemukan. Periksa email, username, cabang, divisi, dan data atasan karyawan.");
       }
-      toast(audiences.size ? "Email & notifikasi cuti berhasil dikirim secara manual." : "Dokumen Form Cuti berhasil diterbitkan tanpa pengiriman otomatis.", "success");
+      toast(audiences.size
+        ? "Email & notifikasi cuti berhasil dikirim secara manual."
+        : cetakForm
+          ? "Dokumen Form Cuti berhasil diterbitkan tanpa pengiriman otomatis."
+          : "Data cuti tersimpan tanpa cetak form sesuai pengaturan jenis cuti.",
+        "success");
     } catch (err) {
       console.error("Error generatePdfAndNotify:", err);
       if (audiences.size) {
@@ -3180,12 +3237,12 @@ export async function mount(container, { session }) {
  size: "lg",
  bodyHtml: `
  <div class="mb-4 bg-slate-50 p-3 rounded-lg border border-slate-200">
- <p class="text-xs text-slate-600">Tambah atau ubah jenis cuti yang tersedia di formulir pengajuan. Nilai <strong>Multiplier</strong> adalah pengali jumlah pemotongan per hari (Contoh: Setengah Hari = 0.5, Izin Bebas = 0).</p>
+ <p class="text-xs text-slate-600">Tambah atau ubah jenis cuti yang tersedia di formulir pengajuan. Nilai <strong>Multiplier</strong> adalah pengali jumlah pemotongan per hari (Contoh: Setengah Hari = 0.5, Izin Bebas = 0). Kolom <strong>Cetak Form</strong>: pilih <b>Tidak</b> jika jenis cuti ini tidak perlu menerbitkan / mencetak Form Cuti saat dicatat.</p>
  </div>
  <div class="border border-slate-200 rounded-lg overflow-hidden">
  <table class="w-full text-xs text-left" id="table-cfg-cuti">
  <thead class="bg-slate-100 text-slate-600 border-b border-slate-200">
- <tr><th class="p-2 w-16">Kode</th><th class="p-2">Nama Jenis Cuti</th><th class="p-2">Target Saldo</th><th class="p-2 w-20 text-center">Multiplier</th><th class="p-2 w-12 text-center">Del</th></tr>
+ <tr><th class="p-2 w-16">Kode</th><th class="p-2">Nama Jenis Cuti</th><th class="p-2">Target Saldo</th><th class="p-2 w-20 text-center">Multiplier</th><th class="p-2 w-24 text-center">Cetak Form</th><th class="p-2 w-12 text-center">Del</th></tr>
  </thead>
  <tbody class="divide-y divide-slate-100 bg-white">
  <!-- Dirender via JS -->
@@ -3218,6 +3275,12 @@ export async function mount(container, { session }) {
  </select>
  </td>
  <td class="p-1.5"><input type="number" step="0.5" class="cfg-count w-full border rounded px-1.5 py-1 outline-none text-center" value="${c.count}"></td>
+ <td class="p-1.5 text-center">
+ <select class="cfg-cetak w-full border rounded px-1.5 py-1 outline-none bg-white text-center">
+ <option value="1" ${c.cetak_form !== false ? 'selected':''}>Ya</option>
+ <option value="0" ${c.cetak_form === false ? 'selected':''}>Tidak</option>
+ </select>
+ </td>
  <td class="p-1.5 text-center"><button type="button" data-cfg-del="${i}" class="text-red-500 hover:text-red-700 font-bold">&times;</button></td>
  </tr>
  `).join("");
@@ -3229,7 +3292,7 @@ export async function mount(container, { session }) {
  renderCfgTable();
 
  m.querySelector("#btn-add-cfg-cuti").onclick = () => {
- leaveConfig.push({ id: "", name: "", potong: "Tahunan", count: 1 });
+ leaveConfig.push({ id: "", name: "", potong: "Tahunan", count: 1, cetak_form: true });
  renderCfgTable();
  };
 
@@ -3242,10 +3305,15 @@ export async function mount(container, { session }) {
  const id = tr.querySelector(".cfg-id").value.trim().toUpperCase();
  const name = tr.querySelector(".cfg-name").value.trim();
  if(!id || !name) isValid = false;
+ const previous = leaveConfig.find(item => String(item.id || "").trim().toUpperCase() === id)
+  || DEFAULT_LEAVE_TYPES.find(item => String(item.id || "").trim().toUpperCase() === id)
+  || {};
  newCfg.push({
+ ...previous,
  id, name,
  potong: tr.querySelector(".cfg-potong").value,
- count: parseFloat(tr.querySelector(".cfg-count").value) || 0
+ count: parseFloat(tr.querySelector(".cfg-count").value) || 0,
+ cetak_form: tr.querySelector(".cfg-cetak").value === "1"
  });
  });
 

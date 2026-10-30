@@ -114,6 +114,6 @@ test("employee leave email contains details without a Form Cuti attachment", () 
   assert.doesNotMatch(employee, /Form Terlampir|Dokumen Terlampir|Form Cuti Resmi|: attachments,/);
   assert.match(employee, /emailBodyKaryawan,\s*"",\s*null,\s*\{ manual: true \}/);
   assert.match(supervisor, /sickRecord \? null : attachments/);
-  assert.match(leave, /const needsFormPdf = !sickRecord && \(publishDocument \|\| audiences\.has\("supervisor"\)\)/);
-  assert.match(leave, /if \(!sickRecord && audiences\.has\("supervisor"\)\) try \{/);
+  assert.match(leave, /const needsFormPdf = !sickRecord && cetakForm && \(publishDocument \|\| audiences\.has\("supervisor"\)\)/);
+  assert.match(leave, /if \(!sickRecord && cetakForm && audiences\.has\("supervisor"\)\) try \{/);
 });

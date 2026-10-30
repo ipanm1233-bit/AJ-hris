@@ -188,6 +188,25 @@ export async function mount(container, { session }) {
     }
   }
 
+  function findLeaveCategoryConfig(value) {
+    const text = String(value || "").trim().toLowerCase();
+    if (!text) return null;
+    const search = (pool) => (pool || [])
+      .slice()
+      .sort((a, b) => String(b.id || "").length - String(a.id || "").length)
+      .find(cfg => {
+        const id = String(cfg.id || "").trim().toLowerCase();
+        const name = String(cfg.name || "").trim().toLowerCase();
+        return (id && (text === id || text.startsWith(`${id} -`))) || (name && (text === name || text.includes(name)));
+      }) || null;
+    return search(leaveCategories) || search(DEFAULT_LEAVE_TYPES);
+  }
+
+  function leaveTypeAllowsForm(row) {
+    const cfg = findLeaveCategoryConfig(row?.kategori_cuti || row?.jenis_cuti || row?.type_cuti);
+    return cfg ? cfg.cetak_form !== false : true;
+  }
+
   function renderTable() {
     if (!myLeaveRecords.length) {
       tblBody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">Belum ada riwayat pengajuan cuti. Klik tombol di atas untuk mengajukan.</td></tr>`;
@@ -200,14 +219,17 @@ export async function mount(container, { session }) {
       if (st.includes("APPROVED") || st.includes("SETUJU")) stBadge = badge("Disetujui", "green");
       else if (st.includes("REJECT") || st.includes("TOLAK")) stBadge = badge("Ditolak", "red");
 
+      const allowForm = leaveTypeAllowsForm(r);
       const docLink = (st.includes("APPROVED") || st.includes("SETUJU"))
-        ? `<div class="flex items-center gap-2">
+        ? (allowForm
+          ? `<div class="flex items-center gap-2">
             <button type="button" onclick="window.downloadFormCutiPdf(${escapeHtml(JSON.stringify(r))})" class="text-maroon-700 font-bold hover:underline inline-flex items-center gap-1 text-xs">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
               Download PDF
             </button>
             <button type="button" onclick="window.printFormCutiFisik(${escapeHtml(JSON.stringify(r))})" class="text-slate-500 font-medium hover:underline text-xs">Cetak</button>
           </div>`
+          : `<span class="text-[11px] text-slate-400" title="Jenis cuti ini disetel tanpa cetak form">Tanpa form cetak</span>`)
         : r.lampiran_url 
         ? `<a href="${r.lampiran_url}" target="_blank" class="text-maroon-700 font-bold hover:underline">Lihat Lampiran</a>`
         : `<span class="text-slate-400">-</span>`;
@@ -253,6 +275,7 @@ export async function mount(container, { session }) {
     const dt = item.detail || {};
     const isPotongGaji = item.is_potong_gaji || item.potong_gaji || dt.is_potong_gaji || (item.kategori_cuti || "").includes("Potong Gaji");
     const potongGajiHari = item.potong_gaji_hari || dt.potong_gaji_hari || item.jumlah_hari || 1;
+    const allowForm = leaveTypeAllowsForm(item);
 
     openModal({
       title: `Detail Pengajuan Cuti — ${item.no_referensi || item.id}`,
@@ -292,7 +315,7 @@ export async function mount(container, { session }) {
             Buka File
           </a>
         </div>` : ''}
-        ${(item.status_final || "").includes("APPROVED") ? `
+        ${(item.status_final || "").includes("APPROVED") ? (allowForm ? `
         <div class="bg-emerald-50 p-3.5 rounded-xl border border-emerald-200 flex items-center justify-between">
           <div class="text-xs text-emerald-900">
             <p class="font-bold">Dokumen Form Cuti Fisik (Full Approved)</p>
@@ -307,7 +330,7 @@ export async function mount(container, { session }) {
               Cetak
             </button>
           </div>
-        </div>` : ''}
+        </div>` : `<div class="bg-slate-50 p-3 rounded-xl border border-slate-200 text-[11px] text-slate-500">Jenis cuti ini tidak memerlukan cetak Form Cuti.</div>`) : ''}
       </div>`
     });
   }
