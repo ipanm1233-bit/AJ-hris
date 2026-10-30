@@ -8152,6 +8152,17 @@ export async function mount(container, { session, params }) {
     || msg.includes("permission denied");
   }
 
+  // Pesan gagal simpan khusus PIP: bila Firestore menolak, arahkan admin untuk
+  // men-deploy firestore.rules terbaru (koleksi pip_programs) alih-alih hanya
+  // menampilkan "Missing or insufficient permissions".
+  function pipWriteErrorMessage(error, aksi) {
+   if (siklusIsPermissionError(error)) {
+    return `${aksi}: aturan keamanan Firestore menolak penyimpanan koleksi ${COL.PIP_PROGRAMS}. `
+      + "Minta admin men-deploy firestore.rules terbaru (firebase deploy --only firestore:rules), lalu coba lagi.";
+   }
+   return `${aksi}: ${(error && error.message) || error}`;
+  }
+
   function renderSiklusError(wrap, err) {
    const denied = siklusIsPermissionError(err);
    console.error("[penilaian-kontrak] gagal memuat siklus evaluasi", {
@@ -8990,7 +9001,7 @@ export async function mount(container, { session, params }) {
             await loadPipPanel();
           } catch (error) {
             console.error("create PIP", error);
-            toast("Gagal membuat PIP: " + error.message, "error");
+            toast(pipWriteErrorMessage(error, "Gagal membuat PIP"), "error");
           }
         };
       }
@@ -9118,7 +9129,7 @@ export async function mount(container, { session, params }) {
             program.email_mode = mode;
             toast(mode === "OTOMATIS" ? "Email PIP akan dikirim otomatis per periode evaluasi." : "Email PIP dikirim manual lewat tombol.", "success");
           } catch (error) {
-            toast("Gagal menyimpan pengaturan email: " + error.message, "error");
+            toast(pipWriteErrorMessage(error, "Gagal menyimpan pengaturan email"), "error");
           }
         });
         backdrop.querySelector("#pip-send-email")?.addEventListener("click", () => { closeModal(); sendPipPeriodEmail(program, { refresh: true }); });
@@ -9211,7 +9222,7 @@ export async function mount(container, { session, params }) {
             toast("Indikator penilaian PIP diperbarui.", "success");
             await reopenPipDetail(program.id);
           } catch (error) {
-            toast("Gagal menyimpan indikator: " + error.message, "error");
+            toast(pipWriteErrorMessage(error, "Gagal menyimpan indikator"), "error");
           }
         };
       }
@@ -9318,7 +9329,7 @@ export async function mount(container, { session, params }) {
             await reopenPipDetail(program.id);
           } catch (error) {
             console.error("save PIP assessment", error);
-            toast("Gagal menyimpan penilaian: " + error.message, "error");
+            toast(pipWriteErrorMessage(error, "Gagal menyimpan penilaian"), "error");
           }
         };
       }
@@ -9406,7 +9417,7 @@ export async function mount(container, { session, params }) {
             await reopenPipDetail(program.id);
           } catch (error) {
             console.error("save PIP round", error);
-            toast("Gagal menyimpan evaluasi: " + error.message, "error");
+            toast(pipWriteErrorMessage(error, "Gagal menyimpan evaluasi"), "error");
           }
         };
       }
@@ -9434,7 +9445,7 @@ export async function mount(container, { session, params }) {
         toast(`PIP diperpanjang ${outcome.extend} babak.`, "success");
         await reopenPipDetail(program.id);
       } catch (error) {
-        toast("Gagal memperpanjang PIP: " + error.message, "error");
+        toast(pipWriteErrorMessage(error, "Gagal memperpanjang PIP"), "error");
       }
       return;
     }
@@ -9458,7 +9469,7 @@ export async function mount(container, { session, params }) {
       toast(isPhk ? "PIP selesai: karyawan tidak lulus." : "Selamat, karyawan lulus PIP.", isPhk ? "warning" : "success");
       await reopenPipDetail(program.id);
     } catch (error) {
-      toast("Gagal menyelesaikan PIP: " + error.message, "error");
+      toast(pipWriteErrorMessage(error, "Gagal menyelesaikan PIP"), "error");
     }
   }
 

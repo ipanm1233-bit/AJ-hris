@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   buildPipRounds, pipRoundLengthDays, roundForDate, pipAverage, nextSpLevel,
   pipProgress, computePipOutcome, extendPipRounds, roundRecommendation, pipStatusLabel, addDays,
@@ -114,4 +115,23 @@ test("rekap rata-rata per indikator dari para evaluator", () => {
   const kinerja = summary.find(item => item.nama === "Kinerja");
   assert.equal(kinerja.count, 2);
   assert.equal(kinerja.average, 75);
+});
+
+test("firestore.rules mengizinkan pengelolaan koleksi pip_programs", () => {
+  const rules = readFileSync(new URL("../firestore.rules", import.meta.url), "utf8");
+  const blocks = rules.split("match /{collectionName}/{id}").slice(1);
+  const grants = blocks.filter(block => block.includes("'pip_programs'"));
+  assert.equal(grants.length, 1);
+  // read, create/update, dan delete masing-masing punya daftar koleksi sendiri.
+  assert.match(grants[0], /allow read: if collectionName in \[[\s\S]*'pip_programs'/);
+  assert.match(grants[0], /allow create, update: if collectionName in \[[\s\S]*'pip_programs'/);
+  assert.match(grants[0], /allow delete: if collectionName in \[[\s\S]*'pip_programs'/);
+});
+
+test("gagal simpan PIP memberi pesan actionable saat rules menolak", () => {
+  const source = readFileSync(new URL("../js/views/penilaian-kontrak.js", import.meta.url), "utf8");
+  assert.match(source, /function pipWriteErrorMessage\(error, aksi\)/);
+  assert.match(source, /firebase deploy --only firestore:rules/);
+  assert.match(source, /toast\(pipWriteErrorMessage\(error, "Gagal membuat PIP"\), "error"\)/);
+  assert.match(source, /toast\(pipWriteErrorMessage\(error, "Gagal menyimpan penilaian"\), "error"\)/);
 });
