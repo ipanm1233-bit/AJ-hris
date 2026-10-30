@@ -37,7 +37,7 @@ test("input-based export selects HRD input timestamp instead of leave date", () 
 test("multi-day execution period overlaps filter and no-scan sick record skips leave PDF", () => {
   assert.equal(matchesLeaveExportPeriod({}, { basis: "leave", start: "2026-09-10", end: "2026-09-10", leaveStart: "2026-09-09", leaveEnd: "2026-09-11" }), true);
   const source = readFileSync(new URL("../js/views/cuti.js", import.meta.url), "utf8");
-  assert.match(source, /if \(!sickRecord\) \{\s*if \(shouldPrintForm\) \{\s*await generatePdfAndNotify/);
+  assert.match(source, /if \(shouldPrintForm\) \{\s*await generatePdfAndNotify/);
   assert.match(source, /const needsFormPdf = !sickRecord && cetakForm && \(publishDocument \|\| audiences\.has\("supervisor"\)\)/);
   assert.match(source, /const formHtml = needsFormPdf \? generateStandardFormCutiHtml/);
   assert.match(source, /const publishDocument = options\.publishDocument === true && !sickRecord/);

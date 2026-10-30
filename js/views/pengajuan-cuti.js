@@ -2,6 +2,7 @@ import { db, COL, doc, getDoc, setDoc, query, collection, where, getDocs } from 
 import { fsGetAll, fsGetOwnedRecords, openModal, closeModal, toast, fmtDateShort, escapeHtml, genId, toNumber, getCalculatedJatahCuti, confirmDialog, getEmployeeTenureInfo, countLeaveWorkingDays, getLeaveWorkingDaysDetail, isIndonesianNationalHoliday } from "../utils.js";
 import { uploadFileToDrive } from "../gas-integration.js";
 import { monthsSinceJoin } from "../leave-entitlement.mjs";
+import { isDoctorCertifiedSickLeave } from "../leave-policy.mjs";
 import { badge } from "../components.js";
 
 const DEFAULT_LEAVE_TYPES = [
@@ -204,7 +205,11 @@ export async function mount(container, { session }) {
 
   function leaveTypeAllowsForm(row) {
     const cfg = findLeaveCategoryConfig(row?.kategori_cuti || row?.jenis_cuti || row?.type_cuti);
-    return cfg ? cfg.cetak_form !== false : true;
+    if (cfg) {
+      if (typeof cfg.cetak_form === "boolean") return cfg.cetak_form;
+      return !isDoctorCertifiedSickLeave(cfg);
+    }
+    return !isDoctorCertifiedSickLeave(row || {});
   }
 
   function renderTable() {
