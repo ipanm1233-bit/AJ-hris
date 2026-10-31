@@ -59,6 +59,30 @@ export function letterheadHtml() {
 }
 
 /**
+ * URL aset kop surat resmi (gambar hasil pindaian kop CV Andela Jaya).
+ * Disimpan sebagai aset statis agar tidak membebani bundle JS.
+ */
+export const KOP_SURAT_URL = "/assets/kop-andela-jaya.png";
+
+/**
+ * Kop surat resmi siap cetak berbasis gambar (dipakai pada surat-surat
+ * offboarding: Paklaring, Surat Keterangan, dan Surat Perjanjian Bersama).
+ *
+ * Ukuran mengikuti kop pada template Word perusahaan: lebar ±145 mm
+ * (±32–33 mm tinggi pada rasio aslinya) sehingga tidak terlalu besar dan
+ * tetap proporsional di setiap lembar A4.
+ *
+ * @param {object} [opts]
+ * @param {number} [opts.marginBottom] jarak bawah kop dalam px (default 8)
+ */
+export function kopSuratHtml({ marginBottom = 8 } = {}) {
+  return `
+  <div class="aj-kop-surat" style="width:100%;margin:0 0 ${Number(marginBottom) || 0}px 0;padding:0;text-align:left;">
+    <img src="${KOP_SURAT_URL}" alt="Kop Surat ${COMPANY_NAME}" style="display:block;width:145mm;max-width:100%;height:auto;margin:0;border:0;" />
+  </div>`;
+}
+
+/**
  * CSS standar dokumen resmi A4. Semua selector diberi prefix .aj-doc agar
  * tidak bentrok dengan style aplikasi. Dipakai oleh preview, cetak/PDF, dan
  * ekspor Word supaya margin, judul, tabel identitas, serta blok tanda tangan

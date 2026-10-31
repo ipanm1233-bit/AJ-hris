@@ -2,7 +2,20 @@ import { COL, db, updateDoc, doc, getDoc, setDoc } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsUpdate, toast, genId, fmtRupiah, fmtDateShort, smartParseDate, sendEmailNotif, buildStandardEmailHtml, openModal, closeModal, resolveEmployeeEmail } from "../utils.js";
 import { renderCrudModule, icon } from "../components.js";
 import { getSession, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
-import { isoDocHeaderTable, COMPANY_NAME, COMPANY_ADDRESS_LINE1 } from "../branding.js";
+import { isoDocHeaderTable, COMPANY_NAME, COMPANY_ADDRESS_LINE1, kopSuratHtml } from "../branding.js";
+import {
+ parseLocalDate,
+ toIsoDateLocal,
+ pad2,
+ defaultSisaGajiStart,
+ hitungSisaGaji,
+ paklaringIssuanceDate,
+ normalizePbClauses,
+ OFFBOARDING_DOCUMENT_OPTIONS,
+ offboardingDocumentLabel,
+ offboardingDocumentShort,
+ OFFBOARDING_DOCUMENT_ISSUE_DAYS
+} from "../offboarding-calc.mjs";
 
 // Fungsi pelindung teks bawaan (Bulletproof)
 function escapeHtml(unsafe) {
@@ -15,20 +28,6 @@ function escapeHtml(unsafe) {
 const NAMA_BULAN_ID = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 const NAMA_HARI_ID = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
-function pad2(value) { return String(value).padStart(2, "0"); }
-
-function parseLocalDate(value) {
- if (value instanceof Date) return new Date(value.getFullYear(), value.getMonth(), value.getDate());
- const text = String(value || "").slice(0, 10);
- const parts = text.split("-").map(Number);
- if (parts.length !== 3 || parts.some(part => !Number.isFinite(part) || part <= 0)) return null;
- return new Date(parts[0], parts[1] - 1, parts[2]);
-}
-
-function toIsoDateLocal(date) {
- if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
- return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
-}
 
 function angkaTerbilang(value) {
  const n = Math.floor(Math.abs(Number(value) || 0));
@@ -60,89 +59,6 @@ function formatTanggalTerbilang(value) {
  return `${hari}, ${teks} (${huruf})`;
 }
 
-/** Hitung hari kerja Senin-Sabtu (Minggu libur), inklusif start s.d. end. */
-function countWorkingDaysInclusive(startValue, endValue) {
- const start = parseLocalDate(startValue);
- const end = parseLocalDate(endValue);
- if (!start || !end || end < start) return 0;
- let total = 0;
- const cursor = new Date(start);
- while (cursor <= end) {
- if (cursor.getDay() !== 0) total += 1;
- cursor.setDate(cursor.getDate() + 1);
- }
- return total;
-}
-
-/**
- * Hitung sisa gaji berjalan (belum dibayarkan) karyawan yang keluar.
- * Gaji per hari = (gaji pokok + tunjangan tetap) / hari kerja per bulan.
- * Hari kerja dihitung Senin-Sabtu dan belum memperhitungkan hari libur nasional.
- */
-function hitungSisaGaji({ outDate, gajiPokok, cutoffDay = 21, hariKerjaPerBulan = 25, startDate = "" }) {
- const out = parseLocalDate(outDate);
- const gaji = Number(gajiPokok) || 0;
- const pembagi = Number(hariKerjaPerBulan) > 0 ? Number(hariKerjaPerBulan) : 25;
- const cutoff = Math.min(Math.max(parseInt(cutoffDay, 10) || 21, 1), 31);
- if (!out) return { gajiPerHari: 0, sisaHariKerja: 0, sisaGaji: 0, mulai: "", cutoffDay: cutoff, hariKerjaPerBulan: pembagi };
-
- const batasBulan = new Date(out.getFullYear(), out.getMonth() + 1, 0).getDate();
- const tglCutoff = new Date(out.getFullYear(), out.getMonth(), Math.min(cutoff, batasBulan));
- const defaultStartIso = defaultSisaGajiStart(out, cutoff);
- const manualStart = parseLocalDate(startDate);
- const isManualStart = Boolean(manualStart) && toIsoDateLocal(manualStart) !== defaultStartIso;
- const start = manualStart || parseLocalDate(defaultStartIso);
-
- let sisaHariKerja = 0;
- if (isManualStart) {
- // HRD mengubah tanggal mulai secara manual: hitung hari kerja aktual.
- sisaHariKerja = Math.min(countWorkingDaysInclusive(start, out), pembagi);
- } else if (out > tglCutoff) {
- // Periode payroll berikutnya (22 bulan berjalan s.d. 21 bulan berikutnya):
- // hitung hari kerja aktual dari 22 bulan berjalan sampai tanggal keluar.
- sisaHariKerja = Math.min(countWorkingDaysInclusive(new Date(out.getFullYear(), out.getMonth(), tglCutoff.getDate() + 1), out), pembagi);
- } else {
- // Periode payroll berjalan (22 bulan sebelumnya s.d. 21 bulan berjalan).
- // Gaji penuh periode = hari kerja per bulan (25). Kurangkan hari kerja yang
- // tidak dijalani setelah tanggal keluar sampai tanggal cut-off.
- const hariTerlewat = countWorkingDaysInclusive(new Date(out.getFullYear(), out.getMonth(), out.getDate() + 1), tglCutoff);
- sisaHariKerja = Math.max(0, pembagi - hariTerlewat);
- }
-
- const gajiPerHari = Math.round(gaji / pembagi);
- const sisaGaji = sisaHariKerja >= pembagi ? gaji : gajiPerHari * sisaHariKerja;
- return {
- gajiPerHari,
- sisaHariKerja,
- sisaGaji,
- mulai: start ? toIsoDateLocal(start) : "",
- cutoffDay: cutoff,
- hariKerjaPerBulan: pembagi
- };
-}
-
-/**
- * Awal periode sisa gaji mengikuti cut-off penggajian:
- * gaji dibayar tgl 25 menghitung absensi 22 bulan sebelumnya s.d. 21 bulan berjalan.
- * - Keluar setelah tgl cut-off (22 s.d. akhir bulan): mulai tgl 22 bulan berjalan
- *   (periode payroll berikutnya yang belum dibayarkan).
- * - Keluar tgl cut-off atau sebelumnya: mulai tgl 22 bulan sebelumnya
- *   (periode payroll berjalan yang belum dibayarkan).
- */
-function defaultSisaGajiStart(outDate, cutoffDay) {
- const out = parseLocalDate(outDate);
- if (!out) return "";
- const cutoff = Math.min(Math.max(parseInt(cutoffDay, 10) || 21, 1), 31);
- const batasBulan = new Date(out.getFullYear(), out.getMonth() + 1, 0).getDate();
- const tglCutoff = new Date(out.getFullYear(), out.getMonth(), Math.min(cutoff, batasBulan));
- if (out > tglCutoff) {
- return toIsoDateLocal(new Date(out.getFullYear(), out.getMonth(), tglCutoff.getDate() + 1));
- }
- const bulanSebelumnya = new Date(out.getFullYear(), out.getMonth() - 1, 1);
- const batasBulanLalu = new Date(bulanSebelumnya.getFullYear(), bulanSebelumnya.getMonth() + 1, 0).getDate();
- const tglCutoffLalu = new Date(bulanSebelumnya.getFullYear(), bulanSebelumnya.getMonth(), Math.min(cutoff, batasBulanLalu));
- return toIsoDateLocal(new Date(tglCutoffLalu.getFullYear(), tglCutoffLalu.getMonth(), tglCutoffLalu.getDate() + 1));
-}
 
 // ============================================================
 // KETENTUAN UANG PISAH (DAPAT DIUBAH LANGSUNG OLEH HRD)
@@ -549,7 +465,7 @@ async function printPerjanjianBersamaPdf(data) {
  const { downloadHtmlAsPdf, openModal } = await import("../utils.js");
  const {
  karyawan, alasan, tglEfektif, tglSurat, nomorSurat, masaKerjaTahun, masaKerjaBulan,
- sisaGaji, uangPisah, mcu, assets, catatanTambahan
+ sisaGaji, uangPisah, mcu, assets, catatanTambahan, klausulTambahan
  } = data;
 
  const session = getSession() || {};
@@ -565,10 +481,16 @@ async function printPerjanjianBersamaPdf(data) {
 
  const gaji = sisaGaji || {};
  const gajiPokokTetap = Number(gaji.gaji_pokok_tetap || 0);
+ const gapokBulan = Number(gaji.gaji_pokok != null ? gaji.gaji_pokok : gajiPokokTetap);
+ const tunjanganBulan = Number(gaji.tunjangan_tetap || 0);
  const hariKerjaBulan = Number(gaji.hari_kerja_per_bulan || 25);
  const gajiPerHari = Number(gaji.gaji_per_hari || 0);
+ const gapokPerHari = Number(gaji.gaji_pokok_per_hari != null ? gaji.gaji_pokok_per_hari : gajiPerHari);
+ const tunjanganPerHari = Number(gaji.tunjangan_per_hari || 0);
  const sisaHariKerja = Number(gaji.sisa_hari_kerja || 0);
  const sisaGajiNominal = Number(gaji.sisa_gaji || 0);
+ const sisaGapok = Number(gaji.sisa_gaji_pokok != null ? gaji.sisa_gaji_pokok : sisaGajiNominal);
+ const sisaTunjangan = Number(gaji.sisa_tunjangan || 0);
  const biayaMcu = mcu && mcu.wajib ? Number(mcu.biaya_mcu || 0) : 0;
  const potonganMcu = Number((mcu && mcu.potongan_sisa_gaji) || 0);
  const kekuranganMcu = Number((mcu && mcu.kekurangan_dibayar_karyawan) || 0);
@@ -609,12 +531,13 @@ async function printPerjanjianBersamaPdf(data) {
  <tr><td colspan="4" style="border:1px solid #000; padding:4px; text-align:center; font-style:italic;">Tidak ada aset yang tercatat.</td></tr>`;
 
  const docHtmlPb = `
- <div style="width:100%; max-width:760px; margin:0 auto; padding:15px; font-family:Arial, Helvetica, sans-serif; font-size:10.5px; line-height:1.45; color:#000; background:#ffffff; box-sizing:border-box;">
- <div style="page-break-inside:avoid; margin-bottom:4px;">
- ${isoDocHeaderTable({ judul: "SURAT PERJANJIAN BERSAMA", noDok: "HRD-PB-01", terbitRevisi: "1/0", hal: "1 dari 1" })}
- </div>
+ <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:Arial, Helvetica, sans-serif; font-size:10.5px; line-height:1.45; color:#000; background:#ffffff; box-sizing:border-box;">
 
- <div style="text-align:center; font-weight:bold; font-size:13px; letter-spacing:0.4px; margin:8px 0 1px;">SURAT PERJANJIAN BERSAMA</div>
+ <!-- HALAMAN 1: IDENTITAS PARA PIHAK & RINCIAN SISA UPAH -->
+ <div style="page-break-after:always; padding:4px 0 0;">
+ ${kopSuratHtml({ marginBottom: 10 })}
+
+ <div style="text-align:center; font-weight:bold; font-size:13px; letter-spacing:0.4px; text-decoration:underline; margin:0 0 2px;">SURAT PERJANJIAN BERSAMA</div>
  <div style="text-align:center; font-size:10px; margin-bottom:8px;">Nomor: ${escapeHtml(nomor)}</div>
 
  <p style="margin:0 0 6px; text-align:justify;">Pada hari ini, ${escapeHtml(tanggalSuratTeks)}, kami yang bertanda tangan di bawah ini:</p>
@@ -640,13 +563,13 @@ async function printPerjanjianBersamaPdf(data) {
  </ol>
 
  <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:9px; margin:4px 0 5px;">
- <colgroup><col style="width:17%;" /><col style="width:19%;" /><col style="width:10%;" /><col style="width:19%;" /><col style="width:14%;" /><col style="width:21%;" /></colgroup>
+ <colgroup><col style="width:17%;" /><col style="width:21%;" /><col style="width:10%;" /><col style="width:18%;" /><col style="width:15%;" /><col style="width:19%;" /></colgroup>
  <thead>
  <tr style="background:#e2e8f0; text-align:center;">
  <th style="border:1px solid #000; padding:3px;">TGL PEMBAYARAN</th>
  <th style="border:1px solid #000; padding:3px;">DESKRIPSI</th>
  <th style="border:1px solid #000; padding:3px;">TOTAL HARI KERJA</th>
- <th style="border:1px solid #000; padding:3px;">GAJI POKOK + TUNJANGAN</th>
+ <th style="border:1px solid #000; padding:3px;">UPAH BULANAN</th>
  <th style="border:1px solid #000; padding:3px;">UPAH / HARI</th>
  <th style="border:1px solid #000; padding:3px;">TOTAL UPAH</th>
  </tr>
@@ -654,15 +577,32 @@ async function printPerjanjianBersamaPdf(data) {
  <tbody>
  <tr>
  <td style="border:1px solid #000; padding:3px; text-align:center;">${escapeHtml(tanggalBayarTeks)}</td>
- <td style="border:1px solid #000; padding:3px;">GAJI ${escapeHtml(bulanGajiTeks)}</td>
+ <td style="border:1px solid #000; padding:3px;">GAJI POKOK ${escapeHtml(bulanGajiTeks)}</td>
  <td style="border:1px solid #000; padding:3px; text-align:center;">${sisaHariKerja}</td>
- <td style="border:1px solid #000; padding:3px; text-align:right;">${fmtRupiah(gajiPokokTetap)}</td>
- <td style="border:1px solid #000; padding:3px; text-align:right;">${fmtRupiah(gajiPerHari)}</td>
- <td style="border:1px solid #000; padding:3px; text-align:right; font-weight:bold;">${fmtRupiah(sisaGajiNominal)}</td>
+ <td style="border:1px solid #000; padding:3px; text-align:right;">${fmtRupiah(gapokBulan)}</td>
+ <td style="border:1px solid #000; padding:3px; text-align:right;">${fmtRupiah(gapokPerHari)}</td>
+ <td style="border:1px solid #000; padding:3px; text-align:right;">${fmtRupiah(sisaGapok)}</td>
+ </tr>
+ <tr>
+ <td style="border:1px solid #000; padding:3px; text-align:center;">${escapeHtml(tanggalBayarTeks)}</td>
+ <td style="border:1px solid #000; padding:3px;">TUNJANGAN TETAP ${escapeHtml(bulanGajiTeks)}</td>
+ <td style="border:1px solid #000; padding:3px; text-align:center;">${sisaHariKerja}</td>
+ <td style="border:1px solid #000; padding:3px; text-align:right;">${fmtRupiah(tunjanganBulan)}</td>
+ <td style="border:1px solid #000; padding:3px; text-align:right;">${fmtRupiah(tunjanganPerHari)}</td>
+ <td style="border:1px solid #000; padding:3px; text-align:right;">${fmtRupiah(sisaTunjangan)}</td>
+ </tr>
+ <tr style="background:#f8fafc; font-weight:bold;">
+ <td colspan="5" style="border:1px solid #000; padding:3px; text-align:right;">TOTAL SISA UPAH</td>
+ <td style="border:1px solid #000; padding:3px; text-align:right;">${fmtRupiah(sisaGajiNominal)}</td>
  </tr>
  </tbody>
  </table>
- <p style="margin:0 0 5px; font-size:9.5px; text-align:justify;">Perhitungan: ${fmtRupiah(gajiPokokTetap)} &divide; ${hariKerjaBulan} hari kerja = ${fmtRupiah(gajiPerHari)}/hari &times; ${sisaHariKerja} hari kerja (Senin&ndash;Sabtu) = <b>${fmtRupiah(sisaGajiNominal)}</b>. Cut-off penggajian tanggal ${Number(gaji.cutoff_hari || 21)} (periode 22 bulan sebelumnya s.d. 21 bulan berjalan) dan pembayaran gaji tanggal ${payDay} setiap bulan.</p>
+ <p style="margin:0 0 5px; font-size:9.5px; text-align:justify;">Perhitungan: gaji pokok ${fmtRupiah(gapokBulan)} &divide; ${hariKerjaBulan} hari kerja = ${fmtRupiah(gapokPerHari)}/hari &times; ${sisaHariKerja} hari kerja = <b>${fmtRupiah(sisaGapok)}</b>; tunjangan tetap ${fmtRupiah(tunjanganBulan)} &divide; ${hariKerjaBulan} hari kerja = ${fmtRupiah(tunjanganPerHari)}/hari &times; ${sisaHariKerja} hari kerja = <b>${fmtRupiah(sisaTunjangan)}</b> (Senin&ndash;Sabtu). Cut-off penggajian tanggal ${Number(gaji.cutoff_hari || 21)} (periode 22 bulan sebelumnya s.d. 21 bulan berjalan) dan pembayaran gaji tanggal ${payDay} setiap bulan.</p>
+ </div>
+
+ <!-- HALAMAN 2: RINCIAN HAK, KLAUSUL, DAN TANDA TANGAN -->
+ <div style="page-break-after:always; padding:4px 0 0;">
+ ${kopSuratHtml({ marginBottom: 10 })}
 
  ${mcu && mcu.wajib ? `
  <div style="border:1px solid #b91c1c; background:#fef2f2; padding:6px; margin:5px 0; page-break-inside:avoid;">
@@ -683,7 +623,12 @@ async function printPerjanjianBersamaPdf(data) {
  <li style="margin-bottom:4px;">Bahwa dengan ditandatangani serta dilaksanakannya Perjanjian Bersama ini, maka permasalahan hukum dan hubungan kerja di antara Para Pihak dinyatakan telah selesai, termasuk pengaduan Pihak Kedua kepada instansi-instansi terkait, dan masing-masing pihak tidak akan saling menuntut apa pun baik secara perdata maupun pidana.</li>
  <li style="margin-bottom:4px;">Bahwa dengan ditandatanganinya Perjanjian Bersama ini Para Pihak telah melaksanakan hak dan kewajibannya dan tidak akan menuntut masalah ketenagakerjaan di kemudian hari.</li>
  <li style="margin-bottom:4px;">Bahwa Perjanjian Bersama ini dibuat dengan keadaan sadar, sehat jasmani dan rohani serta tanpa adanya paksaan, tekanan, dan tipuan dari pihak mana pun.</li>
- ${catatanTambahan ? `<li style="margin-bottom:4px;">${escapeHtml(catatanTambahan)}</li>` : ""}
+ ${(() => {
+ const extra = normalizePbClauses(klausulTambahan);
+ const legacy = normalizePbClauses(catatanTambahan);
+ const list = extra.length ? extra : legacy;
+ return list.map(text => `<li style="margin-bottom:4px;">${escapeHtml(text)}</li>`).join("");
+ })()}
  </ol>
 
  <p style="margin:6px 0 10px; text-align:justify;">Demikian Perjanjian Bersama ini dibuat dalam rangkap dua, masing-masing bermeterai cukup dan mempunyai kekuatan hukum yang sama. Perjanjian ini mulai berlaku sejak ditandatangani oleh kedua belah pihak.</p>
@@ -700,10 +645,13 @@ async function printPerjanjianBersamaPdf(data) {
  <td style="border:none; padding:2px;"><b><u>${escapeHtml(karyawan.nama_karyawan || "-")}</u></b><br/>${escapeHtml(karyawan.jabatan || "-")}</td>
  </tr>
  </table>
+ </div>
 
  ${assets && assets.length ? `
- <div style="margin-top:14px; page-break-inside:avoid;">
- <div style="font-weight:bold; font-size:10.5px; text-transform:uppercase; border-top:1px solid #000; padding-top:8px;">Tanda Terima Penyerahan Asset</div>
+ <!-- HALAMAN 3: TANDA TERIMA PENYERAHAN ASSET (LEMBAR TERPISAH) -->
+ <div style="padding:4px 0 0;">
+ ${kopSuratHtml({ marginBottom: 10 })}
+ <div style="text-align:center; font-weight:bold; font-size:12px; text-transform:uppercase; text-decoration:underline; margin:0 0 6px;">Tanda Terima Penyerahan Asset</div>
  <p style="margin:3px 0;">Pada tanggal ${escapeHtml(formatTanggalIndo(tglEfektif, { withDay: false }))}, telah diterima kembali asset ${escapeHtml(COMPANY_NAME)} dari Pihak Kedua dengan detail sebagai berikut:</p>
  <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:9.5px;">
  <colgroup><col style="width:6%;" /><col style="width:44%;" /><col style="width:25%;" /><col style="width:25%;" /></colgroup>
@@ -762,6 +710,99 @@ async function printPerjanjianBersamaPdf(data) {
  toast("Surat Perjanjian Bersama PDF berhasil diunduh!", "success");
  } catch (error) {
  console.warn("Gagal auto download Surat Perjanjian Bersama:", error);
+ }
+}
+
+// FUNGSI CETAK PAKLARING / SURAT KETERANGAN KERJA (30 HARI SETELAH HARI TERAKHIR)
+async function printPaklaringPdf(data) {
+ const { downloadHtmlAsPdf, toast, openModal } = await import("../utils.js");
+ const { karyawan, tglJoin, tglEfektif, jenisDokumen, nomorSurat, tanggalSurat } = data;
+
+ const session = getSession() || {};
+ const pihakSatuNama = session.nama || session.nama_karyawan || session.username || "Human Capital Staff";
+ const pihakSatuJabatan = session.jabatan || "Human Capital Staff";
+
+ const suratIso = tanggalSurat || paklaringIssuanceDate(tglEfektif, OFFBOARDING_DOCUMENT_ISSUE_DAYS);
+ const suratObj = parseLocalDate(suratIso) || new Date();
+ const romawi = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+ const nomor = (nomorSurat || "").trim() || `___/HRGA-AJ/${romawi[suratObj.getMonth()]}/${suratObj.getFullYear()}`;
+
+ const jenisKelamin = String(karyawan.jenis_kelamin || "").toUpperCase();
+ const sapaan = jenisKelamin.startsWith("P") || jenisKelamin.includes("PEREMPUAN") || jenisKelamin === "WANITA" ? "Saudari" : "Saudara";
+ const namaKaryawan = karyawan.nama_karyawan || "-";
+ const jabatanKaryawan = karyawan.jabatan || "-";
+
+ const isPaklaring = jenisDokumen !== "SURAT_KETERANGAN";
+ const paragrafTambahan = isPaklaring
+ ? `${sapaan} ${escapeHtml(namaKaryawan)} telah bekerja dengan dedikasi dan loyalitas yang baik kepada Perusahaan. Melalui pernyataan ini, kami menjelaskan bahwa yang bersangkutan telah mengundurkan diri dari perusahaan kami. Kami berterima kasih atas kinerja yang telah dilakukan selama ini. Semoga yang bersangkutan menjadi lebih sukses di masa yang akan datang.`
+ : `Surat keterangan ini dibuat untuk keperluan pencairan BPJS KETENAGAKERJAAN.`;
+
+ const docHtml = `
+ <div style="width:100%; max-width:760px; margin:0 auto; padding:8px 0 0; font-family:Arial, Helvetica, sans-serif; font-size:11px; line-height:1.5; color:#000; background:#ffffff; box-sizing:border-box;">
+ ${kopSuratHtml({ marginBottom: 12 })}
+
+ <div style="text-align:center; font-weight:bold; font-size:13px; letter-spacing:0.4px; text-decoration:underline; margin:0 0 2px;">SURAT KETERANGAN KERJA</div>
+ <div style="text-align:center; font-size:10.5px; margin-bottom:14px;">No : ${escapeHtml(nomor)}</div>
+
+ <p style="margin:0 0 8px; text-align:justify;">Yang bertanda tangan di bawah ini:</p>
+ <table style="width:100%; border-collapse:collapse; font-size:11px; margin:0 0 10px;">
+ <tr><td style="width:16%; padding:1px 0; vertical-align:top;">Nama</td><td style="width:2%;">:</td><td><b>${escapeHtml(pihakSatuNama)}</b></td></tr>
+ <tr><td style="padding:1px 0; vertical-align:top;">Jabatan</td><td>:</td><td>${escapeHtml(pihakSatuJabatan)}</td></tr>
+ </table>
+
+ <p style="margin:0 0 8px; text-align:justify;">Menerangkan dengan sebenarnya bahwa yang bersangkutan di bawah ini:</p>
+ <table style="width:100%; border-collapse:collapse; font-size:11px; margin:0 0 10px;">
+ <tr><td style="width:16%; padding:1px 0; vertical-align:top;">Nama</td><td style="width:2%;">:</td><td><b>${escapeHtml(namaKaryawan)}</b></td></tr>
+ <tr><td style="padding:1px 0; vertical-align:top;">Jabatan</td><td>:</td><td>${escapeHtml(jabatanKaryawan)}</td></tr>
+ </table>
+
+ <p style="margin:0 0 8px; text-align:justify;">Adalah benar merupakan karyawan di <b>${escapeHtml(COMPANY_NAME)}</b> terhitung sejak <b>${escapeHtml(formatTanggalIndo(tglJoin, { withDay: false }))}</b> hingga <b>${escapeHtml(formatTanggalIndo(tglEfektif, { withDay: false }))}</b> dengan jabatan terakhir sebagai <b>${escapeHtml(jabatanKaryawan)}</b>.</p>
+ <p style="margin:0 0 8px; text-align:justify;">${paragrafTambahan}</p>
+ <p style="margin:0 0 8px; text-align:justify;">Demikian surat ini dibuat untuk dipergunakan sebagaimana mestinya.</p>
+
+ <div style="margin-top:18px; text-align:right; margin-bottom:2px;">Cirebon, ${escapeHtml(formatTanggalIndo(suratIso, { withDay: false }))}</div>
+ <table style="width:100%; border-collapse:collapse; font-size:11px; page-break-inside:avoid;">
+ <tr><td style="width:50%;"></td><td style="width:50%; text-align:left;">${escapeHtml(pihakSatuJabatan)},</td></tr>
+ <tr><td></td><td style="height:56px;"></td></tr>
+ <tr><td></td><td style="text-align:left;"><b><u>${escapeHtml(pihakSatuNama)}</u></b></td></tr>
+ </table>
+ </div>`;
+
+ const shortLabel = isPaklaring ? "Paklaring" : "Surat_Keterangan";
+ const filename = `${shortLabel}_${String(namaKaryawan).replace(/\s+/g, "_")}.pdf`;
+
+ openModal({
+ title: `${isPaklaring ? "Paklaring" : "Surat Keterangan Kerja"} - ${escapeHtml(namaKaryawan)}`,
+ bodyHtml: `
+ <div class="space-y-4">
+ <div class="flex items-center justify-between gap-2 flex-wrap p-3 bg-sky-50 border border-sky-200 rounded-xl">
+ <div class="text-xs">
+ <p class="font-bold text-sky-800">${isPaklaring ? "Paklaring (Surat Keterangan Kerja)" : "Surat Keterangan Kerja (BPJS)"}</p>
+ <p class="text-sky-700">Nomor: ${escapeHtml(nomor)} • Tanggal: ${escapeHtml(formatTanggalIndo(suratIso, { withDay: false }))}</p>
+ </div>
+ <button type="button" id="btn-modal-dl-paklaring" class="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5">
+ ${icon('download', 'w-4 h-4')} Unduh PDF
+ </button>
+ </div>
+ <div class="border border-slate-300 rounded-xl p-4 bg-slate-100 overflow-y-auto max-h-[70vh]">
+ <div class="bg-white shadow-md p-6 rounded-lg mx-auto" style="max-width:794px;">${docHtml}</div>
+ </div>
+ </div>`,
+ size: "xl",
+ onMount: (backdrop) => {
+ backdrop.querySelector("#btn-modal-dl-paklaring")?.addEventListener("click", async () => {
+ toast("Sedang mengunduh file PDF...", "info");
+ await downloadHtmlAsPdf(docHtml, filename);
+ toast("Dokumen PDF berhasil diunduh!", "success");
+ });
+ }
+ });
+
+ try {
+ await downloadHtmlAsPdf(docHtml, filename);
+ toast("Dokumen PDF berhasil diunduh!", "success");
+ } catch (error) {
+ console.warn("Gagal auto download Paklaring / Surat Keterangan:", error);
  }
 }
 
@@ -1160,7 +1201,10 @@ export async function mount(container) {
  <div><label class="block text-xs font-bold text-slate-600 mb-1">Tanggal Join (Auto)</label><input type="date" id="off-join" value="${joinDate}" required class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none bg-slate-50 text-slate-600"></div>
  <div><label class="block text-xs font-bold text-slate-600 mb-1">Tanggal Efektif Keluar</label><input type="date" id="off-out" required class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400 border-slate-300"></div>
  </div>
- <div><label class="block text-xs font-bold text-slate-600 mb-1">Gaji Pokok + Tunjangan Tetap (Rp)</label><input type="number" id="off-gaji" required class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-maroon-400" placeholder="Cth: 5000000"></div>
+ <div class="grid grid-cols-2 gap-4">
+ <div><label class="block text-xs font-bold text-slate-600 mb-1">Gaji Pokok (Rp / bulan)</label><input type="number" id="off-gapok" required min="0" step="1000" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-maroon-400" placeholder="Cth: 4000000"></div>
+ <div><label class="block text-xs font-bold text-slate-600 mb-1">Tunjangan Tetap (Rp / bulan)</label><input type="number" id="off-tunjangan" min="0" step="1000" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-maroon-400" placeholder="Cth: 1000000"></div>
+ </div>
  <div>
  <label class="block text-xs font-bold text-slate-600 mb-1">Alasan Terminasi (Sesuai PP Andela Jaya)</label>
  <select id="off-alasan" required class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-maroon-400 bg-white font-medium text-slate-700">
@@ -1244,8 +1288,37 @@ export async function mount(container) {
  </div>
  </div>
  <div>
- <label class="block text-[10px] font-bold text-emerald-800 mb-1">Klausul / Catatan Tambahan Surat Perjanjian Bersama (opsional)</label>
- <textarea id="off-pb-catatan" rows="2" class="w-full px-2.5 py-1.5 text-xs border border-emerald-300 rounded-lg outline-none focus:border-emerald-500 bg-white" placeholder="Cth: Kedua pihak sepakat menyelesaikan seluruh kewajiban secara kekeluargaan."></textarea>
+ <div class="flex items-center justify-between gap-2">
+ <label class="block text-[10px] font-bold text-emerald-800 mb-1">Klausul Tambahan Surat Perjanjian Bersama (opsional)</label>
+ <button type="button" id="btn-add-pb-clause" class="px-2 py-1 text-[10px] font-bold text-emerald-800 bg-white border border-emerald-300 rounded-lg hover:bg-emerald-100 transition shadow-sm shrink-0">+ Tambah Klausul</button>
+ </div>
+ <div id="pb-clause-container" class="space-y-2"></div>
+ <p class="text-[10px] text-emerald-700">Tambahkan klausul benefit/kesepakatan lain bila diperlukan. Setiap baris akan menjadi pasal tambahan pada Surat Perjanjian Bersama.</p>
+ </div>
+ </div>
+
+ <!-- DOKUMEN KELUAR: PAKLARING / SURAT KETERANGAN - DIPILIH HRD -->
+ <div class="border border-sky-200 rounded-xl p-3 bg-sky-50 space-y-3">
+ <div class="flex items-center justify-between flex-wrap gap-2">
+ <p class="text-xs font-black text-sky-800 uppercase tracking-wide">Dokumen Keluar Karyawan</p>
+ <span class="text-[10px] font-bold text-sky-700 bg-white border border-sky-200 px-2 py-0.5 rounded-full">Diterbitkan ${OFFBOARDING_DOCUMENT_ISSUE_DAYS} hari setelah hari terakhir</span>
+ </div>
+ <div>
+ <label class="block text-[10px] font-bold text-sky-800 mb-1">Jenis Surat yang Diterbitkan HRD</label>
+ <select id="off-dokumen" class="w-full px-2.5 py-1.5 text-xs border border-sky-300 rounded-lg outline-none focus:border-sky-500 bg-white font-bold text-slate-700">
+ ${OFFBOARDING_DOCUMENT_OPTIONS.map(opt => `<option value="${opt.value}">${escapeHtml(opt.label)}</option>`).join("")}
+ </select>
+ <p class="text-[10px] text-sky-700 mt-1">Pilih <b>Paklaring</b> untuk surat keterangan kerja + ucapan terima kasih, atau <b>Surat Keterangan</b> untuk keperluan pencairan BPJS Ketenagakerjaan.</p>
+ </div>
+ <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+ <div>
+ <label class="block text-[10px] font-bold text-sky-800 mb-1">Nomor Surat (opsional, auto bila kosong)</label>
+ <input type="text" id="off-dok-nomor" class="w-full px-2.5 py-1.5 text-xs border border-sky-300 rounded-lg outline-none focus:border-sky-500 bg-white" placeholder="Cth: 024/HRGA-AJ/X/2026">
+ </div>
+ <div>
+ <label class="block text-[10px] font-bold text-sky-800 mb-1">Tanggal Surat (default: H+${OFFBOARDING_DOCUMENT_ISSUE_DAYS})</label>
+ <input type="date" id="off-dok-tanggal" class="w-full px-2 py-1 text-xs border border-sky-300 rounded-lg outline-none focus:border-sky-500 bg-white font-semibold">
+ </div>
  </div>
  </div>
 
@@ -1576,7 +1649,8 @@ export async function mount(container) {
  const inpOffHariKerja = dynFields.querySelector("#off-harikerja");
  const inpOffBayar = dynFields.querySelector("#off-bayar");
  const inpOffSisaMulai = dynFields.querySelector("#off-sisa-mulai");
- const inpOffGaji = dynFields.querySelector("#off-gaji");
+ const inpOffGapok = dynFields.querySelector("#off-gapok");
+ const inpOffTunjangan = dynFields.querySelector("#off-tunjangan");
  const selMetodeMcu = dynFields.querySelector("#off-mcu-metode");
  const wrapMcuMetode = dynFields.querySelector("#wrap-mcu-metode");
  const sisaGajiSummary = dynFields.querySelector("#off-sisa-summary");
@@ -1584,7 +1658,8 @@ export async function mount(container) {
  function readSisaGajiForm() {
  return hitungSisaGaji({
  outDate: inpOffOut ? inpOffOut.value : "",
- gajiPokok: parseFloat(inpOffGaji?.value || "0") || 0,
+ gajiPokok: parseFloat(inpOffGapok?.value || "0") || 0,
+ tunjanganTetap: parseFloat(inpOffTunjangan?.value || "0") || 0,
  cutoffDay: parseInt(inpOffCutoff?.value || "21", 10) || 21,
  hariKerjaPerBulan: parseInt(inpOffHariKerja?.value || "25", 10) || 25,
  startDate: inpOffSisaMulai?.value || ""
@@ -1593,8 +1668,8 @@ export async function mount(container) {
 
  function refreshSisaGajiSummary() {
  if (!sisaGajiSummary) return;
- if (!inpOffOut?.value || !(parseFloat(inpOffGaji?.value || "0") > 0)) {
- sisaGajiSummary.innerHTML = `Isi <b>Gaji Pokok + Tunjangan Tetap</b> serta <b>Tanggal Efektif Keluar</b> untuk menghitung sisa gaji otomatis.`;
+ if (!inpOffOut?.value || !(parseFloat(inpOffGapok?.value || "0") > 0)) {
+ sisaGajiSummary.innerHTML = `Isi <b>Gaji Pokok</b> (dan <b>Tunjangan Tetap</b> bila ada) serta <b>Tanggal Efektif Keluar</b> untuk menghitung sisa gaji otomatis.`;
  return;
  }
  const info = readSisaGajiForm();
@@ -1606,10 +1681,14 @@ export async function mount(container) {
  const kekurangan = mcu.wajib ? Math.max(0, biayaMcu - potongan) : 0;
  sisaGajiSummary.innerHTML = `
  <div class="space-y-1">
- <div class="flex justify-between gap-2"><span>Gaji pokok + tunjangan tetap</span><b>${fmtRupiah(parseFloat(inpOffGaji?.value || "0") || 0)}</b></div>
- <div class="flex justify-between gap-2"><span>Gaji per hari (dibagi ${info.hariKerjaPerBulan} hari kerja)</span><b>${fmtRupiah(info.gajiPerHari)}</b></div>
+ <div class="flex justify-between gap-2"><span>Gaji pokok per bulan</span><b>${fmtRupiah(info.gajiPokok)}</b></div>
+ <div class="flex justify-between gap-2"><span>Tunjangan tetap per bulan</span><b>${fmtRupiah(info.tunjanganTetap)}</b></div>
+ <div class="flex justify-between gap-2 border-t border-emerald-100 pt-1 mt-1"><span>Prorata gaji pokok per hari (dibagi ${info.hariKerjaPerBulan} hari kerja)</span><b>${fmtRupiah(info.gajiPokokPerHari)}</b></div>
+ <div class="flex justify-between gap-2"><span>Prorata tunjangan per hari</span><b>${fmtRupiah(info.tunjanganPerHari)}</b></div>
  <div class="flex justify-between gap-2"><span>Sisa hari kerja (${formatTanggalIndo(info.mulai, { withDay: false })} s.d. ${formatTanggalIndo(inpOffOut.value, { withDay: false })}, Senin-Sabtu)</span><b>${info.sisaHariKerja} hari</b></div>
- <div class="flex justify-between gap-2 border-t border-emerald-100 pt-1 mt-1 text-emerald-800"><span class="font-bold">Sisa gaji berjalan</span><b>${fmtRupiah(info.sisaGaji)}</b></div>
+ <div class="flex justify-between gap-2 border-t border-emerald-100 pt-1 mt-1"><span>Prorata gaji pokok</span><b>${fmtRupiah(info.sisaGajiPokok)}</b></div>
+ <div class="flex justify-between gap-2"><span>Prorata tunjangan tetap</span><b>${fmtRupiah(info.sisaTunjangan)}</b></div>
+ <div class="flex justify-between gap-2 text-emerald-800"><span class="font-bold">Sisa gaji berjalan (gaji pokok + tunjangan)</span><b>${fmtRupiah(info.sisaGaji)}</b></div>
  ${mcu.wajib ? `<div class="flex justify-between gap-2 text-red-700"><span>Potongan MCU (${metode === "POTONG_SISA_GAJI" ? "potong sisa gaji" : "bayar sendiri"})</span><b>- ${fmtRupiah(potongan)}</b></div>
  <div class="flex justify-between gap-2 text-red-800"><span class="font-bold">${kekurangan > 0 ? "Kekurangan wajib dibayar karyawan" : "Sisa gaji setelah potongan MCU"}</span><b>${fmtRupiah(kekurangan > 0 ? kekurangan : sisaSetelah)}</b></div>` : ""}
  <p class="text-[10px] text-slate-400 pt-1">Belum memperhitungkan hari libur nasional, BPJS, lembur, dan potongan lain.</p>
@@ -1742,12 +1821,54 @@ export async function mount(container) {
  if (inpOffOut) inpOffOut.addEventListener("change", syncSisaGajiStart);
  if (inpOffCutoff) inpOffCutoff.addEventListener("change", syncSisaGajiStart);
  if (inpOffSisaMulai) inpOffSisaMulai.addEventListener("change", refreshSisaGajiSummary);
- if (inpOffGaji) inpOffGaji.addEventListener("input", refreshSisaGajiSummary);
+ if (inpOffGapok) inpOffGapok.addEventListener("input", refreshSisaGajiSummary);
+ if (inpOffTunjangan) inpOffTunjangan.addEventListener("input", refreshSisaGajiSummary);
  if (inpOffHariKerja) inpOffHariKerja.addEventListener("change", refreshSisaGajiSummary);
  if (inpMcuBiaya) inpMcuBiaya.addEventListener("input", refreshSisaGajiSummary);
  if (selMetodeMcu) selMetodeMcu.addEventListener("change", refreshSisaGajiSummary);
  refreshMcuBlock();
  syncSisaGajiStart();
+
+ // ==== EDITOR KLAUSUL TAMBAHAN SURAT PERJANJIAN BERSAMA ====
+ const pbClauseBox = dynFields.querySelector("#pb-clause-container");
+ const btnAddPbClause = dynFields.querySelector("#btn-add-pb-clause");
+
+ function addPbClauseRow(text = "") {
+ if (!pbClauseBox) return;
+ const row = document.createElement("div");
+ row.className = "pb-clause-row flex items-start gap-2";
+ row.innerHTML = `
+ <span class="pb-clause-no text-[11px] font-bold text-emerald-700 mt-2 shrink-0"></span>
+ <textarea rows="2" class="pb-clause-input flex-1 px-2.5 py-1.5 text-xs border border-emerald-300 rounded-lg outline-none focus:border-emerald-500 bg-white" placeholder="Cth: Perusahaan memberikan benefit ...">${escapeHtml(text)}</textarea>
+ <button type="button" class="btn-del-pb-clause text-[11px] font-bold text-rose-600 hover:bg-rose-50 rounded px-1.5 py-1 mt-1 shrink-0" title="Hapus klausul">Hapus</button>`;
+ row.querySelector(".btn-del-pb-clause").onclick = () => {
+ row.remove();
+ renumberPbClauses();
+ };
+ pbClauseBox.appendChild(row);
+ renumberPbClauses();
+ }
+
+ function renumberPbClauses() {
+ if (!pbClauseBox) return;
+ Array.from(pbClauseBox.querySelectorAll(".pb-clause-row")).forEach((row, idx) => {
+ const no = row.querySelector(".pb-clause-no");
+ if (no) no.textContent = `${idx + 1}.`;
+ });
+ }
+
+ if (btnAddPbClause) btnAddPbClause.addEventListener("click", () => addPbClauseRow(""));
+
+ // Tanggal surat dokumen keluar default = H+30 hari terakhir bekerja
+ const inpOffDokTanggal = dynFields.querySelector("#off-dok-tanggal");
+ if (inpOffDokTanggal && !inpOffDokTanggal.value) {
+ inpOffDokTanggal.value = paklaringIssuanceDate(inpOffOut?.value || "", OFFBOARDING_DOCUMENT_ISSUE_DAYS);
+ }
+ if (inpOffOut && inpOffDokTanggal) {
+ inpOffOut.addEventListener("change", () => {
+ inpOffDokTanggal.value = paklaringIssuanceDate(inpOffOut.value, OFFBOARDING_DOCUMENT_ISSUE_DAYS);
+ });
+ }
 
  // Simpan link Google Form Exit Interview sebagai bawaan (dapat diganti kapan saja)
  const btnSaveExitForm = dynFields.querySelector("#btn-save-exit-form");
@@ -1965,7 +2086,9 @@ if (btnKalkulasi) {
  if (jenis === "Offboarding") {
  const join = new Date(container.querySelector("#off-join").value);
  const out = new Date(container.querySelector("#off-out").value);
- const gaji = parseFloat(container.querySelector("#off-gaji").value) || 0;
+ const gapok = parseFloat(container.querySelector("#off-gapok").value) || 0;
+ const tunjanganTetap = parseFloat(container.querySelector("#off-tunjangan")?.value || "0") || 0;
+ const gaji = gapok + tunjanganTetap;
  const alasan = container.querySelector("#off-alasan").value;
  const penggantiVal = container.querySelector("#off-pengganti") ? container.querySelector("#off-pengganti").value.trim() : "";
  const catatanHandoverVal = container.querySelector("#off-catatan-handover") ? container.querySelector("#off-catatan-handover").value.trim() : "";
@@ -2079,7 +2202,7 @@ if (btnKalkulasi) {
  const hariKerjaPerBulan = parseInt(container.querySelector("#off-harikerja")?.value || "25", 10) || 25;
  const tanggalBayarGaji = parseInt(container.querySelector("#off-bayar")?.value || "25", 10) || 25;
  const sisaMulaiVal = container.querySelector("#off-sisa-mulai")?.value || defaultSisaGajiStart(out, cutoffHari);
- const sisaGajiInfo = hitungSisaGaji({ outDate: out, gajiPokok: gaji, cutoffDay: cutoffHari, hariKerjaPerBulan, startDate: sisaMulaiVal });
+ const sisaGajiInfo = hitungSisaGaji({ outDate: out, gajiPokok: gapok, tunjanganTetap, cutoffDay: cutoffHari, hariKerjaPerBulan, startDate: sisaMulaiVal });
  let metodeMcu = "TRANSFER";
  let potonganSisaGaji = 0;
  let sisaGajiSetelahPotong = sisaGajiInfo.sisaGaji;
@@ -2093,9 +2216,13 @@ if (btnKalkulasi) {
  toast(`Biaya MCU melebihi sisa gaji. Kekurangan ${fmtRupiah(kekuranganMcu)} tetap wajib dibayar karyawan.`, "warning");
  }
  }
- const catatanPbVal = container.querySelector("#off-pb-catatan") ? container.querySelector("#off-pb-catatan").value.trim() : "";
+ const pbClauses = normalizePbClauses(Array.from(container.querySelectorAll(".pb-clause-input")).map(el => el.value));
+ const catatanPbVal = pbClauses.join("\n");
  const nomorPbVal = container.querySelector("#off-pb-nomor") ? container.querySelector("#off-pb-nomor").value.trim() : "";
  const tanggalPbVal = container.querySelector("#off-pb-tanggal") ? container.querySelector("#off-pb-tanggal").value : "";
+ const dokumenKeluarVal = container.querySelector("#off-dokumen")?.value || "PAKLARING";
+ const nomorDokumenVal = container.querySelector("#off-dok-nomor")?.value.trim() || "";
+ const tanggalDokumenVal = container.querySelector("#off-dok-tanggal")?.value || paklaringIssuanceDate(out, OFFBOARDING_DOCUMENT_ISSUE_DAYS);
 
  // Collect custom assets / uniforms / equipment rows from form inputs
     const offAssetRows = Array.from(dynFields.querySelectorAll(".off-asset-item-row"));
@@ -2135,13 +2262,19 @@ if (btnKalkulasi) {
  provider: "Google Form"
  },
  sisa_gaji: {
+ gaji_pokok: gapok,
+ tunjangan_tetap: tunjanganTetap,
  gaji_pokok_tetap: gaji,
  cutoff_hari: cutoffHari,
  tanggal_bayar_gaji: tanggalBayarGaji,
  hari_kerja_per_bulan: hariKerjaPerBulan,
  mulai_hitung: sisaGajiInfo.mulai,
  sisa_hari_kerja: sisaGajiInfo.sisaHariKerja,
+ gaji_pokok_per_hari: sisaGajiInfo.gajiPokokPerHari,
+ tunjangan_per_hari: sisaGajiInfo.tunjanganPerHari,
  gaji_per_hari: sisaGajiInfo.gajiPerHari,
+ sisa_gaji_pokok: sisaGajiInfo.sisaGajiPokok,
+ sisa_tunjangan: sisaGajiInfo.sisaTunjangan,
  sisa_gaji: sisaGajiInfo.sisaGaji
  },
  uang_pisah_rule: {
@@ -2163,7 +2296,16 @@ if (btnKalkulasi) {
  nomor_surat_pb: nomorPbVal,
  tanggal_surat_pb: tanggalPbVal || new Date().toISOString().split("T")[0],
  catatan_pb: catatanPbVal,
+ klausul_tambahan: pbClauses,
  batas_pembayaran: "Maksimal 7 hari kerja setelah tanggal efektif resign"
+ },
+ dokumen_keluar: {
+ jenis: dokumenKeluarVal,
+ label: offboardingDocumentLabel(dokumenKeluarVal),
+ nomor_surat: nomorDokumenVal,
+ tanggal_surat: tanggalDokumenVal,
+ diterbitkan_hari_setelah_keluar: OFFBOARDING_DOCUMENT_ISSUE_DAYS,
+ tanggal_terakhir_bekerja: out.toISOString().slice(0, 10)
  },
  assigned_assets: assignedAssets 
  };
@@ -2185,13 +2327,26 @@ if (btnKalkulasi) {
  <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl mb-4 text-xs">
  <p class="font-black text-emerald-800 uppercase mb-1">Sisa Gaji Berjalan</p>
  <div class="space-y-1 text-emerald-900">
- <div class="flex justify-between gap-2"><span>Gaji pokok + tunjangan tetap ÷ ${hariKerjaPerBulan} hari kerja</span><b>${fmtRupiah(sisaGajiInfo.gajiPerHari)} / hari</b></div>
- <div class="flex justify-between gap-2"><span>Sisa ${sisaGajiInfo.sisaHariKerja} hari kerja (${formatTanggalIndo(sisaGajiInfo.mulai, { withDay: false })} s.d. ${formatTanggalIndo(out, { withDay: false })}, Senin-Sabtu)</span><b>${fmtRupiah(sisaGajiInfo.sisaGaji)}</b></div>
+ <div class="flex justify-between gap-2"><span>Prorata gaji pokok (${fmtRupiah(sisaGajiInfo.gajiPokokPerHari)}/hari)</span><b>${fmtRupiah(sisaGajiInfo.sisaGajiPokok)}</b></div>
+ <div class="flex justify-between gap-2"><span>Prorata tunjangan tetap (${fmtRupiah(sisaGajiInfo.tunjanganPerHari)}/hari)</span><b>${fmtRupiah(sisaGajiInfo.sisaTunjangan)}</b></div>
+ <div class="flex justify-between gap-2 border-t border-emerald-200 pt-1 mt-1"><span class="font-bold">Total sisa gaji berjalan (gaji pokok + tunjangan)</span><b>${fmtRupiah(sisaGajiInfo.sisaGaji)}</b></div>
  <div class="flex justify-between gap-2 text-[10px] text-emerald-700"><span>Cut-off gaji tanggal ${cutoffHari}, pembayaran gaji tanggal ${tanggalBayarGaji}</span><span>Belum termasuk libur nasional & potongan lain</span></div>
  ${mcuWajib ? `<div class="flex justify-between gap-2 border-t border-emerald-200 pt-1 mt-1 text-red-700"><span>Potongan biaya MCU (${metodeMcu === "POTONG_SISA_GAJI" ? "potong sisa gaji" : "bayar sendiri"})</span><b>- ${fmtRupiah(potonganSisaGaji)}</b></div>
  <div class="flex justify-between gap-2 text-red-800"><span class="font-bold">${kekuranganMcu > 0 ? "Kekurangan MCU wajib dibayar karyawan" : "Sisa gaji setelah potongan MCU"}</span><b>${fmtRupiah(kekuranganMcu > 0 ? kekuranganMcu : sisaGajiSetelahPotong)}</b></div>` : ""}
  </div>
  </div>
+
+ ${dokumenKeluarVal !== "TIDAK_ADA" ? `
+ <div class="p-3 bg-sky-50 border border-sky-200 rounded-xl mb-4 text-xs">
+ <p class="font-black text-sky-800 uppercase mb-1">Dokumen Keluar: ${escapeHtml(offboardingDocumentShort(dokumenKeluarVal))}</p>
+ <div class="space-y-1 text-sky-900">
+ <div class="flex justify-between gap-2"><span>Jenis surat</span><b>${escapeHtml(offboardingDocumentLabel(dokumenKeluarVal))}</b></div>
+ <div class="flex justify-between gap-2"><span>Nomor surat</span><b>${escapeHtml(nomorDokumenVal || "Otomatis oleh sistem")}</b></div>
+ <div class="flex justify-between gap-2"><span>Tanggal surat (H+${OFFBOARDING_DOCUMENT_ISSUE_DAYS} hari terakhir bekerja)</span><b>${formatTanggalIndo(tanggalDokumenVal, { withDay: false })}</b></div>
+ </div>
+ <p class="text-[10px] text-sky-700 mt-1">Surat diterbitkan ${OFFBOARDING_DOCUMENT_ISSUE_DAYS} hari setelah hari terakhir bekerja (${formatTanggalIndo(out, { withDay: false })}).</p>
+ </div>
+ ` : ""}
 
  ${penggantiVal ? `
  <div class="p-3 bg-red-50 border border-red-200 rounded-xl mb-4 text-xs">
@@ -2269,6 +2424,11 @@ if (btnKalkulasi) {
  <button type="button" id="btn-print-pb-doc" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-xl shadow transition flex items-center justify-center gap-2 text-xs mb-4">
  Cetak & Unduh Surat Perjanjian Bersama (PDF)
  </button>
+ ${dokumenKeluarVal !== "TIDAK_ADA" ? `
+ <button type="button" id="btn-print-paklaring-doc" class="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-2.5 px-4 rounded-xl shadow transition flex items-center justify-center gap-2 text-xs mb-4">
+ Cetak & Unduh ${escapeHtml(offboardingDocumentShort(dokumenKeluarVal))} (PDF)
+ </button>
+ ` : ''}
  `;
  } 
  else if (["Mutasi", "Promosi", "Demosi"].includes(jenis)) {
@@ -2502,7 +2662,20 @@ if (btnKalkulasi) {
  pengganti: payloadLog.detail_offboarding?.karyawan_pengganti || "",
  assets: payloadLog.detail_offboarding?.assigned_assets || [],
  handoverTasks: payloadLog.detail_offboarding?.handover_tasks || [],
- catatanTambahan: payloadLog.detail_offboarding?.penggantian_mcu?.catatan_pb || ""
+ catatanTambahan: payloadLog.detail_offboarding?.penggantian_mcu?.catatan_pb || "",
+ klausulTambahan: payloadLog.detail_offboarding?.klausul_tambahan || []
+ });
+ }
+
+ const btnPrintPaklaring = resBox.querySelector("#btn-print-paklaring-doc");
+ if (btnPrintPaklaring && currentSelectedKaryawan) {
+ btnPrintPaklaring.onclick = () => printPaklaringPdf({
+ karyawan: currentSelectedKaryawan,
+ tglJoin: container.querySelector("#off-join") ? container.querySelector("#off-join").value : "",
+ tglEfektif: payloadLog.tanggal_efektif,
+ jenisDokumen: payloadLog.detail_offboarding?.dokumen_keluar?.jenis || "PAKLARING",
+ nomorSurat: payloadLog.detail_offboarding?.dokumen_keluar?.nomor_surat || "",
+ tanggalSurat: payloadLog.detail_offboarding?.dokumen_keluar?.tanggal_surat || ""
  });
  }
 
@@ -2612,6 +2785,7 @@ if (btnKalkulasi) {
  emailSubject = "Pemberitahuan Proses Offboarding";
  const mcuInfo = payloadLog.detail_offboarding?.penggantian_mcu || null;
  const sisaInfo = payloadLog.detail_offboarding?.sisa_gaji || null;
+ const dokumenInfo = payloadLog.detail_offboarding?.dokumen_keluar || null;
  emailBody = buildStandardEmailHtml({
    badgeText: "Offboarding",
    badgeVariant: "amber",
