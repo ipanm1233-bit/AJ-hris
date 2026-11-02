@@ -563,7 +563,7 @@ async function printPerjanjianBersamaPdf(data, mode = "pdf") {
  <li style="margin-bottom:4px;">Bahwa atas berakhirnya hubungan kerja tersebut, Pihak Pertama memberikan hak kepada Pihak Kedua sampai dengan tanggal tersebut berupa <b>Sisa Upah</b> dengan rincian sebagai berikut:</li>
  </ol>
 
- <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:9px; margin:4px 0 5px;">
+ <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:9px; margin:4px 0 5px; page-break-inside:avoid;">
  <colgroup><col style="width:17%;" /><col style="width:21%;" /><col style="width:10%;" /><col style="width:18%;" /><col style="width:15%;" /><col style="width:19%;" /></colgroup>
  <thead>
  <tr style="background:#e2e8f0; text-align:center;">
@@ -608,7 +608,7 @@ async function printPerjanjianBersamaPdf(data, mode = "pdf") {
  ` : ""}
 
  <div style="font-weight:bold; font-size:10px; margin:8px 0 3px; text-transform:uppercase;">Rekapitulasi Sisa Hak Diterima Pihak Kedua</div>
- <table style="width:100%; border-collapse:collapse; font-size:10px; margin:0 0 4px;">
+ <table style="width:100%; border-collapse:collapse; font-size:10px; margin:0 0 4px; page-break-inside:avoid;">
  <tr><td style="padding:2px 0;">Total Sisa Upah (gaji pokok + tunjangan tetap)</td><td style="text-align:right; font-weight:bold;">${fmtRupiah(sisaGajiNominal)}</td></tr>
  ${uangPisahNominal > 0 ? `<tr><td style="padding:2px 0;">Uang Pisah (${uangPisahMult}x gaji &mdash; masa kerja ${Number(masaKerjaTahun || 0)} tahun)</td><td style="text-align:right; font-weight:bold;">${fmtRupiah(uangPisahNominal)}</td></tr>` : ""}
  ${mcu && mcu.wajib && metodeMcu === "POTONG_SISA_GAJI" ? `<tr><td style="padding:2px 0;">Potongan Penggantian Biaya MCU</td><td style="text-align:right; font-weight:bold; color:#b91c1c;">- ${fmtRupiah(potonganMcu)}</td></tr>` : ""}
