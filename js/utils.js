@@ -1567,6 +1567,100 @@ export function downloadWordDoc({
 }
 
 /* ---------------------------------------------------------------------
+ * Ekspor HTML dokumen resmi ke Microsoft Word (.doc) berbasis MIME HTML.
+ * Semua gambar (termasuk kop surat) dikonversi ke data URL lebih dulu agar
+ * tetap tampil saat file dibuka di Word tanpa koneksi ke server.
+ * ------------------------------------------------------------------- */
+export async function downloadHtmlAsWord({
+ filename = "Dokumen.doc",
+ title = "Dokumen Resmi",
+ htmlContent = "",
+ landscape = false
+} = {}) {
+ let content = String(htmlContent || "");
+
+ // Word menghitung 1px = 1/96 inci, sehingga max-width 760px (~201 mm) akan
+ // melebihi lebar cetak A4. Paksa lebar mengikuti margin halaman agar tabel
+ // tidak terpotong di sisi kanan.
+ content = content.replace(/max-width:\s*\d+(?:\.\d+)?px/gi, "max-width:100%");
+
+ const srcList = Array.from(content.matchAll(/<img\b[^>]*\bsrc=["']([^"']+)["']/gi)).map(match => match[1]);
+ const uniqueSrc = Array.from(new Set(srcList));
+ const replacements = new Map();
+
+ await Promise.all(uniqueSrc.map(async (src) => {
+  if (!src || /^data:/i.test(src)) return;
+  try {
+   const absolute = new URL(src, window.location.href).href;
+   const res = await fetch(absolute, { mode: "cors" });
+   if (!res.ok) return;
+   const blob = await res.blob();
+   const dataUrl = await new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = () => resolve("");
+    reader.readAsDataURL(blob);
+   });
+   if (dataUrl) replacements.set(src, dataUrl);
+  } catch (e) {
+   // Biarkan URL asli bila konversi gagal.
+  }
+ }));
+
+ for (const [src, dataUrl] of replacements) {
+  content = content.split(`src="${src}"`).join(`src="${dataUrl}"`).split(`src='${src}'`).join(`src='${dataUrl}'`);
+ }
+
+ const pageSize = landscape ? "841.9pt 595.3pt" : "595.3pt 841.9pt";
+ const docHtml = `
+ <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+ <head>
+ <meta charset='utf-8'>
+ <title>${escapeHtml(title)}</title>
+ <!--[if gte mso 9]>
+ <xml>
+ <w:WordDocument>
+ <w:View>Print</w:View>
+ <w:Zoom>100</w:Zoom>
+ <w:DoNotOptimizeForBrowser/>
+ </w:WordDocument>
+ </xml>
+ <![endif]-->
+ <style>
+ @page Section1 {
+ size: ${pageSize};
+ margin: 15mm 15mm 15mm 15mm;
+ mso-header-margin: 10mm;
+ mso-footer-margin: 10mm;
+ mso-paper-source: 0;
+ }
+ div.Section1 { page: Section1; }
+ body { margin: 0; font-family: Arial, Helvetica, sans-serif; font-size: 11pt; color: #000000; line-height: 1.45; }
+ table { border-collapse: collapse; }
+ p { margin: 0 0 8pt 0; }
+ img { max-width: 100%; }
+ </style>
+ </head>
+ <body>
+ <div class="Section1">
+ ${content}
+ </div>
+ </body>
+ </html>`;
+
+ const blob = new Blob(["\uFEFF" + docHtml], { type: "application/msword;charset=utf-8" });
+ const url = URL.createObjectURL(blob);
+ const a = document.createElement("a");
+ const cleanFilename = filename.endsWith(".doc") ? filename : filename.replace(/\.[^/.]+$/, "") + ".doc";
+ a.href = url;
+ a.download = cleanFilename;
+ document.body.appendChild(a);
+ a.click();
+ a.remove();
+ URL.revokeObjectURL(url);
+}
+
+/* ---------------------------------------------------------------------
  * 7. SIMPLE FORMULA ENGINE — untuk Form Builder (rumus kalkulasi otomatis)
  * Mendukung sintaks: ([field_a] - [field_b]) * (10000/25)
  * Field ditulis dalam kurung siku dan namanya harus cocok dengan `name`

@@ -461,8 +461,9 @@ async function printMcuBillingPdf(data) {
 }
 
 // FUNGSI CETAK SURAT PERJANJIAN BERSAMA (BERAKHIRNYA HUBUNGAN KERJA & PENGANTIAN BIAYA MCU)
-async function printPerjanjianBersamaPdf(data) {
- const { downloadHtmlAsPdf, openModal } = await import("../utils.js");
+// mode: "pdf" (default, tampilkan pratinjau + unduh PDF) atau "word" (langsung unduh .doc)
+async function printPerjanjianBersamaPdf(data, mode = "pdf") {
+ const { downloadHtmlAsPdf, downloadHtmlAsWord, openModal } = await import("../utils.js");
  const {
  karyawan, alasan, tglEfektif, tglSurat, nomorSurat, masaKerjaTahun, masaKerjaBulan,
  sisaGaji, uangPisah, mcu, assets, catatanTambahan, klausulTambahan
@@ -533,7 +534,7 @@ async function printPerjanjianBersamaPdf(data) {
  const docHtmlPb = `
  <div style="width:100%; max-width:760px; margin:0 auto; padding:0; font-family:Arial, Helvetica, sans-serif; font-size:10.5px; line-height:1.45; color:#000; background:#ffffff; box-sizing:border-box;">
 
- <!-- HALAMAN 1: IDENTITAS PARA PIHAK & RINCIAN SISA UPAH -->
+ <!-- HALAMAN 1: KETETAPAN AWAL, RINCIAN SISA UPAH & REKAP HAK -->
  <div style="page-break-after:always; padding:4px 0 0;">
  ${kopSuratHtml({ marginBottom: 10 })}
 
@@ -597,12 +598,7 @@ async function printPerjanjianBersamaPdf(data) {
  </tr>
  </tbody>
  </table>
- <p style="margin:0 0 5px; font-size:9.5px; text-align:justify;">Perhitungan: gaji pokok ${fmtRupiah(gapokBulan)} &divide; ${hariKerjaBulan} hari kerja = ${fmtRupiah(gapokPerHari)}/hari &times; ${sisaHariKerja} hari kerja = <b>${fmtRupiah(sisaGapok)}</b>; tunjangan tetap ${fmtRupiah(tunjanganBulan)} &divide; ${hariKerjaBulan} hari kerja = ${fmtRupiah(tunjanganPerHari)}/hari &times; ${sisaHariKerja} hari kerja = <b>${fmtRupiah(sisaTunjangan)}</b> (Senin&ndash;Sabtu). Cut-off penggajian tanggal ${Number(gaji.cutoff_hari || 21)} (periode 22 bulan sebelumnya s.d. 21 bulan berjalan) dan pembayaran gaji tanggal ${payDay} setiap bulan.</p>
- </div>
-
- <!-- HALAMAN 2: RINCIAN HAK, KLAUSUL, DAN TANDA TANGAN -->
- <div style="${assets && assets.length ? "page-break-after:always;" : ""}padding:4px 0 0;">
- ${kopSuratHtml({ marginBottom: 10 })}
+ <p style="margin:0 0 6px; font-size:9.5px; text-align:justify;">Perhitungan: gaji pokok ${fmtRupiah(gapokBulan)} &divide; ${hariKerjaBulan} hari kerja = ${fmtRupiah(gapokPerHari)}/hari &times; ${sisaHariKerja} hari kerja = <b>${fmtRupiah(sisaGapok)}</b>; tunjangan tetap ${fmtRupiah(tunjanganBulan)} &divide; ${hariKerjaBulan} hari kerja = ${fmtRupiah(tunjanganPerHari)}/hari &times; ${sisaHariKerja} hari kerja = <b>${fmtRupiah(sisaTunjangan)}</b> (Senin&ndash;Sabtu). Cut-off penggajian tanggal ${Number(gaji.cutoff_hari || 21)} (periode 22 bulan sebelumnya s.d. 21 bulan berjalan) dan pembayaran gaji tanggal ${payDay} setiap bulan.</p>
 
  ${mcu && mcu.wajib ? `
  <div style="border:1px solid #b91c1c; background:#fef2f2; padding:6px; margin:5px 0; page-break-inside:avoid;">
@@ -611,13 +607,23 @@ async function printPerjanjianBersamaPdf(data) {
  </div>
  ` : ""}
 
- <table style="width:100%; border-collapse:collapse; font-size:10px; margin:4px 0 8px;">
- <tr><td style="padding:2px 0;">Total Sisa Upah</td><td style="text-align:right; font-weight:bold;">${fmtRupiah(sisaGajiNominal)}</td></tr>
+ <div style="font-weight:bold; font-size:10px; margin:8px 0 3px; text-transform:uppercase;">Rekapitulasi Sisa Hak Diterima Pihak Kedua</div>
+ <table style="width:100%; border-collapse:collapse; font-size:10px; margin:0 0 4px;">
+ <tr><td style="padding:2px 0;">Total Sisa Upah (gaji pokok + tunjangan tetap)</td><td style="text-align:right; font-weight:bold;">${fmtRupiah(sisaGajiNominal)}</td></tr>
  ${uangPisahNominal > 0 ? `<tr><td style="padding:2px 0;">Uang Pisah (${uangPisahMult}x gaji &mdash; masa kerja ${Number(masaKerjaTahun || 0)} tahun)</td><td style="text-align:right; font-weight:bold;">${fmtRupiah(uangPisahNominal)}</td></tr>` : ""}
  ${mcu && mcu.wajib && metodeMcu === "POTONG_SISA_GAJI" ? `<tr><td style="padding:2px 0;">Potongan Penggantian Biaya MCU</td><td style="text-align:right; font-weight:bold; color:#b91c1c;">- ${fmtRupiah(potonganMcu)}</td></tr>` : ""}
  <tr style="border-top:1px solid #000;"><td style="padding:3px 0; font-weight:bold;">Total Sisa Hak Diterima Pihak Kedua</td><td style="text-align:right; font-weight:bold;">${fmtRupiah(totalDiterima)}</td></tr>
  ${mcu && mcu.wajib && kekuranganMcu > 0 ? `<tr><td style="padding:2px 0; color:#b91c1c;">Kekurangan biaya MCU yang wajib dibayar Pihak Kedua</td><td style="text-align:right; font-weight:bold; color:#b91c1c;">${fmtRupiah(kekuranganMcu)}</td></tr>` : ""}
  </table>
+ <p style="margin:4px 0 0; font-size:9.5px; text-align:justify; font-style:italic;">Rincian sisa upah dan rekapitulasi hak di atas merupakan satu kesatuan yang tidak terpisahkan dengan ketetapan awal dalam Perjanjian Bersama ini.</p>
+ </div>
+
+ <!-- HALAMAN 2: KLAUSUL PENUTUP & TANDA TANGAN -->
+ <div style="${assets && assets.length ? "page-break-after:always;" : ""}padding:4px 0 0;">
+ ${kopSuratHtml({ marginBottom: 10 })}
+
+ <div style="font-weight:bold; font-size:11px; margin:0 0 6px; text-transform:uppercase; letter-spacing:0.3px;">Ketentuan Penutup</div>
+ <p style="margin:0 0 6px; text-align:justify;">Selanjutnya, Para Pihak menyepakati ketentuan penutup sebagai berikut:</p>
 
  <ol start="3" style="margin:0; padding-left:16px; text-align:justify;">
  <li style="margin-bottom:4px;">Bahwa dengan ditandatangani serta dilaksanakannya Perjanjian Bersama ini, maka permasalahan hukum dan hubungan kerja di antara Para Pihak dinyatakan telah selesai, termasuk pengaduan Pihak Kedua kepada instansi-instansi terkait, dan masing-masing pihak tidak akan saling menuntut apa pun baik secara perdata maupun pidana.</li>
@@ -631,7 +637,7 @@ async function printPerjanjianBersamaPdf(data) {
  })()}
  </ol>
 
- <p style="margin:6px 0 10px; text-align:justify;">Demikian Perjanjian Bersama ini dibuat dalam rangkap dua, masing-masing bermeterai cukup dan mempunyai kekuatan hukum yang sama. Perjanjian ini mulai berlaku sejak ditandatangani oleh kedua belah pihak.</p>
+ <p style="margin:8px 0 12px; text-align:justify;">Demikian Perjanjian Bersama ini dibuat dalam rangkap dua, masing-masing bermeterai cukup dan mempunyai kekuatan hukum yang sama. Perjanjian ini mulai berlaku sejak ditandatangani oleh kedua belah pihak.</p>
 
  <div style="text-align:right; margin-bottom:2px;">Cirebon, ${escapeHtml(formatTanggalIndo(suratIso, { withDay: false }))}</div>
  <table style="width:100%; border-collapse:collapse; table-layout:fixed; text-align:center; font-size:10px; page-break-inside:avoid;">
@@ -639,7 +645,7 @@ async function printPerjanjianBersamaPdf(data) {
  <td style="width:50%; border:none; padding:2px;">Pihak Pertama,</td>
  <td style="width:50%; border:none; padding:2px;">Pihak Kedua,</td>
  </tr>
- <tr><td style="border:none; height:46px;"></td><td style="border:none;"></td></tr>
+ <tr><td style="border:none; height:52px;"></td><td style="border:none;"></td></tr>
  <tr>
  <td style="border:none; padding:2px;"><b><u>${escapeHtml(pihakSatuNama)}</u></b><br/>${escapeHtml(pihakSatuJabatan)}</td>
  <td style="border:none; padding:2px;"><b><u>${escapeHtml(karyawan.nama_karyawan || "-")}</u></b><br/>${escapeHtml(karyawan.jabatan || "-")}</td>
@@ -665,9 +671,9 @@ async function printPerjanjianBersamaPdf(data) {
  </thead>
  <tbody>${assetRows}</tbody>
  </table>
- <table style="width:100%; border-collapse:collapse; text-align:center; font-size:10px; margin-top:12px;">
+ <table style="width:100%; border-collapse:collapse; text-align:center; font-size:10px; margin-top:14px; page-break-inside:avoid;">
  <tr><td style="width:50%;">Yang Menyerahkan,</td><td style="width:50%;">Menerima,</td></tr>
- <tr><td style="height:38px;"></td><td></td></tr>
+ <tr><td style="height:52px;"></td><td></td></tr>
  <tr>
  <td>( <b>${escapeHtml(karyawan.nama_karyawan || "-")}</b> )</td>
  <td>( <b>${escapeHtml(pihakSatuNama)}</b> )</td>
@@ -678,6 +684,21 @@ async function printPerjanjianBersamaPdf(data) {
 
  const filenamePb = `Surat_Perjanjian_Bersama_${escapeHtml(karyawan.nama_karyawan || "Karyawan").replace(/\s+/g, "_")}.pdf`;
 
+ if (mode === "word") {
+ try {
+ await downloadHtmlAsWord({
+ htmlContent: docHtmlPb,
+ filename: filenamePb.replace(/\.pdf$/i, ".doc"),
+ title: `Surat Perjanjian Bersama - ${karyawan.nama_karyawan || "Karyawan"}`
+ });
+ toast("Surat Perjanjian Bersama Word berhasil diunduh!", "success");
+ } catch (errWord) {
+ console.warn("Gagal mengunduh Word PB:", errWord);
+ toast("Gagal mengunduh Word: " + errWord.message, "error");
+ }
+ return;
+ }
+
  openModal({
  title: `Surat Perjanjian Bersama - ${escapeHtml(karyawan.nama_karyawan || "-")}`,
  bodyHtml: `
@@ -687,9 +708,14 @@ async function printPerjanjianBersamaPdf(data) {
  <p class="font-bold text-indigo-800">Surat Perjanjian Bersama (Offboarding &amp; Ganti Rugi MCU)</p>
  <p class="text-indigo-700">Nomor: ${escapeHtml(nomor)}</p>
  </div>
+ <div class="flex items-center gap-2">
+ <button type="button" id="btn-modal-dl-pb-word" class="px-3.5 py-1.5 bg-white border border-indigo-300 hover:bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5">
+ ${icon('download', 'w-4 h-4')} Unduh Word
+ </button>
  <button type="button" id="btn-modal-dl-pb" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5">
  ${icon('download', 'w-4 h-4')} Unduh PDF
  </button>
+ </div>
  </div>
  <div class="border border-slate-300 rounded-xl p-4 bg-slate-100 overflow-y-auto max-h-[70vh]">
  <div class="bg-white shadow-md p-6 rounded-lg mx-auto" style="max-width:794px;">${docHtmlPb}</div>
@@ -701,6 +727,20 @@ async function printPerjanjianBersamaPdf(data) {
  toast("Sedang mengunduh file PDF...", "info");
  await downloadHtmlAsPdf(docHtmlPb, filenamePb);
  toast("Surat Perjanjian Bersama PDF berhasil diunduh!", "success");
+ });
+ backdrop.querySelector("#btn-modal-dl-pb-word")?.addEventListener("click", async () => {
+ toast("Sedang menyiapkan file Word...", "info");
+ try {
+ await downloadHtmlAsWord({
+ htmlContent: docHtmlPb,
+ filename: filenamePb.replace(/\.pdf$/i, ".doc"),
+ title: `Surat Perjanjian Bersama - ${karyawan.nama_karyawan || "Karyawan"}`
+ });
+ toast("Surat Perjanjian Bersama Word berhasil diunduh!", "success");
+ } catch (errWord) {
+ console.warn("Gagal mengunduh Word PB:", errWord);
+ toast("Gagal mengunduh Word: " + errWord.message, "error");
+ }
  });
  }
  });
@@ -714,8 +754,9 @@ async function printPerjanjianBersamaPdf(data) {
 }
 
 // FUNGSI CETAK PAKLARING / SURAT KETERANGAN KERJA (30 HARI SETELAH HARI TERAKHIR)
-async function printPaklaringPdf(data) {
- const { downloadHtmlAsPdf, toast, openModal } = await import("../utils.js");
+// mode: "pdf" (default, tampilkan pratinjau + unduh PDF) atau "word" (langsung unduh .doc)
+async function printPaklaringPdf(data, mode = "pdf") {
+ const { downloadHtmlAsPdf, downloadHtmlAsWord, toast, openModal } = await import("../utils.js");
  const { karyawan, tglJoin, tglEfektif, jenisDokumen, nomorSurat, tanggalSurat } = data;
 
  const session = getSession() || {};
@@ -760,16 +801,32 @@ async function printPaklaringPdf(data) {
  <p style="margin:0 0 8px; text-align:justify;">${paragrafTambahan}</p>
  <p style="margin:0 0 8px; text-align:justify;">Demikian surat ini dibuat untuk dipergunakan sebagaimana mestinya.</p>
 
- <div style="margin-top:18px; text-align:right; margin-bottom:2px;">Cirebon, ${escapeHtml(formatTanggalIndo(suratIso, { withDay: false }))}</div>
- <table style="width:100%; border-collapse:collapse; font-size:11px; page-break-inside:avoid;">
- <tr><td style="width:50%;"></td><td style="width:50%; text-align:left;">${escapeHtml(pihakSatuJabatan)},</td></tr>
- <tr><td></td><td style="height:56px;"></td></tr>
- <tr><td></td><td style="text-align:left;"><b><u>${escapeHtml(pihakSatuNama)}</u></b></td></tr>
+ <table style="width:100%; border-collapse:collapse; font-size:11px; margin-top:18px; page-break-inside:avoid;">
+ <tr>
+ <td style="width:55%; border:none;"></td>
+ <td style="width:45%; border:none; text-align:center;">
+ <div style="margin-bottom:2px;">Cirebon, ${escapeHtml(formatTanggalIndo(suratIso, { withDay: false }))}</div>
+ <div style="margin-bottom:2px;">${escapeHtml(pihakSatuJabatan)},</div>
+ <div style="height:58px;"></div>
+ <div><b><u>${escapeHtml(pihakSatuNama)}</u></b></div>
+ </td>
+ </tr>
  </table>
  </div>`;
 
  const shortLabel = isPaklaring ? "Paklaring" : "Surat_Keterangan";
  const filename = `${shortLabel}_${String(namaKaryawan).replace(/\s+/g, "_")}.pdf`;
+
+ if (mode === "word") {
+ try {
+ await downloadHtmlAsWord({ htmlContent: docHtml, filename: filename.replace(/\.pdf$/i, ".doc"), title: `${isPaklaring ? "Paklaring" : "Surat Keterangan Kerja"} - ${namaKaryawan}` });
+ toast("Dokumen Word berhasil diunduh!", "success");
+ } catch (errWord) {
+ console.warn("Gagal mengunduh Word:", errWord);
+ toast("Gagal mengunduh Word: " + errWord.message, "error");
+ }
+ return;
+ }
 
  openModal({
  title: `${isPaklaring ? "Paklaring" : "Surat Keterangan Kerja"} - ${escapeHtml(namaKaryawan)}`,
@@ -780,9 +837,14 @@ async function printPaklaringPdf(data) {
  <p class="font-bold text-sky-800">${isPaklaring ? "Paklaring (Surat Keterangan Kerja)" : "Surat Keterangan Kerja (BPJS)"}</p>
  <p class="text-sky-700">Nomor: ${escapeHtml(nomor)} • Tanggal: ${escapeHtml(formatTanggalIndo(suratIso, { withDay: false }))}</p>
  </div>
+ <div class="flex items-center gap-2">
+ <button type="button" id="btn-modal-dl-paklaring-word" class="px-3.5 py-1.5 bg-white border border-sky-300 hover:bg-sky-50 text-sky-700 text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5">
+ ${icon('download', 'w-4 h-4')} Unduh Word
+ </button>
  <button type="button" id="btn-modal-dl-paklaring" class="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5">
  ${icon('download', 'w-4 h-4')} Unduh PDF
  </button>
+ </div>
  </div>
  <div class="border border-slate-300 rounded-xl p-4 bg-slate-100 overflow-y-auto max-h-[70vh]">
  <div class="bg-white shadow-md p-6 rounded-lg mx-auto" style="max-width:794px;">${docHtml}</div>
@@ -794,6 +856,16 @@ async function printPaklaringPdf(data) {
  toast("Sedang mengunduh file PDF...", "info");
  await downloadHtmlAsPdf(docHtml, filename);
  toast("Dokumen PDF berhasil diunduh!", "success");
+ });
+ backdrop.querySelector("#btn-modal-dl-paklaring-word")?.addEventListener("click", async () => {
+ toast("Sedang menyiapkan file Word...", "info");
+ try {
+ await downloadHtmlAsWord({ htmlContent: docHtml, filename: filename.replace(/\.pdf$/i, ".doc"), title: `${isPaklaring ? "Paklaring" : "Surat Keterangan Kerja"} - ${namaKaryawan}` });
+ toast("Dokumen Word berhasil diunduh!", "success");
+ } catch (errWord) {
+ console.warn("Gagal mengunduh Word:", errWord);
+ toast("Gagal mengunduh Word: " + errWord.message, "error");
+ }
  });
  }
  });
@@ -2430,9 +2502,15 @@ if (btnKalkulasi) {
  <button type="button" id="btn-print-pb-doc" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-xl shadow transition flex items-center justify-center gap-2 text-xs mb-4">
  Cetak & Unduh Surat Perjanjian Bersama (PDF)
  </button>
+ <button type="button" id="btn-print-pb-doc-word" class="w-full bg-white border border-indigo-300 hover:bg-indigo-50 text-indigo-700 font-bold py-2.5 px-4 rounded-xl shadow-sm transition flex items-center justify-center gap-2 text-xs mb-4">
+ Unduh Surat Perjanjian Bersama (Word)
+ </button>
  ${dokumenKeluarVal !== "TIDAK_ADA" ? `
  <button type="button" id="btn-print-paklaring-doc" class="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-2.5 px-4 rounded-xl shadow transition flex items-center justify-center gap-2 text-xs mb-4">
  Cetak & Unduh ${escapeHtml(offboardingDocumentShort(dokumenKeluarVal))} (PDF)
+ </button>
+ <button type="button" id="btn-print-paklaring-doc-word" class="w-full bg-white border border-sky-300 hover:bg-sky-50 text-sky-700 font-bold py-2.5 px-4 rounded-xl shadow-sm transition flex items-center justify-center gap-2 text-xs mb-4">
+ Unduh ${escapeHtml(offboardingDocumentShort(dokumenKeluarVal))} (Word)
  </button>
  ` : ''}
  `;
@@ -2652,8 +2730,9 @@ if (btnKalkulasi) {
  }
 
  const btnPrintPb = resBox.querySelector("#btn-print-pb-doc");
- if (btnPrintPb && currentSelectedKaryawan) {
- btnPrintPb.onclick = () => printPerjanjianBersamaPdf({
+ const btnPrintPbWord = resBox.querySelector("#btn-print-pb-doc-word");
+ if ((btnPrintPb || btnPrintPbWord) && currentSelectedKaryawan) {
+ const pbData = {
  karyawan: currentSelectedKaryawan,
  alasan: container.querySelector("#off-alasan") ? container.querySelector("#off-alasan").value : "Resign",
  tglJoin: container.querySelector("#off-join") ? container.querySelector("#off-join").value : "",
@@ -2670,19 +2749,24 @@ if (btnKalkulasi) {
  handoverTasks: payloadLog.detail_offboarding?.handover_tasks || [],
  catatanTambahan: payloadLog.detail_offboarding?.penggantian_mcu?.catatan_pb || "",
  klausulTambahan: payloadLog.detail_offboarding?.klausul_tambahan || []
- });
+ };
+ if (btnPrintPb) btnPrintPb.onclick = () => printPerjanjianBersamaPdf(pbData, "pdf");
+ if (btnPrintPbWord) btnPrintPbWord.onclick = () => printPerjanjianBersamaPdf(pbData, "word");
  }
 
  const btnPrintPaklaring = resBox.querySelector("#btn-print-paklaring-doc");
- if (btnPrintPaklaring && currentSelectedKaryawan) {
- btnPrintPaklaring.onclick = () => printPaklaringPdf({
+ const btnPrintPaklaringWord = resBox.querySelector("#btn-print-paklaring-doc-word");
+ if ((btnPrintPaklaring || btnPrintPaklaringWord) && currentSelectedKaryawan) {
+ const paklaringData = {
  karyawan: currentSelectedKaryawan,
  tglJoin: container.querySelector("#off-join") ? container.querySelector("#off-join").value : "",
  tglEfektif: payloadLog.tanggal_efektif,
  jenisDokumen: payloadLog.detail_offboarding?.dokumen_keluar?.jenis || "PAKLARING",
  nomorSurat: payloadLog.detail_offboarding?.dokumen_keluar?.nomor_surat || "",
  tanggalSurat: payloadLog.detail_offboarding?.dokumen_keluar?.tanggal_surat || ""
- });
+ };
+ if (btnPrintPaklaring) btnPrintPaklaring.onclick = () => printPaklaringPdf(paklaringData, "pdf");
+ if (btnPrintPaklaringWord) btnPrintPaklaringWord.onclick = () => printPaklaringPdf(paklaringData, "word");
  }
 
  // Attach PDF listener if onboarding document button exists

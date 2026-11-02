@@ -103,18 +103,62 @@ test("kop surat resmi tersedia dan dipakai pada setiap lembar dokumen offboardin
 
   const source = read("js/views/siklus-karyawan.js");
   assert.match(source, /function printPaklaringPdf/);
-  assert.match(source, /printPaklaringPdf\(\{/);
+  assert.match(source, /printPaklaringPdf\(paklaringData, "pdf"\)/);
   // Kop dipakai pada Paklaring + tiga halaman Surat Perjanjian Bersama.
   const kopCalls = source.match(/kopSuratHtml\(/g) || [];
   assert.ok(kopCalls.length >= 4, `kopSuratHtml dipakai ${kopCalls.length} kali`);
 });
 
+test("ketetapan awal dan sisa benefit Perjanjian Bersama berada pada lembar yang sama", () => {
+  const source = read("js/views/siklus-karyawan.js");
+  const page1 = source.indexOf("<!-- HALAMAN 1: KETETAPAN AWAL, RINCIAN SISA UPAH & REKAP HAK -->");
+  const page2 = source.indexOf("<!-- HALAMAN 2: KLAUSUL PENUTUP & TANDA TANGAN -->");
+  const assetPage = source.indexOf("<!-- HALAMAN 3: TANDA TERIMA PENYERAHAN ASSET (LEMBAR TERPISAH) -->");
+  assert.ok(page1 > 0, "penanda halaman 1 ada");
+  assert.ok(page2 > page1, "halaman 2 setelah halaman 1");
+  assert.ok(assetPage > page2, "halaman asset setelah halaman 2");
+
+  const page1Html = source.slice(page1, page2);
+  assert.match(page1Html, /Sisa Upah/);
+  assert.match(page1Html, /Rekapitulasi Sisa Hak Diterima Pihak Kedua/);
+  assert.match(page1Html, /Total Sisa Hak Diterima Pihak Kedua/);
+
+  // Klausul penutup dan tanda tangan tidak boleh ikut di halaman 1.
+  assert.doesNotMatch(page1Html, /Ketentuan Penutup/);
+  assert.doesNotMatch(page1Html, /Pihak Pertama,/);
+});
+
 test("tanda terima asset Perjanjian Bersama berada di lembar terpisah dari klausul", () => {
   const source = read("js/views/siklus-karyawan.js");
   assert.match(source, /page-break-after:always/);
-  const clauseIndex = source.indexOf("<!-- HALAMAN 2: RINCIAN HAK, KLAUSUL, DAN TANDA TANGAN -->");
+  const clauseIndex = source.indexOf("<!-- HALAMAN 2: KLAUSUL PENUTUP & TANDA TANGAN -->");
   const assetIndex = source.indexOf("<!-- HALAMAN 3: TANDA TERIMA PENYERAHAN ASSET (LEMBAR TERPISAH) -->");
   assert.ok(clauseIndex > 0 && assetIndex > clauseIndex);
+});
+
+test("tanda tangan surat keterangan kerja rata kanan dan sejajar", () => {
+  const source = read("js/views/siklus-karyawan.js");
+  assert.match(source, /<td style="width:45%; border:none; text-align:center;">/);
+  assert.match(source, /<div style="margin-bottom:2px;">Cirebon, \$\{escapeHtml\(formatTanggalIndo\(suratIso, \{ withDay: false \}\)\)\}<\/div>/);
+  assert.match(source, /<div style="height:58px;"><\/div>/);
+  assert.match(source, /<div><b><u>\$\{escapeHtml\(pihakSatuNama\)\}<\/u><\/b><\/div>/);
+});
+
+test("dokumen offboarding menyediakan pilihan unduh format Word", () => {
+  const utils = read("js/utils.js");
+  assert.match(utils, /export async function downloadHtmlAsWord/);
+  assert.match(utils, /application\/msword/);
+  assert.match(utils, /max-width:\s*\d+(?:\.\d+)?px/i);
+  assert.match(utils, /max-width:100%/);
+
+  const source = read("js/views/siklus-karyawan.js");
+  assert.match(source, /downloadHtmlAsWord/);
+  assert.match(source, /id="btn-modal-dl-pb-word"/);
+  assert.match(source, /id="btn-modal-dl-paklaring-word"/);
+  assert.match(source, /id="btn-print-pb-doc-word"/);
+  assert.match(source, /id="btn-print-paklaring-doc-word"/);
+  assert.match(source, /printPerjanjianBersamaPdf\(pbData, "word"\)/);
+  assert.match(source, /printPaklaringPdf\(paklaringData, "word"\)/);
 });
 
 test("email offboarding memberitahukan dokumen keluar terbit 30 hari setelah hari terakhir", () => {
