@@ -999,6 +999,12 @@ export async function mount(container) {
 
  const panel = container.querySelector("#sk-panel") || container;
  panel.innerHTML = `
+ <style>
+ #off-gapok, #off-tunjangan, #off-mcu-biaya { -moz-appearance: textfield; appearance: textfield; }
+ #off-gapok::-webkit-outer-spin-button, #off-gapok::-webkit-inner-spin-button,
+ #off-tunjangan::-webkit-outer-spin-button, #off-tunjangan::-webkit-inner-spin-button,
+ #off-mcu-biaya::-webkit-outer-spin-button, #off-mcu-biaya::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+ </style>
  <div class="max-w-6xl mx-auto space-y-6 pb-10">
  <div>
  <h1 class="text-2xl font-bold text-slate-800">Siklus & Pergerakan Karyawan</h1>
@@ -1202,8 +1208,8 @@ export async function mount(container) {
  <div><label class="block text-xs font-bold text-slate-600 mb-1">Tanggal Efektif Keluar</label><input type="date" id="off-out" required class="w-full px-3 py-2 text-sm border rounded-lg outline-none focus:border-maroon-400 border-slate-300"></div>
  </div>
  <div class="grid grid-cols-2 gap-4">
- <div><label class="block text-xs font-bold text-slate-600 mb-1">Gaji Pokok (Rp / bulan)</label><input type="number" id="off-gapok" required min="0" step="1000" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-maroon-400" placeholder="Cth: 4000000"></div>
- <div><label class="block text-xs font-bold text-slate-600 mb-1">Tunjangan Tetap (Rp / bulan)</label><input type="number" id="off-tunjangan" min="0" step="1000" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-maroon-400" placeholder="Cth: 1000000"></div>
+ <div><label class="block text-xs font-bold text-slate-600 mb-1">Gaji Pokok (Rp / bulan)</label><input type="number" id="off-gapok" required min="0" step="any" inputmode="decimal" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-maroon-400" placeholder="Cth: 2878700"></div>
+ <div><label class="block text-xs font-bold text-slate-600 mb-1">Tunjangan Tetap (Rp / bulan)</label><input type="number" id="off-tunjangan" min="0" step="any" inputmode="decimal" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-maroon-400" placeholder="Cth: 200000"></div>
  </div>
  <div>
  <label class="block text-xs font-bold text-slate-600 mb-1">Alasan Terminasi (Sesuai PP Andela Jaya)</label>
@@ -1235,7 +1241,7 @@ export async function mount(container) {
  <div class="grid grid-cols-2 gap-3">
  <div>
  <label class="block text-[11px] font-bold text-red-800 mb-1">Nominal Biaya MCU (Sesuai Invoice) (Rp) *</label>
- <input type="number" id="off-mcu-biaya" min="0" step="1000" class="w-full px-3 py-2 text-sm border border-red-300 rounded-lg outline-none focus:border-red-500 bg-white font-bold" placeholder="Cth: 450000">
+ <input type="number" id="off-mcu-biaya" min="0" step="any" inputmode="decimal" class="w-full px-3 py-2 text-sm border border-red-300 rounded-lg outline-none focus:border-red-500 bg-white font-bold" placeholder="Cth: 450000">
  </div>
  <div>
  <label class="block text-[11px] font-bold text-red-800 mb-1">Referensi Invoice / Laboratorium</label>

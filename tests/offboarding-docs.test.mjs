@@ -73,6 +73,9 @@ test("form offboarding memisahkan input gaji pokok dan tunjangan serta picklist 
   const source = read("js/views/siklus-karyawan.js");
   assert.match(source, /id="off-gapok"/);
   assert.match(source, /id="off-tunjangan"/);
+  assert.match(source, /id="off-gapok"[^>]*step="any"/);
+  assert.match(source, /id="off-tunjangan"[^>]*step="any"/);
+  assert.doesNotMatch(source, /id="off-(?:gapok|tunjangan|mcu-biaya)"[^>]*step="1000"/);
   assert.doesNotMatch(source, /id="off-gaji"/);
   assert.match(source, /id="off-dokumen"/);
   assert.match(source, /OFFBOARDING_DOCUMENT_OPTIONS\.map/);
