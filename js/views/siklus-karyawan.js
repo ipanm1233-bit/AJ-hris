@@ -601,7 +601,7 @@ async function printPerjanjianBersamaPdf(data) {
  </div>
 
  <!-- HALAMAN 2: RINCIAN HAK, KLAUSUL, DAN TANDA TANGAN -->
- <div style="page-break-after:always; padding:4px 0 0;">
+ <div style="${assets && assets.length ? "page-break-after:always;" : ""}padding:4px 0 0;">
  ${kopSuratHtml({ marginBottom: 10 })}
 
  ${mcu && mcu.wajib ? `
@@ -2799,11 +2799,12 @@ if (btnKalkulasi) {
      ...(sisaInfo && Number(sisaInfo.sisa_gaji) > 0 ? [{ label: "Sisa Gaji Berjalan", value: `${fmtRupiah(sisaInfo.sisa_gaji)} (${sisaInfo.sisa_hari_kerja} hari kerja)` }] : []),
      ...(Number(payloadLog.detail_offboarding?.uang_pisah_rule?.nominal || 0) > 0 ? [{ label: "Uang Pisah", value: `${fmtRupiah(payloadLog.detail_offboarding.uang_pisah_rule.nominal)} (${payloadLog.detail_offboarding.uang_pisah_rule.multiplier}x gaji)` }] : []),
      ...(mcuInfo?.wajib ? [{ label: "Wajib Ganti Biaya MCU", value: `${fmtRupiah(mcuInfo.biaya_mcu || 0)}${mcuInfo.metode_pembayaran === "POTONG_SISA_GAJI" ? ` - dipotong dari sisa gaji (${fmtRupiah(mcuInfo.potongan_sisa_gaji || 0)})` : " (selesaikan maks. 7 hari kerja)"}` }] : []),
-     ...(payloadLog.detail_offboarding?.exit_interview?.form_url ? [{ label: "Form Exit Interview", value: "Google Form - silakan isi melalui tombol pada email ini" }] : [])
+     ...(dokumenInfo && dokumenInfo.jenis !== "TIDAK_ADA" ? [{ label: "Dokumen Keluar", value: `${dokumenInfo.label} - diterbitkan ${OFFBOARDING_DOCUMENT_ISSUE_DAYS} hari setelah hari terakhir bekerja (${fmtDateShort(dokumenInfo.tanggal_surat)})` }] : []),
+      ...(payloadLog.detail_offboarding?.exit_interview?.form_url ? [{ label: "Form Exit Interview", value: "Google Form - silakan isi melalui tombol pada email ini" }] : [])
    ],
    actionUrl: payloadLog.detail_offboarding?.exit_interview?.form_url || "",
    actionText: "Isi Form Exit Interview (Google Form) →",
-   secondaryNote: `Harap segera mengoordinasikan serah terima aset perusahaan, berkas dokumen, dan penyelesaian administrasi dengan HRD.${payloadLog.detail_offboarding?.exit_interview?.form_url ? " Mohon isi <strong>Form Exit Interview</strong> melalui tautan Google Form pada email ini sebagai bagian dari proses offboarding." : ""}${mcuInfo?.wajib ? ` <strong>Ketentuan Surat Komitmen Kerja: karena resign di masa Probation / 3 bulan pertama kontrak pertama, Anda wajib mengganti biaya Medical Check Up (MCU) sebesar ${fmtRupiah(mcuInfo.biaya_mcu || 0)}.${mcuInfo.metode_pembayaran === "POTONG_SISA_GAJI" ? ` Biaya tersebut disepakati dipotong dari sisa gaji Anda sebesar ${fmtRupiah(mcuInfo.potongan_sisa_gaji || 0)}${Number(mcuInfo.kekurangan_dibayar_karyawan || 0) > 0 ? ` dan kekurangan ${fmtRupiah(mcuInfo.kekurangan_dibayar_karyawan)} wajib dibayar maksimal 7 hari kerja` : ""}.` : " Pembayaran wajib diselesaikan maksimal 7 hari kerja setelah tanggal efektif resign."}</strong>` : ""}`
+   secondaryNote: `Harap segera mengoordinasikan serah terima aset perusahaan, berkas dokumen, dan penyelesaian administrasi dengan HRD.${payloadLog.detail_offboarding?.exit_interview?.form_url ? " Mohon isi <strong>Form Exit Interview</strong> melalui tautan Google Form pada email ini sebagai bagian dari proses offboarding." : ""}${dokumenInfo && dokumenInfo.jenis !== "TIDAK_ADA" ? ` <strong>${escapeHtml(dokumenInfo.label)}</strong> akan diberikan <strong>${OFFBOARDING_DOCUMENT_ISSUE_DAYS} hari setelah hari terakhir bekerja</strong> (${fmtDateShort(dokumenInfo.tanggal_surat)}).` : ""}${mcuInfo?.wajib ? ` <strong>Ketentuan Surat Komitmen Kerja: karena resign di masa Probation / 3 bulan pertama kontrak pertama, Anda wajib mengganti biaya Medical Check Up (MCU) sebesar ${fmtRupiah(mcuInfo.biaya_mcu || 0)}.${mcuInfo.metode_pembayaran === "POTONG_SISA_GAJI" ? ` Biaya tersebut disepakati dipotong dari sisa gaji Anda sebesar ${fmtRupiah(mcuInfo.potongan_sisa_gaji || 0)}${Number(mcuInfo.kekurangan_dibayar_karyawan || 0) > 0 ? ` dan kekurangan ${fmtRupiah(mcuInfo.kekurangan_dibayar_karyawan)} wajib dibayar maksimal 7 hari kerja` : ""}.` : " Pembayaran wajib diselesaikan maksimal 7 hari kerja setelah tanggal efektif resign."}</strong>` : ""}`
  });
  } else if (["Mutasi", "Promosi", "Demosi"].includes(jenis)) {
  const d = payloadLog.detail_mutasi || {};
