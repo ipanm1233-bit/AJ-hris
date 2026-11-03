@@ -2,6 +2,13 @@ import { COL } from "../firebase-config.js";
 import { fsGet, fsGetAll, fsUpdate, fsAdd, toNumber, escapeHtml, fmtDateShort, openModal, closeModal, toast, notifyUser, genId, downloadXlsx } from "../utils.js";
 import { renderCrudModule } from "../components.js";
 import { isoDocHeaderTable } from "../branding.js";
+import {
+ parsePhysicalStock,
+ computeStockOpname,
+ buildMasterStockUpdate,
+ buildStockOpnameRecord,
+ formatStockDiff
+} from "../inventory-stock.mjs";
 
 // STATE REGISTRY FOR INVENTORY VIEW REFRESHING
 let activeInventoryContainer = null;
@@ -119,7 +126,7 @@ export function openAssetDetailAndUpdateStockModal(found, activeEmpNames = [], s
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
        <div>
         <label class="block font-bold text-slate-700 mb-1">Jumlah Hasil Cek Stok Fisik (${escapeHtml(found.satuan || 'Unit')}) <span class="text-red-500">*</span></label>
-        <input type="number" id="stock-real-qty" value="${currentStok}" min="0" required class="w-full p-2.5 text-xs rounded-xl border border-slate-300 font-black text-slate-800 outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition">
+        <input type="number" id="stock-real-qty" value="${currentStok}" min="0" step="any" inputmode="decimal" required class="w-full p-2.5 text-xs rounded-xl border border-slate-300 font-black text-slate-800 outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white transition">
        </div>
        <div>
         <label class="block font-bold text-slate-700 mb-1">Kondisi Fisik Barang Terkini</label>
@@ -130,6 +137,8 @@ export function openAssetDetailAndUpdateStockModal(found, activeEmpNames = [], s
         </select>
        </div>
       </div>
+
+      <div id="stock-real-diff-preview" class="px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-600"></div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
        <div>
@@ -160,52 +169,69 @@ export function openAssetDetailAndUpdateStockModal(found, activeEmpNames = [], s
     </button>
    </div>`,
   onMount: m => {
+   const qtyInput = m.querySelector("#stock-real-qty");
+   const diffPreview = m.querySelector("#stock-real-diff-preview");
+
+   const renderDiffPreview = () => {
+    try {
+     const calc = computeStockOpname({ currentStock: currentStok, physicalStock: qtyInput.value });
+     const tone = calc.selisih === 0 ? "emerald" : calc.selisih > 0 ? "blue" : "rose";
+     diffPreview.className = `px-3 py-2.5 rounded-xl border border-${tone}-200 bg-${tone}-50 text-[11px] font-semibold text-${tone}-800`;
+     diffPreview.innerHTML = `Stok sistem: <b>${currentStok.toLocaleString("id-ID")}</b> ${escapeHtml(found.satuan || 'Unit')} &rarr; Stok baru (fisik): <b>${calc.stokBaru.toLocaleString("id-ID")}</b> ${escapeHtml(found.satuan || 'Unit')} &middot; Selisih: <b>${formatStockDiff(calc.selisih)}</b> ${calc.selisih === 0 ? "(sesuai)" : calc.selisih > 0 ? "(lebih)" : "(kurang)"}. Stok master akan memakai angka fisik terbaru.`;
+    } catch (e) {
+     diffPreview.className = "px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-[11px] font-semibold text-amber-800";
+     diffPreview.textContent = "Masukkan jumlah stok fisik yang valid (angka >= 0).";
+    }
+   };
+   qtyInput.addEventListener("input", renderDiffPreview);
+   renderDiffPreview();
+
    m.querySelector("#btn-stock-update-close").onclick = closeModal;
    m.querySelector("#btn-stock-update-save").onclick = async () => {
-    const qtyInput = m.querySelector("#stock-real-qty");
-    const newQty = toNumber(qtyInput.value);
     const newCond = m.querySelector("#stock-real-cond").value;
     const empName = m.querySelector("#stock-real-emp").value;
     const dateVal = m.querySelector("#stock-real-date").value;
     const notesVal = m.querySelector("#stock-real-notes").value.trim();
 
-    if (isNaN(newQty) || newQty < 0) {
+    if (parsePhysicalStock(qtyInput.value) === null) {
+     qtyInput.focus();
      return toast("Jumlah stok fisik harus berupa angka yang valid (>= 0)", "warning");
     }
 
     try {
      toast("Sedang menyimpan pembaruan stok fisik...", "info");
-     
-     // 1. Update Master Inventory
+
+     const calc = computeStockOpname({ currentStock: currentStok, physicalStock: qtyInput.value });
+
+     // 1. Update Master Inventory — stok memakai angka fisik terbaru (absolute).
      const targetDocId = String(found._docId || found.id || found.id_item || assetId).trim();
-     const updatePayload = {
-      stok_saat_ini: newQty,
-      kondisi: newCond,
-      terakhir_diaudit: dateVal
-     };
+     const updatePayload = buildMasterStockUpdate({
+      physicalStock: qtyInput.value,
+      date: dateVal,
+      condition: newCond
+     });
      await fsUpdate(COL.MASTER_INVENTORY, targetDocId, updatePayload);
      if (assetId && assetId !== targetDocId) {
       try {
-        await fsUpdate(COL.MASTER_INVENTORY, assetId, updatePayload);
+       await fsUpdate(COL.MASTER_INVENTORY, assetId, updatePayload);
       } catch (e) {
-        // doc fallback
+       // doc fallback
       }
      }
 
-     // 2. Add Stock Opname Record
-     const diff = newQty - currentStok;
-     await fsAdd(COL.STOCK_OPNAME, {
-      tanggal: dateVal,
-      nama_barang: found.nama_barang,
-      id_barang: assetId,
-      jumlah_ambil: newQty,
-      stok_sebelumnya: currentStok,
-      selisih: diff,
-      nama_karyawan: empName,
-      keperluan: notesVal || `Update stok fisik via QR Code direct scan (Stok diubah dari ${currentStok} menjadi ${newQty} ${found.satuan || 'Unit'}).`
+     // 2. Add Stock Opname Record — menyimpan stok sebelum, selisih, dan stok baru.
+     const record = buildStockOpnameRecord({
+      asset: found,
+      physicalStock: qtyInput.value,
+      currentStock: currentStok,
+      date: dateVal,
+      officer: empName,
+      notes: notesVal,
+      condition: newCond
      });
+     await fsAdd(COL.STOCK_OPNAME, record);
 
-     toast(`Stok fisik ${found.nama_barang} (${assetId}) berhasil diperbarui menjadi ${newQty} ${found.satuan || 'Unit'}!`, "success");
+     toast(`Stok fisik ${found.nama_barang} (${assetId}) diperbarui: ${calc.stokSebelumnya} → ${calc.stokBaru} ${found.satuan || 'Unit'} (selisih ${formatStockDiff(calc.selisih)}).`, "success");
      closeModal();
 
      await reloadInventoryData(container);
@@ -213,6 +239,61 @@ export function openAssetDetailAndUpdateStockModal(found, activeEmpNames = [], s
      console.error("Gagal update stok fisik:", err);
      toast("Gagal memperbarui stok fisik: " + err.message, "error");
     }
+   };
+  }
+ });
+}
+
+// MODAL PILIH ASET UNTUK INPUT STOCK OPNAME LANGSUNG DARI TAB OPNAME
+async function openStockOpnameInputModal(container, activeEmpNames = [], session = null) {
+ let items = [];
+ try {
+  items = await fsGetAll(COL.MASTER_INVENTORY);
+ } catch (e) {
+  console.warn("Gagal memuat aset untuk stock opname:", e);
+  toast("Gagal memuat daftar aset inventaris.", "error");
+  return;
+ }
+ if (!items.length) {
+  toast("Belum ada aset di Master Inventaris.", "warning");
+  return;
+ }
+ items.sort((a, b) => String(a.nama_barang || "").localeCompare(String(b.nama_barang || "")));
+ const options = items.map(i => {
+  const id = String(i.id_item || i.id || "").trim();
+  const stok = toNumber(i.stok_saat_ini);
+  return `<option value="${escapeHtml(id)}">${escapeHtml(id)} &mdash; ${escapeHtml(i.nama_barang || "-")} (stok sistem: ${stok})</option>`;
+ }).join("");
+
+ openModal({
+  title: "Input Hasil Stock Opname Fisik",
+  size: "md",
+  bodyHtml: `
+  <div class="space-y-3 text-xs text-left">
+   <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 leading-relaxed">
+    Pilih aset lalu masukkan jumlah hasil hitung fisik. Angka tersebut menjadi <b>stok baru</b> di Master Inventaris, dan selisih terhadap stok sistem dicatat otomatis pada log opname.
+   </div>
+   <div>
+    <label class="block font-bold text-slate-700 mb-1">Aset / Barang</label>
+    <select id="opname-pick-asset" class="w-full p-2.5 text-xs rounded-xl border border-slate-300 font-medium outline-none focus:border-maroon-500 bg-white">
+     <option value="">Pilih aset...</option>
+     ${options}
+    </select>
+   </div>
+  </div>`,
+  footerHtml: `
+   <div class="flex items-center justify-between w-full">
+    <button id="btn-opname-pick-cancel" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl">Batal</button>
+    <button id="btn-opname-pick-next" class="px-5 py-2.5 text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 rounded-xl transition shadow">Lanjut Isi Stok Fisik</button>
+   </div>`,
+  onMount: m => {
+   m.querySelector("#btn-opname-pick-cancel").onclick = closeModal;
+   m.querySelector("#btn-opname-pick-next").onclick = () => {
+    const selectedId = m.querySelector("#opname-pick-asset").value;
+    const found = items.find(i => String(i.id_item || i.id || "").trim() === selectedId);
+    if (!found) return toast("Pilih aset terlebih dahulu.", "warning");
+    closeModal();
+    openAssetDetailAndUpdateStockModal(found, activeEmpNames, session, container);
    };
   }
  });
@@ -2849,28 +2930,101 @@ export async function mount(container, options = {}) {
  }
 
  async function loadOpname() {
+ let masterItems = [];
+ try {
+ masterItems = await fsGetAll(COL.MASTER_INVENTORY);
+ } catch (e) {
+ console.warn("Gagal memuat master inventaris untuk opname:", e);
+ }
+ const assetIds = masterItems
+ .map(i => String(i.id_item || i.id || "").trim())
+ .filter(Boolean)
+ .sort();
+
  activeCrudControllers.opname = await renderCrudModule(panels.opname, {
  title: "Stock Opname & Cek Fisik Aset",
+ subtitle: "Masukkan hasil hitung fisik. Angka yang diinput menjadi stok baru di Master Inventaris dan selisihnya dicatat otomatis.",
  collectionName: COL.STOCK_OPNAME, idPrefix: "OPN",
- searchFields: ["nama_barang", "nama_karyawan"],
- extraToolbarHtml: `<button id="btn-print-blanko" class="bg-slate-800 text-white px-3 py-2 rounded-xl text-xs font-bold shadow hover:bg-slate-900 transition flex items-center gap-1.5"><svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg> Cetak Blanko Opname (PDF)</button>`,
+ idFromField: "id_opname",
+ searchFields: ["nama_barang", "id_barang", "nama_karyawan"],
+ extraToolbarHtml: `<button id="btn-input-opname" class="bg-maroon-700 text-white px-3 py-2 rounded-xl text-xs font-bold shadow hover:bg-maroon-800 transition flex items-center gap-1.5"><svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg> Input Hasil Opname</button><button id="btn-print-blanko" class="bg-slate-800 text-white px-3 py-2 rounded-xl text-xs font-bold shadow hover:bg-slate-900 transition flex items-center gap-1.5"><svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg> Cetak Blanko Opname (PDF)</button>`,
  columns: [
- { key: "tanggal", label: "Tanggal", type: "date" }, 
+ { key: "tanggal", label: "Tanggal", type: "date" },
  { key: "nama_barang", label: "Nama Barang / Aset" },
- { key: "jumlah_ambil", label: "Hasil Fisik", type: "number" }, 
+ { key: "id_barang", label: "ID Aset", format: (v) => v ? `<span class="font-mono text-[11px] text-slate-600">${escapeHtml(v)}</span>` : "-" },
+ { key: "stok_sebelumnya", label: "Stok Sistem", type: "number" },
+ { key: "jumlah_ambil", label: "Stok Baru (Fisik)", type: "number" },
+ { key: "selisih", label: "Selisih", format: (v) => {
+ const n = Number(v) || 0;
+ const tone = n === 0 ? "text-emerald-600" : n > 0 ? "text-blue-600" : "text-rose-600";
+ return `<span class="font-bold ${tone}">${formatStockDiff(n)}</span>`;
+ } },
  { key: "nama_karyawan", label: "Petugas GA/HRD" },
  ],
  formFields: [
  { name: "tanggal", label: "Tanggal Pemeriksaan", type: "date", required: true },
- { name: "nama_barang", label: "Nama Aset / ID Barang", type: "text", required: true },
- { name: "jumlah_ambil", label: "Jumlah Hasil Cek Fisik", type: "number", required: true },
+ { name: "id_barang", label: "ID / Kode Aset (pilih atau ketik)", type: "datalist", required: true, options: assetIds, placeholder: "Cth: BC-IT-8822" },
+ { name: "nama_barang", label: "Nama Aset (otomatis dari ID)", type: "text", placeholder: "Kosongkan agar diambil dari Master Inventaris" },
+ { name: "jumlah_ambil", label: "Jumlah Hasil Cek Fisik = Stok Baru", type: "number", required: true, step: "any", min: 0, inputMode: "decimal" },
+ { name: "kondisi", label: "Kondisi Fisik", type: "select", options: ["Good (Baik)", "Maintenance (Perlu Servis)", "Damaged (Rusak)"], default: "Good (Baik)" },
  { name: "nama_karyawan", label: "Petugas Pemeriksa", type: "select", options: activeEmpNames, required: true },
  { name: "keperluan", label: "Catatan Fisik / Selisih", type: "textarea", full: true },
  ],
- afterSave: async () => {
+ beforeSave: async (data, existing) => {
+ const rawId = String(data.id_barang || "").trim();
+ const rawName = String(data.nama_barang || "").trim();
+ const currentItems = await fsGetAll(COL.MASTER_INVENTORY);
+ const asset = currentItems.find(i => String(i.id_item || i.id || "").trim().toLowerCase() === rawId.toLowerCase())
+ || currentItems.find(i => String(i.nama_barang || "").trim().toLowerCase() === rawName.toLowerCase());
+ if (!asset) {
+ throw new Error(`Aset "${rawId || rawName}" tidak ditemukan di Master Inventaris. Pilih ID aset yang benar.`);
+ }
+ const previous = existing && existing.stok_sebelumnya !== undefined
+ ? existing.stok_sebelumnya
+ : toNumber(asset.stok_saat_ini);
+ const record = buildStockOpnameRecord({
+ asset,
+ physicalStock: data.jumlah_ambil,
+ currentStock: previous,
+ date: data.tanggal,
+ officer: data.nama_karyawan,
+ notes: data.keperluan,
+ condition: data.kondisi
+ });
+ return {
+ ...data,
+ nama_barang: asset.nama_barang || data.nama_barang,
+ id_barang: String(asset.id_item || asset.id || rawId).trim(),
+ jumlah_ambil: record.jumlah_ambil,
+ stok_sebelumnya: record.stok_sebelumnya,
+ selisih: record.selisih,
+ stok_sesudah: record.stok_sesudah,
+ kondisi: record.kondisi,
+ keperluan: record.keperluan
+ };
+ },
+ afterSave: async (data, isNew, savedId, existing) => {
+ const countChanged = !existing || toNumber(existing.jumlah_ambil) !== toNumber(data.jumlah_ambil);
+ if (countChanged && data.id_barang) {
+ try {
+ const currentItems = await fsGetAll(COL.MASTER_INVENTORY);
+ const asset = currentItems.find(i => String(i.id_item || i.id || "").trim().toLowerCase() === String(data.id_barang).trim().toLowerCase());
+ if (asset && asset.id) {
+ await fsUpdate(COL.MASTER_INVENTORY, asset.id, buildMasterStockUpdate({
+ physicalStock: data.jumlah_ambil,
+ date: data.tanggal,
+ condition: data.kondisi
+ }));
+ }
+ } catch (e) {
+ console.warn("Gagal sinkron stok master setelah opname:", e);
+ toast("Log opname tersimpan, tetapi stok master gagal diperbarui: " + (e.message || e), "error");
+ }
+ }
  await reloadInventoryData(container);
  }
  });
+ panels.opname.querySelector("#btn-input-opname").onclick = () => openStockOpnameInputModal(container, activeEmpNames, session);
  panels.opname.querySelector("#btn-print-blanko").onclick = printBlankoOpname;
  }
 

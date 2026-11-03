@@ -331,6 +331,8 @@ export async function renderCrudModule(container, cfg) {
   f.placeholder ? `placeholder="${escapeHtml(f.placeholder)}"` : "",
   f.pattern ? `pattern="${escapeHtml(f.pattern)}"` : "",
   f.title ? `title="${escapeHtml(f.title)}"` : "",
+  f.step ? `step="${escapeHtml(f.step)}"` : "",
+  f.min !== undefined && f.min !== null ? `min="${escapeHtml(f.min)}"` : "",
   f.minLength ? `minlength="${Number(f.minLength)}"` : "",
   f.maxLength ? `maxlength="${Number(f.maxLength)}"` : "",
   f.inputMode ? `inputmode="${escapeHtml(f.inputMode)}"` : "",
