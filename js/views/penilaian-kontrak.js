@@ -12,6 +12,7 @@ import { authFetch } from "../api-client.js";
 import { resolveWorkSchedule } from "../work-schedule.mjs";
 import { calculateAttendancePenalty } from "../attendance-penalty.mjs";
 import { MONTHLY_METRICS, monthlyMetricRows, validateMonthlyAchievement } from "../monthly-achievement.mjs";
+import { resolveSalesIndicatorSpec, computeSalesAchievementScore, findSalesTarget, formatSalesTarget, normalizeSalesIndicatorList } from "../kpi-sales.mjs";
 import { summarizeReviewTasks, resolveCoordinationStage } from "../contract-coordination.mjs";
 import { employeeHistoryRows } from "../employee-history.mjs";
 import {
@@ -43,11 +44,12 @@ export const SALES_LAMPIRAN1_INDICATORS = [
  { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Volume Aquashield", unit: "Ton / Liter / Kaleng", key: "volume_aquashield", defaultTarget: 5 },
  { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Total Weighted Target", unit: "% Capaian", key: "total_weighted_target", defaultTarget: 100 },
  { principle: "ALL", aspek: "Value Penjualan Tertagih", indikator: "Value Penjualan Tertagih", unit: "Rp", key: "value_penjualan_tertagih", defaultTarget: 100000000 },
+ { principle: "ICI", aspek: "Total Penjualan ICI", indikator: "Total Target Penjualan ICI", unit: "Rp", key: "total_target_penjualan_ici", defaultTarget: 150000000 },
  { principle: "ALL", aspek: "Over due ( sisa piutang Toko )", indikator: "Over due Piutang Toko", unit: "Rp (Max Limit)", key: "overdue_piutang", defaultTarget: 20000000 },
  { principle: "ICI", aspek: "AO - ICI", indikator: "Active Outlet ICI", unit: "Toko", key: "ao_ici", defaultTarget: 25 },
- { principle: "PRIMA", aspek: "Sales Value (SO) - Tertagih", indikator: "Sales Value PRIMA Tertagih", unit: "Rp", key: "sales_value_prima", defaultTarget: 50000000 },
+ { principle: "PRIMA", aspek: "Sales Value (SO) - Tertagih", indikator: "Value Prima", unit: "Rp", key: "sales_value_prima", defaultTarget: 50000000 },
  { principle: "PRIMA", aspek: "AO", indikator: "Active Outlet PRIMA", unit: "Toko", key: "ao_prima", defaultTarget: 15 },
- { principle: "DCOTA", aspek: "Sales Value (SO) - Tertagih", indikator: "Sales Value DCOTA Tertagih", unit: "Rp", key: "sales_value_dcota", defaultTarget: 50000000 },
+ { principle: "DCOTA", aspek: "Sales Value (SO) - Tertagih", indikator: "Value DCota", unit: "Rp", key: "sales_value_dcota", defaultTarget: 50000000 },
  { principle: "DCOTA", aspek: "AO", indikator: "Active Outlet DCOTA", unit: "Toko", key: "ao_dcota", defaultTarget: 15 },
 ];
 
@@ -61,14 +63,16 @@ export const NON_SALES_INDICATORS = [
 export async function getEmployeeCustomIndicators(empKey, defaultCategory = "NON_SALES") {
   const cleanKey = (empKey || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "_");
   const storageKey = "HRIS_CUSTOM_KPI_IND_" + cleanKey;
+  const normalize = (list) => defaultCategory === "SALES" ? normalizeSalesIndicatorList(list, SALES_LAMPIRAN1_INDICATORS) : list;
   try {
     const docRef = doc(db, COL.APP_SETTINGS, storageKey);
     const snap = await getDoc(docRef);
     if (snap.exists() && snap.data()?.indicators) {
       const list = snap.data().indicators;
       if (Array.isArray(list) && list.length > 0) {
-        localStorage.setItem(storageKey, JSON.stringify(list));
-        return list;
+        const normalized = normalize(list);
+        localStorage.setItem(storageKey, JSON.stringify(normalized));
+        return normalized;
       }
     }
   } catch (e) {
@@ -79,7 +83,7 @@ export async function getEmployeeCustomIndicators(empKey, defaultCategory = "NON
     const local = localStorage.getItem(storageKey);
     if (local) {
       const parsed = JSON.parse(local);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) return normalize(parsed);
     }
   } catch (e) {}
 
@@ -6596,8 +6600,11 @@ export async function mount(container, { session, params }) {
                     if (isSales) {
                       const vDulux = t.target_volume_dulux ? `${t.target_volume_dulux} Ton Dulux` : "";
                       const valSales = t.target_value_penjualan ? `Rp ${(parseFloat(t.target_value_penjualan) || 0).toLocaleString('id-ID')}` : "";
+                      const totalIci = t.target_total_penjualan_ici ? `Total ICI Rp ${(parseFloat(t.target_total_penjualan_ici) || 0).toLocaleString('id-ID')}` : "";
+                      const valPrima = t.target_value_prima ? `Prima Rp ${(parseFloat(t.target_value_prima) || 0).toLocaleString('id-ID')}` : "";
+                      const valDcota = t.target_value_dcota ? `DCota Rp ${(parseFloat(t.target_value_dcota) || 0).toLocaleString('id-ID')}` : "";
                       const ao = t.target_ao_ici ? `${t.target_ao_ici} AO Toko` : "";
-                      targetSummary = [vDulux, valSales, ao].filter(Boolean).join(" • ") || "Target Sales Lampiran 1";
+                      targetSummary = [vDulux, valSales, totalIci, valPrima, valDcota, ao].filter(Boolean).join(" • ") || "Target Sales Lampiran 1";
                     } else {
                       targetSummary = t.target_summary || "SOP, SLA Respon, Kehadiran, & Inisiatif";
                     }
@@ -6702,7 +6709,7 @@ export async function mount(container, { session, params }) {
           }
           await ensureXlsxLoaded();
           const achievementMetrics = [...MONTHLY_METRICS.SALES, ...MONTHLY_METRICS.NON_SALES];
-          const headers = ["Periode", "Nama Karyawan", "NIK", "Jabatan", "Kategori", "Target Vol Dulux", "Target Vol Catylac", "Target Vol Maxilite", "Target Vol Aquashield", "Target Value Penjualan", "Target Overdue Limit", "Target AO", "Target SOP %", "Target SLA Respon %", "Catatan Target", "Ditetapkan Oleh", ...achievementMetrics.map(metric => `Realisasi ${metric.label}`), "Catatan Realisasi", "Dicatat Oleh"];
+          const headers = ["Periode", "Nama Karyawan", "NIK", "Jabatan", "Kategori", "Target Vol Dulux", "Target Vol Catylac", "Target Vol Maxilite", "Target Vol Aquashield", "Target Value Penjualan", "Target Value Prima", "Target Value DCota", "Target Total Penjualan ICI", "Target Overdue Limit", "Target AO ICI", "Target AO Prima", "Target AO DCota", "Target SOP %", "Target SLA Respon %", "Catatan Target", "Ditetapkan Oleh", ...achievementMetrics.map(metric => `Realisasi ${metric.label}`), "Catatan Realisasi", "Dicatat Oleh"];
           const matrix = filteredTargets.map(t => [
             t.periode || "-",
             t.nama_karyawan || "-",
@@ -6714,8 +6721,13 @@ export async function mount(container, { session, params }) {
             t.target_volume_maxilite || 0,
             t.target_volume_aquashield || 0,
             t.target_value_penjualan || 0,
+            t.target_value_prima || 0,
+            t.target_value_dcota || 0,
+            t.target_total_penjualan_ici || 0,
             t.target_overdue_piutang || 0,
             t.target_ao_ici || 0,
+            t.target_ao_prima || 0,
+            t.target_ao_dcota || 0,
             t.target_sop_tugas || 0,
             t.target_respon_divisi || 0,
             t.catatan_target || "-",
@@ -7026,7 +7038,9 @@ export async function mount(container, { session, params }) {
       // Load initial indicators list for the employee
       let activeIndicators = [];
       if (isEdit && Array.isArray(existing?.indikator_list) && existing.indikator_list.length > 0) {
-        activeIndicators = JSON.parse(JSON.stringify(existing.indikator_list));
+        activeIndicators = currentKat === "SALES"
+          ? normalizeSalesIndicatorList(JSON.parse(JSON.stringify(existing.indikator_list)), SALES_LAMPIRAN1_INDICATORS)
+          : JSON.parse(JSON.stringify(existing.indikator_list));
       } else {
         const empKey = selectedEmp ? (selectedEmp.nama_karyawan || selectedEmp.nik_karyawan) : "";
         activeIndicators = await getEmployeeCustomIndicators(empKey, currentKat);
@@ -7163,8 +7177,24 @@ export async function mount(container, { session, params }) {
           const btnResetDefault = m.querySelector("#btn-reset-ind-default");
           const empSelect = m.querySelector("#ph-karyawan-select");
 
-          // Keep current entered scores preserved during UI re-renders
+          // Keep current entered scores & nilai capaian preserved during UI re-renders
           const currentScores = { ...existingScores };
+          const currentActuals = { ...(existing?.indikator_nilai || {}) };
+
+          function selectedPeriod() {
+            return String(m.querySelector("#ph-tanggal")?.value || "").slice(0, 7);
+          }
+
+          // Target bulanan Sales untuk karyawan & periode yang sedang diisi.
+          function activeSalesTarget() {
+            if (currentKat !== "SALES") return null;
+            const selOpt = empSelect ? empSelect.options[empSelect.selectedIndex] : null;
+            return findSalesTarget(allTargets, {
+              namaKaryawan: isEdit ? existing.nama_karyawan : (selOpt ? selOpt.value : ""),
+              nikKaryawan: isEdit ? (existing.nik_karyawan || "") : (selOpt?.dataset?.nik || ""),
+              periode: selectedPeriod()
+            });
+          }
 
           function readFormScores() {
             containerIndicators.querySelectorAll(".ph-score-input").forEach(inp => {
@@ -7174,6 +7204,46 @@ export async function mount(container, { session, params }) {
                 if (valStr !== "") {
                   currentScores[k] = Math.min(100, Math.max(0, parseFloat(valStr) || 0));
                 }
+              }
+            });
+
+            // Input Sales memakai nilai capaian nyata; skor dihitung otomatis.
+            containerIndicators.querySelectorAll(".ph-actual-input").forEach(inp => {
+              const k = inp.dataset.indKey;
+              if (!k) return;
+              const raw = inp.value.trim();
+              if (raw === "") {
+                delete currentActuals[k];
+                delete currentScores[k];
+              } else {
+                const actual = Number(raw);
+                if (!Number.isFinite(actual) || actual < 0) {
+                  delete currentActuals[k];
+                  delete currentScores[k];
+                } else {
+                  currentActuals[k] = actual;
+                  const score = computeSalesAchievementScore({
+                    actual,
+                    target: Number(inp.dataset.targetValue),
+                    lowerIsBetter: inp.dataset.lower === "1"
+                  });
+                  if (score === null) delete currentScores[k];
+                  else currentScores[k] = score;
+                }
+              }
+              const badge = containerIndicators.querySelector(`[data-score-badge="${k}"]`);
+              if (badge) {
+                const sc = currentScores[k];
+                badge.textContent = sc === undefined ? "— / 100" : `${Number(sc).toFixed(2)} / 100`;
+                badge.className = sc === undefined
+                  ? "min-w-[78px] text-center px-2 py-1 rounded-md text-[10.5px] font-black bg-slate-100 text-slate-500 border border-slate-200"
+                  : sc >= 85
+                    ? "min-w-[78px] text-center px-2 py-1 rounded-md text-[10.5px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200"
+                    : sc >= 70
+                      ? "min-w-[78px] text-center px-2 py-1 rounded-md text-[10.5px] font-black bg-blue-50 text-blue-700 border border-blue-200"
+                      : sc >= 55
+                        ? "min-w-[78px] text-center px-2 py-1 rounded-md text-[10.5px] font-black bg-amber-50 text-amber-700 border border-amber-200"
+                        : "min-w-[78px] text-center px-2 py-1 rounded-md text-[10.5px] font-black bg-rose-50 text-rose-700 border border-rose-200";
               }
             });
           }
@@ -7204,11 +7274,57 @@ export async function mount(container, { session, params }) {
               return;
             }
 
+            const salesTarget = activeSalesTarget();
             containerIndicators.innerHTML = `
               <div class="space-y-2.5">
                 ${activeIndicators.map((ind, idx) => {
                   const savedVal = currentScores[ind.key] !== undefined ? currentScores[ind.key] : "";
                   const isEditingThis = !!ind._isEditing;
+                  const salesSpec = currentKat === "SALES" ? resolveSalesIndicatorSpec(ind, salesTarget) : null;
+                  const actualVal = currentActuals[ind.key] !== undefined ? currentActuals[ind.key] : "";
+                  const computedScore = currentScores[ind.key] !== undefined ? currentScores[ind.key] : "";
+
+                  if (salesSpec && !isEditingThis) {
+                    return `
+                      <div class="p-3 bg-white rounded-xl border border-slate-200/90 shadow-2xs hover:border-slate-300 space-y-2 text-left transition">
+                        <div class="flex items-center justify-between flex-wrap gap-2">
+                          <div class="flex items-center gap-2 flex-wrap">
+                            <span class="w-5 h-5 rounded-md bg-maroon-700 text-white font-black text-[11px] flex items-center justify-center shrink-0">${idx + 1}</span>
+                            <span class="bg-amber-50 text-amber-800 px-2 py-0.5 rounded text-[10.5px] font-bold uppercase border border-amber-200">
+                              ${escapeHtml(ind.principle ? ind.principle + ' • ' : '')}${escapeHtml(ind.aspek || 'Sales')}
+                            </span>
+                            <span class="text-[10.5px] font-semibold text-slate-600 bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+                              Target: <b>${salesSpec.hasTarget ? formatSalesTarget(salesSpec.targetValue, salesSpec.unit) : 'Belum diset'}</b> ${salesSpec.lowerIsBetter ? '(Maksimal)' : ''}
+                            </span>
+                          </div>
+                          <div class="flex items-center gap-1">
+                            <button type="button" data-toggle-edit="${ind.key}" class="px-2 py-0.5 text-[11px] font-bold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 transition flex items-center gap-1" title="Ubah nama indikator atau aspek">
+                              <span><i class='fa-solid fa-pen' aria-hidden='true'></i></span> Edit
+                            </button>
+                            <button type="button" data-delete-ind="${ind.key}" class="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition" title="Hapus indikator ini untuk penilaian karyawan ini">
+                              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                            </button>
+                          </div>
+                        </div>
+
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                          <div>
+                            <p class="text-xs font-bold text-slate-800">${escapeHtml(ind.indikator || '-')}</p>
+                            <p class="text-[10.5px] text-slate-400">Masukkan nilai riil capaian harian (${escapeHtml(salesSpec.unit || 'unit')}). Skor 0–100 dihitung otomatis.</p>
+                          </div>
+                          <div class="flex items-center gap-2 shrink-0">
+                            <div class="relative w-36">
+                              <input type="number" step="any" inputmode="decimal" data-ind-key="${ind.key}" data-target-value="${salesSpec.targetValue || 0}" data-lower="${salesSpec.lowerIsBetter ? 1 : 0}" value="${actualVal}" min="0" class="ph-actual-input w-full px-2.5 py-1.5 text-xs font-black text-slate-800 border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white text-right" placeholder="0" required>
+                              <span class="absolute right-2.5 top-2 text-slate-400 text-[10px] font-bold pointer-events-none">${escapeHtml(salesSpec.unit)}</span>
+                            </div>
+                            <div class="min-w-[78px] text-center px-2 py-1 rounded-md text-[10.5px] font-black ${computedScore === '' ? 'bg-slate-100 text-slate-500 border border-slate-200' : computedScore >= 85 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : computedScore >= 70 ? 'bg-blue-50 text-blue-700 border border-blue-200' : computedScore >= 55 ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}" data-score-badge="${ind.key}">
+                              ${computedScore === '' ? '— / 100' : `${Number(computedScore).toFixed(2)} / 100`}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    `;
+                  }
 
                   if (isEditingThis) {
                     return `
@@ -7332,6 +7448,7 @@ export async function mount(container, { session, params }) {
                 const k = btn.dataset.deleteInd;
                 activeIndicators = activeIndicators.filter(x => x.key !== k);
                 delete currentScores[k];
+                delete currentActuals[k];
                 renderIndicators();
               };
             });
@@ -7342,6 +7459,13 @@ export async function mount(container, { session, params }) {
                 const valStr = inp.value.trim();
                 if (valStr !== "") currentScores[k] = Math.min(100, Math.max(0, parseFloat(valStr) || 0));
                 else delete currentScores[k];
+                updateScoreLive();
+              };
+            });
+
+            containerIndicators.querySelectorAll(".ph-actual-input").forEach(inp => {
+              inp.oninput = () => {
+                readFormScores();
                 updateScoreLive();
               };
             });
@@ -7366,13 +7490,13 @@ export async function mount(container, { session, params }) {
           }
 
           function updateScoreLive() {
+            readFormScores();
             let total = 0;
             let count = 0;
-            containerIndicators.querySelectorAll(".ph-score-input").forEach(inp => {
-              const valStr = inp.value.trim();
-              if (valStr !== "") {
-                const val = Math.min(100, Math.max(0, parseFloat(valStr) || 0));
-                total += val;
+            activeIndicators.forEach(ind => {
+              const sc = currentScores[ind.key];
+              if (sc !== undefined && sc !== null && sc !== "" && Number.isFinite(Number(sc))) {
+                total += Math.min(100, Math.max(0, Number(sc)));
                 count++;
               }
             });
@@ -7455,6 +7579,12 @@ export async function mount(container, { session, params }) {
             };
           }
 
+          // Ganti tanggal bisa mengganti periode target bulanan yang dipakai.
+          const dateInput = m.querySelector("#ph-tanggal");
+          if (dateInput) {
+            dateInput.addEventListener("change", () => renderIndicators());
+          }
+
           renderIndicators();
 
           m.querySelector("#btn-ph-batal").onclick = closeModal;
@@ -7498,6 +7628,9 @@ export async function mount(container, { session, params }) {
             const saveAsDefault = m.querySelector("#ph-save-as-default")?.checked || false;
 
             const indikatorSkorMap = {};
+            const indikatorNilaiMap = {};
+            const indikatorTargetMap = {};
+            const saveSalesTarget = currentKat === "SALES" ? activeSalesTarget() : null;
             let totalSc = 0;
             let countSc = 0;
 
@@ -7506,6 +7639,13 @@ export async function mount(container, { session, params }) {
               indikatorSkorMap[ind.key] = sc;
               totalSc += sc;
               countSc++;
+              if (currentActuals[ind.key] !== undefined && currentActuals[ind.key] !== null) {
+                indikatorNilaiMap[ind.key] = currentActuals[ind.key];
+              }
+              const spec = currentKat === "SALES" ? resolveSalesIndicatorSpec(ind, saveSalesTarget) : null;
+              if (spec && Number.isFinite(Number(spec.targetValue))) {
+                indikatorTargetMap[ind.key] = Number(spec.targetValue);
+              }
             });
 
             const rawScore = countSc > 0 ? Math.round((totalSc / countSc) * 100) / 100 : 0;
@@ -7541,6 +7681,8 @@ export async function mount(container, { session, params }) {
               kategori: currentKat,
               indikator_list: cleanedIndicatorsList,
               indikator_skor: indikatorSkorMap,
+              indikator_nilai: indikatorNilaiMap,
+              indikator_target: indikatorTargetMap,
               total_skor: finalAvg,
               skor_sebelum_potongan: rawScore,
               potongan_kpi: deduction,
@@ -7686,6 +7828,22 @@ export async function mount(container, { session, params }) {
                     </div>
                   </div>
 
+                  <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 pt-2">Target Value PRIMA, DCOTA & Total Penjualan ICI</h4>
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label class="block text-[11px] font-bold text-slate-600 mb-1">Value Prima (Rp)</label>
+                      <input type="number" step="any" inputmode="decimal" id="tgt-val-prima" value="${existing?.target_value_prima ?? 50000000}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
+                    </div>
+                    <div>
+                      <label class="block text-[11px] font-bold text-slate-600 mb-1">Value DCota (Rp)</label>
+                      <input type="number" step="any" inputmode="decimal" id="tgt-val-dcota" value="${existing?.target_value_dcota ?? 50000000}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
+                    </div>
+                    <div>
+                      <label class="block text-[11px] font-bold text-slate-600 mb-1">Total Target Penjualan ICI (Rp)</label>
+                      <input type="number" step="any" inputmode="decimal" id="tgt-val-total-ici" value="${existing?.target_total_penjualan_ici ?? 150000000}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
+                    </div>
+                  </div>
+
                   <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 pt-2">Target Active Outlet (AO Toko Aktif)</h4>
                   <div class="grid grid-cols-3 gap-3">
                     <div>
@@ -7786,6 +7944,9 @@ export async function mount(container, { session, params }) {
               payload.target_volume_maxilite = parseFloat(m.querySelector("#tgt-vol-maxilite")?.value) || 0;
               payload.target_volume_aquashield = parseFloat(m.querySelector("#tgt-vol-aquashield")?.value) || 0;
               payload.target_value_penjualan = parseFloat(m.querySelector("#tgt-val-penjualan")?.value) || 0;
+              payload.target_value_prima = parseFloat(m.querySelector("#tgt-val-prima")?.value) || 0;
+              payload.target_value_dcota = parseFloat(m.querySelector("#tgt-val-dcota")?.value) || 0;
+              payload.target_total_penjualan_ici = parseFloat(m.querySelector("#tgt-val-total-ici")?.value) || 0;
               payload.target_overdue_piutang = parseFloat(m.querySelector("#tgt-overdue")?.value) || 0;
               payload.target_ao_ici = parseFloat(m.querySelector("#tgt-ao-ici")?.value) || 0;
               payload.target_ao_prima = parseFloat(m.querySelector("#tgt-ao-prima")?.value) || 0;
@@ -7832,6 +7993,8 @@ export async function mount(container, { session, params }) {
     function openDetailDailyLogModal(log) {
       const isSales = (log.kategori || "").toUpperCase() === "SALES";
       const scores = log.indikator_skor || {};
+      const actuals = log.indikator_nilai || {};
+      const targets = log.indikator_target || {};
 
       // Dynamic indicator list from log or fallback to default
       const indList = Array.isArray(log.indikator_list) && log.indikator_list.length > 0
@@ -7840,6 +8003,10 @@ export async function mount(container, { session, params }) {
 
       const detailListHtml = indList.map(ind => {
         const val = scores[ind.key] !== undefined ? scores[ind.key] : "-";
+        const actual = actuals[ind.key];
+        const target = targets[ind.key];
+        const hasActual = actual !== undefined && actual !== null && actual !== "";
+        const unit = ind.unit || "";
         return `
           <div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-200/80">
             <div class="space-y-0.5">
@@ -7850,8 +8017,13 @@ export async function mount(container, { session, params }) {
               ${ind.unit ? `<div class="text-[10px] text-slate-400 font-medium">Parameter: ${escapeHtml(ind.unit)}</div>` : ''}
             </div>
             <div class="text-right">
-              <span class="text-sm font-black text-slate-800">${val}</span>
-              <span class="text-[10px] text-slate-400">/ 100</span>
+              ${hasActual ? `
+                <div class="text-sm font-black text-slate-800">${escapeHtml(formatSalesTarget(actual, unit))}</div>
+                <div class="text-[10px] text-slate-400">Skor ${val} / 100${target !== undefined && target !== null ? ` · Target ${escapeHtml(formatSalesTarget(target, unit))}` : ""}</div>
+              ` : `
+                <span class="text-sm font-black text-slate-800">${val}</span>
+                <span class="text-[10px] text-slate-400">/ 100</span>
+              `}
             </div>
           </div>
         `;
@@ -8022,6 +8194,15 @@ export async function mount(container, { session, params }) {
                   <div class="space-y-1 text-xs">
                     <div>Value Penjualan Tertagih: <strong>Rp ${(parseFloat(target.target_value_penjualan) || 0).toLocaleString('id-ID')}</strong></div>
                     <div>Batas Max Overdue Piutang: <strong>Rp ${(parseFloat(target.target_overdue_piutang) || 0).toLocaleString('id-ID')}</strong></div>
+                  </div>
+                </div>
+
+                <div class="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+                  <h5 class="text-xs font-bold text-slate-700 uppercase">Target Value PRIMA, DCOTA & Total ICI</h5>
+                  <div class="space-y-1 text-xs">
+                    <div>Value Prima: <strong>Rp ${(parseFloat(target.target_value_prima) || 0).toLocaleString('id-ID')}</strong></div>
+                    <div>Value DCota: <strong>Rp ${(parseFloat(target.target_value_dcota) || 0).toLocaleString('id-ID')}</strong></div>
+                    <div>Total Target Penjualan ICI: <strong>Rp ${(parseFloat(target.target_total_penjualan_ici) || 0).toLocaleString('id-ID')}</strong></div>
                   </div>
                 </div>
 
