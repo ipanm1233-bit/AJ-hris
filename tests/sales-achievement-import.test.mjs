@@ -69,6 +69,29 @@ test("kunci volume ICI sesuai empat produk", () => {
   assert.deepEqual(ACH_VOLUME_KEYS, ["volume_dulux", "volume_catylac", "volume_maxilite", "volume_aquashield"]);
 });
 
+test("parse OH menangani tanggal sebagai serial Excel dan objek Date", () => {
+  const header = [
+    "SR No.", "SR Date", "SO No.", "SO Date", "DO No.", "DO Date", "Delivery Date",
+    "Cust Code", "Cust Name", "Product Code", "Product Name", "Product Size",
+    "Brand Desc", "Brand", "Alok", "Volume", "Weight", "AR Amt / Item", "Salesman", "Status", "Ket"
+  ];
+  // Serial Excel 46328.339108796295 = 2026-11-02 08:08:19.
+  const rows = [
+    header,
+    ["", "", "SO1", "", "SP1", "", 46328.339108796295, "290564", "RIMBA", "A912", "DS CTY EX 2G BASE", "25", "CATYLAC EXTERIOR", "MID", "5", 100, 125, 3320833, "AAS", "INVOICE", ""],
+    ["", "", "SO2", "", "SP2", "", new Date(Date.UTC(2026, 10, 2, 8, 8, 19)), "290999", "TOKO B", "A927", "MS MXLT PUTIH", "4", "MAXILITE NEW", "LOW", "8", 10, 15, 880001, "AAS", "INVOICE", ""]
+  ];
+  const wb = { SheetNames: ["Sheet3"], Sheets: { Sheet3: makeSheet(rows) } };
+  const parsed = parseOhAchievementWorkbook(wb);
+  assert.equal(parsed.periode, "2026-11");
+  const aas = parsed.daily.find((d) => d.alias === "AAS");
+  assert.ok(aas);
+  assert.equal(aas.tanggal, "2026-11-02");
+  assert.equal(aas.volume_catylac, 0.125);
+  assert.equal(aas.volume_maxilite, 0.015);
+  assert.equal(aas.ao_ici, 2);
+});
+
 test("parse OH menggabungkan volume per salesman per tanggal dan menghitung AO", () => {
   const header = [
     "SR No.", "SR Date", "SO No.", "SO Date", "DO No.", "DO Date", "Delivery Date",

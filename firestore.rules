@@ -266,6 +266,13 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if isManagement();
     }
+    // Capaian sales hasil import file OH (volume & AO harian) dan AR
+    // (penjualan tertagih & overdue bulanan); dipakai untuk isi otomatis
+    // penilaian harian & realisasi bulanan sales.
+    match /sales_achievement_import/{id} {
+      allow read: if signedIn();
+      allow write: if isManagement();
+    }
     // Siklus evaluasi kontrak/probation (draft otomatis cron H-30).
     // Penulisan utama lewat endpoint /api/evaluation-cycle (Admin SDK);
     // aturan ini menjaga baca oleh user login & tulis darurat oleh manajemen.

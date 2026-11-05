@@ -55,6 +55,22 @@ const numValue = (v) => {
 
 const normKey = (v) => cleanText(v).toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").trim();
 
+// Normalisasi nilai tanggal dari sheet menjadi string "YYYY-MM-DD".
+// Menangani tiga kemungkinan: objek Date, nomor serial Excel (sel berformat
+// tanggal), dan teks "YYYY-MM-DD HH:mm:ss".
+function dateString(v) {
+  if (v instanceof Date && !Number.isNaN(v.getTime())) {
+    return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`;
+  }
+  if (typeof v === "number" && Number.isFinite(v) && v > 20000 && v < 60000) {
+    // Serial Excel: hari sejak 1899-12-30. 25569 = serial 1970-01-01.
+    const dt = new Date(Math.round((v - 25569) * 86400000));
+    return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+  }
+  const s = cleanText(v).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
+}
+
 function sheetMatrix(ws) {
   const XL = typeof window !== "undefined" ? window.XLSX : null;
   if (!ws || !XL) return [];
@@ -160,7 +176,7 @@ export function parseOhAchievementWorkbook(wb) {
       const alias = cleanText(row[col.salesman]).toUpperCase();
       if (!alias || alias === "VACANT_CBT") continue;
 
-      const tanggal = cleanText(row[col.date]).slice(0, 10);
+      const tanggal = dateString(row[col.date]);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(tanggal)) continue;
       if (!periode) periode = tanggal.slice(0, 7);
 
