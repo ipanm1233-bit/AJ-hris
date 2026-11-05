@@ -66,6 +66,38 @@ test('session profile can be built entirely from verified Firebase claims', () =
   assert.equal(profile.role, 'HRD');
 });
 
+test('device session lasts three days and slides with activity', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'js', 'auth.js'), 'utf8');
+  assert.match(source, /SESSION_TTL_MS = 3 \* 24 \* 60 \* 60 \* 1000/);
+  assert.match(source, /session_expires_at/);
+  assert.match(source, /export function touchSession/);
+  assert.match(source, /Date\.now\(\) > expiresAt/);
+  assert.match(source, /clearSession\(\)/);
+});
+
+test('password login builds a confirmation email for the registered address', () => {
+  const html = authLoginTest.buildLoginConfirmationEmail(
+    { nama: 'Ipan', username: 'IPAN', email: 'ipan@example.com' },
+    { time: 'Kamis, 5 November 2026', ip: '203.0.113.1', userAgent: 'Chrome 130' }
+  );
+  assert.match(html, /KONFIRMASI LOGIN/);
+  assert.match(html, /Ipan/);
+  assert.match(html, /203\.0\.113\.1/);
+  assert.match(html, /Chrome 130/);
+  assert.match(html, /tidak merasa melakukan login/);
+  assert.equal(authLoginTest.maskEmail('ipan@example.com'), 'ip**@example.com');
+  assert.equal(authLoginTest.isValidEmail('ipan@example.com'), true);
+  assert.equal(authLoginTest.isValidEmail('bukan-email'), false);
+});
+
+test('only a real password login sends the confirmation email', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'api', 'auth-login.js'), 'utf8');
+  assert.match(source, /sendLoginConfirmation\(profile, req\)/);
+  assert.match(source, /login_confirmation_email/);
+  assert.match(source, /verification_only/);
+  assert.match(source, /LOGIN_CONFIRMATION_EMAIL_SENT/);
+});
+
 test('rejects unexpected request fields', () => {
   assert.throws(() => assertAllowedKeys({ username: 'A', role: 'HRD' }, ['username']), /role/);
 });

@@ -98,7 +98,8 @@ async function setupGoogleLogin(container, onSuccess, setPasswordBusy) {
     if (setPasswordBusy) setPasswordBusy(true);
     setGoogleMessage(container, "Memverifikasi akun Google...", "status");
     try {
-     const remember = container.querySelector("#login-remember")?.checked === true;
+     const rememberEl = container.querySelector("#login-remember");
+     const remember = rememberEl ? rememberEl.checked : true;
      await loginWithGoogleCredential(response.credential, remember);
      setGoogleMessage(container, "Berhasil. Mengalihkan ke beranda...", "status");
      onSuccess && onSuccess();
@@ -152,7 +153,7 @@ export function mount(container, { onSuccess }) {
         <p class="text-[11px] text-slate-500">Gunakan NIK Karyawan & password yang terdaftar.</p>
        </div>
       </div>
-      <p>Sistem ini mendukung penyimpanan sesi otomatis saat Anda mencentang "Ingat Sesi Saya".</p>
+      <p>Sistem ini mendukung penyimpanan sesi otomatis selama 3 hari saat Anda mencentang "Ingat Sesi Saya".</p>
       <p>Untuk login fingerprint / biometrik PWA HP, pastikan mengaktifkan izin biometrik di browser perangkat Anda setelah berhasil masuk pertama kali.</p>
       <div class="pt-2 flex justify-end">
        <button id="btn-close-bio-modal" class="px-4 py-2 bg-maroon-700 hover:bg-maroon-800 text-white font-bold rounded-xl text-xs">Paham</button>
@@ -203,7 +204,8 @@ export function mount(container, { onSuccess }) {
 
    const username = container.querySelector("#login-username").value;
    const password = pwInput ? pwInput.value : "";
-   const remember = container.querySelector("#login-remember") ? container.querySelector("#login-remember").checked : false;
+   const rememberEl = container.querySelector("#login-remember");
+   const remember = rememberEl ? rememberEl.checked : true;
 
    try {
     await login(username, password, remember);

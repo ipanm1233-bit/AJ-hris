@@ -4,7 +4,7 @@
  * Portal HRIS & Operasional CV Andela Jaya
  * =====================================================================
  */
-import { getSession, clearSession, logout, computeVisibleMenus, canAccessRoute, MENU_CONFIG, syncSessionWithDb } from "./auth.js";
+import { getSession, clearSession, logout, computeVisibleMenus, canAccessRoute, MENU_CONFIG, syncSessionWithDb, touchSession, consumeLoginEmailNotice } from "./auth.js";
 import { parseHash, toast, fmtDateTime, openModal, closeModal, fsGetAll, fsGetOwnedRecords } from "./utils.js";
 import { icon, avatar, openNotificationCenter, showMemoDetailById, skeletonShadowLayout } from "./components.js";
 import { db, messaging, firebaseConfig, COL, collection, query, where, getDocs, doc, getDoc } from "./firebase-config.js";
@@ -15,7 +15,7 @@ import { auth } from "./firebase-config.js";
 
 // Ubah versi ini setiap ada perubahan struktur view agar browser tidak
 // mencampur HTML terbaru dengan modul JavaScript lama dari cache.
-const APP_ASSET_VERSION = "20261105-kpi-sales-v23";
+const APP_ASSET_VERSION = "20261105-session-email-v24";
 const viewContainer = document.getElementById("view-container");
 let currentUnmount = null;
 let currentRoute = null;
@@ -70,6 +70,8 @@ async function handleGlobalHashChange() {
  return;
  }
 
+ // Setiap perpindahan halaman dihitung sebagai aktivitas dan memperpanjang sesi.
+ session = touchSession() || session;
  session = await syncSessionWithDb(session);
  if (!session) {
   await showLogin();
@@ -132,6 +134,7 @@ async function boot() {
  return;
  }
 
+ session = touchSession() || session;
  session = await syncSessionWithDb(session);
  if (!session) {
   await showLogin();
@@ -145,6 +148,16 @@ async function boot() {
 
  await renderShellForUser(session);
  if (bootLoader) bootLoader.classList.add("hidden");
+
+ const loginEmailNotice = consumeLoginEmailNotice();
+ if (loginEmailNotice) {
+  if (loginEmailNotice.sent === true) {
+   toast(`Email konfirmasi login telah dikirim ke ${loginEmailNotice.recipient || "email terdaftar"}.`, "success");
+  } else if (loginEmailNotice.reason === "no_registered_email") {
+   toast("Login berhasil, tetapi email konfirmasi belum dikirim karena email Anda belum terdaftar di sistem. Hubungi HRD.", "warning");
+  }
+ }
+
  session = await enforceProfileVerification(session);
  if (!session) return;
  bindShellEvents(session);

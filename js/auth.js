@@ -22,6 +22,9 @@ import { authFetch, waitForAuthReady, publicSecurityHeaders } from "./api-client
 
 const SESSION_KEY = "andela_hris_session";
 const REMEMBER_KEY = "andela_hris_remember";
+// Sesi perangkat dipertahankan maksimal 3 hari sejak aktivitas terakhir.
+// Membuka aplikasi sebelum masa berlaku habis akan memperpanjang otomatis.
+const SESSION_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 
 /* ---------------------------------------------------------------------
  * DEFINISI MENU GLOBAL — SATU SUMBER KEBENARAN UNTUK SIDEBAR & ROUTER
@@ -165,27 +168,98 @@ export const GM_HIDDEN_MENU_IDS = ["pengaturan", "konfigurasi", "form-builder", 
  * ------------------------------------------------------------------- */
 export function getSession() {
  try {
- const raw = sessionStorage.getItem(SESSION_KEY) || (localStorage.getItem(REMEMBER_KEY) === "true" ? localStorage.getItem(SESSION_KEY) : null);
- return raw ? JSON.parse(raw) : null;
+  const remembered = localStorage.getItem(REMEMBER_KEY) === "true";
+  const raw = sessionStorage.getItem(SESSION_KEY) || (remembered ? localStorage.getItem(SESSION_KEY) : null);
+  if (!raw) return null;
+  const parsed = JSON.parse(raw);
+  if (!parsed || typeof parsed !== "object") return null;
+
+  // Sesi baru menyimpan waktu kedaluwarsa eksplisit.
+  const expiresAt = Number(parsed.session_expires_at);
+  if (Number.isFinite(expiresAt) && expiresAt > 0) {
+   if (Date.now() > expiresAt) {
+    clearSession();
+    return null;
+   }
+   return parsed;
+  }
+
+  // Kompatibilitas sesi lama: gunakan loginAt + 3 hari.
+  const loginAt = Number(parsed.loginAt);
+  if (Number.isFinite(loginAt) && loginAt > 0 && Date.now() - loginAt > SESSION_TTL_MS) {
+   clearSession();
+   return null;
+  }
+  return parsed;
  } catch { return null; }
 }
 export function setSession(data, remember = null) {
  try {
- const str = JSON.stringify(data);
- if (str) {
- sessionStorage.setItem(SESSION_KEY, str);
- const shouldRemember = remember === null ? localStorage.getItem(REMEMBER_KEY) === "true" : Boolean(remember);
- if (shouldRemember) {
-  localStorage.setItem(SESSION_KEY, str);
-  localStorage.setItem(REMEMBER_KEY, "true");
- } else {
-  localStorage.removeItem(SESSION_KEY);
-  localStorage.removeItem(REMEMBER_KEY);
- }
- }
+  const now = Date.now();
+  const payload = {
+   ...(data || {}),
+   session_last_active_at: now,
+   session_expires_at: now + SESSION_TTL_MS
+  };
+  const str = JSON.stringify(payload);
+  if (str) {
+   sessionStorage.setItem(SESSION_KEY, str);
+   const shouldRemember = remember === null ? localStorage.getItem(REMEMBER_KEY) === "true" : Boolean(remember);
+   if (shouldRemember) {
+    localStorage.setItem(SESSION_KEY, str);
+    localStorage.setItem(REMEMBER_KEY, "true");
+   } else {
+    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(REMEMBER_KEY);
+   }
+  }
+  return payload;
  } catch (e) {
- console.error("Gagal menyimpan session:", e);
+  console.error("Gagal menyimpan session:", e);
+  return null;
  }
+}
+/**
+ * Perpanjang masa berlaku sesi setiap ada aktivitas (membuka aplikasi atau
+ * berpindah halaman). Selama aplikasi dibuka minimal sekali setiap 3 hari,
+ * pengguna tidak perlu login ulang.
+ */
+export function touchSession() {
+ const session = getSession();
+ if (!session) return null;
+ try {
+  const now = Date.now();
+  const updated = {
+   ...session,
+   session_last_active_at: now,
+   session_expires_at: now + SESSION_TTL_MS
+  };
+  const str = JSON.stringify(updated);
+  sessionStorage.setItem(SESSION_KEY, str);
+  if (localStorage.getItem(REMEMBER_KEY) === "true") localStorage.setItem(SESSION_KEY, str);
+  return updated;
+ } catch (e) {
+  console.warn("Gagal memperpanjang session:", e);
+  return session;
+ }
+}
+
+const LOGIN_EMAIL_NOTICE_KEY = "andela_hris_login_email_notice";
+
+/** Simpan status email konfirmasi login agar bisa ditampilkan setelah reload. */
+export function storeLoginEmailNotice(info) {
+ if (!info || typeof info !== "object") return;
+ try { sessionStorage.setItem(LOGIN_EMAIL_NOTICE_KEY, JSON.stringify(info)); } catch (e) {}
+}
+
+/** Ambil sekali status email konfirmasi login untuk ditampilkan sebagai toast. */
+export function consumeLoginEmailNotice() {
+ try {
+  const raw = sessionStorage.getItem(LOGIN_EMAIL_NOTICE_KEY);
+  if (!raw) return null;
+  sessionStorage.removeItem(LOGIN_EMAIL_NOTICE_KEY);
+  return JSON.parse(raw);
+ } catch { return null; }
 }
 export function clearSession() {
  sessionStorage.removeItem(SESSION_KEY);
@@ -606,7 +680,7 @@ function buildSessionFromProfile(user = {}, fallback = {}) {
  };
 }
 
-export async function login(username, password, remember = false) {
+export async function login(username, password, remember = true) {
  if (!username || !password) throw new Error("Username/NIK dan password wajib diisi.");
  await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
  const response = await fetch('/api/auth-login', {
@@ -624,6 +698,7 @@ export async function login(username, password, remember = false) {
   nama: String(username).trim(),
   auth_provider: "password"
  });
+ storeLoginEmailNotice(payload.login_confirmation_email);
  setSession(session, remember);
  return session;
 }
@@ -634,7 +709,7 @@ export async function login(username, password, remember = false) {
  * token Firebase. Dengan cara ini akun lama berbasis password/custom-token
  * tidak bentrok dengan email Google yang sama.
  */
-export async function loginWithGoogleCredential(credential, remember = false) {
+export async function loginWithGoogleCredential(credential, remember = true) {
  const idToken = String(credential || "").trim();
  if (!idToken) throw new Error("Kredensial Google tidak ditemukan. Silakan ulangi login.");
  await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);

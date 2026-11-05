@@ -4,6 +4,7 @@ const path = require('path');
 const { getFirebaseAdmin } = require('../lib/firebase-admin.js');
 const { enforceRateLimit, writeAuditLog, assertAllowedKeys, verifyAppCheck, isFirestoreQuotaError } = require('../lib/security.js');
 const { strongPassword } = require('../lib/password-policy.js');
+const { isMailConfigured, sendMail } = require('../lib/mailer.js');
 
 function cleanIdentifier(value) {
   return String(value || '').trim();
@@ -19,6 +20,107 @@ function sha256(value) {
 
 function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function maskEmail(value) {
+  const email = String(value || '').trim();
+  const at = email.indexOf('@');
+  if (at <= 0) return '';
+  const name = email.slice(0, at);
+  const domain = email.slice(at + 1);
+  const visible = name.slice(0, Math.min(2, name.length));
+  return `${visible}${'*'.repeat(Math.max(1, name.length - visible.length))}@${domain}`;
+}
+
+function clientIp(req) {
+  const forwarded = String(req?.headers?.['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || String(req?.socket?.remoteAddress || req?.ip || '-').trim() || '-';
+}
+
+function formatLoginTime(date = new Date()) {
+  try {
+    return new Intl.DateTimeFormat('id-ID', {
+      dateStyle: 'full',
+      timeStyle: 'long',
+      timeZone: 'Asia/Jakarta'
+    }).format(date);
+  } catch {
+    return date.toISOString();
+  }
+}
+
+function buildLoginConfirmationEmail(profile = {}, meta = {}) {
+  const nama = escapeHtml(profile.nama || profile.username || 'Karyawan');
+  const waktu = escapeHtml(meta.time || formatLoginTime(meta.at || new Date()));
+  const perangkat = escapeHtml(String(meta.userAgent || 'Tidak diketahui').slice(0, 300));
+  const ip = escapeHtml(meta.ip || '-');
+  const akun = escapeHtml(profile.username || profile.nik || profile.uid || '-');
+  return `<!doctype html><html><body style="margin:0;background:#f8fafc;font-family:Arial,sans-serif;color:#1e293b">
+<div style="max-width:640px;margin:24px auto;background:#fff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden">
+  <div style="height:7px;background:#7a1f2b"></div>
+  <div style="padding:28px">
+    <span style="font-size:11px;font-weight:800;color:#7a1f2b;letter-spacing:.12em">KONFIRMASI LOGIN</span>
+    <h1 style="font-size:23px;line-height:1.3;margin:10px 0 8px">Login berhasil ke HRIS Andela Jaya</h1>
+    <p style="font-size:14px;line-height:1.7;margin:0 0 18px">Halo <strong>${nama}</strong>, akun HRIS Anda baru saja digunakan untuk masuk menggunakan username/NIK dan kata sandi.</p>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+      <tr><td style="padding:10px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-weight:700;width:38%">Waktu login</td><td style="padding:10px 12px;border-bottom:1px solid #e2e8f0">${waktu}</td></tr>
+      <tr><td style="padding:10px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-weight:700">Akun</td><td style="padding:10px 12px;border-bottom:1px solid #e2e8f0">${akun}</td></tr>
+      <tr><td style="padding:10px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-weight:700">Alamat IP</td><td style="padding:10px 12px;border-bottom:1px solid #e2e8f0">${ip}</td></tr>
+      <tr><td style="padding:10px 12px;background:#f8fafc;font-weight:700;vertical-align:top">Perangkat</td><td style="padding:10px 12px;word-break:break-word">${perangkat}</td></tr>
+    </table>
+    <div style="margin-top:18px;padding:13px 15px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;font-size:12.5px;line-height:1.65;color:#9a3412">
+      <strong>Catatan keamanan:</strong> jika Anda tidak merasa melakukan login ini, segera ubah kata sandi Anda dan hubungi HRD.
+    </div>
+    <p style="font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:18px;margin-top:24px">Email ini dikirim otomatis oleh HRIS Andela Jaya. Jangan membalas email ini.</p>
+  </div>
+</div>
+</body></html>`;
+}
+
+/**
+ * Kirim email konfirmasi login ke email yang terdaftar pada profil/master karyawan.
+ * Kegagalan pengiriman tidak boleh mengunci pengguna dari sistem; statusnya
+ * dikembalikan agar bisa ditampilkan dan dicatat pada audit log.
+ */
+async function sendLoginConfirmation(profile, req) {
+  const registered = String(profile?.email || '').trim();
+  const authEmail = String(profile?.auth_email || '').trim();
+  const fallbackEmail = isValidEmail(authEmail) && !authEmail.toLowerCase().endsWith('@auth.andelajaya.internal') ? authEmail : '';
+  const to = isValidEmail(registered) ? registered : fallbackEmail;
+  if (!to) {
+    return { sent: false, reason: 'no_registered_email' };
+  }
+  if (!isMailConfigured()) {
+    console.warn('[auth-login] email konfirmasi tidak dikirim: GMAIL_USER/GMAIL_APP_PASSWORD belum diset.');
+    return { sent: false, reason: 'mail_not_configured' };
+  }
+  try {
+    const info = await sendMail({
+      from: `"HRIS Andela Jaya" <${process.env.GMAIL_USER}>`,
+      to,
+      subject: 'Konfirmasi Login HRIS Andela Jaya',
+      html: buildLoginConfirmationEmail(profile, {
+        at: new Date(),
+        ip: clientIp(req),
+        userAgent: req?.headers?.['user-agent'] || 'Tidak diketahui'
+      }),
+      disableFileAccess: true,
+      disableUrlAccess: true
+    });
+    return { sent: true, messageId: info.messageId, recipient: maskEmail(to) };
+  } catch (error) {
+    console.warn('[auth-login] email konfirmasi gagal dikirim:', error.message);
+    return { sent: false, reason: 'send_failed' };
+  }
 }
 
 function internalAuthEmail(documentId) {
@@ -98,6 +200,15 @@ async function getEmployee(db, user, identifier) {
   return {};
 }
 
+function registeredEmail(user = {}, employee = {}) {
+  const candidates = [
+    user.email, user.email_karyawan, user.email_perusahaan,
+    employee.email, employee.email_karyawan, employee.email_perusahaan,
+    employee.email_pribadi, employee.email_personal, employee.email_aktif
+  ];
+  return candidates.map(value => String(value || '').trim()).find(value => isValidEmail(value)) || '';
+}
+
 function buildProfile(uid, documentId, user, employee, authEmail) {
   return {
     uid,
@@ -105,7 +216,7 @@ function buildProfile(uid, documentId, user, employee, authEmail) {
     username: user.username || documentId,
     nik: String(user.nik || employee.nik_karyawan || employee.nik || ''),
     nama: user.nama || employee.nama_karyawan || user.username || documentId,
-    email: user.email || employee.email || '',
+    email: registeredEmail(user, employee),
     auth_email: authEmail,
     role: normalizeRole(user.role || employee.role),
     posisi: user.posisi || employee.jabatan || '-',
@@ -211,7 +322,7 @@ async function migrateOrVerifyUser(admin, db, legacy, identifier, password) {
     const validLegacy = (storedHash && storedHash === sha256(password)) || (storedPlain && storedPlain === password);
     if (!validLegacy) throw new Error('Username/NIK atau password salah.');
 
-    const preferredEmail = String(user.email || employee.email || '').trim().toLowerCase();
+    const preferredEmail = registeredEmail(user, employee).toLowerCase();
     authEmail = isValidEmail(preferredEmail) ? preferredEmail : internalAuthEmail(legacy.id);
     try {
       authUser = await admin.auth().getUserByEmail(authEmail);
@@ -302,11 +413,31 @@ module.exports = async function handler(req, res) {
       recordId: profile.uid
     });
 
-    return res.status(200).json({ success: true, customToken, profile });
+    // Login dengan username/NIK + password mengirim email konfirmasi ke email
+    // yang terdaftar. Re-autentikasi untuk pengeditan (verifyOnly) tidak dikirim.
+    let loginConfirmationEmail = { sent: false, reason: verifyOnly ? 'verification_only' : 'not_attempted' };
+    if (!verifyOnly) {
+      loginConfirmationEmail = await sendLoginConfirmation(profile, req);
+      try {
+        await writeAuditLog(db, req, profile, {
+          action: loginConfirmationEmail.sent ? 'LOGIN_CONFIRMATION_EMAIL_SENT' : 'LOGIN_CONFIRMATION_EMAIL_SKIPPED',
+          module: 'AUTH',
+          recordId: profile.uid,
+          metadata: {
+            reason: loginConfirmationEmail.reason || '',
+            recipient: loginConfirmationEmail.recipient || ''
+          }
+        });
+      } catch (auditError) {
+        console.warn('[auth-login] gagal mencatat audit email konfirmasi:', auditError.message);
+      }
+    }
+
+    return res.status(200).json({ success: true, customToken, profile, login_confirmation_email: loginConfirmationEmail });
   } catch (error) {
     console.warn('[auth-login] rejected:', error.code || error.message);
     return res.status(401).json({ success: false, error: 'Username/NIK atau password salah.' });
   }
 };
 
-module.exports._test = { profileFromFirebaseUser, findFirebaseAuthUser, verifyWithoutFirestore };
+module.exports._test = { profileFromFirebaseUser, findFirebaseAuthUser, verifyWithoutFirestore, buildLoginConfirmationEmail, maskEmail, isValidEmail };
