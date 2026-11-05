@@ -5,10 +5,10 @@ export const MONTHLY_METRICS = {
     { key: "target_volume_catylac", label: "Volume Catylac", unit: "Ton" },
     { key: "target_volume_maxilite", label: "Volume Maxilite", unit: "Ton" },
     { key: "target_volume_aquashield", label: "Volume Aquashield", unit: "Ton" },
+    { key: "target_total_volume_ici", label: "Total Volume ICI", unit: "Ton", derived: true },
     { key: "target_value_penjualan", label: "Penjualan Tertagih", unit: "Rp" },
     { key: "target_value_prima", label: "Value Prima", unit: "Rp" },
     { key: "target_value_dcota", label: "Value DCota", unit: "Rp" },
-    { key: "target_total_penjualan_ici", label: "Total Target Penjualan ICI", unit: "Rp" },
     { key: "target_overdue_piutang", label: "Overdue Piutang (batas maksimum)", unit: "Rp", lowerIsBetter: true },
     { key: "target_ao_ici", label: "Active Outlet ICI", unit: "Toko" },
     { key: "target_ao_prima", label: "Active Outlet PRIMA", unit: "Toko" },
@@ -22,12 +22,37 @@ export const MONTHLY_METRICS = {
   ]
 };
 
+const VOLUME_METRIC_KEYS = ["target_volume_dulux", "target_volume_catylac", "target_volume_maxilite", "target_volume_aquashield"];
+
+function sumPositiveNumbers(source, keys) {
+  return keys.reduce((total, key) => {
+    const value = Number(source?.[key]);
+    return total + (Number.isFinite(value) && value >= 0 ? value : 0);
+  }, 0);
+}
+
 export function monthlyMetricRows(target = {}) {
   const metrics = String(target.kategori || "").toUpperCase() === "SALES" ? MONTHLY_METRICS.SALES : MONTHLY_METRICS.NON_SALES;
   const values = target.capaian_bulanan?.nilai || {};
   return metrics.map(metric => {
-    const planned = Number(target[metric.key]);
-    const actual = values[metric.key] === undefined || values[metric.key] === null || values[metric.key] === "" ? null : Number(values[metric.key]);
+    let planned = Number(target[metric.key]);
+    let actual = values[metric.key] === undefined || values[metric.key] === null || values[metric.key] === "" ? null : Number(values[metric.key]);
+
+    // Total Volume ICI adalah penjumlahan otomatis empat volume produk.
+    if (metric.derived) {
+      const targetsFilled = VOLUME_METRIC_KEYS.every(key => {
+        const value = target[key];
+        return value !== undefined && value !== null && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0;
+      });
+      planned = targetsFilled ? sumPositiveNumbers(target, VOLUME_METRIC_KEYS) : NaN;
+
+      const actualFilled = VOLUME_METRIC_KEYS.some(key => {
+        const value = values[key];
+        return value !== undefined && value !== null && value !== "" && Number.isFinite(Number(value));
+      });
+      actual = actualFilled ? sumPositiveNumbers(values, VOLUME_METRIC_KEYS) : null;
+    }
+
     const validTarget = Number.isFinite(planned) && planned >= 0;
     const validActual = actual !== null && Number.isFinite(actual) && actual >= 0;
     let attainment = null;
@@ -45,6 +70,7 @@ export function validateMonthlyAchievement(target, values) {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(target.periode || ""))) return "Periode target bulanan tidak valid.";
   if (!metrics.length || !values || typeof values !== "object") return "Isi realisasi target terlebih dahulu.";
   for (const metric of metrics) {
+    if (metric.derived) continue;
     const value = values[metric.key];
     if (value === null || value === undefined || value === "") return `Isi realisasi ${metric.label}.`;
     if (!Number.isFinite(Number(value)) || Number(value) < 0) return `Realisasi ${metric.label} harus angka positif atau nol.`;

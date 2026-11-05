@@ -12,7 +12,7 @@ import { authFetch } from "../api-client.js";
 import { resolveWorkSchedule } from "../work-schedule.mjs";
 import { calculateAttendancePenalty } from "../attendance-penalty.mjs";
 import { MONTHLY_METRICS, monthlyMetricRows, validateMonthlyAchievement } from "../monthly-achievement.mjs";
-import { resolveSalesIndicatorSpec, computeSalesAchievementScore, findSalesTarget, formatSalesTarget, normalizeSalesIndicatorList } from "../kpi-sales.mjs";
+import { resolveSalesIndicatorSpec, computeSalesAchievementScore, findSalesTarget, formatSalesTarget, normalizeSalesIndicatorList, SALES_VOLUME_INDICATOR_KEYS, sumVolumeTargets, sumVolumeActuals, hasVolumeActual, roundVolumeTotal } from "../kpi-sales.mjs";
 import { summarizeReviewTasks, resolveCoordinationStage } from "../contract-coordination.mjs";
 import { employeeHistoryRows } from "../employee-history.mjs";
 import {
@@ -42,9 +42,9 @@ export const SALES_LAMPIRAN1_INDICATORS = [
  { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Volume Catylac", unit: "Ton / Liter / Kaleng", key: "volume_catylac", defaultTarget: 15 },
  { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Volume Maxilite", unit: "Ton / Liter / Kaleng", key: "volume_maxilite", defaultTarget: 10 },
  { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Volume Aquashield", unit: "Ton / Liter / Kaleng", key: "volume_aquashield", defaultTarget: 5 },
+ { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Total Volume ICI", unit: "Ton", key: "total_volume_ici", defaultTarget: 40 },
  { principle: "ICI", aspek: "Sales Volume (SO)", indikator: "Total Weighted Target", unit: "% Capaian", key: "total_weighted_target", defaultTarget: 100 },
  { principle: "ALL", aspek: "Value Penjualan Tertagih", indikator: "Value Penjualan Tertagih", unit: "Rp", key: "value_penjualan_tertagih", defaultTarget: 100000000 },
- { principle: "ICI", aspek: "Total Penjualan ICI", indikator: "Total Target Penjualan ICI", unit: "Rp", key: "total_target_penjualan_ici", defaultTarget: 150000000 },
  { principle: "ALL", aspek: "Over due ( sisa piutang Toko )", indikator: "Over due Piutang Toko", unit: "Rp (Max Limit)", key: "overdue_piutang", defaultTarget: 20000000 },
  { principle: "ICI", aspek: "AO - ICI", indikator: "Active Outlet ICI", unit: "Toko", key: "ao_ici", defaultTarget: 25 },
  { principle: "PRIMA", aspek: "Sales Value (SO) - Tertagih", indikator: "Value Prima", unit: "Rp", key: "sales_value_prima", defaultTarget: 50000000 },
@@ -6600,7 +6600,8 @@ export async function mount(container, { session, params }) {
                     if (isSales) {
                       const vDulux = t.target_volume_dulux ? `${t.target_volume_dulux} Ton Dulux` : "";
                       const valSales = t.target_value_penjualan ? `Rp ${(parseFloat(t.target_value_penjualan) || 0).toLocaleString('id-ID')}` : "";
-                      const totalIci = t.target_total_penjualan_ici ? `Total ICI Rp ${(parseFloat(t.target_total_penjualan_ici) || 0).toLocaleString('id-ID')}` : "";
+                      const totalVolumeIci = Number(t.target_total_volume_ici) || ["target_volume_dulux", "target_volume_catylac", "target_volume_maxilite", "target_volume_aquashield"].reduce((sum, key) => sum + (parseFloat(t[key]) || 0), 0);
+                      const totalIci = totalVolumeIci ? `Total Vol ${totalVolumeIci.toLocaleString('id-ID', { maximumFractionDigits: 3 })} Ton` : "";
                       const valPrima = t.target_value_prima ? `Prima Rp ${(parseFloat(t.target_value_prima) || 0).toLocaleString('id-ID')}` : "";
                       const valDcota = t.target_value_dcota ? `DCota Rp ${(parseFloat(t.target_value_dcota) || 0).toLocaleString('id-ID')}` : "";
                       const ao = t.target_ao_ici ? `${t.target_ao_ici} AO Toko` : "";
@@ -6709,7 +6710,7 @@ export async function mount(container, { session, params }) {
           }
           await ensureXlsxLoaded();
           const achievementMetrics = [...MONTHLY_METRICS.SALES, ...MONTHLY_METRICS.NON_SALES];
-          const headers = ["Periode", "Nama Karyawan", "NIK", "Jabatan", "Kategori", "Target Vol Dulux", "Target Vol Catylac", "Target Vol Maxilite", "Target Vol Aquashield", "Target Value Penjualan", "Target Value Prima", "Target Value DCota", "Target Total Penjualan ICI", "Target Overdue Limit", "Target AO ICI", "Target AO Prima", "Target AO DCota", "Target SOP %", "Target SLA Respon %", "Catatan Target", "Ditetapkan Oleh", ...achievementMetrics.map(metric => `Realisasi ${metric.label}`), "Catatan Realisasi", "Dicatat Oleh"];
+          const headers = ["Periode", "Nama Karyawan", "NIK", "Jabatan", "Kategori", "Target Vol Dulux", "Target Vol Catylac", "Target Vol Maxilite", "Target Vol Aquashield", "Target Total Volume ICI", "Target Value Penjualan", "Target Value Prima", "Target Value DCota", "Target Overdue Limit", "Target AO ICI", "Target AO Prima", "Target AO DCota", "Target SOP %", "Target SLA Respon %", "Catatan Target", "Ditetapkan Oleh", ...achievementMetrics.map(metric => `Realisasi ${metric.label}`), "Catatan Realisasi", "Dicatat Oleh"];
           const matrix = filteredTargets.map(t => [
             t.periode || "-",
             t.nama_karyawan || "-",
@@ -6720,10 +6721,10 @@ export async function mount(container, { session, params }) {
             t.target_volume_catylac || 0,
             t.target_volume_maxilite || 0,
             t.target_volume_aquashield || 0,
+            t.target_total_volume_ici || ["target_volume_dulux", "target_volume_catylac", "target_volume_maxilite", "target_volume_aquashield"].reduce((sum, key) => sum + (parseFloat(t[key]) || 0), 0),
             t.target_value_penjualan || 0,
             t.target_value_prima || 0,
             t.target_value_dcota || 0,
-            t.target_total_penjualan_ici || 0,
             t.target_overdue_piutang || 0,
             t.target_ao_ici || 0,
             t.target_ao_prima || 0,
@@ -7196,6 +7197,60 @@ export async function mount(container, { session, params }) {
             });
           }
 
+          function scoreBadgeClass(score) {
+            const base = "min-w-[78px] text-center px-2 py-1 rounded-md text-[10.5px] font-black";
+            if (score === undefined || score === null || score === "") return `${base} bg-slate-100 text-slate-500 border border-slate-200`;
+            const n = Number(score);
+            if (n >= 85) return `${base} bg-emerald-50 text-emerald-700 border border-emerald-200`;
+            if (n >= 70) return `${base} bg-blue-50 text-blue-700 border border-blue-200`;
+            if (n >= 55) return `${base} bg-amber-50 text-amber-700 border border-amber-200`;
+            return `${base} bg-rose-50 text-rose-700 border border-rose-200`;
+          }
+
+          function scoreBadgeText(score) {
+            if (score === undefined || score === null || score === "") return "— / 100";
+            return `${Number(score).toFixed(2)} / 100`;
+          }
+
+          function renderScoreBadge(key) {
+            const score = currentScores[key];
+            return `<div class="${scoreBadgeClass(score)}" data-score-badge="${key}">${scoreBadgeText(score)}</div>`;
+          }
+
+          function paintScoreBadge(key) {
+            const badge = containerIndicators.querySelector(`[data-score-badge="${key}"]`);
+            if (!badge) return;
+            const score = currentScores[key];
+            badge.className = scoreBadgeClass(score);
+            badge.textContent = scoreBadgeText(score);
+          }
+
+          // Total Volume ICI = penjumlahan otomatis empat volume produk.
+          function syncTotalVolume() {
+            if (currentKat !== "SALES") return;
+            const totalTarget = roundVolumeTotal(sumVolumeTargets(activeSalesTarget(), activeIndicators));
+            const filled = hasVolumeActual(currentActuals);
+            const totalActual = roundVolumeTotal(sumVolumeActuals(currentActuals));
+
+            if (filled) {
+              currentActuals.total_volume_ici = totalActual;
+              const score = computeSalesAchievementScore({ actual: totalActual, target: totalTarget });
+              if (score === null) delete currentScores.total_volume_ici;
+              else currentScores.total_volume_ici = score;
+            } else {
+              delete currentActuals.total_volume_ici;
+              delete currentScores.total_volume_ici;
+            }
+
+            const display = containerIndicators.querySelector("[data-total-volume-display]");
+            if (display) {
+              display.textContent = filled
+                ? `${totalActual.toLocaleString("id-ID", { maximumFractionDigits: 3 })} Ton`
+                : "— Ton";
+            }
+            paintScoreBadge("total_volume_ici");
+          }
+
           function readFormScores() {
             containerIndicators.querySelectorAll(".ph-score-input").forEach(inp => {
               const k = inp.dataset.indKey;
@@ -7232,20 +7287,10 @@ export async function mount(container, { session, params }) {
                 }
               }
               const badge = containerIndicators.querySelector(`[data-score-badge="${k}"]`);
-              if (badge) {
-                const sc = currentScores[k];
-                badge.textContent = sc === undefined ? "— / 100" : `${Number(sc).toFixed(2)} / 100`;
-                badge.className = sc === undefined
-                  ? "min-w-[78px] text-center px-2 py-1 rounded-md text-[10.5px] font-black bg-slate-100 text-slate-500 border border-slate-200"
-                  : sc >= 85
-                    ? "min-w-[78px] text-center px-2 py-1 rounded-md text-[10.5px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200"
-                    : sc >= 70
-                      ? "min-w-[78px] text-center px-2 py-1 rounded-md text-[10.5px] font-black bg-blue-50 text-blue-700 border border-blue-200"
-                      : sc >= 55
-                        ? "min-w-[78px] text-center px-2 py-1 rounded-md text-[10.5px] font-black bg-amber-50 text-amber-700 border border-amber-200"
-                        : "min-w-[78px] text-center px-2 py-1 rounded-md text-[10.5px] font-black bg-rose-50 text-rose-700 border border-rose-200";
-              }
+              if (badge) paintScoreBadge(k);
             });
+
+            syncTotalVolume();
           }
 
           function renderIndicators() {
@@ -7282,7 +7327,48 @@ export async function mount(container, { session, params }) {
                   const isEditingThis = !!ind._isEditing;
                   const salesSpec = currentKat === "SALES" ? resolveSalesIndicatorSpec(ind, salesTarget) : null;
                   const actualVal = currentActuals[ind.key] !== undefined ? currentActuals[ind.key] : "";
-                  const computedScore = currentScores[ind.key] !== undefined ? currentScores[ind.key] : "";
+
+                  if (salesSpec && salesSpec.derived && !isEditingThis) {
+                    const derivedTarget = roundVolumeTotal(sumVolumeTargets(salesTarget, activeIndicators));
+                    const volumeFilled = hasVolumeActual(currentActuals);
+                    const derivedActual = roundVolumeTotal(sumVolumeActuals(currentActuals));
+                    return `
+                      <div class="p-3 bg-amber-50/70 rounded-xl border border-amber-200 shadow-2xs space-y-2 text-left transition">
+                        <div class="flex items-center justify-between flex-wrap gap-2">
+                          <div class="flex items-center gap-2 flex-wrap">
+                            <span class="w-5 h-5 rounded-md bg-amber-600 text-white font-black text-[11px] flex items-center justify-center shrink-0">${idx + 1}</span>
+                            <span class="bg-amber-100 text-amber-900 px-2 py-0.5 rounded text-[10.5px] font-bold uppercase border border-amber-300">
+                              ${escapeHtml(ind.principle ? ind.principle + ' • ' : '')}${escapeHtml(ind.aspek || 'Sales')}
+                            </span>
+                            <span class="text-[10.5px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
+                              Target: <b>${formatSalesTarget(derivedTarget, "Ton")}</b>
+                            </span>
+                          </div>
+                          <div class="flex items-center gap-1">
+                            <button type="button" data-toggle-edit="${ind.key}" class="px-2 py-0.5 text-[11px] font-bold text-blue-700 hover:text-blue-900 bg-white hover:bg-blue-50 rounded-md border border-blue-200 transition flex items-center gap-1" title="Ubah nama indikator atau aspek">
+                              <span><i class='fa-solid fa-pen' aria-hidden='true'></i></span> Edit
+                            </button>
+                            <button type="button" data-delete-ind="${ind.key}" class="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition" title="Hapus indikator ini untuk penilaian karyawan ini">
+                              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                            </button>
+                          </div>
+                        </div>
+
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                          <div>
+                            <p class="text-xs font-bold text-slate-800">${escapeHtml(ind.indikator || 'Total Volume ICI')}</p>
+                            <p class="text-[10.5px] text-slate-500">Otomatis dijumlahkan dari Volume Dulux, Catylac, Maxilite, dan Aquashield.</p>
+                          </div>
+                          <div class="flex items-center gap-2 shrink-0">
+                            <div class="w-36 px-2.5 py-1.5 text-xs font-black text-amber-900 border border-amber-300 rounded-lg bg-white text-right" data-total-volume-display>
+                              ${volumeFilled ? `${derivedActual.toLocaleString("id-ID", { maximumFractionDigits: 3 })} Ton` : "— Ton"}
+                            </div>
+                            ${renderScoreBadge(ind.key)}
+                          </div>
+                        </div>
+                      </div>
+                    `;
+                  }
 
                   if (salesSpec && !isEditingThis) {
                     return `
@@ -7317,9 +7403,7 @@ export async function mount(container, { session, params }) {
                               <input type="number" step="any" inputmode="decimal" data-ind-key="${ind.key}" data-target-value="${salesSpec.targetValue || 0}" data-lower="${salesSpec.lowerIsBetter ? 1 : 0}" value="${actualVal}" min="0" class="ph-actual-input w-full px-2.5 py-1.5 text-xs font-black text-slate-800 border border-slate-200 rounded-lg outline-none focus:border-maroon-500 bg-slate-50 focus:bg-white text-right" placeholder="0" required>
                               <span class="absolute right-2.5 top-2 text-slate-400 text-[10px] font-bold pointer-events-none">${escapeHtml(salesSpec.unit)}</span>
                             </div>
-                            <div class="min-w-[78px] text-center px-2 py-1 rounded-md text-[10.5px] font-black ${computedScore === '' ? 'bg-slate-100 text-slate-500 border border-slate-200' : computedScore >= 85 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : computedScore >= 70 ? 'bg-blue-50 text-blue-700 border border-blue-200' : computedScore >= 55 ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}" data-score-badge="${ind.key}">
-                              ${computedScore === '' ? '— / 100' : `${Number(computedScore).toFixed(2)} / 100`}
-                            </div>
+                            ${renderScoreBadge(ind.key)}
                           </div>
                         </div>
                       </div>
@@ -7643,7 +7727,9 @@ export async function mount(container, { session, params }) {
                 indikatorNilaiMap[ind.key] = currentActuals[ind.key];
               }
               const spec = currentKat === "SALES" ? resolveSalesIndicatorSpec(ind, saveSalesTarget) : null;
-              if (spec && Number.isFinite(Number(spec.targetValue))) {
+              if (spec && spec.derived) {
+                indikatorTargetMap[ind.key] = roundVolumeTotal(sumVolumeTargets(saveSalesTarget, activeIndicators));
+              } else if (spec && Number.isFinite(Number(spec.targetValue))) {
                 indikatorTargetMap[ind.key] = Number(spec.targetValue);
               }
             });
@@ -7816,6 +7902,17 @@ export async function mount(container, { session, params }) {
                     </div>
                   </div>
 
+                  <div class="mt-3 p-2.5 rounded-lg border border-amber-200 bg-amber-50 flex items-center justify-between gap-3">
+                    <div>
+                      <span class="block text-[11px] font-bold text-amber-900">Total Target Penjualan ICI (otomatis)</span>
+                      <span class="block text-[10px] text-amber-700">Penjumlahan target volume Dulux, Catylac, Maxilite, dan Aquashield.</span>
+                    </div>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                      <input type="text" id="tgt-total-volume" readonly value="" class="w-24 px-2.5 py-1.5 text-xs font-black text-right text-amber-900 border border-amber-300 rounded-lg bg-white outline-none cursor-not-allowed">
+                      <span class="text-[11px] font-bold text-amber-900">Ton</span>
+                    </div>
+                  </div>
+
                   <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 pt-2">Target Value Penjualan & Piutang</h4>
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
@@ -7828,8 +7925,8 @@ export async function mount(container, { session, params }) {
                     </div>
                   </div>
 
-                  <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 pt-2">Target Value PRIMA, DCOTA & Total Penjualan ICI</h4>
-                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2 pt-2">Target Value PRIMA & DCOTA</h4>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label class="block text-[11px] font-bold text-slate-600 mb-1">Value Prima (Rp)</label>
                       <input type="number" step="any" inputmode="decimal" id="tgt-val-prima" value="${existing?.target_value_prima ?? 50000000}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
@@ -7837,10 +7934,6 @@ export async function mount(container, { session, params }) {
                     <div>
                       <label class="block text-[11px] font-bold text-slate-600 mb-1">Value DCota (Rp)</label>
                       <input type="number" step="any" inputmode="decimal" id="tgt-val-dcota" value="${existing?.target_value_dcota ?? 50000000}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
-                    </div>
-                    <div>
-                      <label class="block text-[11px] font-bold text-slate-600 mb-1">Total Target Penjualan ICI (Rp)</label>
-                      <input type="number" step="any" inputmode="decimal" id="tgt-val-total-ici" value="${existing?.target_total_penjualan_ici ?? 150000000}" class="w-full px-2.5 py-1.5 text-xs font-bold border border-slate-200 rounded-lg outline-none focus:border-maroon-500">
                     </div>
                   </div>
 
@@ -7861,6 +7954,17 @@ export async function mount(container, { session, params }) {
                   </div>
                 </div>
               `;
+              const volumeIds = ["tgt-vol-dulux", "tgt-vol-catylac", "tgt-vol-maxilite", "tgt-vol-aquashield"];
+              const syncTargetVolume = () => {
+                const total = volumeIds.reduce((sum, id) => sum + (parseFloat(container.querySelector(`#${id}`)?.value) || 0), 0);
+                const display = container.querySelector("#tgt-total-volume");
+                if (display) display.value = total.toLocaleString("id-ID", { maximumFractionDigits: 3 });
+              };
+              volumeIds.forEach(id => {
+                const input = container.querySelector(`#${id}`);
+                if (input) input.addEventListener("input", syncTargetVolume);
+              });
+              syncTargetVolume();
             } else {
               container.innerHTML = `
                 <div class="p-4 bg-white rounded-xl border border-slate-200 space-y-4">
@@ -7946,7 +8050,10 @@ export async function mount(container, { session, params }) {
               payload.target_value_penjualan = parseFloat(m.querySelector("#tgt-val-penjualan")?.value) || 0;
               payload.target_value_prima = parseFloat(m.querySelector("#tgt-val-prima")?.value) || 0;
               payload.target_value_dcota = parseFloat(m.querySelector("#tgt-val-dcota")?.value) || 0;
-              payload.target_total_penjualan_ici = parseFloat(m.querySelector("#tgt-val-total-ici")?.value) || 0;
+              payload.target_total_volume_ici = roundVolumeTotal(
+                ["tgt-vol-dulux", "tgt-vol-catylac", "tgt-vol-maxilite", "tgt-vol-aquashield"]
+                  .reduce((sum, id) => sum + (parseFloat(m.querySelector(`#${id}`)?.value) || 0), 0)
+              );
               payload.target_overdue_piutang = parseFloat(m.querySelector("#tgt-overdue")?.value) || 0;
               payload.target_ao_ici = parseFloat(m.querySelector("#tgt-ao-ici")?.value) || 0;
               payload.target_ao_prima = parseFloat(m.querySelector("#tgt-ao-prima")?.value) || 0;
@@ -8112,7 +8219,13 @@ export async function mount(container, { session, params }) {
         bodyHtml: `<div class="space-y-4 text-left">
           <p class="text-xs text-slate-600">Isi hasil akhir bulan untuk setiap indikator. Nilai target tetap tersimpan; perubahan realisasi dicatat atas nama penginput.</p>
           <form id="monthly-achievement-form" class="space-y-2">
-            ${metrics.map(metric => `<label class="grid grid-cols-1 sm:grid-cols-3 items-center gap-2 rounded-lg border border-slate-200 p-2 text-xs">
+            ${metrics.map(metric => metric.derived
+              ? `<div class="grid grid-cols-1 sm:grid-cols-3 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs">
+              <span class="font-bold text-amber-900">${escapeHtml(metric.label)} <span class="font-normal">(otomatis)</span></span>
+              <span class="text-amber-800">Target: ${metric.target === null ? "-" : metric.target.toLocaleString("id-ID")} ${escapeHtml(metric.unit)}</span>
+              <span data-derived-total="${metric.key}" class="rounded-lg border border-amber-200 bg-white px-2 py-1.5 text-right text-xs font-bold text-amber-900">${metric.actual === null ? "Otomatis dari volume" : metric.actual.toLocaleString("id-ID")}</span>
+            </div>`
+              : `<label class="grid grid-cols-1 sm:grid-cols-3 items-center gap-2 rounded-lg border border-slate-200 p-2 text-xs">
               <span class="font-bold text-slate-700">${escapeHtml(metric.label)}</span>
               <span class="text-slate-500">Target: ${metric.target === null ? "-" : metric.target.toLocaleString("id-ID")} ${escapeHtml(metric.unit)}</span>
               <input data-achievement-key="${metric.key}" type="number" min="0" ${metric.unit === "%" ? 'max="100"' : ''} step="any" required value="${metric.actual === null ? "" : metric.actual}" placeholder="Realisasi" class="rounded-lg border border-slate-300 px-2 py-1.5 text-xs">
@@ -8123,11 +8236,33 @@ export async function mount(container, { session, params }) {
           </form></div>`,
         footerHtml: `<button id="monthly-achievement-cancel" class="rounded-lg bg-slate-100 px-4 py-2 text-xs font-bold">Batal</button><button id="monthly-achievement-save" class="rounded-lg bg-maroon-700 px-4 py-2 text-xs font-bold text-white">Simpan Capaian</button>`,
         onMount: modal => {
+          const volumeMetricKeys = ["target_volume_dulux", "target_volume_catylac", "target_volume_maxilite", "target_volume_aquashield"];
+          const readVolumeTotal = () => {
+            const form = modal.querySelector("#monthly-achievement-form");
+            const total = volumeMetricKeys.reduce((sum, key) => sum + (Number(form.querySelector(`[data-achievement-key="${key}"]`)?.value) || 0), 0);
+            const filled = volumeMetricKeys.some(key => {
+              const value = form.querySelector(`[data-achievement-key="${key}"]`)?.value;
+              return value !== undefined && value !== null && value !== "";
+            });
+            return { form, total, filled };
+          };
+          const syncDerivedVolume = () => {
+            const { form, total, filled } = readVolumeTotal();
+            const display = form.querySelector('[data-derived-total="target_total_volume_ici"]');
+            if (display) display.textContent = filled ? total.toLocaleString("id-ID", { maximumFractionDigits: 3 }) : "Otomatis dari volume";
+          };
+          modal.querySelectorAll("[data-achievement-key]").forEach(input => {
+            if (volumeMetricKeys.includes(input.dataset.achievementKey)) input.addEventListener("input", syncDerivedVolume);
+          });
+          syncDerivedVolume();
+
           modal.querySelector("#monthly-achievement-cancel").onclick = closeModal;
           modal.querySelector("#monthly-achievement-save").onclick = async () => {
             const form = modal.querySelector("#monthly-achievement-form");
             if (!form.reportValidity()) return;
             const values = Object.fromEntries([...form.querySelectorAll("[data-achievement-key]")].map(input => [input.dataset.achievementKey, input.value]));
+            const { total: volumeTotal, filled: volumeFilled } = readVolumeTotal();
+            if (volumeFilled) values.target_total_volume_ici = String(volumeTotal);
             const error = validateMonthlyAchievement(target, values);
             if (error) return toast(error, "error");
             const button = modal.querySelector("#monthly-achievement-save");
@@ -8155,6 +8290,10 @@ export async function mount(container, { session, params }) {
 
     function openDetailTargetBulananModal(target) {
       const isSales = (target.kategori || "").toUpperCase() === "SALES";
+      const volumeTargetKeys = ["target_volume_dulux", "target_volume_catylac", "target_volume_maxilite", "target_volume_aquashield"];
+      const totalVolumeIci = isSales
+        ? (Number(target.target_total_volume_ici) || volumeTargetKeys.reduce((sum, key) => sum + (parseFloat(target[key]) || 0), 0))
+        : 0;
 
       openModal({
         title: "Rincian Target Bulanan KPI",
@@ -8186,6 +8325,7 @@ export async function mount(container, { session, params }) {
                     <div>Catylac: <strong>${target.target_volume_catylac || 0} Ton</strong></div>
                     <div>Maxilite: <strong>${target.target_volume_maxilite || 0} Ton</strong></div>
                     <div>Aquashield: <strong>${target.target_volume_aquashield || 0} Ton</strong></div>
+                    <div class="col-span-2 pt-1.5 border-t border-slate-100 font-bold text-amber-900">Total Target Penjualan ICI: <strong>${totalVolumeIci.toLocaleString("id-ID", { maximumFractionDigits: 3 })} Ton</strong></div>
                   </div>
                 </div>
 
@@ -8198,11 +8338,10 @@ export async function mount(container, { session, params }) {
                 </div>
 
                 <div class="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
-                  <h5 class="text-xs font-bold text-slate-700 uppercase">Target Value PRIMA, DCOTA & Total ICI</h5>
+                  <h5 class="text-xs font-bold text-slate-700 uppercase">Target Value PRIMA & DCOTA</h5>
                   <div class="space-y-1 text-xs">
                     <div>Value Prima: <strong>Rp ${(parseFloat(target.target_value_prima) || 0).toLocaleString('id-ID')}</strong></div>
                     <div>Value DCota: <strong>Rp ${(parseFloat(target.target_value_dcota) || 0).toLocaleString('id-ID')}</strong></div>
-                    <div>Total Target Penjualan ICI: <strong>Rp ${(parseFloat(target.target_total_penjualan_ici) || 0).toLocaleString('id-ID')}</strong></div>
                   </div>
                 </div>
 

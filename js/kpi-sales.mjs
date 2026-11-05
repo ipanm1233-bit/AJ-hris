@@ -30,15 +30,17 @@ export const SALES_INDICATOR_TARGET_MAP = {
     unit: "Ton",
     label: "Volume Aquashield"
   },
+  total_volume_ici: {
+    targetKey: "target_total_volume_ici",
+    unit: "Ton",
+    label: "Total Volume ICI",
+    derived: true,
+    derivedFrom: ["volume_dulux", "volume_catylac", "volume_maxilite", "volume_aquashield"]
+  },
   value_penjualan_tertagih: {
     targetKey: "target_value_penjualan",
     unit: "Rp",
     label: "Value Penjualan Tertagih"
-  },
-  total_target_penjualan_ici: {
-    targetKey: "target_total_penjualan_ici",
-    unit: "Rp",
-    label: "Total Target Penjualan ICI"
   },
   overdue_piutang: {
     targetKey: "target_overdue_piutang",
@@ -97,9 +99,47 @@ export function resolveSalesIndicatorSpec(indicator = {}, target = null) {
     label: map.label || indicator.indikator || indicator.key,
     unit: map.unit || indicator.unit || "",
     lowerIsBetter: Boolean(map.lowerIsBetter),
+    derived: Boolean(map.derived),
+    derivedFrom: Array.isArray(map.derivedFrom) ? [...map.derivedFrom] : [],
     targetValue,
     hasTarget: targetValue !== null && targetValue >= 0
   };
+}
+
+// Empat indikator volume yang menjadi dasar Total Volume ICI.
+export const SALES_VOLUME_INDICATOR_KEYS = ["volume_dulux", "volume_catylac", "volume_maxilite", "volume_aquashield"];
+
+/** Jumlahkan target volume dari target bulanan / default indikator. */
+export function sumVolumeTargets(target = null, indicators = []) {
+  const list = Array.isArray(indicators) ? indicators : [];
+  return SALES_VOLUME_INDICATOR_KEYS.reduce((total, key) => {
+    const indicator = list.find(item => item?.key === key) || { key };
+    const spec = resolveSalesIndicatorSpec(indicator, target);
+    const value = Number(spec?.targetValue);
+    return total + (Number.isFinite(value) && value >= 0 ? value : 0);
+  }, 0);
+}
+
+/** Jumlahkan capaian volume harian dari empat indikator volume. */
+export function sumVolumeActuals(actuals = {}) {
+  return SALES_VOLUME_INDICATOR_KEYS.reduce((total, key) => {
+    const value = Number(actuals?.[key]);
+    return total + (Number.isFinite(value) && value >= 0 ? value : 0);
+  }, 0);
+}
+
+/** True bila minimal satu volume harian sudah diisi. */
+export function hasVolumeActual(actuals = {}) {
+  return SALES_VOLUME_INDICATOR_KEYS.some(key => {
+    const value = actuals?.[key];
+    if (value === null || value === undefined || value === "") return false;
+    return Number.isFinite(Number(value)) && Number(value) >= 0;
+  });
+}
+
+/** Bulatkan total volume agar tidak menyisakan pecahan floating point. */
+export function roundVolumeTotal(value) {
+  return Math.round((Number(value) || 0) * 1000) / 1000;
 }
 
 /**
@@ -173,18 +213,20 @@ export function formatSalesAchievement(actual, target, unit = "") {
  */
 export function normalizeSalesIndicatorList(list, defaults = []) {
   if (!Array.isArray(list)) return list;
-  const normalized = list.map(indicator => {
-    if (!indicator || typeof indicator !== "object") return indicator;
-    if (indicator.key === "sales_value_prima" && indicator.indikator === "Sales Value PRIMA Tertagih") {
-      return { ...indicator, indikator: "Value Prima" };
-    }
-    if (indicator.key === "sales_value_dcota" && indicator.indikator === "Sales Value DCOTA Tertagih") {
-      return { ...indicator, indikator: "Value DCota" };
-    }
-    return indicator;
-  });
+  const normalized = list
+    .filter(indicator => indicator?.key !== "total_target_penjualan_ici")
+    .map(indicator => {
+      if (!indicator || typeof indicator !== "object") return indicator;
+      if (indicator.key === "sales_value_prima" && indicator.indikator === "Sales Value PRIMA Tertagih") {
+        return { ...indicator, indikator: "Value Prima" };
+      }
+      if (indicator.key === "sales_value_dcota" && indicator.indikator === "Sales Value DCOTA Tertagih") {
+        return { ...indicator, indikator: "Value DCota" };
+      }
+      return indicator;
+    });
 
-  const newIndicatorKey = "total_target_penjualan_ici";
+  const newIndicatorKey = "total_volume_ici";
   if (!normalized.some(indicator => indicator?.key === newIndicatorKey)) {
     const defaultIndicator = (Array.isArray(defaults) ? defaults : []).find(indicator => indicator?.key === newIndicatorKey);
     if (defaultIndicator) normalized.push({ ...defaultIndicator });
