@@ -188,6 +188,7 @@ export const COL = {
  SALES_KINERJA_BULANAN: "sales_kinerja_bulanan",
  SALES_DSR_BULANAN: "sales_dsr_bulanan",
  SALES_ALIAS_MAP: "sales_alias_map",
+ SALES_ACHIEVEMENT_IMPORT: "sales_achievement_import",
  EVALUATION_CYCLES: "evaluation_cycles",
  LOG_PENILAIAN_HARIAN: "log_penilaian_harian",
  MASTER_REIMBURSEMENT_TYPE: "master_reimbursement_type",
