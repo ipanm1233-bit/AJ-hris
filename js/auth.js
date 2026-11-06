@@ -42,6 +42,13 @@ export const DEFAULT_EMPLOYEE_MENU_IDS = [
  "sop-proyek"
 ];
 
+// Peran manajemen yang berhak membuka laporan pencapaian & catatan karyawan.
+export const DASHBOARD_KARYAWAN_ROLES = Object.freeze([
+ "HRD", "SUPERADMIN", "GM", "DIREKTUR", "DIRECTOR", "MANAGER", "SPV", "ATASAN",
+ "BRANCH MANAGER", "BRANCH_MANAGER", "BRANCHMANAGER", "KEPALA CABANG",
+ "KEPALA_CABANG", "KACAB"
+]);
+
 // Pengelompokan & Penyesuaian Icon Menu
 export const MENU_CONFIG = [
  // KATEGORI: MENU UTAMA
@@ -82,7 +89,7 @@ export const MENU_CONFIG = [
   { id: "template_soal", label: "Template Soal KPI" },
   { id: "distribusi_kpi360", label: "Distribusi Tugas KPI" }
  ] },
- { id: "dashboard-karyawan", label: "Dashboard Karyawan", icon: "gauge", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN", "GM", "DIREKTUR", "DIRECTOR"] },
+ { id: "dashboard-karyawan", label: "Dashboard Karyawan", icon: "gauge", kategori: "Karyawan & Kinerja", roles: DASHBOARD_KARYAWAN_ROLES },
  { id: "performance-review", label: "Review Kinerja", icon: "gauge", kategori: "Karyawan & Kinerja", roles: ["ALL"], subMenus: [
   { id: "semua_review", label: "Semua Review Kinerja" }
  ] },
@@ -934,6 +941,12 @@ export async function computeVisibleMenus(session) {
    const sopProjectMenu = MENU_CONFIG.find(m => m.id === "sop-proyek");
    if (sopProjectMenu) list.push(sopProjectMenu);
   }
+  // Laporan pencapaian & catatan karyawan tetap tersedia untuk peran manajemen
+  // walaupun akun memiliki whitelist menu lama yang belum memuat menu baru ini.
+  if (DASHBOARD_KARYAWAN_ROLES.includes(role) && !list.some(m => m.id === "dashboard-karyawan")) {
+   const reportMenu = MENU_CONFIG.find(m => m.id === "dashboard-karyawan");
+   if (reportMenu) list.push(reportMenu);
+  }
   // Sales tidak dapat menu lembur kecuali secara eksplisit ada di allowed_menus custom
   if (isSales && !allowed.includes("lembur-kasbon")) {
    list = list.filter(m => m.id !== "lembur-kasbon");
@@ -1544,6 +1557,17 @@ export const PERMISSION_CATALOG = [
   ]
  },
  {
+  id: "dashboard-karyawan",
+  label: "Dashboard Karyawan",
+  category: "Karyawan & Kinerja",
+  icon: "gauge",
+  actions: [
+   { key: "dashboard_karyawan.view", label: "Lihat Dashboard Pencapaian & Catatan Karyawan", type: "view_all" },
+   { key: "dashboard_karyawan.print", label: "Cetak / Unduh PDF Laporan Karyawan", type: "print" },
+   { key: "dashboard_karyawan.export", label: "Export Rekap Pencapaian ke Excel", type: "export" }
+  ]
+ },
+ {
   id: "performance-review",
   label: "Review Kinerja",
   category: "Karyawan & Kinerja",
@@ -2151,6 +2175,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "siklus_karyawan.input.create", "siklus_karyawan.input.finalize", "siklus_karyawan.input.print", "siklus_karyawan.riwayat.view",
   "rekrutmen.dashboard.view", "rekrutmen.lowongan.create", "rekrutmen.lowongan.edit", "rekrutmen.lowongan.publish", "rekrutmen.lowongan.delete", "rekrutmen.kandidat.create", "rekrutmen.kandidat.view", "rekrutmen.kandidat.edit", "rekrutmen.kandidat.delete", "rekrutmen.kandidat.convert_employee", "rekrutmen.screening.run", "rekrutmen.screening.save", "rekrutmen.pipeline.view", "rekrutmen.pipeline.move", "rekrutmen.interview.score", "rekrutmen.interview.invite", "rekrutmen.analytics.view", "rekrutmen.analytics.export", "rekrutmen.rules.configure",
   "penilaian_kontrak.hasil_saya.view", "penilaian_kontrak.kontrak_saya.view", "penilaian_kontrak.kontrak.view_all", "penilaian_kontrak.kontrak.create", "penilaian_kontrak.kontrak.edit", "penilaian_kontrak.kontrak.delete", "penilaian_kontrak.standar_grade.configure", "penilaian_kontrak.template_soal.configure", "penilaian_kontrak.distribusi_kpi360.create", "penilaian_kontrak.distribusi_kpi360.remind", "penilaian_kontrak.distribusi_kpi360.delete", "penilaian_kontrak.evaluasi.edit", "penilaian_kontrak.evaluasi.execute_renewal", "penilaian_kontrak.daily.manage", "penilaian_kontrak.target.configure", "penilaian_kontrak.daily.export",
+  "dashboard_karyawan.view", "dashboard_karyawan.print", "dashboard_karyawan.export",
   "performance_review.my.view", "performance_review.my.print", "performance_review.semua_review.view", "performance_review.semua_review.create", "performance_review.semua_review.publish", "performance_review.semua_review.delete",
   "training.my.submit", "training.my.participate", "training.survey.manage", "training.analysis.view", "training.analysis.validate", "training.planning.create", "training.planning.approve_gm", "training.planning.approve_finance", "training.execution.manage", "training.execution.followup", "training.report.view", "training.report.export",
   "konseling.dashboard.view", "konseling.case_management.create", "konseling.case_management.edit", "konseling.case_management.close", "konseling.action_plan.manage", "konseling.follow_up.manage", "konseling.reports.export",
@@ -2185,6 +2210,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "kalender_hr.view", "siklus_karyawan.riwayat.view",
   "rekrutmen.dashboard.view", "rekrutmen.lowongan.view", "rekrutmen.kandidat.view", "rekrutmen.pipeline.view", "rekrutmen.interview.score", "rekrutmen.analytics.view", "rekrutmen.analytics.export",
   "penilaian_kontrak.hasil_saya.view", "penilaian_kontrak.kontrak_saya.view", "penilaian_kontrak.kontrak.view_all", "penilaian_kontrak.distribusi_kpi360.create", "penilaian_kontrak.daily.export",
+  "dashboard_karyawan.view", "dashboard_karyawan.print", "dashboard_karyawan.export",
   "performance_review.my.view", "performance_review.semua_review.view", "performance_review.semua_review.create", "performance_review.semua_review.publish",
   "training.my.submit", "training.my.participate", "training.analysis.view", "training.planning.approve_gm", "training.execution.followup", "training.report.view", "training.report.export",
   "konseling.dashboard.view", "konseling.reports.export",
@@ -2237,6 +2263,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "kalender_hr.view",
   "rekrutmen.kandidat.view", "rekrutmen.interview.score",
   "penilaian_kontrak.hasil_saya.view", "penilaian_kontrak.kontrak_saya.view", "penilaian_kontrak.distribusi_kpi360.create", "penilaian_kontrak.daily.manage",
+  "dashboard_karyawan.view", "dashboard_karyawan.print", "dashboard_karyawan.export",
   "performance_review.my.view", "performance_review.semua_review.view",
   "training.my.submit", "training.my.participate", "training.analysis.view", "training.analysis.validate", "training.execution.followup", "training.report.view",
   "konseling.dashboard.view", "konseling.case_management.create", "konseling.action_plan.manage", "konseling.follow_up.manage",
