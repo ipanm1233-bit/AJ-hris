@@ -82,6 +82,7 @@ export const MENU_CONFIG = [
   { id: "template_soal", label: "Template Soal KPI" },
   { id: "distribusi_kpi360", label: "Distribusi Tugas KPI" }
  ] },
+ { id: "dashboard-karyawan", label: "Dashboard Karyawan", icon: "gauge", kategori: "Karyawan & Kinerja", roles: ["HRD", "SUPERADMIN", "GM", "DIREKTUR", "DIRECTOR"] },
  { id: "performance-review", label: "Review Kinerja", icon: "gauge", kategori: "Karyawan & Kinerja", roles: ["ALL"], subMenus: [
   { id: "semua_review", label: "Semua Review Kinerja" }
  ] },
