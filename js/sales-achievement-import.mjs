@@ -304,6 +304,199 @@ export function parseArAchievementWorkbook(wb, tahunHint) {
 }
 
 /* ---------------------------------------------------------------------
+ * TARGET vs ACHIEVEMENT — VOLUME, AO & VALUE BULANAN
+ * ------------------------------------------------------------------- */
+const round4 = (v) => Math.round((Number(v) || 0) * 1e4) / 1e4;
+
+function sheetsByName(wb) {
+  const map = new Map();
+  for (const name of wb.SheetNames || []) {
+    const key = cleanText(name).toUpperCase();
+    if (!map.has(key)) map.set(key, wb.Sheets[name]);
+  }
+  return map;
+}
+
+function salesCodeAliasMap(targetSheet) {
+  const map = new Map();
+  const matrix = sheetMatrix(targetSheet);
+  const hdr = findHeaderRow(matrix, ["Sales", "Sales Id"]);
+  if (hdr < 0) return map;
+  const hm = headerIndexMap(matrix[hdr]);
+  for (let r = hdr + 1; r < matrix.length; r += 1) {
+    const alias = cleanText(matrix[r]?.[hm.SALES]).toUpperCase();
+    const code = cleanText(matrix[r]?.[hm.SALES_ID]);
+    if (alias && code && !map.has(code)) map.set(code, alias);
+  }
+  return map;
+}
+
+/**
+ * Parse file "Target vs Achievement". Sumber data:
+ *   - ICI Daily   -> volume Dulux (TOP), Catylac (MID), Maxilite (LOW), Aquashield (AQS)
+ *   - Prima Daily -> value prima (Total Achieve - DPP) + AO prima
+ *   - Dcota Daily -> value dcota (Total DPP) + AO dcota
+ *   - Rekap detail -> AO ICI (jumlah outlet dengan volume ICI > 0)
+ * Mengembalikan { periode, monthly } dengan nilai bulanan per salesman.
+ */
+export function parseTargetVsAchievementWorkbook(wb) {
+  const byName = sheetsByName(wb);
+  const get = (label) => byName.get(cleanText(label).toUpperCase()) || null;
+
+  // Periode: ambil dari sel tanggal sheet Prima Daily (mis. "2026-11-01").
+  let periode = null;
+  const primaSheet = get("Prima Daily");
+  if (primaSheet) {
+    const matrix = sheetMatrix(primaSheet);
+    for (let r = 0; r < Math.min(matrix.length, 4) && !periode; r += 1) {
+      for (let c = 0; c < (matrix[r]?.length || 0); c += 1) {
+        const d = dateString(matrix[r][c]);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(d)) { periode = d.slice(0, 7); break; }
+      }
+    }
+  }
+  if (!periode) periode = periodFromFileName(wb.SheetNames[0] || "", new Date().getFullYear());
+  if (!periode) {
+    const now = new Date();
+    periode = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  const aggregate = new Map();
+  const ensure = (alias) => {
+    let a = aggregate.get(alias);
+    if (!a) {
+      a = { alias, volume_dulux: 0, volume_catylac: 0, volume_maxilite: 0, volume_aquashield: 0, ao_ici: 0, ao_prima: 0, ao_dcota: 0, value_prima: 0, value_dcota: 0 };
+      aggregate.set(alias, a);
+    }
+    return a;
+  };
+  const addNum = (agg, key, v) => { if (v !== null && Number.isFinite(v)) agg[key] += v; };
+  const isSalesRow = (alias) => alias && !/^VACANT/.test(alias) && !/TOTAL/.test(alias);
+
+  // 1. ICI Daily -> volume empat produk (dalam KL).
+  const iciSheet = get("ICI Daily");
+  if (iciSheet) {
+    const matrix = sheetMatrix(iciSheet);
+    const hdr = findHeaderRow(matrix, ["Sales Code", "Sales"]);
+    if (hdr >= 0) {
+      const salesCol = headerIndexMap(matrix[hdr]).SALES;
+      const brand = {};
+      (matrix[hdr] || []).forEach((cell, idx) => {
+        const label = cleanText(cell).toUpperCase();
+        if (/^TOP\b/.test(label) && brand.dulux === undefined) brand.dulux = idx;
+        else if (/^MID\b/.test(label) && brand.catylac === undefined) brand.catylac = idx;
+        else if (/^LOW\b/.test(label) && brand.maxilite === undefined) brand.maxilite = idx;
+        else if (/^AQS\b/.test(label) && brand.aquashield === undefined) brand.aquashield = idx;
+      });
+      for (let r = hdr + 2; r < matrix.length; r += 1) {
+        const alias = cleanText(matrix[r]?.[salesCol]).toUpperCase();
+        if (!isSalesRow(alias)) continue;
+        const agg = ensure(alias);
+        if (brand.dulux !== undefined) addNum(agg, "volume_dulux", numValue(matrix[r]?.[brand.dulux + 3]));
+        if (brand.catylac !== undefined) addNum(agg, "volume_catylac", numValue(matrix[r]?.[brand.catylac + 3]));
+        if (brand.maxilite !== undefined) addNum(agg, "volume_maxilite", numValue(matrix[r]?.[brand.maxilite + 3]));
+        if (brand.aquashield !== undefined) addNum(agg, "volume_aquashield", numValue(matrix[r]?.[brand.aquashield + 3]));
+      }
+    }
+  }
+
+  // 2. Prima Daily -> value_prima + ao_prima.
+  if (primaSheet) {
+    const matrix = sheetMatrix(primaSheet);
+    const hdr = findHeaderRow(matrix, ["Sales Code", "Sales"]);
+    if (hdr >= 0) {
+      const salesCol = headerIndexMap(matrix[hdr]).SALES;
+      const sub = matrix[hdr + 1] || [];
+      let colValue = -1, colAo = -1;
+      sub.forEach((cell, idx) => {
+        const label = normKey(cell);
+        if (colValue < 0 && /^TOTAL_ACHIEVE/.test(label)) colValue = idx;
+        if (colAo < 0 && label === "ACHIEVE_AO") colAo = idx;
+      });
+      for (let r = hdr + 2; r < matrix.length; r += 1) {
+        const alias = cleanText(matrix[r]?.[salesCol]).toUpperCase();
+        if (!isSalesRow(alias)) continue;
+        const agg = ensure(alias);
+        if (colValue >= 0) addNum(agg, "value_prima", numValue(matrix[r]?.[colValue]));
+        if (colAo >= 0) addNum(agg, "ao_prima", numValue(matrix[r]?.[colAo]));
+      }
+    }
+  }
+
+  // 3. Dcota Daily -> value_dcota + ao_dcota.
+  const dcotaSheet = get("Dcota Daily");
+  if (dcotaSheet) {
+    const matrix = sheetMatrix(dcotaSheet);
+    const hdr = findHeaderRow(matrix, ["Sales Code", "Sales"]);
+    if (hdr >= 0) {
+      const salesCol = headerIndexMap(matrix[hdr]).SALES;
+      const sub = matrix[hdr + 1] || [];
+      let colValue = -1, colAo = -1;
+      sub.forEach((cell, idx) => {
+        const label = normKey(cell);
+        if (colValue < 0 && (/^TOTAL_DPP/.test(label) || /^TOTAL_ACHIEVE/.test(label))) colValue = idx;
+        if (colAo < 0 && label === "ACHIEVE_AO") colAo = idx;
+      });
+      for (let r = hdr + 2; r < matrix.length; r += 1) {
+        const alias = cleanText(matrix[r]?.[salesCol]).toUpperCase();
+        if (!isSalesRow(alias)) continue;
+        const agg = ensure(alias);
+        if (colValue >= 0) addNum(agg, "value_dcota", numValue(matrix[r]?.[colValue]));
+        if (colAo >= 0) addNum(agg, "ao_dcota", numValue(matrix[r]?.[colAo]));
+      }
+    }
+  }
+
+  // 4. Rekap detail -> AO ICI (jumlah outlet dengan volume ICI > 0).
+  const codeToAlias = salesCodeAliasMap(get("Target"));
+  const rekSheet = get("Rekap detail");
+  if (rekSheet) {
+    const matrix = sheetMatrix(rekSheet);
+    const hdr = findHeaderRow(matrix, ["Outlet Code", "Sales"]);
+    if (hdr >= 0) {
+      const salesCol = headerIndexMap(matrix[hdr]).SALES;
+      // Offset kolom Total (Inv+OS): TOP=5, MID=8, SC=11, LOW=14, AQS=17.
+      const totalCols = [5, 8, 11, 14, 17];
+      const aoSet = new Map();
+      for (let r = hdr + 3; r < matrix.length; r += 1) {
+        const row = matrix[r] || [];
+        const code = cleanText(row[salesCol]);
+        const alias = codeToAlias.get(code) || "";
+        if (!isSalesRow(alias)) continue;
+        const outlet = cleanText(row[0]);
+        const total = totalCols.reduce((s, c) => s + (numValue(row[c]) ?? 0), 0);
+        if (total > 0) {
+          let set = aoSet.get(alias);
+          if (!set) { set = new Set(); aoSet.set(alias, set); }
+          if (outlet) set.add(outlet);
+        }
+      }
+      for (const [alias, set] of aoSet.entries()) ensure(alias).ao_ici = set.size;
+    }
+  }
+
+  const monthly = [...aggregate.values()].map((agg) => {
+    const totalVolume = agg.volume_dulux + agg.volume_catylac + agg.volume_maxilite + agg.volume_aquashield;
+    return {
+      alias: agg.alias,
+      periode,
+      volume_dulux: round4(agg.volume_dulux),
+      volume_catylac: round4(agg.volume_catylac),
+      volume_maxilite: round4(agg.volume_maxilite),
+      volume_aquashield: round4(agg.volume_aquashield),
+      total_volume_ici: round4(totalVolume),
+      ao_ici: agg.ao_ici,
+      ao_prima: agg.ao_prima,
+      ao_dcota: agg.ao_dcota,
+      value_prima: Math.round(agg.value_prima),
+      value_dcota: Math.round(agg.value_dcota),
+    };
+  });
+
+  return { periode, monthly };
+}
+
+/* ---------------------------------------------------------------------
  * PEMETAAN ORANG + BANGUN DOKUMEN
  * ------------------------------------------------------------------- */
 function resolveAliasInfo(aliasKey, masterList, overrideMap) {
@@ -390,17 +583,73 @@ export function buildSalesAchievementDocs(parsed, masterList, overrideMap, opts 
 
 /**
  * Petakan nilai capaian bulanan (dari file AR) ke kunci target bulanan KPI.
- * Kunci `target_value_penjualan`, `target_value_prima`, `target_value_dcota`,
- * `target_overdue_piutang` dipakai agar langsung cocok dengan form realisasi.
+ * Kunci `target_value_penjualan` dan `target_overdue_piutang` dipakai agar
+ * langsung cocok dengan form realisasi. Value prima/dcota diambil dari file
+ * Target vs Achievement (bulanan), bukan dari AR.
  */
 export function monthlyAchievementValuesFromRow(row) {
   if (!row) return {};
   return {
     target_value_penjualan: row.value_penjualan_tertagih,
-    target_value_prima: row.value_prima,
-    target_value_dcota: row.value_dcota,
     target_overdue_piutang: row.overdue_piutang,
   };
+}
+
+/**
+ * Petakan nilai capaian bulanan (dari file Target vs Achievement) ke kunci
+ * target bulanan KPI: volume empat produk, AO ICI/PRIMA/DCOTA, dan value
+ * PRIMA/DCOTA.
+ */
+export function monthlyVolumeAchievementValuesFromRow(row) {
+  if (!row) return {};
+  return {
+    target_volume_dulux: row.volume_dulux,
+    target_volume_catylac: row.volume_catylac,
+    target_volume_maxilite: row.volume_maxilite,
+    target_volume_aquashield: row.volume_aquashield,
+    target_ao_ici: row.ao_ici,
+    target_ao_prima: row.ao_prima,
+    target_ao_dcota: row.ao_dcota,
+    target_value_prima: row.value_prima,
+    target_value_dcota: row.value_dcota,
+  };
+}
+
+/**
+ * Bangun dokumen capaian bulanan (volume, AO, value) dari file Target vs
+ * Achievement. Ditulis ke `sales_achievement_import` dengan jenis BULANAN_VOLUME.
+ */
+export function buildSalesVolumeDocs(parsed, masterList, overrideMap, opts = {}) {
+  const docs = [];
+  const unmapped = [];
+  for (const row of parsed?.monthly || []) {
+    const aliasKey = normKey(row.alias);
+    const resolved = resolveAliasInfo(aliasKey, masterList, overrideMap);
+    if (!resolved.nik) unmapped.push(`TVA ${row.periode} ${row.alias}`);
+    docs.push({
+      id: `ACHV-${row.periode}-${aliasKey}`,
+      fields: {
+        jenis: "BULANAN_VOLUME",
+        periode: row.periode,
+        alias: row.alias,
+        nik_karyawan: resolved.nik,
+        nama_karyawan: resolved.nama,
+        volume_dulux: row.volume_dulux,
+        volume_catylac: row.volume_catylac,
+        volume_maxilite: row.volume_maxilite,
+        volume_aquashield: row.volume_aquashield,
+        total_volume_ici: row.total_volume_ici,
+        ao_ici: row.ao_ici,
+        ao_prima: row.ao_prima,
+        ao_dcota: row.ao_dcota,
+        value_prima: row.value_prima,
+        value_dcota: row.value_dcota,
+        sumber_file: opts.tvaFile || null,
+        updated_at: new Date().toISOString(),
+      },
+    });
+  }
+  return { docs, unmapped };
 }
 
 /**

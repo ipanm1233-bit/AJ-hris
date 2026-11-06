@@ -22,7 +22,7 @@ import {
  PIP_DEFAULT_INDICATORS, normalizePipIndicators, pipIndicatorScore, pipIndicatorSummary
 } from "../pip.mjs";
 import { parseSchemeIncentiveWorkbook, parseDsrWorkbook, buildSalesKinerjaDocs, buildDsrDocs } from "../sales-kinerja-import.mjs";
-import { parseOhAchievementWorkbook, parseArAchievementWorkbook, buildSalesAchievementDocs, dailyAchievementValuesFromRow, monthlyAchievementValuesFromRow } from "../sales-achievement-import.mjs";
+import { parseArAchievementWorkbook, parseTargetVsAchievementWorkbook, buildSalesAchievementDocs, buildSalesVolumeDocs, monthlyAchievementValuesFromRow, monthlyVolumeAchievementValuesFromRow } from "../sales-achievement-import.mjs";
 
 const confirmThen = (message, action) => runConfirmedAction(confirmDialog, message, action);
 
@@ -1507,19 +1507,19 @@ export async function mount(container, { session, params }) {
     return;
    }
    const wrap = openModal({
-    title: "Impor Capaian Sales (OH + AR)",
+    title: "Impor Capaian Sales (Target vs Achievement + AR)",
     size: "lg",
     bodyHtml: `
     <div class="space-y-4 text-sm">
      <div class="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3 text-xs text-emerald-900">
-      <strong>Catatan:</strong> data menimpa dokumen periode/tanggal yang sama (aman diulang bila angka direvisi).
-      File OH menjadi dasar capaian <strong>volume &amp; AO</strong> harian; file AR menjadi dasar
-      <strong>penjualan tertagih &amp; overdue</strong> bulanan. Setelah disimpan, gunakan tombol
-      <em>Isi dari Impor</em> pada form penilaian harian / realisasi bulanan.
+      <strong>Catatan:</strong> data menimpa dokumen periode yang sama (aman diulang bila angka direvisi).
+      File <strong>Target vs Achievement</strong> menjadi dasar capaian <strong>volume, AO, &amp; value Prima/DCota</strong>;
+      file <strong>AR Harian</strong> menjadi dasar <strong>penjualan tertagih &amp; overdue</strong>.
+      Setelah disimpan, buka <em>Realisasi Target Bulanan</em> lalu klik <em>Isi dari Impor</em>.
      </div>
      <div>
-      <label class="block text-xs font-bold text-slate-700 mb-1">1. OH (Order Handling) — volume &amp; AO (xlsx)</label>
-      <input type="file" id="impa-oh" accept=".xlsx,.xls" class="block w-full text-xs border border-slate-200 rounded-xl p-2 bg-slate-50">
+      <label class="block text-xs font-bold text-slate-700 mb-1">1. Target vs Achievement — volume, AO &amp; value (xlsx)</label>
+      <input type="file" id="impa-tva" accept=".xlsx,.xls" class="block w-full text-xs border border-slate-200 rounded-xl p-2 bg-slate-50">
      </div>
      <div>
       <label class="block text-xs font-bold text-slate-700 mb-1">2. Update AR Harian — penjualan tertagih &amp; overdue (xlsx)</label>
@@ -1540,7 +1540,7 @@ export async function mount(container, { session, params }) {
      fsGetAll(COL.SALES_ALIAS_MAP).catch(() => []),
     ]);
     const overrideMap = new Map(aliasOverrideDocs.map(d => [normAliasKey(d._id), d]));
-    const state = { oh: null, ar: null, ohFile: "", arFile: "" };
+    const state = { tva: null, ar: null, tvaFile: "", arFile: "" };
 
     const box = wrap.querySelector("#impa-preview");
     const errorBox = wrap.querySelector("#impa-error");
@@ -1554,14 +1554,13 @@ export async function mount(container, { session, params }) {
 
     const renderPreview = () => {
      const parts = [];
-     if (state.oh) {
-      const docs = state.oh.dailyDocs || [];
-      const tanggalList = [...new Set(docs.map(d => d.fields.tanggal))].sort();
+     if (state.tva) {
+      const docs = state.tva.docs || [];
       const totalTon = docs.reduce((s, d) => s + (Number(d.fields.total_volume_ici) || 0), 0);
       parts.push(`<div class="rounded-xl border border-slate-200 bg-white p-3">
-       <p class="text-xs font-bold text-slate-800">OH — Volume &amp; AO — ${escapeHtml(state.ohFile)}</p>
-       <p class="text-xs text-slate-500 mt-1">${docs.length} catatan harian · total volume ${totalTon.toLocaleString("id-ID", { maximumFractionDigits: 3 })} Ton · tanggal ${tanggalList.join(", ") || "-"}</p>
-       ${state.oh.unmapped.length ? `<p class="mt-1 text-[11px] text-amber-700">Alias belum terpetakan (NIK kosong): ${escapeHtml(state.oh.unmapped.join(", "))}</p>` : ""}
+       <p class="text-xs font-bold text-slate-800">Target vs Achievement — Volume, AO &amp; Value — ${escapeHtml(state.tvaFile)}</p>
+       <p class="text-xs text-slate-500 mt-1">${docs.length} salesman · total volume ${totalTon.toLocaleString("id-ID", { maximumFractionDigits: 3 })} KL</p>
+       ${state.tva.unmapped.length ? `<p class="mt-1 text-[11px] text-amber-700">Alias belum terpetakan (NIK kosong): ${escapeHtml(state.tva.unmapped.join(", "))}</p>` : ""}
       </div>`);
      }
      if (state.ar) {
@@ -1575,7 +1574,7 @@ export async function mount(container, { session, params }) {
      }
      if (!parts.length) parts.push('<p class="text-xs text-slate-400 italic">Belum ada file dipilih. Kedua file boleh diunggah bertahap.</p>');
      box.innerHTML = parts.join("");
-     saveBtn.disabled = !((state.oh?.dailyDocs?.length) || (state.ar?.monthlyDocs?.length));
+     saveBtn.disabled = !((state.tva?.docs?.length) || (state.ar?.monthlyDocs?.length));
     };
 
     const readWorkbook = async (file) => {
@@ -1583,23 +1582,23 @@ export async function mount(container, { session, params }) {
      return window.XLSX.read(buffer, { type: "array" });
     };
 
-    wrap.querySelector("#impa-oh").addEventListener("change", async (e) => {
+    wrap.querySelector("#impa-tva").addEventListener("change", async (e) => {
      const file = e.target.files && e.target.files[0];
      if (!file) return;
      showImportError("");
      try {
       const wb = await readWorkbook(file);
-      const parsed = parseOhAchievementWorkbook(wb);
-      if (!parsed.daily.length) {
-       state.oh = null;
-       showImportError("Tidak ada baris data OH dikenali. Pastikan memakai format OH (kolom Salesman, Delivery Date, Weight, Brand).");
+      const parsed = parseTargetVsAchievementWorkbook(wb);
+      if (!parsed.monthly.length) {
+       state.tva = null;
+       showImportError("Tidak ada sheet 'ICI Daily' / 'Prima Daily' dikenali. Pastikan memakai file Target vs Achievement.");
       } else {
-       state.oh = buildSalesAchievementDocs({ oh: parsed }, masters, overrideMap, { ohFile: file.name });
-       state.ohFile = file.name;
+       state.tva = buildSalesVolumeDocs(parsed, masters, overrideMap, { tvaFile: file.name });
+       state.tvaFile = file.name;
       }
      } catch (err) {
-      state.oh = null;
-      showImportError(`Gagal membaca OH: ${err.message}`);
+      state.tva = null;
+      showImportError(`Gagal membaca Target vs Achievement: ${err.message}`);
      }
      renderPreview();
      e.target.value = "";
@@ -1631,12 +1630,12 @@ export async function mount(container, { session, params }) {
 
     wrap.querySelector("#impa-cancel").addEventListener("click", closeModal);
     saveBtn.addEventListener("click", async () => {
-     const dailyDocs = state.oh?.dailyDocs || [];
+     const tvaDocs = state.tva?.docs || [];
      const monthlyDocs = state.ar?.monthlyDocs || [];
-     if (!dailyDocs.length && !monthlyDocs.length) return;
+     if (!tvaDocs.length && !monthlyDocs.length) return;
      const jalankan = await confirmDialog({
       title: "Simpan Capaian Sales?",
-      message: `${dailyDocs.length} catatan harian (OH) dan ${monthlyDocs.length} catatan bulanan (AR) akan ditulis ke Firestore. Dokumen periode/tanggal yang sama akan diperbarui.`,
+      message: `${tvaDocs.length} catatan volume/AO (Target vs Achievement) dan ${monthlyDocs.length} catatan tertagih/overdue (AR) akan ditulis ke Firestore. Dokumen periode yang sama akan diperbarui.`,
       confirmLabel: "Simpan",
      });
      if (!jalankan) return;
@@ -1646,7 +1645,7 @@ export async function mount(container, { session, params }) {
      try {
       const BATCH = 400;
       const semua = [
-       ...dailyDocs.map(d => ({ koleksi: COL.SALES_ACHIEVEMENT_IMPORT, ...d })),
+       ...tvaDocs.map(d => ({ koleksi: COL.SALES_ACHIEVEMENT_IMPORT, ...d })),
        ...monthlyDocs.map(d => ({ koleksi: COL.SALES_ACHIEVEMENT_IMPORT, ...d })),
       ];
       for (let i = 0; i < semua.length; i += BATCH) {
@@ -1656,7 +1655,7 @@ export async function mount(container, { session, params }) {
        }
        await batch.commit();
       }
-      toast(`Berhasil menyimpan ${semua.length} dokumen capaian sales. Gunakan "Isi dari Impor" pada form penilaian.`, "success");
+      toast(`Berhasil menyimpan ${semua.length} dokumen capaian sales. Buka "Realisasi Target Bulanan" lalu "Isi dari Impor".`, "success");
       closeModal();
      } catch (err) {
       console.error("import-sales-achievement", err);
@@ -1668,17 +1667,17 @@ export async function mount(container, { session, params }) {
    })();
   }
 
-  // Baca dokumen capaian harian (OH) untuk karyawan & tanggal tertentu.
-  async function loadSalesAchievementDaily(nik, nama, tanggal) {
-   if (!tanggal) return null;
+  // Baca dokumen capaian volume/AO bulanan (Target vs Achievement).
+  async function loadSalesAchievementVolumeMonthly(nik, nama, periode) {
+   if (!periode) return null;
    if (nik) {
     const byNik = await queryRows(COL.SALES_ACHIEVEMENT_IMPORT, "nik_karyawan", nik).catch(() => []);
-    const hit = byNik.find(r => r.jenis === "HARIAN" && String(r.tanggal || "").slice(0, 10) === tanggal);
+    const hit = byNik.find(r => r.jenis === "BULANAN_VOLUME" && String(r.periode || "").slice(0, 7) === periode);
     if (hit) return hit;
    }
    if (nama) {
     const byNama = await queryRows(COL.SALES_ACHIEVEMENT_IMPORT, "nama_karyawan", nama).catch(() => []);
-    const hit = byNama.find(r => r.jenis === "HARIAN" && String(r.tanggal || "").slice(0, 10) === tanggal);
+    const hit = byNama.find(r => r.jenis === "BULANAN_VOLUME" && String(r.periode || "").slice(0, 7) === periode);
     if (hit) return hit;
    }
    return null;
@@ -7300,9 +7299,6 @@ export async function mount(container, { session, params }) {
                   <button type="button" id="btn-reset-ind-default" class="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-600 hover:text-slate-800 text-xs font-bold rounded-lg border border-slate-200 transition flex items-center gap-1" title="Kembalikan susunan indikator standar">
                     <span><i class='fa-solid fa-rotate' aria-hidden='true'></i></span> Reset Bawaan
                   </button>
-                  <button type="button" id="btn-fill-from-import" class="px-2.5 py-1.5 bg-white hover:bg-emerald-50 text-emerald-700 hover:text-emerald-800 text-xs font-bold rounded-lg border border-emerald-200 transition flex items-center gap-1 hidden" title="Isi nilai capaian volume &amp; AO dari data impor OH">
-                    <span><i class='fa-solid fa-cloud-arrow-down' aria-hidden='true'></i></span> Isi dari Impor
-                  </button>
                 </div>
               </div>
 
@@ -7384,7 +7380,6 @@ export async function mount(container, { session, params }) {
           const lblEmpName = m.querySelector("#ph-lbl-emp-name");
           const btnAddCustom = m.querySelector("#btn-add-custom-ind");
           const btnResetDefault = m.querySelector("#btn-reset-ind-default");
-          const btnFillFromImport = m.querySelector("#btn-fill-from-import");
           const empSelect = m.querySelector("#ph-karyawan-select");
 
           // Keep current entered scores & nilai capaian preserved during UI re-renders
@@ -7393,47 +7388,6 @@ export async function mount(container, { session, params }) {
 
           function selectedPeriod() {
             return String(m.querySelector("#ph-tanggal")?.value || "").slice(0, 7);
-          }
-
-          // Identitas karyawan yang sedang diisi (nama + NIK).
-          function selectedEmployeeIdentity() {
-            const selOpt = empSelect ? empSelect.options[empSelect.selectedIndex] : null;
-            return {
-              nama: isEdit ? (existing.nama_karyawan || "") : (selOpt ? selOpt.value : ""),
-              nik: isEdit ? (existing.nik_karyawan || "") : (selOpt?.dataset?.nik || "")
-            };
-          }
-
-          // Tampilkan tombol "Isi dari Impor" hanya untuk divisi Sales.
-          function syncImportFillVisibility() {
-            if (btnFillFromImport) btnFillFromImport.classList.toggle("hidden", currentKat !== "SALES");
-          }
-
-          // Isi nilai capaian volume & AO dari data impor OH.
-          async function fillFromImport() {
-            if (currentKat !== "SALES") return;
-            const tanggal = m.querySelector("#ph-tanggal")?.value || "";
-            const { nama, nik } = selectedEmployeeIdentity();
-            const row = await loadSalesAchievementDaily(nik, nama, tanggal);
-            if (!row) {
-              toast(`Belum ada data impor OH untuk ${nama || "karyawan ini"} tanggal ${tanggal || "-"}. Impor file OH terlebih dahulu.`, "warning");
-              return;
-            }
-            const values = dailyAchievementValuesFromRow(row);
-            let filled = 0;
-            Object.entries(values).forEach(([key, value]) => {
-              if (value === undefined || value === null) return;
-              if (activeIndicators.some(ind => ind.key === key)) {
-                currentActuals[key] = value;
-                filled += 1;
-              }
-            });
-            if (!filled) {
-              toast("Indikator volume/AO tidak tersedia pada template ini.", "warning");
-              return;
-            }
-            renderIndicators();
-            toast(`Capaian volume & AO diisi otomatis dari impor OH (${filled} indikator).`, "success");
           }
 
           // Target bulanan Sales untuk karyawan & periode yang sedang diisi.
@@ -7861,10 +7815,6 @@ export async function mount(container, { session, params }) {
             btnAddCustom.onclick = addNewIndicator;
           }
 
-          if (btnFillFromImport) {
-            btnFillFromImport.onclick = fillFromImport;
-          }
-
           if (btnResetDefault) {
             btnResetDefault.onclick = () => {
               activeIndicators = currentKat === "SALES" 
@@ -7882,7 +7832,6 @@ export async function mount(container, { session, params }) {
             const selOpt = empSelect ? empSelect.options[empSelect.selectedIndex] : null;
             const empKey = selOpt ? selOpt.value : "";
             activeIndicators = await getEmployeeCustomIndicators(empKey, "NON_SALES");
-            syncImportFillVisibility();
             renderIndicators();
           };
 
@@ -7893,7 +7842,6 @@ export async function mount(container, { session, params }) {
             const selOpt = empSelect ? empSelect.options[empSelect.selectedIndex] : null;
             const empKey = selOpt ? selOpt.value : "";
             activeIndicators = await getEmployeeCustomIndicators(empKey, "SALES");
-            syncImportFillVisibility();
             renderIndicators();
           };
 
@@ -7915,7 +7863,6 @@ export async function mount(container, { session, params }) {
               }
 
               activeIndicators = await getEmployeeCustomIndicators(empName || selOpt?.dataset?.nik, currentKat);
-              syncImportFillVisibility();
               renderIndicators();
             };
           }
@@ -7926,7 +7873,6 @@ export async function mount(container, { session, params }) {
             dateInput.addEventListener("change", () => renderIndicators());
           }
 
-          syncImportFillVisibility();
           renderIndicators();
 
           m.querySelector("#btn-ph-batal").onclick = closeModal;
@@ -8477,7 +8423,7 @@ export async function mount(container, { session, params }) {
         size: "lg",
         bodyHtml: `<div class="space-y-4 text-left">
           <p class="text-xs text-slate-600">Isi hasil akhir bulan untuk setiap indikator. Nilai target tetap tersimpan; perubahan realisasi dicatat atas nama penginput.</p>
-          ${isSales ? `<div class="flex items-center justify-end"><button type="button" id="monthly-achievement-fill" class="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 transition flex items-center gap-1.5"><i class='fa-solid fa-cloud-arrow-down' aria-hidden='true'></i> Isi Tertagih &amp; Overdue dari Impor</button></div>` : ""}
+          ${isSales ? `<div class="flex items-center justify-end"><button type="button" id="monthly-achievement-fill" class="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 transition flex items-center gap-1.5"><i class='fa-solid fa-cloud-arrow-down' aria-hidden='true'></i> Isi dari Impor</button></div>` : ""}
           <form id="monthly-achievement-form" class="space-y-2">
             ${metrics.map(metric => metric.derived
               ? `<div class="grid grid-cols-1 sm:grid-cols-3 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs">
@@ -8521,17 +8467,21 @@ export async function mount(container, { session, params }) {
           if (fillBtn) {
             fillBtn.onclick = async () => {
               const periode = String(target.periode || "").slice(0, 7);
-              const row = await loadSalesAchievementMonthly(
-                String(target.nik_karyawan || "").trim(),
-                String(target.nama_karyawan || "").trim(),
-                periode
-              );
-              if (!row) {
-                toast(`Belum ada data impor AR untuk ${target.nama_karyawan || "karyawan ini"} periode ${periode}. Impor file AR terlebih dahulu.`, "warning");
+              const nik = String(target.nik_karyawan || "").trim();
+              const nama = String(target.nama_karyawan || "").trim();
+              const [arRow, tvaRow] = await Promise.all([
+                loadSalesAchievementMonthly(nik, nama, periode),
+                loadSalesAchievementVolumeMonthly(nik, nama, periode),
+              ]);
+              if (!arRow && !tvaRow) {
+                toast(`Belum ada data impor untuk ${nama || "karyawan ini"} periode ${periode}. Impor file Target vs Achievement dan/atau AR terlebih dahulu.`, "warning");
                 return;
               }
-              const values = monthlyAchievementValuesFromRow(row);
               const form = modal.querySelector("#monthly-achievement-form");
+              const values = {
+                ...monthlyAchievementValuesFromRow(arRow),
+                ...monthlyVolumeAchievementValuesFromRow(tvaRow),
+              };
               let filled = 0;
               Object.entries(values).forEach(([key, value]) => {
                 if (value === undefined || value === null) return;
@@ -8539,10 +8489,11 @@ export async function mount(container, { session, params }) {
                 if (input) { input.value = value; filled += 1; }
               });
               if (!filled) {
-                toast("Indikator tertagih/overdue tidak tersedia pada template ini.", "warning");
+                toast("Indikator capaian tidak tersedia pada template ini.", "warning");
                 return;
               }
-              toast(`Realisasi tertagih & overdue diisi otomatis dari impor AR (${filled} indikator).`, "success");
+              syncDerivedVolume();
+              toast(`Realisasi diisi otomatis dari impor (${filled} indikator).`, "success");
             };
           }
           modal.querySelector("#monthly-achievement-save").onclick = async () => {

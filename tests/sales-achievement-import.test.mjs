@@ -6,9 +6,12 @@ import {
   ACH_VOLUME_KEYS,
   parseOhAchievementWorkbook,
   parseArAchievementWorkbook,
+  parseTargetVsAchievementWorkbook,
   buildSalesAchievementDocs,
+  buildSalesVolumeDocs,
   dailyAchievementValuesFromRow,
-  monthlyAchievementValuesFromRow
+  monthlyAchievementValuesFromRow,
+  monthlyVolumeAchievementValuesFromRow
 } from "../js/sales-achievement-import.mjs";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -206,9 +209,107 @@ test("pemetaan nilai capaian ke kunci indikator harian & bulanan", () => {
     value_penjualan_tertagih: 100, value_prima: 20, value_dcota: 30, overdue_piutang: 40
   });
   assert.equal(monthly.target_value_penjualan, 100);
-  assert.equal(monthly.target_value_prima, 20);
-  assert.equal(monthly.target_value_dcota, 30);
   assert.equal(monthly.target_overdue_piutang, 40);
+  // Value prima/dcota tidak lagi diambil dari AR (sumbernya file Target vs Achievement).
+  assert.equal(monthly.target_value_prima, undefined);
+  assert.equal(monthly.target_value_dcota, undefined);
+});
+
+test("pemetaan nilai volume/AO/value dari Target vs Achievement", () => {
+  const monthly = monthlyVolumeAchievementValuesFromRow({
+    volume_dulux: 0.111, volume_catylac: 1.331, volume_maxilite: 0, volume_aquashield: 0.025,
+    ao_ici: 7, ao_prima: 3, ao_dcota: 0, value_prima: 2069397, value_dcota: 0
+  });
+  assert.equal(monthly.target_volume_dulux, 0.111);
+  assert.equal(monthly.target_volume_catylac, 1.331);
+  assert.equal(monthly.target_ao_ici, 7);
+  assert.equal(monthly.target_ao_prima, 3);
+  assert.equal(monthly.target_value_prima, 2069397);
+  assert.equal(monthly.target_value_dcota, 0);
+});
+
+test("parse Target vs Achievement menggabungkan volume, AO & value bulanan", () => {
+  // ICI Daily -> volume
+  const iciHeader = new Array(38).fill("");
+  iciHeader[0] = "SPV"; iciHeader[1] = "Area"; iciHeader[2] = "Sales Code"; iciHeader[3] = "Sales";
+  iciHeader[4] = "TOP - in KL "; iciHeader[10] = "MID - in KL"; iciHeader[16] = "LOW - in KL"; iciHeader[22] = "AQS - in KL";
+  const iciSub = new Array(38).fill("");
+  [4, 10, 16, 22].forEach((b) => { iciSub[b] = "Target"; iciSub[b + 1] = "INV"; iciSub[b + 2] = "DO"; iciSub[b + 3] = "Total"; iciSub[b + 4] = "% Achieve"; iciSub[b + 5] = "GAP"; });
+  const iciRow = new Array(38).fill("");
+  iciRow[0] = "DAYAT"; iciRow[1] = "KUNINGAN"; iciRow[2] = "001B001"; iciRow[3] = "AAS";
+  iciRow[4] = 2.15; iciRow[7] = 0.111;
+  iciRow[10] = 8.67; iciRow[13] = 1.33182;
+  iciRow[16] = 0.01; iciRow[19] = 0;
+  iciRow[22] = 1.3; iciRow[25] = 0.025616;
+
+  // Prima Daily -> value prima + ao prima
+  const primaHeader = ["SPV", "AREA", "Sales Code", "Sales", "2026-11-01 00:00:00"];
+  const primaSub = ["", "", "", "", "Target Value", "INV - DPP", "Est. value Barang belum Kirim ( DO ) - DPP", "Total Achieve - DPP", "%", "GAP ", "Target AO", "Achieve AO", "% Achieve", "GAP AO"];
+  const primaRow = ["DAYAT", "KUNINGAN", "001B001", "AAS", 11000000, 0, 2069397, 2069397, 0.188127, 8930603, 20, 3, 0.15, 17];
+
+  // Dcota Daily -> value dcota + ao dcota
+  const dcotaHeader = ["SPV", "Area", "Sales Code", "Sales", "Achievement DCOTA - NOVEMBER 2026"];
+  const dcotaSub = ["", "", "", "", "Target Value", "Invoice -  ( DPP )", "Barang Belum Kirim ( DO ) - ( DPP )", "Total ( DPP )", "Grand total     ( incl ppn )", "% Achieve", "GAP", "Target AO", "Achieve AO", "% Achieve", "GAP AO"];
+  const dcotaRow = ["DAYAT", "KUNINGAN", "001B001", "AAS", 11100000, 0, 0, 0, 0, 0, 11100000, 20, 0, 0, 20];
+
+  // Target -> peta sales code -> alias
+  const targetHeader = ["Sales", "Sales Id", "Area", "TOP", "MID", "LOW", "AQS", "Total", "AO", "Value", "AO", "Value", "AO"];
+  const targetRow = ["AAS", "001B001", "KNG", 2.15, 8.67, 0.01, 1.3, 12.13, 40, 11000000, 20, 11100000, 20];
+
+  // Rekap detail -> AO ICI (outlet dengan volume ICI > 0)
+  const rekHeader = new Array(20).fill("");
+  rekHeader[0] = "OUTLET Code"; rekHeader[1] = "Description"; rekHeader[2] = "Sales"; rekHeader[3] = "TOP"; rekHeader[6] = "MID"; rekHeader[9] = "SC"; rekHeader[12] = "LOW"; rekHeader[15] = "AQS"; rekHeader[18] = "PRIMA";
+  const rekLtr = new Array(20).fill(""); rekLtr[3] = "(Ltr)"; rekLtr[6] = "(Ltr)"; rekLtr[9] = "(Ltr)"; rekLtr[12] = "(Ltr)"; rekLtr[15] = "(Ltr)"; rekLtr[18] = "VALUE";
+  const rekSub = new Array(20).fill(""); [3, 6, 9, 12, 15].forEach((b) => { rekSub[b] = "Inv"; rekSub[b + 1] = "OS"; rekSub[b + 2] = "Total"; });
+  const rekRow1 = new Array(20).fill(""); rekRow1[0] = "290960"; rekRow1[2] = "001B001"; rekRow1[8] = 223.46; rekRow1[17] = 12.296;
+  const rekRow2 = new Array(20).fill(""); rekRow2[0] = "290961"; rekRow2[2] = "001B001";
+
+  const wb = {
+    SheetNames: ["Target vs Achievement", "ICI Daily ", "Prima Daily", "Dcota Daily", "Rekap detail", "Target"],
+    Sheets: {
+      "Target vs Achievement": makeSheet([["x"]]),
+      "ICI Daily ": makeSheet([["Kolom E sd AJ sudah rumus"], ["", "AJ - CIREBON"], ["ACHIEVEMENT"], iciHeader, iciSub, iciRow]),
+      "Prima Daily": makeSheet([["Kolom E sd N sudah rumus"], primaHeader, primaSub, primaRow]),
+      "Dcota Daily": makeSheet([["Kolom E sd O sudah rumus"], dcotaHeader, dcotaSub, dcotaRow]),
+      "Rekap detail": makeSheet([[""], ["", "", "AO"], ["", "", "Total"], rekHeader, rekLtr, rekSub, rekRow1, rekRow2]),
+      "Target": makeSheet([["", "", "JUNI"], ["", "", "ICI"], targetHeader, targetRow]),
+    }
+  };
+
+  const parsed = parseTargetVsAchievementWorkbook(wb);
+  assert.equal(parsed.periode, "2026-11");
+
+  const aas = parsed.monthly.find((m) => m.alias === "AAS");
+  assert.ok(aas);
+  assert.equal(aas.volume_dulux, 0.111);
+  assert.equal(aas.volume_catylac, 1.3318);
+  assert.equal(aas.volume_maxilite, 0);
+  assert.equal(aas.volume_aquashield, 0.0256);
+  assert.equal(aas.total_volume_ici, 1.4684);
+  assert.equal(aas.ao_ici, 1);
+  assert.equal(aas.ao_prima, 3);
+  assert.equal(aas.ao_dcota, 0);
+  assert.equal(aas.value_prima, 2069397);
+  assert.equal(aas.value_dcota, 0);
+});
+
+test("buildSalesVolumeDocs membangun dokumen BULANAN_VOLUME dengan NIK", () => {
+  const masterList = [{ nik_karyawan: "1062503910", nama_karyawan: "AAS ASNAWI" }];
+  const parsed = { monthly: [
+    { alias: "AAS", periode: "2026-11", volume_dulux: 0.111, volume_catylac: 1.3318, volume_maxilite: 0, volume_aquashield: 0.0256, total_volume_ici: 1.4684, ao_ici: 1, ao_prima: 3, ao_dcota: 0, value_prima: 2069397, value_dcota: 0 },
+    { alias: "IKA", periode: "2026-11", volume_dulux: 1, volume_catylac: 0, volume_maxilite: 0, volume_aquashield: 0, total_volume_ici: 1, ao_ici: 1, ao_prima: 0, ao_dcota: 0, value_prima: 0, value_dcota: 0 }
+  ] };
+  const result = buildSalesVolumeDocs(parsed, masterList, new Map(), { tvaFile: "TVA.xlsx" });
+
+  const aas = result.docs.find((d) => d.fields.alias === "AAS");
+  assert.equal(aas.id, "ACHV-2026-11-AAS");
+  assert.equal(aas.fields.jenis, "BULANAN_VOLUME");
+  assert.equal(aas.fields.nik_karyawan, "1062503910");
+  assert.equal(aas.fields.sumber_file, "TVA.xlsx");
+  assert.equal(aas.fields.volume_dulux, 0.111);
+  assert.equal(aas.fields.ao_prima, 3);
+
+  assert.ok(result.unmapped.some((u) => u.includes("IKA")));
 });
 
 test("modal impor capaian sales dan tombol isi otomatis terpasang di view", () => {
@@ -216,12 +317,16 @@ test("modal impor capaian sales dan tombol isi otomatis terpasang di view", () =
   assert.match(source, /openImportSalesAchievementModal/);
   assert.match(source, /btn-import-sales-achievement/);
   assert.match(source, /SALES_ACHIEVEMENT_IMPORT/);
-  assert.match(source, /btn-fill-from-import/);
+  assert.match(source, /impa-tva/);
+  assert.match(source, /parseTargetVsAchievementWorkbook/);
   assert.match(source, /monthly-achievement-fill/);
-  assert.match(source, /loadSalesAchievementDaily/);
   assert.match(source, /loadSalesAchievementMonthly/);
-  assert.match(source, /dailyAchievementValuesFromRow/);
+  assert.match(source, /loadSalesAchievementVolumeMonthly/);
   assert.match(source, /monthlyAchievementValuesFromRow/);
+  assert.match(source, /monthlyVolumeAchievementValuesFromRow/);
+  // Isi otomatis harian (OH) sudah dihapus; pencapaian sales kini bulanan.
+  assert.doesNotMatch(source, /btn-fill-from-import/);
+  assert.doesNotMatch(source, /loadSalesAchievementDaily/);
 });
 
 test("koleksi capaian sales terdaftar di konfigurasi Firestore", () => {
