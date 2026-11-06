@@ -38,7 +38,9 @@ const MONTH_NAMES = [
   "Juli", "Agustus", "September", "Oktober", "November", "Desember"
 ];
 
-const INACTIVE_STATUSES = ["NONAKTIF", "RESIGN", "KELUAR", "BERHENTI", "PHK"];
+const INACTIVE_STATUSES = [
+  "TIDAK AKTIF", "NON AKTIF", "NONAKTIF", "INACTIVE", "RESIGN", "KELUAR", "BERHENTI", "PHK", "TERMINATED"
+];
 
 function localDateKey(date) {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
@@ -148,7 +150,7 @@ export function recentPeriodOptions(endDate = new Date(), count = 24) {
 /** Karyawan dianggap aktif kecuali statusnya menandakan keluar. */
 export function isActiveEmployee(employee = {}) {
   const status = String(
-    employee.aktif_tdk_aktif || employee.status_aktif || employee.status_karyawan || "AKTIF"
+    employee.aktif_tdk_aktif || employee["aktif/tidak_aktif"] || employee.status_aktif || employee.status_karyawan || "AKTIF"
   ).trim().toUpperCase();
   return !INACTIVE_STATUSES.some(token => status.includes(token));
 }

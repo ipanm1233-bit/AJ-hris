@@ -5,6 +5,7 @@ import { uploadFileToDrive } from "../gas-integration.js";
 import { divisionOptionsFromSources } from "../division-options.mjs";
 import { normalizeEmail, isValidEmail } from "../employee-email.mjs";
 import { getSession, canEditModuleData } from "../auth.js";
+import { mountMasterEmployeeDashboard } from "./manajemen-data-dashboard.js";
 
 const normalizeImportHeader = (value) => String(value ?? "")
   .toUpperCase()
@@ -72,6 +73,7 @@ for (const col of EMPLOYEE_IMPORT_COLUMNS) {
 
 export async function mount(container) {
  const panels = {
+ dashboard: container.querySelector("#md-panel-dashboard"),
  karyawan: container.querySelector("#md-panel-karyawan"),
  rekap: container.querySelector("#md-panel-rekap"),
  dokumen: container.querySelector("#md-panel-dokumen"),
@@ -79,6 +81,11 @@ export async function mount(container) {
  alldb: container.querySelector("#md-panel-alldb"),
  };
  const loaded = {};
+
+ async function loadDashboardTab() {
+  if (!panels.dashboard) return;
+  await mountMasterEmployeeDashboard(panels.dashboard);
+ }
 
  async function loadKaryawanTab() {
  const getEmpList = async () => {
@@ -2743,8 +2750,8 @@ function downloadThisPdf() {
  await fetchAndRenderDb(selectEl.value);
  }
 
- await loadKaryawanTab();
- loaded.karyawan = true;
+ await loadDashboardTab();
+ loaded.dashboard = true;
 
  container.querySelectorAll(".md-tab").forEach(btn => {
  btn.addEventListener("click", async () => {
@@ -2755,6 +2762,7 @@ function downloadThisPdf() {
  });
  if (!loaded[tab]) {
  loaded[tab] = true;
+ if (tab === "karyawan") await loadKaryawanTab();
  if (tab === "rekap") await loadRekapTab();
  if (tab === "dokumen") await loadDokumenTab();
  if (tab === "signdoc") await loadSignDocTab();
