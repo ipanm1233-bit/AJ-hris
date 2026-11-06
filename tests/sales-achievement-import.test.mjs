@@ -7,11 +7,14 @@ import {
   parseOhAchievementWorkbook,
   parseArAchievementWorkbook,
   parseTargetVsAchievementWorkbook,
+  parseTrackingSalesWorkbook,
+  parseSalesMonthlyWorkbook,
   buildSalesAchievementDocs,
   buildSalesVolumeDocs,
   dailyAchievementValuesFromRow,
   monthlyAchievementValuesFromRow,
-  monthlyVolumeAchievementValuesFromRow
+  monthlyVolumeAchievementValuesFromRow,
+  monthlyMergedAchievementValues
 } from "../js/sales-achievement-import.mjs";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -312,18 +315,152 @@ test("buildSalesVolumeDocs membangun dokumen BULANAN_VOLUME dengan NIK", () => {
   assert.ok(result.unmapped.some((u) => u.includes("IKA")));
 });
 
+test("parse TRACKING SALES membaca tabel datar per metrik & salesman", () => {
+  const header = ["Area", "Sales", "Metric", "TARGET", "ACH"];
+  const row = (area, sales, metric, target, ach) => [area, sales, metric, target, ach];
+  const rows = [
+    header,
+    row("KUNINGAN", "AAS", "TOP", 2.15, 0.111),
+    row("KUNINGAN", "AAS", "MID", 8.67, 1.33182),
+    row("KUNINGAN", "AAS", "LOW", 0.01, ""),
+    row("KUNINGAN", "AAS", "AQS", 1.3, 0.025616),
+    row("KUNINGAN", "AAS", "TOTAL", 12.13, 1.468436),
+    row("KUNINGAN", "AAS", "AO ICI", 40, 14),
+    row("KUNINGAN", "AAS", "VALUE PRIMA", 11000000, 2069397),
+    row("KUNINGAN", "AAS", "AO PRIMA", 20, 3),
+    row("KUNINGAN", "AAS", "VALUE DCOTA", 11100000, ""),
+    row("KUNINGAN", "AAS", "AO DCOTA", 20, ""),
+    row("KUNINGAN", "AAS", "Penjualan Tertagih", "", ""),
+    row("KUNINGAN", "AAS", "Overdue Piutang (batas maksimum)", "", ""),
+    row("KUNINGAN", "VACANT_CT", "TOP", 2.64, 0.086),
+    row("CIREBON", "DIAN", "TOP", 20, 18.2965),
+    row("CIREBON", "DIAN", "Penjualan Tertagih", "", 5000000),
+    row("CIREBON", "DIAN", "Overdue Piutang (batas maksimum)", "", 700000),
+  ];
+  const wb = {
+    SheetNames: ["TRACKING SALES NOVEMBER 2026"],
+    Sheets: { "TRACKING SALES NOVEMBER 2026": makeSheet(rows) },
+  };
+
+  const parsed = parseTrackingSalesWorkbook(wb);
+  assert.equal(parsed.periode, "2026-11");
+  assert.equal(parsed.monthly.length, 2);
+
+  const aas = parsed.monthly.find((m) => m.alias === "AAS");
+  assert.equal(aas.volume_dulux, 0.111);
+  assert.equal(aas.volume_catylac, 1.3318);
+  assert.equal(aas.volume_maxilite, 0);
+  assert.equal(aas.volume_aquashield, 0.0256);
+  assert.equal(aas.total_volume_ici, 1.4684);
+  assert.equal(aas.ao_ici, 14);
+  assert.equal(aas.ao_prima, 3);
+  assert.equal(aas.value_prima, 2069397);
+  assert.equal(aas.value_penjualan_tertagih, null);
+  assert.equal(aas.target_volume_dulux, 2.15);
+
+  const dian = parsed.monthly.find((m) => m.alias === "DIAN");
+  assert.equal(dian.volume_dulux, 18.2965);
+  assert.equal(dian.value_penjualan_tertagih, 5000000);
+  assert.equal(dian.overdue_piutang, 700000);
+
+  // VACANT dilewati.
+  assert.ok(!parsed.monthly.some((m) => /VACANT/.test(m.alias)));
+});
+
+test("parseSalesMonthlyWorkbook mendeteksi format TRACKING SALES & fallback Target vs Achievement", () => {
+  const trackingWb = {
+    SheetNames: ["TRACKING SALES NOVEMBER 2026"],
+    Sheets: {
+      "TRACKING SALES NOVEMBER 2026": makeSheet([
+        ["Area", "Sales", "Metric", "TARGET", "ACH"],
+        ["KUNINGAN", "AAS", "TOP", 2.15, 0.111],
+      ]),
+    },
+  };
+  const tracking = parseSalesMonthlyWorkbook(trackingWb);
+  assert.equal(tracking.sumber, "tracking");
+  assert.equal(tracking.monthly[0].volume_dulux, 0.111);
+
+  // Workbook bergaya Target vs Achievement: hanya ICI Daily yang tersedia.
+  const iciHeader = new Array(30).fill("");
+  iciHeader[0] = "SPV"; iciHeader[1] = "Area"; iciHeader[2] = "Sales Code"; iciHeader[3] = "Sales";
+  iciHeader[4] = "TOP - in KL "; iciHeader[10] = "MID - in KL";
+  const iciSub = new Array(30).fill("");
+  [4, 10].forEach((b) => { iciSub[b] = "Target"; iciSub[b + 1] = "INV"; iciSub[b + 2] = "DO"; iciSub[b + 3] = "Total"; });
+  const iciRow = new Array(30).fill("");
+  iciRow[0] = "DAYAT"; iciRow[1] = "KUNINGAN"; iciRow[2] = "001B001"; iciRow[3] = "AAS";
+  iciRow[4] = 2.15; iciRow[7] = 0.111;
+  const tvaWb = {
+    SheetNames: ["ICI Daily", "Prima Daily"],
+    Sheets: {
+      "ICI Daily": makeSheet([[""], [""], [""], iciHeader, iciSub, iciRow]),
+      "Prima Daily": makeSheet([["", "", "", "", "2026-11-01 00:00:00"], ["SPV", "Area", "Sales Code", "Sales"]]),
+    },
+  };
+  const tva = parseSalesMonthlyWorkbook(tvaWb);
+  assert.equal(tva.sumber, "target_vs_achievement");
+  assert.equal(tva.monthly.find((m) => m.alias === "AAS").volume_dulux, 0.111);
+});
+
+test("monthlyMergedAchievementValues tidak menimpa nilai AR dengan kolom kosong", () => {
+  const arRow = { value_penjualan_tertagih: 5000000, overdue_piutang: 700000 };
+  const volumeRow = {
+    volume_dulux: 0.111, volume_catylac: 1.3318, volume_maxilite: 0, volume_aquashield: 0.0256,
+    ao_ici: 14, ao_prima: 3, ao_dcota: 0, value_prima: 2069397, value_dcota: 0,
+    value_penjualan_tertagih: null, overdue_piutang: null,
+  };
+  const merged = monthlyMergedAchievementValues(arRow, volumeRow);
+  assert.equal(merged.target_volume_dulux, 0.111);
+  assert.equal(merged.target_ao_ici, 14);
+  assert.equal(merged.target_value_prima, 2069397);
+  assert.equal(merged.target_value_penjualan, 5000000);
+  assert.equal(merged.target_overdue_piutang, 700000);
+});
+
+test("resolveAliasInfo memetakan nama lengkap dari TRACKING SALES ke NIK", () => {
+  const masterList = [
+    { nik_karyawan: "1062503910", nama_karyawan: "AAS ASNAWI" },
+    { nik_karyawan: "1092210890", nama_karyawan: "SAPUTRA HIDAYAT" },
+    { nik_karyawan: "1012612890", nama_karyawan: "ZAENURUL IMAM" },
+    { nik_karyawan: "1072505910", nama_karyawan: "RIESDIANTO" },
+    { nik_karyawan: "109250781", nama_karyawan: "YEYET YULIATY" },
+  ];
+  const parsed = {
+    monthly: [
+      "AAS ASNAWI",
+      "SAPUTRA HIDAYAT",
+      "ZAENURUL IMAM",
+      "RIESDIANTO",
+      "YEYET YULIATY",
+    ].map((alias) => ({
+      alias, periode: "2026-11", volume_dulux: 1, volume_catylac: 0,
+      volume_maxilite: 0, volume_aquashield: 0, total_volume_ici: 1,
+      ao_ici: 1, ao_prima: 0, ao_dcota: 0, value_prima: 0, value_dcota: 0,
+    })),
+  };
+  const result = buildSalesVolumeDocs(parsed, masterList, new Map());
+  assert.equal(result.docs.length, 5);
+  assert.deepEqual(result.unmapped, []);
+
+  const byAlias = Object.fromEntries(result.docs.map((d) => [d.fields.alias, d.fields]));
+  assert.equal(byAlias["SAPUTRA HIDAYAT"].nik_karyawan, "1092210890");
+  assert.equal(byAlias["ZAENURUL IMAM"].nik_karyawan, "1012612890");
+  assert.equal(byAlias["RIESDIANTO"].nik_karyawan, "1072505910");
+  assert.equal(byAlias["AAS ASNAWI"].nama_karyawan, "AAS ASNAWI");
+});
+
 test("modal impor capaian sales dan tombol isi otomatis terpasang di view", () => {
   const source = read("js/views/penilaian-kontrak.js");
   assert.match(source, /openImportSalesAchievementModal/);
   assert.match(source, /btn-import-sales-achievement/);
   assert.match(source, /SALES_ACHIEVEMENT_IMPORT/);
   assert.match(source, /impa-tva/);
-  assert.match(source, /parseTargetVsAchievementWorkbook/);
+  assert.match(source, /parseSalesMonthlyWorkbook/);
   assert.match(source, /monthly-achievement-fill/);
   assert.match(source, /loadSalesAchievementMonthly/);
   assert.match(source, /loadSalesAchievementVolumeMonthly/);
-  assert.match(source, /monthlyAchievementValuesFromRow/);
-  assert.match(source, /monthlyVolumeAchievementValuesFromRow/);
+  assert.match(source, /monthlyMergedAchievementValues/);
+  assert.match(source, /btn-target-from-import/);
   // Isi otomatis harian (OH) sudah dihapus; pencapaian sales kini bulanan.
   assert.doesNotMatch(source, /btn-fill-from-import/);
   assert.doesNotMatch(source, /loadSalesAchievementDaily/);

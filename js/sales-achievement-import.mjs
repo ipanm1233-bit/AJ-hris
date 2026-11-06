@@ -497,22 +497,199 @@ export function parseTargetVsAchievementWorkbook(wb) {
 }
 
 /* ---------------------------------------------------------------------
+ * TRACKING SALES — TABEL DATAR (Area | Sales | Metric | TARGET | ACH)
+ * ------------------------------------------------------------------- */
+const TRACKING_METRIC_MAP = {
+  TOP: "volume_dulux",
+  MID: "volume_catylac",
+  LOW: "volume_maxilite",
+  AQS: "volume_aquashield",
+  TOTAL: "total_volume_ici",
+  TOTAL_VOLUME_ICI: "total_volume_ici",
+  AO_ICI: "ao_ici",
+  VALUE_PRIMA: "value_prima",
+  AO_PRIMA: "ao_prima",
+  VALUE_DCOTA: "value_dcota",
+  AO_DCOTA: "ao_dcota",
+  PENJUALAN_TERTAGIH: "value_penjualan_tertagih",
+  OVERDUE_PIUTANG: "overdue_piutang",
+};
+
+function trackingMetricField(label) {
+  const key = normKey(label);
+  if (TRACKING_METRIC_MAP[key]) return TRACKING_METRIC_MAP[key];
+  if (key.startsWith("OVERDUE")) return "overdue_piutang";
+  if (key.startsWith("PENJUALAN_TERTAGIH")) return "value_penjualan_tertagih";
+  if (key.startsWith("VALUE_PRIMA")) return "value_prima";
+  if (key.startsWith("VALUE_DCOTA")) return "value_dcota";
+  if (key.startsWith("AO_PRIMA")) return "ao_prima";
+  if (key.startsWith("AO_DCOTA")) return "ao_dcota";
+  if (key.startsWith("AO_ICI")) return "ao_ici";
+  return null;
+}
+
+/**
+ * Parse file "TRACKING SALES" yang berbentuk tabel datar:
+ *   Area | Sales | Metric | TARGET | ACH
+ * Satu baris = satu metrik untuk satu salesman, mis.:
+ *   AAS | TOP | 2.15 | 0.111
+ * Metrik yang dikenali: TOP/MID/LOW/AQS/TOTAL, AO ICI, VALUE/AO PRIMA,
+ * VALUE/AO DCOTA, Penjualan Tertagih, dan Overdue Piutang.
+ * Mengembalikan { periode, monthly } dengan nilai per salesman.
+ */
+export function parseTrackingSalesWorkbook(wb) {
+  let periode = periodFromFileName(wb.SheetNames?.[0] || "", new Date().getFullYear());
+  const aggregate = new Map();
+
+  const ensure = (alias) => {
+    let a = aggregate.get(alias);
+    if (!a) {
+      a = { alias, values: {}, targets: {} };
+      aggregate.set(alias, a);
+    }
+    return a;
+  };
+
+  for (const sheetName of wb.SheetNames || []) {
+    const matrix = sheetMatrix(wb.Sheets[sheetName]);
+    if (!matrix.length) continue;
+    const hdr = findHeaderRow(matrix, ["Sales", "Metric", "ACH"]);
+    if (hdr < 0) continue;
+
+    const map = headerIndexMap(matrix[hdr]);
+    const colSales = map.SALES;
+    const colMetric = map.METRIC;
+    const colTarget = map.TARGET;
+    const colAch = map.ACH ?? map.ACHIEVEMENT;
+    if (colSales === undefined || colMetric === undefined || colAch === undefined) continue;
+
+    if (!periode) periode = periodFromFileName(sheetName, new Date().getFullYear());
+
+    for (let r = hdr + 1; r < matrix.length; r += 1) {
+      const row = matrix[r] || [];
+      const alias = cleanText(row[colSales]).toUpperCase();
+      if (!alias || /^VACANT/.test(alias) || alias === "TOTAL") continue;
+
+      const field = trackingMetricField(row[colMetric]);
+      if (!field) continue;
+
+      const agg = ensure(alias);
+      const ach = numValue(row[colAch]);
+      if (ach !== null) agg.values[field] = ach;
+      const target = colTarget === undefined ? null : numValue(row[colTarget]);
+      if (target !== null) agg.targets[field] = target;
+    }
+  }
+
+  if (!periode) {
+    const now = new Date();
+    periode = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  const monthly = [...aggregate.values()].map((agg) => {
+    const v = agg.values;
+    const t = agg.targets;
+    const componentTotal = round4(
+      (v.volume_dulux || 0) + (v.volume_catylac || 0) + (v.volume_maxilite || 0) + (v.volume_aquashield || 0)
+    );
+    const totalVolume = componentTotal > 0 ? componentTotal : round4(v.total_volume_ici || 0);
+    const tertagih = v.value_penjualan_tertagih;
+    const overdue = v.overdue_piutang;
+    return {
+      alias: agg.alias,
+      periode,
+      volume_dulux: round4(v.volume_dulux || 0),
+      volume_catylac: round4(v.volume_catylac || 0),
+      volume_maxilite: round4(v.volume_maxilite || 0),
+      volume_aquashield: round4(v.volume_aquashield || 0),
+      total_volume_ici: totalVolume,
+      ao_ici: v.ao_ici ?? 0,
+      ao_prima: v.ao_prima ?? 0,
+      ao_dcota: v.ao_dcota ?? 0,
+      value_prima: Math.round(v.value_prima || 0),
+      value_dcota: Math.round(v.value_dcota || 0),
+      value_penjualan_tertagih: tertagih === undefined || tertagih === null ? null : Math.round(tertagih),
+      overdue_piutang: overdue === undefined || overdue === null ? null : Math.round(overdue),
+      target_volume_dulux: t.volume_dulux ?? null,
+      target_volume_catylac: t.volume_catylac ?? null,
+      target_volume_maxilite: t.volume_maxilite ?? null,
+      target_volume_aquashield: t.volume_aquashield ?? null,
+      target_total_volume_ici: t.total_volume_ici ?? null,
+      target_ao_ici: t.ao_ici ?? null,
+      target_ao_prima: t.ao_prima ?? null,
+      target_ao_dcota: t.ao_dcota ?? null,
+      target_value_prima: t.value_prima ?? null,
+      target_value_dcota: t.value_dcota ?? null,
+      target_value_penjualan: t.value_penjualan_tertagih ?? null,
+      target_overdue_piutang: t.overdue_piutang ?? null,
+    };
+  });
+
+  return { periode, monthly };
+}
+
+/**
+ * Deteksi otomatis format file capaian bulanan:
+ *   1. "TRACKING SALES" (tabel datar Area/Sales/Metric/TARGET/ACH)
+ *   2. "Target vs Achievement" (sheet ICI Daily, Prima Daily, Dcota Daily, ...)
+ */
+export function parseSalesMonthlyWorkbook(wb) {
+  const tracking = parseTrackingSalesWorkbook(wb);
+  if (tracking.monthly.length) return { ...tracking, sumber: "tracking" };
+  const tva = parseTargetVsAchievementWorkbook(wb);
+  return { ...tva, sumber: "target_vs_achievement" };
+}
+
+/* ---------------------------------------------------------------------
  * PEMETAAN ORANG + BANGUN DOKUMEN
  * ------------------------------------------------------------------- */
 function resolveAliasInfo(aliasKey, masterList, overrideMap) {
   const aliasUpper = aliasKey.replace(/_/g, " ");
-  const kandidat = [...new Set([aliasKey, aliasKey.split("_")[0]])].filter(Boolean);
+  const tokens = aliasKey.split("_").filter(Boolean);
+  const kandidat = [...new Set([aliasKey, ...tokens])].filter(Boolean);
   let nik = "";
   let source = "default";
+
+  // 1. Override eksplisit dari koleksi `sales_alias_map`.
   const over = kandidat.map((k) => overrideMap.get(k)).find(Boolean);
   if (over && over.nik_karyawan) { nik = over.nik_karyawan; source = "sales_alias_map"; }
+
+  // 2. Nama lengkap pada file (mis. "SAPUTRA HIDAYAT") dicocokkan langsung
+  //    ke master karyawan, karena singkatan seperti DAYAT tidak selalu ada
+  //    di nama lengkap.
+  if (!nik) {
+    const masterExact = masterList.find((k) => normKey(k.nama_karyawan || "") === aliasKey);
+    if (masterExact && masterExact.nik_karyawan) { nik = masterExact.nik_karyawan; source = "master_name"; }
+  }
+
+  // 3. Singkatan default (AAS, DAYAT, IMAM, DIAN, ...).
   if (!nik) {
     for (const k of kandidat) {
-      if (SALES_ALIAS_DEFAULT_NIK[k]) { nik = SALES_ALIAS_DEFAULT_NIK[k]; break; }
+      if (SALES_ALIAS_DEFAULT_NIK[k]) { nik = SALES_ALIAS_DEFAULT_NIK[k]; source = "default"; break; }
     }
   }
+
+  // 4. Cadangan: nama master tercakup di nama file (atau sebaliknya),
+  //    termasuk bila master memuat gelar/akhiran.
+  if (!nik && tokens.length) {
+    const tokenSet = new Set(tokens);
+    const masterFuzzy = masterList.find((k) => {
+      const nameKey = normKey(k.nama_karyawan || "");
+      if (!nameKey) return false;
+      if (nameKey === aliasKey) return true;
+      if (aliasKey.startsWith(`${nameKey}_`) || nameKey.startsWith(`${aliasKey}_`)) return true;
+      const mt = nameKey.split("_").filter(Boolean);
+      if (!mt.length) return false;
+      const overlap = mt.filter((t) => tokenSet.has(t)).length;
+      return mt.length === 1 ? overlap === 1 : overlap >= 2;
+    });
+    if (masterFuzzy && masterFuzzy.nik_karyawan) { nik = masterFuzzy.nik_karyawan; source = "master_fuzzy"; }
+  }
+
+  // Kandidat nama lengkap dari file (untuk tampilan bila NIK tak ketemu).
+  const aliasName = aliasUpper;
   const master = masterList.find((k) => String(k.nik_karyawan || "").trim() === String(nik).trim()) || null;
-  const nama = master?.nama_karyawan || (over && over.nama_karyawan) || aliasUpper;
+  const nama = master?.nama_karyawan || (over && over.nama_karyawan) || aliasName;
   return { nik: nik || null, nama, master, source };
 }
 
@@ -596,9 +773,9 @@ export function monthlyAchievementValuesFromRow(row) {
 }
 
 /**
- * Petakan nilai capaian bulanan (dari file Target vs Achievement) ke kunci
- * target bulanan KPI: volume empat produk, AO ICI/PRIMA/DCOTA, dan value
- * PRIMA/DCOTA.
+ * Petakan nilai capaian bulanan (dari file TRACKING SALES / Target vs
+ * Achievement) ke kunci target bulanan KPI: volume empat produk, AO
+ * ICI/PRIMA/DCOTA, value PRIMA/DCOTA, serta tertagih & overdue bila tersedia.
  */
 export function monthlyVolumeAchievementValuesFromRow(row) {
   if (!row) return {};
@@ -612,12 +789,30 @@ export function monthlyVolumeAchievementValuesFromRow(row) {
     target_ao_dcota: row.ao_dcota,
     target_value_prima: row.value_prima,
     target_value_dcota: row.value_dcota,
+    target_value_penjualan: row.value_penjualan_tertagih,
+    target_overdue_piutang: row.overdue_piutang,
   };
 }
 
 /**
- * Bangun dokumen capaian bulanan (volume, AO, value) dari file Target vs
- * Achievement. Ditulis ke `sales_achievement_import` dengan jenis BULANAN_VOLUME.
+ * Gabungkan realisasi dari file AR (tertagih/overdue) dan file capaian
+ * (volume/AO/value). Nilai yang kosong tidak menimpa nilai sumber lain.
+ */
+export function monthlyMergedAchievementValues(arRow, volumeRow) {
+  const out = {};
+  for (const map of [monthlyAchievementValuesFromRow(arRow), monthlyVolumeAchievementValuesFromRow(volumeRow)]) {
+    for (const [key, value] of Object.entries(map || {})) {
+      if (value === undefined || value === null) continue;
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+/**
+ * Bangun dokumen capaian bulanan (volume, AO, value) dari file TRACKING SALES
+ * atau Target vs Achievement. Ditulis ke `sales_achievement_import` dengan
+ * jenis BULANAN_VOLUME.
  */
 export function buildSalesVolumeDocs(parsed, masterList, overrideMap, opts = {}) {
   const docs = [];
@@ -625,29 +820,46 @@ export function buildSalesVolumeDocs(parsed, masterList, overrideMap, opts = {})
   for (const row of parsed?.monthly || []) {
     const aliasKey = normKey(row.alias);
     const resolved = resolveAliasInfo(aliasKey, masterList, overrideMap);
-    if (!resolved.nik) unmapped.push(`TVA ${row.periode} ${row.alias}`);
-    docs.push({
-      id: `ACHV-${row.periode}-${aliasKey}`,
-      fields: {
-        jenis: "BULANAN_VOLUME",
-        periode: row.periode,
-        alias: row.alias,
-        nik_karyawan: resolved.nik,
-        nama_karyawan: resolved.nama,
-        volume_dulux: row.volume_dulux,
-        volume_catylac: row.volume_catylac,
-        volume_maxilite: row.volume_maxilite,
-        volume_aquashield: row.volume_aquashield,
-        total_volume_ici: row.total_volume_ici,
-        ao_ici: row.ao_ici,
-        ao_prima: row.ao_prima,
-        ao_dcota: row.ao_dcota,
-        value_prima: row.value_prima,
-        value_dcota: row.value_dcota,
-        sumber_file: opts.tvaFile || null,
-        updated_at: new Date().toISOString(),
-      },
-    });
+    if (!resolved.nik) unmapped.push(`${opts.label || "Capaian"} ${row.periode} ${row.alias}`);
+
+    const fields = {
+      jenis: "BULANAN_VOLUME",
+      periode: row.periode,
+      alias: row.alias,
+      nik_karyawan: resolved.nik,
+      nama_karyawan: resolved.nama,
+      volume_dulux: row.volume_dulux,
+      volume_catylac: row.volume_catylac,
+      volume_maxilite: row.volume_maxilite,
+      volume_aquashield: row.volume_aquashield,
+      total_volume_ici: row.total_volume_ici,
+      ao_ici: row.ao_ici,
+      ao_prima: row.ao_prima,
+      ao_dcota: row.ao_dcota,
+      value_prima: row.value_prima,
+      value_dcota: row.value_dcota,
+      value_penjualan_tertagih: row.value_penjualan_tertagih,
+      overdue_piutang: row.overdue_piutang,
+      target_volume_dulux: row.target_volume_dulux,
+      target_volume_catylac: row.target_volume_catylac,
+      target_volume_maxilite: row.target_volume_maxilite,
+      target_volume_aquashield: row.target_volume_aquashield,
+      target_total_volume_ici: row.target_total_volume_ici,
+      target_ao_ici: row.target_ao_ici,
+      target_ao_prima: row.target_ao_prima,
+      target_ao_dcota: row.target_ao_dcota,
+      target_value_prima: row.target_value_prima,
+      target_value_dcota: row.target_value_dcota,
+      target_value_penjualan: row.target_value_penjualan,
+      target_overdue_piutang: row.target_overdue_piutang,
+      sumber_file: opts.tvaFile || null,
+      updated_at: new Date().toISOString(),
+    };
+    for (const key of Object.keys(fields)) {
+      if (fields[key] === undefined || fields[key] === null) delete fields[key];
+    }
+
+    docs.push({ id: `ACHV-${row.periode}-${aliasKey}`, fields });
   }
   return { docs, unmapped };
 }

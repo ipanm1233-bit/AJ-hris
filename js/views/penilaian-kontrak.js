@@ -22,7 +22,7 @@ import {
  PIP_DEFAULT_INDICATORS, normalizePipIndicators, pipIndicatorScore, pipIndicatorSummary
 } from "../pip.mjs";
 import { parseSchemeIncentiveWorkbook, parseDsrWorkbook, buildSalesKinerjaDocs, buildDsrDocs } from "../sales-kinerja-import.mjs";
-import { parseArAchievementWorkbook, parseTargetVsAchievementWorkbook, buildSalesAchievementDocs, buildSalesVolumeDocs, monthlyAchievementValuesFromRow, monthlyVolumeAchievementValuesFromRow } from "../sales-achievement-import.mjs";
+import { parseArAchievementWorkbook, parseSalesMonthlyWorkbook, buildSalesAchievementDocs, buildSalesVolumeDocs, monthlyMergedAchievementValues } from "../sales-achievement-import.mjs";
 
 const confirmThen = (message, action) => runConfirmedAction(confirmDialog, message, action);
 
@@ -1507,18 +1507,18 @@ export async function mount(container, { session, params }) {
     return;
    }
    const wrap = openModal({
-    title: "Impor Capaian Sales (Target vs Achievement + AR)",
+    title: "Impor Capaian Sales (Tracking Sales + AR)",
     size: "lg",
     bodyHtml: `
     <div class="space-y-4 text-sm">
      <div class="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3 text-xs text-emerald-900">
       <strong>Catatan:</strong> data menimpa dokumen periode yang sama (aman diulang bila angka direvisi).
-      File <strong>Target vs Achievement</strong> menjadi dasar capaian <strong>volume, AO, &amp; value Prima/DCota</strong>;
+      File <strong>TRACKING SALES</strong> menjadi dasar capaian <strong>volume, AO, &amp; value Prima/DCota</strong>;
       file <strong>AR Harian</strong> menjadi dasar <strong>penjualan tertagih &amp; overdue</strong>.
       Setelah disimpan, buka <em>Realisasi Target Bulanan</em> lalu klik <em>Isi dari Impor</em>.
      </div>
      <div>
-      <label class="block text-xs font-bold text-slate-700 mb-1">1. Target vs Achievement — volume, AO &amp; value (xlsx)</label>
+      <label class="block text-xs font-bold text-slate-700 mb-1">1. TRACKING SALES — volume, AO &amp; value (xlsx)</label>
       <input type="file" id="impa-tva" accept=".xlsx,.xls" class="block w-full text-xs border border-slate-200 rounded-xl p-2 bg-slate-50">
      </div>
      <div>
@@ -1558,8 +1558,8 @@ export async function mount(container, { session, params }) {
       const docs = state.tva.docs || [];
       const totalTon = docs.reduce((s, d) => s + (Number(d.fields.total_volume_ici) || 0), 0);
       parts.push(`<div class="rounded-xl border border-slate-200 bg-white p-3">
-       <p class="text-xs font-bold text-slate-800">Target vs Achievement — Volume, AO &amp; Value — ${escapeHtml(state.tvaFile)}</p>
-       <p class="text-xs text-slate-500 mt-1">${docs.length} salesman · total volume ${totalTon.toLocaleString("id-ID", { maximumFractionDigits: 3 })} KL</p>
+       <p class="text-xs font-bold text-slate-800">Tracking Sales — Volume, AO &amp; Value — ${escapeHtml(state.tvaFile)}</p>
+       <p class="text-xs text-slate-500 mt-1">${docs.length} salesman · total volume ${totalTon.toLocaleString("id-ID", { maximumFractionDigits: 3 })} Ton</p>
        ${state.tva.unmapped.length ? `<p class="mt-1 text-[11px] text-amber-700">Alias belum terpetakan (NIK kosong): ${escapeHtml(state.tva.unmapped.join(", "))}</p>` : ""}
       </div>`);
      }
@@ -1588,17 +1588,17 @@ export async function mount(container, { session, params }) {
      showImportError("");
      try {
       const wb = await readWorkbook(file);
-      const parsed = parseTargetVsAchievementWorkbook(wb);
+      const parsed = parseSalesMonthlyWorkbook(wb);
       if (!parsed.monthly.length) {
        state.tva = null;
-       showImportError("Tidak ada sheet 'ICI Daily' / 'Prima Daily' dikenali. Pastikan memakai file Target vs Achievement.");
+       showImportError("Tidak ada baris data yang dikenali. Pastikan memakai file TRACKING SALES (kolom Area, Sales, Metric, TARGET, ACH) atau Target vs Achievement.");
       } else {
        state.tva = buildSalesVolumeDocs(parsed, masters, overrideMap, { tvaFile: file.name });
        state.tvaFile = file.name;
       }
      } catch (err) {
       state.tva = null;
-      showImportError(`Gagal membaca Target vs Achievement: ${err.message}`);
+      showImportError(`Gagal membaca file capaian: ${err.message}`);
      }
      renderPreview();
      e.target.value = "";
@@ -1635,7 +1635,7 @@ export async function mount(container, { session, params }) {
      if (!tvaDocs.length && !monthlyDocs.length) return;
      const jalankan = await confirmDialog({
       title: "Simpan Capaian Sales?",
-      message: `${tvaDocs.length} catatan volume/AO (Target vs Achievement) dan ${monthlyDocs.length} catatan tertagih/overdue (AR) akan ditulis ke Firestore. Dokumen periode yang sama akan diperbarui.`,
+      message: `${tvaDocs.length} catatan volume/AO/value (Tracking Sales) dan ${monthlyDocs.length} catatan tertagih/overdue (AR) akan ditulis ke Firestore. Dokumen periode yang sama akan diperbarui.`,
       confirmLabel: "Simpan",
      });
      if (!jalankan) return;
@@ -1643,6 +1643,23 @@ export async function mount(container, { session, params }) {
      saveBtn.disabled = true;
      saveBtn.innerHTML = "Menyimpan…";
      try {
+      // Bersihkan dokumen BULANAN_VOLUME lama untuk periode yang sama agar
+      // tidak ada duplikat dari impor sebelumnya (format/nama berbeda).
+      const tvaIds = new Set(tvaDocs.map(d => d.id));
+      const periodSet = new Set(tvaDocs.map(d => String(d.fields.periode || "").slice(0, 7)).filter(Boolean));
+      const staleIds = [];
+      for (const periode of periodSet) {
+       const rows = await queryRows(COL.SALES_ACHIEVEMENT_IMPORT, "periode", periode).catch(() => []);
+       rows.forEach(r => {
+        if (r.jenis === "BULANAN_VOLUME" && !tvaIds.has(r.id)) staleIds.push(r.id);
+       });
+      }
+      for (let i = 0; i < staleIds.length; i += 400) {
+       const delBatch = writeBatch(db);
+       staleIds.slice(i, i + 400).forEach(id => delBatch.delete(doc(db, COL.SALES_ACHIEVEMENT_IMPORT, id)));
+       await delBatch.commit();
+      }
+
       const BATCH = 400;
       const semua = [
        ...tvaDocs.map(d => ({ koleksi: COL.SALES_ACHIEVEMENT_IMPORT, ...d })),
@@ -1667,7 +1684,7 @@ export async function mount(container, { session, params }) {
    })();
   }
 
-  // Baca dokumen capaian volume/AO bulanan (Target vs Achievement).
+  // Baca dokumen capaian volume/AO bulanan (Tracking Sales / Target vs Achievement).
   async function loadSalesAchievementVolumeMonthly(nik, nama, periode) {
    if (!periode) return null;
    if (nik) {
@@ -8086,7 +8103,12 @@ export async function mount(container, { session, params }) {
             if (currentKat === "SALES") {
               container.innerHTML = `
                 <div class="p-4 bg-white rounded-xl border border-slate-200 space-y-4">
-                  <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-100 pb-2">Target Volume Penjualan ICI (Ton / Liter / Kaleng)</h4>
+                  <div class="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                    <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700">Target Volume Penjualan ICI (Ton / Liter / Kaleng)</h4>
+                    <button type="button" id="btn-target-from-import" class="px-2.5 py-1 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 text-[11px] font-bold hover:bg-emerald-100 transition flex items-center gap-1 shrink-0" title="Isi target dari data impor TRACKING SALES">
+                      <i class='fa-solid fa-cloud-arrow-down' aria-hidden='true'></i> Isi Target dari Impor
+                    </button>
+                  </div>
                   <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div>
                       <label class="block text-[11px] font-bold text-slate-600 mb-1">Dulux</label>
@@ -8169,6 +8191,47 @@ export async function mount(container, { session, params }) {
                 if (input) input.addEventListener("input", syncTargetVolume);
               });
               syncTargetVolume();
+
+              const btnTargetImport = container.querySelector("#btn-target-from-import");
+              if (btnTargetImport) {
+                btnTargetImport.onclick = async () => {
+                  const empSelectTb = m.querySelector("#tb-karyawan-select");
+                  const selOpt = empSelectTb ? empSelectTb.options[empSelectTb.selectedIndex] : null;
+                  const nama = selOpt ? selOpt.value : (existing?.nama_karyawan || "");
+                  const nik = selOpt?.dataset?.nik || existing?.nik_karyawan || "";
+                  const periode = String(m.querySelector("#tb-periode")?.value || "").slice(0, 7);
+                  const row = await loadSalesAchievementVolumeMonthly(nik, nama, periode);
+                  if (!row) {
+                    toast(`Belum ada data impor TRACKING SALES untuk ${nama || "karyawan ini"} periode ${periode || "-"}.`, "warning");
+                    return;
+                  }
+                  const targetMap = {
+                    "tgt-vol-dulux": row.target_volume_dulux,
+                    "tgt-vol-catylac": row.target_volume_catylac,
+                    "tgt-vol-maxilite": row.target_volume_maxilite,
+                    "tgt-vol-aquashield": row.target_volume_aquashield,
+                    "tgt-val-penjualan": row.target_value_penjualan,
+                    "tgt-overdue": row.target_overdue_piutang,
+                    "tgt-val-prima": row.target_value_prima,
+                    "tgt-val-dcota": row.target_value_dcota,
+                    "tgt-ao-ici": row.target_ao_ici,
+                    "tgt-ao-prima": row.target_ao_prima,
+                    "tgt-ao-dcota": row.target_ao_dcota,
+                  };
+                  let filledTarget = 0;
+                  Object.entries(targetMap).forEach(([id, value]) => {
+                    if (value === undefined || value === null) return;
+                    const input = container.querySelector(`#${id}`);
+                    if (input) { input.value = value; filledTarget += 1; }
+                  });
+                  if (!filledTarget) {
+                    toast("Target pada file impor tidak tersedia.", "warning");
+                    return;
+                  }
+                  syncTargetVolume();
+                  toast(`Target diisi otomatis dari impor (${filledTarget} indikator).`, "success");
+                };
+              }
             } else {
               container.innerHTML = `
                 <div class="p-4 bg-white rounded-xl border border-slate-200 space-y-4">
@@ -8474,14 +8537,11 @@ export async function mount(container, { session, params }) {
                 loadSalesAchievementVolumeMonthly(nik, nama, periode),
               ]);
               if (!arRow && !tvaRow) {
-                toast(`Belum ada data impor untuk ${nama || "karyawan ini"} periode ${periode}. Impor file Target vs Achievement dan/atau AR terlebih dahulu.`, "warning");
+                toast(`Belum ada data impor untuk ${nama || "karyawan ini"} periode ${periode}. Impor file TRACKING SALES dan/atau AR terlebih dahulu.`, "warning");
                 return;
               }
               const form = modal.querySelector("#monthly-achievement-form");
-              const values = {
-                ...monthlyAchievementValuesFromRow(arRow),
-                ...monthlyVolumeAchievementValuesFromRow(tvaRow),
-              };
+              const values = monthlyMergedAchievementValues(arRow, tvaRow);
               let filled = 0;
               Object.entries(values).forEach(([key, value]) => {
                 if (value === undefined || value === null) return;
