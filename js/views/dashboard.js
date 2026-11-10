@@ -9,6 +9,23 @@ import { getToken } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-me
 
 const BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
 
+const DASH_WIDGETS = [
+ { id: "dash-widget-informasi", label: "Informasi untuk Anda", description: "Memo, kabar, dan informasi HR.", size: "full" },
+ { id: "dash-widget-cuti-hari-ini", label: "Karyawan Cuti / Izin Hari Ini", description: "Daftar karyawan yang sedang cuti atau izin.", size: "full" },
+ { id: "dash-personal-banner", label: "Banner Personal", description: "Ucapan ulang tahun, hari jadi, dan status cuti.", size: "full" },
+ { id: "dash-contract-widget-wrap", label: "Pengingat Kontrak", description: "Kontrak karyawan yang segera berakhir.", size: "full" },
+ { id: "dash-widget-sales-performance", label: "Pencapaian Kunjungan Sales", description: "Rekap kunjungan dan effective call sales.", size: "full" },
+ { id: "dash-widget-leave", label: "Informasi Jatah Cuti", description: "Saldo cuti tahunan, khusus, dan akumulasi.", size: "full" },
+ { id: "dash-widget-attendance", label: "Analitik Kehadiran", description: "Ringkasan kehadiran bulan ini.", size: "half" },
+ { id: "dash-widget-performance", label: "Evaluasi Kinerja", description: "Review kinerja dan pelatihan.", size: "half" },
+ { id: "dash-widget-kpi", label: "Tugas KPI 360", description: "Tugas penilaian yang menunggu Anda.", size: "half" },
+ { id: "dash-widget-assets", label: "Aset & ATK", description: "Aset dan pengambilan ATK milik Anda.", size: "half" },
+ { id: "dash-widget-pengumuman", label: "Pengumuman", description: "Pengumuman dan aktivitas terakhir.", size: "half" }
+];
+
+const DASH_LAYOUT_PREFIX = "andela_dashboard_layout_v1_";
+const DASH_LAYOUT_SIZES = ["full", "wide", "half"];
+
 export async function mount(container, { session }) {
  const hour = new Date().getHours();
  const greet = hour < 11 ? "Selamat Pagi" : hour < 15 ? "Selamat Siang" : hour < 18 ? "Selamat Sore" : "Selamat Malam";
@@ -22,7 +39,9 @@ export async function mount(container, { session }) {
 
  // Widget dashboard karyawan bisa diatur HRD per-karyawan (user_dashboard_widgets)
  // atau secara global (dashboard_widgets). Default: semua widget aktif jika belum diatur.
- const WIDGET_IDS = ["dash-widget-leave", "dash-widget-kpi", "dash-widget-cuti-hari-ini", "dash-widget-pengumuman", "dash-widget-informasi", "dash-widget-attendance", "dash-widget-performance", "dash-widget-assets", "dash-contract-widget-wrap", "dash-widget-sales-performance"];
+ const WIDGET_IDS = DASH_WIDGETS.map(widget => widget.id);
+ const forcedHidden = new Set();
+ setupDashboardLayout(container, session, forcedHidden);
  try {
  const cfgSnap = await getDoc(doc(db, COL.APP_SETTINGS, "main"));
  if (cfgSnap.exists()) {
@@ -36,13 +55,12 @@ export async function mount(container, { session }) {
  const effectiveCfg = specificUserCfg || globalWidgets;
 
  WIDGET_IDS.forEach(wid => {
- if (effectiveCfg[wid] === false) {
- const el = container.querySelector(`#${wid}`);
- if (el) el.classList.add("hidden");
- }
+ if (effectiveCfg[wid] === false) forcedHidden.add(wid);
  });
  }
  } catch (e) { /* jika gagal memuat konfigurasi, tampilkan semua widget seperti biasa */ }
+
+ applyDashboardWidgetLayout(container, loadDashboardLayout(session), forcedHidden);
 
  // loadProfileCard dipanggil lebih dulu (bukan di dalam Promise.all) karena
  // loadPersonalBanner butuh data karyawan yang sama supaya tidak query dobel.
@@ -54,7 +72,7 @@ export async function mount(container, { session }) {
   loadLeaveBalances(container, session).catch(e => console.warn("Leave error:", e)),
   loadKpiTasks(container, session).catch(e => console.warn("KPI error:", e)),
   loadAssignedAssets(container, session, karyawanProfile).catch(e => console.warn("Assets error:", e)),
-  loadCutiHariIni(container).catch(e => console.warn("Cuti error:", e)),
+  loadCutiHariIni(container, session).catch(e => console.warn("Cuti error:", e)),
   loadEmployeeInformation(container, session).catch(e => console.warn("Information error:", e)),
   loadAnnouncements(container, session).catch(e => console.warn("Announcements error:", e)),
   loadAttendanceAnalytics(container, session).catch(e => console.warn("Attendance error:", e)),
@@ -163,6 +181,207 @@ export async function mount(container, { session }) {
  return { unmount() {} };
 }
 
+/* ------------------------ DASHBOARD WIDGET LAYOUT ------------------------ */
+function dashboardLayoutKey(session) {
+ const key = String(session?.uid || session?.username || session?.nik || session?.nama || "guest")
+  .trim()
+  .toLowerCase()
+  .replace(/[^a-z0-9_-]+/g, "_");
+ return `${DASH_LAYOUT_PREFIX}${key || "guest"}`;
+}
+
+function defaultDashboardLayout() {
+ return {
+  order: DASH_WIDGETS.map(widget => widget.id),
+  hidden: [],
+  sizes: Object.fromEntries(DASH_WIDGETS.map(widget => [widget.id, widget.size]))
+ };
+}
+
+function sanitizeDashboardLayout(value) {
+ const base = defaultDashboardLayout();
+ if (!value || typeof value !== "object") return base;
+ const known = new Set(base.order);
+ const order = [];
+ (Array.isArray(value.order) ? value.order : []).forEach(id => {
+  if (known.has(id) && !order.includes(id)) order.push(id);
+ });
+ base.order.forEach(id => { if (!order.includes(id)) order.push(id); });
+ const hidden = Array.isArray(value.hidden)
+  ? [...new Set(value.hidden.filter(id => known.has(id)))]
+  : [];
+ const sizes = { ...base.sizes };
+ if (value.sizes && typeof value.sizes === "object") {
+  Object.keys(sizes).forEach(id => {
+   if (DASH_LAYOUT_SIZES.includes(value.sizes[id])) sizes[id] = value.sizes[id];
+  });
+ }
+ return { order, hidden, sizes };
+}
+
+function loadDashboardLayout(session) {
+ try {
+  const raw = localStorage.getItem(dashboardLayoutKey(session));
+  return raw ? sanitizeDashboardLayout(JSON.parse(raw)) : defaultDashboardLayout();
+ } catch (e) {
+  return defaultDashboardLayout();
+ }
+}
+
+function saveDashboardLayout(session, layout) {
+ try {
+  localStorage.setItem(dashboardLayoutKey(session), JSON.stringify(sanitizeDashboardLayout(layout)));
+  return true;
+ } catch (e) {
+  return false;
+ }
+}
+
+function applyDashboardWidgetLayout(container, layout, forcedHidden = new Set()) {
+ const root = container.querySelector("#dash-layout-root");
+ if (!root) return;
+ const safe = sanitizeDashboardLayout(layout);
+ const hidden = new Set(safe.hidden);
+ safe.order.forEach(id => {
+  const widget = container.querySelector(`#${id}`);
+  if (!widget) return;
+  root.appendChild(widget);
+  widget.classList.remove("dash-layout-full", "dash-layout-wide", "dash-layout-half");
+  const size = safe.sizes[id] || DASH_WIDGETS.find(item => item.id === id)?.size || "half";
+  widget.classList.add(`dash-layout-${size}`);
+  widget.classList.toggle("dash-layout-hidden", hidden.has(id));
+  if (forcedHidden.has(id)) widget.classList.add("hidden");
+ });
+}
+
+function removeEmptyDashboardContainers(container, root) {
+ Array.from(container.querySelectorAll("div, section")).reverse().forEach(el => {
+  if (el === container || el === root || el.contains(root)) return;
+  if (el.closest("#dash-layout-root")) return;
+  if (!el.children.length && !el.textContent.trim()) el.remove();
+ });
+}
+
+function setupDashboardLayout(container, session, forcedHidden = new Set()) {
+ const root = container.querySelector("#dash-layout-root");
+ if (!root) return;
+ applyDashboardWidgetLayout(container, loadDashboardLayout(session), forcedHidden);
+ removeEmptyDashboardContainers(container, root);
+ const button = container.querySelector("#dash-arrange-widgets");
+ if (button && button.dataset.layoutBound !== "true") {
+  button.dataset.layoutBound = "true";
+  button.onclick = () => openDashboardLayoutModal(container, session, forcedHidden);
+ }
+}
+
+function openDashboardLayoutModal(container, session, forcedHidden = new Set()) {
+ const layout = loadDashboardLayout(session);
+ const rows = layout.order.map(id => {
+  const widget = DASH_WIDGETS.find(item => item.id === id);
+  if (!widget) return "";
+  const isForced = forcedHidden.has(id);
+  const visible = !isForced && !layout.hidden.includes(id);
+  return `
+   <div data-dash-layout-row="${widget.id}" class="flex flex-col sm:flex-row sm:items-center gap-2.5 rounded-xl border border-slate-200 bg-white p-3">
+    <div class="flex sm:flex-col gap-1 shrink-0">
+     <button type="button" data-dash-move="up" class="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 text-xs font-black cursor-pointer" title="Naikkan">↑</button>
+     <button type="button" data-dash-move="down" class="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 text-xs font-black cursor-pointer" title="Turunkan">↓</button>
+    </div>
+    <div class="min-w-0 flex-1">
+     <p class="text-xs font-bold text-slate-800">${escapeHtml(widget.label)}</p>
+     <p class="text-[10px] text-slate-400 mt-0.5">${escapeHtml(widget.description)}</p>
+     ${isForced ? '<p class="text-[9px] font-bold text-rose-500 mt-1">Dinonaktifkan oleh HRD</p>' : ""}
+    </div>
+    <label class="block shrink-0">
+     <span class="text-[9px] font-bold uppercase tracking-wide text-slate-400">Lebar</span>
+     <select data-dash-size class="mt-0.5 w-full sm:w-28 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 outline-none">
+      <option value="full" ${layout.sizes[widget.id] === "full" ? "selected" : ""}>Penuh</option>
+      <option value="wide" ${layout.sizes[widget.id] === "wide" ? "selected" : ""}>Lebar</option>
+      <option value="half" ${layout.sizes[widget.id] === "half" ? "selected" : ""}>Setengah</option>
+     </select>
+    </label>
+    <label class="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 shrink-0 ${isForced ? "opacity-50" : "cursor-pointer"}">
+     <input type="checkbox" data-dash-visible class="w-4 h-4 rounded border-slate-300 text-maroon-700" ${visible ? "checked" : ""} ${isForced ? "disabled" : ""}>
+     <span>Tampil</span>
+    </label>
+   </div>`;
+ }).join("");
+
+ openModal({
+  title: "Atur Tataletak Widget",
+  size: "lg",
+  bodyHtml: `
+   <div class="space-y-3">
+    <p class="text-xs text-slate-500 leading-relaxed">Susun urutan, lebar, dan visibilitas widget dashboard. Pengaturan disimpan khusus untuk akun ini di perangkat ini.</p>
+    <div id="dash-layout-modal-list" class="space-y-2">${rows}</div>
+    <p class="text-[10px] text-slate-400">Widget yang dinonaktifkan HRD tidak dapat ditampilkan dari sini.</p>
+   </div>`,
+  footerHtml: `
+   <button id="dash-layout-reset" type="button" class="mr-auto px-3 py-2 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer">Reset Default</button>
+   <button id="dash-layout-cancel" type="button" class="px-3 py-2 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer">Batal</button>
+   <button id="dash-layout-save" type="button" class="px-4 py-2 rounded-lg text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 transition cursor-pointer">Simpan Tataletak</button>`,
+  onMount: (m) => {
+   const list = m.querySelector("#dash-layout-modal-list");
+   const refreshMoveButtons = () => {
+    const items = Array.from(list.querySelectorAll("[data-dash-layout-row]"));
+    items.forEach((row, index) => {
+     const up = row.querySelector('[data-dash-move="up"]');
+     const down = row.querySelector('[data-dash-move="down"]');
+     if (up) { up.disabled = index === 0; up.classList.toggle("opacity-30", index === 0); }
+     if (down) { down.disabled = index === items.length - 1; down.classList.toggle("opacity-30", index === items.length - 1); }
+    });
+   };
+   refreshMoveButtons();
+
+   list.querySelectorAll("[data-dash-move]").forEach(button => {
+    button.onclick = () => {
+     const row = button.closest("[data-dash-layout-row]");
+     if (!row) return;
+     if (button.dataset.dashMove === "up" && row.previousElementSibling) {
+      list.insertBefore(row, row.previousElementSibling);
+     } else if (button.dataset.dashMove === "down" && row.nextElementSibling) {
+      list.insertBefore(row.nextElementSibling, row);
+     }
+     refreshMoveButtons();
+    };
+   });
+
+   m.querySelector("#dash-layout-cancel").onclick = closeModal;
+   m.querySelector("#dash-layout-reset").onclick = () => {
+    if (!confirm("Kembalikan tataletak widget ke susunan default?")) return;
+    const defaults = defaultDashboardLayout();
+    saveDashboardLayout(session, defaults);
+    applyDashboardWidgetLayout(container, defaults, forcedHidden);
+    closeModal();
+    toast("Tataletak widget dikembalikan ke default.", "success");
+   };
+   m.querySelector("#dash-layout-save").onclick = () => {
+    const items = Array.from(list.querySelectorAll("[data-dash-layout-row]"));
+    const order = [];
+    const hidden = [];
+    const sizes = {};
+    items.forEach(row => {
+     const id = row.dataset.dashLayoutRow;
+     if (!id) return;
+     order.push(id);
+     const visible = row.querySelector("[data-dash-visible]");
+     if (visible && !visible.checked && !forcedHidden.has(id)) hidden.push(id);
+     const size = row.querySelector("[data-dash-size]")?.value;
+     if (DASH_LAYOUT_SIZES.includes(size)) sizes[id] = size;
+    });
+    const next = { order, hidden, sizes };
+    if (!saveDashboardLayout(session, next)) {
+     toast("Browser menolak penyimpanan tataletak. Periksa pengaturan penyimpanan situs.", "warning");
+     return;
+    }
+    applyDashboardWidgetLayout(container, next, forcedHidden);
+    closeModal();
+    toast("Tataletak widget berhasil disimpan.", "success");
+   };
+  }
+ });
+}
+
 /* ------------------------ a. PROFILE CARD & MODAL ------------------------ */
 async function loadProfileCard(container, session) {
  let karyawan = null;
@@ -232,7 +451,7 @@ function openProfileModal(session, k) {
 async function loadPersonalBanner(container, session, karyawan) {
  const wrap = container.querySelector("#dash-personal-banner");
  if (!wrap) return;
- if (!karyawan) { wrap.innerHTML = ""; return; }
+ if (!karyawan) { wrap.innerHTML = ""; wrap.classList.add("dash-layout-empty"); return; }
 
  const now = new Date();
  const banners = [];
@@ -300,6 +519,7 @@ async function loadPersonalBanner(container, session, karyawan) {
  }
  } catch (e) { /* banner cuti bersifat pelengkap, jangan sampai mengganggu dashboard kalau query gagal */ }
 
+ wrap.classList.toggle("dash-layout-empty", !banners.length);
  wrap.innerHTML = banners.length ? `<div class="space-y-3">${banners.join("")}</div>` : "";
 }
 
@@ -553,9 +773,14 @@ function openPenilaianForm(task, container, session) {
 }
 
 /* ------------------------ d. CUTI HARI INI ------------------------ */
-async function loadCutiHariIni(container) {
+async function loadCutiHariIni(container, session) {
  const wrap = container.querySelector("#dash-cuti-hari-ini");
  if (!wrap) return;
+ const countEl = container.querySelector("#dash-cuti-count");
+ const linkEl = container.querySelector("#dash-cuti-link");
+ if (linkEl) {
+  linkEl.href = ["HRD", "SUPERADMIN"].includes(String(session?.role || "").toUpperCase()) ? "#cuti" : "#pengajuan-cuti";
+ }
  const now = new Date();
  const todayStr = localDateStr(now);
  try {
@@ -579,25 +804,38 @@ async function loadCutiHariIni(container) {
  uniqueMap.set(key, r);
  }
  });
- const todayRows = Array.from(uniqueMap.values());
- if (!todayRows.length) { 
- wrap.innerHTML = `<div class="col-span-full py-2 px-3 text-center text-xs text-slate-400 italic bg-slate-50/80 rounded-lg border border-dashed border-slate-200">Tidak ada karyawan yang cuti / izin hari ini</div>`; 
- return; 
+ const todayRows = Array.from(uniqueMap.values())
+  .sort((a, b) => String(a.nama_karyawan || "").localeCompare(String(b.nama_karyawan || ""), "id"));
+ if (countEl) countEl.textContent = String(todayRows.length);
+ if (!todayRows.length) {
+  wrap.innerHTML = `<div class="col-span-full py-4 px-3 text-center text-xs text-slate-400 italic bg-slate-50/80 rounded-xl border border-dashed border-slate-200">Tidak ada karyawan yang cuti / izin hari ini</div>`;
+  return;
  }
- wrap.innerHTML = todayRows.map(r => `
- <div class="flex items-center justify-between px-3 py-2 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition text-xs">
- <div class="flex items-center gap-2.5 min-w-0">
- ${avatar(r.nama_karyawan || "?", "w-7 h-7 text-[10px] shrink-0")}
- <div class="min-w-0">
- <p class="font-semibold text-slate-800 truncate leading-tight">${escapeHtml(r.nama_karyawan || "-")}</p>
- <p class="text-[10px] text-slate-400 truncate">${escapeHtml(r.cabang || "-")}</p>
- </div>
- </div>
- <span class="px-2 py-0.5 rounded-md font-bold text-[10px] bg-blue-50 text-blue-700 border border-blue-100 shrink-0 ml-1.5">
- ${escapeHtml(r.type_cuti || "Cuti")}
- </span>
- </div>`).join("");
- } catch (e) { if (wrap) wrap.innerHTML = `<div class="col-span-full py-2 px-3 text-center text-xs text-slate-400 italic bg-slate-50 rounded-lg">Gagal memuat data cuti</div>`; }
+ wrap.innerHTML = todayRows.map(r => {
+  const name = r.nama_karyawan || "-";
+  const type = r.type_cuti || r.jenis_cuti || "Cuti";
+  const start = (r.tanggal || "").toString().substring(0, 10);
+  const end = (r.tanggal_selesai || r.tanggal || "").toString().substring(0, 10);
+  const range = start && end && start !== end
+   ? `${fmtDateShort(start)} - ${fmtDateShort(end)}`
+   : (start ? fmtDateShort(start) : "");
+  const sub = [r.cabang, r.divisi].map(value => String(value || "").trim()).filter(Boolean).join(" · ") || "-";
+  return `
+  <div class="min-w-0 overflow-hidden rounded-xl border border-slate-100 bg-slate-50/60 p-3 hover:bg-slate-50 transition">
+   <div class="flex items-start gap-2.5 min-w-0">
+    ${avatar(name, "w-8 h-8 text-[10px] shrink-0")}
+    <div class="min-w-0 flex-1">
+     <p class="font-bold text-slate-800 text-xs truncate" title="${escapeHtml(name)}">${escapeHtml(name)}</p>
+     <p class="text-[10px] text-slate-400 truncate">${escapeHtml(sub)}</p>
+     <div class="mt-2 flex flex-wrap items-center gap-1.5 min-w-0">
+      <span class="inline-block max-w-full truncate rounded-md border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700" title="${escapeHtml(type)}">${escapeHtml(type)}</span>
+      ${range ? `<span class="text-[9px] font-semibold text-slate-400">${escapeHtml(range)}</span>` : ""}
+     </div>
+    </div>
+   </div>
+  </div>`;
+ }).join("");
+ } catch (e) { if (countEl) countEl.textContent = "0"; if (wrap) wrap.innerHTML = `<div class="col-span-full py-4 px-3 text-center text-xs text-slate-400 italic bg-slate-50 rounded-xl">Gagal memuat data cuti</div>`; }
 }
 
 function publicationMatchesSession(item, session, privileged = false) {

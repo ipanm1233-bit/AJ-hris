@@ -287,3 +287,21 @@ body {
   }
 }
 
+
+/* ===== Dashboard widget layout ===== */
+#dash-layout-root { align-items: start; }
+#dash-layout-root > * { min-width: 0; }
+.dash-layout-full { grid-column: 1 / -1; }
+.dash-layout-half { grid-column: span 1 / span 1; }
+.dash-layout-wide { grid-column: span 1 / span 1; }
+.dash-layout-hidden { display: none !important; }
+@media (min-width: 1024px) {
+  .dash-layout-wide { grid-column: span 2 / span 2; }
+}
+@media (min-width: 1280px) {
+  .dash-layout-wide { grid-column: span 2 / span 2; }
+}
+
+
+.dash-layout-empty { display: none !important; }
+
