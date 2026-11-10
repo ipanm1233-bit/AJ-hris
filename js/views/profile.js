@@ -4,6 +4,7 @@ import { avatar, badge, icon, emptyState } from "../components.js";
 import { setSession, syncSessionWithDb, getUserPermissionSummary, hasPermission } from "../auth.js";
 import { authFetch } from "../api-client.js";
 import { formatAccuracy, formatCoordinates, formatLocationTime, getCurrentLocation, locationMapUrl } from "../geolocation.mjs";
+import { normalizeEmployeeDateFields } from "../employee-dates.mjs";
 
 export async function mount(container, { session, params }) {
 	// Sync session data with Firestore database & RBAC permissions cache
@@ -32,6 +33,8 @@ export async function mount(container, { session, params }) {
 			return (sName && iName === sName) || (sNik && sNik !== "unlinked" && iNik === sNik);
 		});
 	}
+
+	k = normalizeEmployeeDateFields(k);
 
 	// Bind Core Header Info
 	const largeAvatar = container.querySelector("#profile-large-avatar");

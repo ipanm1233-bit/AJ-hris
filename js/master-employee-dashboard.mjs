@@ -9,6 +9,7 @@
  * =====================================================================
  */
 import { toDateKey } from "./employee-achievement-dashboard.mjs";
+import { employeeBirthDate, employeeJoinDate, employeeContractEndDate } from "./employee-dates.mjs";
 
 export const EMPLOYEE_ACTIVE = "AKTIF";
 export const EMPLOYEE_INACTIVE = "TIDAK AKTIF";
@@ -189,7 +190,7 @@ export function buildMasterEmployeeDashboard(employees = [], options = {}) {
     bump(byBranchMap, employeeBranchName(employee), active);
     bump(byDivisionMap, employeeDivisionName(employee), active);
 
-    const contractKey = toDateKey(employee.kontrak_habis || employee.tanggal_kontrak_berakhir);
+    const contractKey = employeeContractEndDate(employee);
     if (active && contractKey && todayNumber !== null) {
       const contractNumber = dayNumber(contractKey);
       if (contractNumber !== null) {
@@ -209,7 +210,7 @@ export function buildMasterEmployeeDashboard(employees = [], options = {}) {
       }
     }
 
-    const joinKey = toDateKey(employee.tanggal_join || employee.tanggal_masuk || employee.join_date);
+    const joinKey = employeeJoinDate(employee);
     if (active && joinKey && todayNumber !== null) {
       const joinNumber = dayNumber(joinKey);
       if (joinNumber !== null) {
@@ -240,8 +241,8 @@ export function buildMasterEmployeeDashboard(employees = [], options = {}) {
     { key: "nik_ktp", label: "NIK KTP", has: employee => Boolean(normalizedText(employee.nik_ktp || employee.no_ktp)) },
     { key: "bpjs_tk", label: "BPJS Ketenagakerjaan", has: employee => Boolean(normalizedText(employee.bpjs_tk || employee.no_bpjs_tk)) },
     { key: "bpjs_kes", label: "BPJS Kesehatan", has: employee => Boolean(normalizedText(employee.bpjs_kes || employee.no_bpjs_kes)) },
-    { key: "join_date", label: "Tanggal join", has: employee => Boolean(toDateKey(employee.tanggal_join || employee.tanggal_masuk)) },
-    { key: "contract_end", label: "Tanggal kontrak berakhir", has: employee => Boolean(toDateKey(employee.kontrak_habis)) },
+    { key: "join_date", label: "Tanggal join", has: employee => Boolean(employeeJoinDate(employee)) },
+    { key: "contract_end", label: "Tanggal kontrak berakhir", has: employee => Boolean(employeeContractEndDate(employee)) },
     { key: "address", label: "Alamat domisili", has: employee => Boolean(normalizedText(employee.alamat || employee.alamat_domisili)) }
   ];
 
@@ -266,8 +267,8 @@ export function buildMasterEmployeeDashboard(employees = [], options = {}) {
     byDivision: sortedDistribution([...byDivisionMap.values()]),
     byEmploymentStatus: simpleCountMap(list, employeeEmploymentStatus),
     byGender: simpleCountMap(list, genderLabel),
-    byAge: simpleCountMap(list, employee => ageBucket(ageFromBirthDate(employee.tanggal_lahir, now))),
-    byTenure: simpleCountMap(list, employee => tenureBucket(tenureMonthsFromJoin(employee.tanggal_join || employee.tanggal_masuk, now))),
+    byAge: simpleCountMap(list, employee => ageBucket(ageFromBirthDate(employeeBirthDate(employee), now))),
+    byTenure: simpleCountMap(list, employee => tenureBucket(tenureMonthsFromJoin(employeeJoinDate(employee), now))),
     byEducation: simpleCountMap(list, educationLabel),
     contractExpiring,
     contractExpired,

@@ -9,7 +9,8 @@
  */
 import { db, auth, COL, collection, doc, getDocs, writeBatch, query, limit, setDoc, signInWithCustomToken, firebaseSignOut, setPersistence, browserSessionPersistence } from "./firebase-config.js";
 import { publicSecurityHeaders } from "./api-client.js";
-import { toSnakeCase, smartParseDate, genId, localDateStr, calculateAge, calculateTenure } from "./utils.js";
+import { toSnakeCase, smartParseDate, genId, calculateAge, calculateTenure } from "./utils.js";
+import { normalizeDateOnly } from "./employee-dates.mjs";
 
 /* ---------------------------------------------------------------------
  * PETA SHEET EXCEL -> KOLEKSI FIRESTORE
@@ -403,8 +404,19 @@ function smartConvertValue(rawValue, colKey, mapCfg) {
   }
 
   if (isDateCol) {
-    const d = smartParseDate(rawValue);
-    return d ? localDateStr(d) : String(rawValue).trim();
+    // Jam/waktu bukan tanggal date-only; pertahankan format jam.
+    if (/^(jam|waktu|time)/i.test(keyLower)) {
+      const pad = value => String(value).padStart(2, "0");
+      if (rawValue instanceof Date && !Number.isNaN(rawValue.getTime())) {
+        return `${pad(rawValue.getHours())}:${pad(rawValue.getMinutes())}`;
+      }
+      if (typeof rawValue === "number" && rawValue >= 0 && rawValue < 1) {
+        const totalMinutes = Math.round(rawValue * 24 * 60);
+        return `${pad(Math.floor(totalMinutes / 60) % 24)}:${pad(totalMinutes % 60)}`;
+      }
+      return String(rawValue).trim().slice(0, 5);
+    }
+    return normalizeDateOnly(rawValue) || String(rawValue).trim();
   }
   if (isJsonCol) {
     if (typeof rawValue !== "string") return rawValue;
@@ -510,11 +522,11 @@ function normalizeRecordKeys(obj, sheetName, mapCfg) {
   }
 
   // 7. TANGGAL LAHIR & USIA (AUTO CALCULATE)
-  const tglLahirVal = getVal(["tanggal_lahir", "tgl_lahir", "tgl_lahir_karyawan", "dob", "date_of_birth", "tgl_lahir_pegawai"]);
+  const tglLahirVal = getVal(["tgl_lahir", "tanggal_lahir", "tgl_lahir_karyawan", "dob", "date_of_birth", "tgl_lahir_pegawai"]);
   if (tglLahirVal) {
     const dLahir = smartParseDate(tglLahirVal);
     if (dLahir) {
-      out.tanggal_lahir = localDateStr(dLahir);
+      out.tanggal_lahir = normalizeDateOnly(tglLahirVal) || normalizeDateOnly(dLahir);
       out.tgl_lahir = out.tanggal_lahir;
       const age = calculateAge(dLahir);
       if (age !== null) {
@@ -527,11 +539,11 @@ function normalizeRecordKeys(obj, sheetName, mapCfg) {
   }
 
   // 8. TANGGAL JOIN & MASA KERJA (AUTO CALCULATE)
-  const tglJoinVal = getVal(["tanggal_join", "tgl_join", "tanggal_masuk", "tgl_masuk", "tanggal_masuk_kerja", "tgl_masuk_kerja", "date_join", "join_date", "tgl_bergabung"]);
+  const tglJoinVal = getVal(["tgl_join", "tanggal_join", "tgl_masuk", "tanggal_masuk", "tgl_masuk_kerja", "tanggal_masuk_kerja", "date_join", "join_date", "tgl_bergabung"]);
   if (tglJoinVal) {
     const dJoin = smartParseDate(tglJoinVal);
     if (dJoin) {
-      out.tanggal_join = localDateStr(dJoin);
+      out.tanggal_join = normalizeDateOnly(tglJoinVal) || normalizeDateOnly(dJoin);
       out.tgl_join = out.tanggal_join;
       const tenure = calculateTenure(dJoin);
       if (tenure) {

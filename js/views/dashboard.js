@@ -3,6 +3,7 @@ import { fmtDate, fmtDateShort, escapeHtml, openModal, closeModal, toNumber, sen
 import { avatar, badge, icon, emptyState, skeletonRows, getDismissedAnnouncements, dismissAnnouncementForUser, openPenilaianFormFromNotif } from "../components.js";
 import { MANAJEMEN_ROLES, computeVisibleMenus, MENU_CONFIG } from "../auth.js";
 import { listAttendance } from "../attendance-api.mjs";
+import { normalizeEmployeeDateFields, employeeBirthDate, employeeJoinDate } from "../employee-dates.mjs";
 // IMPORT BARU UNTUK MENDAPATKAN TOKEN HP (FCM)
 import { getToken } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js";
 
@@ -173,6 +174,7 @@ async function loadProfileCard(container, session) {
  const snap = await getDocs(q);
  if (!snap.empty) karyawan = snap.docs[0].data();
  }
+ karyawan = normalizeEmployeeDateFields(karyawan);
 
  const profileCard = container.querySelector("#dash-profile-card");
  const avatarEl = container.querySelector("#dash-profile-avatar");
@@ -243,7 +245,7 @@ async function loadPersonalBanner(container, session, karyawan) {
  const todayMD = localDateStr(now)?.substring(5); // "MM-DD"
 
  // 1) ULANG TAHUN
- const lahirMD = localDateStr(karyawan.tanggal_lahir)?.substring(5);
+ const lahirMD = employeeBirthDate(karyawan || {}).substring(5);
  if (lahirMD && lahirMD === todayMD) {
  banners.push(`
  <div class="rounded-2xl p-5 text-white shadow-sm flex items-center gap-4" style="background:linear-gradient(135deg,#db2777,#7c3aed)">
@@ -256,7 +258,7 @@ async function loadPersonalBanner(container, session, karyawan) {
  }
 
  // 2) HARI JADI / ANNIVERSARY KERJA
- const joinStr = localDateStr(karyawan.tanggal_join); // "YYYY-MM-DD" WIB
+ const joinStr = employeeJoinDate(karyawan || {}); // "YYYY-MM-DD" WIB
  if (joinStr && joinStr.substring(5) === todayMD) {
  const years = now.getFullYear() - parseInt(joinStr.substring(0, 4), 10);
  if (years > 0) {
@@ -319,6 +321,7 @@ async function loadLeaveBalances(container, session) {
  const snap = await getDocs(q);
  if (!snap.empty) kData = snap.docs[0].data();
  }
+ kData = normalizeEmployeeDateFields(kData);
  if (kData) {
  const calc = getCalculatedJatahCuti(kData);
  jatah = { tahunan: calc.jatahTahunan, khusus: calc.jatahKhusus, akumulasi: calc.jatahAkumulasi };

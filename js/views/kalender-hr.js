@@ -2,6 +2,10 @@ import { COL } from "../firebase-config.js";
 import { fsGetAll, fsAdd, fsDelete, openModal, closeModal, toast, escapeHtml, sendEmailNotif, buildStandardEmailHtml, genId, localDateStr } from "../utils.js";
 import { emptyState } from "../components.js";
 import { getSession, canEditModuleData } from "../auth.js";
+import { employeeBirthDate, employeeJoinDate, employeeContractEndDate } from "../employee-dates.mjs";
+
+let calendarCache = null;
+const CALENDAR_CACHE_TTL_MS = 30_000;
 
 export async function mount(container, { session } = {}) {
  const currentSession = session || getSession();
@@ -12,6 +16,9 @@ export async function mount(container, { session } = {}) {
  let karyawanData = [];
  let agendaData = [];
  let activeFilters = new Set(["cuti", "bday", "anniv", "kontrak", "agenda"]);
+ let birthdayIndex = new Map();
+ let anniversaryIndex = new Map();
+ let contractIndex = new Map();
 
  container.innerHTML = `
  <div class="max-w-7xl mx-auto space-y-6 pb-10">
@@ -56,19 +63,79 @@ export async function mount(container, { session } = {}) {
  const gridEl = container.querySelector("#cal-grid");
  const monthYearEl = container.querySelector("#cal-month-year");
  
- // Ambil semua data sekaligus
- async function fetchAllData() {
- gridEl.innerHTML = `<div class="col-span-7 bg-white p-10 text-center text-slate-400">Memuat Kalender Pintar...</div>`;
- try {
- [cutiData, karyawanData, agendaData] = await Promise.all([
- fsGetAll(COL.MASTER_CUTI),
- fsGetAll(COL.MASTER_KARYAWAN),
- fsGetAll(COL.KALENDER_HR).catch(() => []) // Fallback kalau collection belum ada
- ]);
- renderCalendar();
- } catch(e) {
- gridEl.innerHTML = `<div class="col-span-7 bg-white p-10 text-center text-red-400">Gagal memuat kalender: ${e.message}</div>`;
+ // Ambil data dengan cache singkat + render bertahap agar kalender cepat tampil.
+ async function fetchAllData(force = false) {
+  if (!force && calendarCache && Date.now() - calendarCache.at < CALENDAR_CACHE_TTL_MS) {
+   cutiData = calendarCache.cuti;
+   karyawanData = calendarCache.karyawan;
+   agendaData = calendarCache.agenda;
+   rebuildEmployeeIndexes();
+   renderCalendar();
+   return;
+  }
+
+  monthYearEl.textContent = monthLabel();
+  renderSummarySkeleton();
+  renderCalendarSkeleton();
+
+  const employeesPromise = fsGetAll(COL.MASTER_KARYAWAN).catch(() => []);
+  const agendaPromise = fsGetAll(COL.KALENDER_HR).catch(() => []);
+  const cutiPromise = fsGetAll(COL.MASTER_CUTI).catch(() => []);
+
+  try {
+   // Tampilkan kalender lebih dulu begitu data karyawan & agenda siap,
+   // tanpa menunggu koleksi cuti yang biasanya paling besar.
+   [karyawanData, agendaData] = await Promise.all([employeesPromise, agendaPromise]);
+   rebuildEmployeeIndexes();
+   renderCalendar();
+
+   cutiData = await cutiPromise;
+   renderCalendar();
+
+   calendarCache = {
+    at: Date.now(),
+    cuti: cutiData,
+    karyawan: karyawanData,
+    agenda: agendaData
+   };
+  } catch(e) {
+   gridEl.removeAttribute("aria-busy");
+   gridEl.innerHTML = `<div class="col-span-7 bg-white p-10 text-center text-red-400">Gagal memuat kalender: ${e.message}</div>`;
+  }
  }
+
+ function monthLabel() {
+  return new Date(currentDate.getFullYear(), currentDate.getMonth())
+   .toLocaleString("id-ID", { month: "long", year: "numeric" });
+ }
+
+ function renderSummarySkeleton() {
+  const summary = container.querySelector("#cal-summary");
+  if (!summary) return;
+  summary.innerHTML = Array.from({ length: 5 }).map(() => `
+   <div class="rounded-xl border border-slate-100 bg-white p-3 animate-pulse">
+    <div class="h-2.5 w-16 rounded bg-slate-200"></div>
+    <div class="mt-2 h-6 w-10 rounded bg-slate-200"></div>
+   </div>`).join("");
+ }
+
+ function renderCalendarSkeleton() {
+  const daysOfWeek = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+  const header = daysOfWeek.map(day => `<div class="bg-slate-50 text-center py-2 text-xs font-bold text-slate-400 uppercase tracking-wider">${day}</div>`).join("");
+  const cells = Array.from({ length: 35 }).map((_, index) => `
+   <div class="bg-white min-h-36 p-2 border-t-2 border-transparent animate-pulse">
+    <div class="flex justify-between items-start">
+     <div class="h-7 w-7 rounded-full bg-slate-200/80"></div>
+     ${index % 4 === 0 ? '<div class="h-2 w-9 rounded bg-slate-100"></div>' : ""}
+    </div>
+    <div class="mt-3 space-y-1.5">
+     <div class="h-3 w-full rounded bg-slate-100"></div>
+     <div class="h-3 w-4/5 rounded bg-slate-100"></div>
+     ${index % 2 === 0 ? '<div class="h-3 w-2/3 rounded bg-slate-100"></div>' : ""}
+    </div>
+   </div>`).join("");
+  gridEl.setAttribute("aria-busy", "true");
+  gridEl.innerHTML = header + cells;
  }
 
  // Fungsi helper standarisasi format YYYY-MM-DD
@@ -88,12 +155,33 @@ export async function mount(container, { session } = {}) {
   return Boolean(start && end && date >= start && date <= end);
  }
 
+ function rebuildEmployeeIndexes() {
+  birthdayIndex = new Map();
+  anniversaryIndex = new Map();
+  contractIndex = new Map();
+  const add = (map, key, value) => {
+   if (!key) return;
+   if (!map.has(key)) map.set(key, []);
+   map.get(key).push(value);
+  };
+  karyawanData.forEach(k => {
+   const birth = employeeBirthDate(k);
+   if (birth) add(birthdayIndex, birth.substring(5), k);
+   const join = employeeJoinDate(k);
+   if (join) add(anniversaryIndex, join.substring(5), { employee: k, join });
+   const contract = employeeContractEndDate(k);
+   if (contract) add(contractIndex, contract, k);
+  });
+ }
+
  function dayLists(dStr) {
   return {
    cuti: cutiData.filter(c => leaveCoversDate(c, dStr)),
-   bday: karyawanData.filter(k => toLocalDateStr(k.tanggal_lahir)?.substring(5) === dStr.substring(5)),
-   anniv: karyawanData.filter(k => toLocalDateStr(k.tanggal_join)?.substring(5) === dStr.substring(5) && toLocalDateStr(k.tanggal_join) < dStr),
-   kontrak: karyawanData.filter(k => toLocalDateStr(k.kontrak_habis) === dStr),
+   bday: birthdayIndex.get(dStr.substring(5)) || [],
+   anniv: (anniversaryIndex.get(dStr.substring(5)) || [])
+    .filter(item => item.join < dStr)
+    .map(item => item.employee),
+   kontrak: contractIndex.get(dStr) || [],
    agenda: agendaData.filter(a => toLocalDateStr(a.tanggal) === dStr)
   };
  }
@@ -112,7 +200,7 @@ export async function mount(container, { session } = {}) {
  const year = currentDate.getFullYear();
  const month = currentDate.getMonth();
  
- monthYearEl.textContent = new Date(year, month).toLocaleString('id-ID', { month: 'long', year: 'numeric' });
+ monthYearEl.textContent = monthLabel();
 
  const firstDay = new Date(year, month, 1).getDay();
  const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -147,6 +235,7 @@ export async function mount(container, { session } = {}) {
  }
  
  gridEl.innerHTML = html;
+ gridEl.removeAttribute("aria-busy");
 
  gridEl.querySelectorAll("[data-date]").forEach(cell => {
  cell.onclick = () => openDayDetailModal(cell.dataset.date);
@@ -187,7 +276,7 @@ export async function mount(container, { session } = {}) {
  function openDayDetailModal(dStr) {
  const { cuti: listCuti, bday: listBday, anniv: listAnniv, kontrak: listKontrak, agenda: listAgenda } = dayLists(dStr);
 
- const formatTgl = new Date(dStr).toLocaleString('id-ID', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+ const formatTgl = new Date(dStr).toLocaleString('id-ID', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' });
 
  // Helper Render Baris Email
  const renderEmailRow = (k, type, btnId) => {
@@ -197,7 +286,7 @@ export async function mount(container, { session } = {}) {
  if(type === 'anniv') {
  // Ambil tahun langsung dari teks "YYYY-MM-DD" (bukan re-parse lewat
  // new Date() lagi) supaya tidak ada celah zona waktu sama sekali.
- const yJoin = parseInt(toLocalDateStr(k.tanggal_join)?.substring(0, 4), 10);
+ const yJoin = parseInt(employeeJoinDate(k)?.substring(0, 4), 10);
  const yNow = parseInt(dStr.substring(0, 4), 10);
  annivYear = yNow - yJoin;
  }
@@ -329,7 +418,7 @@ export async function mount(container, { session } = {}) {
  await fsDelete(COL.KALENDER_HR, btn.dataset.delAgenda);
  toast("Agenda dihapus", "success");
  closeModal();
- fetchAllData();
+ fetchAllData(true);
  }
  };
  });
@@ -373,7 +462,7 @@ export async function mount(container, { session } = {}) {
  
  toast("Agenda ditambahkan ke kalender!", "success");
  closeModal();
- fetchAllData(); // Segarkan tampilan
+ fetchAllData(true); // Segarkan tampilan
  } catch(e) {
  toast("Gagal menambah: " + e.message, "error");
  btn.disabled = false; btn.textContent = "Simpan Agenda";

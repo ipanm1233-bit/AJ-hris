@@ -18,6 +18,7 @@ import { getAutoJatahTahunan } from "./leave-entitlement.mjs";
 import { DIVISION_ALL, divisionOptionsFromSources, divisionsFromMasterRecords } from "./division-options.mjs";
 import { resolveHrdRecipients } from "./approval-recipients.mjs";
 import { pickEmployeeEmail, normalizeEmail, isValidEmail } from "./employee-email.mjs";
+import { normalizeEmployeeDateFields } from "./employee-dates.mjs";
 
 // =========================================================================
 // PLUS CODE (Open Location Code) DECODER -- diambil & diadaptasi dari
@@ -1016,7 +1017,11 @@ export async function fsGetAll(colName, { orderByField = null, direction = "asc"
  const ref = collection(db, colName);
  const q = orderByField ? query(ref, orderBy(orderByField, direction)) : ref;
  const snap = await getDocs(q);
- return snap.docs.map(d => ({ ...d.data(), id: d.id, _docId: d.id }));
+ const rows = snap.docs.map(d => ({ ...d.data(), id: d.id, _docId: d.id }));
+ // Data master lama menyimpan tanggal_lahir/tanggal_join hasil konversi Date
+ // yang bisa mundur 1 hari. Normalisasi di satu titik baca agar seluruh modul
+ // (kalender, dashboard, cuti, profil) memakai tanggal yang sama.
+ return colName === COL.MASTER_KARYAWAN ? rows.map(normalizeEmployeeDateFields) : rows;
 }
 
 /**
@@ -1203,7 +1208,8 @@ export async function fsGet(colName, id) {
   return snap.exists() ? { id: snap.id, _docId: snap.id, ...snap.data() } : null;
 }
 export async function fsAdd(colName, data, customId = null) {
-  const payload = cleanFirestorePayload(data) || {};
+  const source = colName === COL.MASTER_KARYAWAN ? normalizeEmployeeDateFields(data) : data;
+  const payload = cleanFirestorePayload(source) || {};
   if (customId) {
     const cleanId = String(customId).trim();
     await setDoc(doc(db, colName, cleanId), { ...payload, created_at: serverTimestamp() });
@@ -1218,7 +1224,8 @@ export async function fsUpdate(colName, id, data) {
     throw new Error(`ID dokumen tidak valid untuk pembaruan koleksi ${colName}`);
   }
   const cleanId = String(id).trim();
-  const payload = cleanFirestorePayload(data) || {};
+  const source = colName === COL.MASTER_KARYAWAN ? normalizeEmployeeDateFields(data) : data;
+  const payload = cleanFirestorePayload(source) || {};
   await setDoc(doc(db, colName, cleanId), { ...payload, updated_at: serverTimestamp() }, { merge: true });
 }
 export async function fsDelete(colName, id) {
@@ -6514,8 +6521,8 @@ export function getCalculatedJatahCuti(emp, cutiRecords = null, targetYear = nul
   let tenureYears = 0;
   let diffMonths = 0;
 
-  if (emp.tanggal_join) {
-    const join = smartParseDate(emp.tanggal_join);
+  if (emp.tgl_join || emp.tanggal_join || emp.tgl_masuk || emp.tanggal_masuk) {
+    const join = smartParseDate(emp.tgl_join || emp.tanggal_join || emp.tgl_masuk || emp.tanggal_masuk);
     if (join) {
       const now = new Date();
       diffMonths = (now.getFullYear() - join.getFullYear()) * 12 + (now.getMonth() - join.getMonth());
@@ -6986,7 +6993,7 @@ export function getEmployeeTenureInfo(emp) {
   let diffMonths = 0;
   let tenureYears = 0;
 
-  const joinStr = emp.tanggal_join || emp.tgl_masuk || emp.tgl_bergabung || emp.tanggal_masuk || emp.tgl_join;
+  const joinStr = emp.tgl_join || emp.tanggal_join || emp.tgl_masuk || emp.tgl_bergabung || emp.tanggal_masuk;
   if (joinStr) {
     const joinDate = smartParseDate(joinStr);
     if (joinDate && !isNaN(joinDate.getTime())) {

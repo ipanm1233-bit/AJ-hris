@@ -6,19 +6,14 @@ import { divisionOptionsFromSources } from "../division-options.mjs";
 import { normalizeEmail, isValidEmail } from "../employee-email.mjs";
 import { getSession, canEditModuleData } from "../auth.js";
 import { mountMasterEmployeeDashboard } from "./manajemen-data-dashboard.js";
+import { normalizeDateOnly, normalizeEmployeeDateFields } from "../employee-dates.mjs";
 
 const normalizeImportHeader = (value) => String(value ?? "")
   .toUpperCase()
   .replace(/[^A-Z0-9]+/g, " ")
   .trim();
 
-const employeeTemplateDate = (value) => {
-  if (value === null || value === undefined || value === "") return "";
-  const normalized = localDateStr(value);
-  if (normalized) return normalized;
-  const text = String(value).trim();
-  return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : text;
-};
+const employeeTemplateDate = (value) => normalizeDateOnly(value);
 
 const employeeTemplateNumber = (value, fallback = "") => {
   if (value === null || value === undefined || value === "") return fallback;
@@ -285,6 +280,7 @@ export async function mount(container) {
       data.aktif_tdk_aktif = data["aktif/tidak_aktif"];
     }
     delete data["aktif/tidak_aktif"];
+    Object.assign(data, normalizeEmployeeDateFields(data));
     data.updated_at = new Date().toISOString();
     if (!existing) data.created_at = data.updated_at;
     return data;

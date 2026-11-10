@@ -45,7 +45,7 @@ function parseJoinDate(value) {
 
 /** Selisih bulan penuh antara tanggal join dan tanggal referensi. */
 export function monthsSinceJoin(emp = {}, refDate = new Date()) {
-  const join = parseJoinDate(emp.tanggal_join);
+  const join = parseJoinDate(emp.tgl_join || emp.tanggal_join || emp.tgl_masuk || emp.tanggal_masuk);
   if (!join) return null;
   const ref = refDate instanceof Date ? refDate : new Date(refDate);
   return (ref.getFullYear() - join.getFullYear()) * 12 + (ref.getMonth() - join.getMonth());

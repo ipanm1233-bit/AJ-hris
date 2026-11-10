@@ -6,6 +6,7 @@ import {
 } from "../utils.js";
 import { canAccessForm } from "../auth.js";
 import { icon, badge, emptyState, skeletonRows } from "../components.js";
+import { normalizeEmployeeDateFields } from "../employee-dates.mjs";
 
 const FORM_ICONS = ["doc-plus", "clock", "wallet", "truck", "sun", "star", "box", "book"];
 
@@ -107,6 +108,7 @@ async function openFormModal(formCfg, session) {
  const snapK = await getDocs(qK);
  if (!snapK.empty) kData = snapK.docs[0].data();
  }
+ kData = normalizeEmployeeDateFields(kData);
  if (kData) {
  const calc = getCalculatedJatahCuti(kData);
  jatah = { tahunan: calc.jatahTahunan, khusus: calc.jatahKhusus, akumulasi: calc.jatahAkumulasi };
