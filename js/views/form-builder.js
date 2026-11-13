@@ -1,5 +1,6 @@
 import { COL } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, toSnakeCase, toast, confirmDialog, escapeHtml, genId } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, toSnakeCase, toast, confirmDialog, escapeHtml, genId, openModal, closeModal } from "../utils.js";
+import { authFetch } from "../api-client.js";
 import { icon, emptyState } from "../components.js";
 
 const ROLE_OPTIONS = ["HRD", "GM", "FINANCE", "SPV", "ATASAN", "SALES", "MANAGER", "BRANCH MANAGER"];
@@ -16,6 +17,12 @@ let notifyUserRules = [];
 let notifyFilterMode = "all"; // "all" | "selected"
 let dragIndex = null;
 let lpjDragIndex = null;
+let googleCatalogLoaded = false;
+let googleConfigured = false;
+let googleError = "";
+let googleDefinitions = [];
+let googleDefinition = null;
+let googleScriptLoading = false;
 
 export async function mount(container) {
  const [formsData, empData] = await Promise.all([
@@ -26,12 +33,21 @@ export async function mount(container) {
  allEmployees = (empData || []).filter(e => e.nama_karyawan || e.nama);
  allEmployees.sort((a, b) => (a.nama_karyawan || a.nama || "").localeCompare(b.nama_karyawan || b.nama || ""));
 
+ googleCatalogLoaded = false;
+ googleDefinitions = [];
+ googleDefinition = null;
+
  renderFormList(container);
 
  container.querySelector("#fb-new").addEventListener("click", () => openBuilder(container, null));
  container.querySelector("#fb-cancel").addEventListener("click", () => closeBuilder(container));
  container.querySelector("#fb-save").addEventListener("click", () => saveForm(container));
  container.querySelector("#fb-delete").addEventListener("click", () => deleteForm(container));
+
+ bindGoogleIntegrationEvents(container);
+ loadGoogleCatalog().then(() => {
+  if (editingId) renderGoogleIntegration(container, allForms.find(f => f.id === editingId) || null);
+ }).catch(() => {});
 
  return { unmount() {} };
 }
@@ -143,10 +159,13 @@ function openBuilder(container, form) {
  container.querySelector("#fb-requires-lpj").onchange = (e) => {
  container.querySelector("#fb-lpj-wrap").classList.toggle("hidden", !e.target.checked);
  };
+
+ renderGoogleIntegration(container, form);
 }
 
 function closeBuilder(container) {
  editingId = null;
+ googleDefinition = null;
  container.querySelector("#fb-builder-wrap").classList.add("hidden");
  container.querySelector("#fb-empty-hint").classList.remove("hidden");
  renderFormList(container);
@@ -938,6 +957,7 @@ async function saveForm(container) {
   };
 
   try {
+    const wasNew = !editingId;
     if (editingId) {
       await fsUpdate(COL.FORM_CONFIG, editingId, payload);
       Object.assign(allForms.find(f => f.id === editingId), payload);
@@ -947,6 +967,9 @@ async function saveForm(container) {
     }
     toast("Formulir berhasil disimpan", "success");
     closeBuilder(container);
+    if (wasNew && googleConfigured) {
+      toast("Buka formulir dari daftar untuk menghubungkan Google Form.", "info");
+    }
   } catch (e) {
     console.error(e);
     toast("Gagal menyimpan formulir: " + e.message, "error");
@@ -963,4 +986,445 @@ async function deleteForm(container) {
  toast("Formulir berhasil dihapus", "success");
  closeBuilder(container);
  } catch (e) { toast("Gagal menghapus: " + e.message, "error"); }
+}
+
+/* ---------------------------------------------------------------------
+ * INTEGRASI GOOGLE FORM
+ * ------------------------------------------------------------------- */
+async function formApi(payload) {
+ const response = await authFetch("/api/sync-absen", {
+  method: "POST",
+  body: JSON.stringify(payload)
+ });
+ let data = {};
+ try { data = await response.json(); } catch (_) { data = {}; }
+ if (!response.ok || data.success === false) {
+  const error = new Error(data.error || `Permintaan gagal (HTTP ${response.status}).`);
+  error.status = response.status;
+  throw error;
+ }
+ return data;
+}
+
+async function loadGoogleCatalog() {
+ if (googleCatalogLoaded) return;
+ try {
+  const data = await formApi({ action: "form_list" });
+  googleConfigured = data.configured !== false;
+  googleDefinitions = Array.isArray(data.definitions) ? data.definitions : [];
+  googleError = "";
+ } catch (error) {
+  googleConfigured = false;
+  googleError = error.message || "";
+ }
+ googleCatalogLoaded = true;
+}
+
+function bindGoogleIntegrationEvents(container) {
+ const save = container.querySelector("#fb-gform-save");
+ if (save) save.onclick = () => saveGoogleIntegration(container);
+
+ const inbox = container.querySelector("#fb-gform-inbox");
+ if (inbox) inbox.onclick = () => openGoogleInbox(container);
+
+ const rotate = container.querySelector("#fb-gform-secret");
+ if (rotate) rotate.onclick = () => rotateGoogleSecret(container);
+
+ const unlink = container.querySelector("#fb-gform-unlink");
+ if (unlink) unlink.onclick = () => unlinkGoogleIntegration(container);
+
+ const refresh = container.querySelector("#fb-gform-refresh-map");
+ if (refresh) refresh.onclick = () => renderGoogleMapping(container, allForms.find(f => f.id === editingId) || null);
+
+ const copy = container.querySelector("#fb-gform-copy");
+ if (copy) copy.onclick = async () => {
+  const pre = container.querySelector("#fb-gform-script");
+  const text = pre ? pre.textContent || "" : "";
+  if (!text || text.startsWith("Pilih") || text.startsWith("Memuat")) {
+   toast("Muat skrip terlebih dahulu dengan menyimpan integrasi.", "warning");
+   return;
+  }
+  try {
+   await navigator.clipboard.writeText(text);
+   toast("Skrip Apps Script disalin.", "success");
+  } catch (_) {
+   toast("Browser menolak akses clipboard. Salin manual dari kotak skrip.", "warning");
+  }
+ };
+}
+
+function googleStatusTone(tone) {
+ const map = {
+  ok: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  warn: "bg-amber-50 text-amber-700 border-amber-200",
+  idle: "bg-slate-100 text-slate-500 border-slate-200",
+  off: "bg-rose-50 text-rose-600 border-rose-200"
+ };
+ return map[tone] || map.idle;
+}
+
+function setGoogleStatus(container, label, tone = "idle") {
+ const el = container.querySelector("#fb-gform-status");
+ if (!el) return;
+ el.textContent = label;
+ el.className = `text-[10px] font-bold px-2.5 py-1 rounded-full border ${googleStatusTone(tone)}`;
+}
+
+function renderGoogleIntegration(container, form) {
+ const body = container.querySelector("#fb-gform-body");
+ const hint = container.querySelector("#fb-gform-unconfigured");
+ const pre = container.querySelector("#fb-gform-script");
+ if (!body || !hint) return;
+
+ if (!googleConfigured) {
+  body.classList.add("hidden");
+  hint.classList.remove("hidden");
+  const errorEl = container.querySelector("#fb-gform-error");
+  if (errorEl) {
+   errorEl.textContent = googleError || "";
+   errorEl.classList.toggle("hidden", !googleError);
+  }
+  setGoogleStatus(container, googleError ? "Integrasi tidak tersedia" : "Supabase belum aktif", "warn");
+  return;
+ }
+ hint.classList.add("hidden");
+
+ if (!form) {
+  body.classList.add("hidden");
+  setGoogleStatus(container, "Simpan formulir dulu", "idle");
+  return;
+ }
+
+ body.classList.remove("hidden");
+ googleDefinition = googleDefinitions.find(item => item.id === form.id) || null;
+
+ const googleIdInput = container.querySelector("#fb-gform-id");
+ const webhookInput = container.querySelector("#fb-gform-webhook");
+ const activeInput = container.querySelector("#fb-gform-active");
+ if (googleIdInput) googleIdInput.value = googleDefinition?.google_form_id || "";
+ if (webhookInput) webhookInput.value = `${window.location.origin}/api/sync-absen`;
+ if (activeInput) activeInput.checked = googleDefinition ? googleDefinition.active !== false : true;
+
+ const openWrap = container.querySelector("#fb-gform-open-wrap");
+ const openLink = container.querySelector("#fb-gform-open");
+ const openUrl = googleDefinition?.google_form_url
+  || (googleDefinition?.google_form_id ? `https://docs.google.com/forms/d/${googleDefinition.google_form_id}/viewform` : "");
+ if (openWrap && openLink) {
+  openWrap.classList.toggle("hidden", !openUrl);
+  if (openUrl) openLink.href = openUrl;
+ }
+
+ if (!googleDefinition) {
+  setGoogleStatus(container, "Belum terhubung", "idle");
+ } else if (googleDefinition.active === false) {
+  setGoogleStatus(container, "Nonaktif", "off");
+ } else if (googleDefinition.google_form_id) {
+  setGoogleStatus(container, "Terhubung", "ok");
+ } else {
+  setGoogleStatus(container, "Siap dihubungkan", "warn");
+ }
+
+ renderGoogleMapping(container, form);
+
+ if (pre && pre.dataset.formId !== form.id) {
+  pre.dataset.formId = form.id;
+  pre.dataset.loaded = "false";
+  pre.textContent = googleDefinition
+   ? "Memuat skrip integrasi..."
+   : "Pilih \"Simpan Integrasi\" untuk membuat skrip Google Apps Script.";
+ }
+
+ if (googleDefinition && googleDefinition.active !== false) loadGoogleScript(container);
+}
+
+function renderGoogleMapping(container, form) {
+ const el = container.querySelector("#fb-gform-mapping");
+ if (!el) return;
+ if (!currentFields.length) {
+  el.innerHTML = `<tr><td colspan="3" class="p-3 text-center text-slate-400">Belum ada kolom formulir. Tambahkan kolom lalu simpan formulir.</td></tr>`;
+  return;
+ }
+ const saved = new Map(
+  (googleDefinition?.field_map || []).map(item => [String(item.target || ""), item])
+ );
+ el.innerHTML = currentFields.map((field, index) => {
+  const target = String(field.name || `kolom_${index + 1}`);
+  const savedItem = saved.get(target);
+  const question = savedItem?.question || field.label || target;
+  return `
+  <tr class="hover:bg-slate-50/60 transition">
+   <td class="p-2.5 align-top">
+    <p class="font-semibold text-slate-800">${escapeHtml(field.label || target)}</p>
+    <p class="text-[10px] text-slate-400 font-mono mt-0.5">${escapeHtml(target)}</p>
+   </td>
+   <td class="p-2.5 align-top">
+    <input data-gmap-target="${escapeHtml(target)}" data-gmap-label="${escapeHtml(field.label || target)}" data-gmap-required="${field.required ? "true" : "false"}" value="${escapeHtml(question)}" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 focus:border-emerald-400 outline-none" placeholder="Judul pertanyaan di Google Form">
+   </td>
+   <td class="p-2.5 align-top text-center">
+    <span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${field.required ? "bg-amber-50 text-amber-700 border border-amber-200" : "bg-slate-100 text-slate-500 border border-slate-200"}">${field.required ? "Wajib" : "Opsional"}</span>
+   </td>
+  </tr>`;
+ }).join("");
+}
+
+function collectGoogleFieldMap(container) {
+ return Array.from(container.querySelectorAll("[data-gmap-target]")).map(input => ({
+  target: input.dataset.gmapTarget || "",
+  label: input.dataset.gmapLabel || "",
+  question: String(input.value || "").trim(),
+  required: input.dataset.gmapRequired === "true"
+ })).filter(item => item.target);
+}
+
+async function loadGoogleScript(container) {
+ const pre = container.querySelector("#fb-gform-script");
+ const formId = editingId;
+ if (!pre || !formId || googleScriptLoading) return;
+ if (pre.dataset.formId === formId && pre.dataset.loaded === "true") return;
+
+ googleScriptLoading = true;
+ if (pre.dataset.loaded !== "true") pre.textContent = "Memuat skrip integrasi...";
+ try {
+  const data = await formApi({ action: "form_script", formId });
+  pre.textContent = data.appsScript || "Skrip tidak tersedia.";
+  pre.dataset.formId = formId;
+  pre.dataset.loaded = "true";
+  const webhookInput = container.querySelector("#fb-gform-webhook");
+  if (webhookInput && data.webhookUrl) webhookInput.value = data.webhookUrl;
+ } catch (error) {
+  pre.textContent = `Gagal memuat skrip: ${error.message}`;
+  pre.dataset.formId = formId;
+  pre.dataset.loaded = "false";
+ } finally {
+  googleScriptLoading = false;
+ }
+}
+
+async function saveGoogleIntegration(container) {
+ const formId = editingId || container.querySelector("#fb-id")?.value.trim();
+ const form = allForms.find(item => item.id === formId);
+ if (!form) {
+  toast("Simpan formulir HRIS terlebih dahulu sebelum menghubungkan Google Form.", "warning");
+  return;
+ }
+ if (!currentFields.length) {
+  toast("Tambahkan minimal satu kolom formulir.", "warning");
+  return;
+ }
+
+ const button = container.querySelector("#fb-gform-save");
+ if (button) { button.disabled = true; button.textContent = "Menyimpan..."; }
+ try {
+  const data = await formApi({
+   action: "form_register",
+   formId,
+   namaForm: container.querySelector("#fb-nama")?.value.trim() || form.nama_form || formId,
+   googleFormId: container.querySelector("#fb-gform-id")?.value.trim() || "",
+   fields: currentFields,
+   fieldMap: collectGoogleFieldMap(container),
+   active: container.querySelector("#fb-gform-active")?.checked !== false
+  });
+  googleDefinition = data.definition || null;
+  googleDefinitions = [
+   ...googleDefinitions.filter(item => item.id !== formId),
+   ...(googleDefinition ? [googleDefinition] : [])
+  ];
+  renderGoogleIntegration(container, form);
+  const pre = container.querySelector("#fb-gform-script");
+  if (pre && data.appsScript) {
+   pre.textContent = data.appsScript;
+   pre.dataset.formId = formId;
+   pre.dataset.loaded = "true";
+  }
+  toast("Integrasi Google Form berhasil disimpan.", "success");
+ } catch (error) {
+  toast("Gagal menyimpan integrasi: " + error.message, "error");
+ } finally {
+  if (button) { button.disabled = false; button.textContent = "Simpan Integrasi"; }
+ }
+}
+
+async function rotateGoogleSecret(container) {
+ const formId = editingId;
+ if (!formId) { toast("Pilih formulir terlebih dahulu.", "warning"); return; }
+ const ok = await confirmDialog("Putar kunci webhook? Skrip Apps Script lama tidak akan bisa mengirim respons lagi sampai diganti dengan skrip baru.");
+ if (!ok) return;
+ const button = container.querySelector("#fb-gform-secret");
+ if (button) { button.disabled = true; button.textContent = "Memutar..."; }
+ try {
+  const data = await formApi({ action: "form_rotate_secret", formId });
+  googleDefinition = data.definition || googleDefinition;
+  const pre = container.querySelector("#fb-gform-script");
+  if (pre && data.appsScript) {
+   pre.textContent = data.appsScript;
+   pre.dataset.formId = formId;
+   pre.dataset.loaded = "true";
+  }
+  renderGoogleIntegration(container, allForms.find(item => item.id === formId) || null);
+  toast("Kunci webhook baru dibuat. Ganti skrip Apps Script Anda.", "success");
+ } catch (error) {
+  toast("Gagal memutar kunci: " + error.message, "error");
+ } finally {
+  if (button) { button.disabled = false; button.textContent = "Putar Kunci Webhook"; }
+ }
+}
+
+async function unlinkGoogleIntegration(container) {
+ const formId = editingId;
+ if (!formId) { toast("Pilih formulir terlebih dahulu.", "warning"); return; }
+ const ok = await confirmDialog("Putuskan integrasi Google Form? Respons yang sudah masuk tetap tersimpan, tetapi respons baru akan ditolak.");
+ if (!ok) return;
+ try {
+  const data = await formApi({ action: "form_unlink", formId });
+  googleDefinition = data.definition || null;
+  googleDefinitions = googleDefinitions.map(item => item.id === formId ? googleDefinition : item).filter(Boolean);
+  const pre = container.querySelector("#fb-gform-script");
+  if (pre) { pre.textContent = "Integrasi diputuskan. Simpan ulang untuk mengaktifkan kembali."; pre.dataset.loaded = "false"; }
+  renderGoogleIntegration(container, allForms.find(item => item.id === formId) || null);
+  toast("Integrasi Google Form diputuskan.", "success");
+ } catch (error) {
+  toast("Gagal memutuskan integrasi: " + error.message, "error");
+ }
+}
+
+function formatGoogleDate(value) {
+ if (!value) return "-";
+ const date = new Date(value);
+ if (Number.isNaN(date.getTime())) return String(value).slice(0, 16);
+ return date.toLocaleString("id-ID", {
+  day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit"
+ });
+}
+
+function googleSubmissionBadge(status) {
+ const map = {
+  RECEIVED: "bg-amber-50 text-amber-700 border-amber-200",
+  IMPORTED: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  REJECTED: "bg-slate-100 text-slate-500 border-slate-200",
+  ERROR: "bg-rose-50 text-rose-600 border-rose-200"
+ };
+ return `<span class="inline-block px-2 py-0.5 rounded-full border text-[10px] font-bold ${map[status] || map.RECEIVED}">${escapeHtml(status || "RECEIVED")}</span>`;
+}
+
+function mappedSummary(mapped) {
+ const entries = Object.entries(mapped || {});
+ if (!entries.length) return "Tidak ada jawaban yang terpetakan";
+ const preview = entries.slice(0, 4).map(([key, value]) => {
+  const text = Array.isArray(value) ? value.join(", ") : String(value);
+  return `${key}: ${text.length > 60 ? `${text.slice(0, 60)}…` : text}`;
+ });
+ const rest = entries.length > 4 ? ` · +${entries.length - 4} lagi` : "";
+ return preview.join(" · ") + rest;
+}
+
+async function openGoogleInbox(container) {
+ const formId = editingId;
+ const form = allForms.find(item => item.id === formId);
+ if (!form) { toast("Simpan formulir terlebih dahulu.", "warning"); return; }
+
+ const renderModal = (submissions) => {
+  const rows = submissions.length ? submissions.map(item => `
+   <tr class="align-top hover:bg-slate-50/60 transition">
+    <td class="p-2.5">
+     <p class="font-semibold text-slate-800">${escapeHtml(item.respondent_name || item.mapped?.nama_karyawan || item.mapped?.nama || "Responden")}</p>
+     <p class="text-[10px] text-slate-400">${escapeHtml(item.respondent_email || "-")}</p>
+     <p class="text-[10px] text-slate-400 mt-0.5">${escapeHtml(formatGoogleDate(item.submitted_at))}</p>
+    </td>
+    <td class="p-2.5">${googleSubmissionBadge(item.status)}</td>
+    <td class="p-2.5 max-w-md">
+     <p class="text-[11px] text-slate-600 leading-relaxed">${escapeHtml(mappedSummary(item.mapped))}</p>
+     ${item.imported_id ? `<p class="text-[10px] font-mono text-emerald-600 mt-1">${escapeHtml(item.imported_id)}</p>` : ""}
+     ${item.import_error ? `<p class="text-[10px] text-rose-600 mt-1">${escapeHtml(item.import_error)}</p>` : ""}
+    </td>
+    <td class="p-2.5 text-right whitespace-nowrap">
+     ${item.status === "IMPORTED"
+       ? `<span class="text-[10px] font-bold text-emerald-600">Selesai</span>`
+       : `<div class="inline-flex gap-1.5">
+           <button type="button" data-gf-import="${escapeHtml(item.id)}" class="px-2 py-1 rounded-lg text-[10px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition">Impor</button>
+           <button type="button" data-gf-reject="${escapeHtml(item.id)}" class="px-2 py-1 rounded-lg text-[10px] font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 transition">Tolak</button>
+         </div>`}
+    </td>
+   </tr>`).join("") : `
+   <tr><td colspan="4" class="p-8 text-center text-xs text-slate-400">
+    Belum ada respons. Pastikan skrip Apps Script sudah dipasang dan trigger onFormSubmit aktif.
+   </td></tr>`;
+
+  openModal({
+   title: `Kotak Masuk Google Form — ${form.nama_form || form.id}`,
+   size: "xl",
+   bodyHtml: `
+    <div class="space-y-3">
+     <div class="flex flex-wrap items-center justify-between gap-2">
+      <p class="text-xs text-slate-500">Respons diterima lewat webhook bertanda tangan. Impor akan membuat pengajuan <b>MENUNGGU</b> di menu Approval.</p>
+      <span class="text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200">${submissions.length} respons terbaru</span>
+     </div>
+     <div class="overflow-x-auto rounded-xl border border-slate-200">
+      <table class="w-full text-xs text-left border-collapse">
+       <thead class="bg-slate-50 text-slate-600">
+        <tr>
+         <th class="p-2.5 font-bold">Responden</th>
+         <th class="p-2.5 font-bold w-28">Status</th>
+         <th class="p-2.5 font-bold">Ringkasan Jawaban</th>
+         <th class="p-2.5 font-bold w-36 text-right">Tindakan</th>
+        </tr>
+       </thead>
+       <tbody class="divide-y divide-slate-100">${rows}</tbody>
+      </table>
+     </div>
+     <p class="text-[10px] text-slate-400">Impor massal dibatasi 100 respons per tindakan agar tetap aman di free tier.</p>
+    </div>`,
+   footerHtml: `
+    <button type="button" id="gf-close" class="px-3 py-2 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 transition">Tutup</button>
+    <button type="button" id="gf-import-all" class="px-4 py-2 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition" ${submissions.some(item => item.status === "RECEIVED") ? "" : "disabled"}>Impor Semua (maks. 100)</button>`,
+   onMount: (modal) => {
+    modal.querySelector("#gf-close")?.addEventListener("click", closeModal);
+    modal.querySelector("#gf-import-all")?.addEventListener("click", () => {
+     runGoogleImport(container, form, [], true);
+    });
+    modal.querySelectorAll("[data-gf-import]").forEach(button => {
+     button.addEventListener("click", () => runGoogleImport(container, form, [button.dataset.gfImport], false));
+    });
+    modal.querySelectorAll("[data-gf-reject]").forEach(button => {
+     button.addEventListener("click", () => rejectGoogleSubmission(container, form, button.dataset.gfReject));
+    });
+   }
+  });
+ };
+
+ try {
+  const data = await formApi({ action: "form_submissions", formId, limit: 100 });
+  renderModal(Array.isArray(data.submissions) ? data.submissions : []);
+ } catch (error) {
+  toast("Gagal memuat kotak masuk: " + error.message, "error");
+ }
+}
+
+async function runGoogleImport(container, form, submissionIds, importAll) {
+ try {
+  const data = await formApi({
+   action: "form_import",
+   formId: form.id,
+   submissionIds,
+   importAll
+  });
+  const imported = Number(data.imported) || 0;
+  const failed = Number(data.failed) || 0;
+  if (failed) toast(`${imported} respons diimpor, ${failed} gagal. Periksa detail di kotak masuk.`, "warning");
+  else toast(`${imported} respons berhasil diimpor menjadi pengajuan.`, "success");
+  if (imported || failed) openGoogleInbox(container);
+ } catch (error) {
+  toast("Gagal mengimpor respons: " + error.message, "error");
+ }
+}
+
+async function rejectGoogleSubmission(container, form, submissionId) {
+ const ok = await confirmDialog("Tolak respons ini? Respons tidak akan diimpor menjadi pengajuan.");
+ if (!ok) return;
+ try {
+  await formApi({ action: "form_reject", formId: form.id, submissionIds: [submissionId] });
+  toast("Respons ditolak.", "success");
+  openGoogleInbox(container);
+ } catch (error) {
+  toast("Gagal menolak respons: " + error.message, "error");
+ }
 }

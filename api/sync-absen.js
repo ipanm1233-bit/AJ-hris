@@ -7,6 +7,7 @@ const { handleIzinAccess } = require('../lib/izin-access.js');
 const { handleTrainingAccess } = require('../lib/training-access.js');
 const { handleNotificationAccess } = require('../lib/notification-access.js');
 const { handleSalesTrackingAccess } = require('../lib/sales-tracking-access.js');
+const { handleFormAccess } = require('../lib/form-access.js');
 const { supabaseEnabled, supabaseConfigured } = require('../lib/supabase.js');
 const { listAttendance, upsertAttendance, deleteAttendance } = require('../lib/attendance-supabase.js');
 const { listFingerprintMappings, mappingForScan } = require('../lib/fingerprint-mappings.js');
@@ -398,6 +399,12 @@ module.exports = async function handler(req, res) {
   try {
     const { rawBody, body } = await readJsonBody(req);
     req.body = body;
+    req.rawBody = rawBody;
+
+    if (String(body?.action || '').startsWith('form_')) {
+      await handleFormAccess(req, res, body);
+      return;
+    }
 
     if (String(body?.action || '').startsWith('izin_')) {
       await handleIzinAccess(req, res, body);
@@ -995,12 +1002,14 @@ module.exports = async function handler(req, res) {
     console.error("CRASH SYNC ABSEN:", error);
     const quotaExceeded = isFirestoreQuotaError(error);
     const adminAction = String(req.body?.action || '').startsWith('admin_');
+    const formAction = String(req.body?.action || '').startsWith('form_');
     res.status(quotaExceeded ? 503 : 500).json({
       success: false,
       error: quotaExceeded
         ? 'Kuota baca Firestore sedang habis. Konfigurasi mesin belum dapat dimuat; sinkronisasi bridge dapat tetap berjalan melalui Supabase.'
-        : adminAction ? 'Konfigurasi mesin gagal dimuat. Periksa log fungsi sync-absen di Vercel.'
-          : 'Gagal memproses sinkronisasi fingerprint.'
+        : formAction ? 'Gagal memproses integrasi Google Form. Periksa log fungsi sync-absen di Vercel.'
+          : adminAction ? 'Konfigurasi mesin gagal dimuat. Periksa log fungsi sync-absen di Vercel.'
+            : 'Gagal memproses sinkronisasi fingerprint.'
     });
   }
 };

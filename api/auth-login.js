@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { getFirebaseAdmin } = require('../lib/firebase-admin.js');
-const { enforceRateLimit, writeAuditLog, assertAllowedKeys, verifyAppCheck, isFirestoreQuotaError } = require('../lib/security.js');
+const { enforceDistributedRateLimit, writeAuditLog, assertAllowedKeys, verifyAppCheck, isFirestoreQuotaError } = require('../lib/security.js');
 const { strongPassword } = require('../lib/password-policy.js');
 const { isMailConfigured, sendMail } = require('../lib/mailer.js');
 
@@ -382,7 +382,7 @@ async function migrateOrVerifyUser(admin, db, legacy, identifier, password) {
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Metode tidak diizinkan.' });
-  if (!enforceRateLimit(req, res, { namespace: 'auth-login', limit: 7, windowMs: 15 * 60_000 })) return;
+  if (!await enforceDistributedRateLimit(req, res, { namespace: 'auth-login', limit: 7, windowMs: 15 * 60_000 })) return;
 
   try {
     assertAllowedKeys(req.body || {}, ['identifier', 'password', 'verifyOnly']);
