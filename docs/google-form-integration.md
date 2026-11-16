@@ -55,6 +55,28 @@ Firestore: data_pengajuan   (pengajuan MENUNGGU seperti biasa)
 > Jika kunci webhook bocor, klik **Putar Kunci Webhook**, lalu ganti skrip di
 > Apps Script dengan skrip baru. Skrip lama langsung tidak berlaku.
 
+## Tautan ringkas formulir
+
+Setelah integrasi disimpan, panel **Integrasi Google Form** menampilkan tautan
+ringkas yang bisa dibagikan, misalnya:
+
+```
+https://andela-hris.vercel.app/formulir-cuti
+```
+
+- Slug dibentuk dari nama formulir dan disimpan permanen di
+  `form_config.public_slug`, sehingga tautan tidak berubah saat formulir diganti
+  nama. Bentrok nama otomatis diberi akhiran `-2` sampai `-6`.
+- Halaman `/{slug}` (dan `/f/{slug}`) dilayani `form-link.html`; halaman hanya
+  membaca satu dokumen `form_public_links/{slug}` tanpa login, lalu mengalihkan
+  pengunjung ke Google Form.
+- Tautan menjadi nonaktif saat integrasi diputus atau penerimaan respons
+  dimatikan, dan dihapus saat formulir dihapus.
+- Tidak memakai Google Forms API, tidak menambah Vercel Function, dan tidak
+  memerlukan biaya tambahan.
+- Path sistem seperti `/api`, `/js`, dan `/login` tidak dapat dipakai sebagai
+  nama formulir.
+
 ## Cara pemetaan jawaban
 
 - Setiap kolom HRIS punya `name` (variabel sistem) dan `label`.

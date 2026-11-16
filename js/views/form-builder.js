@@ -1,7 +1,8 @@
 import { COL } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, toSnakeCase, toast, confirmDialog, escapeHtml, genId, openModal, closeModal } from "../utils.js";
+import { fsGet, fsGetAll, fsAdd, fsUpdate, fsDelete, toSnakeCase, toast, confirmDialog, escapeHtml, genId, openModal, closeModal } from "../utils.js";
 import { authFetch } from "../api-client.js";
 import { icon, emptyState } from "../components.js";
+import { isReservedPublicSlug, pickAvailableSlug, publicFormUrlFor, publicShortLink } from "../form-link.mjs";
 
 const ROLE_OPTIONS = ["HRD", "GM", "FINANCE", "SPV", "ATASAN", "SALES", "MANAGER", "BRANCH MANAGER"];
 let allForms = [];
@@ -981,6 +982,8 @@ async function deleteForm(container) {
  const ok = await confirmDialog("Formulir yang dihapus tidak dapat dikembalikan dan akan hilang dari Katalog Pengajuan. Lanjutkan?");
  if (!ok) return;
  try {
+ const removed = allForms.find(f => f.id === editingId) || null;
+ await removePublicShortLink(removed);
  await fsDelete(COL.FORM_CONFIG, editingId);
  allForms = allForms.filter(f => f.id !== editingId);
  toast("Formulir berhasil dihapus", "success");
@@ -1051,6 +1054,22 @@ function bindGoogleIntegrationEvents(container) {
    toast("Browser menolak akses clipboard. Salin manual dari kotak skrip.", "warning");
   }
  };
+
+ const copyLink = container.querySelector("#fb-gform-copy-link");
+ if (copyLink) copyLink.onclick = async () => {
+  const input = container.querySelector("#fb-gform-short");
+  const text = input ? String(input.value || "").trim() : "";
+  if (!text) {
+   toast("Tautan ringkas belum tersedia. Simpan integrasi terlebih dahulu.", "warning");
+   return;
+  }
+  try {
+   await navigator.clipboard.writeText(text);
+   toast("Tautan ringkas disalin.", "success");
+  } catch (_) {
+   toast("Browser menolak akses clipboard. Salin manual dari kotak tautan.", "warning");
+  }
+ };
 }
 
 function googleStatusTone(tone) {
@@ -1076,6 +1095,8 @@ function renderGoogleIntegration(container, form) {
  const pre = container.querySelector("#fb-gform-script");
  if (!body || !hint) return;
 
+ googleDefinition = form ? (googleDefinitions.find(item => item.id === form.id) || null) : null;
+
  if (!googleConfigured) {
   body.classList.add("hidden");
   hint.classList.remove("hidden");
@@ -1085,18 +1106,19 @@ function renderGoogleIntegration(container, form) {
    errorEl.classList.toggle("hidden", !googleError);
   }
   setGoogleStatus(container, googleError ? "Integrasi tidak tersedia" : "Supabase belum aktif", "warn");
+  renderPublicShortLink(container, form);
   return;
  }
  hint.classList.add("hidden");
 
  if (!form) {
   body.classList.add("hidden");
+  renderPublicShortLink(container, null);
   setGoogleStatus(container, "Simpan formulir dulu", "idle");
   return;
  }
 
  body.classList.remove("hidden");
- googleDefinition = googleDefinitions.find(item => item.id === form.id) || null;
 
  const googleIdInput = container.querySelector("#fb-gform-id");
  const webhookInput = container.querySelector("#fb-gform-webhook");
@@ -1113,6 +1135,7 @@ function renderGoogleIntegration(container, form) {
   openWrap.classList.toggle("hidden", !openUrl);
   if (openUrl) openLink.href = openUrl;
  }
+ renderPublicShortLink(container, form);
 
  if (!googleDefinition) {
   setGoogleStatus(container, "Belum terhubung", "idle");
@@ -1135,6 +1158,124 @@ function renderGoogleIntegration(container, form) {
  }
 
  if (googleDefinition && googleDefinition.active !== false) loadGoogleScript(container);
+}
+
+function renderPublicShortLink(container, form) {
+ const wrap = container.querySelector("#fb-gform-short-wrap");
+ const input = container.querySelector("#fb-gform-short");
+ const note = container.querySelector("#fb-gform-short-note");
+ if (!wrap || !input) return;
+
+ const slug = String(form && form.public_slug ? form.public_slug : "").trim();
+ if (!slug) {
+  wrap.classList.add("hidden");
+  input.value = "";
+  if (note) note.textContent = "";
+  return;
+ }
+
+ wrap.classList.remove("hidden");
+ input.value = publicShortLink(window.location.origin, slug);
+ if (note) {
+  const active = !!(googleDefinition && googleDefinition.active !== false);
+  note.textContent = active
+   ? "Tautan aktif. Nonaktifkan penerimaan respons untuk menutup formulir."
+   : "Tautan sedang nonaktif karena penerimaan respons dimatikan.";
+ }
+}
+
+/**
+ * Buat atau perbarui dokumen form_public_links/{slug} agar tautan ringkas
+ * selalu mengarah ke Google Form terbaru. Slug disimpan di form_config
+ * supaya tidak berubah saat formulir diganti namanya.
+ */
+async function ensurePublicShortLink(form, definition) {
+ if (!form || !definition) return "";
+ const formId = form.id;
+ const url = publicFormUrlFor({
+  google_form_url: definition.google_form_url,
+  google_form_id: definition.google_form_id
+ });
+ if (!url) return "";
+
+ let slug = String(form.public_slug || "").trim().toLowerCase();
+ if (slug) {
+  if (isReservedPublicSlug(slug)) {
+   slug = "";
+  } else {
+   try {
+    const existing = await fsGet(COL.FORM_PUBLIC_LINKS, slug);
+    if (existing && existing.form_id && existing.form_id !== formId) slug = "";
+   } catch (_) {
+    // Baca satu dokumen diizinkan untuk semua pengguna; bila gagal karena
+    // jaringan, slug lama tetap dipakai agar tautan tidak berubah.
+   }
+  }
+ }
+
+ if (!slug) {
+  let taken = new Set();
+  try {
+   const links = await fsGetAll(COL.FORM_PUBLIC_LINKS);
+   taken = new Set((links || []).map(item => item.id));
+  } catch (_) { /* lanjut dengan daftar kosong */ }
+  const preferred = form.nama_form || definition.nama_form || formId;
+  let candidate = pickAvailableSlug(preferred, taken);
+  let guard = 0;
+  // Verifikasi ulang per dokumen: bila daftar gagal dimuat, jangan sampai
+  // tautan milik formulir lain tertimpa.
+  while (candidate && guard < 6) {
+   const existing = await fsGet(COL.FORM_PUBLIC_LINKS, candidate).catch(() => null);
+   if (!existing || !existing.form_id || existing.form_id === formId) break;
+   taken.add(candidate);
+   candidate = pickAvailableSlug(preferred, taken);
+   guard += 1;
+  }
+  slug = candidate;
+  if (!slug) {
+   toast("Semua variasi nama tautan sudah dipakai. Ubah nama formulir lalu simpan ulang.", "warning");
+   return "";
+  }
+ }
+
+ await fsUpdate(COL.FORM_PUBLIC_LINKS, slug, {
+  form_id: formId,
+  nama_form: form.nama_form || definition.nama_form || formId,
+  google_form_url: url,
+  google_form_id: definition.google_form_id || "",
+  active: definition.active !== false
+ });
+
+ if (slug !== form.public_slug) {
+  await fsUpdate(COL.FORM_CONFIG, formId, { public_slug: slug });
+  form.public_slug = slug;
+ }
+ return slug;
+}
+
+async function deactivatePublicShortLink(form) {
+ const slug = String(form && form.public_slug ? form.public_slug : "").trim();
+ if (!slug) return;
+ try {
+  await fsUpdate(COL.FORM_PUBLIC_LINKS, slug, { active: false });
+ } catch (error) {
+  console.warn("[form-builder] Gagal menonaktifkan tautan ringkas:", error.message);
+ }
+}
+
+async function removePublicShortLink(form) {
+ const slug = String(form && form.public_slug ? form.public_slug : "").trim();
+ if (!slug) return;
+ try {
+  const links = await fsGetAll(COL.FORM_PUBLIC_LINKS).catch(() => []);
+  const targets = new Set([slug]);
+  (links || []).forEach(item => {
+   if (item.form_id === form.id) targets.add(item.id);
+  });
+  await Promise.all(Array.from(targets).map(id => fsDelete(COL.FORM_PUBLIC_LINKS, id).catch(() => {})));
+ } catch (error) {
+  console.warn("[form-builder] Gagal menghapus tautan ringkas:", error.message);
+ }
 }
 
 function renderGoogleMapping(container, form) {
@@ -1229,6 +1370,14 @@ async function saveGoogleIntegration(container) {
    ...googleDefinitions.filter(item => item.id !== formId),
    ...(googleDefinition ? [googleDefinition] : [])
   ];
+  if (googleDefinition) {
+   try {
+    await ensurePublicShortLink(form, googleDefinition);
+   } catch (error) {
+    console.warn("[form-builder] Gagal membuat tautan ringkas:", error.message);
+    toast("Integrasi tersimpan, tetapi tautan ringkas gagal dibuat: " + error.message, "warning");
+   }
+  }
   renderGoogleIntegration(container, form);
   const pre = container.querySelector("#fb-gform-script");
   if (pre && data.appsScript) {
@@ -1278,6 +1427,7 @@ async function unlinkGoogleIntegration(container) {
   const data = await formApi({ action: "form_unlink", formId });
   googleDefinition = data.definition || null;
   googleDefinitions = googleDefinitions.map(item => item.id === formId ? googleDefinition : item).filter(Boolean);
+  await deactivatePublicShortLink(allForms.find(item => item.id === formId) || null);
   const pre = container.querySelector("#fb-gform-script");
   if (pre) { pre.textContent = "Integrasi diputuskan. Simpan ulang untuk mengaktifkan kembali."; pre.dataset.loaded = "false"; }
   renderGoogleIntegration(container, allForms.find(item => item.id === formId) || null);

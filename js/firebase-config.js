@@ -126,6 +126,7 @@ export const COL = {
  MASTER_KONTRAK: "master_kontrak",
  MASTER_SOAL_KPI: "master_soal_kpi",
  FORM_CONFIG: "form_config",
+ FORM_PUBLIC_LINKS: "form_public_links",
  DATA_PENGAJUAN: "data_pengajuan",
  BROADCAST: "broadcast",
  LOG_SP_KONSELING: "log_sp_konseling",

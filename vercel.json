@@ -43,6 +43,14 @@
       "destination": "/api/:path*"
     },
     {
+      "source": "/f/:slug",
+      "destination": "/form-link.html"
+    },
+    {
+      "source": "/:slug",
+      "destination": "/form-link.html"
+    },
+    {
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }

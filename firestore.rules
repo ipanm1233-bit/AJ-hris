@@ -173,6 +173,13 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if isHrd();
     }
+    // Tautan publik ringkas (/nama-formulir -> Google Form). Hanya boleh
+    // dibaca satu dokumen agar katalog formulir tidak bisa dienumerasi.
+    match /form_public_links/{slug} {
+      allow get: if true;
+      allow list: if isHrd();
+      allow write: if isHrd();
+    }
 
     match /log_sp_konseling/{id} {
       allow read: if isCentralManagement() || (isManagement() && sameBranch(resource.data));

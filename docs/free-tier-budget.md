@@ -50,6 +50,8 @@ Fungsi SQL `consume_rate_limit` menyimpan satu baris per kombinasi
 - Import memakai 1 baca cek duplikat + 1 tulis per respons.
 - Penghapusan data lama dilakukan bertahap (maksimal 500 baris sekali jalan).
 - Tidak ada polling; sinkronisasi Google Form bersifat push dari Apps Script.
+- Tautan ringkas formulir hanya membaca 1 dokumen Firestore per kunjungan dan
+  tidak memerlukan login, tanpa tambahan function Vercel.
 - Asset browser memakai versi query (`?v=`) agar cache tidak membebani server.
 
 ## Pemantauan

@@ -10,12 +10,13 @@ import { icon, avatar, openNotificationCenter, showMemoDetailById, skeletonShado
 import { db, messaging, firebaseConfig, COL, collection, query, where, getDocs, doc, getDoc } from "./firebase-config.js";
 import { getToken } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js";
 import { initGlobalSearch } from "./global-search.js";
+import { mountQuickActions } from "./quick-actions.js";
 import { waitForAuthReady, authFetch } from "./api-client.js";
 import { auth } from "./firebase-config.js";
 
 // Ubah versi ini setiap ada perubahan struktur view agar browser tidak
 // mencampur HTML terbaru dengan modul JavaScript lama dari cache.
-const APP_ASSET_VERSION = "20261111-google-form-integration-v34";
+const APP_ASSET_VERSION = "20261114-quick-actions-v35";
 const viewContainer = document.getElementById("view-container");
 let currentUnmount = null;
 let currentRoute = null;
@@ -515,6 +516,9 @@ async function renderShellForUser(session) {
  }
 
  const menus = await computeVisibleMenus(session);
+ mountQuickActions({ menus }).catch(error => {
+  console.warn("[app] Gagal memasang akses cepat:", error.message);
+ });
  const shellSignature = JSON.stringify({
   user: session.uid || session.username || session.nik,
   role: session.role,

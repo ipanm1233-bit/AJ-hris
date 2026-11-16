@@ -16,7 +16,10 @@ test("form builder menyediakan panel integrasi Google Form", () => {
     "fb-gform-secret",
     "fb-gform-unlink",
     "fb-gform-script",
-    "fb-gform-copy"
+    "fb-gform-copy",
+    "fb-gform-short-wrap",
+    "fb-gform-short",
+    "fb-gform-copy-link"
   ]) {
     assert.match(html, new RegExp(`id="${id}"`), `elemen #${id} harus ada`);
   }
@@ -38,6 +41,10 @@ test("form builder memanggil API integrasi dengan autentikasi", () => {
   assert.match(js, /renderGoogleMapping/);
   assert.match(js, /data-gmap-target/);
   assert.match(js, /openGoogleInbox/);
+  assert.match(js, /ensurePublicShortLink/);
+  assert.match(js, /COL\.FORM_PUBLIC_LINKS/);
+  assert.match(js, /pickAvailableSlug/);
+  assert.match(js, /publicShortLink/);
 });
 
 test("asset version dashboard dinaikkan setelah integrasi Google Form", () => {

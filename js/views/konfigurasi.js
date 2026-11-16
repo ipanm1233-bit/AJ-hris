@@ -1,10 +1,27 @@
 import { db, COL, doc, getDoc, setDoc, collection, getDocs, writeBatch, query, where } from "../firebase-config.js";
 import { toast, escapeHtml, sendEmailNotif, buildStandardEmailHtml, smartParseDate, fmtDateShort, fmtDateIndo, localDateStr, getBranchEmailNotificationSettings, saveBranchEmailNotificationSettings, sendBranchMorningLeaveDigest, sendBranchEveningLeaveDigest } from "../utils.js";
+import { MENU_CONFIG } from "../auth.js";
+import { DEFAULT_QUICK_ACTIONS, QUICK_ACTION_MAX_ITEMS, normalizeQuickActions } from "../quick-actions.mjs";
+
+const QA_EXTRA_ROUTES = [
+  { id: "absensi-saya", label: "Absensi Saya", icon: "clock" }
+];
+const QA_ROUTES = [
+  ...MENU_CONFIG.map(menu => ({
+    id: menu.route || menu.id,
+    label: menu.label,
+    icon: menu.icon || "doc-plus"
+  })),
+  ...QA_EXTRA_ROUTES.filter(extra => !MENU_CONFIG.some(menu => (menu.route || menu.id) === extra.id))
+];
+const QA_ROUTE_LABELS = Object.fromEntries(QA_ROUTES.map(route => [route.id, route.label]));
+const QA_ROUTE_ICONS = Object.fromEntries(QA_ROUTES.map(route => [route.id, route.icon]));
 
 export async function mount(container, { session }) {
   const tBody = container.querySelector("#cfg-jadwal-tbody");
   const docRef = doc(db, COL.APP_SETTINGS, "main");
   let cfg = { jadwal: [], tarif: {}, dashboard_widgets: {}, email_reminders: {} };
+  let qaItems = [];
 
   async function loadConfig() {
     try {
@@ -50,8 +67,159 @@ export async function mount(container, { session }) {
 
       syncWidgetCheckboxes();
       syncEmailReminderInputs();
+      syncQuickActionsEditor();
       renderJadwal();
     } catch(e) { console.error(e); }
+  }
+
+  function routeLabel(routeId) {
+    return QA_ROUTE_LABELS[routeId] || routeId;
+  }
+
+  function syncQuickActionsEditor() {
+    const enabledEl = container.querySelector("#cfg-qa-enabled");
+    const normalized = normalizeQuickActions(cfg.quick_actions, {
+      routeLabels: QA_ROUTE_LABELS,
+      iconByRoute: QA_ROUTE_ICONS
+    });
+    qaItems = normalized.items.map(item => ({ ...item }));
+    if (enabledEl) enabledEl.checked = normalized.enabled;
+    renderQuickActionRows();
+  }
+
+  function renderQuickActionRows() {
+    const list = container.querySelector("#cfg-qa-list");
+    if (!list) return;
+    if (!qaItems.length) {
+      list.innerHTML = `<div class="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-5 text-center text-xs text-slate-500">Belum ada akses cepat. Klik "Tambah Akses Cepat" untuk membuat item pertama.</div>`;
+      return;
+    }
+    list.innerHTML = qaItems.map((item, index) => `
+      <div class="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] gap-2 items-end rounded-xl border border-slate-200 bg-slate-50/40 p-3" data-qa-index="${index}">
+        <div>
+          <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Halaman Tujuan</label>
+          <select data-qa-route class="w-full px-2.5 py-2 text-xs rounded-lg border border-slate-200 bg-white outline-none focus:border-maroon-700">
+            ${QA_ROUTES.map(route => `<option value="${escapeHtml(route.id)}"${route.id === item.route ? " selected" : ""}>${escapeHtml(route.label)}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Label Tombol</label>
+          <input data-qa-label maxlength="40" value="${escapeHtml(item.label)}" placeholder="${escapeHtml(routeLabel(item.route))}" class="w-full px-2.5 py-2 text-xs rounded-lg border border-slate-200 bg-white outline-none focus:border-maroon-700">
+        </div>
+        <label class="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 pb-2 cursor-pointer select-none">
+          <input type="checkbox" data-qa-active class="rounded border-slate-300 text-maroon-700 w-3.5 h-3.5"${item.enabled ? " checked" : ""}> Tampil
+        </label>
+        <button type="button" data-qa-remove class="px-2.5 py-2 rounded-lg text-[11px] font-bold text-rose-600 bg-white border border-rose-200 hover:bg-rose-50 transition mb-0.5">Hapus</button>
+      </div>
+    `).join("");
+  }
+
+  function bindQuickActionEvents() {
+    const list = container.querySelector("#cfg-qa-list");
+    const enabledEl = container.querySelector("#cfg-qa-enabled");
+    const addBtn = container.querySelector("#btn-qa-add");
+    const resetBtn = container.querySelector("#btn-qa-reset");
+    const saveBtn = container.querySelector("#btn-qa-save");
+    if (!list) return;
+
+    list.addEventListener("change", event => {
+      const row = event.target.closest("[data-qa-index]");
+      if (!row) return;
+      const index = Number(row.dataset.qaIndex);
+      const item = qaItems[index];
+      if (!item) return;
+
+      if (event.target.matches("[data-qa-route]")) {
+        const nextRoute = event.target.value;
+        const nextLabel = routeLabel(nextRoute);
+        const previousDefault = routeLabel(item.route);
+        const currentLabel = String(item.label || "").trim();
+        if (!currentLabel || currentLabel === previousDefault) {
+          item.label = nextLabel;
+          const labelInput = row.querySelector("[data-qa-label]");
+          if (labelInput) {
+            labelInput.value = nextLabel;
+            labelInput.placeholder = nextLabel;
+          }
+        }
+        item.route = nextRoute;
+        item.icon = QA_ROUTE_ICONS[nextRoute] || "doc-plus";
+      } else if (event.target.matches("[data-qa-active]")) {
+        item.enabled = event.target.checked;
+      }
+    });
+
+    list.addEventListener("input", event => {
+      if (!event.target.matches("[data-qa-label]")) return;
+      const row = event.target.closest("[data-qa-index]");
+      const index = Number(row?.dataset.qaIndex);
+      if (qaItems[index]) qaItems[index].label = event.target.value;
+    });
+
+    list.addEventListener("click", event => {
+      const removeBtn = event.target.closest("[data-qa-remove]");
+      if (!removeBtn) return;
+      const row = removeBtn.closest("[data-qa-index]");
+      const index = Number(row?.dataset.qaIndex);
+      if (!Number.isInteger(index)) return;
+      qaItems.splice(index, 1);
+      renderQuickActionRows();
+    });
+
+    if (addBtn) addBtn.onclick = () => {
+      if (qaItems.length >= QUICK_ACTION_MAX_ITEMS) {
+        toast(`Maksimal ${QUICK_ACTION_MAX_ITEMS} akses cepat.`, "warning");
+        return;
+      }
+      const used = new Set(qaItems.map(item => item.route));
+      const next = QA_ROUTES.find(route => !used.has(route.id)) || QA_ROUTES[0];
+      qaItems.push({
+        id: `custom-${Date.now()}`,
+        label: next.label,
+        route: next.id,
+        icon: next.icon,
+        enabled: true
+      });
+      renderQuickActionRows();
+    };
+
+    if (resetBtn) resetBtn.onclick = () => {
+      qaItems = DEFAULT_QUICK_ACTIONS.map(item => ({ ...item }));
+      if (enabledEl) enabledEl.checked = true;
+      renderQuickActionRows();
+      toast("Daftar akses cepat dikembalikan ke default. Klik Simpan untuk menerapkan.", "info");
+    };
+
+    if (saveBtn) saveBtn.onclick = async () => {
+      const enabled = enabledEl ? enabledEl.checked : true;
+      const items = qaItems.map(item => ({
+        id: item.id,
+        label: String(item.label || "").trim() || routeLabel(item.route),
+        route: item.route,
+        icon: item.icon || QA_ROUTE_ICONS[item.route] || "doc-plus",
+        enabled: item.enabled !== false
+      }));
+      const normalized = normalizeQuickActions(
+        { enabled, items },
+        { routeLabels: QA_ROUTE_LABELS, iconByRoute: QA_ROUTE_ICONS }
+      );
+
+      saveBtn.disabled = true;
+      const previousText = saveBtn.textContent;
+      saveBtn.textContent = "Menyimpan...";
+      try {
+        await setDoc(docRef, { quick_actions: normalized }, { merge: true });
+        cfg.quick_actions = normalized;
+        syncQuickActionsEditor();
+        window.dispatchEvent(new CustomEvent("aj:quick-actions-updated", { detail: normalized }));
+        toast("Akses cepat berhasil disimpan.", "success");
+      } catch (error) {
+        toast("Gagal menyimpan akses cepat: " + error.message, "error");
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = previousText;
+      }
+    };
   }
 
   function syncWidgetCheckboxes() {
@@ -1029,6 +1197,7 @@ export async function mount(container, { session }) {
     }
   });
 
+  bindQuickActionEvents();
   await loadConfig();
   await loadBranchEmailSettings();
   return { unmount() {} };

@@ -94,6 +94,31 @@
   </div>
 
   <!-- ========================================================================= -->
+  <!-- BAGIAN: AKSES CEPAT (FLOATING TOMBOL +)                                   -->
+  <!-- ========================================================================= -->
+  <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-4">
+      <div>
+        <h3 class="font-bold text-slate-800 text-sm">Akses Cepat (Tombol +)</h3>
+        <p class="text-[11px] text-slate-500 mt-0.5">Atur menu pengajuan atau halaman yang muncul saat tombol <b>+</b> di kanan bawah diklik. Tombol hanya tampil di browser web, bukan saat aplikasi dibuka sebagai PWA.</p>
+      </div>
+      <label class="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer shrink-0">
+        <input type="checkbox" id="cfg-qa-enabled" class="rounded border-slate-300 text-maroon-700 w-4 h-4" checked>
+        Tampilkan tombol +
+      </label>
+    </div>
+
+    <div id="cfg-qa-list" class="space-y-2"></div>
+
+    <div class="flex flex-wrap items-center gap-2 pt-1">
+      <button type="button" id="btn-qa-add" class="px-3 py-2 rounded-lg text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition">Tambah Akses Cepat</button>
+      <button type="button" id="btn-qa-reset" class="px-3 py-2 rounded-lg text-xs font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 transition">Kembalikan Default</button>
+      <button type="button" id="btn-qa-save" class="px-4 py-2 rounded-lg text-xs font-bold text-white bg-maroon-700 hover:bg-maroon-800 transition shadow-sm ml-auto">Simpan Akses Cepat</button>
+    </div>
+    <p class="text-[10px] text-slate-400 leading-relaxed">Item yang tidak boleh diakses role karyawan otomatis disembunyikan dari tombol +. Perubahan berlaku setelah login ulang atau saat halaman dimuat ulang.</p>
+  </div>
+
+  <!-- ========================================================================= -->
   <!-- BAGIAN: PENGATURAN EMAIL PENGINGAT MANUAL (EMAIL REMINDER SETTINGS)      -->
   <!-- ========================================================================= -->
   <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
