@@ -94,7 +94,7 @@ export function toPublicFormUrl(value) {
   if (host === "docs.google.com" || host === "forms.gle") {
     if (host === "forms.gle") return url.toString();
     const match = url.pathname.match(/^\/forms\/d\/(?:e\/)?([A-Za-z0-9_-]{10,})(?:\/.*)?$/);
-    if (match) return `https://docs.google.com/forms/d/${match[1]}/viewform`;
+    if (match) return `https://docs.google.com/forms/d/e/${match[1]}/viewform`;
   }
   return url.toString();
 }
