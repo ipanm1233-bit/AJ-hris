@@ -436,6 +436,9 @@ function routeViewName(route) {
  if (["konseling", "coaching", "counseling", "case-management", "hr-case", "hr-cases"].includes(value)) return "konseling-coaching";
  if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(value)) return "pemanggilan";
  if (["pp", "peraturan", "peraturan-perusahaan", "company-policy", "policy"].includes(value)) return "peraturan-perusahaan";
+ // Modul Performance Management (KPI 2027) dipisah dari Penilaian Kontrak.
+ // Alias lama "performance-review" tetap membuka modul baru pada tab historis.
+ if (["performance-management", "performance-review", "performance", "kinerja", "penilaian-kinerja", "kpi-2027"].includes(value)) return "performance-management";
  if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi"].includes(value)) return "penilaian-kontrak";
  // Alias menu lama: #gimmick-sop dipecah menjadi SOP dan Gimmick.
  if (value === "gimmick-sop") return "sop";
@@ -620,7 +623,7 @@ function highlightActive(route) {
  isActive = true;
  } else if (tabRoute === "pengajuan" && (route === "pengajuan" || route === "reimbursement" || route === "pengajuan-cuti" || route === "pengajuan-kasbon" || route === "form-builder")) {
  isActive = true;
- } else if ((tabRoute === "penilaian-kontrak" || tabRoute === "riwayat") && (route === "penilaian-kontrak" || route === "riwayat" || route === "performance-review" || route === "training" || route === "siklus-karyawan" || route === "broadcast")) {
+ } else if ((tabRoute === "penilaian-kontrak" || tabRoute === "riwayat") && (route === "penilaian-kontrak" || route === "performance-management" || route === "riwayat" || route === "performance-review" || route === "training" || route === "siklus-karyawan" || route === "broadcast")) {
  isActive = true;
  } else if (tabRoute === "profile" && route === "profile") {
  isActive = true;
@@ -661,7 +664,7 @@ function highlightActive(route) {
  // Toggle mobile header back button
  const backBtn = document.getElementById("mobile-back-btn");
  if (backBtn) {
- if (["dashboard", "absensi", "pengajuan", "riwayat", "penilaian-kontrak", "profile"].includes(route)) {
+ if (["dashboard", "absensi", "pengajuan", "riwayat", "penilaian-kontrak", "performance-management", "profile"].includes(route)) {
  backBtn.classList.add("hidden");
  } else {
  backBtn.classList.remove("hidden");
@@ -703,6 +706,10 @@ async function router(session) {
 	}
 	if (["pp", "peraturan", "peraturan-perusahaan", "company-policy", "policy"].includes(cleanPath)) {
 		mappedPath = "peraturan-perusahaan";
+	}
+	if (["performance-management", "performance-review", "performance", "kinerja", "penilaian-kinerja", "kpi-2027"].includes(cleanPath)) {
+		if (cleanPath === "performance-review") params.set("tab", "legacy");
+		mappedPath = "performance-management";
 	}
 	if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi", "penilaian-kontrak"].includes(cleanPath)) {
 		if (["kontrak", "master-kontrak", "kontrak-karyawan"].includes(cleanPath)) {

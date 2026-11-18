@@ -232,16 +232,62 @@ async function wireEmployeeDropdowns(modalEl, fields) {
 /* ---------------------------------------------------------------------
  * SUBMIT — buat dokumen data_pengajuan + inisialisasi approval_steps
  * ------------------------------------------------------------------- */
+
+/**
+ * Firestore rules mewajibkan dokumen pengajuan "dimiliki" oleh pembuatnya,
+ * lewat uid/username/nik. Akun yang login tanpa NIK (mis. akun baru yang
+ * belum ditautkan ke data master) dulu menulis nik "-" sehingga create
+ * ditolak dan pengajuan hilang tanpa jejak. Fungsi ini melengkapi identitas
+ * dari data master karyawan sebelum dokumen dibuat.
+ */
+async function resolveSubmissionIdentity(session) {
+ const clean = value => {
+  const text = String(value ?? "").trim();
+  if (!text || ["null", "undefined", "-"].includes(text.toLowerCase())) return "";
+  return text;
+ };
+ let nik = clean(session?.nik);
+ let employee = null;
+ const nama = clean(session?.nama);
+ if (nama) {
+  try {
+   const snap = await getDocs(query(collection(db, COL.MASTER_KARYAWAN), where("nama_karyawan", "==", nama), limit(1)));
+   if (!snap.empty) employee = normalizeEmployeeDateFields({ ...snap.docs[0].data(), id: snap.docs[0].id });
+  } catch (error) {
+   console.warn("[pengajuan] Gagal mencocokkan data master karyawan:", error?.message || error);
+  }
+ }
+ if (!nik && employee) {
+  nik = clean(employee.nik_karyawan || employee.nik || employee.id);
+ }
+ return {
+  nik,
+  employee,
+  uid: clean(session?.uid || session?.id),
+  username: clean(session?.username)
+ };
+}
+
 async function submitPengajuan(formCfg, detail, session, trxId) {
  const approvalFlow = Array.isArray(formCfg.approval_flow) ? formCfg.approval_flow : normalizeArray(formCfg.approval_flow);
  const approvalSteps = approvalFlow.map(() => "PENDING");
  const requiresLpj = !!formCfg.requires_lpj;
+ const identity = await resolveSubmissionIdentity(session);
+ const employee = identity.employee || {};
 
  const payload = {
  id: trxId || genId("TRX"),
  tgl: new Date().toISOString(),
- nik: session.nik || "-",
+ nik: identity.nik || "-",
+ nik_pemohon: identity.nik || null,
  nama_pemohon: session.nama,
+ uid: identity.uid || null,
+ pemohon_uid: identity.uid || null,
+ username: identity.username || null,
+ username_pemohon: identity.username || null,
+ cabang: employee.cabang || session.cabang || null,
+ divisi: employee.divisi || employee.departemen || session.divisi || null,
+ jabatan: employee.jabatan || session.jabatan || session.posisi || null,
  form_id: formCfg.id,
  nama_form: formCfg.nama_form,
  detail,
@@ -268,14 +314,22 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
  payload.lpj_due_date = due.toISOString();
  }
 
+ const container = document.getElementById("view-container");
  try {
- await fsAdd(COL.DATA_PENGAJUAN, payload, payload.id);
+  await fsAdd(COL.DATA_PENGAJUAN, payload, payload.id);
+ } catch (e) {
+  console.error(e);
+  toast("Pengajuan gagal disimpan: " + (e?.message || "periksa koneksi dan izin akun"), "error");
+  const submitBtn = document.querySelector("#dyn-submit");
+  if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Ajukan Sekarang"; }
+  return;
+ }
+
  toast("Pengajuan berhasil dikirim dan menunggu persetujuan", "success");
  closeModal();
- 
- const container = document.getElementById("view-container");
- if (container) await loadRecent(container, session);
- 
+ if (container) await loadRecent(container, session).catch(() => {});
+
+ try {
  // Memicu Notifikasi (Email + Lonceng App + Push HP) ke APPROVER PERTAMA
   const alreadyNotifiedSet = new Set();
   const detailEmailHtml = buildPengajuanEmailDetailHtml(payload);
@@ -424,11 +478,11 @@ async function submitPengajuan(formCfg, detail, session, trxId) {
 
       alreadyNotifiedSet.add(targetNameUpper);
     }
-  }} catch (e) {
- console.error(e);
- toast("Gagal mengirim pengajuan: " + e.message, "error");
- const submitBtn = document.querySelector("#dyn-submit");
- if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Ajukan Sekarang"; }
+  }
+ } catch (e) {
+  // Pengajuan sudah tersimpan; kegagalan notifikasi tidak boleh membuat
+  // pengguna mengira pengajuannya hilang.
+  console.warn("[pengajuan] Notifikasi gagal dikirim:", e?.message || e);
  }
 }
 /* ---------------------------------------------------------------------
@@ -442,7 +496,7 @@ async function loadRecent(container, session) {
  try {
  // Query langsung per field kepemilikan agar lolos Firestore rules untuk
  // akun non-manajemen (query by nama_pemohon ditolak rules).
- const owned = await fsGetOwnedRecords(COL.DATA_PENGAJUAN, session, { fields: ["nik", "nik_pemohon"] });
+ const owned = await fsGetOwnedRecords(COL.DATA_PENGAJUAN, session, { fields: ["nik", "nik_pemohon", "uid", "pemohon_uid", "username", "username_pemohon"] });
  const snapDocs = owned
   .sort((a, b) => new Date(b.tgl || 0) - new Date(a.tgl || 0))
   .slice(0, 5);

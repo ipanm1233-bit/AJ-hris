@@ -23,6 +23,17 @@ import {
 } from "../pip.mjs";
 import { parseSchemeIncentiveWorkbook, parseDsrWorkbook, buildSalesKinerjaDocs, buildDsrDocs } from "../sales-kinerja-import.mjs";
 import { parseArAchievementWorkbook, parseSalesMonthlyWorkbook, buildSalesAchievementDocs, buildSalesVolumeDocs, monthlyMergedAchievementValues } from "../sales-achievement-import.mjs";
+import {
+  CONTRACT_TYPE_OPTIONS,
+  buildEmployeeContractPatch,
+  contractTypeFromEmployeeStatus,
+  nextContractNumber,
+  normalizeContractType
+} from "../contract-sync.mjs";
+import { buildKpiDistributionFields, buildModuleFormConfig, moduleFormId } from "../google-form-module.mjs";
+import {
+  importModuleGoogleFormResponses, prepareModuleGoogleForm, shareLinkMarkup, wireCopyButtons
+} from "./google-form-share.js";
 
 const confirmThen = (message, action) => runConfirmedAction(confirmDialog, message, action);
 
@@ -33,6 +44,45 @@ function isPermanentContract(contract) {
  // Data lama kadang hanya menyimpan status "PKWTT" di kolom status kontrak.
  const status = String(contract.status_kolom_kontrak || "").toUpperCase();
  return status === "PKWTT";
+}
+
+/**
+ * Samakan data master karyawan dengan riwayat kontrak terbaru. Dipakai saat
+ * kontrak dibuat, dihapus, atau diperpanjang agar modul lain (dashboard,
+ * cuti, absensi, penilaian) membaca status yang sama.
+ */
+async function syncEmployeeContractMaster(employee, contracts, options = {}) {
+ if (!employee || !employee.id) return null;
+ const result = buildEmployeeContractPatch(employee, contracts, options);
+ await fsUpdate(COL.MASTER_KARYAWAN, employee.id, result.patch);
+ return result;
+}
+
+/** Catat perubahan kontrak ke audit trail agar tidak ada perubahan senyap. */
+async function writeContractAudit({ action, contractId = "", employee = {}, session = {}, detail = {}, before = null }) {
+ try {
+  await fsAdd("contract_audit_logs", {
+   action,
+   contract_id: String(contractId || ""),
+   employee_nik: employee.nik_karyawan || employee.nik || "",
+   employee_name: employee.nama_karyawan || "",
+   actor_uid: auth.currentUser?.uid || "",
+   actor_name: session.nama || "HRD",
+   detail,
+   before: before || null,
+   created_at: new Date().toISOString()
+  }, `CONTRACT-${action}-${contractId || "NEW"}-${Date.now()}`);
+ } catch (error) {
+  // Audit tidak boleh menggagalkan penyimpanan kontrak, tetapi tetap terlihat di konsol.
+  console.warn("[kontrak] Gagal menulis audit trail:", error?.message || error);
+ }
+}
+
+function contractTypeOptionsHtml(selected) {
+ const current = normalizeContractType(selected);
+ return CONTRACT_TYPE_OPTIONS.map(option => (
+  `<option value="${option.value}" ${option.value === current ? "selected" : ""}>${option.label}</option>`
+ )).join("");
 }
 
 // =====================================================================
@@ -1810,7 +1860,13 @@ export async function mount(container, { session, params }) {
  </div>
  </div>
 
- <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+ <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+ <div>
+ <label class="block text-[11px] font-semibold text-slate-600 mb-1">Jenis Kontrak</label>
+ <select name="jenis_kontrak" class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none bg-white font-medium">
+ ${contractTypeOptionsHtml(contractTypeFromEmployeeStatus(empData.status_karyawan))}
+ </select>
+ </div>
  <div>
  <label class="block text-[11px] font-semibold text-slate-600 mb-1">Status Kontrak</label>
  <select name="status_kolom_kontrak" class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 outline-none bg-white font-medium">
@@ -1846,6 +1902,7 @@ export async function mount(container, { session, params }) {
  <div class="space-y-1">
  <div class="flex items-center gap-2">
  <span class="font-bold text-slate-800 text-xs bg-slate-100 px-2.5 py-0.5 rounded-lg border border-slate-200">Kontrak Ke-${c.kontrak_ke || (contracts.length - idx)}</span>
+ <span class="text-[10px] font-bold uppercase tracking-wide text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md">${escapeHtml(c.jenis_kontrak || contractTypeFromEmployeeStatus(empData.status_karyawan))}</span>
  ${badge(c.status_kolom_kontrak || "AKTIF", c.status_kolom_kontrak === "AKTIF" ? "emerald" : "amber")}
  </div>
  <p class="text-xs text-slate-600 font-medium">
@@ -1890,6 +1947,12 @@ export async function mount(container, { session, params }) {
  aktif_tdk_aktif,
  status_karyawan
  });
+ await writeContractAudit({
+ action: "UPDATE_STATUS",
+ employee: empData,
+ session,
+ detail: { aktif_tdk_aktif, status_karyawan, before_status: empData.status_karyawan || "", before_active: empData.aktif_tdk_aktif || "" }
+ });
  toast("Status karyawan berhasil diperbarui!", "success");
  closeModal();
  reloadData();
@@ -1916,8 +1979,21 @@ export async function mount(container, { session, params }) {
  if (!kId) return;
  if (!await confirmDialog("Apakah Anda yakin ingin menghapus catatan kontrak ini?")) return;
 
+ const removed = contracts.find(c => c.id === kId) || null;
  try {
  await fsDelete(COL.MASTER_KONTRAK, kId);
+ // Data master harus mengikuti kontrak yang tersisa, bukan tetap memakai
+ // tanggal kontrak yang baru saja dihapus.
+ const remaining = contracts.filter(c => c.id !== kId);
+ await syncEmployeeContractMaster(empData, remaining);
+ await writeContractAudit({
+ action: "DELETE",
+ contractId: kId,
+ employee: empData,
+ session,
+ detail: { source: "employee_modal" },
+ before: removed
+ });
  toast("Catatan kontrak berhasil dihapus", "success");
  closeModal();
  reloadData();
@@ -1951,29 +2027,44 @@ export async function mount(container, { session, params }) {
 
  const payload = {
  nama_karyawan: empData.nama_karyawan,
+ nik_karyawan: empData.nik_karyawan || empData.nik || "",
  kontrak_ke: Number(fd.get("kontrak_ke") || 1),
  tanggal_mulai: fd.get("tanggal_mulai"),
  tanggal_akhir: fd.get("tanggal_akhir"),
  jabatan: fd.get("jabatan") || empData.jabatan || "",
  cabang: fd.get("cabang") || empData.cabang || "",
  divisi: fd.get("divisi") || empData.divisi || "",
+ jenis_kontrak: normalizeContractType(fd.get("jenis_kontrak"), contractTypeFromEmployeeStatus(empData.status_karyawan)),
  status_kolom_kontrak: fd.get("status_kolom_kontrak") || "AKTIF",
- link_dokumen: link_dokumen
+ link_dokumen: link_dokumen,
+ created_at: new Date().toISOString(),
+ created_by: session.nama || "HRD"
  };
 
  await fsAdd(COL.MASTER_KONTRAK, payload, kId);
 
- // Update Master Karyawan contract dates & status if employee exists
- if (empData.id) {
- await fsUpdate(COL.MASTER_KARYAWAN, empData.id, {
- status_karyawan: "KONTRAK",
- tgl_mulai_kontrak: payload.tanggal_mulai,
- tgl_akhir_kontrak: payload.tanggal_akhir,
- aktif_tdk_aktif: "AKTIF"
- });
+ // Data master mengikuti kontrak terbaru: PKWTT tetap PKWTT, PKWT tidak
+ // lagi ditulis sebagai label "KONTRAK".
+ const syncResult = await syncEmployeeContractMaster(
+ empData,
+ [...contracts, { ...payload, id: kId }]
+ );
+ await writeContractAudit({
+ action: "CREATE",
+ contractId: kId,
+ employee: empData,
+ session,
+ detail: {
+ sumber: "employee_modal",
+ jenis_kontrak: payload.jenis_kontrak,
+ tanggal_mulai: payload.tanggal_mulai,
+ tanggal_akhir: payload.tanggal_akhir,
+ status_karyawan: syncResult?.patch?.status_karyawan || payload.jenis_kontrak
  }
+ });
 
- toast("Kontrak baru berhasil ditambahkan!", "success");
+ const statusLabel = payload.jenis_kontrak === "PKWTT" ? "PKWTT (tetap)" : payload.jenis_kontrak;
+ toast(`Kontrak baru berhasil ditambahkan (${statusLabel}).`, "success");
  closeModal();
  reloadData();
  } catch (err) {
@@ -1998,8 +2089,16 @@ export async function mount(container, { session, params }) {
  <label class="block text-xs font-semibold text-slate-700 mb-1">Pilih Karyawan *</label>
  <select name="nama_karyawan" required class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none bg-white font-medium">
  <option value="">-- Pilih Karyawan --</option>
- ${sortedKaryawan.map(k => `<option value="${escapeHtml(k.nama_karyawan)}" data-jabatan="${escapeHtml(k.jabatan || '')}" data-cabang="${escapeHtml(k.cabang || '')}">${escapeHtml(k.nama_karyawan)} - ${escapeHtml(k.jabatan || '')}</option>`).join("")}
+ ${sortedKaryawan.map(k => `<option value="${escapeHtml(k.nama_karyawan)}" data-jabatan="${escapeHtml(k.jabatan || '')}" data-cabang="${escapeHtml(k.cabang || '')}" data-status="${escapeHtml(k.status_karyawan || '')}">${escapeHtml(k.nama_karyawan)} - ${escapeHtml(k.jabatan || '')}</option>`).join("")}
  </select>
+ </div>
+
+ <div>
+ <label class="block text-xs font-semibold text-slate-700 mb-1">Jenis Kontrak *</label>
+ <select name="jenis_kontrak" id="global-jenis-kontrak" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-none bg-white font-medium">
+ ${contractTypeOptionsHtml("PKWT")}
+ </select>
+ <p class="mt-1 text-[10px] text-slate-400">Status karyawan di data master akan otomatis mengikuti pilihan ini.</p>
  </div>
 
  <div class="grid grid-cols-3 gap-3">
@@ -2042,11 +2141,23 @@ export async function mount(container, { session, params }) {
  m.querySelector("#modal-cancel-btn").onclick = closeModal;
 
  const selEmp = m.querySelector('select[name="nama_karyawan"]');
- selEmp.onchange = () => {
+ let employeeContracts = [];
+ selEmp.onchange = async () => {
  const opt = selEmp.options[selEmp.selectedIndex];
- if (opt) {
+ if (!opt) return;
  m.querySelector('input[name="jabatan"]').value = opt.dataset.jabatan || "";
  m.querySelector('input[name="cabang"]').value = opt.dataset.cabang || "";
+ const jenisSelect = m.querySelector("#global-jenis-kontrak");
+ if (jenisSelect) jenisSelect.value = contractTypeFromEmployeeStatus(opt.dataset.status || "");
+ employeeContracts = [];
+ const nama = opt.value;
+ if (!nama) return;
+ try {
+ employeeContracts = await queryRows(COL.MASTER_KONTRAK, "nama_karyawan", nama);
+ const keInput = m.querySelector('input[name="kontrak_ke"]');
+ if (keInput) keInput.value = nextContractNumber(employeeContracts);
+ } catch (error) {
+ console.warn("Gagal membaca riwayat kontrak karyawan:", error?.message || error);
  }
  };
 
@@ -2067,6 +2178,11 @@ export async function mount(container, { session, params }) {
  const fileInput = form.querySelector('input[name="file_dokumen"]');
  const file = fileInput.files && fileInput.files[0];
  const namaKaryawan = fd.get("nama_karyawan");
+ const matched = allKaryawan.find(k => k.nama_karyawan === namaKaryawan);
+ const jenisKontrak = normalizeContractType(
+ fd.get("jenis_kontrak"),
+ contractTypeFromEmployeeStatus(matched?.status_karyawan)
+ );
 
  if (file) {
  btnSubmit.textContent = "Mengupload File...";
@@ -2075,29 +2191,43 @@ export async function mount(container, { session, params }) {
 
  const payload = {
  nama_karyawan: namaKaryawan,
+ nik_karyawan: matched?.nik_karyawan || matched?.nik || "",
  kontrak_ke: Number(fd.get("kontrak_ke") || 1),
  tanggal_mulai: fd.get("tanggal_mulai"),
  tanggal_akhir: fd.get("tanggal_akhir"),
  jabatan: fd.get("jabatan") || "",
  cabang: fd.get("cabang") || "",
+ divisi: matched?.divisi || "",
+ jenis_kontrak: jenisKontrak,
  status_kolom_kontrak: "AKTIF",
- link_dokumen: link_dokumen
+ link_dokumen: link_dokumen,
+ created_at: new Date().toISOString(),
+ created_by: session.nama || "HRD"
  };
 
  await fsAdd(COL.MASTER_KONTRAK, payload, kId);
 
- // Find employee in allKaryawan to update master karyawan
- const matched = allKaryawan.find(k => k.nama_karyawan === namaKaryawan);
+ // Sinkronkan data master dengan seluruh riwayat kontrak karyawan.
  if (matched && matched.id) {
- await fsUpdate(COL.MASTER_KARYAWAN, matched.id, {
- status_karyawan: "KONTRAK",
- tgl_mulai_kontrak: payload.tanggal_mulai,
- tgl_akhir_kontrak: payload.tanggal_akhir,
- aktif_tdk_aktif: "AKTIF"
- });
+ const history = employeeContracts.some(c => c.id === kId)
+ ? employeeContracts
+ : [...employeeContracts, { ...payload, id: kId }];
+ await syncEmployeeContractMaster(matched, history);
  }
+ await writeContractAudit({
+ action: "CREATE",
+ contractId: kId,
+ employee: matched || { nama_karyawan: namaKaryawan },
+ session,
+ detail: {
+ sumber: "global_modal",
+ jenis_kontrak: jenisKontrak,
+ tanggal_mulai: payload.tanggal_mulai,
+ tanggal_akhir: payload.tanggal_akhir
+ }
+ });
 
- toast("Kontrak kerja berhasil disimpan!", "success");
+ toast(`Kontrak kerja berhasil disimpan (${jenisKontrak}).`, "success");
  closeModal();
  reloadData();
  } catch (e) {
@@ -3614,6 +3744,75 @@ export async function mount(container, { session, params }) {
   /**
    * Modal Distribusi Tugas KPI 360° dengan Multi Penilai & Multi Dinilai (Checkbox + Search Box)
    */
+  function openKpiGoogleFormResultModal(info = {}) {
+    const formId = String(info.form?.id || "");
+    const googleUrl = info.form?.google_form_url || "";
+    openModal({
+      title: "Distribusi KPI via Google Form",
+      size: "lg",
+      bodyHtml: `<div class="space-y-3 text-sm">
+        <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
+          <p class="font-bold">Tugas penilaian sudah dibuat${info.templateName ? ` untuk template ${escapeHtml(info.templateName)}` : ""}${info.periode ? ` periode ${escapeHtml(info.periode)}` : ""}.</p>
+          <p class="mt-1">Google Form berisi ${Number(info.questionCount || 0)} pertanyaan (identitas penilai, karyawan dinilai, dan skor indikator). Bagikan tautan di bawah; hasilnya diimpor ke tugas evaluasi yang sesuai.</p>
+        </div>
+        ${info.error ? `<div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><b>Catatan:</b> ${escapeHtml(info.error)} Konfigurasi tetap tersimpan; inbox Google Form aktif setelah server integrasi dikonfigurasi.</div>` : ""}
+        <div id="kpi-gform-links">${shareLinkMarkup(info.shortLink, googleUrl)}</div>
+        ${info.appsScript ? `<details class="rounded-xl border border-slate-200 bg-white p-3 text-xs">
+          <summary class="cursor-pointer font-bold text-slate-700">Skrip Apps Script — buat Google Form otomatis</summary>
+          <p class="mt-2 text-slate-500">Tempel di Google Form → Ekstensi → Apps Script, lalu jalankan <code>setupCreateForm()</code>, dan salin tautan form yang muncul ke kolom tautan Google Form.</p>
+          <textarea id="kpi-gform-script" readonly rows="8" class="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 p-2 font-mono text-[10px]">${escapeHtml(info.appsScript)}</textarea>
+          <button type="button" id="kpi-gform-copy-script" class="mt-2 rounded-lg border border-slate-300 px-3 py-1.5 font-semibold">Salin skrip</button>
+        </details>` : ""}
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" id="kpi-gform-import" class="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">Impor respons Google Form</button>
+          <span id="kpi-gform-import-status" class="text-xs text-slate-400"></span>
+        </div>
+      </div>`,
+      footerHtml: `<button id="kpi-gform-close" class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold">Tutup</button>`,
+      onMount: modal => {
+        wireCopyButtons(modal);
+        modal.querySelector("#kpi-gform-close").onclick = closeModal;
+        const copyScript = modal.querySelector("#kpi-gform-copy-script");
+        if (copyScript) {
+          copyScript.onclick = async () => {
+            const textarea = modal.querySelector("#kpi-gform-script");
+            try {
+              await navigator.clipboard.writeText(textarea.value);
+              toast("Skrip Apps Script disalin.", "success");
+            } catch (_) {
+              textarea.select();
+              document.execCommand("copy");
+              toast("Skrip Apps Script disalin.", "success");
+            }
+          };
+        }
+        const importBtn = modal.querySelector("#kpi-gform-import");
+        if (importBtn) {
+          importBtn.onclick = async () => {
+            const statusEl = modal.querySelector("#kpi-gform-import-status");
+            if (!formId) { statusEl.textContent = "ID formulir tidak tersedia."; return; }
+            importBtn.disabled = true;
+            statusEl.textContent = "Mengimpor…";
+            try {
+              const response = await importModuleGoogleFormResponses(formId);
+              const imported = Number(response.imported || 0);
+              const failed = Number(response.failed || 0);
+              statusEl.textContent = imported
+                ? `${imported} respons masuk${failed ? `, ${failed} gagal` : ""}.`
+                : "Tidak ada respons baru untuk diimpor.";
+              if (imported) toast(`${imported} respons Google Form masuk ke penilaian KPI.`, "success");
+            } catch (error) {
+              statusEl.textContent = "";
+              toast(error.message || "Impor respons gagal.", "error");
+            } finally {
+              importBtn.disabled = false;
+            }
+          };
+        }
+      }
+    });
+  }
+
   async function openDistribusiModal(preselectedTplId = null, options = {}) {
     const targetEmployee = options.employee || null;
     const targetNik = String(targetEmployee?.nik_karyawan || targetEmployee?.nik || "").trim();
@@ -3927,6 +4126,18 @@ export async function mount(container, { session, params }) {
                 <span class="font-semibold text-slate-800"><i class='fa-solid fa-bell' aria-hidden='true'></i> Notifikasi Lonceng & Popup di Aplikasi</span>
               </label>
             </div>
+          </div>
+
+          <div class="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3.5 space-y-2">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <label class="flex items-center gap-2 text-xs font-bold text-indigo-900 cursor-pointer">
+                <input type="checkbox" id="dist-use-gform" class="rounded text-indigo-700">
+                Siapkan Google Form distribusi KPI
+              </label>
+              <span class="text-[11px] text-indigo-700">Evaluator mengisi skor lewat Google Form; hasil diimpor ke tugas penilaian ini.</span>
+            </div>
+            <input id="dist-gform-url" type="text" placeholder="Tempel tautan Google Form yang sudah ada (opsional)" class="w-full rounded-lg border border-indigo-200 px-3 py-2 text-xs font-mono bg-white">
+            <p class="text-[11px] text-indigo-700">Belum punya form? Biarkan kosong lalu simpan; HRIS menyiapkan skrip Apps Script untuk membuat Google Form sesuai indikator template ini secara gratis.</p>
           </div>
 
         </form>
@@ -4247,6 +4458,8 @@ export async function mount(container, { session, params }) {
           const includeSelf = chkIncludeSelf.checked;
           const shouldSendEmail = m.querySelector("#dist-send-email").checked;
           const shouldSendInApp = m.querySelector("#dist-send-inapp").checked;
+          const useGoogleForm = m.querySelector("#dist-use-gform")?.checked === true;
+          const googleFormUrl = m.querySelector("#dist-gform-url")?.value.trim() || "";
 
           const selectedPenilai = Array.from(m.querySelectorAll('input[name="chk-penilai"]:checked')).map(c => c.value);
           const selectedDinilai = Array.from(m.querySelectorAll('input[name="chk-dinilai"]:checked')).map(c => c.value);
@@ -4388,8 +4601,30 @@ export async function mount(container, { session, params }) {
               }
             }
 
+            let gformInfo = null;
+            if (useGoogleForm) {
+              try {
+                const schema = buildKpiDistributionFields({ template: tplObj, periode, tasks: createdTasks });
+                const googleFormConfig = buildModuleFormConfig({
+                  id: moduleFormId("KPI", `${tplObj.id || tplObj.nama_template}-${periode}`),
+                  namaForm: `Penilaian KPI — ${tplObj.nama_template} — ${periode}`,
+                  modul: "KPI",
+                  meta: schema.meta,
+                  fields: schema.fields
+                });
+                gformInfo = await prepareModuleGoogleForm({ formConfig: googleFormConfig, googleFormUrl, fields: schema.fields, meta: schema.meta });
+                gformInfo.templateName = tplObj.nama_template || "";
+                gformInfo.periode = periode;
+                gformInfo.questionCount = schema.fields.length;
+              } catch (gformError) {
+                console.warn("Google Form KPI gagal disiapkan:", gformError);
+                toast("Tugas sudah terdistribusi, tetapi Google Form belum siap: " + (gformError.message || gformError), "warning");
+              }
+            }
+
             toast(summaryMsg, "success");
             closeModal();
+            if (gformInfo) openKpiGoogleFormResultModal(gformInfo);
             if (targetEmployee) options.onComplete?.();
             else loadKpi360();
           } catch (e) {
@@ -6010,6 +6245,7 @@ export async function mount(container, { session, params }) {
                 no_kontrak: noSk,
                 tanggal_mulai: tglMulai,
                 tanggal_akhir: tglAkhir,
+                jenis_kontrak: keputusan === "DISETUJUI_KARTAP" ? "PKWTT" : "PKWT",
                 status_kolom_kontrak: "AKTIF",
                 keterangan: `Perpanjangan hasil koordinasi Direksi (${durasi}).`,
                 created_at: serverTimestamp(),

@@ -7,6 +7,10 @@ import {
   competencyGap, needPriorityScore, participantMatchesSession, priorityLabel, responseStandardMet,
   safeParticipantSnapshot, surveyReportRows, templateCompetencyText, trainingMetrics, uniqueRespondentCount
 } from "../training-tna.mjs";
+import { buildModuleFormConfig, buildTnaSurveyFields, moduleFormId } from "../google-form-module.mjs";
+import {
+  importModuleGoogleFormResponses, prepareModuleGoogleForm, shareLinkMarkup, wireCopyButtons
+} from "./google-form-share.js";
 
 const C = {
   campaigns: "training_tna_campaigns", assignments: "training_tna_assignments",
@@ -253,9 +257,13 @@ async function renderSurvey(wrap, session, data, reload) {
     <div class="grid md:grid-cols-2 gap-4">${data.campaigns.sort((a,b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))).map(c => {
       const assigned = data.assignments.filter(a => a.campaign_id === c.id);
       const submitted = assigned.filter(a => a.status === "SUBMITTED").length;
-      return `<article class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm"><div class="flex justify-between gap-3"><div><span class="text-[10px] font-bold text-maroon-700">${esc(c.period)}</span><h3 class="font-bold text-slate-800">${esc(c.title)}</h3></div><span class="text-xs font-bold ${c.status === "PUBLISHED" ? "text-emerald-600" : "text-slate-400"}">${esc(c.status)}</span></div><p class="mt-2 text-xs text-slate-500">Target: ${esc(campaignTargetText(c))} · Batas ${dateText(c.deadline)}</p><div class="mt-4 h-2 rounded bg-slate-100"><div class="h-2 rounded bg-emerald-500" style="width:${assigned.length ? submitted / assigned.length * 100 : 0}%"></div></div><p class="mt-1 text-[11px] text-slate-400">${submitted}/${assigned.length} respon</p><div class="mt-4 flex flex-wrap gap-2">${c.status === "DRAFT" ? `<button data-publish="${c.id}" class="rounded-lg bg-maroon-700 px-3 py-2 text-xs font-semibold text-white">Publikasikan</button>` : `<button data-manage-email="${c.id}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">Email &amp; Pengingat</button>`}${c.status === "PUBLISHED" ? `<button data-close="${c.id}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">Tutup</button>` : ""}${assigned.length ? `<button data-export-xlsx="${c.id}" class="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700">Excel</button><button data-export-pdf="${c.id}" class="rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700">PDF</button>` : ""}<button data-delete-survey="${c.id}" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700">Hapus</button></div></article>`;
+      return `<article class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm"><div class="flex justify-between gap-3"><div><span class="text-[10px] font-bold text-maroon-700">${esc(c.period)}</span><h3 class="font-bold text-slate-800">${esc(c.title)}</h3></div><span class="text-xs font-bold ${c.status === "PUBLISHED" ? "text-emerald-600" : "text-slate-400"}">${esc(c.status)}</span></div><p class="mt-2 text-xs text-slate-500">Target: ${esc(campaignTargetText(c))} · Batas ${dateText(c.deadline)}</p><div class="mt-4 h-2 rounded bg-slate-100"><div class="h-2 rounded bg-emerald-500" style="width:${assigned.length ? submitted / assigned.length * 100 : 0}%"></div></div><p class="mt-1 text-[11px] text-slate-400">${submitted}/${assigned.length} respon</p><div class="mt-4 flex flex-wrap gap-2">${c.status === "DRAFT" ? `<button data-publish="${c.id}" class="rounded-lg bg-maroon-700 px-3 py-2 text-xs font-semibold text-white">Publikasikan</button>` : `<button data-manage-email="${c.id}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">Email &amp; Pengingat</button>`}${c.status === "PUBLISHED" ? `<button data-close="${c.id}" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">Tutup</button>` : ""}${assigned.length ? `<button data-export-xlsx="${c.id}" class="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700">Excel</button><button data-export-pdf="${c.id}" class="rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700">PDF</button>` : ""}<button data-google-form="${c.id}" class="rounded-lg border border-indigo-200 px-3 py-2 text-xs font-semibold text-indigo-700">Google Form</button><button data-delete-survey="${c.id}" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700">Hapus</button></div></article>`;
     }).join("") || empty("Belum ada survey TNA.")}</div>`;
   wrap.querySelector("#new-campaign").onclick = () => campaignModal(session, data.employees, reload);
+  wrap.querySelectorAll("[data-google-form]").forEach(btn => btn.onclick = () => {
+    const campaign = data.campaigns.find(c => c.id === btn.dataset.googleForm);
+    if (campaign) openTnaGoogleFormModal(campaign, session, reload);
+  });
   wrap.querySelectorAll("[data-publish]").forEach(btn => btn.onclick = async () => {
     const campaign = data.campaigns.find(c => c.id === btn.dataset.publish);
     const targets = data.employees.filter(e => campaignTargetsEmployee(campaign, e) && activeEmployee(e));
@@ -313,6 +321,141 @@ async function renderSurvey(wrap, session, data, reload) {
     } catch (error) {
       toast(error.message || "Survey gagal dihapus.", "error");
       btn.disabled = false;
+    }
+  });
+}
+
+function openTnaGoogleFormModal(campaign, session, reload) {
+  const { fields, meta } = buildTnaSurveyFields(campaign);
+  const formId = String(campaign.google_form_form_id || moduleFormId("TNA", campaign.id));
+  const linkedUrl = String(campaign.google_form_url || "");
+  openModal({
+    title: `Google Form Survey: ${campaign.title}`,
+    size: "lg",
+    bodyHtml: `<div class="space-y-4 text-sm">
+      <div class="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-900">
+        <p class="font-bold">Cara kerja integrasi</p>
+        <ol class="mt-1 list-decimal space-y-1 pl-4">
+          <li>Tempel tautan Google Form yang sudah dibuat, lalu simpan.</li>
+          <li>Bila belum punya form, buka blok <b>Skrip Apps Script</b>, jalankan <code>setupCreateForm()</code> di Google Form untuk membuat form sesuai ${fields.length} pertanyaan survey ini (gratis).</li>
+          <li>Tempel kembali tautan Google Form yang muncul di log, lalu simpan.</li>
+          <li>Bagikan tautan ringkas HRIS. Setelah responden mengisi, tekan <b>Impor respons</b> agar jawaban masuk ke survey TNA dan analisis kebutuhan.</li>
+        </ol>
+      </div>
+      <label class="block text-xs font-semibold text-slate-600">Tautan / ID Google Form
+        <input id="tna-gform-url" value="${escapeHtml(linkedUrl)}" placeholder="https://docs.google.com/forms/d/…/edit" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-mono">
+      </label>
+      <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+        <b>${fields.length} pertanyaan</b> akan dipetakan otomatis: identitas responden, level kompetensi saat ini, urgensi, dampak bisnis, dan alasan kebutuhan untuk ${meta.competencies.length} kompetensi.
+      </div>
+      <div id="tna-gform-result" class="space-y-3"></div>
+    </div>`,
+    footerHtml: `<button id="tna-gform-close" class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold">Tutup</button>
+      <button id="tna-gform-save" class="rounded-lg bg-maroon-700 px-4 py-2 text-sm font-semibold text-white">Simpan &amp; Hubungkan</button>`,
+    onMount: modal => {
+      const resultEl = modal.querySelector("#tna-gform-result");
+      modal.querySelector("#tna-gform-close").onclick = closeModal;
+
+      const renderResult = info => {
+        const parts = [];
+        if (info.error) {
+          parts.push(`<div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><b>Catatan:</b> ${escapeHtml(info.error)} Konfigurasi formulir tetap tersimpan; integrasi inbox akan aktif setelah server Google Form dikonfigurasi.</div>`);
+        }
+        const shortMarkup = shareLinkMarkup(info.shortLink, info.googleUrl || info.form?.google_form_url || "");
+        if (shortMarkup) parts.push(shortMarkup);
+        if (info.appsScript) {
+          parts.push(`<details class="rounded-xl border border-slate-200 bg-white p-3 text-xs">
+            <summary class="cursor-pointer font-bold text-slate-700">Skrip Apps Script — buat Google Form otomatis</summary>
+            <p class="mt-2 text-slate-500">Buka Google Form (atau <a class="font-semibold text-indigo-700 underline" href="https://script.google.com" target="_blank" rel="noopener">script.google.com</a>), tempel skrip ini di Ekstensi → Apps Script, lalu jalankan <code>setupCreateForm()</code>.</p>
+            <textarea id="tna-gform-script" readonly rows="8" class="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 p-2 font-mono text-[10px]">${escapeHtml(info.appsScript)}</textarea>
+            <button type="button" id="tna-gform-copy-script" class="mt-2 rounded-lg border border-slate-300 px-3 py-1.5 font-semibold">Salin skrip</button>
+          </details>`);
+        }
+        if (info.form?.id) {
+          parts.push(`<div class="flex flex-wrap gap-2">
+            <button type="button" id="tna-gform-import" class="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">Impor respons Google Form</button>
+            <span id="tna-gform-import-status" class="text-xs text-slate-400 self-center"></span>
+          </div>`);
+        }
+        resultEl.innerHTML = parts.join("") || `<p class="text-xs text-slate-400">Belum ada tautan tersimpan.</p>`;
+        wireCopyButtons(resultEl);
+        const copyScript = resultEl.querySelector("#tna-gform-copy-script");
+        if (copyScript) {
+          copyScript.onclick = async () => {
+            const textarea = resultEl.querySelector("#tna-gform-script");
+            try {
+              await navigator.clipboard.writeText(textarea.value);
+              toast("Skrip Apps Script disalin.", "success");
+            } catch (_) {
+              textarea.select();
+              document.execCommand("copy");
+              toast("Skrip Apps Script disalin.", "success");
+            }
+          };
+        }
+        const importBtn = resultEl.querySelector("#tna-gform-import");
+        if (importBtn) {
+          importBtn.onclick = async () => {
+            const statusEl = resultEl.querySelector("#tna-gform-import-status");
+            importBtn.disabled = true;
+            statusEl.textContent = "Mengimpor…";
+            try {
+              const response = await importModuleGoogleFormResponses(info.form.id);
+              const imported = Number(response.imported || 0);
+              statusEl.textContent = imported
+                ? `${imported} respons masuk ke survey TNA.`
+                : "Tidak ada respons baru untuk diimpor.";
+              if (imported) {
+                toast(`${imported} respons Google Form masuk ke survey TNA.`, "success");
+                reload();
+              }
+            } catch (error) {
+              statusEl.textContent = "";
+              toast(error.message || "Impor respons gagal.", "error");
+            } finally {
+              importBtn.disabled = false;
+            }
+          };
+        }
+      };
+
+      if (linkedUrl || campaign.google_form_connected) {
+        renderResult({ form: { id: formId, google_form_url: linkedUrl } });
+      }
+
+      modal.querySelector("#tna-gform-save").onclick = async () => {
+        const googleFormUrl = val(modal, "#tna-gform-url");
+        const button = modal.querySelector("#tna-gform-save");
+        button.disabled = true;
+        button.textContent = "Menghubungkan…";
+        try {
+          const formConfig = buildModuleFormConfig({
+            id: formId,
+            namaForm: `Survey TNA — ${campaign.title}`,
+            modul: "TNA",
+            meta,
+            fields
+          });
+          const info = await prepareModuleGoogleForm({ formConfig, googleFormUrl, fields, meta });
+          await fsUpdate(C.campaigns, campaign.id, {
+            google_form_form_id: formId,
+            google_form_url: info.form.google_form_url || googleFormUrl,
+            google_form_slug: info.slug || "",
+            google_form_connected: !info.error,
+            google_form_updated_at: new Date().toISOString()
+          });
+          renderResult({ ...info, googleUrl: info.form.google_form_url });
+          if (info.error) toast("Konfigurasi tersimpan. " + info.error, "warning");
+          else toast("Google Form survey TNA terhubung.", "success");
+          await audit(session, "CONNECT_GOOGLE_FORM_TNA", "campaign", campaign.id, { form_id: formId, linked: !info.error });
+          reload();
+        } catch (error) {
+          toast(error.message || "Gagal menghubungkan Google Form.", "error");
+        } finally {
+          button.disabled = false;
+          button.textContent = "Simpan & Hubungkan";
+        }
+      };
     }
   });
 }

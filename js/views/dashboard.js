@@ -106,7 +106,8 @@ export async function mount(container, { session }) {
   "gimmick": "GIMMICK",
   "gimmick-sop": "SOP & GIMMICK",
   "training": "PELATIHAN",
-  "performance-review": "REVIEW KPI",
+  "performance-management": "KPI 2027",
+  "performance-review": "KPI 2027",
   "penilaian-kontrak": "SPK & KPI",
   "pemanggilan": "SP DISIPLIN",
   "peraturan-perusahaan": "PERATURAN PERUSAHAAN",
@@ -135,6 +136,7 @@ export async function mount(container, { session }) {
   "reimbursement": "bg-emerald-50 border-emerald-100/80 text-emerald-700",
   "form-builder": "bg-purple-50 border-purple-100/80 text-purple-700",
   "training": "bg-cyan-50 border-cyan-100/80 text-cyan-700",
+  "performance-management": "bg-teal-50 border-teal-100/80 text-teal-700",
   "performance-review": "bg-teal-50 border-teal-100/80 text-teal-700",
   "penilaian-kontrak": "bg-green-50 border-green-100/80 text-green-700",
   "inventory": "bg-red-50 border-red-100/80 text-maroon-700"

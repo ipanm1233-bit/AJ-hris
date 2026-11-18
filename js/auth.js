@@ -38,7 +38,7 @@ export const DEFAULT_EMPLOYEE_MENU_IDS = [
  "pengajuan-cuti",
  "izin",
  "training",
- "performance-review",
+ "performance-management",
  "sop-proyek"
 ];
 
@@ -90,8 +90,15 @@ export const MENU_CONFIG = [
   { id: "distribusi_kpi360", label: "Distribusi Tugas KPI" }
  ] },
  { id: "dashboard-karyawan", label: "Dashboard Karyawan", icon: "gauge", kategori: "Karyawan & Kinerja", roles: DASHBOARD_KARYAWAN_ROLES },
- { id: "performance-review", label: "Review Kinerja", icon: "gauge", kategori: "Karyawan & Kinerja", roles: ["ALL"], subMenus: [
-  { id: "semua_review", label: "Semua Review Kinerja" }
+ { id: "performance-management", label: "Performance Management", icon: "gauge", kategori: "Karyawan & Kinerja", roles: ["ALL"], subMenus: [
+  { id: "dashboard", label: "Dashboard KPI 2027" },
+  { id: "scorecards", label: "Scorecard Karyawan" },
+  { id: "master_kpi", label: "Master KPI 2027" },
+  { id: "templates", label: "Template Scorecard" },
+  { id: "reviews", label: "Review & Kalibrasi" },
+  { id: "coaching", label: "Coaching & Action Plan" },
+  { id: "audit", label: "Jejak Audit KPI" },
+  { id: "legacy", label: "Review Historis" }
  ] },
  { id: "training", label: "Pelatihan", icon: "book", kategori: "Karyawan & Kinerja", roles: ["ALL"], subMenus: [
   { id: "my", label: "Pelatihan Saya" },
@@ -913,7 +920,12 @@ export async function getBawahanNames(namaAtasan) {
  * satu menu `gimmick-sop`. Override user lama yang masih menyimpan id itu
  * otomatis diperluas ke kedua menu baru agar akses tidak hilang.
  */
-const LEGACY_MENU_ALIASES = Object.freeze({ "gimmick-sop": ["sop", "gimmick"] });
+const LEGACY_MENU_ALIASES = Object.freeze({
+ "gimmick-sop": ["sop", "gimmick"],
+ // Menu "Review Kinerja" lama dipisah menjadi Performance Management (KPI 2027).
+ // Override user yang masih menyimpan id lama tetap mendapat akses modul baru.
+ "performance-review": ["performance-management"]
+});
 
 export function expandLegacyMenuIds(ids = []) {
   const result = new Set(Array.isArray(ids) ? ids : []);
@@ -1213,7 +1225,7 @@ export async function canAccessRoute(routeId, session) {
  }
 
  // Route publik & route bawaan default karyawan
- if (["karir", "lowongan", "portal-karir", "loker", "absensi", "absensi-saya", "pengajuan", "pengajuan-cuti", "izin", "performance-review"].includes(targetId)) return true;
+ if (["karir", "lowongan", "portal-karir", "loker", "absensi", "absensi-saya", "pengajuan", "pengajuan-cuti", "izin", "performance-management", "performance-review"].includes(targetId)) return true;
 
  const menus = await computeVisibleMenus(session);
  // route yang tidak ada di MENU_CONFIG (mis. sub-halaman) dianggap boleh selama login
@@ -1568,23 +1580,40 @@ export const PERMISSION_CATALOG = [
   ]
  },
  {
-  id: "performance-review",
-  label: "Review Kinerja",
+  id: "performance-management",
+  label: "Performance Management",
   category: "Karyawan & Kinerja",
   icon: "gauge",
   actions: [
-   { key: "performance_review.my.view", label: "Lihat Review Kinerja Saya", type: "view" },
-   { key: "performance_review.my.print", label: "Cetak / Unduh Hasil Review Saya", type: "print" }
+   { key: "performance_management.my.view", label: "Lihat Scorecard & Review Saya", type: "view" },
+   { key: "performance_management.my.print", label: "Cetak / Unduh Scorecard Saya", type: "print" },
+   { key: "performance_management.view_all", label: "Lihat Seluruh Scorecard (sesuai cabang)", type: "view_all" },
+   { key: "performance_management.actual.input", label: "Input Target, Aktual & Bukti", type: "edit" },
+   { key: "performance_management.review.manage", label: "Kelola Review & Minta Koreksi", type: "edit" },
+   { key: "performance_management.review.approve", label: "Setujui & Kunci Nilai", type: "approve" },
+   { key: "performance_management.coaching.manage", label: "Kelola Coaching & Action Plan", type: "edit" },
+   { key: "performance_management.audit.view", label: "Lihat Jejak Audit KPI", type: "view_all" }
   ],
   subMenus: [
    {
-    id: "semua_review",
-    label: "Semua Review Kinerja",
+    id: "master_kpi",
+    label: "Master KPI 2027",
     actions: [
-     { key: "performance_review.semua_review.view", label: "Lihat Review Seluruh Karyawan", type: "view_all" },
-     { key: "performance_review.semua_review.create", label: "Buat & Rilis Periode Review Kinerja", type: "create" },
-     { key: "performance_review.semua_review.publish", label: "Publikasikan Hasil Review Kinerja", type: "publish" },
-     { key: "performance_review.semua_review.delete", label: "Hapus Review Kinerja", type: "delete", dangerous: true }
+     { key: "performance_management.kpi_master.configure", label: "Kelola Master KPI 2027", type: "configure" }
+    ]
+   },
+   {
+    id: "templates",
+    label: "Template Scorecard",
+    actions: [
+     { key: "performance_management.template.configure", label: "Kelola Template & Bobot Scorecard", type: "configure" }
+    ]
+   },
+   {
+    id: "legacy",
+    label: "Review Historis",
+    actions: [
+     { key: "performance_review.semua_review.view", label: "Lihat Review Kinerja Historis", type: "view_all" }
     ]
    }
   ]
@@ -2177,6 +2206,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "penilaian_kontrak.hasil_saya.view", "penilaian_kontrak.kontrak_saya.view", "penilaian_kontrak.kontrak.view_all", "penilaian_kontrak.kontrak.create", "penilaian_kontrak.kontrak.edit", "penilaian_kontrak.kontrak.delete", "penilaian_kontrak.standar_grade.configure", "penilaian_kontrak.template_soal.configure", "penilaian_kontrak.distribusi_kpi360.create", "penilaian_kontrak.distribusi_kpi360.remind", "penilaian_kontrak.distribusi_kpi360.delete", "penilaian_kontrak.evaluasi.edit", "penilaian_kontrak.evaluasi.execute_renewal", "penilaian_kontrak.daily.manage", "penilaian_kontrak.target.configure", "penilaian_kontrak.daily.export",
   "dashboard_karyawan.view", "dashboard_karyawan.print", "dashboard_karyawan.export",
   "performance_review.my.view", "performance_review.my.print", "performance_review.semua_review.view", "performance_review.semua_review.create", "performance_review.semua_review.publish", "performance_review.semua_review.delete",
+  "performance_management.my.view", "performance_management.my.print", "performance_management.view_all", "performance_management.actual.input", "performance_management.review.manage", "performance_management.review.approve", "performance_management.coaching.manage", "performance_management.audit.view", "performance_management.kpi_master.configure", "performance_management.template.configure",
   "training.my.submit", "training.my.participate", "training.survey.manage", "training.analysis.view", "training.analysis.validate", "training.planning.create", "training.planning.approve_gm", "training.planning.approve_finance", "training.execution.manage", "training.execution.followup", "training.report.view", "training.report.export",
   "konseling.dashboard.view", "konseling.case_management.create", "konseling.case_management.edit", "konseling.case_management.close", "konseling.action_plan.manage", "konseling.follow_up.manage", "konseling.reports.export",
   "pemanggilan.sp.view", "pemanggilan.sp.create", "pemanggilan.sp.edit", "pemanggilan.sp.delete", "pemanggilan.panggil.view", "pemanggilan.panggil.create", "pemanggilan.panggil.edit", "pemanggilan.panggil.delete",
@@ -2212,6 +2242,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "penilaian_kontrak.hasil_saya.view", "penilaian_kontrak.kontrak_saya.view", "penilaian_kontrak.kontrak.view_all", "penilaian_kontrak.distribusi_kpi360.create", "penilaian_kontrak.daily.export",
   "dashboard_karyawan.view", "dashboard_karyawan.print", "dashboard_karyawan.export",
   "performance_review.my.view", "performance_review.semua_review.view", "performance_review.semua_review.create", "performance_review.semua_review.publish",
+  "performance_management.my.view", "performance_management.my.print", "performance_management.view_all", "performance_management.review.approve", "performance_management.audit.view",
   "training.my.submit", "training.my.participate", "training.analysis.view", "training.planning.approve_gm", "training.execution.followup", "training.report.view", "training.report.export",
   "konseling.dashboard.view", "konseling.reports.export",
   "pemanggilan.sp.view", "pemanggilan.panggil.view",
@@ -2240,7 +2271,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "pengajuan_cuti.create", "pengajuan_cuti.print",
   "izin.create", "izin.print",
   "penilaian_kontrak.hasil_saya.view", "penilaian_kontrak.kontrak_saya.view",
-  "performance_review.my.view",
+  "performance_review.my.view", "performance_management.my.view",
   "training.my.submit", "training.my.participate", "training.planning.approve_finance", "training.report.view", "training.report.export",
   "reimbursement.my.create", "reimbursement.my.view", "reimbursement.daftar_semua.view", "reimbursement.daftar_semua.approve", "reimbursement.daftar_semua.reject", "reimbursement.daftar_semua.mark_paid", "reimbursement.pengaturan_jenis.configure",
   "kasbon.my.create", "kasbon.my.print", "kasbon.all.view", "kasbon.all.approve", "kasbon.all.reject", "kasbon.all.mark_paid", "kasbon.pengaturan_kategori.configure",
@@ -2265,6 +2296,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "penilaian_kontrak.hasil_saya.view", "penilaian_kontrak.kontrak_saya.view", "penilaian_kontrak.distribusi_kpi360.create", "penilaian_kontrak.daily.manage",
   "dashboard_karyawan.view", "dashboard_karyawan.print", "dashboard_karyawan.export",
   "performance_review.my.view", "performance_review.semua_review.view",
+  "performance_management.my.view", "performance_management.my.print", "performance_management.view_all", "performance_management.actual.input", "performance_management.review.manage", "performance_management.review.approve", "performance_management.coaching.manage", "performance_management.audit.view",
   "training.my.submit", "training.my.participate", "training.analysis.view", "training.analysis.validate", "training.execution.followup", "training.report.view",
   "konseling.dashboard.view", "konseling.case_management.create", "konseling.action_plan.manage", "konseling.follow_up.manage",
   "reimbursement.my.create", "reimbursement.my.view",
@@ -2289,7 +2321,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "pengajuan_cuti.create", "pengajuan_cuti.print",
   "izin.create", "izin.print",
   "penilaian_kontrak.hasil_saya.view", "penilaian_kontrak.kontrak_saya.view",
-  "performance_review.my.view",
+  "performance_review.my.view", "performance_management.my.view",
   "training.my.submit", "training.my.participate",
   "reimbursement.my.create", "reimbursement.my.view",
   "kasbon.my.create", "kasbon.my.print",
@@ -2310,7 +2342,7 @@ export const ROLE_PERMISSIONS_PRESETS = {
   "pengajuan_cuti.create", "pengajuan_cuti.print",
   "izin.create", "izin.print",
   "penilaian_kontrak.hasil_saya.view", "penilaian_kontrak.kontrak_saya.view",
-  "performance_review.my.view",
+  "performance_review.my.view", "performance_management.my.view",
   "training.my.submit", "training.my.participate",
   "reimbursement.my.create", "reimbursement.my.view",
   "kasbon.my.create", "kasbon.my.print",
@@ -2329,7 +2361,7 @@ ROLE_PERMISSIONS_PRESETS.DEFAULT_KARYAWAN = [
  "absensi_saya.view",
  "pengajuan_cuti.create", "pengajuan_cuti.print",
  "izin.create", "izin.print",
- "performance_review.my.view",
+ "performance_review.my.view", "performance_management.my.view",
  "training.my.submit", "training.my.participate",
  "sop.project.view", "sop.project.fill",
  "profile.view", "profile.edit", "profile.documents.view", "profile.sign_document"
@@ -2343,7 +2375,7 @@ ROLE_PERMISSIONS_PRESETS.BACK_OFFICE = [
  "pengajuan_cuti.create", "pengajuan_cuti.print",
  "izin.create", "izin.print",
  "penilaian_kontrak.hasil_saya.view", "penilaian_kontrak.kontrak_saya.view",
- "performance_review.my.view",
+ "performance_review.my.view", "performance_management.my.view",
  "training.my.submit", "training.my.participate",
  "reimbursement.my.create", "reimbursement.my.view",
  "kasbon.my.create", "kasbon.my.print",
@@ -2360,7 +2392,7 @@ ROLE_PERMISSIONS_PRESETS.WAREHOUSE = [
  "pengajuan_cuti.create", "pengajuan_cuti.print",
  "izin.create", "izin.print",
  "penilaian_kontrak.hasil_saya.view", "penilaian_kontrak.kontrak_saya.view",
- "performance_review.my.view",
+ "performance_review.my.view", "performance_management.my.view",
  "training.my.submit", "training.my.participate",
  "lembur.dashboard.view", "lembur.usulan_saya.create",
  "inventory.barang.view", "inventory.ambil.create",

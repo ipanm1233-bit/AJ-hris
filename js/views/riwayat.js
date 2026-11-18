@@ -15,7 +15,7 @@ export async function mount(container, { session }) {
  try {
  const allReq = isHrd
   ? await fsGetAll(COL.DATA_PENGAJUAN)
-  : await fsGetOwnedRecords(COL.DATA_PENGAJUAN, session, { fields: ["nik", "nik_pemohon"] });
+  : await fsGetOwnedRecords(COL.DATA_PENGAJUAN, session, { fields: ["nik", "nik_pemohon", "uid", "pemohon_uid", "username", "username_pemohon"] });
  // FILTER: hanya tampilkan milik pemohon, KECUALI dia adalah HRD
  const myReq = allReq.filter(r => isHrd || r.nama_pemohon === session.nama || String(r.nik || r.nik_pemohon || "") === String(session.nik || "")).sort((a,b) => new Date(b.tgl) - new Date(a.tgl));
 

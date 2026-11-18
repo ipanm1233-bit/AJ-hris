@@ -32,6 +32,18 @@ service cloud.firestore {
         data.get('cabang_dinilai', '') == branch() || data.get('cabang_penilai', '') == branch()
       );
     }
+    // KPI 2027 memakai field branch/cabang dan employee_nik/nik.
+    function kpiBranchMatch(data) {
+      return signedIn() && branch() != '' && (
+        data.get('branch', '') == branch() || data.get('cabang', '') == branch()
+      );
+    }
+    function kpiSubject(data) {
+      return signedIn() && nik() != '' && (
+        data.get('nik', '') == nik() || data.get('nik_karyawan', '') == nik() ||
+        data.get('employee_nik', '') == nik() || data.get('nik_dinilai', '') == nik()
+      );
+    }
     function onlyChanges(fields) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields); }
     function hrCaseReviewAllowed(createCase) {
       let review = request.resource.data.get('policy_review', {});
@@ -235,6 +247,79 @@ service cloud.firestore {
     match /performance_review/{id} {
       allow read: if signedIn() && (isManagement() || owns(resource.data));
       allow write: if isManagement();
+    }
+    // ---------------------------------------------------------------------
+    // PERFORMANCE MANAGEMENT — KPI 2027 (modul terpisah dari Penilaian Kontrak)
+    // Data draft tetap dapat dibaca; penulisan master/template hanya HRD atau
+    // pemegang izin configure. Skor milik karyawan boleh dibaca karyawan ybs.
+    // ---------------------------------------------------------------------
+    match /kpi_master/{id} {
+      allow read: if signedIn();
+      allow write: if isHrd() || hasScopedAction('performance_management.kpi_master.configure');
+    }
+    match /kpi_scorecard_templates/{id} {
+      allow read: if signedIn();
+      allow write: if isHrd()
+        || hasScopedAction('performance_management.template.configure')
+        || hasScopedAction('performance_management.kpi_master.configure');
+    }
+    match /kpi_2027_scorecards/{id} {
+      allow read: if signedIn() && (
+        isKpiAdmin() || kpiSubject(resource.data) ||
+        (isManagement() && kpiBranchMatch(resource.data))
+      );
+      allow create: if isHrd()
+        || hasScopedAction('performance_management.actual.input')
+        || (isManagement() && (branch() == '' || kpiBranchMatch(request.resource.data)));
+      allow update: if signedIn() && (
+        isHrd()
+        || hasScopedAction('performance_management.actual.input')
+        || hasScopedAction('performance_management.review.approve')
+        || (isManagement() && kpiBranchMatch(resource.data))
+        || (kpiSubject(resource.data) && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['employee_acknowledged_at', 'employee_comments', 'updated_at']))
+      );
+      allow delete: if isHrd();
+    }
+    match /kpi_2027_reviews/{id} {
+      allow read: if signedIn() && (
+        isKpiAdmin() || kpiSubject(resource.data) ||
+        (isManagement() && kpiBranchMatch(resource.data))
+      );
+      allow create: if isHrd()
+        || hasScopedAction('performance_management.review.manage')
+        || hasScopedAction('performance_management.review.approve')
+        || (isManagement() && (branch() == '' || kpiBranchMatch(request.resource.data)));
+      allow update: if isHrd()
+        || hasScopedAction('performance_management.review.manage')
+        || hasScopedAction('performance_management.review.approve')
+        || (isManagement() && kpiBranchMatch(resource.data));
+      allow delete: if isHrd();
+    }
+    match /kpi_2027_coaching_actions/{id} {
+      allow read: if signedIn() && (
+        isKpiAdmin() || kpiSubject(resource.data) ||
+        (isManagement() && kpiBranchMatch(resource.data))
+      );
+      allow write: if isHrd()
+        || hasScopedAction('performance_management.coaching.manage')
+        || (isManagement() && kpiBranchMatch(resource.data));
+    }
+    match /kpi_2027_audit_logs/{id} {
+      allow read: if isHrd() || isKpiAdmin()
+        || (signedIn() && nik() != '' && (
+          resource.data.get('changed_by_nik', '') == nik() ||
+          resource.data.get('actor_nik', '') == nik()
+        ));
+      allow create: if signedIn() && nik() != '' && (
+        request.resource.data.get('changed_by_nik', '') == nik() ||
+        request.resource.data.get('actor_nik', '') == nik()
+      );
+      allow update, delete: if false;
+    }
+    match /kpi_2027_settings/{id} {
+      allow read: if signedIn();
+      allow write: if isHrd();
     }
     match /master_soal_kpi/{id} {
       allow read: if signedIn();
