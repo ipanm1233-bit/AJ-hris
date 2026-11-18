@@ -92,7 +92,11 @@ export async function ensurePublicShortLink(form, definition) {
 export async function prepareModuleGoogleForm({ formConfig, googleFormUrl = "", fields = [], meta = {} }) {
   const url = publicFormUrlFor({ google_form_url: googleFormUrl });
   const googleFormId = extractGoogleFormId(googleFormUrl);
-  const effectiveUrl = url || String(googleFormUrl || "").trim();
+  // Simpan selalu URL publik yang valid. Bila HRD hanya menempel ID, bentuk
+  // tautan /d/<id>/viewform (Google akan mengalihkan ke ID publiknya).
+  const effectiveUrl = url
+    || (googleFormId ? publicFormUrlFor({ google_form_id: googleFormId }) : "")
+    || String(googleFormUrl || "").trim();
   const form = {
     ...formConfig,
     google_form_url: effectiveUrl,

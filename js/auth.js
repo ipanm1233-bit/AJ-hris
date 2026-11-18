@@ -90,7 +90,7 @@ export const MENU_CONFIG = [
   { id: "distribusi_kpi360", label: "Distribusi Tugas KPI" }
  ] },
  { id: "dashboard-karyawan", label: "Dashboard Karyawan", icon: "gauge", kategori: "Karyawan & Kinerja", roles: DASHBOARD_KARYAWAN_ROLES },
- { id: "performance-management", label: "Performance Management", icon: "gauge", kategori: "Karyawan & Kinerja", roles: ["ALL"], subMenus: [
+ { id: "performance-management", label: "Performance Management (KPI)", icon: "gauge", kategori: "Karyawan & Kinerja", roles: ["ALL"], subMenus: [
   { id: "dashboard", label: "Dashboard KPI 2027" },
   { id: "scorecards", label: "Scorecard Karyawan" },
   { id: "master_kpi", label: "Master KPI 2027" },
@@ -952,6 +952,13 @@ export async function computeVisibleMenus(session) {
   if ((role === "HRD" || role === "SUPERADMIN") && !list.some(m => m.id === "sop-proyek")) {
    const sopProjectMenu = MENU_CONFIG.find(m => m.id === "sop-proyek");
    if (sopProjectMenu) list.push(sopProjectMenu);
+  }
+  // Performance Management (KPI 2027) juga modul baru untuk seluruh karyawan.
+  // Whitelist menu yang dibuat sebelum modul ini ada otomatis belum memuatnya,
+  // jadi tambahkan agar menu tidak "hilang" tanpa perlu reset hak akses.
+  if (!list.some(m => m.id === "performance-management")) {
+   const performanceMenu = MENU_CONFIG.find(m => m.id === "performance-management");
+   if (performanceMenu) list.push(performanceMenu);
   }
   // Laporan pencapaian & catatan karyawan tetap tersedia untuk peran manajemen
   // walaupun akun memiliki whitelist menu lama yang belum memuat menu baru ini.

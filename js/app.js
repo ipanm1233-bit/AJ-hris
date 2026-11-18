@@ -16,7 +16,7 @@ import { auth } from "./firebase-config.js";
 
 // Ubah versi ini setiap ada perubahan struktur view agar browser tidak
 // mencampur HTML terbaru dengan modul JavaScript lama dari cache.
-const APP_ASSET_VERSION = "20261114-quick-actions-v35";
+const APP_ASSET_VERSION = "20261118-kpi-menu-v36";
 const viewContainer = document.getElementById("view-container");
 let currentUnmount = null;
 let currentRoute = null;

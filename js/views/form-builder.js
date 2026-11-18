@@ -24,6 +24,9 @@ let googleError = "";
 let googleDefinitions = [];
 let googleDefinition = null;
 let googleScriptLoading = false;
+// Sekali per form+ID, perbaiki dokumen tautan ringkas yang masih menyimpan
+// Google Form lama tanpa harus menekan Simpan Integrasi lagi.
+let shortLinkRepairs = new Set();
 
 export async function mount(container) {
  const [formsData, empData] = await Promise.all([
@@ -37,6 +40,7 @@ export async function mount(container) {
  googleCatalogLoaded = false;
  googleDefinitions = [];
  googleDefinition = null;
+ shortLinkRepairs = new Set();
 
  renderFormList(container);
 
@@ -1129,13 +1133,17 @@ function renderGoogleIntegration(container, form) {
 
  const openWrap = container.querySelector("#fb-gform-open-wrap");
  const openLink = container.querySelector("#fb-gform-open");
- const openUrl = googleDefinition?.google_form_url
-  || (googleDefinition?.google_form_id ? `https://docs.google.com/forms/d/${googleDefinition.google_form_id}/viewform` : "");
+ // URL tersimpan adalah tautan publik pilihan HRD. Bila URL edit masih memuat
+ // ID lama, publicFormUrlFor otomatis memakai ID terbaru.
+ const openUrl = googleDefinition ? publicFormUrlFor(googleDefinition) : "";
  if (openWrap && openLink) {
   openWrap.classList.toggle("hidden", !openUrl);
   if (openUrl) openLink.href = openUrl;
  }
  renderPublicShortLink(container, form);
+ if (form && form.public_slug && googleDefinition) {
+  repairPublicShortLink(form, googleDefinition);
+ }
 
  if (!googleDefinition) {
   setGoogleStatus(container, "Belum terhubung", "idle");
@@ -1251,6 +1259,29 @@ async function ensurePublicShortLink(form, definition) {
   form.public_slug = slug;
  }
  return slug;
+}
+
+/**
+ * Rapikan tautan ringkas yang sudah ada bila ID/URL Google Form berubah.
+ * Perbandingan memakai ID edit yang tersimpan di kedua dokumen, jadi tidak
+ * tertukar dengan ID publik (/d/e/...) yang memang berbeda.
+ */
+async function repairPublicShortLink(form, definition) {
+ const slug = String(form && form.public_slug ? form.public_slug : "").trim();
+ if (!slug || !definition) return;
+ const key = `${form.id}:${definition.google_form_id || ""}`;
+ if (shortLinkRepairs.has(key)) return;
+ shortLinkRepairs.add(key);
+ try {
+  const nextUrl = publicFormUrlFor(definition);
+  if (!nextUrl) return;
+  const link = await fsGet(COL.FORM_PUBLIC_LINKS, slug);
+  const sameId = String(link?.google_form_id || "") === String(definition.google_form_id || "");
+  const sameUrl = String(link?.google_form_url || "") === nextUrl;
+  if (!link || !sameId || !sameUrl) await ensurePublicShortLink(form, definition);
+ } catch (error) {
+  console.warn("[form-builder] Gagal menyelaraskan tautan ringkas:", error.message);
+ }
 }
 
 async function deactivatePublicShortLink(form) {

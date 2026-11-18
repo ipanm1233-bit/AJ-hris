@@ -57,13 +57,15 @@ test("publicShortLink membentuk tautan ringkas", () => {
 });
 
 test("toPublicFormUrl menormalkan URL Google Form", () => {
+  // URL edit memakai ID form (bukan ID publik) sehingga tetap /d/<id>.
   assert.equal(
     toPublicFormUrl("https://docs.google.com/forms/d/abc1234567890/edit"),
     "https://docs.google.com/forms/d/abc1234567890/viewform"
   );
+  // URL yang sudah publik tetap memakai /d/e/<id>.
   assert.equal(
     toPublicFormUrl("https://docs.google.com/forms/d/e/abc1234567890/viewform?x=1"),
-    "https://docs.google.com/forms/d/abc1234567890/viewform"
+    "https://docs.google.com/forms/d/e/abc1234567890/viewform"
   );
   assert.equal(toPublicFormUrl("https://forms.gle/abc123"), "https://forms.gle/abc123");
   assert.equal(toPublicFormUrl("http://docs.google.com/forms/d/abc1234567890/edit"), "");
@@ -78,14 +80,42 @@ test("publicFormUrlFor memakai ID bila URL tidak tersedia", () => {
   assert.equal(publicFormUrlFor({ google_form_id: "pendek" }), "");
 });
 
+test("publicFormUrlFor tidak menukar ID edit dengan ID publik", () => {
+  // Google Form punya dua ID berbeda: ID edit (/d/<id>/edit) dan ID publik
+  // (/d/e/<id>/viewform). URL publik yang sudah tersimpan harus dipertahankan.
+  const published = "https://docs.google.com/forms/d/e/formPublik1234567890/viewform";
+  assert.equal(
+    publicFormUrlFor({
+      google_form_id: "formEdit1234567890",
+      google_form_url: published
+    }),
+    published
+  );
+  // URL edit yang masih menyimpan ID lama boleh diganti dengan ID terbaru.
+  assert.equal(
+    publicFormUrlFor({
+      google_form_id: "formBaru1234567890",
+      google_form_url: "https://docs.google.com/forms/d/formLama1234567890/viewform"
+    }),
+    "https://docs.google.com/forms/d/formBaru1234567890/viewform"
+  );
+  // URL forms.gle tetap dipakai bila tidak ada ID yang bisa dibaca.
+  assert.equal(
+    publicFormUrlFor({ google_form_url: "https://forms.gle/abc123" }),
+    "https://forms.gle/abc123"
+  );
+});
+
 test("buildPublicFormLinkDoc memvalidasi form id", () => {
   const doc = buildPublicFormLinkDoc({
     formId: "cuti",
     namaForm: "Formulir Cuti",
+    googleFormId: "abc1234567890",
     google_form_url: "https://docs.google.com/forms/d/abc1234567890/edit",
     active: true
   });
   assert.equal(doc.form_id, "cuti");
+  assert.equal(doc.google_form_id, "abc1234567890");
   assert.equal(doc.google_form_url, "https://docs.google.com/forms/d/abc1234567890/viewform");
   assert.equal(doc.active, true);
   assert.throws(() => buildPublicFormLinkDoc({ namaForm: "Tanpa ID" }), /wajib diisi/);
@@ -103,11 +133,23 @@ test("resolvePublicLinkTarget membedakan missing, inactive, dan ok", () => {
   assert.deepEqual(
     resolvePublicLinkTarget({
       active: true,
-      google_form_url: "https://docs.google.com/forms/d/abc1234567890/viewform"
+      google_form_url: "https://docs.google.com/forms/d/e/abc1234567890/viewform"
     }),
     {
       status: "ok",
-      url: "https://docs.google.com/forms/d/abc1234567890/viewform"
+      url: "https://docs.google.com/forms/d/e/abc1234567890/viewform"
+    }
+  );
+  // Tautan publik memang memakai ID publik yang berbeda dari ID edit.
+  assert.deepEqual(
+    resolvePublicLinkTarget({
+      active: true,
+      google_form_id: "formEdit1234567890",
+      google_form_url: "https://docs.google.com/forms/d/e/formPublik1234567890/viewform"
+    }),
+    {
+      status: "ok",
+      url: "https://docs.google.com/forms/d/e/formPublik1234567890/viewform"
     }
   );
   assert.deepEqual(resolvePublicLinkTarget({ active: true }), { status: "missing" });
