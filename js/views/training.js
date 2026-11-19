@@ -208,8 +208,8 @@ export async function mount(container, { session, params = new URLSearchParams()
   const requestedSurvey = typeof params?.get === "function" ? params.get("survey") : "";
 
   async function load() {
-    header.innerHTML = tabs.map(t => `<button data-tab="${t.id}" class="ui-tab ${active === t.id ? "active" : ""}">${t.label}</button>`).join("");
-    header.className = "ui-tabs ml-auto justify-end";
+    header.innerHTML = tabs.map(t => `<button type="button" data-tab="${t.id}" class="ui-tab ${active === t.id ? "active" : ""}">${t.label}</button>`).join("");
+    header.className = "ui-tabs w-full flex-wrap";
     header.querySelectorAll("[data-tab]").forEach(button => button.onclick = () => { active = button.dataset.tab; load(); });
     body.innerHTML = `<div class="py-20 text-center text-sm text-slate-400">Memuat data pelatihan…</div>`;
     try {

@@ -170,6 +170,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
+  flex: 0 0 auto;
   transition: background-color .15s ease, color .15s ease, box-shadow .15s ease;
 }
 .ui-tab:hover { background: #e2e8f0; color: #0f172a; }
