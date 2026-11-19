@@ -235,6 +235,7 @@
             <div class="flex flex-wrap gap-2">
               <button type="button" id="fb-gform-save" class="px-3 py-2 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition">Simpan Integrasi</button>
               <button type="button" id="fb-gform-inbox" class="px-3 py-2 rounded-lg text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition">Kotak Masuk Respons</button>
+              <button type="button" id="fb-gform-status" class="px-3 py-2 rounded-lg text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition">Diagnostik Webhook</button>
               <button type="button" id="fb-gform-secret" class="px-3 py-2 rounded-lg text-xs font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition">Putar Kunci Webhook</button>
               <button type="button" id="fb-gform-unlink" class="px-3 py-2 rounded-lg text-xs font-bold text-rose-600 bg-white border border-rose-200 hover:bg-rose-50 transition">Putuskan</button>
             </div>
@@ -249,7 +250,7 @@
               </div>
               <pre id="fb-gform-script" class="mt-2 max-h-56 overflow-auto rounded-lg bg-slate-900 text-slate-100 p-3 text-[10px] leading-relaxed whitespace-pre-wrap">Pilih "Simpan Integrasi" untuk membuat skrip.</pre>
               <p class="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-[10px] leading-relaxed text-amber-800">
-                Setelah skrip ditempel: jalankan <b>installTrigger()</b> untuk form yang sudah ada, atau <b>setupCreateForm()</b> untuk membuat form baru. Lalu kirim satu respons uji. Hanya respons baru yang dikirim ke HRIS.
+                Setelah skrip ditempel: jalankan <b>installTrigger()</b> untuk form yang sudah ada, atau <b>setupCreateForm()</b> untuk membuat form baru. Lalu jalankan <b>testWebhook()</b> sekali untuk memberi izin UrlFetch dan memastikan koneksi. Respons uji akan tampil sebagai <b>TES WEBHOOK</b> di kotak masuk. Bila sudah pernah mengisi form sebelum trigger aktif, jalankan <b>backfillResponses()</b>.
               </p>
             </div>
 

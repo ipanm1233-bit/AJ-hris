@@ -1034,6 +1034,9 @@ function bindGoogleIntegrationEvents(container) {
  const inbox = container.querySelector("#fb-gform-inbox");
  if (inbox) inbox.onclick = () => openGoogleInbox(container);
 
+ const status = container.querySelector("#fb-gform-status");
+ if (status) status.onclick = () => openGoogleStatus(container);
+
  const rotate = container.querySelector("#fb-gform-secret");
  if (rotate) rotate.onclick = () => rotateGoogleSecret(container);
 
@@ -1520,6 +1523,8 @@ async function openGoogleInbox(container) {
     <td class="p-2.5 text-right whitespace-nowrap">
      ${item.status === "IMPORTED"
        ? `<span class="text-[10px] font-bold text-emerald-600">Selesai</span>`
+       : item.status === "REJECTED"
+       ? `<span class="text-[10px] font-bold text-slate-400">Diarsipkan</span>`
        : `<div class="inline-flex gap-1.5">
            <button type="button" data-gf-import="${escapeHtml(item.id)}" class="px-2 py-1 rounded-lg text-[10px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition">Impor</button>
            <button type="button" data-gf-reject="${escapeHtml(item.id)}" class="px-2 py-1 rounded-lg text-[10px] font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 transition">Tolak</button>
@@ -1527,7 +1532,7 @@ async function openGoogleInbox(container) {
     </td>
    </tr>`).join("") : `
    <tr><td colspan="4" class="p-8 text-center text-xs text-slate-400">
-    Belum ada respons. Pastikan skrip Apps Script sudah dipasang dan trigger onFormSubmit aktif.
+    Belum ada respons. Pastikan skrip Apps Script sudah dipasang, trigger <b>onFormSubmit</b> aktif, dan <b>testWebhook()</b> sudah dijalankan. Tekan <b>Diagnostik Webhook</b> untuk melihat status server.
    </td></tr>`;
 
   openModal({
@@ -1578,6 +1583,108 @@ async function openGoogleInbox(container) {
  } catch (error) {
   toast("Gagal memuat kotak masuk: " + error.message, "error");
  }
+}
+
+async function openGoogleStatus(container) {
+ const formId = editingId;
+ const form = allForms.find(item => item.id === formId);
+ if (!form) { toast("Simpan formulir terlebih dahulu.", "warning"); return; }
+
+ let data;
+ try {
+  data = await formApi({ action: "form_status", formId });
+ } catch (error) {
+  toast("Gagal memuat diagnostik: " + error.message, "error");
+  return;
+ }
+
+ const definition = data.definition || {};
+ const stats = data.stats || {};
+ const byStatus = stats.byStatus || {};
+ const total = Number(stats.total) || 0;
+ const otherForms = Array.isArray(stats.otherForms) ? stats.otherForms : [];
+ const checks = [
+  {
+   ok: data.definitionFound !== false,
+   label: "Integrasi terdaftar di server",
+   hint: "Tekan “Simpan Integrasi” agar formulir ini terdaftar di Supabase."
+  },
+  {
+   ok: definition.active !== false,
+   label: "Penerimaan respons aktif",
+   hint: "Centang “Aktifkan penerimaan respons” lalu tekan Simpan Integrasi."
+  },
+  {
+   ok: Boolean(definition.google_form_id),
+   label: "Google Form sudah tertaut",
+   hint: "Tempel URL/ID Google Form dari Apps Script, lalu simpan."
+  },
+  {
+   ok: total > 0,
+   label: "Server pernah menerima respons",
+   hint: "Belum ada respons. Buka Apps Script, jalankan testWebhook(), lalu lihat menu Executions."
+  }
+ ];
+ const checkRows = checks.map(item => `
+  <div class="flex items-start gap-2 rounded-lg border ${item.ok ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"} p-2.5">
+   <span class="mt-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-black ${item.ok ? "bg-emerald-600 text-white" : "bg-amber-500 text-white"}">${item.ok ? "✓" : "!"}</span>
+   <div class="min-w-0">
+    <p class="text-xs font-bold ${item.ok ? "text-emerald-900" : "text-amber-900"}">${escapeHtml(item.label)}</p>
+    ${item.ok ? "" : `<p class="text-[10px] leading-relaxed ${item.ok ? "text-emerald-700" : "text-amber-800"}">${escapeHtml(item.hint)}</p>`}
+   </div>
+  </div>`).join("");
+
+ const otherFormsHtml = otherForms.length ? `
+  <div class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-900">
+   <p class="font-bold">Ada respons masuk, tetapi untuk formulir lain</p>
+   <ul class="mt-1 space-y-0.5 font-mono text-[10px]">
+    ${otherForms.map(item => `<li>${escapeHtml(item.form_id)} — ${Number(item.count) || 0} respons${item.last_received_at ? ` · terakhir ${escapeHtml(formatGoogleDate(item.last_received_at))}` : ""}</li>`).join("")}
+   </ul>
+   <p class="mt-1.5 text-[10px] leading-relaxed">Pastikan skrip Apps Script yang dipasang berasal dari formulir ini, bukan formulir lain.</p>
+  </div>` : "";
+
+ openModal({
+  title: `Diagnostik Webhook — ${form.nama_form || form.id}`,
+  size: "lg",
+  bodyHtml: `
+   <div class="space-y-3 text-sm">
+    <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+     ${[
+       ["Diterima", byStatus.RECEIVED || 0],
+       ["Diimpor", byStatus.IMPORTED || 0],
+       ["Ditolak", byStatus.REJECTED || 0],
+       ["Total", total]
+     ].map(([label, value]) => `<div class="rounded-xl border border-slate-200 bg-slate-50 p-2.5"><p class="text-[10px] font-bold uppercase tracking-wide text-slate-500">${label}</p><p class="text-lg font-black text-slate-800">${Number(value) || 0}</p></div>`).join("")}
+    </div>
+    <div class="space-y-1.5">${checkRows}</div>
+    <div class="space-y-1 rounded-xl border border-slate-200 bg-white p-3">
+     <p class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Detail server</p>
+     <p class="text-[11px] text-slate-600">Respons terakhir: <b>${stats.lastReceivedAt ? escapeHtml(formatGoogleDate(stats.lastReceivedAt)) : "belum ada"}</b></p>
+     <p class="text-[11px] text-slate-600">Waktu server: <b>${escapeHtml(formatGoogleDate(data.serverTime))}</b></p>
+     <p class="text-[10px] text-slate-400 break-all font-mono">${escapeHtml(data.webhookUrl || "-")}</p>
+    </div>
+    ${otherFormsHtml}
+    <div class="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-[11px] leading-relaxed text-indigo-900">
+     <p class="font-bold">Jika total masih 0</p>
+     <ol class="mt-1 list-decimal space-y-1 pl-4">
+      <li>Buka Google Form → Ekstensi → Apps Script.</li>
+      <li>Tempel ulang skrip terbaru dari formulir ini (tombol “Salin Skrip”).</li>
+      <li>Jalankan <b>installTrigger()</b>, lalu <b>testWebhook()</b> dan setujui izin.</li>
+      <li>Sudah pernah mengisi form? Jalankan <b>backfillResponses()</b> untuk mengirim ulang maksimal 20 respons terakhir.</li>
+      <li>Buka menu <b>Executions</b>. Baris “AJ HRIS …” menunjukkan kode HTTP: 200 = berhasil, 401 = kunci/skrip lama, 404 = formulir belum terdaftar, 503 = Supabase belum aktif.</li>
+     </ol>
+    </div>
+   </div>`,
+  footerHtml: `
+   <button type="button" id="gf-status-inbox" class="px-3 py-2 rounded-lg text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition">Buka Kotak Masuk</button>
+   <button type="button" id="gf-status-refresh" class="px-3 py-2 rounded-lg text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition">Muat Ulang</button>
+   <button type="button" id="gf-status-close" class="px-3 py-2 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 transition">Tutup</button>`,
+  onMount: (modal) => {
+   modal.querySelector("#gf-status-close")?.addEventListener("click", closeModal);
+   modal.querySelector("#gf-status-inbox")?.addEventListener("click", () => { closeModal(); openGoogleInbox(container); });
+   modal.querySelector("#gf-status-refresh")?.addEventListener("click", () => { closeModal(); openGoogleStatus(container); });
+  }
+ });
 }
 
 async function runGoogleImport(container, form, submissionIds, importAll) {

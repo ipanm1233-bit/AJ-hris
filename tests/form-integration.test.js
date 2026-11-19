@@ -15,7 +15,8 @@ const {
 const {
   definitionFromRow,
   submissionToRow,
-  submissionFromRow
+  submissionFromRow,
+  summarizeSubmissionRows
 } = require('../lib/forms-supabase.js');
 const { consumeMemoryBucket, consumeDistributedBucket, resetMemoryBuckets } = require('../lib/rate-limit.js');
 const { clampBatchSize, clampPageSize, payloadWithinLimit, FORM_INTEGRATION_LIMITS } = require('../lib/free-tier.js');
@@ -179,6 +180,11 @@ test('buildAppsScript menghasilkan skrip Apps Script yang valid dan memuat HMAC'
   });
   assert.match(script, /function setupCreateForm\(\)/);
   assert.match(script, /function onFormSubmit\(e\)/);
+  assert.match(script, /function testWebhook\(\)/);
+  assert.match(script, /function diagnose\(\)/);
+  assert.match(script, /function backfillResponses\(\)/);
+  assert.match(script, /function sendToHris_\(/);
+  assert.match(script, /TES WEBHOOK/);
   assert.match(script, /computeHmacSha256Signature/);
   assert.match(script, /https:\/\/hris\.andelajaya\.co\.id\/api\/sync-absen/);
   assert.match(script, /F-CUTI/);
@@ -208,6 +214,21 @@ test('submissionToRow dan submissionFromRow menjaga idempotensi dan status', () 
   const parsed = submissionFromRow({ ...row, received_at: '2026-11-10T03:01:00Z' });
   assert.equal(parsed.mapped.nama, 'A');
   assert.equal(parsed.answers[0].question, 'Nama');
+});
+
+test('summarizeSubmissionRows mengelompokkan respons per formulir dan status', () => {
+  const summary = summarizeSubmissionRows([
+    { form_id: 'F-TNA-1', status: 'RECEIVED', received_at: '2026-11-18T02:00:00.000Z' },
+    { form_id: 'F-TNA-1', status: 'IMPORTED', received_at: '2026-11-18T03:00:00.000Z' },
+    { form_id: 'F-KPI-1', status: 'REJECTED', received_at: '2026-11-17T01:00:00.000Z' }
+  ]);
+  assert.equal(summary.total, 3);
+  assert.equal(summary.byStatus.RECEIVED, 1);
+  assert.equal(summary.byStatus.IMPORTED, 1);
+  assert.equal(summary.byStatus.REJECTED, 1);
+  assert.equal(summary.lastReceivedAt, '2026-11-18T03:00:00.000Z');
+  assert.equal(summary.forms[0].form_id, 'F-TNA-1');
+  assert.equal(summary.forms[0].count, 2);
 });
 
 test('rate limiter memori mereset bucket setelah jendela berakhir', () => {
