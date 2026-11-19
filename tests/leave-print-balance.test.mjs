@@ -50,6 +50,21 @@ test("dedupe twin MASTER_CUTI vs DATA_PENGAJUAN + hanya cuti yang sudah disetuju
   );
 });
 
+test("saldo cetak memakai MASTER_CUTI agar identik dengan Sisa Saldo di Manajemen Cuti", () => {
+  const utils = readFileSync(new URL("../js/utils.js", import.meta.url), "utf-8");
+  const fnStart = utils.indexOf("export async function calculateLeaveHistoryBalances");
+  const fnEnd = utils.indexOf("export function generateStandardFormCutiHtml");
+  const fn = utils.slice(fnStart, fnEnd);
+
+  assert.ok(fn.includes("const masterLeaves = []"), "fungsi harus memisahkan record MASTER_CUTI");
+  assert.ok(fn.includes("masterLeaves.push(r)"), "record MASTER_CUTI wajib dikumpulkan");
+  assert.ok(fn.includes("priorLeaves.filter(r => masterLeaves.includes(r))"), "saldo cetak hanya memakai MASTER_CUTI");
+  assert.ok(
+    fn.includes("getCalculatedJatahCuti(kData, priorMasterLeaves, targetYear)"),
+    "hitungan saldo memakai record MASTER_CUTI sebelum cuti ini"
+  );
+});
+
 test("PDF cadangan tidak memakai snapshot sudah-terpotong, melainkan hitung ulang", () => {
   const cuti = readFileSync(new URL("../js/views/cuti.js", import.meta.url), "utf-8");
   const fnStart = cuti.indexOf("async function printCutiPdfFallback");

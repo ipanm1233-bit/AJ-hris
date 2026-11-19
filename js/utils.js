@@ -2129,6 +2129,7 @@ export async function calculateLeaveHistoryBalances(empIdent, currentLeave = {})
 
 	// 3. Gabungkan dan saring seluruh riwayat cuti karyawan
 	const empLeaves = [];
+	const masterLeaves = [];
 	const seenKeys = new Set();
 	const seenRefs = new Set();
 
@@ -2153,6 +2154,7 @@ export async function calculateLeaveHistoryBalances(empIdent, currentLeave = {})
 			const refStr = String(r.no_referensi || r.id || "").trim();
 			if (refStr) seenRefs.add(refStr);
 			empLeaves.push(r);
+			masterLeaves.push(r);
 		}
 	}
 
@@ -2226,8 +2228,15 @@ export async function calculateLeaveHistoryBalances(empIdent, currentLeave = {})
 		priorLeaves.push(r);
 	}
 
-	// 5. Hitung saldo resmi berdasarkan riwayat sebelum cuti ini
-	const historyCalc = getCalculatedJatahCuti(kData, priorLeaves, targetYear);
+	// 5. Hitung saldo resmi berdasarkan riwayat sebelum cuti ini.
+	//    PENTING: angka "Sisa Hak" pada form cetak harus sama dengan kartu
+	//    "Sisa Saldo" di Manajemen Cuti. Sumber resmi saldo adalah MASTER_CUTI
+	//    (dipakai juga oleh getSisa di halaman Cuti). Pengajuan di
+	//    DATA_PENGAJUAN yang belum tersalin ke MASTER_CUTI tidak boleh
+	//    menggeser angka cetak — itulah penyebab form menampilkan sisa lebih
+	//    kecil daripada yang terlihat di sistem.
+	const priorMasterLeaves = priorLeaves.filter(r => masterLeaves.includes(r));
+	const historyCalc = getCalculatedJatahCuti(kData, priorMasterLeaves, targetYear);
 
 	// 6. Sisa hak cuti SELALU dihitung ulang dari sumber resmi (getCalculatedJatahCuti)
 	//    agar angka pada dokumen cetak identik dengan sisa yang ditampilkan sistem.
