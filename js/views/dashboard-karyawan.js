@@ -114,6 +114,12 @@ export async function mount(container, { session, params }) {
   const requestedPeriod = String(params?.get?.("periode") || "").trim();
   if (/^\d{4}-(0[1-9]|1[0-2])$/.test(requestedPeriod)) state.period = requestedPeriod;
 
+  // Saat ditanam sebagai tab Penilaian Performa, judul ganda disembunyikan
+  // tetapi tombol cetak/ekspor tetap tersedia.
+  if (params?.get?.("embedded") === "1") {
+    container.querySelector("h1")?.parentElement?.classList.add("hidden");
+  }
+
   renderFilterOptions(container, []);
   bindEvents(container);
   showLoading(container);

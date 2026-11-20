@@ -39,6 +39,7 @@ export const DEFAULT_EMPLOYEE_MENU_IDS = [
  "izin",
  "training",
  "performance-management",
+ "penilaian-kontrak",
  "sop-proyek"
 ];
 
@@ -84,21 +85,27 @@ export const MENU_CONFIG = [
   { id: "analytics", label: "Analytics" },
   { id: "rules", label: "Master Rules ATS" }
  ] },
- { id: "penilaian-kontrak", label: "Penilaian Kontrak", icon: "doc-plus", kategori: "Karyawan & Kinerja", roles: ["ALL"], subMenus: [
-  { id: "standar_grade", label: "Standar Grade HRD" },
-  { id: "template_soal", label: "Template Soal KPI" },
-  { id: "distribusi_kpi360", label: "Distribusi Tugas KPI" }
- ] },
- { id: "dashboard-karyawan", label: "Dashboard Karyawan", icon: "gauge", kategori: "Karyawan & Kinerja", roles: DASHBOARD_KARYAWAN_ROLES },
- { id: "performance-management", label: "Performance Management (KPI)", icon: "gauge", kategori: "Karyawan & Kinerja", roles: ["ALL"], subMenus: [
-  { id: "dashboard", label: "Dashboard KPI 2027" },
+ { id: "performance-management", label: "Penilaian Performa", icon: "gauge", route: "performance-management", kategori: "Karyawan & Kinerja", roles: ["ALL"], subMenus: [
+  { id: "dashboard", label: "Dashboard Penilaian" },
+  { id: "employee", label: "Dashboard Karyawan" },
   { id: "scorecards", label: "Scorecard Karyawan" },
+  { id: "contract", label: "Kontrak & Perpanjangan" },
   { id: "master_kpi", label: "Master KPI 2027" },
   { id: "templates", label: "Template Scorecard" },
   { id: "reviews", label: "Review & Kalibrasi" },
   { id: "coaching", label: "Coaching & Action Plan" },
   { id: "audit", label: "Jejak Audit KPI" },
   { id: "legacy", label: "Review Historis" }
+ ] },
+ { id: "penilaian-kontrak", label: "Perpanjangan Kontrak", icon: "refresh", route: "penilaian-kontrak?tab=alur_perpanjangan", kategori: "Karyawan & Kinerja", roles: ["ALL"], subMenus: [
+  { id: "kontrak", label: "Kartu Kontrak" },
+  { id: "alur_perpanjangan", label: "Alur Perpanjangan" },
+  { id: "pip", label: "PIP" },
+  { id: "siklus", label: "Siklus Evaluasi" },
+  { id: "daily", label: "Penilaian Harian & Target" },
+  { id: "standar_grade", label: "Standar Grade HRD" },
+  { id: "template_soal", label: "Template Soal KPI" },
+  { id: "distribusi_kpi360", label: "Distribusi Tugas KPI" }
  ] },
  { id: "training", label: "Pelatihan", icon: "book", kategori: "Karyawan & Kinerja", roles: ["ALL"], subMenus: [
   { id: "my", label: "Pelatihan Saya" },
@@ -960,12 +967,14 @@ export async function computeVisibleMenus(session) {
    const performanceMenu = MENU_CONFIG.find(m => m.id === "performance-management");
    if (performanceMenu) list.push(performanceMenu);
   }
-  // Laporan pencapaian & catatan karyawan tetap tersedia untuk peran manajemen
-  // walaupun akun memiliki whitelist menu lama yang belum memuat menu baru ini.
-  if (DASHBOARD_KARYAWAN_ROLES.includes(role) && !list.some(m => m.id === "dashboard-karyawan")) {
-   const reportMenu = MENU_CONFIG.find(m => m.id === "dashboard-karyawan");
-   if (reportMenu) list.push(reportMenu);
+  // Pintu kedua penilaian (perpanjangan kontrak) juga modul lama yang harus
+  // tetap terlihat meskipun whitelist menu dibuat sebelum konsolidasi.
+  if (!list.some(m => m.id === "penilaian-kontrak")) {
+   const renewalMenu = MENU_CONFIG.find(m => m.id === "penilaian-kontrak");
+   if (renewalMenu) list.push(renewalMenu);
   }
+  // Laporan pencapaian & catatan karyawan kini menjadi tab di Penilaian
+  // Performa, sehingga menu terpisah "Dashboard Karyawan" tidak ditambahkan lagi.
   // Sales tidak dapat menu lembur kecuali secara eksplisit ada di allowed_menus custom
   if (isSales && !allowed.includes("lembur-kasbon")) {
    list = list.filter(m => m.id !== "lembur-kasbon");
@@ -1205,8 +1214,11 @@ export async function canAccessRoute(routeId, session) {
  if (["pp", "peraturan", "peraturan-perusahaan", "company-policy", "policy"].includes(targetId)) {
  targetId = "peraturan-perusahaan";
  }
- if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi"].includes(targetId)) {
+ if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi", "perpanjangan-kontrak"].includes(targetId)) {
  targetId = "penilaian-kontrak";
+ }
+ if (["performance-management", "performance-review", "performance", "kinerja", "penilaian-kinerja", "kpi-2027", "penilaian-performa", "dashboard-karyawan", "dashboard-pencapaian", "pencapaian-karyawan"].includes(targetId)) {
+ targetId = "performance-management";
  }
  if (["sppkl", "spl", "lembur", "overtime", "perintah-lembur"].includes(targetId)) {
  targetId = "lembur-kasbon";
@@ -1553,7 +1565,7 @@ export const PERMISSION_CATALOG = [
  },
  {
   id: "penilaian-kontrak",
-  label: "Penilaian Kontrak",
+  label: "Perpanjangan Kontrak",
   category: "Karyawan & Kinerja",
   icon: "doc-plus",
   actions: [
@@ -1577,7 +1589,7 @@ export const PERMISSION_CATALOG = [
  },
  {
   id: "dashboard-karyawan",
-  label: "Dashboard Karyawan",
+  label: "Laporan Karyawan (tab Penilaian Performa)",
   category: "Karyawan & Kinerja",
   icon: "gauge",
   actions: [
@@ -1588,7 +1600,7 @@ export const PERMISSION_CATALOG = [
  },
  {
   id: "performance-management",
-  label: "Performance Management",
+  label: "Penilaian Performa",
   category: "Karyawan & Kinerja",
   icon: "gauge",
   actions: [

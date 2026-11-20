@@ -14,6 +14,12 @@ import {
   buildScorecardFromTemplate, resolveTemplateForEmployee, summarizeScorecard,
   getProposedRating, formatKpiValue, aggregateBranchResults
 } from "../kpi-2027.mjs";
+import {
+  RENEWAL_WINDOW_DAYS,
+  buildPerformaIndex,
+  renewalQueue,
+  summarizePerformaContracts
+} from "../performa-data.mjs";
 
 const STATUS_TONE = {
   DRAFT: "slate",
@@ -52,6 +58,8 @@ const state = {
   coaching: [],
   audit: [],
   employees: [],
+  contracts: [],
+  performa: [],
   filters: { period: "2027", status: "", branch: "", search: "" }
 };
 
@@ -128,6 +136,8 @@ export async function mount(container, { session, params }) {
   state.container = container;
   state.tab = "dashboard";
   state.loaded = false;
+  state.contracts = [];
+  state.performa = [];
 
   const role = upper(session?.role);
   const posisi = upper(session?.posisi || session?.jabatan);
@@ -169,11 +179,14 @@ export async function mount(container, { session, params }) {
 function availableTabs() {
   const tabs = [{ id: "dashboard", label: "Dashboard", icon: "gauge" }];
   if (state.canViewAll) {
+    tabs.push({ id: "employee", label: "Dashboard Karyawan", icon: "layers" });
     tabs.push({ id: "scorecards", label: "Scorecard Karyawan", icon: "layers" });
+    tabs.push({ id: "contract", label: "Kontrak & Perpanjangan", icon: "doc-plus" });
     tabs.push({ id: "master", label: "Master KPI 2027", icon: "book" });
     tabs.push({ id: "templates", label: "Template Scorecard", icon: "doc-plus" });
   } else {
     tabs.push({ id: "my", label: "Scorecard Saya", icon: "user" });
+    tabs.push({ id: "contract", label: "Kontrak Saya", icon: "doc-plus" });
   }
   tabs.push({ id: "reviews", label: state.canViewAll ? "Review & Kalibrasi" : "Review Saya", icon: "check" });
   tabs.push({ id: "coaching", label: "Coaching & Action Plan", icon: "user-plus" });
@@ -219,6 +232,8 @@ async function loadActiveTab() {
   wrap.innerHTML = `<div class="p-8">${skeletonRows(5)}</div>`;
   try {
     if (state.tab === "dashboard") await renderDashboard(wrap);
+    else if (state.tab === "employee") await renderEmployeeDashboard(wrap);
+    else if (state.tab === "contract") await renderContractTab(wrap);
     else if (state.tab === "scorecards") await renderScorecards(wrap);
     else if (state.tab === "my") await renderMyScorecards(wrap);
     else if (state.tab === "master") await renderMaster(wrap);
@@ -262,14 +277,41 @@ async function loadScopedCollection(colName) {
   return await fsGetOwnedRecords(colName, state.session, { fields: ["nik", "employee_nik", "nik_karyawan"] });
 }
 
+async function loadContractSource() {
+  // HRD/manajemen membaca seluruh kontrak; karyawan biasa hanya kontraknya
+  // sendiri agar tetap hemat kuota baca dan tidak membocorkan data rekan kerja.
+  if (state.canViewAll) return await fsGetAll(COL.MASTER_KONTRAK).catch(() => []);
+  const rows = [];
+  const nik = sessionNik(state.session);
+  const name = sessionName(state.session);
+  if (nik) rows.push(...await queryRows(COL.MASTER_KONTRAK, "nik_karyawan", nik));
+  if (name) {
+    const byName = await queryRows(COL.MASTER_KONTRAK, "nama_karyawan", name);
+    byName.forEach(row => {
+      if (!rows.some(item => item.id === row.id)) rows.push(row);
+    });
+  }
+  return rows;
+}
+
+function rebuildPerforma() {
+  state.performa = buildPerformaIndex({
+    employees: state.employees,
+    contracts: state.contracts,
+    scorecards: state.scorecards,
+    today: new Date()
+  });
+}
+
 async function loadCoreData() {
-  const [masterRaw, templatesRaw, scorecards, reviews, coaching, employeesRaw, audit] = await Promise.all([
+  const [masterRaw, templatesRaw, scorecards, reviews, coaching, employeesRaw, contractsRaw, audit] = await Promise.all([
     state.canViewAll ? fsGetAll(COL.KPI_MASTER).catch(() => []) : Promise.resolve([]),
     fsGetAll(COL.KPI_SCORECARD_TEMPLATES).catch(() => []),
     loadScopedCollection(COL.KPI_SCORECARDS),
     loadScopedCollection(COL.KPI_REVIEWS),
     loadScopedCollection(COL.KPI_COACHING),
     fsGetAll(COL.MASTER_KARYAWAN).catch(() => []),
+    loadContractSource(),
     state.canViewAudit ? fsGetAll(COL.KPI_AUDIT).catch(() => []) : Promise.resolve([])
   ]);
 
@@ -288,6 +330,11 @@ async function loadCoreData() {
   if (state.branchScope) {
     state.employees = state.employees.filter(employee => branchMatches(state.branchScope, employeeBranch(employee)));
   }
+  // Kontrak tidak difilter per cabang di sini: pencocokan dilakukan ke
+  // karyawan yang sudah difilter, sehingga kontrak lama tanpa kolom cabang
+  // tetap terbaca tanpa membocorkan data cabang lain.
+  state.contracts = contractsRaw || [];
+  rebuildPerforma();
   state.loaded = true;
 }
 
@@ -339,7 +386,173 @@ async function writeAudit({ entityType, entityId, fieldChanged, oldValue, newVal
 /* -------------------------------------------------------------------------
  * DASHBOARD
  * ----------------------------------------------------------------------- */
+const CONTRACT_TONE = {
+  KADALUARSA: "red",
+  KRITIS: "red",
+  WASPADA: "amber",
+  PERSIAPAN: "blue",
+  AMAN: "slate",
+  "TANPA BATAS": "slate"
+};
+
+function contractBadge(row) {
+  const key = upper(row.urgency || "AMAN");
+  return badge(row.urgency_label || key, CONTRACT_TONE[key] || "slate");
+}
+
+function rowMatchesSession(row) {
+  const nik = sessionNik(state.session).toLowerCase();
+  const name = sessionName(state.session).toLowerCase();
+  const rowNik = String(row.nik || row.employee_nik || "").toLowerCase();
+  const rowName = String(row.nama || row.employee_name || "").toLowerCase();
+  if (nik && rowNik) return nik === rowNik;
+  return Boolean(name && rowName && name === rowName);
+}
+
+function performaForScorecard(scorecard = {}) {
+  const nik = String(scorecard.employee_nik || scorecard.nik || scorecard.nik_karyawan || "").toLowerCase();
+  const name = String(scorecard.employee_name || scorecard.nama_karyawan || "").toLowerCase();
+  return state.performa.find(row => {
+    const rowNik = String(row.nik || "").toLowerCase();
+    const rowName = String(row.nama || "").toLowerCase();
+    if (nik && rowNik) return nik === rowNik;
+    return Boolean(name && rowName && name === rowName);
+  }) || null;
+}
+
+function scorecardScore(scorecard) {
+  if (!scorecard) return "-";
+  const summary = summarizeScorecard(scorecard);
+  const value = summary.final_score ?? summary.provisional_score;
+  return value === null || value === undefined || value === "" ? "-" : value;
+}
+
+function formatDaysLeft(daysLeft) {
+  if (daysLeft === null || daysLeft === undefined) return "Tanpa batas";
+  const value = Number(daysLeft);
+  if (!Number.isFinite(value)) return "Tanpa batas";
+  if (value < 0) return `${Math.abs(value)} hari lalu`;
+  return `${value} hari`;
+}
+
+async function renderEmployeeDashboard(wrap) {
+  wrap.innerHTML = `<div id="pm-employee-dashboard"><div class="p-8">${skeletonRows(5)}</div></div>`;
+  const host = wrap.querySelector("#pm-employee-dashboard");
+  try {
+    const html = await fetch(`./views/dashboard-karyawan.html?v=20261120-performa-v40`).then(response => {
+      if (!response.ok) throw new Error(`Gagal memuat template (${response.status})`);
+      return response.text();
+    });
+    host.innerHTML = html;
+    const mod = await import("./dashboard-karyawan.js?v=20261120-performa-v40");
+    await mod.mount(host, {
+      session: state.session,
+      params: new URLSearchParams({ embedded: "1" })
+    });
+  } catch (error) {
+    console.error("performance-management: dashboard karyawan", error);
+    host.innerHTML = `<div class="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-800"><b>Gagal memuat Dashboard Karyawan:</b> ${escapeHtml(error?.message || String(error))}</div>`;
+  }
+}
+
+async function renderContractTab(wrap) {
+  rebuildPerforma();
+  const visible = state.canViewAll
+    ? state.performa
+    : state.performa.filter(row => rowMatchesSession(row));
+  const summary = summarizePerformaContracts(visible);
+  const queue = renewalQueue(visible);
+  const rows = [...visible].sort((a, b) => {
+    const left = a.days_left === null || a.days_left === undefined ? Number.POSITIVE_INFINITY : Number(a.days_left);
+    const right = b.days_left === null || b.days_left === undefined ? Number.POSITIVE_INFINITY : Number(b.days_left);
+    return left - right || String(a.nama || "").localeCompare(String(b.nama || ""), "id");
+  });
+
+  const queueNote = queue.length
+    ? `<div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+        <p class="font-bold">${queue.length} kontrak masuk masa penilaian perpanjangan (≤ ${RENEWAL_WINDOW_DAYS} hari).</p>
+        <p class="mt-1">Mulai dari ${escapeHtml(queue[0]?.nama || "-")} (${formatDaysLeft(queue[0]?.days_left)}). Penilaian tambahan hanya dibuka untuk kontrak yang mendekati berakhir.</p>
+      </div>`
+    : `<div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-900">Tidak ada kontrak yang masuk masa perpanjangan dalam ${RENEWAL_WINDOW_DAYS} hari ke depan.</div>`;
+
+  const tableRows = rows.length ? rows.map(row => {
+    const action = state.canViewAll
+      ? (row.is_permanent
+        ? `<span class="text-[10px] font-bold text-slate-400">Karyawan tetap</span>`
+        : row.renewal_due
+          ? `<button type="button" data-open-renewal class="px-2.5 py-1.5 bg-maroon-700 hover:bg-maroon-800 text-white rounded-lg font-bold text-[11px]">Buka Alur</button>`
+          : `<span class="text-[10px] font-bold text-slate-400">Belum masuk masa perpanjangan</span>`)
+      : `<a href="#penilaian-kontrak?tab=kontrak" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-[11px]">Lihat Kontrak</a>`;
+    return `<tr class="hover:bg-slate-50/60">
+      <td class="px-3 py-3"><b class="text-slate-800">${escapeHtml(row.nama || "-")}</b><br><span class="text-slate-400">${escapeHtml(row.nik || "-")} · ${escapeHtml(row.jabatan || "jabatan belum diisi")}</span></td>
+      <td class="px-3 py-3 text-slate-600">${escapeHtml(row.contract_type_label || "-")}<br><span class="text-slate-400">${escapeHtml(row.cabang || "-")}</span></td>
+      <td class="px-3 py-3 text-slate-600">${escapeHtml(row.contract_start || "-")} s/d ${escapeHtml(row.contract_end || "-")}</td>
+      <td class="px-3 py-3"><div class="font-bold text-slate-700">${escapeHtml(formatDaysLeft(row.days_left))}</div><div class="mt-1">${row.is_permanent ? badge("Tanpa batas", "slate") : contractBadge(row)}</div></td>
+      <td class="px-3 py-3 text-center"><div class="font-black text-indigo-700">${escapeHtml(String(scorecardScore(row.latest_scorecard)))}</div><div class="text-[10px] text-slate-400">${row.latest_scorecard ? escapeHtml(row.latest_scorecard.period_label || row.latest_scorecard.period_year || "") : "belum ada"}</div></td>
+      <td class="px-3 py-3 text-right">${action}</td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="6" class="px-3 py-8">${emptyState("Belum ada data kontrak", "Lengkapi Master Karyawan dan Master Kontrak untuk melihat masa berlaku.")}</td></tr>`;
+
+  wrap.innerHTML = `
+    <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs">
+        <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Karyawan</p>
+        <p class="text-2xl font-black text-slate-800 mt-1">${summary.total}</p>
+        <p class="text-[11px] text-slate-400 mt-1">Aktif di pusat data</p>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs">
+        <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">PKWTT</p>
+        <p class="text-2xl font-black text-emerald-700 mt-1">${summary.permanent}</p>
+        <p class="text-[11px] text-slate-400 mt-1">Karyawan tetap</p>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs">
+        <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">PKWT / Kontrak</p>
+        <p class="text-2xl font-black text-blue-700 mt-1">${summary.contract}</p>
+        <p class="text-[11px] text-slate-400 mt-1">Perlu siklus perpanjangan</p>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs">
+        <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Jatuh Tempo ≤ ${RENEWAL_WINDOW_DAYS} hari</p>
+        <p class="text-2xl font-black ${summary.renewal_due ? "text-amber-700" : "text-emerald-700"} mt-1">${summary.renewal_due}</p>
+        <p class="text-[11px] text-slate-400 mt-1">Siap dinilai</p>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs">
+        <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Kadaluarsa</p>
+        <p class="text-2xl font-black ${summary.expired ? "text-rose-700" : "text-emerald-700"} mt-1">${summary.expired}</p>
+        <p class="text-[11px] text-slate-400 mt-1">Perlu tindakan segera</p>
+      </div>
+    </div>
+
+    ${queueNote}
+
+    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600">
+      <b>Satu sumber data:</b> Master Karyawan + Master Kontrak. Menu <b>Perpanjangan Kontrak</b> memakai data yang sama; penilaian tambahan hanya muncul saat kontrak mendekati berakhir.
+    </div>
+
+    <div class="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h3 class="font-bold text-slate-800 text-base">${state.canViewAll ? "Kontrak & Perpanjangan" : "Kontrak Saya"}</h3>
+          <p class="text-xs text-slate-400 mt-0.5">Identitas, jenis kontrak, masa berlaku, dan skor KPI terakhir dari sumber yang sama.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <a href="#penilaian-kontrak?tab=alur_perpanjangan" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">Buka Pipeline Perpanjangan</a>
+        </div>
+      </div>
+      <div class="mt-4 overflow-x-auto rounded-xl border border-slate-200">
+        <table class="w-full min-w-[900px] text-left text-xs">
+          <thead class="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th class="px-3 py-3">Karyawan</th><th class="px-3 py-3">Jenis Kontrak</th><th class="px-3 py-3">Masa Kontrak</th><th class="px-3 py-3">Sisa</th><th class="px-3 py-3 text-center">Skor Terakhir</th><th class="px-3 py-3 text-right">Tindakan</th></tr></thead>
+          <tbody class="divide-y divide-slate-100">${tableRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+
+  wrap.querySelectorAll("[data-open-renewal]").forEach(button => {
+    button.onclick = () => { window.location.hash = "#penilaian-kontrak?tab=alur_perpanjangan"; };
+  });
+}
+
 async function renderDashboard(wrap) {
+  rebuildPerforma();
   const summaries = state.scorecards.map(scorecard => summarizeScorecard(scorecard));
   const scored = summaries.filter(row => Number.isFinite(Number(row.final_score ?? row.provisional_score)));
   const average = scored.length
@@ -352,6 +565,8 @@ async function renderDashboard(wrap) {
   const latestMine = mine.sort((a, b) => String(b.period_label || "").localeCompare(String(a.period_label || "")))[0] || null;
 
   const lowest = [...scored].sort((a, b) => Number(a.final_score ?? a.provisional_score) - Number(b.final_score ?? b.provisional_score)).slice(0, 5);
+  const contractSummary = summarizePerformaContracts(state.performa);
+  const renewal = renewalQueue(state.performa).slice(0, 5);
 
   wrap.innerHTML = `
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -376,6 +591,29 @@ async function renderDashboard(wrap) {
         <p class="text-[11px] text-slate-400 mt-1">${openCoaching} coaching terbuka</p>
       </div>
     </div>
+
+    ${state.canViewAll ? `
+      <div class="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 class="font-bold text-slate-800 text-base">Kontrak & Perpanjangan</h3>
+            <p class="text-xs text-slate-400 mt-0.5">Sumber yang sama dengan menu Perpanjangan Kontrak: Master Karyawan + Master Kontrak.</p>
+          </div>
+          <a href="#penilaian-kontrak?tab=alur_perpanjangan" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">Buka Pipeline</a>
+        </div>
+        <div class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-3"><p class="text-[10px] font-black uppercase text-slate-400">PKWTT</p><p class="text-xl font-black text-emerald-700 mt-1">${contractSummary.permanent}</p></div>
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-3"><p class="text-[10px] font-black uppercase text-slate-400">PKWT / Kontrak</p><p class="text-xl font-black text-blue-700 mt-1">${contractSummary.contract}</p></div>
+          <div class="rounded-xl border border-amber-200 bg-amber-50 p-3"><p class="text-[10px] font-black uppercase text-amber-700">Jatuh Tempo ≤ ${RENEWAL_WINDOW_DAYS} hari</p><p class="text-xl font-black text-amber-800 mt-1">${contractSummary.renewal_due}</p></div>
+          <div class="rounded-xl border border-rose-200 bg-rose-50 p-3"><p class="text-[10px] font-black uppercase text-rose-700">Kadaluarsa</p><p class="text-xl font-black text-rose-800 mt-1">${contractSummary.expired}</p></div>
+        </div>
+        ${renewal.length ? `<div class="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+          <p class="text-[10px] font-black uppercase tracking-wide text-amber-800">Antrean perpanjangan terdekat</p>
+          <div class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+            ${renewal.map(row => `<div class="flex items-center justify-between gap-2 rounded-lg bg-white/80 border border-amber-100 px-3 py-2"><span class="text-xs font-bold text-slate-700">${escapeHtml(row.nama || "-")}</span><span class="text-[11px] font-bold text-amber-800">${escapeHtml(formatDaysLeft(row.days_left))}</span></div>`).join("")}
+          </div>
+        </div>` : `<p class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">Tidak ada kontrak yang masuk masa perpanjangan dalam ${RENEWAL_WINDOW_DAYS} hari ke depan.</p>`}
+      </div>` : ""}
 
     ${!state.canViewAll ? `
       <div class="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5">
@@ -589,11 +827,16 @@ async function renderScorecards(wrap) {
       holder.innerHTML = emptyState("Belum ada scorecard pada filter ini", "Buat scorecard baru dari template jabatan. Template yang belum dikonfirmasi tidak boleh dipakai.");
       return;
     }
-    holder.innerHTML = `<div class="overflow-x-auto rounded-xl border border-slate-200"><table class="w-full min-w-[900px] text-left text-xs"><thead class="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th class="px-3 py-3">Karyawan</th><th class="px-3 py-3">Jabatan / Cabang</th><th class="px-3 py-3">Template</th><th class="px-3 py-3 text-center">Periode</th><th class="px-3 py-3 text-center">Skor</th><th class="px-3 py-3 text-center">Status</th><th class="px-3 py-3 text-center">PENDING</th><th class="px-3 py-3 text-right">Aksi</th></tr></thead><tbody class="divide-y divide-slate-100">${rows.map(scorecard => {
+    holder.innerHTML = `<div class="overflow-x-auto rounded-xl border border-slate-200"><table class="w-full min-w-[1040px] text-left text-xs"><thead class="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th class="px-3 py-3">Karyawan</th><th class="px-3 py-3">Jabatan / Cabang</th><th class="px-3 py-3">Kontrak</th><th class="px-3 py-3">Template</th><th class="px-3 py-3 text-center">Periode</th><th class="px-3 py-3 text-center">Skor</th><th class="px-3 py-3 text-center">Status</th><th class="px-3 py-3 text-center">PENDING</th><th class="px-3 py-3 text-right">Aksi</th></tr></thead><tbody class="divide-y divide-slate-100">${rows.map(scorecard => {
       const summary = summarizeScorecard(scorecard);
+      const perf = performaForScorecard(scorecard);
+      const contractCell = perf
+        ? `${escapeHtml(perf.contract_type_label || "-")}<br><span class="text-slate-400">${perf.is_permanent ? "Tanpa batas" : escapeHtml(formatDaysLeft(perf.days_left))}</span>`
+        : "-";
       return `<tr class="hover:bg-slate-50/60">
         <td class="px-3 py-3"><b class="text-slate-800">${escapeHtml(scorecard.employee_name || "-")}</b><br><span class="text-slate-400">${escapeHtml(scorecard.employee_nik || scorecard.nik || "")}</span></td>
         <td class="px-3 py-3 text-slate-600">${escapeHtml(scorecard.position || "-")}<br><span class="text-slate-400">${escapeHtml(scorecard.branch || scorecard.cabang || "-")}</span></td>
+        <td class="px-3 py-3 text-slate-600">${contractCell}</td>
         <td class="px-3 py-3 text-slate-500">${escapeHtml(scorecard.template_name || scorecard.template_id || "-")}</td>
         <td class="px-3 py-3 text-center font-semibold text-slate-600">${escapeHtml(scorecard.period_label || scorecard.period_year || "-")}</td>
         <td class="px-3 py-3 text-center font-black ${summary.pending_count ? "text-amber-700" : "text-indigo-700"}">${summary.final_score ?? summary.provisional_score ?? "—"}</td>

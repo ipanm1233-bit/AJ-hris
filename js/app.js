@@ -16,7 +16,7 @@ import { auth } from "./firebase-config.js";
 
 // Ubah versi ini setiap ada perubahan struktur view agar browser tidak
 // mencampur HTML terbaru dengan modul JavaScript lama dari cache.
-const APP_ASSET_VERSION = "20261119-cuti-saldo-v39";
+const APP_ASSET_VERSION = "20261120-performa-v40";
 const viewContainer = document.getElementById("view-container");
 let currentUnmount = null;
 let currentRoute = null;
@@ -436,10 +436,11 @@ function routeViewName(route) {
  if (["konseling", "coaching", "counseling", "case-management", "hr-case", "hr-cases"].includes(value)) return "konseling-coaching";
  if (["kedisiplinan", "kedisiplinan-sp", "sp", "disiplin"].includes(value)) return "pemanggilan";
  if (["pp", "peraturan", "peraturan-perusahaan", "company-policy", "policy"].includes(value)) return "peraturan-perusahaan";
- // Modul Performance Management (KPI 2027) dipisah dari Penilaian Kontrak.
- // Alias lama "performance-review" tetap membuka modul baru pada tab historis.
- if (["performance-management", "performance-review", "performance", "kinerja", "penilaian-kinerja", "kpi-2027"].includes(value)) return "performance-management";
- if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi"].includes(value)) return "penilaian-kontrak";
+ // Modul Penilaian Performa menjadi satu pintu untuk seluruh karyawan.
+ // Dashboard Karyawan lama dialihkan menjadi tab di dalamnya.
+ if (["performance-management", "performance-review", "performance", "kinerja", "penilaian-kinerja", "kpi-2027", "penilaian-performa"].includes(value)) return "performance-management";
+ if (["dashboard-karyawan", "dashboard-pencapaian", "pencapaian-karyawan"].includes(value)) return "performance-management";
+ if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi", "perpanjangan-kontrak"].includes(value)) return "penilaian-kontrak";
  // Alias menu lama: #gimmick-sop dipecah menjadi SOP dan Gimmick.
  if (value === "gimmick-sop") return "sop";
  return value;
@@ -603,8 +604,9 @@ async function renderShellForUser(session) {
 }
 
 function highlightActive(route) {
+ const routeBase = String(route || "").split("?")[0];
  document.querySelectorAll(".sidebar-item").forEach(a => {
- a.classList.toggle("active", a.dataset.route === route);
+ a.classList.toggle("active", String(a.dataset.route || "").split("?")[0] === routeBase);
  });
 
  // Mobile bottom tab active indicator mapping
@@ -707,17 +709,23 @@ async function router(session) {
 	if (["pp", "peraturan", "peraturan-perusahaan", "company-policy", "policy"].includes(cleanPath)) {
 		mappedPath = "peraturan-perusahaan";
 	}
-	if (["performance-management", "performance-review", "performance", "kinerja", "penilaian-kinerja", "kpi-2027"].includes(cleanPath)) {
+	if (["performance-management", "performance-review", "performance", "kinerja", "penilaian-kinerja", "kpi-2027", "penilaian-performa"].includes(cleanPath)) {
 		if (cleanPath === "performance-review") params.set("tab", "legacy");
 		mappedPath = "performance-management";
 	}
-	if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi", "penilaian-kontrak"].includes(cleanPath)) {
+	if (["dashboard-karyawan", "dashboard-pencapaian", "pencapaian-karyawan"].includes(cleanPath)) {
+		params.set("tab", "employee");
+		mappedPath = "performance-management";
+	}
+	if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi", "penilaian-kontrak", "perpanjangan-kontrak"].includes(cleanPath)) {
 		if (["kontrak", "master-kontrak", "kontrak-karyawan"].includes(cleanPath)) {
 			params.set("tab", "kontrak");
 		} else if (["evaluasi-kontrak", "evaluasi"].includes(cleanPath)) {
 			params.set("tab", "evaluasi");
 		} else if (["kpi", "kpi360"].includes(cleanPath)) {
 			params.set("tab", "kpi360");
+		} else if (cleanPath === "perpanjangan-kontrak") {
+			params.set("tab", "alur_perpanjangan");
 		}
 		mappedPath = "penilaian-kontrak";
 	}

@@ -30,6 +30,7 @@ import {
   nextContractNumber,
   normalizeContractType
 } from "../contract-sync.mjs";
+import { buildPerformaIndex, RENEWAL_WINDOW_DAYS } from "../performa-data.mjs";
 import { buildKpiDistributionFields, buildModuleFormConfig, moduleFormId } from "../google-form-module.mjs";
 import {
   importModuleGoogleFormResponses, prepareModuleGoogleForm, shareLinkMarkup, wireCopyButtons
@@ -4948,30 +4949,17 @@ export async function mount(container, { session, params }) {
       if (ev.nik_karyawan) evalMap[ev.nik_karyawan] = ev;
     });
 
-    const pipelineData = activeEmp.map(emp => {
-      const empContracts = allKontrak.filter(k => (k.nama_karyawan || "").trim().toLowerCase() === (emp.nama_karyawan || "").trim().toLowerCase());
-      empContracts.sort((a, b) => new Date(b.tanggal_akhir || 0) - new Date(a.tanggal_akhir || 0));
-      const latestContract = empContracts[0] || null;
+    // Gunakan satu sumber data yang sama dengan menu Penilaian Performa.
+    const performaRows = buildPerformaIndex({
+      employees: activeEmp,
+      contracts: allKontrak,
+      today: new Date()
+    });
 
-      const tglAkhir = (latestContract && latestContract.tanggal_akhir) || emp.tgl_akhir_kontrak || null;
-      const tglMulai = (latestContract && latestContract.tanggal_mulai) || emp.tgl_mulai_kontrak || null;
-      const kontrakKe = (latestContract && latestContract.kontrak_ke) || emp.kontrak_ke || 1;
-
-      let daysLeft = null;
-      let urgency = "AMAN";
-      if (tglAkhir) {
-        const d = Math.ceil((new Date(tglAkhir) - new Date()) / (1000 * 3600 * 24));
-        daysLeft = isNaN(d) ? null : d;
-        if (daysLeft !== null) {
-          if (daysLeft < 0) urgency = "KADALUARSA";
-          else if (daysLeft <= 14) urgency = "KRITIS";
-          else if (daysLeft <= 30) urgency = "WASPADA";
-          else if (daysLeft <= 45) urgency = "PERSIAPAN";
-          else urgency = "AMAN";
-        }
-      }
-
-      const ev = evalMap[emp.nama_karyawan] || evalMap[emp.nik_karyawan] || null;
+    const pipelineData = performaRows.map(row => {
+      const nama = row.nama_karyawan || row.nama || "";
+      const nik = row.nik_karyawan || row.employee_nik || row.nik || "";
+      const ev = evalMap[nama] || evalMap[nik] || null;
       let stage = "REVIEW_HRD";
       if (ev && ev.tahap) {
         stage = ev.tahap;
@@ -4980,21 +4968,21 @@ export async function mount(container, { session, params }) {
       }
 
       return {
-        ...emp,
-        contracts: empContracts,
-        latestContract,
-        tglMulai,
-        tglAkhir,
-        kontrakKe,
-        daysLeft,
-        urgency,
+        ...row,
+        nama_karyawan: nama,
+        nik_karyawan: nik,
+        latestContract: row.kontrak,
+        tglMulai: row.contract_start || null,
+        tglAkhir: row.contract_end || null,
+        kontrakKe: row.contract_ke,
+        daysLeft: row.days_left,
         stage,
         evalRecord: ev
       };
     });
 
-    // We filter for employees that are contract based or expiring or have active evaluation.
-    // Karyawan tetap (PKWTT) hanya muncul jika sedang mengikuti program PIP aktif.
+    // Penilaian perpanjangan hanya dibuka untuk kontrak yang mendekati
+    // berakhir, evaluasi yang masih berjalan, atau karyawan tetap di PIP.
     const activePipKeys = new Set(
       (allPip || [])
         .filter(program => String(program.status || "").toUpperCase() === "AKTIF")
@@ -5005,15 +4993,11 @@ export async function mount(container, { session, params }) {
         .filter(Boolean)
     );
     let filteredList = pipelineData.filter(item => {
-      const statusKaryawan = String(item.status_karyawan || "").toUpperCase();
-      const isPermanent = statusKaryawan.includes("PKWTT") || statusKaryawan.includes("TETAP") || statusKaryawan.includes("PERMANEN");
       const inActivePip = activePipKeys.has(String(item.nik_karyawan || item.nik || "").trim().toLowerCase())
         || activePipKeys.has(String(item.nama_karyawan || "").trim().toLowerCase());
-      if (isPermanent) return inActivePip;
-      const isPkwt = !isPermanent;
-      const hasExpiringContract = item.daysLeft !== null && item.daysLeft <= 60;
+      if (item.is_permanent) return inActivePip;
       const hasOngoingEval = item.evalRecord && item.evalRecord.status_final !== "SELESAI";
-      return isPkwt || hasExpiringContract || hasOngoingEval;
+      return item.renewal_due || hasOngoingEval || inActivePip;
     });
 
     let currentUrgencyFilter = "ALL";
@@ -5078,7 +5062,8 @@ export async function mount(container, { session, params }) {
     function renderPipeline() {
       const countKritis = filteredList.filter(x => x.urgency === "KRITIS" || x.urgency === "KADALUARSA").length;
       const countWaspada = filteredList.filter(x => x.urgency === "WASPADA").length;
-      const countPersiapan = filteredList.filter(x => x.urgency === "PERSIAPAN").length;
+      const countPersiapan = filteredList.filter(x => x.urgency === "PERSIAPAN"
+        || (x.urgency === "AMAN" && x.daysLeft !== null && x.daysLeft <= RENEWAL_WINDOW_DAYS)).length;
       const countSelesai = filteredList.filter(x => (x.evalRecord && x.evalRecord.status_final === "SELESAI") || x.stage === "SELESAI").length;
       const displayList = getPipelineResults();
 
@@ -5089,10 +5074,10 @@ export async function mount(container, { session, params }) {
             <div class="space-y-1.5">
               <div class="flex items-center gap-2">
                 <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950">Disiplin Waktu & Koordinasi</span>
-                <span class="text-xs text-slate-300 font-medium">SLA: Evaluasi dimulai H-45 sebelum jatuh tempo</span>
+                <span class="text-xs text-slate-300 font-medium">SLA: Evaluasi dimulai H-${RENEWAL_WINDOW_DAYS} sebelum jatuh tempo</span>
               </div>
               <h2 class="text-lg font-bold">Alur & Pipeline Koordinasi Perpanjangan Kontrak</h2>
-              <p class="text-xs text-slate-300">Pantau proses perpanjangan berjenjang dari Review HRD, Koordinasi GM, hingga Persetujuan Direktur agar tidak terjadi keterlambatan.</p>
+              <p class="text-xs text-slate-300">Hanya kontrak yang berakhir dalam ${RENEWAL_WINDOW_DAYS} hari (atau evaluasi/PIP yang masih berjalan) yang masuk antrean. Pantau Review HRD, Koordinasi GM, hingga Persetujuan Direktur.</p>
             </div>
             <div class="flex items-center gap-2 shrink-0">
               <button id="btn-toggle-kanban" class="px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${currentViewMode === 'kanban' ? 'bg-white text-slate-900 shadow' : 'bg-white/10 text-white hover:bg-white/20'}">
@@ -5124,7 +5109,7 @@ export async function mount(container, { session, params }) {
             </div>
             <div class="p-4 rounded-2xl bg-blue-50 border border-blue-200/80 flex items-center justify-between cursor-pointer hover:bg-blue-100/70 transition" id="stat-persiapan">
               <div>
-                <p class="text-[11px] font-bold text-blue-700 uppercase tracking-wide">Persiapan (31-45 Hari)</p>
+                <p class="text-[11px] font-bold text-blue-700 uppercase tracking-wide">Persiapan (31-${RENEWAL_WINDOW_DAYS} Hari)</p>
                 <h3 class="text-2xl font-black text-blue-900 mt-0.5">${countPersiapan} <span class="text-xs font-normal text-blue-600">Staf</span></h3>
                 <p class="text-[10px] text-blue-600 mt-1 font-semibold">Mulai Review Kinerja HRD</p>
               </div>
