@@ -16,7 +16,7 @@ import { auth } from "./firebase-config.js";
 
 // Ubah versi ini setiap ada perubahan struktur view agar browser tidak
 // mencampur HTML terbaru dengan modul JavaScript lama dari cache.
-const APP_ASSET_VERSION = "20261120-performa-v40";
+const APP_ASSET_VERSION = "20261121-kunjungan-v41";
 const viewContainer = document.getElementById("view-container");
 let currentUnmount = null;
 let currentRoute = null;
@@ -441,6 +441,8 @@ function routeViewName(route) {
  if (["performance-management", "performance-review", "performance", "kinerja", "penilaian-kinerja", "kpi-2027", "penilaian-performa"].includes(value)) return "performance-management";
  if (["dashboard-karyawan", "dashboard-pencapaian", "pencapaian-karyawan"].includes(value)) return "performance-management";
  if (["penilaian", "kontrak", "master-kontrak", "kontrak-karyawan", "evaluasi-kontrak", "kpi", "kpi360", "evaluasi", "perpanjangan-kontrak"].includes(value)) return "penilaian-kontrak";
+ // Kunjungan lapangan: satu view untuk pengajuan, approval, laporan, & rekap.
+ if (["kunjungan", "kunjungan-lapangan", "field-visit", "joint-visit", "audit-lapangan"].includes(value)) return "kunjungan-lapangan";
  // Alias menu lama: #gimmick-sop dipecah menjadi SOP dan Gimmick.
  if (value === "gimmick-sop") return "sop";
  return value;
@@ -728,6 +730,9 @@ async function router(session) {
 			params.set("tab", "alur_perpanjangan");
 		}
 		mappedPath = "penilaian-kontrak";
+	}
+	if (["kunjungan", "kunjungan-lapangan", "field-visit", "joint-visit", "audit-lapangan"].includes(cleanPath)) {
+		mappedPath = "kunjungan-lapangan";
 	}
 
 	if (cleanPath === currentRoute && cleanPath !== "pengajuan") {

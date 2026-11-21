@@ -40,6 +40,7 @@ export const DEFAULT_EMPLOYEE_MENU_IDS = [
  "training",
  "performance-management",
  "penilaian-kontrak",
+ "kunjungan-lapangan",
  "sop-proyek"
 ];
 
@@ -155,6 +156,14 @@ export const MENU_CONFIG = [
  { id: "sop", label: "SOP", icon: "book", kategori: "Operasional", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"] },
  { id: "sop-proyek", label: "Audit SOP", icon: "book", kategori: "Operasional", roles: ["ALL"] },
  { id: "gimmick", label: "Gimmick", icon: "gift", kategori: "Operasional", roles: ["HRD", "SUPERADMIN", "MANAGER", "SPV"] },
+ { id: "kunjungan-lapangan", label: "Kunjungan Lapangan", icon: "truck", route: "kunjungan-lapangan", kategori: "Operasional", roles: ["SPV", "KOORDINATOR", "SALES", "HRD", "HRGA", "SUPERADMIN", "MANAGER", "BRANCH MANAGER", "GM", "DIREKTUR", "DIRECTOR", "ATASAN"], subMenus: [
+  { id: "ringkasan", label: "Ringkasan" },
+  { id: "pengajuan", label: "Pengajuan" },
+  { id: "persetujuan", label: "Persetujuan" },
+  { id: "laporan", label: "Laporan" },
+  { id: "monitoring", label: "Monitoring & Rekap" },
+  { id: "master_toko", label: "Master Toko" }
+ ] },
 
  // KATEGORI: SALES
  { id: "sales-order", label: "Sales Order", icon: "wallet", kategori: "Sales", roles: ["ALL"] },
@@ -2025,6 +2034,59 @@ export const PERMISSION_CATALOG = [
    { key: "gimmick.receipt.print", label: "Cetak Tanda Terima Gimmick 2 Ply", type: "print" },
    { key: "gimmick.efektivitas.manage", label: "Input & Analisa Efektivitas Gimmick", type: "edit" },
    { key: "gimmick.export", label: "Export Data & Laporan Gimmick", type: "export" }
+  ]
+ },
+ {
+  id: "kunjungan-lapangan",
+  label: "Kunjungan Lapangan",
+  category: "Operasional",
+  icon: "truck",
+  subMenus: [
+   {
+    id: "pengajuan",
+    label: "Pengajuan Kunjungan",
+    actions: [
+     { key: "kunjungan.pengajuan.view", label: "Lihat Pengajuan Kunjungan Saya", type: "view" },
+     { key: "kunjungan.pengajuan.create", label: "Buat Pengajuan Joint Visit / Audit Lapangan", type: "create" },
+     { key: "kunjungan.pengajuan.cancel", label: "Batalkan Pengajuan yang Belum Disetujui", type: "edit" }
+    ]
+   },
+   {
+    id: "persetujuan",
+    label: "Persetujuan Kunjungan",
+    actions: [
+     { key: "kunjungan.approval.view", label: "Lihat Pengajuan Menunggu Persetujuan", type: "view" },
+     { key: "kunjungan.approval.atasan", label: "Setujui / Tolak sebagai Atasan Langsung", type: "approve" },
+     { key: "kunjungan.approval.hrd", label: "Validasi Final sebagai HRD / HRGA", type: "approve" }
+    ]
+   },
+   {
+    id: "laporan",
+    label: "Laporan Kunjungan",
+    actions: [
+     { key: "kunjungan.laporan.view", label: "Lihat Status & Riwayat Laporan", type: "view" },
+     { key: "kunjungan.laporan.create", label: "Isi & Kirim Laporan Hasil Kunjungan", type: "create" }
+    ]
+   },
+   {
+    id: "monitoring",
+    label: "Monitoring & Rekap",
+    actions: [
+     { key: "kunjungan.monitoring.view", label: "Lihat Dashboard, SLA & Rekap Kunjungan", type: "view" },
+     { key: "kunjungan.monitoring.export", label: "Export Rekap Kunjungan (CSV)", type: "export" }
+    ]
+   },
+   {
+    id: "master_toko",
+    label: "Master Toko",
+    actions: [
+     { key: "kunjungan.toko.view", label: "Lihat Master Toko", type: "view" },
+     { key: "kunjungan.toko.create", label: "Tambah Toko Baru", type: "create" },
+     { key: "kunjungan.toko.edit", label: "Edit Data Toko", type: "edit" },
+     { key: "kunjungan.toko.delete", label: "Hapus Data Toko", type: "delete", dangerous: true },
+     { key: "kunjungan.toko.import", label: "Import Master Toko dari CSV", type: "sync" }
+    ]
+   }
   ]
  },
 

@@ -588,6 +588,41 @@ service cloud.firestore {
       allow write: if isHrd() || role() in ['MANAGER', 'BRANCH MANAGER'];
     }
 
+    // -----------------------------------------------------------------
+    // KUNJUNGAN LAPANGAN (Joint Visit & Audit Lapangan)
+    // Penulisan reminder terjadwal dilakukan lewat Admin SDK di api/,
+    // sehingga log pengingat hanya boleh dibaca HRD dari klien.
+    // -----------------------------------------------------------------
+    match /master_stores/{id} {
+      allow read: if signedIn();
+      allow create, update, delete: if isHrd() || isCentralManagement();
+    }
+    match /field_visit_requests/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update: if signedIn() && (isHrd() || owns(resource.data) || isManagement());
+      allow delete: if isHrd();
+    }
+    match /field_visit_reports/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update, delete: if isHrd() || isManagement();
+    }
+    match /field_visit_report_items/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update, delete: if isHrd() || isManagement();
+    }
+    match /field_visit_followups/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update, delete: if isHrd() || isManagement();
+    }
+    match /field_visit_reminder_logs/{id} {
+      allow read: if signedIn() && isHrd();
+      allow write: if false;
+    }
+
     match /audit_logs/{id} { allow read, write: if false; }
     match /cron_locks/{id} { allow read, write: if false; }
     match /login_tokens/{id} { allow read, write: if false; }

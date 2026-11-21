@@ -204,5 +204,11 @@ export const COL = {
   HR_CASES: "hr_cases",
   HR_CASE_ACTION_PLANS: "hr_case_action_plans",
   HR_CASE_FOLLOWUPS: "hr_case_followups",
-  HR_CASE_AUDIT_LOGS: "hr_case_audit_logs"
+  HR_CASE_AUDIT_LOGS: "hr_case_audit_logs",
+  MASTER_STORES: "master_stores",
+  FIELD_VISIT_REQUESTS: "field_visit_requests",
+  FIELD_VISIT_REPORTS: "field_visit_reports",
+  FIELD_VISIT_REPORT_ITEMS: "field_visit_report_items",
+  FIELD_VISIT_FOLLOWUPS: "field_visit_followups",
+  FIELD_VISIT_REMINDER_LOGS: "field_visit_reminder_logs"
 };
