@@ -155,8 +155,10 @@ function requestsForMe() {
   const nik = upper(state.session?.nik);
   const nama = upper(state.session?.nama);
   const username = upper(state.session?.username);
+  const scope = branchScope();
   return state.requests.filter(row => {
     if (isViewAll()) return true;
+    if (isManager() && scope && branchMatches(scope, row.branch)) return true;
     return (
       (nik && upper(row.nik_pemohon) === nik) ||
       (nama && upper(row.nama_pemohon) === nama) ||
@@ -165,6 +167,14 @@ function requestsForMe() {
       (nama && upper(row.atasan_nama) === nama)
     );
   });
+}
+function visibleReports() {
+  const ids = new Set(requestsForMe().map(row => String(row.id)));
+  return state.reports.filter(row => ids.has(String(row.visit_request_id)));
+}
+function visibleFollowups() {
+  const ids = new Set(requestsForMe().map(row => String(row.id)));
+  return state.followups.filter(row => ids.has(String(row.visit_request_id)));
 }
 function canApproveStage(request) {
   if (!request) return false;
@@ -234,10 +244,7 @@ export async function mount(container, { session, params } = {}) {
   if (summary) summary.innerHTML = skeletonRows(2);
   if (panel) panel.innerHTML = skeletonRows(6);
 
-  container.addEventListener("click", handleClick);
-  container.addEventListener("submit", handleSubmit);
-  container.addEventListener("change", handleChange);
-
+  bindDelegatedEvents();
   try {
     await loadData();
   } catch (error) {
@@ -298,6 +305,10 @@ async function loadRequests() {
       // Atasan dengan data lama tanpa nik: ambil semua agar bisa menyetujui.
       add(await fsGetAll(COL.FIELD_VISIT_REQUESTS).catch(() => []));
     }
+    if (branchScope()) {
+      const scoped = await fsGetAll(COL.FIELD_VISIT_REQUESTS).catch(() => []);
+      add(scoped.filter(canSeeRequest));
+    }
   } catch (error) {
     console.warn("loadRequests:", error?.code || error?.message || error);
   }
@@ -345,7 +356,7 @@ function renderSummary() {
   const holder = state.container?.querySelector("#kl-summary");
   if (!holder) return;
   const rows = requestsForMe();
-  const summary = summarizeFieldVisits(rows, state.reports, state.followups);
+  const summary = summarizeFieldVisits(rows, visibleReports(), visibleFollowups());
   const cards = [
     { label: "Total Kunjungan", value: summary.total, sub: `${summary.this_month} bulan ini`, tone: "maroon" },
     { label: "Menunggu Atasan", value: summary.pending_atasan, sub: "Tahap 1", tone: "amber" },
@@ -1320,7 +1331,7 @@ function filteredRequests() {
 
 function renderMonitoringPanel() {
   const rows = filteredRequests();
-  const summary = summarizeFieldVisits(rows, state.reports, state.followups);
+  const summary = summarizeFieldVisits(rows, visibleReports(), visibleFollowups());
   const branches = [...new Set(state.requests.map(row => upper(row.branch)).filter(Boolean))].sort();
   return `
     <div class="space-y-4">
@@ -1632,9 +1643,19 @@ async function importStoreCsv(file) {
 /* ---------------------------------------------------------------------
  * EVENT HANDLERS
  * ------------------------------------------------------------------- */
+let delegatedBound = false;
+function bindDelegatedEvents() {
+  if (delegatedBound) return;
+  delegatedBound = true;
+  document.addEventListener("click", handleClick);
+  document.addEventListener("submit", handleSubmit);
+  document.addEventListener("change", handleChange);
+  document.addEventListener("input", handleInput);
+}
+
 function handleClick(event) {
-  const target = event.target.closest("[data-action]");
-  if (!target || !state.container?.contains(target)) return;
+  const target = event.target.closest?.("[data-action]");
+  if (!target) return;
   const action = target.dataset.action;
   const id = target.dataset.id;
 
@@ -1741,6 +1762,29 @@ function filterOptionList(kind, value) {
     const haystack = upper(item.dataset.search || "");
     item.classList.toggle("hidden", Boolean(keyword) && !haystack.includes(keyword));
   });
+}
+
+let searchTimer = null;
+function handleInput(event) {
+  const filter = event.target?.dataset?.filter;
+  if (!filter) return;
+  if (filter === "sales" || filter === "stores") {
+    filterOptionList(filter, event.target.value);
+    return;
+  }
+  if (filter === "monitor-search" || filter === "store-search") {
+    const value = event.target.value;
+    if (searchTimer) window.clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(() => {
+      if (filter === "monitor-search") {
+        state.filters.search = value;
+        preserveMonitorFocus(() => render());
+      } else if (filter === "store-search") {
+        state.storeSearch = value;
+        render();
+      }
+    }, 250);
+  }
 }
 
 function preserveMonitorFocus(callback) {

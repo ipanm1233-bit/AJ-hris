@@ -8,7 +8,11 @@ test("production schedules leave digests and daily scheduled information email d
     { path: "/api/cron-check-kontrak", schedule: "10 17 * * *" },
     { path: "/api/cron-rekap-cuti", schedule: "45 0 * * *" },
     { path: "/api/cron-rekap-cuti", schedule: "0 10 * * *" },
-    { path: "/api/send-email", schedule: "15 0 * * *" }
+    { path: "/api/send-email", schedule: "15 0 * * *" },
+    // Pengingat laporan kunjungan lapangan (WIB): 08:00, 10:05, 16:00, Senin–Sabtu.
+    { path: "/api/cron-kunjungan", schedule: "0 1 * * 1-6" },
+    { path: "/api/cron-kunjungan", schedule: "5 3 * * 1-6" },
+    { path: "/api/cron-kunjungan", schedule: "0 9 * * 1-6" }
   ]);
 
   const handler = readFileSync(new URL("../api/cron-rekap-cuti.js", import.meta.url), "utf8");

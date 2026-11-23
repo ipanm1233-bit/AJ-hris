@@ -9,6 +9,9 @@ service cloud.firestore {
     function role() { return signedIn() ? request.auth.token.get('role', 'STAFF') : 'ANONYMOUS'; }
     function isHrd() { return role() in ['HRD', 'SUPERADMIN']; }
     function isManagement() { return role() in ['HRD', 'SUPERADMIN', 'GM', 'DIREKTUR', 'MANAGER', 'BRANCH MANAGER', 'SPV', 'ATASAN']; }
+    // Pengelola kunjungan lapangan: termasuk HRGA & Koordinator Sales yang
+    // mungkin tidak masuk daftar isManagement() umum.
+    function isFieldVisitManager() { return role() in ['HRD', 'HRGA', 'SUPERADMIN', 'GM', 'DIREKTUR', 'MANAGER', 'BRANCH MANAGER', 'SPV', 'KOORDINATOR', 'ATASAN']; }
     function isFinance() { return role() in ['HRD', 'SUPERADMIN', 'GM', 'FINANCE']; }
     // Role pusat yang boleh MELIHAT lintas cabang. Dipakai untuk memberi akses
     // baca ke GM/DIREKTUR (read-only) pada data yang pengelolaannya di HRD.
@@ -595,28 +598,28 @@ service cloud.firestore {
     // -----------------------------------------------------------------
     match /master_stores/{id} {
       allow read: if signedIn();
-      allow create, update, delete: if isHrd() || isCentralManagement();
+      allow create, update, delete: if isHrd() || isCentralManagement() || role() == 'HRGA';
     }
     match /field_visit_requests/{id} {
       allow read: if signedIn();
       allow create: if signedIn();
-      allow update: if signedIn() && (isHrd() || owns(resource.data) || isManagement());
+      allow update: if signedIn() && (isHrd() || owns(resource.data) || isFieldVisitManager());
       allow delete: if isHrd();
     }
     match /field_visit_reports/{id} {
       allow read: if signedIn();
       allow create: if signedIn();
-      allow update, delete: if isHrd() || isManagement();
+      allow update, delete: if isHrd() || isFieldVisitManager();
     }
     match /field_visit_report_items/{id} {
       allow read: if signedIn();
       allow create: if signedIn();
-      allow update, delete: if isHrd() || isManagement();
+      allow update, delete: if isHrd() || isFieldVisitManager();
     }
     match /field_visit_followups/{id} {
       allow read: if signedIn();
       allow create: if signedIn();
-      allow update, delete: if isHrd() || isManagement();
+      allow update, delete: if isHrd() || isFieldVisitManager();
     }
     match /field_visit_reminder_logs/{id} {
       allow read: if signedIn() && isHrd();

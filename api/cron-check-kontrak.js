@@ -25,6 +25,7 @@
 const { getFirebaseAdmin } = require('../lib/firebase-admin.js');
 const nodemailer = require('nodemailer');
 const { requireCronSecret, enforceRateLimit, writeAuditLog } = require('../lib/security.js');
+const kunjunganCronHandler = require('../handlers/cron-kunjungan.js');
 
 const DEFAULT_CONFIG = {
   enabled: true,
@@ -385,6 +386,8 @@ async function pushTokens(admin, tokens, title, body, link) {
 }
 
 module.exports = async function handler(req, res) {
+  // Bundled dengan cron kontrak agar tetap 1 serverless function (batas Vercel Hobby).
+  if (String(req.query?.job || '') === 'kunjungan') return kunjunganCronHandler(req, res);
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Metode tidak diizinkan.' });
   if (!enforceRateLimit(req, res, { namespace: 'cron-contract', limit: 5, windowMs: 60_000 })) return;
   if (!requireCronSecret(req, res)) return;

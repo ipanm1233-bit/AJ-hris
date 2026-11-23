@@ -39,6 +39,14 @@
       "destination": "/api/account?action=change-password"
     },
     {
+      "source": "/api/field-visit",
+      "destination": "/api/send-email?action=field-visit"
+    },
+    {
+      "source": "/api/cron-kunjungan",
+      "destination": "/api/cron-check-kontrak?job=kunjungan"
+    },
+    {
       "source": "/api/:path*",
       "destination": "/api/:path*"
     },

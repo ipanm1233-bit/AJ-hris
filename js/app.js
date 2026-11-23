@@ -668,7 +668,7 @@ function highlightActive(route) {
  // Toggle mobile header back button
  const backBtn = document.getElementById("mobile-back-btn");
  if (backBtn) {
- if (["dashboard", "absensi", "pengajuan", "riwayat", "penilaian-kontrak", "performance-management", "profile"].includes(route)) {
+ if (["dashboard", "absensi", "pengajuan", "riwayat", "penilaian-kontrak", "performance-management", "kunjungan-lapangan", "profile"].includes(route)) {
  backBtn.classList.add("hidden");
  } else {
  backBtn.classList.remove("hidden");

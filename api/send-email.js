@@ -2,6 +2,7 @@ const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const { getFirebaseAdmin } = require('../lib/firebase-admin.js');
 const { requireFirebaseAuth, requireCronSecret, enforceRateLimit, writeAuditLog, assertAllowedKeys } = require('../lib/security.js');
+const fieldVisitHandler = require('../handlers/field-visit.js');
 
 let transporter = null;
 function getTransporter() {
@@ -171,6 +172,8 @@ async function handleScheduledInformationEmail(req, res) {
 }
 
 module.exports = async function handler(req, res) {
+  // Bundled agar jumlah serverless function tetap dalam batas Vercel Hobby.
+  if (String(req.query?.action || '') === 'field-visit') return fieldVisitHandler(req, res);
   if (req.method === 'GET') return handleScheduledInformationEmail(req, res);
   if (req.method !== 'POST') return res.status(405).send('Metode tidak diizinkan');
 
