@@ -5,6 +5,8 @@ import {
   assessKpiDecisionReadiness,
   evaluateKpiGrade,
   getLatestKpiSummary,
+  kpiDetailRows,
+  KPI_RELATION_LABELS,
   matchesKpiEmployee,
   validateGradeRulesMap
 } from "../js/kpi-scoring.mjs";
@@ -55,6 +57,47 @@ test("normalizes period labels and aggregates indicator scores across evaluators
   assert.equal(result.length, 1);
   assert.equal(result[0].period, "Q2 2026");
   assert.equal(result[0].indicatorScores[0].nilai_diberikan, 86.67);
+});
+
+test("shows per-indicator scores for every rater and relation group", () => {
+  const rows = [
+    {
+      nik_dinilai: "1", periode: "Q2 2026", total_skor: 90, nama_penilai: "Boss", tipe_relasi: "Atasan Langsung",
+      detail_json: [
+        { aspek: "Target", indikator: "Omzet", bobot: 60, nilai_diberikan: 95 },
+        { aspek: "Perilaku", indikator: "Disiplin", bobot: 40, nilai_diberikan: 82.5 }
+      ]
+    },
+    {
+      nik_dinilai: "1", periode: "Q2 2026", total_skor: 70, nama_penilai: "Rekan A", tipe_relasi: "Rekan Sejawat (Peer)",
+      detail_json: [
+        { aspek: "Target", indikator: "Omzet", bobot: 60, nilai_diberikan: 60 },
+        { aspek: "Perilaku", indikator: "Disiplin", bobot: 40, nilai_diberikan: 85 }
+      ]
+    }
+  ];
+  const summary = getLatestKpiSummary(rows, { nik: "1" });
+  assert.equal(summary.raterDetails.length, 2);
+  assert.equal(summary.raterDetails[0].relation, "ATASAN");
+  assert.equal(summary.raterDetails[0].relationLabel, KPI_RELATION_LABELS.ATASAN);
+  assert.equal(summary.raterDetails[0].indicators.length, 2);
+  assert.equal(summary.raterDetails[0].indicators[0].nilai_diberikan, 95);
+  assert.equal(summary.raterDetails[1].relation, "PEER");
+  assert.equal(summary.relationIndicatorScores.ATASAN.find(row => row.indikator === "Omzet").nilai_diberikan, 95);
+  assert.equal(summary.relationIndicatorScores.PEER.find(row => row.indikator === "Disiplin").nilai_diberikan, 85);
+  // (95 * 50 + 60 * 25) / 75 = 83.33
+  assert.equal(summary.indicatorScores.find(row => row.indikator === "Omzet").nilai_diberikan, 83.33);
+});
+
+test("kpiDetailRows accepts legacy soal_json and ignores empty scores", () => {
+  const rows = kpiDetailRows({
+    soal_json: [
+      { aspek: "Kompetensi", indikator: "Komunikasi", bobot: 50, nilai_diberikan: 77 },
+      { aspek: "Kompetensi", indikator: "Kerja sama", bobot: 50 }
+    ]
+  });
+  assert.equal(rows[0].nilai_diberikan, 77);
+  assert.equal(rows[1].nilai_diberikan, null);
 });
 
 test("decimal score uses the nearest lower grade instead of first recommendation", () => {

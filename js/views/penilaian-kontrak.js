@@ -4,7 +4,7 @@ import { renderCrudModule, badge, emptyState, skeletonRows, avatar, icon, openPe
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames, hasPermission, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
 import { uploadFileToDrive } from "../gas-integration.js";
-import { aggregateKpiByPeriod, DEFAULT_KPI_GRADE_RULES, evaluateKpiGrade, getLatestKpiSummary, validateGradeRulesMap, assessKpiDecisionReadiness } from "../kpi-scoring.mjs";
+import { aggregateKpiByPeriod, DEFAULT_KPI_GRADE_RULES, evaluateKpiGrade, getLatestKpiSummary, validateGradeRulesMap, assessKpiDecisionReadiness, kpiDetailRows, KPI_RELATION_LABELS } from "../kpi-scoring.mjs";
 import { buildPerformanceMonitorRows } from "../performance-monitor.mjs";
 import { KPI_ROLE_STANDARDS, mapEmployeesToKpiStandards, resolveKpiStandard, standardToTemplatePayload, validateKpiStandards } from "../kpi-role-standards.mjs";
 import { runConfirmedAction } from "../confirmed-action.mjs";
@@ -45,6 +45,152 @@ function isPermanentContract(contract) {
  // Data lama kadang hanya menyimpan status "PKWTT" di kolom status kontrak.
  const status = String(contract.status_kolom_kontrak || "").toUpperCase();
  return status === "PKWTT";
+}
+
+/**
+ * Label & warna badge untuk jenis penilai pada rincian distribusi penilaian.
+ */
+const KPI_RELATION_LABEL_FALLBACK = {
+  ATASAN: "Atasan Langsung",
+  PEER: "Rekan Kerja",
+  BAWAHAN: "Bawahan",
+  SELF: "Penilaian Mandiri",
+  MULTI: "360 Multi-Rater",
+  LAINNYA: "Lainnya"
+};
+
+function kpiRelationLabel(relation) {
+  const key = String(relation || "").toUpperCase();
+  return KPI_RELATION_LABELS?.[key] || KPI_RELATION_LABEL_FALLBACK[key] || String(relation || "Lainnya");
+}
+
+function kpiRelationBadgeClass(relation) {
+  const key = String(relation || "").toUpperCase();
+  if (key === "ATASAN") return "bg-blue-50 text-blue-700 border-blue-200";
+  if (key === "PEER") return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  if (key === "BAWAHAN") return "bg-violet-50 text-violet-700 border-violet-200";
+  if (key === "SELF") return "bg-slate-100 text-slate-600 border-slate-200";
+  return "bg-amber-50 text-amber-700 border-amber-200";
+}
+
+/** Tabel butir indikator beserta nilai, bobot, dan kontribusinya. */
+function kpiIndicatorTableHtml(rows) {
+  const list = (Array.isArray(rows) ? rows : []).filter(row => row && row.indikator);
+  if (!list.length) {
+    return `<p class="py-2 text-xs italic text-slate-400">Rincian nilai indikator belum tersedia untuk penilai ini.</p>`;
+  }
+  return `<div class="overflow-x-auto rounded-xl border border-slate-200">
+    <table class="min-w-full text-left text-xs">
+      <thead class="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+        <tr>
+          <th class="px-3 py-2 font-bold">Aspek</th>
+          <th class="px-3 py-2 font-bold">Indikator</th>
+          <th class="px-3 py-2 text-center font-bold">Bobot</th>
+          <th class="px-3 py-2 text-center font-bold">Nilai</th>
+          <th class="px-3 py-2 text-center font-bold">Kontribusi</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        ${list.map(row => {
+          const nilai = Number(row.nilai_diberikan);
+          const bobot = Number(row.bobot) || 0;
+          const valid = Number.isFinite(nilai);
+          const kontribusi = valid && bobot ? nilai * (bobot / 100) : null;
+          const tone = !valid ? "text-slate-400"
+            : nilai >= 85 ? "text-emerald-700"
+            : nilai >= 70 ? "text-blue-700"
+            : nilai >= 55 ? "text-amber-700"
+            : "text-rose-700";
+          return `<tr class="align-top">
+            <td class="px-3 py-2 text-slate-500">${escapeHtml(row.aspek || "-")}</td>
+            <td class="px-3 py-2 font-semibold text-slate-700">${escapeHtml(row.indikator)}</td>
+            <td class="px-3 py-2 text-center text-slate-500">${bobot ? `${bobot}%` : "-"}</td>
+            <td class="px-3 py-2 text-center font-black ${tone}">${valid ? nilai.toFixed(2) : "-"}</td>
+            <td class="px-3 py-2 text-center text-slate-500">${kontribusi === null ? "-" : kontribusi.toFixed(2)}</td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+/**
+ * Popup rincian nilai per indikator. Dipakai pada monitoring distribusi HRD,
+ * rekap hasil penilaian, dan daftar penilai pada alur perpanjangan kontrak.
+ */
+export function openKpiIndicatorDetailModal({ title = "Rincian Nilai Indikator", subtitle = "", rows = [], raterDetails = [], score = null, relationScores = null } = {}) {
+  const raters = (Array.isArray(raterDetails) ? raterDetails : []).filter(Boolean);
+  const aggregateRows = (Array.isArray(rows) ? rows : []).filter(Boolean);
+  const relationEntries = relationScores && typeof relationScores === "object"
+    ? Object.entries(relationScores).filter(([, value]) => value && Number.isFinite(Number(value.score)))
+    : [];
+  const numericScore = score === null || score === undefined || String(score).trim() === "" ? null : Number(score);
+
+  const summaryHtml = `
+    <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Nilai Akhir</span>
+          <p class="text-2xl font-black text-maroon-700">${numericScore !== null && Number.isFinite(numericScore) ? numericScore.toFixed(2) : "-"}<span class="text-xs font-semibold text-slate-400"> / 100</span></p>
+        </div>
+        <div class="text-right">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Jumlah Penilai</span>
+          <p class="text-lg font-black text-slate-800">${raters.length || relationEntries.reduce((sum, [, value]) => sum + (Number(value.count) || 0), 0) || 1}</p>
+        </div>
+      </div>
+      ${relationEntries.length ? `<div class="flex flex-wrap gap-1.5">
+        ${relationEntries.map(([relation, value]) => `<span class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold ${kpiRelationBadgeClass(relation)}">
+          ${escapeHtml(kpiRelationLabel(relation))}: ${Number(value.score).toFixed(2)}${value.count ? `<span class="font-medium opacity-70">(${value.count} penilai)</span>` : ""}
+        </span>`).join("")}
+      </div>` : ""}
+    </div>`;
+
+  const raterCards = raters.map(rater => {
+    const raterScore = Number(rater.score);
+    const indicators = Array.isArray(rater.indicators) ? rater.indicators : kpiDetailRows(rater);
+    return `<div class="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+      <div class="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <h4 class="text-sm font-bold text-slate-800">${escapeHtml(rater.name || "Tanpa Nama")}</h4>
+            <span class="rounded-full border px-2 py-0.5 text-[10px] font-bold ${kpiRelationBadgeClass(rater.relation)}">${escapeHtml(rater.relationLabel || kpiRelationLabel(rater.relation))}</span>
+          </div>
+          ${rater.catatan ? `<p class="mt-1 max-w-xl text-[11px] text-slate-500">${escapeHtml(rater.catatan)}</p>` : ""}
+        </div>
+        <div class="text-right">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Skor</span>
+          <span class="text-lg font-black ${Number.isFinite(raterScore) ? "text-emerald-700" : "text-slate-300"}">${Number.isFinite(raterScore) ? raterScore.toFixed(2) : "-"}</span>
+        </div>
+      </div>
+      ${kpiIndicatorTableHtml(indicators)}
+    </div>`;
+  }).join("");
+
+  const aggregateHtml = aggregateRows.length
+    ? `<div class="rounded-2xl border border-slate-200 bg-white p-4 space-y-2">
+        <h4 class="text-sm font-bold text-slate-800">Rekap Indikator (Tertimbang Antar Penilai)</h4>
+        <p class="text-[11px] text-slate-500">Nilai indikator digabung sesuai bobot jenis penilai (atasan, rekan kerja, bawahan, dan penilaian mandiri).</p>
+        ${kpiIndicatorTableHtml(aggregateRows)}
+      </div>`
+    : "";
+
+  openModal({
+    title,
+    size: "xl",
+    bodyHtml: `
+      <div class="space-y-3 text-left">
+        ${subtitle ? `<p class="text-xs text-slate-500">${escapeHtml(subtitle)}</p>` : ""}
+        ${summaryHtml}
+        ${raterCards}
+        ${aggregateHtml}
+        ${!raterCards && !aggregateHtml ? `<div class="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm italic text-slate-400">Belum ada rincian indikator yang dapat ditampilkan.</div>` : ""}
+      </div>
+    `,
+    footerHtml: `<button id="btn-close-kpi-detail" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">Tutup</button>`,
+    onMount: (m) => {
+      m.querySelector("#btn-close-kpi-detail")?.addEventListener("click", closeModal);
+    }
+  });
 }
 
 /**
@@ -844,6 +990,7 @@ export async function mount(container, { session, params }) {
  <h3 class="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
  <i class='fa-solid fa-chart-line' aria-hidden='true'></i> Grafik Penilaian Indikator KPI (${detailSoal.length} Indikator)
  </h3>
+ ${latestKpiPeriod?.raterDetails?.length ? `<button type="button" data-kpi-period-detail="1" class="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[11px] font-bold text-blue-800 transition hover:bg-blue-100">Rincian per penilai</button>` : ""}
  </div>
  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
  ${indicatorChartsHtml}
@@ -853,6 +1000,19 @@ export async function mount(container, { session, params }) {
  ${historyHtml}
  ${feedbackHtml}
  </div>`;
+ wrap.querySelectorAll("[data-kpi-period-detail]").forEach(btn => {
+  btn.addEventListener("click", () => {
+   if (!latestKpiPeriod) return;
+   openKpiIndicatorDetailModal({
+    title: `Rincian Nilai Per Penilai — ${session.nama || "Karyawan"}`,
+    subtitle: `Periode ${latestKpiPeriod.period || "-"} · ${latestKpiPeriod.raterCount} penilai · Nilai agregat ${Number(latestKpiPeriod.score || 0).toFixed(2)}`,
+    rows: latestKpiPeriod.indicatorScores || [],
+    raterDetails: latestKpiPeriod.raterDetails || [],
+    relationScores: latestKpiPeriod.relationScores || null,
+    score: latestKpiPeriod.score
+   });
+  });
+ });
  } catch (e) {
  console.error(e);
  wrap.innerHTML = emptyState("Gagal memuat grafik penilaian KPI: " + e.message);
@@ -1247,7 +1407,7 @@ export async function mount(container, { session, params }) {
      <div class="rounded-xl bg-white p-3"><span class="text-xs text-slate-500">Cuti mendadak</span><strong class="block text-lg">${emergencyLeaves.length}</strong><span class="text-xs">Dari catatan cuti yang tersedia</span></div>
     </div>
     ${evidenceGaps.length ? `<div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><strong>Data perlu dilengkapi:</strong> ${evidenceGaps.map(escapeHtml).join(" · ")}</div>` : ''}
-    ${summary ? `<div class="rounded-xl bg-white p-3 text-xs"><strong>Rincian penilai:</strong> ${Object.entries(summary.relationScores || {}).map(([relation, value]) => `${escapeHtml(relation)} ${Number(value.score).toFixed(1)} (${value.count} penilai)`).join(" · ") || "Belum ada rincian"}<div class="mt-2 space-y-1">${(summary.indicatorScores || []).slice(0, 8).map(item => `<div class="flex justify-between gap-2"><span>${escapeHtml(item.aspek || "Kinerja")} — ${escapeHtml(item.indikator || "-")}</span><strong>${Number(item.nilai_diberikan || 0).toFixed(1)}</strong></div>`).join("")}</div></div>` : ''}
+    ${summary ? `<div class="rounded-xl bg-white p-3 text-xs"><strong>Rincian penilai:</strong> ${Object.entries(summary.relationScores || {}).map(([relation, value]) => `${escapeHtml(kpiRelationLabel(relation))} ${Number(value.score).toFixed(1)} (${value.count} penilai)`).join(" · ") || "Belum ada rincian"}<div class="mt-2 space-y-1">${(summary.indicatorScores || []).slice(0, 8).map(item => `<div class="flex justify-between gap-2"><span>${escapeHtml(item.aspek || "Kinerja")} — ${escapeHtml(item.indikator || "-")}</span><strong>${Number(item.nilai_diberikan || 0).toFixed(1)}</strong></div>`).join("")}</div><button type="button" data-kpi-summary-detail="1" class="mt-2 w-full rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 font-bold text-blue-800 transition hover:bg-blue-100">Lihat rincian nilai per indikator semua penilai</button></div>` : ''}
     ${ownTargets[0]?.catatan_target ? `<div class="rounded-xl bg-white p-3 text-xs"><strong>Arahan target ${escapeHtml(ownTargets[0].periode || "")}: </strong>${escapeHtml(ownTargets[0].catatan_target)}</div>` : ''}
     ${achievementRows.length ? `<div class="rounded-xl bg-white p-3 text-xs"><strong>Realisasi target ${escapeHtml(period)}</strong><div class="mt-2 space-y-1">${achievementRows.map(row => `<div class="flex justify-between gap-2"><span>${escapeHtml(row.label)}</span><span>${row.actual === null ? "Belum diisi" : `${row.actual.toLocaleString("id-ID")} / ${row.target === null ? "-" : row.target.toLocaleString("id-ID")} ${escapeHtml(row.unit)}${row.attainment === null ? "" : ` · ${row.attainment}%`}`}</span></div>`).join("")}</div>${monthTarget.capaian_bulanan.catatan ? `<p class="mt-2 text-slate-600">${escapeHtml(monthTarget.capaian_bulanan.catatan)}</p>` : ''}</div>` : ''}
     ${monthDaily.some(row => Number(row.potongan_kpi || 0) > 0) ? `<div class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs"><strong>Pengurangan KPI bulan ini:</strong> ${monthDaily.filter(row => Number(row.potongan_kpi || 0) > 0).map(row => `${escapeHtml(row.tanggal || "-")}: −${Number(row.potongan_kpi)} (${escapeHtml(row.alasan_potongan || "Alasan belum dicatat")})`).join(" · ")}</div>` : ''}
@@ -1256,6 +1416,19 @@ export async function mount(container, { session, params }) {
     ${summary?.latestLog ? `<div class="rounded-xl bg-white p-3 text-xs"><strong>Catatan penilai:</strong> ${escapeHtml(summary.latestLog.catatan_penilai || summary.latestLog.catatan_perbaikan || summary.latestLog.catatan_baik || "Tidak ada catatan")}</div>` : ''}
     ${!attendanceAvailable ? '<p class="text-xs text-amber-800">Data absensi Supabase belum dapat dimuat; verifikasi di menu Absensi sebelum mengambil keputusan.</p>' : ''}
    </div>`;
+   target.querySelectorAll("[data-kpi-summary-detail]").forEach(btn => {
+    btn.addEventListener("click", () => {
+     if (!summary) return;
+     openKpiIndicatorDetailModal({
+      title: `Rincian Penilaian 360° — ${nama || "Karyawan"}`,
+      subtitle: `Periode ${summary.period || "-"} · ${summary.raterCount} penilai · Nilai agregat ${Number(summary.score || 0).toFixed(2)}`,
+      rows: summary.indicatorScores || [],
+      raterDetails: summary.raterDetails || [],
+      relationScores: summary.relationScores || null,
+      score: summary.score
+     });
+    });
+   });
   } catch (error) {
    console.error("contract-evidence", error);
    if (target.isConnected) target.innerHTML = `<p class="text-rose-700">Ringkasan belum dapat dimuat: ${escapeHtml(error.message)}</p>`;
@@ -3524,6 +3697,11 @@ export async function mount(container, { session, params }) {
               </td>
               <td class="py-2.5 px-3 text-center">
                 <div class="flex items-center justify-center gap-1 flex-wrap">
+                  ${isDone ? `
+                    <button data-action="detail-task" data-task-id="${t.id}" class="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold rounded-lg text-[11px] transition" title="Lihat nilai setiap indikator">
+                      Rincian
+                    </button>
+                  ` : ''}
                   <button data-action="print-task" data-task-id="${t.id}" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-bold rounded-lg text-[11px] transition flex items-center gap-1" title="Cetak Dokumen Penilaian Fisik">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
                     <span>Cetak</span>
@@ -3545,6 +3723,30 @@ export async function mount(container, { session, params }) {
             </tr>
           `;
         }).join("");
+
+        // Attach detail indicator action
+        tbody.querySelectorAll('[data-action="detail-task"]').forEach(btn => {
+          btn.onclick = () => {
+            const tid = btn.dataset.taskId;
+            const taskObj = tasks.find(x => x.id === tid);
+            if (!taskObj) return;
+            const indicators = kpiDetailRows(taskObj);
+            openKpiIndicatorDetailModal({
+              title: `Rincian Nilai Indikator — ${taskObj.nama_dinilai || "Karyawan"}`,
+              subtitle: `Penilai: ${taskObj.nama_penilai || "-"} · ${kpiRelationLabel(taskObj.tipe_relasi || "LAINNYA")} · Periode ${taskObj.periode || "-"}`,
+              rows: indicators,
+              raterDetails: [{
+                name: taskObj.nama_penilai || "Penilai",
+                relation: String(taskObj.tipe_relasi || "").toUpperCase(),
+                relationLabel: kpiRelationLabel(taskObj.tipe_relasi || "LAINNYA"),
+                score: taskObj.skor_akhir,
+                catatan: taskObj.catatan_penilai || taskObj.catatan_perbaikan || taskObj.catatan_baik || "",
+                indicators
+              }],
+              score: taskObj.skor_akhir
+            });
+          };
+        });
 
         // Attach Print physical assessment document action
         tbody.querySelectorAll('[data-action="print-task"]').forEach(btn => {
@@ -4677,12 +4879,13 @@ export async function mount(container, { session, params }) {
               <th class="py-3 px-4 text-center">Skor Akhir</th>
               <th class="py-3 px-4 text-center">Predikat</th>
               <th class="py-3 px-4">Tanggal Evaluasi</th>
+              <th class="py-3 px-4 text-center">Rincian Indikator</th>
               ${canManageLog ? `<th class="py-3 px-4 text-center">Aksi (HRD)</th>` : ''}
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-50 text-sm">
             ${filteredLogs.length === 0 ? `
-              <tr><td colspan="${canManageLog ? 7 : 6}" class="py-12 text-center text-slate-400 italic">Belum ada data log penilaian KPI.</td></tr>
+              <tr><td colspan="${canManageLog ? 8 : 7}" class="py-12 text-center text-slate-400 italic">Belum ada data log penilaian KPI.</td></tr>
             ` : filteredLogs.map(l => `
               <tr class="hover:bg-slate-50/80 transition">
                 <td class="py-3 px-4 font-bold text-slate-800">${escapeHtml(l.nama_dinilai)}</td>
@@ -4691,6 +4894,11 @@ export async function mount(container, { session, params }) {
                 <td class="py-3 px-4 text-center font-black text-maroon-700 text-base">${l.total_skor || 0}</td>
                 <td class="py-3 px-4 text-center">${badge(l.keputusan || "Selesai", (l.total_skor || 0) >= 80 ? "emerald" : (l.total_skor || 0) >= 60 ? "blue" : "amber")}</td>
                 <td class="py-3 px-4 text-xs text-slate-400">${fmtDateShort(l.tanggal)}</td>
+                <td class="py-3 px-4 text-center">
+                  <button data-action="detail-log" data-log-id="${l.id}" class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold rounded-lg text-xs transition" title="Lihat nilai setiap indikator">
+                    Rincian
+                  </button>
+                </td>
                 ${canManageLog ? `
                   <td class="py-3 px-4 text-center">
                     <div class="flex items-center justify-center gap-1.5">
@@ -4710,6 +4918,28 @@ export async function mount(container, { session, params }) {
       </div>
     </div>
   `;
+
+  wrap.querySelectorAll('[data-action="detail-log"]').forEach(btn => {
+    btn.onclick = () => {
+      const logObj = filteredLogs.find(x => x.id === btn.dataset.logId);
+      if (!logObj) return;
+      const indicators = kpiDetailRows(logObj);
+      openKpiIndicatorDetailModal({
+        title: `Rincian Nilai Indikator — ${logObj.nama_dinilai || "Karyawan"}`,
+        subtitle: `Penilai: ${logObj.nama_penilai || logObj.penilai || "-"} · ${kpiRelationLabel(logObj.tipe_relasi || "LAINNYA")} · Periode ${logObj.periode || "-"}`,
+        rows: indicators,
+        raterDetails: [{
+          name: logObj.nama_penilai || logObj.penilai || "Penilai",
+          relation: String(logObj.tipe_relasi || "").toUpperCase(),
+          relationLabel: kpiRelationLabel(logObj.tipe_relasi || "LAINNYA"),
+          score: logObj.total_skor ?? logObj.skor_akhir,
+          catatan: logObj.catatan_penilai || logObj.catatan_perbaikan || logObj.catatan_baik || "",
+          indicators
+        }],
+        score: logObj.total_skor ?? logObj.skor_akhir
+      });
+    };
+  });
 
   if (canManageLog) {
     wrap.querySelectorAll('[data-action="edit-log"]').forEach(btn => {
@@ -5611,7 +5841,17 @@ export async function mount(container, { session, params }) {
                   </div>
                   ${["HRD", "SUPERADMIN"].includes(role) && canDistribusiKpi360 && initialTahap === "REVIEW_HRD" ? `<button type="button" id="btn-distribusi-review-hrd" class="px-3 py-2 rounded-lg bg-maroon-700 text-white text-[11px] font-bold">+ Distribusikan Penilaian</button>` : ""}
                 </div>
-                ${["HRD", "SUPERADMIN"].includes(role) && reviewTasks.length ? `<div class="max-h-40 overflow-y-auto divide-y divide-blue-100 text-[11px]">${reviewTasks.map(t => `<div class="flex justify-between gap-2 py-1"><span>${escapeHtml(t.nama_penilai || "-")} · ${escapeHtml(t.tipe_relasi || "Penilai")}</span><strong class="${String(t.status).toUpperCase() === "DONE" ? "text-emerald-700" : "text-amber-700"}">${String(t.status).toUpperCase() === "DONE" ? `Selesai · ${t.skor_akhir !== null && t.skor_akhir !== undefined && t.skor_akhir !== "" && Number.isFinite(Number(t.skor_akhir)) ? Number(t.skor_akhir).toFixed(2) : "Skor belum ada"}` : "Menunggu"}</strong></div>`).join("")}</div>` : ""}
+                ${["HRD", "SUPERADMIN"].includes(role) && reviewTasks.length ? `<div class="max-h-40 overflow-y-auto divide-y divide-blue-100 text-[11px]">${reviewTasks.map(t => {
+                  const isDone = String(t.status || "").toUpperCase() === "DONE";
+                  const scoreValid = t.skor_akhir !== null && t.skor_akhir !== undefined && t.skor_akhir !== "" && Number.isFinite(Number(t.skor_akhir));
+                  return `<div class="flex items-center justify-between gap-2 py-1">
+                    <span>${escapeHtml(t.nama_penilai || "-")} · ${escapeHtml(kpiRelationLabel(t.tipe_relasi || "LAINNYA"))}</span>
+                    <div class="flex items-center gap-1.5">
+                      <strong class="${isDone ? "text-emerald-700" : "text-amber-700"}">${isDone ? `Selesai · ${scoreValid ? Number(t.skor_akhir).toFixed(2) : "Skor belum ada"}` : "Menunggu"}</strong>
+                      ${isDone ? `<button type="button" data-review-task-id="${escapeHtml(t.id || "")}" class="px-1.5 py-0.5 rounded border border-blue-200 bg-blue-50 hover:bg-blue-100 font-bold text-blue-700 transition">Rincian</button>` : ""}
+                    </div>
+                  </div>`;
+                }).join("")}</div>` : ""}
                 <p class="text-[11px] text-slate-600">KPI: ${latestKpiSummary ? `${escapeHtml(latestKpiSummary.period)} • ${latestKpiSummary.score.toFixed(2)} • ${latestKpiSummary.raterCount} penilai` : "belum ada"}; log harian: ${empDaily.length} catatan. ${decisionReadiness.ready ? "Data dasar tersedia." : "Skor sistem hanya petunjuk sementara."}</p>
                 ${decisionReadiness.gaps.length ? `<ul class="list-disc pl-4 text-[11px] text-amber-800">${decisionReadiness.gaps.map(gap => `<li>${escapeHtml(gap)}</li>`).join("")}</ul>` : ""}
                 <label class="block text-[11px] font-semibold text-slate-700" for="input-sumber-bukti-hrd">Sumber bukti yang ditinjau HRD (periode, laporan kerja, absensi terverifikasi, catatan atasan, atau tautan)</label>
@@ -5832,6 +6072,9 @@ export async function mount(container, { session, params }) {
                 <div class="mt-2 p-2.5 rounded-xl border border-blue-200 bg-blue-50 text-[11px] text-blue-900">
                   ${decisionReadiness.ready ? "Referensi" : "Referensi sementara (data belum lengkap)"} berdasarkan skor agregat: <strong>${escapeHtml(evaluateGradeRule("KONTRAK", latestKpiSummary.score, currentGradeRulesMap).rekomendasi)}</strong>. Keputusan tetap wajib ditetapkan HRD, GM, dan Direktur.
                 </div>
+                ${(latestKpiSummary.raterDetails || []).length ? `<button type="button" id="btn-detail-kpi-distribusi" class="mt-2 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-[11px] font-bold text-blue-800 transition hover:bg-blue-50">
+                  Lihat rincian nilai per indikator dari ${latestKpiSummary.raterCount} penilai
+                </button>` : ""}
               ` : `
                 <div class="py-4 text-center text-xs text-slate-400 italic">Belum ada riwayat penilaian KPI tercatat.</div>
               `}
@@ -5914,6 +6157,40 @@ export async function mount(container, { session, params }) {
         evaluationId: recordId,
         onComplete: () => openModalKoordinasiPerpanjangan(empData, ev, onDoneCallback)
       }).catch(error => toast("Gagal membuka distribusi: " + error.message, "error"));
+    });
+
+    document.querySelectorAll("[data-review-task-id]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const taskObj = reviewTasks.find(t => String(t.id) === String(btn.dataset.reviewTaskId));
+        if (!taskObj) return;
+        const indicators = kpiDetailRows(taskObj);
+        openKpiIndicatorDetailModal({
+          title: `Rincian Nilai Indikator — ${taskObj.nama_dinilai || empData.nama_karyawan || "Karyawan"}`,
+          subtitle: `Penilai: ${taskObj.nama_penilai || "-"} · ${kpiRelationLabel(taskObj.tipe_relasi || "LAINNYA")} · Periode ${taskObj.periode || "-"}`,
+          rows: indicators,
+          raterDetails: [{
+            name: taskObj.nama_penilai || "Penilai",
+            relation: String(taskObj.tipe_relasi || "").toUpperCase(),
+            relationLabel: kpiRelationLabel(taskObj.tipe_relasi || "LAINNYA"),
+            score: taskObj.skor_akhir,
+            catatan: taskObj.catatan_penilai || taskObj.catatan_perbaikan || taskObj.catatan_baik || "",
+            indicators
+          }],
+          score: taskObj.skor_akhir
+        });
+      });
+    });
+
+    document.getElementById("btn-detail-kpi-distribusi")?.addEventListener("click", () => {
+      if (!latestKpiSummary) return;
+      openKpiIndicatorDetailModal({
+        title: `Rincian Penilaian 360° — ${empData.nama_karyawan || "Karyawan"}`,
+        subtitle: `Periode ${latestKpiSummary.period || "-"} · ${latestKpiSummary.raterCount} penilai · Agregat sesuai bobot jenis penilai`,
+        rows: latestKpiSummary.indicatorScores || [],
+        raterDetails: latestKpiSummary.raterDetails || [],
+        relationScores: latestKpiSummary.relationScores || null,
+        score: latestKpiSummary.score
+      });
     });
 
     // Select change updates phone numbers

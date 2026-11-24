@@ -7,6 +7,35 @@ export const KPI_RELATION_WEIGHTS = Object.freeze({
   LAINNYA: 25
 });
 
+/** Label tampilan untuk setiap jenis penilai agar rincian mudah dibaca di UI. */
+export const KPI_RELATION_LABELS = Object.freeze({
+  ATASAN: "Atasan Langsung",
+  PEER: "Rekan Kerja",
+  BAWAHAN: "Bawahan",
+  SELF: "Penilaian Mandiri",
+  MULTI: "360 Multi-Rater",
+  LAINNYA: "Lainnya"
+});
+
+/**
+ * Ambil butir indikator beserta nilai yang diberikan dari satu catatan penilaian.
+ * Dipakai untuk menampilkan rincian nilai per indikator pada tiap penilai.
+ */
+export function kpiDetailRows(record = {}) {
+  const details = Array.isArray(record?.detail_json)
+    ? record.detail_json
+    : (Array.isArray(record?.soal_json) ? record.soal_json : []);
+  return details.map((item, index) => {
+    const value = Number(item?.nilai_diberikan ?? item?.nilai ?? item?.skor);
+    return {
+      aspek: String(item?.aspek || "Kompetensi").trim() || "Kompetensi",
+      indikator: String(item?.indikator || item?.pertanyaan || `Indikator ${index + 1}`).trim(),
+      bobot: Number(item?.bobot) || 0,
+      nilai_diberikan: Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : null
+    };
+  });
+}
+
 export const DEFAULT_KPI_GRADE_RULES = Object.freeze({
   MASA_PERCOBAAN: [
     { min: 91, max: 100, predikat: "Sangat Baik", rekomendasi: "Sangat Baik - Lulus Masa Percobaan (Karyawan Tetap)", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300" },
@@ -149,17 +178,13 @@ export function aggregateKpiByPeriod(records, employee = {}) {
     const indicatorGroups = new Map();
     deduped.forEach(record => {
       const relation = normalizeKpiRelation(record.tipe_relasi);
-      const details = Array.isArray(record.detail_json) ? record.detail_json : (Array.isArray(record.soal_json) ? record.soal_json : []);
-      details.forEach((item, index) => {
-        const indicator = String(item.indikator || item.pertanyaan || `Indikator ${index + 1}`).trim();
-        const aspect = String(item.aspek || "Kompetensi").trim();
-        const value = Number(item.nilai_diberikan ?? item.nilai ?? item.skor);
-        if (!Number.isFinite(value)) return;
-        const key = `${clean(aspect)}|${clean(indicator)}`;
-        if (!indicatorGroups.has(key)) indicatorGroups.set(key, { aspek: aspect, indikator: indicator, bobot: Number(item.bobot) || 0, relations: new Map() });
+      kpiDetailRows(record).forEach(item => {
+        if (item.nilai_diberikan === null) return;
+        const key = `${clean(item.aspek)}|${clean(item.indikator)}`;
+        if (!indicatorGroups.has(key)) indicatorGroups.set(key, { aspek: item.aspek, indikator: item.indikator, bobot: item.bobot, relations: new Map() });
         const group = indicatorGroups.get(key);
         if (!group.relations.has(relation)) group.relations.set(relation, []);
-        group.relations.get(relation).push(Math.min(100, Math.max(0, value)));
+        group.relations.get(relation).push(item.nilai_diberikan);
       });
     });
     const indicatorScores = Array.from(indicatorGroups.values()).map(group => {
@@ -173,13 +198,44 @@ export function aggregateKpiByPeriod(records, employee = {}) {
       });
       return { aspek: group.aspek, indikator: group.indikator, bobot: group.bobot, nilai_diberikan: weightTotal ? Math.round((total / weightTotal) * 100) / 100 : 0 };
     });
+    // Rincian nilai per indikator untuk masing-masing kelompok penilai (atasan,
+    // rekan kerja, bawahan, mandiri). HRD memakai ini untuk meninjau distribusi.
+    const relationIndicatorScores = {};
+    indicatorGroups.forEach(group => {
+      group.relations.forEach((values, relation) => {
+        const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+        if (!relationIndicatorScores[relation]) relationIndicatorScores[relation] = [];
+        relationIndicatorScores[relation].push({
+          aspek: group.aspek,
+          indikator: group.indikator,
+          bobot: group.bobot,
+          nilai_diberikan: Math.round(Math.min(100, Math.max(0, average)) * 100) / 100
+        });
+      });
+    });
+    // Daftar penilai beserta butir nilai yang mereka berikan. Skor akhir tetap
+    // ditampilkan agar rincian indikator dapat dicocokkan dengan totalnya.
+    const raterDetails = deduped.map(record => {
+      const relation = normalizeKpiRelation(record.tipe_relasi);
+      return {
+        name: String(record.nama_penilai || record.penilai || record.nik_penilai || "Tanpa Nama").trim(),
+        nik: String(record.nik_penilai || "").trim(),
+        relation,
+        relationLabel: KPI_RELATION_LABELS[relation] || relation,
+        score: getKpiScore(record),
+        catatan: String(record.catatan_penilai || record.catatan_perbaikan || record.catatan_baik || "").trim(),
+        indicators: kpiDetailRows(record)
+      };
+    }).sort((a, b) => (KPI_RELATION_WEIGHTS[b.relation] || 0) - (KPI_RELATION_WEIGHTS[a.relation] || 0) || a.name.localeCompare(b.name, "id"));
     const latestLog = [...deduped].sort((a, b) => recordTime(b) - recordTime(a))[0] || null;
     return {
       period,
       score,
       raterCount: deduped.length,
       relationScores,
+      relationIndicatorScores,
       indicatorScores,
+      raterDetails,
       latestLog,
       latestAt: Math.max(0, ...deduped.map(recordTime)),
       logs: deduped
