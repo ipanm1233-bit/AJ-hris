@@ -189,6 +189,10 @@ export async function renderCrudModule(container, cfg) {
  const canCreate = _crudGmViewOnly ? false : (cfg.canCreate !== undefined ? Boolean(cfg.canCreate) : fieldsList.length > 0);
  const canEdit = _crudGmViewOnly ? false : (cfg.canEdit !== undefined ? Boolean(cfg.canEdit) : fieldsList.length > 0);
  const userCanDelete = cfg.canDelete !== false && !_crudGmViewOnly && canDeleteModuleData(_crudSession);
+ // Edit langsung (double-click) hanya untuk HRD/Superadmin. Role lain tetap
+ // memakai tombol edit biasa bila memang diberi akses oleh HRD.
+ const canInlineEdit = canEdit && fieldsList.length > 0
+  && ["HRD", "SUPERADMIN"].includes(String(_crudSession?.role || "").toUpperCase());
 
  container.innerHTML = `
  <div class="flex flex-col gap-4">
@@ -224,6 +228,7 @@ export async function renderCrudModule(container, cfg) {
  </div>`;
 
  let rows = [];
+ let lastRenderedList = [];
  const tbody = container.querySelector("#crud-tbody");
  tbody.innerHTML = `<tr><td colspan="${columns.length + 1}" class="p-4"><div class="space-y-2">${skeletonRows(3)}</div></td></tr>`;
 
@@ -261,6 +266,7 @@ export async function renderCrudModule(container, cfg) {
  }
 
  function renderRows(list) {
+ lastRenderedList = list;
  const emptyEl = container.querySelector("#crud-empty");
  if (!list.length) {
  if (tbody) tbody.innerHTML = "";
@@ -269,24 +275,45 @@ export async function renderCrudModule(container, cfg) {
  }
  if (emptyEl) emptyEl.innerHTML = "";
  if (tbody) tbody.innerHTML = list.map(row => `
- <tr class="border-t border-slate-50 hover:bg-slate-50/60 transition ${onRowClick ? 'cursor-pointer hover:bg-maroon-50/40' : ''}" data-row-id="${row.id}">
+ <tr class="border-t border-slate-50 hover:bg-slate-50/60 transition ${onRowClick ? 'cursor-pointer hover:bg-maroon-50/40' : ''}" data-row-id="${row.id}"${canInlineEdit ? ' data-inline-editable="1" title="Klik dua kali pada baris untuk edit langsung"' : ''}>
  ${columns.map(c => `<td class="px-4 py-3 text-slate-700">${cellValue(row, c)}</td>`).join("")}
  <td class="px-4 py-3 text-right whitespace-nowrap actions-cell">
  ${printFn ? `<button data-print="${row.id}" title="${escapeHtml(printLabel)}" class="text-slate-400 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50 transition">${icon("printer", "w-4 h-4")}</button>` : ""}
- ${canEdit ? `<button data-edit="${row.id}" class="text-slate-400 hover:text-maroon-700 p-1.5 rounded-lg hover:bg-maroon-50 transition">${icon("edit", "w-4 h-4")}</button>` : ""}
+ ${canEdit ? `<button data-edit="${row.id}" title="${canInlineEdit ? 'Edit langsung di baris (atau klik dua kali baris)' : 'Edit'}" class="text-slate-400 hover:text-maroon-700 p-1.5 rounded-lg hover:bg-maroon-50 transition">${icon("edit", "w-4 h-4")}</button>` : ""}
  ${userCanDelete ? `<button data-del="${row.id}" class="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition">${icon("trash", "w-4 h-4")}</button>` : ""}
  </td>
  </tr>`).join("");
 
-  if (onRowClick) {
+  if (onRowClick || canInlineEdit) {
     tbody.querySelectorAll("tr[data-row-id]").forEach(tr => {
+      let clickTimer = null;
+      const isInteractive = (target) => target.closest("button") || target.closest("a") || target.closest("input") || target.closest("select") || target.closest("textarea") || target.closest(".actions-cell");
       tr.addEventListener("click", (e) => {
-        if (e.target.closest("button") || e.target.closest("a") || e.target.closest("input") || e.target.closest(".actions-cell")) {
-          return;
-        }
+        if (isInteractive(e.target) || !onRowClick) return;
         const r = rows.find(x => x.id === tr.dataset.rowId);
-        if (r) onRowClick(r, { openEdit: () => openForm(r), reload: load });
+        if (!r) return;
+        // Saat inline edit aktif, tunda klik tunggal agar double-click tidak
+        // sekaligus membuka detail sebelum baris berubah menjadi mode edit.
+        if (canInlineEdit) {
+          clearTimeout(clickTimer);
+          clickTimer = setTimeout(() => {
+            if (tr.dataset.editing !== "1") onRowClick(r, { openEdit: () => openForm(r), reload: load });
+          }, 260);
+        } else {
+          onRowClick(r, { openEdit: () => openForm(r), reload: load });
+        }
       });
+      if (canInlineEdit) {
+        tr.addEventListener("dblclick", (e) => {
+          if (isInteractive(e.target)) return;
+          clearTimeout(clickTimer);
+          const r = rows.find(x => x.id === tr.dataset.rowId);
+          if (r) startInlineEdit(tr, r).catch(error => {
+            console.error("Inline edit gagal:", error);
+            toast("Gagal membuka edit langsung: " + (error.message || error), "error");
+          });
+        });
+      }
     });
   }
  if (printFn) {
@@ -299,6 +326,16 @@ export async function renderCrudModule(container, cfg) {
       e.stopPropagation();
       const r = rows.find(x => x.id === btn.dataset.edit);
       if (r) {
+        if (canInlineEdit) {
+          const tr = btn.closest("tr");
+          if (tr) {
+            startInlineEdit(tr, r).catch(error => {
+              console.error("Inline edit gagal:", error);
+              toast("Gagal membuka edit langsung: " + (error.message || error), "error");
+            });
+            return;
+          }
+        }
         if (onEditClick) {
           onEditClick(r, { openDefaultForm: () => openForm(r), reload: load });
         } else {
@@ -321,6 +358,123 @@ export async function renderCrudModule(container, cfg) {
  };
  });
  if (onRowRender) onRowRender(list, container);
+ }
+
+ /** Cari field formulir yang mewakili sebuah kolom tabel untuk edit langsung. */
+ function inlineFieldForColumn(col) {
+  if (!col || col.readOnly || col.type === "link") return null;
+  if (col.editKey) return fieldsList.find(f => f.name === col.editKey) || null;
+  return fieldsList.find(f => f.name === col.key) || null;
+ }
+
+ /**
+  * Ubah satu baris tabel menjadi mode edit langsung (tanpa popup).
+  * Hanya dipanggil untuk role HRD/Superadmin melalui canInlineEdit.
+  */
+ async function startInlineEdit(tr, row) {
+  if (!canInlineEdit || tr.dataset.editing === "1") return;
+  const mapped = columns.map(col => ({ col, field: inlineFieldForColumn(col) }));
+  if (!mapped.some(item => item.field)) {
+   toast("Tidak ada kolom yang bisa diedit langsung pada tabel ini.", "warning");
+   return;
+  }
+
+  // Muat opsi dinamis (datalist/select) sekali sebelum baris dirender ulang.
+  for (const item of mapped) {
+   const f = item.field;
+   if (f && typeof f.getOptions === "function" && (!Array.isArray(f.options) || f.options.length === 0)) {
+    try {
+     f.options = await f.getOptions({ existing: row, prefill: null, session: getSession() });
+    } catch (error) {
+     console.warn("Gagal memuat opsi field", f.name, error);
+    }
+   }
+  }
+
+  tr.dataset.editing = "1";
+  tr.classList.add("bg-amber-50/70", "ring-1", "ring-inset", "ring-amber-200");
+  const tds = tr.querySelectorAll("td");
+
+  mapped.forEach(({ col, field }, index) => {
+   const td = tds[index];
+   if (!td) return;
+   td.dataset.originalHtml = td.innerHTML;
+   if (field) {
+    td.innerHTML = `<div class="min-w-[140px]">${fieldInput(field, row[field.name] ?? row[col.key] ?? "")}</div>`;
+   }
+  });
+
+  const actionsTd = tds[tds.length - 1];
+  if (actionsTd) {
+   actionsTd.dataset.originalHtml = actionsTd.innerHTML;
+   actionsTd.innerHTML = `<div class="flex items-center justify-end gap-1.5">
+    <button type="button" data-inline-save class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition">Simpan</button>
+    <button type="button" data-inline-cancel class="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition">Batal</button>
+   </div>`;
+  }
+
+  const firstControl = tr.querySelector("input,select,textarea");
+  if (firstControl) firstControl.focus();
+
+  const cancel = () => renderRows(lastRenderedList);
+  actionsTd?.querySelector("[data-inline-cancel]")?.addEventListener("click", cancel);
+
+  const save = async () => {
+   const controls = [...tr.querySelectorAll("input[name],select[name],textarea[name]")];
+   for (const el of controls) {
+    if (!el.reportValidity()) return;
+   }
+   const saveBtn = actionsTd?.querySelector("[data-inline-save]");
+   if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Menyimpan...";
+   }
+   try {
+    const data = {};
+    fieldsList.forEach(f => { data[f.name] = row[f.name] ?? ""; });
+    let changed = false;
+    controls.forEach(el => {
+     const field = fieldsList.find(f => f.name === el.name);
+     if (!field) return;
+     const next = field.type === "number" ? toNumber(el.value) : el.value;
+     if (String(next ?? "") !== String(data[field.name] ?? "")) changed = true;
+     data[field.name] = next;
+    });
+    if (!changed) {
+     cancel();
+     return;
+    }
+    let payload = data;
+    if (beforeSave) payload = (await beforeSave(payload, row)) || payload;
+    await fsUpdate(collectionName, row.id, payload);
+    if (afterSave) {
+     try { await afterSave(payload, false, row.id, row); } catch (error) { console.warn("afterSave error:", error); }
+    }
+    toast("Data berhasil diperbarui", "success");
+    await load();
+   } catch (error) {
+    console.error(error);
+    const isDenied = String(error.code || "").includes("permission-denied") || String(error.message || "").includes("Missing or insufficient permissions");
+    toast((isDenied ? "Ditolak Security Firestore (cek role/rule Anda): " : "Gagal menyimpan data: ") + (error.message || error), "error");
+    if (saveBtn) {
+     saveBtn.disabled = false;
+     saveBtn.textContent = "Simpan";
+    }
+   }
+  };
+
+  actionsTd?.querySelector("[data-inline-save]")?.addEventListener("click", save);
+  tr.querySelectorAll("input,select,textarea").forEach(el => {
+   el.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+     event.preventDefault();
+     cancel();
+    } else if (event.key === "Enter" && el.tagName !== "TEXTAREA") {
+     event.preventDefault();
+     save();
+    }
+   });
+  });
  }
 
  function fieldInput(f, value = "") {

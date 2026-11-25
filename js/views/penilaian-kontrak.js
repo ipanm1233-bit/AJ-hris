@@ -1,5 +1,5 @@
 import { auth, db, COL, collection, query, where, getDocs, getDoc, setDoc, doc, limit, writeBatch, serverTimestamp } from "../firebase-config.js";
-import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, confirmDialog, toast, genId, fmtDateShort, escapeHtml, sendEmailNotif, buildStandardEmailHtml, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan, downloadXlsx, ensureXlsxLoaded, formatPhoneNumberForWa, openWhatsAppMessage, getEmployeePhoneByName, buildKpiTaskWaMessage, printDokumenPenilaianFisik, downloadDokumenPenilaianFisikPdf, generateLaporanEvaluasiKontrakHtml, downloadLaporanEvaluasiKontrakPdf, downloadHtmlAsPdf } from "../utils.js";
+import { fsGetAll, fsAdd, fsUpdate, fsDelete, openModal, closeModal, confirmDialog, toast, genId, fmtDateShort, escapeHtml, localDateStr, sendEmailNotif, buildStandardEmailHtml, createLoginToken, notifyUser, daysBetween, formatStatusKaryawan, downloadXlsx, ensureXlsxLoaded, formatPhoneNumberForWa, openWhatsAppMessage, getEmployeePhoneByName, buildKpiTaskWaMessage, printDokumenPenilaianFisik, downloadDokumenPenilaianFisikPdf, generateLaporanEvaluasiKontrakHtml, downloadLaporanEvaluasiKontrakPdf, downloadHtmlAsPdf } from "../utils.js";
 import { renderCrudModule, badge, emptyState, skeletonRows, avatar, icon, openPenilaianFormFromNotif } from "../components.js";
 import { FULL_ACCESS_ROLES, ATASAN_VIEW_ROLES, getBawahanNames, hasPermission, canEditModuleData, resolveBranchScope, branchMatches } from "../auth.js";
 import { COMPANY_NAME, logoImgTag, isoDocHeaderTable } from "../branding.js";
@@ -4887,7 +4887,7 @@ export async function mount(container, { session, params }) {
             ${filteredLogs.length === 0 ? `
               <tr><td colspan="${canManageLog ? 8 : 7}" class="py-12 text-center text-slate-400 italic">Belum ada data log penilaian KPI.</td></tr>
             ` : filteredLogs.map(l => `
-              <tr class="hover:bg-slate-50/80 transition">
+              <tr class="hover:bg-slate-50/80 transition" data-log-row-id="${l.id}"${canManageLog ? ' data-inline-editable="1" title="Klik dua kali untuk edit langsung"' : ''}>
                 <td class="py-3 px-4 font-bold text-slate-800">${escapeHtml(l.nama_dinilai)}</td>
                 <td class="py-3 px-4 text-xs text-slate-600">${escapeHtml(l.penilai || "-")}</td>
                 <td class="py-3 px-4 text-xs font-semibold text-slate-700">${escapeHtml(l.periode || "-")}</td>
@@ -4942,11 +4942,117 @@ export async function mount(container, { session, params }) {
   });
 
   if (canManageLog) {
+    const logInputClass = "w-full min-w-[120px] rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-maroon-500 focus:ring-2 focus:ring-maroon-100";
+
+    function startLogInlineEdit(tr, logObj) {
+      if (tr.dataset.editing === "1") return;
+      tr.dataset.editing = "1";
+      tr.classList.add("bg-amber-50/70", "ring-1", "ring-inset", "ring-amber-200");
+      const tds = tr.querySelectorAll("td");
+      const defs = [
+        { index: 0, name: "nama_dinilai", value: logObj.nama_dinilai || "", type: "text", required: true },
+        { index: 1, name: "penilai", value: logObj.penilai || logObj.nama_penilai || "", type: "text", required: true },
+        { index: 2, name: "periode", value: logObj.periode || "", type: "text", required: true },
+        { index: 3, name: "total_skor", value: logObj.total_skor ?? logObj.skor_akhir ?? 0, type: "number", required: true, min: 0, max: 100, step: "0.01" },
+        { index: 4, name: "keputusan", value: logObj.keputusan || "", type: "text", required: true },
+        { index: 5, name: "tanggal", value: localDateStr(logObj.tanggal || logObj.created_at || new Date()) || "", type: "date", required: false }
+      ];
+      defs.forEach(def => {
+        const td = tds[def.index];
+        if (!td) return;
+        td.dataset.originalHtml = td.innerHTML;
+        td.innerHTML = `<input type="${def.type}" name="${def.name}" value="${escapeHtml(String(def.value))}" ${def.required ? "required" : ""} ${def.min !== undefined ? `min="${def.min}"` : ""} ${def.max !== undefined ? `max="${def.max}"` : ""} ${def.step ? `step="${def.step}"` : ""} class="${logInputClass} ${def.type === "number" ? "text-center font-black" : ""}">`;
+      });
+
+      const actionTd = tds[tds.length - 1];
+      if (actionTd) {
+        actionTd.dataset.originalHtml = actionTd.innerHTML;
+        actionTd.innerHTML = `<div class="flex items-center justify-center gap-1.5">
+          <button type="button" data-inline-log-save class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition">Simpan</button>
+          <button type="button" data-inline-log-cancel class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition">Batal</button>
+        </div>`;
+      }
+
+      const cancel = () => loadHasilPenilaian();
+
+      const save = async () => {
+        const controls = [...tr.querySelectorAll("input[name]")];
+        for (const el of controls) {
+          if (!el.reportValidity()) return;
+        }
+        const saveBtn = actionTd?.querySelector("[data-inline-log-save]");
+        if (saveBtn) {
+          saveBtn.disabled = true;
+          saveBtn.textContent = "Menyimpan...";
+        }
+        try {
+          const read = (name) => controls.find(el => el.name === name)?.value ?? "";
+          const namaDinilai = read("nama_dinilai").trim();
+          const penilai = read("penilai").trim();
+          const periode = read("periode").trim();
+          const totalSkor = parseFloat(read("total_skor")) || 0;
+          const keputusan = read("keputusan").trim();
+          const tglStr = read("tanggal");
+          const changes = {
+            nama_dinilai: namaDinilai,
+            penilai,
+            nama_penilai: penilai,
+            periode,
+            total_skor: totalSkor,
+            skor_akhir: totalSkor,
+            keputusan,
+            tanggal: tglStr ? new Date(tglStr).toISOString() : (logObj.tanggal || new Date().toISOString()),
+            updated_at: serverTimestamp()
+          };
+          const batch = writeBatch(db);
+          batch.set(doc(db, COL.LOG_PENILAIAN_KPI, logObj.id), changes, { merge: true });
+          batch.set(doc(db, "kpi_audit_logs", `KPI-EDIT-${logObj.id}-${Date.now()}`), {
+            action: "EDIT_RESULT", record_id: logObj.id,
+            actor_uid: auth.currentUser?.uid || "", actor_nik: session.nik || "", actor_name: session.nama || "HRD",
+            before: logObj, after: { ...changes, updated_at: null }, created_at: serverTimestamp()
+          });
+          await batch.commit();
+          toast("Log hasil penilaian KPI berhasil diperbarui!", "success");
+          loadHasilPenilaian();
+        } catch (err) {
+          toast("Gagal memperbarui log: " + err.message, "error");
+          if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = "Simpan";
+          }
+        }
+      };
+
+      actionTd?.querySelector("[data-inline-log-save]")?.addEventListener("click", save);
+      actionTd?.querySelector("[data-inline-log-cancel]")?.addEventListener("click", cancel);
+      tr.querySelectorAll("input").forEach(input => {
+        input.addEventListener("keydown", (event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            cancel();
+          } else if (event.key === "Enter") {
+            event.preventDefault();
+            save();
+          }
+        });
+      });
+      tr.querySelector("input")?.focus();
+    }
+
+    wrap.querySelectorAll("tr[data-log-row-id]").forEach(tr => {
+      tr.addEventListener("dblclick", (event) => {
+        if (event.target.closest("button,input,a,.actions-cell")) return;
+        const logObj = filteredLogs.find(x => x.id === tr.dataset.logRowId);
+        if (logObj) startLogInlineEdit(tr, logObj);
+      });
+    });
+
     wrap.querySelectorAll('[data-action="edit-log"]').forEach(btn => {
       btn.onclick = () => {
         const lid = btn.dataset.logId;
         const logObj = filteredLogs.find(x => x.id === lid);
-        if (logObj) openEditLogKpiModal(logObj);
+        const tr = btn.closest("tr");
+        if (logObj && tr) startLogInlineEdit(tr, logObj);
       };
     });
 
